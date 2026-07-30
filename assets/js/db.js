@@ -16,12 +16,13 @@
   }
   window.APOLANA_DB = window.supabase.createClient(URL, KEY);
 
-  /* Ayudante: últimas noticias publicadas (o null si algo falla). */
+  /* Ayudante: noticias publicadas, de más nueva a más antigua
+     (o null si algo falla). Sin límite = todas. */
   window.APOLANA_DB.noticias = async function (limite) {
     try {
       var q = window.APOLANA_DB
         .from("noticias")
-        .select("titulo, excerpt, categoria, foto_portada, fecha_publicacion, slug:id")
+        .select("id, titulo, excerpt, categoria, foto_portada, fecha_publicacion")
         .eq("publicada", true)
         .order("fecha_publicacion", { ascending: false });
       if (limite) q = q.limit(limite);
@@ -30,6 +31,23 @@
       return res.data;
     } catch (e) {
       console.warn("[Apolana] noticias (excepción):", e);
+      return null;
+    }
+  };
+
+  /* Ayudante: una noticia concreta por su id (o null si no existe/falla). */
+  window.APOLANA_DB.noticiaPorId = async function (id) {
+    try {
+      var res = await window.APOLANA_DB
+        .from("noticias")
+        .select("id, titulo, excerpt, contenido, categoria, foto_portada, fotos_galeria, fecha_publicacion")
+        .eq("id", id)
+        .eq("publicada", true)
+        .single();
+      if (res.error) { console.warn("[Apolana] noticia:", res.error.message); return null; }
+      return res.data;
+    } catch (e) {
+      console.warn("[Apolana] noticia (excepción):", e);
       return null;
     }
   };
