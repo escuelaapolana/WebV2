@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi zona · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .at-wrap { max-width: 860px; margin: 0 auto; padding: clamp(22px,4vw,40px) clamp(16px,4vw,40px); }
+  .at-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(30px,6vw,44px); color: var(--navy); margin: 0 0 4px; }
+  .at-cab .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing:.1em; text-transform:uppercase; color: var(--texto-tenue); }
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,28px); box-shadow: var(--sombra-suave); margin-top: 20px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; color: var(--navy); margin: 0 0 12px; }
+  table { width:100%; border-collapse: collapse; }
+  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--linea); font-size:14px; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+  .vacio { color: var(--texto-suave); font-size:14px; }
+  .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); }
+  .pill.ok { background:#e6f4ea; color:#1e7a3d; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="at-wrap" id="at-wrap"><p class="intro">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('at-wrap');
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  if (!perfil) { wrap.innerHTML = '<div class="tarjeta"><p class="vacio">No encontramos tu perfil. Avisa al club.</p></div>'; return; }
+
+  // Buscar la ficha de atleta ligada a este perfil
+  var at = null;
+  try {
+    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,grupo_id,estado').eq('perfil_id', perfil.id).maybeSingle();
+    if (!r.error) at = r.data;
+  } catch (e) {}
+
+  var nombre = at ? ((at.nombre||'') + ' ' + (at.apellidos||'')) : (perfil.nombre || '');
+  var html = '<div class="at-cab"><h1>Hola, ' + esc(perfil.nombre || nombre) + '</h1>' +
+             '<span class="sub">' + (at && at.categoria ? esc(at.categoria) + ' · ' : '') + 'Mi zona de atleta</span></div>';
+
+  if (!at) {
+    html += '<div class="tarjeta"><p class="vacio">Todavía no vemos tu ficha de atleta. Puede que falten permisos por activar (bloque B del plan) o que tu ficha no esté enlazada a tu cuenta. Se soluciona pronto.</p></div>';
+    wrap.innerHTML = html;
+    return;
+  }
+
+  // Mis marcas
+  var marcasHtml = '<p class="vacio">Aún no hay marcas registradas.</p>';
+  try {
+    var m = await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo').eq('atleta_id', at.id).order('fecha', { ascending: false }).limit(20);
+    if (!m.error && m.data && m.data.length) {
+      marcasHtml = '<table><thead><tr><th>Prueba</th><th>Marca</th><th>Fecha</th><th>Dónde</th></tr></thead><tbody>' +
+        m.data.map(function(x){ return '<tr><td>'+esc(x.prueba)+'</td><td>'+esc(x.tiempo_display||'')+'</td><td>'+esc(x.fecha||'')+'</td><td>'+esc(x.sede||'')+'</td></tr>'; }).join('') +
+        '</tbody></table>';
+    }
+  } catch (e) {}
+
+  // Mis pagos
+  var pagosHtml = '<p class="vacio">No hay pagos registrados.</p>';
+  try {
+    var p = await sb.from('pagos').select('concepto,importe,estado,fecha_vencimiento').eq('atleta_id', at.id).order('fecha_vencimiento', { ascending: false }).limit(20);
+    if (!p.error && p.data && p.data.length) {
+      pagosHtml = '<table><thead><tr><th>Concepto</th><th>Importe</th><th>Estado</th><th>Vence</th></tr></thead><tbody>' +
+        p.data.map(function(x){ var ok = (x.estado==='cobrado'||x.estado==='pagado'); return '<tr><td>'+esc(x.concepto||'')+'</td><td>'+(x.importe!=null?esc(x.importe)+' €':'')+'</td><td><span class="pill'+(ok?' ok':'')+'">'+esc(x.estado||'')+'</span></td><td>'+esc(x.fecha_vencimiento||'')+'</td></tr>'; }).join('') +
+        '</tbody></table>';
+    }
+  } catch (e) {}
+
+  html += '<div class="tarjeta"><h2>Mis marcas</h2>' + marcasHtml + '</div>';
+  html += '<div class="tarjeta"><h2>Mis pagos</h2>' + pagosHtml + '</div>';
+  html += '<div class="tarjeta"><h2>Próximamente</h2><p class="vacio">Tu entreno del día, el feedback con ritmos por serie y el bono de El Cubo llegarán en las siguientes fases.</p></div>';
+  wrap.innerHTML = html;
+});
+</script>
+
+</body>
+</html>

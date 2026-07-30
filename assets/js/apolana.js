@@ -59,7 +59,7 @@ class ApolanaCabecera extends HTMLElement {
       let h = `<a href="${ruta(m.url)}">${m.texto}</a>`;
       if (m.sub) h += `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>`;
       return h;
-    }).join('') + `<a href="${ruta('/acceso/')}">Entrar</a>`;
+    }).join('') + `<a href="${ruta('/portal/')}">Entrar</a>`;
 
     this.innerHTML = `
       <header class="cabecera">
@@ -73,7 +73,7 @@ class ApolanaCabecera extends HTMLElement {
           </a>
           <nav class="menu">${enlaces}</nav>
           <div class="cabecera-acciones">
-            <a class="btn btn--neutro" href="${ruta('/acceso/')}">Entrar</a>
+            <a class="btn btn--neutro" href="${ruta('/portal/')}">Entrar</a>
             <a class="btn btn--primario btn--sm" href="${ruta('/inscripcion/')}">Inscribirse</a>
             <details class="menu-movil">
               <summary aria-label="Abrir menú">☰</summary>
