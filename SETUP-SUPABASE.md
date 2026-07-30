@@ -121,3 +121,26 @@ insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion
 select $$cubo$$, $$Entrenamiento funcional$$, $$El Cubo$$, $$El gimnasio del club, junto a la pista: fuerza, core y prevención en grupos de doce. Nadadores, corredores y triatletas comparten sala y cada uno lleva su progresión.$$
 where not exists (select 1 from public.contenido_secciones where seccion=$$cubo$$);
 ```
+
+### 5b. Precargar escuelas, campus e instalaciones
+```sql
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$escuela$$, $$Escuela · temporada 2026-27$$, $$Escuela de atletismo$$, $$Iniciación y desarrollo del atletismo de los 3 a los 17 años. Correr, saltar y lanzar en forma de juego en las categorías pequeñas, y especialización cuando toca.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$escuela$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$escuela-natacion$$, $$Escuela · 6 a 15 años$$, $$Escuela de natación$$, $$Aprendizaje y perfeccionamiento en las piscinas del Tossal y Vía Parque, con grupos reducidos y la opción de competir en federado si al niño le apetece.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$escuela-natacion$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$escuela-municipal$$, $$Programa de Deportes Alicante$$, $$Atletismo municipal$$, $$Escuela deportiva municipal que gestiona el club dentro del programa del Ayuntamiento de Alicante. La inscripción y el precio los fija Deportes Alicante; los entrenadores y la metodología son los mismos de la escuela del club.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$escuela-municipal$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$campus$$, $$Del 29 de junio al 31 de julio · 3 a 16 años$$, $$XII Campus de verano$$, $$Atletismo, multideporte, pádel, natación, juegos de agua, gymkanas, talleres y una excursión cada semana. Todo con enfoque lúdico: el objetivo es que hagan deporte pasándolo bien.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$campus$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$instalaciones$$, $$Dónde entrenamos$$, $$Instalaciones$$, $$Cuatro sedes repartidas por la ciudad. Todas son municipales salvo El Cubo, que es del club y está dentro del estadio.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$instalaciones$$);
+```
