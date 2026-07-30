@@ -15,8 +15,39 @@ DNI alumno/a · SIP (tarjeta sanitaria) · Fecha de nacimiento · Turno de inscr
 (No se pudo leer: el enlace era de edición, requiere login. Pedir a Andrés el enlace
 público "viewform" o los campos.)
 
-## 3. Alta socio online
-(No se pudo leer automáticamente: devolvió 401. Pedir a Andrés los campos.)
+## 3. Alta de socio/a (formulario completo)
+**MUY sensible: IBAN, DNI/NIE, fotos del DNI, datos de menores.**
+
+Página 1 — DATOS PRINCIPALES (todo obligatorio salvo indicado):
+- Correo · Nombre · Primer apellido · Segundo apellido (si no tiene, "-")
+- Sexo (Hombre/Mujer)
+- D.N.I. / NIE / NIF · Nacionalidad
+- Ciudad de nacimiento · Provincia de nacimiento · País de nacimiento
+- Fecha de nacimiento
+- Domicilio · Localidad · C.P. · Provincia
+- Teléfono móvil (se añade al grupo de WhatsApp del club) · Correo electrónico
+- Señala lo procedente / alta en (casillas): Atletismo/Ruta · Montaña/trail · Triatlón · Natación
+
+Página 1 — DATOS EQUIPACIÓN:
+- Tallas de ropa (tabla: Camiseta / Pantalón / Calcetín × 16, S, M, L, XL, 2XL, 3XL)
+- Peso (kg) · Estatura
+- **Subidas de archivo:** Foto tipo carnet · DNI-NIE anverso · DNI-NIE reverso (máx 10 MB c/u)
+- **IBAN - cuenta bancaria** (ES + 22 dígitos)
+
+Página 2 — CONSENTIMIENTOS (obligatorios):
+- Tratamiento de datos personales (texto RGPD completo) → "Autorizo"
+- Autorización de imagen/fotos y cesión a patrocinadores → "Quedo enterado/a"
+- En caso de menores de 18: acepta condiciones el padre/madre/tutor
+- Compromiso de asistir a las Asambleas de socios → "Quedo enterado/a"
+
+**Consideraciones para construirlo:**
+- Los documentos (DNI, foto) van a un bucket **PRIVADO** de Supabase (no público como
+  `imagenes`), con acceso solo de administración.
+- El IBAN y el DNI son datos especialmente protegidos: RLS estricto (solo admin lee),
+  y textos de consentimiento RGPD tal cual (el club los tiene redactados).
+- Va ligado al **SEPA + pasarela de pago** (fase Stripe). Construir CON Andrés.
+
+## 4. Orden de domiciliación SEPA
 
 ## 4. Orden de domiciliación SEPA (adeudo directo)
 Campos: Correo · Nombre del deudor/titular · Dirección del deudor · Tipo de pago ·
