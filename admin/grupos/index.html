@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grupos · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  textarea { min-height: 100px; resize: vertical; }
+  .fila-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .fila-check input { width: auto; }
+  .fila-check label { margin: 0; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  .acciones-fila { display: flex; gap: 8px; white-space: nowrap; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .btn { cursor: pointer; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .oculto { display: none !important; }
+
+  .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+  .pill-si { background: #e6f4ea; color: #1e7a3d; }
+  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <!-- ===== LISTA DE GRUPOS ===== -->
+    <div class="panel">
+      <h2>Grupos</h2>
+      <p class="intro" style="margin-bottom:10px;">Crea, edita o borra los grupos de entrenamiento del club.</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo-grupo">+ Nuevo grupo</button></div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-grupos">
+          <thead><tr><th>Nombre</th><th>Sección</th><th>Horario</th><th>Activo</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== FORMULARIO (oculto hasta crear/editar) ===== -->
+    <div class="panel oculto" id="panel-form">
+      <h2 id="form-titulo">Nuevo grupo</h2>
+      <form id="form-grupo">
+        <input type="hidden" id="g-id">
+        <label for="g-nombre">Nombre</label>
+        <input type="text" id="g-nombre" required>
+        <div class="grid2">
+          <div>
+            <label for="g-seccion">Sección</label>
+            <input type="text" id="g-seccion" placeholder="pista, running, natacion, triatlon, montana, cubo, escuela…">
+          </div>
+          <div>
+            <label for="g-horario">Horario</label>
+            <input type="text" id="g-horario" placeholder="Lunes y miércoles, 18:00–19:30">
+          </div>
+        </div>
+        <label for="g-descripcion">Descripción</label>
+        <textarea id="g-descripcion"></textarea>
+        <div class="fila-check">
+          <input type="checkbox" id="g-activo" checked>
+          <label for="g-activo">Activo (visible en la web)</label>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg-form"></span>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  // --- Listar ---
+  async function cargarGrupos() {
+    var tb = $('tabla-grupos').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+    var r = await sb.from('grupos').select('id,nombre,seccion,horario,activo').order('nombre');
+    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay grupos todavía.</td></tr>'; return; }
+    tb.innerHTML = r.data.map(function (g) {
+      return '<tr>' +
+        '<td>' + esc(g.nombre) + '</td>' +
+        '<td>' + esc(g.seccion || '—') + '</td>' +
+        '<td>' + esc(g.horario || '—') + '</td>' +
+        '<td>' + (g.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-editar="' + g.id + '">Editar</button>' +
+        '<button class="btn btn--peligro" data-borrar="' + g.id + '" data-nom="' + esc(g.nombre) + '">Borrar</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // --- Crear/editar ---
+  function abrirForm(g) {
+    g = g || {};
+    $('form-titulo').textContent = g.id ? 'Editar grupo' : 'Nuevo grupo';
+    $('g-id').value = g.id || '';
+    $('g-nombre').value = g.nombre || '';
+    $('g-seccion').value = g.seccion || '';
+    $('g-horario').value = g.horario || '';
+    $('g-descripcion').value = g.descripcion || '';
+    $('g-activo').checked = g.id ? !!g.activo : true;
+    $('msg-form').textContent = '';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nuevo-grupo').addEventListener('click', function () { abrirForm(); });
+  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+
+  $('tabla-grupos').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-editar');
+    var bo = e.target.getAttribute('data-borrar');
+    if (ed) {
+      var r = await sb.from('grupos').select('*').eq('id', ed).single();
+      if (!r.error) abrirForm(r.data);
+    }
+    if (bo) {
+      if (!confirm('¿Borrar el grupo "' + e.target.getAttribute('data-nom') + '"? No se puede deshacer.')) return;
+      var d = await sb.from('grupos').delete().eq('id', bo);
+      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      cargarGrupos();
+    }
+  });
+
+  $('form-grupo').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var datos = {
+      nombre: $('g-nombre').value.trim(),
+      seccion: $('g-seccion').value.trim() || null,
+      horario: $('g-horario').value.trim() || null,
+      descripcion: $('g-descripcion').value.trim() || null,
+      activo: $('g-activo').checked
+    };
+    $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
+    var id = $('g-id').value, r;
+    if (id) r = await sb.from('grupos').update(datos).eq('id', id);
+    else r = await sb.from('grupos').insert(datos);
+    if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
+    $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
+    $('panel-form').classList.add('oculto');
+    cargarGrupos();
+  });
+
+  cargarGrupos();
+});
+</script>
+
+</body>
+</html>

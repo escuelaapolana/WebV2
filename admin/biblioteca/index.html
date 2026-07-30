@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biblioteca de imágenes · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input[type=file] { font-size: 14px; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .btn { cursor: pointer; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .oculto { display: none !important; }
+
+  /* Rejilla de miniaturas de la biblioteca */
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-top: 8px; }
+  .foto { border: 1px solid var(--linea); border-radius: var(--radio); overflow: hidden; background: var(--crema-media); display: flex; flex-direction: column; }
+  .foto .thumb { width: 100%; aspect-ratio: 4 / 3; background: var(--crema-media); overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--texto-tenue); font-size: 12px; }
+  .foto .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .foto .pie { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .foto .nombre { font-size: 12px; color: var(--texto-suave); word-break: break-all; line-height: 1.3; }
+  .foto .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="panel">
+      <h2>Biblioteca de imágenes</h2>
+      <p class="intro">Sube aquí las fotos del club una vez; luego, al editar cualquier página, solo las eliges. No hace falta tenerlas en el ordenador.</p>
+
+      <label for="file-subir">Subir fotos (puedes elegir varias a la vez)</label>
+      <input type="file" id="file-subir" accept="image/*" multiple>
+      <div class="msg" id="msg-subida"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Fotos guardadas</h2>
+      <p class="intro" style="margin-bottom:10px;">Estas son las imágenes disponibles. Usa "Copiar enlace" para pegar la foto donde la necesites.</p>
+      <div class="msg" id="msg-lista"></div>
+      <div class="rejilla" id="rejilla"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var CARPETA = 'biblioteca';
+
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function urlPublica(nombre){ return sb.storage.from('imagenes').getPublicUrl(CARPETA + '/' + nombre).data.publicUrl; }
+
+  // --- Listar la biblioteca ---
+  async function cargar() {
+    var rej = $('rejilla');
+    $('msg-lista').textContent = 'Cargando…'; $('msg-lista').className = 'msg';
+    var r = await sb.storage.from('imagenes').list(CARPETA, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+    if (r.error) { $('msg-lista').textContent = 'No se pudo cargar la lista: ' + r.error.message; $('msg-lista').className = 'msg error'; rej.innerHTML = ''; return; }
+    var fotos = (r.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; });
+    if (!fotos.length) { $('msg-lista').textContent = 'Todavía no hay fotos. Sube las primeras arriba.'; $('msg-lista').className = 'msg'; rej.innerHTML = ''; return; }
+    $('msg-lista').textContent = '';
+    rej.innerHTML = fotos.map(function (f) {
+      var url = urlPublica(f.name);
+      return '<div class="foto">' +
+        '<div class="thumb"><img src="' + esc(url) + '" alt="" loading="lazy"></div>' +
+        '<div class="pie">' +
+          '<div class="nombre">' + esc(f.name) + '</div>' +
+          '<div class="acciones">' +
+            '<button type="button" class="btn btn--fantasma btn--mini" data-copiar="' + esc(f.name) + '">Copiar enlace</button>' +
+            '<button type="button" class="btn btn--peligro" data-borrar="' + esc(f.name) + '">Borrar</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // --- Subir fotos ---
+  $('file-subir').addEventListener('change', async function () {
+    var files = [].slice.call(this.files);
+    if (!files.length) return;
+    var ok = 0, fallos = [];
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      $('msg-subida').textContent = 'Subiendo ' + (i + 1) + ' de ' + files.length + '… (' + file.name + ')';
+      $('msg-subida').className = 'msg';
+      var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+      var ruta = CARPETA + '/' + Date.now() + '-' + limpio;
+      var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+      if (up.error) fallos.push(file.name + ': ' + up.error.message);
+      else ok++;
+    }
+    this.value = '';
+    if (fallos.length) {
+      $('msg-subida').textContent = 'Subidas ' + ok + '. No se pudieron subir: ' + fallos.join(' · ');
+      $('msg-subida').className = 'msg error';
+    } else {
+      $('msg-subida').textContent = 'Subidas ' + ok + ' foto(s) ✓';
+      $('msg-subida').className = 'msg ok';
+    }
+    cargar();
+  });
+
+  // --- Copiar / borrar ---
+  $('rejilla').addEventListener('click', async function (e) {
+    var copiar = e.target.getAttribute('data-copiar');
+    var borrar = e.target.getAttribute('data-borrar');
+
+    if (copiar) {
+      var url = urlPublica(copiar);
+      try {
+        await navigator.clipboard.writeText(url);
+        var t = e.target, txt = t.textContent;
+        t.textContent = 'Copiado ✓';
+        setTimeout(function () { t.textContent = txt; }, 1500);
+      } catch (err) {
+        window.prompt('Copia el enlace a mano:', url);
+      }
+    }
+
+    if (borrar) {
+      if (!confirm('¿Borrar la foto "' + borrar + '"? Si está en uso en alguna página, dejará de verse. No se puede deshacer.')) return;
+      var d = await sb.storage.from('imagenes').remove([CARPETA + '/' + borrar]);
+      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      cargar();
+    }
+  });
+
+  cargar();
+});
+</script>
+
+</body>
+</html>
