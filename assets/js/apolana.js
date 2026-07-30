@@ -129,3 +129,37 @@ class ApolanaPie extends HTMLElement {
 
 customElements.define('apolana-cabecera', ApolanaCabecera);
 customElements.define('apolana-pie', ApolanaPie);
+
+/* --- Aviso de portada (barra superior si hay un aviso activo en la BD) --- */
+document.addEventListener('DOMContentLoaded', async function () {
+  if (!window.APOLANA_DB) return;
+  try {
+    var res = await window.APOLANA_DB
+      .from('avisos')
+      .select('texto, tipo, enlace, texto_enlace')
+      .eq('activo', true)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (res.error || !res.data || !res.data.length) return;
+    var a = res.data[0];
+    if (!a.texto) return;
+
+    var bar = document.createElement('div');
+    bar.className = 'aviso-portada aviso-portada--' + (a.tipo || 'informativo');
+    var wrap = document.createElement('div');
+    wrap.className = 'contenedor';
+    var span = document.createElement('span');
+    span.textContent = a.texto;
+    wrap.appendChild(span);
+    if (a.enlace) {
+      var link = document.createElement('a');
+      link.href = /^https?:\/\//.test(a.enlace) ? a.enlace : ruta(a.enlace);
+      link.textContent = (a.texto_enlace || 'Más información') + ' →';
+      wrap.appendChild(link);
+    }
+    bar.appendChild(wrap);
+    var cab = document.querySelector('apolana-cabecera');
+    if (cab && cab.parentNode) cab.parentNode.insertBefore(bar, cab);
+    else document.body.insertBefore(bar, document.body.firstChild);
+  } catch (e) { /* si falla, no pasa nada: no se muestra aviso */ }
+});

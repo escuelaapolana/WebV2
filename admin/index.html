@@ -177,6 +177,61 @@
       </form>
     </div>
 
+    <!-- ===== AVISOS DE PORTADA ===== -->
+    <div class="panel">
+      <h2>Aviso de portada</h2>
+      <p class="intro" style="margin-bottom:10px;">La barra que sale arriba del todo en toda la web. Solo se muestra el que esté "activo".</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo-aviso">+ Nuevo aviso</button></div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-avisos">
+          <thead><tr><th>Texto</th><th>Nivel</th><th>Activo</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel oculto" id="panel-aviso">
+      <h2 id="aviso-form-titulo">Nuevo aviso</h2>
+      <form id="form-aviso">
+        <input type="hidden" id="a-id">
+        <label for="a-texto">Texto del aviso</label>
+        <textarea id="a-texto" style="min-height:70px;" required></textarea>
+        <div class="grid2">
+          <div>
+            <label for="a-tipo">Nivel</label>
+            <select id="a-tipo">
+              <option value="informativo">Informativo (azul)</option>
+              <option value="importante">Importante (ámbar)</option>
+              <option value="urgente">Urgente (rojo)</option>
+            </select>
+          </div>
+          <div>
+            <label for="a-fecha">Se oculta después de (opcional)</label>
+            <input type="date" id="a-fecha">
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label for="a-enlace">Enlace (opcional)</label>
+            <input type="text" id="a-enlace" placeholder="/inscripcion/  o  https://...">
+          </div>
+          <div>
+            <label for="a-texto-enlace">Texto del enlace (opcional)</label>
+            <input type="text" id="a-texto-enlace" placeholder="Más información">
+          </div>
+        </div>
+        <div class="fila-check">
+          <input type="checkbox" id="a-activo" checked>
+          <label for="a-activo">Activo (visible en la web)</label>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="aviso-cancelar">Cancelar</button>
+          <span class="msg" id="msg-aviso"></span>
+        </div>
+      </form>
+    </div>
+
   </div>
 </div>
 
@@ -204,6 +259,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('quien').textContent = s.data.session.user.email;
     ver('panel');
     cargarNoticias();
+    cargarAvisos();
   }
 
   // --- Login ---
@@ -333,6 +389,60 @@ document.addEventListener('DOMContentLoaded', function () {
     $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
     $('panel-form').classList.add('oculto');
     cargarNoticias();
+  });
+
+  // --- Avisos de portada ---
+  async function cargarAvisos() {
+    var tb = $('tabla-avisos').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="4">Cargando…</td></tr>';
+    var r = await sb.from('avisos').select('id,texto,tipo,activo').order('created_at', { ascending: false });
+    if (r.error) { tb.innerHTML = '<tr><td colspan="4">Error: ' + r.error.message + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="4">No hay avisos todavía.</td></tr>'; return; }
+    tb.innerHTML = r.data.map(function (a) {
+      return '<tr><td>' + esc(a.texto) + '</td><td>' + esc(a.tipo || '') + '</td>' +
+        '<td>' + (a.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-ed-aviso="' + a.id + '">Editar</button>' +
+        '<button class="btn btn--peligro" data-bo-aviso="' + a.id + '">Borrar</button></td></tr>';
+    }).join('');
+  }
+  function abrirAviso(a) {
+    a = a || {};
+    $('aviso-form-titulo').textContent = a.id ? 'Editar aviso' : 'Nuevo aviso';
+    $('a-id').value = a.id || '';
+    $('a-texto').value = a.texto || '';
+    $('a-tipo').value = a.tipo || 'informativo';
+    $('a-fecha').value = a.fecha_fin || '';
+    $('a-enlace').value = a.enlace || '';
+    $('a-texto-enlace').value = a.texto_enlace || '';
+    $('a-activo').checked = a.id ? !!a.activo : true;
+    $('msg-aviso').textContent = '';
+    $('panel-aviso').classList.remove('oculto');
+    $('panel-aviso').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nuevo-aviso').addEventListener('click', function () { abrirAviso(); });
+  $('aviso-cancelar').addEventListener('click', function () { $('panel-aviso').classList.add('oculto'); });
+  $('tabla-avisos').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-ed-aviso'), bo = e.target.getAttribute('data-bo-aviso');
+    if (ed) { var r = await sb.from('avisos').select('*').eq('id', ed).single(); if (!r.error) abrirAviso(r.data); }
+    if (bo) { if (!confirm('¿Borrar este aviso?')) return; var d = await sb.from('avisos').delete().eq('id', bo); if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; } cargarAvisos(); }
+  });
+  $('form-aviso').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var datos = {
+      texto: $('a-texto').value.trim(),
+      tipo: $('a-tipo').value,
+      fecha_fin: $('a-fecha').value || null,
+      enlace: $('a-enlace').value.trim() || null,
+      texto_enlace: $('a-texto-enlace').value.trim() || null,
+      activo: $('a-activo').checked
+    };
+    $('msg-aviso').textContent = 'Guardando…'; $('msg-aviso').className = 'msg';
+    var id = $('a-id').value, r;
+    if (id) r = await sb.from('avisos').update(datos).eq('id', id);
+    else r = await sb.from('avisos').insert(datos);
+    if (r.error) { $('msg-aviso').textContent = 'Error: ' + r.error.message; $('msg-aviso').className = 'msg error'; return; }
+    $('msg-aviso').textContent = 'Guardado ✓'; $('msg-aviso').className = 'msg ok';
+    $('panel-aviso').classList.add('oculto'); cargarAvisos();
   });
 
   arranque();
