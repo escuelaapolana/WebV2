@@ -16,24 +16,50 @@ function ruta(u) { return base() + String(u).replace(/^\//, ''); }
 /* Enlaces del menú principal. La "clave" sirve para marcar en azul
    la página en la que estás (con el atributo activo="..."). */
 const MENU = [
-  { clave: 'club',       texto: 'El club',              url: '/club/' },
-  { clave: 'entrena',    texto: 'Entrena con nosotros', url: '/competicion/' },
-  { clave: 'escuelas',   texto: 'Escuelas',             url: '/escuela/' },
-  { clave: 'calendario', texto: 'Calendario',           url: '/calendario/' },
-  { clave: 'noticias',   texto: 'Noticias',             url: '/noticias/' },
-  { clave: 'contacto',   texto: 'Contacto',             url: '/contacto/' },
+  { clave: 'club', texto: 'El club', url: '/club/', sub: [
+    { texto: 'Resumen',               url: '/club/' },
+    { texto: 'Historia',              url: '/club/historia/' },
+    { texto: 'Normativa y documentos', url: '/club/normativa/' },
+    { texto: 'Palmarés',              url: '/club/palmares/' },
+    { texto: 'Récords',               url: '/club/records/' },
+  ] },
+  { clave: 'entrena', texto: 'Entrena con nosotros', url: '/competicion/', sub: [
+    { texto: 'Atletismo en pista', url: '/competicion/' },
+    { texto: 'Running',            url: '/running/' },
+    { texto: 'Natación adultos',   url: '/natacion/' },
+    { texto: 'Triatlón',           url: '/triatlon/' },
+    { texto: 'Montaña',            url: '/montana/' },
+    { texto: 'El Cubo',            url: '/cubo/' },
+    { texto: 'Instalaciones',      url: '/instalaciones/' },
+  ] },
+  { clave: 'escuelas', texto: 'Escuelas', url: '/escuela/', sub: [
+    { texto: 'Escuela de atletismo', url: '/escuela/' },
+    { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
+    { texto: 'Escuela municipal',    url: '/escuela-municipal-atletismo/' },
+    { texto: 'Campus de verano',     url: '/campus/' },
+  ] },
+  { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
+  { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
+  { clave: 'contacto',   texto: 'Contacto',   url: '/contacto/' },
 ];
 
 /* --- Cabecera --- */
 class ApolanaCabecera extends HTMLElement {
   connectedCallback() {
     const activo = this.getAttribute('activo') || '';
-    const enlaces = MENU.map(m =>
-      `<a href="${ruta(m.url)}"${m.clave === activo ? ' class="activo" aria-current="page"' : ''}>${m.texto}</a>`
-    ).join('');
-    const enlacesMovil = MENU.map(m =>
-      `<a href="${ruta(m.url)}">${m.texto}</a>`
-    ).join('') + `<a href="${ruta('/acceso/')}">Entrar</a>`;
+    const enlaces = MENU.map(m => {
+      const act = m.clave === activo ? ' class="activo" aria-current="page"' : '';
+      if (m.sub) {
+        const items = m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('');
+        return `<div class="tiene-sub"><a class="top"${act} href="${ruta(m.url)}">${m.texto} <span class="caret" aria-hidden="true">▾</span></a><div class="submenu">${items}</div></div>`;
+      }
+      return `<a href="${ruta(m.url)}"${act}>${m.texto}</a>`;
+    }).join('');
+    const enlacesMovil = MENU.map(m => {
+      let h = `<a href="${ruta(m.url)}">${m.texto}</a>`;
+      if (m.sub) h += `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>`;
+      return h;
+    }).join('') + `<a href="${ruta('/acceso/')}">Entrar</a>`;
 
     this.innerHTML = `
       <header class="cabecera">
