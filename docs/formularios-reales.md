@@ -11,9 +11,11 @@ Campos: Correo · Nombre alumno/a · Primer apellido · Segundo apellido · Sexo
 DNI alumno/a · SIP (tarjeta sanitaria) · Fecha de nacimiento · Turno de inscripción ·
 ¿Hermano/a también apuntado?
 
-## 2. Renovaciones escuela
-(No se pudo leer: el enlace era de edición, requiere login. Pedir a Andrés el enlace
-público "viewform" o los campos.)
+## 2. Renovación escuela
+Campos: Correo · Nombre alumno/a · Primer apellido · Segundo apellido (opcional) ·
+Sexo · Teléfono de contacto · DNI alumno/a · Fecha de nacimiento · Turno de inscripción ·
+¿Se apunta también su hermano/a?
+(Casi igual que la nueva alta escuela, pero con teléfono y sin SIP.)
 
 ## 3. Alta de socio/a (formulario completo)
 **MUY sensible: IBAN, DNI/NIE, fotos del DNI, datos de menores.**
