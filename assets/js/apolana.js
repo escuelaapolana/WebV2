@@ -53,9 +53,14 @@ class ApolanaCabecera extends HTMLElement {
   }
 }
 
-/* --- Pie de página --- */
+/* --- Pie de página (los datos salen de datos.js) --- */
 class ApolanaPie extends HTMLElement {
   connectedCallback() {
+    const d = window.APOLANA || {};
+    const c = d.contacto || {};
+    const lema = (d.club && d.club.lema) || '';
+    const colab = (d.colaboradores || []).map(x => `<span>${x}</span>`).join('');
+    const tel = t => t ? `<a href="tel:${t.tel}">${t.texto} · ${t.nota}</a>` : '';
     this.innerHTML = `
       <footer class="pie">
         <div class="contenedor">
@@ -64,7 +69,7 @@ class ApolanaPie extends HTMLElement {
               <img src="/assets/img/logo.png" alt="Club Apolana">
               <span class="nombre">Club Apolana</span>
             </div>
-            <span class="lema">Atletismo, running, triatlón y natación en Alicante desde 1988.</span>
+            <span class="lema">${lema}</span>
           </div>
           <div class="pie-cols">
             <div class="pie-col">
@@ -76,15 +81,13 @@ class ApolanaPie extends HTMLElement {
             </div>
             <div class="pie-col">
               <span class="eyebrow">Contacto</span>
-              <a href="tel:+34625473830">625 47 38 30 · socios</a>
-              <a href="tel:+34636061700">636 06 17 00 · escuela</a>
-              <a href="mailto:administracion@atletismoapolana.com">administracion@atletismoapolana.com</a>
+              ${tel(c.tel_socios)}
+              ${tel(c.tel_escuela)}
+              ${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : ''}
             </div>
             <div class="pie-col">
               <span class="eyebrow">Colaboran</span>
-              <span>Deportes Alicante</span>
-              <span>Diputación de Alicante</span>
-              <span>Vithas</span>
+              ${colab}
             </div>
           </div>
         </div>
