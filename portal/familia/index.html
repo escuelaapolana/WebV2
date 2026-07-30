@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zona de familias · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .fa-wrap { max-width: 900px; margin: 0 auto; padding: clamp(22px,4vw,40px) clamp(16px,4vw,40px); }
+  .fa-wrap h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(30px,6vw,44px); color: var(--navy); margin: 0 0 4px; }
+  .fa-wrap .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing:.1em; text-transform:uppercase; color: var(--texto-tenue); }
+  .hijo { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,28px); box-shadow: var(--sombra-suave); margin-top: 20px; }
+  .hijo .cab { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; border-bottom:1px solid var(--linea); padding-bottom:12px; margin-bottom:12px; }
+  .hijo h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin: 0; }
+  .hijo .cat { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+  .hijo h3 { font-size: 14px; font-family: var(--fuente-mono); letter-spacing:.06em; text-transform:uppercase; color: var(--texto-suave); margin: 14px 0 8px; }
+  table { width:100%; border-collapse: collapse; }
+  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--linea); font-size:14px; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+  .vacio { color: var(--texto-suave); font-size:14px; }
+  .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); }
+  .pill.ok { background:#e6f4ea; color:#1e7a3d; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="fa-wrap" id="fa-wrap"><p class="intro">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('fa-wrap');
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  if (!perfil) { wrap.innerHTML = '<div class="hijo"><p class="vacio">No encontramos tu perfil. Avisa al club.</p></div>'; return; }
+
+  var html = '<h1>Familia Apolana</h1><span class="sub">Hola, ' + esc(perfil.nombre || '') + '</span>';
+
+  var hijos = [];
+  try {
+    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado').eq('perfil_padre_id', perfil.id).order('nombre');
+    if (!r.error && r.data) hijos = r.data;
+  } catch (e) {}
+
+  if (!hijos.length) {
+    html += '<div class="hijo"><p class="vacio">Todavía no vemos hijos enlazados a tu cuenta (o faltan permisos por activar). Se soluciona pronto.</p></div>';
+    wrap.innerHTML = html;
+    return;
+  }
+
+  for (var i = 0; i < hijos.length; i++) {
+    var h = hijos[i];
+    var pagosHtml = '<p class="vacio">Sin pagos registrados.</p>';
+    try {
+      var p = await sb.from('pagos').select('concepto,importe,estado,fecha_vencimiento').eq('atleta_id', h.id).order('fecha_vencimiento', { ascending: false }).limit(10);
+      if (!p.error && p.data && p.data.length) {
+        pagosHtml = '<table><thead><tr><th>Concepto</th><th>Importe</th><th>Estado</th><th>Vence</th></tr></thead><tbody>' +
+          p.data.map(function(x){ var ok=(x.estado==='cobrado'||x.estado==='pagado'); return '<tr><td>'+esc(x.concepto||'')+'</td><td>'+(x.importe!=null?esc(x.importe)+' €':'')+'</td><td><span class="pill'+(ok?' ok':'')+'">'+esc(x.estado||'')+'</span></td><td>'+esc(x.fecha_vencimiento||'')+'</td></tr>'; }).join('') +
+          '</tbody></table>';
+      }
+    } catch (e) {}
+    html += '<div class="hijo"><div class="cab"><h2>' + esc((h.nombre||'') + ' ' + (h.apellidos||'')) + '</h2><span class="cat">' + esc(h.categoria || '') + '</span></div>' +
+            '<h3>Pagos</h3>' + pagosHtml +
+            '<h3>Asistencia y ficha</h3><p class="vacio">Llegarán en la siguiente fase.</p></div>';
+  }
+  wrap.innerHTML = html;
+});
+</script>
+
+</body>
+</html>
