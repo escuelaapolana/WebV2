@@ -51,7 +51,7 @@ class ApolanaCabecera extends HTMLElement {
       const act = m.clave === activo ? ' class="activo" aria-current="page"' : '';
       if (m.sub) {
         const items = m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('');
-        return `<div class="tiene-sub"><a class="top"${act} href="${ruta(m.url)}">${m.texto} <span class="caret" aria-hidden="true">▾</span></a><div class="submenu">${items}</div></div>`;
+        return `<div class="tiene-sub"><a class="top"${act} href="${ruta(m.url)}">${m.texto}<span class="caret" aria-hidden="true"></span></a><div class="submenu">${items}</div></div>`;
       }
       return `<a href="${ruta(m.url)}"${act}>${m.texto}</a>`;
     }).join('');
