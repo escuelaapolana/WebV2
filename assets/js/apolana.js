@@ -7,6 +7,12 @@
    solo en este archivo y afecta a toda la web.
    ============================================================ */
 
+/* Base relativa de la web. Cada página define window.APOLANA_BASE
+   ("./", "../", "../../"…) según su profundidad, para que los enlaces
+   funcionen igual en local (doble clic), en GitHub y en el dominio propio. */
+function base() { return window.APOLANA_BASE || './'; }
+function ruta(u) { return base() + String(u).replace(/^\//, ''); }
+
 /* Enlaces del menú principal. La "clave" sirve para marcar en azul
    la página en la que estás (con el atributo activo="..."). */
 const MENU = [
@@ -23,17 +29,17 @@ class ApolanaCabecera extends HTMLElement {
   connectedCallback() {
     const activo = this.getAttribute('activo') || '';
     const enlaces = MENU.map(m =>
-      `<a href="${m.url}"${m.clave === activo ? ' class="activo" aria-current="page"' : ''}>${m.texto}</a>`
+      `<a href="${ruta(m.url)}"${m.clave === activo ? ' class="activo" aria-current="page"' : ''}>${m.texto}</a>`
     ).join('');
     const enlacesMovil = MENU.map(m =>
-      `<a href="${m.url}">${m.texto}</a>`
-    ).join('') + '<a href="/acceso/">Entrar</a>';
+      `<a href="${ruta(m.url)}">${m.texto}</a>`
+    ).join('') + `<a href="${ruta('/acceso/')}">Entrar</a>`;
 
     this.innerHTML = `
       <header class="cabecera">
         <div class="contenedor">
-          <a class="marca" href="/">
-            <img src="/assets/img/logo.png" alt="Club Atletismo Apolana">
+          <a class="marca" href="${base()}">
+            <img src="${ruta('/assets/img/logo.png')}" alt="Club Atletismo Apolana">
             <span>
               <span class="nombre">Apolana</span><br>
               <span class="sub">ALICANTE · 1988</span>
@@ -41,8 +47,8 @@ class ApolanaCabecera extends HTMLElement {
           </a>
           <nav class="menu">${enlaces}</nav>
           <div class="cabecera-acciones">
-            <a class="btn btn--neutro" href="/acceso/">Entrar</a>
-            <a class="btn btn--primario btn--sm" href="/inscripcion/">Inscribirse</a>
+            <a class="btn btn--neutro" href="${ruta('/acceso/')}">Entrar</a>
+            <a class="btn btn--primario btn--sm" href="${ruta('/inscripcion/')}">Inscribirse</a>
             <details class="menu-movil">
               <summary aria-label="Abrir menú">☰</summary>
               <div class="menu-movil-panel">${enlacesMovil}</div>
@@ -66,7 +72,7 @@ class ApolanaPie extends HTMLElement {
         <div class="contenedor">
           <div class="pie-marca">
             <div class="fila">
-              <img src="/assets/img/logo.png" alt="Club Apolana">
+              <img src="${ruta('/assets/img/logo.png')}" alt="Club Apolana">
               <span class="nombre">Club Apolana</span>
             </div>
             <span class="lema">${lema}</span>
@@ -74,10 +80,10 @@ class ApolanaPie extends HTMLElement {
           <div class="pie-cols">
             <div class="pie-col">
               <span class="eyebrow">Club</span>
-              <a href="/">Inicio</a>
-              <a href="/socio/">Hazte socio</a>
-              <a href="/calendario/">Calendario</a>
-              <a href="/noticias/">Noticias</a>
+              <a href="${base()}">Inicio</a>
+              <a href="${ruta('/socio/')}">Hazte socio</a>
+              <a href="${ruta('/calendario/')}">Calendario</a>
+              <a href="${ruta('/noticias/')}">Noticias</a>
             </div>
             <div class="pie-col">
               <span class="eyebrow">Contacto</span>
