@@ -66,8 +66,8 @@ class ApolanaCabecera extends HTMLElement {
         <div class="contenedor">
           <a class="marca" href="${base()}">
             <img src="${ruta('/assets/img/logo.png')}" alt="Club Atletismo Apolana">
-            <span>
-              <span class="nombre">Apolana</span><br>
+            <span class="marca-txt">
+              <span class="nombre">Apolana</span>
               <span class="sub">ALICANTE · 1988</span>
             </span>
           </a>
