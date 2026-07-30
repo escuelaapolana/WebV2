@@ -232,6 +232,67 @@
       </form>
     </div>
 
+    <!-- ===== TIENDA (PRODUCTOS) ===== -->
+    <div class="panel">
+      <h2>Tienda</h2>
+      <p class="intro" style="margin-bottom:10px;">Los productos de la tienda del club.</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo-producto">+ Nuevo producto</button></div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-productos">
+          <thead><tr><th>Producto</th><th>Precio</th><th>Tallas</th><th>Activo</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel oculto" id="panel-producto">
+      <h2 id="prod-form-titulo">Nuevo producto</h2>
+      <form id="form-producto">
+        <input type="hidden" id="p-id">
+        <label for="p-nombre">Nombre</label>
+        <input type="text" id="p-nombre" required>
+        <label for="p-desc">Descripción</label>
+        <textarea id="p-desc" style="min-height:60px;"></textarea>
+        <div class="grid2">
+          <div>
+            <label for="p-precio">Precio (€)</label>
+            <input type="number" id="p-precio" step="0.01" min="0">
+          </div>
+          <div>
+            <label for="p-categoria">Categoría (opcional)</label>
+            <input type="text" id="p-categoria" placeholder="ropa, complementos…">
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label for="p-tallas">Tallas disponibles (separadas por comas)</label>
+            <input type="text" id="p-tallas" placeholder="S, M, L, XL">
+          </div>
+          <div>
+            <label for="p-stock">Stock (opcional)</label>
+            <input type="number" id="p-stock" min="0">
+          </div>
+        </div>
+        <label>Foto del producto</label>
+        <div class="subida">
+          <div class="miniatura" id="prev-producto"></div>
+          <div>
+            <input type="file" id="file-producto" accept="image/*">
+            <button type="button" class="btn btn--peligro btn--mini oculto" id="quitar-producto" style="margin-top:8px;">Quitar foto</button>
+          </div>
+        </div>
+        <div class="fila-check">
+          <input type="checkbox" id="p-activo" checked>
+          <label for="p-activo">Activo (visible en la tienda)</label>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="prod-cancelar">Cancelar</button>
+          <span class="msg" id="msg-prod-form"></span>
+        </div>
+      </form>
+    </div>
+
   </div>
 </div>
 
@@ -260,6 +321,7 @@ document.addEventListener('DOMContentLoaded', function () {
     ver('panel');
     cargarNoticias();
     cargarAvisos();
+    cargarProductos();
   }
 
   // --- Login ---
@@ -443,6 +505,83 @@ document.addEventListener('DOMContentLoaded', function () {
     if (r.error) { $('msg-aviso').textContent = 'Error: ' + r.error.message; $('msg-aviso').className = 'msg error'; return; }
     $('msg-aviso').textContent = 'Guardado ✓'; $('msg-aviso').className = 'msg ok';
     $('panel-aviso').classList.add('oculto'); cargarAvisos();
+  });
+
+  // --- Tienda (productos) ---
+  var productoImg = '';
+  function renderProductoImg() {
+    var box = $('prev-producto');
+    if (productoImg) { box.innerHTML = '<img src="' + esc(imgUrl(productoImg)) + '" alt="">'; $('quitar-producto').classList.remove('oculto'); }
+    else { box.textContent = 'sin foto'; $('quitar-producto').classList.add('oculto'); }
+  }
+  $('file-producto').addEventListener('change', async function () {
+    if (!this.files[0]) return;
+    $('msg-prod-form').textContent = 'Subiendo foto…'; $('msg-prod-form').className = 'msg';
+    try { productoImg = await subir(this.files[0]); renderProductoImg(); $('msg-prod-form').textContent = ''; }
+    catch (err) { $('msg-prod-form').textContent = 'No se pudo subir: ' + (err.message || err); $('msg-prod-form').className = 'msg error'; }
+    this.value = '';
+  });
+  $('quitar-producto').addEventListener('click', function () { productoImg = ''; renderProductoImg(); });
+
+  async function cargarProductos() {
+    var tb = $('tabla-productos').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+    var r = await sb.from('productos').select('id,nombre,precio,tallas_disponibles,activo').order('nombre');
+    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + r.error.message + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay productos todavía.</td></tr>'; return; }
+    tb.innerHTML = r.data.map(function (p) {
+      var tallas = Array.isArray(p.tallas_disponibles) ? p.tallas_disponibles.join(', ') : '';
+      return '<tr><td>' + esc(p.nombre) + '</td><td>' + (p.precio != null ? esc(p.precio) + ' €' : '—') + '</td>' +
+        '<td>' + esc(tallas) + '</td>' +
+        '<td>' + (p.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-ed-prod="' + p.id + '">Editar</button>' +
+        '<button class="btn btn--peligro" data-bo-prod="' + p.id + '">Borrar</button></td></tr>';
+    }).join('');
+  }
+  function abrirProducto(p) {
+    p = p || {};
+    $('prod-form-titulo').textContent = p.id ? 'Editar producto' : 'Nuevo producto';
+    $('p-id').value = p.id || '';
+    $('p-nombre').value = p.nombre || '';
+    $('p-desc').value = p.descripcion || '';
+    $('p-precio').value = p.precio != null ? p.precio : '';
+    $('p-categoria').value = p.categoria || '';
+    $('p-tallas').value = Array.isArray(p.tallas_disponibles) ? p.tallas_disponibles.join(', ') : '';
+    $('p-stock').value = p.stock != null ? p.stock : '';
+    $('p-activo').checked = p.id ? !!p.activo : true;
+    productoImg = p.imagen_url || '';
+    renderProductoImg();
+    $('msg-prod-form').textContent = '';
+    $('panel-producto').classList.remove('oculto');
+    $('panel-producto').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nuevo-producto').addEventListener('click', function () { abrirProducto(); });
+  $('prod-cancelar').addEventListener('click', function () { $('panel-producto').classList.add('oculto'); });
+  $('tabla-productos').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-ed-prod'), bo = e.target.getAttribute('data-bo-prod');
+    if (ed) { var r = await sb.from('productos').select('*').eq('id', ed).single(); if (!r.error) abrirProducto(r.data); }
+    if (bo) { if (!confirm('¿Borrar este producto?')) return; var d = await sb.from('productos').delete().eq('id', bo); if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; } cargarProductos(); }
+  });
+  $('form-producto').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var tallas = $('p-tallas').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var datos = {
+      nombre: $('p-nombre').value.trim(),
+      descripcion: $('p-desc').value.trim() || null,
+      precio: $('p-precio').value !== '' ? Number($('p-precio').value) : null,
+      categoria: $('p-categoria').value.trim() || null,
+      tallas_disponibles: tallas.length ? tallas : null,
+      stock: $('p-stock').value !== '' ? Number($('p-stock').value) : null,
+      imagen_url: productoImg || null,
+      activo: $('p-activo').checked
+    };
+    $('msg-prod-form').textContent = 'Guardando…'; $('msg-prod-form').className = 'msg';
+    var id = $('p-id').value, r;
+    if (id) r = await sb.from('productos').update(datos).eq('id', id);
+    else r = await sb.from('productos').insert(datos);
+    if (r.error) { $('msg-prod-form').textContent = 'Error: ' + r.error.message; $('msg-prod-form').className = 'msg error'; return; }
+    $('msg-prod-form').textContent = 'Guardado ✓'; $('msg-prod-form').className = 'msg ok';
+    $('panel-producto').classList.add('oculto'); cargarProductos();
   });
 
   arranque();
