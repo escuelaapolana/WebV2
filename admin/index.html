@@ -62,6 +62,16 @@
   .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
   .pill-si { background: #e6f4ea; color: #1e7a3d; }
   .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+
+  /* Subida de fotos */
+  .subida { display: flex; gap: 16px; align-items: flex-start; }
+  .miniatura { width: 140px; height: 90px; border-radius: 10px; background: var(--crema-media); overflow: hidden; flex-shrink: 0; border: 1px solid var(--linea); display: flex; align-items: center; justify-content: center; color: var(--texto-tenue); font-size: 12px; }
+  .miniatura img { width: 100%; height: 100%; object-fit: cover; }
+  .galeria-mini { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .galeria-mini .g { position: relative; width: 96px; height: 72px; border-radius: 8px; overflow: hidden; border: 1px solid var(--linea); }
+  .galeria-mini .g img { width: 100%; height: 100%; object-fit: cover; }
+  .galeria-mini .g button { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; font-size: 13px; line-height: 1; }
+  input[type=file] { font-size: 14px; }
 </style>
 </head>
 <body>
@@ -142,16 +152,19 @@
         <textarea id="n-excerpt" style="min-height:70px;"></textarea>
         <label for="n-contenido">Texto de la noticia</label>
         <textarea id="n-contenido"></textarea>
-        <div class="grid2">
+        <label>Foto de portada</label>
+        <div class="subida">
+          <div class="miniatura" id="prev-portada"></div>
           <div>
-            <label for="n-portada">Foto de portada (nombre de archivo)</label>
-            <input type="text" id="n-portada" placeholder="noticia.jpg">
-          </div>
-          <div>
-            <label for="n-galeria">Fotos de galería (separadas por comas)</label>
-            <input type="text" id="n-galeria" placeholder="galeria-1.jpg, galeria-2.jpg">
+            <input type="file" id="file-portada" accept="image/*">
+            <button type="button" class="btn btn--peligro btn--mini oculto" id="quitar-portada" style="margin-top:8px;">Quitar portada</button>
           </div>
         </div>
+
+        <label>Fotos de galería (puedes elegir varias a la vez)</label>
+        <div class="galeria-mini" id="prev-galeria"></div>
+        <input type="file" id="file-galeria" accept="image/*" multiple>
+        <div class="msg" id="msg-subida"></div>
         <div class="fila-check">
           <input type="checkbox" id="n-publicada" checked>
           <label for="n-publicada">Publicada (visible en la web)</label>
@@ -224,6 +237,46 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
+  // --- Subida de fotos a Supabase Storage ---
+  var portadaVal = '', galeriaVals = [];
+  function imgUrl(v){ return window.APOLANA_IMG ? window.APOLANA_IMG(v) : v; }
+  async function subir(file) {
+    var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    var ruta = 'noticias/' + Date.now() + '-' + limpio;
+    var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+    if (up.error) throw up.error;
+    return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl;
+  }
+  function renderPortada() {
+    var box = $('prev-portada');
+    if (portadaVal) { box.innerHTML = '<img src="' + esc(imgUrl(portadaVal)) + '" alt="">'; $('quitar-portada').classList.remove('oculto'); }
+    else { box.textContent = 'sin foto'; $('quitar-portada').classList.add('oculto'); }
+  }
+  function renderGaleria() {
+    $('prev-galeria').innerHTML = galeriaVals.map(function (v, i) {
+      return '<div class="g"><img src="' + esc(imgUrl(v)) + '" alt=""><button type="button" data-quitar="' + i + '" title="Quitar">×</button></div>';
+    }).join('');
+  }
+  $('file-portada').addEventListener('change', async function () {
+    if (!this.files[0]) return;
+    $('msg-subida').textContent = 'Subiendo portada…'; $('msg-subida').className = 'msg';
+    try { portadaVal = await subir(this.files[0]); renderPortada(); $('msg-subida').textContent = ''; }
+    catch (err) { $('msg-subida').textContent = 'No se pudo subir: ' + (err.message || err); $('msg-subida').className = 'msg error'; }
+    this.value = '';
+  });
+  $('quitar-portada').addEventListener('click', function () { portadaVal = ''; renderPortada(); });
+  $('file-galeria').addEventListener('change', async function () {
+    var files = [].slice.call(this.files); if (!files.length) return;
+    $('msg-subida').textContent = 'Subiendo ' + files.length + ' foto(s)…'; $('msg-subida').className = 'msg';
+    try { for (var i = 0; i < files.length; i++) { galeriaVals.push(await subir(files[i])); renderGaleria(); } $('msg-subida').textContent = ''; }
+    catch (err) { $('msg-subida').textContent = 'No se pudo subir: ' + (err.message || err); $('msg-subida').className = 'msg error'; }
+    this.value = '';
+  });
+  $('prev-galeria').addEventListener('click', function (e) {
+    var i = e.target.getAttribute('data-quitar'); if (i === null) return;
+    galeriaVals.splice(+i, 1); renderGaleria();
+  });
+
   // --- Noticias: crear/editar ---
   function abrirForm(n) {
     n = n || {};
@@ -234,10 +287,11 @@ document.addEventListener('DOMContentLoaded', function () {
     $('n-fecha').value = n.fecha_publicacion || '';
     $('n-excerpt').value = n.excerpt || '';
     $('n-contenido').value = n.contenido || '';
-    $('n-portada').value = n.foto_portada || '';
-    $('n-galeria').value = Array.isArray(n.fotos_galeria) ? n.fotos_galeria.join(', ') : '';
+    portadaVal = n.foto_portada || '';
+    galeriaVals = Array.isArray(n.fotos_galeria) ? n.fotos_galeria.slice() : [];
+    renderPortada(); renderGaleria();
     $('n-publicada').checked = n.id ? !!n.publicada : true;
-    $('msg-form').textContent = '';
+    $('msg-form').textContent = ''; $('msg-subida').textContent = '';
     $('panel-form').classList.remove('oculto');
     $('panel-form').scrollIntoView({ behavior: 'smooth' });
   }
@@ -261,15 +315,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   $('form-noticia').addEventListener('submit', async function (e) {
     e.preventDefault();
-    var galeria = $('n-galeria').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
     var datos = {
       titulo: $('n-titulo').value.trim(),
       categoria: $('n-categoria').value || null,
       fecha_publicacion: $('n-fecha').value || null,
       excerpt: $('n-excerpt').value.trim() || null,
       contenido: $('n-contenido').value.trim() || null,
-      foto_portada: $('n-portada').value.trim() || null,
-      fotos_galeria: galeria.length ? galeria : null,
+      foto_portada: portadaVal || null,
+      fotos_galeria: galeriaVals.length ? galeriaVals : null,
       publicada: $('n-publicada').checked
     };
     $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';

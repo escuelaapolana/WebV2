@@ -16,6 +16,14 @@
   }
   window.APOLANA_DB = window.supabase.createClient(URL, KEY);
 
+  /* Devuelve la URL de una imagen: si ya es una URL (subida a Supabase)
+     la usa tal cual; si es solo un nombre, la busca en /assets/img/. */
+  window.APOLANA_IMG = function (v) {
+    if (!v) return "";
+    var b = window.APOLANA_BASE || "./";
+    return /^https?:\/\//.test(v) ? v : b + "assets/img/" + v;
+  };
+
   /* Ayudante: noticias publicadas, de más nueva a más antigua
      (o null si algo falla). Sin límite = todas. */
   window.APOLANA_DB.noticias = async function (limite) {
