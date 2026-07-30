@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel de administración · Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../assets/img/logo.png">
+<link rel="stylesheet" href="../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../assets/js/db.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-top {
+    background: var(--navy); color: #fff;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px clamp(16px,4vw,40px);
+  }
+  .admin-top .marca { display: flex; align-items: center; gap: 10px; }
+  .admin-top img { height: 34px; }
+  .admin-top .nombre { font-family: var(--fuente-titulo); font-weight: 700; text-transform: uppercase; color: #fff; font-size: 18px; }
+  .admin-top .sesion { display: flex; align-items: center; gap: 14px; font-size: 14px; color: #cdd6e0; }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  /* Login */
+  .login-caja { max-width: 400px; margin: 8vh auto; background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: 36px; box-shadow: var(--sombra-tarjeta); }
+  .login-caja h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 30px; margin-bottom: 6px; }
+  .login-caja .intro { margin-bottom: 20px; }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  textarea { min-height: 120px; resize: vertical; }
+  .fila-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .fila-check input { width: auto; }
+  .fila-check label { margin: 0; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  .acciones-fila { display: flex; gap: 8px; white-space: nowrap; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .btn { cursor: pointer; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .oculto { display: none !important; }
+  .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+  .pill-si { background: #e6f4ea; color: #1e7a3d; }
+  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+</style>
+</head>
+<body>
+
+<!-- ===== Barra superior (solo con sesión) ===== -->
+<div class="admin-top oculto" id="barra">
+  <div class="marca"><img src="../assets/img/logo.png" alt="Apolana"><span class="nombre">Panel Apolana</span></div>
+  <div class="sesion"><span id="quien"></span><button class="btn btn--neutro btn--mini" id="salir" style="color:#fff;border-color:rgba(255,255,255,.4)">Salir</button></div>
+</div>
+
+<!-- ===== LOGIN ===== -->
+<div id="vista-login">
+  <div class="login-caja">
+    <h1>Panel Apolana</h1>
+    <p class="intro">Acceso solo para administración del club.</p>
+    <form id="form-login">
+      <label for="email">Correo</label>
+      <input type="email" id="email" autocomplete="username" required>
+      <label for="pass">Contraseña</label>
+      <input type="password" id="pass" autocomplete="current-password" required>
+      <div style="margin-top:18px;"><button class="btn btn--primario" type="submit" style="width:100%">Entrar</button></div>
+      <div class="msg" id="msg-login"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== NO AUTORIZADO ===== -->
+<div id="vista-no" class="oculto">
+  <div class="login-caja">
+    <h1>Sin permiso</h1>
+    <p class="intro">Tu cuenta no tiene acceso de administración. Si crees que es un error, avisa al club.</p>
+    <button class="btn btn--fantasma" id="salir2">Salir</button>
+  </div>
+</div>
+
+<!-- ===== PANEL ===== -->
+<div id="vista-panel" class="oculto">
+  <div class="admin-wrap">
+
+    <div class="panel">
+      <h2>Noticias</h2>
+      <p class="intro" style="margin-bottom:10px;">Crea, edita o borra las noticias de la web. Se publican al instante.</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nueva-noticia">+ Nueva noticia</button></div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-noticias">
+          <thead><tr><th>Fecha</th><th>Título</th><th>Categoría</th><th>Publicada</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Formulario de noticia (oculto hasta crear/editar) -->
+    <div class="panel oculto" id="panel-form">
+      <h2 id="form-titulo">Nueva noticia</h2>
+      <form id="form-noticia">
+        <input type="hidden" id="n-id">
+        <label for="n-titulo">Título</label>
+        <input type="text" id="n-titulo" required>
+        <div class="grid2">
+          <div>
+            <label for="n-categoria">Categoría</label>
+            <select id="n-categoria">
+              <option value="">(ninguna)</option>
+              <option value="competicion">Competición</option>
+              <option value="club">Club</option>
+              <option value="temporada">Temporada</option>
+              <option value="resultado">Resultado</option>
+              <option value="actividad">Actividad</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div>
+            <label for="n-fecha">Fecha de publicación</label>
+            <input type="date" id="n-fecha">
+          </div>
+        </div>
+        <label for="n-excerpt">Resumen (una o dos frases)</label>
+        <textarea id="n-excerpt" style="min-height:70px;"></textarea>
+        <label for="n-contenido">Texto de la noticia</label>
+        <textarea id="n-contenido"></textarea>
+        <div class="grid2">
+          <div>
+            <label for="n-portada">Foto de portada (nombre de archivo)</label>
+            <input type="text" id="n-portada" placeholder="noticia.jpg">
+          </div>
+          <div>
+            <label for="n-galeria">Fotos de galería (separadas por comas)</label>
+            <input type="text" id="n-galeria" placeholder="galeria-1.jpg, galeria-2.jpg">
+          </div>
+        </div>
+        <div class="fila-check">
+          <input type="checkbox" id="n-publicada" checked>
+          <label for="n-publicada">Publicada (visible en la web)</label>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:10px;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg-form"></span>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var sb = window.APOLANA_DB;
+  var $ = function (id) { return document.getElementById(id); };
+  var vistas = { login: $('vista-login'), no: $('vista-no'), panel: $('vista-panel') };
+  function ver(cual) {
+    Object.keys(vistas).forEach(function (k) { vistas[k].classList.toggle('oculto', k !== cual); });
+    $('barra').classList.toggle('oculto', cual !== 'panel');
+  }
+
+  if (!sb || !sb.auth) {
+    $('msg-login').textContent = 'No se ha podido conectar con la base de datos.';
+    $('msg-login').className = 'msg error';
+    return;
+  }
+
+  async function arranque() {
+    var s = await sb.auth.getSession();
+    if (!s.data.session) { ver('login'); return; }
+    var admin = await sb.rpc('es_admin');
+    if (admin.error || !admin.data) { ver('no'); return; }
+    $('quien').textContent = s.data.session.user.email;
+    ver('panel');
+    cargarNoticias();
+  }
+
+  // --- Login ---
+  $('form-login').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    $('msg-login').textContent = 'Entrando…'; $('msg-login').className = 'msg';
+    var r = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('pass').value });
+    if (r.error) { $('msg-login').textContent = 'No se pudo entrar: ' + r.error.message; $('msg-login').className = 'msg error'; return; }
+    arranque();
+  });
+  $('salir').addEventListener('click', async function () { await sb.auth.signOut(); ver('login'); });
+  $('salir2').addEventListener('click', async function () { await sb.auth.signOut(); ver('login'); });
+
+  // --- Noticias: listar ---
+  async function cargarNoticias() {
+    var tb = $('tabla-noticias').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+    var r = await sb.from('noticias').select('id,titulo,categoria,fecha_publicacion,publicada').order('fecha_publicacion', { ascending: false });
+    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + r.error.message + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay noticias todavía.</td></tr>'; return; }
+    tb.innerHTML = r.data.map(function (n) {
+      return '<tr>' +
+        '<td>' + (n.fecha_publicacion || '') + '</td>' +
+        '<td>' + esc(n.titulo) + '</td>' +
+        '<td>' + esc(n.categoria || '—') + '</td>' +
+        '<td>' + (n.publicada ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-editar="' + n.id + '">Editar</button>' +
+        '<button class="btn btn--peligro" data-borrar="' + n.id + '" data-tit="' + esc(n.titulo) + '">Borrar</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  // --- Noticias: crear/editar ---
+  function abrirForm(n) {
+    n = n || {};
+    $('form-titulo').textContent = n.id ? 'Editar noticia' : 'Nueva noticia';
+    $('n-id').value = n.id || '';
+    $('n-titulo').value = n.titulo || '';
+    $('n-categoria').value = n.categoria || '';
+    $('n-fecha').value = n.fecha_publicacion || '';
+    $('n-excerpt').value = n.excerpt || '';
+    $('n-contenido').value = n.contenido || '';
+    $('n-portada').value = n.foto_portada || '';
+    $('n-galeria').value = Array.isArray(n.fotos_galeria) ? n.fotos_galeria.join(', ') : '';
+    $('n-publicada').checked = n.id ? !!n.publicada : true;
+    $('msg-form').textContent = '';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nueva-noticia').addEventListener('click', function () { abrirForm(); });
+  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+
+  $('tabla-noticias').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-editar');
+    var bo = e.target.getAttribute('data-borrar');
+    if (ed) {
+      var r = await sb.from('noticias').select('*').eq('id', ed).single();
+      if (!r.error) abrirForm(r.data);
+    }
+    if (bo) {
+      if (!confirm('¿Borrar la noticia "' + e.target.getAttribute('data-tit') + '"? No se puede deshacer.')) return;
+      var d = await sb.from('noticias').delete().eq('id', bo);
+      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      cargarNoticias();
+    }
+  });
+
+  $('form-noticia').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var galeria = $('n-galeria').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var datos = {
+      titulo: $('n-titulo').value.trim(),
+      categoria: $('n-categoria').value || null,
+      fecha_publicacion: $('n-fecha').value || null,
+      excerpt: $('n-excerpt').value.trim() || null,
+      contenido: $('n-contenido').value.trim() || null,
+      foto_portada: $('n-portada').value.trim() || null,
+      fotos_galeria: galeria.length ? galeria : null,
+      publicada: $('n-publicada').checked
+    };
+    $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
+    var id = $('n-id').value, r;
+    if (id) r = await sb.from('noticias').update(datos).eq('id', id);
+    else r = await sb.from('noticias').insert(datos);
+    if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
+    $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
+    $('panel-form').classList.add('oculto');
+    cargarNoticias();
+  });
+
+  arranque();
+});
+</script>
+
+</body>
+</html>
