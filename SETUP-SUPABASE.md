@@ -98,13 +98,26 @@ y verlo cambiar en la web. Solo inserta las que no existan ya.
 
 ```sql
 insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
-select v.seccion, v.dirigido_a, v.titulo, v.descripcion from (values
- ('competicion','Federado y popular · temporada 2026-27','Atletismo en pista','El corazón del club: velocidad, vallas, medio fondo, fondo, saltos y lanzamientos, cada disciplina con su técnica y su forma de sufrir. Hay quien viene a bajar su 400 y quien busca el Campeonato de España; en los dos casos hay planificación individual detrás.'),
- ('running','Adultos · asfalto, cross y trail','Running','Dos grupos según el momento en el que estés: uno para coger el hábito y disfrutar del kilómetro, otro para buscar marca. En los dos hay entrenador en pista y plan escrito cada semana.'),
- ('natacion','Adultos · todos los niveles','Natación','Grupos por nivel y sesiones dirigidas en el Tossal y Vía Parque: técnica de los cuatro estilos, series de fondo, velocidad y preparación de competición. En verano, piscina de 50 metros y aguas abiertas los sábados.'),
- ('triatlon','Natación · ciclismo · carrera','Triatlón','Dominar tres disciplinas y saber encadenarlas: nadar, montar y correr gestionando el esfuerzo para que las piernas respondan al bajar de la bici. La sección nació en 2011 con cinco socios y hoy pasa de cincuenta.'),
- ('montana','Senderismo y trail · todas las edades','Montaña','Rutas por la Serra de la Marina, el Maigmó, el Puig Campana y las sierras que rodean Alicante. No hay ritmo obligatorio ni competición: hay rutas para todos los niveles, desde paseos familiares hasta travesías exigentes.'),
- ('cubo','Entrenamiento funcional','El Cubo','El gimnasio del club, junto a la pista: fuerza, core y prevención en grupos de doce. Nadadores, corredores y triatletas comparten sala y cada uno lleva su progresión.')
-) as v(seccion,dirigido_a,titulo,descripcion)
-where not exists (select 1 from public.contenido_secciones c where c.seccion = v.seccion);
+select $$competicion$$, $$Federado y popular · temporada 2026-27$$, $$Atletismo en pista$$, $$El corazón del club: velocidad, vallas, medio fondo, fondo, saltos y lanzamientos, cada disciplina con su técnica y su forma de sufrir. Hay quien viene a bajar su 400 y quien busca el Campeonato de España; en los dos casos hay planificación individual detrás.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$competicion$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$running$$, $$Adultos · asfalto, cross y trail$$, $$Running$$, $$Dos grupos según el momento en el que estés: uno para coger el hábito y disfrutar del kilómetro, otro para buscar marca. En los dos hay entrenador en pista y plan escrito cada semana.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$running$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$natacion$$, $$Adultos · todos los niveles$$, $$Natación$$, $$Grupos por nivel y sesiones dirigidas en el Tossal y Vía Parque: técnica de los cuatro estilos, series de fondo, velocidad y preparación de competición. En verano, piscina de 50 metros y aguas abiertas los sábados.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$natacion$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$triatlon$$, $$Natación · ciclismo · carrera$$, $$Triatlón$$, $$Dominar tres disciplinas y saber encadenarlas: nadar, montar y correr gestionando el esfuerzo para que las piernas respondan al bajar de la bici. La sección nació en 2011 con cinco socios y hoy pasa de cincuenta.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$triatlon$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$montana$$, $$Senderismo y trail · todas las edades$$, $$Montaña$$, $$Rutas por la Serra de la Marina, el Maigmó, el Puig Campana y las sierras que rodean Alicante. No hay ritmo obligatorio ni competición: hay rutas para todos los niveles, desde paseos familiares hasta travesías exigentes.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$montana$$);
+
+insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion)
+select $$cubo$$, $$Entrenamiento funcional$$, $$El Cubo$$, $$El gimnasio del club, junto a la pista: fuerza, core y prevención en grupos de doce. Nadadores, corredores y triatletas comparten sala y cada uno lleva su progresión.$$
+where not exists (select 1 from public.contenido_secciones where seccion=$$cubo$$);
 ```
