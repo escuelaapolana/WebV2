@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pruebas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  .fila-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .fila-check input { width: auto; }
+  .fila-check label { margin: 0; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  .acciones-fila { display: flex; gap: 8px; white-space: nowrap; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .btn { cursor: pointer; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .oculto { display: none !important; }
+
+  .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+  .pill-si { background: #e6f4ea; color: #1e7a3d; }
+  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+
+  .filtros { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 14px; }
+  .filtros > div { flex: 1 1 200px; }
+  .filtros label { margin: 0 0 5px; }
+  .subcabecera td { background: var(--crema-media); font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--navy); font-weight: 700; }
+  .fila-inactiva td { opacity: .55; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <!-- ===== LISTA DE PRUEBAS ===== -->
+    <div class="panel">
+      <h2>Pruebas</h2>
+      <p class="intro" style="margin-bottom:10px;">Catálogo de pruebas de atletismo y natación. Crea, edita o activa/desactiva las pruebas disponibles para registrar marcas.</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nueva-prueba">+ Nueva prueba</button></div>
+
+      <div class="filtros">
+        <div>
+          <label for="f-ambito">Ámbito</label>
+          <select id="f-ambito">
+            <option value="">Todos</option>
+            <option value="atletismo">Atletismo</option>
+            <option value="natacion">Natación</option>
+          </select>
+        </div>
+        <div>
+          <label for="f-disciplina">Disciplina</label>
+          <select id="f-disciplina"><option value="">Todas</option></select>
+        </div>
+        <div>
+          <label for="f-texto">Buscar</label>
+          <input type="text" id="f-texto" placeholder="Nombre…">
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table id="tabla-pruebas">
+          <thead><tr>
+            <th>Nombre</th><th>Disciplina</th><th>Unidad</th><th>Más es mejor</th><th>Orden</th><th>Activa</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== FORMULARIO (oculto hasta crear/editar) ===== -->
+    <div class="panel oculto" id="panel-form">
+      <h2 id="form-titulo">Nueva prueba</h2>
+      <form id="form-prueba">
+        <input type="hidden" id="p-id">
+        <label for="p-nombre">Nombre</label>
+        <input type="text" id="p-nombre" required placeholder="Ej.: 100 m lisos">
+        <div class="grid2">
+          <div>
+            <label for="p-ambito">Ámbito</label>
+            <select id="p-ambito" required>
+              <option value="atletismo">Atletismo</option>
+              <option value="natacion">Natación</option>
+            </select>
+          </div>
+          <div>
+            <label for="p-disciplina">Disciplina</label>
+            <input type="text" id="p-disciplina" list="lista-disciplinas" placeholder="Ej.: velocidad, libre…">
+            <datalist id="lista-disciplinas"></datalist>
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label for="p-unidad">Unidad</label>
+            <select id="p-unidad" required>
+              <option value="tiempo">Tiempo</option>
+              <option value="distancia">Distancia</option>
+              <option value="puntos">Puntos</option>
+            </select>
+          </div>
+          <div>
+            <label for="p-mas">Más es mejor</label>
+            <select id="p-mas" required>
+              <option value="false">No (menos es mejor · tiempos)</option>
+              <option value="true">Sí (más es mejor · distancia/puntos)</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label for="p-orden">Orden</label>
+            <input type="number" id="p-orden" step="1" placeholder="Ej.: 10">
+          </div>
+          <div>
+            <label for="p-activa">Activa</label>
+            <select id="p-activa">
+              <option value="true">Sí (disponible)</option>
+              <option value="false">No (oculta)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg-form"></span>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  var TODAS = [];              // todas las pruebas cargadas
+  var UNIDAD_LABEL = { tiempo: 'Tiempo', distancia: 'Distancia', puntos: 'Puntos' };
+  var AMBITO_LABEL = { atletismo: 'Atletismo', natacion: 'Natación' };
+
+  // --- Cargar desde BD ---
+  async function cargarPruebas() {
+    var tb = $('tabla-pruebas').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="7">Cargando…</td></tr>';
+    var r = await sb.from('pruebas')
+      .select('id,nombre,disciplina,ambito,unidad,mas_es_mejor,orden,activa')
+      .order('ambito').order('orden', { nullsFirst: false }).order('nombre');
+    if (r.error) { tb.innerHTML = '<tr><td colspan="7">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    TODAS = r.data || [];
+    poblarDisciplinasFiltro();
+    poblarDatalistDisciplinas();
+    render();
+  }
+
+  // Disciplinas únicas (opcionalmente por ámbito)
+  function disciplinasDe(ambito) {
+    var set = {};
+    TODAS.forEach(function (p) {
+      if (ambito && p.ambito !== ambito) return;
+      if (p.disciplina) set[p.disciplina] = true;
+    });
+    return Object.keys(set).sort();
+  }
+
+  function poblarDisciplinasFiltro() {
+    var sel = $('f-disciplina'), actual = sel.value;
+    var amb = $('f-ambito').value;
+    var opts = ['<option value="">Todas</option>'];
+    disciplinasDe(amb).forEach(function (d) { opts.push('<option value="' + esc(d) + '">' + esc(d) + '</option>'); });
+    sel.innerHTML = opts.join('');
+    // conservar selección si sigue existiendo
+    if (Array.prototype.some.call(sel.options, function (o) { return o.value === actual; })) sel.value = actual;
+  }
+
+  function poblarDatalistDisciplinas() {
+    var dl = $('lista-disciplinas');
+    dl.innerHTML = disciplinasDe('').map(function (d) { return '<option value="' + esc(d) + '">'; }).join('');
+  }
+
+  // --- Pintar la tabla filtrada y agrupada ---
+  function render() {
+    var tb = $('tabla-pruebas').querySelector('tbody');
+    var fAmb = $('f-ambito').value;
+    var fDis = $('f-disciplina').value;
+    var fTxt = $('f-texto').value.trim().toLowerCase();
+
+    var lista = TODAS.filter(function (p) {
+      if (fAmb && p.ambito !== fAmb) return false;
+      if (fDis && p.disciplina !== fDis) return false;
+      if (fTxt && (p.nombre || '').toLowerCase().indexOf(fTxt) === -1) return false;
+      return true;
+    });
+
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="7">No hay pruebas que coincidan.</td></tr>'; return; }
+
+    var html = '', grupoActual = null;
+    lista.forEach(function (p) {
+      var clave = p.ambito + ' · ' + (p.disciplina || 'sin disciplina');
+      if (clave !== grupoActual) {
+        grupoActual = clave;
+        html += '<tr class="subcabecera"><td colspan="7">' +
+          esc(AMBITO_LABEL[p.ambito] || p.ambito) + ' · ' + esc(p.disciplina || 'sin disciplina') + '</td></tr>';
+      }
+      html += '<tr' + (p.activa ? '' : ' class="fila-inactiva"') + '>' +
+        '<td>' + esc(p.nombre) + '</td>' +
+        '<td>' + esc(p.disciplina || '—') + '</td>' +
+        '<td>' + esc(UNIDAD_LABEL[p.unidad] || p.unidad) + '</td>' +
+        '<td>' + (p.mas_es_mejor ? 'Sí' : 'No') + '</td>' +
+        '<td>' + (p.orden == null ? '—' : esc(p.orden)) + '</td>' +
+        '<td>' + (p.activa ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td class="acciones-fila">' +
+          '<button class="btn btn--fantasma btn--mini" data-editar="' + p.id + '">Editar</button>' +
+          '<button class="btn btn--fantasma btn--mini" data-toggle="' + p.id + '">' + (p.activa ? 'Desactivar' : 'Activar') + '</button>' +
+        '</td>' +
+      '</tr>';
+    });
+    tb.innerHTML = html;
+  }
+
+  $('f-ambito').addEventListener('change', function () { poblarDisciplinasFiltro(); render(); });
+  $('f-disciplina').addEventListener('change', render);
+  $('f-texto').addEventListener('input', render);
+
+  // --- Autoseleccionar "más es mejor" según la unidad ---
+  $('p-unidad').addEventListener('change', function () {
+    // tiempo => menos es mejor (No); distancia/puntos => más es mejor (Sí)
+    $('p-mas').value = (this.value === 'tiempo') ? 'false' : 'true';
+  });
+
+  // --- Abrir formulario ---
+  function abrirForm(p) {
+    p = p || {};
+    $('form-titulo').textContent = p.id ? 'Editar prueba' : 'Nueva prueba';
+    $('p-id').value = p.id || '';
+    $('p-nombre').value = p.nombre || '';
+    $('p-ambito').value = p.ambito || 'atletismo';
+    $('p-disciplina').value = p.disciplina || '';
+    $('p-unidad').value = p.unidad || 'tiempo';
+    // por defecto coherente con la unidad; en edición respetar lo guardado
+    if (p.id) $('p-mas').value = p.mas_es_mejor ? 'true' : 'false';
+    else $('p-mas').value = 'false';
+    $('p-orden').value = (p.orden == null ? '' : p.orden);
+    $('p-activa').value = p.id ? (p.activa ? 'true' : 'false') : 'true';
+    $('msg-form').textContent = ''; $('msg-form').className = 'msg';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nueva-prueba').addEventListener('click', function () { abrirForm(); });
+  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+
+  // --- Acciones de la tabla (editar / activar-desactivar) ---
+  $('tabla-pruebas').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-editar');
+    var tg = e.target.getAttribute('data-toggle');
+    if (ed) {
+      var p = TODAS.filter(function (x) { return x.id === ed; })[0];
+      if (p) abrirForm(p);
+    }
+    if (tg) {
+      var pr = TODAS.filter(function (x) { return x.id === tg; })[0];
+      if (!pr) return;
+      e.target.disabled = true;
+      var d = await sb.from('pruebas').update({ activa: !pr.activa }).eq('id', tg);
+      e.target.disabled = false;
+      if (d.error) { alert('No se pudo cambiar el estado: ' + d.error.message); return; }
+      cargarPruebas();
+    }
+  });
+
+  // --- Guardar (crear / editar) ---
+  $('form-prueba').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var nombre = $('p-nombre').value.trim();
+    if (!nombre) { $('msg-form').textContent = 'El nombre es obligatorio.'; $('msg-form').className = 'msg error'; return; }
+
+    var datos = {
+      nombre: nombre,
+      ambito: $('p-ambito').value,
+      disciplina: $('p-disciplina').value.trim() || null,
+      unidad: $('p-unidad').value,
+      mas_es_mejor: ($('p-mas').value === 'true'),
+      orden: ($('p-orden').value === '' ? null : parseInt($('p-orden').value, 10)),
+      activa: ($('p-activa').value === 'true')
+    };
+
+    $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
+    var id = $('p-id').value, r;
+    if (id) r = await sb.from('pruebas').update(datos).eq('id', id);
+    else r = await sb.from('pruebas').insert(datos);
+
+    if (r.error) {
+      var m = r.error.message || '';
+      // nombre UNIQUE -> código 23505
+      if (r.error.code === '23505' || /duplicate key|unique/i.test(m)) {
+        $('msg-form').textContent = 'Ya existe una prueba con el nombre «' + nombre + '». Elige otro nombre.';
+      } else {
+        $('msg-form').textContent = 'Error: ' + m;
+      }
+      $('msg-form').className = 'msg error';
+      return;
+    }
+    $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
+    $('panel-form').classList.add('oculto');
+    cargarPruebas();
+  });
+
+  cargarPruebas();
+});
+</script>
+
+</body>
+</html>
