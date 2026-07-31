@@ -30,6 +30,20 @@
   .grafico svg { width:100%; height:auto; display:block; }
   .grafico .leyenda { font-size:11px; color: var(--texto-suave); padding:2px 4px 4px; }
   .grafico .mejora { color:#1e7a3d; font-weight:600; }
+  .entreno-cab { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .entreno-cab h2 { margin:0; }
+  .fecha-pill { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.05em; text-transform:uppercase; background: var(--azul); color:#fff; padding:4px 10px; border-radius:999px; }
+  .entreno-titulo { font-size:18px; font-weight:600; color: var(--navy); margin:2px 0 8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .chip { font-family: var(--fuente-mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em; background: var(--crema-media); color: var(--texto-suave); padding:3px 9px; border-radius:999px; }
+  .nota { font-size:14px; color: var(--texto); background: var(--crema); border-left:3px solid var(--azul); padding:10px 12px; border-radius:8px; margin:0 0 16px; }
+  .bloque { margin-bottom:14px; }
+  .bloque h3 { font-family: var(--fuente-mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color: var(--azul-oscuro); margin:0 0 8px; padding-bottom:5px; border-bottom:1px solid var(--linea); }
+  .fila { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:7px 0; border-bottom:1px dashed var(--linea); }
+  .fila:last-child { border-bottom:0; }
+  .fila .ej { font-size:15px; color: var(--navy); font-weight:500; }
+  .fila .fparams { display:flex; flex-wrap:wrap; gap:6px; }
+  .fchip { font-size:12px; color: var(--texto-suave); background: var(--crema-media); padding:2px 8px; border-radius:6px; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -82,6 +96,48 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<div class="grafico">' + svg + (ley ? '<div class="leyenda">' + ley + '</div>' : '') + '</div>';
   }
 
+  // Formatea 2026-07-31 -> "vie 31 jul"
+  function formatFecha(iso) {
+    if (!iso) return '';
+    var d = new Date(iso + 'T00:00:00');
+    var dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    var mes = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return dias[d.getDay()] + ' ' + d.getDate() + ' ' + mes[d.getMonth()];
+  }
+  // Una fila del entreno: ejercicio + parámetros (series, distancia, ritmo, descanso…)
+  function filaHTML(f) {
+    var main = esc(f.ejercicio || f.nombre || '');
+    var parts = [];
+    if (f.series && f.distancia) parts.push(esc(f.series) + ' × ' + esc(f.distancia));
+    else if (f.series) parts.push(esc(f.series) + ' series');
+    else if (f.distancia) parts.push(esc(f.distancia));
+    if (f.ritmo) parts.push('ritmo ' + esc(f.ritmo));
+    if (f.descanso) parts.push('desc. ' + esc(f.descanso));
+    if (f.tiempo) parts.push(esc(f.tiempo));
+    if (f.detalle) parts.push(esc(f.detalle));
+    if (f.nota) parts.push(esc(f.nota));
+    var chips = parts.map(function (p) { return '<span class="fchip">' + p + '</span>'; }).join('');
+    return '<div class="fila"><span class="ej">' + main + '</span><span class="fparams">' + chips + '</span></div>';
+  }
+  // Tarjeta completa del entreno
+  function renderEntreno(s, todayISO) {
+    var esHoy = s.fecha === todayISO;
+    var fechaTxt = (esHoy ? 'Hoy · ' : '') + formatFecha(s.fecha);
+    var chips = [s.tipo, (s.rol || '').replace(/_/g, ' ')].filter(Boolean)
+      .map(function (c) { return '<span class="chip">' + esc(c) + '</span>'; }).join('');
+    var bloques = Array.isArray(s.bloques) ? s.bloques : [];
+    var bloquesHtml = bloques.map(function (b) {
+      var filas = (b.filas || []).map(filaHTML).join('') || '<div class="fila"><span class="ej vacio">Por definir</span></div>';
+      return '<div class="bloque"><h3>' + esc(b.etiqueta || '') + '</h3>' + filas + '</div>';
+    }).join('');
+    return '<div class="tarjeta">' +
+      '<div class="entreno-cab"><h2>Mi entreno</h2><span class="fecha-pill">' + esc(fechaTxt) + '</span></div>' +
+      (s.titulo ? '<div class="entreno-titulo">' + esc(s.titulo) + '</div>' : '') +
+      (chips ? '<div class="chips">' + chips + '</div>' : '') +
+      (s.nota_razonamiento ? '<p class="nota">' + esc(s.nota_razonamiento) + '</p>' : '') +
+      '<div class="bloques">' + bloquesHtml + '</div></div>';
+  }
+
   // Buscar la ficha de atleta ligada a este perfil
   var at = null;
   try {
@@ -97,6 +153,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     html += '<div class="tarjeta"><p class="vacio">Todavía no vemos tu ficha de atleta. Puede que falten permisos por activar (bloque B del plan) o que tu ficha no esté enlazada a tu cuenta. Se soluciona pronto.</p></div>';
     wrap.innerHTML = html;
     return;
+  }
+
+  // Mi entreno (sesión publicada de mi grupo: la de hoy, o la más reciente)
+  var entrenoHtml = '';
+  if (at.grupo_id) {
+    try {
+      var todayISO = new Date().toISOString().slice(0, 10);
+      var se = await sb.from('sesiones').select('fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques')
+        .eq('grupo_id', at.grupo_id).eq('publicada', true).order('fecha', { ascending: false }).limit(10);
+      if (!se.error && se.data && se.data.length) {
+        var ses = se.data.filter(function (x) { return x.fecha === todayISO; })[0] || se.data[0];
+        entrenoHtml = renderEntreno(ses, todayISO);
+      }
+    } catch (e) {}
   }
 
   // Mis marcas (con gráficos de evolución por prueba)
@@ -132,9 +202,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
   } catch (e) {}
 
+  html += entrenoHtml;
   html += '<div class="tarjeta"><h2>Mis marcas</h2>' + marcasHtml + '</div>';
   html += '<div class="tarjeta"><h2>Mis pagos</h2>' + pagosHtml + '</div>';
-  html += '<div class="tarjeta"><h2>Próximamente</h2><p class="vacio">Tu entreno del día, el feedback con ritmos por serie y el bono de El Cubo llegarán en las siguientes fases.</p></div>';
+  html += '<div class="tarjeta"><h2>Próximamente</h2><p class="vacio">Marcar el entreno como hecho, el feedback con ritmos por serie y el bono de El Cubo llegarán en las siguientes fases.</p></div>';
   wrap.innerHTML = html;
 });
 </script>
