@@ -60,6 +60,7 @@
   .fila .ej { font-size:15px; color: var(--navy); font-weight:500; }
   .fila .fparams { display:flex; flex-wrap:wrap; gap:6px; }
   .fchip { font-size:12px; color: var(--texto-suave); background: var(--crema-media); padding:2px 8px; border-radius:6px; white-space:nowrap; }
+  .fchip.mio { background: var(--azul); color:#fff; font-weight:600; }
   .serie-inputs { display:flex; flex-wrap:wrap; gap:6px; padding:2px 0 10px; border-bottom:1px dashed var(--linea); }
   .serie-in { width:58px; text-align:center; padding:7px 4px; border:1px solid var(--linea-borde); border-radius:8px; font-size:14px; font-family: var(--fuente-mono); color: var(--navy); }
   .serie-in:focus { outline:none; border-color: var(--azul); }
@@ -137,6 +138,37 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<div class="grafico">'+svg+(ley?'<div class="leyenda">'+ley+'</div>':'')+'</div>';
   }
 
+  // ---- Ritmos personales: un "90%" se convierte en TU tiempo, según tu mejor marca ----
+  var MMP = {};   // { 'nombre de prueba': {seg: 7.85, disp:'7.85'} }
+  function segATexto(s){
+    if(s==null||isNaN(s)) return '';
+    if(s<60) return s.toFixed(2);
+    var m=Math.floor(s/60), r=s-m*60;
+    return m+':'+(r<10?'0':'')+r.toFixed(2);
+  }
+  // Busca la mejor marca del atleta para la distancia de una fila (p. ej. "60 m" -> "60 m lisos")
+  function mmpParaDistancia(dist){
+    if(!dist) return null;
+    var m=String(dist).match(/(\d[\d.,]*)\s*m/i); if(!m) return null;
+    var metros=m[1].replace(/[.,]/g,'');
+    var mejor=null;
+    Object.keys(MMP).forEach(function(prueba){
+      var pm=prueba.match(/(\d[\d.,]*)\s*m/i); if(!pm) return;
+      if(pm[1].replace(/[.,]/g,'')===metros && (!mejor || MMP[prueba].seg<mejor.seg)) mejor=MMP[prueba];
+    });
+    return mejor;
+  }
+  // De "90%" o "90-95%" saca el tiempo objetivo. Menos % = más lento (tiempo = mmp / (%/100)).
+  function ritmoPersonal(f){
+    var r=f.ritmo; if(!r) return '';
+    var pcts=String(r).match(/(\d{2,3})\s*%/g); if(!pcts||!pcts.length) return '';
+    var base=mmpParaDistancia(f.distancia); if(!base) return '';
+    var nums=pcts.map(function(p){ return parseFloat(p); }).filter(function(n){ return n>=40&&n<=110; });
+    if(!nums.length) return '';
+    var tiempos=nums.map(function(p){ return base.seg/(p/100); }).sort(function(a,b){ return a-b; });
+    return tiempos.length>1 ? segATexto(tiempos[0])+'–'+segATexto(tiempos[tiempos.length-1]) : segATexto(tiempos[0]);
+  }
+
   function esSerie(f){ var n=parseInt(f.series,10); return (n>0 && n<=30)?n:0; }
   function filaHTML(f, key){
     var main=esc(f.ejercicio||f.nombre||''); var parts=[];
@@ -148,6 +180,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(f.detalle) parts.push(esc(f.detalle));
     if(f.nota) parts.push(esc(f.nota));
     var chips=parts.map(function(p){return '<span class="fchip">'+p+'</span>';}).join('');
+    var tuyo=ritmoPersonal(f);
+    if(tuyo) chips+='<span class="fchip mio" title="Calculado con tu mejor marca">tú: '+esc(tuyo)+'</span>';
     var html='<div class="fila"><span class="ej">'+main+'</span><span class="fparams">'+chips+'</span></div>';
     var n=esSerie(f);
     if(n>0){ var ins=''; for(var i=0;i<n;i++) ins+='<input class="serie-in" data-key="'+key+'" data-i="'+i+'" inputmode="decimal" placeholder="'+(i+1)+'ª">'; html+='<div class="serie-inputs" data-eje="'+main+'">'+ins+'</div>'; }
@@ -177,6 +211,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var cab='<div class="at-cab"><h1>Hola, '+esc(perfil.nombre||nombre)+'</h1><span class="sub">'+((at&&at.categoria)?esc(at.categoria)+' · ':'')+'Mi zona de atleta</span></div>';
 
   if(!at){ wrap.innerHTML=cab+'<div class="tarjeta"><p class="vacio">Todavía no vemos tu ficha de atleta enlazada a tu cuenta. Avisa al club.</p></div>'; return; }
+
+  // Mis mejores marcas: sirven para convertir los "%" del entreno en TU tiempo
+  try {
+    var mm=await sb.from('marcas_atleta').select('prueba,tiempo_display,tiempo_segundos').eq('atleta_id',at.id).limit(200);
+    if(!mm.error&&mm.data) mm.data.forEach(function(x){
+      var seg = (x.tiempo_segundos!=null) ? Number(x.tiempo_segundos) : tiempoANum(x.tiempo_display);
+      if(seg==null||isNaN(seg)||!x.prueba) return;
+      if(!MMP[x.prueba] || seg<MMP[x.prueba].seg) MMP[x.prueba]={seg:seg, disp:x.tiempo_display||''};
+    });
+  } catch(e){}
 
   // Entreno (sesión publicada de mi grupo)
   var ses=null;
