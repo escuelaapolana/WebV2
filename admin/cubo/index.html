@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El Cubo · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  textarea { min-height: 80px; resize: vertical; }
+  .fila-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .fila-check input { width: auto; }
+  .fila-check label { margin: 0; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+  .panel h3 { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-tenue); margin: 22px 0 8px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  .acciones-fila { display: flex; gap: 8px; white-space: nowrap; flex-wrap: wrap; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  .btn { cursor: pointer; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .oculto { display: none !important; }
+
+  .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill-si { background: #e6f4ea; color: #1e7a3d; }
+  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+  .pill-espera { background: var(--aviso-fondo); color: #8a6d17; }
+  .pill-llena { background: #fbeceb; color: #A8453F; }
+
+  .cuando { font-family: var(--fuente-mono); font-size: 12px; color: var(--navy); white-space: nowrap; }
+  .apuntado { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+              padding: 11px 0; border-bottom: 1px solid var(--linea); }
+  .apuntado:last-child { border-bottom: 0; }
+  .apuntado .quien { font-size: 15px; color: var(--navy); font-weight: 600; }
+  .apuntado .sub { font-family: var(--fuente-mono); font-size: 11px; color: var(--texto-tenue); }
+  .vacio { color: var(--texto-suave); font-size: 14px; margin: 6px 0; }
+  .nota-reglas { background: var(--crema-banda); border: 1px solid var(--linea-borde); border-radius: 12px;
+                 padding: 12px 14px; font-size: 13px; color: var(--texto); margin-top: 14px; line-height: 1.45; }
+  .bono-caja { background: var(--navy); color: #fff; border-radius: 16px; padding: 18px 20px; margin-top: 10px;
+               display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .bono-caja .cifra { font-family: var(--fuente-titulo); font-weight: 700; font-size: 44px; line-height: 1; }
+  .bono-caja .txt { font-size: 15px; color: rgba(255,255,255,.8); }
+  .rapidos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <!-- ===== CLASES ===== -->
+    <div class="panel">
+      <h2>El Cubo · clases</h2>
+      <p class="intro" style="margin-bottom:10px;">Crea las clases dirigidas, mira quién está apuntado y pasa lista. Doce plazas por clase y 55 minutos, salvo que pongas otra cosa.</p>
+      <div style="margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn--primario btn--mini" id="nueva-clase">+ Nueva clase</button>
+        <label style="margin:0; display:flex; align-items:center; gap:8px; font-weight:400;">
+          <input type="checkbox" id="ver-pasadas" style="width:auto;"> Ver también las clases ya pasadas
+        </label>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-clases">
+          <thead><tr><th>Cuándo</th><th>Clase</th><th>Monitor</th><th>Plazas</th><th>Abierta</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== FORMULARIO DE CLASE ===== -->
+    <div class="panel oculto" id="panel-form">
+      <h2 id="form-titulo">Nueva clase</h2>
+      <form id="form-clase">
+        <input type="hidden" id="c-id">
+        <div class="grid3">
+          <div><label for="c-fecha">Fecha</label><input type="date" id="c-fecha" required></div>
+          <div><label for="c-inicio">Empieza</label><input type="time" id="c-inicio" required></div>
+          <div><label for="c-fin">Acaba</label><input type="time" id="c-fin"></div>
+        </div>
+        <label for="c-titulo">Título de la clase</label>
+        <input type="text" id="c-titulo" required placeholder="Fuerza para nadadores, Core y movilidad, Circuito funcional…">
+        <div class="grid2">
+          <div>
+            <label for="c-monitor">Monitor con cuenta en la app</label>
+            <select id="c-monitor"><option value="">— ninguno —</option></select>
+          </div>
+          <div>
+            <label for="c-monitor-nombre">…o nombre del monitor</label>
+            <input type="text" id="c-monitor-nombre" placeholder="Sergio Pastor">
+          </div>
+        </div>
+        <div class="grid2">
+          <div><label for="c-plazas">Plazas</label><input type="number" id="c-plazas" min="1" max="60" value="12" required></div>
+          <div class="fila-check" style="align-self:end; padding-bottom:11px;">
+            <input type="checkbox" id="c-activa" checked>
+            <label for="c-activa">Abierta (los socios pueden apuntarse)</label>
+          </div>
+        </div>
+        <label for="c-notas">Notas</label>
+        <textarea id="c-notas" placeholder="Trae toalla, material propio…"></textarea>
+        <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg-form"></span>
+        </div>
+      </form>
+    </div>
+
+    <!-- ===== APUNTADOS DE UNA CLASE ===== -->
+    <div class="panel oculto" id="panel-lista">
+      <h2 id="lista-titulo">Apuntados</h2>
+      <p class="intro" id="lista-sub" style="margin-bottom:6px;"></p>
+      <div id="lista-cuerpo"></div>
+      <h3>Apuntar a alguien a mano</h3>
+      <div class="grid2">
+        <div><select id="add-atleta"><option value="">— elige un atleta —</option></select></div>
+        <div><button class="btn btn--primario btn--mini" id="add-btn" type="button">Apuntar a esta clase</button></div>
+      </div>
+      <span class="msg" id="msg-lista"></span>
+      <div class="nota-reglas">El uso se descuenta al empezar la clase. Si cancelas con más de 3 horas, se te devuelve.</div>
+      <div style="margin-top:14px;"><button class="btn btn--fantasma btn--mini" type="button" id="cerrar-lista">Cerrar</button></div>
+    </div>
+
+    <!-- ===== BONOS ===== -->
+    <div class="panel">
+      <h2>Bonos de El Cubo</h2>
+      <p class="intro" style="margin-bottom:10px;">Los bonos van por usos, no por euros. Cada clase a la que se apunta el socio gasta un uso.</p>
+      <label for="b-atleta">Atleta</label>
+      <select id="b-atleta"><option value="">— elige un atleta —</option></select>
+      <div id="bono-cuerpo"></div>
+
+      <div class="oculto" id="bono-venta">
+        <h3>Vender un bono</h3>
+        <div class="rapidos">
+          <button class="btn btn--fantasma btn--mini" type="button" data-bono="10|50">10 usos · 50 €</button>
+          <button class="btn btn--primario btn--mini" type="button" data-bono="20|90">20 usos · 90 €</button>
+        </div>
+        <div class="grid3">
+          <div><label for="b-usos">Usos</label><input type="number" id="b-usos" min="1" max="200" value="20"></div>
+          <div><label for="b-precio">Precio (€)</label><input type="number" id="b-precio" min="0" step="0.01" value="90"></div>
+          <div><label for="b-caducidad">Caduca el</label><input type="date" id="b-caducidad"></div>
+        </div>
+        <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button class="btn btn--primario btn--mini" type="button" id="b-guardar">Asignar el bono</button>
+          <span class="msg" id="msg-bono"></span>
+        </div>
+        <div class="nota-reglas">Se cobra con la cuota del mes siguiente.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  var DIAS = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  function hhmm(t) { return t ? String(t).slice(0,5) : ''; }
+  function cuando(fecha, hora) {
+    if (!fecha) return '';
+    var p = String(fecha).split('-');
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    return DIAS[d.getDay()] + ' ' + d.getDate() + ' · ' + hhmm(hora);
+  }
+  function fechaLarga(f) {
+    if (!f) return '';
+    var p = String(f).split('-');
+    return p[2].replace(/^0/,'') + ' de ' + MESES[+p[1]-1] + ' de ' + p[0];
+  }
+  function euros(n) { return (n == null) ? '' : Number(n).toFixed(2).replace('.', ',') + ' €'; }
+
+  var clases = [], ocupacion = {}, atletas = [], monitores = [];
+  var claseAbierta = null;
+
+  // ---------- catálogos ----------
+  async function cargarCatalogos() {
+    var rp = await sb.from('perfiles').select('id,nombre,apellidos,rol')
+      .in('rol', ['admin','coordinador','entrenador']).order('nombre');
+    monitores = rp.error ? [] : rp.data;
+    $('c-monitor').innerHTML = '<option value="">— ninguno —</option>' + monitores.map(function (p) {
+      return '<option value="' + p.id + '">' + esc(p.nombre + ' ' + (p.apellidos || '')) + '</option>';
+    }).join('');
+
+    var ra = await sb.from('atletas').select('id,nombre,apellidos').order('apellidos').order('nombre');
+    atletas = ra.error ? [] : ra.data;
+    var ops = '<option value="">— elige un atleta —</option>' + atletas.map(function (a) {
+      return '<option value="' + a.id + '">' + esc((a.apellidos ? a.apellidos + ', ' : '') + a.nombre) + '</option>';
+    }).join('');
+    $('b-atleta').innerHTML = ops;
+    $('add-atleta').innerHTML = ops;
+  }
+
+  function nombreMonitor(c) {
+    if (c.monitor_id) {
+      for (var i = 0; i < monitores.length; i++) {
+        if (monitores[i].id === c.monitor_id) return monitores[i].nombre + ' ' + (monitores[i].apellidos || '');
+      }
+    }
+    return c.monitor_nombre || '—';
+  }
+  function nombreAtleta(id) {
+    for (var i = 0; i < atletas.length; i++) if (atletas[i].id === id) {
+      return atletas[i].nombre + ' ' + (atletas[i].apellidos || '');
+    }
+    return '(atleta)';
+  }
+
+  // ---------- clases ----------
+  async function cargarClases() {
+    var tb = $('tabla-clases').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
+
+    var q = sb.from('cubo_clases').select('*').order('fecha').order('hora_inicio');
+    if (!$('ver-pasadas').checked) q = q.gte('fecha', new Date().toISOString().slice(0,10));
+    var r = await q;
+    if (r.error) { tb.innerHTML = '<tr><td colspan="6">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    clases = r.data;
+
+    var ro = await sb.from('cubo_clases_ocupacion').select('*');
+    ocupacion = {};
+    if (!ro.error) ro.data.forEach(function (o) { ocupacion[o.clase_id] = o; });
+
+    if (!clases.length) { tb.innerHTML = '<tr><td colspan="6">No hay clases todavía.</td></tr>'; return; }
+
+    tb.innerHTML = clases.map(function (c) {
+      var o = ocupacion[c.id] || { ocupadas: 0, en_espera: 0, libres: c.plazas };
+      var pl = o.libres > 0
+        ? '<span class="pill-estado pill-si">' + o.ocupadas + ' de ' + c.plazas + '</span>'
+        : '<span class="pill-estado pill-llena">COMPLETA</span>';
+      if (o.en_espera > 0) pl += ' <span class="pill-estado pill-espera">' + o.en_espera + ' en espera</span>';
+      return '<tr>' +
+        '<td class="cuando">' + esc(cuando(c.fecha, c.hora_inicio)) + (c.hora_fin ? '–' + esc(hhmm(c.hora_fin)) : '') + '</td>' +
+        '<td>' + esc(c.titulo) + '</td>' +
+        '<td>' + esc(nombreMonitor(c)) + '</td>' +
+        '<td>' + pl + '</td>' +
+        '<td>' + (c.activa ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td class="acciones-fila">' +
+          '<button class="btn btn--primario btn--mini" data-lista="' + c.id + '">Apuntados</button>' +
+          '<button class="btn btn--fantasma btn--mini" data-editar="' + c.id + '">Editar</button>' +
+          '<button class="btn btn--peligro" data-borrar="' + c.id + '" data-nom="' + esc(c.titulo) + '">Borrar</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function abrirForm(c) {
+    c = c || {};
+    $('form-titulo').textContent = c.id ? 'Editar clase' : 'Nueva clase';
+    $('c-id').value = c.id || '';
+    $('c-fecha').value = c.fecha || '';
+    $('c-inicio').value = hhmm(c.hora_inicio);
+    $('c-fin').value = hhmm(c.hora_fin);
+    $('c-titulo').value = c.titulo || '';
+    $('c-monitor').value = c.monitor_id || '';
+    $('c-monitor-nombre').value = c.monitor_nombre || '';
+    $('c-plazas').value = c.plazas || 12;
+    $('c-notas').value = c.notas || '';
+    $('c-activa').checked = c.id ? !!c.activa : true;
+    $('msg-form').textContent = '';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nueva-clase').addEventListener('click', function () { abrirForm(); });
+  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+  $('ver-pasadas').addEventListener('change', cargarClases);
+
+  $('form-clase').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var datos = {
+      fecha: $('c-fecha').value,
+      hora_inicio: $('c-inicio').value,
+      hora_fin: $('c-fin').value || null,
+      titulo: $('c-titulo').value.trim(),
+      monitor_id: $('c-monitor').value || null,
+      monitor_nombre: $('c-monitor-nombre').value.trim() || null,
+      plazas: parseInt($('c-plazas').value, 10) || 12,
+      notas: $('c-notas').value.trim() || null,
+      activa: $('c-activa').checked
+    };
+    $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
+    var id = $('c-id').value, r;
+    if (id) r = await sb.from('cubo_clases').update(datos).eq('id', id);
+    else r = await sb.from('cubo_clases').insert(datos);
+    if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
+    $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
+    $('panel-form').classList.add('oculto');
+    cargarClases();
+  });
+
+  $('tabla-clases').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-editar');
+    var bo = e.target.getAttribute('data-borrar');
+    var li = e.target.getAttribute('data-lista');
+    if (ed) {
+      var r = await sb.from('cubo_clases').select('*').eq('id', ed).single();
+      if (!r.error) abrirForm(r.data);
+    }
+    if (bo) {
+      if (!confirm('¿Borrar la clase "' + e.target.getAttribute('data-nom') + '"? Se borran también sus apuntados. No se puede deshacer.')) return;
+      var d = await sb.from('cubo_clases').delete().eq('id', bo);
+      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      $('panel-lista').classList.add('oculto');
+      cargarClases();
+    }
+    if (li) abrirLista(li);
+  });
+
+  // ---------- apuntados de una clase ----------
+  function claseDe(id) { for (var i=0;i<clases.length;i++) if (clases[i].id===id) return clases[i]; return null; }
+
+  async function abrirLista(id) {
+    claseAbierta = id;
+    var c = claseDe(id);
+    $('panel-lista').classList.remove('oculto');
+    $('lista-titulo').textContent = c ? c.titulo : 'Apuntados';
+    $('lista-sub').textContent = c ? (cuando(c.fecha, c.hora_inicio) + ' · ' + nombreMonitor(c) + ' · ' + c.plazas + ' plazas') : '';
+    $('msg-lista').textContent = '';
+    $('lista-cuerpo').innerHTML = '<p class="vacio">Cargando…</p>';
+    $('panel-lista').scrollIntoView({ behavior: 'smooth' });
+    await pintarLista();
+  }
+
+  async function pintarLista() {
+    var r = await sb.from('cubo_reservas').select('id,atleta_id,estado,created_at')
+      .eq('clase_id', claseAbierta).order('created_at');
+    if (r.error) { $('lista-cuerpo').innerHTML = '<p class="vacio">Error: ' + esc(r.error.message) + '</p>'; return; }
+
+    var conPlaza = r.data.filter(function (x) { return ['reservada','asistida','no_asistida'].indexOf(x.estado) >= 0; });
+    var espera   = r.data.filter(function (x) { return x.estado === 'lista_espera'; });
+    var fuera    = r.data.filter(function (x) { return x.estado === 'cancelada'; });
+
+    function fila(x) {
+      var etq = x.estado === 'asistida' ? '<span class="pill-estado pill-si">VINO</span>'
+              : x.estado === 'no_asistida' ? '<span class="pill-estado pill-llena">NO VINO</span>'
+              : x.estado === 'lista_espera' ? '<span class="pill-estado pill-espera">EN ESPERA</span>'
+              : x.estado === 'cancelada' ? '<span class="pill-estado pill-no">SE BORRÓ</span>'
+              : '<span class="pill-estado pill-si">APUNTADO</span>';
+      var acc = '';
+      if (x.estado !== 'cancelada') {
+        if (x.estado !== 'lista_espera') {
+          acc += '<button class="btn btn--primario btn--mini" data-vino="' + x.id + '">Vino</button>' +
+                 '<button class="btn btn--fantasma btn--mini" data-falto="' + x.id + '">No vino</button>';
+        }
+        acc += '<button class="btn btn--peligro" data-quitar="' + x.id + '">Quitar</button>';
+      }
+      return '<div class="apuntado"><div><div class="quien">' + esc(nombreAtleta(x.atleta_id)) + '</div>' +
+             '<div class="sub">' + etq + '</div></div>' +
+             '<div class="acciones-fila">' + acc + '</div></div>';
+    }
+
+    var h = '<h3>Con plaza (' + conPlaza.length + ')</h3>';
+    h += conPlaza.length ? conPlaza.map(fila).join('') : '<p class="vacio">Todavía no se ha apuntado nadie.</p>';
+    h += '<h3>Lista de espera (' + espera.length + ')</h3>';
+    h += espera.length ? espera.map(fila).join('') : '<p class="vacio">Nadie en lista de espera.</p>';
+    if (fuera.length) {
+      h += '<h3>Se borraron (' + fuera.length + ')</h3>' + fuera.map(fila).join('');
+    }
+    $('lista-cuerpo').innerHTML = h;
+  }
+
+  $('lista-cuerpo').addEventListener('click', async function (e) {
+    var vino = e.target.getAttribute('data-vino');
+    var falto = e.target.getAttribute('data-falto');
+    var quitar = e.target.getAttribute('data-quitar');
+    var id = vino || falto || quitar;
+    if (!id) return;
+    var estado = vino ? 'asistida' : (falto ? 'no_asistida' : 'cancelada');
+    if (quitar && !confirm('¿Quitar a esta persona de la clase? Si faltan más de 3 horas se le devuelve el uso.')) return;
+    $('msg-lista').textContent = 'Guardando…'; $('msg-lista').className = 'msg';
+    var r = await sb.from('cubo_reservas').update({ estado: estado }).eq('id', id);
+    if (r.error) { $('msg-lista').textContent = 'Error: ' + r.error.message; $('msg-lista').className = 'msg error'; return; }
+    $('msg-lista').textContent = 'Guardado ✓'; $('msg-lista').className = 'msg ok';
+    await pintarLista(); await cargarClases();
+  });
+
+  $('add-btn').addEventListener('click', async function () {
+    var at = $('add-atleta').value;
+    if (!at || !claseAbierta) { $('msg-lista').textContent = 'Elige antes un atleta.'; $('msg-lista').className = 'msg error'; return; }
+    $('msg-lista').textContent = 'Apuntando…'; $('msg-lista').className = 'msg';
+    var r = await sb.rpc('cubo_apuntarme', { p_clase: claseAbierta, p_atleta: at });
+    if (r.error) { $('msg-lista').textContent = 'No se pudo apuntar: ' + r.error.message; $('msg-lista').className = 'msg error'; return; }
+    $('msg-lista').textContent = (r.data === 'lista_espera') ? 'La clase estaba completa: entra en lista de espera.' : 'Apuntado ✓';
+    $('msg-lista').className = 'msg ok';
+    await pintarLista(); await cargarClases();
+  });
+
+  $('cerrar-lista').addEventListener('click', function () { $('panel-lista').classList.add('oculto'); claseAbierta = null; });
+
+  // ---------- bonos ----------
+  $('b-atleta').addEventListener('change', pintarBono);
+
+  document.querySelectorAll('[data-bono]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var p = b.getAttribute('data-bono').split('|');
+      $('b-usos').value = p[0]; $('b-precio').value = p[1];
+    });
+  });
+
+  async function pintarBono() {
+    var at = $('b-atleta').value;
+    var cuerpo = $('bono-cuerpo');
+    if (!at) { cuerpo.innerHTML = ''; $('bono-venta').classList.add('oculto'); return; }
+    $('bono-venta').classList.remove('oculto');
+    cuerpo.innerHTML = '<p class="vacio">Cargando…</p>';
+
+    var rb = await sb.from('cubo_bono_saldo').select('*').eq('atleta_id', at).order('fecha_compra', { ascending: false });
+    if (rb.error) { cuerpo.innerHTML = '<p class="vacio">Error: ' + esc(rb.error.message) + '</p>'; return; }
+
+    var vivos = rb.data.filter(function (b) { return b.activo && !b.caducado; });
+    var total = vivos.reduce(function (s, b) { return s + (b.usos_disponibles || 0); }, 0);
+
+    var h = '<div class="bono-caja"><span class="cifra">' + total + '</span>' +
+            '<span class="txt">' + (total === 1 ? 'uso disponible' : 'usos disponibles') + '</span></div>';
+
+    if (!rb.data.length) {
+      h += '<p class="vacio" style="margin-top:10px;">Este atleta todavía no tiene ningún bono de El Cubo.</p>';
+    } else {
+      h += '<h3>Bonos</h3><div style="overflow-x:auto;"><table><thead><tr>' +
+           '<th>Comprado</th><th>Bono</th><th>Quedan</th><th>Caduca</th><th>Activo</th><th></th></tr></thead><tbody>' +
+           rb.data.map(function (b) {
+             return '<tr><td class="cuando">' + esc(fechaLarga(b.fecha_compra)) + '</td>' +
+               '<td>' + b.usos_totales + ' usos' + (b.precio != null ? ' · ' + esc(euros(b.precio)) : '') + '</td>' +
+               '<td>' + b.usos_disponibles + '</td>' +
+               '<td>' + (b.caducidad ? esc(fechaLarga(b.caducidad)) : 'sin caducidad') + '</td>' +
+               '<td>' + (b.activo && !b.caducado ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+               '<td class="acciones-fila">' + (b.activo
+                 ? '<button class="btn btn--fantasma btn--mini" data-anular="' + b.bono_id + '">Anular</button>'
+                 : '<button class="btn btn--fantasma btn--mini" data-reactivar="' + b.bono_id + '">Reactivar</button>') + '</td></tr>';
+           }).join('') + '</tbody></table></div>';
+    }
+
+    var rm = await sb.from('cubo_movimientos').select('tipo,usos,concepto,fecha')
+      .eq('atleta_id', at).order('fecha', { ascending: false }).limit(20);
+    if (!rm.error && rm.data.length) {
+      h += '<h3>Últimos movimientos</h3><div style="overflow-x:auto;"><table><thead><tr>' +
+           '<th>Cuándo</th><th>Concepto</th><th>Usos</th></tr></thead><tbody>' +
+           rm.data.map(function (m) {
+             var d = new Date(m.fecha);
+             var signo = m.usos > 0 ? '+' + m.usos : String(m.usos);
+             return '<tr><td class="cuando">' + DIAS[d.getDay()] + ' ' + d.getDate() + ' · ' +
+               ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2) + '</td>' +
+               '<td>' + esc(m.concepto) + '</td>' +
+               '<td style="font-family:var(--fuente-mono); color:' + (m.usos > 0 ? '#4C7A28' : '#A8453F') + '">' + signo + '</td></tr>';
+           }).join('') + '</tbody></table></div>';
+    }
+
+    cuerpo.innerHTML = h;
+  }
+
+  $('bono-cuerpo').addEventListener('click', async function (e) {
+    var an = e.target.getAttribute('data-anular');
+    var re = e.target.getAttribute('data-reactivar');
+    if (!an && !re) return;
+    var r = await sb.from('cubo_bonos').update({ activo: !!re }).eq('id', an || re);
+    if (r.error) { alert('No se pudo cambiar: ' + r.error.message); return; }
+    pintarBono();
+  });
+
+  $('b-guardar').addEventListener('click', async function () {
+    var at = $('b-atleta').value;
+    if (!at) { $('msg-bono').textContent = 'Elige antes un atleta.'; $('msg-bono').className = 'msg error'; return; }
+    var datos = {
+      atleta_id: at,
+      usos_totales: parseInt($('b-usos').value, 10) || 0,
+      precio: $('b-precio').value === '' ? null : Number($('b-precio').value),
+      caducidad: $('b-caducidad').value || null
+    };
+    if (datos.usos_totales < 1) { $('msg-bono').textContent = 'Pon cuántos usos tiene el bono.'; $('msg-bono').className = 'msg error'; return; }
+    $('msg-bono').textContent = 'Guardando…'; $('msg-bono').className = 'msg';
+    var r = await sb.from('cubo_bonos').insert(datos);
+    if (r.error) { $('msg-bono').textContent = 'Error: ' + r.error.message; $('msg-bono').className = 'msg error'; return; }
+    $('msg-bono').textContent = 'Bono asignado ✓'; $('msg-bono').className = 'msg ok';
+    pintarBono();
+  });
+
+  // ---------- arranque ----------
+  (async function () {
+    await cargarCatalogos();
+    await cargarClases();
+  })();
+});
+</script>
+
+</body>
+</html>

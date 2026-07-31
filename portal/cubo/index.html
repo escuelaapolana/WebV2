@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El Cubo · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema); }
+
+  .cubo-wrap { max-width: 480px; margin: 0 auto; padding: 14px 0 40px; }
+
+  /* ---- cabecera ---- */
+  .cab { padding: 10px 20px 12px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .cab .rotulo { font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .16em; color: var(--texto-suave); text-transform: uppercase; }
+  .cab .titulo-cubo { font-family: var(--fuente-titulo); font-weight: 700; font-size: 34px; text-transform: uppercase; color: var(--navy); line-height: 1; }
+  .cab a, .cab button.enlace { font-size: 14px; color: var(--azul-oscuro); font-weight: 600; text-decoration: none;
+                               background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+
+  /* ---- tarjeta azul del bono (pantalla de clases) ---- */
+  .bono-tira { margin: 0 16px; background: var(--azul-oscuro); border-radius: 14px; padding: 14px 16px;
+               display: flex; align-items: center; gap: 14px; }
+  .bono-tira .col { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+  .bono-tira .eti { font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .14em; color: rgba(255,255,255,.75); }
+  .bono-tira .txt { font-size: 14px; color: #fff; }
+  .bono-tira .cifra { font-family: var(--fuente-titulo); font-weight: 700; font-size: 40px; color: #fff; line-height: 1; }
+
+  /* ---- pestañas ---- */
+  .pestanas { padding: 16px 20px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .pestanas button { padding: 7px 13px; border-radius: 999px; background: #fff; border: 1px solid #E4DCCB;
+                     color: var(--texto); font-size: 13px; cursor: pointer; font-family: inherit; }
+  .pestanas button[aria-selected="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+  /* ---- tarjetas de clase ---- */
+  .clases-lista { padding: 6px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .clase-t { background: #fff; border: 1px solid var(--crema-media); border-radius: 14px; padding: 14px 16px;
+             display: flex; flex-direction: column; gap: 8px; }
+  .clase-t.mia { background: #EDF7E4; border-color: #C3E39B; }
+  .clase-t.completa { opacity: .75; }
+  .clase-t .arriba { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .clase-t .hora { font-family: var(--fuente-mono); font-size: 11px; color: var(--azul-oscuro); }
+  .clase-t.mia .hora { color: #4C7A28; }
+  .clase-t.completa .hora { color: var(--texto-suave); }
+  .clase-t .estado { font-family: var(--fuente-mono); font-size: 11px; color: var(--texto-suave); }
+  .clase-t .estado.si { color: #4C7A28; }
+  .clase-t .estado.no { color: #A8453F; }
+  .clase-t .nombre { font-size: 16px; font-weight: 600; color: var(--navy); }
+  .clase-t .quien { font-size: 13px; color: var(--texto); }
+  .clase-t .notas { font-size: 12px; color: var(--texto-suave); }
+
+  .accion { text-align: center; padding: 10px; border-radius: 999px; font-size: 14px; font-weight: 600;
+            border: 1px solid transparent; cursor: pointer; font-family: inherit; width: 100%; }
+  .accion--apuntar { background: var(--azul); color: #fff; }
+  .accion--quitar  { background: transparent; border-color: #A8453F; color: #A8453F; }
+  .accion--espera  { background: transparent; border-color: var(--linea-borde); color: var(--texto); font-weight: 400; }
+  .accion[disabled] { opacity: .6; cursor: default; }
+
+  /* ---- nota de reglas ---- */
+  .reglas { margin: 16px 16px 0; background: var(--crema-banda); border: 1px solid #E4DCCB; border-radius: 12px; padding: 12px 14px; }
+  .reglas span { font-size: 13px; color: #6B6558; line-height: 1.45; }
+
+  /* ---- pantalla del bono ---- */
+  .bono-caja { margin: 0 16px; background: var(--navy); border-radius: 18px; padding: 22px 24px;
+               display: flex; flex-direction: column; gap: 14px; }
+  .bono-caja .eti { font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .16em; color: rgba(255,255,255,.7); }
+  .bono-caja .fila-cifra { display: flex; align-items: baseline; gap: 10px; }
+  .bono-caja .cifra { font-family: var(--fuente-titulo); font-weight: 700; font-size: 66px; color: #fff; line-height: .9; }
+  .bono-caja .cifra-txt { font-size: 16px; color: rgba(255,255,255,.75); }
+  .puntos { display: flex; gap: 3px; }
+  .puntos span { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,.25); }
+  .puntos span.on { background: #7FBF4A; }
+  .bono-caja .pie-bono { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .bono-caja .pie-bono span { font-size: 13px; color: rgba(255,255,255,.7); }
+
+  .cab-sec { padding: 18px 20px 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .cab-sec .eti { font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .14em; color: var(--texto-suave); }
+  .cab-sec button { font-size: 13px; color: var(--azul-oscuro); background: none; border: 0; cursor: pointer; font-family: inherit; }
+
+  .movs { padding: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+  .mov { background: #fff; border: 1px solid var(--crema-media); border-radius: 12px; padding: 13px 15px;
+         display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .mov .con { font-size: 15px; color: var(--navy); }
+  .mov .cuando { font-size: 12px; color: var(--texto-suave); }
+  .mov .n { font-family: var(--fuente-mono); font-size: 13px; color: #A8453F; }
+  .mov .n.mas { color: #4C7A28; }
+
+  .comprar { margin-top: 22px; padding: 16px 20px 0; border-top: 1px solid var(--linea);
+             display: flex; flex-direction: column; gap: 10px; }
+  .comprar .opciones { display: flex; gap: 10px; }
+  .comprar .opciones button { flex: 1; border: 1px solid var(--linea-borde); background: #fff; text-align: center;
+                              padding: 13px; border-radius: 12px; font-size: 14px; color: var(--texto);
+                              cursor: pointer; font-family: inherit; }
+  .comprar .opciones button.destacada { background: var(--azul); color: #fff; border-color: var(--azul); font-weight: 600; }
+  .comprar .nota-pie { font-size: 12px; color: var(--texto-suave); text-align: center; }
+
+  .mensaje { margin: 10px 16px 0; font-size: 13px; }
+  .mensaje.error { color: #b3261e; }
+  .mensaje.ok { color: #1e7a3d; }
+  .vacio { padding: 18px 20px; color: var(--texto-suave); font-size: 14px; }
+  .elegir-atleta { padding: 0 16px 6px; }
+  .elegir-atleta select { width: 100%; padding: 10px 12px; border: 1px solid var(--linea-borde); border-radius: 10px;
+                          font-family: inherit; font-size: 15px; background: #fff; color: var(--navy); }
+  .oculto { display: none !important; }
+  .volver { display: inline-block; margin: 0 20px 6px; color: var(--azul-oscuro); font-weight: 600; text-decoration: none; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="cubo-wrap" id="cubo-wrap"><p class="vacio">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('cubo-wrap');
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  var DIAS_MAY = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+  var DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var MESES_C = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+  function d(f) { var p = String(f).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+  function hhmm(t) { return t ? String(t).slice(0,5) : ''; }
+  function cabFecha(f, h) { var x = d(f); return DIAS_MAY[x.getDay()] + ' ' + x.getDate() + ' · ' + hhmm(h); }
+  function iso(x) { return x.getFullYear() + '-' + ('0'+(x.getMonth()+1)).slice(-2) + '-' + ('0'+x.getDate()).slice(-2); }
+  function lunes(x) { var y = new Date(x); var dw = (y.getDay() + 6) % 7; y.setDate(y.getDate() - dw); y.setHours(0,0,0,0); return y; }
+  function euros(n) { return Number(n).toFixed(2).replace(/[.,]00$/,'').replace('.', ',') + ' €'; }
+
+  // ---- estado de la pantalla ----
+  var atletas = [], atletaId = null, clases = [], reservas = {}, bonos = [], movs = [];
+  var pestana = 'semana', vista = 'clases', verTodos = false, aviso = '';
+
+  // ---------- datos ----------
+  async function cargarTodo() {
+    var hoy = iso(new Date());
+
+    var rc = await sb.from('cubo_clases_ocupacion').select('*')
+      .eq('activa', true).gte('fecha', hoy).order('fecha').order('hora_inicio');
+    clases = rc.error ? [] : rc.data;
+
+    reservas = {};
+    var rr = await sb.from('cubo_reservas').select('id,clase_id,estado').eq('atleta_id', atletaId);
+    if (!rr.error) rr.data.forEach(function (x) { reservas[x.clase_id] = x.estado; });
+
+    var rb = await sb.from('cubo_bono_saldo').select('*').eq('atleta_id', atletaId)
+      .order('caducidad', { ascending: true, nullsFirst: false });
+    bonos = rb.error ? [] : rb.data;
+
+    var rm = await sb.from('cubo_movimientos').select('tipo,usos,concepto,fecha')
+      .eq('atleta_id', atletaId).neq('tipo', 'alta').order('fecha', { ascending: false }).limit(40);
+    movs = rm.error ? [] : rm.data;
+  }
+
+  function bonoVigente() {
+    for (var i = 0; i < bonos.length; i++) {
+      if (bonos[i].activo && !bonos[i].caducado && bonos[i].usos_disponibles > 0) return bonos[i];
+    }
+    for (var j = 0; j < bonos.length; j++) if (bonos[j].activo && !bonos[j].caducado) return bonos[j];
+    return bonos.length ? bonos[0] : null;
+  }
+  function usosTotalesDisponibles() {
+    return bonos.reduce(function (s, b) { return s + ((b.activo && !b.caducado) ? b.usos_disponibles : 0); }, 0);
+  }
+
+  // ---------- pantalla de clases ----------
+  function clasesDePestana() {
+    var hoy = new Date(); hoy.setHours(0,0,0,0);
+    var l0 = lunes(hoy), l1 = new Date(l0); l1.setDate(l0.getDate() + 7);
+    var l2 = new Date(l0); l2.setDate(l0.getDate() + 14);
+
+    return clases.filter(function (c) {
+      var f = d(c.fecha);
+      if (pestana === 'semana') return f >= hoy && f < l1;
+      if (pestana === 'siguiente') return f >= l1 && f < l2;
+      return ['reservada','lista_espera','asistida'].indexOf(reservas[c.clase_id]) >= 0;
+    });
+  }
+
+  function tarjetaClase(c) {
+    var mio = reservas[c.clase_id];
+    var apuntado = (mio === 'reservada' || mio === 'asistida');
+    var enEspera = (mio === 'lista_espera');
+    var completa = c.libres <= 0;
+
+    var estado, clsEstado;
+    if (apuntado)      { estado = 'APUNTADO';  clsEstado = 'si'; }
+    else if (enEspera) { estado = 'EN ESPERA'; clsEstado = ''; }
+    else if (completa) { estado = 'COMPLETA';  clsEstado = 'no'; }
+    else               { estado = c.libres + (c.libres === 1 ? ' PLAZA' : ' PLAZAS'); clsEstado = ''; }
+
+    var boton;
+    if (apuntado)      boton = '<button class="accion accion--quitar" data-quitar="' + c.clase_id + '">Desapuntarme</button>';
+    else if (enEspera) boton = '<button class="accion accion--quitar" data-quitar="' + c.clase_id + '">Salir de la lista de espera</button>';
+    else if (completa) boton = '<button class="accion accion--espera" data-apuntar="' + c.clase_id + '">Entrar en lista de espera</button>';
+    else               boton = '<button class="accion accion--apuntar" data-apuntar="' + c.clase_id + '">Apuntarme · 1 uso</button>';
+
+    return '<div class="clase-t' + (apuntado || enEspera ? ' mia' : '') + (completa && !apuntado && !enEspera ? ' completa' : '') + '">' +
+      '<div class="arriba"><span class="hora">' + esc(cabFecha(c.fecha, c.hora_inicio)) + '</span>' +
+      '<span class="estado ' + clsEstado + '">' + esc(estado) + '</span></div>' +
+      '<span class="nombre">' + esc(c.titulo) + '</span>' +
+      '<span class="quien">' + esc((c.monitor ? c.monitor + ' · ' : '') + c.ocupadas + ' de ' + c.plazas + ' plazas') + '</span>' +
+      (c.notas ? '<span class="notas">' + esc(c.notas) + '</span>' : '') +
+      boton +
+    '</div>';
+  }
+
+  function pintarClases() {
+    var b = bonoVigente();
+    var quedan = usosTotalesDisponibles();
+
+    var h = '<a class="volver" href="../">← Volver al portal</a>';
+
+    h += '<div class="cab"><div><span class="rotulo">Abierto a socios</span>' +
+         '<div class="titulo-cubo">El Cubo</div></div>' +
+         '<button class="enlace" id="ir-bono">Mi bono</button></div>';
+
+    if (atletas.length > 1) {
+      h += '<div class="elegir-atleta"><select id="sel-atleta">' + atletas.map(function (a) {
+        return '<option value="' + a.id + '"' + (a.id === atletaId ? ' selected' : '') + '>' +
+               esc(a.nombre + ' ' + (a.apellidos || '')) + '</option>';
+      }).join('') + '</select></div>';
+    }
+
+    if (b) {
+      var cad = b.caducidad ? ' · caduca en ' + MESES[d(b.caducidad).getMonth()] : '';
+      h += '<div class="bono-tira"><div class="col">' +
+           '<span class="eti">BONO DE ' + b.usos_totales + ' USOS</span>' +
+           '<span class="txt">Te quedan ' + quedan + esc(cad) + '</span></div>' +
+           '<span class="cifra">' + quedan + '</span></div>';
+    } else {
+      h += '<div class="bono-tira"><div class="col">' +
+           '<span class="eti">BONO DE EL CUBO</span>' +
+           '<span class="txt">Todavía no tienes bono. Pídelo en El Cubo.</span></div>' +
+           '<span class="cifra">0</span></div>';
+    }
+
+    h += '<div class="pestanas">' +
+         '<button data-pestana="semana" aria-selected="' + (pestana === 'semana') + '">Esta semana</button>' +
+         '<button data-pestana="siguiente" aria-selected="' + (pestana === 'siguiente') + '">Siguiente</button>' +
+         '<button data-pestana="mias" aria-selected="' + (pestana === 'mias') + '">Mis clases</button>' +
+         '</div>';
+
+    if (aviso) h += '<p class="mensaje ' + (aviso.charAt(0) === '!' ? 'error' : 'ok') + '">' + esc(aviso.replace(/^!/, '')) + '</p>';
+
+    var lista = clasesDePestana();
+    if (!lista.length) {
+      h += '<p class="vacio">' + (pestana === 'mias'
+        ? 'Todavía no estás apuntado a ninguna clase.'
+        : 'No hay clases abiertas en estos días.') + '</p>';
+    } else {
+      h += '<div class="clases-lista">' + lista.map(tarjetaClase).join('') + '</div>';
+    }
+
+    h += '<div class="reglas"><span>El uso se descuenta al empezar la clase. ' +
+         'Si cancelas con más de 3 horas, se te devuelve.</span></div>';
+
+    wrap.innerHTML = h;
+    conectarClases();
+  }
+
+  function conectarClases() {
+    var sel = document.getElementById('sel-atleta');
+    if (sel) sel.addEventListener('change', async function () {
+      atletaId = sel.value; aviso = ''; await cargarTodo(); pintar();
+    });
+    document.getElementById('ir-bono').addEventListener('click', function () { vista = 'bono'; aviso = ''; pintar(); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-pestana]'), function (b) {
+      b.addEventListener('click', function () { pestana = b.getAttribute('data-pestana'); aviso = ''; pintar(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-apuntar],[data-quitar]'), function (b) {
+      b.addEventListener('click', function () {
+        var ap = b.getAttribute('data-apuntar'), qu = b.getAttribute('data-quitar');
+        b.disabled = true; b.textContent = 'Un momento…';
+        accion(ap ? 'cubo_apuntarme' : 'cubo_desapuntarme', ap || qu);
+      });
+    });
+  }
+
+  async function accion(fn, claseId) {
+    var r = await sb.rpc(fn, { p_clase: claseId, p_atleta: atletaId });
+    if (r.error) {
+      aviso = '!' + (r.error.message || 'No se ha podido guardar.');
+    } else if (fn === 'cubo_apuntarme') {
+      aviso = (r.data === 'lista_espera')
+        ? 'La clase está completa: estás en la lista de espera. Te avisamos si queda una plaza libre.'
+        : 'Apuntado ✓';
+    } else {
+      aviso = 'Te has desapuntado.';
+    }
+    await cargarTodo();
+    pintar();
+  }
+
+  // ---------- pantalla del bono ----------
+  function pintarBono() {
+    var b = bonoVigente();
+    var quedan = usosTotalesDisponibles();
+
+    var h = '<div class="cab" style="align-items:center;">' +
+            '<button class="enlace" id="volver-clases">‹ Clases</button>' +
+            '<button class="enlace" id="ayuda">Ayuda</button></div>';
+
+    if (!b) {
+      h += '<p class="vacio">Todavía no tienes ningún bono de El Cubo.</p>';
+    } else {
+      var puntos = '';
+      for (var i = 0; i < b.usos_totales; i++) puntos += '<span' + (i < b.usos_disponibles ? ' class="on"' : '') + '></span>';
+      var comp = 'Comprado el ' + d(b.fecha_compra).getDate() + ' de ' + MESES[d(b.fecha_compra).getMonth()] +
+                 (b.precio != null ? ' · ' + euros(b.precio) : '');
+      var cad = b.caducidad ? 'Caduca ' + d(b.caducidad).getDate() + ' ' + MESES_C[d(b.caducidad).getMonth()] : 'Sin caducidad';
+
+      h += '<div class="bono-caja">' +
+           '<span class="eti">BONO EL CUBO · ' + b.usos_totales + ' USOS</span>' +
+           '<div class="fila-cifra"><span class="cifra">' + quedan + '</span>' +
+           '<span class="cifra-txt">' + (quedan === 1 ? 'uso disponible' : 'usos disponibles') + '</span></div>' +
+           '<div class="puntos">' + puntos + '</div>' +
+           '<div class="pie-bono"><span>' + esc(comp) + '</span><span>' + esc(cad) + '</span></div>' +
+           '</div>';
+    }
+
+    h += '<div class="cab-sec"><span class="eti">ÚLTIMOS USOS</span>' +
+         (movs.length > 4 ? '<button id="ver-todos">' + (verTodos ? 'Ver menos' : 'Ver todos') + '</button>' : '') +
+         '</div>';
+
+    if (!movs.length) {
+      h += '<p class="vacio">Todavía no has gastado ningún uso.</p>';
+    } else {
+      var lista = verTodos ? movs : movs.slice(0, 4);
+      h += '<div class="movs">' + lista.map(function (m) {
+        var f = new Date(m.fecha);
+        var cuando = DIAS[f.getDay()] + ' ' + f.getDate() + ' · ' +
+                     ('0'+f.getHours()).slice(-2) + ':' + ('0'+f.getMinutes()).slice(-2);
+        return '<div class="mov"><div><div class="con">' + esc(m.concepto) + '</div>' +
+               '<div class="cuando">' + esc(cuando) + '</div></div>' +
+               '<span class="n' + (m.usos > 0 ? ' mas' : '') + '">' + (m.usos > 0 ? '+' + m.usos : '−' + Math.abs(m.usos)) + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    if (aviso) h += '<p class="mensaje ' + (aviso.charAt(0) === '!' ? 'error' : 'ok') + '">' + esc(aviso.replace(/^!/, '')) + '</p>';
+
+    h += '<div class="comprar"><div class="opciones">' +
+         '<button data-comprar="10 usos · 50 €">10 usos · 50 €</button>' +
+         '<button class="destacada" data-comprar="20 usos · 90 €">20 usos · 90 €</button>' +
+         '</div><span class="nota-pie">Se cobra con la cuota del mes siguiente.</span></div>';
+
+    wrap.innerHTML = h;
+
+    document.getElementById('volver-clases').addEventListener('click', function () { vista = 'clases'; aviso = ''; pintar(); });
+    document.getElementById('ayuda').addEventListener('click', function () {
+      aviso = 'Cada clase gasta un uso del bono. Si te desapuntas con más de 3 horas, se te devuelve. Si la clase está completa entras en lista de espera y no gastas nada hasta que te den la plaza.';
+      pintar();
+    });
+    var vt = document.getElementById('ver-todos');
+    if (vt) vt.addEventListener('click', function () { verTodos = !verTodos; pintar(); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-comprar]'), function (b) {
+      b.addEventListener('click', function () {
+        aviso = 'Apunta el bono de ' + b.getAttribute('data-comprar') + ' con el club o en El Cubo: te lo activan ellos y se cobra con la cuota del mes siguiente.';
+        pintar();
+      });
+    });
+  }
+
+  function pintar() { if (vista === 'bono') pintarBono(); else pintarClases(); }
+
+  // ---------- arranque ----------
+  var ra = await sb.from('atletas').select('id,nombre,apellidos').order('nombre');
+  atletas = ra.error ? [] : ra.data;
+
+  if (!atletas.length) {
+    wrap.innerHTML = '<a class="volver" href="../">← Volver al portal</a>' +
+      '<div class="cab"><div><span class="rotulo">Abierto a socios</span>' +
+      '<div class="titulo-cubo">El Cubo</div></div></div>' +
+      '<p class="vacio">Tu cuenta todavía no está asociada a ninguna ficha de atleta. Habla con el club para que te la vinculen.</p>';
+    return;
+  }
+
+  atletaId = atletas[0].id;
+  await cargarTodo();
+  pintar();
+});
+</script>
+
+</body>
+</html>
