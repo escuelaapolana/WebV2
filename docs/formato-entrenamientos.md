@@ -96,3 +96,20 @@ Se tratará como otra columna del mismo tipo, con sus valores propios.
 | Objetivo de la semana | semana | falta |
 | Competición de referencia + horarios | semana | falta |
 | Material de natación | fila | falta |
+
+## Natación por calles (pendiente de concretar con el club)
+
+El entrenador de natación reparte a su gente en las **calles** de la piscina (p. ej. 4 calles)
+y cada calle puede hacer un trabajo distinto dentro de la misma sesión.
+
+Encaja con el modelo de **subgrupos por bloque** que ya usan las planificaciones de pista
+(*"VALLISTAS — Rafa y Adri"* / *"LISOS — Rubén y Dante"*): una calle = un bloque dirigido
+a unos atletas concretos. Falta decidir la interfaz:
+
+- Vista de la sesión como **calles** (Calle 1…4) en vez de bloques, con los atletas dentro.
+- Poder **mover a alguien de calle** de forma rápida (arrastrar o desplegable).
+- Que cada calle tenga su propio trabajo (series, material, observaciones).
+- Que el nadador vea **su calle** y solo lo suyo.
+
+**Pendiente**: Andrés lo hablará con otro responsable del club para concretar qué necesitan
+de verdad. No construir hasta entonces.
