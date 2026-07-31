@@ -53,6 +53,28 @@
   }
   .doc .btn-descargar:hover { background: var(--azul-suave); color: var(--azul-oscuro); }
 
+  /* Documentos reales del club, agrupados por categoría */
+  .docs-club { margin-top: clamp(28px, 5vw, 40px); }
+  .docs-club h2 {
+    font-family: var(--fuente-titulo); font-weight: 700; font-size: 32px;
+    text-transform: uppercase; color: var(--navy); line-height: 1; margin: 0 0 6px;
+  }
+  .docs-club .docs-club-intro { margin: 0; font-size: 16px; color: var(--texto-suave); }
+  .docs-grupo { margin-top: clamp(20px, 3vw, 26px); }
+  .docs-grupo h3 {
+    font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--texto-tenue); margin: 0 0 10px; font-weight: 600;
+  }
+  .docs-grupo .docs { margin-top: 0; }
+  .doc-etiqueta {
+    display: inline-block; margin-top: 4px; align-self: flex-start;
+    font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .06em;
+    text-transform: uppercase; background: var(--crema-banda); color: #8a5a10;
+    border-radius: var(--radio-pastilla); padding: 2px 9px;
+  }
+  .docs-aviso-socios { margin-top: 18px; font-size: 14px; color: var(--texto-suave); }
+  .docs-aviso-socios a { color: var(--azul-oscuro); font-weight: 600; }
+
   /* Banda de normas (cuotas / entrenamientos) */
   .normas {
     background: var(--crema-banda); border-block: 1px solid #E4DCCB;
@@ -122,7 +144,8 @@
       </div>
 
       <!-- ================= DOCUMENTOS DESCARGABLES ================= -->
-      <div class="docs">
+      <!-- Ejemplos de muestra: desaparecen en cuanto hay documentos subidos desde el panel -->
+      <div class="docs" id="docs-ejemplo">
         <!-- documento pendiente de subir -->
         <div class="doc">
           <div class="doc-info">
@@ -155,6 +178,14 @@
           </div>
           <a class="btn-descargar" href="#">Descargar</a>
         </div>
+      </div>
+
+      <!-- ================= DOCUMENTOS DEL CLUB (desde el panel) ================= -->
+      <div class="docs-club" id="docs-club" hidden>
+        <h2>Documentos del club</h2>
+        <p class="docs-club-intro">Descárgalos cuando los necesites. Si echas en falta alguno, dínoslo y lo subimos.</p>
+        <div id="docs-club-lista"></div>
+        <p class="docs-aviso-socios" id="docs-aviso-socios" hidden>Hay documentos disponibles solo para socios. <a href="../../acceso/">Entra en tu zona</a> para verlos.</p>
       </div>
     </div>
   </section>
@@ -194,6 +225,95 @@
 </main>
 
 <apolana-pie></apolana-pie>
+
+<!-- Documentos del club en directo desde Supabase (si no hay ninguno, la sección ni se enseña) -->
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  var caja = document.getElementById('docs-club');
+  var lista = document.getElementById('docs-club-lista');
+  if (!caja || !lista || !window.APOLANA_DB) return;
+
+  var r = await window.APOLANA_DB.from('documentos')
+    .select('titulo,descripcion,categoria,archivo_url,nombre_archivo,tipo_mime,tamano_bytes,visibilidad,orden')
+    .eq('activo', true)
+    .order('orden', { ascending: true })
+    .order('titulo', { ascending: true });
+
+  // Sin datos o con error: se queda la página tal cual, sin sección vacía.
+  if (r.error || !r.data || !r.data.length) return;
+
+  function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  function tam(bytes) {
+    if (bytes == null || isNaN(bytes)) return '';
+    bytes = Number(bytes);
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+    return (Math.round(bytes / (1024 * 1024) * 10) / 10).toString().replace('.', ',') + ' MB';
+  }
+
+  // "PDF", "Word", "Excel"… a partir del nombre del archivo o del tipo.
+  function formato(d) {
+    var n = (d.nombre_archivo || d.archivo_url || '').toLowerCase();
+    var ext = (n.split('?')[0].split('.').pop() || '').trim();
+    var mapa = {
+      pdf: 'PDF', doc: 'Word', docx: 'Word', odt: 'Texto', txt: 'Texto',
+      xls: 'Excel', xlsx: 'Excel', ods: 'Hoja de cálculo',
+      ppt: 'Presentación', pptx: 'Presentación',
+      jpg: 'Imagen', jpeg: 'Imagen', png: 'Imagen', webp: 'Imagen'
+    };
+    if (mapa[ext]) return mapa[ext];
+    if (ext && ext.length <= 5 && /^[a-z0-9]+$/.test(ext)) return ext.toUpperCase();
+    return '';
+  }
+
+  var ORDEN_CAT = ['Estatutos', 'Normativa interna', 'Reglamento', 'Protocolos', 'Autorizaciones', 'Circulares', 'Otros'];
+
+  // Agrupar por categoría
+  var grupos = [], indice = {};
+  r.data.forEach(function (d) {
+    var c = (d.categoria || 'Otros');
+    if (!(c in indice)) { indice[c] = grupos.length; grupos.push({ categoria: c, docs: [] }); }
+    grupos[indice[c]].docs.push(d);
+  });
+  grupos.sort(function (a, b) {
+    var ia = ORDEN_CAT.indexOf(a.categoria), ib = ORDEN_CAT.indexOf(b.categoria);
+    if (ia === -1) ia = ORDEN_CAT.length;
+    if (ib === -1) ib = ORDEN_CAT.length;
+    if (ia !== ib) return ia - ib;
+    return a.categoria.localeCompare(b.categoria, 'es');
+  });
+
+  lista.innerHTML = grupos.map(function (g) {
+    var tarjetas = g.docs.map(function (d) {
+      var meta = [];
+      var f = formato(d); if (f) meta.push(f);
+      var t = tam(d.tamano_bytes); if (t) meta.push(t);
+      if (d.descripcion) meta.push(d.descripcion);
+      var nombre = (d.nombre_archivo || d.titulo || 'documento').replace(/"/g, '');
+      return '<div class="doc">' +
+        '<div class="doc-info">' +
+          '<span class="doc-nombre">' + esc(d.titulo) + '</span>' +
+          (meta.length ? '<span class="doc-meta">' + esc(meta.join(' · ')) + '</span>' : '') +
+          (d.visibilidad === 'socios' ? '<span class="doc-etiqueta">Solo socios</span>' : '') +
+        '</div>' +
+        '<a class="btn-descargar" href="' + esc(d.archivo_url) + '" download="' + esc(nombre) + '" target="_blank" rel="noopener">Descargar</a>' +
+      '</div>';
+    }).join('');
+    return '<div class="docs-grupo"><h3>' + esc(g.categoria) + '</h3><div class="docs">' + tarjetas + '</div></div>';
+  }).join('');
+
+  // Ya hay documentos de verdad: fuera los ejemplos de muestra.
+  var ejemplo = document.getElementById('docs-ejemplo');
+  if (ejemplo) ejemplo.remove();
+  caja.hidden = false;
+
+  // Si no ha llegado ninguno de socios, es que se está viendo sin sesión: lo avisamos con discreción.
+  var haySocios = r.data.some(function (d) { return d.visibilidad === 'socios'; });
+  var aviso = document.getElementById('docs-aviso-socios');
+  if (aviso && !haySocios) aviso.hidden = false;
+});
+</script>
 
 </body>
 </html>

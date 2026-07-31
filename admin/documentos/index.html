@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentos del club · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1040px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  textarea { min-height: 90px; resize: vertical; }
+  input[type=file] { padding: 9px; font-size: 14px; }
+  .fila-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .fila-check input { width: auto; }
+  .fila-check label { margin: 0; }
+  .pista { font-size: 13px; color: var(--texto-suave); margin-top: 5px; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  .acciones-fila { display: flex; gap: 8px; flex-wrap: wrap; }
+  .titulo-doc { font-weight: 600; color: var(--navy); }
+  .desc-doc { font-size: 13px; color: var(--texto-suave); line-height: 1.4; margin-top: 2px; }
+  .archivo-doc { font-size: 12px; color: var(--texto-tenue); font-family: var(--fuente-mono); word-break: break-all; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  .btn { cursor: pointer; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .oculto { display: none !important; }
+
+  .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill-si { background: #e6f4ea; color: #1e7a3d; }
+  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+  .pill-socios { background: #fdf1dc; color: #8a5a10; }
+  .pill-publico { background: #e7eef6; color: #2E4256; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <!-- ===== LISTA DE DOCUMENTOS ===== -->
+    <div class="panel">
+      <h2>Documentos del club</h2>
+      <p class="intro" style="margin-bottom:10px;">Sube aquí los estatutos, la normativa, los protocolos, las autorizaciones y las circulares. Los marcados como <strong>Público</strong> se pueden descargar desde la página de Normativa; los de <strong>Solo socios</strong> solo los ven quienes han entrado con su cuenta.</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo-doc">+ Nuevo documento</button></div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-docs">
+          <thead><tr><th>Documento</th><th>Categoría</th><th>Quién lo ve</th><th>Tamaño</th><th>Orden</th><th>Activo</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== FORMULARIO (oculto hasta crear/editar) ===== -->
+    <div class="panel oculto" id="panel-form">
+      <h2 id="form-titulo">Nuevo documento</h2>
+      <form id="form-doc">
+        <input type="hidden" id="d-id">
+
+        <label for="d-titulo">Título</label>
+        <input type="text" id="d-titulo" required placeholder="Estatutos del club">
+
+        <label for="d-descripcion">Descripción (opcional)</label>
+        <textarea id="d-descripcion" placeholder="Una línea explicando qué es o desde cuándo está en vigor."></textarea>
+
+        <div class="grid3">
+          <div>
+            <label for="d-categoria">Categoría</label>
+            <select id="d-categoria">
+              <option value="Estatutos">Estatutos</option>
+              <option value="Normativa interna">Normativa interna</option>
+              <option value="Reglamento">Reglamento</option>
+              <option value="Protocolos">Protocolos</option>
+              <option value="Autorizaciones">Autorizaciones</option>
+              <option value="Circulares">Circulares</option>
+              <option value="Otros" selected>Otros</option>
+            </select>
+          </div>
+          <div>
+            <label for="d-visibilidad">Quién lo puede ver</label>
+            <select id="d-visibilidad">
+              <option value="publico" selected>Público (cualquiera)</option>
+              <option value="socios">Solo socios (con cuenta)</option>
+            </select>
+          </div>
+          <div>
+            <label for="d-orden">Orden</label>
+            <input type="number" id="d-orden" value="0" step="1">
+            <div class="pista">Los números más bajos salen antes.</div>
+          </div>
+        </div>
+
+        <label for="d-archivo">Archivo</label>
+        <input type="file" id="d-archivo" accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.ppt,.pptx,.txt,image/*">
+        <div class="pista">Vale PDF, Word, Excel, PowerPoint, texto o imagen. Lo recomendable es no pasar de 20 MB.</div>
+        <div class="pista" id="archivo-actual"></div>
+
+        <div class="fila-check">
+          <input type="checkbox" id="d-activo" checked>
+          <label for="d-activo">Activo (se ve en la web)</label>
+        </div>
+
+        <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn--primario btn--mini" type="submit" id="btn-guardar">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg-form" style="margin-top:0;"></span>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var BUCKET = 'imagenes';
+  var CARPETA = 'documentos';
+  var LIMITE_AVISO = 20 * 1024 * 1024; // 20 MB
+  var miPerfilId = null;
+
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  // Tamaño legible: 812 KB, 3,4 MB…
+  function tam(bytes) {
+    if (bytes == null || isNaN(bytes)) return '—';
+    bytes = Number(bytes);
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+    return (Math.round(bytes / (1024 * 1024) * 10) / 10).toString().replace('.', ',') + ' MB';
+  }
+
+  // De la URL pública sacamos la ruta dentro del bucket, para poder borrar el archivo.
+  function rutaDesdeUrl(url) {
+    if (!url) return null;
+    var marca = '/' + BUCKET + '/';
+    var i = url.indexOf(marca);
+    if (i === -1) return null;
+    var ruta = url.slice(i + marca.length).split('?')[0];
+    try { ruta = decodeURIComponent(ruta); } catch (e) {}
+    return ruta || null;
+  }
+
+  // --- Listar ---
+  async function cargarDocs() {
+    var tb = $('tabla-docs').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="7">Cargando…</td></tr>';
+    var r = await sb.from('documentos')
+      .select('id,titulo,descripcion,categoria,archivo_url,nombre_archivo,tamano_bytes,visibilidad,orden,activo')
+      .order('categoria', { ascending: true })
+      .order('orden', { ascending: true })
+      .order('titulo', { ascending: true });
+    if (r.error) { tb.innerHTML = '<tr><td colspan="7">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="7">Todavía no hay documentos. Sube el primero con “+ Nuevo documento”.</td></tr>'; return; }
+    tb.innerHTML = r.data.map(function (d) {
+      var vis = d.visibilidad === 'socios'
+        ? '<span class="pill-estado pill-socios">Solo socios</span>'
+        : '<span class="pill-estado pill-publico">Público</span>';
+      return '<tr>' +
+        '<td><div class="titulo-doc">' + esc(d.titulo) + '</div>' +
+          (d.descripcion ? '<div class="desc-doc">' + esc(d.descripcion) + '</div>' : '') +
+          (d.nombre_archivo ? '<div class="archivo-doc">' + esc(d.nombre_archivo) + '</div>' : '') +
+        '</td>' +
+        '<td>' + esc(d.categoria || '—') + '</td>' +
+        '<td>' + vis + '</td>' +
+        '<td>' + esc(tam(d.tamano_bytes)) + '</td>' +
+        '<td>' + esc(d.orden == null ? 0 : d.orden) + '</td>' +
+        '<td>' + (d.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
+        '<td><div class="acciones-fila">' +
+          '<a class="btn btn--fantasma btn--mini" href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">Ver</a>' +
+          '<button class="btn btn--fantasma btn--mini" data-editar="' + d.id + '">Editar</button>' +
+          '<button class="btn btn--fantasma btn--mini" data-activo="' + d.id + '" data-valor="' + (d.activo ? '0' : '1') + '">' + (d.activo ? 'Desactivar' : 'Activar') + '</button>' +
+          '<button class="btn btn--peligro" data-borrar="' + d.id + '" data-nom="' + esc(d.titulo) + '">Borrar</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // --- Abrir formulario ---
+  function abrirForm(d) {
+    d = d || {};
+    $('form-titulo').textContent = d.id ? 'Editar documento' : 'Nuevo documento';
+    $('d-id').value = d.id || '';
+    $('d-titulo').value = d.titulo || '';
+    $('d-descripcion').value = d.descripcion || '';
+    $('d-categoria').value = d.categoria || 'Otros';
+    if (!$('d-categoria').value) $('d-categoria').value = 'Otros';
+    $('d-visibilidad').value = d.visibilidad || 'publico';
+    $('d-orden').value = (d.orden == null ? 0 : d.orden);
+    $('d-activo').checked = d.id ? !!d.activo : true;
+    $('d-archivo').value = '';
+    $('archivo-actual').innerHTML = d.archivo_url
+      ? 'Archivo actual: <a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">' + esc(d.nombre_archivo || 'ver archivo') + '</a> (' + esc(tam(d.tamano_bytes)) + '). Si no eliges otro, se queda el mismo.'
+      : '';
+    $('msg-form').textContent = ''; $('msg-form').className = 'msg';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  $('nuevo-doc').addEventListener('click', function () { abrirForm(); });
+  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+
+  // --- Acciones de la tabla ---
+  $('tabla-docs').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-editar');
+    var bo = e.target.getAttribute('data-borrar');
+    var ac = e.target.getAttribute('data-activo');
+
+    if (ed) {
+      var r = await sb.from('documentos').select('*').eq('id', ed).single();
+      if (r.error) { alert('No se pudo abrir: ' + r.error.message); return; }
+      abrirForm(r.data);
+    }
+
+    if (ac) {
+      var valor = e.target.getAttribute('data-valor') === '1';
+      var u = await sb.from('documentos').update({ activo: valor }).eq('id', ac);
+      if (u.error) { alert('No se pudo cambiar: ' + u.error.message); return; }
+      cargarDocs();
+    }
+
+    if (bo) {
+      if (!confirm('¿Borrar el documento "' + e.target.getAttribute('data-nom') + '"? Se borra también el archivo. No se puede deshacer.')) return;
+      var f = await sb.from('documentos').select('archivo_url').eq('id', bo).single();
+      var ruta = (f.data && f.data.archivo_url) ? rutaDesdeUrl(f.data.archivo_url) : null;
+      var d = await sb.from('documentos').delete().eq('id', bo);
+      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      if (ruta) {
+        var rm = await sb.storage.from(BUCKET).remove([ruta]);
+        if (rm.error) console.warn('[Apolana] no se pudo borrar el archivo:', rm.error.message);
+      }
+      cargarDocs();
+    }
+  });
+
+  // --- Guardar (con subida de archivo si hace falta) ---
+  $('form-doc').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var id = $('d-id').value;
+    var file = $('d-archivo').files[0] || null;
+
+    if (!id && !file) {
+      $('msg-form').textContent = 'Elige un archivo para subir.'; $('msg-form').className = 'msg error'; return;
+    }
+    if (file && file.size > LIMITE_AVISO) {
+      if (!confirm('El archivo pesa ' + tam(file.size) + ', más de 20 MB. Tardará en descargarse. ¿Lo subimos igualmente?')) return;
+    }
+
+    $('btn-guardar').disabled = true;
+    $('msg-form').textContent = file ? 'Subiendo archivo…' : 'Guardando…';
+    $('msg-form').className = 'msg';
+
+    var datos = {
+      titulo: $('d-titulo').value.trim(),
+      descripcion: $('d-descripcion').value.trim() || null,
+      categoria: $('d-categoria').value || null,
+      visibilidad: $('d-visibilidad').value,
+      orden: parseInt($('d-orden').value, 10) || 0,
+      activo: $('d-activo').checked
+    };
+
+    var rutaVieja = null;
+
+    if (file) {
+      // Si estamos sustituyendo el archivo de un documento existente, guardamos la ruta vieja para limpiarla después.
+      if (id) {
+        var ant = await sb.from('documentos').select('archivo_url').eq('id', id).single();
+        if (ant.data && ant.data.archivo_url) rutaVieja = rutaDesdeUrl(ant.data.archivo_url);
+      }
+      var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+      var ruta = CARPETA + '/' + Date.now() + '-' + limpio;
+      var up = await sb.storage.from(BUCKET).upload(ruta, file, { cacheControl: '3600', upsert: false });
+      if (up.error) {
+        $('msg-form').textContent = 'No se pudo subir el archivo: ' + up.error.message;
+        $('msg-form').className = 'msg error'; $('btn-guardar').disabled = false; return;
+      }
+      datos.archivo_url = sb.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl;
+      datos.nombre_archivo = file.name;
+      datos.tipo_mime = file.type || null;
+      datos.tamano_bytes = file.size;
+    }
+
+    var r;
+    if (id) r = await sb.from('documentos').update(datos).eq('id', id);
+    else {
+      if (miPerfilId) datos.creado_por = miPerfilId;
+      r = await sb.from('documentos').insert(datos);
+    }
+
+    $('btn-guardar').disabled = false;
+    if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
+
+    // Archivo antiguo sustituido: lo quitamos del almacén para no acumular basura.
+    if (rutaVieja) {
+      var rm2 = await sb.storage.from(BUCKET).remove([rutaVieja]);
+      if (rm2.error) console.warn('[Apolana] no se pudo borrar el archivo anterior:', rm2.error.message);
+    }
+
+    $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
+    $('panel-form').classList.add('oculto');
+    cargarDocs();
+  });
+
+  // Perfil del admin (para dejar constancia de quién sube cada documento)
+  sb.rpc('mi_perfil_id').then(function (p) { if (p && !p.error) miPerfilId = p.data || null; });
+
+  cargarDocs();
+});
+</script>
+
+</body>
+</html>
