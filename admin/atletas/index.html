@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atletas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+  a.volver { display:inline-block; margin-bottom:14px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; }
+  table { width:100%; border-collapse: collapse; margin-top: 8px; }
+  th,td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:12px 0 5px; }
+  input, select { width:100%; box-sizing:border-box; padding:11px 13px; border:1px solid var(--linea-borde); border-radius:10px; font-size:15px; font-family: var(--fuente-texto); background:#fff; color: var(--navy); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:620px){ .grid2{ grid-template-columns:1fr; } }
+  .btn { cursor:pointer; }
+  .btn--peligro { background:transparent; border:1px solid #e0b4b0; color:#b3261e; padding:8px 14px; border-radius:999px; font-size:14px; }
+  .btn--mini { padding:8px 14px; font-size:14px; }
+  .acciones-fila { display:flex; gap:8px; }
+  .msg { font-size:14px; margin-left:8px; }
+  .msg.error { color:#b3261e; } .msg.ok { color:#1e7a3d; }
+  .oculto { display:none !important; }
+  .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+    <a class="volver" href="../">← Volver al panel</a>
+
+    <div class="panel">
+      <h2>Atletas</h2>
+      <p class="intro" style="margin-bottom:10px;">Fichas de los atletas del club. El acceso al portal (usuario/contraseña) se crea aparte en Supabase con el mismo correo.</p>
+      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo">+ Nuevo atleta</button></div>
+      <div style="overflow-x:auto;">
+        <table id="tabla"><thead><tr><th>Nombre</th><th>Categoría</th><th>Estado</th><th>Correo (cuenta)</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="panel oculto" id="panel-form">
+      <h2 id="form-titulo">Nuevo atleta</h2>
+      <form id="form">
+        <input type="hidden" id="a-id">
+        <input type="hidden" id="a-perfil-id">
+        <div class="grid2">
+          <div><label>Nombre</label><input type="text" id="a-nombre" required></div>
+          <div><label>Apellidos</label><input type="text" id="a-apellidos"></div>
+        </div>
+        <label>Correo de la cuenta (para que entre al portal)</label>
+        <input type="email" id="a-email" placeholder="correo del atleta o de la familia">
+        <div class="grid2">
+          <div><label>Categoría</label><input type="text" id="a-categoria" placeholder="benjamín, alevín, sub-16…"></div>
+          <div><label>Estado</label><input type="text" id="a-estado" placeholder="activa / prueba / baja"></div>
+        </div>
+        <label>Grupo</label>
+        <select id="a-grupo"><option value="">(sin grupo)</option></select>
+        <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
+          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg"></span>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  var gruposById = {};
+
+  async function cargarGrupos() {
+    var r = await sb.from('grupos').select('id,nombre').order('nombre');
+    var sel = $('a-grupo');
+    if (!r.error && r.data) {
+      r.data.forEach(function (g) { gruposById[g.id] = g.nombre; var o = document.createElement('option'); o.value = g.id; o.textContent = g.nombre; sel.appendChild(o); });
+    }
+  }
+
+  async function cargar() {
+    var tb = $('tabla').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,perfil_id').order('apellidos');
+    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay atletas todavía.</td></tr>'; return; }
+    // correos de los perfiles enlazados
+    var ids = r.data.map(function(a){return a.perfil_id;}).filter(Boolean);
+    var correos = {};
+    if (ids.length) {
+      var pr = await sb.from('perfiles').select('id,email').in('id', ids);
+      if (!pr.error && pr.data) pr.data.forEach(function(p){ correos[p.id]=p.email; });
+    }
+    tb.innerHTML = r.data.map(function (a) {
+      return '<tr><td>' + esc((a.nombre||'')+' '+(a.apellidos||'')) + '</td><td>' + esc(a.categoria||'') + '</td>' +
+        '<td><span class="pill">' + esc(a.estado||'') + '</span></td><td>' + esc(correos[a.perfil_id]||'—') + '</td>' +
+        '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-ed="'+a.id+'">Editar</button>' +
+        '<button class="btn btn--peligro" data-bo="'+a.id+'">Borrar</button></td></tr>';
+    }).join('');
+  }
+
+  async function abrir(a) {
+    a = a || {};
+    $('form-titulo').textContent = a.id ? 'Editar atleta' : 'Nuevo atleta';
+    $('a-id').value = a.id || '';
+    $('a-perfil-id').value = a.perfil_id || '';
+    $('a-nombre').value = a.nombre || '';
+    $('a-apellidos').value = a.apellidos || '';
+    $('a-categoria').value = a.categoria || '';
+    $('a-estado').value = a.estado || '';
+    $('a-grupo').value = a.grupo_id || '';
+    $('a-email').value = '';
+    if (a.perfil_id) {
+      var pr = await sb.from('perfiles').select('email').eq('id', a.perfil_id).maybeSingle();
+      if (!pr.error && pr.data) $('a-email').value = pr.data.email || '';
+    }
+    $('msg').textContent = '';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  $('nuevo').addEventListener('click', function () { abrir(); });
+  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+
+  $('tabla').addEventListener('click', async function (e) {
+    var ed = e.target.getAttribute('data-ed'), bo = e.target.getAttribute('data-bo');
+    if (ed) { var r = await sb.from('atletas').select('*').eq('id', ed).single(); if (!r.error) abrir(r.data); }
+    if (bo) { if (!confirm('¿Borrar esta ficha de atleta? (no borra su cuenta de acceso)')) return; var d = await sb.from('atletas').delete().eq('id', bo); if (d.error) { alert('No se pudo: ' + d.error.message); return; } cargar(); }
+  });
+
+  $('form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    $('msg').textContent = 'Guardando…'; $('msg').className = 'msg';
+    var email = $('a-email').value.trim();
+    var perfilId = $('a-perfil-id').value || null;
+
+    // Enlazar/crear perfil por correo (rol atleta) si se indicó correo
+    if (email) {
+      var pr = await sb.from('perfiles').select('id').eq('email', email).maybeSingle();
+      if (pr.data) { perfilId = pr.data.id; }
+      else {
+        var ins = await sb.from('perfiles').insert({ nombre: $('a-nombre').value.trim(), apellidos: $('a-apellidos').value.trim(), email: email, rol: 'atleta', activo: true }).select('id').single();
+        if (ins.error) { $('msg').textContent = 'Error con el perfil: ' + ins.error.message; $('msg').className = 'msg error'; return; }
+        perfilId = ins.data.id;
+      }
+    }
+
+    var datos = {
+      nombre: $('a-nombre').value.trim(),
+      apellidos: $('a-apellidos').value.trim() || null,
+      categoria: $('a-categoria').value.trim() || null,
+      estado: $('a-estado').value.trim() || null,
+      grupo_id: $('a-grupo').value || null,
+      perfil_id: perfilId
+    };
+    var id = $('a-id').value, r;
+    if (id) r = await sb.from('atletas').update(datos).eq('id', id);
+    else r = await sb.from('atletas').insert(datos);
+    if (r.error) { $('msg').textContent = 'Error: ' + r.error.message; $('msg').className = 'msg error'; return; }
+    $('msg').textContent = 'Guardado ✓'; $('msg').className = 'msg ok';
+    $('panel-form').classList.add('oculto');
+    cargar();
+  });
+
+  cargarGrupos().then(cargar);
+});
+</script>
+
+</body>
+</html>
