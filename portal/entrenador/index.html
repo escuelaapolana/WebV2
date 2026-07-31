@@ -76,6 +76,16 @@
   .fb-tiempos .fb-serie { display:inline-block; font-family: var(--fuente-mono); font-size:12px; background: var(--azul-suave); color: var(--azul-oscuro); border-radius:6px; padding:2px 7px; margin:2px 4px 2px 0; }
   .sin-registro { color: var(--texto-tenue); font-size:13px; font-style:italic; }
 
+  /* observaciones privadas (solo staff) */
+  .aviso-privado { background:#fff8e6; border:1px solid #f0d98a; color:#7a5c00; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:14px; }
+  .aviso-privado strong { color:#5c4600; }
+  .nota { border:1px solid var(--linea); border-radius:12px; padding:10px 14px; margin-bottom:10px; background:#fff; }
+  .nota-meta { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
+  .nota-meta span { font-family: var(--fuente-mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em; color: var(--texto-tenue); }
+  .nota-borrar { border:1px solid var(--linea-borde); background:#fff; color: var(--texto-suave); border-radius:8px; padding:4px 9px; font-size:12px; cursor:pointer; }
+  .nota-borrar:hover { border-color:#b3261e; color:#b3261e; }
+  .nota-txt { font-size:14px; color: var(--texto); white-space:pre-wrap; }
+
   @media (max-width:760px){
     .layout { flex-direction:column; }
     .side { position:static; flex-basis:auto; width:100%; }
@@ -138,18 +148,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<a data-sec="grupo" class="activo">Mi grupo</a>'+
         '<a data-sec="planificar">Planificar entreno</a>'+
         '<a data-sec="feedback">Feedback</a>'+
+        '<a data-sec="notas">Observaciones</a>'+
       '</nav></aside>'+
       '<main class="cont">'+
         '<section id="sec-grupo"></section>'+
         '<section id="sec-planificar" hidden></section>'+
         '<section id="sec-feedback" hidden></section>'+
+        '<section id="sec-notas" hidden></section>'+
       '</main>'+
     '</div>';
 
   var navLinks = wrap.querySelectorAll('.side nav a');
   navLinks.forEach(function(link){ link.addEventListener('click', function(){
     navLinks.forEach(function(x){ x.classList.remove('activo'); }); link.classList.add('activo');
-    ['grupo','planificar','feedback'].forEach(function(sec){ $('sec-'+sec).hidden = (sec!==link.getAttribute('data-sec')); });
+    ['grupo','planificar','feedback','notas'].forEach(function(sec){ $('sec-'+sec).hidden = (sec!==link.getAttribute('data-sec')); });
   }); });
 
   // ============================================================
@@ -462,6 +474,84 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div>';
     $('fb-sesion').addEventListener('change', function(){ pintarFeedback($('fb-sesion').value); });
     cargarSesionesFeedback();
+  })();
+
+  // ============================================================
+  // SECCIÓN 4 · OBSERVACIONES PRIVADAS (solo el equipo técnico)
+  // ------------------------------------------------------------
+  // Notas internas del entrenador sobre un atleta. El atleta y su
+  // familia NO pueden leerlas: la tabla notas_atleta tiene RLS y
+  // solo el staff (admin o el entrenador de ESE atleta) tiene
+  // acceso. Ver migraciones/009_notas_privadas.sql.
+  // ============================================================
+  function formatFechaHora(iso){
+    if(!iso) return '';
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    var me = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    var p2 = function(n){ return (n<10?'0':'')+n; };
+    return p2(d.getDate())+' '+me[d.getMonth()]+' '+d.getFullYear()+' · '+p2(d.getHours())+':'+p2(d.getMinutes());
+  }
+
+  async function pintarNotas(atletaId){
+    var cont = $('nt-cont');
+    if(!atletaId){ cont.innerHTML = '<p class="vacio">Elige un atleta para ver y añadir observaciones.</p>'; return; }
+    cont.innerHTML = '<p class="vacio">Cargando…</p>';
+    var r = await sb.from('notas_atleta').select('id,texto,created_at').eq('atleta_id', atletaId).order('created_at', { ascending:false });
+    if(r.error){ cont.innerHTML = '<p class="vacio">Error: '+esc(r.error.message)+'</p>'; return; }
+    var notas = r.data || [];
+    var lista = notas.length
+      ? notas.map(function(n){
+          return '<div class="nota"><div class="nota-meta"><span>'+esc(formatFechaHora(n.created_at))+'</span>'+
+            '<button type="button" class="nota-borrar" data-id="'+n.id+'">Borrar</button></div>'+
+            '<div class="nota-txt">'+esc(n.texto)+'</div></div>';
+        }).join('')
+      : '<p class="vacio">Aún no hay observaciones para este atleta.</p>';
+    cont.innerHTML =
+      '<div class="aviso-privado">🔒 Estas observaciones son <strong>privadas del equipo técnico</strong>. El atleta y su familia <strong>no pueden verlas</strong>: solo tú (su entrenador) y la dirección del club.</div>'+
+      '<div class="notas-lista">'+lista+'</div>'+
+      '<label style="margin-top:16px;">Nueva observación</label>'+
+      '<textarea id="nt-texto" placeholder="Observación privada sobre el atleta (técnica, actitud, lesiones, contexto…)"></textarea>'+
+      '<div class="acciones">'+
+        '<button class="btn btn--primario" id="nt-guardar">Añadir observación</button>'+
+        '<span class="msg" id="nt-msg"></span>'+
+      '</div>';
+
+    $('nt-guardar').addEventListener('click', async function(){
+      var msg = $('nt-msg'); msg.className = 'msg';
+      var texto = $('nt-texto').value.trim();
+      if(!texto){ msg.textContent = 'Escribe algo antes de guardar.'; msg.className = 'msg error'; return; }
+      msg.textContent = 'Guardando…';
+      var res = await sb.from('notas_atleta').insert({ atleta_id: atletaId, autor_id: perfil.id, texto: texto }).select('id').maybeSingle();
+      if(res.error){ msg.textContent = 'Error: '+res.error.message; msg.className = 'msg error'; return; }
+      await pintarNotas(atletaId);
+    });
+
+    cont.querySelectorAll('.nota-borrar').forEach(function(b){
+      b.addEventListener('click', async function(){
+        if(!confirm('¿Borrar esta observación? No se puede deshacer.')) return;
+        var res = await sb.from('notas_atleta').delete().eq('id', b.getAttribute('data-id'));
+        if(!res.error) pintarNotas(atletaId);
+      });
+    });
+  }
+
+  (function renderNotas(){
+    var cont = $('sec-notas');
+    if(!MIS_ATLETAS.length){
+      cont.innerHTML = '<div class="tarjeta"><h2>Observaciones privadas</h2><p class="vacio">Cuando tengas atletas a tu cargo podrás anotar aquí observaciones privadas sobre cada uno. Solo las ve el equipo técnico.</p></div>';
+      return;
+    }
+    cont.innerHTML =
+      '<div class="tarjeta">'+
+        '<h2>Observaciones privadas</h2>'+
+        '<p class="vacio" style="margin-top:-6px;margin-bottom:14px;">Notas internas <strong>solo para el equipo técnico</strong>. El atleta y su familia NO las ven.</p>'+
+        '<label>Atleta</label><select id="nt-atleta"><option value="">— elige un atleta —</option>'+
+          MIS_ATLETAS.map(function(x){ return '<option value="'+x.id+'">'+esc(((x.nombre||'')+' '+(x.apellidos||'')).trim())+'</option>'; }).join('')+
+        '</select>'+
+        '<div id="nt-cont" style="margin-top:16px;"><p class="vacio">Elige un atleta para ver y añadir observaciones.</p></div>'+
+      '</div>';
+    $('nt-atleta').addEventListener('change', function(){ pintarNotas($('nt-atleta').value); });
   })();
 
 });
