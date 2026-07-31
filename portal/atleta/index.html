@@ -190,6 +190,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var registro=null;
   if(ses){ try { var rg=await sb.from('registros_sesion').select('*').eq('sesion_id',ses.id).eq('atleta_id',at.id).maybeSingle(); if(!rg.error) registro=rg.data; } catch(e){} }
 
+  // Catálogo de pruebas (atletismo + natación): para el desplegable y para saber si "más es mejor"
+  var CAT=[]; try { var pc=await sb.from('pruebas').select('nombre,disciplina,ambito,unidad,mas_es_mejor').eq('activa',true).order('orden'); if(!pc.error&&pc.data) CAT=pc.data; } catch(e){}
+  var catMap={}; CAT.forEach(function(p){ catMap[p.nombre]=p; });
+  function catMasMejor(nombre){ var p=catMap[nombre]; return p?!!p.mas_es_mejor:pruebaEsDistancia(nombre); }
+  function opcionesPruebas(){
+    var groups={}, order=[];
+    CAT.forEach(function(p){ var g=(p.ambito==='natacion'?'Natación':'Atletismo')+' · '+(p.disciplina||''); if(!groups[g]){groups[g]=[];order.push(g);} groups[g].push(p.nombre); });
+    return '<option value="">— elige prueba —</option>'+order.map(function(g){ return '<optgroup label="'+esc(g)+'">'+groups[g].map(function(n){return '<option>'+esc(n)+'</option>';}).join('')+'</optgroup>'; }).join('');
+  }
+
   // ---------- construir UI ----------
   var todayISO=new Date().toISOString().slice(0,10);
 
@@ -230,14 +240,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<section id="sec-marcas" hidden>'+
           '<div class="tarjeta"><h2>Añadir marca</h2>'+
             '<div class="grid2">'+
-              '<div><label>Prueba</label><input id="mk-prueba" placeholder="60 m lisos, 150 m…"></div>'+
-              '<div><label>Marca (tiempo)</label><input id="mk-tiempo" placeholder="7.85 o 4:24.0"></div>'+
+              '<div><label>Prueba</label><select id="mk-prueba">'+opcionesPruebas()+'</select></div>'+
+              '<div><label id="mk-tiempo-lbl">Marca</label><input id="mk-tiempo" placeholder="7.85 · 1:02.3 · 6.85"></div>'+
             '</div>'+
             '<div class="grid2">'+
               '<div><label>Fecha</label><input id="mk-fecha" type="date" value="'+todayISO+'"></div>'+
               '<div><label>Dónde</label><input id="mk-sede" placeholder="Estadio, pista cubierta…"></div>'+
             '</div>'+
-            '<label>Tipo</label><select id="mk-tipo"><option value="">Normal</option><option value="mmp">Mejor marca personal</option><option value="temporada">Mejor de la temporada</option><option value="objetivo">Objetivo</option></select>'+
+            '<div class="grid2">'+
+              '<div><label>¿Dónde se hizo?</label><select id="mk-contexto"><option value="">—</option><option value="competicion">Competición oficial</option><option value="entreno">Entrenamiento</option></select></div>'+
+              '<div><label>Tipo</label><select id="mk-tipo"><option value="">Normal</option><option value="mmp">Mejor marca personal</option><option value="temporada">Mejor de la temporada</option><option value="objetivo">Objetivo</option></select></div>'+
+            '</div>'+
             '<div class="acciones"><button class="btn btn--primario" id="mk-guardar">Guardar marca</button><span class="msg" id="mk-msg"></span></div>'+
           '</div>'+
           '<div class="tarjeta"><h2>Mis marcas</h2><div id="marcas-cont"><p class="vacio">Cargando…</p></div></div>'+
@@ -299,18 +312,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ---------- MARCAS: cargar/refrescar ----------
   async function cargarMarcas(){
     var cont=$('marcas-cont'); cont.innerHTML='<p class="vacio">Cargando…</p>';
-    var m=await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo').eq('atleta_id',at.id).order('fecha',{ascending:false}).limit(80);
+    var m=await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo,contexto').eq('atleta_id',at.id).order('fecha',{ascending:false}).limit(80);
     if(m.error){ cont.innerHTML='<p class="vacio">Error: '+esc(m.error.message)+'</p>'; return; }
     if(!m.data.length){ cont.innerHTML='<p class="vacio">Aún no hay marcas. Añade la primera arriba.</p>'; return; }
     var porPrueba={}; m.data.forEach(function(x){ var k=x.prueba||'—'; (porPrueba[k]=porPrueba[k]||[]).push(x); });
     var graficos='', gi=0;
     Object.keys(porPrueba).forEach(function(k){
       var arr=porPrueba[k].map(function(x){return {fecha:x.fecha||'',y:tiempoANum(x.tiempo_display),disp:x.tiempo_display||''};}).filter(function(p){return p.y!=null&&p.fecha;}).sort(function(a,b){return a.fecha<b.fecha?-1:1;});
-      if(arr.length>=2){ graficos+=graficoPrueba(k,arr,pruebaEsDistancia(k),gi++); }
+      if(arr.length>=2){ graficos+=graficoPrueba(k,arr,catMasMejor(k),gi++); }
     });
     // Mis récords: mejor marca por prueba (MMP)
     var records=Object.keys(porPrueba).map(function(k){
-      var mas=pruebaEsDistancia(k), best=null;
+      var mas=catMasMejor(k), best=null;
       porPrueba[k].forEach(function(x){ var y=tiempoANum(x.tiempo_display); if(y==null) return; if(best==null||(mas?y>best.y:y<best.y)) best={prueba:k,y:y,disp:x.tiempo_display||'',fecha:x.fecha}; });
       return best;
     }).filter(Boolean).sort(function(a,b){return a.prueba<b.prueba?-1:1;});
@@ -319,21 +332,30 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }).join('')+'</div>' : '';
 
     var tipoLabel={mmp:'MMP',temporada:'Temporada',objetivo:'Objetivo'};
-    var tabla='<table><thead><tr><th>Prueba</th><th>Marca</th><th>Fecha</th><th>Dónde</th><th></th></tr></thead><tbody>'+
-      m.data.map(function(x){ var t=x.tipo?' <span class="pill">'+esc(tipoLabel[x.tipo]||x.tipo)+'</span>':''; return '<tr><td>'+esc(x.prueba)+t+'</td><td>'+esc(x.tiempo_display||'')+'</td><td>'+esc(x.fecha||'')+'</td><td>'+esc(x.sede||'')+'</td></tr>'; }).join('')+'</tbody></table>';
+    var tabla='<table><thead><tr><th>Prueba</th><th>Marca</th><th>Dónde se hizo</th><th>Fecha</th><th>Lugar</th></tr></thead><tbody>'+
+      m.data.map(function(x){ var t=x.tipo?' <span class="pill">'+esc(tipoLabel[x.tipo]||x.tipo)+'</span>':'';
+        var ctx = x.contexto==='competicion'?'<span class="pill ok">Competición</span>':(x.contexto==='entreno'?'<span class="pill">Entreno</span>':'<span class="vacio">—</span>');
+        return '<tr><td>'+esc(x.prueba)+t+'</td><td>'+esc(x.tiempo_display||'')+'</td><td>'+ctx+'</td><td>'+esc(x.fecha||'')+'</td><td>'+esc(x.sede||'')+'</td></tr>'; }).join('')+'</tbody></table>';
     cont.innerHTML=recordsHtml+(graficos?'<div class="graficos">'+graficos+'</div>':'<p class="vacio" style="margin-bottom:14px;">Con 2+ marcas de una misma prueba verás aquí tu evolución.</p>')+tabla;
   }
   cargarMarcas();
 
+  // Al elegir prueba, adaptar la etiqueta de la marca (tiempo / metros / puntos)
+  $('mk-prueba').addEventListener('change', function(){ var p=catMap[this.value]; var lbl=$('mk-tiempo-lbl'), inp=$('mk-tiempo');
+    if(p&&p.unidad==='distancia'){ lbl.textContent='Marca (metros)'; inp.placeholder='6.85'; }
+    else if(p&&p.unidad==='puntos'){ lbl.textContent='Marca (puntos)'; inp.placeholder='5820'; }
+    else { lbl.textContent='Marca (tiempo)'; inp.placeholder='7.85 · 1:02.3'; }
+  });
+
   $('mk-guardar').addEventListener('click', async function(){
     var msg=$('mk-msg'); var prueba=$('mk-prueba').value.trim(), disp=$('mk-tiempo').value.trim();
-    if(!prueba){ msg.textContent='Pon al menos la prueba.'; msg.className='msg error'; return; }
+    if(!prueba){ msg.textContent='Elige la prueba.'; msg.className='msg error'; return; }
     msg.textContent='Guardando…'; msg.className='msg';
-    var payload={ atleta_id:at.id, prueba:prueba, tiempo_display:disp||null, tiempo_segundos:tiempoANum(disp), fecha:$('mk-fecha').value||null, sede:$('mk-sede').value.trim()||null, tipo:$('mk-tipo').value||null };
+    var payload={ atleta_id:at.id, prueba:prueba, tiempo_display:disp||null, tiempo_segundos:tiempoANum(disp), fecha:$('mk-fecha').value||null, sede:$('mk-sede').value.trim()||null, tipo:$('mk-tipo').value||null, contexto:$('mk-contexto').value||null };
     var ins=await sb.from('marcas_atleta').insert(payload);
     if(ins.error){ msg.textContent='Error: '+ins.error.message; msg.className='msg error'; return; }
     msg.textContent='Marca guardada ✓'; msg.className='msg ok';
-    $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value='';
+    $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value=''; $('mk-contexto').value='';
     cargarMarcas();
   });
 
