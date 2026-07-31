@@ -97,23 +97,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function tiempoANum(s){ if(s==null) return null; s=String(s).trim().replace(',','.'); if(s.indexOf(':')>-1){var p=s.split(':'); return (parseInt(p[0],10)||0)*60+(parseFloat(p[1])||0);} var n=parseFloat(s); return isNaN(n)?null:n; }
   function formatFecha(iso){ if(!iso) return ''; var d=new Date(iso+'T00:00:00'); var di=['dom','lun','mar','mié','jue','vie','sáb'], me=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return di[d.getDay()]+' '+d.getDate()+' '+me[d.getMonth()]; }
 
-  function graficoPrueba(nombre, pts){
-    var W=320,H=150,padL=10,padR=10,padT=30,padB=24;
-    var ys=pts.map(function(p){return p.y;}); var min=Math.min.apply(null,ys),max=Math.max.apply(null,ys); if(min===max){min-=1;max+=1;}
+  // ¿La prueba mide distancia (salto/lanzamiento)? Entonces MÁS es mejor.
+  function pruebaEsDistancia(nombre){ return /(longitud|altura|triple|p[eé]rtiga|garrocha|peso|disco|jabalina|martillo|salto|lanzam)/i.test(nombre||''); }
+  function fechaCorta(iso){ if(!iso) return ''; var d=new Date(iso+'T00:00:00'); var me=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return d.getDate()+' '+me[d.getMonth()]; }
+  function graficoPrueba(nombre, pts, masMejor, idx){
+    var W=340,H=172,padL=14,padR=14,padT=38,padB=28;
+    var ys=pts.map(function(p){return p.y;});
+    var min=Math.min.apply(null,ys),max=Math.max.apply(null,ys);
+    var span=(max-min)||Math.max(Math.abs(max)*0.1,1); var lo=min-span*0.22, hi=max+span*0.22;
     var plotW=W-padL-padR, plotH=H-padT-padB;
     function X(i){ return padL+(pts.length===1?plotW/2:plotW*i/(pts.length-1)); }
-    function Y(v){ return padT+plotH*(v-min)/(max-min); }
-    var linea=pts.map(function(p,i){return X(i).toFixed(1)+','+Y(p.y).toFixed(1);}).join(' ');
-    var puntos=pts.map(function(p,i){ var x=X(i),y=Y(p.y);
-      return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="3.5" fill="var(--azul)"></circle>'+
-        '<text x="'+x.toFixed(1)+'" y="'+(y-8).toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="var(--navy)">'+esc(p.disp)+'</text>'+
-        '<text x="'+x.toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="8" fill="#9a958c">'+esc((p.fecha||'').slice(5))+'</text>';
+    function Y(v){ var t=(v-lo)/(hi-lo); return padT+plotH*(masMejor?(1-t):t); }
+    var bestI=0; for(var b=1;b<pts.length;b++){ if(masMejor?pts[b].y>pts[bestI].y:pts[b].y<pts[bestI].y) bestI=b; }
+    var gid='grad'+(idx||0);
+    var grid=''; for(var g=0;g<=2;g++){ var gy=(padT+plotH*g/2).toFixed(1); grid+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--linea)" stroke-width="1" stroke-dasharray="2 5"></line>'; }
+    var coords=pts.map(function(p,i){return X(i).toFixed(1)+','+Y(p.y).toFixed(1);});
+    var area='M'+padL+','+(padT+plotH).toFixed(1)+' L'+coords.join(' L')+' L'+(W-padR)+','+(padT+plotH).toFixed(1)+' Z';
+    var puntos=pts.map(function(p,i){ var x=X(i),y=Y(p.y); var best=(i===bestI&&pts.length>1);
+      return (best?'<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="7" fill="var(--azul)" opacity="0.16"></circle>':'')+
+        '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(best?4.3:3)+'" fill="'+(best?'var(--azul-oscuro)':'#fff')+'" stroke="var(--azul)" stroke-width="2"></circle>'+
+        '<text x="'+x.toFixed(1)+'" y="'+(y-9).toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+(best?'var(--azul-oscuro)':'var(--navy)')+'">'+esc(p.disp)+'</text>'+
+        '<text x="'+x.toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle" font-size="8.5" fill="#9a958c">'+esc(fechaCorta(p.fecha))+'</text>';
     }).join('');
     var svg='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Evolución de '+esc(nombre)+'">'+
-      '<text x="'+padL+'" y="16" font-size="12" font-weight="700" fill="var(--navy)">'+esc(nombre)+'</text>'+
-      '<polyline fill="none" stroke="var(--azul)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="'+linea+'"></polyline>'+puntos+'</svg>';
-    var d=pts[0].y-pts[pts.length-1].y, ley='';
-    if(Math.abs(d)>0.001){ ley=d>0?'<span class="mejora">▲ '+d.toFixed(2)+' mejor que al empezar</span>':'▼ '+Math.abs(d).toFixed(2)+' respecto al inicio'; }
+      '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--azul)" stop-opacity="0.28"></stop><stop offset="1" stop-color="var(--azul)" stop-opacity="0"></stop></linearGradient></defs>'+
+      grid+'<path d="'+area+'" fill="url(#'+gid+')"></path>'+
+      '<polyline fill="none" stroke="var(--azul)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="'+coords.join(' ')+'"></polyline>'+puntos+
+      '<text x="'+padL+'" y="19" font-size="12.5" font-weight="700" fill="var(--navy)">'+esc(nombre)+'</text>'+
+      '<text x="'+(W-padR)+'" y="19" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--azul-oscuro)">MMP '+esc(pts[bestI].disp)+'</text></svg>';
+    var mej = masMejor ? (pts[pts.length-1].y - pts[0].y) : (pts[0].y - pts[pts.length-1].y);
+    var u = masMejor ? ' m' : '', ley='';
+    if(mej>0.001) ley='<span class="mejora">▲ '+mej.toFixed(2)+u+' mejor que al empezar</span>';
+    else if(mej<-0.001) ley='▼ '+Math.abs(mej).toFixed(2)+u+' respecto al inicio';
     return '<div class="grafico">'+svg+(ley?'<div class="leyenda">'+ley+'</div>':'')+'</div>';
   }
 
@@ -283,10 +298,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(m.error){ cont.innerHTML='<p class="vacio">Error: '+esc(m.error.message)+'</p>'; return; }
     if(!m.data.length){ cont.innerHTML='<p class="vacio">Aún no hay marcas. Añade la primera arriba.</p>'; return; }
     var porPrueba={}; m.data.forEach(function(x){ var k=x.prueba||'—'; (porPrueba[k]=porPrueba[k]||[]).push(x); });
-    var graficos='';
+    var graficos='', gi=0;
     Object.keys(porPrueba).forEach(function(k){
       var arr=porPrueba[k].map(function(x){return {fecha:x.fecha||'',y:tiempoANum(x.tiempo_display),disp:x.tiempo_display||''};}).filter(function(p){return p.y!=null&&p.fecha;}).sort(function(a,b){return a.fecha<b.fecha?-1:1;});
-      if(arr.length>=2) graficos+=graficoPrueba(k,arr);
+      if(arr.length>=2){ graficos+=graficoPrueba(k,arr,pruebaEsDistancia(k),gi++); }
     });
     var tipoLabel={mmp:'MMP',temporada:'Temporada',objetivo:'Objetivo'};
     var tabla='<table><thead><tr><th>Prueba</th><th>Marca</th><th>Fecha</th><th>Dónde</th><th></th></tr></thead><tbody>'+

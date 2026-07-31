@@ -93,6 +93,7 @@ class ApolanaPie extends HTMLElement {
     const lema = (d.club && d.club.lema) || '';
     const colab = (d.colaboradores || []).map(x => `<span>${x}</span>`).join('');
     const tel = t => t ? `<a href="tel:${t.tel}">${t.texto} · ${t.nota}</a>` : '';
+    const anio = new Date().getFullYear();
     this.innerHTML = `
       <footer class="pie">
         <div class="contenedor">
@@ -123,6 +124,7 @@ class ApolanaPie extends HTMLElement {
             </div>
           </div>
         </div>
+        <div class="pie-credito">© ${anio} Club Atletismo Apolana · Creada por <strong>Andrés Clavero Giménez</strong></div>
       </footer>`;
   }
 }

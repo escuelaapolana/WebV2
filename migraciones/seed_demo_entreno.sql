@@ -24,7 +24,7 @@ values (
     {"etiqueta":"Parte principal","filas":[
       {"ejercicio":"Salidas desde tacos","series":"5","distancia":"20 m","descanso":"2 min"},
       {"ejercicio":"Voladoras","series":"4","distancia":"60 m","ritmo":"90-95%","descanso":"4 min"},
-      {"ejercicio":"Series de potencia lactácida","series":"3","distancia":"120 m","ritmo":"fuerte","descanso":"6 min"}
+      {"ejercicio":"Series de potencia láctica","series":"3","distancia":"120 m","ritmo":"fuerte","descanso":"6 min"}
     ]},
     {"etiqueta":"Vuelta a la calma","filas":[
       {"ejercicio":"Trote suave","detalle":"8 min"},
