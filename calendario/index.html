@@ -77,6 +77,14 @@
   /* Columna lateral */
   .cal-lado { display: flex; flex-direction: column; gap: 14px; }
 
+  /* Próximos eventos (lista desde base de datos) */
+  #proximos-eventos .hora { width: 56px; text-transform: uppercase; }
+  .abierta {
+    display: inline-block; margin-top: 2px;
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #4C7A28;
+  }
+
   /* Tarjeta del día seleccionado */
   .dia-detalle {
     background: #fff; border: 1px solid var(--crema-media);
@@ -235,6 +243,21 @@
             <a class="btn btn--primario" href="../inscripcion/">Inscribirme · 12€</a>
           </div>
 
+          <!-- Próximos eventos (se llenan desde Supabase si hay; si no, se quedan estos) -->
+          <div class="dia-detalle" id="proximos-eventos">
+            <div class="cabeza">
+              <h2>Próximos eventos</h2>
+            </div>
+            <div class="actividad">
+              <span class="hora">16 ago</span>
+              <div class="que"><span class="titulo-act">Cross de Alicante</span><span class="lugar">Cabo de las Huertas</span></div>
+            </div>
+            <div class="actividad">
+              <span class="hora">6 sep</span>
+              <div class="que"><span class="titulo-act">Milla urbana</span><span class="lugar">Centro de Alicante</span></div>
+            </div>
+          </div>
+
           <!-- Leyenda -->
           <div class="leyenda">
             <span><span class="punto" style="background: var(--azul);"></span>Entreno</span>
@@ -257,6 +280,48 @@
 </main>
 
 <apolana-pie></apolana-pie>
+
+<!-- Próximos eventos en directo desde Supabase (si hay; si no, se quedan los de ejemplo) -->
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  var cont = document.getElementById('proximos-eventos');
+  if (!cont || !window.APOLANA_DB) return;
+
+  var r = await window.APOLANA_DB.from('eventos')
+    .select('titulo,tipo,fecha_inicio,fecha_fin,lugar,inscripcion_abierta')
+    .order('fecha_inicio', { ascending: true });
+  if (r.error || !r.data || !r.data.length) return; // sin datos: deja los ejemplos
+
+  // Solo eventos que no hayan terminado (fin o inicio de hoy en adelante)
+  var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  var filas = r.data.filter(function (e) {
+    var ref = e.fecha_fin || e.fecha_inicio;
+    if (!ref) return false;
+    var d = new Date(ref);
+    return !isNaN(d) && d >= hoy;
+  }).slice(0, 6);
+  if (!filas.length) return; // todo pasado: deja los ejemplos
+
+  var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fechaCorta(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.getDate() + ' ' + MESES[d.getMonth()];
+  }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var html = '<div class="cabeza"><h2>Próximos eventos</h2></div>';
+  html += filas.map(function (e) {
+    var lugar = e.lugar ? '<span class="lugar">' + esc(e.lugar) + '</span>' : '';
+    var abierta = e.inscripcion_abierta ? '<span class="abierta">Inscripción abierta</span>' : '';
+    return '<div class="actividad">' +
+      '<span class="hora">' + esc(fechaCorta(e.fecha_inicio)) + '</span>' +
+      '<div class="que"><span class="titulo-act">' + esc(e.titulo) + '</span>' +
+      lugar + abierta + '</div></div>';
+  }).join('');
+  cont.innerHTML = html;
+});
+</script>
 
 </body>
 </html>

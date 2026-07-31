@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estadísticas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+  .panel .intro { margin-bottom: 10px; }
+
+  .nota { background: var(--crema-media); border: 1px solid var(--linea); border-radius: 12px; padding: 12px 16px; font-size: 13px; color: var(--texto-suave); margin-bottom: 22px; }
+
+  /* Rejilla de tiles de estadística: número grande + etiqueta */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 8px; }
+  .tile { background: var(--crema-media); border: 1px solid var(--linea); border-radius: 14px; padding: 18px 16px; }
+  .tile .num { font-family: var(--fuente-titulo); font-size: 40px; line-height: 1; color: var(--navy); }
+  .tile .num.cargando { font-size: 22px; color: var(--texto-tenue); }
+  .tile .etiqueta { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); margin-top: 10px; }
+  .tile.dinero .num { color: var(--azul); }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="nota">
+      Las cifras se llenarán según entren datos (atletas, pagos…). Requiere permisos de lectura de administración sobre esas tablas.
+    </div>
+
+    <!-- ===== RESUMEN GENERAL ===== -->
+    <div class="panel">
+      <h2>Cuadro de estadísticas</h2>
+      <p class="intro">Resumen del Club Atletismo Apolana en tiempo real.</p>
+      <div class="tiles">
+        <div class="tile"><div class="num cargando" id="t-atletas-total">…</div><div class="etiqueta">Atletas en total</div></div>
+        <div class="tile"><div class="num cargando" id="t-atletas-activos">…</div><div class="etiqueta">Atletas activos</div></div>
+        <div class="tile"><div class="num cargando" id="t-atletas-prueba">…</div><div class="etiqueta">Atletas en prueba</div></div>
+        <div class="tile"><div class="num cargando" id="t-atletas-baja">…</div><div class="etiqueta">Atletas de baja</div></div>
+        <div class="tile"><div class="num cargando" id="t-grupos">…</div><div class="etiqueta">Grupos activos</div></div>
+        <div class="tile"><div class="num cargando" id="t-noticias">…</div><div class="etiqueta">Noticias publicadas</div></div>
+        <div class="tile"><div class="num cargando" id="t-productos">…</div><div class="etiqueta">Productos activos</div></div>
+      </div>
+    </div>
+
+    <!-- ===== COBROS ===== -->
+    <div class="panel">
+      <h2>Cobros</h2>
+      <p class="intro">Importes de pagos registrados.</p>
+      <div class="tiles">
+        <div class="tile dinero"><div class="num cargando" id="t-cobrado">…</div><div class="etiqueta">Ingresos cobrados</div></div>
+        <div class="tile dinero"><div class="num cargando" id="t-pendiente">…</div><div class="etiqueta">Pendiente / devuelto</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(async function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+
+  function pon(id, valor) {
+    var el = $(id);
+    if (!el) return;
+    el.classList.remove('cargando');
+    el.textContent = valor;
+  }
+
+  function fmtEuro(n) {
+    try {
+      return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n || 0);
+    } catch (e) {
+      return (Math.round((n || 0) * 100) / 100) + ' €';
+    }
+  }
+
+  // Cuenta filas de una tabla con filtros opcionales. Degrada a 0 ante error.
+  async function contar(tabla, filtros) {
+    try {
+      var q = sb.from(tabla).select('id', { count: 'exact', head: true });
+      if (filtros) {
+        for (var col in filtros) {
+          if (filtros[col] && filtros[col].__in) q = q.in(col, filtros[col].__in);
+          else q = q.eq(col, filtros[col]);
+        }
+      }
+      var r = await q;
+      if (r.error || r.count == null) return 0;
+      return r.count;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // Suma pagos.importe para los estados dados. Degrada a 0 ante error.
+  async function sumarPagos(estados) {
+    try {
+      var r = await sb.from('pagos').select('importe,estado').in('estado', estados);
+      if (r.error || !r.data) return 0;
+      var total = 0;
+      for (var i = 0; i < r.data.length; i++) {
+        var v = Number(r.data[i].importe);
+        if (!isNaN(v)) total += v;
+      }
+      return total;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // --- Resumen general (en paralelo, cada uno degrada por su cuenta) ---
+  var res = await Promise.all([
+    contar('atletas'),
+    contar('atletas', { estado: 'activa' }),
+    contar('atletas', { estado: 'prueba' }),
+    contar('atletas', { estado: 'baja' }),
+    contar('grupos', { activo: true }),
+    contar('noticias', { publicada: true }),
+    contar('productos', { activo: true })
+  ]);
+
+  pon('t-atletas-total', res[0]);
+  pon('t-atletas-activos', res[1]);
+  pon('t-atletas-prueba', res[2]);
+  pon('t-atletas-baja', res[3]);
+  pon('t-grupos', res[4]);
+  pon('t-noticias', res[5]);
+  pon('t-productos', res[6]);
+
+  // --- Cobros ---
+  var cobros = await Promise.all([
+    sumarPagos(['cobrado', 'pagado']),
+    sumarPagos(['pendiente', 'devuelto', 'listo'])
+  ]);
+
+  pon('t-cobrado', fmtEuro(cobros[0]));
+  pon('t-pendiente', fmtEuro(cobros[1]));
+});
+</script>
+
+</body>
+</html>
