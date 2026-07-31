@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coordinación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .co-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
+  .co-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(28px,6vw,42px); color: var(--navy); margin: 0 0 4px; }
+  .co-cab .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-tenue); }
+
+  .tarjeta { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(18px,3vw,26px); box-shadow: var(--sombra-suave); margin-top: 18px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; color: var(--navy); margin: 0 0 4px; }
+  .tarjeta .pie-nota { font-size: 13px; color: var(--texto-suave); margin: 12px 0 0; }
+  .tarjeta > .intro-tarjeta { font-size: 14px; color: var(--texto-suave); margin: 0 0 14px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  td.num { font-family: var(--fuente-mono); }
+  .vacio { color: var(--texto-suave); font-size: 14px; margin: 0; }
+
+  .pill { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 9px; border-radius: 999px; background: var(--crema-media); color: var(--texto-suave); display: inline-block; }
+  .pill.si { background: #e6f4ea; color: #1e7a3d; }
+  .pill.no { background: #fdeceb; color: #b3261e; }
+
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; }
+  .cifra { background: var(--crema); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px 16px; }
+  .cifra b { display: block; font-family: var(--fuente-display); font-size: 30px; line-height: 1; color: var(--navy); }
+  .cifra span { display: block; font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); margin-top: 6px; }
+
+  .aviso { background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); border-radius: 12px; padding: 14px 16px; color: var(--aviso-texto); font-size: 14px; }
+  .aviso b { color: var(--aviso-titulo); }
+
+  .lista-fechas { list-style: none; margin: 0; padding: 0; }
+  .lista-fechas li { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--linea); font-size: 14px; }
+  .lista-fechas li:last-child { border-bottom: 0; }
+  .lista-fechas .fecha { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-tenue); flex: 0 0 96px; text-transform: uppercase; }
+  .lista-fechas .que { flex: 1; min-width: 0; color: var(--navy); }
+  .lista-fechas .que small { display: block; color: var(--texto-suave); }
+
+  .docs { list-style: none; margin: 0; padding: 0; }
+  .docs li { padding: 9px 0; border-bottom: 1px solid var(--linea); font-size: 14px; }
+  .docs li:last-child { border-bottom: 0; }
+  .docs a { color: var(--azul-oscuro); font-weight: 600; text-decoration: none; }
+  .docs a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="co-wrap" id="co-wrap">
+    <p class="vacio">Cargando…</p>
+  </div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(function (sb, perfil) {
+  var wrap = document.getElementById('co-wrap');
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var SECCIONES = {
+    escuela: 'Escuela', competicion: 'Competición', running: 'Running',
+    triatlon: 'Triatlón', natacion: 'Natación', gimnasio: 'Gimnasio', adultos: 'Adultos'
+  };
+  function nombreSeccion(s) { return SECCIONES[s] || (s || 'Sin sección'); }
+
+  var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fechaCorta(v) {
+    if (!v) return '—';
+    var d = new Date(v);
+    if (isNaN(d.getTime())) return '—';
+    return d.getDate() + ' ' + MESES[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  if (!perfil) {
+    wrap.innerHTML = '<div class="co-cab"><h1>Coordinación</h1></div>' +
+      '<div class="tarjeta"><div class="aviso">Has entrado, pero todavía no encontramos tu ficha en el club. Avisa al club para que lo revise.</div></div>';
+    return;
+  }
+
+  var rol = perfil.rol || '';
+  if (rol !== 'coordinador' && rol !== 'admin') {
+    wrap.innerHTML = '<div class="co-cab"><h1>Coordinación</h1></div>' +
+      '<div class="tarjeta"><div class="aviso">Esta zona es para coordinación. Tu cuenta es de «' + esc(rol) + '». ' +
+      '<a href="../">Volver al portal</a>.</div></div>';
+    return;
+  }
+
+  var miSeccion = perfil.seccion || null;
+
+  wrap.innerHTML =
+    '<div class="co-cab">' +
+      '<h1>Coordinación</h1>' +
+      '<span class="sub">' + esc(miSeccion ? nombreSeccion(miSeccion) : 'Todas las secciones') + '</span>' +
+    '</div>' +
+    '<div class="tarjeta" id="co-resumen"><h2>Resumen</h2><p class="vacio">Cargando…</p></div>' +
+    '<div class="tarjeta" id="co-grupos"><h2>Grupos</h2><p class="vacio">Cargando…</p></div>' +
+    '<div class="tarjeta" id="co-atletas"><h2>Atletas por grupo</h2><p class="vacio">Cargando…</p></div>' +
+    '<div class="tarjeta" id="co-fechas"><h2>Próximas fechas</h2><p class="vacio">Cargando…</p></div>' +
+    '<div class="tarjeta" id="co-docs"><h2>Documentos del club</h2><p class="vacio">Cargando…</p></div>';
+
+  cargar();
+
+  async function cargar() {
+    /* ---------- GRUPOS (lectura pública en la base de datos) ---------- */
+    var grupos = [];
+    var errGrupos = null;
+    try {
+      var q = sb.from('grupos').select('id,nombre,seccion,entrenador_id,horario,descripcion,activo').order('nombre');
+      if (miSeccion) q = q.eq('seccion', miSeccion);
+      var rg = await q;
+      if (rg.error) errGrupos = rg.error.message; else grupos = rg.data || [];
+    } catch (e) { errGrupos = 'No se pudo consultar los grupos.'; }
+
+    /* ---------- TÉCNICOS ----------
+       Se intenta poner nombre a cada entrenador_id. Hoy las reglas de la
+       base de datos solo dejan leer tu propia ficha de `perfiles` (salvo
+       administración), así que lo normal es que no llegue ningún nombre:
+       en ese caso la tabla lo dice en vez de inventarlo. */
+    var tecnicos = {};
+    try {
+      var ids = [];
+      grupos.forEach(function (g) { if (g.entrenador_id && ids.indexOf(g.entrenador_id) === -1) ids.push(g.entrenador_id); });
+      if (ids.length) {
+        var rt = await sb.from('perfiles').select('id,nombre,apellidos').in('id', ids);
+        if (!rt.error && rt.data) {
+          rt.data.forEach(function (p) { tecnicos[p.id] = ((p.nombre || '') + ' ' + (p.apellidos || '')).trim(); });
+        }
+      }
+    } catch (e) { /* sin permisos: se queda vacío */ }
+
+    pintarGrupos(grupos, errGrupos, tecnicos);
+
+    /* ---------- ATLETAS ----------
+       Hoy las reglas de la base de datos solo dejan leer los atletas
+       propios (los tuyos, los de tus hijos o los que entrenas). Se pide
+       lo que haya y se cuenta lo que llega de verdad. */
+    var atletas = [];
+    try {
+      var idsGrupos = grupos.map(function (g) { return g.id; });
+      if (idsGrupos.length) {
+        var ra = await sb.from('atletas')
+          .select('id,nombre,apellidos,grupo_id,estado,categoria')
+          .in('grupo_id', idsGrupos);
+        if (!ra.error) atletas = ra.data || [];
+      }
+    } catch (e) { /* sin permisos: la lista se queda vacía */ }
+
+    pintarAtletas(grupos, atletas);
+    pintarResumen(grupos, atletas);
+    pintarFechas();
+    pintarDocumentos();
+  }
+
+  /* ---------------- Resumen ---------------- */
+  function pintarResumen(grupos, atletas) {
+    var activos = grupos.filter(function (g) { return g.activo !== false; }).length;
+    var conTecnico = grupos.filter(function (g) { return !!g.entrenador_id; }).length;
+    var caja = document.getElementById('co-resumen');
+    caja.innerHTML =
+      '<h2>Resumen</h2>' +
+      '<p class="intro-tarjeta">' + (miSeccion
+        ? 'Lo que hay hoy en ' + esc(nombreSeccion(miSeccion)) + '.'
+        : 'Tu perfil no tiene sección asignada, así que ves todo el club.') + '</p>' +
+      '<div class="cifras">' +
+        '<div class="cifra"><b>' + grupos.length + '</b><span>Grupos</span></div>' +
+        '<div class="cifra"><b>' + activos + '</b><span>Activos</span></div>' +
+        '<div class="cifra"><b>' + conTecnico + '</b><span>Con técnico</span></div>' +
+        '<div class="cifra"><b>' + (grupos.length - conTecnico) + '</b><span>Sin técnico</span></div>' +
+      '</div>';
+  }
+
+  /* ---------------- Grupos ---------------- */
+  function pintarGrupos(grupos, err, tecnicos) {
+    tecnicos = tecnicos || {};
+    var caja = document.getElementById('co-grupos');
+    var html = '<h2>Grupos</h2>';
+    if (err) {
+      html += '<div class="aviso">No se pudieron leer los grupos: ' + esc(err) + '</div>';
+      caja.innerHTML = html; return;
+    }
+    if (!grupos.length) {
+      html += '<p class="vacio">Todavía no hay grupos dados de alta' + (miSeccion ? ' en ' + esc(nombreSeccion(miSeccion)) : '') + '.</p>';
+      caja.innerHTML = html; return;
+    }
+    html += '<p class="intro-tarjeta">Nombre, horario y estado de cada grupo.</p>' +
+      '<table><thead><tr><th>Grupo</th>' + (miSeccion ? '' : '<th>Sección</th>') +
+      '<th>Horario</th><th>Técnico</th><th>Estado</th></tr></thead><tbody>';
+    var faltaAlgunNombre = false;
+    grupos.forEach(function (g) {
+      var tec;
+      if (!g.entrenador_id) { tec = '<span class="pill no">Sin asignar</span>'; }
+      else if (tecnicos[g.entrenador_id]) { tec = esc(tecnicos[g.entrenador_id]); }
+      else { tec = '<span class="pill si">Asignado</span>'; faltaAlgunNombre = true; }
+      html += '<tr>' +
+        '<td><strong>' + esc(g.nombre) + '</strong>' + (g.descripcion ? '<br><span style="color:var(--texto-suave)">' + esc(g.descripcion) + '</span>' : '') + '</td>' +
+        (miSeccion ? '' : '<td>' + esc(nombreSeccion(g.seccion)) + '</td>') +
+        '<td>' + esc(g.horario || '—') + '</td>' +
+        '<td>' + tec + '</td>' +
+        '<td>' + (g.activo === false ? '<span class="pill no">Inactivo</span>' : '<span class="pill si">Activo</span>') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    if (faltaAlgunNombre) {
+      html += '<p class="pie-nota">El nombre de algún técnico no se puede mostrar todavía: ' +
+        'las reglas de la base de datos solo dejan leer tu propia ficha de la tabla de perfiles. ' +
+        'Está pendiente de habilitar para coordinación.</p>';
+    }
+    caja.innerHTML = html;
+  }
+
+  /* ---------------- Atletas por grupo ---------------- */
+  function pintarAtletas(grupos, atletas) {
+    var caja = document.getElementById('co-atletas');
+    var html = '<h2>Atletas por grupo</h2>';
+    if (!atletas.length) {
+      html += (rol === 'admin')
+        ? '<p class="vacio">Todavía no hay atletas asignados a estos grupos.</p>'
+        : '<div class="aviso"><b>Pendiente de permisos.</b><br>' +
+          'Hoy la base de datos solo deja ver la ficha de los atletas que entrenas tú o que son de tu familia, ' +
+          'no la de todos los atletas de tu sección. Hasta que se habilite para coordinación, esta lista se queda vacía.</div>';
+      caja.innerHTML = html; return;
+    }
+    var porGrupo = {};
+    atletas.forEach(function (a) {
+      var k = a.grupo_id || 'sin';
+      (porGrupo[k] = porGrupo[k] || []).push(a);
+    });
+    html += '<p class="intro-tarjeta">Solo aparecen los atletas que tu cuenta puede ver hoy.</p>' +
+      '<table><thead><tr><th>Grupo</th><th>Atletas</th><th>Nombres</th></tr></thead><tbody>';
+    grupos.forEach(function (g) {
+      var l = porGrupo[g.id] || [];
+      if (!l.length) return;
+      var nombres = l.map(function (a) { return esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim()); }).join(', ');
+      html += '<tr><td><strong>' + esc(g.nombre) + '</strong></td><td class="num">' + l.length + '</td><td>' + nombres + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    caja.innerHTML = html;
+  }
+
+  /* ---------------- Próximas fechas ---------------- */
+  async function pintarFechas() {
+    var caja = document.getElementById('co-fechas');
+    var filas = [];
+    var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+    try {
+      var re = await sb.from('eventos').select('id,titulo,tipo,fecha_inicio,lugar,seccion').order('fecha_inicio');
+      if (!re.error && re.data) {
+        re.data.forEach(function (ev) {
+          if (!ev.fecha_inicio || new Date(ev.fecha_inicio) < hoy) return;
+          if (miSeccion && Array.isArray(ev.seccion) && ev.seccion.length && ev.seccion.indexOf(miSeccion) === -1) return;
+          filas.push({ f: ev.fecha_inicio, t: ev.titulo, d: [ev.tipo, ev.lugar].filter(Boolean).join(' · ') });
+        });
+      }
+    } catch (e) { /* nada */ }
+
+    try {
+      var rc = await sb.from('competiciones').select('id,nombre,sede,fecha_inicio,nivel').order('fecha_inicio');
+      if (!rc.error && rc.data) {
+        rc.data.forEach(function (c) {
+          if (!c.fecha_inicio || new Date(c.fecha_inicio) < hoy) return;
+          filas.push({ f: c.fecha_inicio, t: c.nombre, d: [c.nivel, c.sede].filter(Boolean).join(' · ') });
+        });
+      }
+    } catch (e) { /* nada */ }
+
+    filas.sort(function (a, b) { return String(a.f).localeCompare(String(b.f)); });
+    filas = filas.slice(0, 12);
+
+    var html = '<h2>Próximas fechas</h2>';
+    if (!filas.length) {
+      html += '<p class="vacio">No hay nada apuntado en el calendario del club por delante.</p>';
+    } else {
+      html += '<ul class="lista-fechas">' + filas.map(function (x) {
+        return '<li><span class="fecha">' + esc(fechaCorta(x.f)) + '</span>' +
+               '<span class="que">' + esc(x.t) + (x.d ? '<small>' + esc(x.d) + '</small>' : '') + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    caja.innerHTML = html;
+  }
+
+  /* ---------------- Documentos ---------------- */
+  async function pintarDocumentos() {
+    var caja = document.getElementById('co-docs');
+    var html = '<h2>Documentos del club</h2>';
+    var docs = [];
+    try {
+      var rd = await sb.from('documentos').select('id,titulo,descripcion,categoria,archivo_url,activo,orden').order('orden');
+      if (!rd.error && rd.data) docs = rd.data.filter(function (d) { return d.activo !== false; });
+    } catch (e) { /* nada */ }
+
+    if (!docs.length) {
+      html += '<p class="vacio">Todavía no hay documentos publicados.</p>';
+    } else {
+      html += '<ul class="docs">' + docs.map(function (d) {
+        var t = esc(d.titulo || 'Documento');
+        var enlace = d.archivo_url ? '<a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">' + t + '</a>' : t;
+        return '<li>' + enlace + (d.categoria ? ' <span class="pill">' + esc(d.categoria) + '</span>' : '') +
+               (d.descripcion ? '<br><span style="color:var(--texto-suave)">' + esc(d.descripcion) + '</span>' : '') + '</li>';
+      }).join('') + '</ul>';
+    }
+    caja.innerHTML = html;
+  }
+});
+</script>
+
+</body>
+</html>
