@@ -161,8 +161,8 @@ language plpgsql
 security definer set search_path = public
 as $fn$
 begin
-  insert into public.perfiles (id, email, nombre, rol, activo)
-  values (new.id, new.email, split_part(new.email, '@', 1), 'atleta', true)
+  insert into public.perfiles (id, email, nombre, apellidos, rol, activo)
+  values (new.id, new.email, split_part(new.email, '@', 1), '', 'atleta', true)
   on conflict (id) do nothing;
   return new;
 end;
@@ -175,13 +175,13 @@ create trigger on_auth_user_created
   for each row execute function public.crear_perfil_nuevo_usuario();
 
 -- Rellenar cuentas que ya existían sin perfil (p. ej. la de prueba)
-insert into public.perfiles (id, email, nombre, rol, activo)
-select u.id, u.email, split_part(u.email, '@', 1), 'atleta', true
+insert into public.perfiles (id, email, nombre, apellidos, rol, activo)
+select u.id, u.email, split_part(u.email, '@', 1), '', 'atleta', true
 from auth.users u
 left join public.perfiles p on p.id = u.id
 where p.id is null
 on conflict (id) do nothing;
 
--- NOTA: la columna `perfiles.nombre` es obligatoria, por eso se rellena
--- con la parte del correo antes de la @ (p. ej. atleta.prueba).
+-- NOTA: `perfiles.nombre` y `perfiles.apellidos` son obligatorias, por eso se
+-- rellenan (nombre = parte del correo antes de la @; apellidos = '' vacío).
 ```
