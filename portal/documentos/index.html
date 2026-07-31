@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentos · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .doc-wrap { max-width: 900px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
+  .doc-wrap h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(28px,6vw,42px); color: var(--navy); margin: 0 0 4px; }
+  .doc-wrap .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing:.1em; text-transform:uppercase; color: var(--texto-tenue); }
+  .volver { display:inline-block; margin-bottom:14px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; }
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(18px,3vw,26px); box-shadow: var(--sombra-suave); margin-top:18px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 20px; color: var(--navy); margin: 0 0 12px; }
+  .doc { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+         padding:12px 0; border-bottom:1px solid var(--linea); }
+  .doc:last-child { border-bottom:0; }
+  .doc .info { flex:1; min-width:220px; }
+  .doc .tit { font-size:16px; font-weight:600; color: var(--navy); }
+  .doc .desc { font-size:14px; color: var(--texto-suave); margin-top:2px; }
+  .doc .meta { font-family: var(--fuente-mono); font-size:11px; color: var(--texto-tenue); margin-top:4px; text-transform:uppercase; letter-spacing:.05em; }
+  .etq { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase;
+         background: var(--crema-media); color: var(--texto-suave); padding:2px 8px; border-radius:999px; margin-left:6px; }
+  .etq.socios { background:#e6f0f8; color: var(--azul-oscuro); }
+  .vacio { color: var(--texto-suave); font-size:14px; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="doc-wrap" id="doc-wrap"><p class="intro">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('doc-wrap');
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function tam(b){ if(!b) return ''; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(0)+' KB'; return (b/1048576).toFixed(1).replace('.',',')+' MB'; }
+
+  var html = '<a class="volver" href="../">← Volver al portal</a>' +
+             '<h1>Documentos del club</h1><span class="sub">Impresos, normativa y circulares</span>';
+
+  var r = await sb.from('documentos').select('titulo,descripcion,categoria,archivo_url,nombre_archivo,tipo_mime,tamano_bytes,visibilidad,orden')
+    .eq('activo', true).order('categoria').order('orden');
+
+  if (r.error) {
+    html += '<div class="tarjeta"><p class="vacio">No se pudieron cargar los documentos: ' + esc(r.error.message) + '</p></div>';
+  } else if (!r.data.length) {
+    html += '<div class="tarjeta"><p class="vacio">Todavía no hay documentos publicados.</p></div>';
+  } else {
+    var orden = ['Estatutos','Normativa interna','Reglamento','Protocolos','Autorizaciones','Circulares','Otros'];
+    var grupos = {};
+    r.data.forEach(function (d) { var c = d.categoria || 'Otros'; (grupos[c] = grupos[c] || []).push(d); });
+    var claves = Object.keys(grupos).sort(function (a, b) {
+      var ia = orden.indexOf(a), ib = orden.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    claves.forEach(function (c) {
+      html += '<div class="tarjeta"><h2>' + esc(c) + '</h2>' + grupos[c].map(function (d) {
+        var ext = (d.nombre_archivo || '').split('.').pop().toUpperCase();
+        var meta = [ext && ext.length <= 5 ? ext : '', tam(d.tamano_bytes)].filter(Boolean).join(' · ');
+        return '<div class="doc"><div class="info">' +
+          '<div class="tit">' + esc(d.titulo) + (d.visibilidad === 'socios' ? '<span class="etq socios">Solo socios</span>' : '') + '</div>' +
+          (d.descripcion ? '<div class="desc">' + esc(d.descripcion) + '</div>' : '') +
+          (meta ? '<div class="meta">' + esc(meta) + '</div>' : '') +
+          '</div><a class="btn btn--primario" href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download>Descargar</a></div>';
+      }).join('') + '</div>';
+    });
+  }
+  wrap.innerHTML = html;
+});
+</script>
+
+</body>
+</html>
