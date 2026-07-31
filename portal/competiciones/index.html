@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Competiciones · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .cp-wrap { max-width: 900px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
+  .cp-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(28px,6vw,42px); color: var(--navy); margin: 0 0 4px; }
+  .cp-cab .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing:.1em; text-transform:uppercase; color: var(--texto-tenue); }
+
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(18px,3vw,26px); box-shadow: var(--sombra-suave); margin-bottom:18px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; color: var(--navy); margin: 0 0 6px; }
+  .tarjeta h3 { font-family: var(--fuente-mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color: var(--azul-oscuro); margin:16px 0 6px; }
+
+  .comp-cab { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .comp-datos { font-size:14px; color: var(--texto-suave); margin:2px 0 10px; }
+  .comp-notas { font-size:14px; color: var(--texto); background: var(--crema); border-left:3px solid var(--azul); padding:10px 12px; border-radius:8px; margin:10px 0; }
+
+  table { width:100%; border-collapse: collapse; }
+  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--linea); font-size:14px; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+
+  .vacio { color: var(--texto-suave); font-size:14px; }
+  .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); white-space:nowrap; }
+  .pill.ok { background:#e6f4ea; color:#1e7a3d; }
+  .pill.aviso { background:#fdf1e3; color:#9a5b12; }
+  .pill.cerrado { background:#fbeceb; color:#b3261e; }
+
+  .plazo { font-size:13px; font-weight:600; color: var(--azul-oscuro); }
+  .plazo.cerrado { color:#b3261e; }
+  .bloqueado { background:#fbeceb; border:1px solid #e0b4b0; color:#b3261e; font-size:14px; padding:10px 12px; border-radius:10px; margin-top:10px; }
+
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:10px 0 5px; }
+  input, select { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-size:15px; font-family: var(--fuente-texto); background:#fff; color: var(--navy); }
+  .apuntarme { display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:end; margin-top:6px; }
+  @media (max-width:600px){ .apuntarme { grid-template-columns:1fr; } }
+  .btn { cursor:pointer; }
+  .btn--mini { padding:9px 16px; font-size:14px; }
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 7px 12px; border-radius: 999px; font-size: 13px; cursor:pointer; }
+  .btn--peligro:hover { background: #fbeceb; }
+  .msg { font-size:14px; margin-top:8px; display:block; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
+
+  .saldo-caja { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .saldo-num { font-family: var(--fuente-titulo); font-size:38px; font-weight:700; color: var(--navy); line-height:1; }
+  .saldo-num.mal { color:#b3261e; }
+  .mis-pruebas { list-style:none; padding:0; margin:8px 0 0; display:flex; flex-direction:column; gap:6px; }
+  .mis-pruebas li { display:flex; align-items:center; justify-content:space-between; gap:10px; background: var(--crema); border-radius:10px; padding:8px 12px; font-size:14px; }
+  .sel-atleta { max-width:340px; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="cp-wrap" id="cp-wrap"><p class="vacio">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('cp-wrap');
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function eur(n){ var v=parseFloat(n); return (isNaN(v)?0:v).toFixed(2).replace('.',',')+' €'; }
+  function pad(n){ return (n<10?'0':'')+n; }
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  function fechaLarga(iso){ if(!iso) return 'fecha por confirmar'; var d=new Date(String(iso).indexOf('T')>-1?iso:iso+'T00:00:00'); if(isNaN(d.getTime())) return String(iso); return DIAS[d.getDay()]+' '+d.getDate()+' de '+MESES[d.getMonth()]; }
+  function fechaHora(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d.getTime())) return String(iso); return DIAS[d.getDay()]+' '+d.getDate()+' de '+MESES[d.getMonth()]+' a las '+pad(d.getHours())+':'+pad(d.getMinutes()); }
+  function pasado(iso){ if(!iso) return false; var d=new Date(iso); return !isNaN(d.getTime()) && d.getTime() < Date.now(); }
+
+  if (!perfil) { wrap.innerHTML = '<div class="tarjeta"><p class="vacio">No encontramos tu perfil. Avisa al club.</p></div>'; return; }
+
+  // ---------- datos base ----------
+  var ra = await sb.from('atletas').select('id,nombre,apellidos,categoria,especialidades').order('nombre');
+  var MIS_ATLETAS = (ra.error ? [] : (ra.data || []));
+  if (!MIS_ATLETAS.length) {
+    wrap.innerHTML = '<div class="cp-cab"><h1>Competiciones</h1></div>' +
+      '<div class="tarjeta"><p class="vacio">Todavía no vemos tu ficha de atleta enlazada a tu cuenta. Avisa al club.</p></div>';
+    return;
+  }
+  var atleta = MIS_ATLETAS[0];
+
+  var CATALOGO = [];
+  var pc = await sb.from('pruebas').select('nombre,disciplina,ambito').eq('activa', true).order('orden');
+  if (!pc.error && pc.data) CATALOGO = pc.data;
+
+  var COMPS = [], INSCRIPCIONES = [], SALDO = 0, MOVIMIENTOS = [];
+
+  async function cargarDatos(){
+    var hoy = new Date(); hoy.setHours(0,0,0,0);
+    var desde = new Date(hoy.getTime() - 7*24*3600*1000).toISOString().slice(0,10);
+    var c = await sb.from('competiciones')
+      .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta,notas')
+      .or('fecha_inicio.gte.' + desde + ',fecha_inicio.is.null')
+      .order('fecha_inicio', { ascending: true });
+    COMPS = (c.error ? [] : (c.data || []));
+
+    var i = await sb.from('competicion_atleta').select('id,competicion_id,prueba,estado').eq('atleta_id', atleta.id);
+    INSCRIPCIONES = (i.error ? [] : (i.data || []));
+
+    var s = await sb.from('bono_saldo').select('saldo').eq('atleta_id', atleta.id).maybeSingle();
+    SALDO = (s.error || !s.data) ? 0 : (parseFloat(s.data.saldo) || 0);
+
+    var m = await sb.from('bono_movimientos').select('concepto,importe,fecha').eq('atleta_id', atleta.id).order('fecha', { ascending: false }).limit(40);
+    MOVIMIENTOS = (m.error ? [] : (m.data || []));
+  }
+
+  // Desplegable de pruebas: primero las suyas, luego el catálogo del ámbito
+  function opcionesPruebas(ambito){
+    var lista = CATALOGO.filter(function(p){ return !ambito || p.ambito === ambito; });
+    var mias = (atleta.especialidades || []).filter(function(n){
+      return lista.some(function(p){ return p.nombre === n; });
+    });
+    var grupos = {}, orden = [];
+    lista.forEach(function(p){
+      var g = (p.disciplina || 'otras');
+      if (!grupos[g]) { grupos[g] = []; orden.push(g); }
+      grupos[g].push(p.nombre);
+    });
+    var top = mias.length ? '<optgroup label="★ Mis pruebas">' + mias.map(function(n){ return '<option>'+esc(n)+'</option>'; }).join('') + '</optgroup>' : '';
+    return '<option value="">— elige tu prueba —</option>' + top +
+      orden.map(function(g){
+        return '<optgroup label="'+esc(g)+'">' + grupos[g].map(function(n){ return '<option>'+esc(n)+'</option>'; }).join('') + '</optgroup>';
+      }).join('');
+  }
+
+  // ---------- pintar ----------
+  function tarjetaComp(c){
+    var mias = INSCRIPCIONES.filter(function(x){ return x.competicion_id === c.id && x.estado !== 'cancelada'; });
+    var plazoOff = pasado(c.fecha_limite_interna);
+    var abierta = !!c.inscripcion_abierta && !plazoOff;
+    var coste = parseFloat(c.coste) || 0;
+
+    var estadoPill = abierta
+      ? '<span class="pill ok">Puedes apuntarte</span>'
+      : (plazoOff ? '<span class="pill cerrado">Plazo cerrado</span>' : '<span class="pill">Aún no abierta</span>');
+
+    var html = '<div class="tarjeta">' +
+      '<div class="comp-cab"><h2>'+esc(c.nombre)+'</h2>'+estadoPill+'</div>' +
+      '<p class="comp-datos">' + esc(fechaLarga(c.fecha_inicio)) +
+        (c.sede ? ' · ' + esc(c.sede) : '') +
+        (coste ? ' · cuesta <b>'+eur(coste)+'</b> de tu bono' : '') + '</p>';
+
+    if (c.circular_url) {
+      html += '<p><a class="btn btn--fantasma btn--mini" href="'+esc(c.circular_url)+'" target="_blank" rel="noopener">📄 Ver la circular (PDF)</a></p>';
+    } else {
+      html += '<p class="vacio">La circular todavía no está subida.</p>';
+    }
+
+    if (c.notas) html += '<p class="comp-notas">'+esc(c.notas)+'</p>';
+
+    if (c.fecha_limite_interna) {
+      html += '<p class="plazo'+(plazoOff?' cerrado':'')+'">' +
+        (plazoOff ? 'El plazo para apuntarse terminó el ' + esc(fechaHora(c.fecha_limite_interna)) + '.'
+                  : 'Puedes apuntarte hasta el ' + esc(fechaHora(c.fecha_limite_interna)) + '.') + '</p>';
+    }
+
+    // Mis pruebas en esta competición
+    html += '<h3>Mis pruebas aquí</h3>';
+    if (!mias.length) {
+      html += '<p class="vacio">Todavía no te has apuntado a ninguna prueba.</p>';
+    } else {
+      html += '<ul class="mis-pruebas">' + mias.map(function(x){
+        var quitar = (abierta && x.estado === 'apuntado')
+          ? '<button class="btn--peligro" data-quitar="'+x.id+'">Quitarme</button>'
+          : '<span class="pill">'+(x.estado === 'confirmada' ? 'ya en la federación' : 'bloqueada')+'</span>';
+        return '<li><span>'+esc(x.prueba)+' ' +
+          (x.estado === 'confirmada' ? '<span class="pill ok">Confirmada</span>' : '<span class="pill aviso">Apuntado</span>') +
+          '</span>' + quitar + '</li>';
+      }).join('') + '</ul>';
+    }
+
+    // Apuntarse
+    if (abierta) {
+      html += '<h3>Apuntarme a otra prueba</h3>' +
+        '<div class="apuntarme">' +
+          '<div><label for="sel-'+c.id+'">Prueba</label><select id="sel-'+c.id+'">'+opcionesPruebas(c.ambito)+'</select></div>' +
+          '<div><button class="btn btn--primario btn--mini" data-apuntar="'+c.id+'">Apuntarme</button></div>' +
+        '</div>' +
+        (coste > SALDO ? '<span class="msg error">Ojo: tu bono ('+eur(SALDO)+') no llega para esta competición ('+eur(coste)+'). Puedes apuntarte igual, pero avisa al club para recargarlo.</span>' : '') +
+        '<span class="msg" id="msg-'+c.id+'"></span>';
+    } else if (plazoOff) {
+      html += '<div class="bloqueado">El plazo para apuntarse ya pasó. Si necesitas entrar o salir de esta competición, habla directamente con tu entrenador.</div>';
+    } else {
+      html += '<div class="bloqueado">La inscripción todavía no está abierta. Cuando lo esté, podrás elegir tus pruebas aquí.</div>';
+    }
+
+    return html + '</div>';
+  }
+
+  function pintar(){
+    var nombre = ((atleta.nombre||'')+' '+(atleta.apellidos||'')).trim();
+    var selector = '';
+    if (MIS_ATLETAS.length > 1) {
+      selector = '<div class="tarjeta"><label for="sel-atleta">¿De quién quieres ver las competiciones?</label>' +
+        '<select id="sel-atleta" class="sel-atleta">' + MIS_ATLETAS.map(function(a){
+          return '<option value="'+a.id+'"'+(a.id===atleta.id?' selected':'')+'>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</option>';
+        }).join('') + '</select></div>';
+    }
+
+    var cab = '<div class="cp-cab"><h1>Competiciones</h1>' +
+      '<span class="sub">'+esc(nombre)+(atleta.categoria?' · '+esc(atleta.categoria):'')+'</span></div>';
+
+    var saldoMal = SALDO <= 0;
+    var bono = '<div class="tarjeta"><h2>Mi bono</h2>' +
+      '<div class="saldo-caja"><span class="saldo-num'+(saldoMal?' mal':'')+'">'+eur(SALDO)+'</span>' +
+      '<span class="vacio">saldo disponible. Cada competición se descuenta cuando el club te confirma la inscripción.</span></div>' +
+      (MOVIMIENTOS.length
+        ? '<table style="margin-top:14px;"><thead><tr><th>Fecha</th><th>Concepto</th><th>Importe</th></tr></thead><tbody>' +
+          MOVIMIENTOS.map(function(m){
+            var v = parseFloat(m.importe) || 0;
+            return '<tr><td>'+esc(m.fecha||'')+'</td><td>'+esc(m.concepto||'')+'</td><td>'+(v>0?'+':'')+esc(eur(v))+'</td></tr>';
+          }).join('') + '</tbody></table>'
+        : '<p class="vacio" style="margin-top:10px;">Todavía no hay movimientos en tu bono.</p>') +
+      '</div>';
+
+    var comps = COMPS.length
+      ? COMPS.map(tarjetaComp).join('')
+      : '<div class="tarjeta"><p class="vacio">No hay competiciones publicadas ahora mismo. Cuando el club suba la próxima circular, la verás aquí.</p></div>';
+
+    wrap.innerHTML = cab + selector + comps + bono;
+
+    if (MIS_ATLETAS.length > 1) {
+      $('sel-atleta').addEventListener('change', async function(){
+        var id = this.value;
+        atleta = MIS_ATLETAS.filter(function(a){ return a.id === id; })[0] || atleta;
+        wrap.innerHTML = '<p class="vacio">Cargando…</p>';
+        await cargarDatos(); pintar();
+      });
+    }
+  }
+
+  // ---------- acciones ----------
+  wrap.addEventListener('click', async function(e){
+    var apuntar = e.target.getAttribute && e.target.getAttribute('data-apuntar');
+    var quitar = e.target.getAttribute && e.target.getAttribute('data-quitar');
+
+    if (apuntar) {
+      var sel = $('sel-' + apuntar), msg = $('msg-' + apuntar);
+      var prueba = sel ? sel.value.trim() : '';
+      if (!prueba) { msg.textContent = 'Elige primero la prueba.'; msg.className = 'msg error'; return; }
+      msg.textContent = 'Apuntándote…'; msg.className = 'msg';
+      var r = await sb.from('competicion_atleta').insert({
+        competicion_id: apuntar, atleta_id: atleta.id, prueba: prueba, estado: 'apuntado'
+      });
+      if (r.error) {
+        var txt = (r.error.code === '23505')
+          ? 'Ya estabas apuntado a esa prueba.'
+          : 'No se pudo apuntar: ' + r.error.message + ' (puede que el plazo se haya cerrado).';
+        msg.textContent = txt; msg.className = 'msg error';
+        return;
+      }
+      await cargarDatos(); pintar();
+      return;
+    }
+
+    if (quitar) {
+      if (!confirm('¿Quitarte de esta prueba?')) return;
+      var d = await sb.from('competicion_atleta').delete().eq('id', quitar);
+      if (d.error) { alert('No se pudo quitar: ' + d.error.message); return; }
+      await cargarDatos(); pintar();
+    }
+  });
+
+  await cargarDatos();
+  pintar();
+});
+</script>
+
+</body>
+</html>
