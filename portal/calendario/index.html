@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendario · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema); }
+
+  .cal-wrap { max-width: 1200px; margin: 0 auto; padding: clamp(14px,3vw,28px) clamp(14px,4vw,40px) 48px; }
+  .volver { display:inline-block; margin-bottom:10px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; }
+
+  /* ---- cabecera: mes + navegación ---- */
+  .cal-cab { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+  .cal-cab .rotulo { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; color: var(--texto-tenue); display:block; }
+  .cal-cab h1 { font-family: var(--fuente-titulo); font-weight:700; text-transform:uppercase;
+                font-size: clamp(34px,7vw,60px); line-height:.92; color: var(--navy); margin:4px 0 0; }
+  .mes-nav { display:flex; align-items:center; gap:8px; }
+  .mes-nav button { background:#fff; border:1px solid var(--linea-borde); color: var(--navy); border-radius:999px;
+                    padding:8px 14px; font-family:inherit; font-size:14px; cursor:pointer; }
+  .mes-nav button:hover { border-color: var(--azul); }
+
+  /* ---- chips de filtro ---- */
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+  .chips button { padding:8px 15px; border-radius:999px; background:#fff; border:1px solid var(--linea-borde);
+                  color: var(--texto); font-size:14px; font-family:inherit; cursor:pointer; }
+  .chips button[aria-pressed="true"] { background: var(--azul-oscuro); color:#fff; border-color: var(--azul-oscuro); font-weight:600; }
+  .chips.chips--ambito button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); }
+
+  /* ---- rejilla + columna lateral ---- */
+  .cal-cuerpo { margin-top:20px; display:grid; grid-template-columns: 1.6fr 1fr; gap:22px; align-items:start; }
+  @media (max-width: 900px) { .cal-cuerpo { grid-template-columns: 1fr; } }
+
+  .rejilla { background:#fff; border:1px solid var(--crema-media); border-radius:18px; padding: clamp(12px,2vw,22px);
+             box-shadow: var(--sombra-suave); }
+  .semana-cab, .dias { display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; }
+  .semana-cab { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.12em; color: var(--texto-tenue);
+                text-align:center; padding-bottom:10px; }
+  .dia { min-height:92px; border-radius:10px; background: var(--crema); border:1px solid var(--crema-banda);
+         padding:8px; display:flex; flex-direction:column; gap:5px; text-align:left; font-family:inherit;
+         cursor:pointer; overflow:hidden; }
+  .dia .num { font-family: var(--fuente-mono); font-size:11px; color: var(--texto-suave); }
+  .dia .res { font-size:11px; color:#6B6558; line-height:1.3; }
+  .dia.fuera { cursor:default; }
+  .dia.fuera .num { color:#C0B8A6; }
+  .dia.hoy .num { font-weight:700; color: var(--navy); }
+  .dia.comp { background:#EDF7E4; border-color:#C3E39B; }
+  .dia.comp .num { color:#5B8B33; } .dia.comp .res { color:#4C7A28; }
+  .dia.cierre { background: var(--aviso-fondo); border-color: var(--aviso-borde); }
+  .dia.cierre .num { color: var(--aviso-titulo); } .dia.cierre .res { color:#8A7530; }
+  .dia.sel { background: var(--azul-suave); border-color: var(--azul); }
+  .dia.sel .num { color: var(--azul-oscuro); font-weight:700; } .dia.sel .res { color: var(--azul-oscuro); }
+  .dia .puntos { display:flex; gap:3px; flex-wrap:wrap; margin-top:auto; }
+  .dia .puntos i { width:7px; height:7px; border-radius:4px; display:block; }
+  .p-entreno { background: var(--azul); } .p-cubo { background:#8A6BB8; }
+  .p-comp { background:#7FBF4A; } .p-cierre { background:#E8B84B; } .p-evento { background:#A79F8E; }
+  @media (max-width: 620px) { .dia { min-height:62px; padding:5px; } .dia .res { display:none; } }
+
+  .lateral { display:flex; flex-direction:column; gap:14px; }
+
+  /* ---- tarjeta de bonos ---- */
+  .bonos { background: var(--navy); border-radius:16px; padding:18px 20px; display:flex; flex-direction:column; gap:12px; }
+  .bonos .eti { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.16em; color: rgba(255,255,255,.7); }
+  .bonos .par { display:flex; gap:18px; flex-wrap:wrap; }
+  .bonos .cel { flex:1; min-width:120px; display:flex; flex-direction:column; gap:2px; }
+  .bonos .cifra { font-family: var(--fuente-titulo); font-weight:700; font-size:40px; color:#fff; line-height:1; }
+  .bonos .cifra.mal { color:#F2B8B5; }
+  .bonos .txt { font-size:13px; color: rgba(255,255,255,.78); line-height:1.35; }
+  .bonos select { width:100%; padding:9px 11px; border-radius:10px; border:1px solid rgba(255,255,255,.35);
+                  background: rgba(255,255,255,.1); color:#fff; font-family:inherit; font-size:15px; }
+  .bonos select option { color: var(--navy); }
+  .bonos a { color:#cfe2f2; font-size:13px; text-decoration:underline; }
+
+  /* ---- panel del día ---- */
+  .panel { background:#fff; border:1px solid var(--crema-media); border-radius:16px; padding:18px 20px;
+           display:flex; flex-direction:column; gap:12px; box-shadow: var(--sombra-suave); }
+  .panel .cab { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .panel h2 { font-family: var(--fuente-titulo); font-weight:700; font-size:24px; text-transform:uppercase; color: var(--navy); }
+  .panel .cuenta { font-family: var(--fuente-mono); font-size:11px; color: var(--texto-tenue); }
+
+  .act { display:flex; gap:12px; align-items:flex-start; padding-bottom:12px; border-bottom:1px solid var(--crema-banda); }
+  .act:last-child { border-bottom:0; padding-bottom:0; }
+  .act .hora { font-family: var(--fuente-mono); font-size:12px; color: var(--azul-oscuro); width:44px; flex:0 0 44px; padding-top:2px; }
+  .act .cuerpo { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .act .tit { font-size:15px; color: var(--navy); }
+  .act .sub { font-size:12px; color: var(--texto-suave); }
+  .act .nota { font-size:12px; color: var(--texto-suave); }
+  .act.mia { background: var(--azul-suave); border-radius:10px; padding:10px 12px; border-bottom:0; }
+  .act.mia + .act { border-top:0; }
+
+  .pill { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase;
+          padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave);
+          white-space:nowrap; align-self:flex-start; }
+  .pill.ok { background:#e6f4ea; color:#1e7a3d; }
+  .pill.mia { background: var(--azul-suave); color: var(--azul-oscuro); }
+  .pill.no { background:#fbeceb; color:#b3261e; }
+  .pill.espera { background: var(--aviso-fondo); color: var(--aviso-titulo); }
+
+  .btn-act { margin-top:6px; align-self:flex-start; border-radius:999px; padding:8px 16px; font-size:13px;
+             font-weight:600; font-family:inherit; cursor:pointer; border:1px solid transparent; text-decoration:none;
+             display:inline-block; }
+  .btn-act--apuntar { background: var(--azul); color:#fff; }
+  .btn-act--apuntar:hover { background: var(--azul-oscuro); color:#fff; }
+  .btn-act--quitar { background:transparent; border-color:#e0b4b0; color:#b3261e; }
+  .btn-act--espera { background:transparent; border-color: var(--linea-borde); color: var(--texto); font-weight:400; }
+  .btn-act[disabled] { opacity:.6; cursor:default; }
+
+  /* ---- próxima competición ---- */
+  .proxima { background: var(--crema-banda); border:1px solid var(--linea-borde); border-radius:16px;
+             padding:18px 20px; display:flex; flex-direction:column; gap:8px; }
+  .proxima .eti { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color: var(--aviso-titulo); }
+  .proxima h3 { font-family: var(--fuente-titulo); font-weight:700; font-size:26px; text-transform:uppercase; color: var(--navy); line-height:1; }
+  .proxima .datos { font-size:14px; color:#6B6558; }
+  .proxima .btn-act { align-self:stretch; text-align:center; margin-top:4px; padding:12px; font-size:15px; }
+
+  /* ---- leyenda y pie ---- */
+  .leyenda { display:flex; flex-wrap:wrap; gap:14px; font-family: var(--fuente-mono); font-size:11px;
+             color: var(--texto-suave); padding:0 4px; }
+  .leyenda span { display:flex; align-items:center; gap:6px; }
+  .leyenda i { width:9px; height:9px; border-radius:5px; display:block; }
+
+  .pie-cal { margin-top:26px; background:#fff; border:1px solid var(--crema-media); border-radius:16px;
+             padding:20px 24px; display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+  .pie-cal p { font-size:15px; color: var(--texto); margin:0; }
+  .pie-cal .enlaces { display:flex; gap:10px; flex-wrap:wrap; }
+
+  .aviso-cal { margin-top:12px; font-size:14px; }
+  .aviso-cal.error { color:#b3261e; }
+  .aviso-cal.ok { color:#1e7a3d; }
+  .vacio { color: var(--texto-suave); font-size:14px; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="cal-wrap" id="cal-wrap"><p class="vacio">Cargando el calendario…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('cal-wrap');
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var DIAS_LARGO = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  var SEC_NOMBRE = { escuela:'Escuela', competicion:'Competición', running:'Running', natacion:'Natación',
+                     triatlon:'Triatlón', montana:'Montaña', pista:'Pista', marcha:'Marcha' };
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function fecha(s) { var p = String(s).slice(0, 10).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function hhmm(t) { return t ? String(t).slice(0, 5) : ''; }
+  function euros(n) { var v = parseFloat(n); return (isNaN(v) ? 0 : v).toFixed(2).replace('.', ',') + ' €'; }
+  function seccionNombre(s) { if (!s) return 'Club'; return SEC_NOMBRE[s] || (s.charAt(0).toUpperCase() + s.slice(1)); }
+  function fechaLarga(s) { var d = fecha(s); return DIAS_LARGO[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
+
+  var HOY = new Date(); HOY.setHours(0, 0, 0, 0);
+  var HOY_ISO = iso(HOY);
+
+  // ---------- estado de la pantalla ----------
+  var mes = new Date(HOY.getFullYear(), HOY.getMonth(), 1);
+  var diaSel = HOY_ISO;
+  var filtro = 'todo';      // 'todo' | 'sec:<seccion>' | 'cubo' | 'competicion' | 'evento'
+  var ambito = 'todo';      // 'todo' | 'mio' | 'abierto'
+  var aviso = '';
+  var atletas = [], atleta = null;
+  var GRUPOS = {}, SECCIONES = [];
+  var ACTIVIDADES = [], PROXIMA = null;
+  var USOS_CUBO = 0, HAY_CUBO = false, SALDO_COMP = 0;
+
+  // ---------- utilidades de mes ----------
+  function primerDia(m) { return new Date(m.getFullYear(), m.getMonth(), 1); }
+  function ultimoDia(m) { return new Date(m.getFullYear(), m.getMonth() + 1, 0); }
+
+  // ============================================================
+  //  CARGA DE DATOS · un solo calendario, cuatro fuentes
+  // ============================================================
+  async function cargar() {
+    var desde = iso(primerDia(mes)), hasta = iso(ultimoDia(mes));
+    var acts = [];
+
+    // --- grupos (lectura pública): nombres y secciones para los filtros ---
+    try {
+      var rg = await sb.from('grupos').select('id,nombre,seccion');
+      if (!rg.error && rg.data) {
+        GRUPOS = {}; var secs = {};
+        rg.data.forEach(function (g) { GRUPOS[g.id] = g; if (g.seccion) secs[g.seccion] = true; });
+        SECCIONES = Object.keys(secs).sort();
+      }
+    } catch (e) { /* sin grupos, el calendario sigue funcionando */ }
+
+    // --- 1) MIS entrenamientos (tabla `sesiones`, con su permiso de siempre) ---
+    var mias = {};
+    try {
+      var rm = await sb.from('sesiones')
+        .select('id,fecha,hora,titulo,tipo,rol,lugar,grupo_id,atletas_ids')
+        .eq('publicada', true).gte('fecha', desde).lte('fecha', hasta);
+      if (!rm.error && rm.data) {
+        rm.data.forEach(function (s) {
+          var deMiGrupo = atleta && s.grupo_id && s.grupo_id === atleta.grupo_id;
+          var paraMi = atleta && s.atletas_ids && s.atletas_ids.indexOf(atleta.id) >= 0;
+          if (deMiGrupo || paraMi) mias[s.id] = s;
+        });
+      }
+    } catch (e) { /* nada */ }
+
+    // --- 2) LO QUE HACE TODO EL CLUB (vista `sesiones_agenda`) ---
+    var vistas = {};
+    try {
+      var ra = await sb.from('sesiones_agenda').select('*').gte('fecha', desde).lte('fecha', hasta);
+      if (!ra.error && ra.data) ra.data.forEach(function (s) { vistas[s.sesion_id] = s; });
+    } catch (e) { /* si la vista aún no está, se ven solo las propias */ }
+
+    // Mis apuntados a entrenamientos abiertos
+    var misEntrenos = {};
+    if (atleta) {
+      try {
+        var ri = await sb.from('sesion_inscripciones').select('sesion_id').eq('atleta_id', atleta.id);
+        if (!ri.error && ri.data) ri.data.forEach(function (x) { misEntrenos[x.sesion_id] = true; });
+      } catch (e) { /* nada */ }
+    }
+
+    var miSeccion = (atleta && atleta.grupo_id && GRUPOS[atleta.grupo_id]) ? GRUPOS[atleta.grupo_id].seccion : null;
+
+    // Unimos las dos lecturas de entrenamientos por id
+    var ids = {};
+    Object.keys(vistas).forEach(function (k) { ids[k] = true; });
+    Object.keys(mias).forEach(function (k) { ids[k] = true; });
+
+    Object.keys(ids).forEach(function (id) {
+      var v = vistas[id] || {}, m = mias[id] || {};
+      var grupo = GRUPOS[v.grupo_id || m.grupo_id] || null;
+      var mio = !!mias[id];
+      var abierta = !!v.abierta_inscripcion;
+      var apuntado = !!misEntrenos[id];
+      var f = v.fecha || m.fecha;
+      var pasado = f < HOY_ISO;
+      var seccionOk = !v.abierta_a || v.abierta_a.indexOf(miSeccion) >= 0;
+      var completa = (v.plazas != null && v.libres != null && v.libres <= 0);
+
+      var estado, clase, accion = null, nota = '';
+      if (apuntado) {
+        estado = 'Ya apuntado'; clase = 'ok';
+        if (!pasado) accion = { tipo: 'quitar-sesion', id: id, texto: 'Quitarme', clase: 'quitar' };
+      } else if (mio) {
+        estado = 'Tu entreno'; clase = 'mia';
+      } else if (!abierta) {
+        estado = 'Solo para su grupo'; clase = '';
+      } else if (pasado) {
+        estado = 'Cerrada'; clase = 'no';
+      } else if (!seccionOk) {
+        estado = 'Solo para tu grupo'; clase = '';
+        nota = 'Abierto solo a: ' + (v.abierta_a || []).map(seccionNombre).join(', ') + '.';
+      } else if (completa) {
+        estado = 'Completa'; clase = 'no';
+        nota = 'Ya no quedan plazas.';
+      } else {
+        estado = 'Abierta'; clase = 'ok';
+        accion = { tipo: 'apuntar-sesion', id: id, texto: 'Me apunto', clase: 'apuntar' };
+        if (v.plazas != null) nota = 'Quedan ' + v.libres + (v.libres === 1 ? ' plaza' : ' plazas') + ' de ' + v.plazas + '.';
+      }
+
+      acts.push({
+        fuente: 'entreno', id: id, fecha: f, hora: hhmm(v.hora || m.hora),
+        titulo: v.titulo || m.titulo || 'Entrenamiento',
+        sub: [grupo ? grupo.nombre : '', v.lugar || m.lugar || ''].filter(Boolean).join(' · '),
+        seccion: grupo ? grupo.seccion : null,
+        mio: mio || apuntado, puedo: !!accion && accion.tipo === 'apuntar-sesion',
+        estado: estado, pillClase: clase, nota: nota, accion: accion
+      });
+    });
+
+    // --- 3) EL CUBO (si ya existe; si no, el calendario no se rompe) ---
+    HAY_CUBO = false;
+    var reservas = {};
+    try {
+      var rc = await sb.from('cubo_clases_ocupacion').select('*')
+        .eq('activa', true).gte('fecha', desde).lte('fecha', hasta);
+      if (!rc.error && rc.data) {
+        HAY_CUBO = true;
+        if (atleta) {
+          var rr = await sb.from('cubo_reservas').select('clase_id,estado').eq('atleta_id', atleta.id);
+          if (!rr.error && rr.data) rr.data.forEach(function (x) { reservas[x.clase_id] = x.estado; });
+        }
+        var ahora = new Date();
+        rc.data.forEach(function (c) {
+          var mi = reservas[c.clase_id];
+          var apuntado = (mi === 'reservada' || mi === 'asistida');
+          var enEspera = (mi === 'lista_espera');
+          var empezada = (new Date(c.fecha + 'T' + (c.hora_inicio || '00:00:00')) < ahora);
+          var completa = (c.libres <= 0);
+
+          var estado, clase, accion = null, nota = '';
+          if (apuntado) {
+            estado = 'Ya apuntado'; clase = 'ok';
+            if (!empezada) accion = { tipo: 'quitar-cubo', id: c.clase_id, texto: 'Quitarme', clase: 'quitar' };
+          } else if (enEspera) {
+            estado = 'En lista de espera'; clase = 'espera';
+            if (!empezada) accion = { tipo: 'quitar-cubo', id: c.clase_id, texto: 'Salir de la lista', clase: 'quitar' };
+          } else if (empezada) {
+            estado = 'Cerrada'; clase = 'no';
+          } else if (completa) {
+            estado = 'Completa'; clase = 'no';
+            accion = { tipo: 'apuntar-cubo', id: c.clase_id, texto: 'Lista de espera', clase: 'espera' };
+          } else {
+            estado = 'Abierta'; clase = 'ok';
+            accion = { tipo: 'apuntar-cubo', id: c.clase_id, texto: 'Me apunto · 1 uso', clase: 'apuntar' };
+            nota = 'Quedan ' + c.libres + (c.libres === 1 ? ' plaza' : ' plazas') + ' de ' + c.plazas + '. Gasta un uso del bono.';
+          }
+
+          acts.push({
+            fuente: 'cubo', id: c.clase_id, fecha: c.fecha, hora: hhmm(c.hora_inicio),
+            titulo: c.titulo, sub: ['El Cubo', c.monitor || ''].filter(Boolean).join(' · '),
+            seccion: null, mio: apuntado || enEspera, puedo: !!accion && accion.tipo === 'apuntar-cubo' && !completa,
+            estado: estado, pillClase: clase, nota: nota, accion: accion
+          });
+        });
+      }
+    } catch (e) { HAY_CUBO = false; }
+
+    // --- 4) COMPETICIONES (se apunta en /portal/competiciones/) ---
+    var misComps = {};
+    if (atleta) {
+      try {
+        var rca = await sb.from('competicion_atleta').select('competicion_id,prueba,estado').eq('atleta_id', atleta.id);
+        if (!rca.error && rca.data) rca.data.forEach(function (x) {
+          if (x.estado !== 'cancelada') (misComps[x.competicion_id] = misComps[x.competicion_id] || []).push(x.prueba);
+        });
+      } catch (e) { /* nada */ }
+    }
+
+    PROXIMA = null;
+    try {
+      var rcp = await sb.from('competiciones')
+        .select('id,nombre,sede,fecha_inicio,ambito,coste,fecha_limite_interna,inscripcion_abierta,circular_url')
+        .order('fecha_inicio', { ascending: true });
+      if (!rcp.error && rcp.data) {
+        rcp.data.forEach(function (c) {
+          var plazoFin = c.fecha_limite_interna ? new Date(c.fecha_limite_interna) : null;
+          var plazoPasado = plazoFin ? (plazoFin.getTime() < Date.now()) : false;
+          var abierta = !!c.inscripcion_abierta && !plazoPasado;
+          var apuntado = !!misComps[c.id];
+          var coste = parseFloat(c.coste) || 0;
+
+          if (!PROXIMA && c.fecha_inicio && c.fecha_inicio >= HOY_ISO) {
+            PROXIMA = { c: c, abierta: abierta, apuntado: apuntado, coste: coste };
+          }
+
+          // La competición, el día que se corre
+          if (c.fecha_inicio && c.fecha_inicio >= desde && c.fecha_inicio <= hasta) {
+            var estado, clase, accion = null, nota = '';
+            if (apuntado) { estado = 'Ya apuntado'; clase = 'ok'; nota = 'Tus pruebas: ' + misComps[c.id].filter(Boolean).join(', ') + '.'; }
+            else if (abierta) {
+              estado = 'Abierta'; clase = 'ok';
+              accion = { tipo: 'enlace', href: '../competiciones/', texto: coste ? 'Inscribirme · ' + euros(coste) : 'Inscribirme', clase: 'apuntar' };
+              nota = 'Eliges tu prueba en la página de competiciones.';
+            } else if (plazoPasado) { estado = 'Cerrada'; clase = 'no'; nota = 'El plazo para apuntarse ya pasó.'; }
+            else { estado = 'Cerrada'; clase = ''; nota = 'La inscripción todavía no está abierta.'; }
+
+            acts.push({
+              fuente: 'competicion', id: c.id, fecha: c.fecha_inicio, hora: '',
+              titulo: c.nombre, sub: [c.sede || '', coste ? euros(coste) + ' del bono' : ''].filter(Boolean).join(' · '),
+              seccion: null, mio: apuntado, puedo: !!accion,
+              estado: estado, pillClase: clase, nota: nota, accion: accion
+            });
+          }
+
+          // El día en que se cierra la inscripción (marca de la maqueta)
+          if (c.fecha_limite_interna) {
+            var fl = String(c.fecha_limite_interna).slice(0, 10);
+            if (fl >= desde && fl <= hasta) {
+              acts.push({
+                fuente: 'cierre', id: c.id + '-cierre', fecha: fl,
+                hora: hhmm(String(c.fecha_limite_interna).slice(11, 16)),
+                titulo: 'Cierra la inscripción · ' + c.nombre,
+                sub: 'Último día para apuntarse', seccion: null,
+                mio: apuntado, puedo: abierta && !apuntado,
+                estado: plazoPasado ? 'Cerrada' : (apuntado ? 'Ya apuntado' : 'Abierta'),
+                pillClase: plazoPasado ? 'no' : (apuntado ? 'ok' : 'espera'),
+                nota: '', accion: (abierta && !apuntado)
+                  ? { tipo: 'enlace', href: '../competiciones/', texto: 'Apuntarme antes de que cierre', clase: 'apuntar' }
+                  : null
+              });
+            }
+          }
+        });
+      }
+    } catch (e) { /* nada */ }
+
+    // --- 5) EVENTOS DEL CLUB ---
+    var misEventos = {};
+    if (atleta) {
+      try {
+        var rie = await sb.from('inscripciones_eventos').select('evento_id,estado').eq('atleta_id', atleta.id);
+        if (!rie.error && rie.data) rie.data.forEach(function (x) { if (x.estado !== 'baja') misEventos[x.evento_id] = true; });
+      } catch (e) { /* nada */ }
+    }
+    try {
+      var re = await sb.from('eventos').select('id,titulo,descripcion,tipo,fecha_inicio,lugar,seccion,inscripcion_abierta')
+        .gte('fecha_inicio', desde + 'T00:00:00').lte('fecha_inicio', hasta + 'T23:59:59');
+      if (!re.error && re.data) {
+        re.data.forEach(function (v) {
+          var f = String(v.fecha_inicio).slice(0, 10);
+          var h = String(v.fecha_inicio).slice(11, 16);
+          var apuntado = !!misEventos[v.id];
+          acts.push({
+            fuente: 'evento', id: v.id, fecha: f, hora: (h === '00:00' ? '' : h),
+            titulo: v.titulo, sub: [v.lugar || '', (v.seccion || []).map(seccionNombre).join(', ')].filter(Boolean).join(' · '),
+            seccion: (v.seccion && v.seccion.length === 1) ? v.seccion[0] : null,
+            mio: apuntado, puedo: false,
+            estado: apuntado ? 'Ya apuntado' : (v.inscripcion_abierta ? 'Abierta' : 'Cerrada'),
+            pillClase: apuntado ? 'ok' : (v.inscripcion_abierta ? 'ok' : ''),
+            nota: (!apuntado && v.inscripcion_abierta) ? 'Avisa al club o a tu entrenador para entrar.' : (v.descripcion || ''),
+            accion: null
+          });
+        });
+      }
+    } catch (e) { /* nada */ }
+
+    ACTIVIDADES = acts;
+
+    // --- bonos ---
+    USOS_CUBO = 0; SALDO_COMP = 0;
+    if (atleta) {
+      try {
+        var rb = await sb.from('cubo_bono_saldo').select('activo,caducado,usos_disponibles').eq('atleta_id', atleta.id);
+        if (!rb.error && rb.data) rb.data.forEach(function (b) {
+          if (b.activo && !b.caducado) USOS_CUBO += (b.usos_disponibles || 0);
+        });
+      } catch (e) { /* nada */ }
+      try {
+        var rs = await sb.from('bono_saldo').select('saldo').eq('atleta_id', atleta.id).maybeSingle();
+        if (!rs.error && rs.data) SALDO_COMP = parseFloat(rs.data.saldo) || 0;
+      } catch (e) { /* nada */ }
+    }
+  }
+
+  // ============================================================
+  //  FILTROS
+  // ============================================================
+  function pasaFiltro(a) {
+    if (filtro === 'cubo' && a.fuente !== 'cubo') return false;
+    if (filtro === 'competicion' && a.fuente !== 'competicion' && a.fuente !== 'cierre') return false;
+    if (filtro === 'evento' && a.fuente !== 'evento') return false;
+    if (filtro.indexOf('sec:') === 0) {
+      if (a.fuente !== 'entreno') return false;
+      if (a.seccion !== filtro.slice(4)) return false;
+    }
+    if (ambito === 'mio' && !a.mio) return false;
+    if (ambito === 'abierto' && !a.puedo) return false;
+    return true;
+  }
+
+  function visibles() { return ACTIVIDADES.filter(pasaFiltro); }
+
+  function porDia() {
+    var m = {};
+    visibles().forEach(function (a) { (m[a.fecha] = m[a.fecha] || []).push(a); });
+    Object.keys(m).forEach(function (k) {
+      m[k].sort(function (x, y) {
+        if (!x.hora && y.hora) return 1;
+        if (x.hora && !y.hora) return -1;
+        return x.hora < y.hora ? -1 : (x.hora > y.hora ? 1 : 0);
+      });
+    });
+    return m;
+  }
+
+  // ============================================================
+  //  PINTAR
+  // ============================================================
+  function resumenDia(lista) {
+    var comp = lista.filter(function (a) { return a.fuente === 'competicion'; });
+    if (comp.length) return comp[0].titulo;
+    var cierre = lista.filter(function (a) { return a.fuente === 'cierre'; });
+    if (cierre.length) return 'Cierra inscripción';
+    var ev = lista.filter(function (a) { return a.fuente === 'evento'; });
+    if (lista.length === 1) return lista[0].titulo;
+    if (ev.length && ev.length === lista.length) return lista.length + ' actividades';
+    var entrenos = lista.filter(function (a) { return a.fuente === 'entreno'; }).length;
+    if (entrenos === lista.length) return entrenos + (entrenos === 1 ? ' entreno' : ' entrenos');
+    return lista.length + ' actividades';
+  }
+
+  function puntosDia(lista) {
+    var vistos = {}, h = '';
+    lista.forEach(function (a) {
+      if (vistos[a.fuente]) return;
+      vistos[a.fuente] = true;
+      h += '<i class="p-' + a.fuente + '"></i>';
+    });
+    return h ? '<span class="puntos">' + h + '</span>' : '';
+  }
+
+  function pintarRejilla(mapa) {
+    var pd = primerDia(mes), ud = ultimoDia(mes);
+    var hueco = (pd.getDay() + 6) % 7;          // lunes primero
+    var total = hueco + ud.getDate();
+    var celdas = Math.ceil(total / 7) * 7;
+
+    var h = '<div class="rejilla">' +
+      '<div class="semana-cab"><span>LUN</span><span>MAR</span><span>MIÉ</span><span>JUE</span>' +
+      '<span>VIE</span><span>SÁB</span><span>DOM</span></div><div class="dias">';
+
+    for (var i = 0; i < celdas; i++) {
+      var n = i - hueco + 1;
+      if (n < 1 || n > ud.getDate()) {
+        var otra = new Date(mes.getFullYear(), mes.getMonth(), n);
+        h += '<div class="dia fuera"><span class="num">' + otra.getDate() + '</span></div>';
+        continue;
+      }
+      var f = mes.getFullYear() + '-' + pad(mes.getMonth() + 1) + '-' + pad(n);
+      var lista = mapa[f] || [];
+      var cls = 'dia';
+      if (f === diaSel) cls += ' sel';
+      else if (lista.some(function (a) { return a.fuente === 'competicion'; })) cls += ' comp';
+      else if (lista.some(function (a) { return a.fuente === 'cierre'; })) cls += ' cierre';
+      if (f === HOY_ISO) cls += ' hoy';
+
+      h += '<button type="button" class="' + cls + '" data-dia="' + f + '">' +
+           '<span class="num">' + n + '</span>' +
+           (lista.length ? '<span class="res">' + esc(resumenDia(lista)) + '</span>' + puntosDia(lista) : '') +
+           '</button>';
+    }
+    return h + '</div></div>';
+  }
+
+  function pintarActividad(a) {
+    var accion = '';
+    if (a.accion && a.accion.tipo === 'enlace') {
+      accion = '<a class="btn-act btn-act--' + a.accion.clase + '" href="' + esc(a.accion.href) + '">' + esc(a.accion.texto) + '</a>';
+    } else if (a.accion) {
+      accion = '<button type="button" class="btn-act btn-act--' + a.accion.clase + '" ' +
+               'data-accion="' + a.accion.tipo + '" data-id="' + esc(a.accion.id) + '">' + esc(a.accion.texto) + '</button>';
+    }
+    return '<div class="act' + (a.mio ? ' mia' : '') + '">' +
+      '<span class="hora">' + esc(a.hora || '—') + '</span>' +
+      '<span class="cuerpo">' +
+        '<span class="tit">' + esc(a.titulo) + '</span>' +
+        (a.sub ? '<span class="sub">' + esc(a.sub) + '</span>' : '') +
+        '<span class="pill ' + a.pillClase + '">' + esc(a.estado) + '</span>' +
+        (a.nota ? '<span class="nota">' + esc(a.nota) + '</span>' : '') +
+        accion +
+      '</span></div>';
+  }
+
+  function pintarPanel(mapa) {
+    var lista = mapa[diaSel] || [];
+    var d = fecha(diaSel);
+    var h = '<div class="panel"><div class="cab">' +
+      '<h2>' + esc(DIAS_LARGO[d.getDay()] + ' ' + d.getDate()) + '</h2>' +
+      '<span class="cuenta">' + (lista.length ? lista.length + (lista.length === 1 ? ' ACTIVIDAD' : ' ACTIVIDADES') : 'SIN NADA') + '</span>' +
+      '</div>';
+    if (!lista.length) {
+      h += '<p class="vacio">Ese día no hay nada apuntado con estos filtros. Prueba a quitar el filtro o a mirar otro día.</p>';
+    } else {
+      h += lista.map(pintarActividad).join('');
+    }
+    return h + '</div>';
+  }
+
+  function pintarProxima() {
+    if (!PROXIMA) {
+      return '<div class="proxima"><span class="eti">Próxima competición</span>' +
+             '<p class="datos" style="margin:0">Todavía no hay ninguna competición publicada. Cuando el club suba la circular, aparecerá aquí.</p></div>';
+    }
+    var c = PROXIMA.c;
+    var datos = [fechaLarga(c.fecha_inicio), c.sede || '', PROXIMA.coste ? euros(PROXIMA.coste) + ' del bono' : ''].filter(Boolean).join(' · ');
+    var boton;
+    if (PROXIMA.apuntado) boton = '<a class="btn-act btn-act--espera" href="../competiciones/">Ya estás apuntado · ver tus pruebas</a>';
+    else if (PROXIMA.abierta) boton = '<a class="btn-act btn-act--apuntar" href="../competiciones/">' +
+        (PROXIMA.coste ? 'Inscribirme · ' + euros(PROXIMA.coste) : 'Inscribirme') + '</a>';
+    else boton = '<a class="btn-act btn-act--espera" href="../competiciones/">La inscripción no está abierta</a>';
+
+    return '<div class="proxima"><span class="eti">Próxima competición</span>' +
+           '<h3>' + esc(c.nombre) + '</h3>' +
+           '<span class="datos">' + esc(datos) + '</span>' + boton + '</div>';
+  }
+
+  function pintarBonos() {
+    if (!atleta) {
+      return '<div class="bonos"><span class="eti">TUS BONOS · LO QUE TE QUEDA</span>' +
+             '<span class="txt">Tu cuenta todavía no está enlazada a ninguna ficha de atleta, así que aquí no ' +
+             'podemos enseñarte bonos ni dejarte apuntarte. Avisa al club y lo enlazan. Mientras tanto puedes ' +
+             'ver todo lo que hace el club en el calendario.</span></div>';
+    }
+    var h = '<div class="bonos"><span class="eti">TUS BONOS · LO QUE TE QUEDA</span>';
+    if (atletas.length > 1) {
+      h += '<select id="sel-atleta">' + atletas.map(function (a) {
+        return '<option value="' + a.id + '"' + (atleta && a.id === atleta.id ? ' selected' : '') + '>' +
+               esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim()) + '</option>';
+      }).join('') + '</select>';
+    }
+    h += '<div class="par">' +
+      '<span class="cel"><span class="cifra' + (USOS_CUBO ? '' : ' mal') + '">' + USOS_CUBO + '</span>' +
+      '<span class="txt">usos del bono de El Cubo' + (HAY_CUBO ? '' : ' (aún sin clases publicadas)') + '</span></span>' +
+      '<span class="cel"><span class="cifra' + (SALDO_COMP > 0 ? '' : ' mal') + '">' + esc(euros(SALDO_COMP)) + '</span>' +
+      '<span class="txt">de bono para competiciones</span></span>' +
+      '</div>' +
+      '<span class="txt">Cada clase de El Cubo gasta un uso. Las competiciones se descuentan del bono en euros cuando el club confirma tu inscripción. ' +
+      'Los entrenamientos del club no gastan bono.</span>' +
+      '<a href="../cubo/">Ver mi bono de El Cubo</a>' +
+      '</div>';
+    return h;
+  }
+
+  function pintarChips() {
+    var h = '<div class="chips">';
+    h += '<button type="button" data-filtro="todo" aria-pressed="' + (filtro === 'todo') + '">Todo</button>';
+    SECCIONES.forEach(function (s) {
+      h += '<button type="button" data-filtro="sec:' + esc(s) + '" aria-pressed="' + (filtro === 'sec:' + s) + '">' +
+           esc(seccionNombre(s)) + '</button>';
+    });
+    h += '<button type="button" data-filtro="cubo" aria-pressed="' + (filtro === 'cubo') + '">El Cubo</button>';
+    h += '<button type="button" data-filtro="competicion" aria-pressed="' + (filtro === 'competicion') + '">Competiciones</button>';
+    h += '<button type="button" data-filtro="evento" aria-pressed="' + (filtro === 'evento') + '">Eventos</button>';
+    h += '</div>';
+
+    h += '<div class="chips chips--ambito">' +
+      '<button type="button" data-ambito="todo" aria-pressed="' + (ambito === 'todo') + '">Todo el club</button>' +
+      '<button type="button" data-ambito="mio" aria-pressed="' + (ambito === 'mio') + '">Lo mío</button>' +
+      '<button type="button" data-ambito="abierto" aria-pressed="' + (ambito === 'abierto') + '">Donde puedo apuntarme</button>' +
+      '</div>';
+    return h;
+  }
+
+  function pintar() {
+    var mapa = porDia();
+    var h = '<a class="volver" href="../">← Volver al portal</a>';
+
+    h += '<div class="cal-cab"><div>' +
+         '<span class="rotulo">Entrenamientos y competiciones</span>' +
+         '<h1>' + esc(MESES[mes.getMonth()] + ' ' + mes.getFullYear()) + '</h1></div>' +
+         '<div class="mes-nav">' +
+           '<button type="button" data-mes="-1">‹ Mes anterior</button>' +
+           '<button type="button" data-mes="0">Hoy</button>' +
+           '<button type="button" data-mes="1">Mes siguiente ›</button>' +
+         '</div></div>';
+
+    h += pintarChips();
+    if (aviso) h += '<p class="aviso-cal ' + (aviso.charAt(0) === '!' ? 'error' : 'ok') + '">' + esc(aviso.replace(/^!/, '')) + '</p>';
+
+    h += '<div class="cal-cuerpo">' + pintarRejilla(mapa) +
+         '<div class="lateral">' + pintarBonos() + pintarPanel(mapa) + pintarProxima() +
+         '<div class="leyenda">' +
+           '<span><i class="p-entreno"></i>Entreno</span>' +
+           '<span><i class="p-cubo"></i>El Cubo</span>' +
+           '<span><i class="p-comp"></i>Competición</span>' +
+           '<span><i class="p-cierre"></i>Cierre de inscripción</span>' +
+           '<span><i class="p-evento"></i>Evento del club</span>' +
+         '</div></div></div>';
+
+    h += '<div class="pie-cal"><p>Lo que ves aquí es lo mismo que ve el club: los entrenamientos los publica tu entrenador, ' +
+         'las clases las abre El Cubo y las competiciones salen en cuanto llega la circular.</p>' +
+         '<div class="enlaces"><a class="btn btn--fantasma btn--sm" href="../cubo/">El Cubo</a>' +
+         '<a class="btn btn--fantasma btn--sm" href="../competiciones/">Competiciones</a></div></div>';
+
+    wrap.innerHTML = h;
+
+    var sel = document.getElementById('sel-atleta');
+    if (sel) sel.addEventListener('change', async function () {
+      var id = sel.value;
+      atleta = atletas.filter(function (a) { return a.id === id; })[0] || atleta;
+      aviso = '';
+      wrap.innerHTML = '<p class="vacio">Cargando el calendario…</p>';
+      await cargar(); pintar();
+    });
+  }
+
+  // ============================================================
+  //  ACCIONES
+  // ============================================================
+  wrap.addEventListener('click', async function (ev) {
+    var t = ev.target;
+    while (t && t !== wrap && !(t.getAttribute && (t.getAttribute('data-dia') || t.getAttribute('data-mes') ||
+           t.getAttribute('data-filtro') || t.getAttribute('data-ambito') || t.getAttribute('data-accion')))) {
+      t = t.parentNode;
+    }
+    if (!t || t === wrap) return;
+
+    var dia = t.getAttribute('data-dia');
+    if (dia) {
+      diaSel = dia; aviso = ''; pintar();
+      if (window.innerWidth <= 900) {
+        var p = wrap.querySelector('.panel');
+        if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return;
+    }
+
+    var salto = t.getAttribute('data-mes');
+    if (salto !== null && salto !== undefined && salto !== '') {
+      aviso = '';
+      if (salto === '0') { mes = new Date(HOY.getFullYear(), HOY.getMonth(), 1); diaSel = HOY_ISO; }
+      else {
+        mes = new Date(mes.getFullYear(), mes.getMonth() + (+salto), 1);
+        diaSel = iso(primerDia(mes));
+      }
+      wrap.innerHTML = '<p class="vacio">Cargando el calendario…</p>';
+      await cargar(); pintar(); return;
+    }
+
+    var f = t.getAttribute('data-filtro');
+    if (f) { filtro = f; aviso = ''; pintar(); return; }
+
+    var am = t.getAttribute('data-ambito');
+    if (am) { ambito = am; aviso = ''; pintar(); return; }
+
+    var acc = t.getAttribute('data-accion');
+    if (!acc) return;
+    var id = t.getAttribute('data-id');
+    if (!atleta) { aviso = '!Tu cuenta todavía no tiene ficha de atleta. Avisa al club.'; pintar(); return; }
+    t.disabled = true; t.textContent = 'Un momento…';
+
+    var r;
+    if (acc === 'apuntar-sesion') {
+      r = await sb.from('sesion_inscripciones').insert({ sesion_id: id, atleta_id: atleta.id });
+      aviso = r.error ? '!' + mensajeError(r.error) : 'Apuntado ✓';
+    } else if (acc === 'quitar-sesion') {
+      r = await sb.from('sesion_inscripciones').delete().eq('sesion_id', id).eq('atleta_id', atleta.id);
+      aviso = r.error ? '!' + mensajeError(r.error) : 'Te has quitado.';
+    } else if (acc === 'apuntar-cubo') {
+      r = await sb.rpc('cubo_apuntarme', { p_clase: id, p_atleta: atleta.id });
+      if (r.error) aviso = '!' + mensajeError(r.error);
+      else aviso = (r.data === 'lista_espera')
+        ? 'La clase está completa: te hemos puesto en la lista de espera. Si queda una plaza, te avisamos.'
+        : 'Apuntado ✓ Se te descuenta un uso del bono.';
+    } else if (acc === 'quitar-cubo') {
+      r = await sb.rpc('cubo_desapuntarme', { p_clase: id, p_atleta: atleta.id });
+      aviso = r.error ? '!' + mensajeError(r.error) : 'Te has quitado de la clase.';
+    } else { return; }
+
+    await cargar(); pintar();
+  });
+
+  function mensajeError(e) {
+    var m = (e && e.message) ? e.message : 'No se ha podido guardar.';
+    if (e && e.code === '23505') return 'Ya estabas apuntado.';
+    if (m.indexOf('row-level security') >= 0) return 'No puedes apuntarte a esta actividad.';
+    return m;
+  }
+
+  // ============================================================
+  //  ARRANQUE
+  // ============================================================
+  try {
+    var ra = await sb.from('atletas').select('id,nombre,apellidos,grupo_id').order('nombre');
+    atletas = ra.error ? [] : (ra.data || []);
+  } catch (e) { atletas = []; }
+  atleta = atletas.length ? atletas[0] : null;
+
+  await cargar();
+  pintar();
+});
+</script>
+
+</body>
+</html>
