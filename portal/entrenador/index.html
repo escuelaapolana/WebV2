@@ -68,11 +68,34 @@
 
   /* editor de bloques */
   .editor-bloque { border:1px solid var(--linea); border-radius:14px; padding:12px; margin-bottom:12px; background: var(--crema); }
-  .b-cab { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
-  .b-cab input { flex:1 1 auto; font-weight:600; }
-  .filas-cab { display:grid; grid-template-columns:1.7fr .7fr .9fr .8fr .9fr 1.2fr 34px; gap:6px; font-family: var(--fuente-mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; color: var(--texto-tenue); padding:0 2px 4px; }
-  .editor-fila { display:grid; grid-template-columns:1.7fr .7fr .9fr .8fr .9fr 1.2fr 34px; gap:6px; align-items:center; margin-bottom:6px; }
+  .b-cab { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .b-cab .b-etiqueta { flex:1 1 210px; font-weight:600; }
+  .b-cab .b-matiz { flex:1 1 190px; font-style:italic; }
+  .filas-cab { display:grid; grid-template-columns:1.7fr .72fr .85fr .8fr .8fr .95fr 34px; gap:6px; font-family: var(--fuente-mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; color: var(--texto-tenue); padding:0 2px 4px; }
+  .editor-fila { margin-bottom:9px; }
+  .fila-l1 { display:grid; grid-template-columns:1.7fr .72fr .85fr .8fr .8fr .95fr 34px; gap:6px; align-items:center; }
+  .fila-l2 { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:5px; padding-right:40px; }
+  .fila-l2 .f-detalle { flex:1 1 150px; min-width:0; }
+  .fila-l2 .f-observaciones { flex:2 1 280px; min-width:0; }
   .editor-fila input, .editor-fila select { padding:8px 8px; font-size:13px; border-radius:8px; }
+  .f-cel-cz { min-width:0; }
+  .f-cel-cz select, .f-cel-cz input { width:100%; }
+
+  /* calzado / carga según el tipo de sesión */
+  #bloques-cont .f-carga { display:none; }
+  #bloques-cont.modo-gym .f-carga { display:block; }
+  #bloques-cont.modo-gym .f-calzado { display:none; }
+
+  /* material de natación (varios a la vez) */
+  .f-material-caja { flex:1 1 100%; display:none; gap:5px; flex-wrap:wrap; align-items:center; }
+  #bloques-cont.con-material .f-material-caja { display:flex; }
+  .f-material-caja > .mat-tit { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; color: var(--texto-tenue); margin-right:2px; }
+  .mat-op { margin:0; position:relative; }
+  /* la casilla se oculta a la vista pero se sigue pudiendo enfocar con el teclado */
+  .mat-op input { position:absolute; width:1px; height:1px; opacity:0; margin:0; padding:0; }
+  .mat-op span { display:inline-block; font-size:12px; line-height:1; padding:6px 9px; border:1px solid var(--linea-borde); border-radius:999px; background:#fff; color: var(--texto-suave); cursor:pointer; user-select:none; }
+  .mat-op input:checked + span { background: var(--azul-suave); border-color: var(--azul); color: var(--azul-oscuro); font-weight:600; }
+  .mat-op input:focus-visible + span { outline:2px solid var(--azul); outline-offset:2px; }
   .mini-x { border:1px solid var(--linea-borde); background:#fff; border-radius:8px; width:34px; height:36px; cursor:pointer; color: var(--texto-suave); font-size:18px; line-height:1; padding:0; }
   .mini-x:hover { border-color:#b3261e; color:#b3261e; }
   .btn-mini { font-family: var(--fuente-mono); font-size:12px; text-transform:uppercase; letter-spacing:.05em; border:1px solid var(--linea-borde); background:#fff; color: var(--azul-oscuro); border-radius:8px; padding:8px 13px; cursor:pointer; }
@@ -156,7 +179,9 @@
     .grid2, .grid3 { grid-template-columns:1fr; }
     .sw-dia-campos { grid-template-columns:1fr; }
     .filas-cab { display:none; }
-    .editor-fila { grid-template-columns:1fr 1fr; }
+    .fila-l1 { grid-template-columns:1fr 1fr; }
+    .fila-l2 { padding-right:0; }
+    .editor-fila { border:1px solid var(--linea); border-radius:10px; padding:8px; background:#fff; }
     .editor-fila .mini-x { grid-column: span 2; width:100%; }
   }
 </style>
@@ -185,6 +210,57 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var TIPOS = [['pista','Pista'],['gym','Gimnasio'],['continuo','Rodaje / continuo'],['activacion','Activación'],['competicion','Competición'],['descanso','Descanso']];
   var ROLES = [['calidad_fuerte','Calidad fuerte'],['secundaria','Secundaria'],['activacion','Activación'],['ultimo_toque_48h','Último toque (48h)'],['descarga','Descarga'],['competicion','Competición']];
 
+  // ---------- listas cerradas (para que no haya erratas) ----------
+  // Calzado: se guarda el texto completo; en sitios estrechos se pinta la abreviatura (Z / C).
+  var CALZADO = [
+    { valor:'Zapatillas', corto:'Z' },
+    { valor:'Clavos', corto:'C' },
+    { valor:'Zapatillas de gimnasio', corto:'ZG' },
+    { valor:'Descalzo', corto:'D' }
+  ];
+  // Lo que puede escribir el entrenador (texto pegado o CSV) → valor de la lista
+  var SINON_CALZADO = {
+    'z':'Zapatillas', 'zapatillas':'Zapatillas', 'zapatilla':'Zapatillas', 'zapas':'Zapatillas',
+    'c':'Clavos', 'clavos':'Clavos', 'clavo':'Clavos', 'spikes':'Clavos',
+    'zg':'Zapatillas de gimnasio', 'zapatillas de gimnasio':'Zapatillas de gimnasio', 'zapatillas gimnasio':'Zapatillas de gimnasio', 'zapatillas de gym':'Zapatillas de gimnasio',
+    'd':'Descalzo', 'descalzo':'Descalzo', 'descalzos':'Descalzo', 'pies descalzos':'Descalzo'
+  };
+  // Material de natación: se pueden elegir VARIOS a la vez (p. ej. tabla + aletas)
+  var MATERIAL = ['Tabla','Pull-buoy','Palas','Aletas','Manoplas','Snorkel frontal','Goma elástica','Sin material'];
+  var SINON_MATERIAL = {
+    'tabla':'Tabla', 'tablas':'Tabla',
+    'pull buoy':'Pull-buoy', 'pullbuoy':'Pull-buoy', 'pull-buoy':'Pull-buoy', 'pull':'Pull-buoy', 'buoy':'Pull-buoy',
+    'palas':'Palas', 'pala':'Palas',
+    'aletas':'Aletas', 'aleta':'Aletas',
+    'manoplas':'Manoplas', 'manopla':'Manoplas',
+    'snorkel frontal':'Snorkel frontal', 'snorkel':'Snorkel frontal', 'tubo frontal':'Snorkel frontal',
+    'goma elastica':'Goma elástica', 'goma':'Goma elástica', 'gomas':'Goma elástica', 'elastico':'Goma elástica',
+    'sin material':'Sin material', 'nada':'Sin material'
+  };
+  function calzadoCorto(v){
+    for(var i=0;i<CALZADO.length;i++) if(CALZADO[i].valor===v) return CALZADO[i].corto;
+    return v||'';
+  }
+  // 'Z', 'clavos', 'ZAPATILLAS'… → valor de la lista, o '' si no es calzado
+  function resolverCalzado(txt){
+    var n = norm(txt).replace(/[.:]/g,'').trim();
+    return SINON_CALZADO[n] || '';
+  }
+  // 'tabla + aletas', 'Palas, manoplas' → ['Tabla','Aletas'] · [] si no es material
+  function resolverMaterial(txt){
+    var trozos = String(txt||'').split(/\s*[+,/·;&]\s*|\s+y\s+/i);
+    var out = [], vistos = {};
+    for(var i=0;i<trozos.length;i++){
+      var t = trozos[i].trim(); if(!t) continue;
+      var v = SINON_MATERIAL[norm(t).replace(/[.:]/g,'').trim()];
+      if(!v) return [];                       // si algo no está en la lista, no es material
+      if(!vistos[v]){ vistos[v] = true; out.push(v); }
+    }
+    return out;
+  }
+  // '80% RM', '75 %rm' → es carga, no ritmo
+  function esCarga(txt){ return /%\s*rm\b/i.test(sinTildes(String(txt||''))); }
+
   function optsPares(pares, sel, vacio){
     var o = '<option value="">'+(vacio||'—')+'</option>';
     pares.forEach(function(p){ o += '<option value="'+p[0]+'"'+(String(sel)===p[0]?' selected':'')+'>'+esc(p[1])+'</option>'; });
@@ -211,6 +287,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function nombreGrupo(id){ for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id) return MIS_GRUPOS[i].nombre; return ''; }
   function nombreAtleta(x){ return ((x.nombre||'')+' '+(x.apellidos||'')).trim(); }
   function atletasDeGrupo(grupoId){ return MIS_ATLETAS.filter(function(x){ return x.grupo_id===grupoId; }); }
+  // ¿El grupo entrena en el agua? Se mira la sección del grupo (natacion,
+  // escuela-natacion, triatlon) y, si no, su nombre. Solo sirve para DEJAR
+  // MARCADA por defecto la casilla de material: el entrenador siempre puede
+  // marcarla o desmarcarla a mano, porque no hay un tipo «natación» en la base.
+  function grupoEsDeAgua(grupoId){
+    for(var i=0;i<MIS_GRUPOS.length;i++){
+      if(MIS_GRUPOS[i].id===grupoId){
+        var t = norm((MIS_GRUPOS[i].seccion||'')+' '+(MIS_GRUPOS[i].nombre||''));
+        return /nataci|triatl|acuat|piscina|agua/.test(t);
+      }
+    }
+    return false;
+  }
 
   // ---------- mejores marcas de mis atletas ----------
   // MARCAS = { atleta_id: { 'nombre de prueba': {valor, disp, fecha} } }  ← ya filtrado a la MEJOR de cada prueba
@@ -434,17 +523,37 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return html;
   }
 
+  var CALZADO_OPTS = '<option value="">— calzado —</option>' +
+    CALZADO.map(function(c){ return '<option value="'+escAttr(c.valor)+'">'+esc(c.valor)+' ('+esc(c.corto)+')</option>'; }).join('');
+
+  function materialHTML(){
+    return '<div class="f-material-caja"><span class="mat-tit">Material</span>'+
+      MATERIAL.map(function(m){
+        return '<label class="mat-op"><input type="checkbox" class="f-material-chk" value="'+escAttr(m)+'"><span>'+esc(m)+'</span></label>';
+      }).join('')+'</div>';
+  }
+
   function nuevaFila(filasCont, data){
     data = data||{};
     var div=document.createElement('div'); div.className='editor-fila';
     div.innerHTML =
-      '<select class="f-ejercicio"></select>'+
-      '<input class="f-series" placeholder="series" inputmode="numeric">'+
-      '<input class="f-distancia" placeholder="distancia">'+
-      '<input class="f-ritmo" placeholder="ritmo">'+
-      '<input class="f-descanso" placeholder="descanso">'+
-      '<input class="f-detalle" placeholder="detalle">'+
-      '<button type="button" class="mini-x" title="Quitar fila">×</button>';
+      '<div class="fila-l1">'+
+        '<select class="f-ejercicio"></select>'+
+        '<input class="f-series" placeholder="series">'+
+        '<input class="f-distancia" placeholder="distancia">'+
+        '<input class="f-ritmo" placeholder="ritmo">'+
+        '<input class="f-descanso" placeholder="rec">'+
+        '<div class="f-cel-cz">'+
+          '<select class="f-calzado">'+CALZADO_OPTS+'</select>'+
+          '<input class="f-carga" placeholder="carga (80% RM)">'+
+        '</div>'+
+        '<button type="button" class="mini-x" title="Quitar fila">×</button>'+
+      '</div>'+
+      '<div class="fila-l2">'+
+        '<input class="f-detalle" placeholder="detalle">'+
+        '<input class="f-observaciones" placeholder="observaciones (objetivos por atleta, matices…)">'+
+        materialHTML()+
+      '</div>';
     filasCont.appendChild(div);
     var sel=div.querySelector('.f-ejercicio');
     sel.innerHTML=opcionesEjercicios(filtroActual(), data.ejercicio||'');
@@ -454,6 +563,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     div.querySelector('.f-ritmo').value=data.ritmo||'';
     div.querySelector('.f-descanso').value=data.descanso||'';
     div.querySelector('.f-detalle').value=data.detalle||'';
+    div.querySelector('.f-carga').value=data.carga||'';
+    div.querySelector('.f-observaciones').value=data.observaciones||'';
+    // calzado: si viene un valor antiguo que no está en la lista, se añade suelto para no perderlo
+    var selCz = div.querySelector('.f-calzado');
+    if(data.calzado){
+      var hay = false;
+      selCz.querySelectorAll('option').forEach(function(o){ if(o.value===data.calzado) hay = true; });
+      if(!hay) selCz.innerHTML += '<option value="'+escAttr(data.calzado)+'">'+esc(data.calzado)+'</option>';
+      selCz.value = data.calzado;
+    }
+    var mats = Array.isArray(data.material) ? data.material : (data.material ? [data.material] : []);
+    if(mats.length){
+      div.querySelectorAll('.f-material-chk').forEach(function(chk){ if(mats.indexOf(chk.value)>-1) chk.checked = true; });
+    }
     div.querySelector('.mini-x').addEventListener('click', function(){ if(FILA_ACTIVA===div) FILA_ACTIVA=null; div.remove(); });
     // marcar como "fila activa" para poder insertarle ejercicios desde el buscador
     div.addEventListener('focusin', function(){ marcarFilaActiva(div); });
@@ -499,20 +622,40 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cont = $('bloques-cont');
     var div=document.createElement('div'); div.className='editor-bloque';
     div.innerHTML =
-      '<div class="b-cab"><input class="b-etiqueta" list="etiquetas-dl" placeholder="Etiqueta del bloque (Calentamiento, Parte principal…)">'+
+      '<div class="b-cab"><input class="b-etiqueta" list="etiquetas-dl" placeholder="Etiqueta del bloque (Velocidad máxima, Fuerza / potencia…)">'+
+        '<input class="b-matiz" placeholder="Matiz (lo que va tras el guion: «Calidad pura»)">'+
         '<button type="button" class="mini-x b-quitar" title="Quitar bloque">×</button></div>'+
-      '<div class="filas-cab"><span>Ejercicio</span><span>Series</span><span>Distancia</span><span>Ritmo</span><span>Descanso</span><span>Detalle</span><span></span></div>'+
+      '<div class="filas-cab"><span>Ejercicio</span><span class="cab-series">Series</span><span>Distancia</span><span>Ritmo</span><span>Rec</span><span class="cab-cz">Calzado</span><span></span></div>'+
       '<div class="filas-cont"></div>'+
       '<div style="margin-top:8px;"><button type="button" class="btn-mini b-add-fila">+ Añadir fila</button></div>';
     cont.appendChild(div);
     div.querySelector('.b-etiqueta').value = data.etiqueta||'';
+    div.querySelector('.b-matiz').value = data.matiz||'';
     var filasCont = div.querySelector('.filas-cont');
     div.querySelector('.b-quitar').addEventListener('click', function(){ div.remove(); });
     div.querySelector('.b-add-fila').addEventListener('click', function(){ nuevaFila(filasCont, {}); });
     var filas = Array.isArray(data.filas)?data.filas:[];
     if(filas.length){ filas.forEach(function(f){ nuevaFila(filasCont, f); }); }
     else { nuevaFila(filasCont, {}); }
+    aplicarModoFilas();
     return div;
+  }
+
+  // ------------------------------------------------------------
+  // Las columnas se adaptan al tipo de sesión:
+  //   gym                          -> Carga (% RM), sin Calzado
+  //   pista / continuo / activación-> Calzado y Rec, sin Carga
+  // El material de natación es un interruptor aparte (ver más abajo).
+  // ------------------------------------------------------------
+  function aplicarModoFilas(){
+    var cont = $('bloques-cont'); if(!cont) return;
+    var tipo = $('pl-tipo') ? $('pl-tipo').value : '';
+    var esGym = (tipo === 'gym');
+    cont.classList.toggle('modo-gym', esGym);
+    var conMaterial = $('pl-material') ? $('pl-material').checked : false;
+    cont.classList.toggle('con-material', conMaterial);
+    cont.querySelectorAll('.cab-cz').forEach(function(el){ el.textContent = esGym ? 'Carga' : 'Calzado'; });
+    cont.querySelectorAll('.cab-series').forEach(function(el){ el.textContent = esGym ? 'Series × reps' : 'Series'; });
   }
 
   function limpiarFormulario(){
@@ -523,12 +666,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if($('pl-rol')) $('pl-rol').value = '';
     if($('pl-nota')) $('pl-nota').value = '';
     if($('pl-publicar')) $('pl-publicar').checked = false;
+    if($('pl-material')) $('pl-material').checked = grupoEsDeAgua($('pl-grupo') ? $('pl-grupo').value : '');
     if($('pl-dest')){ aplicarDest('pl', $('pl-grupo').value, null); if(refrescarDestPl) refrescarDestPl(); }
     $('bloques-cont').innerHTML='';
     // arranca con los tres bloques típicos vacíos
     nuevoBloque({etiqueta:'Calentamiento'});
     nuevoBloque({etiqueta:'Parte principal'});
     nuevoBloque({etiqueta:'Vuelta a la calma'});
+    aplicarModoFilas();
     $('pl-estado').textContent = 'Nueva sesión';
     $('pl-msg').textContent=''; $('pl-msg').className='msg';
     if($('pl-editar')) $('pl-editar').value='';
@@ -548,8 +693,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(refrescarDestPl) refrescarDestPl();
     $('bloques-cont').innerHTML='';
     var bloques = Array.isArray(s.bloques)?s.bloques:[];
+    // Si la sesión ya trae material apuntado, la casilla se marca sola para que se vea.
+    var traeMaterial = bloques.some(function(b){
+      return (b.filas||[]).some(function(f){ return f && f.material && f.material.length; });
+    });
+    if($('pl-material')) $('pl-material').checked = traeMaterial || grupoEsDeAgua(s.grupo_id||$('pl-grupo').value);
     // Una sesión sin bloques (p. ej. un día de descanso) se queda vacía: se sigue editando, no se convierte en nueva.
     bloques.forEach(function(b){ nuevoBloque(b); });
+    aplicarModoFilas();
     $('pl-estado').textContent = 'Editando: '+(s.titulo||formatFecha(s.fecha));
     $('pl-msg').textContent=''; $('pl-msg').className='msg';
   }
@@ -573,14 +724,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var bloques=[];
     $('bloques-cont').querySelectorAll('.editor-bloque').forEach(function(be){
       var etiqueta = be.querySelector('.b-etiqueta').value.trim();
+      var matiz = be.querySelector('.b-matiz').value.trim();
       var filas=[];
       be.querySelectorAll('.editor-fila').forEach(function(fe){
         var f={};
         var ej = fe.querySelector('.f-ejercicio').value.trim(); if(ej) f.ejercicio=ej;
-        ['series','distancia','ritmo','descanso','detalle'].forEach(function(k){ var v=fe.querySelector('.f-'+k).value.trim(); if(v) f[k]=v; });
+        // 'detalle' se mantiene tal cual: la zona del atleta ya lo lee.
+        ['series','distancia','ritmo','descanso','detalle','calzado','carga','observaciones'].forEach(function(k){
+          var el = fe.querySelector('.f-'+k); if(!el) return;
+          var v = el.value.trim(); if(v) f[k]=v;
+        });
+        var mats = [];
+        fe.querySelectorAll('.f-material-chk').forEach(function(chk){ if(chk.checked) mats.push(chk.value); });
+        if(mats.length) f.material = mats;
         if(Object.keys(f).length) filas.push(f);
       });
-      if(etiqueta || filas.length) bloques.push({ etiqueta: etiqueta, filas: filas });
+      if(etiqueta || matiz || filas.length){
+        var b = { etiqueta: etiqueta, filas: filas };
+        if(matiz) b.matiz = matiz;
+        bloques.push(b);
+      }
     });
     return bloques;
   }
@@ -607,6 +770,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<label>Nota / razonamiento</label><textarea id="pl-nota" placeholder="Objetivo del día, sensaciones a buscar, avisos…"></textarea>'+
         '<h3>Bloques del entreno</h3>'+
         '<p class="pista" style="margin-bottom:10px;">'+PISTA_RITMO_HTML+'</p>'+
+        '<div class="check" style="margin:0 0 10px;"><input type="checkbox" id="pl-material"><label for="pl-material">Sesión de agua: mostrar el <strong>material de natación</strong> en cada fila (tabla, palas, aletas…). Se puede marcar más de uno.</label></div>'+
+        '<p class="pista" style="margin:0 0 12px;">Las columnas se ajustan solas al tipo de sesión: en <strong>gimnasio</strong> aparece <strong>Carga</strong> (<code>80% RM</code>) y en <strong>pista, rodaje o activación</strong> aparecen <strong>Calzado</strong> y <strong>Rec</strong>.</p>'+
         '<div class="buscador-ej" id="ej-caja">'+
           '<label style="margin-top:0;">Buscar ejercicio (nombre, categoría o tipo)</label>'+
           '<input id="ej-filtro" autocomplete="off" placeholder="velocidad, core, tacos, gym, técnica…">'+
@@ -675,6 +840,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     $('pl-add-bloque').addEventListener('click', function(){ nuevoBloque({}); });
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
+    $('pl-tipo').addEventListener('change', aplicarModoFilas);
+    $('pl-material').addEventListener('change', aplicarModoFilas);
 
     // ---- ¿para quién es? ----
     pintarListaDest('pl', $('pl-grupo').value, []);
@@ -685,6 +852,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // al cambiar de grupo cambian los atletas: la lista se repinta vacía
       aplicarDest('pl', $('pl-grupo').value, null);
       refrescarDestPl();
+      $('pl-material').checked = grupoEsDeAgua($('pl-grupo').value);
+      aplicarModoFilas();
       cargarSesionesGrupo($('pl-grupo').value);
     });
     $('pl-editar').addEventListener('change', function(){
@@ -798,7 +967,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
-  // Una fila de entreno: "Voladoras | 4x60 m | 90-95% | desc 4 min"
+  // Un encabezado de bloque: "VELOCIDAD MÁXIMA — Calidad pura" → etiqueta + matiz
+  function bloqueDeEncabezado(texto){
+    var t = String(texto||'').replace(/\s*:\s*$/,'').trim();
+    var b = { etiqueta: t, filas: [] };
+    var m = t.match(/^(.+?)\s+[—–-]\s+(.+)$/);
+    if(m){ b.etiqueta = m[1].trim(); b.matiz = m[2].trim(); }
+    return b;
+  }
+
+  // Una fila de entreno:
+  //   pista:    "Salidas desde tacos | 3x30m | rec 3-4' | C | obs: Máxima aceleración"
+  //   gimnasio: "Cargada completa | 3x2 | 80% RM | obs: Sin llegar a fallo"
   function parseFila(texto){
     var bruto = String(texto||'').trim();
     var partes = bruto.split('|');
@@ -808,6 +988,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var f = { ejercicio: partes.shift() || bruto }, sobra = [];
     partes.forEach(function(p){
       var np = norm(p);
+      // observaciones: "obs: ..." / "observaciones: ..." (puede llevar · dentro, se respeta entero)
+      var mo = p.match(/^(obs|observacion(?:es)?)\s*[:.\-–—]\s*(.*)$/i);
+      if(mo){ var tx = mo[2].trim() || p; f.observaciones = f.observaciones ? f.observaciones+' · '+tx : tx; return; }
+      // carga de gimnasio: cualquier cosa con "% RM" (o etiquetada "carga:")
+      if(!f.carga && (esCarga(p) || /^carga\s*[:.]/i.test(np))){
+        f.carga = p.replace(/^carga\s*[:.]?\s*/i,'').trim() || p; return;
+      }
+      // calzado: Z, C, zapatillas, clavos, descalzo… (lista cerrada)
+      if(!f.calzado){ var cz = resolverCalzado(p); if(cz){ f.calzado = cz; return; } }
+      // material de natación: uno o varios ("tabla + aletas")
+      if(!f.material){ var mat = resolverMaterial(p); if(mat.length){ f.material = mat; return; } }
       var mm = p.match(/^(\d{1,3})\s*[x×]\s*(.*)$/i);
       if(mm && !f.series){ f.series = mm[1]; var d = mm[2].trim(); if(d) f.distancia = d; return; }
       if(!f.ritmo && (/%/.test(p) || /\britmo\b/.test(np))){ f.ritmo = p.replace(/^ritmo\s*[:.]?\s*/i,'').trim() || p; return; }
@@ -857,8 +1048,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
       if(!ses){ sueltas++; continue; }
 
-      // '#' abre bloque
-      if(marca.charAt(0)==='#'){ bloque = { etiqueta: cuerpo.replace(/\s*:\s*$/,''), filas:[] }; ses.bloques.push(bloque); continue; }
+      // '#' abre bloque (y lo que vaya tras " — " se guarda como matiz)
+      if(marca.charAt(0)==='#'){ bloque = bloqueDeEncabezado(cuerpo); ses.bloques.push(bloque); continue; }
 
       // nota / objetivo del día
       var mn = cuerpo.match(/^(nota|notas|objetivo|razonamiento|comentario|observaciones)\s*[:·\-–]\s*(.*)$/i);
@@ -867,10 +1058,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // viñeta o número → fila de entreno
       if(marca){ asegurarBloque().filas.push(parseFila(cuerpo)); continue; }
 
-      // sin viñeta: ¿es el título de un bloque? ("Calentamiento:" o "Calentamiento")
+      // sin viñeta: ¿es el título de un bloque? ("Calentamiento:", "Calentamiento", "Fuerza — Máxima")
       var sinDosP = cuerpo.replace(/\s*:\s*$/,'');
-      if((/:\s*$/.test(cuerpo) && sinDosP.length<=48) || ETIQ_BLOQUE.indexOf(norm(cuerpo))>-1){
-        bloque = { etiqueta: sinDosP, filas:[] }; ses.bloques.push(bloque); continue;
+      var cand = bloqueDeEncabezado(cuerpo);
+      if((/:\s*$/.test(cuerpo) && sinDosP.length<=48) || ETIQ_BLOQUE.indexOf(norm(cuerpo))>-1 || (cand.matiz && ETIQ_BLOQUE.indexOf(norm(cand.etiqueta))>-1)){
+        bloque = cand; ses.bloques.push(bloque); continue;
       }
 
       // no encaja con nada: NO se pierde, entra como ejercicio y se avisa
@@ -890,11 +1082,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     'dia':'dia','dia semana':'dia','dia de la semana':'dia',
     'fecha':'fecha','tipo':'tipo','rol':'rol','titulo':'titulo','titulo sesion':'titulo','sesion':'titulo',
     'bloque':'bloque','etiqueta':'bloque','parte':'bloque',
+    'matiz':'matiz','matiz del bloque':'matiz','subtitulo':'matiz',
     'ejercicio':'ejercicio','nombre':'ejercicio',
-    'series':'series','repeticiones':'series','reps':'series',
+    'series':'series','repeticiones':'series','reps':'series','series x reps':'series',
     'distancia':'distancia','ritmo':'ritmo','intensidad':'ritmo',
-    'descanso':'descanso','recuperacion':'descanso',
-    'detalle':'detalle','observaciones':'detalle',
+    'descanso':'descanso','recuperacion':'descanso','rec':'descanso',
+    'calzado':'calzado','zapatillas':'calzado',
+    'carga':'carga','carga rm':'carga','% rm':'carga',
+    'material':'material','material natacion':'material',
+    'observaciones':'observaciones','observacion':'observaciones','obs':'observaciones',
+    'detalle':'detalle',
     'nota':'nota','notas':'nota','nota razonamiento':'nota'
   });
 
@@ -941,7 +1138,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!filas.length) return { sesiones:[], avisos:['El archivo está vacío.'] };
     var cab = filas.shift().map(function(h){ return ALIAS_CSV[norm(h)] || ''; });
     if(cab.indexOf('ejercicio')===-1 && cab.indexOf('dia')===-1 && cab.indexOf('fecha')===-1){
-      return { sesiones:[], avisos:['No reconozco la cabecera del archivo. Descarga la plantilla y usa sus columnas: dia, fecha, tipo, rol, titulo, bloque, ejercicio, series, distancia, ritmo, descanso, detalle.'] };
+      return { sesiones:[], avisos:['No reconozco la cabecera del archivo. Descarga la plantilla y usa sus columnas: dia, fecha, tipo, rol, titulo, bloque, matiz, ejercicio, series, distancia, ritmo, rec, calzado, carga, material, observaciones, detalle.'] };
     }
     var mapa = {}, orden = [];
     filas.forEach(function(f, n){
@@ -963,13 +1160,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!ses.rol && r.rol){ var rl = SINON_ROL[norm(r.rol).replace(/_/g,' ')]; if(rl) ses.rol = rl; else avisos.push('Fila '+(n+2)+': el rol «'+r.rol+'» no es válido, lo he dejado vacío.'); }
       if(!ses.titulo && r.titulo) ses.titulo = r.titulo;
       if(r.nota) ses.nota_razonamiento = (ses.nota_razonamiento ? ses.nota_razonamiento+' ' : '') + r.nota;
-      if(!r.ejercicio && !r.series && !r.distancia && !r.ritmo && !r.descanso && !r.detalle) return;
+      if(!r.ejercicio && !r.series && !r.distancia && !r.ritmo && !r.descanso && !r.detalle &&
+         !r.calzado && !r.carga && !r.material && !r.observaciones) return;
       var etq = r.bloque || 'Parte principal', bl = null;
       for(var b=0;b<ses.bloques.length;b++){ if(ses.bloques[b].etiqueta===etq) bl = ses.bloques[b]; }
       if(!bl){ bl = { etiqueta: etq, filas: [] }; ses.bloques.push(bl); }
+      if(r.matiz && !bl.matiz) bl.matiz = r.matiz;
       var celda = {};
       celda.ejercicio = r.ejercicio || '(sin nombre)';
-      ['series','distancia','ritmo','descanso','detalle'].forEach(function(k){ if(r[k]) celda[k] = r[k]; });
+      ['series','distancia','ritmo','descanso','detalle','carga','observaciones'].forEach(function(k){ if(r[k]) celda[k] = r[k]; });
+      // calzado y material son listas cerradas: se traducen, y lo que no esté en la lista
+      // no se pierde (se guarda en detalle) y se avisa.
+      if(r.calzado){
+        var cz = resolverCalzado(r.calzado);
+        if(cz) celda.calzado = cz;
+        else { celda.detalle = (celda.detalle ? celda.detalle+' · ' : '')+'calzado: '+r.calzado;
+               avisos.push('Fila '+(n+2)+': el calzado «'+r.calzado+'» no está en la lista (Zapatillas, Clavos, Zapatillas de gimnasio, Descalzo). Lo he pasado a detalle.'); }
+      }
+      if(r.material){
+        var mat = resolverMaterial(r.material);
+        if(mat.length) celda.material = mat;
+        else { celda.detalle = (celda.detalle ? celda.detalle+' · ' : '')+'material: '+r.material;
+               avisos.push('Fila '+(n+2)+': el material «'+r.material+'» no está en la lista ('+MATERIAL.join(', ')+'). Lo he pasado a detalle.'); }
+      }
       bl.filas.push(celda);
     });
     var sesiones = orden.map(function(k){ return mapa[k]; }).sort(function(a,b){ return a.fecha < b.fecha ? -1 : 1; });
@@ -978,33 +1191,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // ---------- textos de ayuda ----------
   var EJEMPLO_SEMANA = [
-    'LUNES · pista · calidad_fuerte · Series 6x150',
-    'Nota: primera sesión de calidad de la semana, buscar velocidad de carrera.',
-    '# Calentamiento',
-    '- Carrera continua suave | 10 min',
-    '- Drills de frecuencia | 2x30 m',
-    '# Parte principal',
-    '- Voladoras | 4x60 m | 90-95% | desc 4 min',
-    '- Salidas desde tacos | 5x20 m | desc 2 min',
+    'LUNES · pista · calidad_fuerte · Velocidad máxima',
+    'Nota: la sesión de calidad de la semana. Volumen mínimo, calidad absoluta, recuperaciones completas.',
+    '# Parte inicial',
+    '- Técnica con conos | 10\' | Z | obs: Frecuencia y coordinación',
+    '- Drills de frecuencia | 2x30 m | Z',
+    '# Velocidad máxima — Calidad pura',
+    '- Salidas desde tacos | 3x30m | rec 3-4\' | C | obs: Máxima aceleración',
+    '- Series 300 m | 2x300m | 90-95% | rec 8\' | C | obs: Rafa 40-42 seg · Adri 43-45 seg',
     '# Vuelta a la calma',
-    '- Trote suave | 8 min',
+    '- Trote suave + estiramientos | 8\' | Z',
     '',
-    'MARTES · gym · secundaria · Fuerza general',
+    'MARTES · gym · secundaria · Potenciación neural',
+    '# Fuerza / Potencia — Sin fatiga',
+    '- Cargada completa | 3x2 | 80% RM | obs: Movida rapidísimo, sin llegar a fallo',
+    '- Sentadilla | 4x6 | 75% RM | rec 3\' | obs: Bajada controlada',
+    '# Tren superior',
+    '- Press banca | 3x8 | 70% RM',
+    '',
+    'MIÉRCOLES · continuo · descarga · Rodaje en el agua',
     '# Parte principal',
-    '- Sentadilla | 4x6 | 80% | desc 3 min',
-    '- Core | 3x45 seg',
+    '- Series 100 m | 8x100m | rec 30" | tabla + aletas | obs: Suave, técnica de pies',
     '',
-    'MIÉRCOLES · descanso',
-    '',
-    'JUEVES · pista · ultimo_toque_48h · Ritmo competición',
-    '# Calentamiento',
-    '- Movilidad articular | 8 min',
-    '# Parte principal',
-    '- Ritmo competición | 3x120 m | 95% | desc 6 min',
+    'JUEVES · descanso',
     '',
     'VIERNES · activacion · activacion · Activación previa',
     '# Parte principal',
-    '- Progresivos | 4x60 m | 85%',
+    '- Progresivos | 4x60 m | 85% | Z',
     '',
     'SÁBADO · competicion · competicion · Control 100 m',
     '',
@@ -1024,14 +1237,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     '',
     '2) NOTA DEL DÍA (opcional): una línea que empiece por "Nota:" o por "Objetivo:".',
     '',
-    '3) BLOQUES: una línea que empiece por "#" abre un bloque, por ejemplo "# Calentamiento". También vale una línea suelta acabada en dos puntos ("Calentamiento:").',
-    '   Bloques habituales: Calentamiento, Parte principal, Vuelta a la calma.',
+    '3) BLOQUES: una línea que empiece por "#" abre un bloque, por ejemplo "# Parte inicial". También vale una línea suelta acabada en dos puntos ("Calentamiento:").',
+    '   Bloques habituales: Parte inicial, Velocidad máxima, Fuerza / Potencia, Tren superior, Vuelta a la calma.',
+    '   Si detrás del nombre del bloque pones un guion (" — " o " - "), lo de después se guarda como MATIZ del bloque:',
+    '   "# VELOCIDAD MÁXIMA — Calidad pura" -> bloque "VELOCIDAD MÁXIMA" con matiz "Calidad pura".',
     '',
     '4) EJERCICIOS: cada ejercicio va en una línea que empieza por "-" o por "*". Los datos se separan con "|".',
     '   - El primer trozo es siempre el nombre del ejercicio.',
     '   - "4x60 m" o "4 x 60 m"        -> series y distancia',
-    '   - algo con "%" o con la palabra "ritmo" -> ritmo',
-    '   - algo que empiece por "desc", "rec" o "r:" -> descanso',
+    '   - algo con "% RM" (por ejemplo "80% RM") -> carga de gimnasio',
+    '   - otro "%" o la palabra "ritmo" -> ritmo',
+    '   - algo que empiece por "desc", "rec" o "r:" -> recuperación (Rec)',
+    '   - "Z", "C", "zapatillas", "clavos", "zapatillas de gimnasio" o "descalzo" -> calzado',
+    '   - material de natación: "tabla", "pull-buoy", "palas", "aletas", "manoplas", "snorkel frontal", "goma elástica" o "sin material".',
+    '     Se pueden poner varios juntos: "tabla + aletas".',
+    '   - algo que empiece por "obs:" u "observaciones:" -> observaciones (ahí van los objetivos por atleta)',
     '   - cualquier otra cosa (por ejemplo "10 min") -> detalle',
     '',
     '5) RITMOS EN PORCENTAJE (muy útil cuando la sesión va para varios atletas).',
@@ -1043,6 +1263,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     '6) Deja una línea en blanco entre días. Los días que no aparezcan no generan sesión.',
     '',
     '7) No uses tablas, ni negritas, ni viñetas raras: solo texto plano con guiones y almohadillas.',
+    '',
+    'DOS EJEMPLOS DE FILA, TAL Y COMO SE ESCRIBEN EN LAS PLANIFICACIONES DEL CLUB:',
+    '',
+    '   Sesión de PISTA (Ejercicio | Series | Rec | Calzado | Observaciones):',
+    '   - Salidas desde tacos | 3x30m | rec 3-4\' | C | obs: Máxima aceleración',
+    '   - Series 300 m | 2x300m | 90-95% | rec 8\' | C | obs: Rafa 40-42 seg · Adri 43-45 seg',
+    '',
+    '   Sesión de GIMNASIO (Ejercicio | Series x Reps | Carga | Observaciones):',
+    '   - Cargada completa | 3x2 | 80% RM | obs: Movida rapidísimo, sin llegar a fallo',
+    '   - Sentadilla | 4x6 | 75% RM | rec 3\' | obs: Bajada controlada',
     '',
     'EJEMPLO COMPLETO DE UNA SEMANA:',
     '',
@@ -1079,12 +1309,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // CSV de ejemplo: separador ';' y BOM para que Excel respete los acentos
   function descargarPlantillaCSV(){
     var lineas = [
-      'dia;fecha;tipo;rol;titulo;bloque;ejercicio;series;distancia;ritmo;descanso;detalle',
-      'lunes;;pista;calidad_fuerte;Series 6x150;Calentamiento;Carrera continua suave;;;;;10 min suaves',
-      'lunes;;pista;calidad_fuerte;Series 6x150;Parte principal;Voladoras;4;60 m;90-95%;4 min;',
-      'lunes;;pista;calidad_fuerte;Series 6x150;Vuelta a la calma;Trote suave;;;;;8 min',
-      'martes;;gym;secundaria;Fuerza general;Parte principal;Sentadilla;4;6 rep;80%;3 min;',
-      'miercoles;;descanso;descarga;Descanso;;;;;;;'
+      "dia;fecha;tipo;rol;titulo;bloque;matiz;ejercicio;series;distancia;ritmo;rec;calzado;carga;material;observaciones;detalle",
+      "lunes;;pista;calidad_fuerte;Velocidad máxima;Parte inicial;;Técnica con conos;;;;;Z;;;Frecuencia y coordinación;10'",
+      "lunes;;pista;calidad_fuerte;Velocidad máxima;Velocidad máxima;Calidad pura;Salidas desde tacos;3;30 m;;3-4';C;;;Máxima aceleración. Recuperación completa;",
+      "lunes;;pista;calidad_fuerte;Velocidad máxima;Velocidad máxima;Calidad pura;Series 300 m;2;300 m;90-95%;8';C;;;Rafa 40-42 seg · Adri 43-45 seg;",
+      "lunes;;pista;calidad_fuerte;Velocidad máxima;Vuelta a la calma;;Trote suave + estiramientos;;;;;Z;;;;8'",
+      "martes;;gym;secundaria;Potenciación neural;Fuerza / Potencia;Sin fatiga;Cargada completa;3;2;;;;80% RM;;Movida rapidísimo, sin llegar a fallo;",
+      "martes;;gym;secundaria;Potenciación neural;Fuerza / Potencia;Sin fatiga;Sentadilla;4;6;;3';;75% RM;;Bajada controlada;",
+      "miercoles;;continuo;descarga;Rodaje en el agua;Parte principal;;Series 100 m;8;100 m;;30'';;;Tabla + Aletas;Suave, técnica de pies;",
+      "jueves;;descanso;descarga;Descanso;;;;;;;;;;;;"
     ];
     descargarArchivo('plantilla-semana.csv', '\uFEFF' + lineas.join('\r\n') + '\r\n', 'text/csv;charset=utf-8;');
   }
@@ -1125,8 +1358,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     else if(f.series) p.push(esc(f.series)+' series');
     else if(f.distancia) p.push(esc(f.distancia));
     if(f.ritmo) p.push('ritmo '+esc(f.ritmo));
-    if(f.descanso) p.push('desc. '+esc(f.descanso));
+    if(f.descanso) p.push('rec '+esc(f.descanso));
+    if(f.calzado) p.push('calzado '+esc(calzadoCorto(f.calzado)));   // en la lista va la abreviatura (Z / C)
+    if(f.carga) p.push('carga '+esc(f.carga));
+    if(f.material && f.material.length) p.push('material '+esc(f.material.join(' + ')));
     if(f.detalle) p.push(esc(f.detalle));
+    if(f.observaciones) p.push('obs. '+esc(f.observaciones));
     return '<li><b>'+esc(f.ejercicio||'—')+'</b>'+(p.length ? ' — '+p.join(' · ') : '')+'</li>';
   }
 
@@ -1168,7 +1405,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><span class="sw-lab">Rol</span><select class="sw-rol">'+optsPares(ROLES, s.rol||'', '— sin rol —')+'</select></div>'+
         '</div>';
       (s.bloques||[]).forEach(function(b){
-        html += '<div class="sw-bloque"><h4>'+esc(b.etiqueta||'Bloque')+'</h4><ul>'+
+        html += '<div class="sw-bloque"><h4>'+esc(b.etiqueta||'Bloque')+(b.matiz?' — '+esc(b.matiz):'')+'</h4><ul>'+
           (b.filas||[]).map(filaTexto).join('')+'</ul></div>';
       });
       if(!(s.bloques||[]).length) html += '<p class="sw-nota">Sin bloques (día de descanso o solo cabecera).</p>';
@@ -1349,8 +1586,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<li>Tipos válidos: <code>pista</code>, <code>gym</code>, <code>continuo</code>, <code>activacion</code>, <code>competicion</code>, <code>descanso</code>.</li>'+
             '<li>Roles válidos: <code>calidad_fuerte</code>, <code>secundaria</code>, <code>activacion</code>, <code>ultimo_toque_48h</code>, <code>descarga</code>, <code>competicion</code>.</li>'+
             '<li>Una línea <code>Nota:</code> u <code>Objetivo:</code> se guarda como nota del día.</li>'+
-            '<li>Una línea que empiece por <code>#</code> abre un bloque. También vale <code>Calentamiento:</code>.</li>'+
-            '<li>Una línea que empiece por <code>-</code> o <code>*</code> es un ejercicio. Los datos se separan con <code>|</code>: <code>4x60 m</code> son series y distancia, algo con <code>%</code> es el ritmo, algo con <code>desc</code> es el descanso y el resto va a detalle.</li>'+
+            '<li>Una línea que empiece por <code>#</code> abre un bloque. También vale <code>Calentamiento:</code>. Si pones un guion detrás (<code># VELOCIDAD MÁXIMA — Calidad pura</code>), lo de después se guarda como <strong>matiz</strong> del bloque.</li>'+
+            '<li>Una línea que empiece por <code>-</code> o <code>*</code> es un ejercicio. Los datos se separan con <code>|</code>: <code>4x60 m</code> son series y distancia, algo con <code>%</code> es el ritmo, algo con <code>rec</code> o <code>desc</code> es la recuperación y el resto va a detalle.</li>'+
+            '<li><strong>Calzado:</strong> un trozo que sea <code>Z</code>, <code>C</code>, <code>zapatillas</code>, <code>clavos</code>, <code>zapatillas de gimnasio</code> o <code>descalzo</code>. <strong>Carga de gimnasio:</strong> un trozo con <code>% RM</code> (<code>80% RM</code>). <strong>Observaciones:</strong> un trozo que empiece por <code>obs:</code> — ahí es donde van los objetivos por atleta (<code>obs: Rafa 40-42 seg · Adri 43-45 seg</code>).</li>'+
+            '<li><strong>Material de natación:</strong> <code>tabla</code>, <code>pull-buoy</code>, <code>palas</code>, <code>aletas</code>, <code>manoplas</code>, <code>snorkel frontal</code>, <code>goma elástica</code> o <code>sin material</code>. Se pueden juntar varios: <code>tabla + aletas</code>.</li>'+
+            '<li>Ejemplo de <strong>pista</strong>: <code>- Salidas desde tacos | 3x30m | rec 3-4\' | C | obs: Máxima aceleración</code>.<br>Ejemplo de <strong>gimnasio</strong>: <code>- Cargada completa | 3x2 | 80% RM | obs: Sin llegar a fallo</code>.</li>'+
             '<li>Si alguna línea no encaja, no se pierde: entra como ejercicio y te lo aviso en la previsualización.</li>'+
             '<li><strong>Ritmos en porcentaje:</strong> si escribes el ritmo como <code>90%</code> o <code>90-95%</code> y la distancia va en metros (<code>60 m</code>), <strong>cada atleta verá su propio tiempo objetivo</strong>, calculado con su mejor marca en esa distancia. Si escribes un ritmo fijo (<code>4:10 min/km</code>), todos verán lo mismo. Las mejores marcas de cada uno las tienes en «Mi grupo».</li>'+
           '</ul>'+
@@ -1372,7 +1612,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<details class="sw-ayuda">'+
           '<summary>Cómo se rellena la plantilla</summary>'+
           '<ul>'+
-            '<li>Columnas: <code>dia</code>, <code>fecha</code>, <code>tipo</code>, <code>rol</code>, <code>titulo</code>, <code>bloque</code>, <code>ejercicio</code>, <code>series</code>, <code>distancia</code>, <code>ritmo</code>, <code>descanso</code>, <code>detalle</code>.</li>'+
+            '<li>Columnas: <code>dia</code>, <code>fecha</code>, <code>tipo</code>, <code>rol</code>, <code>titulo</code>, <code>bloque</code>, <code>matiz</code>, <code>ejercicio</code>, <code>series</code>, <code>distancia</code>, <code>ritmo</code>, <code>rec</code>, <code>calzado</code>, <code>carga</code>, <code>material</code>, <code>observaciones</code>, <code>detalle</code>.</li>'+
+            '<li><code>calzado</code>: <code>Z</code>, <code>C</code>, <code>zapatillas</code>, <code>clavos</code>, <code>zapatillas de gimnasio</code> o <code>descalzo</code>. <code>carga</code>: el % RM del gimnasio (<code>80% RM</code>). <code>rec</code>: la recuperación entre series.</li>'+
+            '<li><code>material</code>: material de natación, separado por <code>+</code> si es más de uno (<code>Tabla + Aletas</code>). Vale: Tabla, Pull-buoy, Palas, Aletas, Manoplas, Snorkel frontal, Goma elástica, Sin material.</li>'+
+            '<li><code>observaciones</code>: el texto libre de cada ejercicio, que es donde van los objetivos por atleta (<code>Rafa 40-42 seg · Adri 43-45 seg</code>). <code>matiz</code> es lo que en la planificación va tras el guion del bloque (<code>Calidad pura</code>).</li>'+
+            '<li>Si escribes un calzado o un material que no está en la lista, no se pierde: se pasa a <code>detalle</code> y te lo aviso en la previsualización.</li>'+
             '<li>Rellena <code>dia</code> (lunes, martes…) o <code>fecha</code>. Si pones <code>dia</code>, la fecha se calcula desde el lunes que hayas elegido arriba.</li>'+
             '<li>Repite <code>dia</code>, <code>tipo</code>, <code>rol</code> y <code>titulo</code> en todas las líneas de ese día: se toma el primero que aparezca.</li>'+
             '<li>Un día de descanso se pone en una sola línea, con <code>tipo</code> = descanso y el resto vacío.</li>'+
