@@ -24,6 +24,12 @@
   .vacio { color: var(--texto-suave); font-size:14px; }
   .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); }
   .pill.ok { background:#e6f4ea; color:#1e7a3d; }
+  .graficos { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; }
+  @media (max-width:640px){ .graficos{ grid-template-columns:1fr; } }
+  .grafico { border:1px solid var(--linea); border-radius:14px; padding:10px 8px 4px; background: var(--crema); }
+  .grafico svg { width:100%; height:auto; display:block; }
+  .grafico .leyenda { font-size:11px; color: var(--texto-suave); padding:2px 4px 4px; }
+  .grafico .mejora { color:#1e7a3d; font-weight:600; }
 </style>
 </head>
 <body>
@@ -38,6 +44,43 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
   if (!perfil) { wrap.innerHTML = '<div class="tarjeta"><p class="vacio">No encontramos tu perfil. Avisa al club.</p></div>'; return; }
+
+  // Convierte una marca de texto a número (admite mm:ss.cc y ss.cc)
+  function tiempoANum(s) {
+    if (s == null) return null;
+    s = String(s).trim().replace(',', '.');
+    if (s.indexOf(':') > -1) { var p = s.split(':'); return (parseInt(p[0], 10) || 0) * 60 + (parseFloat(p[1]) || 0); }
+    var n = parseFloat(s); return isNaN(n) ? null : n;
+  }
+  // Dibuja un mini-gráfico de evolución (SVG) para una prueba
+  function graficoPrueba(nombre, pts) {
+    var W = 320, H = 150, padL = 10, padR = 10, padT = 30, padB = 24;
+    var ys = pts.map(function (p) { return p.y; });
+    var min = Math.min.apply(null, ys), max = Math.max.apply(null, ys);
+    if (min === max) { min -= 1; max += 1; }
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    function X(i) { return padL + (pts.length === 1 ? plotW / 2 : plotW * i / (pts.length - 1)); }
+    // En carreras, menos tiempo es mejor → lo ponemos arriba (línea que sube = mejora)
+    function Y(v) { return padT + plotH * (v - min) / (max - min); }
+    var linea = pts.map(function (p, i) { return X(i).toFixed(1) + ',' + Y(p.y).toFixed(1); }).join(' ');
+    var puntos = pts.map(function (p, i) {
+      var x = X(i), y = Y(p.y);
+      return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3.5" fill="var(--azul)"></circle>' +
+        '<text x="' + x.toFixed(1) + '" y="' + (y - 8).toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="var(--navy)">' + esc(p.disp) + '</text>' +
+        '<text x="' + x.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="8" fill="#9a958c">' + esc((p.fecha || '').slice(5)) + '</text>';
+    }).join('');
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Evolución de ' + esc(nombre) + '">' +
+      '<text x="' + padL + '" y="16" font-size="12" font-weight="700" fill="var(--navy)">' + esc(nombre) + '</text>' +
+      '<polyline fill="none" stroke="var(--azul)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' + linea + '"></polyline>' +
+      puntos + '</svg>';
+    // Diferencia entre la primera y la última marca
+    var d = pts[0].y - pts[pts.length - 1].y;
+    var ley = '';
+    if (Math.abs(d) > 0.001) {
+      ley = d > 0 ? '<span class="mejora">▲ ' + d.toFixed(2) + ' mejor que al empezar</span>' : '▼ ' + Math.abs(d).toFixed(2) + ' respecto al inicio';
+    }
+    return '<div class="grafico">' + svg + (ley ? '<div class="leyenda">' + ley + '</div>' : '') + '</div>';
+  }
 
   // Buscar la ficha de atleta ligada a este perfil
   var at = null;
@@ -56,14 +99,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return;
   }
 
-  // Mis marcas
+  // Mis marcas (con gráficos de evolución por prueba)
   var marcasHtml = '<p class="vacio">Aún no hay marcas registradas.</p>';
   try {
-    var m = await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo').eq('atleta_id', at.id).order('fecha', { ascending: false }).limit(20);
+    var m = await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo').eq('atleta_id', at.id).order('fecha', { ascending: false }).limit(50);
     if (!m.error && m.data && m.data.length) {
-      marcasHtml = '<table><thead><tr><th>Prueba</th><th>Marca</th><th>Fecha</th><th>Dónde</th></tr></thead><tbody>' +
-        m.data.map(function(x){ return '<tr><td>'+esc(x.prueba)+'</td><td>'+esc(x.tiempo_display||'')+'</td><td>'+esc(x.fecha||'')+'</td><td>'+esc(x.sede||'')+'</td></tr>'; }).join('') +
+      // Agrupar por prueba para los gráficos
+      var porPrueba = {};
+      m.data.forEach(function (x) { var k = x.prueba || '—'; (porPrueba[k] = porPrueba[k] || []).push(x); });
+      var graficos = '';
+      Object.keys(porPrueba).forEach(function (k) {
+        var arr = porPrueba[k].map(function (x) { return { fecha: x.fecha || '', y: tiempoANum(x.tiempo_display), disp: x.tiempo_display || '' }; })
+          .filter(function (p) { return p.y != null && p.fecha; })
+          .sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+        if (arr.length >= 2) graficos += graficoPrueba(k, arr);
+      });
+      var tabla = '<table><thead><tr><th>Prueba</th><th>Marca</th><th>Fecha</th><th>Dónde</th></tr></thead><tbody>' +
+        m.data.map(function (x) { return '<tr><td>' + esc(x.prueba) + '</td><td>' + esc(x.tiempo_display || '') + '</td><td>' + esc(x.fecha || '') + '</td><td>' + esc(x.sede || '') + '</td></tr>'; }).join('') +
         '</tbody></table>';
+      marcasHtml = (graficos ? '<div class="graficos">' + graficos + '</div>' : '<p class="vacio" style="margin-bottom:14px;">Cuando tengas 2+ marcas de una misma prueba, aquí verás tu evolución.</p>') + tabla;
     }
   } catch (e) {}
 
