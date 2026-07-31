@@ -82,6 +82,8 @@
           </div>
           <div><label>Grupo</label><select id="a-grupo"><option value="">(sin grupo)</option></select></div>
         </div>
+        <label>Especialidades <span style="font-weight:400;color:var(--texto-tenue);">— marca las pruebas que hace (puede ser varias)</span></label>
+        <div id="a-especialidades" style="border:1px solid var(--linea-borde);border-radius:10px;padding:10px 12px;max-height:230px;overflow:auto;font-size:14px;">Cargando pruebas…</div>
         <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
           <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
           <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
@@ -132,6 +134,28 @@ APOLANA_ADMIN.listo(function (sb) {
     }
   }
 
+  // Especialidades: casillas agrupadas por disciplina, desde el catálogo de pruebas
+  async function cargarPruebas() {
+    var box = $('a-especialidades');
+    var r = await sb.from('pruebas').select('nombre,disciplina,ambito').eq('activa', true).order('orden');
+    if (r.error || !r.data) { box.textContent = 'No se pudieron cargar las pruebas.'; return; }
+    var groups = {}, order = [];
+    r.data.forEach(function (p) { var g = (p.ambito === 'natacion' ? 'Natación' : 'Atletismo') + ' · ' + (p.disciplina || ''); if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(p.nombre); });
+    box.innerHTML = order.map(function (g) {
+      return '<div style="margin-bottom:8px;"><div style="font-family:var(--fuente-mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--texto-tenue);margin-bottom:4px;">' + esc(g) + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;">' + groups[g].map(function (n) {
+          return '<label style="display:inline-flex;align-items:center;gap:5px;font-weight:400;margin:0;font-size:13px;white-space:nowrap;"><input type="checkbox" class="esp-chk" value="' + esc(n) + '" style="width:auto;">' + esc(n) + '</label>';
+        }).join('') + '</div></div>';
+    }).join('');
+  }
+  function setEspecialidades(arr) {
+    var set = {}; (arr || []).forEach(function (n) { set[n] = true; });
+    Array.prototype.forEach.call(document.querySelectorAll('.esp-chk'), function (chk) { chk.checked = !!set[chk.value]; });
+  }
+  function getEspecialidades() {
+    var out = []; Array.prototype.forEach.call(document.querySelectorAll('.esp-chk'), function (chk) { if (chk.checked) out.push(chk.value); }); return out;
+  }
+
   async function cargar() {
     var tb = $('tabla').querySelector('tbody');
     tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
@@ -164,6 +188,7 @@ APOLANA_ADMIN.listo(function (sb) {
     ponerCategoria(a.categoria || '');
     $('a-estado').value = a.estado || '';
     $('a-grupo').value = a.grupo_id || '';
+    setEspecialidades(a.especialidades);
     $('a-email').value = '';
     if (a.perfil_id) {
       var pr = await sb.from('perfiles').select('email').eq('id', a.perfil_id).maybeSingle();
@@ -217,6 +242,7 @@ APOLANA_ADMIN.listo(function (sb) {
       categoria: $('a-categoria').value.trim() || null,
       estado: $('a-estado').value.trim() || null,
       grupo_id: $('a-grupo').value || null,
+      especialidades: (function(){ var e=getEspecialidades(); return e.length?e:null; })(),
       perfil_id: perfilId
     };
     async function guardar(d) {
@@ -234,6 +260,7 @@ APOLANA_ADMIN.listo(function (sb) {
     cargar();
   });
 
+  cargarPruebas();
   cargarGrupos().then(cargar);
 });
 </script>
