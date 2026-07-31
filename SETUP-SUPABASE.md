@@ -144,3 +144,41 @@ insert into public.contenido_secciones (seccion, dirigido_a, titulo, descripcion
 select $$instalaciones$$, $$Dónde entrenamos$$, $$Instalaciones$$, $$Cuatro sedes repartidas por la ciudad. Todas son municipales salvo El Cubo, que es del club y está dentro del estadio.$$
 where not exists (select 1 from public.contenido_secciones where seccion=$$instalaciones$$);
 ```
+
+---
+
+## §6 · Perfil automático al crear una cuenta (necesario para portales)
+
+Cada usuario de Supabase (Authentication) necesita una fila en `perfiles` con **el mismo id**.
+Este automatismo la crea sola en cuanto se crea la cuenta, y rellena las cuentas ya existentes.
+Pegar en Supabase → SQL Editor y ejecutar una vez.
+
+```sql
+-- Función que crea el perfil de una cuenta nueva
+create or replace function public.crear_perfil_nuevo_usuario()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $fn$
+begin
+  insert into public.perfiles (id, email, rol, activo)
+  values (new.id, new.email, 'atleta', true)
+  on conflict (id) do nothing;
+  return new;
+end;
+$fn$;
+
+-- Disparador: al crear una cuenta, crear su perfil
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.crear_perfil_nuevo_usuario();
+
+-- Rellenar cuentas que ya existían sin perfil (p. ej. la de prueba)
+insert into public.perfiles (id, email, rol, activo)
+select u.id, u.email, 'atleta', true
+from auth.users u
+left join public.perfiles p on p.id = u.id
+where p.id is null
+on conflict (id) do nothing;
+```

@@ -61,11 +61,20 @@
         <label>Correo de la cuenta (para que entre al portal)</label>
         <input type="email" id="a-email" placeholder="correo del atleta o de la familia">
         <div class="grid2">
-          <div><label>Categoría</label><input type="text" id="a-categoria" placeholder="benjamín, alevín, sub-16…"></div>
-          <div><label>Estado</label><input type="text" id="a-estado" placeholder="activa / prueba / baja"></div>
+          <div><label>Fecha de nacimiento</label><input type="date" id="a-nacimiento"></div>
+          <div><label>Categoría <span style="font-weight:400;color:var(--texto-tenue);">(se rellena sola con la fecha)</span></label>
+            <select id="a-categoria">
+              <option value="">(elige)</option>
+              <option>Sub-8</option><option>Sub-10</option><option>Sub-12</option><option>Sub-14</option>
+              <option>Sub-16</option><option>Sub-18</option><option>Sub-20</option><option>Sub-23</option>
+              <option>Sénior</option><option>Máster</option>
+            </select>
+          </div>
         </div>
-        <label>Grupo</label>
-        <select id="a-grupo"><option value="">(sin grupo)</option></select>
+        <div class="grid2">
+          <div><label>Estado</label><input type="text" id="a-estado" placeholder="activa / prueba / baja"></div>
+          <div><label>Grupo</label><select id="a-grupo"><option value="">(sin grupo)</option></select></div>
+        </div>
         <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
           <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
           <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
@@ -82,6 +91,31 @@ APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   var gruposById = {};
+  var CATS = ['Sub-8','Sub-10','Sub-12','Sub-14','Sub-16','Sub-18','Sub-20','Sub-23','Sénior','Máster'];
+
+  function categoriaPorNacimiento(fechaStr) {
+    if (!fechaStr) return '';
+    var y = parseInt(String(fechaStr).slice(0, 4), 10);
+    if (!y) return '';
+    var edad = new Date().getFullYear() - y;
+    if (edad <= 7) return 'Sub-8';
+    if (edad <= 9) return 'Sub-10';
+    if (edad <= 11) return 'Sub-12';
+    if (edad <= 13) return 'Sub-14';
+    if (edad <= 15) return 'Sub-16';
+    if (edad <= 17) return 'Sub-18';
+    if (edad <= 19) return 'Sub-20';
+    if (edad <= 22) return 'Sub-23';
+    if (edad <= 34) return 'Sénior';
+    return 'Máster';
+  }
+  function ponerCategoria(valor) {
+    var sel = $('a-categoria');
+    if (valor && CATS.indexOf(valor) === -1 && !sel.querySelector('option[value="' + valor + '"]')) {
+      var o = document.createElement('option'); o.value = valor; o.textContent = valor; sel.appendChild(o);
+    }
+    sel.value = valor || '';
+  }
 
   async function cargarGrupos() {
     var r = await sb.from('grupos').select('id,nombre').order('nombre');
@@ -119,7 +153,8 @@ APOLANA_ADMIN.listo(function (sb) {
     $('a-perfil-id').value = a.perfil_id || '';
     $('a-nombre').value = a.nombre || '';
     $('a-apellidos').value = a.apellidos || '';
-    $('a-categoria').value = a.categoria || '';
+    $('a-nacimiento').value = a.fecha_nacimiento || '';
+    ponerCategoria(a.categoria || '');
     $('a-estado').value = a.estado || '';
     $('a-grupo').value = a.grupo_id || '';
     $('a-email').value = '';
@@ -134,6 +169,10 @@ APOLANA_ADMIN.listo(function (sb) {
 
   $('nuevo').addEventListener('click', function () { abrir(); });
   $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
+  $('a-nacimiento').addEventListener('change', function () {
+    var c = categoriaPorNacimiento(this.value);
+    if (c) ponerCategoria(c);
+  });
 
   $('tabla').addEventListener('click', async function (e) {
     var ed = e.target.getAttribute('data-ed'), bo = e.target.getAttribute('data-bo');
@@ -147,28 +186,41 @@ APOLANA_ADMIN.listo(function (sb) {
     var email = $('a-email').value.trim();
     var perfilId = $('a-perfil-id').value || null;
 
-    // Enlazar/crear perfil por correo (rol atleta) si se indicó correo
+    // Enlazar el perfil de la cuenta por su correo (el perfil se crea solo al crear la cuenta)
     if (email) {
-      var pr = await sb.from('perfiles').select('id').eq('email', email).maybeSingle();
-      if (pr.data) { perfilId = pr.data.id; }
-      else {
-        var ins = await sb.from('perfiles').insert({ nombre: $('a-nombre').value.trim(), apellidos: $('a-apellidos').value.trim(), email: email, rol: 'atleta', activo: true }).select('id').single();
-        if (ins.error) { $('msg').textContent = 'Error con el perfil: ' + ins.error.message; $('msg').className = 'msg error'; return; }
-        perfilId = ins.data.id;
+      var pr = await sb.from('perfiles').select('id,rol').eq('email', email).maybeSingle();
+      if (pr.error) { $('msg').textContent = 'Error buscando la cuenta: ' + pr.error.message; $('msg').className = 'msg error'; return; }
+      if (!pr.data) {
+        $('msg').textContent = 'No hay ninguna cuenta con ese correo. Créala primero en Supabase → Authentication (Add user) con ese mismo correo y vuelve a intentarlo.';
+        $('msg').className = 'msg error'; return;
       }
+      perfilId = pr.data.id;
+      // Asegurar rol atleta y nombre (sin tocar cuentas de admin/coordinador/entrenador)
+      var upd = {};
+      if (['admin', 'coordinador', 'entrenador'].indexOf(pr.data.rol) === -1) upd.rol = 'atleta';
+      if ($('a-nombre').value.trim()) upd.nombre = $('a-nombre').value.trim();
+      if ($('a-apellidos').value.trim()) upd.apellidos = $('a-apellidos').value.trim();
+      if (Object.keys(upd).length) await sb.from('perfiles').update(upd).eq('id', perfilId);
     }
 
     var datos = {
       nombre: $('a-nombre').value.trim(),
       apellidos: $('a-apellidos').value.trim() || null,
+      fecha_nacimiento: $('a-nacimiento').value || null,
       categoria: $('a-categoria').value.trim() || null,
       estado: $('a-estado').value.trim() || null,
       grupo_id: $('a-grupo').value || null,
       perfil_id: perfilId
     };
-    var id = $('a-id').value, r;
-    if (id) r = await sb.from('atletas').update(datos).eq('id', id);
-    else r = await sb.from('atletas').insert(datos);
+    async function guardar(d) {
+      var id = $('a-id').value;
+      return id ? await sb.from('atletas').update(d).eq('id', id) : await sb.from('atletas').insert(d);
+    }
+    var r = await guardar(datos);
+    if (r.error && /fecha_nacimiento/.test(r.error.message)) {
+      var d2 = Object.assign({}, datos); delete d2.fecha_nacimiento;
+      r = await guardar(d2);
+    }
     if (r.error) { $('msg').textContent = 'Error: ' + r.error.message; $('msg').className = 'msg error'; return; }
     $('msg').textContent = 'Guardado ✓'; $('msg').className = 'msg ok';
     $('panel-form').classList.add('oculto');
