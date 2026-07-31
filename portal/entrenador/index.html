@@ -50,6 +50,22 @@
   .check input { width:auto; }
   .check label { margin:0; }
 
+  /* ¿para quién es la sesión? */
+  .dest { border:1px solid var(--linea); border-radius:12px; padding:12px 14px; margin-top:14px; background: var(--crema); }
+  .dest > label:first-child { margin-top:0; }
+  .dest-lista { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:6px; margin-top:10px; }
+  .dest-lista label { display:flex; align-items:center; gap:8px; margin:0; font-weight:400; font-size:13.5px; background:#fff; border:1px solid var(--linea); border-radius:9px; padding:7px 10px; cursor:pointer; }
+  .dest-lista input { width:auto; }
+  .dest-aviso { background:#fff8e6; border:1px solid #f0d98a; color:#7a5c00; border-radius:9px; padding:8px 11px; font-size:12.5px; margin:10px 0 0; }
+  .dest-barra { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .pista { font-size:12.5px; color: var(--texto-suave); margin:6px 0 0; line-height:1.5; }
+  .pista code { font-family: var(--fuente-mono); font-size:12px; background: var(--crema-media); border-radius:4px; padding:1px 5px; }
+
+  /* mejores marcas en Mi grupo */
+  .mrc { display:flex; flex-wrap:wrap; gap:5px; }
+  .mrc span { font-family: var(--fuente-mono); font-size:11.5px; background: var(--azul-suave); color: var(--azul-oscuro); border-radius:6px; padding:2px 7px; white-space:nowrap; }
+  .mrc-no { font-size:12.5px; color: var(--texto-tenue); font-style:italic; }
+
   /* editor de bloques */
   .editor-bloque { border:1px solid var(--linea); border-radius:14px; padding:12px; margin-bottom:12px; background: var(--crema); }
   .b-cab { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
@@ -193,6 +209,45 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   try { var e = await sb.from('ejercicios').select('nombre,nombre_corto,categoria,tipo').eq('activo', true).order('categoria').order('nombre'); if(!e.error && e.data) EJERCICIOS = e.data; } catch(e){}
 
   function nombreGrupo(id){ for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id) return MIS_GRUPOS[i].nombre; return ''; }
+  function nombreAtleta(x){ return ((x.nombre||'')+' '+(x.apellidos||'')).trim(); }
+  function atletasDeGrupo(grupoId){ return MIS_ATLETAS.filter(function(x){ return x.grupo_id===grupoId; }); }
+
+  // ---------- mejores marcas de mis atletas ----------
+  // MARCAS = { atleta_id: { 'nombre de prueba': {valor, disp, fecha} } }  ← ya filtrado a la MEJOR de cada prueba
+  var MARCAS = {}, MAS_MEJOR = {};
+  function numMarca(s){
+    if(s==null) return null;
+    s = String(s).trim().replace(',', '.');
+    if(s.indexOf(':')>-1){ var p=s.split(':'); return (parseInt(p[0],10)||0)*60+(parseFloat(p[1])||0); }
+    var n = parseFloat(s); return isNaN(n) ? null : n;
+  }
+  function valorMarca(m){ var v = (m.tiempo_segundos!=null) ? Number(m.tiempo_segundos) : numMarca(m.tiempo_display); return (v==null||isNaN(v)) ? null : v; }
+  // En saltos y lanzamientos MÁS es mejor; en carreras, menos.
+  function masEsMejor(prueba){
+    if(MAS_MEJOR[prueba]!==undefined) return MAS_MEJOR[prueba];
+    return /(longitud|altura|triple|p[eé]rtiga|garrocha|peso|disco|jabalina|martillo|salto|lanzam)/i.test(prueba||'');
+  }
+  function mejoresMarcasDe(atletaId, tope){
+    var pa = MARCAS[atletaId]; if(!pa) return [];
+    return Object.keys(pa).map(function(p){ return { prueba:p, disp:pa[p].disp, fecha:pa[p].fecha }; })
+      .sort(function(a,b){ return (a.fecha||'') > (b.fecha||'') ? -1 : 1; })
+      .slice(0, tope||4);
+  }
+
+  try { var pc = await sb.from('pruebas').select('nombre,mas_es_mejor').eq('activa', true); if(!pc.error && pc.data) pc.data.forEach(function(p){ MAS_MEJOR[p.nombre] = !!p.mas_es_mejor; }); } catch(e){}
+  if(MIS_ATLETAS.length){
+    try {
+      var mr = await sb.from('marcas_atleta').select('atleta_id,prueba,tiempo_segundos,tiempo_display,fecha').in('atleta_id', MIS_ATLETAS.map(function(x){ return x.id; })).limit(2000);
+      if(!mr.error && mr.data) mr.data.forEach(function(m){
+        var v = valorMarca(m);
+        if(v==null || !m.prueba || !m.atleta_id) return;
+        var pa = MARCAS[m.atleta_id] = MARCAS[m.atleta_id] || {};
+        var ya = pa[m.prueba];
+        var mejor = !ya || (masEsMejor(m.prueba) ? v > ya.valor : v < ya.valor);
+        if(mejor) pa[m.prueba] = { valor: v, disp: (m.tiempo_display || String(v)), fecha: m.fecha || '' };
+      });
+    } catch(e){}
+  }
 
   // ---------- estructura de la página ----------
   var cab = '<div class="en-cab"><h1>Zona de entrenador</h1><span class="sub">Hola, '+esc(perfil.nombre||'')+' · '+MIS_GRUPOS.length+' grupo(s)</span></div>';
@@ -233,11 +288,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var sub = [gr.seccion, gr.horario].filter(Boolean).map(function(s){ return esc(s); }).join(' · ');
       var tabla;
       if(atls.length){
-        tabla = '<table><thead><tr><th>Atleta</th><th>Categoría</th><th>Estado</th></tr></thead><tbody>'+
+        tabla = '<table><thead><tr><th>Atleta</th><th>Categoría</th><th>Estado</th><th>Mejores marcas</th></tr></thead><tbody>'+
           atls.map(function(x){
             var est = x.estado||''; var cls = (est==='activo'?'activo':est==='lesionado'?'lesionado':est==='prueba'?'prueba':'');
-            return '<tr><td>'+esc((x.nombre||'')+' '+(x.apellidos||''))+'</td><td>'+esc(x.categoria||'')+'</td><td><span class="pill '+cls+'">'+esc(est||'—')+'</span></td></tr>';
-          }).join('')+'</tbody></table>';
+            var mrc = mejoresMarcasDe(x.id, 4);
+            var celdaMarcas = mrc.length
+              ? '<div class="mrc">'+mrc.map(function(m){
+                  return '<span title="'+escAttr(m.prueba+(m.fecha?' · '+formatFecha(m.fecha):''))+'">'+esc(m.prueba)+' '+esc(m.disp)+'</span>';
+                }).join('')+'</div>'
+              : '<span class="mrc-no">Sin marcas registradas</span>';
+            return '<tr><td>'+esc((x.nombre||'')+' '+(x.apellidos||''))+'</td><td>'+esc(x.categoria||'')+'</td><td><span class="pill '+cls+'">'+esc(est||'—')+'</span></td><td>'+celdaMarcas+'</td></tr>';
+          }).join('')+'</tbody></table>'+
+          '<p class="pista">Se muestra la <strong>mejor marca de cada prueba</strong> (las cuatro más recientes). Son las marcas con las que se calculan los tiempos objetivo cuando pones el ritmo en porcentaje.</p>';
       } else {
         tabla = '<p class="vacio">Sin atletas visibles en este grupo todavía.</p>';
       }
@@ -247,9 +309,95 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   })();
 
   // ============================================================
+  // DESTINATARIOS DE UNA SESIÓN (columna sesiones.atletas_ids)
+  // ------------------------------------------------------------
+  //   atletas_ids = null   -> la ve todo el grupo
+  //   atletas_ids = [ids]  -> la ven SOLO esos atletas; el resto
+  //                           del grupo no la ve en su zona.
+  // Los dos apartados (Planificar entreno y Planificar semana)
+  // usan el mismo control; se distinguen por el prefijo del id
+  // ('pl' para el editor manual, 'sw' para la semana entera).
+  // ============================================================
+  function cajaDestHTML(pref, pregunta){
+    return '<div class="dest" id="'+pref+'-dest">'+
+      '<label>'+esc(pregunta)+'</label>'+
+      '<div class="sw-radios">'+
+        '<label><input type="radio" name="'+pref+'-dest-modo" value="grupo" checked> Todo el grupo</label>'+
+        '<label><input type="radio" name="'+pref+'-dest-modo" value="algunos"> Solo estos atletas</label>'+
+      '</div>'+
+      '<div id="'+pref+'-dest-caja" hidden>'+
+        '<div class="dest-barra">'+
+          '<button type="button" class="btn-mini" id="'+pref+'-dest-todos">Marcar todos</button>'+
+          '<button type="button" class="btn-mini" id="'+pref+'-dest-ninguno">Desmarcar todos</button>'+
+        '</div>'+
+        '<div class="dest-lista" id="'+pref+'-dest-lista"></div>'+
+        '<p class="dest-aviso">Marca solo a quien va dirigido. <strong>El resto del grupo NO lo verá</strong> en su zona de atleta.</p>'+
+      '</div>'+
+      '<p class="pista" id="'+pref+'-dest-resumen"></p>'+
+    '</div>';
+  }
+
+  function pintarListaDest(pref, grupoId, seleccion){
+    var cont = $(pref+'-dest-lista'); if(!cont) return;
+    var atls = atletasDeGrupo(grupoId);
+    var sel = {}; (seleccion||[]).forEach(function(id){ sel[id] = true; });
+    if(!atls.length){ cont.innerHTML = '<p class="vacio">Este grupo no tiene atletas visibles todavía.</p>'; return; }
+    cont.innerHTML = atls.map(function(x){
+      return '<label><input type="checkbox" class="dest-chk" value="'+x.id+'"'+(sel[x.id]?' checked':'')+'>'+esc(nombreAtleta(x))+'</label>';
+    }).join('');
+  }
+
+  function modoDest(pref){ var r = document.querySelector('input[name="'+pref+'-dest-modo"]:checked'); return r ? r.value : 'grupo'; }
+  function idsMarcadosDest(pref){
+    var out = [], c = $(pref+'-dest-lista'); if(!c) return out;
+    c.querySelectorAll('.dest-chk').forEach(function(i){ if(i.checked) out.push(i.value); });
+    return out;
+  }
+  // Deja el control en el estado que corresponde a unos atletas_ids concretos
+  function aplicarDest(pref, grupoId, ids){
+    var lista = (ids && ids.length) ? ids : null;
+    var r = document.querySelector('input[name="'+pref+'-dest-modo"][value="'+(lista?'algunos':'grupo')+'"]');
+    if(r) r.checked = true;
+    pintarListaDest(pref, grupoId, lista || []);
+  }
+  // Lee lo elegido: {ids:null} = todo el grupo · {ids:[…]} = solo esos · {error:'…'}
+  function leerDest(pref){
+    if(modoDest(pref) !== 'algunos') return { ids: null };
+    var ids = idsMarcadosDest(pref);
+    if(!ids.length) return { error: 'Has elegido «Solo estos atletas» pero no has marcado a nadie. Marca al menos un atleta o vuelve a «Todo el grupo».' };
+    return { ids: ids };
+  }
+  function textoDest(pref, singular){
+    if(modoDest(pref) !== 'algunos') return 'Ahora mismo '+(singular?'la sesión la verán':'las sesiones las verán')+' todos los atletas del grupo.';
+    var n = idsMarcadosDest(pref).length;
+    if(!n) return 'No has marcado a ningún atleta todavía.';
+    return 'Dirigid'+(singular?'a':'as')+' solo a '+n+' atleta(s): el resto del grupo no '+(singular?'la verá':'las verá')+'.';
+  }
+  // Conecta los botones y radios; devuelve la función que refresca el estado visible
+  function conectarDest(pref, singular, alCambiar){
+    function refrescar(){
+      $(pref+'-dest-caja').hidden = (modoDest(pref) !== 'algunos');
+      $(pref+'-dest-resumen').textContent = textoDest(pref, singular);
+      if(alCambiar) alCambiar();
+    }
+    document.querySelectorAll('input[name="'+pref+'-dest-modo"]').forEach(function(r){ r.addEventListener('change', refrescar); });
+    $(pref+'-dest-lista').addEventListener('change', refrescar);
+    $(pref+'-dest-todos').addEventListener('click', function(){ $(pref+'-dest-lista').querySelectorAll('.dest-chk').forEach(function(i){ i.checked = true; }); refrescar(); });
+    $(pref+'-dest-ninguno').addEventListener('click', function(){ $(pref+'-dest-lista').querySelectorAll('.dest-chk').forEach(function(i){ i.checked = false; }); refrescar(); });
+    refrescar();
+    return refrescar;
+  }
+
+  // Texto de ayuda sobre los ritmos en % (se usa en varios sitios)
+  var PISTA_RITMO_HTML = 'En la columna <strong>Ritmo</strong>: si escribes un porcentaje (<code>90%</code> o <code>90-95%</code>) y la distancia va en metros (<code>60 m</code>), '+
+    '<strong>cada atleta verá su propio tiempo objetivo</strong>, calculado con su mejor marca en esa distancia. '+
+    'Si escribes un ritmo fijo (<code>4:10 min/km</code>, <code>7.9 s</code>), todos verán exactamente lo mismo.';
+
+  // ============================================================
   // SECCIÓN 2 · PLANIFICAR ENTRENO
   // ============================================================
-  var editandoId = null; // id de sesión en edición (null = nueva)
+  var editandoId = null;        // id de sesión en edición (null = nueva)
+  var refrescarDestPl = null;   // se asigna al pintar el formulario
 
   function filtroActual(){ var f=$('ej-filtro'); return f?f.value:''; }
 
@@ -375,6 +523,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if($('pl-rol')) $('pl-rol').value = '';
     if($('pl-nota')) $('pl-nota').value = '';
     if($('pl-publicar')) $('pl-publicar').checked = false;
+    if($('pl-dest')){ aplicarDest('pl', $('pl-grupo').value, null); if(refrescarDestPl) refrescarDestPl(); }
     $('bloques-cont').innerHTML='';
     // arranca con los tres bloques típicos vacíos
     nuevoBloque({etiqueta:'Calentamiento'});
@@ -394,10 +543,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('pl-rol').value = s.rol||'';
     $('pl-nota').value = s.nota_razonamiento||'';
     $('pl-publicar').checked = !!s.publicada;
+    // ¿va a todo el grupo o solo a algunos? (null = todo el grupo)
+    aplicarDest('pl', s.grupo_id||$('pl-grupo').value, Array.isArray(s.atletas_ids) ? s.atletas_ids : null);
+    if(refrescarDestPl) refrescarDestPl();
     $('bloques-cont').innerHTML='';
     var bloques = Array.isArray(s.bloques)?s.bloques:[];
-    if(bloques.length){ bloques.forEach(function(b){ nuevoBloque(b); }); }
-    else { limpiarFormulario(); return; }
+    // Una sesión sin bloques (p. ej. un día de descanso) se queda vacía: se sigue editando, no se convierte en nueva.
+    bloques.forEach(function(b){ nuevoBloque(b); });
     $('pl-estado').textContent = 'Editando: '+(s.titulo||formatFecha(s.fecha));
     $('pl-msg').textContent=''; $('pl-msg').className='msg';
   }
@@ -407,10 +559,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!selEditar) return;
     selEditar.innerHTML = '<option value="">— nueva sesión —</option>';
     if(!grupoId) return;
-    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
+    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
     if(r.error || !r.data){ return; }
     window.__SESIONES_GRUPO = {};
-    r.data.forEach(function(s){ window.__SESIONES_GRUPO[s.id]=s; selEditar.innerHTML += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+'</option>'; });
+    r.data.forEach(function(s){
+      window.__SESIONES_GRUPO[s.id] = s;
+      var soloAlgunos = Array.isArray(s.atletas_ids) && s.atletas_ids.length;
+      selEditar.innerHTML += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+s.atletas_ids.length+' atleta(s)':'')+'</option>';
+    });
   }
 
   function serializarBloques(){
@@ -447,8 +603,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><label>Tipo</label><select id="pl-tipo">'+optsPares(TIPOS,'','— elige tipo —')+'</select></div>'+
           '<div><label>Rol de la sesión</label><select id="pl-rol">'+optsPares(ROLES,'','— sin rol —')+'</select></div>'+
         '</div>'+
+        cajaDestHTML('pl', '¿Para quién es esta sesión?')+
         '<label>Nota / razonamiento</label><textarea id="pl-nota" placeholder="Objetivo del día, sensaciones a buscar, avisos…"></textarea>'+
         '<h3>Bloques del entreno</h3>'+
+        '<p class="pista" style="margin-bottom:10px;">'+PISTA_RITMO_HTML+'</p>'+
         '<div class="buscador-ej" id="ej-caja">'+
           '<label style="margin-top:0;">Buscar ejercicio (nombre, categoría o tipo)</label>'+
           '<input id="ej-filtro" autocomplete="off" placeholder="velocidad, core, tacos, gym, técnica…">'+
@@ -457,7 +615,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</div>'+
         '<div id="bloques-cont" style="margin-top:12px;"></div>'+
         '<div style="margin-top:4px;"><button type="button" class="btn-mini" id="pl-add-bloque">+ Añadir bloque</button></div>'+
-        '<div class="check" style="margin-top:16px;"><input type="checkbox" id="pl-publicar"><label for="pl-publicar">Publicar (visible para los atletas del grupo)</label></div>'+
+        '<div class="check" style="margin-top:16px;"><input type="checkbox" id="pl-publicar"><label for="pl-publicar">Publicar (visible en la zona de atleta, para quien la hayas dirigido arriba)</label></div>'+
         '<div class="acciones">'+
           '<button class="btn btn--primario" id="pl-guardar">Guardar sesión</button>'+
           '<button class="btn btn--neutro" id="pl-nueva">Nueva / limpiar</button>'+
@@ -518,7 +676,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('pl-add-bloque').addEventListener('click', function(){ nuevoBloque({}); });
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
 
-    $('pl-grupo').addEventListener('change', function(){ editandoId=null; cargarSesionesGrupo($('pl-grupo').value); });
+    // ---- ¿para quién es? ----
+    pintarListaDest('pl', $('pl-grupo').value, []);
+    refrescarDestPl = conectarDest('pl', true);
+
+    $('pl-grupo').addEventListener('change', function(){
+      editandoId = null;
+      // al cambiar de grupo cambian los atletas: la lista se repinta vacía
+      aplicarDest('pl', $('pl-grupo').value, null);
+      refrescarDestPl();
+      cargarSesionesGrupo($('pl-grupo').value);
+    });
     $('pl-editar').addEventListener('change', function(){
       var id=$('pl-editar').value;
       if(!id){ limpiarFormulario(); return; }
@@ -531,6 +699,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var grupoId=$('pl-grupo').value, fecha=$('pl-fecha').value;
       if(!grupoId){ msg.textContent='Elige un grupo.'; msg.className='msg error'; return; }
       if(!fecha){ msg.textContent='Pon una fecha.'; msg.className='msg error'; return; }
+      var dest = leerDest('pl');
+      if(dest.error){ msg.textContent = dest.error; msg.className='msg error'; return; }
       var payload={
         grupo_id: grupoId,
         fecha: fecha,
@@ -540,14 +710,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         rol: $('pl-rol').value||null,
         nota_razonamiento: $('pl-nota').value.trim()||null,
         bloques: serializarBloques(),
-        publicada: $('pl-publicar').checked
+        publicada: $('pl-publicar').checked,
+        atletas_ids: dest.ids   // null = todo el grupo · [ids] = solo esos atletas
       };
       var res;
       if(editandoId){ res = await sb.from('sesiones').update(payload).eq('id', editandoId).select('id').maybeSingle(); }
       else { payload.creado_por = perfil.id; res = await sb.from('sesiones').insert(payload).select('id').maybeSingle(); }
       if(res.error){ msg.textContent='Error: '+res.error.message; msg.className='msg error'; return; }
       if(res.data && res.data.id) editandoId = res.data.id;
-      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)'); msg.className='msg ok';
+      var quien = dest.ids ? ' · solo para '+dest.ids.length+' atleta(s)' : ' · para todo el grupo';
+      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien; msg.className='msg ok';
       $('pl-estado').textContent = 'Editando: '+(payload.titulo||formatFecha(payload.fecha));
       await cargarSesionesGrupo(grupoId);
       if(editandoId) $('pl-editar').value = editandoId;
@@ -862,9 +1034,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     '   - algo que empiece por "desc", "rec" o "r:" -> descanso',
     '   - cualquier otra cosa (por ejemplo "10 min") -> detalle',
     '',
-    '5) Deja una línea en blanco entre días. Los días que no aparezcan no generan sesión.',
+    '5) RITMOS EN PORCENTAJE (muy útil cuando la sesión va para varios atletas).',
+    '   Si pones el ritmo como porcentaje ("90%" o "90-95%") y la distancia va en metros ("60 m"),',
+    '   cada atleta verá EN SU PANTALLA su propio tiempo objetivo, calculado con su mejor marca en esa distancia.',
+    '   Si pones un ritmo fijo ("4:10 min/km", "7.9 s"), todos verán exactamente lo mismo.',
+    '   Las mejores marcas de cada atleta se pueden consultar en el apartado «Mi grupo».',
     '',
-    '6) No uses tablas, ni negritas, ni viñetas raras: solo texto plano con guiones y almohadillas.',
+    '6) Deja una línea en blanco entre días. Los días que no aparezcan no generan sesión.',
+    '',
+    '7) No uses tablas, ni negritas, ni viñetas raras: solo texto plano con guiones y almohadillas.',
     '',
     'EJEMPLO COMPLETO DE UNA SEMANA:',
     '',
@@ -915,6 +1093,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var SEMANA = null;            // { grupo_id, sesiones:[…], avisos:[…] }
   var SEMANAS_ORIGEN = {};      // para duplicar: { lunesISO: [sesiones] }
   var PLANTILLAS = {};          // { id: fila de plantillas_semana }
+  var refrescarDestSw = function(){};   // se asigna al pintar la sección
 
   function swMsg(txt, clase){
     ['sw-msg-top','sw-msg'].forEach(function(id){
@@ -961,7 +1140,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var nChoques = incluidas.filter(function(s){ return ex[s.fecha]; }).length;
 
     var html = '<p class="sw-resumen"><strong>'+incluidas.length+'</strong> sesión(es) para <strong>'+esc(nombreGrupo(SEMANA.grupo_id)||'—')+
-      '</strong> · semana del '+esc(formatFecha(SEMANA.sesiones[0].fecha))+'. Puedes corregir el título, el tipo y el rol aquí mismo, o desmarcar los días que no quieras crear.</p>';
+      '</strong> · semana del '+esc(formatFecha(SEMANA.sesiones[0].fecha))+'. Puedes corregir el título, el tipo y el rol aquí mismo, o desmarcar los días que no quieras crear.</p>'+
+      '<p class="pista" id="sw-prev-dest" style="margin:0 0 12px;">'+esc(textoDest('sw', false))+'</p>';
 
     if(SEMANA.avisos && SEMANA.avisos.length){
       html += '<div class="sw-avisos"><strong>Cosas que conviene revisar ('+SEMANA.avisos.length+'):</strong><ul>'+
@@ -1012,6 +1192,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!SEMANA || !SEMANA.sesiones.length){ swMsg('No hay nada previsualizado.', 'error'); return; }
     var incluidas = SEMANA.sesiones.filter(function(s){ return s.incluir !== false; });
     if(!incluidas.length){ swMsg('No has dejado ningún día marcado.', 'error'); return; }
+    var dest = leerDest('sw');
+    if(dest.error){ swMsg(dest.error, 'error'); return; }
     var modoEl = document.querySelector('input[name="sw-choque"]:checked');
     var modo = modoEl ? modoEl.value : 'saltar';
     var publicar = $('sw-publicar').checked;
@@ -1029,7 +1211,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         rol: s.rol || null,
         nota_razonamiento: (s.nota_razonamiento||'').trim() || null,
         bloques: s.bloques || [],
-        publicada: publicar
+        publicada: publicar,
+        atletas_ids: dest.ids   // el mismo destinatario para toda la tanda
       };
       if(ex[s.fecha]){
         if(modo === 'saltar'){ saltadas++; return; }
@@ -1056,7 +1239,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(creadas) partes.push(creadas+' creada(s)');
     if(actualizadas) partes.push(actualizadas+' sobrescrita(s)');
     if(saltadas) partes.push(saltadas+' saltada(s) porque ya existían');
-    swMsg('Semana guardada ✓ '+partes.join(' · ')+(publicar?' · visibles para los atletas':' · en borrador'), 'ok');
+    var quien = dest.ids ? ' · solo para '+dest.ids.length+' atleta(s)' : ' · para todo el grupo';
+    swMsg('Semana guardada ✓ '+partes.join(' · ')+quien+(publicar?' · visibles en la zona de atleta':' · en borrador'), 'ok');
 
     await comprobarChoques();
     if($('pl-grupo') && $('pl-grupo').value === SEMANA.grupo_id) await cargarSesionesGrupo(SEMANA.grupo_id);
@@ -1070,7 +1254,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     sel.innerHTML = '<option value="">— elige una semana —</option>';
     SEMANAS_ORIGEN = {};
     if(!gid) return;
-    var r = await sb.from('sesiones').select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques').eq('grupo_id', gid).order('fecha', { ascending:false }).limit(250);
+    var r = await sb.from('sesiones').select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids').eq('grupo_id', gid).order('fecha', { ascending:false }).limit(250);
     if(r.error || !r.data) return;
     r.data.forEach(function(s){ var L = lunesDe(s.fecha); (SEMANAS_ORIGEN[L] = SEMANAS_ORIGEN[L] || []).push(s); });
     Object.keys(SEMANAS_ORIGEN).sort().reverse().forEach(function(L){
@@ -1084,8 +1268,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var fecha = addDias(lunesDestino, off);
       return { idx: off, fecha: fecha, dia_semana: DIAS_TXT[off] || diaSemana(fecha),
                tipo: s.tipo||'', rol: s.rol||'', titulo: s.titulo||'', nota_razonamiento: s.nota_razonamiento||'',
-               bloques: JSON.parse(JSON.stringify(s.bloques||[])), incluir: true };
+               bloques: JSON.parse(JSON.stringify(s.bloques||[])), incluir: true,
+               atletas_ids: Array.isArray(s.atletas_ids) ? s.atletas_ids.slice() : null };
     }).sort(function(a,b){ return a.fecha < b.fecha ? -1 : 1; });
+  }
+
+  // ¿Todas las sesiones de origen iban a los mismos atletas?
+  // Devuelve {mixto:true} si no coinciden, o {ids: null | [..]} si sí.
+  function destComunDeSesiones(arr){
+    if(!arr || !arr.length) return { mixto:false, ids:null };
+    function clave(s){ var a = s.atletas_ids; return (Array.isArray(a) && a.length) ? a.slice().sort().join(',') : ''; }
+    var k = clave(arr[0]);
+    for(var i=1;i<arr.length;i++) if(clave(arr[i]) !== k) return { mixto:true, ids:null };
+    return { mixto:false, ids: k ? k.split(',') : null };
   }
 
   // ---------- plantillas de semana ----------
@@ -1131,6 +1326,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><label>Grupo destino</label><select id="sw-grupo">'+opcionesGrupo+'</select></div>'+
           '<div><label>Lunes de la semana</label><input id="sw-lunes" type="date" value="'+lunesProx+'"><p class="ej-ayuda" id="sw-lunes-aviso"></p></div>'+
         '</div>'+
+        cajaDestHTML('sw', '¿Para quién es esta semana?')+
+        '<p class="pista">Lo que elijas aquí se aplica a <strong>todas las sesiones</strong> que crees en esta tanda.</p>'+
         '<div class="acciones"><span class="msg" id="sw-msg-top"></span></div>'+
       '</div>'+
 
@@ -1155,6 +1352,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<li>Una línea que empiece por <code>#</code> abre un bloque. También vale <code>Calentamiento:</code>.</li>'+
             '<li>Una línea que empiece por <code>-</code> o <code>*</code> es un ejercicio. Los datos se separan con <code>|</code>: <code>4x60 m</code> son series y distancia, algo con <code>%</code> es el ritmo, algo con <code>desc</code> es el descanso y el resto va a detalle.</li>'+
             '<li>Si alguna línea no encaja, no se pierde: entra como ejercicio y te lo aviso en la previsualización.</li>'+
+            '<li><strong>Ritmos en porcentaje:</strong> si escribes el ritmo como <code>90%</code> o <code>90-95%</code> y la distancia va en metros (<code>60 m</code>), <strong>cada atleta verá su propio tiempo objetivo</strong>, calculado con su mejor marca en esa distancia. Si escribes un ritmo fijo (<code>4:10 min/km</code>), todos verán lo mismo. Las mejores marcas de cada uno las tienes en «Mi grupo».</li>'+
           '</ul>'+
           '<pre>'+esc(EJEMPLO_SEMANA)+'</pre>'+
         '</details>'+
@@ -1179,6 +1377,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<li>Repite <code>dia</code>, <code>tipo</code>, <code>rol</code> y <code>titulo</code> en todas las líneas de ese día: se toma el primero que aparezca.</li>'+
             '<li>Un día de descanso se pone en una sola línea, con <code>tipo</code> = descanso y el resto vacío.</li>'+
             '<li>Excel no se puede leer en <code>.xlsx</code>: usa «Guardar como > CSV». Vale el separador <code>;</code> o <code>,</code>.</li>'+
+            '<li>En la columna <code>ritmo</code> puedes poner un porcentaje (<code>90%</code>, <code>90-95%</code>): si la <code>distancia</code> va en metros, <strong>cada atleta verá su propio tiempo objetivo</strong> según su mejor marca. Con un ritmo fijo, todos verán lo mismo.</li>'+
           '</ul>'+
         '</details>'+
       '</div>'+
@@ -1208,7 +1407,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<h2>Previsualización</h2>'+
         '<div id="sw-prev"></div>'+
         '<hr class="sw-sep">'+
-        '<div class="check"><input type="checkbox" id="sw-publicar"><label for="sw-publicar">Publicar todas (visibles para los atletas del grupo)</label></div>'+
+        '<div class="check"><input type="checkbox" id="sw-publicar"><label for="sw-publicar">Publicar todas (visibles en la zona de atleta, para quien las hayas dirigido arriba)</label></div>'+
         '<label style="margin-top:14px;">Si ya hay una sesión ese día</label>'+
         '<div class="sw-radios">'+
           '<label><input type="radio" name="sw-choque" value="saltar" checked> Saltarla (no tocar la que ya existe)</label>'+
@@ -1235,6 +1434,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     $('sw-lunes').addEventListener('change', avisarLunes);
     avisarLunes();
+
+    // --- ¿para quién es esta semana? ---
+    pintarListaDest('sw', $('sw-grupo').value, []);
+    refrescarDestSw = conectarDest('sw', false, function(){
+      var el = $('sw-prev-dest'); if(el) el.textContent = textoDest('sw', false);
+    });
 
     // --- 1 · pegar texto ---
     $('sw-interpretar').addEventListener('click', async function(){
@@ -1273,7 +1478,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var destino = $('sw-lunes').value;
       if(!destino){ swMsg('Pon la fecha de inicio de la semana destino.', 'error'); return; }
       var arr = SEMANAS_ORIGEN[L] || [];
-      await ponerSemana({ sesiones: sesionesDesdeOrigen(arr, L, destino), avisos: [] }, $('sw-grupo').value);
+      var gDest = $('sw-grupo').value, avisos = [];
+
+      // Se conserva a quién iba dirigida la semana de origen; el entrenador puede cambiarlo arriba.
+      var d = destComunDeSesiones(arr);
+      if(d.mixto){
+        avisos.push('Las sesiones de la semana de origen no iban todas a los mismos atletas. Elige arriba, en «¿Para quién es esta semana?», a quién va la copia.');
+      } else if(d.ids){
+        var enDestino = atletasDeGrupo(gDest).map(function(x){ return x.id; });
+        var validos = d.ids.filter(function(id){ return enDestino.indexOf(id) > -1; });
+        if(validos.length){
+          aplicarDest('sw', gDest, validos);
+          if(validos.length < d.ids.length) avisos.push('Algunos atletas a los que iba la semana de origen no están en el grupo destino: la copia queda dirigida a los '+validos.length+' que sí están.');
+        } else {
+          aplicarDest('sw', gDest, null);
+          avisos.push('La semana de origen iba dirigida a atletas concretos que no están en el grupo destino: la copia queda para todo el grupo. Cámbialo arriba si hace falta.');
+        }
+      } else {
+        aplicarDest('sw', gDest, null);
+      }
+      refrescarDestSw();
+
+      await ponerSemana({ sesiones: sesionesDesdeOrigen(arr, L, destino), avisos: avisos }, gDest);
       $('sw-prev-card').scrollIntoView({ behavior:'smooth', block:'start' });
     });
 
@@ -1316,6 +1542,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('sw-crear').addEventListener('click', crearSemana);
     $('sw-descartar').addEventListener('click', function(){ SEMANA = null; $('sw-prev-card').hidden = true; });
     $('sw-grupo').addEventListener('change', async function(){
+      // otro grupo = otros atletas: la lista de destinatarios se repinta desde cero
+      aplicarDest('sw', $('sw-grupo').value, null);
+      refrescarDestSw();
       if(SEMANA){ SEMANA.grupo_id = $('sw-grupo').value; await comprobarChoques(); }
     });
 
