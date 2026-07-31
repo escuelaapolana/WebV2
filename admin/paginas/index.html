@@ -48,9 +48,29 @@
 
   /* Bloque de imagen (vista previa + botón) */
   .imagen-bloque { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-top: 6px; }
-  .imagen-preview { width: 200px; height: 130px; border: 1px solid var(--linea); border-radius: var(--radio); background: var(--crema-media); overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--texto-tenue); font-size: 13px; text-align: center; padding: 8px; box-sizing: border-box; }
-  .imagen-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .imagen-controles { display: flex; flex-direction: column; gap: 8px; }
+
+  /* Ajustador de encuadre */
+  .encuadre-zona { width: min(420px, 100%); }
+  .encuadre-marco {
+    width: 100%; aspect-ratio: 16 / 7; overflow: hidden; position: relative;
+    border: 1px solid var(--linea); border-radius: var(--radio); background: var(--crema-media);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--texto-tenue); font-size: 13px; text-align: center; padding: 8px; box-sizing: border-box;
+    touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
+  }
+  .encuadre-marco.arrastrando { cursor: grabbing; }
+  .encuadre-marco img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block;
+    pointer-events: none; -webkit-user-drag: none;
+  }
+  .encuadre-pie { font-size: 12px; color: var(--texto-tenue); margin-top: 6px; line-height: 1.4; }
+  .encuadre-fila { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .encuadre-fila > span.et { font-size: 13px; font-weight: 600; color: var(--navy); white-space: nowrap; }
+  .encuadre-fila > span.val { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-tenue); min-width: 46px; text-align: right; }
+  input[type="range"] { flex: 1; width: auto; padding: 0; border: none; background: transparent; accent-color: var(--azul); }
+  input[type="range"]:focus { outline: 2px solid var(--azul); outline-offset: 3px; border-color: transparent; }
+  .encuadre-botones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 
   /* Modal selector de biblioteca */
   .modal-fondo { position: fixed; inset: 0; background: rgba(11,26,45,.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
@@ -126,7 +146,21 @@
 
         <label>Imagen de cabecera</label>
         <div class="imagen-bloque">
-          <div class="imagen-preview" id="p-preview">Sin imagen</div>
+          <div class="encuadre-zona">
+            <div class="encuadre-marco" id="p-marco">Sin imagen</div>
+            <p class="encuadre-pie" id="p-pie">Elige qué parte de la foto se ve. Arrastra la imagen para encuadrarla; el marco tiene la misma forma apaisada (16:7) con la que se ve en la web.</p>
+            <div class="encuadre-fila oculto" id="p-fila-zoom">
+              <span class="et">Acercar</span>
+              <input type="range" id="p-zoom" min="100" max="250" step="1" value="100" aria-label="Acercar la foto">
+              <span class="val" id="p-zoom-val">100 %</span>
+            </div>
+            <div class="encuadre-botones oculto" id="p-atajos">
+              <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="centrar">Centrar</button>
+              <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="arriba">Arriba</button>
+              <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="centro">Centro</button>
+              <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="abajo">Abajo</button>
+            </div>
+          </div>
           <div class="imagen-controles">
             <button type="button" class="btn btn--primario btn--mini" id="btn-elegir">Elegir de la biblioteca</button>
             <button type="button" class="btn btn--fantasma btn--mini oculto" id="btn-quitar">Quitar imagen</button>
@@ -205,17 +239,143 @@ APOLANA_ADMIN.listo(function (sb) {
     }).join('');
   }
 
-  // --- Vista previa de imagen ---
-  function pintarPreview(url) {
-    var pv = $('p-preview');
+  // ===== Ajustador de encuadre =====
+  // Guarda dos cosas: dónde está el centro del recorte (en %) y cuánto se acerca la foto.
+  var ENC = { x: 50, y: 50, zoom: 1 };
+  var imgMarco = null; // el <img> que hay dentro del marco (si hay foto)
+
+  function limita(v, min, max) { return v < min ? min : (v > max ? max : v); }
+  function redondea1(v) { return Math.round(v * 10) / 10; }
+
+  // Lee un valor tipo "50% 30%" y lo convierte en números. Si no vale, deja el centro.
+  function leerEncuadre(txt) {
+    var res = { x: 50, y: 50 };
+    if (!txt) return res;
+    var partes = String(txt).trim().split(/\s+/);
+    if (partes.length < 2) return res;
+    var a = parseFloat(partes[0]), b = parseFloat(partes[1]);
+    if (isNaN(a) || isNaN(b)) return res;
+    res.x = limita(a, 0, 100);
+    res.y = limita(b, 0, 100);
+    return res;
+  }
+  function textoEncuadre() { return redondea1(ENC.x) + '% ' + redondea1(ENC.y) + '%'; }
+
+  // Aplica el encuadre a la foto del marco (igual que se verá en la web).
+  function aplicarEncuadre() {
+    if (!imgMarco) return;
+    var pos = textoEncuadre();
+    imgMarco.style.objectPosition = pos;
+    imgMarco.style.transformOrigin = pos;
+    imgMarco.style.transform = ENC.zoom > 1 ? 'scale(' + ENC.zoom + ')' : 'none';
+    $('p-zoom-val').textContent = Math.round(ENC.zoom * 100) + ' %';
+  }
+
+  // Cuánto se puede mover la foto dentro del marco, en píxeles de pantalla.
+  // Devuelve {x: recorridoHorizontal, y: recorridoVertical}.
+  function recorrido() {
+    var marco = $('p-marco');
+    var W = marco.clientWidth, H = marco.clientHeight;
+    var nw = imgMarco ? (imgMarco.naturalWidth || 0) : 0;
+    var nh = imgMarco ? (imgMarco.naturalHeight || 0) : 0;
+    if (!W || !H || !nw || !nh) return { x: 0, y: 0 };
+    var escala = Math.max(W / nw, H / nh); // así funciona "object-fit: cover"
+    var anchoFoto = nw * escala, altoFoto = nh * escala;
+    return {
+      x: Math.max(0, ENC.zoom * anchoFoto - W),
+      y: Math.max(0, ENC.zoom * altoFoto - H)
+    };
+  }
+
+  function pintarPreview(url, encuadre, zoom) {
+    var marco = $('p-marco');
+    var enc = leerEncuadre(encuadre);
+    ENC.x = enc.x; ENC.y = enc.y;
+    var z = parseFloat(zoom);
+    ENC.zoom = (!isNaN(z) && z >= 1 && z <= 2.5) ? z : 1;
+
     if (url) {
-      pv.innerHTML = '<img src="' + esc(url) + '" alt="">';
+      marco.textContent = '';
+      var im = document.createElement('img');
+      im.alt = '';
+      im.addEventListener('load', aplicarEncuadre);
+      im.src = url;
+      marco.appendChild(im);
+      imgMarco = im;
       $('btn-quitar').classList.remove('oculto');
+      $('p-fila-zoom').classList.remove('oculto');
+      $('p-atajos').classList.remove('oculto');
+      $('p-pie').textContent = 'Arrastra la imagen para encuadrarla. El marco tiene la misma forma apaisada (16:7) con la que se ve en la web.';
+      $('p-zoom').value = String(Math.round(ENC.zoom * 100));
+      aplicarEncuadre();
     } else {
-      pv.textContent = 'Sin imagen';
+      marco.textContent = 'Sin imagen';
+      imgMarco = null;
       $('btn-quitar').classList.add('oculto');
+      $('p-fila-zoom').classList.add('oculto');
+      $('p-atajos').classList.add('oculto');
+      $('p-pie').textContent = 'Elige una foto de la biblioteca y después podrás decidir qué parte se ve.';
+      $('p-zoom').value = '100';
     }
   }
+
+  // --- Arrastrar la foto dentro del marco (ratón y dedo) ---
+  (function () {
+    var marco = $('p-marco');
+    var activo = false, ultX = 0, ultY = 0, puntero = null;
+
+    marco.addEventListener('pointerdown', function (e) {
+      if (!imgMarco) return;
+      activo = true; puntero = e.pointerId;
+      ultX = e.clientX; ultY = e.clientY;
+      marco.classList.add('arrastrando');
+      if (marco.setPointerCapture) { try { marco.setPointerCapture(e.pointerId); } catch (err) {} }
+      e.preventDefault();
+    });
+
+    marco.addEventListener('pointermove', function (e) {
+      if (!activo || e.pointerId !== puntero || !imgMarco) return;
+      var dx = e.clientX - ultX, dy = e.clientY - ultY;
+      ultX = e.clientX; ultY = e.clientY;
+      var r = recorrido();
+      if (r.x > 0) ENC.x = limita(ENC.x - (dx * 100 / r.x), 0, 100);
+      if (r.y > 0) ENC.y = limita(ENC.y - (dy * 100 / r.y), 0, 100);
+      aplicarEncuadre();
+      e.preventDefault();
+    });
+
+    function soltar(e) {
+      if (!activo) return;
+      activo = false; puntero = null;
+      marco.classList.remove('arrastrando');
+      if (marco.releasePointerCapture && e && e.pointerId != null) {
+        try { marco.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+    marco.addEventListener('pointerup', soltar);
+    marco.addEventListener('pointercancel', soltar);
+    marco.addEventListener('lostpointercapture', soltar);
+  })();
+
+  // --- Acercar ---
+  $('p-zoom').addEventListener('input', function () {
+    var v = parseInt(this.value, 10);
+    if (isNaN(v)) v = 100;
+    ENC.zoom = limita(v, 100, 250) / 100;
+    aplicarEncuadre();
+  });
+
+  // --- Atajos: Centrar / Arriba / Centro / Abajo ---
+  $('p-atajos').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-encuadre]') : null;
+    if (!b) return;
+    var q = b.getAttribute('data-encuadre');
+    if (q === 'centrar') { ENC.x = 50; ENC.y = 50; ENC.zoom = 1; $('p-zoom').value = '100'; }
+    else if (q === 'arriba') { ENC.y = 0; }
+    else if (q === 'centro') { ENC.y = 50; }
+    else if (q === 'abajo') { ENC.y = 100; }
+    aplicarEncuadre();
+  });
 
   // --- Abrir formulario de edición ---
   function abrirForm(c) {
@@ -230,7 +390,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('p-descripcion').value = c.descripcion || '';
     $('p-puntos').value = c.puntos_destacados || '';
     $('p-imagen').value = c.imagen_url || '';
-    pintarPreview(c.imagen_url || '');
+    pintarPreview(c.imagen_url || '', c.imagen_encuadre || '', c.imagen_zoom);
     $('msg-form').textContent = '';
     $('panel-form').classList.remove('oculto');
     $('panel-form').scrollIntoView({ behavior: 'smooth' });
@@ -248,7 +408,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   $('btn-quitar').addEventListener('click', function () {
     $('p-imagen').value = '';
-    pintarPreview('');
+    pintarPreview('', '', null);
   });
 
   // --- Selector de biblioteca (modal) ---
@@ -288,7 +448,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!op) return;
     var url = op.getAttribute('data-url');
     $('p-imagen').value = url;
-    pintarPreview(url);
+    // Foto nueva: se empieza con el encuadre centrado y sin acercar.
+    pintarPreview(url, '50% 50%', 1);
     cerrarBiblioteca();
   });
 
@@ -297,6 +458,7 @@ APOLANA_ADMIN.listo(function (sb) {
     e.preventDefault();
     var id = $('p-id').value;
     if (!id) { $('msg-form').textContent = 'No hay página seleccionada.'; $('msg-form').className = 'msg error'; return; }
+    var hayFoto = !!$('p-imagen').value.trim();
     var datos = {
       titulo: $('p-titulo').value.trim() || null,
       dirigido_a: $('p-dirigido').value.trim() || null,
@@ -306,6 +468,8 @@ APOLANA_ADMIN.listo(function (sb) {
       descripcion: $('p-descripcion').value.trim() || null,
       puntos_destacados: $('p-puntos').value.trim() || null,
       imagen_url: $('p-imagen').value.trim() || null,
+      imagen_encuadre: hayFoto ? textoEncuadre() : null,
+      imagen_zoom: hayFoto ? redondea1(ENC.zoom * 100) / 100 : null,
       updated_at: new Date().toISOString()
     };
     $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
