@@ -25,6 +25,16 @@
 
 begin;
 
+-- --- Dos avisos antes de empezar ------------------------------------
+-- 1) Los recibos emitidos están protegidos: la base de datos no deja
+--    borrarlos (hay que anularlos). Como los recibos de demostración son
+--    inventados, se apaga esa protección SOLO durante este borrado.
+-- 2) Al quitar una reserva de El Cubo, el sistema asciende al primero de
+--    la lista de espera. Aquí se van a borrar todas las reservas de
+--    demostración, así que ese ascenso sobra y se apaga también.
+alter table pagos         disable trigger trg_pagos_protege;
+alter table cubo_reservas disable trigger trg_cubo_reservas_promocion;
+
 -- --- El Cubo -------------------------------------------------------
 -- Primero las reservas, luego los movimientos (incluidos los que apunta
 -- el propio sistema al reservar), luego los bonos y por último las clases.
@@ -146,6 +156,10 @@ update atletas
        estado         = null,
        observaciones  = null
  where id = '2ac18ce3-5740-4a82-bf65-7202ffe54e26';
+
+-- --- Se vuelven a encender las protecciones --------------------------
+alter table pagos         enable trigger trg_pagos_protege;
+alter table cubo_reservas enable trigger trg_cubo_reservas_promocion;
 
 commit;
 
