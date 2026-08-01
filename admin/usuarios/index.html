@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usuarios y permisos · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(18px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin: 0 0 4px; }
+  .panel h3 { font-family: var(--fuente-mono); font-size: 11px; letter-spacing:.09em; text-transform: uppercase; color: var(--texto-tenue); margin: 22px 0 8px; }
+  .intro { color: var(--texto-suave); font-size: 15px; margin: 0 0 12px; }
+
+  /* Cifras del resumen */
+  .cifras { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; margin-bottom: 8px; }
+  .cifra { background: var(--crema); border:1px solid var(--linea); border-radius: var(--radio); padding:14px 16px; }
+  .cifra .et { display:block; font-family: var(--fuente-mono); font-size:11px; letter-spacing:.09em; text-transform:uppercase; color: var(--texto-tenue); }
+  .cifra .num { display:block; font-family: var(--fuente-display); font-weight:800; font-size: clamp(24px,3.4vw,32px); color: var(--navy); line-height:1.15; margin-top:4px; }
+  .cifra .nota { display:block; font-size:13px; color: var(--texto-suave); margin-top:2px; }
+  .cifra.rojo .num { color:#A8453F; }
+  .cifra.ambar .num { color:#B96F09; }
+  .cifra.verde .num { color:#4C7A28; }
+  @media (max-width: 900px) { .cifras { grid-template-columns: repeat(2,1fr); } }
+
+  /* Caja de aviso */
+  .aviso { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); border-radius: var(--radio); padding: 16px 18px; color: var(--aviso-texto); font-size: 14.5px; }
+  .aviso b { color: var(--aviso-titulo); }
+  .aviso ol, .aviso ul { margin: 8px 0 0; padding-left: 20px; }
+  .aviso li { margin-bottom: 5px; }
+
+  /* Tarjetas de rol */
+  .roles { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; }
+  .rol-card { border:1px solid var(--linea); border-radius: var(--radio); overflow:hidden; background: var(--crema); }
+  .rol-card .franja { height:5px; background: var(--azul); }
+  .rol-card .cuerpo { padding: 12px 14px; }
+  .rol-card .et { font-family: var(--fuente-mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color: var(--texto-tenue); }
+  .rol-card .tit { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:19px; color: var(--navy); margin:2px 0 4px; }
+  .rol-card p { font-size:13.5px; color: var(--texto-suave); margin:0; }
+  @media (max-width: 860px) { .roles { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 520px) { .roles { grid-template-columns: 1fr; } }
+
+  .notas-rol { display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:16px; }
+  @media (max-width: 760px) { .notas-rol { grid-template-columns: 1fr; } }
+
+  /* Formularios */
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin: 10px 0 5px; }
+  input, select { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-family: var(--fuente-texto); font-size:15px; background:#fff; color: var(--navy); }
+  input:focus, select:focus { outline:2px solid var(--azul); border-color: var(--azul); }
+  .filtros { display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; align-items:end; }
+  @media (max-width: 700px) { .filtros { grid-template-columns: 1fr; } }
+
+  table { width:100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; vertical-align: middle; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+  td select { padding:7px 9px; font-size:14px; min-width: 130px; }
+  .nom { font-weight:600; color: var(--navy); }
+  .sub { display:block; font-size:12.5px; color: var(--texto-suave); }
+
+  .pill { font-family: var(--fuente-mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px; border-radius:999px; white-space:nowrap; display:inline-block; }
+  .pill-si { background:#e6f4ea; color:#1e7a3d; }
+  .pill-no { background:#f9e9e7; color:#A8453F; }
+  .pill-medio { background: var(--aviso-fondo); color: var(--aviso-titulo); }
+  .pill-neutro { background: var(--crema-media); color: var(--texto-suave); }
+
+  .btn { cursor:pointer; }
+  .btn--mini { padding:7px 14px; font-size:13.5px; }
+  .oculto { display:none !important; }
+  .msg { font-size:14px; margin-left:8px; }
+  .msg.error { color:#b3261e; }
+  .msg.ok { color:#1e7a3d; }
+
+  /* Listas para casar personas con fichas */
+  .dos-listas { display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
+  @media (max-width: 820px) { .dos-listas { grid-template-columns: 1fr; } }
+  .lista-caja { border:1px solid var(--linea); border-radius: var(--radio); background: var(--crema); padding: 12px 14px; }
+  .lista-caja h4 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:17px; color: var(--navy); margin:0 0 2px; }
+  .lista-caja .cuenta-lista { font-size:13px; color: var(--texto-suave); margin:0 0 8px; }
+  .lista-scroll { max-height: 300px; overflow-y:auto; }
+  .fila-sel { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--linea); font-size:14px; }
+  .fila-sel:last-child { border-bottom:none; }
+  .fila-sel button { background:transparent; border:1px solid var(--azul); color: var(--azul-oscuro); border-radius:999px; padding:5px 12px; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+  .fila-sel button:hover { background: var(--azul-suave); }
+
+  .elegido { background: var(--azul-suave); border:1px solid #cfe1f0; border-radius:10px; padding:9px 12px; font-size:14px; color: var(--navy); margin-top:6px; }
+  .elegido .vacio { color: var(--texto-suave); }
+  .acciones-enlace { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; align-items:center; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <!-- ===== RESUMEN ===== -->
+    <div class="panel">
+      <h2>Usuarios y permisos</h2>
+      <p class="intro">Quién entra al portal, con qué rol, y a qué ficha está enlazada cada persona.</p>
+
+      <div class="cifras">
+        <div class="cifra"><span class="et">Personas con perfil</span><span class="num" id="c-perfiles">—</span><span class="nota" id="n-perfiles"></span></div>
+        <div class="cifra verde"><span class="et">Atletas enlazados</span><span class="num" id="c-enlazados">—</span><span class="nota" id="n-enlazados"></span></div>
+        <div class="cifra rojo"><span class="et">Atletas sin enlazar</span><span class="num" id="c-sinenlazar">—</span><span class="nota">No pueden usar el portal</span></div>
+        <div class="cifra ambar"><span class="et">Familias</span><span class="num" id="c-familias">—</span><span class="nota" id="n-familias"></span></div>
+        <div class="cifra"><span class="et">Entrenadores</span><span class="num" id="c-entrenadores">—</span><span class="nota" id="n-entrenadores"></span></div>
+        <div class="cifra"><span class="et">Coordinadores</span><span class="num" id="c-coordinadores">—</span><span class="nota">Por secciones</span></div>
+        <div class="cifra"><span class="et">Administración</span><span class="num" id="c-admins">—</span><span class="nota">Acceso total</span></div>
+        <div class="cifra ambar"><span class="et">Grupos sin entrenador</span><span class="num" id="c-gruposse">—</span><span class="nota" id="n-gruposse"></span></div>
+      </div>
+
+      <h3>Grupos que se han quedado sin entrenador</h3>
+      <p id="lista-grupos-sin" class="intro" style="margin:0;">Cargando…</p>
+    </div>
+
+    <!-- ===== CÓMO SE CREA UNA CUENTA ===== -->
+    <div class="panel">
+      <h2>Cómo se crea una cuenta</h2>
+      <p class="intro">Esto es lo que se puede hacer desde aquí y lo que no. Sin rodeos.</p>
+
+      <div class="aviso">
+        <p style="margin:0 0 6px;"><b>Desde esta pantalla NO se pueden crear cuentas de otras personas ni cambiarles la contraseña.</b>
+        La web del club es una web sencilla que habla con la base de datos usando una clave pública, y con esa clave nadie puede tocar
+        las contraseñas de nadie. Hace falta la clave secreta, que no puede estar en un navegador: quien la tuviera podría entrar en todo.</p>
+        <p style="margin:10px 0 0;"><b>Lo que sí se puede hacer:</b></p>
+        <ul>
+          <li>Cada persona <b>se registra ella misma</b> con su correo y elige su contraseña.</li>
+          <li>El club <b>cambia el rol, la sección y el estado</b> de las personas que ya tienen perfil (aquí abajo).</li>
+          <li>El club <b>enlaza cada persona con su ficha</b> de atleta o con la de sus hijos (aquí abajo).</li>
+        </ul>
+        <p style="margin:12px 0 0;"><b>Para dar de alta a alguien hoy, paso a paso:</b></p>
+        <ol>
+          <li>Entra en <b>supabase.com</b> con la cuenta del club → proyecto de Apolana → menú <b>Authentication</b> → botón <b>Add user</b> → <b>Create new user</b>.</li>
+          <li>Escribe su correo y una contraseña provisional. Marca <b>Auto Confirm User</b> para que pueda entrar sin esperar al correo.</li>
+          <li>Vuelve a esta pantalla y <b>recarga</b>. La persona aparecerá en la lista con el rol que le haya puesto el sistema.</li>
+          <li>Ponle aquí <b>el rol que le toca</b> y, si es coordinador, su sección.</li>
+          <li>Si es atleta o familia, <b>enlázala con su ficha</b> en el último bloque. Sin ese enlace verá el portal vacío.</li>
+          <li>Dile que entre en <b>/acceso/</b> con ese correo y que se cambie la contraseña.</li>
+        </ol>
+        <p style="margin:12px 0 0;">Hacer esto 179 veces no tiene sentido. Lo que toca es que cada atleta o familia se registre al
+        inscribirse, como pide la maqueta, y que aquí solo se revisen los roles y los enlaces.</p>
+      </div>
+    </div>
+
+    <!-- ===== QUÉ VE CADA ROL ===== -->
+    <div class="panel">
+      <h2>Roles y qué ve cada uno</h2>
+      <p class="intro">Un acceso único que reparte; nada se mezcla. Antes de cambiarle el rol a alguien, mira aquí qué le estás abriendo.</p>
+
+      <div class="roles">
+        <div class="rol-card"><div class="franja" style="background:var(--texto-tenue)"></div><div class="cuerpo">
+          <span class="et">Sin cuenta</span><div class="tit">Visitante</div><p>Noticias, calendario, secciones, campus e inscripción.</p></div></div>
+        <div class="rol-card"><div class="franja"></div><div class="cuerpo">
+          <span class="et">Rol 1 · atleta</span><div class="tit">Atleta</div><p>Su entreno, feedback, marcas, clases y bono.</p></div></div>
+        <div class="rol-card"><div class="franja" style="background:#7BA05B"></div><div class="cuerpo">
+          <span class="et">Rol 2 · padre</span><div class="tit">Familia</div><p>Ficha de sus hijos, faltas, pagos y tienda.</p></div></div>
+        <div class="rol-card"><div class="franja" style="background:#B96F09"></div><div class="cuerpo">
+          <span class="et">Rol 3 · entrenador</span><div class="tit">Entrenador</div><p>Sus grupos: planificar, pasar lista y leer feedback.</p></div></div>
+        <div class="rol-card"><div class="franja" style="background:#8B6FA8"></div><div class="cuerpo">
+          <span class="et">Rol 4 · coordinador</span><div class="tit">Coordinador</div><p>Todos los grupos de su sección y sus técnicos.</p></div></div>
+        <div class="rol-card"><div class="franja" style="background:var(--navy)"></div><div class="cuerpo">
+          <span class="et">Rol 5 · admin</span><div class="tit">Administración</div><p>Cobros, contenido web, estadísticas y usuarios.</p></div></div>
+      </div>
+
+      <div class="notas-rol">
+        <div class="aviso">
+          <p style="margin:0;"><b>Menores</b><br>Por debajo de 14 años la cuenta es de la familia. A partir de ahí el atleta tiene la suya
+          y la familia sigue viendo pagos y asistencia, no su feedback.</p>
+        </div>
+        <div class="aviso">
+          <p style="margin:0;"><b>Varios roles a la vez</b><br>Un entrenador que además entrena y tiene un hijo en la escuela usa un solo
+          correo. Hoy cada correo tiene un único rol: si alguien hace dos cosas, ponle el rol que más necesita y enlaza también su ficha
+          de atleta y las de sus hijos.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== LISTADO DE PERSONAS ===== -->
+    <div class="panel">
+      <h2>Personas</h2>
+      <p class="intro">Cambia el rol, la sección y el estado. Cada cambio se guarda al momento.</p>
+
+      <div class="filtros">
+        <div>
+          <label for="f-buscar">Buscar por nombre o correo</label>
+          <input type="search" id="f-buscar" placeholder="Escribe un nombre…">
+        </div>
+        <div>
+          <label for="f-rol">Rol</label>
+          <select id="f-rol">
+            <option value="">Todos</option>
+            <option value="admin">Administración</option>
+            <option value="coordinador">Coordinador</option>
+            <option value="entrenador">Entrenador</option>
+            <option value="atleta">Atleta</option>
+            <option value="padre">Familia</option>
+          </select>
+        </div>
+        <div>
+          <label for="f-cuenta">Cuenta de acceso</label>
+          <select id="f-cuenta">
+            <option value="">Todas</option>
+            <option value="si">Puede entrar</option>
+            <option value="no">No puede entrar</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table id="tabla-personas">
+          <thead><tr><th>Persona</th><th>Rol</th><th>Sección</th><th>Estado</th><th>Cuenta</th><th>Ficha</th></tr></thead>
+          <tbody><tr><td colspan="6">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="intro" style="margin-top:12px; font-size:13.5px;">
+        <b>Cuenta</b> dice si esa persona puede entrar de verdad: hay perfiles creados desde la base de datos que todavía no tienen
+        contraseña. <b>Ficha</b> dice si está enlazada con su ficha de atleta o con la de algún hijo.
+      </p>
+    </div>
+
+    <!-- ===== ENLAZAR PERSONAS CON FICHAS ===== -->
+    <div class="panel">
+      <h2>Enlazar personas con fichas</h2>
+      <p class="intro">Esto es lo que hace que el portal sirva de algo. Una persona sin ficha enlazada entra y no ve nada suyo.</p>
+
+      <div class="dos-listas">
+        <div class="lista-caja">
+          <h4>Atletas sin cuenta enlazada</h4>
+          <p class="cuenta-lista" id="cuenta-atletas-sin">—</p>
+          <input type="search" id="b-atletas" placeholder="Buscar atleta…">
+          <div class="lista-scroll" id="lista-atletas-sin" style="margin-top:8px;">Cargando…</div>
+        </div>
+        <div class="lista-caja">
+          <h4>Perfiles sin ficha</h4>
+          <p class="cuenta-lista" id="cuenta-perfiles-sin">—</p>
+          <input type="search" id="b-perfiles" placeholder="Buscar persona…">
+          <div class="lista-scroll" id="lista-perfiles-sin" style="margin-top:8px;">Cargando…</div>
+        </div>
+      </div>
+
+      <h3>Casar los dos</h3>
+      <div class="dos-listas">
+        <div>
+          <label>Ficha de atleta elegida</label>
+          <div class="elegido" id="elegido-atleta"><span class="vacio">Elige una ficha en la lista de la izquierda.</span></div>
+        </div>
+        <div>
+          <label>Persona elegida</label>
+          <div class="elegido" id="elegido-perfil"><span class="vacio">Elige una persona en la lista de la derecha.</span></div>
+        </div>
+      </div>
+
+      <div class="acciones-enlace">
+        <button class="btn btn--primario btn--mini" id="enlazar-propio">Es su propia cuenta</button>
+        <button class="btn btn--fantasma btn--mini" id="enlazar-padre">Es su padre, madre o tutor</button>
+        <button class="btn btn--fantasma btn--mini" id="limpiar-enlace">Limpiar</button>
+        <span class="msg" id="msg-enlace"></span>
+      </div>
+      <p class="intro" style="margin-top:10px; font-size:13.5px;">
+        Una ficha puede tener las dos cosas: la cuenta del propio atleta y la de su familia. En menores de 14 años lo normal es
+        enlazar solo la de la familia.
+      </p>
+
+      <h3>Fichas ya enlazadas</h3>
+      <div style="overflow-x:auto;">
+        <table id="tabla-enlazados">
+          <thead><tr><th>Ficha de atleta</th><th>Cuenta propia</th><th>Familia</th><th></th></tr></thead>
+          <tbody><tr><td colspan="4">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var ROLES = [
+    { v: 'admin',       t: 'Administración' },
+    { v: 'coordinador', t: 'Coordinador' },
+    { v: 'entrenador',  t: 'Entrenador' },
+    { v: 'atleta',      t: 'Atleta' },
+    { v: 'padre',       t: 'Familia' }
+  ];
+  var SECCIONES = ['escuela', 'competicion', 'running', 'triatlon', 'natacion', 'gimnasio', 'adultos'];
+  var SECCION_TXT = {
+    escuela: 'Escuela', competicion: 'Competición', running: 'Running', triatlon: 'Triatlón',
+    natacion: 'Natación', gimnasio: 'Gimnasio', adultos: 'Adultos'
+  };
+  var AVISO_ROL = {
+    admin: 'Administración ve y toca TODO: cobros, datos de todos los atletas, contenido de la web y esta misma pantalla.',
+    coordinador: 'El coordinador verá todos los grupos y los atletas de su sección. Acuérdate de ponerle la sección.',
+    entrenador: 'El entrenador verá solo sus grupos: planificar, pasar lista y leer el feedback de sus atletas.',
+    atleta: 'El atleta verá su entreno, su feedback, sus marcas y su bono. Nada de los demás.',
+    padre: 'La familia verá la ficha de sus hijos, sus faltas, los pagos y la tienda. No ve el feedback del atleta.'
+  };
+
+  var perfiles = [], atletas = [], grupos = [], cuentas = {};
+  var selAtleta = null, selPerfil = null;
+
+  function nombreCompleto(p) { return ((p.nombre || '') + ' ' + (p.apellidos || '')).trim(); }
+  function plural(n, sing, plur) { return n + ' ' + (n === 1 ? sing : plur); }
+
+  function estadoCuenta(id) {
+    var c = cuentas[id];
+    if (!c) return { clase: 'pill-neutro', txt: 'Sin datos', puede: false };
+    if (!c.tiene_contrasena) return { clase: 'pill-no', txt: 'Sin contraseña', puede: false };
+    if (!c.correo_confirmado) return { clase: 'pill-medio', txt: 'Sin confirmar', puede: false };
+    if (!c.ha_entrado) return { clase: 'pill-medio', txt: 'Nunca ha entrado', puede: true };
+    return { clase: 'pill-si', txt: 'Entra', puede: true };
+  }
+
+  // ---------------------------------------------------------
+  // Carga de datos
+  // ---------------------------------------------------------
+  async function cargarTodo() {
+    var rp = await sb.from('perfiles').select('id,nombre,apellidos,email,telefono,rol,seccion,activo').order('apellidos');
+    if (rp.error) { $('tabla-personas').querySelector('tbody').innerHTML = '<tr><td colspan="6">Error: ' + esc(rp.error.message) + '</td></tr>'; return; }
+    perfiles = rp.data || [];
+
+    var ra = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id,perfil_padre_id').order('apellidos');
+    atletas = ra.error ? [] : (ra.data || []);
+
+    var rg = await sb.from('grupos').select('id,nombre,seccion,entrenador_id,activo').order('nombre');
+    grupos = rg.error ? [] : (rg.data || []);
+
+    cuentas = {};
+    var rc = await sb.rpc('estado_cuentas');
+    if (!rc.error && rc.data) {
+      rc.data.forEach(function (c) { cuentas[c.perfil_id] = c; });
+    }
+
+    pintarResumen();
+    pintarPersonas();
+    pintarListasEnlace();
+    pintarEnlazados();
+  }
+
+  // ---------------------------------------------------------
+  // Resumen
+  // ---------------------------------------------------------
+  function pintarResumen() {
+    var activos = atletas.filter(function (a) { return a.estado !== 'baja'; });
+    var conAlgo = activos.filter(function (a) { return a.perfil_id || a.perfil_padre_id; });
+    var conPropia = activos.filter(function (a) { return !!a.perfil_id; });
+    var conFamilia = activos.filter(function (a) { return !!a.perfil_padre_id; });
+
+    var porRol = function (r) { return perfiles.filter(function (p) { return p.rol === r; }); };
+    var puedenEntrar = perfiles.filter(function (p) { return estadoCuenta(p.id).puede; }).length;
+
+    $('c-perfiles').textContent = perfiles.length;
+    $('n-perfiles').textContent = puedenEntrar + (puedenEntrar === 1 ? ' puede' : ' pueden') + ' entrar hoy';
+    $('c-enlazados').textContent = conAlgo.length;
+    $('n-enlazados').textContent = 'de ' + plural(activos.length, 'atleta', 'atletas') + ' · ' + conPropia.length + ' con cuenta propia';
+    $('c-sinenlazar').textContent = activos.length - conAlgo.length;
+    $('c-familias').textContent = porRol('padre').length;
+    $('n-familias').textContent = plural(conFamilia.length, 'ficha', 'fichas') + ' con familia enlazada';
+    $('c-entrenadores').textContent = porRol('entrenador').length;
+    $('c-coordinadores').textContent = porRol('coordinador').length;
+    $('c-admins').textContent = porRol('admin').length;
+
+    var gruposActivos = grupos.filter(function (g) { return g.activo !== false; });
+    var idsEntrenador = {};
+    perfiles.forEach(function (p) { if (p.rol === 'entrenador' || p.rol === 'coordinador' || p.rol === 'admin') idsEntrenador[p.id] = true; });
+    var huerfanos = gruposActivos.filter(function (g) { return !g.entrenador_id || !idsEntrenador[g.entrenador_id]; });
+
+    $('c-gruposse').textContent = huerfanos.length;
+    $('n-gruposse').textContent = 'de ' + plural(gruposActivos.length, 'grupo activo', 'grupos activos');
+    $('n-entrenadores').textContent = plural(gruposActivos.length - huerfanos.length, 'grupo', 'grupos') + ' con técnico';
+
+    $('lista-grupos-sin').innerHTML = huerfanos.length
+      ? huerfanos.map(function (g) {
+          return '<span class="pill pill-medio" style="margin:0 6px 6px 0;">' + esc(g.nombre) +
+                 (g.seccion ? ' · ' + esc(SECCION_TXT[g.seccion] || g.seccion) : '') + '</span>';
+        }).join('')
+      : 'Todos los grupos activos tienen entrenador asignado.';
+  }
+
+  // ---------------------------------------------------------
+  // Tabla de personas
+  // ---------------------------------------------------------
+  function fichaDe(p) {
+    var propia = atletas.filter(function (a) { return a.perfil_id === p.id; });
+    var hijos = atletas.filter(function (a) { return a.perfil_padre_id === p.id; });
+    if (propia.length) return '<span class="pill pill-si">Su ficha</span>';
+    if (hijos.length) return '<span class="pill pill-si">' + hijos.length + (hijos.length === 1 ? ' hijo' : ' hijos') + '</span>';
+    if (p.rol === 'atleta' || p.rol === 'padre') return '<span class="pill pill-no">Sin ficha</span>';
+    return '<span class="pill pill-neutro">—</span>';
+  }
+
+  function pintarPersonas() {
+    var texto = ($('f-buscar').value || '').toLowerCase().trim();
+    var fr = $('f-rol').value, fc = $('f-cuenta').value;
+    var tb = $('tabla-personas').querySelector('tbody');
+
+    var lista = perfiles.filter(function (p) {
+      if (fr && p.rol !== fr) return false;
+      if (fc) {
+        var puede = estadoCuenta(p.id).puede;
+        if (fc === 'si' && !puede) return false;
+        if (fc === 'no' && puede) return false;
+      }
+      if (texto) {
+        var t = (nombreCompleto(p) + ' ' + (p.email || '')).toLowerCase();
+        if (t.indexOf(texto) === -1) return false;
+      }
+      return true;
+    });
+
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="6">No hay ninguna persona con esos filtros.</td></tr>'; return; }
+
+    tb.innerHTML = lista.map(function (p) {
+      var c = estadoCuenta(p.id);
+      var selRol = '<select data-campo="rol" data-id="' + p.id + '">' + ROLES.map(function (r) {
+        return '<option value="' + r.v + '"' + (p.rol === r.v ? ' selected' : '') + '>' + r.t + '</option>';
+      }).join('') + '</select>';
+      var selSec = '<select data-campo="seccion" data-id="' + p.id + '"><option value="">— sin sección —</option>' +
+        SECCIONES.map(function (s) {
+          return '<option value="' + s + '"' + (p.seccion === s ? ' selected' : '') + '>' + SECCION_TXT[s] + '</option>';
+        }).join('') + '</select>';
+      var selAct = '<select data-campo="activo" data-id="' + p.id + '">' +
+        '<option value="si"' + (p.activo !== false ? ' selected' : '') + '>Activo</option>' +
+        '<option value="no"' + (p.activo === false ? ' selected' : '') + '>Desactivado</option></select>';
+
+      return '<tr>' +
+        '<td><span class="nom">' + esc(nombreCompleto(p) || '(sin nombre)') + '</span>' +
+          '<span class="sub">' + esc(p.email || '') + '</span>' +
+          '<span class="msg" data-msg="' + p.id + '"></span></td>' +
+        '<td>' + selRol + '</td>' +
+        '<td>' + selSec + '</td>' +
+        '<td>' + selAct + '</td>' +
+        '<td><span class="pill ' + c.clase + '">' + c.txt + '</span></td>' +
+        '<td>' + fichaDe(p) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  $('f-buscar').addEventListener('input', pintarPersonas);
+  $('f-rol').addEventListener('change', pintarPersonas);
+  $('f-cuenta').addEventListener('change', pintarPersonas);
+
+  $('tabla-personas').addEventListener('change', async function (e) {
+    var campo = e.target.getAttribute('data-campo');
+    var id = e.target.getAttribute('data-id');
+    if (!campo || !id) return;
+
+    var p = perfiles.filter(function (x) { return x.id === id; })[0];
+    if (!p) return;
+    var msg = document.querySelector('[data-msg="' + id + '"]');
+    var datos = {};
+
+    if (campo === 'rol') {
+      var nuevo = e.target.value;
+      var admins = perfiles.filter(function (x) { return x.rol === 'admin'; }).length;
+      if (p.rol === 'admin' && nuevo !== 'admin' && admins <= 1) {
+        alert('No se puede: ' + nombreCompleto(p) + ' es la única persona con acceso de administración.\n\n' +
+              'Si le quitas el rol, nadie podría volver a entrar en el panel. Dale antes el rol de administración a otra persona.');
+        e.target.value = p.rol; return;
+      }
+      var texto = 'Vas a cambiar el rol de ' + nombreCompleto(p) + ' a "' +
+        (ROLES.filter(function (r) { return r.v === nuevo; })[0] || {}).t + '".\n\n' + AVISO_ROL[nuevo] + '\n\n¿Seguimos?';
+      if (!confirm(texto)) { e.target.value = p.rol; return; }
+      datos.rol = nuevo;
+      if (nuevo !== 'coordinador' && p.seccion && !confirm('¿Le mantenemos la sección "' + (SECCION_TXT[p.seccion] || p.seccion) + '"?\n\nLa sección solo la usa el coordinador.')) {
+        datos.seccion = null;
+      }
+    } else if (campo === 'seccion') {
+      datos.seccion = e.target.value || null;
+    } else if (campo === 'activo') {
+      datos.activo = (e.target.value === 'si');
+      if (!datos.activo && !confirm('Al desactivar a ' + nombreCompleto(p) + ' dejará de aparecer en las listas del club.\n\n' +
+          'Ojo: esto NO le impide entrar. Para cerrarle el acceso hay que quitarle el rol aquí o borrar su cuenta en Supabase.\n\n¿Seguimos?')) {
+        e.target.value = 'si'; return;
+      }
+    }
+
+    if (msg) { msg.textContent = 'Guardando…'; msg.className = 'msg'; }
+    var r = await sb.from('perfiles').update(datos).eq('id', id);
+    if (r.error) {
+      if (msg) { msg.textContent = 'No se pudo guardar: ' + r.error.message; msg.className = 'msg error'; }
+      return;
+    }
+    Object.keys(datos).forEach(function (k) { p[k] = datos[k]; });
+    if (msg) { msg.textContent = 'Guardado ✓'; msg.className = 'msg ok'; }
+    setTimeout(function () { if (msg) msg.textContent = ''; }, 2500);
+    pintarResumen();
+    pintarListasEnlace();
+  });
+
+  // ---------------------------------------------------------
+  // Enlazar personas con fichas
+  // ---------------------------------------------------------
+  function nombreGrupo(id) {
+    var g = grupos.filter(function (x) { return x.id === id; })[0];
+    return g ? g.nombre : '';
+  }
+
+  function pintarListasEnlace() {
+    // Atletas sin ninguna cuenta enlazada
+    var tA = ($('b-atletas').value || '').toLowerCase().trim();
+    var sinEnlazar = atletas.filter(function (a) {
+      return a.estado !== 'baja' && !a.perfil_id && !a.perfil_padre_id;
+    });
+    var listaA = sinEnlazar.filter(function (a) {
+      if (!tA) return true;
+      return ((a.nombre || '') + ' ' + (a.apellidos || '')).toLowerCase().indexOf(tA) !== -1;
+    });
+    $('cuenta-atletas-sin').textContent = plural(sinEnlazar.length, 'ficha', 'fichas') + ' sin nadie detrás' +
+      (listaA.length !== sinEnlazar.length ? ' · ' + listaA.length + ' con esa búsqueda' : '');
+    $('lista-atletas-sin').innerHTML = listaA.length
+      ? listaA.slice(0, 150).map(function (a) {
+          var g = nombreGrupo(a.grupo_id);
+          return '<div class="fila-sel"><span>' + esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim()) +
+            (g || a.categoria ? '<span class="sub">' + esc([g, a.categoria].filter(Boolean).join(' · ')) + '</span>' : '') +
+            '</span><button data-atleta="' + a.id + '">Elegir</button></div>';
+        }).join('') + (listaA.length > 150 ? '<p class="cuenta-lista" style="margin-top:8px;">Se muestran las 150 primeras. Afina la búsqueda.</p>' : '')
+      : '<p class="cuenta-lista">Ninguna ficha pendiente.</p>';
+
+    // Perfiles de atleta o familia sin ficha
+    var tP = ($('b-perfiles').value || '').toLowerCase().trim();
+    var sinFicha = perfiles.filter(function (p) {
+      if (p.rol !== 'atleta' && p.rol !== 'padre') return false;
+      var tiene = atletas.some(function (a) { return a.perfil_id === p.id || a.perfil_padre_id === p.id; });
+      return !tiene;
+    });
+    var listaP = sinFicha.filter(function (p) {
+      if (!tP) return true;
+      return (nombreCompleto(p) + ' ' + (p.email || '')).toLowerCase().indexOf(tP) !== -1;
+    });
+    $('cuenta-perfiles-sin').textContent = sinFicha.length === 1
+      ? '1 persona que entra y no ve nada suyo'
+      : sinFicha.length + ' personas que entran y no ven nada suyo';
+    $('lista-perfiles-sin').innerHTML = listaP.length
+      ? listaP.map(function (p) {
+          return '<div class="fila-sel"><span>' + esc(nombreCompleto(p) || p.email) +
+            '<span class="sub">' + esc(p.email) + ' · ' + esc(p.rol === 'padre' ? 'Familia' : 'Atleta') + '</span></span>' +
+            '<button data-perfil="' + p.id + '">Elegir</button></div>';
+        }).join('')
+      : '<p class="cuenta-lista">Todas las personas con rol de atleta o familia tienen ficha.</p>';
+  }
+
+  $('b-atletas').addEventListener('input', pintarListasEnlace);
+  $('b-perfiles').addEventListener('input', pintarListasEnlace);
+
+  function pintarElegidos() {
+    $('elegido-atleta').innerHTML = selAtleta
+      ? '<b>' + esc(((selAtleta.nombre || '') + ' ' + (selAtleta.apellidos || '')).trim()) + '</b>' +
+        (nombreGrupo(selAtleta.grupo_id) ? '<span class="sub">' + esc(nombreGrupo(selAtleta.grupo_id)) + '</span>' : '')
+      : '<span class="vacio">Elige una ficha en la lista de la izquierda.</span>';
+    $('elegido-perfil').innerHTML = selPerfil
+      ? '<b>' + esc(nombreCompleto(selPerfil) || selPerfil.email) + '</b><span class="sub">' + esc(selPerfil.email) + '</span>'
+      : '<span class="vacio">Elige una persona en la lista de la derecha.</span>';
+  }
+
+  $('lista-atletas-sin').addEventListener('click', function (e) {
+    var id = e.target.getAttribute('data-atleta');
+    if (!id) return;
+    selAtleta = atletas.filter(function (a) { return a.id === id; })[0] || null;
+    $('msg-enlace').textContent = '';
+    pintarElegidos();
+  });
+  $('lista-perfiles-sin').addEventListener('click', function (e) {
+    var id = e.target.getAttribute('data-perfil');
+    if (!id) return;
+    selPerfil = perfiles.filter(function (p) { return p.id === id; })[0] || null;
+    $('msg-enlace').textContent = '';
+    pintarElegidos();
+  });
+
+  async function enlazar(campo) {
+    var msg = $('msg-enlace');
+    if (!selAtleta || !selPerfil) {
+      msg.textContent = 'Elige primero una ficha y una persona.'; msg.className = 'msg error'; return;
+    }
+    var datos = {};
+    datos[campo] = selPerfil.id;
+    msg.textContent = 'Enlazando…'; msg.className = 'msg';
+    var r = await sb.from('atletas').update(datos).eq('id', selAtleta.id);
+    if (r.error) { msg.textContent = 'No se pudo enlazar: ' + r.error.message; msg.className = 'msg error'; return; }
+    selAtleta[campo] = selPerfil.id;
+    msg.textContent = 'Enlazado ✓'; msg.className = 'msg ok';
+    selAtleta = null; selPerfil = null;
+    pintarElegidos(); pintarResumen(); pintarPersonas(); pintarListasEnlace(); pintarEnlazados();
+  }
+
+  $('enlazar-propio').addEventListener('click', function () { enlazar('perfil_id'); });
+  $('enlazar-padre').addEventListener('click', function () { enlazar('perfil_padre_id'); });
+  $('limpiar-enlace').addEventListener('click', function () {
+    selAtleta = null; selPerfil = null; $('msg-enlace').textContent = ''; pintarElegidos();
+  });
+
+  function perfilPorId(id) { return perfiles.filter(function (p) { return p.id === id; })[0]; }
+
+  function pintarEnlazados() {
+    var tb = $('tabla-enlazados').querySelector('tbody');
+    var lista = atletas.filter(function (a) { return a.perfil_id || a.perfil_padre_id; });
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="4">Todavía no hay ninguna ficha enlazada.</td></tr>'; return; }
+    tb.innerHTML = lista.map(function (a) {
+      var pp = a.perfil_id ? perfilPorId(a.perfil_id) : null;
+      var pf = a.perfil_padre_id ? perfilPorId(a.perfil_padre_id) : null;
+      var acciones = '';
+      if (a.perfil_id) acciones += '<button class="btn btn--fantasma btn--mini" data-quitar="perfil_id" data-fila="' + a.id + '">Quitar cuenta propia</button> ';
+      if (a.perfil_padre_id) acciones += '<button class="btn btn--fantasma btn--mini" data-quitar="perfil_padre_id" data-fila="' + a.id + '">Quitar familia</button>';
+      return '<tr>' +
+        '<td><span class="nom">' + esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim()) + '</span>' +
+          '<span class="sub">' + esc(nombreGrupo(a.grupo_id) || '—') + '</span></td>' +
+        '<td>' + (pp ? esc(nombreCompleto(pp)) + '<span class="sub">' + esc(pp.email) + '</span>' : '<span class="pill pill-neutro">—</span>') + '</td>' +
+        '<td>' + (pf ? esc(nombreCompleto(pf)) + '<span class="sub">' + esc(pf.email) + '</span>' : '<span class="pill pill-neutro">—</span>') + '</td>' +
+        '<td>' + acciones + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  $('tabla-enlazados').addEventListener('click', async function (e) {
+    var campo = e.target.getAttribute('data-quitar');
+    var id = e.target.getAttribute('data-fila');
+    if (!campo || !id) return;
+    if (!confirm('¿Quitamos el enlace? Esa persona dejará de ver esta ficha en el portal.')) return;
+    var datos = {};
+    datos[campo] = null;
+    var r = await sb.from('atletas').update(datos).eq('id', id);
+    if (r.error) { alert('No se pudo quitar: ' + r.error.message); return; }
+    var a = atletas.filter(function (x) { return x.id === id; })[0];
+    if (a) a[campo] = null;
+    pintarResumen(); pintarPersonas(); pintarListasEnlace(); pintarEnlazados();
+  });
+
+  cargarTodo();
+});
+</script>
+
+</body>
+</html>

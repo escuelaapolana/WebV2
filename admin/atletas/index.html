@@ -32,20 +32,33 @@
   .msg.error { color:#b3261e; } .msg.ok { color:#1e7a3d; }
   .oculto { display:none !important; }
   .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); }
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:6px; }
+  .filtros input, .filtros select { padding:9px 12px; font-size:14px; }
+  .filtros .cuenta { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color: var(--texto-tenue); }
 </style>
 </head>
 <body>
 
 <div id="admin-contenido">
   <div class="admin-wrap">
-    <a class="volver" href="../">← Volver al panel</a>
-
     <div class="panel">
       <h2>Atletas</h2>
       <p class="intro" style="margin-bottom:10px;">Fichas de los atletas del club. El acceso al portal (usuario/contraseña) se crea aparte en Supabase con el mismo correo.</p>
       <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo">+ Nuevo atleta</button></div>
+      <div class="filtros">
+        <input type="search" id="f-buscar" placeholder="Buscar por nombre o correo…" style="max-width:280px;">
+        <select id="f-estado" style="max-width:170px;">
+          <option value="">Todos los estados</option>
+          <option value="activo">Activo</option>
+          <option value="lesionado">Lesionado</option>
+          <option value="prueba">Prueba</option>
+          <option value="baja">Baja</option>
+        </select>
+        <select id="f-grupo" style="max-width:220px;"><option value="">Todos los grupos</option></select>
+        <span class="cuenta" id="f-cuenta"></span>
+      </div>
       <div style="overflow-x:auto;">
-        <table id="tabla"><thead><tr><th>Nombre</th><th>Categoría</th><th>Estado</th><th>Correo (cuenta)</th><th></th></tr></thead><tbody></tbody></table>
+        <table id="tabla"><thead><tr><th>Nombre</th><th>Categoría</th><th>Grupo</th><th>Estado</th><th>Correo (cuenta)</th><th></th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
@@ -129,9 +142,13 @@ APOLANA_ADMIN.listo(function (sb) {
 
   async function cargarGrupos() {
     var r = await sb.from('grupos').select('id,nombre').order('nombre');
-    var sel = $('a-grupo');
+    var sel = $('a-grupo'), filtro = $('f-grupo');
     if (!r.error && r.data) {
-      r.data.forEach(function (g) { gruposById[g.id] = g.nombre; var o = document.createElement('option'); o.value = g.id; o.textContent = g.nombre; sel.appendChild(o); });
+      r.data.forEach(function (g) {
+        gruposById[g.id] = g.nombre;
+        var o = document.createElement('option'); o.value = g.id; o.textContent = g.nombre; sel.appendChild(o);
+        var o2 = document.createElement('option'); o2.value = g.id; o2.textContent = g.nombre; filtro.appendChild(o2);
+      });
     }
   }
 
@@ -157,26 +174,55 @@ APOLANA_ADMIN.listo(function (sb) {
     var out = []; Array.prototype.forEach.call(document.querySelectorAll('.esp-chk'), function (chk) { if (chk.checked) out.push(chk.value); }); return out;
   }
 
-  async function cargar() {
+  var TODOS = [];      // fichas cargadas
+  var CORREOS = {};    // perfil_id → correo
+
+  function pintar() {
     var tb = $('tabla').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
-    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,perfil_id').order('apellidos');
-    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
-    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay atletas todavía.</td></tr>'; return; }
-    // correos de los perfiles enlazados
-    var ids = r.data.map(function(a){return a.perfil_id;}).filter(Boolean);
-    var correos = {};
-    if (ids.length) {
-      var pr = await sb.from('perfiles').select('id,email').in('id', ids);
-      if (!pr.error && pr.data) pr.data.forEach(function(p){ correos[p.id]=p.email; });
-    }
-    tb.innerHTML = r.data.map(function (a) {
+    var texto = ($('f-buscar').value || '').trim().toLowerCase();
+    var estado = $('f-estado').value;
+    var grupo = $('f-grupo').value;
+    var lista = TODOS.filter(function (a) {
+      if (estado && (a.estado || '') !== estado) return false;
+      if (grupo && (a.grupo_id || '') !== grupo) return false;
+      if (texto) {
+        var campo = ((a.nombre || '') + ' ' + (a.apellidos || '') + ' ' + (CORREOS[a.perfil_id] || '')).toLowerCase();
+        if (campo.indexOf(texto) === -1) return false;
+      }
+      return true;
+    });
+    $('f-cuenta').textContent = lista.length === TODOS.length
+      ? TODOS.length + ' atletas'
+      : lista.length + ' de ' + TODOS.length + ' atletas';
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="6">Ningún atleta encaja con la búsqueda.</td></tr>'; return; }
+    tb.innerHTML = lista.map(function (a) {
       return '<tr><td>' + esc((a.nombre||'')+' '+(a.apellidos||'')) + '</td><td>' + esc(a.categoria||'') + '</td>' +
-        '<td><span class="pill">' + esc(a.estado||'') + '</span></td><td>' + esc(correos[a.perfil_id]||'—') + '</td>' +
+        '<td>' + esc(gruposById[a.grupo_id] || '—') + '</td>' +
+        '<td><span class="pill">' + esc(a.estado||'') + '</span></td><td>' + esc(CORREOS[a.perfil_id]||'—') + '</td>' +
         '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-ed="'+a.id+'">Editar</button>' +
         '<button class="btn btn--peligro" data-bo="'+a.id+'">Borrar</button></td></tr>';
     }).join('');
   }
+
+  async function cargar() {
+    var tb = $('tabla').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
+    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id').order('apellidos');
+    if (r.error) { tb.innerHTML = '<tr><td colspan="6">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    TODOS = r.data || [];
+    if (!TODOS.length) { $('f-cuenta').textContent = ''; tb.innerHTML = '<tr><td colspan="6">No hay atletas todavía.</td></tr>'; return; }
+    // correos de los perfiles enlazados
+    var ids = TODOS.map(function(a){return a.perfil_id;}).filter(Boolean);
+    CORREOS = {};
+    if (ids.length) {
+      var pr = await sb.from('perfiles').select('id,email').in('id', ids);
+      if (!pr.error && pr.data) pr.data.forEach(function(p){ CORREOS[p.id]=p.email; });
+    }
+    pintar();
+  }
+  ['f-buscar', 'f-estado', 'f-grupo'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', pintar);
+  });
 
   async function abrir(a) {
     a = a || {};

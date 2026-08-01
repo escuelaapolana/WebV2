@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Importar personas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  a.volver { display:inline-block; margin-bottom:14px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; }
+
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+  .panel h3 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 17px; color: var(--navy); margin: 18px 0 6px; }
+  .paso { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); display:block; margin-bottom:2px; }
+  p.intro { color: var(--texto); }
+
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:12px 0 5px; }
+  input[type=file], select, input[type=text] {
+    width:100%; box-sizing:border-box; padding:11px 13px; border:1px solid var(--linea-borde);
+    border-radius:10px; font-size:15px; font-family: var(--fuente-texto); background:#fff; color: var(--navy);
+  }
+  select:focus, input:focus { outline:2px solid var(--azul); border-color: var(--azul); }
+  .fila-check { display:flex; align-items:flex-start; gap:8px; margin-top:10px; }
+  .fila-check input { width:auto; margin-top:3px; }
+  .fila-check label { margin:0; font-weight:400; font-size:14px; color: var(--texto); }
+
+  .btn { cursor:pointer; }
+  .btn--mini { padding:8px 14px; font-size:14px; }
+  .btn--peligro { background:transparent; border:1px solid #e0b4b0; color:#b3261e; padding:8px 14px; border-radius:999px; font-size:14px; cursor:pointer; font-family:inherit; }
+  .btn--peligro:hover { background:#fbeceb; }
+  .btn[disabled] { opacity:.5; cursor:not-allowed; }
+  .oculto { display:none !important; }
+
+  .msg { font-size:14px; }
+  .msg.error { color:#b3261e; } .msg.ok { color:#1e7a3d; }
+
+  .nota { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); color: var(--aviso-texto); border-radius: var(--radio); padding:14px 16px; font-size:14px; line-height:1.55; margin-top:14px; }
+  .nota strong { color: var(--aviso-titulo); }
+  .nota ul { margin:8px 0 0 18px; } .nota li { margin-bottom:4px; }
+
+  .resumen { display:flex; flex-wrap:wrap; gap:10px; margin:6px 0 16px; }
+  .cifra { border-radius: var(--radio); padding:12px 16px; min-width:120px; border:1px solid var(--linea); background: var(--crema); }
+  .cifra b { display:block; font-family: var(--fuente-display); font-size:26px; line-height:1.1; color: var(--navy); }
+  .cifra span { font-size:12px; font-family: var(--fuente-mono); text-transform:uppercase; letter-spacing:.06em; color: var(--texto-tenue); }
+  .cifra.nuevo { background:#e9f6ee; border-color:#bfe3cc; }
+  .cifra.nuevo b { color:#1e7a3d; }
+  .cifra.actual { background:#fdf3e2; border-color:#eeddb7; }
+  .cifra.actual b { color:#9a6a15; }
+  .cifra.malo { background:#fbeceb; border-color:#e8c6c3; }
+  .cifra.malo b { color:#b3261e; }
+
+  table { width:100%; border-collapse:collapse; margin-top:8px; }
+  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--linea); font-size:13.5px; vertical-align:top; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); white-space:nowrap; }
+  tr.f-nuevo td:first-child { box-shadow: inset 4px 0 0 #2e9e5b; }
+  tr.f-actual td:first-child { box-shadow: inset 4px 0 0 #d8a13a; }
+  tr.f-error td:first-child { box-shadow: inset 4px 0 0 #b3261e; }
+  tr.f-error { background:#fdf6f5; }
+  tr.f-actual { background:#fefbf4; }
+  .tabla-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  .etq { font-family: var(--fuente-mono); font-size:10.5px; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .etq-nuevo { background:#e6f4ea; color:#1e7a3d; }
+  .etq-actual { background:#fdf0da; color:#8a5f12; }
+  .etq-error { background:#fbe3e1; color:#b3261e; }
+  .detalle { color: var(--texto-suave); font-size:12.5px; }
+  .detalle .mal { color:#b3261e; }
+
+  .barra { height:12px; border-radius:999px; background: var(--crema-media); overflow:hidden; margin:12px 0 6px; }
+  .barra > div { height:100%; width:0%; background: var(--azul); transition: width .2s; }
+
+  .grupo-fila { display:grid; grid-template-columns: 1fr 1fr; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--linea); }
+  .grupo-fila code { font-family: var(--fuente-mono); font-size:13px; color: var(--navy); }
+  @media (max-width:620px) { .grupo-fila { grid-template-columns:1fr; gap:4px; } }
+
+  .cols-lista { font-family: var(--fuente-mono); font-size:12.5px; color: var(--texto-suave); line-height:1.9; word-break:break-word; }
+  .cols-lista b { color: var(--navy); background: var(--crema-media); padding:2px 7px; border-radius:6px; font-weight:600; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+    <a class="volver" href="../">← Volver al panel</a>
+
+    <!-- ============ EXPLICACIÓN Y PLANTILLA ============ -->
+    <div class="panel">
+      <h2>Importar personas desde una hoja de cálculo</h2>
+      <p class="intro">
+        Sirve para meter de golpe a los atletas que hoy están en Excel o en los formularios de Google,
+        sin escribirlos uno a uno. Se sube un fichero <b>CSV</b>, se ve en pantalla lo que va a pasar
+        con cada fila y solo se guarda cuando das el visto bueno.
+      </p>
+
+      <h3>Cómo sacar el CSV de tu hoja</h3>
+      <p class="intro" style="font-size:14.5px;">
+        En Excel: <em>Archivo → Guardar como → CSV (delimitado por comas)</em>.
+        En Google Sheets o en las respuestas de un formulario: <em>Archivo → Descargar → Valores separados por comas (.csv)</em>.
+        Da igual si el fichero usa punto y coma, coma o tabulador: se detecta solo.
+      </p>
+
+      <div style="margin-top:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <button class="btn btn--primario btn--mini" id="btn-plantilla">Descargar la plantilla en blanco</button>
+        <span class="msg" style="color:var(--texto-suave);">Ábrela con Excel, pega tus datos debajo y guárdala como CSV.</span>
+      </div>
+
+      <h3>Columnas que entiende</h3>
+      <p class="intro" style="font-size:14.5px;">
+        El orden no importa y las que sobren se ignoran. Solo el <b>nombre</b> es obligatorio.
+        Además de estos nombres, reconoce los que usan vuestros formularios
+        («Primer apellido», «Correo», «Teléfono de contacto», «D.N.I.», «Turno de inscripción»…).
+      </p>
+      <p class="cols-lista" id="lista-columnas"></p>
+
+      <div class="nota">
+        <strong>Dos cosas importantes, en cristiano:</strong>
+        <ul>
+          <li><b>El correo se guarda en la ficha del atleta, no crea ninguna cuenta.</b>
+              Las cuentas de acceso llevan contraseña y se crean aparte. Aquí solo se apunta el correo
+              que tenéis. El día que esa persona se registre con ese mismo correo, su cuenta y su ficha
+              se enlazan solas (y si el correo es el del padre o la madre, se enlaza como familia).</li>
+          <li><b>Nadie se duplica.</b> Antes de crear a alguien se comprueba si ya está:
+              por <b>DNI</b> si viene, y si no por <b>nombre + apellidos + fecha de nacimiento</b>.
+              Si ya existe, la fila <em>actualiza</em> su ficha en vez de crear otra.
+              Solo se cambian las casillas que traigas rellenas: lo que dejes en blanco no se toca.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ============ PASO 1: SUBIR ============ -->
+    <div class="panel">
+      <span class="paso">Paso 1</span>
+      <h2>Sube el fichero</h2>
+      <label for="fichero">Fichero CSV</label>
+      <input type="file" id="fichero" accept=".csv,.txt,text/csv,text/plain">
+      <div class="fila-check">
+        <input type="checkbox" id="op-crear" checked>
+        <label for="op-crear">Crear las fichas de quien todavía no esté</label>
+      </div>
+      <div class="fila-check">
+        <input type="checkbox" id="op-actualizar" checked>
+        <label for="op-actualizar">Actualizar la ficha de quien ya esté (si lo desmarcas, esas filas se saltan)</label>
+      </div>
+      <div style="margin-top:12px;"><span class="msg" id="msg-fichero"></span></div>
+    </div>
+
+    <!-- ============ PASO 2: REVISAR ============ -->
+    <div class="panel oculto" id="panel-revision">
+      <span class="paso">Paso 2</span>
+      <h2>Revisa antes de importar</h2>
+      <p class="intro" style="font-size:14.5px;">Todavía no se ha guardado nada. Esto es lo que pasaría:</p>
+
+      <div class="resumen" id="resumen"></div>
+      <div id="aviso-columnas"></div>
+
+      <div class="oculto" id="caja-grupos">
+        <h3>Grupos que no reconozco</h3>
+        <p class="intro" style="font-size:14.5px;">
+          Estos nombres de grupo no coinciden con ninguno de los del club. Dime a cuál corresponde cada uno
+          (o déjalos sin grupo y lo colocas luego desde <a href="../atletas/">Atletas</a>).
+        </p>
+        <div id="lista-grupos"></div>
+      </div>
+
+      <h3>Fila a fila</h3>
+      <div class="tabla-scroll">
+        <table id="tabla-previa">
+          <thead><tr>
+            <th>Fila</th><th>Qué pasa</th><th>Nombre</th><th>Nacimiento</th>
+            <th>Categoría</th><th>Grupo</th><th>Correo</th><th>Teléfono</th><th>Detalle</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ PASO 3: IMPORTAR ============ -->
+    <div class="panel oculto" id="panel-importar">
+      <span class="paso">Paso 3</span>
+      <h2>Importar</h2>
+      <p class="intro" style="font-size:14.5px;" id="texto-importar"></p>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <button class="btn btn--primario btn--mini" id="btn-importar">Importar ahora</button>
+        <span class="msg" id="msg-importar"></span>
+      </div>
+      <div class="barra oculto" id="barra"><div></div></div>
+      <div id="resultado-final"></div>
+    </div>
+
+    <!-- ============ HISTÓRICO ============ -->
+    <div class="panel">
+      <h2>Importaciones anteriores</h2>
+      <p class="intro" style="font-size:14.5px;">
+        Cada subida queda registrada. <b>Deshacer</b> borra las fichas que creó esa subida y devuelve
+        a como estaban las que modificó. Lo que hayas tocado a mano después en otras casillas (grupo,
+        observaciones, marcas…) no se pierde.
+      </p>
+      <div class="tabla-scroll">
+        <table id="tabla-historico">
+          <thead><tr><th>Cuándo</th><th>Fichero</th><th>Nuevos</th><th>Actualizados</th><th>Errores</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+/* ==================================================================
+   NÚCLEO DE LA IMPORTACIÓN
+   Solo cuentas y comprobaciones: no toca la pantalla ni la base de
+   datos. Así se puede razonar (y probar) por separado.
+   ================================================================== */
+window.APOLANA_IMPORTAR = (function () {
+
+  // ---- Texto ------------------------------------------------------
+  function sinAcentos(s) {
+    return String(s == null ? '' : s)
+      .replace(/[áàäâã]/gi, 'a').replace(/[éèëê]/gi, 'e').replace(/[íìïî]/gi, 'i')
+      .replace(/[óòöôõ]/gi, 'o').replace(/[úùüû]/gi, 'u').replace(/ñ/gi, 'n').replace(/ç/gi, 'c');
+  }
+  function norm(s) {
+    return sinAcentos(s).toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+  function normCabecera(s) {
+    return sinAcentos(s).toLowerCase()
+      .replace(/^\uFEFF/, '')
+      .replace(/[_./\\-]+/g, ' ')
+      .replace(/[^a-z0-9 ]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // ---- Qué columna es cada cabecera --------------------------------
+  // Clave = nombre normalizado de la cabecera; valor = campo interno.
+  var CABECERAS = {
+    'nombre': 'nombre', 'nombre alumnoa': 'nombre', 'nombre alumno': 'nombre',
+    'nombre del alumnoa': 'nombre', 'nombre del alumno': 'nombre', 'nombre atleta': 'nombre',
+    'nombre del atleta': 'nombre', 'nombre deportista': 'nombre', 'nombre socioa': 'nombre',
+
+    'apellidos': 'apellidos', 'apellido': 'apellidos', 'apellidos alumnoa': 'apellidos',
+    'apellidos del alumnoa': 'apellidos', 'apellidos atleta': 'apellidos',
+
+    'primer apellido': 'apellido1', 'apellido 1': 'apellido1', 'apellido1': 'apellido1',
+    'primer apellido alumnoa': 'apellido1',
+    'segundo apellido': 'apellido2', 'apellido 2': 'apellido2', 'apellido2': 'apellido2',
+    'segundo apellido opcional': 'apellido2', 'segundo apellido si no tiene poner': 'apellido2',
+
+    'nombre completo': 'nombre_completo', 'nombre y apellidos': 'nombre_completo',
+    'atleta': 'nombre_completo', 'alumnoa': 'nombre_completo', 'nombre completo del atleta': 'nombre_completo',
+
+    'fecha de nacimiento': 'fecha_nacimiento', 'fecha nacimiento': 'fecha_nacimiento',
+    'nacimiento': 'fecha_nacimiento', 'fecha nac': 'fecha_nacimiento', 'f nacimiento': 'fecha_nacimiento',
+    'fecha de nacimiento ddmmaaaa': 'fecha_nacimiento',
+
+    'dni': 'dni', 'd n i': 'dni', 'dni alumnoa': 'dni', 'dni nie': 'dni', 'nif': 'dni',
+    'nie': 'dni', 'd n i nie nif': 'dni', 'dni nie nif': 'dni', 'documento': 'dni',
+    'dni del alumnoa': 'dni', 'dni atleta': 'dni',
+
+    'sexo': 'sexo', 'genero': 'sexo',
+
+    'email': 'email', 'correo': 'email', 'correo electronico': 'email', 'e mail': 'email',
+    'mail': 'email', 'correo del atleta': 'email', 'correo alumnoa': 'email',
+    'direccion de correo electronico': 'email', 'email del atleta': 'email',
+
+    'telefono': 'telefono', 'telefono movil': 'telefono', 'movil': 'telefono',
+    'telefono de contacto': 'telefono', 'tlf': 'telefono', 'telefono atleta': 'telefono',
+    'telefono del atleta': 'telefono',
+
+    'grupo': 'grupo', 'grupo de entrenamiento': 'grupo', 'turno': 'grupo',
+    'turno de inscripcion': 'grupo', 'equipo': 'grupo',
+
+    'categoria': 'categoria',
+    'estado': 'estado', 'situacion': 'estado',
+
+    'especialidades': 'especialidades', 'especialidad': 'especialidades',
+    'pruebas': 'especialidades', 'pruebas principales': 'especialidades',
+
+    'nombre tutor': 'nombre_tutor', 'nombre del tutor': 'nombre_tutor', 'nombre padre': 'nombre_tutor',
+    'nombre del padre': 'nombre_tutor', 'nombre madre': 'nombre_tutor', 'nombre de la madre': 'nombre_tutor',
+    'tutor': 'nombre_tutor', 'padre madre o tutor': 'nombre_tutor', 'nombre padremadretutor': 'nombre_tutor',
+
+    'email tutor': 'email_tutor', 'correo tutor': 'email_tutor', 'correo del tutor': 'email_tutor',
+    'email padre': 'email_tutor', 'correo padre': 'email_tutor', 'email del padre': 'email_tutor',
+    'correo de la familia': 'email_tutor', 'email madre': 'email_tutor', 'correo madre': 'email_tutor',
+    'email familia': 'email_tutor', 'correo padremadre': 'email_tutor',
+
+    'telefono tutor': 'telefono_tutor', 'telefono del tutor': 'telefono_tutor',
+    'telefono padre': 'telefono_tutor', 'telefono madre': 'telefono_tutor',
+    'movil padre': 'telefono_tutor', 'telefono familia': 'telefono_tutor',
+    'telefono de la familia': 'telefono_tutor'
+  };
+
+  // Cabeceras que se ponen en la plantilla (en este orden)
+  var PLANTILLA = ['nombre', 'apellidos', 'fecha_nacimiento', 'dni', 'sexo', 'email', 'telefono',
+                   'grupo', 'categoria', 'estado', 'especialidades',
+                   'nombre_tutor', 'email_tutor', 'telefono_tutor'];
+
+  // Columnas de la ficha que esta pantalla puede escribir (y por tanto
+  // deshacer). Sirve para guardar el "antes" de cada actualización.
+  var COLUMNAS_FICHA = ['nombre', 'apellidos', 'fecha_nacimiento', 'categoria', 'estado', 'grupo_id',
+                        'especialidades', 'dni', 'sexo', 'email', 'telefono',
+                        'nombre_tutor', 'email_tutor', 'telefono_tutor',
+                        'importado_en', 'importacion_id'];
+
+  var CATEGORIAS = ['Escuela iniciación', 'Sub-12', 'Sub-14', 'Sub-16', 'Sub-18', 'Sub-20', 'Sub-23', 'Absoluto', 'Máster'];
+  var ESTADOS = ['activo', 'lesionado', 'baja', 'prueba'];
+
+  // ---- Leer el CSV -------------------------------------------------
+  function detectarSeparador(texto) {
+    var linea = String(texto || '').replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
+    var cuenta = { ';': 0, ',': 0, '\t': 0 }, dentro = false, i, c;
+    for (i = 0; i < linea.length; i++) {
+      c = linea.charAt(i);
+      if (c === '"') { dentro = !dentro; continue; }
+      if (!dentro && cuenta[c] !== undefined) cuenta[c]++;
+    }
+    if (cuenta['\t'] > cuenta[';'] && cuenta['\t'] > cuenta[',']) return '\t';
+    if (cuenta[','] > cuenta[';']) return ',';
+    return ';';
+  }
+
+  function partirCSV(texto, sep) {
+    texto = String(texto == null ? '' : texto).replace(/^\uFEFF/, '');
+    sep = sep || detectarSeparador(texto);
+    var filas = [], fila = [], campo = '', dentro = false, i, c;
+    for (i = 0; i < texto.length; i++) {
+      c = texto.charAt(i);
+      if (dentro) {
+        if (c === '"') {
+          if (texto.charAt(i + 1) === '"') { campo += '"'; i++; }
+          else dentro = false;
+        } else campo += c;
+      } else if (c === '"') { dentro = true; }
+      else if (c === sep) { fila.push(campo); campo = ''; }
+      else if (c === '\n') { fila.push(campo); filas.push(fila); fila = []; campo = ''; }
+      else if (c !== '\r') { campo += c; }
+    }
+    if (campo !== '' || fila.length) { fila.push(campo); filas.push(fila); }
+    filas = filas.filter(function (f) {
+      for (var j = 0; j < f.length; j++) { if (String(f[j]).trim() !== '') return true; }
+      return false;
+    });
+    return { separador: sep, filas: filas };
+  }
+
+  // ---- Comprobaciones de cada dato ---------------------------------
+  function fechaValida(a, m, d) {
+    if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+    var f = new Date(Date.UTC(a, m - 1, d));
+    return f.getUTCFullYear() === a && (f.getUTCMonth() + 1) === m && f.getUTCDate() === d;
+  }
+  function normalizarFecha(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return { vacio: true };
+    s = s.replace(/\s.*$/, '');            // por si viene con la hora detrás
+    var a, m, d, p, anioActual = new Date().getFullYear();
+    p = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+    if (p) { a = +p[1]; m = +p[2]; d = +p[3]; }
+    else {
+      p = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/);
+      if (!p) return { error: 'la fecha «' + s + '» no se entiende (usa 12/03/2011 o 2011-03-12)' };
+      d = +p[1]; m = +p[2]; a = +p[3];
+      if (p[3].length === 2) a = a + (a <= (anioActual % 100) ? 2000 : 1900);
+    }
+    if (!fechaValida(a, m, d)) return { error: 'la fecha «' + s + '» no existe en el calendario' };
+    if (a < 1900 || a > anioActual) return { error: 'el año de nacimiento «' + a + '» no es posible' };
+    return { valor: a + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d };
+  }
+
+  function emailValido(v) { return /^[^\s@,;]+@[^\s@,;]+\.[a-zA-Z]{2,}$/.test(String(v || '').trim()); }
+
+  function normalizarTelefono(v) {
+    var s = String(v == null ? '' : v).replace(/[\s.\-()]/g, '').trim();
+    if (!s) return { vacio: true };
+    if (!/^\+?\d{6,15}$/.test(s)) return { valor: s, aviso: 'el teléfono «' + s + '» tiene una pinta rara, revísalo' };
+    return { valor: s };
+  }
+
+  function normalizarSexo(v) {
+    var s = norm(v);
+    if (!s) return { vacio: true };
+    if (['h', 'hombre', 'masculino', 'varon', 'chico', 'nino', 'male', 'm h'].indexOf(s) >= 0) return { valor: 'hombre' };
+    if (['mujer', 'femenino', 'chica', 'nina', 'female', 'f'].indexOf(s) >= 0) return { valor: 'mujer' };
+    if (['otro', 'x', 'no binario'].indexOf(s) >= 0) return { valor: 'otro' };
+    if (s === 'm') return { aviso: 'el sexo «M» puede ser Mujer o Masculino: se deja vacío, escribe la palabra entera' };
+    return { aviso: 'el sexo «' + String(v).trim() + '» no se entiende: se deja vacío' };
+  }
+
+  function normalizarEstado(v) {
+    var s = norm(v);
+    if (!s) return { vacio: true };
+    if (['activo', 'activa', 'alta', 'de alta', 'en activo', 'si'].indexOf(s) >= 0) return { valor: 'activo' };
+    if (['lesionado', 'lesionada', 'lesion'].indexOf(s) >= 0) return { valor: 'lesionado' };
+    if (['baja', 'de baja', 'no', 'inactivo', 'inactiva'].indexOf(s) >= 0) return { valor: 'baja' };
+    if (['prueba', 'en prueba', 'a prueba'].indexOf(s) >= 0) return { valor: 'prueba' };
+    return { error: 'el estado «' + String(v).trim() + '» no vale (solo: activo, lesionado, baja o prueba)' };
+  }
+
+  // Categoría por año de nacimiento (mismo criterio que la ficha de atletas)
+  function categoriaPorNacimiento(fechaStr) {
+    if (!fechaStr) return '';
+    var y = parseInt(String(fechaStr).slice(0, 4), 10);
+    if (!y) return '';
+    var edad = new Date().getFullYear() - y;
+    if (edad <= 8) return 'Escuela iniciación';
+    if (edad <= 10) return 'Sub-12';
+    if (edad <= 12) return 'Sub-14';
+    if (edad <= 14) return 'Sub-16';
+    if (edad <= 16) return 'Sub-18';
+    if (edad <= 18) return 'Sub-20';
+    if (edad <= 21) return 'Sub-23';
+    if (edad <= 34) return 'Absoluto';
+    return 'Máster';
+  }
+  function normalizarCategoria(v) {
+    var s = norm(v).replace(/[\s-]/g, '');
+    if (!s) return { vacio: true };
+    for (var i = 0; i < CATEGORIAS.length; i++) {
+      if (norm(CATEGORIAS[i]).replace(/[\s-]/g, '') === s) return { valor: CATEGORIAS[i] };
+    }
+    if (/^master/.test(s)) return { valor: 'Máster' };
+    if (/^(senior|absoluta)$/.test(s)) return { valor: 'Absoluto' };
+    if (/^(escuela|iniciacion)/.test(s)) return { valor: 'Escuela iniciación' };
+    return { error: 'la categoría «' + String(v).trim() + '» no existe (usa: ' + CATEGORIAS.join(', ') + ')' };
+  }
+
+  function partirEspecialidades(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return [];
+    return s.split(/[,|]/).map(function (x) { return x.trim(); }).filter(function (x) { return !!x; });
+  }
+
+  // Parte un "nombre completo" a la española: las dos últimas palabras
+  // son los apellidos (si solo hay dos palabras, la última).
+  function partirNombreCompleto(v) {
+    var t = String(v || '').trim().replace(/\s+/g, ' ').split(' ');
+    if (t.length === 1) return { nombre: t[0], apellidos: '' };
+    if (t.length === 2) return { nombre: t[0], apellidos: t[1] };
+    return { nombre: t.slice(0, t.length - 2).join(' '), apellidos: t.slice(t.length - 2).join(' ') };
+  }
+
+  // ---- Claves para no duplicar --------------------------------------
+  // Una persona puede tener varias claves. Dos filas son la misma
+  // persona si comparten cualquiera de ellas.
+  function clavesDe(p) {
+    var claves = [];
+    var dni = String(p.dni || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (dni.length >= 7) claves.push('dni:' + dni);
+    var nom = norm(p.nombre), ape = norm(p.apellidos);
+    if (nom && ape) {
+      if (p.fecha_nacimiento) claves.push('nac:' + nom + '|' + ape + '|' + p.fecha_nacimiento);
+      else if (p.email) claves.push('cor:' + nom + '|' + ape + '|' + norm(p.email));
+      else claves.push('nom:' + nom + '|' + ape);
+    }
+    return claves;
+  }
+
+  // ---- Interpretar el fichero entero ---------------------------------
+  function interpretar(texto) {
+    var leido = partirCSV(texto);
+    if (!leido.filas.length) return { error: 'El fichero está vacío.' };
+
+    var cabeceras = leido.filas[0].map(function (c) { return normCabecera(c); });
+    var mapa = {}, ignoradas = [], reconocidas = {};
+    cabeceras.forEach(function (c, i) {
+      var campo = CABECERAS[c];
+      if (campo) { if (mapa[campo] === undefined) mapa[campo] = i; reconocidas[campo] = true; }
+      else if (c) ignoradas.push(leido.filas[0][i]);
+    });
+
+    if (!reconocidas.nombre && !reconocidas.nombre_completo) {
+      return { error: 'No encuentro ninguna columna de nombre. La primera fila del fichero tiene que ser la de los títulos de las columnas (nombre, apellidos, fecha_nacimiento…). Descarga la plantilla si tienes dudas.' };
+    }
+
+    function celda(fila, campo) {
+      var i = mapa[campo];
+      return i === undefined ? '' : String(fila[i] == null ? '' : fila[i]).trim();
+    }
+
+    var filas = [];
+    for (var n = 1; n < leido.filas.length; n++) {
+      var f = leido.filas[n];
+      var errores = [], avisos = [], d = {};
+
+      // Nombre y apellidos
+      if (mapa.nombre !== undefined) {
+        d.nombre = celda(f, 'nombre');
+        var ap = celda(f, 'apellidos');
+        if (!ap) ap = [celda(f, 'apellido1'), celda(f, 'apellido2')].filter(Boolean).join(' ').trim();
+        d.apellidos = ap.replace(/^-+$/, '');
+      } else {
+        var partido = partirNombreCompleto(celda(f, 'nombre_completo'));
+        d.nombre = partido.nombre; d.apellidos = partido.apellidos;
+        if (d.nombre) avisos.push('nombre y apellidos separados automáticamente');
+      }
+      if (!d.nombre) errores.push('falta el nombre');
+
+      // Fecha de nacimiento
+      var fe = normalizarFecha(celda(f, 'fecha_nacimiento'));
+      if (fe.error) errores.push(fe.error); else if (fe.valor) d.fecha_nacimiento = fe.valor;
+
+      // DNI
+      var dni = celda(f, 'dni').toUpperCase().replace(/\s/g, '');
+      if (dni && dni !== '-') {
+        if (!/^[0-9XYZ][0-9]{6,7}[A-Z]?$/.test(dni.replace(/-/g, ''))) avisos.push('el DNI «' + dni + '» tiene un formato poco habitual');
+        d.dni = dni;
+      }
+
+      // Sexo
+      var sx = normalizarSexo(celda(f, 'sexo'));
+      if (sx.aviso) avisos.push(sx.aviso);
+      if (sx.valor) d.sexo = sx.valor;
+
+      // Correos
+      var em = celda(f, 'email');
+      if (em) { if (emailValido(em)) d.email = em.toLowerCase(); else errores.push('el correo «' + em + '» no es un correo válido'); }
+      var emt = celda(f, 'email_tutor');
+      if (emt) { if (emailValido(emt)) d.email_tutor = emt.toLowerCase(); else errores.push('el correo del tutor «' + emt + '» no es válido'); }
+
+      // Teléfonos
+      var tl = normalizarTelefono(celda(f, 'telefono'));
+      if (tl.aviso) avisos.push(tl.aviso);
+      if (tl.valor) d.telefono = tl.valor;
+      var tlt = normalizarTelefono(celda(f, 'telefono_tutor'));
+      if (tlt.aviso) avisos.push(tlt.aviso);
+      if (tlt.valor) d.telefono_tutor = tlt.valor;
+
+      var nt = celda(f, 'nombre_tutor');
+      if (nt) d.nombre_tutor = nt;
+
+      // Estado
+      var es = normalizarEstado(celda(f, 'estado'));
+      if (es.error) errores.push(es.error); else if (es.valor) d.estado = es.valor;
+
+      // Categoría (si no viene, se calcula con el año de nacimiento)
+      var ct = normalizarCategoria(celda(f, 'categoria'));
+      if (ct.error) errores.push(ct.error);
+      else if (ct.valor) d.categoria = ct.valor;
+      else if (d.fecha_nacimiento) {
+        d.categoria = categoriaPorNacimiento(d.fecha_nacimiento);
+        avisos.push('categoría calculada: ' + d.categoria);
+      }
+
+      // Especialidades y grupo (el grupo se resuelve fuera, con la lista real)
+      var esp = partirEspecialidades(celda(f, 'especialidades'));
+      if (esp.length) d.especialidades = esp;
+      var gr = celda(f, 'grupo');
+
+      // Sin apellidos ni DNI no hay forma segura de saber si ya está
+      if (d.nombre && !d.apellidos && !d.dni) {
+        errores.push('hacen falta los apellidos (o el DNI) para poder saber si esta persona ya está');
+      }
+
+      filas.push({ n: n + 1, datos: d, grupoTexto: gr, errores: errores, avisos: avisos });
+    }
+
+    return { separador: leido.separador, columnas: reconocidas, ignoradas: ignoradas, filas: filas };
+  }
+
+  // ---- Plantilla ------------------------------------------------------
+  function textoPlantilla() {
+    var ejemplos = [
+      ['Lucía', 'Ramos Gil', '12/03/2011', '', 'mujer', '', '', 'Escuela Grupo 1', '', 'activo', '', 'Ana Gil', 'ana.gil@ejemplo.es', '600112233'],
+      ['Marcos', 'Ferrer Ruiz', '2004-07-30', '48123456K', 'hombre', 'marcos.ferrer@ejemplo.es', '611223344', 'Fondistas', '', 'activo', '1500|3000 obstáculos', '', '', ''],
+      ['Elena', 'Pardo Sáez', '18/11/1988', '', 'mujer', 'elena.pardo@ejemplo.es', '622334455', '', '', 'activo', 'Maratón', '', '', '']
+    ];
+    var lineas = [PLANTILLA.join(';')];
+    ejemplos.forEach(function (e) { lineas.push(e.join(';')); });
+    return '\uFEFF' + lineas.join('\r\n') + '\r\n';
+  }
+
+  return {
+    sinAcentos: sinAcentos, norm: norm, normCabecera: normCabecera,
+    detectarSeparador: detectarSeparador, partirCSV: partirCSV,
+    normalizarFecha: normalizarFecha, emailValido: emailValido,
+    normalizarTelefono: normalizarTelefono, normalizarSexo: normalizarSexo,
+    normalizarEstado: normalizarEstado, normalizarCategoria: normalizarCategoria,
+    categoriaPorNacimiento: categoriaPorNacimiento, partirNombreCompleto: partirNombreCompleto,
+    partirEspecialidades: partirEspecialidades, clavesDe: clavesDe,
+    interpretar: interpretar, textoPlantilla: textoPlantilla,
+    CABECERAS: CABECERAS, PLANTILLA: PLANTILLA, COLUMNAS_FICHA: COLUMNAS_FICHA,
+    CATEGORIAS: CATEGORIAS, ESTADOS: ESTADOS
+  };
+})();
+</script>
+
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var NUC = window.APOLANA_IMPORTAR;
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var grupos = [];            // {id, nombre}
+  var gruposPorNombre = {};   // nombre normalizado -> id
+  var pruebas = {};           // nombre normalizado -> nombre bueno
+  var existentes = [];        // fichas ya guardadas
+  var indiceExistentes = {};  // clave -> id (o '*' si es ambigua)
+  var lectura = null;         // lo interpretado del fichero
+  var mapeoGrupos = {};       // texto del CSV -> id de grupo elegido a mano ('' = sin grupo)
+  var nombreFichero = '';
+  var miPerfilId = null;
+  var ultimoResultado = null;
+
+  // ---------- Lista de columnas en la explicación ----------
+  (function () {
+    $('lista-columnas').innerHTML = NUC.PLANTILLA.map(function (c) { return '<b>' + esc(c) + '</b>'; }).join(' ');
+  })();
+
+  // ---------- Descargar la plantilla ----------
+  function descargar(nombre, texto) {
+    var blob = new Blob([texto], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+  $('btn-plantilla').addEventListener('click', function () {
+    descargar('plantilla-atletas.csv', NUC.textoPlantilla());
+  });
+
+  // ---------- Datos que hacen falta para revisar ----------
+  async function cargarReferencias() {
+    var g = await sb.from('grupos').select('id,nombre').order('nombre');
+    if (!g.error && g.data) {
+      grupos = g.data;
+      grupos.forEach(function (x) { gruposPorNombre[NUC.norm(x.nombre)] = x.id; });
+    }
+    var p = await sb.from('pruebas').select('nombre').eq('activa', true);
+    if (!p.error && p.data) p.data.forEach(function (x) { pruebas[NUC.norm(x.nombre)] = x.nombre; });
+
+    var a = await sb.from('atletas').select(NUC.COLUMNAS_FICHA.concat(['id']).join(','));
+    if (!a.error && a.data) {
+      existentes = a.data;
+      indiceExistentes = {};
+      existentes.forEach(function (x) {
+        NUC.clavesDe(x).forEach(function (k) {
+          if (indiceExistentes[k] && indiceExistentes[k] !== x.id) indiceExistentes[k] = '*';
+          else indiceExistentes[k] = x.id;
+        });
+      });
+    }
+    var u = await sb.auth.getUser();
+    if (u && u.data && u.data.user) miPerfilId = u.data.user.id;
+  }
+
+  // ---------- Leer el fichero ----------
+  $('fichero').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    $('resultado-final').innerHTML = '';
+    $('msg-importar').textContent = '';
+    if (!f) return;
+    nombreFichero = f.name;
+    $('msg-fichero').textContent = 'Leyendo «' + f.name + '»…';
+    $('msg-fichero').className = 'msg';
+    var lector = new FileReader();
+    lector.onload = function () {
+      var texto = lector.result;
+      // Si el fichero no venía en UTF-8, los acentos salen rotos: se reintenta.
+      if (/�/.test(texto)) {
+        var l2 = new FileReader();
+        l2.onload = function () { procesar(l2.result); };
+        l2.readAsText(f, 'windows-1252');
+        return;
+      }
+      procesar(texto);
+    };
+    lector.onerror = function () {
+      $('msg-fichero').textContent = 'No se pudo leer el fichero.';
+      $('msg-fichero').className = 'msg error';
+    };
+    lector.readAsText(f, 'utf-8');
+  });
+
+  function procesar(texto) {
+    lectura = NUC.interpretar(texto);
+    if (lectura.error) {
+      $('msg-fichero').textContent = lectura.error;
+      $('msg-fichero').className = 'msg error';
+      $('panel-revision').classList.add('oculto');
+      $('panel-importar').classList.add('oculto');
+      lectura = null;
+      return;
+    }
+    var sepNombre = lectura.separador === '\t' ? 'tabulador' : (lectura.separador === ',' ? 'coma' : 'punto y coma');
+    $('msg-fichero').textContent = 'Leído: ' + lectura.filas.length + ' fila' + (lectura.filas.length === 1 ? '' : 's') + ' (separador: ' + sepNombre + ').';
+    $('msg-fichero').className = 'msg ok';
+    mapeoGrupos = {};
+    pintarRevision();
+  }
+
+  // ---------- Resolver el grupo de cada fila ----------
+  function resolverGrupo(fila) {
+    var t = String(fila.grupoTexto || '').trim();
+    if (!t) return { id: null, texto: '—' };
+    if (mapeoGrupos[t] !== undefined) {
+      var elegido = mapeoGrupos[t];
+      return { id: elegido || null, texto: elegido ? nombreGrupo(elegido) : 'sin grupo' };
+    }
+    var id = gruposPorNombre[NUC.norm(t)];
+    if (id) return { id: id, texto: nombreGrupo(id) };
+    return { id: null, texto: t, sinResolver: true };
+  }
+  function nombreGrupo(id) {
+    for (var i = 0; i < grupos.length; i++) { if (grupos[i].id === id) return grupos[i].nombre; }
+    return '—';
+  }
+
+  // ---------- Evaluar el fichero contra lo que ya hay ----------
+  function evaluar() {
+    var vistas = {}, sinGrupo = {}, res = [];
+    var crear = $('op-crear').checked, actualizar = $('op-actualizar').checked;
+
+    lectura.filas.forEach(function (fila) {
+      var errores = fila.errores.slice(), avisos = fila.avisos.slice(), accion = 'crear', idExistente = null;
+      var g = resolverGrupo(fila);
+      if (g.sinResolver) { errores.push('el grupo «' + g.texto + '» no existe'); sinGrupo[String(fila.grupoTexto).trim()] = true; }
+
+      // Especialidades que no están en el catálogo de pruebas
+      if (fila.datos.especialidades) {
+        var raras = fila.datos.especialidades.filter(function (e) { return !pruebas[NUC.norm(e)]; });
+        fila.datos.especialidades = fila.datos.especialidades.map(function (e) { return pruebas[NUC.norm(e)] || e; });
+        if (raras.length) avisos.push('estas pruebas no están en el catálogo y se guardan tal cual: ' + raras.join(', '));
+      }
+
+      // ¿Ya existe?
+      var claves = NUC.clavesDe(fila.datos), i, k;
+      for (i = 0; i < claves.length; i++) {
+        k = claves[i];
+        if (vistas[k]) { errores.push('esta persona ya sale en la fila ' + vistas[k] + ' de este mismo fichero'); break; }
+      }
+      for (i = 0; i < claves.length; i++) {
+        k = claves[i];
+        if (indiceExistentes[k] === '*') { errores.push('hay más de una ficha que encaja con esta persona: revísalo a mano'); break; }
+        if (indiceExistentes[k]) { idExistente = indiceExistentes[k]; break; }
+      }
+      claves.forEach(function (k2) { if (!vistas[k2]) vistas[k2] = fila.n; });
+
+      if (idExistente) accion = 'actualizar';
+      if (!errores.length) {
+        if (accion === 'crear' && !crear) { accion = 'saltar'; avisos.push('no se crea: has desmarcado «crear fichas nuevas»'); }
+        if (accion === 'actualizar' && !actualizar) { accion = 'saltar'; avisos.push('no se actualiza: has desmarcado «actualizar fichas existentes»'); }
+      }
+
+      res.push({
+        n: fila.n, datos: fila.datos, grupoId: g.id, grupoTexto: g.texto,
+        accion: errores.length ? 'error' : accion,
+        errores: errores, avisos: avisos, idExistente: idExistente
+      });
+    });
+
+    return { filas: res, gruposSinResolver: Object.keys(sinGrupo) };
+  }
+
+  // ---------- Pintar la revisión ----------
+  function pintarRevision() {
+    if (!lectura) return;
+    var ev = evaluar();
+    ultimoResultado = null;
+    var nuevos = 0, act = 0, err = 0, salt = 0;
+    ev.filas.forEach(function (f) {
+      if (f.accion === 'crear') nuevos++;
+      else if (f.accion === 'actualizar') act++;
+      else if (f.accion === 'error') err++;
+      else salt++;
+    });
+
+    var res = '<div class="cifra nuevo"><b>' + nuevos + '</b><span>nuevos</span></div>' +
+              '<div class="cifra actual"><b>' + act + '</b><span>actualizaciones</span></div>' +
+              '<div class="cifra malo"><b>' + err + '</b><span>con error</span></div>';
+    if (salt) res += '<div class="cifra"><b>' + salt + '</b><span>se saltan</span></div>';
+    $('resumen').innerHTML = res;
+
+    // Columnas ignoradas
+    if (lectura.ignoradas && lectura.ignoradas.length) {
+      $('aviso-columnas').innerHTML = '<div class="nota"><strong>Columnas que no uso:</strong> ' +
+        esc(lectura.ignoradas.join(' · ')) + '. No pasa nada, simplemente no se guardan.</div>';
+    } else { $('aviso-columnas').innerHTML = ''; }
+
+    // Grupos por resolver
+    if (ev.gruposSinResolver.length) {
+      $('caja-grupos').classList.remove('oculto');
+      $('lista-grupos').innerHTML = ev.gruposSinResolver.map(function (t) {
+        var ops = '<option value="">(dejar sin grupo)</option>' + grupos.map(function (g) {
+          return '<option value="' + esc(g.id) + '">' + esc(g.nombre) + '</option>';
+        }).join('');
+        return '<div class="grupo-fila"><code>' + esc(t) + '</code>' +
+               '<select data-grupo-texto="' + esc(t) + '">' + ops + '</select></div>';
+      }).join('');
+    } else {
+      $('caja-grupos').classList.add('oculto');
+      $('lista-grupos').innerHTML = '';
+    }
+
+    // Tabla fila a fila
+    var tb = $('tabla-previa').querySelector('tbody');
+    tb.innerHTML = ev.filas.map(function (f) {
+      var clase = f.accion === 'crear' ? 'f-nuevo' : (f.accion === 'actualizar' ? 'f-actual' : (f.accion === 'error' ? 'f-error' : ''));
+      var etq = f.accion === 'crear' ? '<span class="etq etq-nuevo">nuevo</span>'
+              : f.accion === 'actualizar' ? '<span class="etq etq-actual">actualizar</span>'
+              : f.accion === 'error' ? '<span class="etq etq-error">error</span>'
+              : '<span class="etq">se salta</span>';
+      var detalle = f.errores.map(function (e) { return '<span class="mal">' + esc(e) + '</span>'; })
+                    .concat(f.avisos.map(function (a) { return esc(a); })).join('<br>');
+      return '<tr class="' + clase + '">' +
+        '<td>' + f.n + '</td><td>' + etq + '</td>' +
+        '<td>' + esc(((f.datos.nombre || '') + ' ' + (f.datos.apellidos || '')).trim() || '—') + '</td>' +
+        '<td>' + esc(f.datos.fecha_nacimiento || '—') + '</td>' +
+        '<td>' + esc(f.datos.categoria || '—') + '</td>' +
+        '<td>' + esc(f.grupoTexto) + '</td>' +
+        '<td>' + esc(f.datos.email || f.datos.email_tutor || '—') + '</td>' +
+        '<td>' + esc(f.datos.telefono || f.datos.telefono_tutor || '—') + '</td>' +
+        '<td class="detalle">' + (detalle || '') + '</td></tr>';
+    }).join('');
+
+    $('panel-revision').classList.remove('oculto');
+    $('panel-importar').classList.remove('oculto');
+
+    var haran = nuevos + act;
+    $('texto-importar').textContent = haran
+      ? 'Se van a guardar ' + haran + ' fila' + (haran === 1 ? '' : 's') + ': ' + nuevos + ' ficha' + (nuevos === 1 ? '' : 's') + ' nueva' + (nuevos === 1 ? '' : 's') + ' y ' + act + ' actualizada' + (act === 1 ? '' : 's') + '. Las filas con error se quedan fuera y puedes corregirlas y volver a subir el fichero.'
+      : 'Ahora mismo no hay nada que guardar. Corrige los errores de arriba y vuelve a subir el fichero.';
+    $('btn-importar').disabled = !haran;
+  }
+
+  $('lista-grupos').addEventListener('change', function (e) {
+    var t = e.target.getAttribute('data-grupo-texto');
+    if (t !== null) { mapeoGrupos[t] = e.target.value; pintarRevision(); }
+  });
+  $('op-crear').addEventListener('change', pintarRevision);
+  $('op-actualizar').addEventListener('change', pintarRevision);
+
+  // ---------- Importar de verdad ----------
+  function trozos(lista, tam) {
+    var out = [], i;
+    for (i = 0; i < lista.length; i += tam) out.push(lista.slice(i, i + tam));
+    return out;
+  }
+
+  $('btn-importar').addEventListener('click', async function () {
+    if (!lectura) return;
+    var ev = evaluar();
+    var aCrear = ev.filas.filter(function (f) { return f.accion === 'crear'; });
+    var aActualizar = ev.filas.filter(function (f) { return f.accion === 'actualizar'; });
+    var total = aCrear.length + aActualizar.length;
+    if (!total) return;
+    if (!confirm('Se van a guardar ' + total + ' filas (' + aCrear.length + ' nuevas y ' + aActualizar.length + ' actualizaciones). ¿Seguimos?')) return;
+
+    $('btn-importar').disabled = true;
+    $('msg-importar').textContent = 'Importando…';
+    $('msg-importar').className = 'msg';
+    $('barra').classList.remove('oculto');
+    var barra = $('barra').firstElementChild;
+    var hechas = 0;
+    function avanzar(n) {
+      hechas += n;
+      barra.style.width = Math.round(hechas * 100 / total) + '%';
+      $('msg-importar').textContent = 'Importando… ' + hechas + ' de ' + total;
+    }
+
+    // 1) Se abre la tanda, para que cada ficha sepa de dónde viene
+    var cab = await sb.from('importaciones').insert({
+      fichero: nombreFichero || 'importacion.csv',
+      creado_por: miPerfilId,
+      total: lectura.filas.length,
+      errores: ev.filas.filter(function (f) { return f.accion === 'error'; }).length
+    }).select('id').single();
+    if (cab.error) {
+      $('msg-importar').textContent = 'No se pudo empezar la importación: ' + cab.error.message;
+      $('msg-importar').className = 'msg error';
+      $('btn-importar').disabled = false;
+      return;
+    }
+    var impId = cab.data.id, ahora = new Date().toISOString();
+    var deshacer = [], fallos = [], creadas = 0, actualizadas = 0;
+
+    function payload(f) {
+      var d = {};
+      Object.keys(f.datos).forEach(function (k) { d[k] = f.datos[k]; });
+      d.grupo_id = f.grupoId;
+      if (d.grupo_id === null) delete d.grupo_id;   // no se borra el grupo que ya tuviera
+      d.importado_en = ahora;
+      d.importacion_id = impId;
+      return d;
+    }
+
+    // 2) Fichas nuevas, de 25 en 25
+    var bloques = trozos(aCrear, 25), b, i;
+    for (b = 0; b < bloques.length; b++) {
+      var bloque = bloques[b];
+      var r = await sb.from('atletas').insert(bloque.map(payload)).select('id');
+      if (r.error) {
+        // Si algo del bloque no gusta, se va una a una para saber cuál
+        for (i = 0; i < bloque.length; i++) {
+          var r1 = await sb.from('atletas').insert(payload(bloque[i])).select('id').single();
+          if (r1.error) fallos.push({ n: bloque[i].n, nombre: nombreDe(bloque[i]), motivo: r1.error.message });
+          else { creadas++; deshacer.push({ accion: 'crear', atleta_id: r1.data.id }); }
+          avanzar(1);
+        }
+      } else {
+        creadas += r.data.length;
+        r.data.forEach(function (x) { deshacer.push({ accion: 'crear', atleta_id: x.id }); });
+        avanzar(bloque.length);
+      }
+    }
+
+    // 3) Fichas que ya estaban, de 8 en 8 a la vez
+    var porId = {};
+    existentes.forEach(function (x) { porId[x.id] = x; });
+    var bloquesU = trozos(aActualizar, 8);
+    for (b = 0; b < bloquesU.length; b++) {
+      await Promise.all(bloquesU[b].map(async function (f) {
+        var antes = {};
+        var viejo = porId[f.idExistente] || {};
+        NUC.COLUMNAS_FICHA.forEach(function (c) { antes[c] = viejo[c] === undefined ? null : viejo[c]; });
+        var u = await sb.from('atletas').update(payload(f)).eq('id', f.idExistente);
+        if (u.error) fallos.push({ n: f.n, nombre: nombreDe(f), motivo: u.error.message });
+        else { actualizadas++; deshacer.push({ accion: 'actualizar', atleta_id: f.idExistente, antes: antes }); }
+        avanzar(1);
+      }));
+    }
+
+    // 4) Se cierra la tanda con el recuento y con lo necesario para deshacer
+    await sb.from('importaciones').update({
+      nuevos: creadas, actualizados: actualizadas,
+      errores: ev.filas.filter(function (f) { return f.accion === 'error'; }).length + fallos.length,
+      deshacer: deshacer
+    }).eq('id', impId);
+
+    $('msg-importar').textContent = 'Importación terminada.';
+    $('msg-importar').className = 'msg ok';
+    ultimoResultado = { ev: ev, fallos: fallos, creadas: creadas, actualizadas: actualizadas };
+    pintarResultado();
+    await cargarReferencias();
+    cargarHistorico();
+  });
+
+  function nombreDe(f) { return ((f.datos.nombre || '') + ' ' + (f.datos.apellidos || '')).trim(); }
+
+  function pintarResultado() {
+    var r = ultimoResultado;
+    var conError = r.ev.filas.filter(function (f) { return f.accion === 'error'; });
+    var html = '<div class="resumen" style="margin-top:18px;">' +
+      '<div class="cifra nuevo"><b>' + r.creadas + '</b><span>fichas creadas</span></div>' +
+      '<div class="cifra actual"><b>' + r.actualizadas + '</b><span>fichas actualizadas</span></div>' +
+      '<div class="cifra malo"><b>' + (conError.length + r.fallos.length) + '</b><span>sin guardar</span></div></div>';
+    if (r.fallos.length) {
+      html += '<div class="nota"><strong>Estas la base de datos no las aceptó:</strong><ul>' +
+        r.fallos.map(function (f) { return '<li>Fila ' + f.n + ' · ' + esc(f.nombre) + ': ' + esc(f.motivo) + '</li>'; }).join('') +
+        '</ul></div>';
+    }
+    html += '<div style="margin-top:14px; display:flex; flex-wrap:wrap; gap:10px;">' +
+      '<button class="btn btn--fantasma btn--mini" id="btn-informe">Descargar el resumen</button>' +
+      '<a class="btn btn--fantasma btn--mini" href="../atletas/" style="text-decoration:none;">Ver los atletas</a></div>';
+    $('resultado-final').innerHTML = html;
+
+    $('btn-informe').addEventListener('click', function () {
+      var lineas = ['fila;nombre;resultado;detalle'];
+      var porFila = {};
+      r.fallos.forEach(function (f) { porFila[f.n] = f.motivo; });
+      r.ev.filas.forEach(function (f) {
+        var resultado, detalle;
+        if (porFila[f.n]) { resultado = 'no guardada'; detalle = porFila[f.n]; }
+        else if (f.accion === 'crear') { resultado = 'creada'; detalle = f.avisos.join(' | '); }
+        else if (f.accion === 'actualizar') { resultado = 'actualizada'; detalle = f.avisos.join(' | '); }
+        else if (f.accion === 'error') { resultado = 'con error'; detalle = f.errores.join(' | '); }
+        else { resultado = 'saltada'; detalle = f.avisos.join(' | '); }
+        function limpia(x) { return String(x == null ? '' : x).replace(/[;\r\n]+/g, ' '); }
+        lineas.push([f.n, limpia(nombreDe(f)), resultado, limpia(detalle)].join(';'));
+      });
+      descargar('resumen-importacion.csv', '\uFEFF' + lineas.join('\r\n') + '\r\n');
+    });
+  }
+
+  // ---------- Importaciones anteriores ----------
+  async function cargarHistorico() {
+    var tb = $('tabla-historico').querySelector('tbody');
+    tb.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
+    var r = await sb.from('importaciones')
+      .select('id,creado_en,fichero,nuevos,actualizados,errores,deshecha_en')
+      .order('creado_en', { ascending: false }).limit(15);
+    if (r.error) { tb.innerHTML = '<tr><td colspan="6">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="6">Todavía no se ha importado ningún fichero.</td></tr>'; return; }
+    tb.innerHTML = r.data.map(function (x) {
+      var f = new Date(x.creado_en);
+      var cuando = ('0' + f.getDate()).slice(-2) + '/' + ('0' + (f.getMonth() + 1)).slice(-2) + '/' + f.getFullYear() +
+                   ' ' + ('0' + f.getHours()).slice(-2) + ':' + ('0' + f.getMinutes()).slice(-2);
+      var boton = x.deshecha_en
+        ? '<span class="etq">deshecha</span>'
+        : '<button class="btn--peligro" data-deshacer="' + x.id + '">Deshacer</button>';
+      return '<tr><td>' + esc(cuando) + '</td><td>' + esc(x.fichero || '—') + '</td>' +
+        '<td>' + x.nuevos + '</td><td>' + x.actualizados + '</td><td>' + x.errores + '</td>' +
+        '<td>' + boton + '</td></tr>';
+    }).join('');
+  }
+
+  $('tabla-historico').addEventListener('click', async function (e) {
+    var id = e.target.getAttribute('data-deshacer');
+    if (!id) return;
+    if (!confirm('Deshacer esta importación borra las fichas que creó y devuelve las que modificó a como estaban antes. ¿Seguro?')) return;
+    e.target.disabled = true; e.target.textContent = 'Deshaciendo…';
+    var r = await sb.rpc('deshacer_importacion', { p_importacion: id });
+    if (r.error) { alert('No se pudo deshacer: ' + r.error.message); e.target.disabled = false; e.target.textContent = 'Deshacer'; return; }
+    alert('Hecho: ' + (r.data.borrados || 0) + ' fichas borradas y ' + (r.data.restaurados || 0) + ' devueltas a como estaban.');
+    await cargarReferencias();
+    cargarHistorico();
+    if (lectura) pintarRevision();
+  });
+
+  // ---------- Arranque ----------
+  cargarReferencias().then(cargarHistorico);
+});
+</script>
+
+</body>
+</html>
