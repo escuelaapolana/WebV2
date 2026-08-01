@@ -55,10 +55,15 @@
           <option value="baja">Baja</option>
         </select>
         <select id="f-grupo" style="max-width:220px;"><option value="">Todos los grupos</option></select>
+        <select id="f-tipo" style="max-width:180px;">
+          <option value="">Escuela y socios</option>
+          <option value="escuela">Solo escuela</option>
+          <option value="socio">Solo socios</option>
+        </select>
         <span class="cuenta" id="f-cuenta"></span>
       </div>
       <div style="overflow-x:auto;">
-        <table id="tabla"><thead><tr><th>Nombre</th><th>Categoría</th><th>Grupo</th><th>Estado</th><th>Correo (cuenta)</th><th></th></tr></thead><tbody></tbody></table>
+        <table id="tabla"><thead><tr><th>Nombre</th><th>Tipo</th><th>Categoría</th><th>Grupo</th><th>Estado</th><th>Correo (cuenta)</th><th></th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
@@ -95,6 +100,12 @@
           </div>
           <div><label>Grupo</label><select id="a-grupo"><option value="">(sin grupo)</option></select></div>
         </div>
+        <label>Escuela o socio <span style="font-weight:400;color:var(--texto-tenue);">(por defecto se calcula por la edad; cámbialo solo en las excepciones)</span></label>
+        <select id="a-tipo">
+          <option value="">Automático por edad</option>
+          <option value="escuela">Escuela (fijado a mano)</option>
+          <option value="socio">Socio (fijado a mano)</option>
+        </select>
         <label>Especialidades <span style="font-weight:400;color:var(--texto-tenue);">— marca las pruebas que hace (puede ser varias)</span></label>
         <div id="a-especialidades" style="border:1px solid var(--linea-borde);border-radius:10px;padding:10px 12px;max-height:230px;overflow:auto;font-size:14px;">Cargando pruebas…</div>
         <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
@@ -114,6 +125,21 @@ APOLANA_ADMIN.listo(function (sb) {
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   var gruposById = {};
   var CATS = ['Escuela iniciación','Sub-12','Sub-14','Sub-16','Sub-18','Sub-20','Sub-23','Absoluto','Máster'];
+
+  // Escuela / Socios por año de nacimiento: nacidos en 2009 o después = Escuela; 2008 o antes = Socios.
+  var ANIO_CORTE_ESCUELA = 2009;
+  function tipoDe(a) {
+    if (a.tipo_membresia === 'escuela' || a.tipo_membresia === 'socio') return a.tipo_membresia; // fijado a mano
+    var y = parseInt(String(a.fecha_nacimiento || '').slice(0, 4), 10);
+    if (!y) return null;
+    return y >= ANIO_CORTE_ESCUELA ? 'escuela' : 'socio';
+  }
+  function tipoBadge(t, manual) {
+    var m = manual ? ' title="Fijado a mano">' + (t === 'escuela' ? 'Escuela' : 'Socio') + ' ·' : '>' + (t === 'escuela' ? 'Escuela' : 'Socio');
+    if (t === 'escuela') return '<span class="pill" style="background:var(--azul-suave);color:var(--azul-oscuro);"' + m + '</span>';
+    if (t === 'socio') return '<span class="pill" style="background:var(--crema-banda);color:var(--texto-suave);"' + m + '</span>';
+    return '<span class="pill">—</span>';
+  }
 
   // Categoría por año de nacimiento (RFEA). Cada categoría = 2 años de nacimiento
   // (Sub-23 = 3) y se desplaza cada temporada, por eso se calcula con el año actual.
@@ -182,21 +208,24 @@ APOLANA_ADMIN.listo(function (sb) {
     var texto = ($('f-buscar').value || '').trim().toLowerCase();
     var estado = $('f-estado').value;
     var grupo = $('f-grupo').value;
+    var tipo = $('f-tipo').value;
     var lista = TODOS.filter(function (a) {
       if (estado && (a.estado || '') !== estado) return false;
       if (grupo && (a.grupo_id || '') !== grupo) return false;
+      if (tipo && tipoDe(a) !== tipo) return false;
       if (texto) {
         var campo = ((a.nombre || '') + ' ' + (a.apellidos || '') + ' ' + (CORREOS[a.perfil_id] || '')).toLowerCase();
         if (campo.indexOf(texto) === -1) return false;
       }
       return true;
     });
-    $('f-cuenta').textContent = lista.length === TODOS.length
-      ? TODOS.length + ' atletas'
-      : lista.length + ' de ' + TODOS.length + ' atletas';
-    if (!lista.length) { tb.innerHTML = '<tr><td colspan="6">Ningún atleta encaja con la búsqueda.</td></tr>'; return; }
+    var nEsc = TODOS.filter(function (a) { return tipoDe(a) === 'escuela'; }).length;
+    var nSoc = TODOS.filter(function (a) { return tipoDe(a) === 'socio'; }).length;
+    var base = (lista.length === TODOS.length) ? TODOS.length + ' atletas' : lista.length + ' de ' + TODOS.length + ' atletas';
+    $('f-cuenta').textContent = base + '  ·  Escuela ' + nEsc + ' · Socios ' + nSoc;
+    if (!lista.length) { tb.innerHTML = '<tr><td colspan="7">Ningún atleta encaja con la búsqueda.</td></tr>'; return; }
     tb.innerHTML = lista.map(function (a) {
-      return '<tr><td>' + esc((a.nombre||'')+' '+(a.apellidos||'')) + '</td><td>' + esc(a.categoria||'') + '</td>' +
+      return '<tr><td>' + esc((a.nombre||'')+' '+(a.apellidos||'')) + '</td><td>' + tipoBadge(tipoDe(a), !!a.tipo_membresia) + '</td><td>' + esc(a.categoria||'') + '</td>' +
         '<td>' + esc(gruposById[a.grupo_id] || '—') + '</td>' +
         '<td><span class="pill">' + esc(a.estado||'') + '</span></td><td>' + esc(CORREOS[a.perfil_id]||'—') + '</td>' +
         '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-ed="'+a.id+'">Editar</button>' +
@@ -206,11 +235,11 @@ APOLANA_ADMIN.listo(function (sb) {
 
   async function cargar() {
     var tb = $('tabla').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="6">Cargando…</td></tr>';
-    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id').order('apellidos');
-    if (r.error) { tb.innerHTML = '<tr><td colspan="6">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    tb.innerHTML = '<tr><td colspan="7">Cargando…</td></tr>';
+    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id,fecha_nacimiento,tipo_membresia').order('apellidos');
+    if (r.error) { tb.innerHTML = '<tr><td colspan="7">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
     TODOS = r.data || [];
-    if (!TODOS.length) { $('f-cuenta').textContent = ''; tb.innerHTML = '<tr><td colspan="6">No hay atletas todavía.</td></tr>'; return; }
+    if (!TODOS.length) { $('f-cuenta').textContent = ''; tb.innerHTML = '<tr><td colspan="7">No hay atletas todavía.</td></tr>'; return; }
     // correos de los perfiles enlazados
     var ids = TODOS.map(function(a){return a.perfil_id;}).filter(Boolean);
     CORREOS = {};
@@ -220,7 +249,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     pintar();
   }
-  ['f-buscar', 'f-estado', 'f-grupo'].forEach(function (id) {
+  ['f-buscar', 'f-estado', 'f-grupo', 'f-tipo'].forEach(function (id) {
     document.getElementById(id).addEventListener('input', pintar);
   });
 
@@ -235,6 +264,7 @@ APOLANA_ADMIN.listo(function (sb) {
     ponerCategoria(a.categoria || '');
     $('a-estado').value = a.estado || '';
     $('a-grupo').value = a.grupo_id || '';
+    $('a-tipo').value = a.tipo_membresia || '';
     setEspecialidades(a.especialidades);
     $('a-email').value = '';
     if (a.perfil_id) {
@@ -289,6 +319,7 @@ APOLANA_ADMIN.listo(function (sb) {
       categoria: $('a-categoria').value.trim() || null,
       estado: $('a-estado').value.trim() || null,
       grupo_id: $('a-grupo').value || null,
+      tipo_membresia: $('a-tipo').value || null,
       especialidades: (function(){ var e=getEspecialidades(); return e.length?e:null; })(),
       perfil_id: perfilId
     };
