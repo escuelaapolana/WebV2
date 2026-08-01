@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Informes · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1180px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(18px,3vw,28px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+
+  .cab { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; justify-content:space-between; margin-bottom:18px; }
+  .cab h1 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size: clamp(28px,5vw,38px); line-height:1; color: var(--navy); margin:0; letter-spacing:.01em; }
+  .cab .contexto { font-size:14px; color: var(--texto-suave); margin-top:6px; }
+
+  /* Menú de informes */
+  .menu { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:22px; }
+  .menu button { cursor:pointer; background:#fff; border:1px solid var(--linea-borde); color: var(--texto); font-family: var(--fuente-texto); font-size:14px; padding:9px 16px; border-radius:999px; }
+  .menu button:hover { border-color: var(--azul); }
+  .menu button.activo { background: var(--navy); border-color: var(--navy); color:#fff; }
+
+  /* Cifras */
+  .cifras { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+  .cifra { background:#fff; border:1px solid var(--linea); border-radius: var(--radio); padding:16px 18px; box-shadow: var(--sombra-suave); }
+  .cifra .et { display:block; font-family: var(--fuente-mono); font-size:11px; letter-spacing:.09em; text-transform:uppercase; color: var(--texto-tenue); }
+  .cifra .num { display:block; font-family: var(--fuente-display); font-weight:800; font-size: clamp(22px,3.4vw,30px); color: var(--navy); line-height:1.15; margin-top:4px; }
+  .cifra .nota { display:block; font-size:13px; color: var(--texto-suave); }
+  .cifra.rojo .num { color:#A8453F; }
+  .cifra.ambar .num { color:#B96F09; }
+  .cifra.verde .num { color:#4C7A28; }
+
+  h2.inf-tit { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:24px; color:var(--navy); margin:0 0 4px; }
+  .inf-sub { font-size:14px; color: var(--texto-suave); margin:0 0 16px; }
+
+  .acciones-inf { display:flex; gap:10px; flex-wrap:wrap; margin: 4px 0 18px; }
+  .btn { cursor:pointer; }
+  .btn--mini { padding:9px 18px; font-size:14px; }
+
+  .filtros { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
+  .filtros > div { flex:1 1 200px; }
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin: 0 0 5px; }
+  input, select {
+    width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px;
+    font-family: var(--fuente-texto); font-size:15px; background:#fff; color: var(--navy);
+  }
+  input:focus, select:focus { outline:2px solid var(--azul); border-color: var(--azul); }
+
+  .tabla-scroll { overflow-x:auto; }
+  table.datos { width:100%; border-collapse:collapse; margin-top:8px; }
+  table.datos th, table.datos td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; vertical-align:top; }
+  table.datos th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); white-space:nowrap; }
+  table.datos td.num, table.datos th.num { text-align:right; font-family: var(--fuente-mono); white-space:nowrap; }
+  table.datos tr.total td { font-weight:700; color:var(--navy); border-top:2px solid var(--navy); background:var(--crema); }
+
+  .pill { display:inline-block; font-family: var(--fuente-mono); font-size:11px; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .pill-pagado    { background:#E9F2E0; color:#3D6220; }
+  .pill-pendiente { background:#FDF3DD; color:#8A5507; }
+  .pill-impagado  { background:#F8E4E3; color:#8E3A35; }
+
+  .aviso { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); color: var(--aviso-texto); border-radius: var(--radio); padding:12px 15px; font-size:14px; margin:12px 0; }
+  .nota-pie { font-size:13px; color: var(--texto-suave); margin-top:12px; }
+  .oculto { display:none !important; }
+  .cargando { color: var(--texto-suave); font-size:14px; padding:20px 0; }
+  h3.bloque { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:17px; color:var(--navy); margin:26px 0 6px; }
+
+  @media (max-width: 640px) {
+    table.datos { min-width:0; }
+    .filtros > div { flex:1 1 100%; }
+  }
+
+  /* ================= IMPRESIÓN (PDF) ================= */
+  #area-impresion { display:none; }
+  @media print {
+    body { background:#fff !important; }
+    .adm-top, #admin-contenido, .adm-login { display:none !important; }
+    #area-impresion { display:block !important; }
+  }
+</style>
+<!-- Estilo del documento impreso: replica lo esencial de /documentos/fuente/estilo.css -->
+<style media="print">
+  @page { size: A4; margin: 16mm 14mm 18mm; }
+  #area-impresion { color:#3A4450; font-family:"Helvetica Neue", Arial, sans-serif; font-size:10pt; line-height:1.5; }
+  #area-impresion .doc-cab { display:flex; align-items:center; gap:14px; border-bottom:3px solid #2E4256; padding-bottom:12px; margin-bottom:18px; }
+  #area-impresion .doc-cab img { height:52px; width:auto; }
+  #area-impresion .doc-cab .marca { flex:1; }
+  #area-impresion .doc-cab .nombre { font-size:15pt; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#2E4256; line-height:1.1; }
+  #area-impresion .doc-cab .sub { font-size:7.5pt; letter-spacing:.14em; text-transform:uppercase; color:#6B7683; margin-top:3px; }
+  #area-impresion .doc-cab .meta { text-align:right; font-size:8pt; color:#6B7683; line-height:1.4; }
+  #area-impresion h1 { font-size:19pt; color:#2E4256; text-transform:uppercase; letter-spacing:.02em; margin:0 0 10px; line-height:1.1; }
+  #area-impresion h3.bloque { font-size:10.5pt; color:#2F6FA8; text-transform:uppercase; letter-spacing:.05em; margin:16px 0 6px; padding-bottom:4px; border-bottom:1px solid #E3DED3; }
+  #area-impresion table { width:100%; border-collapse:collapse; margin:8px 0 14px; font-size:9pt; page-break-inside:auto; }
+  #area-impresion th { background:#F3EFE6; color:#2E4256; text-align:left; font-size:8pt; text-transform:uppercase; letter-spacing:.05em; padding:6px 8px; border-bottom:2px solid #2E4256; }
+  #area-impresion td { padding:5px 8px; border-bottom:1px solid #E3DED3; }
+  #area-impresion td.num, #area-impresion th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  #area-impresion tr.total td { font-weight:700; color:#2E4256; border-top:1.5px solid #2E4256; }
+  #area-impresion .pill { border:none; background:none; padding:0; font-size:9pt; letter-spacing:0; text-transform:none; color:#3A4450; }
+  #area-impresion .doc-cifras { display:flex; gap:22px; flex-wrap:wrap; margin:0 0 12px; }
+  #area-impresion .doc-cifras div { font-size:9pt; }
+  #area-impresion .doc-cifras b { display:block; font-size:14pt; color:#2E4256; }
+  #area-impresion .doc-pie { margin-top:22px; border-top:1px solid #E3DED3; padding-top:8px; font-size:7.5pt; color:#6B7683; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="cab">
+      <div>
+        <h1>Informes</h1>
+        <div class="contexto" id="contexto">Cargando datos del club…</div>
+      </div>
+    </div>
+
+    <div class="menu" id="menu">
+      <button data-inf="resumen" class="activo">Resumen del club</button>
+      <button data-inf="grupos">Atletas por grupo</button>
+      <button data-inf="economico">Informe económico</button>
+      <button data-inf="ficha">Pagos de una persona</button>
+      <button data-inf="impagados">Impagados</button>
+      <button data-inf="altasbajas">Altas y bajas</button>
+      <button data-inf="asistencia">Asistencia</button>
+      <button data-inf="cubo">El Cubo</button>
+    </div>
+
+    <div class="panel">
+      <div id="cargando-global" class="cargando">Cargando datos del club…</div>
+      <div id="lienzo" class="oculto"></div>
+    </div>
+
+    <p class="nota-pie">
+      Todos los números salen directos de la base de datos del club en el momento de abrir esta página.
+      Usa «Imprimir / PDF» para guardar un informe en PDF (en el diálogo de impresión, elige «Guardar como PDF»)
+      y «Descargar CSV» para abrirlo en Excel.
+    </p>
+
+  </div>
+</div>
+
+<!-- Zona que se envía a la impresora / PDF. Se rellena al pulsar «Imprimir / PDF». -->
+<div id="area-impresion"></div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var hoyIso = new Date().toISOString().slice(0, 10);
+  var fmtEur = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
+  function eur(n) { return fmtEur.format(Number(n || 0)); }
+  var fmtNum = new Intl.NumberFormat('es-ES');
+  function num(n) { return fmtNum.format(Number(n || 0)); }
+
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function periodoTexto(p) {
+    if (!p) return '—';
+    var t = String(p).split('-');
+    if (t.length !== 2) return p;
+    var m = parseInt(t[1], 10);
+    return (MESES[m - 1] || t[1]) + ' ' + t[0];
+  }
+  function fechaCorta(f) {
+    if (!f) return '—';
+    var t = String(f).slice(0,10).split('-');
+    return t.length === 3 ? t[2] + '/' + t[1] + '/' + t[0] : f;
+  }
+  function fechaLarga(iso) {
+    var t = iso.slice(0,10).split('-');
+    return t[2] + ' de ' + (MESES[parseInt(t[1],10)-1] || t[1]) + ' de ' + t[0];
+  }
+
+  // ---- Modelo de datos (se carga una vez) ----
+  var D = {
+    atletas: [], grupos: [], perfiles: [], pagos: [],
+    bonos: [], movs: [], clases: [], reservas: [],
+    atletasById: {}, gruposById: {}, perfilesById: {}
+  };
+
+  function nombreAtleta(a) { return a ? ((a.nombre || '') + ' ' + (a.apellidos || '')).trim() : ''; }
+  function nombrePerfil(p) { return p ? ((p.nombre || '') + ' ' + (p.apellidos || '')).trim() : ''; }
+  function grupoDe(a) { return a && a.grupo_id ? D.gruposById[a.grupo_id] : null; }
+  function seccionDe(a) { var g = grupoDe(a); return g && g.seccion ? g.seccion : '(sin sección)'; }
+
+  // Escuela vs socio: respeta tipo_membresia si está fijado; si no, por año de nacimiento (2009+ = escuela).
+  function membresia(a) {
+    if (a.tipo_membresia === 'escuela') return 'escuela';
+    if (a.tipo_membresia === 'socio') return 'socio';
+    if (a.fecha_nacimiento) {
+      var y = parseInt(String(a.fecha_nacimiento).slice(0, 4), 10);
+      if (!isNaN(y)) return y >= 2009 ? 'escuela' : 'socio';
+    }
+    return 'desconocido';
+  }
+
+  var ESTADOS = { activo:'En activo', prueba:'En prueba', lesionado:'Lesionado', baja:'Baja' };
+
+  // ================= CARGA =================
+  async function cargar() {
+    var r = await Promise.all([
+      sb.from('atletas').select('id,nombre,apellidos,fecha_nacimiento,categoria,sexo,estado,tipo_membresia,grupo_id,entrenador_id,created_at').order('apellidos').order('nombre'),
+      sb.from('grupos').select('id,nombre,seccion,entrenador_id,activo').order('seccion').order('nombre'),
+      sb.from('perfiles').select('id,nombre,apellidos,rol'),
+      sb.from('pagos').select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,fecha_pago,periodo,cuenta,metodo,numero_recibo,notas,created_at,anulado'),
+      sb.from('cubo_bonos').select('id,atleta_id,usos_totales,precio,fecha_compra,caducidad,activo'),
+      sb.from('cubo_movimientos').select('id,bono_id,atleta_id,tipo,usos,concepto,fecha'),
+      sb.from('cubo_clases').select('id,fecha,titulo,plazas,activa'),
+      sb.from('cubo_reservas').select('id,clase_id,atleta_id,estado')
+    ]);
+    var err = null;
+    r.forEach(function (x) { if (x.error && !err) err = x.error; });
+    if (err) {
+      $('cargando-global').innerHTML = 'No se pudieron cargar los datos: ' + esc(err.message);
+      return false;
+    }
+    D.atletas = r[0].data || [];
+    D.grupos = r[1].data || [];
+    D.perfiles = r[2].data || [];
+    D.pagos = (r[3].data || []).filter(function (p) { return !p.anulado; });
+    D.bonos = r[4].data || [];
+    D.movs = r[5].data || [];
+    D.clases = r[6].data || [];
+    D.reservas = r[7].data || [];
+
+    D.atletas.forEach(function (a) { D.atletasById[a.id] = a; });
+    D.grupos.forEach(function (g) { D.gruposById[g.id] = g; });
+    D.perfiles.forEach(function (p) { D.perfilesById[p.id] = p; });
+    return true;
+  }
+
+  // ================= EXPORTAR CSV =================
+  function csvCampo(v) {
+    var s = (v == null) ? '' : String(v);
+    if (/[";\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  // Número para Excel español: coma decimal, sin símbolo.
+  function csvNum(n) { return String(Number(n || 0).toFixed(2)).replace('.', ','); }
+  function descargarCsv(nombre, filas) {
+    var texto = filas.map(function (fila) { return fila.map(csvCampo).join(';'); }).join('\r\n');
+    var blob = new Blob(['﻿' + texto], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = nombre + '_' + hoyIso + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 500);
+  }
+
+  // ================= IMPRIMIR / PDF =================
+  function membrete(titulo, subtitulo) {
+    return '<div class="doc-cab">' +
+      '<img src="../../assets/img/logo.png" alt="">' +
+      '<div class="marca"><div class="nombre">Club Atletismo Apol·Ana</div>' +
+      '<div class="sub">NIF G-03845500</div></div>' +
+      '<div class="meta">Informe generado el<br>' + esc(fechaLarga(hoyIso)) + '</div>' +
+      '</div>' +
+      '<h1>' + esc(titulo) + '</h1>' +
+      (subtitulo ? '<p style="margin:-6px 0 14px;color:#2F6FA8;font-weight:600;">' + esc(subtitulo) + '</p>' : '');
+  }
+  function pieDoc() {
+    return '<div class="doc-pie">Club Atletismo Apol·Ana · NIF G-03845500 · Documento generado automáticamente desde el panel de gestión.</div>';
+  }
+  // Imprime el HTML de un informe. contenidoHtml no debe llevar botones ni filtros.
+  function imprimir(titulo, subtitulo, contenidoHtml) {
+    $('area-impresion').innerHTML = membrete(titulo, subtitulo) + contenidoHtml + pieDoc();
+    window.print();
+  }
+
+  // ================= UTILIDADES DE TABLA =================
+  // cols: [{k:'etiqueta', num:false}], filas: array de objetos {etiqueta: valorHtml}
+  function tablaHtml(cols, filas, clsFila) {
+    var h = '<div class="tabla-scroll"><table class="datos"><thead><tr>';
+    cols.forEach(function (c) { h += '<th' + (c.num ? ' class="num"' : '') + '>' + esc(c.t) + '</th>'; });
+    h += '</tr></thead><tbody>';
+    filas.forEach(function (f) {
+      h += '<tr' + (f._cls ? ' class="' + f._cls + '"' : '') + '>';
+      cols.forEach(function (c) {
+        h += '<td' + (c.num ? ' class="num"' : '') + '>' + (f[c.k] == null ? '' : f[c.k]) + '</td>';
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+  }
+
+  // ============================================================
+  //  INFORME 1 · RESUMEN DEL CLUB
+  // ============================================================
+  function infResumen() {
+    var vivos = D.atletas.filter(function (a) { return a.estado !== 'baja'; });
+
+    // Cifras
+    var nEscuela = vivos.filter(function (a) { return membresia(a) === 'escuela'; }).length;
+    var nSocios = vivos.filter(function (a) { return membresia(a) === 'socio'; }).length;
+    var nEntrenadores = D.perfiles.filter(function (p) { return p.rol === 'entrenador'; }).length;
+    var nGrupos = D.grupos.length;
+
+    var html = '';
+    html += '<h2 class="inf-tit">Resumen del club</h2>';
+    html += '<p class="inf-sub">Foto general a día de hoy. «En activo» agrupa altas, pruebas y lesionados; no cuenta las bajas.</p>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print">Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv">Descargar CSV</button></div>';
+
+    html += '<div class="cifras">' +
+      '<div class="cifra"><span class="et">Atletas en activo</span><span class="num">' + num(vivos.length) + '</span><span class="nota">' + num(D.atletas.length) + ' en total con las bajas</span></div>' +
+      '<div class="cifra verde"><span class="et">Escuela</span><span class="num">' + num(nEscuela) + '</span><span class="nota">nacidos en 2009 o después</span></div>' +
+      '<div class="cifra"><span class="et">Socios</span><span class="num">' + num(nSocios) + '</span><span class="nota">nacidos en 2008 o antes</span></div>' +
+      '<div class="cifra"><span class="et">Grupos</span><span class="num">' + num(nGrupos) + '</span></div>' +
+      '<div class="cifra"><span class="et">Entrenadores</span><span class="num">' + num(nEntrenadores) + '</span></div>' +
+      '</div>';
+
+    // --- Por estado ---
+    var porEstado = {};
+    D.atletas.forEach(function (a) { var e = a.estado || '(sin estado)'; porEstado[e] = (porEstado[e] || 0) + 1; });
+    var ordenEstado = ['activo','prueba','lesionado','baja'];
+    var filasEstado = [];
+    ordenEstado.forEach(function (e) { if (porEstado[e]) filasEstado.push({ et: ESTADOS[e], n: num(porEstado[e]) }); delete porEstado[e]; });
+    Object.keys(porEstado).forEach(function (e) { filasEstado.push({ et: e, n: num(porEstado[e]) }); });
+    filasEstado.push({ et: 'Total', n: num(D.atletas.length), _cls: 'total' });
+    html += '<h3 class="bloque">Por estado</h3>' + tablaHtml([{ t: 'Estado', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasEstado);
+
+    // --- Por sección (solo en activo) ---
+    var secc = {};
+    vivos.forEach(function (a) { var s = seccionDe(a); secc[s] = (secc[s] || 0) + 1; });
+    var gruposPorSecc = {};
+    D.grupos.forEach(function (g) { var s = g.seccion || '(sin sección)'; gruposPorSecc[s] = (gruposPorSecc[s] || 0) + 1; });
+    var filasSecc = Object.keys(secc).sort().map(function (s) {
+      return { et: s, n: num(secc[s]), g: num(gruposPorSecc[s] || 0) };
+    });
+    filasSecc.push({ et: 'Total', n: num(vivos.length), g: num(D.grupos.length), _cls: 'total' });
+    html += '<h3 class="bloque">Por sección (atletas en activo)</h3>' +
+      tablaHtml([{ t: 'Sección', k: 'et' }, { t: 'Atletas', k: 'n', num: true }, { t: 'Grupos', k: 'g', num: true }], filasSecc);
+
+    // --- Escuela vs socios ---
+    var mem = { escuela: 0, socio: 0, desconocido: 0 };
+    vivos.forEach(function (a) { mem[membresia(a)]++; });
+    var filasMem = [
+      { et: 'Escuela', n: num(mem.escuela) },
+      { et: 'Socios', n: num(mem.socio) }
+    ];
+    if (mem.desconocido) filasMem.push({ et: 'Sin determinar', n: num(mem.desconocido) });
+    filasMem.push({ et: 'Total', n: num(vivos.length), _cls: 'total' });
+    html += '<h3 class="bloque">Escuela y socios</h3>' + tablaHtml([{ t: 'Grupo', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasMem);
+
+    // --- Por categoría ---
+    var cat = {};
+    vivos.forEach(function (a) { var c = a.categoria || '(sin categoría)'; cat[c] = (cat[c] || 0) + 1; });
+    var filasCat = Object.keys(cat).sort().map(function (c) { return { et: c, n: num(cat[c]) }; });
+    filasCat.push({ et: 'Total', n: num(vivos.length), _cls: 'total' });
+    html += '<h3 class="bloque">Por categoría (atletas en activo)</h3>' + tablaHtml([{ t: 'Categoría', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasCat);
+
+    // --- Por sexo ---
+    var conSexo = vivos.filter(function (a) { return a.sexo; }).length;
+    if (conSexo === 0) {
+      html += '<h3 class="bloque">Por sexo</h3><div class="aviso">El sexo no está registrado todavía para ninguna persona, así que este reparto no se puede calcular.</div>';
+    } else {
+      var sx = { hombre: 0, mujer: 0, otro: 0, '(sin dato)': 0 };
+      vivos.forEach(function (a) { sx[a.sexo || '(sin dato)']++; });
+      var filasSx = [];
+      ['hombre','mujer','otro','(sin dato)'].forEach(function (k) { if (sx[k]) filasSx.push({ et: k.charAt(0).toUpperCase() + k.slice(1), n: num(sx[k]) }); });
+      filasSx.push({ et: 'Total', n: num(vivos.length), _cls: 'total' });
+      html += '<h3 class="bloque">Por sexo (atletas en activo)</h3>' + tablaHtml([{ t: 'Sexo', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasSx);
+    }
+
+    pintar(html);
+
+    // Contenido para imprimir (sin cifras con estilo de pantalla; las repetimos como bloque simple)
+    var printBloque =
+      '<div class="doc-cifras">' +
+      '<div><b>' + num(vivos.length) + '</b>Atletas en activo</div>' +
+      '<div><b>' + num(nEscuela) + '</b>Escuela</div>' +
+      '<div><b>' + num(nSocios) + '</b>Socios</div>' +
+      '<div><b>' + num(nGrupos) + '</b>Grupos</div>' +
+      '<div><b>' + num(nEntrenadores) + '</b>Entrenadores</div>' +
+      '</div>';
+
+    $('b-print').onclick = function () {
+      imprimir('Resumen del club', 'Situación a ' + fechaCorta(hoyIso), printBloque + contenidoImprimible());
+    };
+    $('b-csv').onclick = function () {
+      var filas = [['Resumen del club — ' + hoyIso], [], ['Atletas en activo', vivos.length], ['Escuela', nEscuela], ['Socios', nSocios], ['Grupos', nGrupos], ['Entrenadores', nEntrenadores], []];
+      filas.push(['Por estado', 'Atletas']);
+      filasEstado.forEach(function (f) { filas.push([f.et, f.et === 'Total' ? D.atletas.length : (porEstadoRaw(f.et))]); });
+      filas.push([]);
+      filas.push(['Por sección', 'Atletas', 'Grupos']);
+      Object.keys(secc).sort().forEach(function (s) { filas.push([s, secc[s], gruposPorSecc[s] || 0]); });
+      filas.push([]);
+      filas.push(['Escuela/Socios', 'Atletas']);
+      filas.push(['Escuela', mem.escuela]); filas.push(['Socios', mem.socio]);
+      if (mem.desconocido) filas.push(['Sin determinar', mem.desconocido]);
+      filas.push([]);
+      filas.push(['Por categoría', 'Atletas']);
+      Object.keys(cat).sort().forEach(function (c) { filas.push([c, cat[c]]); });
+      descargarCsv('resumen_club', filas);
+    };
+    function porEstadoRaw(etiqueta) {
+      var found = 0;
+      D.atletas.forEach(function (a) {
+        var lbl = ESTADOS[a.estado] || a.estado || '(sin estado)';
+        if (lbl === etiqueta) found++;
+      });
+      return found;
+    }
+  }
+
+  // Devuelve el HTML del lienzo sin los botones/filtros (para imprimir).
+  function contenidoImprimible() {
+    var clon = $('lienzo').cloneNode(true);
+    // quitar título de pantalla (lo pone el membrete), subtítulos, acciones y filtros
+    Array.prototype.slice.call(clon.querySelectorAll('.no-print, .acciones-inf, .filtros, .inf-tit, .inf-sub, .cifras')).forEach(function (el) { el.parentNode.removeChild(el); });
+    return clon.innerHTML;
+  }
+
+  // ============================================================
+  //  INFORME 2 · ATLETAS POR GRUPO
+  // ============================================================
+  function infGrupos() {
+    var secciones = [];
+    D.grupos.forEach(function (g) { var s = g.seccion || '(sin sección)'; if (secciones.indexOf(s) < 0) secciones.push(s); });
+    secciones.sort();
+
+    var html = '';
+    html += '<h2 class="inf-tit">Atletas por grupo</h2>';
+    html += '<p class="inf-sub">Cuántas personas hay en cada grupo y quién lo entrena. No se cuentan las bajas.</p>';
+    html += '<div class="filtros no-print"><div><label for="f-secc">Sección</label><select id="f-secc"><option value="">Todas las secciones</option>' +
+      secciones.map(function (s) { return '<option value="' + esc(s) + '">' + esc(s) + '</option>'; }).join('') + '</select></div></div>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print">Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv">Descargar CSV</button></div>';
+    html += '<div id="grupos-tabla"></div>';
+    pintar(html);
+
+    function contarGrupo(gid) {
+      var n = 0;
+      D.atletas.forEach(function (a) { if (a.grupo_id === gid && a.estado !== 'baja') n++; });
+      return n;
+    }
+
+    var datosActuales = [];
+    function render() {
+      var sel = $('f-secc').value;
+      var grupos = D.grupos.filter(function (g) { return !sel || (g.seccion || '(sin sección)') === sel; });
+      datosActuales = grupos.map(function (g) {
+        var ent = g.entrenador_id ? D.perfilesById[g.entrenador_id] : null;
+        return { grupo: g.nombre, seccion: g.seccion || '(sin sección)', entrenador: ent ? nombrePerfil(ent) : '—', n: contarGrupo(g.id) };
+      });
+      var total = datosActuales.reduce(function (s, d) { return s + d.n; }, 0);
+      var filas = datosActuales.map(function (d) {
+        return { grupo: esc(d.grupo), seccion: esc(d.seccion), entrenador: esc(d.entrenador), n: num(d.n) };
+      });
+      filas.push({ grupo: 'Total', seccion: '', entrenador: '', n: num(total), _cls: 'total' });
+      $('grupos-tabla').innerHTML = tablaHtml([
+        { t: 'Grupo', k: 'grupo' }, { t: 'Sección', k: 'seccion' }, { t: 'Entrenador', k: 'entrenador' }, { t: 'Atletas', k: 'n', num: true }
+      ], filas);
+    }
+    $('f-secc').onchange = render;
+    render();
+
+    $('b-print').onclick = function () {
+      var sel = $('f-secc').value;
+      imprimir('Atletas por grupo', sel ? 'Sección: ' + sel : 'Todas las secciones', $('grupos-tabla').innerHTML);
+    };
+    $('b-csv').onclick = function () {
+      var filas = [['Grupo', 'Sección', 'Entrenador', 'Atletas']];
+      datosActuales.forEach(function (d) { filas.push([d.grupo, d.seccion, d.entrenador, d.n]); });
+      descargarCsv('atletas_por_grupo', filas);
+    };
+  }
+
+  // ============================================================
+  //  INFORME 3 · ECONÓMICO
+  // ============================================================
+  function periodosDisponibles() {
+    var v = {};
+    D.pagos.forEach(function (p) { if (p.periodo) v[p.periodo] = 1; });
+    return Object.keys(v).sort().reverse();
+  }
+
+  function infEconomico() {
+    var periodos = periodosDisponibles();
+    var html = '';
+    html += '<h2 class="inf-tit">Informe económico</h2>';
+    html += '<p class="inf-sub">Para la contable: cobrado, pendiente e impagado. Los recibos anulados no se cuentan.</p>';
+    html += '<div class="filtros no-print"><div><label for="f-per">Periodo</label><select id="f-per"><option value="">Todos los periodos</option>' +
+      periodos.map(function (p) { return '<option value="' + p + '">' + esc(periodoTexto(p)) + '</option>'; }).join('') + '</select></div></div>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print">Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv">Descargar CSV</button></div>';
+    html += '<div id="eco-cuerpo"></div>';
+    pintar(html);
+
+    var estado = { cobrado: 0, pendiente: 0, impagado: 0 };
+    var datosMes = [], datosSecc = [], datosCuenta = [], selTexto = '';
+
+    function render() {
+      var sel = $('f-per').value;
+      selTexto = sel ? periodoTexto(sel) : 'Todos los periodos';
+      var lista = D.pagos.filter(function (p) { return !sel || p.periodo === sel; });
+
+      estado = { cobrado: 0, pendiente: 0, impagado: 0 };
+      var porSecc = {}, porCuenta = { escuela: { c: 0, p: 0, i: 0 }, club: { c: 0, p: 0, i: 0 }, '(sin cuenta)': { c: 0, p: 0, i: 0 } };
+      lista.forEach(function (p) {
+        var imp = Number(p.importe || 0);
+        var k = p.estado === 'pagado' ? 'c' : (p.estado === 'impagado' ? 'i' : 'p');
+        if (k === 'c') estado.cobrado += imp; else if (k === 'i') estado.impagado += imp; else estado.pendiente += imp;
+        var a = p.atleta_id ? D.atletasById[p.atleta_id] : null;
+        var s = a ? seccionDe(a) : '(sin atleta)';
+        if (!porSecc[s]) porSecc[s] = { c: 0, p: 0, i: 0 };
+        porSecc[s][k] += imp;
+        var cu = p.cuenta || '(sin cuenta)';
+        if (!porCuenta[cu]) porCuenta[cu] = { c: 0, p: 0, i: 0 };
+        porCuenta[cu][k] += imp;
+      });
+
+      var cuerpo = '';
+      cuerpo += '<div class="cifras">' +
+        '<div class="cifra verde"><span class="et">Cobrado</span><span class="num">' + eur(estado.cobrado) + '</span></div>' +
+        '<div class="cifra ambar"><span class="et">Pendiente</span><span class="num">' + eur(estado.pendiente) + '</span></div>' +
+        '<div class="cifra rojo"><span class="et">Impagado</span><span class="num">' + eur(estado.impagado) + '</span></div>' +
+        '<div class="cifra"><span class="et">Total emitido</span><span class="num">' + eur(estado.cobrado + estado.pendiente + estado.impagado) + '</span></div>' +
+        '</div>';
+
+      // Desglose por mes (siempre completo, no depende del filtro)
+      var mes = {};
+      D.pagos.forEach(function (p) {
+        var per = p.periodo || '(sin periodo)';
+        if (!mes[per]) mes[per] = { c: 0, p: 0, i: 0 };
+        var imp = Number(p.importe || 0);
+        if (p.estado === 'pagado') mes[per].c += imp; else if (p.estado === 'impagado') mes[per].i += imp; else mes[per].p += imp;
+      });
+      datosMes = Object.keys(mes).sort().reverse().map(function (per) {
+        return { per: per, txt: periodoTexto(per), c: mes[per].c, p: mes[per].p, i: mes[per].i };
+      });
+      var tMes = { c: 0, p: 0, i: 0 };
+      datosMes.forEach(function (d) { tMes.c += d.c; tMes.p += d.p; tMes.i += d.i; });
+      var filasMes = datosMes.map(function (d) {
+        return { m: esc(d.txt), c: eur(d.c), p: eur(d.p), i: eur(d.i), t: eur(d.c + d.p + d.i) };
+      });
+      filasMes.push({ m: 'Total', c: eur(tMes.c), p: eur(tMes.p), i: eur(tMes.i), t: eur(tMes.c + tMes.p + tMes.i), _cls: 'total' });
+      cuerpo += '<h3 class="bloque">Por mes (todos los periodos)</h3>' +
+        tablaHtml([{ t: 'Periodo', k: 'm' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }, { t: 'Total', k: 't', num: true }], filasMes);
+
+      // Por sección (según filtro)
+      datosSecc = Object.keys(porSecc).sort().map(function (s) { return { s: s, c: porSecc[s].c, p: porSecc[s].p, i: porSecc[s].i }; });
+      var filasSecc = datosSecc.map(function (d) { return { s: esc(d.s), c: eur(d.c), p: eur(d.p), i: eur(d.i) }; });
+      filasSecc.push({ s: 'Total', c: eur(estado.cobrado), p: eur(estado.pendiente), i: eur(estado.impagado), _cls: 'total' });
+      cuerpo += '<h3 class="bloque">Por sección (' + esc(selTexto) + ')</h3>' +
+        tablaHtml([{ t: 'Sección', k: 's' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }], filasSecc);
+
+      // Por cuenta
+      datosCuenta = Object.keys(porCuenta).filter(function (k) { var x = porCuenta[k]; return x.c || x.p || x.i; })
+        .map(function (k) { return { cu: k, c: porCuenta[k].c, p: porCuenta[k].p, i: porCuenta[k].i }; });
+      var filasCu = datosCuenta.map(function (d) { return { cu: esc(d.cu), c: eur(d.c), p: eur(d.p), i: eur(d.i) }; });
+      cuerpo += '<h3 class="bloque">Por cuenta (' + esc(selTexto) + ')</h3>' +
+        tablaHtml([{ t: 'Cuenta', k: 'cu' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }], filasCu);
+
+      $('eco-cuerpo').innerHTML = cuerpo;
+    }
+    $('f-per').onchange = render;
+    render();
+
+    $('b-print').onclick = function () {
+      // versión imprimible: bloque de cifras + tablas del cuerpo (sin las cifras de pantalla)
+      var clon = document.createElement('div');
+      clon.innerHTML = $('eco-cuerpo').innerHTML;
+      var cif = clon.querySelector('.cifras'); if (cif) cif.parentNode.removeChild(cif);
+      var bloque = '<div class="doc-cifras">' +
+        '<div><b>' + eur(estado.cobrado) + '</b>Cobrado</div>' +
+        '<div><b>' + eur(estado.pendiente) + '</b>Pendiente</div>' +
+        '<div><b>' + eur(estado.impagado) + '</b>Impagado</div>' +
+        '</div>';
+      imprimir('Informe económico', selTexto, bloque + clon.innerHTML);
+    };
+    $('b-csv').onclick = function () {
+      var filas = [['Informe económico — ' + selTexto + ' — ' + hoyIso], [],
+        ['Cobrado', csvNum(estado.cobrado)], ['Pendiente', csvNum(estado.pendiente)], ['Impagado', csvNum(estado.impagado)], []];
+      filas.push(['Por mes', 'Cobrado', 'Pendiente', 'Impagado', 'Total']);
+      datosMes.forEach(function (d) { filas.push([d.txt, csvNum(d.c), csvNum(d.p), csvNum(d.i), csvNum(d.c + d.p + d.i)]); });
+      filas.push([]);
+      filas.push(['Por sección (' + selTexto + ')', 'Cobrado', 'Pendiente', 'Impagado']);
+      datosSecc.forEach(function (d) { filas.push([d.s, csvNum(d.c), csvNum(d.p), csvNum(d.i)]); });
+      filas.push([]);
+      filas.push(['Por cuenta (' + selTexto + ')', 'Cobrado', 'Pendiente', 'Impagado']);
+      datosCuenta.forEach(function (d) { filas.push([d.cu, csvNum(d.c), csvNum(d.p), csvNum(d.i)]); });
+      descargarCsv('informe_economico', filas);
+    };
+  }
+
+  // ============================================================
+  //  INFORME 4 · PAGOS DE UNA PERSONA
+  // ============================================================
+  function infFicha() {
+    var conPagos = {};
+    D.pagos.forEach(function (p) { if (p.atleta_id) conPagos[p.atleta_id] = 1; });
+    var opciones = D.atletas.map(function (a) {
+      return '<option value="' + a.id + '">' + esc(nombreAtleta(a)) + (conPagos[a.id] ? '' : ' (sin recibos)') + '</option>';
+    }).join('');
+
+    var html = '';
+    html += '<h2 class="inf-tit">Pagos de una persona</h2>';
+    html += '<p class="inf-sub">Elige un atleta y sale su historial completo de recibos, listo para imprimir en PDF para la contable o la familia.</p>';
+    html += '<div class="filtros no-print"><div><label for="f-atleta">Atleta</label><select id="f-atleta"><option value="">— Elige una persona —</option>' + opciones + '</select></div></div>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print" disabled>Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv" disabled>Descargar CSV</button></div>';
+    html += '<div id="ficha-cuerpo"><div class="aviso">Selecciona una persona para ver sus pagos.</div></div>';
+    pintar(html);
+
+    var actual = null, datosFicha = [], tot = { pagado: 0, debe: 0 };
+
+    function render() {
+      var id = $('f-atleta').value;
+      $('b-print').disabled = !id;
+      $('b-csv').disabled = !id;
+      if (!id) { actual = null; $('ficha-cuerpo').innerHTML = '<div class="aviso">Selecciona una persona para ver sus pagos.</div>'; return; }
+      actual = D.atletasById[id];
+      var pagos = D.pagos.filter(function (p) { return p.atleta_id === id; }).sort(function (a, b) {
+        return String(b.fecha_vencimiento || b.created_at || '').localeCompare(String(a.fecha_vencimiento || a.created_at || ''));
+      });
+      datosFicha = pagos;
+      tot = { pagado: 0, debe: 0 };
+      pagos.forEach(function (p) {
+        var imp = Number(p.importe || 0);
+        if (p.estado === 'pagado') tot.pagado += imp; else tot.debe += imp;
+      });
+
+      var g = grupoDe(actual);
+      var cuerpo = '<h3 class="bloque">' + esc(nombreAtleta(actual)) + '</h3>';
+      cuerpo += '<p class="inf-sub">' + esc(seccionDe(actual)) + (g ? ' · ' + esc(g.nombre) : '') + (actual.categoria ? ' · ' + esc(actual.categoria) : '') + '</p>';
+      cuerpo += '<div class="cifras">' +
+        '<div class="cifra verde"><span class="et">Total pagado</span><span class="num">' + eur(tot.pagado) + '</span></div>' +
+        '<div class="cifra rojo"><span class="et">Pendiente de pago</span><span class="num">' + eur(tot.debe) + '</span></div>' +
+        '<div class="cifra"><span class="et">Recibos</span><span class="num">' + num(pagos.length) + '</span></div>' +
+        '</div>';
+
+      if (!pagos.length) {
+        cuerpo += '<div class="aviso">Esta persona no tiene ningún recibo registrado.</div>';
+      } else {
+        var pillEstado = { pagado: 'pill-pagado', pendiente: 'pill-pendiente', impagado: 'pill-impagado' };
+        var filas = pagos.map(function (p) {
+          return {
+            recibo: esc(p.numero_recibo || '—'),
+            concepto: esc(p.concepto || '') + (p.periodo ? '<br><span style="color:#6B7683;font-size:12px">' + esc(periodoTexto(p.periodo)) + '</span>' : ''),
+            importe: eur(p.importe),
+            estado: '<span class="pill ' + (pillEstado[p.estado] || '') + '">' + esc(p.estado || '') + '</span>',
+            vence: fechaCorta(p.fecha_vencimiento),
+            cobro: fechaCorta(p.fecha_pago)
+          };
+        });
+        cuerpo += tablaHtml([
+          { t: 'Nº recibo', k: 'recibo' }, { t: 'Concepto', k: 'concepto' }, { t: 'Importe', k: 'importe', num: true },
+          { t: 'Estado', k: 'estado' }, { t: 'Vence', k: 'vence', num: true }, { t: 'Cobrado', k: 'cobro', num: true }
+        ], filas);
+      }
+      $('ficha-cuerpo').innerHTML = cuerpo;
+    }
+    $('f-atleta').onchange = render;
+
+    $('b-print').onclick = function () {
+      if (!actual) return;
+      var clon = document.createElement('div');
+      clon.innerHTML = $('ficha-cuerpo').innerHTML;
+      var cif = clon.querySelector('.cifras'); if (cif) cif.parentNode.removeChild(cif);
+      var enc = clon.querySelector('h3'); if (enc) enc.parentNode.removeChild(enc);
+      var bloque = '<div class="doc-cifras">' +
+        '<div><b>' + eur(tot.pagado) + '</b>Total pagado</div>' +
+        '<div><b>' + eur(tot.debe) + '</b>Pendiente de pago</div>' +
+        '<div><b>' + num(datosFicha.length) + '</b>Recibos</div>' +
+        '</div>';
+      imprimir('Historial de pagos', nombreAtleta(actual) + ' · ' + seccionDe(actual), bloque + clon.innerHTML);
+    };
+    $('b-csv').onclick = function () {
+      if (!actual) return;
+      var filas = [['Historial de pagos — ' + nombreAtleta(actual) + ' — ' + hoyIso], [],
+        ['Nº recibo', 'Concepto', 'Periodo', 'Importe', 'Estado', 'Vence', 'Cobrado', 'Método']];
+      datosFicha.forEach(function (p) {
+        filas.push([p.numero_recibo || '', p.concepto || '', periodoTexto(p.periodo), csvNum(p.importe), p.estado || '', fechaCorta(p.fecha_vencimiento), fechaCorta(p.fecha_pago), p.metodo || '']);
+      });
+      filas.push([]);
+      filas.push(['Total pagado', csvNum(tot.pagado)]);
+      filas.push(['Pendiente de pago', csvNum(tot.debe)]);
+      descargarCsv('pagos_' + nombreAtleta(actual).replace(/\s+/g, '_'), filas);
+    };
+  }
+
+  // ============================================================
+  //  INFORME 5 · IMPAGADOS
+  // ============================================================
+  function infImpagados() {
+    var html = '';
+    html += '<h2 class="inf-tit">Impagados</h2>';
+    html += '<p class="inf-sub">Recibos marcados como impagados, con la persona, la sección y el número de recibo.</p>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print">Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv">Descargar CSV</button></div>';
+    html += '<div id="imp-cuerpo"></div>';
+    pintar(html);
+
+    var lista = D.pagos.filter(function (p) { return p.estado === 'impagado'; }).map(function (p) {
+      var a = p.atleta_id ? D.atletasById[p.atleta_id] : null;
+      return {
+        nombre: a ? nombreAtleta(a) : 'Sin atleta asignado',
+        seccion: a ? seccionDe(a) : '—',
+        concepto: p.concepto || '',
+        importe: Number(p.importe || 0),
+        recibo: p.numero_recibo || '—',
+        vence: p.fecha_vencimiento
+      };
+    }).sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+
+    var total = lista.reduce(function (s, d) { return s + d.importe; }, 0);
+    var cuerpo = '';
+    cuerpo += '<div class="cifras">' +
+      '<div class="cifra rojo"><span class="et">Total impagado</span><span class="num">' + eur(total) + '</span></div>' +
+      '<div class="cifra"><span class="et">Recibos impagados</span><span class="num">' + num(lista.length) + '</span></div>' +
+      '</div>';
+    if (!lista.length) {
+      cuerpo += '<div class="aviso">No hay ningún recibo impagado. </div>';
+    } else {
+      var filas = lista.map(function (d) {
+        return { nombre: esc(d.nombre), seccion: esc(d.seccion), concepto: esc(d.concepto), importe: eur(d.importe), recibo: esc(d.recibo), vence: fechaCorta(d.vence) };
+      });
+      filas.push({ nombre: 'Total', seccion: '', concepto: '', importe: eur(total), recibo: '', vence: '', _cls: 'total' });
+      cuerpo += tablaHtml([
+        { t: 'Atleta', k: 'nombre' }, { t: 'Sección', k: 'seccion' }, { t: 'Concepto', k: 'concepto' },
+        { t: 'Importe', k: 'importe', num: true }, { t: 'Nº recibo', k: 'recibo' }, { t: 'Vencía', k: 'vence', num: true }
+      ], filas);
+    }
+    $('imp-cuerpo').innerHTML = cuerpo;
+
+    $('b-print').onclick = function () {
+      var clon = document.createElement('div');
+      clon.innerHTML = $('imp-cuerpo').innerHTML;
+      var cif = clon.querySelector('.cifras'); if (cif) cif.parentNode.removeChild(cif);
+      var bloque = '<div class="doc-cifras"><div><b>' + eur(total) + '</b>Total impagado</div><div><b>' + num(lista.length) + '</b>Recibos</div></div>';
+      imprimir('Listado de impagados', 'A ' + fechaCorta(hoyIso), bloque + clon.innerHTML);
+    };
+    $('b-csv').onclick = function () {
+      var filas = [['Atleta', 'Sección', 'Concepto', 'Importe', 'Nº recibo', 'Vencía']];
+      lista.forEach(function (d) { filas.push([d.nombre, d.seccion, d.concepto, csvNum(d.importe), d.recibo, fechaCorta(d.vence)]); });
+      filas.push([]); filas.push(['Total', '', '', csvNum(total)]);
+      descargarCsv('impagados', filas);
+    };
+  }
+
+  // ============================================================
+  //  INFORME 6 · ALTAS Y BAJAS
+  // ============================================================
+  function infAltasBajas() {
+    // Periodos por mes de alta (created_at)
+    var meses = {};
+    D.atletas.forEach(function (a) { if (a.created_at) meses[String(a.created_at).slice(0, 7)] = 1; });
+    var listaMeses = Object.keys(meses).sort().reverse();
+
+    var html = '';
+    html += '<h2 class="inf-tit">Altas y bajas</h2>';
+    html += '<p class="inf-sub">Personas dadas de alta en el periodo elegido y bajas actuales del club.</p>';
+    html += '<div class="filtros no-print"><div><label for="f-mes">Mes de alta</label><select id="f-mes"><option value="">Todos los meses</option>' +
+      listaMeses.map(function (m) { return '<option value="' + m + '">' + esc(periodoTexto(m)) + '</option>'; }).join('') + '</select></div></div>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print">Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv">Descargar CSV</button></div>';
+    html += '<div id="ab-cuerpo"></div>';
+    pintar(html);
+
+    var altas = [], bajas = [], selTxt = '';
+    // Las bajas no tienen fecha registrada; se muestran siempre las actuales.
+    bajas = D.atletas.filter(function (a) { return a.estado === 'baja'; }).map(function (a) {
+      return { nombre: nombreAtleta(a), seccion: seccionDe(a), categoria: a.categoria || '—', alta: a.created_at };
+    }).sort(function (a, b) { return a.nombre.localeCompare(b.nombre); });
+
+    function render() {
+      var sel = $('f-mes').value;
+      selTxt = sel ? periodoTexto(sel) : 'Todos los meses';
+      altas = D.atletas.filter(function (a) {
+        if (a.estado === 'baja') return false;
+        if (!a.created_at) return false;
+        return !sel || String(a.created_at).slice(0, 7) === sel;
+      }).map(function (a) {
+        return { nombre: nombreAtleta(a), seccion: seccionDe(a), categoria: a.categoria || '—', estado: a.estado || '', alta: a.created_at };
+      }).sort(function (a, b) { return String(b.alta).localeCompare(String(a.alta)); });
+
+      var cuerpo = '';
+      cuerpo += '<div class="cifras">' +
+        '<div class="cifra verde"><span class="et">Altas (' + esc(selTxt) + ')</span><span class="num">' + num(altas.length) + '</span></div>' +
+        '<div class="cifra rojo"><span class="et">Bajas actuales</span><span class="num">' + num(bajas.length) + '</span></div>' +
+        '</div>';
+
+      cuerpo += '<h3 class="bloque">Altas</h3>';
+      if (!altas.length) {
+        cuerpo += '<div class="aviso">No hay altas en el periodo elegido.</div>';
+      } else {
+        var filasA = altas.map(function (d) {
+          return { nombre: esc(d.nombre), seccion: esc(d.seccion), categoria: esc(d.categoria), estado: esc(ESTADOS[d.estado] || d.estado), alta: fechaCorta(d.alta) };
+        });
+        cuerpo += tablaHtml([
+          { t: 'Atleta', k: 'nombre' }, { t: 'Sección', k: 'seccion' }, { t: 'Categoría', k: 'categoria' }, { t: 'Estado', k: 'estado' }, { t: 'Fecha de alta', k: 'alta', num: true }
+        ], filasA);
+      }
+
+      cuerpo += '<h3 class="bloque">Bajas actuales</h3>';
+      cuerpo += '<div class="aviso">Las bajas no guardan la fecha en que se produjeron, así que se muestran todas las bajas actuales sin filtrar por mes.</div>';
+      if (!bajas.length) {
+        cuerpo += '<div class="aviso">No hay ninguna persona de baja.</div>';
+      } else {
+        var filasB = bajas.map(function (d) {
+          return { nombre: esc(d.nombre), seccion: esc(d.seccion), categoria: esc(d.categoria), alta: fechaCorta(d.alta) };
+        });
+        cuerpo += tablaHtml([
+          { t: 'Atleta', k: 'nombre' }, { t: 'Sección', k: 'seccion' }, { t: 'Categoría', k: 'categoria' }, { t: 'Alta original', k: 'alta', num: true }
+        ], filasB);
+      }
+      $('ab-cuerpo').innerHTML = cuerpo;
+    }
+    $('f-mes').onchange = render;
+    render();
+
+    $('b-print').onclick = function () {
+      var clon = document.createElement('div');
+      clon.innerHTML = $('ab-cuerpo').innerHTML;
+      var cif = clon.querySelector('.cifras'); if (cif) cif.parentNode.removeChild(cif);
+      var bloque = '<div class="doc-cifras"><div><b>' + num(altas.length) + '</b>Altas</div><div><b>' + num(bajas.length) + '</b>Bajas actuales</div></div>';
+      imprimir('Altas y bajas', selTxt, bloque + clon.innerHTML);
+    };
+    $('b-csv').onclick = function () {
+      var filas = [['Altas — ' + selTxt], ['Atleta', 'Sección', 'Categoría', 'Estado', 'Fecha de alta']];
+      altas.forEach(function (d) { filas.push([d.nombre, d.seccion, d.categoria, ESTADOS[d.estado] || d.estado, fechaCorta(d.alta)]); });
+      filas.push([]); filas.push(['Bajas actuales'], ['Atleta', 'Sección', 'Categoría', 'Alta original']);
+      bajas.forEach(function (d) { filas.push([d.nombre, d.seccion, d.categoria, fechaCorta(d.alta)]); });
+      descargarCsv('altas_y_bajas', filas);
+    };
+  }
+
+  // ============================================================
+  //  INFORME 7 · ASISTENCIA
+  // ============================================================
+  function infAsistencia() {
+    var html = '';
+    html += '<h2 class="inf-tit">Asistencia</h2>';
+    html += '<p class="inf-sub">Porcentaje de asistencia a los entrenamientos por grupo.</p>';
+    pintar(html + '<div id="asis-cuerpo"><div class="cargando">Comprobando datos de asistencia…</div></div>');
+
+    // Recuento real de la tabla de asistencia (por si hubiese datos aunque el modelo no la cargue).
+    sb.from('asistencia').select('id', { count: 'exact', head: true }).then(function (res) {
+      var n = res.count || 0;
+      if (res.error) {
+        $('asis-cuerpo').innerHTML = '<div class="aviso">No se pudo comprobar la asistencia: ' + esc(res.error.message) + '</div>';
+        return;
+      }
+      if (n === 0) {
+        $('asis-cuerpo').innerHTML =
+          '<div class="aviso">Todavía no se ha registrado ninguna asistencia a entrenamientos, así que no se puede calcular ningún porcentaje. ' +
+          'En cuanto los entrenadores empiecen a pasar lista, este informe mostrará el porcentaje por grupo.</div>' +
+          '<p class="nota-pie">Sí hay ' + num(D.movs.length ? D.movs.length : 0) + ' registros en otras tablas de actividad, pero no sirven para medir asistencia a entrenamientos.</p>';
+      } else {
+        $('asis-cuerpo').innerHTML = '<div class="aviso">Hay ' + num(n) + ' registros de asistencia. Vuelve a abrir esta página para calcular los porcentajes por grupo.</div>';
+      }
+    });
+  }
+
+  // ============================================================
+  //  INFORME 8 · EL CUBO
+  // ============================================================
+  function infCubo() {
+    var html = '';
+    html += '<h2 class="inf-tit">El Cubo</h2>';
+    html += '<p class="inf-sub">Bonos vendidos, usos consumidos, saldo pendiente y ocupación de las clases.</p>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print">Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv">Descargar CSV</button></div>';
+    html += '<div id="cubo-cuerpo"></div>';
+    pintar(html);
+
+    var usosVendidos = 0, usosConsumidos = 0, saldo = 0, ingresos = 0;
+    D.movs.forEach(function (m) {
+      var u = Number(m.usos || 0);
+      saldo += u;
+      if (m.tipo === 'alta') usosVendidos += u;
+      else if (m.tipo === 'consumo') usosConsumidos += Math.abs(u);
+    });
+    D.bonos.forEach(function (b) { ingresos += Number(b.precio || 0); });
+
+    // Ocupación de clases pasadas
+    var resPorClase = {};
+    D.reservas.forEach(function (r) {
+      if (['reservada', 'asistida', 'no_asistida'].indexOf(r.estado) < 0) return;
+      resPorClase[r.clase_id] = (resPorClase[r.clase_id] || 0) + 1;
+    });
+    var clasesPasadas = D.clases.filter(function (c) { return c.fecha <= hoyIso; });
+    var sumOcup = 0, nOcup = 0, plazasTot = 0, ocupTot = 0;
+    var datosClases = clasesPasadas.map(function (c) {
+      var ocup = resPorClase[c.id] || 0;
+      var pct = c.plazas ? (ocup / c.plazas) : 0;
+      if (c.plazas) { sumOcup += pct; nOcup++; plazasTot += c.plazas; ocupTot += ocup; }
+      return { fecha: c.fecha, titulo: c.titulo, plazas: c.plazas, ocup: ocup, pct: pct };
+    }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+    var ocupMedia = nOcup ? Math.round(sumOcup / nOcup * 100) : 0;
+
+    var cuerpo = '';
+    cuerpo += '<div class="cifras">' +
+      '<div class="cifra"><span class="et">Bonos vendidos</span><span class="num">' + num(D.bonos.length) + '</span></div>' +
+      '<div class="cifra verde"><span class="et">Ingresos por bonos</span><span class="num">' + eur(ingresos) + '</span></div>' +
+      '<div class="cifra"><span class="et">Usos vendidos</span><span class="num">' + num(usosVendidos) + '</span></div>' +
+      '<div class="cifra ambar"><span class="et">Usos consumidos</span><span class="num">' + num(usosConsumidos) + '</span></div>' +
+      '<div class="cifra"><span class="et">Saldo pendiente</span><span class="num">' + num(saldo) + '</span><span class="nota">usos sin gastar</span></div>' +
+      '<div class="cifra"><span class="et">Ocupación media</span><span class="num">' + ocupMedia + '%</span><span class="nota">clases ya celebradas</span></div>' +
+      '</div>';
+
+    cuerpo += '<h3 class="bloque">Ocupación de las clases ya celebradas</h3>';
+    if (!clasesPasadas.length) {
+      cuerpo += '<div class="aviso">Todavía no hay clases pasadas para medir la ocupación.</div>';
+    } else {
+      var filas = datosClases.slice(0, 40).map(function (d) {
+        return { fecha: fechaCorta(d.fecha), titulo: esc(d.titulo), ocup: num(d.ocup) + ' / ' + num(d.plazas), pct: Math.round(d.pct * 100) + '%' };
+      });
+      cuerpo += tablaHtml([
+        { t: 'Fecha', k: 'fecha' }, { t: 'Clase', k: 'titulo' }, { t: 'Ocupación', k: 'ocup', num: true }, { t: '% ocupación', k: 'pct', num: true }
+      ], filas);
+      if (datosClases.length > 40) cuerpo += '<p class="nota-pie">Se muestran las 40 clases más recientes de ' + num(datosClases.length) + '. El CSV incluye todas.</p>';
+    }
+    $('cubo-cuerpo').innerHTML = cuerpo;
+
+    $('b-print').onclick = function () {
+      var clon = document.createElement('div');
+      clon.innerHTML = $('cubo-cuerpo').innerHTML;
+      var cif = clon.querySelector('.cifras'); if (cif) cif.parentNode.removeChild(cif);
+      var bloque = '<div class="doc-cifras">' +
+        '<div><b>' + num(D.bonos.length) + '</b>Bonos vendidos</div>' +
+        '<div><b>' + eur(ingresos) + '</b>Ingresos</div>' +
+        '<div><b>' + num(usosConsumidos) + '</b>Usos consumidos</div>' +
+        '<div><b>' + num(saldo) + '</b>Saldo pendiente</div>' +
+        '<div><b>' + ocupMedia + '%</b>Ocupación media</div>' +
+        '</div>';
+      imprimir('El Cubo', 'A ' + fechaCorta(hoyIso), bloque + clon.innerHTML);
+    };
+    $('b-csv').onclick = function () {
+      var filas = [['El Cubo — ' + hoyIso], [],
+        ['Bonos vendidos', D.bonos.length], ['Ingresos por bonos', csvNum(ingresos)],
+        ['Usos vendidos', usosVendidos], ['Usos consumidos', usosConsumidos], ['Saldo pendiente', saldo], ['Ocupación media', ocupMedia + '%'], [],
+        ['Fecha', 'Clase', 'Ocupados', 'Plazas', '% ocupación']];
+      datosClases.forEach(function (d) { filas.push([fechaCorta(d.fecha), d.titulo, d.ocup, d.plazas, Math.round(d.pct * 100) + '%']); });
+      descargarCsv('el_cubo', filas);
+    };
+  }
+
+  // ================= NAVEGACIÓN =================
+  var INFORMES = {
+    resumen: infResumen, grupos: infGrupos, economico: infEconomico, ficha: infFicha,
+    impagados: infImpagados, altasbajas: infAltasBajas, asistencia: infAsistencia, cubo: infCubo
+  };
+  function pintar(html) { $('lienzo').innerHTML = html; }
+
+  function abrir(nombre) {
+    Array.prototype.slice.call($('menu').children).forEach(function (b) {
+      b.classList.toggle('activo', b.getAttribute('data-inf') === nombre);
+    });
+    (INFORMES[nombre] || infResumen)();
+  }
+  $('menu').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    abrir(b.getAttribute('data-inf'));
+  });
+
+  // ================= ARRANQUE =================
+  cargar().then(function (ok) {
+    if (!ok) { $('contexto').textContent = 'No se pudieron cargar los datos.'; return; }
+    $('cargando-global').classList.add('oculto');
+    $('lienzo').classList.remove('oculto');
+    var vivos = D.atletas.filter(function (a) { return a.estado !== 'baja'; }).length;
+    $('contexto').textContent = num(vivos) + ' atletas en activo · ' + num(D.grupos.length) + ' grupos · ' + num(D.pagos.length) + ' recibos';
+    abrir('resumen');
+  });
+});
+</script>
+</body>
+</html>
