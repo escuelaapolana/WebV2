@@ -56,15 +56,17 @@
   }
   .hoy-etq .eyebrow { color: rgba(255,255,255,0.78); }
   .hoy-etq b { font-family: var(--fuente-titulo); font-weight: 700; font-size: 26px; text-transform: uppercase; line-height: 1; }
-  .hoy-lista { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; min-width: 260px; }
+  .hoy-lista { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; min-width: 260px; }
   .hoy-item {
     background: #fff; border: 1px solid var(--crema-media); border-radius: 14px;
     padding: 14px 16px; display: flex; flex-direction: column; gap: 3px;
-    box-shadow: var(--sombra-suave);
+    box-shadow: var(--sombra-suave); min-width: 0;
   }
   .hoy-item .hora { font-family: var(--fuente-mono); font-size: 12px; color: var(--azul-oscuro); }
-  .hoy-item .que { font-size: 15px; font-weight: 600; color: var(--navy); }
-  .hoy-item .donde { font-size: 12px; color: var(--texto-suave); }
+  .hoy-item .que { font-size: 15px; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+  .hoy-item .donde { font-size: 12px; color: var(--texto-suave); overflow-wrap: anywhere; }
+  .hoy-item--vacio { justify-content: center; }
+  .hoy-item--vacio .que { font-weight: 500; color: var(--texto); }
 
   /* --- Dos tarjetas grandes (público) --- */
   .publico { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
@@ -181,14 +183,11 @@
     <div class="contenedor">
       <div class="hoy">
         <div class="hoy-etq">
-          <span class="eyebrow">Hoy · martes 29</span>
-          <b>Hoy en el club</b>
+          <span class="eyebrow" id="hoy-fecha">&nbsp;</span>
+          <b id="hoy-titulo">Hoy en el club</b>
         </div>
-        <div class="hoy-lista">
-          <div class="hoy-item"><span class="hora">17:30</span><span class="que">Escuela · Benjamín</span><span class="donde">Pista Joaquín Villar</span></div>
-          <div class="hoy-item"><span class="hora">19:00</span><span class="que">Madre Tierra</span><span class="donde">Playa San Juan</span></div>
-          <div class="hoy-item"><span class="hora">19:30</span><span class="que">La Tribu · series</span><span class="donde">Pista Joaquín Villar</span></div>
-          <div class="hoy-item"><span class="hora">20:30</span><span class="que">Natación adultos</span><span class="donde">Monte Tossal</span></div>
+        <div class="hoy-lista" id="hoy-lista">
+          <div class="hoy-item hoy-item--vacio"><span class="que">Cargando el día…</span></div>
         </div>
       </div>
     </div>
@@ -376,6 +375,159 @@
 <!-- ================= PIE (compartido) ================= -->
 <apolana-pie></apolana-pie>
 
+<!-- "Hoy en el club": lo que de verdad pasa hoy (o el próximo día con algo), desde Supabase -->
+<script>
+(function () {
+  'use strict';
+
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var ETIQUETA_TIPO = { natacion:'Natación', pista:'Pista', gym:'Gimnasio', continuo:'Rodaje', activacion:'Activación', competicion:'Competición' };
+
+  function dosCifras(n) { return (n < 10 ? '0' : '') + n; }
+  function claveDe(d) { return d.getFullYear() + '-' + dosCifras(d.getMonth() + 1) + '-' + dosCifras(d.getDate()); }
+  function deClave(s) { var p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function claveDeMarca(iso) { var d = new Date(iso); return isNaN(d.getTime()) ? null : claveDe(d); }
+  function horaDeMarca(iso) { var d = new Date(iso); return isNaN(d.getTime()) ? null : dosCifras(d.getHours()) + ':' + dosCifras(d.getMinutes()); }
+  function horaCorta(h) { return h ? String(h).slice(0, 5) : null; }
+  function limpio(s) { return (s == null ? '' : String(s)).trim(); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  /* Una misma cita puede llegar por dos vías (sesión del grupo y evento del
+     club). Se agrupan por título y se queda la versión más informativa. */
+  function claveTitulo(t) {
+    return String(t || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .split('·')[0].replace(/\s+/g, ' ').trim();
+  }
+  function sinRepetidos(lista) {
+    var vistos = {}, salida = [];
+    lista.forEach(function (a) {
+      var k = claveTitulo(a.titulo);
+      if (!k) { salida.push(a); return; }
+      if (vistos[k] === undefined) { vistos[k] = salida.length; salida.push(a); return; }
+      var previo = salida[vistos[k]];
+      var mejor = (a.hora && !previo.hora) ||
+                  (!!a.hora === !!previo.hora && (a.sub || '').length > (previo.sub || '').length);
+      if (mejor) salida[vistos[k]] = a;
+    });
+    return salida;
+  }
+
+  function pintar(fechaTxt, tituloTxt, items) {
+    var f = document.getElementById('hoy-fecha');
+    var t = document.getElementById('hoy-titulo');
+    var l = document.getElementById('hoy-lista');
+    if (f) f.textContent = fechaTxt;
+    if (t) t.textContent = tituloTxt;
+    if (!l) return;
+    if (!items || !items.length) {
+      l.innerHTML = '<a class="hoy-item hoy-item--vacio" href="calendario/" style="text-decoration:none;">' +
+        '<span class="que">Ver el calendario del club →</span>' +
+        '<span class="donde">Entrenamientos, competiciones y eventos</span></a>';
+      return;
+    }
+    l.innerHTML = items.slice(0, 4).map(function (a) {
+      return '<div class="hoy-item">' +
+        '<span class="hora">' + esc(a.hora || 'Todo el día') + '</span>' +
+        '<span class="que">' + esc(a.titulo) + '</span>' +
+        (a.sub ? '<span class="donde">' + esc(a.sub) + '</span>' : '') +
+        '</div>';
+    }).join('');
+  }
+
+  document.addEventListener('DOMContentLoaded', async function () {
+    var ahora = new Date();
+    var hoyKey = claveDe(ahora);
+    var finKey = claveDe(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 21));
+    var fechaHoy = DIAS[ahora.getDay()] + ' ' + ahora.getDate() + ' de ' + MESES[ahora.getMonth()];
+
+    var sb = window.APOLANA_DB;
+    if (!sb) { pintar('Hoy · ' + fechaHoy, 'Hoy en el club', null); return; }
+
+    var porDia = {}, algo = false;
+    function apuntar(clave, act) {
+      if (!clave || clave < hoyKey || clave > finKey) return;
+      (porDia[clave] = porDia[clave] || []).push(act); algo = true;
+    }
+
+    /* Entrenamientos publicados: vista pública `sesiones_agenda`
+       (la tabla `sesiones` no es legible sin cuenta). */
+    try {
+      var rs = await sb.from('sesiones_agenda')
+        .select('fecha,hora,titulo,tipo,lugar,grupo')
+        .gte('fecha', hoyKey).lte('fecha', finKey).order('fecha', { ascending: true }).limit(500);
+      if (rs.error) console.warn('[Apolana] agenda:', rs.error.message);
+      else if (rs.data) rs.data.forEach(function (s) {
+        if (s.tipo === 'descanso') return;
+        apuntar(s.fecha, {
+          hora: horaCorta(s.hora),
+          titulo: limpio(s.titulo) || limpio(s.grupo) || ETIQUETA_TIPO[s.tipo] || 'Entrenamiento',
+          sub: [limpio(s.lugar), limpio(s.grupo)].filter(Boolean).join(' · ')
+        });
+      });
+    } catch (e) { console.warn('[Apolana] agenda (excepción):', e); }
+
+    /* Competiciones del club */
+    try {
+      var rc = await sb.from('competiciones').select('nombre,sede,fecha_inicio')
+        .gte('fecha_inicio', hoyKey).lte('fecha_inicio', finKey)
+        .order('fecha_inicio', { ascending: true }).limit(100);
+      if (rc.error) console.warn('[Apolana] competiciones:', rc.error.message);
+      else if (rc.data) rc.data.forEach(function (c) {
+        apuntar(c.fecha_inicio, { hora: null, titulo: limpio(c.nombre) || 'Competición', sub: limpio(c.sede) });
+      });
+    } catch (e) { console.warn('[Apolana] competiciones (excepción):', e); }
+
+    /* Eventos del club */
+    try {
+      var re = await sb.from('eventos').select('titulo,fecha_inicio,lugar')
+        .gte('fecha_inicio', deClave(hoyKey).toISOString())
+        .order('fecha_inicio', { ascending: true }).limit(100);
+      if (re.error) console.warn('[Apolana] eventos:', re.error.message);
+      else if (re.data) re.data.forEach(function (v) {
+        apuntar(claveDeMarca(v.fecha_inicio), {
+          hora: horaDeMarca(v.fecha_inicio), titulo: limpio(v.titulo) || 'Evento del club', sub: limpio(v.lugar)
+        });
+      });
+    } catch (e) { console.warn('[Apolana] eventos (excepción):', e); }
+
+    /* Clases de El Cubo */
+    try {
+      var rq = await sb.from('cubo_clases_ocupacion').select('fecha,hora_inicio,titulo,activa,monitor')
+        .gte('fecha', hoyKey).lte('fecha', finKey).order('fecha', { ascending: true }).limit(300);
+      if (rq.error) console.warn('[Apolana] El Cubo:', rq.error.message);
+      else if (rq.data) rq.data.forEach(function (c) {
+        if (c.activa === false) return;
+        apuntar(c.fecha, {
+          hora: horaCorta(c.hora_inicio), titulo: limpio(c.titulo) || 'Clase de El Cubo',
+          sub: ['El Cubo', limpio(c.monitor)].filter(Boolean).join(' · ')
+        });
+      });
+    } catch (e) { console.warn('[Apolana] El Cubo (excepción):', e); }
+
+    if (!algo) { pintar('Hoy · ' + fechaHoy, 'Hoy en el club', null); return; }
+
+    /* Hoy si hay algo; si no, el primer día que venga con actividad. */
+    var claves = Object.keys(porDia).sort();
+    var elegido = porDia[hoyKey] && porDia[hoyKey].length ? hoyKey : claves[0];
+    var lista = sinRepetidos(porDia[elegido] || []).sort(function (a, b) {
+      if (!a.hora && !b.hora) return 0;
+      if (!a.hora) return 1;
+      if (!b.hora) return -1;
+      return a.hora < b.hora ? -1 : (a.hora > b.hora ? 1 : 0);
+    });
+
+    if (elegido === hoyKey) {
+      pintar('Hoy · ' + fechaHoy, 'Hoy en el club', lista);
+    } else {
+      var d = deClave(elegido);
+      pintar('Próximo · ' + DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()], 'Lo que viene', lista);
+    }
+  });
+})();
+</script>
+
 <!-- Noticias en directo desde Supabase (si hay; si no, se quedan las de ejemplo) -->
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
@@ -388,13 +540,16 @@ document.addEventListener('DOMContentLoaded', async function () {
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   function fechaCorta(f){ if(!f) return ''; var p=String(f).split('-'); return p.length===3 ? (+p[2])+' '+MESES[(+p[1])-1] : esc(f); }
   function foto(n){ return n ? esc(window.APOLANA_IMG ? window.APOLANA_IMG(n) : base+'assets/img/'+n) : ''; }
+  /* La base guarda la categoría sin acentos ("competicion"); aquí se muestra bien escrita. */
+  var ETIQUETAS = { competicion:'COMPETICIÓN', club:'CLUB', escuela:'ESCUELA', temporada:'TEMPORADA', resultado:'RESULTADOS', resultados:'RESULTADOS', montana:'MONTAÑA', natacion:'NATACIÓN' };
+  function categoria(c){ if(!c) return ''; var k=String(c).toLowerCase(); return ETIQUETAS[k] || esc(c).toUpperCase(); }
 
   var d = rows[0];
   var dest = document.getElementById('noticia-destacada');
   if (dest) {
     dest.innerHTML =
-      '<div class="marco">' + (d.foto_portada ? '<img src="'+foto(d.foto_portada)+'" alt="'+esc(d.titulo)+'">' : '') + '</div>' +
-      '<span class="eyebrow">' + fechaCorta(d.fecha_publicacion) + (d.categoria ? ' · ' + esc(d.categoria).toUpperCase() : '') + '</span>' +
+      (d.foto_portada ? '<div class="marco"><img src="'+foto(d.foto_portada)+'" alt="'+esc(d.titulo)+'"></div>' : '') +
+      '<span class="eyebrow">' + fechaCorta(d.fecha_publicacion) + (d.categoria ? ' · ' + categoria(d.categoria) : '') + '</span>' +
       '<h2 class="titular">' + esc(d.titulo) + '</h2>' +
       (d.excerpt ? '<p class="intro" style="max-width:620px;">' + esc(d.excerpt) + '</p>' : '') +
       '<a class="enlace-flecha" href="' + base + 'noticias/articulo/?id=' + encodeURIComponent(d.id) + '">Leer la crónica →</a>';

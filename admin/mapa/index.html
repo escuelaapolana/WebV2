@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa de contenido · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema); }
+
+  .map-wrap { max-width: 1160px; margin: 0 auto; padding: 0 clamp(16px,4vw,30px) 44px; }
+
+  /* ---------- Cabecera ---------- */
+  .map-cab {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 18px 0; border-bottom: 1px solid var(--linea); margin-bottom: 20px;
+  }
+  .map-titulo {
+    font-family: var(--fuente-titulo); font-weight: 700; font-size: clamp(26px,4vw,30px);
+    text-transform: uppercase; color: var(--navy); line-height: 1; margin: 0;
+  }
+  .map-contexto { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 4px; }
+  .map-acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn--mini { padding: 9px 17px; font-size: 14px; }
+
+  .chip-filtro {
+    padding: 8px 15px; border-radius: var(--radio-pastilla); background: #fff;
+    border: 1px solid var(--linea-borde); color: var(--texto); font-size: 13px;
+    font-family: inherit; cursor: pointer;
+  }
+  .chip-filtro:hover { background: var(--azul-suave); }
+  .chip-filtro.activa { background: var(--azul-oscuro); border-color: var(--azul-oscuro); color: #fff; font-weight: 600; }
+
+  /* ---------- Tarjetas ---------- */
+  .tarjeta {
+    background: #fff; border: 1px solid var(--crema-media); border-radius: var(--radio);
+    box-shadow: var(--sombra-suave); overflow: hidden; margin-bottom: 18px;
+  }
+  .tarj-cab {
+    padding: 13px 20px; background: var(--crema); border-bottom: 1px solid var(--crema-banda);
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--texto-suave);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline;
+  }
+  .tarj-cab .cuenta { color: var(--texto-tenue); letter-spacing: .06em; }
+  .tarj-pie { padding: 14px 20px; font-size: 13px; color: var(--texto-suave); border-top: 1px solid var(--crema-media); }
+  .oculto { display: none !important; }
+
+  /* ---------- Tabla de páginas ---------- */
+  .cols { display: grid; grid-template-columns: 1.25fr 2.1fr 96px 106px 150px; gap: 12px; align-items: center; }
+  .tab-cab {
+    padding: 10px 20px; background: #fff; border-bottom: 1px solid var(--crema-banda);
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .12em; color: var(--texto-tenue);
+    text-transform: uppercase;
+  }
+  .fila { padding: 13px 20px; border-bottom: 1px solid var(--crema-media); font-size: 15px; color: var(--navy); }
+  .fila:last-child { border-bottom: 0; }
+  .fila .cod { display: block; font-family: var(--fuente-mono); font-size: 10.5px; color: var(--texto-tenue); margin-top: 2px; }
+  .fila .nom { font-weight: 600; }
+
+  .campos { display: flex; flex-wrap: wrap; gap: 5px; }
+  .campo {
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .04em;
+    padding: 3px 8px; border-radius: var(--radio-pastilla); white-space: nowrap;
+  }
+  .campo--ok    { background: #EDF7E4; color: #4C7A28; }
+  .campo--falta { background: #FDF3DD; color: #B96F09; border: 1px solid var(--aviso-borde); }
+
+  .medidor { display: block; }
+  .medidor .cifra { font-family: var(--fuente-mono); font-size: 13px; color: var(--navy); }
+  .medidor .barra { display: block; height: 5px; border-radius: 999px; background: var(--crema-media); margin-top: 5px; overflow: hidden; }
+  .medidor .barra i { display: block; height: 100%; background: #4C7A28; }
+  .medidor.incompleto .barra i { background: #B96F09; }
+
+  .fecha { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-suave); }
+  .acciones-fila { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+  .enlace-accion {
+    background: none; border: 0; padding: 0 0 0 10px; font-family: inherit; font-size: 14px;
+    font-weight: 600; color: var(--azul-oscuro); cursor: pointer; text-decoration: none;
+  }
+  .enlace-accion:hover { text-decoration: underline; color: var(--azul-hover); }
+
+  /* ---------- Huecos ---------- */
+  .hueco { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: center;
+           padding: 13px 20px; border-bottom: 1px solid var(--crema-media); }
+  .hueco:last-child { border-bottom: 0; }
+  .hueco .marca {
+    justify-self: start; border-radius: var(--radio-pastilla); padding: 4px 10px;
+    font-family: var(--fuente-mono); font-size: 10px; white-space: nowrap; letter-spacing: .06em;
+  }
+  .marca--falta { background: #FDF3DD; color: #8A7530; }
+  .marca--ok    { background: #EDF7E4; color: #4C7A28; }
+  .hueco .texto { font-size: 15px; color: var(--navy); }
+  .hueco .texto small { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 3px; line-height: 1.45; }
+
+  /* ---------- Caja de regla ---------- */
+  .caja-regla {
+    background: var(--crema-banda); border: 1px solid var(--linea); border-radius: var(--radio);
+    padding: 18px 20px;
+  }
+  .caja-regla .etiqueta {
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--aviso-titulo); display: block; margin-bottom: 6px;
+  }
+  .caja-regla p { margin: 0; font-size: 14px; color: var(--texto); line-height: 1.55; }
+
+  .cargando, .vacio { padding: 20px; font-size: 14px; color: var(--texto-suave); }
+
+  /* ---------- Móvil ---------- */
+  @media (max-width: 900px) {
+    .cols { grid-template-columns: 1fr auto; row-gap: 9px; }
+    .tab-cab { display: none; }
+    .fila .c-nombre { grid-column: 1; }
+    .fila .c-medidor { grid-column: 2; justify-self: end; text-align: right; }
+    .fila .c-medidor .barra { width: 90px; margin-left: auto; }
+    .fila .c-campos { grid-column: 1 / -1; }
+    .fila .c-fecha { grid-column: 1; }
+    .fila .c-acciones { grid-column: 2; justify-self: end; }
+    .hueco { grid-template-columns: 1fr auto; row-gap: 8px; }
+    .hueco .marca { grid-column: 1; grid-row: 1; }
+    .hueco .accion-hueco { grid-column: 2; grid-row: 1; justify-self: end; }
+    .hueco .texto { grid-column: 1 / -1; grid-row: 2; }
+  }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="map-wrap">
+
+    <header class="map-cab">
+      <div>
+        <h1 class="map-titulo">Mapa de contenido</h1>
+        <span class="map-contexto" id="contexto">Leyendo la web…</span>
+      </div>
+      <div class="map-acciones">
+        <button type="button" class="chip-filtro" id="chip-huecos">Solo lo que falta</button>
+        <a class="btn btn--primario btn--mini" href="../../" target="_blank" rel="noopener">Ver web</a>
+      </div>
+    </header>
+
+    <!-- ===== PÁGINAS DE LA WEB ===== -->
+    <div class="tarjeta">
+      <div class="tarj-cab">
+        <span>Páginas de la web · qué tiene escrito cada una</span>
+        <span class="cuenta" id="cuenta-paginas"></span>
+      </div>
+      <div class="tab-cab cols">
+        <span>Página</span>
+        <span>Qué le falta</span>
+        <span>Completa</span>
+        <span>Actualizada</span>
+        <span style="text-align:right;">Arreglar en</span>
+      </div>
+      <div id="filas-paginas"><div class="cargando">Cargando…</div></div>
+      <div class="tarj-pie">
+        Los textos se cambian en <a href="../contenido/">Textos de las páginas</a> y la foto de cabecera en <a href="../paginas/">Páginas</a>.
+      </div>
+    </div>
+
+    <!-- ===== HUECOS DE LA WEB ===== -->
+    <div class="tarjeta">
+      <div class="tarj-cab">
+        <span>Huecos de la web · lo demás que se puede comprobar</span>
+        <span class="cuenta" id="cuenta-huecos"></span>
+      </div>
+      <div id="filas-huecos"><div class="cargando">Cargando…</div></div>
+    </div>
+
+    <div class="caja-regla">
+      <span class="etiqueta">Regla</span>
+      <p>Un dato se escribe una vez. El precio de pista vive en <a href="../tarifas/">Tarifas</a> y lo usan la página de la sección, la portada y el recibo. Si cambias 40 por 42, cambia en todos los sitios a la vez: no hay que ir página por página.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  function lleno(v) { return v != null && String(v).trim() !== ''; }
+
+  // Nombres bonitos de cada página (el mismo criterio que en /admin/paginas/).
+  var NOMBRES = {
+    'campus': 'Campus de verano',
+    'competicion': 'Atletismo en pista',
+    'cubo': 'El Cubo',
+    'deporte-adaptado': 'Deporte adaptado',
+    'escuela': 'Escuela de atletismo',
+    'escuela-municipal': 'Escuela municipal',
+    'escuela-natacion': 'Escuela de natación',
+    'instalaciones': 'Instalaciones',
+    'montana': 'Montaña',
+    'mun-atletismo': 'Atletismo municipal',
+    'mun-triatlon': 'Triatlón municipal',
+    'natacion': 'Natación',
+    'running': 'Running',
+    'triatlon': 'Triatlón'
+  };
+  function nombrePagina(sec) { return NOMBRES[sec] || sec; }
+
+  // Los ocho huecos que tiene cada página.
+  var CAMPOS = [
+    { campo: 'titulo',            etiqueta: 'Título' },
+    { campo: 'dirigido_a',        etiqueta: 'A quién va' },
+    { campo: 'horarios',          etiqueta: 'Horarios' },
+    { campo: 'precio',            etiqueta: 'Precio' },
+    { campo: 'grupos',            etiqueta: 'Grupos' },
+    { campo: 'descripcion',       etiqueta: 'Descripción' },
+    { campo: 'puntos_destacados', etiqueta: 'Puntos destacados' },
+    { campo: 'imagen_url',        etiqueta: 'Foto de cabecera' }
+  ];
+
+  // Categorías de documentos que el club debería tener colgadas.
+  var CATEGORIAS_DOC = ['Estatutos', 'Normativa interna', 'Reglamento', 'Protocolos', 'Autorizaciones', 'Circulares'];
+
+  function haceCuanto(iso) {
+    if (!iso) return '—';
+    var dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (dias <= 0) return 'hoy';
+    if (dias === 1) return 'ayer';
+    if (dias < 30) return 'hace ' + dias + ' días';
+    var meses = Math.floor(dias / 30);
+    if (meses < 12) return 'hace ' + meses + (meses === 1 ? ' mes' : ' meses');
+    var anyos = Math.floor(dias / 365);
+    return 'hace ' + anyos + (anyos === 1 ? ' año' : ' años');
+  }
+
+  function plural(n, uno, varios) { return n + ' ' + (n === 1 ? uno : varios); }
+
+  function listaCorta(nombres, tope) {
+    tope = tope || 4;
+    var vistos = nombres.slice(0, tope).join(', ');
+    if (nombres.length > tope) vistos += ' y ' + (nombres.length - tope) + ' más';
+    return vistos;
+  }
+
+  // --------------------------------------------------------
+  // Pintar la tabla de páginas
+  // --------------------------------------------------------
+  function pintarPaginas(secciones) {
+    var cont = $('filas-paginas');
+    if (!secciones.length) {
+      cont.innerHTML = '<div class="vacio">No hay ninguna página dada de alta.</div>';
+      return { paginas: 0, incompletas: 0, campos: 0, llenos: 0 };
+    }
+
+    var totalCampos = 0, totalLlenos = 0, paginasIncompletas = 0;
+
+    cont.innerHTML = secciones.map(function (s) {
+      var faltan = [], rellenos = 0;
+      CAMPOS.forEach(function (c) {
+        if (lleno(s[c.campo])) rellenos++; else faltan.push(c.etiqueta);
+      });
+      totalCampos += CAMPOS.length;
+      totalLlenos += rellenos;
+      if (faltan.length) paginasIncompletas++;
+
+      var chips = faltan.length
+        ? faltan.map(function (e) { return '<span class="campo campo--falta">' + esc(e) + '</span>'; }).join('')
+        : '<span class="campo campo--ok">Todo relleno</span>';
+
+      var pct = Math.round(rellenos / CAMPOS.length * 100);
+
+      return '<div class="fila cols' + (faltan.length ? '' : ' completa') + '">' +
+        '<div class="c-nombre"><span class="nom">' + esc(nombrePagina(s.seccion)) + '</span>' +
+          '<span class="cod">' + esc(s.seccion) + '</span></div>' +
+        '<div class="c-campos"><div class="campos">' + chips + '</div></div>' +
+        '<div class="c-medidor"><span class="medidor' + (faltan.length ? ' incompleto' : '') + '">' +
+          '<span class="cifra">' + rellenos + '/' + CAMPOS.length + '</span>' +
+          '<span class="barra"><i style="width:' + pct + '%"></i></span></span></div>' +
+        '<div class="c-fecha"><span class="fecha">' + esc(haceCuanto(s.updated_at)) + '</span></div>' +
+        '<div class="c-acciones acciones-fila">' +
+          '<a class="enlace-accion" href="../contenido/">Textos</a>' +
+          '<a class="enlace-accion" href="../paginas/">Foto</a>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    $('cuenta-paginas').textContent =
+      totalLlenos + ' de ' + totalCampos + ' huecos rellenos';
+
+    return { paginas: secciones.length, incompletas: paginasIncompletas,
+             campos: totalCampos, llenos: totalLlenos };
+  }
+
+  // --------------------------------------------------------
+  // Pintar la lista de huecos comprobables
+  // --------------------------------------------------------
+  function pintarHuecos(huecos) {
+    var cont = $('filas-huecos');
+    cont.innerHTML = huecos.map(function (h) {
+      var falta = h.falta;
+      var accion = h.href
+        ? '<a class="enlace-accion accion-hueco" href="' + h.href + '"' +
+          (h.titulo_accion ? ' title="' + esc(h.titulo_accion) + '"' : '') + '>' + esc(h.accion) + ' →</a>'
+        : '<span class="accion-hueco"></span>';
+      return '<div class="hueco" data-falta="' + (falta ? '1' : '0') + '">' +
+        '<span class="marca ' + (falta ? 'marca--falta' : 'marca--ok') + '">' + (falta ? 'Falta' : 'Al día') + '</span>' +
+        '<div class="texto">' + esc(h.texto) + (h.detalle ? '<small>' + esc(h.detalle) + '</small>' : '') + '</div>' +
+        accion +
+      '</div>';
+    }).join('');
+
+    var pendientes = huecos.filter(function (h) { return h.falta; }).length;
+    $('cuenta-huecos').textContent = pendientes
+      ? plural(pendientes, 'aviso', 'avisos')
+      : 'nada pendiente';
+    return pendientes;
+  }
+
+  // --------------------------------------------------------
+  // Cargar todo
+  // --------------------------------------------------------
+  async function cargar() {
+    var r = await Promise.all([
+      sb.from('contenido_secciones').select('seccion,titulo,dirigido_a,horarios,precio,grupos,descripcion,puntos_destacados,imagen_url,updated_at').order('seccion'),
+      sb.from('noticias').select('id,titulo,publicada'),
+      sb.from('grupos').select('id,nombre,seccion,entrenador_id,horario,activo').eq('activo', true),
+      sb.from('documentos').select('id,categoria,activo').eq('activo', true),
+      sb.from('productos').select('id,nombre,precio,imagen_url,activo').eq('activo', true),
+      sb.from('records_club').select('id'),
+      sb.from('palmares').select('id'),
+      sb.from('eventos').select('id,fecha_inicio')
+    ]);
+
+    var errores = r.filter(function (x) { return x.error; });
+    if (errores.length) {
+      $('filas-paginas').innerHTML = '<div class="vacio">No se han podido leer los datos: ' + esc(errores[0].error.message) + '</div>';
+      $('filas-huecos').innerHTML = '';
+      $('contexto').textContent = 'Error al leer la base de datos.';
+      return;
+    }
+
+    var secciones = r[0].data || [];
+    var noticias  = r[1].data || [];
+    var grupos    = r[2].data || [];
+    var docs      = r[3].data || [];
+    var productos = r[4].data || [];
+    var records   = r[5].data || [];
+    var palmares  = r[6].data || [];
+    var eventos   = r[7].data || [];
+
+    var resumen = pintarPaginas(secciones);
+
+    // ---- Huecos comprobables ----
+    var huecos = [];
+
+    // 1 · Páginas sin foto de cabecera
+    var sinFoto = secciones.filter(function (s) { return !lleno(s.imagen_url); });
+    huecos.push({
+      falta: sinFoto.length > 0,
+      texto: sinFoto.length
+        ? plural(sinFoto.length, 'página sin foto de cabecera', 'páginas sin foto de cabecera')
+        : 'Todas las páginas tienen foto de cabecera',
+      detalle: sinFoto.length ? listaCorta(sinFoto.map(function (s) { return nombrePagina(s.seccion); }), 5) : '',
+      accion: 'Poner la foto', href: '../paginas/'
+    });
+
+    // 2 · Noticias sin publicar
+    var borradores = noticias.filter(function (n) { return !n.publicada; });
+    huecos.push({
+      falta: borradores.length > 0,
+      texto: borradores.length
+        ? plural(borradores.length, 'noticia escrita y sin publicar', 'noticias escritas y sin publicar')
+        : 'No hay noticias a medias',
+      detalle: borradores.length ? listaCorta(borradores.map(function (n) { return n.titulo; }), 3) : '',
+      accion: 'Publicarlas', href: '../', titulo_accion: 'En el panel, pestaña «Noticias»'
+    });
+
+    // 3 · Que haya alguna noticia publicada
+    var publicadas = noticias.length - borradores.length;
+    huecos.push({
+      falta: publicadas === 0,
+      texto: publicadas === 0
+        ? 'La web no enseña ninguna noticia'
+        : plural(publicadas, 'noticia publicada en la web', 'noticias publicadas en la web'),
+      detalle: publicadas === 0 ? 'La portada se queda sin novedades hasta que se publique la primera.' : '',
+      accion: 'Escribir una', href: '../', titulo_accion: 'En el panel, pestaña «Noticias»'
+    });
+
+    // 4 · Grupos sin entrenador
+    var sinEntrenador = grupos.filter(function (g) { return !g.entrenador_id; });
+    huecos.push({
+      falta: sinEntrenador.length > 0,
+      texto: sinEntrenador.length
+        ? plural(sinEntrenador.length, 'grupo sin entrenador asignado', 'grupos sin entrenador asignado')
+        : 'Todos los grupos tienen entrenador',
+      detalle: sinEntrenador.length ? listaCorta(sinEntrenador.map(function (g) { return g.nombre; }), 4) : '',
+      accion: 'Asignarlo', href: '../grupos/'
+    });
+
+    // 5 · Grupos sin horario
+    var sinHorario = grupos.filter(function (g) { return !lleno(g.horario); });
+    huecos.push({
+      falta: sinHorario.length > 0,
+      texto: sinHorario.length
+        ? plural(sinHorario.length, 'grupo sin horario escrito', 'grupos sin horario escrito')
+        : 'Todos los grupos tienen horario',
+      detalle: sinHorario.length ? listaCorta(sinHorario.map(function (g) { return g.nombre; }), 4) : '',
+      accion: 'Poner el horario', href: '../grupos/'
+    });
+
+    // 6 · Documentos por categoría
+    var categoriasConDoc = {};
+    docs.forEach(function (d) { if (d.categoria) categoriasConDoc[d.categoria] = true; });
+    var docsFaltan = CATEGORIAS_DOC.filter(function (c) { return !categoriasConDoc[c]; });
+    huecos.push({
+      falta: docsFaltan.length > 0,
+      texto: docsFaltan.length
+        ? plural(docsFaltan.length, 'apartado de documentos vacío', 'apartados de documentos vacíos')
+        : 'Hay documentos colgados en todos los apartados',
+      detalle: docsFaltan.length ? docsFaltan.join(', ') : '',
+      accion: 'Subir el documento', href: '../documentos/'
+    });
+
+    // 7 · Productos sin foto
+    var prodSinFoto = productos.filter(function (p) { return !lleno(p.imagen_url); });
+    huecos.push({
+      falta: prodSinFoto.length > 0,
+      texto: prodSinFoto.length
+        ? plural(prodSinFoto.length, 'producto de la tienda sin foto', 'productos de la tienda sin foto')
+        : 'Toda la ropa de la tienda tiene foto',
+      detalle: prodSinFoto.length ? listaCorta(prodSinFoto.map(function (p) { return p.nombre; }), 4) : '',
+      accion: 'Poner la foto', href: '../', titulo_accion: 'En el panel, pestaña «Tienda»'
+    });
+
+    // 8 · Productos sin precio
+    var prodSinPrecio = productos.filter(function (p) { return p.precio == null || Number(p.precio) <= 0; });
+    huecos.push({
+      falta: prodSinPrecio.length > 0,
+      texto: prodSinPrecio.length
+        ? plural(prodSinPrecio.length, 'producto de la tienda sin precio', 'productos de la tienda sin precio')
+        : 'Toda la ropa de la tienda tiene precio',
+      detalle: prodSinPrecio.length ? listaCorta(prodSinPrecio.map(function (p) { return p.nombre; }), 4) : '',
+      accion: 'Poner el precio', href: '../', titulo_accion: 'En el panel, pestaña «Tienda»'
+    });
+
+    // 9 · Récords del club
+    huecos.push({
+      falta: records.length === 0,
+      texto: records.length === 0
+        ? 'La página de récords del club está vacía'
+        : plural(records.length, 'récord del club apuntado', 'récords del club apuntados'),
+      detalle: records.length === 0 ? 'Sale la página, pero sin ninguna marca dentro.' : '',
+      accion: 'Añadir récords', href: '../records/'
+    });
+
+    // 10 · Palmarés
+    huecos.push({
+      falta: palmares.length < 5,
+      texto: palmares.length === 0
+        ? 'El palmarés está vacío'
+        : plural(palmares.length, 'resultado en el palmarés', 'resultados en el palmarés'),
+      detalle: palmares.length < 5 ? 'Con tan pocos resultados la página se ve a medio hacer.' : '',
+      accion: 'Añadir resultados', href: '../palmares/'
+    });
+
+    // 11 · Eventos por venir
+    var ahora = Date.now();
+    var futuros = eventos.filter(function (e) { return e.fecha_inicio && new Date(e.fecha_inicio).getTime() >= ahora; });
+    huecos.push({
+      falta: futuros.length === 0,
+      texto: futuros.length === 0
+        ? 'El calendario no tiene nada por venir'
+        : plural(futuros.length, 'cita por venir en el calendario', 'citas por venir en el calendario'),
+      detalle: futuros.length === 0 ? 'Quien entra en el calendario no ve ninguna fecha.' : '',
+      accion: 'Añadir citas', href: '../eventos/'
+    });
+
+    var pendientes = pintarHuecos(huecos);
+
+    // ---- Línea de contexto ----
+    var faltanCampos = resumen.campos - resumen.llenos;
+    $('contexto').textContent =
+      resumen.campos + ' huecos editables en ' + plural(resumen.paginas, 'página', 'páginas') + ' · ' +
+      (faltanCampos === 0 ? 'ninguno vacío' : plural(faltanCampos, 'vacío', 'vacíos')) + ' · ' +
+      (pendientes === 0 ? 'nada más pendiente' : plural(pendientes, 'aviso más', 'avisos más'));
+  }
+
+  // --------------------------------------------------------
+  // Chip «Solo lo que falta»
+  // --------------------------------------------------------
+  var soloHuecos = false;
+  $('chip-huecos').addEventListener('click', function () {
+    soloHuecos = !soloHuecos;
+    this.classList.toggle('activa', soloHuecos);
+    this.textContent = soloHuecos ? 'Ver todo' : 'Solo lo que falta';
+    document.querySelectorAll('#filas-paginas .fila').forEach(function (f) {
+      f.classList.toggle('oculto', soloHuecos && f.classList.contains('completa'));
+    });
+    document.querySelectorAll('#filas-huecos .hueco').forEach(function (h) {
+      h.classList.toggle('oculto', soloHuecos && h.getAttribute('data-falta') === '0');
+    });
+  });
+
+  cargar();
+});
+</script>
+
+</body>
+</html>

@@ -38,6 +38,7 @@ const MENU = [
     { texto: 'Escuela municipal',    url: '/escuela-municipal-atletismo/' },
     { texto: 'Campus de verano',     url: '/campus/' },
   ] },
+  { clave: 'familias',   texto: 'Familias',   url: '/familias/' },
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
   { clave: 'contacto',   texto: 'Contacto',   url: '/contacto/' },
@@ -146,11 +147,25 @@ document.addEventListener('DOMContentLoaded', async function () {
     var a = res.data[0];
     if (!a.texto) return;
 
+    /* Tres niveles, como en la maqueta. Se admiten también los nombres
+       antiguos ("info", "aviso") para que un aviso viejo no salga sin color. */
+    var NIVELES = {
+      informativo: 'informativo', info: 'informativo',
+      importante: 'importante', aviso: 'importante',
+      urgente: 'urgente'
+    };
+    var nivel = NIVELES[String(a.tipo || '').toLowerCase()] || 'informativo';
+
     var bar = document.createElement('div');
-    bar.className = 'aviso-portada aviso-portada--' + (a.tipo || 'informativo');
+    bar.className = 'aviso-portada aviso-portada--' + nivel;
     var wrap = document.createElement('div');
     wrap.className = 'contenedor';
+    var etq = document.createElement('span');
+    etq.className = 'nivel';
+    etq.textContent = nivel.toUpperCase();
+    wrap.appendChild(etq);
     var span = document.createElement('span');
+    span.className = 'texto';
     span.textContent = a.texto;
     wrap.appendChild(span);
     if (a.enlace) {
