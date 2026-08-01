@@ -183,3 +183,43 @@ document.addEventListener('DOMContentLoaded', async function () {
     else document.body.insertBefore(bar, document.body.firstChild);
   } catch (e) { /* si falla, no pasa nada: no se muestra aviso */ }
 });
+
+/* ==========================================================================
+   BOTÓN "VOLVER" PARA LA APP INSTALADA
+   Cuando la web se abre dentro de la app del club (modo standalone, sin barra
+   del navegador) no hay botón atrás. Este pequeño botón deja volver al portal
+   con un toque. En el navegador normal NO aparece.
+   ========================================================================== */
+(function () {
+  function esApp() {
+    try {
+      return window.navigator.standalone === true ||
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    } catch (e) { return false; }
+  }
+  if (!esApp()) return;
+  var base = window.APOLANA_BASE || '/';
+  // En las páginas del portal ya hay barra propia: no hace falta el botón.
+  if (/\/portal\//.test(location.pathname)) return;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-label', 'Volver al portal');
+    b.innerHTML = '<span aria-hidden="true">←</span> Volver';
+    b.style.cssText = [
+      'position:fixed', 'z-index:9500',
+      'top:calc(10px + env(safe-area-inset-top))', 'left:12px',
+      'display:inline-flex', 'align-items:center', 'gap:6px',
+      'background:#2E4256', 'color:#fff', 'border:0', 'cursor:pointer',
+      'font-family:inherit', 'font-size:14px', 'font-weight:600',
+      'padding:9px 15px', 'border-radius:999px',
+      'box-shadow:0 4px 14px rgba(46,66,86,.28)'
+    ].join(';');
+    b.addEventListener('click', function () {
+      if (history.length > 1) history.back();
+      else location.assign(base + 'portal/');
+    });
+    document.body.appendChild(b);
+  });
+})();
