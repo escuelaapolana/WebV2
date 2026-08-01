@@ -218,8 +218,8 @@ document.addEventListener('DOMContentLoaded', async function () {
       'box-shadow:0 4px 14px rgba(46,66,86,.28)'
     ].join(';');
     b.addEventListener('click', function () {
-      if (history.length > 1) history.back();
-      else location.assign(base + 'portal/');
+      /* Directo al portal (tu perfil), no un "atrás" página a página. */
+      location.assign(base + 'portal/');
     });
     document.body.appendChild(b);
   });
