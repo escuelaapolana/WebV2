@@ -232,10 +232,13 @@ window.APOLANA_IMPORTAR = (function () {
   function norm(s) {
     return sinAcentos(s).toLowerCase().replace(/\s+/g, ' ').trim();
   }
+  // \u00ABNombre alumno/a\u00BB -> \u00ABnombre alumnoa\u00BB \u00B7 \u00ABD.N.I.\u00BB -> \u00ABd n i\u00BB
+  // \u00B7 \u00ABemail_padre\u00BB -> \u00ABemail padre\u00BB \u00B7 \u00ABPadre/madre/tutor\u00BB -> \u00ABpadremadretutor\u00BB
   function normCabecera(s) {
     return sinAcentos(s).toLowerCase()
       .replace(/^\uFEFF/, '')
-      .replace(/[_./\\-]+/g, ' ')
+      .replace(/\//g, '')
+      .replace(/[_.\\-]+/g, ' ')
       .replace(/[^a-z0-9 ]+/g, '')
       .replace(/\s+/g, ' ')
       .trim();
@@ -255,6 +258,7 @@ window.APOLANA_IMPORTAR = (function () {
     'primer apellido alumnoa': 'apellido1',
     'segundo apellido': 'apellido2', 'apellido 2': 'apellido2', 'apellido2': 'apellido2',
     'segundo apellido opcional': 'apellido2', 'segundo apellido si no tiene poner': 'apellido2',
+    'segundo apellido si no tiene': 'apellido2',
 
     'nombre completo': 'nombre_completo', 'nombre y apellidos': 'nombre_completo',
     'atleta': 'nombre_completo', 'alumnoa': 'nombre_completo', 'nombre completo del atleta': 'nombre_completo',
@@ -289,11 +293,15 @@ window.APOLANA_IMPORTAR = (function () {
     'nombre tutor': 'nombre_tutor', 'nombre del tutor': 'nombre_tutor', 'nombre padre': 'nombre_tutor',
     'nombre del padre': 'nombre_tutor', 'nombre madre': 'nombre_tutor', 'nombre de la madre': 'nombre_tutor',
     'tutor': 'nombre_tutor', 'padre madre o tutor': 'nombre_tutor', 'nombre padremadretutor': 'nombre_tutor',
+    'nombre del padremadretutor': 'nombre_tutor', 'padremadretutor': 'nombre_tutor',
+    'nombre padremadre': 'nombre_tutor', 'nombre del padremadre': 'nombre_tutor',
 
     'email tutor': 'email_tutor', 'correo tutor': 'email_tutor', 'correo del tutor': 'email_tutor',
     'email padre': 'email_tutor', 'correo padre': 'email_tutor', 'email del padre': 'email_tutor',
     'correo de la familia': 'email_tutor', 'email madre': 'email_tutor', 'correo madre': 'email_tutor',
     'email familia': 'email_tutor', 'correo padremadre': 'email_tutor',
+    'correo del padremadre': 'email_tutor', 'correo del padremadretutor': 'email_tutor',
+    'email padremadretutor': 'email_tutor', 'correo padremadretutor': 'email_tutor',
 
     'telefono tutor': 'telefono_tutor', 'telefono del tutor': 'telefono_tutor',
     'telefono padre': 'telefono_tutor', 'telefono madre': 'telefono_tutor',
@@ -496,9 +504,14 @@ window.APOLANA_IMPORTAR = (function () {
       // Nombre y apellidos
       if (mapa.nombre !== undefined) {
         d.nombre = celda(f, 'nombre');
-        var ap = celda(f, 'apellidos');
-        if (!ap) ap = [celda(f, 'apellido1'), celda(f, 'apellido2')].filter(Boolean).join(' ').trim();
-        d.apellidos = ap.replace(/^-+$/, '');
+        // En los formularios del club, quien no tiene segundo apellido pone «-»
+        var hueco = function (x) { return /^[-–—.\s]*$/.test(x) ? '' : x; };
+        var ap = hueco(celda(f, 'apellidos'));
+        if (!ap) {
+          ap = [hueco(celda(f, 'apellido1')), hueco(celda(f, 'apellido2'))]
+               .filter(Boolean).join(' ').trim();
+        }
+        d.apellidos = ap;
       } else {
         var partido = partirNombreCompleto(celda(f, 'nombre_completo'));
         d.nombre = partido.nombre; d.apellidos = partido.apellidos;
@@ -706,13 +719,14 @@ APOLANA_ADMIN.listo(function (sb) {
   function resolverGrupo(fila) {
     var t = String(fila.grupoTexto || '').trim();
     if (!t) return { id: null, texto: '—' };
-    if (mapeoGrupos[t] !== undefined) {
-      var elegido = mapeoGrupos[t];
-      return { id: elegido || null, texto: elegido ? nombreGrupo(elegido) : 'sin grupo' };
-    }
     var id = gruposPorNombre[NUC.norm(t)];
     if (id) return { id: id, texto: nombreGrupo(id) };
-    return { id: null, texto: t, sinResolver: true };
+    // No casa con ninguno: hace falta decir a mano a cuál corresponde
+    if (mapeoGrupos[t] !== undefined) {
+      var elegido = mapeoGrupos[t];
+      return { id: elegido || null, texto: elegido ? nombreGrupo(elegido) : 'sin grupo', aMano: true };
+    }
+    return { id: null, texto: t, aMano: true, sinResolver: true };
   }
   function nombreGrupo(id) {
     for (var i = 0; i < grupos.length; i++) { if (grupos[i].id === id) return grupos[i].nombre; }
@@ -727,7 +741,8 @@ APOLANA_ADMIN.listo(function (sb) {
     lectura.filas.forEach(function (fila) {
       var errores = fila.errores.slice(), avisos = fila.avisos.slice(), accion = 'crear', idExistente = null;
       var g = resolverGrupo(fila);
-      if (g.sinResolver) { errores.push('el grupo «' + g.texto + '» no existe'); sinGrupo[String(fila.grupoTexto).trim()] = true; }
+      if (g.aMano) sinGrupo[String(fila.grupoTexto).trim()] = true;
+      if (g.sinResolver) errores.push('el grupo «' + g.texto + '» no existe');
 
       // Especialidades que no están en el catálogo de pruebas
       if (fila.datos.especialidades) {
@@ -770,6 +785,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!lectura) return;
     var ev = evaluar();
     ultimoResultado = null;
+    $('resultado-final').innerHTML = '';
     var nuevos = 0, act = 0, err = 0, salt = 0;
     ev.filas.forEach(function (f) {
       if (f.accion === 'crear') nuevos++;
@@ -794,9 +810,12 @@ APOLANA_ADMIN.listo(function (sb) {
     if (ev.gruposSinResolver.length) {
       $('caja-grupos').classList.remove('oculto');
       $('lista-grupos').innerHTML = ev.gruposSinResolver.map(function (t) {
-        var ops = '<option value="">(dejar sin grupo)</option>' + grupos.map(function (g) {
-          return '<option value="' + esc(g.id) + '">' + esc(g.nombre) + '</option>';
-        }).join('');
+        var elegido = mapeoGrupos[t] === undefined ? null : mapeoGrupos[t];
+        var ops = '<option value=""' + (elegido === '' ? ' selected' : '') + '>(dejar sin grupo)</option>' +
+          grupos.map(function (g) {
+            return '<option value="' + esc(g.id) + '"' + (elegido === g.id ? ' selected' : '') + '>' + esc(g.nombre) + '</option>';
+          }).join('');
+        if (elegido === null) ops = '<option value="__" selected>(elige uno)</option>' + ops;
         return '<div class="grupo-fila"><code>' + esc(t) + '</code>' +
                '<select data-grupo-texto="' + esc(t) + '">' + ops + '</select></div>';
       }).join('');
@@ -838,7 +857,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   $('lista-grupos').addEventListener('change', function (e) {
     var t = e.target.getAttribute('data-grupo-texto');
-    if (t !== null) { mapeoGrupos[t] = e.target.value; pintarRevision(); }
+    if (t !== null && e.target.value !== '__') { mapeoGrupos[t] = e.target.value; pintarRevision(); }
   });
   $('op-crear').addEventListener('change', pintarRevision);
   $('op-actualizar').addEventListener('change', pintarRevision);
@@ -887,11 +906,28 @@ APOLANA_ADMIN.listo(function (sb) {
     var impId = cab.data.id, ahora = new Date().toISOString();
     var deshacer = [], fallos = [], creadas = 0, actualizadas = 0;
 
-    function payload(f) {
+    // Ficha nueva: siempre las mismas casillas (aunque vayan vacías), para
+    // que la base de datos las acepte todas juntas de una tacada.
+    function payloadCrear(f) {
       var d = {};
-      Object.keys(f.datos).forEach(function (k) { d[k] = f.datos[k]; });
-      d.grupo_id = f.grupoId;
-      if (d.grupo_id === null) delete d.grupo_id;   // no se borra el grupo que ya tuviera
+      NUC.COLUMNAS_FICHA.forEach(function (c) {
+        d[c] = (f.datos[c] === undefined || f.datos[c] === '') ? null : f.datos[c];
+      });
+      d.grupo_id = f.grupoId || null;
+      d.estado = f.datos.estado || 'activo';
+      d.importado_en = ahora;
+      d.importacion_id = impId;
+      return d;
+    }
+
+    // Ficha que ya existe: solo lo que traiga relleno el fichero, para no
+    // borrar con casillas vacías lo que ya estuviera bien puesto.
+    function payloadActualizar(f) {
+      var d = {};
+      Object.keys(f.datos).forEach(function (k) {
+        if (f.datos[k] !== undefined && f.datos[k] !== '') d[k] = f.datos[k];
+      });
+      if (f.grupoId) d.grupo_id = f.grupoId;
       d.importado_en = ahora;
       d.importacion_id = impId;
       return d;
@@ -901,11 +937,11 @@ APOLANA_ADMIN.listo(function (sb) {
     var bloques = trozos(aCrear, 25), b, i;
     for (b = 0; b < bloques.length; b++) {
       var bloque = bloques[b];
-      var r = await sb.from('atletas').insert(bloque.map(payload)).select('id');
+      var r = await sb.from('atletas').insert(bloque.map(payloadCrear)).select('id');
       if (r.error) {
         // Si algo del bloque no gusta, se va una a una para saber cuál
         for (i = 0; i < bloque.length; i++) {
-          var r1 = await sb.from('atletas').insert(payload(bloque[i])).select('id').single();
+          var r1 = await sb.from('atletas').insert(payloadCrear(bloque[i])).select('id').single();
           if (r1.error) fallos.push({ n: bloque[i].n, nombre: nombreDe(bloque[i]), motivo: r1.error.message });
           else { creadas++; deshacer.push({ accion: 'crear', atleta_id: r1.data.id }); }
           avanzar(1);
@@ -926,7 +962,7 @@ APOLANA_ADMIN.listo(function (sb) {
         var antes = {};
         var viejo = porId[f.idExistente] || {};
         NUC.COLUMNAS_FICHA.forEach(function (c) { antes[c] = viejo[c] === undefined ? null : viejo[c]; });
-        var u = await sb.from('atletas').update(payload(f)).eq('id', f.idExistente);
+        var u = await sb.from('atletas').update(payloadActualizar(f)).eq('id', f.idExistente);
         if (u.error) fallos.push({ n: f.n, nombre: nombreDe(f), motivo: u.error.message });
         else { actualizadas++; deshacer.push({ accion: 'actualizar', atleta_id: f.idExistente, antes: antes }); }
         avanzar(1);
