@@ -61,7 +61,7 @@
     '.pt-top a{color:#cdd6e0;text-decoration:none;white-space:nowrap}' +
     '.pt-top button{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:7px 15px;cursor:pointer;font-family:inherit;font-size:14px;white-space:nowrap;flex:0 0 auto}' +
     '.pt-top button:hover{background:rgba(255,255,255,.12)}' +
-    '@media(max-width:560px){.pt-top{padding:10px 14px;gap:8px}.pt-top .volver span{display:none}.pt-top .marca{font-size:16px}.pt-top .der span{max-width:30vw}.pt-top button{padding:7px 13px}}' +
+    '@media(max-width:560px){.pt-top{padding:10px 14px;gap:8px}.pt-top .marca{display:none}.pt-top .volver{font-size:15px}.pt-top .der span{max-width:34vw}.pt-top button{padding:7px 13px}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
     '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px 20px 26px}' +
@@ -306,7 +306,22 @@
       if (_cb) _cb(sb, perfil);
 
       _papeles.then(function (lista) {
-        if (!lista || lista.length < 2) return;
+        lista = lista || [];
+        /* Guardia de zona: si has acabado en la zona de un rol que no es tuyo
+           (p. ej. una página de entrenador que quedó cacheada en la app y luego
+           entras con otra cuenta), te devuelve al portal para que veas la tuya. */
+        if (lista.length) {
+          var claves = lista.map(function (p) { return p.clave; });
+          var ruta = location.pathname;
+          for (var k in ZONAS) {
+            if (!ZONAS.hasOwnProperty(k) || k === 'admin') continue;
+            if (ruta.indexOf(ZONAS[k].carpeta) !== -1 && claves.indexOf(k) === -1) {
+              location.replace(b + 'portal/');
+              return;
+            }
+          }
+        }
+        if (lista.length < 2) return;
         var bt = document.getElementById('pt-cambiar');
         if (!bt) return;
         bt.style.display = '';

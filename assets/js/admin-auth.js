@@ -85,7 +85,13 @@
       var s = await sb.auth.getSession();
       if (!s.data.session) { mostrarLogin(); return; }
       var admin = await sb.rpc('es_admin');
-      if (admin.error || !admin.data) { mostrarLogin('Tu cuenta no tiene acceso de administración.'); return; }
+      if (admin.error) { mostrarLogin('No se pudo comprobar tu acceso. Inténtalo de nuevo.'); return; }
+      if (!admin.data) {
+        /* Hay sesión pero no es admin (p. ej. un entrenador que acabó en una
+           página de /admin/ cacheada en la app): al portal, que es su zona. */
+        location.replace(base() + 'portal/');
+        return;
+      }
       login.style.display = 'none';
       barra(s.data.session.user.email);
       if (cont) cont.style.display = '';

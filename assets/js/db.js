@@ -94,3 +94,58 @@
     }
   } catch (e) { /* si algo falla, la web sigue funcionando igual */ }
 })();
+
+/* ==========================================================================
+   TIRAR PARA RECARGAR (solo en la app instalada)
+   En una app instalada (standalone) el navegador no tiene su "tirar para
+   recargar", así que lo montamos nosotros: si estás arriba del todo y tiras
+   hacia abajo, se recarga la página (y como el service worker va "red
+   primero", trae la última versión).
+   ========================================================================== */
+(function () {
+  function esApp() {
+    try { return window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); } catch (e) { return false; }
+  }
+  if (!esApp()) return;
+
+  var ind, startY = null, pull = 0, activo = false, UMBRAL = 70;
+  function arriba() { return (window.pageYOffset || document.documentElement.scrollTop || 0) <= 0; }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var st = document.createElement('style');
+    st.textContent = '@keyframes apo-ptr-rot{to{transform:rotate(360deg)}}.apo-ptr-anim{animation:apo-ptr-rot .7s linear infinite}';
+    document.head.appendChild(st);
+    ind = document.createElement('div');
+    ind.setAttribute('aria-hidden', 'true');
+    ind.style.cssText = 'position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:center;height:0;overflow:hidden;z-index:9999;pointer-events:none;transition:height .18s ease;';
+    ind.innerHTML = '<div class="apo-ptr-s" style="width:22px;height:22px;margin:10px 0;border:2.5px solid rgba(46,66,86,.25);border-top-color:#2E4256;border-radius:50%"></div>';
+    document.body.appendChild(ind);
+  });
+
+  window.addEventListener('touchstart', function (e) {
+    if (arriba() && e.touches.length === 1) { startY = e.touches[0].clientY; activo = true; pull = 0; }
+    else activo = false;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (!activo || startY === null) return;
+    var dy = e.touches[0].clientY - startY;
+    if (dy > 0 && arriba()) {
+      pull = Math.min(dy * 0.5, 90);
+      if (ind) { ind.style.transition = 'none'; ind.style.height = pull + 'px'; var s = ind.firstChild; if (s) s.style.transform = 'rotate(' + (pull * 4) + 'deg)'; }
+      if (dy > 6) e.preventDefault();
+    } else { activo = false; }
+  }, { passive: false });
+
+  window.addEventListener('touchend', function () {
+    if (!activo) return;
+    activo = false;
+    if (ind) ind.style.transition = 'height .18s ease';
+    if (pull >= UMBRAL) {
+      if (ind) { ind.style.height = '52px'; var s = ind.firstChild; if (s) s.classList.add('apo-ptr-anim'); }
+      location.reload();
+    } else if (ind) { ind.style.height = '0'; }
+    startY = null; pull = 0;
+  }, { passive: true });
+})();
