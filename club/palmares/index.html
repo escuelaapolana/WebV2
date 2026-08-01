@@ -39,12 +39,17 @@
     margin: 8px 0 0;
   }
   .filtros { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .filtros[hidden] { display: none; }
   .filtro {
     padding: 9px 15px; border-radius: var(--radio-pastilla);
     background: #fff; border: 1px solid #E4DCCB;
     color: var(--texto); font-size: 14px; white-space: nowrap;
+    font-family: var(--fuente-texto); line-height: 1.2; cursor: pointer;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
   }
+  .filtro:hover { border-color: var(--azul); color: var(--navy); }
   .filtro.activo { background: var(--azul-oscuro); border-color: var(--azul-oscuro); color: #fff; font-weight: 600; }
+  .filtro.activo:hover { color: #fff; }
 
   /* Bloques por temporada */
   .temporadas { display: flex; flex-direction: column; gap: 26px; }
@@ -130,14 +135,9 @@
           <span class="eyebrow eyebrow--azul">Todos los podios del club</span>
           <h1 class="titular">Palmarés</h1>
         </div>
-        <div class="filtros">
-          <span class="filtro activo">Todo</span>
-          <span class="filtro">Pista</span>
-          <span class="filtro">Cross y ruta</span>
-          <span class="filtro">Montaña</span>
-          <span class="filtro">Natación</span>
-          <span class="filtro">Nacional</span>
-        </div>
+        <!-- Los filtros se construyen con los ámbitos que de verdad hay en el
+             palmarés (ver el script del final). Si solo hay uno, no aparecen. -->
+        <div class="filtros" id="palmares-filtros" hidden></div>
       </div>
     </div>
   </section>
@@ -226,8 +226,6 @@
           </div>
         </div>
 
-        <button class="ver-mas" type="button">Ver temporadas anteriores</button>
-
       </div>
     </div>
   </section>
@@ -240,50 +238,89 @@
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
   var cont = document.getElementById('palmares-cont');
+  var barra = document.getElementById('palmares-filtros');
   if (!cont || !window.APOLANA_DB) return;
   var r = await window.APOLANA_DB.from('palmares')
     .select('anyo,competicion,prueba,categoria,posicion,atleta,ambito,sede')
     .order('anyo', { ascending: false });
   if (r.error || !r.data || !r.data.length) return; // sin datos: deja los ejemplos
 
+  var todas = r.data;
   function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  function ambitoDe(f){ return (f.ambito == null ? '' : String(f.ambito)).trim(); }
 
-  // Agrupar por año (temporada), conservando el orden descendente que viene de la consulta
-  var grupos = [];
-  var indice = {};
-  r.data.forEach(function (f) {
-    var a = (f.anyo == null ? '' : String(f.anyo));
-    if (!(a in indice)) { indice[a] = grupos.length; grupos.push({ anyo: a, filas: [] }); }
-    grupos[indice[a]].filas.push(f);
-  });
+  /* --- Dibuja las temporadas que pasan el filtro elegido --- */
+  function pintar(filtro) {
+    var filtradas = filtro ? todas.filter(function (f) { return ambitoDe(f) === filtro; }) : todas;
 
-  cont.innerHTML = grupos.map(function (g) {
-    var n = g.filas.length;
-    var filas = g.filas.map(function (f) {
-      var pos = (f.posicion == null || f.posicion === '') ? '—' : String(f.posicion);
-      if (/^\d+$/.test(pos)) pos = pos + 'º';          // la base guarda "1", aquí se lee "1º"
-      var clasePos = (pos === '1º') ? 'oro' : 'bronce';
-      var comp = f.competicion;
-      if (f.sede) comp = (comp ? comp + ' · ' : '') + f.sede;
-      return '<div class="fila">' +
-        '<span class="pos ' + clasePos + '">' + esc(pos) + '</span>' +
-        '<span>' + esc(comp) + '</span>' +
-        '<span class="prueba">' + esc(f.prueba == null || f.prueba === '' ? '—' : f.prueba) + '</span>' +
-        '<span class="cat">' + esc(f.categoria) + '</span>' +
-        '<span class="ambito">' + esc(f.ambito) + '</span>' +
+    if (!filtradas.length) {
+      cont.innerHTML = '<p style="margin:0;color:var(--texto-suave);">No hay podios de este ámbito todavía.</p>';
+      return;
+    }
+
+    // Agrupar por año (temporada), conservando el orden descendente de la consulta
+    var grupos = [], indice = {};
+    filtradas.forEach(function (f) {
+      var a = (f.anyo == null ? '' : String(f.anyo));
+      if (!(a in indice)) { indice[a] = grupos.length; grupos.push({ anyo: a, filas: [] }); }
+      grupos[indice[a]].filas.push(f);
+    });
+
+    cont.innerHTML = grupos.map(function (g) {
+      var n = g.filas.length;
+      var filas = g.filas.map(function (f) {
+        var pos = (f.posicion == null || f.posicion === '') ? '—' : String(f.posicion);
+        if (/^\d+$/.test(pos)) pos = pos + 'º';          // la base guarda "1", aquí se lee "1º"
+        var clasePos = (pos === '1º') ? 'oro' : 'bronce';
+        var comp = f.competicion;
+        if (f.sede) comp = (comp ? comp + ' · ' : '') + f.sede;
+        return '<div class="fila">' +
+          '<span class="pos ' + clasePos + '">' + esc(pos) + '</span>' +
+          '<span>' + esc(comp) + '</span>' +
+          '<span class="prueba">' + esc(f.prueba == null || f.prueba === '' ? '—' : f.prueba) + '</span>' +
+          '<span class="cat">' + esc(f.categoria) + '</span>' +
+          '<span class="ambito">' + esc(f.ambito) + '</span>' +
+        '</div>';
+      }).join('');
+      return '<div class="temporada">' +
+        '<div class="temporada-cab">' +
+          '<span class="anio">' + esc(g.anyo) + '</span>' +
+          '<span class="podios">' + n + ' ' + (n === 1 ? 'PODIO' : 'PODIOS') + '</span>' +
+        '</div>' +
+        '<div class="tabla-podios"><div class="tabla-scroll">' +
+          '<div class="fila cab"><span>POS</span><span>COMPETICIÓN</span><span>PRUEBA</span><span>CATEGORÍA</span><span>ÁMBITO</span></div>' +
+          filas +
+        '</div></div>' +
       '</div>';
     }).join('');
-    return '<div class="temporada">' +
-      '<div class="temporada-cab">' +
-        '<span class="anio">' + esc(g.anyo) + '</span>' +
-        '<span class="podios">' + n + ' ' + (n === 1 ? 'PODIO' : 'PODIOS') + '</span>' +
-      '</div>' +
-      '<div class="tabla-podios"><div class="tabla-scroll">' +
-        '<div class="fila cab"><span>POS</span><span>COMPETICIÓN</span><span>PRUEBA</span><span>CATEGORÍA</span><span>ÁMBITO</span></div>' +
-        filas +
-      '</div></div>' +
-    '</div>';
-  }).join('');
+  }
+
+  /* --- Filtros por ámbito: solo los que de verdad hay en el palmarés --- */
+  if (barra) {
+    var ambitos = [];
+    todas.forEach(function (f) {
+      var a = ambitoDe(f);
+      if (a && ambitos.indexOf(a) === -1) ambitos.push(a);
+    });
+    ambitos.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+
+    if (ambitos.length > 1) {
+      barra.hidden = false;
+      barra.innerHTML = '<button type="button" class="filtro activo" data-ambito="">Todo</button>' +
+        ambitos.map(function (a) {
+          return '<button type="button" class="filtro" data-ambito="' + esc(a) + '">' + esc(a) + '</button>';
+        }).join('');
+      barra.addEventListener('click', function (ev) {
+        var b = ev.target.closest('.filtro');
+        if (!b) return;
+        barra.querySelectorAll('.filtro').forEach(function (o) { o.classList.remove('activo'); });
+        b.classList.add('activo');
+        pintar(b.getAttribute('data-ambito') || '');
+      });
+    }
+  }
+
+  pintar('');
 });
 </script>
 

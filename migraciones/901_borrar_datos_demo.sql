@@ -1,8 +1,9 @@
 -- =====================================================================
 -- 901_borrar_datos_demo.sql  ·  BORRAR LOS DATOS DE DEMOSTRACIÓN
 -- =====================================================================
--- Borra EXACTAMENTE lo que crean 900_datos_demo.sql y
--- 902_datos_demo_ampliado.sql, y nada más.
+-- Borra EXACTAMENTE lo que crean 900_datos_demo.sql,
+-- 902_datos_demo_ampliado.sql y 903_datos_demo_equilibrado.sql,
+-- y nada más.
 --
 -- Cómo lo sabe: todo lo de demostración tiene un identificador que
 -- empieza por «dddddddd-». Lo que no empiece por ahí no se toca.
@@ -16,6 +17,12 @@
 -- ver la web como la ve un nadador. Al final de este archivo se le
 -- devuelve su ficha tal y como estaba (sin grupo, sin entrenador, sin
 -- especialidades, sin estado y sin observaciones).
+--
+-- Lo que añade 903 (27 atletas nuevos, 50 sesiones, 45 marcas, 47 pagos
+-- y los horarios retocados de siete grupos) también lleva identificador
+-- «dddddddd-» y cuelga de grupos de demostración, así que se va con el
+-- resto sin necesidad de reglas aparte: los grupos se borran enteros y
+-- con ellos sus horarios.
 --
 -- Cómo se lanza:  bash .secrets/psql.sh -f migraciones/901_borrar_datos_demo.sql
 --
@@ -103,6 +110,12 @@ delete from microciclos where id::text like 'dddddddd-%'
                            or grupo_id in (select id from grupos where id::text like 'dddddddd-%');
 
 -- --- Fichas que cuelgan del atleta ----------------------------------
+-- Las conversaciones entrenador-atleta se van con el atleta (si no, se
+-- quedarían sueltas sin nadie a quien referirse).
+delete from mensajes_directos  where id::text like 'dddddddd-%'
+                                  or atleta_id in (select id from atletas where id::text like 'dddddddd-%')
+                                  or de_perfil  in (select id from perfiles where id::text like 'dddddddd-%')
+                                  or para_perfil in (select id from perfiles where id::text like 'dddddddd-%');
 delete from notas_atleta       where atleta_id in (select id from atletas where id::text like 'dddddddd-%');
 delete from notas_familia      where atleta_id in (select id from atletas where id::text like 'dddddddd-%');
 delete from lesiones_atleta    where atleta_id in (select id from atletas where id::text like 'dddddddd-%');
@@ -185,5 +198,6 @@ union all select 'cubo_clases', count(*) from cubo_clases where id::text like 'd
 union all select 'cubo_bonos', count(*) from cubo_bonos where id::text like 'dddddddd%'
 union all select 'cubo_reservas', count(*) from cubo_reservas where id::text like 'dddddddd%'
 union all select 'cubo_movimientos', count(*) from cubo_movimientos where id::text like 'dddddddd%'
+union all select 'mensajes_directos', count(*) from mensajes_directos where id::text like 'dddddddd%'
 union all select 'atletas colgando de un grupo de demo', count(*) from atletas where grupo_id::text like 'dddddddd%'
 order by 1;

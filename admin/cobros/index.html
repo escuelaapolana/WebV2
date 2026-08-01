@@ -302,7 +302,11 @@ APOLANA_ADMIN.listo(function (sb) {
 
     var rp = await sb.from('pagos')
       .select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,fecha_pago,periodo,cuenta,metodo,notas,created_at')
-      .order('fecha_vencimiento', { ascending: false, nullsFirst: false });
+      // El segundo y el tercer criterio hacen que el orden sea siempre el mismo:
+      // sin ellos, los recibos que vencen el mismo día se recolocaban al recargar.
+      .order('fecha_vencimiento', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true });
     if (rp.error) {
       $('tabla').querySelector('tbody').innerHTML = '<tr><td colspan="8">No se pudieron cargar los recibos: ' + esc(rp.error.message) + '</td></tr>';
       $('contexto').textContent = 'Error al cargar.';
@@ -342,6 +346,7 @@ APOLANA_ADMIN.listo(function (sb) {
   function aplicaChip(lista) {
     if (filtroEstado === 'todos') return lista;
     if (filtroEstado === 'impagados') return lista.filter(esImpagado);
+    if (filtroEstado === 'porvencer') return lista.filter(function (p) { return p.estado === 'pendiente' && !esImpagado(p); });
     return lista.filter(function (p) { return p.estado === filtroEstado; });
   }
 
@@ -369,11 +374,12 @@ APOLANA_ADMIN.listo(function (sb) {
     // --- Chips ---
     var nTodos = base.length;
     var nPagados = base.filter(function (p) { return p.estado === 'pagado'; }).length;
-    var nPendEstado = base.filter(function (p) { return p.estado === 'pendiente'; }).length;
+    // «Por vencer» = pendientes cuya fecha aún no ha pasado; los vencidos cuentan como impagados
+    var nPorVencer = base.filter(function (p) { return p.estado === 'pendiente' && !esImpagado(p); }).length;
     var nImpagados = base.filter(esImpagado).length;
     var chips = [
       { k: 'todos', t: 'Todos', n: nTodos },
-      { k: 'pendiente', t: 'Pendientes', n: nPendEstado },
+      { k: 'porvencer', t: 'Por vencer', n: nPorVencer },
       { k: 'impagados', t: 'Impagados', n: nImpagados },
       { k: 'pagado', t: 'Cobrados', n: nPagados }
     ];
@@ -382,9 +388,11 @@ APOLANA_ADMIN.listo(function (sb) {
              esc(c.t) + '<span class="n">' + c.n + '</span></button>';
     }).join('');
 
-    // --- Contexto de cabecera ---
+    // --- Contexto de cabecera (siempre sobre el total, no sobre lo filtrado) ---
+    var impTodos = recibos.filter(esImpagado);
+    var totImpTodos = impTodos.reduce(function (s, p) { return s + Number(p.importe || 0); }, 0);
     $('contexto').textContent = recibos.length + (recibos.length === 1 ? ' recibo' : ' recibos') +
-      ' · ' + nImpagados + ' sin cobrar por ' + eur(totImp) + ' · datos de hoy';
+      ' · ' + impTodos.length + ' sin cobrar por ' + eur(totImpTodos) + ' · datos de hoy';
 
     // --- Tabla ---
     var filas = aplicaChip(base);

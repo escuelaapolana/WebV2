@@ -38,11 +38,18 @@
     text-transform: uppercase; color: var(--navy); margin: 8px 0 0;
   }
   .records-filtros { display: flex; gap: 8px; flex-wrap: wrap; }
-  .records-filtros .chip { padding: 9px 15px; font-size: 14px; }
+  .records-filtros[hidden] { display: none; }
+  .records-filtros .chip {
+    padding: 9px 15px; font-size: 14px; background: #fff;
+    font-family: var(--fuente-texto); line-height: 1.2; cursor: pointer;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  .records-filtros .chip:hover { border-color: var(--azul); color: var(--navy); }
   .records-filtros .chip.activo {
     background: var(--azul-oscuro); border-color: var(--azul-oscuro);
     color: #fff; font-weight: 600;
   }
+  .records-filtros .chip.activo:hover { color: #fff; }
 
   /* Rejilla de las dos tablas (Masculino / Femenino) */
   .records-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
@@ -112,12 +119,9 @@
           <span class="eyebrow eyebrow--azul">Las mejores marcas de la historia</span>
           <h1 class="titular">Récords del club</h1>
         </div>
-        <div class="records-filtros">
-          <span class="chip activo">Absoluta</span>
-          <span class="chip">Sub-20</span>
-          <span class="chip">Sub-18</span>
-          <span class="chip">Máster</span>
-        </div>
+        <!-- Las pestañas se construyen con las categorías que de verdad hay
+             publicadas (ver el script del final). Si solo hay una, no salen. -->
+        <div class="records-filtros" id="records-filtros" hidden></div>
       </div>
     </div>
   </section>
@@ -183,38 +187,61 @@
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
   var cont = document.getElementById('records-cont');
+  var barra = document.getElementById('records-filtros');
   if (!cont || !window.APOLANA_DB) return;
   var r = await window.APOLANA_DB.from('records_club')
     .select('prueba,categoria,marca,atleta,anyo,sede,competicion,orden')
     .order('orden').order('prueba');
   if (r.error || !r.data || !r.data.length) return; // sin datos: deja los ejemplos
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function catDe(f){ return (f.categoria == null || String(f.categoria).trim() === '') ? 'General' : String(f.categoria).trim(); }
 
   // Agrupa por categoría, respetando el orden de aparición
   var grupos = [], indice = {};
   r.data.forEach(function (f) {
-    var cat = (f.categoria == null || f.categoria === '') ? 'General' : String(f.categoria);
+    var cat = catDe(f);
     if (!(cat in indice)) { indice[cat] = grupos.length; grupos.push({ cat: cat, filas: [] }); }
     grupos[indice[cat]].filas.push(f);
   });
 
-  cont.innerHTML = grupos.map(function (g) {
-    var filas = g.filas.map(function (f) {
-      return '<tr>' +
-        '<td>' + esc(f.prueba) + '</td>' +
-        '<td class="marca">' + esc(f.marca) + '</td>' +
-        '<td class="atleta">' + esc(f.atleta) + '</td>' +
-        '<td class="anio">' + esc(f.anyo) + '</td>' +
-        '</tr>';
+  function pintar(cat) {
+    var visibles = cat ? grupos.filter(function (g) { return g.cat === cat; }) : grupos;
+    cont.innerHTML = visibles.map(function (g) {
+      var filas = g.filas.map(function (f) {
+        return '<tr>' +
+          '<td>' + esc(f.prueba) + '</td>' +
+          '<td class="marca">' + esc(f.marca) + '</td>' +
+          '<td class="atleta">' + esc(f.atleta) + '</td>' +
+          '<td class="anio">' + esc(f.anyo) + '</td>' +
+          '</tr>';
+      }).join('');
+      return '<div class="records-bloque">' +
+        '<h2>' + esc(g.cat) + '</h2>' +
+        '<div class="records-tabla-marco"><div class="records-scroll">' +
+        '<table class="records"><thead>' +
+        '<tr><th>Prueba</th><th>Marca</th><th>Atleta</th><th>Año</th></tr>' +
+        '</thead><tbody>' + filas + '</tbody></table>' +
+        '</div></div></div>';
     }).join('');
-    return '<div class="records-bloque">' +
-      '<h2>' + esc(g.cat) + '</h2>' +
-      '<div class="records-tabla-marco"><div class="records-scroll">' +
-      '<table class="records"><thead>' +
-      '<tr><th>Prueba</th><th>Marca</th><th>Atleta</th><th>Año</th></tr>' +
-      '</thead><tbody>' + filas + '</tbody></table>' +
-      '</div></div></div>';
-  }).join('');
+  }
+
+  /* Pestañas de categoría: solo si hay más de una publicada */
+  if (barra && grupos.length > 1) {
+    barra.hidden = false;
+    barra.innerHTML = '<button type="button" class="chip activo" data-cat="">Todas</button>' +
+      grupos.map(function (g) {
+        return '<button type="button" class="chip" data-cat="' + esc(g.cat) + '">' + esc(g.cat) + '</button>';
+      }).join('');
+    barra.addEventListener('click', function (ev) {
+      var b = ev.target.closest('.chip');
+      if (!b) return;
+      barra.querySelectorAll('.chip').forEach(function (o) { o.classList.remove('activo'); });
+      b.classList.add('activo');
+      pintar(b.getAttribute('data-cat') || '');
+    });
+  }
+
+  pintar('');
 });
 </script>
 

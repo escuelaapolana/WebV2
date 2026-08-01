@@ -17,8 +17,8 @@
   var css = document.createElement('style');
   css.textContent =
     '.adm-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:14px clamp(16px,4vw,40px)}' +
-    '.adm-top a.volver{color:#cdd6e0;text-decoration:none;font-size:14px;margin-right:14px}' +
-    '.adm-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff}' +
+    '.adm-top a.volver{color:#cdd6e0;text-decoration:none;font-size:14px;display:inline-block;vertical-align:middle;margin:0 14px 0 0}' +
+    '.adm-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;display:inline-block;vertical-align:middle}' +
     '.adm-top .der{display:flex;align-items:center;gap:14px;font-size:14px;color:#cdd6e0}' +
     '.adm-top button{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;font-family:inherit}' +
     '.adm-login{max-width:400px;margin:8vh auto;background:#fff;border:1px solid #EAE3D5;border-radius:20px;padding:36px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
