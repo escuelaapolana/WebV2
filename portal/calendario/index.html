@@ -180,8 +180,18 @@
   .modal-pie p.error { color:#b3261e; }
   .modal-pie p.ok { color:#1e7a3d; }
   .modal-pie .botones { display:flex; gap:10px; flex-wrap:wrap; }
-  .modal-pie .btn { flex:1 1 auto; text-align:center; cursor:pointer; font-family:inherit; }
+  .modal-pie .btn { flex:1 1 auto; text-align:center; cursor:pointer; font-family:inherit; min-height:44px; }
   .modal-pie .btn[disabled] { opacity:.6; cursor:default; }
+  /* Botón apagado: el plazo del club ya está cerrado */
+  .modal-pie .btn--apagado { flex:1 1 auto; }
+  .btn--apagado { display:inline-flex; align-items:center; justify-content:center; min-height:44px;
+                  padding:11px 20px; border-radius:999px; background: var(--crema-media);
+                  border:1px solid var(--linea-borde); color: var(--texto-tenue);
+                  font-family:inherit; font-size:15px; font-weight:600; cursor:default; }
+  .modal-pie .botones.ics { margin-top:10px; }
+  .modal-pie .botones.ics .btn { min-height:44px; }
+  .modal-pie .letra-chica { display:block; margin:12px 0 0; font-size:13px; color: var(--texto-suave); line-height:1.5; }
+  .modal-pie .letra-chica b { color: var(--navy); }
 
   .filtro-bloque + .filtro-bloque { margin-top:18px; }
   .filtro-bloque > h3 { font-size:13px; color: var(--texto-tenue); margin-bottom:10px; font-weight:400; }
@@ -202,7 +212,7 @@
     .modal-caja { padding:20px 18px; }
     .modal-cab h2 { font-size:26px; }
     .modal-datos .cual { flex:0 0 80px; }
-    .modal-pie .btn { flex:1 1 100%; }
+    .modal-pie .btn, .modal-pie .btn--apagado { flex:1 1 100%; }
     .pie-cal .btn { width:100%; text-align:center; }
   }
 </style>
@@ -238,6 +248,90 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function seccionNombre(s) { if (!s) return ''; return SEC_NOMBRE[s] || (s.charAt(0).toUpperCase() + s.slice(1)); }
   function mayus(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function fechaLarga(s) { var d = fecha(s); return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
+  /* ===========================================================
+     AÑADIR A MI CALENDARIO (.ics)
+     El archivo se arma aquí, en el navegador, y se descarga sin
+     pasar por ningún servidor. Es una copia fija del evento: si
+     luego cambia la hora, hay que volver a añadirlo.
+     Las horas van en UTC (sufijo Z) para que las acepte cualquier
+     calendario sin arrastrar la definición de la zona horaria.
+     =========================================================== */
+  function icsEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,')
+      .replace(/\r?\n/g, '\\n');
+  }
+  function icsDia(d) { return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); }
+  function icsUTC(d) {
+    return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + 'T' +
+           pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + 'Z';
+  }
+  /* Las líneas largas se parten como manda el formato (75 caracteres) */
+  function icsPlegar(linea) {
+    if (linea.length <= 74) return linea;
+    var salida = linea.slice(0, 74), resto = linea.slice(74);
+    while (resto.length) { salida += '\r\n ' + resto.slice(0, 73); resto = resto.slice(73); }
+    return salida;
+  }
+  function icsNombreArchivo(titulo) {
+    var t = String(titulo || 'evento').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^apolana-/, '').slice(0, 60);
+    return 'apolana-' + (t || 'evento') + '.ics';
+  }
+  /* ev: { uid, titulo, fecha 'AAAA-MM-DD', hora 'HH:MM' (opcional),
+          horaFin 'HH:MM' (opcional), lugar, descripcion } */
+  function icsTexto(ev) {
+    var p = String(ev.fecha).split('-');
+    var ini, fin, dtIni, dtFin;
+    if (ev.hora) {
+      var hi = String(ev.hora).split(':');
+      ini = new Date(+p[0], +p[1] - 1, +p[2], +hi[0] || 0, +hi[1] || 0);
+      if (ev.horaFin) {
+        var hf = String(ev.horaFin).split(':');
+        fin = new Date(+p[0], +p[1] - 1, +p[2], +hf[0] || 0, +hf[1] || 0);
+        if (fin <= ini) fin = new Date(ini.getTime() + 60 * 60000);
+      } else fin = new Date(ini.getTime() + 90 * 60000);
+      dtIni = 'DTSTART:' + icsUTC(ini);
+      dtFin = 'DTEND:' + icsUTC(fin);
+    } else {
+      ini = new Date(+p[0], +p[1] - 1, +p[2]);
+      fin = new Date(ini.getTime()); fin.setDate(fin.getDate() + 1);
+      dtIni = 'DTSTART;VALUE=DATE:' + icsDia(ini);
+      dtFin = 'DTEND;VALUE=DATE:' + icsDia(fin);
+    }
+    var l = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Club Atletismo Apolana//ES',
+             'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT'];
+    l.push('UID:' + icsEsc(ev.uid || (ev.fecha + '-' + ev.titulo)) + '@apolana');
+    l.push('DTSTAMP:' + icsUTC(new Date()));
+    l.push(dtIni, dtFin);
+    l.push('SUMMARY:' + icsEsc(ev.titulo));
+    if (ev.lugar) l.push('LOCATION:' + icsEsc(ev.lugar));
+    if (ev.descripcion) l.push('DESCRIPTION:' + icsEsc(ev.descripcion));
+    l.push('END:VEVENT', 'END:VCALENDAR');
+    return l.map(icsPlegar).join('\r\n') + '\r\n';
+  }
+  function icsDescargar(ev) {
+    var blob = new Blob([icsTexto(ev)], { type: 'text/calendar;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = icsNombreArchivo(ev.titulo);
+    document.body.appendChild(a); a.click();
+    setTimeout(function () {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 400);
+  }
+
+  /* "jueves 14 de agosto" y, si la hora importa, "… a las 20:00" */
+  function plazoLargo(marca) {
+    if (!marca) return '';
+    var d = new Date(marca);
+    if (isNaN(d.getTime())) return fechaLarga(marca);
+    var t = DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+    if (String(marca).indexOf('T') > -1 && (d.getHours() || d.getMinutes())) t += ' a las ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    return t;
+  }
   function lunesDe(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
 
   var HOY = new Date(); HOY.setHours(0, 0, 0, 0);
@@ -252,7 +346,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var atletas = [], atleta = null;
   var GRUPOS = {}, SECCIONES = [];
   var ACTIVIDADES = [], PROXIMA = null;
-  var USOS_CUBO = 0, HAY_CUBO = false, SALDO_COMP = 0;
+  var USOS_CUBO = 0, HAY_CUBO = false;
   var ventanaCargada = '';
   var modalClave = null, modalAviso = '';
   var ultimoFoco = null;
@@ -465,22 +559,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           // La competición, el día que se corre
           if (c.fecha_inicio && c.fecha_inicio >= desde && c.fecha_inicio <= hasta) {
             var estado, clase, accion = null, nota = '';
-            if (apuntado) { estado = 'Ya apuntado'; clase = 'ok'; nota = 'Tus pruebas: ' + misComps[c.id].filter(Boolean).join(', ') + '.'; }
-            else if (abierta) {
-              estado = 'Abierta'; clase = 'ok';
-              accion = { tipo: 'enlace', href: '../competiciones/', texto: coste ? 'Inscribirme · ' + euros(coste) : 'Inscribirme', estilo: 'primario' };
-              nota = 'Eliges tu prueba en la página de competiciones.';
-            } else if (plazoPasado) { estado = 'Cerrada'; clase = 'no'; nota = 'El plazo para apuntarse ya pasó.'; }
-            else { estado = 'Cerrada'; clase = ''; nota = 'La inscripción todavía no está abierta.'; }
+            if (plazoPasado) { estado = 'Cerrada'; clase = 'no'; nota = 'El plazo del club ya pasó.'; }
+            else if (abierta) { estado = 'Abierta'; clase = 'ok'; }
+            else { estado = 'Cerrada'; clase = ''; nota = 'El club todavía no ha abierto esta competición.'; }
+            if (apuntado) { estado = 'Le has dicho al club que vas'; clase = 'ok'; nota = 'Tus pruebas: ' + misComps[c.id].filter(Boolean).join(', ') + '.'; }
+
+            // El botón lleva a la inscripción real de la organización; si no hay enlace, a la ficha del club.
+            if (c.circular_url && !plazoPasado) {
+              accion = { tipo: 'enlace', href: c.circular_url, texto: 'Ir a la inscripción', estilo: 'primario', fuera: true };
+            } else if (!plazoPasado) {
+              accion = { tipo: 'enlace', href: '../competiciones/?id=' + c.id, texto: 'Ver esta competición', estilo: 'primario' };
+            }
 
             acts.push({
-              fuente: 'competicion', id: c.id, fecha: c.fecha_inicio, hora: '',
+              fuente: 'competicion', id: c.id, compId: c.id, fecha: c.fecha_inicio, hora: '',
               titulo: c.nombre, tipoTexto: 'Competición',
               grupo: '', lugar: c.sede || '', seccion: null,
-              coste: coste, limite: c.fecha_limite_interna ? String(c.fecha_limite_interna).slice(0, 10) : null,
-              mio: apuntado, puedo: !!accion,
+              coste: coste, circular: c.circular_url || '',
+              limite: c.fecha_limite_interna || null, plazoPasado: plazoPasado,
+              mio: apuntado, puedo: !plazoPasado && abierta,
               estado: estado, pillClase: clase, nota: nota, accion: accion,
-              contacto: { href: '../competiciones/', texto: 'Ver las competiciones' }
+              contacto: { href: '../competiciones/?id=' + c.id, texto: 'Ver esta competición' }
             });
           }
 
@@ -489,19 +588,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             var fl = String(c.fecha_limite_interna).slice(0, 10);
             if (fl >= desde && fl <= hasta) {
               acts.push({
-                fuente: 'cierre', id: c.id + '-cierre', fecha: fl,
+                fuente: 'cierre', id: c.id + '-cierre', compId: c.id, fecha: fl,
                 hora: hhmm(String(c.fecha_limite_interna).slice(11, 16)),
                 titulo: 'Cierra la inscripción · ' + c.nombre,
                 tipoTexto: 'Último día para apuntarse',
                 grupo: '', lugar: c.sede || '', seccion: null,
+                coste: coste, circular: c.circular_url || '',
+                limite: c.fecha_limite_interna, plazoPasado: plazoPasado,
                 mio: apuntado, puedo: abierta && !apuntado,
-                estado: plazoPasado ? 'Cerrada' : (apuntado ? 'Ya apuntado' : 'Abierta'),
+                estado: plazoPasado ? 'Cerrada' : (apuntado ? 'Le has dicho al club que vas' : 'Abierta'),
                 pillClase: plazoPasado ? 'no' : (apuntado ? 'ok' : 'espera'),
                 nota: 'La competición es el ' + fechaLarga(c.fecha_inicio) + '.',
-                accion: (abierta && !apuntado)
-                  ? { tipo: 'enlace', href: '../competiciones/', texto: 'Apuntarme antes de que cierre', estilo: 'primario' }
-                  : null,
-                contacto: { href: '../competiciones/', texto: 'Ver las competiciones' }
+                accion: plazoPasado ? null : (
+                  c.circular_url
+                    ? { tipo: 'enlace', href: c.circular_url, texto: 'Ir a la inscripción', estilo: 'primario', fuera: true }
+                    : { tipo: 'enlace', href: '../competiciones/?id=' + c.id, texto: 'Ver esta competición', estilo: 'primario' }
+                ),
+                contacto: { href: '../competiciones/?id=' + c.id, texto: 'Ver esta competición' }
               });
             }
           }
@@ -546,19 +649,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     ACTIVIDADES = acts;
     ACTIVIDADES.forEach(function (a, i) { a.i = i; a.clave = a.fuente + '|' + a.id + '|' + a.fecha; });
+    fundirCompeticiones();
 
     // --- bonos ---
-    USOS_CUBO = 0; SALDO_COMP = 0;
+    USOS_CUBO = 0;
     if (atleta) {
       try {
         var rb = await sb.from('cubo_bono_saldo').select('activo,caducado,usos_disponibles').eq('atleta_id', atleta.id);
         if (!rb.error && rb.data) rb.data.forEach(function (b) {
           if (b.activo && !b.caducado) USOS_CUBO += (b.usos_disponibles || 0);
         });
-      } catch (e) { /* nada */ }
-      try {
-        var rs = await sb.from('bono_saldo').select('saldo').eq('atleta_id', atleta.id).maybeSingle();
-        if (!rs.error && rs.data) SALDO_COMP = parseFloat(rs.data.saldo) || 0;
       } catch (e) { /* nada */ }
     }
   }
@@ -589,6 +689,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .split('·')[0].replace(/\s+/g, ' ').trim();
   }
+  /* Una competición puede llegar por dos vías (tabla de competiciones y eventos
+     del club). Repartimos el enlace de inscripción, el coste y el plazo a todas
+     las copias para que el botón no se pierda por el camino. */
+  function fundirCompeticiones() {
+    var ficha = {};
+    ACTIVIDADES.forEach(function (a) {
+      if (a.fuente !== 'competicion') return;
+      var f = ficha[claveTitulo(a.titulo)] || (ficha[claveTitulo(a.titulo)] = {});
+      if (!f.compId && a.compId) f.compId = a.compId;
+      if (!f.circular && a.circular) f.circular = a.circular;
+      if (!f.coste && a.coste) f.coste = a.coste;
+      if (!f.limite && a.limite) { f.limite = a.limite; f.plazoPasado = a.plazoPasado; }
+    });
+    ACTIVIDADES.forEach(function (a) {
+      if (a.fuente !== 'competicion') return;
+      var f = ficha[claveTitulo(a.titulo)];
+      if (!f) return;
+      if (!a.compId) a.compId = f.compId;
+      if (!a.circular) a.circular = f.circular;
+      if (!a.coste) a.coste = f.coste;
+      if (!a.limite && f.limite) { a.limite = f.limite; a.plazoPasado = f.plazoPasado; }
+      if (!a.accion && !a.plazoPasado && (a.circular || a.compId)) {
+        a.accion = a.circular
+          ? { tipo: 'enlace', href: a.circular, texto: 'Ir a la inscripción', estilo: 'primario', fuera: true }
+          : { tipo: 'enlace', href: '../competiciones/?id=' + a.compId, texto: 'Ver esta competición', estilo: 'primario' };
+      }
+    });
+  }
+
   function sinRepetidos(lista) {
     var vistos = {}, salida = [];
     lista.forEach(function (a) {
@@ -726,12 +855,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function pintarBonos() {
     if (!atleta) {
-      return '<div class="bonos"><span class="eti">Tus bonos · lo que te queda</span>' +
+      return '<div class="bonos"><span class="eti">Tu bono de El Cubo</span>' +
              '<span class="txt">Tu cuenta todavía no está enlazada a ninguna ficha de atleta, así que aquí no ' +
              'podemos enseñarte bonos ni dejarte apuntarte. Avisa al club y lo enlazan. Mientras tanto puedes ' +
              'ver todo lo que hace el club en el calendario.</span></div>';
     }
-    var h = '<div class="bonos"><span class="eti">Tus bonos · lo que te queda</span>';
+    var h = '<div class="bonos"><span class="eti">Tu bono de El Cubo</span>';
     if (atletas.length > 1) {
       h += '<select id="sel-atleta" aria-label="Elegir a quién ves">' + atletas.map(function (a) {
         return '<option value="' + a.id + '"' + (atleta && a.id === atleta.id ? ' selected' : '') + '>' +
@@ -741,11 +870,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     h += '<div class="par">' +
       '<span class="cel"><span class="cifra' + (USOS_CUBO ? '' : ' mal') + '">' + USOS_CUBO + '</span>' +
       '<span class="txt">usos del bono de El Cubo' + (HAY_CUBO ? '' : ' (aún sin clases publicadas)') + '</span></span>' +
-      '<span class="cel"><span class="cifra' + (SALDO_COMP > 0 ? '' : ' mal') + '">' + esc(euros(SALDO_COMP)) + '</span>' +
-      '<span class="txt">de bono para competiciones</span></span>' +
       '</div>' +
-      '<span class="txt">Cada clase de El Cubo gasta un uso. Las competiciones se descuentan del bono en euros cuando el club confirma tu inscripción. ' +
-      'Los entrenamientos del club no gastan bono.</span>' +
+      '<span class="txt">El bono es solo de El Cubo: cada clase gasta un uso. Los entrenamientos del club no gastan bono, ' +
+      'y las competiciones se pagan en la web de quien las organiza, nunca aquí.</span>' +
       '<a href="../cubo/">Ver mi bono de El Cubo</a></div>';
     return h;
   }
@@ -756,16 +883,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
              '<p class="datos" style="margin:0">Todavía no hay ninguna competición publicada. Cuando el club suba la circular, aparecerá aquí.</p></div>';
     }
     var c = PROXIMA.c;
-    var datos = [mayus(fechaLarga(c.fecha_inicio)), c.sede || '', PROXIMA.coste ? euros(PROXIMA.coste) + ' del bono' : ''].filter(Boolean).join(' · ');
-    var boton;
-    if (PROXIMA.apuntado) boton = '<a class="btn btn--fantasma btn--sm" href="../competiciones/">Ya estás apuntado · ver tus pruebas</a>';
-    else if (PROXIMA.abierta) boton = '<a class="btn btn--primario btn--sm" href="../competiciones/">' +
-        (PROXIMA.coste ? 'Inscribirme · ' + euros(PROXIMA.coste) : 'Inscribirme') + '</a>';
-    else boton = '<a class="btn btn--fantasma btn--sm" href="../competiciones/">La inscripción no está abierta</a>';
+    var ficha = '../competiciones/?id=' + c.id;
+    var datos = [mayus(fechaLarga(c.fecha_inicio)), c.sede || ''].filter(Boolean).join(' · ');
+    var boton = c.circular_url
+      ? '<a class="btn btn--primario btn--sm" href="' + esc(c.circular_url) + '" target="_blank" rel="noopener">Ir a la inscripción</a>'
+      : '<a class="btn btn--primario btn--sm" href="' + esc(ficha) + '">Ver esta competición</a>';
+    var pie = '';
+    if (PROXIMA.coste) pie += 'Inscripción: ' + euros(PROXIMA.coste) + ' — se paga en la web de la organización.';
+    if (c.fecha_limite_interna) pie += (pie ? ' ' : '') + 'El plazo del club cierra el ' + plazoLargo(c.fecha_limite_interna) + '.';
+    if (!c.circular_url) pie = 'Te apunta el club: avisa a tu entrenador' +
+      (c.fecha_limite_interna ? ' antes del ' + plazoLargo(c.fecha_limite_interna) : ' cuanto antes') + '.';
 
     return '<div class="proxima"><span class="eti">Próxima competición</span>' +
            '<h3>' + esc(c.nombre) + '</h3>' +
-           '<span class="datos">' + esc(datos) + '</span>' + boton + '</div>';
+           '<span class="datos">' + esc(datos) + '</span>' +
+           (pie ? '<span class="datos">' + esc(pie) + '</span>' : '') + boton + '</div>';
   }
 
   /* ---- armazón de la página (se pinta una sola vez) ---- */
@@ -898,21 +1030,43 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       fila('Quién', esc(quien)) +
       fila('Abierto a', abiertaA) +
       fila('Plazas', plazas) +
-      fila('Coste', a.coste ? esc(euros(a.coste) + ' del bono') : '') +
+      fila('Inscripción', a.coste ? esc(euros(a.coste)) : '') +
+      fila('Plazo del club', a.limite ? esc(plazoLargo(a.limite)) : '') +
       fila('Estado', '<span class="pill ' + (a.pillClase || '') + '">' + esc(a.estado || '') + '</span>') +
       fila('Nota', esc(a.nota || a.descripcion || '')) +
       '</div>';
+
+    var esComp = (a.fuente === 'competicion' || a.fuente === 'cierre');
+    /* Enlace a la ficha de esa competición concreta (solo si sabemos cuál es) */
+    var verFicha = (esComp && a.compId)
+      ? '<a class="btn btn--fantasma btn--sm" href="../competiciones/?id=' + esc(a.compId) + '">Ver esta competición</a>'
+      : '<a class="btn btn--fantasma btn--sm" href="../competiciones/">Ver las competiciones</a>';
 
     h += '<div class="modal-pie">';
     if (modalAviso) {
       h += '<p class="' + (modalAviso.charAt(0) === '!' ? 'error' : 'ok') + '">' + esc(modalAviso.replace(/^!/, '')) + '</p>';
     }
-    if (!atleta) {
+    if (esComp) {
+      /* En competiciones el club no cobra por la app: se va al enlace de la organización. */
+      if (a.plazoPasado) {
+        h += '<p>' + (a.limite ? 'El plazo del club cerró el ' + esc(plazoLargo(a.limite)) + '.' : 'El plazo del club ya está cerrado.') + '</p>' +
+             '<div class="botones"><span class="btn--apagado">Plazo cerrado</span>' + verFicha + '</div>';
+      } else if (a.circular) {
+        h += '<div class="botones"><a class="btn btn--primario btn--sm" href="' + esc(a.circular) + '" target="_blank" rel="noopener">Ir a la inscripción</a>' + verFicha + '</div>' +
+             '<p class="letra-chica">' +
+               (a.coste ? 'Inscripción: <b>' + esc(euros(a.coste)) + '</b> — se paga en la web de la organización.<br>' : '') +
+               (a.limite ? 'El plazo del club cierra el ' + esc(plazoLargo(a.limite)) + '.' : '') +
+             '</p>';
+      } else {
+        h += '<p>Te apunta el club: avisa a tu entrenador' + (a.limite ? ' antes del ' + esc(plazoLargo(a.limite)) : ' cuanto antes') + '.</p>' +
+             '<div class="botones"><a class="btn btn--primario btn--sm" href="../mensajes/">Escribir a tu entrenador</a>' + verFicha + '</div>';
+      }
+    } else if (!atleta) {
       h += '<p>Tu cuenta todavía no está enlazada a una ficha de atleta, así que no puedes apuntarte desde aquí. Avisa al club y lo enlazan.</p>' +
            '<div class="botones"><a class="btn btn--fantasma btn--sm" href="../mensajes/">Escribir al club</a></div>';
     } else if (a.accion && a.accion.tipo === 'enlace') {
-      h += '<div class="botones"><a class="btn btn--' + a.accion.estilo + ' btn--sm" href="' + esc(a.accion.href) + '">' +
-           esc(a.accion.texto) + '</a></div>';
+      h += '<div class="botones"><a class="btn btn--' + a.accion.estilo + ' btn--sm" href="' + esc(a.accion.href) + '"' +
+           (a.accion.fuera ? ' target="_blank" rel="noopener"' : '') + '>' + esc(a.accion.texto) + '</a></div>';
     } else if (a.accion) {
       h += '<div class="botones"><button type="button" class="btn btn--' + a.accion.estilo + ' btn--sm" ' +
            'data-accion="' + a.accion.tipo + '" data-id="' + esc(a.accion.id) + '">' + esc(a.accion.texto) + '</button></div>';
@@ -926,8 +1080,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            '<div class="botones"><a class="btn btn--fantasma btn--sm" href="' + esc(a.contacto.href) + '">' +
            esc(a.contacto.texto) + '</a></div>';
     }
+    /* Copia fija del evento para el calendario del móvil */
+    h += '<div class="botones ics"><button type="button" class="btn btn--neutro btn--sm" data-ics="' + a.i + '">Añadir a mi calendario</button></div>';
     h += '</div>';
     return h;
+  }
+
+  /* Arma el evento .ics a partir de una actividad del calendario */
+  function icsDeActividad(a) {
+    var partes = [];
+    if (a.grupo) partes.push(a.grupo);
+    else if (a.seccion) partes.push(seccionNombre(a.seccion));
+    if (a.plazas != null) partes.push(a.plazas + (a.plazas === 1 ? ' plaza' : ' plazas'));
+    if (a.coste) partes.push('Inscripción: ' + euros(a.coste) + ' (se paga en la web de la organización)');
+    if (a.limite) partes.push('El plazo del club cierra el ' + plazoLargo(a.limite));
+    if (a.descripcion) partes.push(a.descripcion);
+    if (a.circular) partes.push('Inscripción: ' + a.circular);
+    return {
+      uid: (a.compId || a.fuente + '-' + a.id) + '-' + a.fecha,
+      titulo: 'Apolana · ' + (a.titulo || 'Actividad'),
+      fecha: a.fecha, hora: a.hora || '', horaFin: a.horaFin || '',
+      lugar: a.lugar || '', descripcion: partes.join('\n')
+    };
   }
 
   function abrirActividad(a) {
@@ -998,12 +1172,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   wrap.addEventListener('click', async function (ev) {
     var t = ev.target.closest ? ev.target.closest(
-      '[data-cerrar],[data-accion],[data-act],[data-dia],[data-paso],[data-v],[data-id],' +
+      '[data-cerrar],[data-accion],[data-ics],[data-act],[data-dia],[data-paso],[data-v],[data-id],' +
       '#abrir-filtros,#filtros-limpiar,#quitar-filtros-vista') : null;
 
     // cerrar pulsando el fondo de una ventana emergente
     if (ev.target.classList && ev.target.classList.contains('modal')) { cerrarModales(); return; }
     if (!t) return;
+
+    if (t.hasAttribute('data-ics')) {
+      var aIcs = ACTIVIDADES[+t.getAttribute('data-ics')];
+      if (aIcs) icsDescargar(icsDeActividad(aIcs));
+      return;
+    }
 
     if (t.hasAttribute('data-cerrar')) { cerrarModales(); return; }
 
