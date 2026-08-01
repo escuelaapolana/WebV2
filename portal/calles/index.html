@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calles de la piscina · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: clamp(18px,3vw,32px) clamp(12px,3vw,28px) 60px; }
+  .wrap h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(28px,6vw,42px); color: var(--navy); margin: 0 0 2px; }
+  .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing:.1em; text-transform:uppercase; color: var(--texto-tenue); }
+  .volver { display:inline-block; margin-bottom:12px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; }
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(14px,2.4vw,22px); box-shadow: var(--sombra-suave); margin-top:16px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 20px; color: var(--navy); margin: 0 0 10px; }
+  .tarjeta .pista { font-size:13px; color: var(--texto-suave); margin: 0 0 12px; }
+
+  label.et { display:block; font-family: var(--fuente-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--texto-tenue); margin-bottom:3px; }
+  input[type=text], input[type=date], input[type=number], select, textarea {
+    width:100%; box-sizing:border-box; padding:9px 10px; border:1px solid var(--linea-borde);
+    border-radius:10px; font-family:inherit; font-size:15px; color: var(--navy); background:#fff; }
+  textarea { resize:vertical; min-height:60px; font-size:14px; }
+  .rejilla { display:flex; flex-wrap:wrap; gap:10px; }
+  .rejilla > div { flex:1 1 170px; min-width:0; }
+  .rejilla > div.ancho { flex:1 1 100%; }
+
+  .msg { margin-top:10px; font-size:14px; color: var(--texto-suave); }
+  .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
+  .aviso { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); color: var(--aviso-texto);
+           border-radius: var(--radio); padding:14px 16px; font-size:14px; margin-top:14px; }
+  .aviso b { color: var(--aviso-titulo); }
+
+  /* ---- tablero de calles ---- */
+  .tablero { display:flex; gap:12px; align-items:stretch; overflow-x:auto; padding-bottom:6px; }
+  .calle { flex:1 1 280px; min-width:270px; background:#F4F9FD; border:1px solid #CFE3F1;
+           border-radius: var(--radio); display:flex; flex-direction:column; }
+  .calle .cab { background:#2E4256; color:#fff; border-radius: calc(var(--radio) - 1px) calc(var(--radio) - 1px) 0 0; padding:9px 11px; }
+  .calle .cab .num { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.14em; color:#A9C4DC; text-transform:uppercase; }
+  .calle .cab input { background: rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.28); color:#fff; font-size:15px; padding:6px 8px; }
+  .calle .cab input::placeholder { color: rgba(255,255,255,.55); }
+  .calle .cab .par { display:flex; gap:6px; margin-top:5px; }
+  .calle .cuerpo { padding:10px; display:flex; flex-direction:column; gap:10px; flex:1; }
+
+  .zona { border:1px dashed #9EC4E0; border-radius:12px; background:#fff; padding:8px; min-height:52px; }
+  .zona.sobre { border-color: var(--azul); background: var(--azul-suave); box-shadow: inset 0 0 0 2px rgba(59,133,192,.25); }
+  .zona .vacia { font-size:12px; color: var(--texto-tenue); font-style:italic; }
+  .nad { display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid var(--linea-borde);
+         border-radius:999px; padding:4px 6px 4px 11px; margin:0 5px 5px 0; font-size:14px; color: var(--navy); cursor:grab; }
+  .nad:active { cursor:grabbing; }
+  .nad.arrastrando { opacity:.45; }
+  .nad select { width:auto; font-size:11px; padding:2px 4px; border-radius:8px; border:1px solid var(--linea);
+                background: var(--crema); color: var(--azul-oscuro); }
+  .zona-tit { font-family: var(--fuente-mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--texto-tenue); margin-bottom:5px; display:block; }
+
+  .fila { background:#fff; border:1px solid var(--linea); border-radius:12px; padding:8px; margin-bottom:8px;
+          display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .fila input { font-size:14px; padding:7px 8px; }
+  .fila .f-ej { flex:1 1 100%; }
+  .fila .f-sm { flex:1 1 62px; }
+  .fila .f-obs { flex:1 1 100%; }
+  .fila .quitar { flex:0 0 auto; background:none; border:0; color:#b3261e; font-size:16px; cursor:pointer; padding:2px 6px; font-family:inherit; }
+  .mat { flex:1 1 100%; display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  .mat .mt { font-family: var(--fuente-mono); font-size:9px; letter-spacing:.05em; text-transform:uppercase; color: var(--texto-tenue); }
+  .mat label { display:inline-flex; align-items:center; gap:3px; font-size:11px; color: var(--texto-suave);
+               border:1px solid var(--linea); border-radius:999px; padding:2px 7px; cursor:pointer; background: var(--crema); }
+  .mat label input { margin:0; }
+  .mat label.on { background: var(--azul-suave); border-color:#9EC4E0; color: var(--azul-oscuro); }
+
+  .mini { background:#fff; border:1px solid var(--linea-borde); color: var(--azul-oscuro); border-radius:999px;
+          padding:5px 11px; font-size:13px; font-family:inherit; cursor:pointer; }
+  .mini:hover { border-color: var(--azul); }
+  .acciones-calle { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .acciones-calle select { width:auto; font-size:12px; padding:5px 7px; }
+
+  .comun { background: var(--crema); border:1px solid var(--linea); border-radius:12px; padding:10px; font-size:14px; color: var(--texto-suave); }
+  .previo { border-top:1px solid var(--linea); margin-top:10px; padding-top:10px; }
+  .previo .p-fila { display:flex; gap:8px; align-items:baseline; font-size:14px; padding:4px 0; border-bottom:1px dashed var(--linea); }
+  .previo .p-fila:last-child { border-bottom:0; }
+  .previo .p-nom { flex:0 0 150px; color: var(--navy); font-weight:600; }
+  .previo .p-cal { color: var(--texto-suave); }
+  .previo .p-cal.sin { color:#b3261e; }
+  .barra-guardar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px; }
+  .check { display:flex; align-items:center; gap:7px; font-size:14px; color: var(--texto); }
+  .check input { width:auto; }
+
+  @media (max-width: 760px) {
+    .tablero { flex-direction:column; overflow-x:visible; }
+    .calle { min-width:0; }
+  }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="wrap" id="wrap"><p class="sub">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('wrap');
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function escAt(s){ return esc(s).replace(/"/g,'&quot;'); }
+  function isoHoy(){ var d=new Date(), m=d.getMonth()+1, x=d.getDate();
+    return d.getFullYear()+'-'+(m<10?'0':'')+m+'-'+(x<10?'0':'')+x; }
+  function diaSemana(iso){ if(!iso) return null; var d=new Date(iso+'T00:00:00');
+    return ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][d.getDay()]; }
+
+  var MATERIAL = ['Tabla','Pull-buoy','Palas','Aletas','Manoplas','Snorkel frontal','Goma elástica','Sin material'];
+
+  /* ---------- estado ---------- */
+  var GRUPOS = [], ATLETAS = [], SESIONES_DIA = [];
+  var EST = { sesionId:null, calles:[], comunes:[], publicada:false };
+  var ARRASTRA = null;
+
+  function nombreAtleta(a){ return a.nombre_corto || ((a.nombre||'')+' '+((a.apellidos||'').split(' ')[0]||'')).trim(); }
+  function nombreLargo(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }
+  function atletaPorId(id){ for(var i=0;i<ATLETAS.length;i++) if(ATLETAS[i].id===id) return ATLETAS[i]; return null; }
+
+  function calleNueva(i){ return { etiqueta:'Calle '+(i+1), matiz:'', atletas:[], filas:[filaNueva()] }; }
+  function filaNueva(){ return { ejercicio:'', series:'', distancia:'', ritmo:'', descanso:'', material:[], observaciones:'' }; }
+
+  /* ---------- ¿puede entrar? ---------- */
+  var rol = (perfil && perfil.rol) || '';
+  var esAdmin = (rol === 'admin');
+  var q = sb.from('grupos').select('id,nombre,seccion,entrenador_id,horario').eq('activo', true).order('seccion').order('nombre');
+  if (!esAdmin) q = q.eq('entrenador_id', perfil ? perfil.id : '00000000-0000-0000-0000-000000000000');
+  var rg = await q;
+  GRUPOS = (rg && rg.data) ? rg.data : [];
+
+  if (!esAdmin && rol !== 'entrenador' && !GRUPOS.length) {
+    wrap.innerHTML = '<a class="volver" href="../">← Volver al portal</a>' +
+      '<h1>Calles de la piscina</h1><span class="sub">Solo para entrenadores</span>' +
+      '<div class="aviso"><b>Esta página es del entrenador.</b><br>Aquí se reparte a los nadadores por calles y se escribe el trabajo de cada calle. ' +
+      'Si crees que deberías poder entrar, díselo a la coordinación del club.</div>';
+    return;
+  }
+
+  /* ---------- pantalla ---------- */
+  wrap.innerHTML =
+    '<a class="volver" href="../">← Volver al portal</a>' +
+    '<h1>Calles de la piscina</h1>' +
+    '<span class="sub">Reparte a tus nadadores y escribe el trabajo de cada calle</span>' +
+
+    '<div class="tarjeta">' +
+      '<h2>La sesión</h2>' +
+      '<div class="rejilla">' +
+        '<div><label class="et" for="c-grupo">Grupo</label><select id="c-grupo"></select></div>' +
+        '<div><label class="et" for="c-fecha">Día</label><input type="date" id="c-fecha"></div>' +
+        '<div><label class="et" for="c-sesion">Sesión de ese día</label><select id="c-sesion"></select></div>' +
+        '<div><label class="et" for="c-num">Cuántas calles</label><select id="c-num"></select></div>' +
+        '<div class="ancho"><label class="et" for="c-titulo">Título (lo que ven los nadadores)</label>' +
+          '<input type="text" id="c-titulo" placeholder="Series de 100 · umbral"></div>' +
+        '<div class="ancho"><label class="et" for="c-nota">Nota del día (opcional)</label>' +
+          '<textarea id="c-nota" placeholder="Por qué se hace así, avisos del día…"></textarea></div>' +
+      '</div>' +
+      '<div class="msg" id="c-estado"></div>' +
+    '</div>' +
+
+    '<div class="tarjeta" id="c-tablero-card">' +
+      '<h2>El tablero</h2>' +
+      '<p class="pista">Arrastra a cada nadador hasta su calle. En el móvil, usa el desplegable que lleva cada nombre al lado. ' +
+      'Un nadador solo puede estar en una calle.</p>' +
+      '<div id="c-tablero"></div>' +
+      '<div id="c-comunes"></div>' +
+    '</div>' +
+
+    '<div class="tarjeta">' +
+      '<h2>Qué verá cada nadador</h2>' +
+      '<p class="pista">Al guardar y publicar, la sesión llega <strong>solo</strong> a quien tenga calle. ' +
+      'Cada calle se guarda con la lista de quién nada en ella y con su nombre por delante, ' +
+      'para que cada uno localice el suyo de un vistazo.</p>' +
+      '<div class="previo" id="c-previo"></div>' +
+      '<div class="barra-guardar">' +
+        '<label class="check"><input type="checkbox" id="c-publicar"> Publicar (si no, se queda como borrador y no lo ve nadie)</label>' +
+      '</div>' +
+      '<div class="barra-guardar">' +
+        '<button class="btn btn--primario btn--sm" id="c-guardar">Guardar</button>' +
+        '<button class="mini" id="c-nueva">Vaciar y empezar de cero</button>' +
+      '</div>' +
+      '<div class="msg" id="c-msg"></div>' +
+    '</div>';
+
+  /* ---------- desplegables fijos ---------- */
+  $('c-grupo').innerHTML = GRUPOS.length
+    ? GRUPOS.map(function(g){ return '<option value="'+escAt(g.id)+'">'+esc(g.nombre)+(g.seccion?' · '+esc(g.seccion):'')+'</option>'; }).join('')
+    : '<option value="">No tienes grupos asignados</option>';
+  var opNum = ''; for (var n=2; n<=8; n++) opNum += '<option value="'+n+'"'+(n===4?' selected':'')+'>'+n+' calles</option>';
+  $('c-num').innerHTML = opNum;
+  $('c-fecha').value = isoHoy();
+
+  /* ---------- pintar ---------- */
+  function pintarTodo(){
+    var h = '<div class="tablero" id="c-lanes">';
+    EST.calles.forEach(function(c, i){
+      h += '<div class="calle">' +
+        '<div class="cab">' +
+          '<span class="num">Calle '+(i+1)+'</span>' +
+          '<div class="par">' +
+            '<input type="text" data-c="'+i+'" data-k="etiqueta" value="'+escAt(c.etiqueta||('Calle '+(i+1)))+'" placeholder="Calle '+(i+1)+'">' +
+            '<input type="text" data-c="'+i+'" data-k="matiz" value="'+escAt(c.matiz||'')+'" placeholder="Matiz (Rápidos…)">' +
+          '</div>' +
+        '</div>' +
+        '<div class="cuerpo">' +
+          '<div><span class="zona-tit">Quién nada aquí</span>' +
+            '<div class="zona" data-zona="'+i+'" data-personas="'+i+'"></div></div>' +
+          '<div><span class="zona-tit">Qué hace esta calle</span>' +
+            '<div data-filas="'+i+'"></div>' +
+            '<div class="acciones-calle">' +
+              '<button class="mini" data-add="'+i+'">+ Ejercicio</button>' +
+              '<select data-copiar="'+i+'"><option value="">Copiar este trabajo a…</option>' +
+                EST.calles.map(function(_, j){ return j===i ? '' : '<option value="'+j+'">Calle '+(j+1)+'</option>'; }).join('') +
+              '</select>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    });
+    h += '</div>' +
+      '<div style="margin-top:12px">' +
+        '<span class="zona-tit">Sin asignar · arrástralos a una calle</span>' +
+        '<div class="zona" data-zona="-1" data-personas="-1"></div>' +
+        '<div class="acciones-calle" style="margin-top:8px">' +
+          '<button class="mini" id="c-repartir">Repartir por orden entre las calles</button>' +
+          '<button class="mini" id="c-vaciar">Sacar a todos de las calles</button>' +
+        '</div>' +
+      '</div>';
+    $('c-tablero').innerHTML = h;
+    EST.calles.forEach(function(_, i){ pintarFilas(i); });
+    pintarPersonas();
+  }
+
+  function chip(a, calleIdx){
+    var op = '<option value="-1"'+(calleIdx<0?' selected':'')+'>Sin calle</option>';
+    EST.calles.forEach(function(c, j){
+      op += '<option value="'+j+'"'+(calleIdx===j?' selected':'')+'>Calle '+(j+1)+'</option>';
+    });
+    return '<span class="nad" draggable="true" data-id="'+escAt(a.id)+'" title="'+escAt(nombreLargo(a))+'">' +
+      esc(nombreAtleta(a)) + '<select data-mover="'+escAt(a.id)+'" title="Mover de calle">'+op+'</select></span>';
+  }
+
+  function calleDe(id){
+    for (var i=0;i<EST.calles.length;i++) if (EST.calles[i].atletas.indexOf(id) > -1) return i;
+    return -1;
+  }
+
+  function pintarPersonas(){
+    EST.calles.forEach(function(c, i){
+      var z = document.querySelector('[data-personas="'+i+'"]');
+      if (!z) return;
+      z.innerHTML = c.atletas.length
+        ? c.atletas.map(function(id){ var a=atletaPorId(id); return a ? chip(a, i) : ''; }).join('')
+        : '<span class="vacia">Suelta aquí a quien nade en esta calle</span>';
+    });
+    var sin = document.querySelector('[data-personas="-1"]');
+    if (sin) {
+      var libres = ATLETAS.filter(function(a){ return calleDe(a.id) < 0; });
+      sin.innerHTML = libres.length
+        ? libres.map(function(a){ return chip(a, -1); }).join('')
+        : '<span class="vacia">Todos tienen calle.</span>';
+    }
+    pintarPrevio();
+  }
+
+  function pintarFilas(i){
+    var cont = document.querySelector('[data-filas="'+i+'"]');
+    if (!cont) return;
+    var c = EST.calles[i];
+    if (!c.filas.length) c.filas = [filaNueva()];
+    cont.innerHTML = c.filas.map(function(f, fi){
+      var mats = Array.isArray(f.material) ? f.material : (f.material ? [f.material] : []);
+      return '<div class="fila">' +
+        '<input class="f-ej" type="text" data-c="'+i+'" data-f="'+fi+'" data-k="ejercicio" value="'+escAt(f.ejercicio||'')+'" placeholder="Ejercicio (8x100 crol…)">' +
+        '<input class="f-sm" type="text" data-c="'+i+'" data-f="'+fi+'" data-k="series" value="'+escAt(f.series||'')+'" placeholder="Series">' +
+        '<input class="f-sm" type="text" data-c="'+i+'" data-f="'+fi+'" data-k="distancia" value="'+escAt(f.distancia||'')+'" placeholder="Distancia">' +
+        '<input class="f-sm" type="text" data-c="'+i+'" data-f="'+fi+'" data-k="ritmo" value="'+escAt(f.ritmo||'')+'" placeholder="Ritmo">' +
+        '<input class="f-sm" type="text" data-c="'+i+'" data-f="'+fi+'" data-k="descanso" value="'+escAt(f.descanso||'')+'" placeholder="Descanso">' +
+        '<button class="quitar" data-del="'+i+'" data-f="'+fi+'" title="Quitar este ejercicio">×</button>' +
+        '<div class="mat"><span class="mt">Material</span>' +
+          MATERIAL.map(function(m){
+            var on = mats.indexOf(m) > -1;
+            return '<label class="'+(on?'on':'')+'"><input type="checkbox" data-c="'+i+'" data-f="'+fi+'" data-mat="'+escAt(m)+'"'+(on?' checked':'')+'><span>'+esc(m)+'</span></label>';
+          }).join('') +
+        '</div>' +
+        '<input class="f-obs" type="text" data-c="'+i+'" data-f="'+fi+'" data-k="observaciones" value="'+escAt(f.observaciones||'')+'" placeholder="Observaciones (Marta: 1:35 · Luis: 1:40)">' +
+      '</div>';
+    }).join('');
+  }
+
+  function pintarComunes(){
+    var cont = $('c-comunes');
+    if (!EST.comunes.length) { cont.innerHTML = ''; return; }
+    cont.innerHTML = '<div style="margin-top:14px"><span class="zona-tit">Trabajo común de esta sesión (viene del planificador)</span>' +
+      '<div class="comun">' + EST.comunes.map(function(b){
+        var f = (b.filas||[]).map(function(x){ return esc(x.ejercicio||''); }).filter(Boolean).join(' · ');
+        return '<div><strong>'+esc(b.etiqueta||'Bloque')+'</strong>'+(f?' — '+f:'')+'</div>';
+      }).join('') + '<div style="margin-top:6px;font-size:13px">Se conserva tal cual: lo ven todos, además de su calle. Se edita en la zona del entrenador.</div></div></div>';
+  }
+
+  function pintarPrevio(){
+    var cont = $('c-previo');
+    if (!ATLETAS.length) { cont.innerHTML = '<p class="pista">Elige un grupo con nadadores.</p>'; return; }
+    cont.innerHTML = ATLETAS.map(function(a){
+      var i = calleDe(a.id);
+      var c = i >= 0 ? EST.calles[i] : null;
+      var txt = c ? ((c.etiqueta||('Calle '+(i+1))) + (c.matiz ? ' · '+c.matiz : '')) : 'sin calle: no verá esta sesión';
+      return '<div class="p-fila"><span class="p-nom">'+esc(nombreLargo(a))+'</span>' +
+             '<span class="p-cal'+(c?'':' sin')+'">'+esc(txt)+'</span></div>';
+    }).join('');
+  }
+
+  /* ---------- mover nadadores ---------- */
+  function mover(id, destino){
+    EST.calles.forEach(function(c){
+      var p = c.atletas.indexOf(id);
+      if (p > -1) c.atletas.splice(p, 1);
+    });
+    if (destino >= 0 && EST.calles[destino]) EST.calles[destino].atletas.push(id);
+    pintarPersonas();
+  }
+
+  /* ---------- eventos del tablero (delegados) ---------- */
+  var tab = $('c-tablero');
+
+  tab.addEventListener('dragstart', function(e){
+    var n = e.target.closest ? e.target.closest('.nad') : null;
+    if (!n) return;
+    ARRASTRA = n.getAttribute('data-id');
+    try { e.dataTransfer.setData('text/plain', ARRASTRA); e.dataTransfer.effectAllowed = 'move'; } catch(err){}
+    n.classList.add('arrastrando');
+  });
+  tab.addEventListener('dragend', function(e){
+    var n = e.target.closest ? e.target.closest('.nad') : null;
+    if (n) n.classList.remove('arrastrando');
+    ARRASTRA = null;
+    Array.prototype.forEach.call(tab.querySelectorAll('.zona.sobre'), function(z){ z.classList.remove('sobre'); });
+  });
+  tab.addEventListener('dragover', function(e){
+    var z = e.target.closest ? e.target.closest('[data-zona]') : null;
+    if (!z) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = 'move'; } catch(err){}
+    z.classList.add('sobre');
+  });
+  tab.addEventListener('dragleave', function(e){
+    var z = e.target.closest ? e.target.closest('[data-zona]') : null;
+    if (z && !z.contains(e.relatedTarget)) z.classList.remove('sobre');
+  });
+  tab.addEventListener('drop', function(e){
+    var z = e.target.closest ? e.target.closest('[data-zona]') : null;
+    if (!z) return;
+    e.preventDefault();
+    z.classList.remove('sobre');
+    var id = ARRASTRA;
+    try { id = e.dataTransfer.getData('text/plain') || ARRASTRA; } catch(err){}
+    if (!id) return;
+    mover(id, parseInt(z.getAttribute('data-zona'), 10));
+  });
+
+  tab.addEventListener('input', function(e){
+    var t = e.target;
+    var c = t.getAttribute('data-c'), k = t.getAttribute('data-k');
+    if (c === null || !k) return;
+    c = parseInt(c, 10);
+    var f = t.getAttribute('data-f');
+    if (f === null) { EST.calles[c][k] = t.value; if (k==='etiqueta'||k==='matiz') pintarPrevio(); return; }
+    EST.calles[c].filas[parseInt(f,10)][k] = t.value;
+  });
+
+  tab.addEventListener('change', function(e){
+    var t = e.target;
+
+    if (t.hasAttribute('data-mat')) {
+      var ci = parseInt(t.getAttribute('data-c'),10), fi = parseInt(t.getAttribute('data-f'),10);
+      var fila = EST.calles[ci].filas[fi];
+      var lista = [];
+      var caja = t.closest('.mat');
+      Array.prototype.forEach.call(caja.querySelectorAll('input[data-mat]'), function(ch){
+        ch.parentNode.classList.toggle('on', ch.checked);
+        if (ch.checked) lista.push(ch.getAttribute('data-mat'));
+      });
+      fila.material = lista;
+      return;
+    }
+
+    if (t.hasAttribute('data-mover')) {
+      mover(t.getAttribute('data-mover'), parseInt(t.value, 10));
+      return;
+    }
+
+    if (t.hasAttribute('data-copiar')) {
+      var origen = parseInt(t.getAttribute('data-copiar'), 10);
+      var destino = parseInt(t.value, 10);
+      t.value = '';
+      if (isNaN(destino) || !EST.calles[destino]) return;
+      var hay = EST.calles[destino].filas.some(function(f){ return f.ejercicio || f.series || f.distancia; });
+      if (hay && !confirm('La Calle '+(destino+1)+' ya tiene trabajo escrito. ¿Lo reemplazo por el de la Calle '+(origen+1)+'?')) return;
+      EST.calles[destino].filas = JSON.parse(JSON.stringify(EST.calles[origen].filas));
+      pintarFilas(destino);
+      aviso('Trabajo copiado de la Calle '+(origen+1)+' a la Calle '+(destino+1)+'. Ahora puedes cambiarle el ritmo.', 'ok');
+      return;
+    }
+  });
+
+  tab.addEventListener('click', function(e){
+    var t = e.target;
+
+    if (t.hasAttribute && t.hasAttribute('data-add')) {
+      var i = parseInt(t.getAttribute('data-add'), 10);
+      EST.calles[i].filas.push(filaNueva());
+      pintarFilas(i);
+      return;
+    }
+    if (t.hasAttribute && t.hasAttribute('data-del')) {
+      var ci = parseInt(t.getAttribute('data-del'), 10), fi = parseInt(t.getAttribute('data-f'), 10);
+      EST.calles[ci].filas.splice(fi, 1);
+      if (!EST.calles[ci].filas.length) EST.calles[ci].filas.push(filaNueva());
+      pintarFilas(ci);
+      return;
+    }
+    if (t.id === 'c-repartir') {
+      var libres = ATLETAS.filter(function(a){ return calleDe(a.id) < 0; });
+      libres.forEach(function(a, k){ EST.calles[k % EST.calles.length].atletas.push(a.id); });
+      pintarPersonas();
+      return;
+    }
+    if (t.id === 'c-vaciar') {
+      EST.calles.forEach(function(c){ c.atletas = []; });
+      pintarPersonas();
+      return;
+    }
+  });
+
+  /* ---------- avisos ---------- */
+  function aviso(txt, clase){ var m = $('c-msg'); m.textContent = txt; m.className = 'msg' + (clase ? ' '+clase : ''); }
+  function estado(txt){ $('c-estado').textContent = txt; }
+
+  /* ---------- cargar datos del grupo y del día ---------- */
+  async function cargarAtletas(gid){
+    ATLETAS = [];
+    if (!gid) return;
+    var r = await sb.from('atletas').select('id,nombre,apellidos,nombre_corto,grupo_id,estado')
+      .eq('grupo_id', gid).order('apellidos', { ascending:true });
+    if (r.error) { aviso('No se pudieron cargar los nadadores: '+r.error.message, 'error'); return; }
+    ATLETAS = (r.data||[]).filter(function(a){ return a.estado !== 'baja'; });
+  }
+
+  function sesionEsDeCalles(s){
+    if (s.calles) return true;
+    return (Array.isArray(s.bloques) ? s.bloques : []).some(function(b){ return b && b.calle; });
+  }
+
+  async function cargarSesionesDia(){
+    var gid = $('c-grupo').value, fecha = $('c-fecha').value;
+    SESIONES_DIA = [];
+    if (!gid || !fecha) { $('c-sesion').innerHTML = '<option value="">Sesión nueva</option>'; return; }
+    var r = await sb.from('sesiones')
+      .select('id,fecha,tipo,titulo,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,calles')
+      .eq('grupo_id', gid).eq('fecha', fecha).order('created_at', { ascending:true });
+    if (r.error) { aviso('No se pudieron leer las sesiones de ese día: '+r.error.message, 'error'); return; }
+    SESIONES_DIA = r.data || [];
+    $('c-sesion').innerHTML = '<option value="">Sesión nueva</option>' + SESIONES_DIA.map(function(s){
+      var et = (s.titulo || 'Sin título') + (sesionEsDeCalles(s) ? ' · por calles' : ' · ' + (s.tipo||'sesión'));
+      return '<option value="'+escAt(s.id)+'">'+esc(et)+'</option>';
+    }).join('');
+    // si ese día ya hay una sesión por calles, se abre sola
+    var deCalles = SESIONES_DIA.filter(sesionEsDeCalles)[0];
+    if (deCalles) { $('c-sesion').value = deCalles.id; cargarSesion(deCalles); }
+    else { nuevaSesion(); }
+  }
+
+  function nuevaSesion(){
+    EST.sesionId = null;
+    EST.comunes = [];
+    EST.publicada = false;
+    $('c-titulo').value = '';
+    $('c-nota').value = '';
+    $('c-publicar').checked = false;
+    var n = parseInt($('c-num').value, 10) || 4;
+    EST.calles = [];
+    for (var i=0;i<n;i++) EST.calles.push(calleNueva(i));
+    estado('Sesión nueva. Se creará al guardar.');
+    pintarTodo(); pintarComunes();
+  }
+
+  function cargarSesion(s){
+    EST.sesionId = s.id;
+    EST.publicada = !!s.publicada;
+    $('c-titulo').value = s.titulo || '';
+    $('c-nota').value = s.nota_razonamiento || '';
+    $('c-publicar').checked = !!s.publicada;
+
+    var bloques = Array.isArray(s.bloques) ? s.bloques : [];
+    var deCalle = [], comunes = [];
+    bloques.forEach(function(b){ if (b && b.calle) deCalle.push(b); else comunes.push(b); });
+    EST.comunes = comunes;
+
+    var n = s.calles || 0;
+    deCalle.forEach(function(b){ if (b.calle > n) n = b.calle; });
+    if (!n) n = parseInt($('c-num').value,10) || 4;
+    if (n < 2) n = 2; if (n > 8) n = 8;
+    $('c-num').value = n;
+
+    EST.calles = [];
+    for (var i=0;i<n;i++) EST.calles.push(calleNueva(i));
+    deCalle.forEach(function(b){
+      var i = parseInt(b.calle, 10) - 1;
+      if (i < 0 || i >= EST.calles.length) return;
+      EST.calles[i] = {
+        etiqueta: b.etiqueta || ('Calle '+(i+1)),
+        matiz: b.matiz || '',
+        atletas: (Array.isArray(b.atletas) ? b.atletas : []).filter(function(id){ return !!atletaPorId(id); }),
+        filas: (Array.isArray(b.filas) && b.filas.length) ? b.filas.map(function(f){
+          var c = {}; for (var k in f) if (Object.prototype.hasOwnProperty.call(f,k)) c[k] = f[k];
+          c.material = Array.isArray(f.material) ? f.material.slice() : (f.material ? [f.material] : []);
+          return c;
+        }) : [filaNueva()]
+      };
+    });
+    estado(sesionEsDeCalles(s)
+      ? 'Editando la sesión por calles de ese día.' + (s.publicada ? ' Está publicada.' : ' Es un borrador.')
+      : 'Esta sesión no estaba repartida por calles: sus bloques se conservan como trabajo común.');
+    pintarTodo(); pintarComunes();
+  }
+
+  /* ---------- guardar ---------- */
+  function bloquesParaGuardar(){
+    var out = EST.comunes.slice();
+    EST.calles.forEach(function(c, i){
+      var filas = c.filas.map(function(f){
+        var o = {};
+        for (var k in f) if (Object.prototype.hasOwnProperty.call(f,k)) {
+          var v = f[k];
+          if (v === '' || v === null || v === undefined) continue;
+          if (Array.isArray(v) && !v.length) continue;
+          o[k] = v;
+        }
+        return o;
+      }).filter(function(o){ return Object.keys(o).length > 0; });
+      if (!filas.length && !c.atletas.length) return;   // calle vacía del todo: no se guarda
+      var b = {
+        etiqueta: (c.etiqueta || '').trim() || ('Calle '+(i+1)),
+        calle: i+1,
+        atletas: c.atletas.slice(),
+        filas: filas
+      };
+      if ((c.matiz||'').trim()) b.matiz = c.matiz.trim();
+      out.push(b);
+    });
+    return out;
+  }
+
+  async function guardar(){
+    var gid = $('c-grupo').value, fecha = $('c-fecha').value;
+    if (!gid) { aviso('Elige un grupo.', 'error'); return; }
+    if (!fecha) { aviso('Pon el día.', 'error'); return; }
+
+    var asignados = [];
+    EST.calles.forEach(function(c){ c.atletas.forEach(function(id){ if (asignados.indexOf(id) < 0) asignados.push(id); }); });
+    var publicar = $('c-publicar').checked;
+    if (publicar && !asignados.length &&
+        !confirm('No has puesto a nadie en ninguna calle. Si publicas así, la sesión la verá todo el grupo. ¿Sigo?')) return;
+
+    var payload = {
+      grupo_id: gid,
+      fecha: fecha,
+      dia_semana: diaSemana(fecha),
+      tipo: 'natacion',
+      titulo: ($('c-titulo').value || '').trim() || null,
+      nota_razonamiento: ($('c-nota').value || '').trim() || null,
+      bloques: bloquesParaGuardar(),
+      calles: EST.calles.length,
+      publicada: publicar,
+      atletas_ids: asignados.length ? asignados : null
+    };
+
+    aviso('Guardando…');
+    var res = await mandar(payload);
+
+    // Si la base de datos aún no admite el tipo «natación» (falta aplicar la
+    // migración 026), se guarda como sesión continua para no perder el trabajo.
+    if (res.error && /sesiones_tipo_check/.test(res.error.message || '')) {
+      payload.tipo = 'continuo';
+      res = await mandar(payload);
+      if (!res.error) { aviso('Guardado ✓ (la base de datos aún no conoce el tipo «natación»: se ha guardado como sesión continua).', 'ok'); acabar(res); return; }
+    }
+    if (res.error && /calles/.test(res.error.message || '') && /column/i.test(res.error.message || '')) {
+      delete payload.calles;
+      res = await mandar(payload);
+    }
+    if (res.error) { aviso('No se pudo guardar: ' + res.error.message, 'error'); return; }
+
+    var cuantos = asignados.length;
+    aviso('Guardado ✓ ' + (publicar
+      ? (cuantos ? 'Publicado: lo verán los ' + cuantos + ' nadadores con calle.' : 'Publicado para todo el grupo.')
+      : 'Es un borrador: todavía no lo ve nadie.'), 'ok');
+    acabar(res);
+  }
+
+  async function mandar(payload){
+    if (EST.sesionId) return await sb.from('sesiones').update(payload).eq('id', EST.sesionId).select('id').maybeSingle();
+    var p = {}; for (var k in payload) p[k] = payload[k];
+    p.creado_por = perfil ? perfil.id : null;
+    return await sb.from('sesiones').insert(p).select('id').maybeSingle();
+  }
+
+  function acabar(res){
+    if (res.data && res.data.id) EST.sesionId = res.data.id;
+    estado('Editando la sesión guardada de ese día.');
+    cargarSesionesDia_soloLista();
+  }
+
+  async function cargarSesionesDia_soloLista(){
+    var gid = $('c-grupo').value, fecha = $('c-fecha').value;
+    var r = await sb.from('sesiones').select('id,titulo,tipo,calles,bloques').eq('grupo_id', gid).eq('fecha', fecha);
+    if (r.error || !r.data) return;
+    $('c-sesion').innerHTML = '<option value="">Sesión nueva</option>' + r.data.map(function(s){
+      var et = (s.titulo || 'Sin título') + (sesionEsDeCalles(s) ? ' · por calles' : ' · ' + (s.tipo||'sesión'));
+      return '<option value="'+escAt(s.id)+'">'+esc(et)+'</option>';
+    }).join('');
+    if (EST.sesionId) $('c-sesion').value = EST.sesionId;
+  }
+
+  /* ---------- enganches ---------- */
+  $('c-grupo').addEventListener('change', async function(){
+    estado('Cargando el grupo…');
+    await cargarAtletas($('c-grupo').value);
+    await cargarSesionesDia();
+  });
+  $('c-fecha').addEventListener('change', async function(){ estado('Cargando el día…'); await cargarSesionesDia(); });
+  $('c-sesion').addEventListener('change', function(){
+    var id = $('c-sesion').value;
+    if (!id) { nuevaSesion(); return; }
+    for (var i=0;i<SESIONES_DIA.length;i++) if (SESIONES_DIA[i].id === id) { cargarSesion(SESIONES_DIA[i]); return; }
+  });
+  $('c-num').addEventListener('change', function(){
+    var n = parseInt($('c-num').value, 10) || 4;
+    if (n < EST.calles.length) {
+      var sobran = EST.calles.slice(n);
+      var conCosas = sobran.some(function(c){ return c.atletas.length || c.filas.some(function(f){ return f.ejercicio; }); });
+      if (conCosas && !confirm('Vas a quitar calles que tienen gente o trabajo escrito. Los nadadores volverán a «sin asignar» y su trabajo se perderá. ¿Sigo?')) {
+        $('c-num').value = EST.calles.length; return;
+      }
+      EST.calles = EST.calles.slice(0, n);
+    } else {
+      for (var i = EST.calles.length; i < n; i++) EST.calles.push(calleNueva(i));
+    }
+    pintarTodo();
+  });
+  $('c-guardar').addEventListener('click', guardar);
+  $('c-nueva').addEventListener('click', function(){
+    if (!confirm('Se borra lo que hay en pantalla y se empieza una sesión nueva para ese día. ¿Sigo?')) return;
+    $('c-sesion').value = '';
+    nuevaSesion();
+    aviso('');
+  });
+
+  /* ---------- arranque ---------- */
+  if (!GRUPOS.length) {
+    nuevaSesion();
+    estado('No tienes ningún grupo asignado. Pide a la coordinación que te asigne tu grupo de natación.');
+  } else {
+    await cargarAtletas($('c-grupo').value);
+    await cargarSesionesDia();
+  }
+});
+</script>
+
+</body>
+</html>

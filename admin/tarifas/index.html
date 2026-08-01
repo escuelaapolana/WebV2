@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarifas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema); }
+
+  .tar-wrap { max-width: 1240px; margin: 0 auto; padding: 0 clamp(16px,4vw,30px) 40px; }
+
+  /* ---------- Cabecera ---------- */
+  .tar-cab {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 18px 0; border-bottom: 1px solid var(--linea); margin-bottom: 20px;
+  }
+  .tar-titulo {
+    font-family: var(--fuente-titulo); font-weight: 700; font-size: clamp(26px,4vw,30px);
+    text-transform: uppercase; color: var(--navy); line-height: 1; margin: 0;
+  }
+  .tar-contexto { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 4px; }
+  .tar-acciones { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn--mini { padding: 9px 17px; font-size: 14px; }
+  .btn[disabled] { opacity: .45; cursor: default; box-shadow: none; }
+  .btn[disabled]:hover { transform: none; }
+
+  /* ---------- Pestañas ---------- */
+  .tar-pestanas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .pest {
+    padding: 8px 15px; border-radius: var(--radio-pastilla); background: #fff;
+    border: 1px solid var(--linea-borde); color: var(--texto); font-size: 13px;
+    font-family: inherit; cursor: pointer;
+  }
+  .pest:hover { background: var(--azul-suave); }
+  .pest.activa { background: var(--azul-oscuro); border-color: var(--azul-oscuro); color: #fff; font-weight: 600; }
+
+  /* ---------- Rejilla general ---------- */
+  .tar-cuerpo { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .tar-cuerpo { grid-template-columns: 1fr; } }
+
+  .tarjeta {
+    background: #fff; border: 1px solid var(--crema-media); border-radius: var(--radio);
+    box-shadow: var(--sombra-suave); overflow: hidden;
+  }
+  .tarjeta + .tarjeta { margin-top: 16px; }
+  .oculto { display: none !important; }
+
+  /* ---------- Tabla de tarifas ---------- */
+  .cols { display: grid; grid-template-columns: 1.7fr .8fr 108px 108px 116px 172px; gap: 10px; align-items: center; }
+  .tab-cab {
+    padding: 11px 20px; background: var(--crema); border-bottom: 1px solid var(--crema-banda);
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .12em; color: var(--texto-suave);
+  }
+  .tab-cab .der, .fila .der { text-align: right; }
+  .grupo-sec {
+    padding: 12px 20px 6px; font-family: var(--fuente-mono); font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--texto-tenue);
+    border-bottom: 1px solid var(--crema-banda); background: #fff;
+  }
+  .fila { padding: 12px 20px; border-bottom: 1px solid var(--crema-media); font-size: 15px; color: var(--navy); }
+  .fila:last-child { border-bottom: 0; }
+  .fila.editando { background: var(--azul-suave); }
+  .fila .tenue { color: var(--texto-suave); font-size: 14px; }
+  .fila .cifra { font-family: var(--fuente-mono); font-size: 14px; text-align: right; }
+  .fila .verde { color: #4C7A28; }
+  /* Los precios que no son una cifra ("Incluida", "Consultar
+     secretaría") ocupan las dos columnas de importe: si no, parten
+     la palabra en dos líneas. */
+  .fila .ancha2 { grid-column: span 2; text-align: right; }
+  .fila .concepto { font-weight: 500; }
+  .fila .aviso-fecha { display: block; font-size: 12px; color: #B96F09; margin-top: 2px; }
+  .fila .nota-fila { display: block; font-size: 12px; color: var(--texto-suave); margin-top: 2px; }
+
+  .enlace-accion {
+    background: none; border: 0; padding: 0 0 0 12px; font-family: inherit; font-size: 14px;
+    font-weight: 600; color: var(--azul-oscuro); cursor: pointer;
+  }
+  .enlace-accion:hover { text-decoration: underline; }
+  .enlace-accion.guardar { color: #4C7A28; }
+  .enlace-accion.suave { color: var(--texto-suave); font-weight: 400; }
+  .acciones-fila { display: flex; justify-content: flex-end; flex-wrap: wrap; }
+
+  .celda-edit { display: flex; justify-content: flex-end; }
+  .celda-edit input {
+    width: 100%; max-width: 104px; box-sizing: border-box; padding: 6px 9px;
+    border: 2px solid var(--azul); border-radius: 8px; background: #fff;
+    font-family: var(--fuente-mono); font-size: 14px; text-align: right; color: var(--navy);
+  }
+  .celda-edit.ancha { grid-column: span 2; }
+  .celda-edit.ancha input { max-width: none; text-align: left; font-family: var(--fuente-texto); }
+
+  /* Tabla en móvil: cada fila pasa a ser una ficha */
+  @media (max-width: 760px) {
+    .tab-cab { display: none; }
+    .cols { display: block; }
+    .fila { padding: 14px 16px; }
+    .fila > * { display: block; }
+    .fila > *[data-etq]:not(:empty)::before {
+      content: attr(data-etq) ' · ';
+      font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .1em;
+      color: var(--texto-tenue); text-transform: uppercase;
+    }
+    .fila > *[data-etq] { text-align: left; margin-top: 4px; }
+    .fila .cifra { text-align: left; }
+    .celda-edit { justify-content: flex-start; margin-top: 6px; }
+    .celda-edit input { max-width: none; text-align: left; }
+    .acciones-fila { justify-content: flex-start; margin-top: 10px; }
+    .enlace-accion { padding: 0 16px 0 0; }
+    .grupo-sec { padding: 14px 16px 6px; }
+  }
+
+  /* ---------- Panel lateral «cambio en curso» ---------- */
+  .panel-cambio { border-top: 4px solid var(--azul); padding: 20px 22px; }
+  .eyebrow-mono {
+    font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .14em;
+    color: var(--texto-suave); text-transform: uppercase; display: block;
+  }
+  .resumen-cambio { font-size: 15px; color: var(--navy); line-height: 1.5; margin: 12px 0 0; }
+  .resumen-cambio strong { font-weight: 600; }
+  .bloque-panel { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--crema-banda); }
+  .lista-afecta { list-style: none; margin: 8px 0 0; padding: 0; }
+  .lista-afecta li { font-size: 14px; color: var(--navy); padding: 2px 0; }
+  .vacio-panel { font-size: 14px; color: var(--texto-suave); line-height: 1.5; margin: 10px 0 0; }
+
+  .aviso-ambar {
+    background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); border-radius: 14px;
+    padding: 16px 18px; margin-top: 14px;
+  }
+  .aviso-ambar b { display: block; font-size: 14px; color: var(--navy); margin-bottom: 4px; }
+  .aviso-ambar span { font-size: 13px; color: #6B5B2E; line-height: 1.45; }
+
+  .fila-check { display: flex; gap: 10px; align-items: flex-start; background: var(--crema);
+    border: 1px solid var(--crema-media); border-radius: 10px; padding: 11px 13px; margin-top: 12px; }
+  .fila-check input { width: auto; margin: 2px 0 0; }
+  .fila-check label { font-size: 13px; color: var(--texto); line-height: 1.45; margin: 0; font-weight: 400; }
+
+  /* ---------- Formularios ---------- */
+  label { display: block; font-size: 13px; color: var(--texto); margin: 12px 0 5px; font-weight: 600; }
+  input, select, textarea {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde);
+    border-radius: 10px; font-family: var(--fuente-texto); font-size: 15px; background: #FDFCF9; color: var(--navy);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  textarea { min-height: 80px; resize: vertical; }
+  .ayuda { font-size: 12px; color: var(--texto-suave); margin-top: 4px; display: block; }
+
+  .cuerpo-tarjeta { padding: 20px 22px; }
+  .cuerpo-tarjeta h2 {
+    font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px;
+    color: var(--navy); margin: 0 0 4px;
+  }
+  .rejilla2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .rejilla3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) { .rejilla2, .rejilla3 { grid-template-columns: 1fr; } }
+
+  .msg { font-size: 14px; }
+  .msg.error { color: #A8453F; }
+  .msg.ok { color: #4C7A28; }
+
+  /* ---------- Histórico ---------- */
+  .hist-bloque { padding: 16px 20px; border-bottom: 1px solid var(--crema-media); }
+  .hist-bloque:last-child { border-bottom: 0; }
+  .hist-tit { font-size: 15px; font-weight: 600; color: var(--navy); margin-bottom: 8px; }
+  .hist-fila { display: grid; grid-template-columns: 1.4fr 108px 108px 1fr; gap: 10px;
+    padding: 7px 0; border-top: 1px solid var(--crema-banda); font-size: 14px; align-items: baseline; }
+  .hist-fila .mono { font-family: var(--fuente-mono); font-size: 13px; }
+  @media (max-width: 700px) { .hist-fila { grid-template-columns: 1fr 1fr; } }
+  .pastilla { font-family: var(--fuente-mono); font-size: 10px; letter-spacing: .08em;
+    padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
+  .p-vigor { background: #E6F1DE; color: #4C7A28; }
+  .p-futura { background: var(--aviso-fondo); color: #B96F09; }
+  .p-cerrada { background: var(--crema-media); color: var(--texto-suave); }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="tar-wrap">
+
+    <!-- ===================== CABECERA ===================== -->
+    <header class="tar-cab">
+      <div>
+        <h1 class="tar-titulo">Tarifas</h1>
+        <span class="tar-contexto" id="tar-contexto">Los cambios entran en la web al guardar</span>
+      </div>
+      <div class="tar-acciones">
+        <button class="btn btn--fantasma btn--mini" type="button" id="btn-historico">Ver histórico</button>
+        <button class="btn btn--fantasma btn--mini" type="button" id="btn-nueva">+ Nueva tarifa</button>
+        <button class="btn btn--primario btn--mini" type="button" id="btn-guardar" disabled>Guardar cambios</button>
+      </div>
+    </header>
+
+    <!-- ===================== PESTAÑAS ===================== -->
+    <nav class="tar-pestanas" id="tar-pestanas"></nav>
+
+    <!-- ===================== CUERPO ===================== -->
+    <div class="tar-cuerpo">
+
+      <div>
+        <!-- Tabla de tarifas vigentes -->
+        <div class="tarjeta" id="tar-tabla">
+          <div class="cols tab-cab">
+            <span>Grupo</span><span>Días</span>
+            <span class="der">Socio</span><span class="der">No socio</span>
+            <span class="der">Periodicidad</span><span></span>
+          </div>
+          <div id="tar-filas"><div class="fila">Cargando…</div></div>
+        </div>
+
+        <!-- Histórico -->
+        <div class="tarjeta oculto" id="tar-historico">
+          <div class="cuerpo-tarjeta" style="padding-bottom:6px;">
+            <h2 id="hist-titulo">Histórico de tarifas</h2>
+            <p class="ayuda" style="margin:0;">Cada versión con sus fechas. Al cambiar un precio no se borra el anterior: se cierra y empieza el nuevo.</p>
+          </div>
+          <div id="hist-cuerpo"></div>
+        </div>
+
+        <!-- Ficha completa (crear / editar) -->
+        <div class="tarjeta oculto" id="tar-ficha">
+          <div class="cuerpo-tarjeta">
+            <h2 id="ficha-titulo">Nueva tarifa</h2>
+            <p class="ayuda" style="margin:0 0 6px;" id="ficha-ayuda"></p>
+
+            <form id="form-ficha">
+              <input type="hidden" id="f-id">
+              <input type="hidden" id="f-clave">
+
+              <label for="f-concepto">Concepto</label>
+              <input type="text" id="f-concepto" required placeholder="Pista · Velocidad A">
+
+              <div class="rejilla3">
+                <div>
+                  <label for="f-ambito">Pestaña</label>
+                  <select id="f-ambito"></select>
+                </div>
+                <div>
+                  <label for="f-seccion">Afecta a la sección</label>
+                  <select id="f-seccion"></select>
+                </div>
+                <div>
+                  <label for="f-grupo">Afecta al grupo</label>
+                  <select id="f-grupo"></select>
+                </div>
+              </div>
+
+              <div class="rejilla2">
+                <div>
+                  <label for="f-dias">Días</label>
+                  <input type="text" id="f-dias" placeholder="3 días · M, J, S · Fines de semana">
+                </div>
+                <div>
+                  <label for="f-periodicidad">Periodicidad</label>
+                  <select id="f-periodicidad"></select>
+                </div>
+              </div>
+
+              <div class="rejilla2">
+                <div>
+                  <label for="f-socio">Precio socio (€)</label>
+                  <input type="number" id="f-socio" step="0.01" min="0" inputmode="decimal">
+                </div>
+                <div>
+                  <label for="f-socio-hasta">…hasta (€), solo si es un rango</label>
+                  <input type="number" id="f-socio-hasta" step="0.01" min="0" inputmode="decimal">
+                </div>
+              </div>
+
+              <div class="rejilla2">
+                <div>
+                  <label for="f-nosocio">Precio no socio (€)</label>
+                  <input type="number" id="f-nosocio" step="0.01" min="0" inputmode="decimal">
+                </div>
+                <div>
+                  <label for="f-nosocio-hasta">…hasta (€), solo si es un rango</label>
+                  <input type="number" id="f-nosocio-hasta" step="0.01" min="0" inputmode="decimal">
+                </div>
+              </div>
+
+              <label for="f-texto">Texto en lugar del precio</label>
+              <input type="text" id="f-texto" placeholder="Incluida en la cuota · Consultar secretaría">
+              <span class="ayuda">Solo cuando el precio no es una cifra. Si lo rellenas, la web enseña este texto y no los euros.</span>
+
+              <div class="rejilla2">
+                <div>
+                  <label for="f-desde">Entra en vigor</label>
+                  <input type="date" id="f-desde">
+                  <span class="ayuda" id="f-desde-ayuda"></span>
+                </div>
+                <div>
+                  <label for="f-orden">Orden en la tabla</label>
+                  <input type="number" id="f-orden" step="10" min="0" value="0">
+                </div>
+              </div>
+
+              <label for="f-notas">Notas</label>
+              <textarea id="f-notas" placeholder="Lo que hay que saber de esta tarifa: descuentos, condiciones, forma de pago…"></textarea>
+
+              <div class="fila-check">
+                <input type="checkbox" id="f-activo" checked>
+                <label for="f-activo">Activa (se puede aplicar y se ve en la web)</label>
+              </div>
+
+              <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button class="btn btn--primario btn--mini" type="submit">Guardar tarifa</button>
+                <button class="btn btn--fantasma btn--mini" type="button" id="ficha-cancelar">Cancelar</button>
+                <span class="msg" id="ficha-msg"></span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== PANEL LATERAL ===================== -->
+      <aside>
+        <div class="tarjeta panel-cambio">
+          <span class="eyebrow-mono">Cambio en curso</span>
+          <div id="panel-cuerpo">
+            <p class="vacio-panel">Todavía no hay ningún cambio. Elige una tarifa, toca «Editar» y escribe el precio nuevo.</p>
+          </div>
+        </div>
+
+        <div class="aviso-ambar">
+          <b>Los precios no se tocan a media temporada</b>
+          <span>Por eso el cambio lleva fecha de entrada en vigor y queda registrado en el histórico, con quién lo hizo.</span>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  /* ---------------------------------------------------------
+     Vocabulario fijo (el de la maqueta y el de la migración 022)
+     --------------------------------------------------------- */
+  var AMBITOS = [
+    { valor: 'club',    nombre: 'Club · secciones' },
+    { valor: 'escuela', nombre: 'Escuela' },
+    { valor: 'cubo',    nombre: 'El Cubo' },
+    { valor: 'campus',  nombre: 'Campus' },
+    { valor: 'socio',   nombre: 'Cuota de socio' }
+  ];
+
+  var PERIODICIDADES = ['mensual', 'trimestral', 'anual', 'temporada', 'semanal', 'pago único', 'por sesión', 'bono'];
+
+  /* Cómo se llama cada sección: "nombre" para los títulos de la tabla
+     y "frase" para la lista «AFECTA A» ("Página de atletismo en pista").
+     Los códigos salen de contenido_secciones; esto solo los traduce. */
+  var SECCIONES = {
+    'competicion':       { nombre: 'Atletismo en pista',            frase: 'atletismo en pista' },
+    'running':           { nombre: 'Running',                       frase: 'running' },
+    'natacion':          { nombre: 'Natación',                      frase: 'natación' },
+    'triatlon':          { nombre: 'Triatlón',                      frase: 'triatlón' },
+    'montana':           { nombre: 'Montaña',                       frase: 'montaña' },
+    'cubo':              { nombre: 'El Cubo',                       frase: 'El Cubo' },
+    'escuela':           { nombre: 'Escuela de atletismo',          frase: 'la escuela de atletismo' },
+    'escuela-natacion':  { nombre: 'Escuela de natación',           frase: 'la escuela de natación' },
+    'escuela-municipal': { nombre: 'Escuela municipal de atletismo', frase: 'la escuela municipal' },
+    'mun-atletismo':     { nombre: 'Atletismo municipal',           frase: 'atletismo municipal' },
+    'mun-triatlon':      { nombre: 'Triatlón municipal',            frase: 'triatlón municipal' },
+    'campus':            { nombre: 'Campus de verano',              frase: 'el campus de verano' },
+    'deporte-adaptado':  { nombre: 'Deporte adaptado',              frase: 'deporte adaptado' },
+    'instalaciones':     { nombre: 'Instalaciones',                 frase: 'instalaciones' }
+  };
+  function nombreSeccion(s) {
+    if (!s) return 'Sin sección';
+    return (SECCIONES[s] && SECCIONES[s].nombre) || s;
+  }
+  function fraseSeccion(s) {
+    return (SECCIONES[s] && SECCIONES[s].frase) || null;
+  }
+
+  /* ---------------------------------------------------------
+     Ayudas de fechas y cifras
+     --------------------------------------------------------- */
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  function hoyISO() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function fechaLarga(iso) {
+    if (!iso) return '';
+    var p = String(iso).slice(0, 10).split('-');
+    return Number(p[2]) + ' de ' + MESES[Number(p[1]) - 1] + ' de ' + p[0];
+  }
+  /* Temporada que se está preparando. La del club va de septiembre a
+     junio, así que a partir de junio ya se trabaja sobre la siguiente. */
+  function temporada() {
+    var d = new Date(), a = d.getFullYear();
+    if (d.getMonth() < 5) a = a - 1;                 // enero-mayo = temporada que empezó en septiembre
+    return a + '-' + String((a + 1) % 100).padStart(2, '0');
+  }
+  /* Próximo 1 de septiembre: la fecha natural para que entre un precio nuevo. */
+  function proximoSeptiembre() {
+    var d = new Date(), a = d.getFullYear();
+    if (d.getMonth() > 7) a = a + 1;                 // de septiembre en adelante, el del año que viene
+    return a + '-09-01';
+  }
+  function manana() {
+    var d = new Date(); d.setDate(d.getDate() + 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function euros(n) {
+    if (n == null || n === '') return null;
+    var v = Number(n);
+    if (isNaN(v)) return null;
+    var t = (v % 1 === 0) ? String(v) : v.toFixed(2).replace('.', ',');
+    return t + ' €';
+  }
+  function importe(desde, hasta) {
+    var a = euros(desde);
+    if (a == null) return null;
+    var b = euros(hasta);
+    return b ? (euros(desde).replace(' €', '') + ' – ' + b) : a;
+  }
+  function celdaSocio(t) {
+    if (t.texto_importe) return { texto: t.texto_importe, verde: true };
+    var v = importe(t.importe_socio, t.importe_socio_hasta);
+    return { texto: v || '—', verde: false };
+  }
+  function celdaNoSocio(t) {
+    if (t.texto_importe) return '—';
+    return importe(t.importe_no_socio, t.importe_no_socio_hasta) || '—';
+  }
+  function conMayuscula(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; }
+  function num(v) { return (v === '' || v == null) ? null : Number(v); }
+
+  /* ---------------------------------------------------------
+     Estado de la página
+     --------------------------------------------------------- */
+  var estado = {
+    ambito: 'club',
+    filas: [],          // todas las versiones de todas las tarifas
+    secciones: [],      // códigos de sección sacados de contenido_secciones
+    grupos: [],
+    edicion: null,      // { id, cambios: {}, desde, avisar }
+    histClave: null
+  };
+
+  /* ---------------------------------------------------------
+     Carga de datos
+     --------------------------------------------------------- */
+  async function cargarTodo() {
+    var r = await Promise.all([
+      sb.from('tarifas').select('*').order('orden').order('vigente_desde', { ascending: false }),
+      sb.from('contenido_secciones').select('seccion').order('seccion'),
+      sb.from('grupos').select('id,nombre,seccion').eq('activo', true).order('nombre')
+    ]);
+    if (r[0].error) { $('tar-filas').innerHTML = '<div class="fila">No se pudieron leer las tarifas: ' + esc(r[0].error.message) + '</div>'; return; }
+    estado.filas = r[0].data || [];
+    estado.secciones = (r[1].data || []).map(function (x) { return x.seccion; });
+    estado.grupos = r[2].data || [];
+    pintarSelectores();
+    pintarTabla();
+  }
+
+  /* Agrupa las versiones por clave y devuelve, para cada tarifa, la
+     que se aplica hoy (o la que está a punto de entrar en vigor). */
+  function tarifasDelAmbito(ambito) {
+    var hoy = hoyISO(), porClave = {};
+    estado.filas.forEach(function (t) {
+      if (!porClave[t.clave]) porClave[t.clave] = [];
+      porClave[t.clave].push(t);
+    });
+    var salida = [];
+    Object.keys(porClave).forEach(function (clave) {
+      var versiones = porClave[clave].slice().sort(function (a, b) {
+        return a.vigente_desde < b.vigente_desde ? -1 : 1;
+      });
+      var vigente = null, futura = null;
+      versiones.forEach(function (v) {
+        if (!v.activo) return;
+        if (v.vigente_desde <= hoy && (!v.vigente_hasta || v.vigente_hasta > hoy)) vigente = v;
+        else if (v.vigente_desde > hoy && !futura) futura = v;
+      });
+      var fila = vigente || futura;
+      if (!fila) return;
+      if (fila.ambito !== ambito) return;
+      fila.__futura = (!vigente && futura) ? futura : null;
+      fila.__proxima = (vigente && futura) ? futura : null;
+      salida.push(fila);
+    });
+    salida.sort(function (a, b) {
+      // primero por sección (por su nombre, no por su código), luego por el orden que fije el club
+      var na = a.seccion ? nombreSeccion(a.seccion) : 'zzz';
+      var nb = b.seccion ? nombreSeccion(b.seccion) : 'zzz';
+      if (na !== nb) return na.localeCompare(nb, 'es');
+      if (a.orden !== b.orden) return a.orden - b.orden;
+      return a.concepto.localeCompare(b.concepto, 'es');
+    });
+    return salida;
+  }
+
+  /* ---------------------------------------------------------
+     Pestañas
+     --------------------------------------------------------- */
+  function pintarPestanas() {
+    $('tar-pestanas').innerHTML = AMBITOS.map(function (a) {
+      return '<button type="button" class="pest' + (a.valor === estado.ambito ? ' activa' : '') +
+             '" data-ambito="' + a.valor + '">' + esc(a.nombre) + '</button>';
+    }).join('');
+  }
+  $('tar-pestanas').addEventListener('click', function (e) {
+    var a = e.target.getAttribute('data-ambito');
+    if (!a) return;
+    estado.ambito = a;
+    estado.edicion = null;
+    estado.histClave = null;
+    $('tar-historico').classList.add('oculto');
+    $('tar-ficha').classList.add('oculto');
+    pintarPestanas();
+    pintarTabla();
+    pintarPanel();
+  });
+
+  /* ---------------------------------------------------------
+     Tabla
+     --------------------------------------------------------- */
+  function pintarTabla() {
+    var lista = tarifasDelAmbito(estado.ambito);
+    var cont = $('tar-filas');
+    if (!lista.length) {
+      cont.innerHTML = '<div class="fila">Todavía no hay tarifas en esta pestaña. Usa «+ Nueva tarifa».</div>';
+      return;
+    }
+    var html = '', seccionActual = '';
+    lista.forEach(function (t) {
+      var sec = t.seccion || '';
+      if (sec !== seccionActual) {
+        seccionActual = sec;
+        // Las tarifas que no cuelgan de ninguna sección (la cuota de
+        // socio) no llevan encabezado: quedarían bajo un título vacío.
+        if (sec) html += '<div class="grupo-sec">' + esc(nombreSeccion(sec)) + '</div>';
+      }
+      html += filaHTML(t);
+    });
+    cont.innerHTML = html;
+  }
+
+  function filaHTML(t) {
+    var editando = estado.edicion && estado.edicion.id === t.id;
+    var soc = celdaSocio(t);
+    var aviso = '';
+    if (t.__futura) aviso = '<span class="aviso-fecha">Entra en vigor el ' + esc(fechaLarga(t.vigente_desde)) + '</span>';
+    else if (t.__proxima) aviso = '<span class="aviso-fecha">Cambia el ' + esc(fechaLarga(t.__proxima.vigente_desde)) + '</span>';
+
+    var celdas;
+    if (editando) {
+      var c = estado.edicion.cambios;
+      if (t.texto_importe) {
+        celdas =
+          '<div class="celda-edit ancha"><input type="text" id="ed-texto" value="' + esc(c.texto_importe != null ? c.texto_importe : t.texto_importe) + '"></div>';
+      } else {
+        celdas =
+          '<div class="celda-edit"><input type="number" step="0.01" min="0" inputmode="decimal" id="ed-socio" aria-label="Precio socio" value="' +
+            esc(c.importe_socio != null ? c.importe_socio : (t.importe_socio == null ? '' : t.importe_socio)) + '"></div>' +
+          '<div class="celda-edit"><input type="number" step="0.01" min="0" inputmode="decimal" id="ed-nosocio" aria-label="Precio no socio" value="' +
+            esc(c.importe_no_socio != null ? c.importe_no_socio : (t.importe_no_socio == null ? '' : t.importe_no_socio)) + '"></div>';
+      }
+    } else if (t.texto_importe) {
+      celdas = '<span class="cifra verde ancha2" data-etq="Precio">' + esc(t.texto_importe) + '</span>';
+    } else {
+      celdas =
+        '<span class="cifra" data-etq="Socio">' + esc(soc.texto) + '</span>' +
+        '<span class="cifra" data-etq="No socio">' + esc(celdaNoSocio(t)) + '</span>';
+    }
+
+    return '<div class="cols fila' + (editando ? ' editando' : '') + '">' +
+      '<span class="concepto">' + esc(t.concepto) + aviso +
+        (t.notas ? '<span class="nota-fila">' + esc(t.notas) + '</span>' : '') + '</span>' +
+      '<span class="tenue" data-etq="Días">' + esc(t.dias || '—') + '</span>' +
+      celdas +
+      '<span class="tenue der" data-etq="Periodicidad">' + esc(conMayuscula(t.periodicidad)) + '</span>' +
+      '<span class="acciones-fila">' +
+        (editando
+          ? '<button type="button" class="enlace-accion guardar" data-guardar="1">Guardar</button>' +
+            '<button type="button" class="enlace-accion suave" data-descartar="1">Descartar</button>'
+          : '<button type="button" class="enlace-accion" data-editar="' + t.id + '">Editar</button>' +
+            '<button type="button" class="enlace-accion suave" data-ficha="' + t.id + '">Ficha</button>' +
+            '<button type="button" class="enlace-accion suave" data-hist="' + esc(t.clave) + '">Histórico</button>') +
+      '</span>' +
+    '</div>';
+  }
+
+  $('tar-filas').addEventListener('click', function (e) {
+    var ed = e.target.getAttribute('data-editar');
+    var fi = e.target.getAttribute('data-ficha');
+    var hi = e.target.getAttribute('data-hist');
+    if (ed) { empezarEdicion(ed); return; }
+    if (fi) { abrirFicha(estado.filas.filter(function (x) { return x.id === fi; })[0]); return; }
+    if (hi) { verHistorico(hi); return; }
+    if (e.target.getAttribute('data-guardar')) { guardarCambio(); return; }
+    if (e.target.getAttribute('data-descartar')) { estado.edicion = null; pintarTabla(); pintarPanel(); }
+  });
+
+  /* Cada tecleo actualiza el resumen del panel lateral. */
+  $('tar-filas').addEventListener('input', function (e) {
+    if (!estado.edicion) return;
+    if (e.target.id === 'ed-socio') estado.edicion.cambios.importe_socio = e.target.value;
+    else if (e.target.id === 'ed-nosocio') estado.edicion.cambios.importe_no_socio = e.target.value;
+    else if (e.target.id === 'ed-texto') estado.edicion.cambios.texto_importe = e.target.value;
+    else return;
+    pintarPanel();
+  });
+
+  /* ---------------------------------------------------------
+     Cambio en curso
+     --------------------------------------------------------- */
+  function empezarEdicion(id) {
+    var t = estado.filas.filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+    var minimo = t.vigente_desde >= hoyISO() ? sumarDia(t.vigente_desde) : manana();
+    var sugerida = proximoSeptiembre() > minimo ? proximoSeptiembre() : minimo;
+    estado.edicion = { id: id, cambios: {}, desde: sugerida, avisar: false };
+    $('tar-ficha').classList.add('oculto');
+    pintarTabla();
+    pintarPanel();
+    var inp = $('ed-socio') || $('ed-texto');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+  function sumarDia(iso) {
+    var p = String(iso).slice(0, 10).split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /* Frase del tipo «Velocidad B: 40 € → 42 € al mes para socios.» */
+  var ADVERBIO = { mensual: 'al mes', trimestral: 'al trimestre', anual: 'al año', temporada: 'por temporada', semanal: 'a la semana' };
+  function resumenCambio(t, c) {
+    var trozos = [];
+    if (c.importe_socio != null && String(c.importe_socio) !== String(t.importe_socio == null ? '' : t.importe_socio)) {
+      trozos.push('<strong>' + esc(euros(t.importe_socio) || 'sin precio') + ' → ' + esc(euros(c.importe_socio) || 'sin precio') + '</strong> ' +
+                  esc(ADVERBIO[t.periodicidad] || '') + ' para socios');
+    }
+    if (c.importe_no_socio != null && String(c.importe_no_socio) !== String(t.importe_no_socio == null ? '' : t.importe_no_socio)) {
+      trozos.push('<strong>' + esc(euros(t.importe_no_socio) || 'sin precio') + ' → ' + esc(euros(c.importe_no_socio) || 'sin precio') + '</strong> ' +
+                  esc(ADVERBIO[t.periodicidad] || '') + ' para no socios');
+    }
+    if (c.texto_importe != null && c.texto_importe !== t.texto_importe) {
+      trozos.push('<strong>' + esc(t.texto_importe || '—') + ' → ' + esc(c.texto_importe || '—') + '</strong>');
+    }
+    if (!trozos.length) return esc(t.concepto) + ': todavía no has cambiado nada.';
+    return esc(t.concepto) + ': ' + trozos.join(' y ') + '.';
+  }
+
+  /* Dónde repercute el cambio. Se deduce de la sección, del grupo y
+     de la pestaña: no hay ninguna lista escrita a mano por tarifa. */
+  function afectaA(t) {
+    var l = [];
+    if (t.seccion && fraseSeccion(t.seccion)) l.push('Página de ' + fraseSeccion(t.seccion));
+    if (t.grupo_id) {
+      var g = estado.grupos.filter(function (x) { return x.id === t.grupo_id; })[0];
+      if (g) l.push('Grupo «' + g.nombre + '» · ficha del grupo');
+    }
+    if (t.ambito === 'club')    { l.push('Tabla de precios de la home'); l.push('Hazte socio · coste total'); l.push('Encuentra tu grupo'); }
+    if (t.ambito === 'socio')   { l.push('Hazte socio · coste total'); l.push('Tabla de precios de la home'); l.push('Inscripción · resumen del recibo'); }
+    if (t.ambito === 'escuela') { l.push('Inscripción · cuotas de la escuela'); }
+    if (t.ambito === 'cubo')    { l.push('El Cubo · formas de usarlo'); }
+    if (t.ambito === 'campus')  { l.push('Campus · tabla de tarifas'); }
+    l.push('Los recibos que se giren a partir de esa fecha');
+    return l;
+  }
+
+  function pintarPanel() {
+    var cuerpo = $('panel-cuerpo');
+    var e = estado.edicion;
+    if (!e) {
+      cuerpo.innerHTML = '<p class="vacio-panel">Todavía no hay ningún cambio. Elige una tarifa, toca «Editar» y escribe el precio nuevo.</p>';
+      $('btn-guardar').disabled = true;
+      return;
+    }
+    var t = estado.filas.filter(function (x) { return x.id === e.id; })[0];
+    if (!t) { estado.edicion = null; pintarPanel(); return; }
+
+    cuerpo.innerHTML =
+      '<p class="resumen-cambio">' + resumenCambio(t, e.cambios) + '</p>' +
+      '<div class="bloque-panel">' +
+        '<span class="eyebrow-mono">Afecta a</span>' +
+        '<ul class="lista-afecta">' + afectaA(t).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' +
+      '</div>' +
+      '<div class="bloque-panel">' +
+        '<label for="p-desde">Entra en vigor</label>' +
+        '<input type="date" id="p-desde" value="' + esc(e.desde) + '" min="' + esc(manana()) + '">' +
+        '<span class="ayuda" id="p-desde-txt">' + esc(fechaLarga(e.desde)) + '</span>' +
+      '</div>' +
+      '<div class="fila-check">' +
+        '<input type="checkbox" id="p-avisar"' + (e.avisar ? ' checked' : '') + '>' +
+        '<label for="p-avisar">Avisar por email a los socios del grupo</label>' +
+      '</div>' +
+      '<div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">' +
+        '<button type="button" class="enlace-accion suave" id="p-descartar" style="padding:0;">Descartar el cambio</button>' +
+        '<span class="msg" id="p-msg"></span>' +
+      '</div>';
+
+    $('p-desde').addEventListener('change', function () {
+      estado.edicion.desde = this.value;
+      $('p-desde-txt').textContent = fechaLarga(this.value);
+    });
+    $('p-avisar').addEventListener('change', function () { estado.edicion.avisar = this.checked; });
+    $('p-descartar').addEventListener('click', function () { estado.edicion = null; pintarTabla(); pintarPanel(); });
+
+    $('btn-guardar').disabled = false;
+    if (window.innerWidth <= 980) { /* en móvil el panel está debajo: se avisa dónde está */ }
+  }
+
+  /* Guardar = crear una versión nueva. Nunca se pisa la anterior. */
+  async function guardarCambio() {
+    var e = estado.edicion;
+    if (!e) return;
+    var t = estado.filas.filter(function (x) { return x.id === e.id; })[0];
+    var msg = $('p-msg');
+    function decir(txt, clase) { if (msg) { msg.textContent = txt; msg.className = 'msg' + (clase ? ' ' + clase : ''); } }
+
+    var cambios = {};
+    if (e.cambios.importe_socio != null && String(e.cambios.importe_socio) !== String(t.importe_socio == null ? '' : t.importe_socio)) cambios.importe_socio = num(e.cambios.importe_socio);
+    if (e.cambios.importe_no_socio != null && String(e.cambios.importe_no_socio) !== String(t.importe_no_socio == null ? '' : t.importe_no_socio)) cambios.importe_no_socio = num(e.cambios.importe_no_socio);
+    if (e.cambios.texto_importe != null && e.cambios.texto_importe !== t.texto_importe) cambios.texto_importe = e.cambios.texto_importe || null;
+
+    if (!Object.keys(cambios).length) { decir('No has cambiado ningún precio.', 'error'); return; }
+    if (!e.desde) { decir('Falta la fecha de entrada en vigor.', 'error'); return; }
+    cambios.avisar_email = !!e.avisar;
+
+    decir('Guardando…');
+    var r = await sb.rpc('tarifa_nueva_version', { p_id: e.id, p_desde: e.desde, p_cambios: cambios });
+    if (r.error) { decir('No se pudo guardar: ' + r.error.message, 'error'); return; }
+    estado.edicion = null;
+    await cargarTodo();
+    pintarPanel();
+    var c = $('panel-cuerpo');
+    c.innerHTML = '<p class="vacio-panel">Guardado. La nueva tarifa entra en vigor el ' + esc(fechaLarga(e.desde)) + ' y la anterior queda en el histórico.</p>';
+  }
+
+  $('btn-guardar').addEventListener('click', guardarCambio);
+
+  /* ---------------------------------------------------------
+     Histórico
+     --------------------------------------------------------- */
+  function verHistorico(clave) {
+    estado.histClave = clave || null;
+    $('tar-ficha').classList.add('oculto');
+    var hoy = hoyISO();
+    var filas = estado.filas.filter(function (t) {
+      return clave ? t.clave === clave : t.ambito === estado.ambito;
+    });
+    var porClave = {};
+    filas.forEach(function (t) { (porClave[t.clave] = porClave[t.clave] || []).push(t); });
+
+    var claves = Object.keys(porClave).sort();
+    $('hist-titulo').textContent = clave ? 'Histórico · ' + (porClave[clave][0] || {}).concepto : 'Histórico de tarifas';
+
+    if (!claves.length) {
+      $('hist-cuerpo').innerHTML = '<div class="hist-bloque">No hay versiones que enseñar.</div>';
+    } else {
+      $('hist-cuerpo').innerHTML = claves.map(function (k) {
+        var versiones = porClave[k].slice().sort(function (a, b) { return a.vigente_desde < b.vigente_desde ? 1 : -1; });
+        return '<div class="hist-bloque">' +
+          '<div class="hist-tit">' + esc(versiones[0].concepto) + '</div>' +
+          versiones.map(function (v) {
+            var estadoTxt, clase;
+            if (!v.activo) { estadoTxt = 'Inactiva'; clase = 'p-cerrada'; }
+            else if (v.vigente_desde > hoy) { estadoTxt = 'Entra el ' + fechaLarga(v.vigente_desde); clase = 'p-futura'; }
+            else if (!v.vigente_hasta || v.vigente_hasta > hoy) { estadoTxt = 'En vigor'; clase = 'p-vigor'; }
+            else { estadoTxt = 'Cerrada'; clase = 'p-cerrada'; }
+            var s = celdaSocio(v);
+            return '<div class="hist-fila">' +
+              '<span class="mono">' + esc(fechaLarga(v.vigente_desde)) +
+                (v.vigente_hasta ? ' → ' + esc(fechaLarga(v.vigente_hasta)) : ' → sigue') + '</span>' +
+              '<span class="mono">' + esc(s.texto) + '</span>' +
+              '<span class="mono">' + esc(celdaNoSocio(v)) + '</span>' +
+              '<span><span class="pastilla ' + clase + '">' + esc(estadoTxt) + '</span></span>' +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }).join('');
+    }
+    $('tar-historico').classList.remove('oculto');
+    $('tar-historico').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('btn-historico').addEventListener('click', function () {
+    if (!$('tar-historico').classList.contains('oculto') && !estado.histClave) {
+      $('tar-historico').classList.add('oculto');
+    } else {
+      verHistorico(null);
+    }
+  });
+
+  /* ---------------------------------------------------------
+     Ficha completa (crear y editar)
+     --------------------------------------------------------- */
+  function pintarSelectores() {
+    $('f-ambito').innerHTML = AMBITOS.map(function (a) {
+      return '<option value="' + a.valor + '">' + esc(a.nombre) + '</option>';
+    }).join('');
+
+    $('f-seccion').innerHTML = '<option value="">— sin sección —</option>' +
+      estado.secciones.slice().sort(function (a, b) {
+        return nombreSeccion(a).localeCompare(nombreSeccion(b), 'es');
+      }).map(function (s) {
+        return '<option value="' + esc(s) + '">' + esc(nombreSeccion(s)) + '</option>';
+      }).join('');
+
+    $('f-grupo').innerHTML = '<option value="">— sin grupo concreto —</option>' +
+      estado.grupos.map(function (g) {
+        return '<option value="' + esc(g.id) + '">' + esc(g.nombre) + (g.seccion ? ' · ' + esc(nombreSeccion(g.seccion)) : '') + '</option>';
+      }).join('');
+
+    $('f-periodicidad').innerHTML = '<option value="">— sin periodicidad —</option>' +
+      PERIODICIDADES.map(function (p) {
+        return '<option value="' + esc(p) + '">' + esc(conMayuscula(p)) + '</option>';
+      }).join('');
+  }
+
+  function abrirFicha(t) {
+    t = t || {};
+    estado.edicion = null;
+    pintarTabla();
+    pintarPanel();
+    $('tar-historico').classList.add('oculto');
+
+    $('ficha-titulo').textContent = t.id ? 'Ficha de la tarifa' : 'Nueva tarifa';
+    $('ficha-ayuda').textContent = t.id
+      ? 'Si tocas un precio se creará una versión nueva a partir de la fecha de entrada en vigor; la de ahora queda en el histórico. Si solo cambias el nombre, los días o las notas, se corrige esta misma versión.'
+      : 'Los precios se guardan una sola vez aquí: la web, la inscripción y los recibos los leen de este sitio.';
+
+    $('f-id').value = t.id || '';
+    $('f-clave').value = t.clave || '';
+    $('f-concepto').value = t.concepto || '';
+    $('f-ambito').value = t.ambito || estado.ambito;
+    $('f-seccion').value = t.seccion || '';
+    $('f-grupo').value = t.grupo_id || '';
+    $('f-dias').value = t.dias || '';
+    $('f-periodicidad').value = t.periodicidad || '';
+    $('f-socio').value = t.importe_socio == null ? '' : t.importe_socio;
+    $('f-socio-hasta').value = t.importe_socio_hasta == null ? '' : t.importe_socio_hasta;
+    $('f-nosocio').value = t.importe_no_socio == null ? '' : t.importe_no_socio;
+    $('f-nosocio-hasta').value = t.importe_no_socio_hasta == null ? '' : t.importe_no_socio_hasta;
+    $('f-texto').value = t.texto_importe || '';
+    $('f-notas').value = t.notas || '';
+    $('f-orden').value = t.orden == null ? 0 : t.orden;
+    $('f-activo').checked = t.id ? !!t.activo : true;
+
+    if (t.id) {
+      var minimo = t.vigente_desde >= hoyISO() ? sumarDia(t.vigente_desde) : manana();
+      $('f-desde').value = proximoSeptiembre() > minimo ? proximoSeptiembre() : minimo;
+      $('f-desde').min = minimo;
+      $('f-desde-ayuda').textContent = 'Solo se usa si cambias algún precio. Ahora mismo está en vigor desde el ' + fechaLarga(t.vigente_desde) + '.';
+    } else {
+      $('f-desde').value = hoyISO();
+      $('f-desde').removeAttribute('min');
+      $('f-desde-ayuda').textContent = 'Desde qué día se aplica esta tarifa.';
+    }
+
+    $('ficha-msg').textContent = '';
+    $('tar-ficha').classList.remove('oculto');
+    $('tar-ficha').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('btn-nueva').addEventListener('click', function () { abrirFicha({ ambito: estado.ambito }); });
+  $('ficha-cancelar').addEventListener('click', function () { $('tar-ficha').classList.add('oculto'); });
+
+  /* Clave estable a partir del concepto (solo al crear). */
+  function clavear(texto) {
+    return String(texto).toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'tarifa';
+  }
+
+  $('form-ficha').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var msg = $('ficha-msg');
+    function decir(t, c) { msg.textContent = t; msg.className = 'msg' + (c ? ' ' + c : ''); }
+
+    var datos = {
+      concepto:               $('f-concepto').value.trim(),
+      ambito:                 $('f-ambito').value,
+      seccion:                $('f-seccion').value || null,
+      grupo_id:               $('f-grupo').value || null,
+      dias:                   $('f-dias').value.trim() || null,
+      periodicidad:           $('f-periodicidad').value || null,
+      importe_socio:          num($('f-socio').value),
+      importe_socio_hasta:    num($('f-socio-hasta').value),
+      importe_no_socio:       num($('f-nosocio').value),
+      importe_no_socio_hasta: num($('f-nosocio-hasta').value),
+      texto_importe:          $('f-texto').value.trim() || null,
+      notas:                  $('f-notas').value.trim() || null,
+      orden:                  num($('f-orden').value) || 0,
+      activo:                 $('f-activo').checked
+    };
+    if (!datos.concepto) { decir('Falta el concepto.', 'error'); return; }
+
+    var id = $('f-id').value;
+    decir('Guardando…');
+
+    /* ---- Tarifa nueva ---- */
+    if (!id) {
+      var clave = clavear(datos.concepto);
+      var choque = estado.filas.filter(function (x) { return x.clave === clave; }).length;
+      if (choque) clave = clave + '-' + Date.now().toString(36).slice(-4);
+      datos.clave = clave;
+      datos.vigente_desde = $('f-desde').value || hoyISO();
+      // Se pide de vuelta la fila guardada: si no vuelve ninguna es que
+      // las reglas de seguridad han parado la escritura, y hay que
+      // decirlo en vez de cantar un "guardado" que no ha pasado.
+      var ins = await sb.from('tarifas').insert(datos).select('id');
+      if (ins.error) { decir('No se pudo guardar: ' + ins.error.message, 'error'); return; }
+      if (!ins.data || !ins.data.length) { decir('No se ha guardado: tu cuenta no tiene permiso para tocar las tarifas.', 'error'); return; }
+      decir('Guardado ✓', 'ok');
+      $('tar-ficha').classList.add('oculto');
+      estado.ambito = datos.ambito;
+      pintarPestanas();
+      await cargarTodo();
+      return;
+    }
+
+    /* ---- Tarifa existente: ¿toca el precio o solo la descripción? ---- */
+    var actual = estado.filas.filter(function (x) { return x.id === id; })[0] || {};
+    var CAMPOS_PRECIO = ['importe_socio', 'importe_socio_hasta', 'importe_no_socio', 'importe_no_socio_hasta', 'texto_importe', 'periodicidad'];
+    var cambioPrecio = CAMPOS_PRECIO.some(function (k) {
+      var a = actual[k] == null ? '' : String(Number(actual[k]) == actual[k] ? Number(actual[k]) : actual[k]);
+      var b = datos[k] == null ? '' : String(datos[k]);
+      return a !== b;
+    });
+
+    if (cambioPrecio) {
+      var desde = $('f-desde').value;
+      if (!desde) { decir('Cambias un precio: hace falta la fecha de entrada en vigor.', 'error'); return; }
+      var r = await sb.rpc('tarifa_nueva_version', { p_id: id, p_desde: desde, p_cambios: datos });
+      if (r.error) { decir('No se pudo guardar: ' + r.error.message, 'error'); return; }
+      decir('Versión nueva creada, en vigor desde el ' + fechaLarga(desde) + ' ✓', 'ok');
+    } else {
+      var u = await sb.from('tarifas').update(datos).eq('id', id).select('id');
+      if (u.error) { decir('No se pudo guardar: ' + u.error.message, 'error'); return; }
+      if (!u.data || !u.data.length) { decir('No se ha guardado: tu cuenta no tiene permiso para tocar las tarifas.', 'error'); return; }
+      decir('Guardado ✓', 'ok');
+    }
+    $('tar-ficha').classList.add('oculto');
+    estado.ambito = datos.ambito;
+    pintarPestanas();
+    await cargarTodo();
+  });
+
+  /* ---------------------------------------------------------
+     Arranque
+     --------------------------------------------------------- */
+  $('tar-contexto').textContent = 'Temporada ' + temporada() + ' · los cambios entran en la web al guardar';
+  pintarPestanas();
+  pintarPanel();
+  cargarTodo();
+});
+</script>
+
+</body>
+</html>
