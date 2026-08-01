@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesiones y disponibilidad · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .lz-wrap { max-width: 960px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
+  .lz-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(28px,6vw,42px); color: var(--navy); margin: 0 0 4px; }
+  .lz-cab .sub { font-family: var(--fuente-mono); font-size: 12px; letter-spacing:.1em; text-transform:uppercase; color: var(--texto-tenue); }
+  .volver { display:inline-block; margin-bottom:14px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; }
+
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(16px,3vw,26px); box-shadow: var(--sombra-suave); margin-top:18px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; color: var(--navy); margin: 0 0 6px; }
+  .tarjeta h3 { font-family: var(--fuente-mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color: var(--azul-oscuro); margin:18px 0 6px; }
+  .tarjeta > h2:first-child { margin-top:0; }
+
+  .aviso-legal { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); color: var(--aviso-texto);
+                 border-radius: var(--radio); padding:14px 16px; margin-top:16px; font-size:14px; line-height:1.55; }
+  .aviso-legal b { color: var(--aviso-titulo); display:block; font-family: var(--fuente-mono); font-size:11px;
+                   letter-spacing:.08em; text-transform:uppercase; margin-bottom:4px; }
+
+  .vacio { color: var(--texto-suave); font-size:14px; margin:6px 0 0; }
+  .apunte { font-size:13px; color: var(--texto-suave); margin:4px 0 0; }
+
+  /* pastillas de estado */
+  .est { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+         padding:3px 10px; border-radius:999px; white-space:nowrap; display:inline-block; }
+  .est.disponible { background:#e6f4ea; color:#1e7a3d; }
+  .est.tocado     { background:#fdf1e3; color:#9a5b12; }
+  .est.baja       { background:#fbeceb; color:#b3261e; }
+  .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); white-space:nowrap; }
+  .pill.rojo { background:#fbeceb; color:#b3261e; }
+  .pill.azul { background: var(--azul-suave); color: var(--azul-oscuro); }
+
+  /* contadores */
+  .cont { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 4px; }
+  .cont div { flex:1 1 120px; background: var(--crema); border:1px solid var(--linea); border-radius:14px; padding:12px 14px; }
+  .cont .n { font-family: var(--fuente-titulo); font-size:32px; font-weight:700; color: var(--navy); line-height:1; }
+  .cont .t { font-size:13px; color: var(--texto-suave); margin-top:2px; }
+
+  table { width:100%; border-collapse: collapse; }
+  th,td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--linea); font-size:14px; vertical-align:top; }
+  th { font-family: var(--fuente-mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color: var(--texto-tenue); }
+  .tabla-scroll { overflow-x:auto; }
+
+  .fila-at { display:flex; align-items:center; gap:10px; justify-content:space-between; flex-wrap:wrap;
+             padding:10px 0; border-bottom:1px solid var(--linea); }
+  .fila-at:last-child { border-bottom:0; }
+  .fila-at .quien { flex:1; min-width:180px; }
+  .fila-at .quien b { color: var(--navy); font-size:15px; font-weight:600; display:block; }
+  .fila-at .quien small { color: var(--texto-suave); font-size:13px; }
+
+  .les { border:1px solid var(--linea); border-radius:14px; padding:12px 14px; margin-top:10px; background: var(--crema); }
+  .les.abierta { border-left:4px solid #b3261e; }
+  .les.aviso { border-left:4px solid #9a5b12; background:#fffaf2; }
+  .les .top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .les .zona { font-size:16px; font-weight:600; color: var(--navy); text-transform:capitalize; }
+  .les .datos { font-size:13px; color: var(--texto-suave); margin-top:3px; }
+  .les .txt { font-size:14px; color: var(--texto); margin-top:8px; white-space:pre-wrap; }
+  .les .acc { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:12px 0 5px; }
+  input, select, textarea { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde);
+    border-radius:10px; font-size:16px; font-family: var(--fuente-texto); background:#fff; color: var(--navy); }
+  textarea { min-height:70px; resize:vertical; }
+  .rejilla { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  @media (max-width:640px){ .rejilla { grid-template-columns:1fr; } }
+  .check { display:flex; align-items:flex-start; gap:9px; margin-top:14px; font-size:14px; color: var(--texto); }
+  .check input { width:auto; margin-top:3px; flex:0 0 auto; }
+
+  .btn { cursor:pointer; }
+  .btn--mini { padding:9px 16px; font-size:14px; }
+  .btn--txt { background:none; border:0; color: var(--azul-oscuro); font-family:inherit; font-size:14px;
+              font-weight:600; cursor:pointer; padding:6px 0; }
+  .btn--peligro { background:transparent; border:1px solid #e0b4b0; color:#b3261e; padding:8px 14px;
+                  border-radius:999px; font-size:14px; cursor:pointer; font-family:inherit; }
+  .btn--peligro:hover { background:#fbeceb; }
+  .msg { font-size:14px; margin-top:10px; display:block; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
+  .filtros { display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+  .filtros > div { flex:1 1 220px; }
+  .filtros label { margin-top:0; }
+  .repite { background:#fbeceb; border:1px solid #e0b4b0; color:#b3261e; font-size:14px; padding:10px 12px;
+            border-radius:10px; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="lz-wrap" id="lz-wrap"><p class="vacio">Cargando…</p></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('lz-wrap');
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function pad(n){ return (n<10?'0':'')+n; }
+  function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function fCorta(iso){ if(!iso) return '—'; var p=String(iso).slice(0,10).split('-'); return p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : String(iso); }
+  function dias(desde, hasta){
+    if(!desde) return null;
+    var a=new Date(String(desde).slice(0,10)+'T00:00:00');
+    var b=new Date((hasta?String(hasta).slice(0,10):hoyISO())+'T00:00:00');
+    if(isNaN(a.getTime())||isNaN(b.getTime())) return null;
+    return Math.max(0, Math.round((b-a)/86400000));
+  }
+  function nom(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }
+
+  var ZONAS = ['isquiotibiales','gemelo','sóleo','aductores','cuádriceps','tobillo','rodilla','cadera','espalda','hombro','pie','tibia/periostio','otra'];
+  var TIPOS = [['muscular','Muscular'],['articular','Articular'],['osea','Ósea'],['tendinosa','Tendinosa'],['sobrecarga','Sobrecarga'],['otra','Otra']];
+  var GRAVEDAD = [['leve','Leve'],['moderada','Moderada'],['grave','Grave']];
+  var DISPO = [['disponible','Disponible · entrena normal'],['tocado','Tocado · entrena con cuidado'],['baja','De baja · no entrena']];
+  function etiqueta(lista, v){ for(var i=0;i<lista.length;i++){ if(lista[i][0]===v) return lista[i][1]; } return v||'—'; }
+  function opciones(lista, sel, vacio){
+    var h = vacio ? '<option value="">'+esc(vacio)+'</option>' : '';
+    return h + lista.map(function(x){
+      var v = (x instanceof Array) ? x[0] : x, t = (x instanceof Array) ? x[1] : x;
+      return '<option value="'+esc(v)+'"'+(v===sel?' selected':'')+'>'+esc(t)+'</option>';
+    }).join('');
+  }
+
+  if (!perfil) { wrap.innerHTML = '<div class="tarjeta"><p class="vacio">No encontramos tu perfil. Avisa al club.</p></div>'; return; }
+
+  /* ---------------- datos ---------------- */
+  var ATLETAS = [], GRUPOS = {}, LESIONES = [], MOLESTIAS = [];
+  var GESTIONO = [], MIAS = [];
+  var esAdmin = (perfil.rol === 'admin');
+
+  var filtroGrupo = '', verTodos = false, ficha = null, editando = null, creando = false, msgGlobal = '';
+
+  async function cargar(){
+    var ra = await sb.from('atletas').select('id,nombre,apellidos,estado,grupo_id,entrenador_id,perfil_id,perfil_padre_id').order('nombre');
+    ATLETAS = (ra.error ? [] : (ra.data || []));
+
+    var rg = await sb.from('grupos').select('id,nombre').order('nombre');
+    GRUPOS = {};
+    if (!rg.error) (rg.data||[]).forEach(function(g){ GRUPOS[g.id] = g.nombre; });
+
+    GESTIONO = esAdmin ? ATLETAS.slice() : ATLETAS.filter(function(a){ return a.entrenador_id === perfil.id; });
+    MIAS = ATLETAS.filter(function(a){ return a.perfil_id === perfil.id || a.perfil_padre_id === perfil.id; });
+
+    var rl = await sb.from('lesiones_atleta')
+      .select('id,atleta_id,zona,tipo,severidad,disponibilidad,restriccion,fecha_inicio,fecha_revision,fecha_alta,resuelta,tratamiento,notas,origen,created_at')
+      .order('fecha_inicio', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+    LESIONES = (rl.error ? [] : (rl.data || []));
+
+    var rm = await sb.from('registros_sesion').select('atleta_id,molestias,created_at')
+      .not('molestias','is', null).order('created_at', { ascending: false }).limit(80);
+    MOLESTIAS = (rm.error ? [] : (rm.data || [])).filter(function(m){ return (m.molestias||'').trim().length > 1; });
+  }
+
+  function lesionesDe(id){ return LESIONES.filter(function(l){ return l.atleta_id === id; }); }
+  function abiertasDe(id){ return lesionesDe(id).filter(function(l){ return !l.resuelta; }); }
+  function estadoDe(id){
+    var ab = abiertasDe(id);
+    if (ab.some(function(l){ return l.disponibilidad === 'baja'; })) return 'baja';
+    if (ab.length) return 'tocado';
+    return 'disponible';
+  }
+  function pastilla(e){
+    var t = e==='baja' ? 'De baja' : (e==='tocado' ? 'Tocado' : 'Disponible');
+    return '<span class="est '+e+'">'+t+'</span>';
+  }
+  function atletaPorId(id){ for(var i=0;i<ATLETAS.length;i++){ if(ATLETAS[i].id===id) return ATLETAS[i]; } return null; }
+  function lesionPorId(id){ for(var i=0;i<LESIONES.length;i++){ if(LESIONES[i].id===id) return LESIONES[i]; } return null; }
+
+  /* ---------------- trozos de HTML ---------------- */
+
+  function cabecera(){
+    return '<a class="volver" href="../">← Volver al portal</a>' +
+      '<div class="lz-cab"><h1>Lesiones y disponibilidad</h1>' +
+      '<span class="sub">Quién puede entrenar y quién no</span></div>' +
+      '<div class="aviso-legal"><b>Antes de seguir</b>' +
+      'Esto <b style="display:inline;font-size:14px;letter-spacing:0;text-transform:none;font-family:inherit">no es un historial médico</b> ' +
+      'ni sustituye a un profesional sanitario. Sirve para que el entrenador sepa qué puedes hacer cada día. ' +
+      'Ante una lesión, ve al médico o al fisioterapeuta. Estos datos solo los ven el propio atleta, su familia, ' +
+      'su entrenador y la administración del club.</div>';
+  }
+
+  function tarjetaLesion(l, conAcciones){
+    var at = atletaPorId(l.atleta_id);
+    var d = l.resuelta ? dias(l.fecha_inicio, l.fecha_alta) : dias(l.fecha_inicio, null);
+    var partes = [];
+    if (l.tipo) partes.push(etiqueta(TIPOS, l.tipo));
+    if (l.severidad) partes.push(etiqueta(GRAVEDAD, l.severidad));
+    partes.push('desde el ' + fCorta(l.fecha_inicio));
+    if (l.resuelta) { partes.push('alta el ' + fCorta(l.fecha_alta)); if (d != null) partes.push(d + ' días'); }
+    else { if (l.fecha_revision) partes.push('vuelta prevista ' + fCorta(l.fecha_revision)); if (d != null) partes.push('lleva ' + d + ' días'); }
+
+    var h = '<div class="les ' + (l.resuelta ? '' : (l.origen === 'atleta' ? 'aviso' : 'abierta')) + '">' +
+      '<div class="top"><span class="zona">' + esc(l.zona || '—') + '</span>' +
+      (l.resuelta ? '<span class="pill">Resuelta</span>' : pastilla(l.disponibilidad || 'tocado')) + '</div>' +
+      (conAcciones && at ? '<div class="datos"><b>' + esc(nom(at)) + '</b></div>' : '') +
+      '<div class="datos">' + esc(partes.join(' · ')) +
+      (l.origen === 'atleta' ? ' · <span class="pill azul">Aviso del atleta</span>' : '') + '</div>';
+
+    if (l.restriccion) h += '<div class="txt"><b>Qué puede hacer:</b> ' + esc(l.restriccion) + '</div>';
+    if (l.tratamiento) h += '<div class="txt"><b>Tratamiento:</b> ' + esc(l.tratamiento) + '</div>';
+    if (l.notas) h += '<div class="txt">' + esc(l.notas) + '</div>';
+
+    if (conAcciones) {
+      h += '<div class="acc"><button class="btn btn--fantasma btn--mini" data-editar="' + l.id + '">Editar</button>';
+      if (!l.resuelta) h += '<button class="btn btn--primario btn--mini" data-alta="' + l.id + '">Dar de alta</button>';
+      h += '<button class="btn--peligro" data-borrar="' + l.id + '">Borrar</button></div>';
+    }
+    return h + '</div>';
+  }
+
+  function selectorGrupo(){
+    var ids = {};
+    GESTIONO.forEach(function(a){ if (a.grupo_id) ids[a.grupo_id] = true; });
+    var lista = Object.keys(ids).map(function(id){ return [id, GRUPOS[id] || 'Grupo']; })
+      .sort(function(a,b){ return a[1].localeCompare(b[1]); });
+    return '<select id="f-grupo"><option value="">Todos mis grupos</option>' +
+      lista.map(function(x){ return '<option value="'+esc(x[0])+'"'+(x[0]===filtroGrupo?' selected':'')+'>'+esc(x[1])+'</option>'; }).join('') +
+      '</select>';
+  }
+
+  function formulario(l, atletaFijo){
+    // l = lesión a editar (o null para una nueva)
+    var esNueva = !l;
+    l = l || {};
+    var selAt = atletaFijo || l.atleta_id || (GESTIONO.length ? GESTIONO[0].id : '');
+    var h = '<div class="tarjeta" id="lz-form">' +
+      '<h2>' + (esNueva ? 'Registrar una lesión' : 'Editar la lesión') + '</h2>';
+
+    if (esNueva) {
+      h += '<label for="f-atleta">Atleta</label><select id="f-atleta">' +
+        GESTIONO.map(function(a){ return '<option value="'+esc(a.id)+'"'+(a.id===selAt?' selected':'')+'>'+esc(nom(a))+
+          (a.grupo_id && GRUPOS[a.grupo_id] ? ' · '+esc(GRUPOS[a.grupo_id]) : '')+'</option>'; }).join('') + '</select>';
+    } else {
+      var at = atletaPorId(l.atleta_id);
+      h += '<p class="apunte">Atleta: <b>' + esc(at ? nom(at) : '—') + '</b></p>';
+    }
+
+    h += '<div class="rejilla">' +
+      '<div><label for="f-zona">Zona del cuerpo</label><select id="f-zona">' + opciones(ZONAS, l.zona, '— elige la zona —') + '</select></div>' +
+      '<div><label for="f-tipo">Tipo de lesión</label><select id="f-tipo">' + opciones(TIPOS, l.tipo, '— sin concretar —') + '</select></div>' +
+      '<div><label for="f-grav">Gravedad</label><select id="f-grav">' + opciones(GRAVEDAD, l.severidad, '— sin concretar —') + '</select></div>' +
+      '<div><label for="f-dispo">¿Puede entrenar?</label><select id="f-dispo">' + opciones(DISPO, l.disponibilidad || 'tocado', '') + '</select></div>' +
+      '<div><label for="f-ini">Fecha de inicio</label><input type="date" id="f-ini" value="' + esc((l.fecha_inicio||hoyISO()).slice(0,10)) + '"></div>' +
+      '<div><label for="f-rev">Fecha prevista de vuelta</label><input type="date" id="f-rev" value="' + esc((l.fecha_revision||'').slice(0,10)) + '"></div>' +
+      '<div><label for="f-alta">Fecha real de alta</label><input type="date" id="f-alta" value="' + esc((l.fecha_alta||'').slice(0,10)) + '"></div>' +
+      '<div><label for="f-restr">Qué puede hacer mientras tanto</label><input type="text" id="f-restr" placeholder="Bici y gimnasio de tren superior" value="' + esc(l.restriccion||'') + '"></div>' +
+      '</div>' +
+      '<label for="f-trat">Tratamiento</label><textarea id="f-trat" placeholder="Fisioterapia dos veces por semana, hielo…">' + esc(l.tratamiento||'') + '</textarea>' +
+      '<label for="f-notas">Notas</label><textarea id="f-notas" placeholder="Cómo se produjo, cómo va evolucionando…">' + esc(l.notas||'') + '</textarea>' +
+      '<label class="check"><input type="checkbox" id="f-resuelta"' + (l.resuelta ? ' checked' : '') + '> <span>Está resuelta (ya ha vuelto a entrenar sin restricción)</span></label>' +
+      '<label class="check"><input type="checkbox" id="f-ficha"> <span>Cambiar también el estado en su ficha de atleta. ' +
+        '<b>Ojo:</b> esto se ve en el resto del portal: si está de baja pasa a «lesionado» y, al darle el alta, vuelve a «activo».</span></label>' +
+      '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">' +
+        '<button class="btn btn--primario btn--mini" id="f-guardar" data-id="' + esc(l.id||'') + '">Guardar</button>' +
+        '<button class="btn btn--neutro btn--mini" id="f-cancelar">Cancelar</button>' +
+      '</div><span class="msg" id="f-msg"></span></div>';
+    return h;
+  }
+
+  function panelFicha(id){
+    var at = atletaPorId(id);
+    if (!at) return '';
+    var todas = lesionesDe(id);
+    var abiertas = todas.filter(function(l){ return !l.resuelta; });
+    var pasadas = todas.filter(function(l){ return l.resuelta; });
+    var totalDias = 0;
+    pasadas.forEach(function(l){ var d = dias(l.fecha_inicio, l.fecha_alta); if (d) totalDias += d; });
+
+    var porZona = {};
+    todas.forEach(function(l){ var z=(l.zona||'otra'); porZona[z] = (porZona[z]||0)+1; });
+    var repes = Object.keys(porZona).filter(function(z){ return porZona[z] >= 2; });
+
+    var h = '<div class="tarjeta" id="lz-ficha"><h2>' + esc(nom(at)) + '</h2>' +
+      '<p class="apunte">' + (at.grupo_id && GRUPOS[at.grupo_id] ? esc(GRUPOS[at.grupo_id]) + ' · ' : '') +
+      'Estado en su ficha: <b>' + esc(at.estado || 'sin poner') + '</b> · Ahora mismo: ' + pastilla(estadoDe(id)) + '</p>';
+
+    if (repes.length) {
+      h += '<div class="repite">Ojo: se ha lesionado más de una vez en ' +
+        repes.map(function(z){ return '<b>' + esc(z) + '</b> (' + porZona[z] + ' veces)'; }).join(', ') +
+        '. Cuando una zona se repite conviene revisar la carga y la fuerza de esa zona.</div>';
+    }
+
+    h += '<h3>Ahora mismo</h3>';
+    h += abiertas.length ? abiertas.map(function(l){ return tarjetaLesion(l, true); }).join('')
+                         : '<p class="vacio">Sin lesiones abiertas.</p>';
+
+    h += '<h3>Historial</h3>';
+    if (!pasadas.length) h += '<p class="vacio">Todavía no hay lesiones cerradas.</p>';
+    else {
+      h += '<div class="tabla-scroll"><table><thead><tr><th>Zona</th><th>Tipo</th><th>Gravedad</th><th>Inicio</th><th>Alta</th><th>Días</th><th></th></tr></thead><tbody>' +
+        pasadas.map(function(l){
+          var d = dias(l.fecha_inicio, l.fecha_alta);
+          return '<tr><td>' + esc(l.zona||'—') + '</td><td>' + esc(l.tipo?etiqueta(TIPOS,l.tipo):'—') + '</td>' +
+            '<td>' + esc(l.severidad?etiqueta(GRAVEDAD,l.severidad):'—') + '</td>' +
+            '<td>' + esc(fCorta(l.fecha_inicio)) + '</td><td>' + esc(fCorta(l.fecha_alta)) + '</td>' +
+            '<td>' + (d==null?'—':d) + '</td>' +
+            '<td><button class="btn--txt" data-editar="' + l.id + '">Editar</button></td></tr>';
+        }).join('') + '</tbody></table></div>' +
+        '<p class="apunte">Días de baja sumados: <b>' + totalDias + '</b>.</p>';
+    }
+
+    var mm = MOLESTIAS.filter(function(m){ return m.atleta_id === id; }).slice(0, 8);
+    h += '<h3>Molestias apuntadas al terminar los entrenos</h3>';
+    h += mm.length
+      ? '<div class="tabla-scroll"><table><tbody>' + mm.map(function(m){
+          return '<tr><td style="white-space:nowrap;color:var(--texto-suave)">' + esc(fCorta(m.created_at)) + '</td><td>' + esc(m.molestias) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<p class="vacio">No ha apuntado ninguna molestia en sus entrenos.</p>';
+
+    h += '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">' +
+      '<button class="btn btn--primario btn--mini" data-nueva="' + id + '">Registrar una lesión suya</button>' +
+      '<button class="btn btn--neutro btn--mini" id="cerrar-ficha">Cerrar</button></div>';
+    return h + '</div>';
+  }
+
+  /* ---------------- vista del equipo técnico ---------------- */
+
+  function vistaStaff(){
+    var lista = GESTIONO.filter(function(a){ return !filtroGrupo || a.grupo_id === filtroGrupo; });
+    var nBaja = 0, nToc = 0, nDisp = 0;
+    lista.forEach(function(a){ var e = estadoDe(a.id); if (e==='baja') nBaja++; else if (e==='tocado') nToc++; else nDisp++; });
+
+    var avisos = LESIONES.filter(function(l){
+      return l.origen === 'atleta' && !l.resuelta && GESTIONO.some(function(a){ return a.id === l.atleta_id; });
+    });
+
+    var h = '';
+
+    if (avisos.length) {
+      h += '<div class="tarjeta"><h2>Molestias que te han avisado</h2>' +
+        '<p class="apunte">Las han apuntado los propios atletas. Revísalas y conviértelas en lesión o dales el alta.</p>' +
+        avisos.map(function(l){ return tarjetaLesion(l, true); }).join('') + '</div>';
+    }
+
+    h += '<div class="tarjeta"><h2>Cómo está el equipo</h2>' +
+      '<div class="filtros"><div><label for="f-grupo">Grupo</label>' + selectorGrupo() + '</div>' +
+      '<div style="flex:0 0 auto"><button class="btn btn--fantasma btn--mini" id="f-ver">' +
+      (verTodos ? 'Ver solo los tocados y de baja' : 'Ver todos') + '</button></div></div>' +
+      '<div class="cont">' +
+        '<div><div class="n">' + nDisp + '</div><div class="t">disponibles</div></div>' +
+        '<div><div class="n">' + nToc + '</div><div class="t">tocados</div></div>' +
+        '<div><div class="n">' + nBaja + '</div><div class="t">de baja</div></div>' +
+      '</div>';
+
+    var muestra = lista.filter(function(a){ return verTodos || estadoDe(a.id) !== 'disponible'; })
+      .sort(function(a,b){
+        var o = { baja:0, tocado:1, disponible:2 };
+        var d = o[estadoDe(a.id)] - o[estadoDe(b.id)];
+        return d !== 0 ? d : nom(a).localeCompare(nom(b));
+      });
+
+    if (!muestra.length) {
+      h += '<p class="vacio">' + (verTodos ? 'No hay atletas en este grupo.' : 'Ahora mismo están todos disponibles. Buena señal.') + '</p>';
+    } else {
+      h += muestra.map(function(a){
+        var e = estadoDe(a.id);
+        var ab = abiertasDe(a.id);
+        var det = ab.map(function(l){
+          return l.zona + (l.fecha_revision ? ' · vuelta prevista ' + fCorta(l.fecha_revision) : '');
+        }).join(' / ');
+        return '<div class="fila-at"><div class="quien"><b>' + esc(nom(a)) + '</b>' +
+          '<small>' + esc((a.grupo_id && GRUPOS[a.grupo_id] ? GRUPOS[a.grupo_id] : '') + (det ? ' · ' + det : '')) + '</small></div>' +
+          pastilla(e) +
+          '<button class="btn btn--fantasma btn--mini" data-ficha="' + a.id + '">Ver historial</button></div>';
+      }).join('');
+    }
+
+    h += '<div style="margin-top:16px"><button class="btn btn--primario btn--mini" data-nueva="">Registrar una lesión</button></div></div>';
+    return h;
+  }
+
+  /* ---------------- vista del atleta / familia ---------------- */
+
+  function vistaAtleta(){
+    var h = '';
+    MIAS.forEach(function(a){
+      var abiertas = abiertasDe(a.id);
+      var pasadas = lesionesDe(a.id).filter(function(l){ return l.resuelta; });
+      var e = estadoDe(a.id);
+
+      h += '<div class="tarjeta"><h2>' + (MIAS.length > 1 ? esc(nom(a)) : 'Cómo estás') + '</h2>' +
+        '<p>' + pastilla(e) + ' ' +
+        (e === 'baja' ? '<span class="apunte" style="display:inline">Tu entrenador ha marcado que ahora no entrenas.</span>'
+         : e === 'tocado' ? '<span class="apunte" style="display:inline">Hay algo abierto: entrena con cuidado y sigue lo que te diga tu entrenador.</span>'
+         : '<span class="apunte" style="display:inline">No hay nada abierto. A entrenar.</span>') + '</p>';
+
+      h += abiertas.length ? abiertas.map(function(l){ return tarjetaLesion(l, false); }).join('') : '';
+
+      h += '<h3>Avisar de una molestia</h3>' +
+        '<p class="apunte">Cuéntaselo a tu entrenador. Lo verá en su pantalla la próxima vez que entre; no se envía ningún correo ni aviso al móvil.</p>' +
+        '<div class="rejilla">' +
+          '<div><label for="m-zona-' + a.id + '">¿Dónde te molesta?</label><select id="m-zona-' + a.id + '">' + opciones(ZONAS, '', '— elige la zona —') + '</select></div>' +
+          '<div><label for="m-txt-' + a.id + '">Cuéntalo</label><input type="text" id="m-txt-' + a.id + '" placeholder="Me tira al hacer series, desde el martes"></div>' +
+        '</div>' +
+        '<div style="margin-top:14px"><button class="btn btn--primario btn--mini" data-molestia="' + a.id + '">Avisar a mi entrenador</button></div>' +
+        '<span class="msg" id="m-msg-' + a.id + '"></span>';
+
+      h += '<h3>Mi historial</h3>';
+      if (!pasadas.length) h += '<p class="vacio">Todavía no hay lesiones cerradas.</p>';
+      else {
+        var total = 0;
+        pasadas.forEach(function(l){ var d = dias(l.fecha_inicio, l.fecha_alta); if (d) total += d; });
+        h += '<div class="tabla-scroll"><table><thead><tr><th>Zona</th><th>Tipo</th><th>Inicio</th><th>Alta</th><th>Días</th></tr></thead><tbody>' +
+          pasadas.map(function(l){
+            var d = dias(l.fecha_inicio, l.fecha_alta);
+            return '<tr><td>' + esc(l.zona||'—') + '</td><td>' + esc(l.tipo?etiqueta(TIPOS,l.tipo):'—') + '</td>' +
+              '<td>' + esc(fCorta(l.fecha_inicio)) + '</td><td>' + esc(fCorta(l.fecha_alta)) + '</td>' +
+              '<td>' + (d==null?'—':d) + '</td></tr>';
+          }).join('') + '</tbody></table></div>' +
+          '<p class="apunte">Días de baja sumados: <b>' + total + '</b>.</p>';
+      }
+
+      var mm = MOLESTIAS.filter(function(m){ return m.atleta_id === a.id; }).slice(0, 6);
+      if (mm.length) {
+        h += '<h3>Molestias que apuntaste al terminar los entrenos</h3><div class="tabla-scroll"><table><tbody>' +
+          mm.map(function(m){ return '<tr><td style="white-space:nowrap;color:var(--texto-suave)">' + esc(fCorta(m.created_at)) + '</td><td>' + esc(m.molestias) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>';
+      }
+
+      h += '</div>';
+    });
+    return h;
+  }
+
+  /* ---------------- pintar ---------------- */
+
+  function pintar(){
+    var h = cabecera();
+    if (msgGlobal) h += '<div class="tarjeta"><p class="msg ok" style="margin:0">' + esc(msgGlobal) + '</p></div>';
+
+    var hayStaff = GESTIONO.length > 0;
+    if (hayStaff) h += vistaStaff();
+    if (creando || editando) h += formulario(editando ? lesionPorId(editando) : null, creando || null);
+    if (hayStaff && ficha) h += panelFicha(ficha);
+    if (MIAS.length) h += vistaAtleta();
+
+    if (!hayStaff && !MIAS.length) {
+      h += '<div class="tarjeta"><p class="vacio">Aquí no hay nada para ti. Las lesiones son datos de salud y ' +
+           'solo las ven el propio atleta, su familia, su entrenador y la administración del club.</p></div>';
+    }
+    wrap.innerHTML = h;
+    msgGlobal = '';
+
+    var fg = $('f-grupo');
+    if (fg) fg.addEventListener('change', function(){ filtroGrupo = this.value; pintar(); });
+    var fv = $('f-ver');
+    if (fv) fv.addEventListener('click', function(){ verTodos = !verTodos; pintar(); });
+    var fc = $('cerrar-ficha');
+    if (fc) fc.addEventListener('click', function(){ ficha = null; pintar(); });
+    var fx = $('f-cancelar');
+    if (fx) fx.addEventListener('click', function(){ creando = false; editando = null; pintar(); });
+
+    var caja = $('lz-form') || (ficha ? $('lz-ficha') : null);
+    if (caja && (creando || editando || ficha)) caja.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+
+  /* ---------------- acciones ---------------- */
+
+  wrap.addEventListener('click', async function(e){
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    var g = function(k){ return t.getAttribute(k); };
+
+    if (g('data-ficha')) { ficha = g('data-ficha'); creando = false; editando = null; pintar(); return; }
+    if (g('data-nueva') !== null && g('data-nueva') !== undefined && t.hasAttribute('data-nueva')) {
+      creando = g('data-nueva') || (GESTIONO.length ? GESTIONO[0].id : '');
+      editando = null; pintar(); return;
+    }
+    if (g('data-editar')) { editando = g('data-editar'); creando = false; pintar(); return; }
+
+    if (g('data-alta')) {
+      var l = lesionPorId(g('data-alta'));
+      if (!l) return;
+      if (!confirm('¿Dar el alta de «' + l.zona + '»? Se marcará como resuelta con fecha de hoy.')) return;
+      var volver = confirm('¿Poner también su ficha de atleta como «activo»? Eso se ve en el resto del portal. Acepta para cambiarla, cancela para dejarla como está.');
+      var r = await sb.from('lesiones_atleta').update({ resuelta: true, fecha_alta: hoyISO(), disponibilidad: 'disponible' }).eq('id', l.id);
+      if (r.error) { alert('No se pudo guardar: ' + r.error.message); return; }
+      if (volver) {
+        var ra = await sb.from('atletas').update({ estado: 'activo' }).eq('id', l.atleta_id);
+        if (ra.error) alert('La lesión se cerró, pero no se pudo cambiar la ficha: ' + ra.error.message);
+      }
+      msgGlobal = 'Alta guardada.';
+      await cargar(); pintar(); return;
+    }
+
+    if (g('data-borrar')) {
+      if (!confirm('¿Borrar este registro? No se puede deshacer.')) return;
+      var d = await sb.from('lesiones_atleta').delete().eq('id', g('data-borrar'));
+      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      msgGlobal = 'Registro borrado.';
+      await cargar(); pintar(); return;
+    }
+
+    if (g('data-molestia')) {
+      var aid = g('data-molestia');
+      var zona = $('m-zona-' + aid).value;
+      var txt = ($('m-txt-' + aid).value || '').trim();
+      var msg = $('m-msg-' + aid);
+      msg.className = 'msg';
+      if (!zona) { msg.textContent = 'Elige primero la zona.'; msg.className = 'msg error'; return; }
+      msg.textContent = 'Enviando…';
+      var ins = await sb.from('lesiones_atleta').insert({
+        atleta_id: aid, zona: zona, notas: txt || null, origen: 'atleta',
+        disponibilidad: 'tocado', fecha_inicio: hoyISO(), resuelta: false, creado_por: perfil.id
+      });
+      if (ins.error) { msg.textContent = 'No se pudo enviar: ' + ins.error.message; msg.className = 'msg error'; return; }
+      msgGlobal = 'Aviso enviado. Tu entrenador lo verá en su pantalla.';
+      await cargar(); pintar(); return;
+    }
+
+    if (t.id === 'f-guardar') {
+      var msgf = $('f-msg');
+      msgf.className = 'msg';
+      var id = t.getAttribute('data-id');
+      var zona2 = $('f-zona').value;
+      if (!zona2) { msgf.textContent = 'Elige la zona del cuerpo.'; msgf.className = 'msg error'; return; }
+      var atletaId = id ? (lesionPorId(id) || {}).atleta_id : $('f-atleta').value;
+      if (!atletaId) { msgf.textContent = 'Elige el atleta.'; msgf.className = 'msg error'; return; }
+
+      var resuelta = $('f-resuelta').checked;
+      var dispo = $('f-dispo').value;
+      var fila = {
+        atleta_id: atletaId,
+        zona: zona2,
+        tipo: $('f-tipo').value || null,
+        severidad: $('f-grav').value || null,
+        disponibilidad: resuelta ? 'disponible' : dispo,
+        fecha_inicio: $('f-ini').value || null,
+        fecha_revision: $('f-rev').value || null,
+        fecha_alta: $('f-alta').value || (resuelta ? hoyISO() : null),
+        restriccion: $('f-restr').value.trim() || null,
+        tratamiento: $('f-trat').value.trim() || null,
+        notas: $('f-notas').value.trim() || null,
+        resuelta: resuelta
+      };
+      msgf.textContent = 'Guardando…';
+      var res;
+      if (id) res = await sb.from('lesiones_atleta').update(fila).eq('id', id);
+      else { fila.origen = 'entrenador'; fila.creado_por = perfil.id; res = await sb.from('lesiones_atleta').insert(fila); }
+      if (res.error) { msgf.textContent = 'No se pudo guardar: ' + res.error.message; msgf.className = 'msg error'; return; }
+
+      if ($('f-ficha').checked) {
+        var nuevo = resuelta ? 'activo' : (dispo === 'baja' ? 'lesionado' : 'activo');
+        var rf = await sb.from('atletas').update({ estado: nuevo }).eq('id', atletaId);
+        if (rf.error) msgf.textContent = 'Se guardó la lesión, pero no la ficha: ' + rf.error.message;
+      }
+      msgGlobal = 'Guardado.';
+      creando = false; editando = null;
+      await cargar(); pintar(); return;
+    }
+  });
+
+  await cargar();
+  pintar();
+});
+</script>
+
+</body>
+</html>
