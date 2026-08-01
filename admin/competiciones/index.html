@@ -34,11 +34,11 @@
 
   .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
   .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
-  .panel h3 { font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--azul-oscuro); margin: 18px 0 6px; }
+  .panel h3 { font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .08em; text-transform: none; color: var(--azul-oscuro); margin: 18px 0 6px; }
 
   table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
-  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-tenue); }
+  th { font-family: var(--fuente-mono); font-size: 11px; letter-spacing: .08em; text-transform: none; color: var(--texto-tenue); }
   .acciones-fila { display: flex; gap: 6px; flex-wrap: wrap; }
 
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -50,6 +50,15 @@
   .btn--peligro:hover { background: #fbeceb; }
   .btn--mini { padding: 8px 14px; font-size: 14px; }
   .oculto { display: none !important; }
+  /* Edición en ventana emergente (modal), no al fondo de la página */
+  #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none; margin:0;
+    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+  #panel-form .modal-caja { background:#fff; border:1px solid var(--linea); border-radius:18px;
+    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:24px; width:min(720px,100%);
+    animation:modal-sube .2s ease; }
+  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
 
   .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   .pill-si { background: #e6f4ea; color: #1e7a3d; }
@@ -86,6 +95,7 @@
 
     <!-- ===== FORMULARIO ===== -->
     <div class="panel oculto" id="panel-form">
+      <div class="modal-caja">
       <h2 id="form-titulo">Nueva competición</h2>
       <form id="form-comp">
         <input type="hidden" id="c-id">
@@ -149,6 +159,7 @@
           <span class="msg" id="msg-form"></span>
         </div>
       </form>
+      </div>
     </div>
 
     <!-- ===== INSCRITOS ===== -->
@@ -309,10 +320,12 @@ APOLANA_ADMIN.listo(function (sb) {
     $('c-abierta').checked = c.id ? !!c.inscripcion_abierta : true;
     $('msg-form').textContent = ''; $('msg-pdf').textContent = ''; $('c-pdf').value = '';
     $('panel-form').classList.remove('oculto');
-    $('panel-form').scrollIntoView({ behavior: 'smooth' });
+    $('panel-form').scrollTop = 0;
   }
   $('nueva-comp').addEventListener('click', function(){ abrirForm(); });
   $('cancelar').addEventListener('click', function(){ $('panel-form').classList.add('oculto'); });
+  $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
 
   // Subida del PDF de la circular
   $('c-pdf').addEventListener('change', async function(){
@@ -364,9 +377,9 @@ APOLANA_ADMIN.listo(function (sb) {
       if (!r.error) abrirForm(r.data);
     }
     if (bo) {
-      if (!confirm('¿Borrar la competición "' + e.target.getAttribute('data-nom') + '"? Se borrarán también sus inscripciones. No se puede deshacer.')) return;
+      if (!await apoConfirm({ texto: '¿Borrar la competición "' + e.target.getAttribute('data-nom') + '"? Se borrarán también sus inscripciones. No se puede deshacer.', peligro: true })) return;
       var d = await sb.from('competiciones').delete().eq('id', bo);
-      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
       $('panel-inscritos').classList.add('oculto');
       cargarComps();
     }
@@ -492,7 +505,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     if (desh) {
-      if (!confirm('¿Deshacer la confirmación? Se devolverá el importe al bono del atleta.')) return;
+      if (!await apoConfirm({ titulo: 'Deshacer confirmación', texto: '¿Deshacer la confirmación? Se devolverá el importe al bono del atleta.', confirmar: 'Deshacer' })) return;
       var at2 = e.target.getAttribute('data-atleta');
       var coste = parseFloat(compActual.coste) || 0;
       m.textContent = 'Deshaciendo…'; m.className = 'msg';
@@ -512,7 +525,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     if (quit) {
-      if (!confirm('¿Quitar esta inscripción? Si estaba confirmada, el bono NO se devuelve solo: usa antes "Deshacer".')) return;
+      if (!await apoConfirm({ titulo: 'Quitar inscripción', texto: '¿Quitar esta inscripción? Si estaba confirmada, el bono NO se devuelve solo: usa antes "Deshacer".', confirmar: 'Quitar', peligro: true })) return;
       var d = await sb.from('competicion_atleta').delete().eq('id', quit);
       if (d.error) { m.textContent = 'Error: ' + d.error.message; m.className = 'msg error'; return; }
       verInscritos(compActual.id);
@@ -533,7 +546,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!compActual) return;
     var pend = filasIns.filter(function(x){ return x.estado === 'apuntado'; });
     if (!pend.length) { $('msg-ins').textContent = 'No hay inscripciones pendientes.'; $('msg-ins').className = 'msg'; return; }
-    if (!confirm('¿Confirmar ' + pend.length + ' inscripción(es)? Se descontará ' + eur(compActual.coste) + ' del bono por cada una.')) return;
+    if (!await apoConfirm({ titulo: 'Confirmar inscripciones', texto: '¿Confirmar ' + (pend.length === 1 ? '1 inscripción' : pend.length + ' inscripciones') + '? Se descontará ' + eur(compActual.coste) + ' del bono por cada una.', confirmar: 'Confirmar' })) return;
     var m = $('msg-ins'); var fallos = [];
     for (var i = 0; i < pend.length; i++) {
       m.textContent = 'Confirmando ' + (i+1) + ' de ' + pend.length + '…'; m.className = 'msg';
