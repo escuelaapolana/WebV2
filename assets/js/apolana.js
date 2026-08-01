@@ -41,6 +41,7 @@ const MENU = [
   { clave: 'familias',   texto: 'Familias',   url: '/familias/' },
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
+  { clave: 'tienda',     texto: 'Tienda',     url: '/tienda/' },
   { clave: 'contacto',   texto: 'Contacto',   url: '/contacto/' },
 ];
 
@@ -112,6 +113,7 @@ class ApolanaPie extends HTMLElement {
               <a href="${ruta('/socio/')}">Hazte socio</a>
               <a href="${ruta('/calendario/')}">Calendario</a>
               <a href="${ruta('/noticias/')}">Noticias</a>
+              <a href="${ruta('/tienda/')}">Tienda</a>
             </div>
             <div class="pie-col">
               <span class="eyebrow">Contacto</span>
