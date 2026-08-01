@@ -332,7 +332,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     'escuela-natacion':'Escuela de natación', 'natacion':'Natación',
     'montana':'Montaña', 'running':'Running', 'triatlon':'Triatlón'
   };
-  var SECCIONES = [];   // ['competicion','escuela',…] tal cual están en grupos.seccion
+  var SECCIONES_CLUB = [];   // ['competicion','escuela',…] tal cual están en grupos.seccion
   var LUGARES = [];     // instalaciones que ya usa el club, para sugerirlas
   function nombreSeccion(s){
     if(!s) return '';
@@ -443,11 +443,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var gt = await sb.from('grupos').select('seccion,horario');
     if(!gt.error && gt.data){
       gt.data.forEach(function(g){
-        if(g.seccion && !vistaS[g.seccion]){ vistaS[g.seccion] = true; SECCIONES.push(g.seccion); }
+        if(g.seccion && !vistaS[g.seccion]){ vistaS[g.seccion] = true; SECCIONES_CLUB.push(g.seccion); }
         var l = lugarDeHorario(g.horario);
         if(l && !vistaL[norm(l)]){ vistaL[norm(l)] = true; LUGARES.push(l); }
       });
-      SECCIONES.sort();
+      SECCIONES_CLUB.sort();
     }
     var sl = await sb.from('sesiones').select('lugar').not('lugar','is',null).limit(400);
     if(!sl.error && sl.data) sl.data.forEach(function(s){
@@ -1370,8 +1370,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pintarSecciones(pref, seleccion){
     var cont = $(pref+'-secciones'); if(!cont) return;
     var sel = {}; (seleccion||[]).forEach(function(s){ sel[s] = true; });
-    if(!SECCIONES.length){ cont.innerHTML = '<p class="vacio">Todavía no hay secciones definidas en los grupos del club.</p>'; return; }
-    cont.innerHTML = SECCIONES.map(function(s){
+    if(!SECCIONES_CLUB.length){ cont.innerHTML = '<p class="vacio">Todavía no hay secciones definidas en los grupos del club.</p>'; return; }
+    cont.innerHTML = SECCIONES_CLUB.map(function(s){
       return '<label><input type="checkbox" class="sec-chk-'+pref+'" value="'+escAttr(s)+'"'+(sel[s]?' checked':'')+'>'+esc(nombreSeccion(s))+'</label>';
     }).join('');
   }
@@ -2432,7 +2432,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var nChoques = incluidas.filter(function(s){ return ex[s.fecha]; }).length;
 
     var html = '<p class="sw-resumen"><strong>'+incluidas.length+'</strong> sesión(es) para <strong>'+esc(nombreGrupo(SEMANA.grupo_id)||'—')+
-      '</strong> · semana del '+esc(formatFecha(SEMANA.sesiones[0].fecha))+'. Puedes corregir el título, el tipo y el rol aquí mismo, o desmarcar los días que no quieras crear.</p>'+
+      '</strong> · semana del '+esc(formatFecha(SEMANA.sesiones[0].fecha))+'. Puedes corregir aquí mismo el título, el tipo, el rol, la hora, el sitio y si ese día está abierto, o desmarcar los días que no quieras crear.</p>'+
       '<p class="pista" id="sw-prev-dest" style="margin:0 0 4px;">'+esc(textoDest('sw', false))+'</p>'+
       '<p class="pista" id="sw-prev-abre" style="margin:0 0 12px;">Apuntarse: '+esc(textoAbrir('sw', $('sw-publicar') ? $('sw-publicar').checked : true))+'</p>';
 
@@ -2785,7 +2785,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // --- ¿están abiertos estos entrenos? ---
     // Lo que se pone aquí baja a TODOS los días de la previsualización.
     pintarSecciones('sw', []);
-    aplicarAbrir('sw', { lugar: lugarDeGrupo($('sw-grupo').value) });
+    // Se recuerda el sitio que hemos puesto nosotros, para no pisar el que
+    // escriba el entrenador a mano si luego cambia de grupo.
+    var lugarPuestoSolo = lugarDeGrupo($('sw-grupo').value);
+    aplicarAbrir('sw', { lugar: lugarPuestoSolo });
     refrescarAbrirSw = conectarAbrir('sw', function(){
       volcarAbrirEnLosDias();
       pintarPrevisualizacion();
@@ -2910,6 +2913,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // otro grupo = otros atletas: la lista de destinatarios se repinta desde cero
       aplicarDest('sw', $('sw-grupo').value, null);
       refrescarDestSw();
+      // el sitio, solo si no lo ha escrito él a mano
+      if(($('sw-lugar').value||'').trim() === (lugarPuestoSolo||'')){
+        $('sw-lugar').value = lugarDeGrupo($('sw-grupo').value);
+        refrescarAbrirSw();
+      }
+      lugarPuestoSolo = lugarDeGrupo($('sw-grupo').value);
       if(SEMANA){ SEMANA.grupo_id = $('sw-grupo').value; await comprobarChoques(); }
     });
 
