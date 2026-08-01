@@ -61,6 +61,22 @@
   .pista { font-size:12.5px; color: var(--texto-suave); margin:6px 0 0; line-height:1.5; }
   .pista code { font-family: var(--fuente-mono); font-size:12px; background: var(--crema-media); border-radius:4px; padding:1px 5px; }
 
+  /* ¿abierto para apuntarse? (resumen en una línea) */
+  .abre-resumen { display:inline-block; font-family: var(--fuente-mono); font-size:11.5px; letter-spacing:.03em; background: var(--azul-suave); color: var(--azul-oscuro); border-radius:999px; padding:4px 11px; margin:10px 0 0; line-height:1.5; }
+  .abre-resumen.cerrado { background: var(--crema-media); color: var(--texto-suave); }
+  .abre-resumen.ojo { background:#fff8e6; color:#7a5c00; }
+
+  /* quién se ha apuntado */
+  .ap-ses { border:1px solid var(--linea); border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+  .ap-cab { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:6px; }
+  .ap-cab strong { font-size:15px; color: var(--navy); }
+  .ap-lista { list-style:none; margin:8px 0 0; padding:0; }
+  .ap-lista li { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14px; color: var(--texto); padding:7px 0; border-bottom:1px solid #F5F0E6; }
+  .ap-lista li:last-child { border-bottom:none; }
+  .ap-lista li span { font-family: var(--fuente-mono); font-size:11.5px; color: var(--texto-tenue); }
+  .ap-quitar { border:1px solid var(--linea-borde); background:#fff; color: var(--texto-suave); border-radius:8px; padding:4px 10px; font-size:12px; cursor:pointer; font-family: var(--fuente-texto); }
+  .ap-quitar:hover { border-color:#b3261e; color:#b3261e; }
+
   /* mejores marcas en Mi grupo */
   .mrc { display:flex; flex-wrap:wrap; gap:5px; }
   .mrc span { font-family: var(--fuente-mono); font-size:11.5px; background: var(--azul-suave); color: var(--azul-oscuro); border-radius:6px; padding:2px 7px; white-space:nowrap; }
@@ -293,6 +309,10 @@
   <option value="Vuelta a la calma"></option>
 </datalist>
 
+<!-- Sitios donde entrena el club. Se rellena solo con las instalaciones
+     que ya usan los grupos y con los lugares de sesiones anteriores. -->
+<datalist id="lugares-dl"></datalist>
+
 <script>
 APOLANA_PORTAL.listo(async function (sb, perfil) {
   var wrap = document.getElementById('en-wrap');
@@ -304,6 +324,42 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ---------- constantes ----------
   var TIPOS = [['pista','Pista'],['gym','Gimnasio'],['continuo','Rodaje / continuo'],['activacion','Activación'],['competicion','Competición'],['descanso','Descanso']];
   var ROLES = [['calidad_fuerte','Calidad fuerte'],['secundaria','Secundaria'],['activacion','Activación'],['ultimo_toque_48h','Último toque (48h)'],['descarga','Descarga'],['competicion','Competición']];
+
+  // Secciones del club (columna grupos.seccion). Se leen de la base de datos
+  // al arrancar; este mapa solo sirve para escribirlas bonitas en pantalla.
+  var NOMBRE_SECCION = {
+    'competicion':'Competición', 'cubo':'El Cubo', 'escuela':'Escuela',
+    'escuela-natacion':'Escuela de natación', 'natacion':'Natación',
+    'montana':'Montaña', 'running':'Running', 'triatlon':'Triatlón'
+  };
+  var SECCIONES = [];   // ['competicion','escuela',…] tal cual están en grupos.seccion
+  var LUGARES = [];     // instalaciones que ya usa el club, para sugerirlas
+  function nombreSeccion(s){
+    if(!s) return '';
+    if(NOMBRE_SECCION[s]) return NOMBRE_SECCION[s];
+    return String(s).charAt(0).toUpperCase()+String(s).slice(1).replace(/-/g,' ');
+  }
+  function textoSecciones(arr){
+    if(!arr || !arr.length) return 'todo el club';
+    return arr.map(nombreSeccion).join(', ');
+  }
+  // '17:30', '9.00', '9h30' → '17:30' / '09:00' · '' si no es una hora
+  function horaDeTexto(v){
+    var m = String(v==null?'':v).trim().match(/^(\d{1,2})\s*[:.h]\s*(\d{2})/);
+    if(!m) return '';
+    var h = parseInt(m[1],10), mi = parseInt(m[2],10);
+    if(isNaN(h) || isNaN(mi) || h>23 || mi>59) return '';
+    return (h<10?'0':'')+h+':'+(mi<10?'0':'')+mi;
+  }
+  // '17:30:00' (lo que devuelve la base) → '17:30' (lo que quiere <input type="time">)
+  function horaCorta(v){ var s = String(v==null?'':v); return s ? s.slice(0,5) : ''; }
+  // 'Martes y jueves 17:30-18:45 · Pista municipal' → 'Pista municipal'
+  function lugarDeHorario(h){
+    var t = String(h==null?'':h);
+    if(t.indexOf('·')===-1) return '';
+    var trozo = t.split('·').pop().trim();
+    return (trozo.length>2 && trozo.length<70) ? trozo : '';
+  }
 
   // ---------- listas cerradas (para que no haya erratas) ----------
   // Calzado: se guarda el texto completo; en sitios estrechos se pinta la abreviatura (Z / C).
@@ -379,9 +435,37 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   try { var a = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id').eq('entrenador_id', perfil.id).order('apellidos'); if(!a.error && a.data) MIS_ATLETAS = a.data; } catch(e){}
   try { var e = await sb.from('ejercicios').select('nombre,nombre_corto,categoria,tipo').eq('activo', true).order('categoria').order('nombre'); if(!e.error && e.data) EJERCICIOS = e.data; } catch(e){}
 
+  // Secciones del club y sitios donde se entrena. Los grupos son de lectura
+  // pública, así que aquí salen TODAS las secciones (no solo las tuyas): son
+  // las que se pueden marcar al abrir un entreno a otra gente del club.
+  var vistaS = {}, vistaL = {};
+  try {
+    var gt = await sb.from('grupos').select('seccion,horario');
+    if(!gt.error && gt.data){
+      gt.data.forEach(function(g){
+        if(g.seccion && !vistaS[g.seccion]){ vistaS[g.seccion] = true; SECCIONES.push(g.seccion); }
+        var l = lugarDeHorario(g.horario);
+        if(l && !vistaL[norm(l)]){ vistaL[norm(l)] = true; LUGARES.push(l); }
+      });
+      SECCIONES.sort();
+    }
+    var sl = await sb.from('sesiones').select('lugar').not('lugar','is',null).limit(400);
+    if(!sl.error && sl.data) sl.data.forEach(function(s){
+      var l = (s.lugar||'').trim();
+      if(l && !vistaL[norm(l)]){ vistaL[norm(l)] = true; LUGARES.push(l); }
+    });
+    LUGARES.sort();
+    var dl = document.getElementById('lugares-dl');
+    if(dl) dl.innerHTML = LUGARES.map(function(l){ return '<option value="'+escAttr(l)+'"></option>'; }).join('');
+  } catch(e){}
+
   function nombreGrupo(id){ for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id) return MIS_GRUPOS[i].nombre; return ''; }
   function nombreAtleta(x){ return ((x.nombre||'')+' '+(x.apellidos||'')).trim(); }
   function atletasDeGrupo(grupoId){ return MIS_ATLETAS.filter(function(x){ return x.grupo_id===grupoId; }); }
+  function grupoPorId(id){ for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id) return MIS_GRUPOS[i]; return null; }
+  function seccionDeGrupo(id){ var g = grupoPorId(id); return g ? (g.seccion||'') : ''; }
+  // Sitio habitual del grupo, sacado de su horario ('… · Pista municipal')
+  function lugarDeGrupo(id){ var g = grupoPorId(id); return g ? lugarDeHorario(g.horario) : ''; }
   // ¿El grupo entrena en el agua? Se mira la sección del grupo (natacion,
   // escuela-natacion, triatlon) y, si no, su nombre. Solo sirve para DEJAR
   // MARCADA por defecto la casilla de material: el entrenador siempre puede
@@ -447,7 +531,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<a data-sec="notas">Observaciones</a>'+
       '</nav></aside>'+
       '<main class="cont">'+
-        '<section id="sec-grupo"></section>'+
+        '<section id="sec-grupo"><div id="ap-cont"></div><div id="grupo-cont"></div></section>'+
         '<section id="sec-lista" hidden></section>'+
         '<section id="sec-semana" hidden></section>'+
         '<section id="sec-planificar" hidden></section>'+
@@ -468,7 +552,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // SECCIÓN 1 · MI GRUPO
   // ============================================================
   function renderMiGrupo(){
-    var cont = $('sec-grupo');
+    var cont = $('grupo-cont');
     if(!MIS_GRUPOS.length){ cont.innerHTML = '<div class="tarjeta"><h2>Mi grupo</h2><p class="vacio">Aún no tienes grupos a tu cargo. Cuando el club te asigne como entrenador de un grupo, aparecerá aquí con sus atletas.</p></div>'; return; }
     var html = '';
     MIS_GRUPOS.forEach(function(gr){
@@ -500,6 +584,137 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
   renderMiGrupo();
+
+  // ============================================================
+  // SECCIÓN 1a · QUIÉN SE HA APUNTADO A TUS ENTRENOS ABIERTOS
+  // ------------------------------------------------------------
+  // Cuando abres un entreno (ver «Planificar entreno»), cualquiera
+  // del club se puede apuntar desde el calendario. Aquí ves cuánta
+  // gente espera cada día, para preparar el material y las calles.
+  //
+  // OJO, ESTO NO ES UN FALLO: los NOMBRES que salen son los de TUS
+  // atletas. Los de otros grupos cuentan en el total (que sale de la
+  // vista `sesiones_agenda`), pero sus datos personales son de su
+  // entrenador y la base de datos no te los deja leer. Por lo mismo,
+  // solo puedes quitar de la lista a los tuyos.
+  // ============================================================
+  var APUNTADOS = { sesiones: [], porSesion: {}, totales: {}, cargando: false, error: '' };
+
+  async function cargarApuntados(){
+    APUNTADOS.sesiones = []; APUNTADOS.porSesion = {}; APUNTADOS.totales = {}; APUNTADOS.error = '';
+    if(!MIS_GRUPOS.length) return;
+    var ids = MIS_GRUPOS.map(function(g){ return g.id; });
+    var r = await sb.from('sesiones')
+      .select('id,fecha,hora,titulo,lugar,grupo_id,plazas,abierta_a,publicada')
+      .in('grupo_id', ids).eq('abierta_inscripcion', true).gte('fecha', todayISO)
+      .order('fecha', { ascending:true }).order('hora', { ascending:true }).limit(60);
+    if(r.error){ APUNTADOS.error = r.error.message; return; }
+    APUNTADOS.sesiones = r.data || [];
+    if(!APUNTADOS.sesiones.length) return;
+    var sids = APUNTADOS.sesiones.map(function(s){ return s.id; });
+
+    var ri = await sb.from('sesion_inscripciones').select('id,sesion_id,atleta_id,created_at').in('sesion_id', sids);
+    if(!ri.error && ri.data) ri.data.forEach(function(i){
+      (APUNTADOS.porSesion[i.sesion_id] = APUNTADOS.porSesion[i.sesion_id] || []).push(i);
+    });
+    // El TOTAL de apuntados (incluida la gente de otros grupos) sale de la
+    // agenda del club, que sí puede contarlos.
+    try {
+      var ra = await sb.from('sesiones_agenda').select('sesion_id,apuntados,libres').in('sesion_id', sids);
+      if(!ra.error && ra.data) ra.data.forEach(function(v){ APUNTADOS.totales[v.sesion_id] = v; });
+    } catch(e){}
+  }
+
+  function pintarApuntados(){
+    var cont = $('ap-cont'); if(!cont) return;
+    if(!MIS_GRUPOS.length){ cont.innerHTML = ''; return; }
+
+    var cab = '<div class="tarjeta"><h2>Quién se ha apuntado</h2>';
+    if(APUNTADOS.cargando){ cont.innerHTML = cab + '<p class="vacio">Cargando…</p></div>'; return; }
+    if(APUNTADOS.error){ cont.innerHTML = cab + '<p class="vacio">No he podido leer los apuntados: '+esc(APUNTADOS.error)+'</p></div>'; return; }
+
+    if(!APUNTADOS.sesiones.length){
+      cont.innerHTML = cab +
+        '<p class="vacio">Ahora mismo no tienes ningún entreno abierto para apuntarse. '+
+        'Para abrir uno, ve a <strong>Planificar entreno</strong>, marca «¿Abierto para apuntarse?», pon las plazas y publícalo: '+
+        'saldrá en el calendario del club con el botón de apuntarse y aquí verás quién viene.</p></div>';
+      return;
+    }
+
+    var html = cab + '<p class="vacio" style="margin-top:-6px;margin-bottom:14px;">Tus entrenos abiertos al club, de hoy en adelante.</p>';
+
+    APUNTADOS.sesiones.forEach(function(s){
+      var tot = APUNTADOS.totales[s.id];
+      var mios = APUNTADOS.porSesion[s.id] || [];
+      var nTotal = tot ? tot.apuntados : mios.length;
+      var otros = Math.max(0, nTotal - mios.length);
+
+      var cuando = formatFecha(s.fecha) + (s.hora ? ' · '+horaCorta(s.hora) : '');
+      var contador = nTotal + (s.plazas ? '/'+s.plazas : '') + ' apuntado'+(nTotal===1?'':'s');
+      var completo = !!(s.plazas && nTotal >= s.plazas);
+
+      html += '<div class="ap-ses">'+
+        '<div class="ap-cab">'+
+          '<span class="sw-fecha">'+esc(cuando)+'</span>'+
+          '<strong>'+esc(s.titulo || 'Entreno abierto')+'</strong>'+
+          (s.lugar ? '<span class="pill">'+esc(s.lugar)+'</span>' : '')+
+          '<span style="flex:1 1 auto"></span>'+
+          '<span class="lst-contador'+(nTotal?'':' cero')+'"'+(completo?' style="color:#A8453F"':'')+'>'+esc(contador)+'</span>'+
+        '</div>'+
+        '<p class="pista" style="margin-top:0;">'+esc(nombreGrupo(s.grupo_id))+' · abierto a '+esc(textoSecciones(s.abierta_a))+
+          (s.plazas ? ' · '+(completo ? 'completo' : Math.max(0, s.plazas - nTotal)+' plaza(s) libres') : ' · sin límite de plazas')+'</p>'+
+        (!s.publicada ? '<p class="dest-aviso">Está en <strong>borrador</strong>: hasta que no la publiques no sale en el calendario y nadie se puede apuntar.</p>' : '');
+
+      if(mios.length){
+        html += '<ul class="ap-lista">'+mios.map(function(i){
+          var at = atletaPorId(i.atleta_id);
+          var nom = at ? nombreAtleta(at) : 'Atleta de otro grupo';
+          return '<li><span style="flex:1 1 auto;color:var(--navy);font-family:var(--fuente-texto);font-size:14px;">'+esc(nom)+'</span>'+
+            '<span>'+esc(formatFecha(String(i.created_at||'').slice(0,10)))+'</span>'+
+            '<button type="button" class="ap-quitar" data-sesion="'+s.id+'" data-atleta="'+i.atleta_id+'">Quitar</button></li>';
+        }).join('')+'</ul>';
+      } else if(!otros){
+        html += '<p class="vacio" style="font-size:13.5px;margin:8px 0 0;">Todavía no se ha apuntado nadie.</p>';
+      }
+
+      if(otros){
+        html += '<p class="pista" style="margin-bottom:0;"><strong>'+otros+' apuntado(s) de otros grupos.</strong> '+
+          'Cuentan para las plazas, pero sus nombres no salen aquí: son atletas de otros entrenadores. Administración sí los ve todos.</p>';
+      }
+      html += '</div>';
+    });
+
+    html += '<p class="pista">Si quitas a alguien, su plaza queda libre y se puede volver a apuntar mientras el entreno siga abierto.</p>'+
+      '<span class="msg" id="ap-msg"></span></div>';
+
+    cont.innerHTML = html;
+
+    cont.querySelectorAll('.ap-quitar').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var sid = b.getAttribute('data-sesion'), aid = b.getAttribute('data-atleta');
+        var at = atletaPorId(aid);
+        if(!confirm('¿Quitar a '+(at ? nombreAtleta(at) : 'este atleta')+' de este entreno? Su plaza queda libre.')) return;
+        b.disabled = true;
+        var r = await sb.from('sesion_inscripciones').delete().eq('sesion_id', sid).eq('atleta_id', aid).select('id');
+        var m = $('ap-msg');
+        if(r.error){ if(m){ m.textContent = 'Error: '+r.error.message; m.className = 'msg error'; } b.disabled = false; return; }
+        if(!r.data || !r.data.length){
+          if(m){ m.textContent = 'No se ha podido quitar: ese atleta no es tuyo. Tiene que hacerlo su entrenador o administración.'; m.className = 'msg error'; }
+          b.disabled = false; return;
+        }
+        await refrescarApuntados();
+        var m2 = $('ap-msg'); if(m2){ m2.textContent = 'Quitado de la lista ✓'; m2.className = 'msg ok'; }
+      });
+    });
+  }
+
+  async function refrescarApuntados(){
+    if(!$('ap-cont')) return;
+    APUNTADOS.cargando = true; pintarApuntados();
+    await cargarApuntados();
+    APUNTADOS.cargando = false; pintarApuntados();
+  }
+  refrescarApuntados();
 
   // ============================================================
   // SECCIÓN 1b · PASAR LISTA
@@ -1109,6 +1324,134 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return refrescar;
   }
 
+  // ============================================================
+  // ¿ABIERTO PARA APUNTARSE? (columnas de la tabla sesiones)
+  // ------------------------------------------------------------
+  //   abierta_inscripcion = false -> es el entreno de tu grupo y punto
+  //   abierta_inscripcion = true  -> sale en el calendario del club con
+  //                                  el botón de apuntarse
+  //   plazas    = null  -> sin límite · un número = aforo
+  //   abierta_a = null  -> todo el club · ['running'] = solo esa sección
+  //   hora / lugar      -> lo que se ve en el calendario («17:30 · Pista»)
+  // Quien decide de verdad si alguien se puede apuntar es la base de
+  // datos (migraciones/025): comprueba fecha, sección y plazas libres.
+  // Igual que con los destinatarios, el mismo control se usa en los dos
+  // apartados y se distingue por el prefijo ('pl' y 'sw').
+  // ============================================================
+  function cajaAbrirHTML(pref, pregunta, explicacion){
+    return '<div class="dest" id="'+pref+'-abre">'+
+      '<label>'+esc(pregunta)+'</label>'+
+      '<div class="check" style="margin-top:6px;"><input type="checkbox" id="'+pref+'-abierta">'+
+        '<label for="'+pref+'-abierta">Sí, cualquiera del club se puede apuntar desde el calendario</label></div>'+
+      '<p class="pista">'+explicacion+'</p>'+
+      '<div id="'+pref+'-abre-caja" hidden>'+
+        '<div class="grid2">'+
+          '<div>'+
+            '<label>Plazas</label>'+
+            '<input id="'+pref+'-plazas" type="number" min="1" step="1" inputmode="numeric" placeholder="sin límite">'+
+            '<p class="pista">Cuánta gente cabe. <strong>Déjalo vacío si no hay tope.</strong> Cuando se llene, el calendario deja de dejar apuntarse.</p>'+
+          '</div>'+
+          '<div>'+
+            '<label>Abierta a</label>'+
+            '<div class="dest-lista" id="'+pref+'-secciones"></div>'+
+            '<p class="pista"><strong>Sin marcar nada = a todo el club.</strong> Si marcas secciones, solo se podrá apuntar quien entrene en un grupo de esas secciones.</p>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="grid2">'+
+        '<div><label>Hora</label><input id="'+pref+'-hora" type="time"></div>'+
+        '<div><label>Lugar</label><input id="'+pref+'-lugar" list="lugares-dl" placeholder="Pista Joaquín Villar, Playa del Postiguet…"></div>'+
+      '</div>'+
+      '<p class="pista">La hora y el lugar son los que se ven en el calendario del club («17:30 · Pista Joaquín Villar»). Puedes ponerlos aunque el entreno no esté abierto a nadie más.</p>'+
+      '<p class="abre-resumen" id="'+pref+'-abre-resumen"></p>'+
+    '</div>';
+  }
+
+  function pintarSecciones(pref, seleccion){
+    var cont = $(pref+'-secciones'); if(!cont) return;
+    var sel = {}; (seleccion||[]).forEach(function(s){ sel[s] = true; });
+    if(!SECCIONES.length){ cont.innerHTML = '<p class="vacio">Todavía no hay secciones definidas en los grupos del club.</p>'; return; }
+    cont.innerHTML = SECCIONES.map(function(s){
+      return '<label><input type="checkbox" class="sec-chk-'+pref+'" value="'+escAttr(s)+'"'+(sel[s]?' checked':'')+'>'+esc(nombreSeccion(s))+'</label>';
+    }).join('');
+  }
+  function seccionesMarcadas(pref){
+    var out = [], cont = $(pref+'-secciones'); if(!cont) return out;
+    cont.querySelectorAll('.sec-chk-'+pref).forEach(function(i){ if(i.checked) out.push(i.value); });
+    return out;
+  }
+  function estaAbierta(pref){ var c = $(pref+'-abierta'); return !!(c && c.checked); }
+
+  // Deja el control como esté guardado en una sesión (o lo vacía con null)
+  function aplicarAbrir(pref, s){
+    s = s || {};
+    if($(pref+'-abierta')) $(pref+'-abierta').checked = !!s.abierta_inscripcion;
+    if($(pref+'-plazas'))  $(pref+'-plazas').value = (s.plazas==null ? '' : s.plazas);
+    if($(pref+'-hora'))    $(pref+'-hora').value = horaCorta(s.hora);
+    if($(pref+'-lugar'))   $(pref+'-lugar').value = s.lugar || '';
+    pintarSecciones(pref, Array.isArray(s.abierta_a) ? s.abierta_a : []);
+  }
+
+  // Lee lo elegido. Devuelve {error:'…'} si algo no cuadra.
+  function leerAbrir(pref){
+    var abierta = estaAbierta(pref);
+    var txtPlazas = ($(pref+'-plazas') ? $(pref+'-plazas').value : '').trim();
+    var plazas = null;
+    if(abierta && txtPlazas!==''){
+      plazas = parseInt(txtPlazas, 10);
+      if(isNaN(plazas) || plazas < 1) return { error: 'Las plazas tienen que ser un número mayor que cero. Si no quieres poner tope, deja la casilla vacía.' };
+    }
+    var secs = abierta ? seccionesMarcadas(pref) : [];
+    return {
+      abierta_inscripcion: abierta,
+      plazas: abierta ? plazas : null,
+      abierta_a: (abierta && secs.length) ? secs : null,
+      hora: ($(pref+'-hora') && $(pref+'-hora').value) ? $(pref+'-hora').value : null,
+      lugar: ($(pref+'-lugar') ? $(pref+'-lugar').value.trim() : '') || null
+    };
+  }
+
+  // Resumen en una línea: «Abierto · 20 plazas · Running» / «Solo para tu grupo»
+  function textoAbrir(pref, publicada){
+    var partes = [];
+    if(estaAbierta(pref)){
+      var p = ($(pref+'-plazas') ? $(pref+'-plazas').value : '').trim();
+      partes.push('Abierto');
+      partes.push(p ? p+' plazas' : 'sin límite de plazas');
+      partes.push(textoSecciones(seccionesMarcadas(pref)));
+    } else {
+      partes.push('Solo para tu grupo');
+    }
+    var h = $(pref+'-hora') ? $(pref+'-hora').value : '';
+    var l = $(pref+'-lugar') ? $(pref+'-lugar').value.trim() : '';
+    if(h) partes.push(h);
+    if(l) partes.push(l);
+    var txt = partes.join(' · ');
+    if(estaAbierta(pref) && publicada === false) txt += ' — recuerda publicarla o no saldrá en el calendario';
+    return txt;
+  }
+
+  // Conecta el control. `estaPublicada` es una función opcional que dice si
+  // la sesión se va a publicar (para avisar de que si no, nadie la verá).
+  function conectarAbrir(pref, alCambiar, estaPublicada){
+    function refrescar(sinPropagar){
+      var on = estaAbierta(pref);
+      $(pref+'-abre-caja').hidden = !on;
+      var r = $(pref+'-abre-resumen');
+      var pub = estaPublicada ? estaPublicada() : true;
+      r.textContent = textoAbrir(pref, pub);
+      r.className = 'abre-resumen' + (!on ? ' cerrado' : (pub===false ? ' ojo' : ''));
+      if(alCambiar && sinPropagar !== true) alCambiar();
+    }
+    $(pref+'-abierta').addEventListener('change', refrescar);
+    $(pref+'-plazas').addEventListener('input', refrescar);
+    $(pref+'-hora').addEventListener('input', refrescar);
+    $(pref+'-lugar').addEventListener('input', refrescar);
+    $(pref+'-secciones').addEventListener('change', refrescar);
+    refrescar(true);
+    return refrescar;
+  }
+
   // Texto de ayuda sobre los ritmos en % (se usa en varios sitios)
   var PISTA_RITMO_HTML = 'En la columna <strong>Ritmo</strong>: si escribes un porcentaje (<code>90%</code> o <code>90-95%</code>) y la distancia va en metros (<code>60 m</code>), '+
     '<strong>cada atleta verá su propio tiempo objetivo</strong>, calculado con su mejor marca en esa distancia. '+
@@ -1119,6 +1462,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   var editandoId = null;        // id de sesión en edición (null = nueva)
   var refrescarDestPl = null;   // se asigna al pintar el formulario
+  var refrescarAbrirPl = null;  // ídem, para «¿Abierto para apuntarse?»
 
   function filtroActual(){ var f=$('ej-filtro'); return f?f.value:''; }
 
@@ -1300,6 +1644,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if($('pl-publicar')) $('pl-publicar').checked = false;
     if($('pl-material')) $('pl-material').checked = grupoEsDeAgua($('pl-grupo') ? $('pl-grupo').value : '');
     if($('pl-dest')){ aplicarDest('pl', $('pl-grupo').value, null); if(refrescarDestPl) refrescarDestPl(); }
+    // sesión nueva: cerrada, sin plazas y con el sitio habitual del grupo puesto
+    if($('pl-abre')){ aplicarAbrir('pl', { lugar: lugarDeGrupo($('pl-grupo') ? $('pl-grupo').value : '') }); if(refrescarAbrirPl) refrescarAbrirPl(true); }
     $('bloques-cont').innerHTML='';
     // arranca con los tres bloques típicos vacíos
     nuevoBloque({etiqueta:'Calentamiento'});
@@ -1323,6 +1669,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // ¿va a todo el grupo o solo a algunos? (null = todo el grupo)
     aplicarDest('pl', s.grupo_id||$('pl-grupo').value, Array.isArray(s.atletas_ids) ? s.atletas_ids : null);
     if(refrescarDestPl) refrescarDestPl();
+    // ¿está abierta a que se apunte gente? con cuántas plazas, para qué secciones, a qué hora y dónde
+    aplicarAbrir('pl', s);
+    if(refrescarAbrirPl) refrescarAbrirPl(true);
     $('bloques-cont').innerHTML='';
     var bloques = Array.isArray(s.bloques)?s.bloques:[];
     // Si la sesión ya trae material apuntado, la casilla se marca sola para que se vea.
@@ -1342,13 +1691,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!selEditar) return;
     selEditar.innerHTML = '<option value="">— nueva sesión —</option>';
     if(!grupoId) return;
-    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
+    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
     if(r.error || !r.data){ return; }
     window.__SESIONES_GRUPO = {};
     r.data.forEach(function(s){
       window.__SESIONES_GRUPO[s.id] = s;
       var soloAlgunos = Array.isArray(s.atletas_ids) && s.atletas_ids.length;
-      selEditar.innerHTML += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+s.atletas_ids.length+' atleta(s)':'')+'</option>';
+      selEditar.innerHTML += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+s.atletas_ids.length+' atleta(s)':'')+(s.abierta_inscripcion?' · abierta':'')+'</option>';
     });
   }
 
@@ -1399,6 +1748,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><label>Rol de la sesión</label><select id="pl-rol">'+optsPares(ROLES,'','— sin rol —')+'</select></div>'+
         '</div>'+
         cajaDestHTML('pl', '¿Para quién es esta sesión?')+
+        cajaAbrirHTML('pl', '¿Abierto para apuntarse?',
+          'Si lo dejas <strong>sin marcar</strong>, el entreno es solo para tu grupo: en el calendario del club se ve que existe, pero nadie de fuera se puede apuntar. '+
+          'Si lo marcas, aparece con el botón de <strong>apuntarse</strong> para la gente que digas debajo.')+
         '<label>Nota / razonamiento</label><textarea id="pl-nota" placeholder="Objetivo del día, sensaciones a buscar, avisos…"></textarea>'+
         '<h3>Bloques del entreno</h3>'+
         '<p class="pista" style="margin-bottom:10px;">'+PISTA_RITMO_HTML+'</p>'+
@@ -1479,6 +1831,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     pintarListaDest('pl', $('pl-grupo').value, []);
     refrescarDestPl = conectarDest('pl', true);
 
+    // ---- ¿abierto para apuntarse? ----
+    pintarSecciones('pl', []);
+    refrescarAbrirPl = conectarAbrir('pl', null, function(){ return $('pl-publicar').checked; });
+    $('pl-publicar').addEventListener('change', function(){ refrescarAbrirPl(true); });
+
     $('pl-grupo').addEventListener('change', function(){
       editandoId = null;
       // al cambiar de grupo cambian los atletas: la lista se repinta vacía
@@ -1486,6 +1843,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       refrescarDestPl();
       $('pl-material').checked = grupoEsDeAgua($('pl-grupo').value);
       aplicarModoFilas();
+      // el sitio habitual del nuevo grupo, para no escribirlo a mano
+      aplicarAbrir('pl', { lugar: lugarDeGrupo($('pl-grupo').value) });
+      refrescarAbrirPl(true);
       cargarSesionesGrupo($('pl-grupo').value);
     });
     $('pl-editar').addEventListener('change', function(){
@@ -1502,6 +1862,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!fecha){ msg.textContent='Pon una fecha.'; msg.className='msg error'; return; }
       var dest = leerDest('pl');
       if(dest.error){ msg.textContent = dest.error; msg.className='msg error'; return; }
+      var abre = leerAbrir('pl');
+      if(abre.error){ msg.textContent = abre.error; msg.className='msg error'; return; }
       var payload={
         grupo_id: grupoId,
         fecha: fecha,
@@ -1512,7 +1874,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         nota_razonamiento: $('pl-nota').value.trim()||null,
         bloques: serializarBloques(),
         publicada: $('pl-publicar').checked,
-        atletas_ids: dest.ids   // null = todo el grupo · [ids] = solo esos atletas
+        atletas_ids: dest.ids,  // null = todo el grupo · [ids] = solo esos atletas
+        abierta_inscripcion: abre.abierta_inscripcion,
+        plazas: abre.plazas,
+        abierta_a: abre.abierta_a,
+        hora: abre.hora,
+        lugar: abre.lugar
       };
       var res;
       if(editandoId){ res = await sb.from('sesiones').update(payload).eq('id', editandoId).select('id').maybeSingle(); }
@@ -1520,11 +1887,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(res.error){ msg.textContent='Error: '+res.error.message; msg.className='msg error'; return; }
       if(res.data && res.data.id) editandoId = res.data.id;
       var quien = dest.ids ? ' · solo para '+dest.ids.length+' atleta(s)' : ' · para todo el grupo';
-      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien; msg.className='msg ok';
+      var abierto = '';
+      if(abre.abierta_inscripcion){
+        abierto = ' · abierto a '+textoSecciones(abre.abierta_a)+(abre.plazas ? ' ('+abre.plazas+' plazas)' : ' (sin límite de plazas)');
+        if(!payload.publicada) abierto += ' · ojo: en borrador nadie se puede apuntar';
+      }
+      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien+abierto; msg.className='msg ok';
       $('pl-estado').textContent = 'Editando: '+(payload.titulo||formatFecha(payload.fecha));
       await cargarSesionesGrupo(grupoId);
       if(editandoId) $('pl-editar').value = editandoId;
       cargarSesionesFeedback(); // refrescar el desplegable de feedback
+      refrescarApuntados();     // por si acabas de abrir (o cerrar) un entreno
     });
 
     // estado inicial
@@ -1593,6 +1966,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       p = p.trim(); if(!p) return;
       var np = norm(p).replace(/[()]/g,'').replace(/_/g,' ').trim();
       if(/^\d{1,2}\s*(\/|-|\.|de\s)/.test(np)) return;   // "4 de agosto", "04/08" → es la fecha, ya la sabemos
+      // un trozo que sea SOLO una hora ("9:00", "17:30 h") es la hora de quedada
+      if(!ses.hora && /^\d{1,2}\s*[:.h]\s*\d{2}\s*(h|horas)?$/i.test(p.trim())){
+        var hh = horaDeTexto(p);
+        if(hh){ ses.hora = hh; return; }
+      }
       if(SINON_TIPO[np] && !ses.tipo){ ses.tipo = SINON_TIPO[np]; return; }
       if(SINON_ROL[np] && !ses.rol){ ses.rol = SINON_ROL[np]; return; }
       ses.titulo = (ses.titulo ? ses.titulo+' · ' : '') + p;
@@ -1671,7 +2049,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var dia = detectaDia(cuerpo);
       if(dia){
         if(mapa[dia.idx]){ ses = mapa[dia.idx]; avisos.push('El '+DIAS_TXT[dia.idx]+' aparece más de una vez: he juntado todo en la misma sesión.'); }
-        else { ses = { idx:dia.idx, fecha: addDias(lunes, dia.idx), dia_semana: DIAS_TXT[dia.idx], tipo:'', rol:'', titulo:'', nota_razonamiento:'', bloques:[], incluir:true };
+        else { ses = { idx:dia.idx, fecha: addDias(lunes, dia.idx), dia_semana: DIAS_TXT[dia.idx], tipo:'', rol:'', titulo:'', nota_razonamiento:'', bloques:[], incluir:true, hora:'', lugar:'' };
                mapa[dia.idx] = ses; orden.push(dia.idx); }
         bloque = null;
         aplicarCabecera(ses, dia.resto);
@@ -1686,6 +2064,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // nota / objetivo del día
       var mn = cuerpo.match(/^(nota|notas|objetivo|razonamiento|comentario|observaciones)\s*[:·\-–]\s*(.*)$/i);
       if(mn){ ses.nota_razonamiento = (ses.nota_razonamiento ? ses.nota_razonamiento+' ' : '') + mn[2].trim(); continue; }
+
+      // hora de quedada y sitio ("Hora: 9:00", "Lugar: Playa del Postiguet")
+      var mh = cuerpo.match(/^(hora|a las)\s*[:·\-–]\s*(.*)$/i);
+      if(mh){ var h2 = horaDeTexto(mh[2]); if(h2) ses.hora = h2; else avisos.push('No he entendido la hora «'+mh[2].trim()+'» del '+ses.dia_semana+'. Ponla como 9:00 o 17:30.'); continue; }
+      var ml = cuerpo.match(/^(lugar|sitio|donde|dónde|instalacion|instalación)\s*[:·\-–]\s*(.*)$/i);
+      if(ml){ ses.lugar = ml[2].trim(); continue; }
 
       // viñeta o número → fila de entreno
       if(marca){ asegurarBloque().filas.push(parseFila(cuerpo)); continue; }
@@ -1724,7 +2108,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     'material':'material','material natacion':'material',
     'observaciones':'observaciones','observacion':'observaciones','obs':'observaciones',
     'detalle':'detalle',
-    'nota':'nota','notas':'nota','nota razonamiento':'nota'
+    'nota':'nota','notas':'nota','nota razonamiento':'nota',
+    'hora':'hora','hora de inicio':'hora','a las':'hora',
+    'lugar':'lugar','sitio':'lugar','instalacion':'lugar','donde':'lugar'
   });
 
   function p2(n){ n = String(parseInt(n,10)); return (n.length<2?'0':'')+n; }
@@ -1785,9 +2171,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
       var ses = mapa[fecha];
       if(!ses){
-        ses = { idx: idx, fecha: fecha, dia_semana: DIAS_TXT[idx] || diaSemana(fecha), tipo:'', rol:'', titulo:'', nota_razonamiento:'', bloques:[], incluir:true };
+        ses = { idx: idx, fecha: fecha, dia_semana: DIAS_TXT[idx] || diaSemana(fecha), tipo:'', rol:'', titulo:'', nota_razonamiento:'', bloques:[], incluir:true, hora:'', lugar:'' };
         mapa[fecha] = ses; orden.push(fecha);
       }
+      if(!ses.hora && r.hora){
+        var hc = horaDeTexto(r.hora);
+        if(hc) ses.hora = hc; else avisos.push('Fila '+(n+2)+': no entiendo la hora «'+r.hora+'». Ponla como 9:00 o 17:30.');
+      }
+      if(!ses.lugar && r.lugar) ses.lugar = r.lugar;
       if(!ses.tipo && r.tipo){ var tp = SINON_TIPO[norm(r.tipo).replace(/_/g,' ')]; if(tp) ses.tipo = tp; else avisos.push('Fila '+(n+2)+': el tipo «'+r.tipo+'» no es válido, lo he dejado vacío.'); }
       if(!ses.rol && r.rol){ var rl = SINON_ROL[norm(r.rol).replace(/_/g,' ')]; if(rl) ses.rol = rl; else avisos.push('Fila '+(n+2)+': el rol «'+r.rol+'» no es válido, lo he dejado vacío.'); }
       if(!ses.titulo && r.titulo) ses.titulo = r.titulo;
@@ -1825,6 +2216,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var EJEMPLO_SEMANA = [
     'LUNES · pista · calidad_fuerte · Velocidad máxima',
     'Nota: la sesión de calidad de la semana. Volumen mínimo, calidad absoluta, recuperaciones completas.',
+    'Hora: 19:00',
+    'Lugar: Estadio Joaquín Villar',
     '# Parte inicial',
     '- Técnica con conos | 10\' | Z | obs: Frecuencia y coordinación',
     '- Drills de frecuencia | 2x30 m | Z',
@@ -1868,6 +2261,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     '   Lo que no sea un tipo o un rol válido se usa como título de la sesión.',
     '',
     '2) NOTA DEL DÍA (opcional): una línea que empiece por "Nota:" o por "Objetivo:".',
+    '',
+    '2b) HORA Y LUGAR (opcional): una línea "Hora: 9:00" y otra "Lugar: Playa del Postiguet".',
+    '    Son los que se ven en el calendario del club ("9:00 · Playa del Postiguet").',
+    '    La hora también se puede poner en la propia línea del día, entre los datos separados por " · ".',
     '',
     '3) BLOQUES: una línea que empiece por "#" abre un bloque, por ejemplo "# Parte inicial". También vale una línea suelta acabada en dos puntos ("Calentamiento:").',
     '   Bloques habituales: Parte inicial, Velocidad máxima, Fuerza / Potencia, Tren superior, Vuelta a la calma.',
@@ -1941,15 +2338,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // CSV de ejemplo: separador ';' y BOM para que Excel respete los acentos
   function descargarPlantillaCSV(){
     var lineas = [
-      "dia;fecha;tipo;rol;titulo;bloque;matiz;ejercicio;series;distancia;ritmo;rec;calzado;carga;material;observaciones;detalle",
-      "lunes;;pista;calidad_fuerte;Velocidad máxima;Parte inicial;;Técnica con conos;;;;;Z;;;Frecuencia y coordinación;10'",
-      "lunes;;pista;calidad_fuerte;Velocidad máxima;Velocidad máxima;Calidad pura;Salidas desde tacos;3;30 m;;3-4';C;;;Máxima aceleración. Recuperación completa;",
-      "lunes;;pista;calidad_fuerte;Velocidad máxima;Velocidad máxima;Calidad pura;Series 300 m;2;300 m;90-95%;8';C;;;Rafa 40-42 seg · Adri 43-45 seg;",
-      "lunes;;pista;calidad_fuerte;Velocidad máxima;Vuelta a la calma;;Trote suave + estiramientos;;;;;Z;;;;8'",
-      "martes;;gym;secundaria;Potenciación neural;Fuerza / Potencia;Sin fatiga;Cargada completa;3;2;;;;80% RM;;Movida rapidísimo, sin llegar a fallo;",
-      "martes;;gym;secundaria;Potenciación neural;Fuerza / Potencia;Sin fatiga;Sentadilla;4;6;;3';;75% RM;;Bajada controlada;",
-      "miercoles;;continuo;descarga;Rodaje en el agua;Parte principal;;Series 100 m;8;100 m;;30'';;;Tabla + Aletas;Suave, técnica de pies;",
-      "jueves;;descanso;descarga;Descanso;;;;;;;;;;;;"
+      "dia;fecha;hora;lugar;tipo;rol;titulo;bloque;matiz;ejercicio;series;distancia;ritmo;rec;calzado;carga;material;observaciones;detalle",
+      "lunes;;19:00;Estadio Joaquín Villar;pista;calidad_fuerte;Velocidad máxima;Parte inicial;;Técnica con conos;;;;;Z;;;Frecuencia y coordinación;10'",
+      "lunes;;19:00;Estadio Joaquín Villar;pista;calidad_fuerte;Velocidad máxima;Velocidad máxima;Calidad pura;Salidas desde tacos;3;30 m;;3-4';C;;;Máxima aceleración. Recuperación completa;",
+      "lunes;;19:00;Estadio Joaquín Villar;pista;calidad_fuerte;Velocidad máxima;Velocidad máxima;Calidad pura;Series 300 m;2;300 m;90-95%;8';C;;;Rafa 40-42 seg · Adri 43-45 seg;",
+      "lunes;;19:00;Estadio Joaquín Villar;pista;calidad_fuerte;Velocidad máxima;Vuelta a la calma;;Trote suave + estiramientos;;;;;Z;;;;8'",
+      "martes;;19:00;Gimnasio del club;gym;secundaria;Potenciación neural;Fuerza / Potencia;Sin fatiga;Cargada completa;3;2;;;;80% RM;;Movida rapidísimo, sin llegar a fallo;",
+      "martes;;19:00;Gimnasio del club;gym;secundaria;Potenciación neural;Fuerza / Potencia;Sin fatiga;Sentadilla;4;6;;3';;75% RM;;Bajada controlada;",
+      "miercoles;;18:00;Piscina cubierta;continuo;descarga;Rodaje en el agua;Parte principal;;Series 100 m;8;100 m;;30'';;;Tabla + Aletas;Suave, técnica de pies;",
+      "jueves;;;;descanso;descarga;Descanso;;;;;;;;;;;;"
     ];
     descargarArchivo('plantilla-semana.csv', '\uFEFF' + lineas.join('\r\n') + '\r\n', 'text/csv;charset=utf-8;');
   }
@@ -1959,6 +2356,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var SEMANAS_ORIGEN = {};      // para duplicar: { lunesISO: [sesiones] }
   var PLANTILLAS = {};          // { id: fila de plantillas_semana }
   var refrescarDestSw = function(){};   // se asigna al pintar la sección
+  var refrescarAbrirSw = function(){};  // ídem, para «¿Estos entrenos están abiertos?»
+
+  // Baja lo puesto arriba (abierto / hora / lugar) a todos los días de la
+  // previsualización. Las plazas y las secciones son comunes a la tanda.
+  function volcarAbrirEnLosDias(){
+    if(!SEMANA || !SEMANA.sesiones.length) return;
+    if(!$('sw-abierta')) return;
+    var a = leerAbrir('sw');
+    if(a.error) return;
+    SEMANA.sesiones.forEach(function(s){
+      s.abierta = !!a.abierta_inscripcion;
+      s.hora = horaCorta(a.hora || '');
+      s.lugar = a.lugar || '';
+    });
+  }
 
   function swMsg(txt, clase){
     ['sw-msg-top','sw-msg'].forEach(function(id){
@@ -1969,6 +2381,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   async function ponerSemana(res, grupoId){
     SEMANA = { grupo_id: grupoId, sesiones: res.sesiones||[], avisos: res.avisos||[], existentes: {} };
+    // Cada día hereda lo de arriba salvo que ya traiga lo suyo (texto pegado,
+    // CSV o semana duplicada pueden traer su propia hora, sitio y apertura).
+    if($('sw-abierta')){
+      var a = leerAbrir('sw');
+      SEMANA.sesiones.forEach(function(s){
+        if(s.abierta === undefined || s.abierta === null) s.abierta = !!a.abierta_inscripcion;
+        if(!s.hora) s.hora = horaCorta(a.hora || '');
+        else s.hora = horaCorta(s.hora);
+        if(!s.lugar) s.lugar = a.lugar || '';
+      });
+    }
     pintarPrevisualizacion();
     if(!SEMANA.sesiones.length){ swMsg('No he encontrado ninguna sesión. Revisa que cada día empiece por su nombre (LUNES, MARTES…).', 'error'); return; }
     swMsg('Interpretado: '+SEMANA.sesiones.length+' sesión(es). Revísalo abajo antes de guardar.', 'ok');
@@ -2010,7 +2433,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var html = '<p class="sw-resumen"><strong>'+incluidas.length+'</strong> sesión(es) para <strong>'+esc(nombreGrupo(SEMANA.grupo_id)||'—')+
       '</strong> · semana del '+esc(formatFecha(SEMANA.sesiones[0].fecha))+'. Puedes corregir el título, el tipo y el rol aquí mismo, o desmarcar los días que no quieras crear.</p>'+
-      '<p class="pista" id="sw-prev-dest" style="margin:0 0 12px;">'+esc(textoDest('sw', false))+'</p>';
+      '<p class="pista" id="sw-prev-dest" style="margin:0 0 4px;">'+esc(textoDest('sw', false))+'</p>'+
+      '<p class="pista" id="sw-prev-abre" style="margin:0 0 12px;">Apuntarse: '+esc(textoAbrir('sw', $('sw-publicar') ? $('sw-publicar').checked : true))+'</p>';
 
     if(SEMANA.avisos && SEMANA.avisos.length){
       html += '<div class="sw-avisos"><strong>Cosas que conviene revisar ('+SEMANA.avisos.length+'):</strong><ul>'+
@@ -2035,6 +2459,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><span class="sw-lab">Título</span><input class="sw-tit" placeholder="Título de la sesión" value="'+escAttr(s.titulo||'')+'"></div>'+
           '<div><span class="sw-lab">Tipo</span><select class="sw-tipo">'+optsPares(TIPOS, s.tipo||'', '— sin tipo —')+'</select></div>'+
           '<div><span class="sw-lab">Rol</span><select class="sw-rol">'+optsPares(ROLES, s.rol||'', '— sin rol —')+'</select></div>'+
+        '</div>'+
+        '<div class="sw-dia-campos">'+
+          '<div><span class="sw-lab">Hora</span><input class="sw-hora" type="time" value="'+escAttr(horaCorta(s.hora||''))+'"></div>'+
+          '<div><span class="sw-lab">Lugar</span><input class="sw-lugar" list="lugares-dl" placeholder="Dónde se queda" value="'+escAttr(s.lugar||'')+'"></div>'+
+          '<div><span class="sw-lab">Apuntarse</span><span class="check"><input type="checkbox" class="sw-abre-dia"'+(s.abierta?' checked':'')+'><label>Abierto</label></span></div>'+
         '</div>';
       (s.bloques||[]).forEach(function(b){
         html += '<div class="sw-bloque"><h4>'+esc(b.etiqueta||'Bloque')+(b.matiz?' — '+esc(b.matiz):'')+'</h4><ul>'+
@@ -2053,6 +2482,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       el.querySelector('.sw-tit').addEventListener('input', function(){ s.titulo = this.value; });
       el.querySelector('.sw-tipo').addEventListener('change', function(){ s.tipo = this.value; });
       el.querySelector('.sw-rol').addEventListener('change', function(){ s.rol = this.value; });
+      el.querySelector('.sw-hora').addEventListener('input', function(){ s.hora = this.value; });
+      el.querySelector('.sw-lugar').addEventListener('input', function(){ s.lugar = this.value; });
+      el.querySelector('.sw-abre-dia').addEventListener('change', function(){ s.abierta = this.checked; });
     });
   }
 
@@ -2063,6 +2495,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!incluidas.length){ swMsg('No has dejado ningún día marcado.', 'error'); return; }
     var dest = leerDest('sw');
     if(dest.error){ swMsg(dest.error, 'error'); return; }
+    var abre = leerAbrir('sw');
+    if(abre.error){ swMsg(abre.error, 'error'); return; }
     var modoEl = document.querySelector('input[name="sw-choque"]:checked');
     var modo = modoEl ? modoEl.value : 'saltar';
     var publicar = $('sw-publicar').checked;
@@ -2081,7 +2515,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         nota_razonamiento: (s.nota_razonamiento||'').trim() || null,
         bloques: s.bloques || [],
         publicada: publicar,
-        atletas_ids: dest.ids   // el mismo destinatario para toda la tanda
+        atletas_ids: dest.ids,  // el mismo destinatario para toda la tanda
+        // el «abierto» es de cada día; las plazas y las secciones, de la tanda
+        abierta_inscripcion: !!s.abierta,
+        plazas: s.abierta ? abre.plazas : null,
+        abierta_a: s.abierta ? abre.abierta_a : null,
+        hora: horaCorta(s.hora||'') || null,
+        lugar: (s.lugar||'').trim() || null
       };
       if(ex[s.fecha]){
         if(modo === 'saltar'){ saltadas++; return; }
@@ -2109,11 +2549,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(actualizadas) partes.push(actualizadas+' sobrescrita(s)');
     if(saltadas) partes.push(saltadas+' saltada(s) porque ya existían');
     var quien = dest.ids ? ' · solo para '+dest.ids.length+' atleta(s)' : ' · para todo el grupo';
-    swMsg('Semana guardada ✓ '+partes.join(' · ')+quien+(publicar?' · visibles en la zona de atleta':' · en borrador'), 'ok');
+    var nAbiertas = incluidas.filter(function(s){ return s.abierta; }).length;
+    var abierto = nAbiertas
+      ? ' · '+nAbiertas+' día(s) abiertos a '+textoSecciones(abre.abierta_a)+(abre.plazas ? ' ('+abre.plazas+' plazas)' : ' (sin límite de plazas)')+(publicar?'':' — en borrador nadie se puede apuntar')
+      : '';
+    swMsg('Semana guardada ✓ '+partes.join(' · ')+quien+(publicar?' · visibles en la zona de atleta':' · en borrador')+abierto, 'ok');
 
     await comprobarChoques();
     if($('pl-grupo') && $('pl-grupo').value === SEMANA.grupo_id) await cargarSesionesGrupo(SEMANA.grupo_id);
     cargarSesionesFeedback();
+    refrescarApuntados();
   }
 
   // ---------- duplicar ----------
@@ -2123,7 +2568,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     sel.innerHTML = '<option value="">— elige una semana —</option>';
     SEMANAS_ORIGEN = {};
     if(!gid) return;
-    var r = await sb.from('sesiones').select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids').eq('grupo_id', gid).order('fecha', { ascending:false }).limit(250);
+    var r = await sb.from('sesiones').select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar').eq('grupo_id', gid).order('fecha', { ascending:false }).limit(250);
     if(r.error || !r.data) return;
     r.data.forEach(function(s){ var L = lunesDe(s.fecha); (SEMANAS_ORIGEN[L] = SEMANAS_ORIGEN[L] || []).push(s); });
     Object.keys(SEMANAS_ORIGEN).sort().reverse().forEach(function(L){
@@ -2138,8 +2583,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return { idx: off, fecha: fecha, dia_semana: DIAS_TXT[off] || diaSemana(fecha),
                tipo: s.tipo||'', rol: s.rol||'', titulo: s.titulo||'', nota_razonamiento: s.nota_razonamiento||'',
                bloques: JSON.parse(JSON.stringify(s.bloques||[])), incluir: true,
-               atletas_ids: Array.isArray(s.atletas_ids) ? s.atletas_ids.slice() : null };
+               atletas_ids: Array.isArray(s.atletas_ids) ? s.atletas_ids.slice() : null,
+               // se copia tal cual si estaba abierto, a qué hora y dónde
+               abierta: !!s.abierta_inscripcion, hora: horaCorta(s.hora||''), lugar: s.lugar||'' };
     }).sort(function(a,b){ return a.fecha < b.fecha ? -1 : 1; });
+  }
+
+  // ¿Todas las sesiones abiertas de origen tenían las mismas plazas y secciones?
+  // Devuelve lo que hay que dejar puesto arriba al duplicar.
+  function abrirComunDeSesiones(arr){
+    var abiertas = (arr||[]).filter(function(s){ return s.abierta_inscripcion; });
+    if(!abiertas.length) return { hay:false, mixto:false, plazas:null, abierta_a:null };
+    function clave(s){ return String(s.plazas==null?'':s.plazas)+'|'+((s.abierta_a||[]).slice().sort().join(',')); }
+    var k = clave(abiertas[0]), mixto = false;
+    for(var i=1;i<abiertas.length;i++) if(clave(abiertas[i]) !== k) mixto = true;
+    return { hay:true, mixto:mixto, plazas: abiertas[0].plazas, abierta_a: abiertas[0].abierta_a || null };
   }
 
   // ¿Todas las sesiones de origen iban a los mismos atletas?
@@ -2173,7 +2631,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var fecha = addDias(lunesDestino, off);
       return { idx: off, fecha: fecha, dia_semana: DIAS_TXT[off] || diaSemana(fecha),
                tipo: s.tipo||'', rol: s.rol||'', titulo: s.titulo||'', nota_razonamiento: s.nota_razonamiento||'',
-               bloques: JSON.parse(JSON.stringify(s.bloques||[])), incluir: true };
+               bloques: JSON.parse(JSON.stringify(s.bloques||[])), incluir: true,
+               abierta: (s.abierta===undefined ? undefined : !!s.abierta),
+               hora: horaCorta(s.hora||''), lugar: s.lugar||'' };
     }).sort(function(a,b){ return a.fecha < b.fecha ? -1 : 1; });
   }
 
@@ -2196,6 +2656,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><label>Lunes de la semana</label><input id="sw-lunes" type="date" value="'+lunesProx+'"><p class="ej-ayuda" id="sw-lunes-aviso"></p></div>'+
         '</div>'+
         cajaDestHTML('sw', '¿Para quién es esta semana?')+
+        cajaAbrirHTML('sw', '¿Estos entrenos están abiertos?',
+          'Esto se aplica a <strong>todos los días de la tanda</strong>. Luego, en la previsualización, puedes quitar el «Abierto» de los días que no quieras y cambiarles la hora y el sitio uno a uno. '+
+          'Las <strong>plazas</strong> y las <strong>secciones</strong> son las mismas para toda la semana.')+
         '<p class="pista">Lo que elijas aquí se aplica a <strong>todas las sesiones</strong> que crees en esta tanda.</p>'+
         '<div class="acciones"><span class="msg" id="sw-msg-top"></span></div>'+
       '</div>'+
@@ -2218,6 +2681,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<li>Tipos válidos: <code>pista</code>, <code>gym</code>, <code>continuo</code>, <code>activacion</code>, <code>competicion</code>, <code>descanso</code>.</li>'+
             '<li>Roles válidos: <code>calidad_fuerte</code>, <code>secundaria</code>, <code>activacion</code>, <code>ultimo_toque_48h</code>, <code>descarga</code>, <code>competicion</code>.</li>'+
             '<li>Una línea <code>Nota:</code> u <code>Objetivo:</code> se guarda como nota del día.</li>'+
+            '<li>Una línea <code>Hora: 9:00</code> o <code>Lugar: Playa del Postiguet</code> pone la hora y el sitio de ese día (los que se ven en el calendario del club). También vale poner la hora en la línea del día: <code>SÁBADO · continuo · 9:00 · Tirada larga</code>.</li>'+
             '<li>Una línea que empiece por <code>#</code> abre un bloque. También vale <code>Calentamiento:</code>. Si pones un guion detrás (<code># VELOCIDAD MÁXIMA — Calidad pura</code>), lo de después se guarda como <strong>matiz</strong> del bloque.</li>'+
             '<li>Una línea que empiece por <code>-</code> o <code>*</code> es un ejercicio. Los datos se separan con <code>|</code>: <code>4x60 m</code> son series y distancia, algo con <code>%</code> es el ritmo, algo con <code>rec</code> o <code>desc</code> es la recuperación y el resto va a detalle.</li>'+
             '<li><strong>Calzado:</strong> un trozo que sea <code>Z</code>, <code>C</code>, <code>zapatillas</code>, <code>clavos</code>, <code>zapatillas de gimnasio</code> o <code>descalzo</code>. <strong>Carga de gimnasio:</strong> un trozo con <code>% RM</code> (<code>80% RM</code>). <strong>Observaciones:</strong> un trozo que empiece por <code>obs:</code> — ahí es donde van los objetivos por atleta (<code>obs: Rafa 40-42 seg · Adri 43-45 seg</code>).</li>'+
@@ -2244,7 +2708,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<details class="sw-ayuda">'+
           '<summary>Cómo se rellena la plantilla</summary>'+
           '<ul>'+
-            '<li>Columnas: <code>dia</code>, <code>fecha</code>, <code>tipo</code>, <code>rol</code>, <code>titulo</code>, <code>bloque</code>, <code>matiz</code>, <code>ejercicio</code>, <code>series</code>, <code>distancia</code>, <code>ritmo</code>, <code>rec</code>, <code>calzado</code>, <code>carga</code>, <code>material</code>, <code>observaciones</code>, <code>detalle</code>.</li>'+
+            '<li>Columnas: <code>dia</code>, <code>fecha</code>, <code>hora</code>, <code>lugar</code>, <code>tipo</code>, <code>rol</code>, <code>titulo</code>, <code>bloque</code>, <code>matiz</code>, <code>ejercicio</code>, <code>series</code>, <code>distancia</code>, <code>ritmo</code>, <code>rec</code>, <code>calzado</code>, <code>carga</code>, <code>material</code>, <code>observaciones</code>, <code>detalle</code>.</li>'+
+            '<li><code>hora</code> (<code>9:00</code>, <code>17:30</code>) y <code>lugar</code> son los que se ven en el calendario del club. Si los dejas vacíos se usan los que hayas puesto arriba, en «¿Estos entrenos están abiertos?».</li>'+
             '<li><code>calzado</code>: <code>Z</code>, <code>C</code>, <code>zapatillas</code>, <code>clavos</code>, <code>zapatillas de gimnasio</code> o <code>descalzo</code>. <code>carga</code>: el % RM del gimnasio (<code>80% RM</code>). <code>rec</code>: la recuperación entre series.</li>'+
             '<li><code>material</code>: material de natación, separado por <code>+</code> si es más de uno (<code>Tabla + Aletas</code>). Vale: Tabla, Pull-buoy, Palas, Aletas, Manoplas, Snorkel frontal, Goma elástica, Sin material.</li>'+
             '<li><code>observaciones</code>: el texto libre de cada ejercicio, que es donde van los objetivos por atleta (<code>Rafa 40-42 seg · Adri 43-45 seg</code>). <code>matiz</code> es lo que en la planificación va tras el guion del bloque (<code>Calidad pura</code>).</li>'+
@@ -2317,6 +2782,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var el = $('sw-prev-dest'); if(el) el.textContent = textoDest('sw', false);
     });
 
+    // --- ¿están abiertos estos entrenos? ---
+    // Lo que se pone aquí baja a TODOS los días de la previsualización.
+    pintarSecciones('sw', []);
+    aplicarAbrir('sw', { lugar: lugarDeGrupo($('sw-grupo').value) });
+    refrescarAbrirSw = conectarAbrir('sw', function(){
+      volcarAbrirEnLosDias();
+      pintarPrevisualizacion();
+    }, function(){ return $('sw-publicar') ? $('sw-publicar').checked : true; });
+    $('sw-publicar').addEventListener('change', function(){ refrescarAbrirSw(true); });
+
     // --- 1 · pegar texto ---
     $('sw-interpretar').addEventListener('click', async function(){
       var lunes = $('sw-lunes').value;
@@ -2375,6 +2850,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
       refrescarDestSw();
 
+      // Se conserva también si esos entrenos estaban abiertos, con cuántas
+      // plazas y para qué secciones.
+      var ab = abrirComunDeSesiones(arr);
+      aplicarAbrir('sw', {
+        abierta_inscripcion: ab.hay,
+        plazas: ab.plazas,
+        abierta_a: ab.abierta_a,
+        hora: $('sw-hora').value,        // la hora y el sitio van día a día
+        lugar: $('sw-lugar').value
+      });
+      refrescarAbrirSw(true);
+      if(ab.mixto) avisos.push('Los entrenos abiertos de la semana de origen no tenían todos las mismas plazas ni las mismas secciones. He puesto arriba los del primero: revísalo antes de crear.');
+
       await ponerSemana({ sesiones: sesionesDesdeOrigen(arr, L, destino), avisos: avisos }, gDest);
       $('sw-prev-card').scrollIntoView({ behavior:'smooth', block:'start' });
     });
@@ -2405,7 +2893,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var datos = { sesiones: SEMANA.sesiones.filter(function(s){ return s.incluir !== false; }).map(function(s){
         return { offset_dia: difDias(s.fecha, lunesDe(s.fecha)), dia_semana: s.dia_semana,
                  tipo: s.tipo||'', rol: s.rol||'', titulo: s.titulo||'',
-                 nota_razonamiento: s.nota_razonamiento||'', bloques: s.bloques||[] };
+                 nota_razonamiento: s.nota_razonamiento||'', bloques: s.bloques||[],
+                 abierta: !!s.abierta, hora: s.hora||'', lugar: s.lugar||'' };
       }) };
       var r = await sb.from('plantillas_semana').insert({ nombre: nombre, creado_por: perfil.id, datos: datos }).select('id').maybeSingle();
       if(r.error){ swMsg('Error al guardar la plantilla: '+r.error.message, 'error'); return; }
