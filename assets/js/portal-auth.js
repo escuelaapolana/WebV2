@@ -48,12 +48,14 @@
     '.pt-pie span{font-size:14px;color:#6B6558;text-align:center}' +
     '.pt-pie a{border:1px solid #C9D9E7;color:#2F6FA8;text-align:center;padding:13px;border-radius:999px;font-size:15px;font-weight:600;text-decoration:none}' +
     '.pt-pie a:hover{background:#EAF2F9}' +
+    /* Nada debe provocar scroll horizontal (era lo que dejaba la barra corta). */
+    'html,body{max-width:100%;overflow-x:hidden}' +
     /* --- barra superior --- */
-    '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px clamp(14px,4vw,40px);flex-wrap:nowrap}' +
-    '.pt-top .izq{display:flex;align-items:center;gap:14px;min-width:0}' +
-    '.pt-top .volver{display:inline-flex;align-items:center;gap:6px}' +
+    '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
+    '.pt-top .izq{display:flex;align-items:center;gap:14px;min-width:0;overflow:hidden}' +
+    '.pt-top .volver{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}' +
     '.pt-top .volver i{font-style:normal;font-size:17px;line-height:1}' +
-    '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;text-decoration:none;white-space:nowrap}' +
+    '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;text-decoration:none;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}' +
     '.pt-top .der{display:flex;align-items:center;gap:10px;font-size:14px;color:#cdd6e0;min-width:0}' +
     '.pt-top .der span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}' +
     '.pt-top a{color:#cdd6e0;text-decoration:none;white-space:nowrap}' +
