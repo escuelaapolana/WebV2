@@ -49,12 +49,17 @@
     '.pt-pie a{border:1px solid #C9D9E7;color:#2F6FA8;text-align:center;padding:13px;border-radius:999px;font-size:15px;font-weight:600;text-decoration:none}' +
     '.pt-pie a:hover{background:#EAF2F9}' +
     /* --- barra superior --- */
-    '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px clamp(16px,4vw,40px);flex-wrap:wrap}' +
-    '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;text-decoration:none}' +
-    '.pt-top .der{display:flex;align-items:center;gap:12px;font-size:14px;color:#cdd6e0}' +
-    '.pt-top a{color:#cdd6e0;text-decoration:none}' +
-    '.pt-top button{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:7px 16px;cursor:pointer;font-family:inherit;font-size:14px}' +
+    '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px clamp(14px,4vw,40px);flex-wrap:nowrap}' +
+    '.pt-top .izq{display:flex;align-items:center;gap:14px;min-width:0}' +
+    '.pt-top .volver{display:inline-flex;align-items:center;gap:6px}' +
+    '.pt-top .volver i{font-style:normal;font-size:17px;line-height:1}' +
+    '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;text-decoration:none;white-space:nowrap}' +
+    '.pt-top .der{display:flex;align-items:center;gap:10px;font-size:14px;color:#cdd6e0;min-width:0}' +
+    '.pt-top .der span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}' +
+    '.pt-top a{color:#cdd6e0;text-decoration:none;white-space:nowrap}' +
+    '.pt-top button{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:7px 15px;cursor:pointer;font-family:inherit;font-size:14px;white-space:nowrap;flex:0 0 auto}' +
     '.pt-top button:hover{background:rgba(255,255,255,.12)}' +
+    '@media(max-width:560px){.pt-top{padding:10px 14px;gap:8px}.pt-top .volver span{display:none}.pt-top .marca{font-size:16px}.pt-top .der span{max-width:30vw}.pt-top button{padding:7px 13px}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
     '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px 20px 26px}' +
@@ -114,7 +119,10 @@
       var top = document.createElement('div');
       top.className = 'pt-top';
       top.innerHTML =
-        '<div><a href="' + b + '">← Ir a la web</a> &nbsp; <a class="marca" href="' + b + 'portal/">Portal Apolana</a></div>' +
+        '<div class="izq">' +
+          '<a class="volver" href="' + b + '" aria-label="Volver a la web"><i>←</i><span>Ir a la web</span></a>' +
+          '<a class="marca" href="' + b + 'portal/">Portal Apolana</a>' +
+        '</div>' +
         '<div class="der">' +
           '<button id="pt-cambiar" style="display:none">Cambiar de perfil</button>' +
           '<span>' + esc(nombre) + '</span>' +

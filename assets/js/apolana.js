@@ -32,7 +32,8 @@ const MENU = [
     { texto: 'El Cubo',            url: '/cubo/' },
     { texto: 'Instalaciones',      url: '/instalaciones/' },
   ] },
-  { clave: 'escuelas', texto: 'Escuelas', url: '/escuela/', sub: [
+  { clave: 'escuelas', texto: 'Escuelas', url: '/escuelas/', sub: [
+    { texto: 'Todas las escuelas', url: '/escuelas/' },
     { texto: 'Escuela de atletismo', url: '/escuela/' },
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
     { texto: 'Escuela municipal',    url: '/escuela-municipal-atletismo/' },
