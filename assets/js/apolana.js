@@ -115,6 +115,7 @@ class ApolanaPie extends HTMLElement {
               <a href="${ruta('/calendario/')}">Calendario</a>
               <a href="${ruta('/noticias/')}">Noticias</a>
               <a href="${ruta('/tienda/')}">Tienda</a>
+              <a href="${ruta('/app/')}">Instalar la app</a>
             </div>
             <div class="pie-col">
               <span class="eyebrow">Contacto</span>
@@ -205,8 +206,8 @@ document.addEventListener('DOMContentLoaded', async function () {
   document.addEventListener('DOMContentLoaded', function () {
     var b = document.createElement('button');
     b.type = 'button';
-    b.setAttribute('aria-label', 'Volver al portal');
-    b.innerHTML = '<span aria-hidden="true">←</span> Volver';
+    b.setAttribute('aria-label', 'Volver a mi perfil');
+    b.innerHTML = '<span aria-hidden="true">←</span> Volver a mi perfil';
     b.style.cssText = [
       'position:fixed', 'z-index:9500',
       'top:calc(10px + env(safe-area-inset-top))', 'left:12px',

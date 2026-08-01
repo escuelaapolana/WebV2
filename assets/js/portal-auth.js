@@ -107,6 +107,7 @@
         '<a href="' + b + 'noticias/"><b>Noticias y calendario del club</b><i>&rsaquo;</i></a>' +
         '<a href="' + b + '"><b>Grupos, horarios y precios</b><i>&rsaquo;</i></a>' +
         '<a href="' + b + 'competicion/"><b>Probar cuatro entrenamientos</b><i>&rsaquo;</i></a>' +
+        '<a href="' + b + 'app/"><b>Instalar como app en el móvil</b><i>&rsaquo;</i></a>' +
       '</div>' +
       '<div class="pt-pie">' +
         '<span>¿Aún no estás en el club?</span>' +
