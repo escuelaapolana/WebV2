@@ -309,10 +309,14 @@
         lista = lista || [];
         /* Guardia de zona: si has acabado en la zona de un rol que no es tuyo
            (p. ej. una página de entrenador que quedó cacheada en la app y luego
-           entras con otra cuenta), te devuelve al portal para que veas la tuya. */
-        if (lista.length) {
-          var claves = lista.map(function (p) { return p.clave; });
-          var ruta = location.pathname;
+           entras con otra cuenta), te devuelve al portal para que veas la tuya.
+           Se comprueba SIEMPRE, aunque no se hayan podido deducir papeles (lista
+           vacía): así nadie se queda atrapado en una zona ajena. Excepción: el
+           admin puede ver cualquier zona. Nunca redirige desde /portal/ ni desde
+           /admin/, para no crear bucles de redirección. */
+        var claves = lista.map(function (p) { return p.clave; });
+        var ruta = location.pathname;
+        if (claves.indexOf('admin') === -1 && ruta.indexOf('/admin/') === -1) {
           for (var k in ZONAS) {
             if (!ZONAS.hasOwnProperty(k) || k === 'admin') continue;
             if (ruta.indexOf(ZONAS[k].carpeta) !== -1 && claves.indexOf(k) === -1) {
