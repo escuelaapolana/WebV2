@@ -79,7 +79,7 @@ def main():
         sys.exit("Uso: python3 herramientas/crear-cuentas.py personas.csv [--crear]")
     fichero, de_verdad = sys.argv[1], "--crear" in sys.argv
 
-    with open(fichero, encoding="utf8-sig") as f:
+    with open(fichero, encoding="utf-8-sig") as f:
         muestra = f.read(2048); f.seek(0)
         sep = ";" if muestra.count(";") >= muestra.count(",") else ","
         filas = list(csv.DictReader(f, delimiter=sep))
@@ -128,7 +128,7 @@ def main():
 
     if hechas:
         salida = os.path.join(os.path.dirname(os.path.abspath(fichero)), "cuentas-creadas.csv")
-        with open(salida, "w", encoding="utf8-sig", newline="") as f:
+        with open(salida, "w", encoding="utf-8-sig", newline="") as f:
             w = csv.DictWriter(f, fieldnames=["email", "nombre", "contrasena_temporal"], delimiter=";")
             w.writeheader(); w.writerows(hechas)
         print(f"\n✓ {len(hechas)} cuentas creadas → {salida}")
