@@ -82,6 +82,7 @@
   .btn { cursor:pointer; }
   .btn--mini { padding:9px 18px; font-size:14px; }
   .oculto { display:none !important; }
+  .aviso-accion { margin:0 0 12px; padding:11px 14px; border-radius:10px; font-size:14px; background:#F8E4E3; border:1px solid #E7C4C1; color:#8E3A35; }
   .msg { margin-top:12px; font-size:14px; }
   .msg.error { color:#A8453F; }
   .msg.ok { color:#3D6220; }
@@ -228,6 +229,8 @@
         </div>
       </div>
 
+      <p class="aviso-accion oculto" id="aviso-accion" role="status"></p>
+
       <div class="tabla-scroll">
         <table id="tabla">
           <thead>
@@ -283,6 +286,10 @@ APOLANA_ADMIN.listo(function (sb) {
   function esImpagado(p) {
     return p.estado === 'impagado' || (p.estado === 'pendiente' && p.fecha_vencimiento && p.fecha_vencimiento < hoyIso);
   }
+  // Un recibo con número ya está emitido: la base de datos no deja cambiarlo ni borrarlo
+  // (solo se puede anular y emitir uno rectificativo). Por eso aquí se bloquean los botones.
+  function estaEmitido(p) { return !!p.numero_recibo; }
+  var MOTIVO_EMITIDO = 'Este recibo ya está emitido con número: no se puede cambiar ni borrar. Habría que anularlo y emitir uno rectificativo.';
 
   // --- Carga ---
   async function cargar() {
@@ -301,7 +308,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     var rp = await sb.from('pagos')
-      .select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,fecha_pago,periodo,cuenta,metodo,notas,created_at')
+      .select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,fecha_pago,periodo,cuenta,metodo,notas,created_at,numero_recibo,anulado')
       // El segundo y el tercer criterio hacen que el orden sea siempre el mismo:
       // sin ellos, los recibos que vencen el mismo día se recolocaban al recargar.
       .order('fecha_vencimiento', { ascending: false, nullsFirst: false })
@@ -412,6 +419,9 @@ APOLANA_ADMIN.listo(function (sb) {
       var cuenta = p.cuenta === 'escuela' ? '<span style="color:#B96F09">Escuela</span>'
                  : p.cuenta === 'club' ? '<span style="color:#2F6FA8">Club</span>' : '—';
       var sub = p.estado === 'pagado' && p.fecha_pago ? '<span class="vencido" style="color:#3D6220">cobrado el ' + esc(fechaCorta(p.fecha_pago)) + '</span>' : '';
+      if (p.numero_recibo) sub += '<span class="vencido" style="color:var(--texto-tenue)">recibo ' + esc(p.numero_recibo) + (p.anulado ? ' · anulado' : '') + '</span>';
+      // Con el recibo ya emitido, la base de datos rechaza cualquier cambio: se bloquean los botones
+      var cerrado = estaEmitido(p) ? ' disabled title="' + MOTIVO_EMITIDO + '"' : '';
       return '<tr' + clase + '>' +
         '<td data-etiqueta="Nombre">' + esc(nombreDe(p)) + '</td>' +
         '<td data-etiqueta="Concepto">' + esc(p.concepto) + sub + '</td>' +
@@ -421,11 +431,11 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td class="num" data-etiqueta="Importe">' + esc(eur(p.importe)) + '</td>' +
         '<td data-etiqueta="Estado">' + pill + '</td>' +
         '<td class="sin-etiqueta"><div class="acciones-fila">' +
-          '<button class="bmini b-pagado" data-marcar="pagado" data-id="' + p.id + '"' + (p.estado === 'pagado' ? ' disabled' : '') + '>Cobrado</button>' +
-          '<button class="bmini" data-marcar="pendiente" data-id="' + p.id + '"' + (p.estado === 'pendiente' ? ' disabled' : '') + '>Pendiente</button>' +
-          '<button class="bmini b-impagado" data-marcar="impagado" data-id="' + p.id + '"' + (p.estado === 'impagado' ? ' disabled' : '') + '>Impagado</button>' +
-          '<button class="bmini" data-editar="' + p.id + '">Editar</button>' +
-          '<button class="bmini b-borrar" data-borrar="' + p.id + '">Borrar</button>' +
+          '<button class="bmini b-pagado" data-marcar="pagado" data-id="' + p.id + '"' + (p.estado === 'pagado' ? ' disabled' : cerrado) + '>Cobrado</button>' +
+          '<button class="bmini" data-marcar="pendiente" data-id="' + p.id + '"' + (p.estado === 'pendiente' ? ' disabled' : cerrado) + '>Pendiente</button>' +
+          '<button class="bmini b-impagado" data-marcar="impagado" data-id="' + p.id + '"' + (p.estado === 'impagado' ? ' disabled' : cerrado) + '>Impagado</button>' +
+          '<button class="bmini" data-editar="' + p.id + '"' + cerrado + '>Editar</button>' +
+          '<button class="bmini b-borrar" data-borrar="' + p.id + '"' + cerrado + '>Borrar</button>' +
         '</div></td>' +
       '</tr>';
     }).join('');
@@ -443,9 +453,22 @@ APOLANA_ADMIN.listo(function (sb) {
   $('f-periodo').addEventListener('change', pintar);
   $('f-buscar').addEventListener('input', pintar);
 
+  // Aviso en la propia página: nunca un alert(), que bloquea el navegador entero
+  var avisoTemp = null;
+  function avisar(texto) {
+    var caja = $('aviso-accion');
+    caja.textContent = texto;
+    caja.classList.remove('oculto');
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (avisoTemp) clearTimeout(avisoTemp);
+    avisoTemp = setTimeout(function () { caja.classList.add('oculto'); }, 12000);
+  }
+  function limpiarAviso() { $('aviso-accion').classList.add('oculto'); }
+
   $('tabla').addEventListener('click', async function (e) {
     var b = e.target.closest('button');
     if (!b) return;
+    limpiarAviso();
 
     var marcar = b.getAttribute('data-marcar');
     if (marcar) {
@@ -459,7 +482,7 @@ APOLANA_ADMIN.listo(function (sb) {
       }
       b.disabled = true;
       var r = await sb.from('pagos').update(datos).eq('id', id);
-      if (r.error) { alert('No se pudo cambiar el estado: ' + r.error.message); b.disabled = false; return; }
+      if (r.error) { avisar('No se pudo cambiar el estado: ' + r.error.message); b.disabled = false; return; }
       cargar();
       return;
     }
@@ -476,7 +499,7 @@ APOLANA_ADMIN.listo(function (sb) {
       var rec = recibos.filter(function (p) { return p.id === bo; })[0];
       if (!confirm('¿Borrar el recibo "' + (rec ? rec.concepto : '') + '"? No se puede deshacer.')) return;
       var d = await sb.from('pagos').delete().eq('id', bo);
-      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      if (d.error) { avisar('No se pudo borrar: ' + d.error.message); return; }
       cargar();
     }
   });
