@@ -19,6 +19,7 @@ const MENU = [
   { clave: 'club', texto: 'El club', url: '/club/', sub: [
     { texto: 'Resumen',               url: '/club/' },
     { texto: 'Historia',              url: '/club/historia/' },
+    { texto: 'Galería',              url: '/galeria/' },
     { texto: 'Normativa y documentos', url: '/club/normativa/' },
     { texto: 'Palmarés',              url: '/club/palmares/' },
     { texto: 'Récords',               url: '/club/records/' },
