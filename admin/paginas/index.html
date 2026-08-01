@@ -81,11 +81,22 @@
   .modal-x { background: transparent; border: none; font-size: 24px; line-height: 1; color: var(--texto-suave); cursor: pointer; padding: 4px 8px; }
 
   .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
-  .foto-op { border: 2px solid var(--linea); border-radius: var(--radio); overflow: hidden; background: var(--crema-media); cursor: pointer; padding: 0; display: flex; flex-direction: column; text-align: left; }
+  .foto-op { border: 2px solid var(--linea); border-radius: var(--radio); overflow: hidden; background: var(--crema-media); cursor: pointer; padding: 0; display: flex; flex-direction: column; text-align: left; position: relative; }
   .foto-op:hover, .foto-op:focus { border-color: var(--azul); outline: none; }
   .foto-op .thumb { width: 100%; aspect-ratio: 4 / 3; overflow: hidden; display: flex; align-items: center; justify-content: center; }
   .foto-op .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .foto-op .nom { padding: 8px; font-size: 11px; color: var(--texto-suave); word-break: break-all; line-height: 1.3; }
+  .foto-op .fav-marca { position: absolute; top: 6px; right: 6px; font-size: 15px; color: #f2b705; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+
+  /* Filtros del modal de biblioteca */
+  .biblio-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+  .biblio-filtros > div { display: flex; flex-direction: column; }
+  .biblio-filtros label { margin: 0 0 5px; }
+  .biblio-filtros .crece { flex: 1 1 180px; }
+  .biblio-filtros .crece input { width: 100%; }
+  .biblio-filtros select, .biblio-filtros input { padding: 9px 12px; font-size: 14px; }
+  .btn-fav { border: 1px solid var(--linea-borde); background: #fff; color: var(--navy); padding: 10px 14px; border-radius: 999px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .btn-fav.activo { border-color: #e0a800; background: #fff8e1; color: #7a5b00; }
 </style>
 </head>
 <body>
@@ -187,6 +198,20 @@
       <button type="button" class="modal-x" id="modal-cerrar" aria-label="Cerrar">&times;</button>
     </div>
     <div class="modal-cuerpo">
+      <div class="biblio-filtros" id="biblio-filtros">
+        <div>
+          <label for="b-categoria">Sección</label>
+          <select id="b-categoria"></select>
+        </div>
+        <div class="crece">
+          <label for="b-busca">Buscar por nombre o título</label>
+          <input type="text" id="b-busca" placeholder="Escribe para buscar…">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button type="button" class="btn-fav" id="b-favoritas">☆ Solo favoritas</button>
+        </div>
+      </div>
       <div class="msg" id="msg-biblio"></div>
       <div class="rejilla" id="rejilla-biblio"></div>
     </div>
@@ -202,10 +227,12 @@ APOLANA_ADMIN.listo(function (sb) {
 
   // Nombres legibles para cada código de sección
   var NOMBRES = {
+    'campus': 'Campus de verano',
     'competicion': 'Atletismo en pista',
     'cubo': 'El Cubo',
     'deporte-adaptado': 'Deporte adaptado',
     'escuela': 'Escuela de atletismo',
+    'escuela-municipal': 'Escuela municipal de atletismo',
     'escuela-natacion': 'Escuela de natación',
     'instalaciones': 'Instalaciones',
     'montana': 'Montaña',
@@ -412,29 +439,130 @@ APOLANA_ADMIN.listo(function (sb) {
   });
 
   // --- Selector de biblioteca (modal) ---
+  // Mismas secciones que la Biblioteca de fotos ('' = «Sin categoría»).
+  var CATS = [
+    { v: 'escuela',          t: 'Escuela' },
+    { v: 'escuela-natacion', t: 'Escuela de natación' },
+    { v: 'escuela-municipal',t: 'Escuela municipal' },
+    { v: 'competicion',      t: 'Competición' },
+    { v: 'running',          t: 'Running' },
+    { v: 'natacion',         t: 'Natación' },
+    { v: 'triatlon',         t: 'Triatlón' },
+    { v: 'montana',          t: 'Montaña' },
+    { v: 'cubo',             t: 'El Cubo' },
+    { v: 'campus',           t: 'Campus' },
+    { v: 'instalaciones',    t: 'Instalaciones' },
+    { v: 'club',             t: 'Club / general' },
+    { v: 'eventos',          t: 'Eventos' },
+    { v: 'equipacion',       t: 'Equipación' },
+    { v: 'otras',            t: 'Otras' }
+  ];
+  var SIN = 'Sin categoría';
+
+  // Foto por ruta completa ('biblioteca/xxx.jpg'), como se guarda en biblioteca_fotos.
+  function urlDeRuta(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
+  // Foto por nombre suelto (recambio: listado directo del bucket).
   function urlPublica(nombre){ return sb.storage.from('imagenes').getPublicUrl(CARPETA + '/' + nombre).data.publicUrl; }
 
-  async function abrirBiblioteca() {
-    $('modal').classList.remove('oculto');
+  // Estado del selector
+  var BIBLIO = [];        // fichas cargadas
+  var bTieneFichas = false; // ¿vienen de biblioteca_fotos? (si no, es el recambio del bucket)
+  var bCat = '', bFav = false, bBusca = '';
+
+  function pintarFiltroBiblio() {
+    var cuenta = {}, sinCat = 0;
+    for (var i = 0; i < BIBLIO.length; i++) {
+      var c = BIBLIO[i].categoria;
+      if (!c) sinCat++; else cuenta[c] = (cuenta[c] || 0) + 1;
+    }
+    var h = '<option value="">Todas las secciones (' + BIBLIO.length + ')</option>';
+    for (var j = 0; j < CATS.length; j++) {
+      var n = cuenta[CATS[j].v] || 0;
+      if (n > 0) h += '<option value="' + CATS[j].v + '">' + esc(CATS[j].t) + ' (' + n + ')</option>';
+    }
+    if (sinCat > 0) h += '<option value="__sin">' + esc(SIN) + ' (' + sinCat + ')</option>';
+    $('b-categoria').innerHTML = h;
+    $('b-categoria').value = bCat;
+  }
+
+  function filtradasBiblio() {
+    var q = bBusca.trim().toLowerCase();
+    return BIBLIO.filter(function (f) {
+      if (bFav && !f.favorita) return false;
+      if (bCat === '__sin') { if (f.categoria) return false; }
+      else if (bCat && f.categoria !== bCat) return false;
+      if (q) {
+        var texto = ((f.titulo || '') + ' ' + (f.nombre || '')).toLowerCase();
+        if (texto.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderBiblio() {
+    var favTotal = 0; for (var k = 0; k < BIBLIO.length; k++) if (BIBLIO[k].favorita) favTotal++;
+    $('b-favoritas').innerHTML = (bFav ? '★ Solo favoritas' : '☆ Solo favoritas') + ' (' + favTotal + ')';
+    $('b-favoritas').classList.toggle('activo', bFav);
+
     var rej = $('rejilla-biblio');
-    rej.innerHTML = '';
-    $('msg-biblio').textContent = 'Cargando fotos…'; $('msg-biblio').className = 'msg';
-    var r = await sb.storage.from('imagenes').list(CARPETA, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-    if (r.error) { $('msg-biblio').textContent = 'No se pudo cargar la biblioteca: ' + r.error.message; $('msg-biblio').className = 'msg error'; return; }
-    var fotos = (r.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; });
-    if (!fotos.length) {
+    if (!BIBLIO.length) {
+      rej.innerHTML = '';
       $('msg-biblio').innerHTML = 'Todavía no hay fotos. Súbelas primero en la <a href="../biblioteca/">Biblioteca de fotos</a>.';
       $('msg-biblio').className = 'msg';
       return;
     }
+    var lista = filtradasBiblio();
+    if (!lista.length) { $('msg-biblio').textContent = 'No hay fotos con esos filtros.'; $('msg-biblio').className = 'msg'; rej.innerHTML = ''; return; }
     $('msg-biblio').textContent = '';
-    rej.innerHTML = fotos.map(function (f) {
-      var url = urlPublica(f.name);
+    rej.innerHTML = lista.map(function (f) {
+      var url = f.url;
+      var pie = f.titulo ? esc(f.titulo) : esc(f.nombre || '');
       return '<button type="button" class="foto-op" data-url="' + esc(url) + '">' +
+        (f.favorita ? '<span class="fav-marca">★</span>' : '') +
         '<div class="thumb"><img src="' + esc(url) + '" alt="" loading="lazy"></div>' +
-        '<div class="nom">' + esc(f.name) + '</div>' +
+        '<div class="nom">' + pie + '</div>' +
       '</button>';
     }).join('');
+  }
+
+  async function abrirBiblioteca() {
+    $('modal').classList.remove('oculto');
+    bCat = ''; bFav = false; bBusca = '';
+    $('b-busca').value = '';
+    $('rejilla-biblio').innerHTML = '';
+    $('msg-biblio').textContent = 'Cargando fotos…'; $('msg-biblio').className = 'msg';
+
+    // 1º opción: la tabla de fichas (con categorías y favoritas).
+    var r = await sb.from('biblioteca_fotos')
+      .select('id,ruta,nombre,titulo,categoria,favorita,created_at')
+      .order('created_at', { ascending: false });
+
+    if (!r.error && r.data && r.data.length) {
+      bTieneFichas = true;
+      BIBLIO = r.data.map(function (f) {
+        return { ruta: f.ruta, nombre: f.nombre || f.ruta, titulo: f.titulo || '', categoria: f.categoria || '', favorita: !!f.favorita, url: urlDeRuta(f.ruta) };
+      });
+      $('biblio-filtros').style.display = '';
+      $('b-categoria').parentNode.style.display = '';
+      $('b-favoritas').parentNode.style.display = '';
+      pintarFiltroBiblio();
+      renderBiblio();
+      return;
+    }
+
+    // Recambio: si la tabla está vacía o falla, se lista el bucket como antes (sin filtros de categoría).
+    bTieneFichas = false;
+    var rb = await sb.storage.from('imagenes').list(CARPETA, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+    if (rb.error) { $('biblio-filtros').style.display = 'none'; $('msg-biblio').textContent = 'No se pudo cargar la biblioteca: ' + rb.error.message; $('msg-biblio').className = 'msg error'; return; }
+    var fotos = (rb.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; });
+    BIBLIO = fotos.map(function (f) {
+      return { ruta: CARPETA + '/' + f.name, nombre: f.name, titulo: '', categoria: '', favorita: false, url: urlPublica(f.name) };
+    });
+    // Sin fichas no hay categorías ni favoritas: se ocultan esos filtros y queda solo el buscador.
+    $('biblio-filtros').style.display = BIBLIO.length ? '' : 'none';
+    $('b-categoria').parentNode.style.display = 'none';
+    $('b-favoritas').parentNode.style.display = 'none';
+    renderBiblio();
   }
   function cerrarBiblioteca() { $('modal').classList.add('oculto'); }
 
@@ -442,6 +570,11 @@ APOLANA_ADMIN.listo(function (sb) {
   $('modal-cerrar').addEventListener('click', cerrarBiblioteca);
   $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) cerrarBiblioteca(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrarBiblioteca(); });
+
+  // Filtros del selector
+  $('b-categoria').addEventListener('change', function () { bCat = this.value; renderBiblio(); });
+  $('b-busca').addEventListener('input', function () { bBusca = this.value; renderBiblio(); });
+  $('b-favoritas').addEventListener('click', function () { bFav = !bFav; renderBiblio(); });
 
   $('rejilla-biblio').addEventListener('click', function (e) {
     var op = e.target.closest ? e.target.closest('.foto-op') : null;
