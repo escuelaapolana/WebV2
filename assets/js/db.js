@@ -60,3 +60,37 @@
     }
   };
 })();
+
+/* ============================================================
+   App instalable (PWA): manifiesto, iconos de móvil y el
+   "service worker" que la hace funcionar sin conexión.
+   Se engancha desde aquí para no tocar cada página una a una.
+   Usa APOLANA_BASE para que las rutas valgan en GitHub y en el dominio propio.
+   ============================================================ */
+(function () {
+  try {
+    var base = window.APOLANA_BASE || './';
+    function enlace(rel, href, extra) {
+      if (document.querySelector('link[rel="' + rel + '"]')) return;
+      var l = document.createElement('link'); l.rel = rel; l.href = href;
+      if (extra) for (var k in extra) l.setAttribute(k, extra[k]);
+      document.head.appendChild(l);
+    }
+    function meta(name, content) {
+      if (document.querySelector('meta[name="' + name + '"]')) return;
+      var m = document.createElement('meta'); m.name = name; m.content = content;
+      document.head.appendChild(m);
+    }
+    enlace('manifest', base + 'app.webmanifest');
+    enlace('apple-touch-icon', base + 'assets/img/apple-touch-icon.png');
+    meta('theme-color', '#2E4256');
+    meta('apple-mobile-web-app-capable', 'yes');
+    meta('apple-mobile-web-app-status-bar-style', 'default');
+    meta('apple-mobile-web-app-title', 'Apolana');
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register(base + 'sw.js').catch(function () { /* sin conexión o no soportado: no pasa nada */ });
+      });
+    }
+  } catch (e) { /* si algo falla, la web sigue funcionando igual */ }
+})();
