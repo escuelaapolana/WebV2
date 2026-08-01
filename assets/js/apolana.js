@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     wrap.className = 'contenedor';
     var etq = document.createElement('span');
     etq.className = 'nivel';
-    etq.textContent = nivel.toUpperCase();
+    etq.textContent = nivel.charAt(0).toUpperCase() + nivel.slice(1);
     wrap.appendChild(etq);
     var span = document.createElement('span');
     span.className = 'texto';
