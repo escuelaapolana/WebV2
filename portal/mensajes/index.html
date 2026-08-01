@@ -68,6 +68,65 @@
   .cab-hilo { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
   .pill { font-family: var(--fuente-mono); font-size:11px; padding:2px 8px; border-radius:999px; background: var(--crema-media); color: var(--texto-suave); }
 </style>
+<script>
+/* Avisos suaves y confirmaciones no bloqueantes del portal (APX). */
+(function(){
+  if (window.APX) return;
+  var css =
+    '.apx-host{position:fixed;left:0;right:0;bottom:18px;z-index:9999;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 14px}'+
+    '.apx-toast{pointer-events:auto;max-width:440px;background:var(--navy,#2E4256);color:#fff;font-family:var(--fuente-texto,system-ui);font-size:14px;line-height:1.4;padding:12px 16px;border-radius:12px;box-shadow:0 16px 34px -18px rgba(46,66,86,.7);opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s}'+
+    '.apx-toast.apx-in{opacity:1;transform:none}'+
+    '.apx-toast.apx-error{background:#B23A38}'+
+    '.apx-toast.apx-ok{background:#2F6FA8}'+
+    '.apx-ov{position:fixed;inset:0;z-index:10000;background:rgba(30,42,56,.5);display:flex;align-items:center;justify-content:center;padding:18px;opacity:0;transition:opacity .2s}'+
+    '.apx-ov.apx-in{opacity:1}'+
+    '.apx-dlg{background:var(--crema,#FBF9F4);border:1px solid var(--linea,#EAE3D5);border-radius:18px;box-shadow:0 34px 60px -30px rgba(46,66,86,.6);max-width:400px;width:100%;padding:22px 22px 18px;transform:translateY(8px) scale(.98);transition:transform .2s}'+
+    '.apx-ov.apx-in .apx-dlg{transform:none}'+
+    '.apx-dlg-msg{margin:0 0 18px;font-family:var(--fuente-texto,system-ui);font-size:15px;line-height:1.5;color:var(--texto,#5E5849)}'+
+    '.apx-dlg-btns{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}'+
+    '.apx-btn{font-family:var(--fuente-texto,system-ui);font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;border:1px solid var(--linea-borde,#E0D8C8);background:#fff;color:var(--navy,#2E4256);cursor:pointer;min-height:42px}'+
+    '.apx-btn:hover{border-color:#C9D9E7}'+
+    '.apx-ok{background:var(--azul,#3B85C0);border-color:var(--azul,#3B85C0);color:#fff}'+
+    '.apx-ok:hover{background:var(--azul-oscuro,#2F6FA8)}'+
+    '.apx-ok.apx-danger{background:#B23A38;border-color:#B23A38}'+
+    '.apx-ok.apx-danger:hover{background:#8f2c2b}'+
+    '@media(max-width:420px){.apx-dlg-btns{flex-direction:column-reverse}.apx-btn{width:100%}}';
+  var st=document.createElement('style'); st.textContent=css; (document.head||document.documentElement).appendChild(st);
+  var host=null;
+  function ensureHost(){ if(!host){ host=document.createElement('div'); host.className='apx-host'; document.body.appendChild(host);} return host; }
+  function toast(msg,tipo){
+    ensureHost();
+    var el=document.createElement('div'); el.className='apx-toast'+(tipo?' apx-'+tipo:''); el.textContent=msg;
+    host.appendChild(el);
+    requestAnimationFrame(function(){ el.classList.add('apx-in'); });
+    var vida=(tipo==='error')?4600:3000;
+    setTimeout(function(){ el.classList.remove('apx-in'); setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); },300); }, vida);
+  }
+  function confirmar(msg,opts){
+    opts=opts||{};
+    return new Promise(function(resolve){
+      var ov=document.createElement('div'); ov.className='apx-ov';
+      var dlg=document.createElement('div'); dlg.className='apx-dlg'; dlg.setAttribute('role','dialog'); dlg.setAttribute('aria-modal','true');
+      var p=document.createElement('p'); p.className='apx-dlg-msg'; p.textContent=msg; dlg.appendChild(p);
+      var btns=document.createElement('div'); btns.className='apx-dlg-btns';
+      var bc=document.createElement('button'); bc.type='button'; bc.className='apx-btn'; bc.textContent=opts.cancelar||'Cancelar';
+      var bo=document.createElement('button'); bo.type='button'; bo.className='apx-btn apx-ok'; bo.textContent=opts.aceptar||'Aceptar';
+      if(opts.peligro) bo.classList.add('apx-danger');
+      btns.appendChild(bc); btns.appendChild(bo); dlg.appendChild(btns); ov.appendChild(dlg);
+      document.body.appendChild(ov);
+      requestAnimationFrame(function(){ ov.classList.add('apx-in'); });
+      function cerrar(v){ ov.classList.remove('apx-in'); document.removeEventListener('keydown',onkey); setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },200); resolve(v); }
+      function onkey(e){ if(e.key==='Escape'){ e.preventDefault(); cerrar(false);} else if(e.key==='Enter'){ e.preventDefault(); cerrar(true);} }
+      bc.addEventListener('click',function(){ cerrar(false); });
+      bo.addEventListener('click',function(){ cerrar(true); });
+      ov.addEventListener('click',function(e){ if(e.target===ov) cerrar(false); });
+      document.addEventListener('keydown',onkey);
+      setTimeout(function(){ bo.focus(); },40);
+    });
+  }
+  window.APX={ toast:toast, confirm:confirmar };
+})();
+</script>
 </head>
 <body>
 
@@ -318,9 +377,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var quitar = t.getAttribute && t.getAttribute('data-quitar');
     if (quitar) {
-      if (!confirm('¿Retirar este mensaje? Desaparecerá también para la otra persona.')) return;
+      if (!await APX.confirm('¿Retirar este mensaje? Desaparecerá también para la otra persona.', { aceptar:'Retirar', peligro:true })) return;
       var d = await sb.from('mensajes_directos').delete().eq('id', quitar);
-      if (d.error) { alert('No se pudo retirar: ' + d.error.message); return; }
+      if (d.error) { APX.toast('No se pudo retirar: ' + d.error.message, 'error'); return; }
       await cargarHilo(abierta); await cargarBase(); pintar();
       return;
     }
@@ -351,14 +410,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var gid = $('n-gr').value;
         var destinos = CONTACTOS.filter(function(c){ return c.grupos.indexOf(gid) !== -1; });
         if (!destinos.length) { m2.textContent = 'En ese grupo todavía no hay nadie con cuenta en el portal.'; m2.className = 'msg error'; return; }
-        if (!confirm('Se va a mandar el mismo mensaje a ' + destinos.length + ' persona(s), una conversación por cada una. ¿Seguimos?')) return;
+        if (!await APX.confirm('Se va a mandar el mismo mensaje a ' + destinos.length + (destinos.length === 1 ? ' persona' : ' personas') + ', una conversación por cada una. ¿Seguimos?', { aceptar:'Enviar a todos' })) return;
         m2.textContent = 'Enviando…';
         var filas = destinos.map(function(c){
           return { de_perfil: YO, para_perfil: c.perfil_id, texto: txt, atleta_id: c.atleta_id || null };
         });
         var rg = await sb.from('mensajes_directos').insert(filas);
         if (rg.error) { m2.textContent = 'No se pudo enviar: ' + rg.error.message; m2.className = 'msg error'; return; }
-        avisoGlobal = 'Mensaje enviado a ' + destinos.length + ' persona(s).';
+        avisoGlobal = 'Mensaje enviado a ' + destinos.length + (destinos.length === 1 ? ' persona.' : ' personas.');
         nueva = false; abierta = null;
         await cargarBase(); pintar();
         return;

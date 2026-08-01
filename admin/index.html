@@ -11,16 +11,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="../assets/js/db.js" defer></script>
 <style>
+  html, body { max-width: 100%; overflow-x: hidden; }
   body { background: var(--crema-media); }
   .admin-top {
     background: var(--navy); color: #fff;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px clamp(16px,4vw,40px);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px clamp(14px,4vw,40px); flex-wrap: nowrap;
   }
-  .admin-top .marca { display: flex; align-items: center; gap: 10px; }
+  .admin-top .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .admin-top img { height: 34px; }
-  .admin-top .nombre { font-family: var(--fuente-titulo); font-weight: 700; text-transform: uppercase; color: #fff; font-size: 18px; }
-  .admin-top .sesion { display: flex; align-items: center; gap: 14px; font-size: 14px; color: #cdd6e0; }
+  .admin-top .nombre { font-family: var(--fuente-titulo); font-weight: 700; text-transform: uppercase; color: #fff; font-size: 18px; white-space: nowrap; }
+  .admin-top .sesion { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #cdd6e0; min-width: 0; }
+  .admin-top .sesion span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+  .admin-top .sesion button { flex: 0 0 auto; }
   .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
 
   /* Login */
@@ -70,9 +73,12 @@
   .admin-main { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
   .admin-main .panel { margin-bottom: 0; }
   @media (max-width: 780px) {
-    .admin-wrap { grid-template-columns: 1fr; }
-    .admin-side { position: static; flex-direction: row; flex-wrap: wrap; }
-    .admin-side button { flex: 1 1 auto; text-align: center; }
+    /* En móvil, menú en lista vertical limpia y agrupada (no una fila que se amontona) */
+    .admin-wrap { grid-template-columns: 1fr; gap: 16px; }
+    .admin-side { position: static; flex-direction: column; gap: 2px; }
+    .admin-side button, .admin-side a { text-align: left; padding: 14px 16px; font-size: 16px; border-radius: 12px; }
+    .admin-side button { width: 100%; }
+    .admin-side .sep { padding: 16px 14px 6px; }
   }
   .pill-estado { font-family: var(--fuente-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; }
   .pill-si { background: #e6f4ea; color: #1e7a3d; }
@@ -212,6 +218,7 @@
       <a href="contenido/">Textos de las páginas</a>
       <a href="biblioteca/">Biblioteca de fotos</a>
       <a href="documentos/">Documentos</a>
+      <a href="redes/">Peticiones de redes</a>
       <a href="mapa/">Mapa de contenido</a>
 
       <span class="sep">Club</span>
@@ -477,6 +484,56 @@
 
   </div>
 </div>
+
+<!-- Avisos y confirmaciones no bloqueantes (sustituyen a alert()/confirm()) -->
+<script>
+(function () {
+  if (window.apoToast) return;
+  function contenedor() {
+    var c = document.querySelector('.apo-toasts');
+    if (!c) { c = document.createElement('div'); c.className = 'apo-toasts'; c.setAttribute('aria-live', 'polite'); document.body.appendChild(c); }
+    return c;
+  }
+  window.apoToast = function (mensaje, tipo) {
+    tipo = tipo || 'info';
+    var t = document.createElement('div');
+    t.className = 'apo-toast apo-toast--' + tipo;
+    t.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
+    t.textContent = mensaje;
+    contenedor().appendChild(t);
+    function quitar() { if (!t.parentNode) return; t.classList.add('apo-saliendo'); setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 300); }
+    var tmr = setTimeout(quitar, tipo === 'error' ? 6000 : 4000);
+    t.addEventListener('click', function () { clearTimeout(tmr); quitar(); });
+    return t;
+  };
+  window.apoConfirm = function (opciones) {
+    opciones = opciones || {};
+    return new Promise(function (resolve) {
+      var fondo = document.createElement('div'); fondo.className = 'apo-modal-fondo';
+      var modal = document.createElement('div'); modal.className = 'apo-modal';
+      modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true');
+      var h = document.createElement('h3'); h.textContent = opciones.titulo || 'Confirmar'; modal.appendChild(h);
+      if (opciones.texto) { var p = document.createElement('p'); p.textContent = opciones.texto; modal.appendChild(p); }
+      var bots = document.createElement('div'); bots.className = 'apo-modal-botones';
+      var bc = document.createElement('button'); bc.type = 'button'; bc.className = 'apo-btn-cancelar'; bc.textContent = opciones.cancelar || 'Cancelar';
+      var bo = document.createElement('button'); bo.type = 'button'; bo.className = 'apo-btn-ok' + (opciones.peligro ? ' apo-peligro' : ''); bo.textContent = opciones.confirmar || (opciones.peligro ? 'Borrar' : 'Aceptar');
+      bots.appendChild(bc); bots.appendChild(bo); modal.appendChild(bots);
+      fondo.appendChild(modal); document.body.appendChild(fondo);
+      var prev = document.activeElement; bo.focus();
+      function cerrar(val) { document.removeEventListener('keydown', onKey, true); if (fondo.parentNode) fondo.parentNode.removeChild(fondo); if (prev && prev.focus) { try { prev.focus(); } catch (e) {} } resolve(val); }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
+        else if (e.key === 'Enter') { e.preventDefault(); cerrar(true); }
+        else if (e.key === 'Tab') { var f = [bc, bo], i = f.indexOf(document.activeElement); e.preventDefault(); var n = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i >= f.length - 1 ? 0 : i + 1); f[n].focus(); }
+      }
+      document.addEventListener('keydown', onKey, true);
+      bc.addEventListener('click', function () { cerrar(false); });
+      bo.addEventListener('click', function () { cerrar(true); });
+      fondo.addEventListener('click', function (e) { if (e.target === fondo) cerrar(false); });
+    });
+  };
+})();
+</script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -843,9 +900,9 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!r.error) abrirForm(r.data);
     }
     if (bo) {
-      if (!confirm('¿Borrar la noticia "' + e.target.getAttribute('data-tit') + '"? No se puede deshacer.')) return;
+      if (!await apoConfirm({ texto: '¿Borrar la noticia "' + e.target.getAttribute('data-tit') + '"? No se puede deshacer.', peligro: true })) return;
       var d = await sb.from('noticias').delete().eq('id', bo);
-      if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+      if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
       cargarNoticias();
     }
   });
@@ -905,7 +962,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('tabla-avisos').addEventListener('click', async function (e) {
     var ed = e.target.getAttribute('data-ed-aviso'), bo = e.target.getAttribute('data-bo-aviso');
     if (ed) { var r = await sb.from('avisos').select('*').eq('id', ed).single(); if (!r.error) abrirAviso(r.data); }
-    if (bo) { if (!confirm('¿Borrar este aviso?')) return; var d = await sb.from('avisos').delete().eq('id', bo); if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; } cargarAvisos(); }
+    if (bo) { if (!await apoConfirm({ titulo: 'Borrar aviso', texto: '¿Borrar este aviso? No se puede deshacer.', peligro: true })) return; var d = await sb.from('avisos').delete().eq('id', bo); if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; } cargarAvisos(); }
   });
   $('form-aviso').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -979,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('tabla-productos').addEventListener('click', async function (e) {
     var ed = e.target.getAttribute('data-ed-prod'), bo = e.target.getAttribute('data-bo-prod');
     if (ed) { var r = await sb.from('productos').select('*').eq('id', ed).single(); if (!r.error) abrirProducto(r.data); }
-    if (bo) { if (!confirm('¿Borrar este producto?')) return; var d = await sb.from('productos').delete().eq('id', bo); if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; } cargarProductos(); }
+    if (bo) { if (!await apoConfirm({ titulo: 'Borrar producto', texto: '¿Borrar este producto? No se puede deshacer.', peligro: true })) return; var d = await sb.from('productos').delete().eq('id', bo); if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; } cargarProductos(); }
   });
   $('form-producto').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -1018,9 +1075,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   $('tabla-mensajes').addEventListener('click', async function (e) {
     var bo = e.target.getAttribute('data-bo-msg'); if (!bo) return;
-    if (!confirm('¿Borrar este mensaje?')) return;
+    if (!await apoConfirm({ titulo: 'Borrar mensaje', texto: '¿Borrar este mensaje? No se puede deshacer.', peligro: true })) return;
     var d = await sb.from('mensajes').delete().eq('id', bo);
-    if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+    if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
     cargarMensajes();
   });
 
@@ -1039,9 +1096,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   $('tabla-solicitudes').addEventListener('click', async function (e) {
     var bo = e.target.getAttribute('data-bo-sol'); if (!bo) return;
-    if (!confirm('¿Borrar esta solicitud?')) return;
+    if (!await apoConfirm({ titulo: 'Borrar solicitud', texto: '¿Borrar esta solicitud? No se puede deshacer.', peligro: true })) return;
     var d = await sb.from('solicitudes_inscripcion').delete().eq('id', bo);
-    if (d.error) { alert('No se pudo borrar: ' + d.error.message); return; }
+    if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
     cargarSolicitudes();
   });
 
