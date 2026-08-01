@@ -176,36 +176,6 @@
       <textarea id="lista-copiar" class="oculto" readonly></textarea>
     </div>
 
-    <!-- ===== BONO ===== -->
-    <div class="panel">
-      <h2>Bono de los atletas</h2>
-      <p class="intro" style="margin-bottom:10px;">Aquí recargas el bono anual (lo que pagan por remesa) y ves el saldo de cada uno. Los gastos se crean solos al confirmar inscripciones.</p>
-      <div class="grid3">
-        <div>
-          <label for="b-atleta">Atleta</label>
-          <select id="b-atleta"><option value="">— elige —</option></select>
-        </div>
-        <div>
-          <label for="b-importe">Importe (€)</label>
-          <input type="text" id="b-importe" inputmode="decimal" placeholder="40 (positivo recarga, negativo gasto)">
-        </div>
-        <div>
-          <label for="b-concepto">Concepto</label>
-          <input type="text" id="b-concepto" placeholder="Bono temporada 2025/26">
-        </div>
-      </div>
-      <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button class="btn btn--primario btn--mini" id="b-guardar">Añadir movimiento</button>
-        <span class="msg" id="msg-bono"></span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table id="tabla-bono">
-          <thead><tr><th>Atleta</th><th>Saldo</th><th>Últimos movimientos</th></tr></thead>
-          <tbody><tr><td colspan="3">Cargando…</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-
   </div>
 </div>
 
@@ -241,9 +211,6 @@ APOLANA_ADMIN.listo(function (sb) {
     var a = await sb.from('atletas').select('id,nombre,apellidos,categoria').order('apellidos');
     if (!a.error && a.data) {
       ATLETAS = a.data;
-      $('b-atleta').innerHTML = '<option value="">— elige —</option>' + ATLETAS.map(function(x){
-        return '<option value="'+x.id+'">'+esc(((x.nombre||'')+' '+(x.apellidos||'')).trim())+'</option>';
-      }).join('');
     }
   }
   function masEsMejor(prueba){
@@ -417,10 +384,8 @@ APOLANA_ADMIN.listo(function (sb) {
 
     var ids = []; filasIns.forEach(function(x){ if (ids.indexOf(x.atleta_id) < 0) ids.push(x.atleta_id); });
 
-    // Saldos de bono y mejores marcas
+    // Mejores marcas de cada atleta (el bono no aplica: es solo de El Cubo)
     var saldos = {}, marcas = {};
-    var s = await sb.from('bono_saldo').select('atleta_id,saldo').in('atleta_id', ids);
-    if (!s.error && s.data) s.data.forEach(function(x){ saldos[x.atleta_id] = parseFloat(x.saldo) || 0; });
     var m = await sb.from('marcas_atleta').select('atleta_id,prueba,tiempo_display,fecha').in('atleta_id', ids);
     if (!m.error && m.data) m.data.forEach(function(x){
       var k = x.atleta_id + '||' + x.prueba;
@@ -467,18 +432,9 @@ APOLANA_ADMIN.listo(function (sb) {
       (sinSaldo ? ' · <span class="saldo-mal">'+sinSaldo+' sin saldo suficiente</span>' : '');
   }
 
-  // Confirmar: descuenta del bono y marca la inscripción
+  // Confirmar la inscripción. NO toca ningún bono: el bono es solo de El Cubo
+  // y las competiciones se pagan en la web de la organización.
   async function confirmarFila(insId, atletaId){
-    var coste = parseFloat(compActual.coste) || 0;
-    if (coste > 0) {
-      var mov = await sb.from('bono_movimientos').insert({
-        atleta_id: atletaId,
-        concepto: 'Inscripción · ' + compActual.nombre,
-        importe: -Math.abs(coste),
-        competicion_id: compActual.id
-      });
-      if (mov.error) return mov.error.message;
-    }
     var up = await sb.from('competicion_atleta')
       .update({ estado: 'confirmada', confirmada_en: new Date().toISOString() })
       .eq('id', insId);
@@ -497,32 +453,21 @@ APOLANA_ADMIN.listo(function (sb) {
       m.textContent = 'Confirmando…'; m.className = 'msg';
       var err = await confirmarFila(conf, atleta);
       if (err) { m.textContent = 'Error: ' + err; m.className = 'msg error'; return; }
-      m.textContent = 'Confirmada ✓ (descontada del bono)'; m.className = 'msg ok';
-      verInscritos(compActual.id); cargarBono();
+      m.textContent = 'Confirmada ✓'; m.className = 'msg ok';
+      verInscritos(compActual.id);
     }
 
     if (desh) {
-      if (!await apoConfirm({ titulo: 'Deshacer confirmación', texto: '¿Deshacer la confirmación? Se devolverá el importe al bono del atleta.', confirmar: 'Deshacer' })) return;
-      var at2 = e.target.getAttribute('data-atleta');
-      var coste = parseFloat(compActual.coste) || 0;
+      if (!await apoConfirm({ titulo: 'Deshacer confirmación', texto: '¿Deshacer la confirmación? El atleta vuelve a quedar solo como apuntado.', confirmar: 'Deshacer' })) return;
       m.textContent = 'Deshaciendo…'; m.className = 'msg';
-      if (coste > 0) {
-        var dev = await sb.from('bono_movimientos').insert({
-          atleta_id: at2,
-          concepto: 'Devolución · ' + compActual.nombre,
-          importe: Math.abs(coste),
-          competicion_id: compActual.id
-        });
-        if (dev.error) { m.textContent = 'Error: ' + dev.error.message; m.className = 'msg error'; return; }
-      }
       var up = await sb.from('competicion_atleta').update({ estado: 'apuntado', confirmada_en: null }).eq('id', desh);
       if (up.error) { m.textContent = 'Error: ' + up.error.message; m.className = 'msg error'; return; }
       m.textContent = 'Confirmación deshecha ✓'; m.className = 'msg ok';
-      verInscritos(compActual.id); cargarBono();
+      verInscritos(compActual.id);
     }
 
     if (quit) {
-      if (!await apoConfirm({ titulo: 'Quitar inscripción', texto: '¿Quitar esta inscripción? Si estaba confirmada, el bono NO se devuelve solo: usa antes "Deshacer".', confirmar: 'Quitar', peligro: true })) return;
+      if (!await apoConfirm({ titulo: 'Quitar inscripción', texto: '¿Quitar esta inscripción?', confirmar: 'Quitar', peligro: true })) return;
       var d = await sb.from('competicion_atleta').delete().eq('id', quit);
       if (d.error) { m.textContent = 'Error: ' + d.error.message; m.className = 'msg error'; return; }
       verInscritos(compActual.id);
@@ -543,7 +488,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!compActual) return;
     var pend = filasIns.filter(function(x){ return x.estado === 'apuntado'; });
     if (!pend.length) { $('msg-ins').textContent = 'No hay inscripciones pendientes.'; $('msg-ins').className = 'msg'; return; }
-    if (!await apoConfirm({ titulo: 'Confirmar inscripciones', texto: '¿Confirmar ' + (pend.length === 1 ? '1 inscripción' : pend.length + ' inscripciones') + '? Se descontará ' + eur(compActual.coste) + ' del bono por cada una.', confirmar: 'Confirmar' })) return;
+    if (!await apoConfirm({ titulo: 'Confirmar inscripciones', texto: '¿Confirmar ' + (pend.length === 1 ? '1 inscripción' : pend.length + ' inscripciones') + '? La inscripción oficial se hace en la web de la organización.', confirmar: 'Confirmar' })) return;
     var m = $('msg-ins'); var fallos = [];
     for (var i = 0; i < pend.length; i++) {
       m.textContent = 'Confirmando ' + (i+1) + ' de ' + pend.length + '…'; m.className = 'msg';
@@ -552,7 +497,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if (fallos.length) { m.textContent = 'Algunas fallaron: ' + fallos.join(' · '); m.className = 'msg error'; }
     else { m.textContent = 'Todas confirmadas ✓'; m.className = 'msg ok'; }
-    verInscritos(compActual.id); cargarBono();
+    verInscritos(compActual.id);
   });
 
   // Lista en texto, agrupada por prueba, para pasarla a la federación
@@ -579,53 +524,11 @@ APOLANA_ADMIN.listo(function (sb) {
   $('ins-cerrar').addEventListener('click', function(){ $('panel-inscritos').classList.add('oculto'); });
 
   // =========================================================
-  // BONO
-  // =========================================================
-  async function cargarBono(){
-    var tb = $('tabla-bono').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="3">Cargando…</td></tr>';
-    var s = await sb.from('bono_saldo').select('atleta_id,saldo');
-    if (s.error) { tb.innerHTML = '<tr><td colspan="3">Error: '+esc(s.error.message)+'</td></tr>'; return; }
-    var mv = await sb.from('bono_movimientos').select('atleta_id,concepto,importe,fecha').order('fecha', { ascending: false });
-    var porAtleta = {};
-    if (!mv.error && mv.data) mv.data.forEach(function(x){ (porAtleta[x.atleta_id] = porAtleta[x.atleta_id] || []).push(x); });
-    var saldos = {}; (s.data||[]).forEach(function(x){ saldos[x.atleta_id] = parseFloat(x.saldo) || 0; });
-
-    if (!ATLETAS.length) { tb.innerHTML = '<tr><td colspan="3">No hay atletas.</td></tr>'; return; }
-    tb.innerHTML = ATLETAS.map(function(a){
-      var saldo = saldos[a.id] != null ? saldos[a.id] : 0;
-      var movs = (porAtleta[a.id] || []).slice(0, 4).map(function(x){
-        return '<div class="resumen">'+esc(x.fecha||'')+' · '+esc(x.concepto)+' · '+(parseFloat(x.importe) > 0 ? '+' : '')+eur(x.importe)+'</div>';
-      }).join('') || '<span class="resumen">sin movimientos</span>';
-      return '<tr>' +
-        '<td>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</td>' +
-        '<td><span class="'+(saldo > 0 ? 'saldo-ok' : 'saldo-mal')+'">'+eur(saldo)+'</span></td>' +
-        '<td>'+movs+'</td>' +
-      '</tr>';
-    }).join('');
-  }
-
-  $('b-guardar').addEventListener('click', async function(){
-    var m = $('msg-bono');
-    var atleta = $('b-atleta').value, importe = numOrNull($('b-importe').value), concepto = $('b-concepto').value.trim();
-    if (!atleta) { m.textContent = 'Elige el atleta.'; m.className = 'msg error'; return; }
-    if (importe == null || importe === 0) { m.textContent = 'Escribe un importe (positivo recarga, negativo gasto).'; m.className = 'msg error'; return; }
-    if (!concepto) concepto = importe > 0 ? 'Recarga de bono' : 'Gasto';
-    m.textContent = 'Guardando…'; m.className = 'msg';
-    var r = await sb.from('bono_movimientos').insert({ atleta_id: atleta, concepto: concepto, importe: importe });
-    if (r.error) { m.textContent = 'Error: ' + r.error.message; m.className = 'msg error'; return; }
-    m.textContent = 'Movimiento añadido ✓'; m.className = 'msg ok';
-    $('b-importe').value = ''; $('b-concepto').value = '';
-    cargarBono();
-  });
-
-  // =========================================================
   // ARRANQUE
   // =========================================================
   (async function(){
     await cargarAuxiliares();
     await cargarComps();
-    await cargarBono();
   })();
 });
 </script>
