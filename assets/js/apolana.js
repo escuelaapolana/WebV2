@@ -41,6 +41,7 @@ const MENU = [
     { texto: 'Campus de verano',     url: '/campus/' },
   ] },
   { clave: 'familias',   texto: 'Familias',   url: '/familias/' },
+  { clave: 'horarios',   texto: 'Horarios',   url: '/horarios/' },
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
   { clave: 'tienda',     texto: 'Tienda',     url: '/tienda/' },
