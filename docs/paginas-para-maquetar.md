@@ -1,0 +1,183 @@
+# Páginas del sistema — contexto para el maquetador
+
+Web + app del Club Atletismo Apolana. Todo funciona ya; lo que falta es **piel**.
+Estas páginas **no tienen maqueta**: las diseñé yo sobre la marcha y son
+mejorables. Marco con ⚠️ las que creo que más lo necesitan.
+
+**Sistema visual actual** (respetarlo salvo que se proponga algo mejor):
+crema `#FBF9F4` · crema bloque `#F1EADC` · blanco tarjeta · borde `#EFE9DC`
+navy `#2E4256` · azul medio `#2F6FA8` · azul acción `#3B85C0`
+Titulares Barlow Condensed 700 mayúsculas · Cuerpo IBM Plex Sans 16 px
+Sin tipografía monoespaciada y sin mayúsculas con espaciado ancho (se quitaron
+a propósito: daban aire "generado"). Móvil primero, 375 px, táctiles ≥44 px.
+
+---
+
+## Lo primero que pediría: un kit de componentes ⚠️⚠️
+
+El problema de fondo no es ninguna pantalla concreta: es que hay **40 pantallas
+resueltas una a una**. Tarjetas con esquinas de 14, 16 y 18 px según la página;
+dos sistemas de avisos distintos (uno en el panel, otro en la app); tres formas
+de pintar una lista. Al navegar se nota cosido.
+
+Un kit con estas piezas arreglaría las 40 de golpe:
+
+- Tarjeta (y sus variantes: con foto, con cifra, pulsable)
+- Fila de lista (con avatar, con dato a la derecha, con chevron)
+- Tabla que en móvil se convierte en ficha
+- Botones, chips y filtros
+- Aviso / confirmación (unificar los dos que hay)
+- **Estado vacío** y **estado cargando** (hoy son texto gris; es lo que más
+  delata que algo está hecho en casa)
+- Cabecera de pantalla, en app y en panel
+- Escala tipográfica (hoy los tamaños los fui ajustando a ojo)
+- Iconografía: los SVG los dibujé yo uno a uno, con grosores que no casan
+
+---
+
+## APP · Portal del socio
+
+### ⚠️ Los tres "Inicio"
+`/portal/atleta/` · `/portal/entrenador/` · `/portal/familia/`
+Ya siguen la maqueta 22a (un solo Inicio, barra de cinco pestañas), pero el
+dueño dice que **no le convencen**, y estoy de acuerdo: son listas de tarjetas
+donde **todo pesa igual**. Un inicio bueno tiene *una* cosa protagonista.
+- Atleta: recibo pendiente → entreno de hoy → próxima carrera y última marca.
+- Entrenador: sesión de hoy con "Pasar lista" → avisos → sus atletas.
+- Familia: próxima sesión del hijo → pagos si hay algo → nota del entrenador.
+
+### ⚠️⚠️ Retos y medallas — `/portal/retos/` y `/admin/retos/`
+**Invención mía al 100%, sin maqueta.** Es lo más ilusionante del proyecto y lo
+que peor está resuelto visualmente.
+Qué hace: retos que se cumplen solos con lo que ya sabe el sistema (asistencias,
+rachas, clases de El Cubo, competiciones, marcas). Dan puntos → rango
+(Debutante · Bronce · Plata · Oro · Platino · Élite · Leyenda) → medallas.
+Cada uno elige cómo aparece (nombre o apodo, con foto o sin ella) y su perfil es
+consultable por otros socios: ven sus medallas y sus retos cumplidos.
+**Sin clasificación** (para no hacer sombra a la Liga); está construida pero
+apagada tras un interruptor.
+Necesita: cómo se ve un rango, cómo se ve una medalla ganada, la barra de
+progreso de un reto, y el momento "has conseguido algo" — que ahora no existe.
+
+### ⚠️ Mi perfil — `/portal/perfil/`
+Foto (con recorte), apodo, datos, contraseña y un interruptor de privacidad.
+Funciona, pero es un formulario largo y frío.
+
+### Liga Apolana — `/portal/liga/`
+Comunicar una prueba (con foto de la clasificación), ver cómo voy y avisar de
+carreras que faltan. Ver abajo el bloque de Liga.
+
+### Otras del portal
+`/portal/calendario/` (Agenda · Semana · Mes — sí tiene maqueta, 24b) ·
+`/portal/cubo/` · `/portal/competiciones/` · `/portal/documentos/` ·
+`/portal/mensajes/` · `/portal/lesiones/` · `/portal/carga/` · `/portal/calles/`
+(natación, se rehará con la maqueta 25) · `/portal/tests/` (maqueta 23b).
+
+---
+
+## WEB PÚBLICA
+
+### ⚠️⚠️ Galería — `/galeria/`
+**Invención mía.** Una rejilla plana de fotos donde **ni siquiera se puede
+ampliar una**. Es de lo más pobre del sitio. Necesita: cómo se agrupa (por
+sección, por año), qué pasa al tocar una foto, y cómo se ve con 200 fotos.
+
+### ⚠️ Instalar la app — `/app/`
+**Invención mía.** Un muro de texto con los pasos para iPhone y Android.
+Necesita hacerse deseable: una captura en un marco de móvil vale más que los
+diez pasos escritos.
+
+### ⚠️ Escuelas — `/escuelas/`
+**Invención mía.** Página lanzadera con cuatro tarjetas (atletismo, natación,
+municipal, campus) para elegir escuela. Cumple y poco más.
+
+### Liga Apolana — `/liga/` ⚠️
+**Invención mía.** Clasificación pública del club: general, por disciplina y por
+categoría, más la normativa resumida y la tabla de puntos. Reproduce las
+columnas del Excel que usaban (Posición · Nombre · Categoría · Atletismo ·
+Running · Trail · Triatlón · Natación · Bonus · Total · Pruebas).
+Necesita: cómo se lee una clasificación de 31 personas en un móvil, y cómo se
+destaca el podio sin que parezca una hoja de cálculo.
+
+### El día en el club — `/horarios/`
+Sí tiene especificación (PAGINAS-NUEVAS.md). Parrilla semanal de los 27 grupos
+con filtro por sección; en móvil, acordeón por día. **Funciona bien**, pero es
+la página más útil del sitio y merece un repaso fino.
+
+### Área de socio — `/socio/`
+Panel personal con sesión (cuota, próxima carrera, grupos, marcas del trimestre,
+"este mes", Familia Apolana y recibos). Sigue PAGINAS-NUEVAS.md.
+**Ojo: tiene un cargador colgado** ("Cargando tu panel…") que estoy revisando.
+
+---
+
+## PANEL DE ADMINISTRACIÓN ⚠️⚠️
+
+**26 páginas.** Es donde el club pasa más horas y es lo que peor está: tablas
+densas, gris sobre gris, poca jerarquía. Comparado con la app, parece de otra
+época. Si solo se puede maquetar una cosa del panel, que sea **Inicio, Atletas y
+Cobros**, y que de ahí salga el patrón para el resto.
+
+- **Inicio** — contadores (inscritos, impagados, en prueba, ropa) y "alertas de
+  hoy" (lesiones, impagos, periodos de prueba que acaban). Los contadores ya son
+  pulsables y llevan a su lista filtrada.
+- **Atletas** — lista con filtros (estado, grupo, escuela/socio) y ficha en
+  ventana emergente. En móvil cada atleta es una ficha.
+- **Cobros y recibos** · **Tarifas** · **Pedidos de ropa**
+- **En la pista** ⚠️ (`/admin/campo/`) — **invención mía**. La herramienta de
+  campo: pasar lista (grupos por sección, plegados, con los de hoy arriba),
+  buscar a un niño y ver quién ha venido. Se usa **con una mano, a pie de pista
+  y con sol**. Merece maqueta propia.
+- **Estadísticas** ⚠️ — **invención mía**. Gráficas hechas a mano en SVG
+  (atletas por sección y categoría, ingresos por mes, El Cubo, escuela por
+  temporadas). Funciona; es sosa.
+- **Fotos de la web** ⚠️ — **invención mía**. Los 80 huecos de foto de toda la
+  web, agrupados por página, con miniatura, encuadre y zoom.
+- **Biblioteca de fotos** — subida múltiple, secciones, favoritas, selección
+  múltiple y acciones en bloque.
+- **Colaboradores** ⚠️ — **invención mía**. Logo, nombre y elegir si se muestra
+  logo, nombre o ambos.
+- **Liga Apolana** ⚠️ — **invención mía**. Bandeja de pruebas comunicadas por
+  los socios (con el justificante a la vista para validar de un clic), carreras
+  propuestas, clasificación y tabla de puntos editable.
+- **Retos** ⚠️ — **invención mía**. Crear retos, ver quién los cumple, permisos
+  familiares de menores.
+- **Batería de tests** (maqueta 23c) · **Informes** (con "Historial de un
+  atleta": día a día de asistencia y notas, imprimible con membrete) ·
+  **Competiciones · Eventos · Grupos · Usuarios · Importar · El Cubo · Pruebas ·
+  Noticias · Páginas · Textos · Documentos · Mapa de contenido · Peticiones de
+  redes · Plantillas · Récords · Palmarés · Histórico**
+
+---
+
+## Patrones que inventé y conviene revisar o bendecir
+
+1. **Barra inferior de cinco pestañas** — en las 14 pantallas del portal
+   (sigue la maqueta 22c) y también en las 26 del panel (esta segunda es
+   invención mía: Inicio · Pista · Personas · Dinero · Menú).
+2. **Panel "Más"** — pantalla completa con tres bloques (El club · Mi cuenta ·
+   Ayuda).
+3. **Editar en ventana emergente** — en todo el panel; antes el formulario se
+   abría al fondo de la página y había que bajar.
+4. **Menú del panel plegable por bloques** — con 30 secciones, una lista
+   entera era inmanejable.
+5. **Tablas que en móvil se convierten en fichas** — en atletas, cobros,
+   récords, marcas, buzón.
+6. **Entreno por bloques plegables** — con los huecos para anotar los tiempos
+   **dentro de cada serie**, y "3 de 6 anotadas" en la cabecera.
+7. **Estados vacíos con invitación** — decisión del club: si no tienes grupo,
+   la pantalla de entreno no se esconde, te invita a apuntarte a uno.
+
+---
+
+## Notas útiles
+
+- **Todo es dinámico**: los grupos, horarios, precios, fotos, textos y
+  colaboradores salen del panel, no están escritos en el código.
+- **Hay dos zonas con acceso**: el portal (socios, familias, entrenadores) y el
+  panel (administración). Y una parte pública sin cuenta.
+- **Datos sensibles**: hay menores. Las notas de comportamiento y los datos de
+  contacto no se enseñan nunca fuera del equipo técnico; los números de cuenta
+  solo con sesión iniciada.
+- **La app es la web instalada** (PWA), así que lo que se maquete para móvil
+  vale para las dos.
