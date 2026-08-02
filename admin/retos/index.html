@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retos y medallas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1040px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande);
+           padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin:0 0 4px; }
+  .panel .intro { font-size:14.5px; color: var(--texto-suave); line-height:1.55; margin:0 0 14px; max-width:70ch; }
+
+  .pestanas { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .pestanas button { min-height:44px; padding:0 16px; border-radius:999px; border:1px solid var(--linea-borde);
+                     background:#fff; color: var(--texto); font:inherit; font-size:14.5px; cursor:pointer; }
+  .pestanas button[aria-selected="true"] { background: var(--navy); border-color: var(--navy); color:#fff; }
+
+  table { width:100%; border-collapse: collapse; margin-top: 8px; }
+  th,td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; vertical-align:top; }
+  th { font-family: var(--fuente-texto); font-size:12px; letter-spacing:.01em; text-transform:none; color: var(--texto-suave); font-weight:600; }
+  td b { color: var(--navy); }
+
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:12px 0 5px; }
+  label .apunte { font-weight:400; color: var(--texto-tenue); }
+  input, select, textarea { width:100%; box-sizing:border-box; padding:11px 13px; min-height:44px;
+    border:1px solid var(--linea-borde); border-radius:10px; font-size:15px; font-family: var(--fuente-texto);
+    background:#fff; color: var(--navy); }
+  textarea { min-height:70px; resize:vertical; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--azul); border-color: var(--azul); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 14px; }
+  @media (max-width:620px){ .grid2, .grid3 { grid-template-columns:1fr; } }
+
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:6px; }
+  .filtros input, .filtros select { max-width:260px; }
+  .filtros .cuenta { font-size:12.5px; color: var(--texto-suave); }
+
+  .pill { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px;
+          background: var(--crema-media); color: var(--texto-suave); white-space:nowrap; }
+  .pill.si { background:#E6F1DA; color:#3E6B24; }
+  .pill.no { background:#F6E7E5; color:#8E3A34; }
+  .pill.az { background: var(--azul-suave); color: var(--azul-oscuro); }
+
+  .btn { cursor:pointer; }
+  .btn--mini { padding:8px 18px; font-size:14px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+  .btn--peligro { background:transparent; border:1px solid #e0b4b0; color:#b3261e; padding:8px 16px; border-radius:999px;
+                  font-size:14px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+  .acciones-fila { display:flex; gap:8px; flex-wrap:wrap; }
+  .msg { font-size:14px; margin-left:8px; }
+  .msg.error { color:#b3261e; } .msg.ok { color:#1e7a3d; }
+  .oculto { display:none !important; }
+
+  /* Edición en ventana emergente (modal), no bajando al fondo de la página */
+  #panel-form, #panel-medalla { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none;
+    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+  #panel-form .modal-caja, #panel-medalla .modal-caja {
+    background:#fff; border:1px solid var(--linea); border-radius:18px;
+    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:24px; width:min(660px,100%);
+    animation:modal-sube .2s ease; }
+  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
+
+  .barrita { height:7px; border-radius:99px; background: var(--crema-media); overflow:hidden; width:120px; max-width:100%; }
+  .barrita i { display:block; height:100%; border-radius:99px; background: var(--azul); }
+
+  /* Interruptor de la clasificación */
+  .sw { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:48px;
+        max-width:560px; cursor:pointer; margin:0; }
+  .sw .txt b { display:block; font-size:15px; color: var(--navy); font-weight:600; }
+  .sw .txt span { display:block; font-size:13px; color: var(--texto-suave); line-height:1.4; font-weight:400; }
+  .sw input { position:absolute; opacity:0; width:0; height:0; }
+  .sw .palanca { flex:0 0 52px; width:52px; height:30px; border-radius:99px; background:#D9D2C4; position:relative; transition:background .18s; }
+  .sw .palanca::after { content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%;
+                        background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22); transition:transform .18s; }
+  .sw input:checked + .palanca { background: var(--azul); }
+  .sw input:checked + .palanca::after { transform:translateX(22px); }
+  .sw input:focus-visible + .palanca { outline:2px solid var(--azul-oscuro); outline-offset:2px; }
+
+  .vacio-caja { text-align:center; padding:26px 18px; color: var(--texto-suave); font-size:14.5px; line-height:1.55; }
+
+  .aviso-menor { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); border-radius:12px;
+                 padding:12px 14px; font-size:13.5px; color: var(--aviso-texto); line-height:1.55; margin:0 0 14px; max-width:80ch; }
+  .aviso-menor b { color: var(--aviso-titulo); }
+
+  .cara { width:34px; height:34px; border-radius:50%; background: var(--crema-media); overflow:hidden; display:inline-flex;
+          align-items:center; justify-content:center; font-size:12px; font-weight:600; color: var(--texto-suave); vertical-align:middle; }
+  .cara img { width:100%; height:100%; object-fit:cover; display:block; }
+
+  /* En móvil las tablas se leen como fichas */
+  @media (max-width:760px){
+    table, thead, tbody, tr, td { display:block; width:100%; }
+    thead { display:none; }
+    tr { border:1px solid var(--linea); border-radius: var(--radio); margin-bottom:12px; padding:6px 12px; background:#fff; }
+    td { border-bottom:1px solid var(--crema-media); padding:9px 0; }
+    tr td:last-child { border-bottom:none; padding-top:12px; }
+    td::before { content: attr(data-etiqueta); display:block; font-size:12px; color: var(--texto-suave); margin-bottom:2px; }
+    td.sin-etiqueta::before { content:none; }
+    td[data-etiqueta="Reto"], td[data-etiqueta="Atleta"], td[data-etiqueta="Medalla"] { font-size:16px; font-weight:600; color: var(--navy); }
+    td[data-etiqueta="Reto"]::before, td[data-etiqueta="Atleta"]::before, td[data-etiqueta="Medalla"]::before { content:none; }
+    .filtros input, .filtros select { max-width:none !important; width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="panel">
+      <h2>Retos y medallas</h2>
+      <p class="intro">Retos que se cumplen solos con lo que el club ya apunta: asistencias, entrenos contados,
+        clases de El Cubo, competiciones, marcas y tests. Cuando alguien llega al objetivo se le apuntan los puntos,
+        y con los puntos suben de rango y ganan medallas. El premio de cada reto lo escribe el club.</p>
+      <div class="acciones-fila">
+        <button class="btn btn--primario btn--mini" id="nuevo">+ Nuevo reto</button>
+        <button class="btn btn--fantasma btn--mini" id="actualizar">Actualizar progreso</button>
+        <span class="msg" id="msg-act"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Clasificación del club</h2>
+      <p class="intro">La competición oficial del club es la <b>Liga Apolana</b>, con su normativa, sus trofeos y su gala.
+        Por eso los retos nacen como algo personal —cada uno con su progreso, sus puntos y sus medallas— y la tabla
+        comparativa viene <b>apagada</b>. Si algún día veis que engancha, se enciende aquí y aparece en el portal.
+        Con el interruptor apagado la tabla no se ve en ninguna parte, ni siquiera si alguien intenta abrirla.</p>
+      <label class="sw"><span class="txt"><b>Publicar la clasificación en el portal</b>
+        <span id="sw-estado">Cargando…</span></span>
+        <input type="checkbox" id="sw-ranking"><span class="palanca"></span></label>
+      <p class="intro" style="margin:14px 0 0;">Esto no afecta a las fichas personales: con el interruptor apagado,
+        quien ha dicho que quiere dejarse ver sigue siendo buscable y su ficha (rango, medallas y retos cumplidos)
+        se puede abrir desde el portal. Eso se controla persona a persona en «Participación y permisos».</p>
+    </div>
+
+    <div class="pestanas" role="tablist">
+      <button type="button" data-tab="retos"        aria-selected="true">Retos</button>
+      <button type="button" data-tab="conseguidos"  aria-selected="false">Quién los ha conseguido</button>
+      <button type="button" data-tab="gente"        aria-selected="false">Participación y permisos</button>
+      <button type="button" data-tab="medallas"     aria-selected="false">Medallas</button>
+    </div>
+
+    <!-- ---------- RETOS ---------- -->
+    <div class="panel" id="tab-retos">
+      <h2>Retos</h2>
+      <p class="intro">Un reto mide UNA cosa en UN periodo. Si eliges «fechas sueltas» hay que escribir el día que empieza y el que acaba.</p>
+      <div class="filtros">
+        <select id="f-activo">
+          <option value="">Activos y guardados</option>
+          <option value="si">Solo activos</option>
+          <option value="no">Solo guardados</option>
+        </select>
+        <span class="cuenta" id="c-retos"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-retos">
+          <thead><tr><th>Reto</th><th>Qué mide</th><th>Cuándo</th><th>Puntos</th><th>Conseguido por</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ---------- CONSEGUIDOS ---------- -->
+    <div class="panel oculto" id="tab-conseguidos">
+      <h2>Quién los ha conseguido</h2>
+      <p class="intro">Todo lo que ha ido apuntando el botón de «Actualizar progreso». Un reto conseguido no se quita solo.</p>
+      <div class="filtros">
+        <select id="f-reto"><option value="">Todos los retos</option></select>
+        <input type="search" id="f-buscar" placeholder="Buscar por nombre…">
+        <span class="cuenta" id="c-logros"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-logros">
+          <thead><tr><th>Atleta</th><th>Reto</th><th>Valor</th><th>Puntos</th><th>Fecha</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ---------- PARTICIPACIÓN Y PERMISOS ---------- -->
+    <div class="panel oculto" id="tab-gente">
+      <h2>Participación y permisos</h2>
+      <p class="intro">Quien participa es buscable en el portal y su ficha se puede abrir: se ve el nombre que eligió,
+        su foto si la puso, su rango, sus medallas y los retos que ha cumplido. Nada más: ni contacto, ni pagos, ni
+        marcas. Quien no participa no es buscable ni consultable. Cada persona puede encenderlo y apagarlo desde su
+        propio portal, y aquí podéis echar una mano si os lo piden.</p>
+      <p class="aviso-menor"><b>Los menores no participan por defecto.</b> Un menor de edad no aparece en el buscador,
+        no tiene ficha consultable y no sale en ninguna clasificación —ni con nombre ni con foto— hasta que consta aquí
+        la autorización de su familia. Al registrarla se guarda quién la dio y cuándo. Si la familia se echa atrás,
+        se retira con un clic y desaparece al momento.</p>
+      <div class="filtros">
+        <select id="f-gente">
+          <option value="">Todos</option>
+          <option value="participa">Solo los que se dejan ver</option>
+          <option value="menor-sin">Menores sin autorización</option>
+          <option value="menor-con">Menores autorizados</option>
+        </select>
+        <input type="search" id="f-gente-buscar" placeholder="Buscar por nombre…">
+        <span class="cuenta" id="c-gente"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-gente">
+          <thead><tr><th>Atleta</th><th>Edad</th><th>Se deja ver</th><th>Sale como</th><th>Permiso familiar</th><th>Puntos</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ---------- MEDALLAS ---------- -->
+    <div class="panel oculto" id="tab-medallas">
+      <h2>Catálogo de medallas</h2>
+      <p class="intro">Las medallas miran toda la trayectoria, sin periodo. Se reparten solas al pulsar «Actualizar progreso».</p>
+      <div class="acciones-fila" style="margin-bottom:10px;">
+        <button class="btn btn--primario btn--mini" id="nueva-medalla">+ Nueva medalla</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="tabla-medallas">
+          <thead><tr><th>Medalla</th><th>Se gana con</th><th>Estado</th><th>La tienen</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ---------- VENTANA: RETO ---------- -->
+    <div class="panel oculto" id="panel-form">
+      <div class="modal-caja">
+        <h2 id="form-titulo">Nuevo reto</h2>
+        <form id="form">
+          <input type="hidden" id="r-id">
+          <label for="r-titulo">Título</label>
+          <input type="text" id="r-titulo" required maxlength="80" placeholder="Semana redonda">
+          <label for="r-desc">Descripción <span class="apunte">— lo que se lee en el portal</span></label>
+          <textarea id="r-desc" maxlength="300" placeholder="Ven a tres entrenamientos esta semana."></textarea>
+          <div class="grid2">
+            <div><label for="r-metrica">Qué se mide</label>
+              <select id="r-metrica">
+                <option value="asistencias">Asistencias a entrenamientos</option>
+                <option value="racha_asistencias">Racha de asistencias seguidas</option>
+                <option value="entrenos_registrados">Entrenos con sensaciones enviadas</option>
+                <option value="cubo_clases">Clases de El Cubo a las que fue</option>
+                <option value="competiciones">Competiciones confirmadas</option>
+                <option value="marcas">Marcas nuevas apuntadas</option>
+                <option value="mejores_personales">Mejores marcas personales</option>
+                <option value="tests">Baterías de tests</option>
+              </select>
+            </div>
+            <div><label for="r-objetivo">Objetivo <span class="apunte">— cuántas</span></label>
+              <input type="number" id="r-objetivo" min="1" step="1" value="3" required></div>
+          </div>
+          <div class="grid3">
+            <div><label for="r-periodo">Periodo</label>
+              <select id="r-periodo">
+                <option value="semana">Esta semana</option>
+                <option value="mes">Este mes</option>
+                <option value="temporada">La temporada</option>
+                <option value="fechas">Fechas sueltas</option>
+              </select>
+            </div>
+            <div id="caja-ini" class="oculto"><label for="r-ini">Empieza</label><input type="date" id="r-ini"></div>
+            <div id="caja-fin" class="oculto"><label for="r-fin">Acaba</label><input type="date" id="r-fin"></div>
+          </div>
+          <div class="grid2">
+            <div><label for="r-puntos">Puntos que da</label><input type="number" id="r-puntos" min="0" step="1" value="15" required></div>
+            <div><label for="r-activo">Estado</label>
+              <select id="r-activo"><option value="si">Activo (se ve en el portal)</option><option value="no">Guardado (no se ve)</option></select>
+            </div>
+          </div>
+          <label for="r-premio">Premio del club <span class="apunte">— texto libre, lo que ofrecéis a quien lo consiga</span></label>
+          <textarea id="r-premio" maxlength="200" placeholder="Un entrenamiento de prueba en otro grupo."></textarea>
+          <p class="intro" id="r-pista" style="margin:12px 0 0;"></p>
+          <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+            <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+            <span class="msg" id="msg"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ---------- VENTANA: MEDALLA ---------- -->
+    <div class="panel oculto" id="panel-medalla">
+      <div class="modal-caja">
+        <h2 id="med-titulo">Nueva medalla</h2>
+        <form id="form-medalla">
+          <input type="hidden" id="m-id">
+          <div class="grid2">
+            <div><label for="m-titulo">Título</label><input type="text" id="m-titulo" required maxlength="40" placeholder="Primer dorsal"></div>
+            <div><label for="m-clave">Clave <span class="apunte">— interna, sin espacios</span></label>
+              <input type="text" id="m-clave" required maxlength="40" pattern="[a-z0-9_]+" placeholder="primer_dorsal"></div>
+          </div>
+          <label for="m-desc">Descripción</label>
+          <textarea id="m-desc" maxlength="200" placeholder="Tu primera competición con el club."></textarea>
+          <div class="grid3">
+            <div><label for="m-criterio">Se gana con</label>
+              <select id="m-criterio">
+                <option value="asistencias">Asistencias a entrenamientos</option>
+                <option value="racha_asistencias">Racha de asistencias seguidas</option>
+                <option value="entrenos_registrados">Entrenos con sensaciones enviadas</option>
+                <option value="cubo_clases">Clases de El Cubo</option>
+                <option value="competiciones">Competiciones confirmadas</option>
+                <option value="marcas">Marcas nuevas</option>
+                <option value="mejores_personales">Mejores marcas personales</option>
+                <option value="tests">Baterías de tests</option>
+                <option value="retos_completados">Retos conseguidos</option>
+                <option value="puntos">Puntos acumulados</option>
+              </select>
+            </div>
+            <div><label for="m-umbral">A partir de</label><input type="number" id="m-umbral" min="1" step="1" value="1" required></div>
+            <div><label for="m-orden">Orden</label><input type="number" id="m-orden" min="0" step="1" value="0"></div>
+          </div>
+          <label for="m-activa">Estado</label>
+          <select id="m-activa"><option value="si">Activa</option><option value="no">Retirada</option></select>
+          <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+            <button class="btn btn--fantasma btn--mini" type="button" id="cancelar-medalla">Cancelar</button>
+            <span class="msg" id="msg-medalla"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function toast(m,t){ if(window.apoToast) window.apoToast(m,t); }
+
+  var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fCorta(iso){
+    if(!iso) return '—';
+    var p = String(iso).slice(0,10).split('-');
+    return p.length===3 ? (parseInt(p[2],10)+' '+MESES[parseInt(p[1],10)-1]+' '+p[0]) : String(iso);
+  }
+  function nDe(v){ return Math.round(Number(v||0)*100)/100; }
+
+  var METRICAS = {
+    asistencias:          'Asistencias',
+    racha_asistencias:    'Racha de asistencias',
+    entrenos_registrados: 'Entrenos contados',
+    cubo_clases:          'Clases de El Cubo',
+    competiciones:        'Competiciones',
+    marcas:               'Marcas nuevas',
+    mejores_personales:   'Mejores marcas',
+    tests:                'Baterías de tests',
+    retos_completados:    'Retos conseguidos',
+    puntos:               'Puntos acumulados'
+  };
+  var PISTAS = {
+    asistencias:          'Cuenta los días con la casilla de «presente» marcada en la lista de asistencia.',
+    racha_asistencias:    'Cuenta la tira más larga de asistencias seguidas, sin ninguna falta en medio.',
+    entrenos_registrados: 'Cuenta los entrenos en los que el atleta mandó sus sensaciones desde el portal.',
+    cubo_clases:          'Cuenta las reservas de El Cubo marcadas como «asistida».',
+    competiciones:        'Cuenta las competiciones distintas con la inscripción confirmada.',
+    marcas:               'Cuenta las marcas apuntadas en su ficha. Los «objetivo» no cuentan.',
+    mejores_personales:   'Cuenta solo las marcas apuntadas como mejor marca personal.',
+    tests:                'Cuenta las baterías de tests en las que participó.',
+    retos_completados:    'Cuenta los retos que ya tiene conseguidos.',
+    puntos:               'Mira los puntos acumulados con los retos.'
+  };
+  function periodoTxt(r){
+    if(r.periodo === 'fechas') return fCorta(r.fecha_inicio) + ' → ' + fCorta(r.fecha_fin);
+    return { semana:'Cada semana', mes:'Cada mes', temporada:'La temporada' }[r.periodo] || r.periodo;
+  }
+  function edadDe(fnac){
+    if(!fnac) return null;
+    var f = new Date(String(fnac).slice(0,10)), h = new Date();
+    var e = h.getFullYear() - f.getFullYear();
+    var m = h.getMonth() - f.getMonth();
+    if(m < 0 || (m === 0 && h.getDate() < f.getDate())) e--;
+    return e;
+  }
+  function esMenor(fnac){ var e = edadDe(fnac); return e === null || e < 18; }
+  function iniciales(a){
+    var n=(a.nombre||'').trim(), ap=(a.apellidos||'').trim();
+    return ((n?n[0]:'')+(ap?ap[0]:'')).toUpperCase() || '·';
+  }
+  function nombreAt(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }
+  /* LAS FOTOS · las guarda «Mi perfil» en un almacén privado, así que no
+     hay URL fija: se pide una firmada (caduca a la hora) para todas de
+     una vez. Sin foto se ven las iniciales, que tampoco pasa nada. */
+  var CUBO_FOTOS = 'fotos-perfil', FIRMA_S = 3600, FOTOS = {};
+  async function firmarFotos(rutas){
+    var faltan = [];
+    (rutas || []).forEach(function(r){
+      if(r && !FOTOS[r] && !/^(https?:|data:)/.test(r) && faltan.indexOf(r) === -1) faltan.push(r);
+    });
+    if(!faltan.length) return;
+    try {
+      var r = await sb.storage.from(CUBO_FOTOS).createSignedUrls(faltan, FIRMA_S);
+      if(!r.error) (r.data || []).forEach(function(x){ if(x && x.signedUrl) FOTOS[x.path] = x.signedUrl; });
+    } catch(e){ /* si el almacén no contesta, iniciales y a otra cosa */ }
+  }
+  function fotoUrl(v){
+    if(!v) return '';
+    if(/^(https?:|data:)/.test(v)) return v;
+    return FOTOS[v] || '';
+  }
+
+  /* ---------- estado ---------- */
+  var RETOS = [], LOGROS = [], MEDALLAS = [], TIENEN = {}, ATLETAS = [], JUEGO = {}, PERFILES = {}, IDENT = {}, MI_PERFIL = null;
+
+  /* ============================================================
+     PESTAÑAS
+     ============================================================ */
+  var TABS = ['retos','conseguidos','gente','medallas'];
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function(b){
+    b.addEventListener('click', function(){
+      var t = b.getAttribute('data-tab');
+      Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function(x){
+        x.setAttribute('aria-selected', String(x.getAttribute('data-tab') === t));
+      });
+      TABS.forEach(function(x){ $('tab-'+x).classList.toggle('oculto', x !== t); });
+    });
+  });
+
+  /* ============================================================
+     CARGA
+     ============================================================ */
+  async function cargarMiPerfil(){
+    var s = await sb.auth.getUser();
+    var email = s && s.data && s.data.user ? s.data.user.email : null;
+    if(!email) return;
+    var r = await sb.from('perfiles').select('id,nombre,apellidos,email').eq('email', email).maybeSingle();
+    if(!r.error && r.data) MI_PERFIL = r.data;
+  }
+
+  async function cargarRetos(){
+    var r = await sb.from('retos').select('*').order('activo', { ascending:false }).order('created_at');
+    RETOS = r.error ? [] : (r.data || []);
+    if(r.error) toast('No se han podido cargar los retos: ' + r.error.message, 'error');
+  }
+  async function cargarLogros(){
+    var r = await sb.from('reto_logros').select('id,reto_id,atleta_id,valor_alcanzado,completado_en,puntos_otorgados')
+      .order('completado_en', { ascending:false });
+    LOGROS = r.error ? [] : (r.data || []);
+  }
+  async function cargarMedallas(){
+    var r = await sb.from('medallas').select('*').order('orden');
+    MEDALLAS = r.error ? [] : (r.data || []);
+    TIENEN = {};
+    var t = await sb.from('atleta_medallas').select('medalla_id');
+    if(!t.error) (t.data||[]).forEach(function(x){ TIENEN[x.medalla_id] = (TIENEN[x.medalla_id]||0) + 1; });
+  }
+  async function cargarGente(){
+    var r = await sb.from('atletas').select('id,nombre,apellidos,fecha_nacimiento,estado,perfil_id')
+      .neq('estado','baja').order('apellidos').order('nombre');
+    ATLETAS = r.error ? [] : (r.data || []);
+    JUEGO = {};
+    var j = await sb.from('perfil_juego')
+      .select('atleta_id,participa,autoriza_parental_por,autoriza_parental_en,puntos');
+    if(!j.error) (j.data||[]).forEach(function(x){ JUEGO[x.atleta_id] = x; });
+
+    /* El nombre público y la foto viven en `perfiles` y se cambian en «Mi
+       perfil» del portal: aquí solo se leen. Si esas columnas todavía no
+       existen, la consulta falla y se pide lo de siempre, sin romper nada. */
+    IDENT = {};
+    var pid = ATLETAS.map(function(a){ return a.perfil_id; }).filter(Boolean);
+    if(pid.length){
+      var q = await sb.from('perfiles').select('id,nombre_publico,foto_ruta,perfil_visible').in('id', pid);
+      if(q.error) q = await sb.from('perfiles').select('id').in('id', pid);
+      if(!q.error) (q.data||[]).forEach(function(x){ IDENT[x.id] = x; });
+      await firmarFotos((q.data||[]).map(function(x){ return x.foto_ruta; }));
+    }
+
+    var ids = {};
+    for(var k in JUEGO) if(JUEGO[k].autoriza_parental_por) ids[JUEGO[k].autoriza_parental_por] = true;
+    var lista = Object.keys(ids);
+    PERFILES = {};
+    if(lista.length){
+      var p = await sb.from('perfiles').select('id,nombre,apellidos').in('id', lista);
+      if(!p.error) (p.data||[]).forEach(function(x){ PERFILES[x.id] = ((x.nombre||'')+' '+(x.apellidos||'')).trim(); });
+    }
+  }
+
+  /* ============================================================
+     PINTAR · RETOS
+     ============================================================ */
+  function cuentaLogros(retoId){
+    var n = 0;
+    for(var i=0;i<LOGROS.length;i++) if(LOGROS[i].reto_id === retoId) n++;
+    return n;
+  }
+
+  function pintarRetos(){
+    var filtro = $('f-activo').value;
+    var lista = RETOS.filter(function(r){
+      if(filtro === 'si') return r.activo;
+      if(filtro === 'no') return !r.activo;
+      return true;
+    });
+    $('c-retos').textContent = lista.length + (lista.length===1 ? ' reto' : ' retos');
+    var tb = $('tabla-retos').querySelector('tbody');
+    if(!lista.length){
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="6"><div class="vacio-caja">' +
+        'Todavía no hay ningún reto. Con «+ Nuevo reto» creas el primero en menos de un minuto.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = lista.map(function(r){
+      var n = cuentaLogros(r.id);
+      return '<tr>' +
+        '<td data-etiqueta="Reto"><b>' + esc(r.titulo) + '</b>' +
+          (r.activo ? '' : ' <span class="pill">guardado</span>') +
+          (r.descripcion ? '<div style="font-size:13px;color:var(--texto-suave);margin-top:3px;">' + esc(r.descripcion) + '</div>' : '') +
+          (r.premio ? '<div style="font-size:12.5px;color:var(--aviso-titulo);margin-top:4px;">Premio: ' + esc(r.premio) + '</div>' : '') +
+        '</td>' +
+        '<td data-etiqueta="Qué mide">' + esc(METRICAS[r.metrica] || r.metrica) +
+          '<div style="font-size:12.5px;color:var(--texto-suave);">objetivo: ' + nDe(r.objetivo) + '</div></td>' +
+        '<td data-etiqueta="Cuándo">' + esc(periodoTxt(r)) + '</td>' +
+        '<td data-etiqueta="Puntos"><b>' + Number(r.puntos) + '</b></td>' +
+        '<td data-etiqueta="Conseguido por">' + n + (n===1?' persona':' personas') + '</td>' +
+        '<td class="sin-etiqueta"><div class="acciones-fila">' +
+          '<button class="btn btn--fantasma btn--mini" data-editar="' + esc(r.id) + '">Editar</button>' +
+          '<button class="btn btn--peligro" data-borrar="' + esc(r.id) + '">Borrar</button>' +
+        '</div></td></tr>';
+    }).join('');
+  }
+
+  /* ============================================================
+     PINTAR · CONSEGUIDOS
+     ============================================================ */
+  function pintarLogros(){
+    var sel = $('f-reto');
+    var actual = sel.value;
+    sel.innerHTML = '<option value="">Todos los retos</option>' + RETOS.map(function(r){
+      return '<option value="' + esc(r.id) + '">' + esc(r.titulo) + '</option>';
+    }).join('');
+    sel.value = actual;
+
+    var texto = ($('f-buscar').value || '').trim().toLowerCase();
+    var porId = {}; ATLETAS.forEach(function(a){ porId[a.id] = a; });
+    var porReto = {}; RETOS.forEach(function(r){ porReto[r.id] = r; });
+
+    var lista = LOGROS.filter(function(l){
+      if(actual && l.reto_id !== actual) return false;
+      if(!texto) return true;
+      var a = porId[l.atleta_id];
+      return a && nombreAt(a).toLowerCase().indexOf(texto) !== -1;
+    });
+    $('c-logros').textContent = lista.length + (lista.length===1 ? ' conseguido' : ' conseguidos');
+
+    var tb = $('tabla-logros').querySelector('tbody');
+    if(!lista.length){
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="6"><div class="vacio-caja">' +
+        'Nada por aquí todavía. Pulsa «Actualizar progreso» arriba y el sistema repasa los retos activos.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = lista.slice(0, 400).map(function(l){
+      var a = porId[l.atleta_id], r = porReto[l.reto_id];
+      return '<tr>' +
+        '<td data-etiqueta="Atleta"><b>' + esc(a ? nombreAt(a) : 'Atleta dado de baja') + '</b></td>' +
+        '<td data-etiqueta="Reto">' + esc(r ? r.titulo : '—') + '</td>' +
+        '<td data-etiqueta="Valor">' + nDe(l.valor_alcanzado) + (r ? ' / ' + nDe(r.objetivo) : '') + '</td>' +
+        '<td data-etiqueta="Puntos">' + Number(l.puntos_otorgados) + '</td>' +
+        '<td data-etiqueta="Fecha">' + fCorta(l.completado_en) + '</td>' +
+        '<td class="sin-etiqueta"><button class="btn btn--peligro" data-quitar-logro="' + esc(l.id) + '">Quitar</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  /* ============================================================
+     PINTAR · PARTICIPACIÓN Y PERMISOS
+     ============================================================ */
+  function pintarGente(){
+    var f = $('f-gente').value;
+    var texto = ($('f-gente-buscar').value || '').trim().toLowerCase();
+    var lista = ATLETAS.filter(function(a){
+      var j = JUEGO[a.id], menor = esMenor(a.fecha_nacimiento), aut = !!(j && j.autoriza_parental_en);
+      if(f === 'participa' && !(j && j.participa)) return false;
+      if(f === 'menor-sin' && !(menor && !aut)) return false;
+      if(f === 'menor-con' && !(menor && aut)) return false;
+      if(texto && nombreAt(a).toLowerCase().indexOf(texto) === -1) return false;
+      return true;
+    });
+    $('c-gente').textContent = lista.length + (lista.length===1 ? ' persona' : ' personas');
+
+    var tb = $('tabla-gente').querySelector('tbody');
+    if(!lista.length){
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="7"><div class="vacio-caja">Nadie encaja con ese filtro.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = lista.slice(0, 400).map(function(a){
+      var j = JUEGO[a.id] || null;
+      var menor = esMenor(a.fecha_nacimiento);
+      var aut = !!(j && j.autoriza_parental_en);
+      var edad = edadDe(a.fecha_nacimiento);
+      var id = IDENT[a.perfil_id] || {};
+      var sale = id.nombre_publico ? id.nombre_publico : nombreAt(a);
+      var foto = fotoUrl(id.foto_ruta);
+      var privado = id.perfil_visible === false;
+      var cara = foto
+        ? '<span class="cara"><img src="' + esc(foto) + '" alt=""></span>'
+        : '<span class="cara">' + esc(iniciales(a)) + '</span>';
+
+      var permiso;
+      if(!menor) permiso = '<span class="pill">no hace falta</span>';
+      else if(aut) permiso = '<span class="pill si">registrado</span>' +
+        '<div style="font-size:12px;color:var(--texto-suave);margin-top:3px;">' +
+        esc(PERFILES[j.autoriza_parental_por] || 'el club') + ' · ' + fCorta(j.autoriza_parental_en) + '</div>';
+      else permiso = '<span class="pill no">falta</span>';
+
+      var acciones = '<button class="btn btn--fantasma btn--mini" data-participa="' + esc(a.id) + '">' +
+        ((j && j.participa) ? 'Ocultar su ficha' : 'Hacer visible') + '</button>';
+      if(menor){
+        acciones += aut
+          ? '<button class="btn btn--peligro" data-retirar="' + esc(a.id) + '">Retirar permiso</button>'
+          : '<button class="btn btn--fantasma btn--mini" data-autorizar="' + esc(a.id) + '">Registrar permiso</button>';
+      }
+
+      return '<tr>' +
+        '<td data-etiqueta="Atleta">' + cara + ' <b style="margin-left:6px;">' + esc(nombreAt(a)) + '</b></td>' +
+        '<td data-etiqueta="Edad">' + (edad === null ? 'sin fecha' : (edad + ' años')) +
+          (menor ? ' <span class="pill az">menor</span>' : '') + '</td>' +
+        '<td data-etiqueta="Se deja ver">' + ((j && j.participa) ? '<span class="pill si">sí</span>' : '<span class="pill">no</span>') + '</td>' +
+        '<td data-etiqueta="Sale como">' + esc(sale) +
+          ((menor && !aut && j && j.participa) ? '<div style="font-size:12px;color:#8E3A34;margin-top:3px;">no se ve: falta el permiso</div>' : '') +
+          (privado ? '<div style="font-size:12px;color:#8E3A34;margin-top:3px;">ha pedido privacidad en Mi perfil</div>' : '') + '</td>' +
+        '<td data-etiqueta="Permiso familiar">' + permiso + '</td>' +
+        '<td data-etiqueta="Puntos">' + (j ? Number(j.puntos||0) : 0) + '</td>' +
+        '<td class="sin-etiqueta"><div class="acciones-fila">' + acciones + '</div></td></tr>';
+    }).join('');
+  }
+
+  /* ============================================================
+     PINTAR · MEDALLAS
+     ============================================================ */
+  function pintarMedallas(){
+    var tb = $('tabla-medallas').querySelector('tbody');
+    if(!MEDALLAS.length){
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="5"><div class="vacio-caja">No hay medallas en el catálogo.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML = MEDALLAS.map(function(m){
+      return '<tr>' +
+        '<td data-etiqueta="Medalla"><b>' + esc(m.titulo) + '</b>' +
+          (m.descripcion ? '<div style="font-size:13px;color:var(--texto-suave);margin-top:3px;">' + esc(m.descripcion) + '</div>' : '') + '</td>' +
+        '<td data-etiqueta="Se gana con">' + esc(METRICAS[m.criterio] || m.criterio) +
+          '<div style="font-size:12.5px;color:var(--texto-suave);">a partir de ' + nDe(m.umbral) + '</div></td>' +
+        '<td data-etiqueta="Estado">' + (m.activa ? '<span class="pill si">activa</span>' : '<span class="pill">retirada</span>') + '</td>' +
+        '<td data-etiqueta="La tienen">' + (TIENEN[m.id] || 0) + '</td>' +
+        '<td class="sin-etiqueta"><div class="acciones-fila">' +
+          '<button class="btn btn--fantasma btn--mini" data-editar-medalla="' + esc(m.id) + '">Editar</button>' +
+          '<button class="btn btn--peligro" data-borrar-medalla="' + esc(m.id) + '">Borrar</button>' +
+        '</div></td></tr>';
+    }).join('');
+  }
+
+  function pintarTodo(){ pintarRetos(); pintarLogros(); pintarGente(); pintarMedallas(); }
+
+  /* ============================================================
+     VENTANA DE RETO
+     ============================================================ */
+  function verFechas(){
+    var f = $('r-periodo').value === 'fechas';
+    $('caja-ini').classList.toggle('oculto', !f);
+    $('caja-fin').classList.toggle('oculto', !f);
+    $('r-ini').required = f; $('r-fin').required = f;
+  }
+  function verPista(){ $('r-pista').textContent = PISTAS[$('r-metrica').value] || ''; }
+  $('r-periodo').addEventListener('change', verFechas);
+  $('r-metrica').addEventListener('change', verPista);
+
+  function abrirReto(r){
+    $('form-titulo').textContent = r ? 'Editar reto' : 'Nuevo reto';
+    $('msg').textContent = '';
+    $('r-id').value       = r ? r.id : '';
+    $('r-titulo').value   = r ? (r.titulo||'') : '';
+    $('r-desc').value     = r ? (r.descripcion||'') : '';
+    $('r-metrica').value  = r ? r.metrica : 'asistencias';
+    $('r-objetivo').value = r ? nDe(r.objetivo) : 3;
+    $('r-periodo').value  = r ? r.periodo : 'semana';
+    $('r-ini').value      = r && r.fecha_inicio ? String(r.fecha_inicio).slice(0,10) : '';
+    $('r-fin').value      = r && r.fecha_fin ? String(r.fecha_fin).slice(0,10) : '';
+    $('r-puntos').value   = r ? Number(r.puntos) : 15;
+    $('r-premio').value   = r ? (r.premio||'') : '';
+    $('r-activo').value   = r ? (r.activo ? 'si' : 'no') : 'si';
+    verFechas(); verPista();
+    $('panel-form').classList.remove('oculto');
+    $('r-titulo').focus();
+  }
+  function cerrarReto(){ $('panel-form').classList.add('oculto'); }
+  $('nuevo').addEventListener('click', function(){ abrirReto(null); });
+  $('cancelar').addEventListener('click', cerrarReto);
+  $('panel-form').addEventListener('click', function(e){ if(e.target === $('panel-form')) cerrarReto(); });
+
+  $('form').addEventListener('submit', async function(e){
+    e.preventDefault();
+    var msg = $('msg'); msg.className = 'msg'; msg.textContent = 'Guardando…';
+    var periodo = $('r-periodo').value;
+    var fila = {
+      titulo: $('r-titulo').value.trim(),
+      descripcion: $('r-desc').value.trim() || null,
+      metrica: $('r-metrica').value,
+      objetivo: Number($('r-objetivo').value || 1),
+      periodo: periodo,
+      fecha_inicio: periodo === 'fechas' ? ($('r-ini').value || null) : null,
+      fecha_fin:    periodo === 'fechas' ? ($('r-fin').value || null) : null,
+      puntos: Number($('r-puntos').value || 0),
+      premio: $('r-premio').value.trim() || null,
+      activo: $('r-activo').value === 'si'
+    };
+    if(periodo === 'fechas' && (!fila.fecha_inicio || !fila.fecha_fin)){
+      msg.className = 'msg error'; msg.textContent = 'Con fechas sueltas hay que escribir las dos fechas.'; return;
+    }
+    var id = $('r-id').value;
+    var r = id ? await sb.from('retos').update(fila).eq('id', id) : await sb.from('retos').insert(fila);
+    if(r.error){ msg.className = 'msg error'; msg.textContent = r.error.message; return; }
+    msg.textContent = '';
+    cerrarReto();
+    toast('Reto guardado.', 'ok');
+    await cargarRetos(); pintarRetos(); pintarLogros();
+  });
+
+  $('tabla-retos').addEventListener('click', async function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b) return;
+    var ed = b.getAttribute('data-editar'), bo = b.getAttribute('data-borrar');
+    if(ed){
+      for(var i=0;i<RETOS.length;i++) if(RETOS[i].id === ed) abrirReto(RETOS[i]);
+      return;
+    }
+    if(bo){
+      var ok = await window.apoConfirm({
+        titulo: 'Borrar el reto',
+        texto: 'Se borra el reto y todo lo que la gente había conseguido con él. Los puntos se recalculan en la siguiente actualización.',
+        confirmar: 'Borrar', peligro: true
+      });
+      if(!ok) return;
+      var r = await sb.from('retos').delete().eq('id', bo);
+      if(r.error){ toast('No se ha podido borrar: ' + r.error.message, 'error'); return; }
+      toast('Reto borrado.', 'ok');
+      await cargarRetos(); await cargarLogros(); pintarRetos(); pintarLogros();
+    }
+  });
+  $('f-activo').addEventListener('change', pintarRetos);
+
+  /* ============================================================
+     CONSEGUIDOS · quitar uno a mano
+     ============================================================ */
+  $('f-reto').addEventListener('change', pintarLogros);
+  $('f-buscar').addEventListener('input', pintarLogros);
+  $('tabla-logros').addEventListener('click', async function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b) return;
+    var id = b.getAttribute('data-quitar-logro');
+    if(!id) return;
+    var ok = await window.apoConfirm({
+      titulo: 'Quitar este reto conseguido',
+      texto: 'Se le retira a esta persona. Si sigue cumpliendo el objetivo, la próxima actualización se lo volverá a dar.',
+      confirmar: 'Quitar', peligro: true
+    });
+    if(!ok) return;
+    var r = await sb.from('reto_logros').delete().eq('id', id);
+    if(r.error){ toast('No se ha podido quitar: ' + r.error.message, 'error'); return; }
+    toast('Quitado.', 'ok');
+    await cargarLogros(); pintarLogros(); pintarRetos();
+  });
+
+  /* ============================================================
+     PARTICIPACIÓN Y PERMISOS
+     ============================================================ */
+  $('f-gente').addEventListener('change', pintarGente);
+  $('f-gente-buscar').addEventListener('input', pintarGente);
+
+  async function guardarJuego(atletaId, cambios){
+    var base = JUEGO[atletaId] || { atleta_id: atletaId, participa:false };
+    var fila = { atleta_id: atletaId };
+    for(var k in cambios) fila[k] = cambios[k];
+    if(!('participa' in fila)) fila.participa = !!base.participa;
+    var r = await sb.from('perfil_juego').upsert(fila, { onConflict:'atleta_id' })
+      .select('atleta_id,participa,autoriza_parental_por,autoriza_parental_en,puntos').maybeSingle();
+    if(r.error){ toast('No se ha podido guardar: ' + r.error.message, 'error'); return false; }
+    if(r.data) JUEGO[atletaId] = r.data;
+    return true;
+  }
+
+  $('tabla-gente').addEventListener('click', async function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b) return;
+    var p = b.getAttribute('data-participa');
+    var au = b.getAttribute('data-autorizar');
+    var re = b.getAttribute('data-retirar');
+
+    if(p){
+      var j = JUEGO[p];
+      if(await guardarJuego(p, { participa: !(j && j.participa) })){ pintarGente(); toast('Guardado.', 'ok'); }
+      return;
+    }
+    if(au){
+      if(!MI_PERFIL){ toast('No se ha podido identificar tu ficha de personal.', 'error'); return; }
+      var a = null;
+      for(var i=0;i<ATLETAS.length;i++) if(ATLETAS[i].id === au) a = ATLETAS[i];
+      var ok = await window.apoConfirm({
+        titulo: 'Registrar el permiso familiar',
+        texto: 'Confirmas que la familia de ' + (a ? nombreAt(a) : 'este menor') + ' autoriza que su ficha se pueda ' +
+               'consultar en el portal del club con su nombre y su foto. Queda guardado a tu nombre y con la fecha de hoy.',
+        confirmar: 'Sí, lo autorizan'
+      });
+      if(!ok) return;
+      if(await guardarJuego(au, { autoriza_parental_por: MI_PERFIL.id, autoriza_parental_en: new Date().toISOString() })){
+        PERFILES[MI_PERFIL.id] = ((MI_PERFIL.nombre||'')+' '+(MI_PERFIL.apellidos||'')).trim();
+        pintarGente(); toast('Permiso registrado.', 'ok');
+      }
+      return;
+    }
+    if(re){
+      var ok2 = await window.apoConfirm({
+        titulo: 'Retirar el permiso',
+        texto: 'Deja de ser buscable y su ficha deja de abrirse, al momento. Sus retos y sus puntos no se tocan.',
+        confirmar: 'Retirar', peligro: true
+      });
+      if(!ok2) return;
+      if(await guardarJuego(re, { autoriza_parental_por: null, autoriza_parental_en: null })){
+        pintarGente(); toast('Permiso retirado.', 'ok');
+      }
+    }
+  });
+
+  /* ============================================================
+     MEDALLAS
+     ============================================================ */
+  function abrirMedalla(m){
+    $('med-titulo').textContent = m ? 'Editar medalla' : 'Nueva medalla';
+    $('msg-medalla').textContent = '';
+    $('m-id').value       = m ? m.id : '';
+    $('m-titulo').value   = m ? (m.titulo||'') : '';
+    $('m-clave').value    = m ? (m.clave||'') : '';
+    $('m-desc').value     = m ? (m.descripcion||'') : '';
+    $('m-criterio').value = m ? m.criterio : 'asistencias';
+    $('m-umbral').value   = m ? nDe(m.umbral) : 1;
+    $('m-orden').value    = m ? Number(m.orden||0) : (MEDALLAS.length + 1);
+    $('m-activa').value   = m ? (m.activa ? 'si' : 'no') : 'si';
+    $('panel-medalla').classList.remove('oculto');
+    $('m-titulo').focus();
+  }
+  function cerrarMedalla(){ $('panel-medalla').classList.add('oculto'); }
+  $('nueva-medalla').addEventListener('click', function(){ abrirMedalla(null); });
+  $('cancelar-medalla').addEventListener('click', cerrarMedalla);
+  $('panel-medalla').addEventListener('click', function(e){ if(e.target === $('panel-medalla')) cerrarMedalla(); });
+
+  /* La clave se propone sola desde el título, para no tener que pensarla. */
+  $('m-titulo').addEventListener('input', function(){
+    if($('m-id').value) return;
+    $('m-clave').value = this.value.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40);
+  });
+
+  $('form-medalla').addEventListener('submit', async function(e){
+    e.preventDefault();
+    var msg = $('msg-medalla'); msg.className = 'msg'; msg.textContent = 'Guardando…';
+    var fila = {
+      titulo: $('m-titulo').value.trim(),
+      clave: $('m-clave').value.trim(),
+      descripcion: $('m-desc').value.trim() || null,
+      criterio: $('m-criterio').value,
+      umbral: Number($('m-umbral').value || 1),
+      orden: Number($('m-orden').value || 0),
+      activa: $('m-activa').value === 'si'
+    };
+    var id = $('m-id').value;
+    var r = id ? await sb.from('medallas').update(fila).eq('id', id) : await sb.from('medallas').insert(fila);
+    if(r.error){ msg.className = 'msg error'; msg.textContent = r.error.message; return; }
+    msg.textContent = '';
+    cerrarMedalla();
+    toast('Medalla guardada.', 'ok');
+    await cargarMedallas(); pintarMedallas();
+  });
+
+  $('tabla-medallas').addEventListener('click', async function(e){
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if(!b) return;
+    var ed = b.getAttribute('data-editar-medalla'), bo = b.getAttribute('data-borrar-medalla');
+    if(ed){
+      for(var i=0;i<MEDALLAS.length;i++) if(MEDALLAS[i].id === ed) abrirMedalla(MEDALLAS[i]);
+      return;
+    }
+    if(bo){
+      var ok = await window.apoConfirm({
+        titulo: 'Borrar la medalla',
+        texto: 'Desaparece del catálogo y de los perfiles de quien la tuviera. Si prefieres conservarla, ponla en «retirada».',
+        confirmar: 'Borrar', peligro: true
+      });
+      if(!ok) return;
+      var r = await sb.from('medallas').delete().eq('id', bo);
+      if(r.error){ toast('No se ha podido borrar: ' + r.error.message, 'error'); return; }
+      toast('Medalla borrada.', 'ok');
+      await cargarMedallas(); pintarMedallas();
+    }
+  });
+
+  /* ============================================================
+     INTERRUPTOR DE LA CLASIFICACIÓN
+     ------------------------------------------------------------
+     Vive en la base de datos, no en el navegador: mientras esté
+     apagado la vista de clasificación no devuelve ni una fila.
+     ============================================================ */
+  function pintarSwitch(on){
+    $('sw-ranking').checked = !!on;
+    $('sw-estado').textContent = on
+      ? 'Encendida: la tabla se ve en el portal, con quien haya dicho que participa.'
+      : 'Apagada: los retos son personales y no se compara a nadie con nadie.';
+  }
+
+  async function cargarAjustes(){
+    var r = await sb.from('juego_ajustes').select('ranking_publico').eq('id', 1).maybeSingle();
+    pintarSwitch(!!(r && !r.error && r.data && r.data.ranking_publico));
+  }
+
+  $('sw-ranking').addEventListener('change', async function(){
+    var quiere = this.checked;
+    if(quiere){
+      var ok = await window.apoConfirm({
+        titulo: 'Encender la clasificación',
+        texto: 'La tabla comparativa aparecerá en el portal de todo el club, con quien haya dicho que quiere ' +
+               'participar. Recuerda que la competición oficial es la Liga Apolana.',
+        confirmar: 'Encenderla'
+      });
+      if(!ok){ pintarSwitch(false); return; }
+    }
+    var r = await sb.from('juego_ajustes').update({ ranking_publico: quiere, actualizado: new Date().toISOString() }).eq('id', 1);
+    if(r.error){ toast('No se ha podido cambiar: ' + r.error.message, 'error'); await cargarAjustes(); return; }
+    pintarSwitch(quiere);
+    toast(quiere ? 'Clasificación encendida.' : 'Clasificación apagada.', 'ok');
+  });
+
+  /* ============================================================
+     ACTUALIZAR PROGRESO
+     ============================================================ */
+  $('actualizar').addEventListener('click', async function(){
+    var b = this, m = $('msg-act');
+    b.disabled = true; m.className = 'msg'; m.textContent = 'Repasando los retos activos…';
+    var r = await sb.rpc('retos_actualizar');
+    b.disabled = false;
+    if(r.error){ m.className = 'msg error'; m.textContent = r.error.message; return; }
+    var d = (r.data && r.data[0]) ? r.data[0] : (r.data || {});
+    var nl = Number(d.logros_nuevos || 0), nm = Number(d.medallas_nuevas || 0);
+    m.className = 'msg ok';
+    m.textContent = 'Revisados ' + Number(d.retos_revisados||0) + ' retos · ' +
+      (nl ? nl + (nl===1?' reto conseguido nuevo':' retos conseguidos nuevos') : 'ningún reto nuevo') + ' · ' +
+      (nm ? nm + (nm===1?' medalla nueva':' medallas nuevas') : 'ninguna medalla nueva') + '.';
+    await cargarRetos(); await cargarLogros(); await cargarMedallas(); await cargarGente();
+    pintarTodo();
+  });
+
+  /* ============================================================
+     ARRANQUE
+     ============================================================ */
+  (async function(){
+    await cargarMiPerfil();
+    await cargarAjustes();
+    await cargarRetos();
+    await cargarLogros();
+    await cargarMedallas();
+    await cargarGente();
+    pintarTodo();
+    verFechas(); verPista();
+  })();
+});
+</script>
+
+</body>
+</html>
