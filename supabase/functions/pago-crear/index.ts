@@ -44,13 +44,19 @@ const ANON_KEY =
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 
-// A dónde vuelve la persona desde Stripe. Mientras no existan las
-// pantallas de «pago hecho», vuelve a la portada con un aviso en la
-// dirección, que siempre existe y nunca da un 404.
+// A dónde vuelve la persona desde Stripe. Si es un bono de El Cubo,
+// a su pantalla del bono: es donde están los usos que acaba de
+// comprar. Lo demás, a la portada, que siempre existe y nunca da un
+// 404. Las dos se pueden cambiar con PAGOS_URL_OK y PAGOS_URL_KO.
 const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
   .replace(/\/*$/, "/");
-const URL_OK = Deno.env.get("PAGOS_URL_OK") ?? `${URL_BASE}?pago=hecho`;
-const URL_KO = Deno.env.get("PAGOS_URL_KO") ?? `${URL_BASE}?pago=cancelado`;
+
+function vuelta(tipo: string, resultado: "hecho" | "cancelado"): string {
+  const puesta = Deno.env.get(resultado === "hecho" ? "PAGOS_URL_OK" : "PAGOS_URL_KO");
+  if (puesta) return puesta;
+  const destino = tipo === "bono" ? `${URL_BASE}portal/cubo/` : URL_BASE;
+  return `${destino}?pago=${resultado}`;
+}
 
 // --- Cabeceras para que el navegador pueda llamarnos ---
 function cors(origen: string | null): Record<string, string> {
@@ -209,8 +215,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("locale", "es");
   params.set("client_reference_id", pago.referencia);
   params.set("customer_email", correo);
-  params.set("success_url", `${URL_OK}${URL_OK.includes("?") ? "&" : "?"}ref=${pago.referencia}`);
-  params.set("cancel_url", `${URL_KO}${URL_KO.includes("?") ? "&" : "?"}ref=${pago.referencia}`);
+  const urlOk = vuelta(pago.tipo, "hecho");
+  const urlKo = vuelta(pago.tipo, "cancelado");
+  params.set("success_url", `${urlOk}${urlOk.includes("?") ? "&" : "?"}ref=${pago.referencia}`);
+  params.set("cancel_url", `${urlKo}${urlKo.includes("?") ? "&" : "?"}ref=${pago.referencia}`);
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", pago.moneda ?? "eur");
   params.set("line_items[0][price_data][unit_amount]", String(pago.importe_centimos));

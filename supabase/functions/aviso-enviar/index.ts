@@ -368,7 +368,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const titulo = recortar(cuerpo.titulo, 80);
   const mensaje = recortar(cuerpo.cuerpo ?? cuerpo.texto, 200);
-  const enlace = enlaceSeguro(cuerpo.url);
+  const enlacePedido = enlaceSeguro(cuerpo.url);
   const publico = String(cuerpo.publico ?? "todos");
   const categoria = String(cuerpo.categoria ?? "entrenos");
   const grupoId = cuerpo.grupo_id ? String(cuerpo.grupo_id) : null;
@@ -393,12 +393,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (publico === "persona" && !perfilId) {
     return responder({ error: "falta_persona", mensaje: "Elige a la persona." }, 400, origen);
   }
-  if (cuerpo.url && !enlace) {
+  if (cuerpo.url && !enlacePedido) {
     return responder({
       error: "enlace",
       mensaje: "Ese enlace no vale. Un aviso del club solo puede llevar a una página de la web del club.",
     }, 400, origen);
   }
+
+  // ---------------------------------------------------------------
+  // 3.b · A DÓNDE LLEVA AL TOCARLO
+  //   Si quien escribe ha elegido una pantalla, se respeta. Si no, el
+  //   aviso lleva A SÍ MISMO: se abre con su título, su texto entero y
+  //   cuándo se mandó. Antes, sin enlace, se abría el portal a secas y
+  //   el aviso no estaba en ninguna parte.
+  //
+  //   El identificador se decide AQUÍ, antes de mandar nada, porque el
+  //   enlace viaja dentro del propio aviso. Después se le pasa igual a
+  //   `avisos_registrar` (migración 082), así que el historial y el
+  //   enlace hablan de la misma fila.
+  // ---------------------------------------------------------------
+  const idAviso = crypto.randomUUID();
+  const enlace = enlacePedido ?? `${URL_BASE}portal/avisos/?id=${idAviso}`;
 
   // ---------------------------------------------------------------
   // 4 · Quién lo manda (para el historial)
@@ -468,7 +483,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const carga = JSON.stringify({
     titulo,
     cuerpo: mensaje,
-    url: enlace ?? URL_BASE + "portal/",
+    url: enlace,
     categoria,
     etiqueta: `apolana-${categoria}`,
   });
@@ -509,7 +524,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   await consulta("rpc/avisos_registrar", {
     method: "POST",
     body: JSON.stringify({
-      p_titulo: titulo, p_cuerpo: mensaje, p_url: enlace,
+      // El identificador es el mismo que ha viajado en el enlace del
+      // aviso: si no, el móvil llevaría a una fila que no existe.
+      p_id: idAviso,
+      // Se guarda SOLO el enlace que se pidió a mano. Cuando no hay,
+      // se deja vacío: el aviso lleva a su propia pantalla y no hace
+      // falta apuntar una dirección que ya se sabe.
+      p_titulo: titulo, p_cuerpo: mensaje, p_url: enlacePedido,
       p_publico: publico, p_categoria: categoria,
       p_grupo: grupoId, p_rol: rol, p_perfil: perfilId,
       p_texto: publicoTexto,

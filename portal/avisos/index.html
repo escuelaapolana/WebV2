@@ -51,6 +51,18 @@
               color:#fff; margin:0 0 9px; }
   .trato p { margin:0; font-size:15px; line-height:1.5; color: rgba(255,255,255,.82); }
 
+  /* ---------- 1b · el aviso abierto ----------
+     Cuando se llega tocando un aviso del móvil (…/avisos/?id=…), lo
+     primero que se ve es EL AVISO: su título, su texto entero y cuándo
+     se mandó. Ocupa el sitio de la tarjeta navy —no se suma a ella—,
+     porque en modo consulta hay una sola. */
+  .abierto .de { margin:0 0 7px; font-size:13px; line-height:1.4; color: rgba(255,255,255,.62); }
+  .abierto h2 { margin:0 0 8px; }
+  .abierto .ir { display:inline-flex; align-items:center; min-height:44px; margin:6px 0 -6px;
+                 font-size:15px; color:#fff; text-decoration:underline; text-underline-offset:3px; }
+  .abierto .ir:hover { text-decoration:none; }
+  .hueco { height:12px; }
+
   /* ---------- 2 · los interruptores ---------- */
   /* Un solo contenedor con separadores: diez tarjetas no son una lista (kit 30d). */
   .tipos { background:#fff; border:1px solid var(--linea-marcada); border-radius:14px; overflow:hidden; }
@@ -110,8 +122,12 @@
 
   /* ---------- lo recibido ---------- */
   .historial { background:#fff; border:1px solid var(--linea); border-radius:14px; overflow:hidden; }
+  /* Cada fila se abre: es la misma pantalla del aviso a la que lleva el
+     móvil, así que aquí también se toca y se lee entero. */
   .hfila { display:flex; align-items:center; gap:12px; min-height:48px; box-sizing:border-box; padding:12px 15px;
-           border-bottom:1px solid var(--linea); }
+           border-bottom:1px solid var(--linea); text-decoration:none; color:inherit; }
+  .hfila:hover { background: var(--crema); }
+  .hfila[aria-current] { background: var(--crema-banda); }
   .hfila:last-child { border-bottom:0; }
   .hfila .punto { flex:0 0 8px; width:8px; height:8px; border-radius:999px; background:#E2DCCE; }
   .hfila .punto.nuevo { background: var(--ambar); }
@@ -240,7 +256,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* --------------------------------------------------------------
      LO RECIBIDO · los avisos quedan aquí aunque no lleguen al móvil
+     ---------------------------------------------------------------
+     Los trae `mis_avisos()` (migración 082), que es la única forma de
+     que una persona vea SUS avisos: la tabla `avisos_enviados` solo la
+     lee el equipo del club. La función respeta a quién iba cada aviso
+     y lo que cada uno ha elegido recibir, así que aquí no puede
+     asomarse el aviso de otro.
      -------------------------------------------------------------- */
+  var CATEGORIA = {
+    entrenos: 'Entrenos', competiciones: 'Competiciones', pagos: 'Pagos',
+    noticias: 'Noticias del club', retos: 'Mis retos'
+  };
+
   function cuando(iso) {
     var d = new Date(iso), hoy = new Date();
     var dias = Math.floor((hoy.setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400000);
@@ -250,25 +277,95 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   }
 
-  async function historial() {
-    var filas = [];
+  /* En el aviso abierto la fecha va entera: quien llega aquí desde el
+     móvil quiere saber si esto es de esta tarde o de la semana pasada. */
+  function cuandoLargo(iso) {
+    var d = new Date(iso);
+    var hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    var dias = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86400000);
+    if (dias <= 0) return 'hoy a las ' + hora;
+    if (dias === 1) return 'ayer a las ' + hora;
+    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) + ' a las ' + hora;
+  }
+
+  async function mis(opciones) {
     try {
-      var r = await sb.from('avisos_enviados')
-        .select('titulo,created_at,publico,perfil_destino')
-        .or('publico.eq.todos,perfil_destino.eq.' + perfil.id)
-        .order('created_at', { ascending: false })
-        .limit(8);
-      if (r && !r.error && r.data) filas = r.data;
-    } catch (e) { filas = []; }
+      var r = await sb.rpc('mis_avisos', opciones || {});
+      if (r && !r.error && r.data) return r.data;
+    } catch (e) { /* sin avisos que enseñar */ }
+    return [];
+  }
+
+  async function historial(abierto) {
+    var filas = await mis({ p_limite: 12 });
     if (!filas.length) return '';
     return '<p class="rotulo">Lo que se te ha ido acumulando</p>' +
       '<div class="historial">' + filas.map(function (f) {
         var nuevo = (Date.now() - new Date(f.created_at).getTime()) < 3 * 86400000;
-        return '<div class="hfila"><span class="punto' + (nuevo ? ' nuevo' : '') + '"></span>' +
+        return '<a class="hfila" href="?id=' + encodeURIComponent(f.id) + '"' +
+            (f.id === abierto ? ' aria-current="page"' : '') + '>' +
+          '<span class="punto' + (nuevo ? ' nuevo' : '') + '"></span>' +
           '<span class="de-que">' + esc(f.titulo) + '</span>' +
-          '<span class="cuando">' + esc(cuando(f.created_at)) + '</span></div>';
+          '<span class="cuando">' + esc(cuando(f.created_at)) + '</span></a>';
       }).join('') + '</div>' +
       '<p class="nota">Los avisos también quedan aquí, aunque no los recibas en el móvil.</p>';
+  }
+
+  /* --------------------------------------------------------------
+     EL AVISO ABIERTO · lo que se ve al tocar el aviso en el móvil
+     ---------------------------------------------------------------
+     El aviso llega con su propia dirección (…/avisos/?id=…), así que
+     tocarlo abre el aviso y no el portal a secas. Ocupa el sitio de la
+     tarjeta navy: en modo consulta hay una sola.
+     -------------------------------------------------------------- */
+  function idPedido() {
+    try { return new URLSearchParams(location.search).get('id') || ''; }
+    catch (e) { return ''; }
+  }
+
+  /* El enlace dice A DÓNDE lleva, que es lo que la persona necesita
+     saber antes de tocarlo. Son las mismas ocho pantallas que ofrece el
+     panel al escribir el aviso; cualquier otra se queda en genérico. */
+  var A_DONDE = [
+    ['portal/calendario/',    'Ver el calendario'],
+    ['portal/entreno/',       'Ver el entreno de hoy'],
+    ['portal/competiciones/', 'Ver las competiciones'],
+    ['portal/recibos/',       'Ver mis recibos'],
+    ['portal/marcas/',        'Ver mis marcas'],
+    ['noticias/',             'Ver las noticias del club'],
+    ['horarios/',             'Ver los horarios'],
+    ['portal/',               'Ir al inicio de la app']
+  ];
+
+  function aDonde(url) {
+    for (var i = 0; i < A_DONDE.length; i++) {
+      if (url.indexOf(A_DONDE[i][0]) !== -1) return A_DONDE[i][1];
+    }
+    return 'Abrir la página de este aviso';
+  }
+
+  function pintarAviso(a) {
+    /* El enlace solo se enseña si lleva a OTRA pantalla: uno que llevara
+       aquí mismo sería un botón que no hace nada. */
+    var lleva = (a.url && a.url.indexOf('portal/avisos/') === -1) ? a.url : '';
+    return '<article class="trato abierto">' +
+      '<p class="de">' + esc(CATEGORIA[a.categoria] || 'Aviso del club') + ' · ' + esc(cuandoLargo(a.created_at)) + '</p>' +
+      '<h2>' + esc(a.titulo) + '</h2>' +
+      '<p>' + esc(a.cuerpo) + '</p>' +
+      (lleva ? '<a class="ir" href="' + esc(lleva) + '">' + esc(aDonde(lleva)) + '</a>' : '') +
+    '</article>';
+  }
+
+  function noEncontrado() {
+    return '<div class="caja"><h2>Ese aviso ya no está aquí</h2>' +
+      '<p>Puede que fuera para otra persona o que sea de hace mucho. Los últimos que te han llegado los tienes más abajo.</p></div>';
+  }
+
+  async function cabecera() {
+    var id = idPedido();
+    if (!id) return '';
+    var filas = await mis({ p_id: id });
+    return filas.length ? pintarAviso(filas[0]) : noEncontrado();
   }
 
   /* --------------------------------------------------------------
@@ -279,30 +376,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     try { e = await APOLANA_AVISOS.estado(); }
     catch (err) { e = { puede: false, activo: false, motivo: 'error', texto: '' }; }
 
-    var hist = '';
-    try { hist = await historial(); } catch (err) { hist = ''; }
+    var hist = '', cabeza = '';
+    try { hist = await historial(idPedido()); } catch (err) { hist = ''; }
+    /* Si se llega tocando un aviso, ÉL es la tarjeta navy de la
+       pantalla y el trato se queda para cuando no hay nada abierto. */
+    try { cabeza = await cabecera(); } catch (err) { cabeza = ''; }
+    /* Donde va el trato, va el aviso abierto si lo hay. Y donde el trato
+       no pinta nada —los avisos apagados o bloqueados— el aviso se pone
+       igual arriba: la persona ha venido a leerlo, no a otra cosa. */
+    function arriba() { return cabeza || trato(); }
+    function tras(resto) { return cabeza ? cabeza + '<div class="hueco"></div>' + resto : resto; }
 
     var html = '';
 
     if (e.motivo === 'apagado') {
       /* El club todavía no ha puesto sus claves: nunca un botón que no hace nada. */
-      html = '<div class="caja"><h2>Los avisos todavía no están en marcha</h2>' +
-        '<p>El club los está preparando. Cuando estén, aquí aparecerá el botón para activarlos. Mientras tanto puedes dejar elegido de qué quieres que te avisemos.</p></div>' +
+      html = tras('<div class="caja"><h2>Los avisos todavía no están en marcha</h2>' +
+        '<p>El club los está preparando. Cuando estén, aquí aparecerá el botón para activarlos. Mientras tanto puedes dejar elegido de qué quieres que te avisemos.</p></div>') +
         lista('De qué te avisamos') + hist;
 
     } else if (e.motivo === 'bloqueado') {
       /* No se puede desbloquear desde la web: se dice en una línea dónde se
          arregla, se ofrece el correo, y los avisos se quedan en la pantalla. */
-      html = '<div class="caja caja--ambar"><h2>Tu teléfono tiene los avisos bloqueados</h2>' +
+      html = tras('<div class="caja caja--ambar"><h2>Tu teléfono tiene los avisos bloqueados</h2>' +
         '<p>Se decide en los ajustes del móvil, no aquí.</p>' +
-        '<p class="ruta">Ajustes → Apolana → Notificaciones</p></div>' +
+        '<p class="ruta">Ajustes → Apolana → Notificaciones</p></div>') +
         correo() +
         lista('De qué te avisaremos cuando lo desbloquees') + hist;
 
     } else if (e.motivo === 'instalar') {
       /* iPhone y iPad sin la app en la pantalla de inicio: es cosa de Apple,
          no del club, y se dice sin que parezca una avería. */
-      html = trato() +
+      html = arriba() +
         '<div class="caja" style="margin-top:12px"><h2>En el iPhone hace falta tener la app</h2>' +
         '<p>Los avisos solo llegan si Apolana está instalada en la pantalla de inicio: con Safari a secas, Apple no los deja pasar. Se instala en un minuto y desde aquí mismo se activan después.</p>' +
         '<a class="bot bot--borde" href="../../app/">Cómo instalar la app</a></div>' +
@@ -311,14 +416,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     } else if (!e.puede) {
       /* Navegador sin avisos, sin https, sin sesión… se explica y ya. */
-      html = trato() +
+      html = arriba() +
         '<div class="caja" style="margin-top:12px"><h2>Aquí no se pueden activar</h2>' +
         '<p>' + esc(e.texto || 'Este navegador no sabe recibir avisos.') + '</p></div>' +
         correo() +
         lista('De qué te avisamos') + hist;
 
     } else if (e.activo) {
-      html = trato() +
+      html = arriba() +
         lista('De qué te avisamos') +
         banda('Puedes cambiarlo cuando quieras desde aquí.') +
         '<p class="rotulo">Este aparato</p>' +
@@ -330,7 +435,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } else {
       /* El caso normal: se puede activar. Los interruptores van ANTES del
          botón, porque quien llega abajo ya ha dicho que sí de hecho. */
-      html = trato() +
+      html = arriba() +
         lista('Elige de qué, y luego lo activamos') +
         banda('Puedes cambiarlo cuando quieras desde aquí.') +
         '<div class="acciones">' +
