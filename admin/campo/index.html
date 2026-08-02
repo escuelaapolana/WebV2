@@ -81,6 +81,59 @@
 
   .vacio { color: var(--texto-suave); font-size:14px; padding:8px 0; }
 
+  /* ---------- NOTA DEL DÍA ----------
+     Botón discreto en cada fila. Si ese día ya hay algo apuntado se
+     pone en azul con un punto, para verlo de un vistazo sin abrirlo. */
+  .nd-btn { width:44px; height:44px; flex:0 0 44px; padding:0; position:relative;
+    display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid var(--linea); background:#fff; border-radius:12px;
+    color: var(--texto-tenue); cursor:pointer; }
+  .nd-btn svg { width:20px; height:20px; }
+  .nd-btn.tiene { color: var(--azul-oscuro); background: var(--azul-suave); border-color:#C9D9E7; }
+  .nd-btn.tiene::after { content:""; position:absolute; top:5px; right:5px; width:8px; height:8px;
+    border-radius:50%; background: var(--azul-oscuro); }
+  .privado-linea { font-size:12.5px; color: var(--texto-suave); margin:10px 0 0; }
+
+  /* Ventana emergente de la nota (mismo patrón que el resto del panel) */
+  #modal-nota { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:clamp(14px,5vh,60px) 14px; overflow:auto;
+    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+  #modal-nota.oculto { display:none !important; }
+  #modal-nota .modal-caja { background:#fff; border:1px solid var(--linea); border-radius:18px;
+    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:20px; width:min(520px,100%);
+    box-sizing:border-box; animation:modal-sube .2s ease; }
+  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
+  #modal-nota h3 { font-family: var(--fuente-titulo); font-weight:700; text-transform:uppercase;
+    color: var(--navy); font-size:21px; line-height:1.1; margin:0; }
+  #modal-nota .mn-sub { font-family: var(--fuente-mono); font-size:12px; color: var(--texto-suave); margin:4px 0 0; }
+  #modal-nota label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:14px 0 5px; }
+  #modal-nota select, #modal-nota textarea { width:100%; box-sizing:border-box; padding:12px;
+    border:1px solid var(--linea-borde,var(--linea)); border-radius:10px; background:#fff;
+    font-family:inherit; font-size:16px; color: var(--navy); }
+  #modal-nota textarea { min-height:110px; resize:vertical; line-height:1.45; }
+  #modal-nota .mn-acc { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+  #modal-nota .mn-msg { font-size:13px; color: var(--texto-suave); }
+  #modal-nota .mn-msg.error { color:#A8453F; font-weight:600; }
+  .mn-privado { background: var(--azul-suave); border:1px solid #C9D9E7; border-radius:10px;
+    padding:9px 11px; font-size:12.5px; color: var(--navy); margin:12px 0 0; }
+  .mn-lista { margin-top:14px; display:flex; flex-direction:column; gap:8px; }
+  .nd-item { border:1px solid var(--linea); border-radius:12px; padding:10px 12px; background: var(--crema,#FBF9F4); }
+  .nd-item.editandose { border-color: var(--azul); box-shadow:0 0 0 2px rgba(59,133,192,.16); }
+  .nd-item .nm { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .nd-tipo { font-family: var(--fuente-mono); font-size:11px; padding:3px 9px; border-radius:999px;
+    background: var(--crema-media); color: var(--navy); }
+  .nd-tipo.t-comportamiento { background:#FBE9E7; color:#A8453F; }
+  .nd-tipo.t-lesion { background:#FDF3DD; color:#8A5507; }
+  .nd-tipo.t-material { background:#EDE7F6; color:#5B4A8A; }
+  .nd-tipo.t-familia { background: var(--azul-suave); color: var(--azul-oscuro); }
+  .nd-quien { font-size:12px; color: var(--texto-tenue); }
+  .nd-txt { margin:6px 0 0; font-size:14.5px; color: var(--navy); line-height:1.45; white-space:pre-wrap; }
+  .nd-acc { display:flex; gap:6px; margin-top:8px; }
+  .nd-lin { border:0; background:none; padding:8px 10px; min-height:44px; font-family:inherit; font-size:13px;
+    color: var(--azul-oscuro); cursor:pointer; text-decoration:underline; }
+  .nd-lin.peligro { color:#A8453F; }
+
   /* Barra inferior tipo app · mismo aspecto que la del resto del panel
      y la del portal (assets/js/admin-tabbar.js). */
   .tabbar { display:flex; align-items:stretch; position:fixed; left:0; right:0; bottom:0; z-index:600;
@@ -114,6 +167,9 @@
   <nav class="tabbar" id="tabbar"></nav>
 </div>
 
+<!-- Ventana para apuntar la nota del día de un atleta. Vacía hasta que se abre. -->
+<div id="modal-nota" class="oculto" role="dialog" aria-modal="true" aria-label="Nota del día"><div class="modal-caja" id="modal-nota-caja"></div></div>
+
 <script>
 window.APOLANA_ADMIN.listo(function (sb) {
   var $ = function(id){ return document.getElementById(id); };
@@ -128,7 +184,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
   function iniciales(a){ return ((a.nombre||'?')[0]+(a.apellidos?a.apellidos[0]:'')).toUpperCase(); }
   function edad(a){ if(!a.fecha_nacimiento) return null; var n=new Date(a.fecha_nacimiento), h=new Date(); var e=h.getFullYear()-n.getFullYear(); var m=h.getMonth()-n.getMonth(); if(m<0||(m===0&&h.getDate()<n.getDate())) e--; return e; }
 
-  var GRUPOS = [], ATLETAS = [], GMAP = {};
+  var GRUPOS = [], ATLETAS = [], GMAP = {}, PERSONAS = {}, YO = '';
   var svg = function(p,f){ return '<svg class="ic" viewBox="0 0 24 24" fill="'+(f||'none')+'" stroke="'+(f?'none':'currentColor')+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; };
   var icLista = svg('<path d="M9 4h6a1 1 0 0 1 1 1v0a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v0a1 1 0 0 1 1-1z"/><path d="M6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1"/><path d="M8 11l2 2 3.5-3.5M8 16h6"/>');
   var icBuscar = svg('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>');
@@ -159,6 +215,16 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if(!g.error && g.data){ GRUPOS = g.data; GRUPOS.forEach(function(x){ GMAP[x.id]=x; }); }
     var a = await sb.from('atletas').select('id,nombre,apellidos,fecha_nacimiento,categoria,grupo_id,estado,fecha_prueba_fin').neq('estado','baja').order('apellidos');
     if(!a.error && a.data) ATLETAS = a.data;
+    /* Quién está usando el panel: se guarda como autor de las notas, para
+       que en el informe se pueda decir quién apuntó cada cosa. */
+    try {
+      var s = await sb.auth.getSession();
+      if(s && s.data && s.data.session) YO = s.data.session.user.id;
+    } catch(e){}
+    try {
+      var p = await sb.from('perfiles').select('id,nombre,apellidos');
+      if(!p.error && p.data) p.data.forEach(function(x){ PERSONAS[x.id] = [x.nombre,x.apellidos].filter(Boolean).join(' '); });
+    } catch(e){}
   }
 
   // ---------- SECCIÓN: BUSCAR ----------
@@ -233,7 +299,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
       $('lst-volver').addEventListener('click', async function(){
         if(!(await puedoSalirDeLaLista())) return;
         LST.grupo=''; LST.fecha=''; LST.marcas={}; LST.guardadas={}; LST.ausencias={};
-        LST.sucio=false; LST.guardadoEn=''; LST.error='';
+        LST.sucio=false; LST.guardadoEn=''; LST.error=''; NOTAS={};
         pintarLista(); window.scrollTo(0,0);
       });
       pintarCuerpoLista();
@@ -349,6 +415,9 @@ window.APOLANA_ADMIN.listo(function (sb) {
         });
       } catch(e){}
     }
+    /* Las notas de ESE día: así el icono de cada fila ya sale marcado si
+       alguien apuntó algo antes (por ejemplo, al corregir la lista). */
+    await cargarNotasDia(ids, LST.fecha);
     if(recuperarBorrador()){
       LST.sucio = true;
       LST.error = 'Se han recuperado las marcas que quedaron sin guardar en este móvil. Repásalas y dale a «Guardar lista».';
@@ -374,7 +443,10 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var filas = atls.map(function(a){
       var e = edad(a);
       var v = LST.marcas[a.id];
+      var nn = (NOTAS[a.id]||[]).length;
+      var etiqNota = nn ? nn+(nn>1?' notas':' nota')+' de hoy · '+nombreDe(a) : 'Añadir nota de hoy · '+nombreDe(a);
       return '<div class="fila-at"><div class="nom">'+esc(nombreDe(a))+(a.estado==='prueba'?'<span class="badge-prueba">PRUEBA</span>':'')+'<small>'+(e!=null?e+' años':'')+'</small></div>'+
+        '<button type="button" class="nd-btn'+(nn?' tiene':'')+'" data-nota="'+a.id+'" title="'+esc(etiqNota)+'" aria-label="'+esc(etiqNota)+'">'+icNota+'</button>'+
         '<button type="button" class="toggle '+estadoToggle(v)+'" data-a="'+a.id+'">'+textoToggle(v)+'</button></div>';
     }).join('');
 
@@ -391,8 +463,12 @@ window.APOLANA_ADMIN.listo(function (sb) {
       aviso + filas +
       '<div class="guardar-barra"><button type="button" class="btn btn--primario" id="lst-guardar"'+(LST.guardando?' disabled':'')+'>'+
         (LST.guardando?'Guardando…':'Guardar lista')+'</button>'+estado+'</div>'+
-      errorHTML;
+      errorHTML+
+      '<p class="privado-linea">El icono de nota sirve para apuntar lo que pase con un atleta ese día. Son notas internas del club: la familia no las ve.</p>';
 
+    cuerpo.querySelectorAll('.nd-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ abrirNota(btn.getAttribute('data-nota')); });
+    });
     cuerpo.querySelectorAll('.toggle').forEach(function(btn){ btn.addEventListener('click', function(){
       var id = btn.getAttribute('data-a');
       var v = LST.marcas[id];
@@ -450,6 +526,184 @@ window.APOLANA_ADMIN.listo(function (sb) {
      sin guardar, el navegador pregunta antes de tirarlas. */
   window.addEventListener('beforeunload', function(e){
     if(LST.grupo && LST.sucio){ e.preventDefault(); e.returnValue = ''; return ''; }
+  });
+
+  /* ============================================================
+     NOTA DEL DÍA
+     ------------------------------------------------------------
+     Apuntar en el momento lo que ha pasado con un atleta («hoy ha
+     roto X y no ha hecho caso»), para poder enseñárselo luego a la
+     familia en el informe. Va en la tabla `notas_atleta`, que SOLO
+     lee el equipo técnico: ni el atleta ni la familia la ven.
+     La nota se guarda SOLA, sin tocar la lista: se puede apuntar
+     antes de darle a «Guardar lista» y no depende de ella.
+     ============================================================ */
+  var TIPOS_NOTA = [
+    { v:'comportamiento', t:'Comportamiento' },
+    { v:'lesion',         t:'Lesión' },
+    { v:'material',       t:'Material' },
+    { v:'familia',        t:'Familia' },
+    { v:'otro',           t:'Otro' }
+  ];
+  function tipoTexto(v){
+    for(var i=0;i<TIPOS_NOTA.length;i++) if(TIPOS_NOTA[i].v===v) return TIPOS_NOTA[i].t;
+    return 'Otro';
+  }
+  var icNota = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7.5z"/><path d="M15 4v4h4"/><path d="M8.5 12.5h7M8.5 16h4.5"/></svg>';
+
+  /* NOTAS[atleta_id] = notas de ese atleta EN EL DÍA de la lista. */
+  var NOTAS = {};
+  var NOTA = { atleta:null, editando:'', guardando:false, msg:'', error:false };
+
+  async function cargarNotasDia(ids, fecha){
+    NOTAS = {};
+    if(!ids || !ids.length || !fecha) return;
+    var r = await sb.from('notas_atleta')
+      .select('id,atleta_id,texto,tipo,fecha,autor_id,created_at')
+      .eq('fecha', fecha).in('atleta_id', ids)
+      .order('created_at', { ascending:true });
+    if(r.error || !r.data) return;
+    r.data.forEach(function(n){ (NOTAS[n.atleta_id] = NOTAS[n.atleta_id] || []).push(n); });
+  }
+  function autorTexto(n){
+    if(n.autor_id && n.autor_id===YO) return 'Lo apuntaste tú';
+    var nom = n.autor_id ? PERSONAS[n.autor_id] : '';
+    return nom ? 'Lo apuntó '+nom : 'Equipo técnico';
+  }
+  function horaDe(iso){
+    if(!iso) return '';
+    var d = new Date(iso); if(isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  function abrirNota(atletaId){
+    var at = null;
+    ATLETAS.forEach(function(a){ if(a.id===atletaId) at = a; });
+    if(!at) return;
+    NOTA = { atleta:at, editando:'', guardando:false, msg:'', error:false };
+    $('modal-nota').classList.remove('oculto');
+    pintarModalNota();
+  }
+  function cerrarNota(){
+    $('modal-nota').classList.add('oculto');
+    $('modal-nota-caja').innerHTML = '';
+    NOTA = { atleta:null, editando:'', guardando:false, msg:'', error:false };
+    pintarCuerpoLista();
+  }
+
+  function pintarModalNota(){
+    var at = NOTA.atleta; if(!at) return;
+    var caja = $('modal-nota-caja');
+    var lista = NOTAS[at.id] || [];
+    var enEdicion = null;
+    lista.forEach(function(n){ if(n.id===NOTA.editando) enEdicion = n; });
+
+    var notasHTML = lista.length
+      ? '<div class="mn-lista">'+lista.map(function(n){
+          return '<div class="nd-item'+(n.id===NOTA.editando?' editandose':'')+'">'+
+            '<div class="nm"><span class="nd-tipo t-'+esc(n.tipo||'otro')+'">'+esc(tipoTexto(n.tipo))+'</span>'+
+              '<span class="nd-quien">'+esc(autorTexto(n))+(horaDe(n.created_at)?' · '+esc(horaDe(n.created_at)):'')+'</span></div>'+
+            '<p class="nd-txt">'+esc(n.texto)+'</p>'+
+            '<div class="nd-acc">'+
+              '<button type="button" class="nd-lin" data-editar="'+esc(n.id)+'">Editar</button>'+
+              '<button type="button" class="nd-lin peligro" data-borrar="'+esc(n.id)+'">Borrar</button>'+
+            '</div></div>';
+        }).join('')+'</div>'
+      : '';
+
+    var tipoSel = enEdicion ? (enEdicion.tipo||'otro') : 'comportamiento';
+    caja.innerHTML =
+      '<h3>'+esc(nombreDe(at))+'</h3>'+
+      '<p class="mn-sub">Nota del '+esc(fechaBonita(LST.fecha||fechaHoy()))+'</p>'+
+      notasHTML +
+      '<label for="mn-tipo">'+(enEdicion?'Corrige la nota':'Qué ha pasado')+'</label>'+
+      '<select id="mn-tipo">'+TIPOS_NOTA.map(function(t){
+        return '<option value="'+t.v+'"'+(t.v===tipoSel?' selected':'')+'>'+t.t+'</option>';
+      }).join('')+'</select>'+
+      '<label for="mn-texto">En dos líneas</label>'+
+      '<textarea id="mn-texto" placeholder="Ha roto un cono y no ha hecho caso cuando se le ha llamado la atención.">'+esc(enEdicion?enEdicion.texto:'')+'</textarea>'+
+      '<div class="mn-acc">'+
+        '<button type="button" class="btn btn--primario" id="mn-guardar"'+(NOTA.guardando?' disabled':'')+'>'+
+          (NOTA.guardando ? 'Guardando…' : (enEdicion ? 'Guardar cambios' : 'Guardar nota'))+'</button>'+
+        '<button type="button" class="btn btn--neutro" id="mn-cerrar">'+(enEdicion?'Dejarlo como estaba':'Cerrar')+'</button>'+
+        '<span class="mn-msg'+(NOTA.error?' error':'')+'">'+esc(NOTA.msg)+'</span>'+
+      '</div>'+
+      '<p class="mn-privado">Esta nota es interna del club: la ve el equipo técnico y nadie más. La familia y el atleta no la ven en su portal.</p>';
+
+    $('mn-cerrar').addEventListener('click', function(){
+      if(NOTA.editando){ NOTA.editando=''; NOTA.msg=''; NOTA.error=false; pintarModalNota(); return; }
+      cerrarNota();
+    });
+    $('mn-guardar').addEventListener('click', guardarNota);
+    caja.querySelectorAll('[data-editar]').forEach(function(b){
+      b.addEventListener('click', function(){
+        NOTA.editando = b.getAttribute('data-editar'); NOTA.msg=''; NOTA.error=false;
+        pintarModalNota();
+        var t = $('mn-texto'); if(t){ t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+      });
+    });
+    caja.querySelectorAll('[data-borrar]').forEach(function(b){
+      b.addEventListener('click', function(){ borrarNota(b.getAttribute('data-borrar')); });
+    });
+  }
+
+  async function guardarNota(){
+    if(NOTA.guardando || !NOTA.atleta) return;
+    var texto = ($('mn-texto').value||'').trim();
+    var tipo = $('mn-tipo').value;
+    if(!texto){ NOTA.msg='Escribe qué ha pasado antes de guardar.'; NOTA.error=true; pintarModalNota(); return; }
+    NOTA.guardando = true; NOTA.msg='Guardando…'; NOTA.error=false; pintarModalNota();
+    var at = NOTA.atleta, fecha = LST.fecha || fechaHoy();
+    try {
+      if(NOTA.editando){
+        var up = await sb.from('notas_atleta').update({ texto:texto, tipo:tipo })
+          .eq('id', NOTA.editando).select('id,atleta_id,texto,tipo,fecha,autor_id,created_at');
+        if(up.error) throw up.error;
+        if(!up.data || !up.data.length) throw new Error('no se ha encontrado la nota');
+        var lst = NOTAS[at.id] || [];
+        for(var i=0;i<lst.length;i++) if(lst[i].id===NOTA.editando) lst[i] = up.data[0];
+        NOTA.editando = '';
+      } else {
+        var ins = await sb.from('notas_atleta').insert({
+          atleta_id: at.id, autor_id: YO || null, texto: texto, tipo: tipo,
+          fecha: fecha, grupo_id: LST.grupo || at.grupo_id || null
+        }).select('id,atleta_id,texto,tipo,fecha,autor_id,created_at');
+        if(ins.error) throw ins.error;
+        if(ins.data && ins.data.length) (NOTAS[at.id] = NOTAS[at.id] || []).push(ins.data[0]);
+      }
+      NOTA.guardando = false; NOTA.msg = 'Nota guardada.'; NOTA.error = false;
+      pintarModalNota();
+      var t = $('mn-texto'); if(t) t.value = '';
+      pintarCuerpoLista();
+      if(window.apoToast) window.apoToast('Nota guardada · '+nombreDe(at),'ok');
+    } catch(e){
+      NOTA.guardando = false;
+      NOTA.msg = 'NO se ha guardado: '+((e&&e.message)||e)+'. El texto sigue aquí, vuelve a intentarlo.';
+      NOTA.error = true;
+      pintarModalNota();
+    }
+  }
+
+  async function borrarNota(id){
+    var ok = window.apoConfirm ? await window.apoConfirm({
+      titulo: 'Borrar la nota',
+      texto: 'Se borra del historial del atleta y no se puede recuperar.',
+      confirmar: 'Borrar', cancelar: 'Dejarla', peligro: true
+    }) : true;
+    if(!ok) return;
+    var at = NOTA.atleta; if(!at) return;
+    var d = await sb.from('notas_atleta').delete().eq('id', id);
+    if(d.error){ NOTA.msg='NO se ha borrado: '+(d.error.message||''); NOTA.error=true; pintarModalNota(); return; }
+    NOTAS[at.id] = (NOTAS[at.id]||[]).filter(function(n){ return n.id!==id; });
+    if(NOTA.editando===id) NOTA.editando='';
+    NOTA.msg = 'Nota borrada.'; NOTA.error = false;
+    pintarModalNota();
+    pintarCuerpoLista();
+  }
+
+  $('modal-nota').addEventListener('click', function(e){ if(e.target===this) cerrarNota(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && !$('modal-nota').classList.contains('oculto')) cerrarNota();
   });
 
   // ---------- SECCIÓN: HOY ----------

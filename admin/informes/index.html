@@ -97,7 +97,11 @@
   #area-impresion .doc-cab .meta { text-align:right; font-size:8pt; color:#6B7683; line-height:1.4; }
   #area-impresion h1 { font-size:19pt; color:#2E4256; text-transform:uppercase; letter-spacing:.02em; margin:0 0 10px; line-height:1.1; }
   #area-impresion h3.bloque { font-size:10.5pt; color:#2F6FA8; text-transform:uppercase; letter-spacing:.05em; margin:16px 0 6px; padding-bottom:4px; border-bottom:1px solid #E3DED3; }
+  /* En pantalla las tablas anchas se deslizan dentro de su caja; en papel eso
+     cortaría columnas, así que aquí se dejan sueltas para que quepan enteras. */
+  #area-impresion .tabla-scroll { overflow:visible !important; }
   #area-impresion table { width:100%; border-collapse:collapse; margin:8px 0 14px; font-size:9pt; page-break-inside:auto; }
+  #area-impresion tr { page-break-inside:avoid; }
   #area-impresion th { background:#F3EFE6; color:#2E4256; text-align:left; font-size:8pt; text-transform:uppercase; letter-spacing:.05em; padding:6px 8px; border-bottom:2px solid #2E4256; }
   #area-impresion td { padding:5px 8px; border-bottom:1px solid #E3DED3; }
   #area-impresion td.num, #area-impresion th.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -129,6 +133,7 @@
       <button data-inf="impagados">Impagados</button>
       <button data-inf="altasbajas">Altas y bajas</button>
       <button data-inf="asistencia">Asistencia</button>
+      <button data-inf="historial">Historial de un atleta</button>
       <button data-inf="cubo">El Cubo</button>
     </div>
 
@@ -872,7 +877,225 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   // ============================================================
-  //  INFORME 8 · EL CUBO
+  //  INFORME 8 · HISTORIAL DE UN ATLETA
+  // ------------------------------------------------------------
+  //  Es lo que se pone encima de la mesa en una reunión con la
+  //  familia: día a día, si vino o faltó, si avisaron, y lo que se
+  //  apuntó ese día al pasar lista (tabla `notas_atleta`).
+  //  Las notas son internas del equipo técnico: NO se ven en el
+  //  portal de la familia ni en el del atleta, y este informe solo
+  //  se puede sacar desde el panel, que es zona de admin.
+  // ============================================================
+  var TIPOS_NOTA = [
+    { v: 'comportamiento', t: 'Comportamiento' },
+    { v: 'lesion',         t: 'Lesión' },
+    { v: 'material',       t: 'Material' },
+    { v: 'familia',        t: 'Familia' },
+    { v: 'otro',           t: 'Otro' }
+  ];
+  function tipoNotaTexto(v) {
+    for (var i = 0; i < TIPOS_NOTA.length; i++) if (TIPOS_NOTA[i].v === v) return TIPOS_NOTA[i].t;
+    return 'Otro';
+  }
+  // Resta meses a una fecha ISO y la devuelve en ISO.
+  function isoMenosMeses(iso, meses) {
+    var d = new Date(iso + 'T00:00:00');
+    d.setMonth(d.getMonth() - meses);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  var DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  function diaSemana(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return isNaN(d.getTime()) ? '' : DIAS_SEMANA[d.getDay()];
+  }
+
+  function infHistorial() {
+    var opciones = D.atletas.map(function (a) {
+      return '<option value="' + a.id + '">' + esc(nombreAtleta(a)) + (a.estado === 'baja' ? ' (baja)' : '') + '</option>';
+    }).join('');
+    var desdePorDefecto = isoMenosMeses(hoyIso, 6);
+
+    var html = '';
+    html += '<h2 class="inf-tit">Historial de un atleta</h2>';
+    html += '<p class="inf-sub">Elige un atleta y unas fechas y sale su historial día a día: si vino o faltó, si la familia avisó y lo que se apuntó ese día. Listo para imprimir y enseñárselo a la familia.</p>';
+    html += '<div class="filtros no-print">' +
+      '<div><label for="h-atleta">Atleta</label><select id="h-atleta"><option value="">— Elige una persona —</option>' + opciones + '</select></div>' +
+      '<div><label for="h-desde">Desde</label><input type="date" id="h-desde" value="' + desdePorDefecto + '"></div>' +
+      '<div><label for="h-hasta">Hasta</label><input type="date" id="h-hasta" value="' + hoyIso + '"></div>' +
+      '</div>';
+    html += '<div class="acciones-inf no-print">' +
+      '<button class="btn btn--primario btn--mini" id="b-print" disabled>Imprimir / PDF</button>' +
+      '<button class="btn btn--secundario btn--mini" id="b-csv" disabled>Descargar CSV</button></div>';
+    html += '<div id="hist-cuerpo"><div class="aviso">Selecciona una persona para ver su historial.</div></div>';
+    html += '<p class="nota-pie">Las notas del día son <strong>internas del equipo técnico</strong>: no se ven en el portal de la familia ni en el del atleta, y solo se pueden consultar desde este panel.</p>';
+    pintar(html);
+
+    var actual = null, dias = [], resumen = null, rango = '';
+
+    async function render() {
+      var id = $('h-atleta').value;
+      var desde = $('h-desde').value || desdePorDefecto;
+      var hasta = $('h-hasta').value || hoyIso;
+      $('b-print').disabled = true; $('b-csv').disabled = true;
+      if (!id) {
+        actual = null; dias = []; resumen = null;
+        $('hist-cuerpo').innerHTML = '<div class="aviso">Selecciona una persona para ver su historial.</div>';
+        return;
+      }
+      if (desde > hasta) {
+        $('hist-cuerpo').innerHTML = '<div class="aviso">La fecha de «desde» es posterior a la de «hasta». Cámbialas para ver el historial.</div>';
+        return;
+      }
+      actual = D.atletasById[id];
+      rango = 'Del ' + fechaCorta(desde) + ' al ' + fechaCorta(hasta);
+      $('hist-cuerpo').innerHTML = '<div class="cargando">Buscando el historial…</div>';
+
+      var r = await Promise.all([
+        sb.from('asistencia').select('fecha,presente,grupo_id').eq('atleta_id', id).gte('fecha', desde).lte('fecha', hasta),
+        sb.from('ausencias').select('fecha,motivo,avisado_por_nombre').eq('atleta_id', id).gte('fecha', desde).lte('fecha', hasta),
+        sb.from('notas_atleta').select('id,fecha,tipo,texto,autor_id,grupo_id,created_at').eq('atleta_id', id).gte('fecha', desde).lte('fecha', hasta)
+      ]);
+      var err = null;
+      r.forEach(function (x) { if (x.error && !err) err = x.error; });
+      if (err) {
+        $('hist-cuerpo').innerHTML = '<div class="aviso">No se pudo leer el historial: ' + esc(err.message) + '</div>';
+        return;
+      }
+
+      // Un día por fecha, junte lo que junte: lista, aviso de la familia o nota.
+      var porDia = {};
+      function dia(f) {
+        if (!porDia[f]) porDia[f] = { fecha: f, presente: null, aviso: null, notas: [], grupo_id: null };
+        return porDia[f];
+      }
+      (r[0].data || []).forEach(function (x) { var d = dia(x.fecha); d.presente = !!x.presente; d.grupo_id = x.grupo_id || d.grupo_id; });
+      (r[1].data || []).forEach(function (x) { dia(x.fecha).aviso = x; });
+      (r[2].data || []).forEach(function (x) { var d = dia(x.fecha); d.notas.push(x); if (!d.grupo_id) d.grupo_id = x.grupo_id; });
+
+      dias = Object.keys(porDia).sort().reverse().map(function (f) { return porDia[f]; });
+      dias.forEach(function (d) {
+        d.notas.sort(function (a, b) { return String(a.created_at || '').localeCompare(String(b.created_at || '')); });
+      });
+
+      // Resumen de arriba: es lo que se lee en voz alta en la reunión.
+      resumen = { entrenos: 0, vino: 0, falto: 0, avisadas: 0, notas: 0, porTipo: {} };
+      dias.forEach(function (d) {
+        if (d.presente !== null) { resumen.entrenos++; if (d.presente) resumen.vino++; else resumen.falto++; }
+        if (d.aviso) resumen.avisadas++;
+        d.notas.forEach(function (n) {
+          resumen.notas++;
+          var t = n.tipo || 'otro';
+          resumen.porTipo[t] = (resumen.porTipo[t] || 0) + 1;
+        });
+      });
+      var pct = resumen.entrenos ? Math.round(resumen.vino / resumen.entrenos * 100) : 0;
+      resumen.pct = pct;
+
+      var g = grupoDe(actual);
+      var cuerpo = '<h3 class="bloque">' + esc(nombreAtleta(actual)) + '</h3>';
+      cuerpo += '<p class="inf-sub">' + esc(seccionDe(actual)) + (g ? ' · ' + esc(g.nombre) : '') +
+        (actual.categoria ? ' · ' + esc(actual.categoria) : '') + ' · ' + esc(rango) + '</p>';
+
+      cuerpo += '<div class="cifras">' +
+        '<div class="cifra"><span class="et">Entrenos con lista</span><span class="num">' + num(resumen.entrenos) + '</span><span class="nota">días en los que se pasó lista</span></div>' +
+        '<div class="cifra verde"><span class="et">Vino</span><span class="num">' + num(resumen.vino) + '</span><span class="nota">' + pct + '% de asistencia</span></div>' +
+        '<div class="cifra rojo"><span class="et">Faltó</span><span class="num">' + num(resumen.falto) + '</span><span class="nota">' + num(resumen.avisadas) + ' avisada' + (resumen.avisadas === 1 ? '' : 's') + ' por la familia</span></div>' +
+        '<div class="cifra ambar"><span class="et">Notas del club</span><span class="num">' + num(resumen.notas) + '</span><span class="nota">' + (resumen.notas ? 'apuntadas al pasar lista' : 'ninguna en estas fechas') + '</span></div>' +
+        '</div>';
+
+      // Desglose de las notas por tipo (lo que más se pregunta en la reunión).
+      if (resumen.notas) {
+        var filasTipo = [];
+        TIPOS_NOTA.forEach(function (t) {
+          if (resumen.porTipo[t.v]) filasTipo.push({ tipo: esc(t.t), n: num(resumen.porTipo[t.v]) });
+        });
+        cuerpo += '<h3 class="bloque">Notas por tipo</h3>' +
+          tablaHtml([{ t: 'Tipo de nota', k: 'tipo' }, { t: 'Cuántas', k: 'n', num: true }], filasTipo);
+      }
+
+      cuerpo += '<h3 class="bloque">Día a día</h3>';
+      if (!dias.length) {
+        cuerpo += '<div class="aviso">No hay nada registrado de esta persona en esas fechas: ni listas pasadas, ni avisos de la familia, ni notas.</div>';
+      } else {
+        var filasDia = dias.map(function (d) {
+          var asis = d.presente === true ? '<span class="pill pill-pagado">Vino</span>'
+                   : d.presente === false ? '<span class="pill pill-impagado">Faltó</span>'
+                   : '<span class="pill">Sin lista</span>';
+          var avisoTxt = d.aviso
+            ? esc(d.aviso.motivo || 'no venía') + (d.aviso.avisado_por_nombre ? ' <span style="color:#6B7683;font-size:12px">(avisó ' + esc(d.aviso.avisado_por_nombre) + ')</span>' : '')
+            : '—';
+          var notasTxt = d.notas.length
+            ? d.notas.map(function (n) {
+                var quien = n.autor_id && D.perfilesById[n.autor_id] ? nombrePerfil(D.perfilesById[n.autor_id]) : 'equipo técnico';
+                return '<strong>' + esc(tipoNotaTexto(n.tipo)) + ':</strong> ' + esc(n.texto) +
+                  ' <span style="color:#6B7683;font-size:12px">(' + esc(quien) + ')</span>';
+              }).join('<br>')
+            : '—';
+          var gr = d.grupo_id && D.gruposById[d.grupo_id] ? D.gruposById[d.grupo_id].nombre : '';
+          return {
+            fecha: fechaCorta(d.fecha) + '<br><span style="color:#6B7683;font-size:12px">' + esc(diaSemana(d.fecha)) + (gr ? ' · ' + esc(gr) : '') + '</span>',
+            asis: asis,
+            aviso: avisoTxt,
+            notas: notasTxt
+          };
+        });
+        cuerpo += tablaHtml([
+          { t: 'Día', k: 'fecha' }, { t: 'Asistencia', k: 'asis' },
+          { t: 'Aviso de la familia', k: 'aviso' }, { t: 'Lo que se apuntó', k: 'notas' }
+        ], filasDia);
+      }
+      $('hist-cuerpo').innerHTML = cuerpo;
+      $('b-print').disabled = false;
+      $('b-csv').disabled = false;
+    }
+
+    $('h-atleta').onchange = render;
+    $('h-desde').onchange = render;
+    $('h-hasta').onchange = render;
+
+    $('b-print').onclick = function () {
+      if (!actual || !resumen) return;
+      var clon = document.createElement('div');
+      clon.innerHTML = $('hist-cuerpo').innerHTML;
+      // El membrete ya pone el nombre y las cifras van en su bloque de papel.
+      Array.prototype.slice.call(clon.querySelectorAll('.cifras, .inf-sub')).forEach(function (el) { el.parentNode.removeChild(el); });
+      var enc = clon.querySelector('h3'); if (enc) enc.parentNode.removeChild(enc);
+      var bloque = '<div class="doc-cifras">' +
+        '<div><b>' + num(resumen.entrenos) + '</b>Entrenos con lista</div>' +
+        '<div><b>' + num(resumen.vino) + '</b>Vino (' + resumen.pct + '%)</div>' +
+        '<div><b>' + num(resumen.falto) + '</b>Faltó</div>' +
+        '<div><b>' + num(resumen.avisadas) + '</b>Faltas avisadas</div>' +
+        '<div><b>' + num(resumen.notas) + '</b>Notas del club</div>' +
+        '</div>';
+      var g = grupoDe(actual);
+      imprimir('Historial de ' + nombreAtleta(actual),
+        seccionDe(actual) + (g ? ' · ' + g.nombre : '') + ' · ' + rango,
+        bloque + clon.innerHTML);
+    };
+
+    $('b-csv').onclick = function () {
+      if (!actual) return;
+      var filas = [['Historial — ' + nombreAtleta(actual) + ' — ' + rango], [],
+        ['Entrenos con lista', resumen.entrenos], ['Vino', resumen.vino], ['Faltó', resumen.falto],
+        ['Faltas avisadas por la familia', resumen.avisadas], ['Notas del club', resumen.notas], [],
+        ['Día', 'Día de la semana', 'Asistencia', 'Aviso de la familia', 'Quién avisó', 'Tipo de nota', 'Nota', 'Quién la apuntó']];
+      dias.forEach(function (d) {
+        var asis = d.presente === true ? 'Vino' : d.presente === false ? 'Faltó' : 'Sin lista';
+        if (!d.notas.length) {
+          filas.push([fechaCorta(d.fecha), diaSemana(d.fecha), asis, d.aviso ? (d.aviso.motivo || 'no venía') : '', d.aviso ? (d.aviso.avisado_por_nombre || '') : '', '', '', '']);
+        } else {
+          d.notas.forEach(function (n) {
+            var quien = n.autor_id && D.perfilesById[n.autor_id] ? nombrePerfil(D.perfilesById[n.autor_id]) : 'equipo técnico';
+            filas.push([fechaCorta(d.fecha), diaSemana(d.fecha), asis, d.aviso ? (d.aviso.motivo || 'no venía') : '', d.aviso ? (d.aviso.avisado_por_nombre || '') : '', tipoNotaTexto(n.tipo), n.texto || '', quien]);
+          });
+        }
+      });
+      descargarCsv('historial_' + nombreAtleta(actual).replace(/\s+/g, '_'), filas);
+    };
+  }
+
+  // ============================================================
+  //  INFORME 9 · EL CUBO
   // ============================================================
   function infCubo() {
     var html = '';
@@ -959,7 +1182,8 @@ APOLANA_ADMIN.listo(function (sb) {
   // ================= NAVEGACIÓN =================
   var INFORMES = {
     resumen: infResumen, grupos: infGrupos, economico: infEconomico, ficha: infFicha,
-    impagados: infImpagados, altasbajas: infAltasBajas, asistencia: infAsistencia, cubo: infCubo
+    impagados: infImpagados, altasbajas: infAltasBajas, asistencia: infAsistencia,
+    historial: infHistorial, cubo: infCubo
   };
   function pintar(html) { $('lienzo').innerHTML = html; }
 
