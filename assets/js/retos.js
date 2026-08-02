@@ -1,27 +1,31 @@
 /* ============================================================
-   RETOS, RANGOS Y MEDALLAS · zona del atleta
+   MIS RETOS · rangos y medallas · zona del atleta
    ------------------------------------------------------------
-   Maqueta 29a (los siete rangos, disco y número romano) y 29b
-   (la tarjeta de reto en sus estados). Reglas del club:
+   Maquetas 38a (mis retos y el momento de subir de rango) y 38b
+   (cómo te ve otro socio). La escala de los siete rangos, con su
+   disco y su número romano, es el bloque 29a.
 
-     · Los retos son AUTOMÁTICOS Y PERSONALES. No hay que
-       apuntarse a nada: se consiguen entrenando y la cuenta sale
-       de lo que el club ya apunta cada día.
+   REGLAS DEL CLUB
+     · Los retos son AUTOMÁTICOS Y PERSONALES. No hay que apuntarse
+       a nada: se consiguen entrenando y la cuenta sale de lo que el
+       club ya apunta cada día.
      · NO hay clasificación entre atletas. La competición del club
        es la Liga Apolana. El interruptor vive en la base de datos
        (juego_ajustes.ranking_publico) y viene apagado; esta
        pantalla solo le hace caso, nunca lo enciende.
-     · Los MENORES no salen en ninguna lista pública del club sin
-       la autorización de su familia registrada. Eso lo garantiza
-       la base de datos; aquí, además, se explica.
+     · Los MENORES no tienen perfil visible para otros socios, ni
+       con permiso familiar: a una cuenta de menor no se le ofrece
+       siquiera el interruptor. Sus medallas las ven su familia y su
+       entrenador.
+     · En la ficha de otra persona no se enseña ni una marca, ni un
+       tiempo, ni un dato de contacto: sería una clasificación
+       encubierta, que es justo lo que no se le quiere hacer a la
+       Liga.
 
-   El color, como manda el sistema:
-     · ÁMBAR = el club como institución (rangos, puntos, medallas),
-       siempre en texto o en trazo, NUNCA en bloque de fondo, que
-       es como se dibujan los avisos.
-     · AZUL  = solo lo que se pulsa. Un botón azul por pantalla.
-     · VERDE = solo «conseguido».
-     · NAVY  = títulos y datos.
+   MODO CONSULTA (la regla del móvil): fondo crema y UNA SOLA
+   tarjeta navy, la del rango. La pantalla de subir de rango sí es
+   navy entera, pero es otra pantalla: solo sale al subir, siete
+   veces en la vida de un atleta, y sin confeti ni animación.
 
    Los cuatro estados (esqueleto, vacío, error y con datos) salen
    del módulo compartido APOLANA_UI, que vive en portal-auth.js.
@@ -106,6 +110,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     return null;
   }
+  function diasQuedan(r){
+    var h = periodoHasta(r);
+    return h ? Math.round((h - hoy()) / 86400000) : 99999;
+  }
   function cuando(r){
     if(r.periodo === 'fechas') return 'Del ' + fCorta(r.fecha_inicio) + ' al ' + fCorta(r.fecha_fin);
     if(r.periodo === 'semana') return 'Esta semana';
@@ -113,25 +121,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(r.periodo === 'temporada') return 'Esta temporada';
     return '';
   }
-  /* «quedan 9 días de mes»: lo que convierte un reto en un plan. */
+  /* «quedan 9 de mes»: lo que convierte un reto en un plan. */
   function loQueQueda(r){
-    var h = periodoHasta(r);
-    if(!h) return '';
-    var dias = Math.round((h - hoy()) / 86400000);
-    if(dias < 0) return 'ya se ha cerrado';
-    if(dias === 0) return 'último día';
+    var d = diasQuedan(r);
+    if(d === 99999) return '';
+    if(d < 0) return 'ya se ha cerrado';
+    if(d === 0) return 'último día';
     var cola = r.periodo === 'mes' ? ' de mes' : (r.periodo === 'semana' ? ' de semana' : '');
-    return dias === 1 ? ('queda 1 día' + cola) : ('quedan ' + dias + ' días' + cola);
+    return d === 1 ? ('queda 1 día' + cola) : ('quedan ' + d + ' días' + cola);
   }
 
   /* ============================================================
-     LOS SIETE RANGOS · maqueta 29a
+     LOS RANGOS
      ------------------------------------------------------------
-     El disco va pegado a `rango_clave` (I … VII), la etiqueta
+     El emblema va pegado a `rango_clave` (I … VII), la etiqueta
      estable que guarda la base de datos, y NO al nombre: así el
      club puede renombrar un rango o mover sus puntos de corte sin
-     que el emblema cambie. Si algún rango no la tuviera, se
-     deduce del orden.
+     que la medalla cambie. Si algún rango no la tuviera, se deduce
+     del orden.
      ============================================================ */
   var ROMANOS = ['I','II','III','IV','V','VI','VII','VIII','IX','X'];
   function claveRango(r){
@@ -140,11 +147,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var n = Number(r.orden || 0);
     return (n >= 1 && n <= ROMANOS.length) ? ROMANOS[n-1] : '';
   }
-  /* Color plano y número romano: ni dorados brillantes ni degradados. */
-  function disco(r, tam, sobreOscuro){
+  /* La medalla del rango: ámbar en trazo, con su número romano. */
+  function medalla(r, tam){
+    return '<span class="medalla medalla--' + (tam||'m') + '" aria-hidden="true">' + esc(claveRango(r)) + '</span>';
+  }
+  /* El disco de la escala: color plano, uno por rango (29a). */
+  function disco(r){
     var c = claveRango(r);
-    return '<span class="disco disco--' + (tam||'m') + ' rg-' + esc(c || 'x') + (sobreOscuro?' rg-oscuro':'') +
-           '" aria-hidden="true">' + esc(c) + '</span>';
+    return '<span class="disco rg-' + esc(c || 'x') + '" aria-hidden="true">' + esc(c) + '</span>';
   }
 
   /* ============================================================
@@ -196,6 +206,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return !r.error;
   }
 
+  async function cargarRangos(){
+    var rg = await sb.from('juego_rangos').select('rango_clave,clave,nombre,desde_puntos,orden').order('desde_puntos');
+    RANGOS = rg.error ? [] : (rg.data || []);
+    return !rg.error;
+  }
+
   async function cargarTodo(){
     var id = ATLETA.id;
     FALLO = false;
@@ -224,10 +240,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var ra = await sb.from('atleta_medallas').select('medalla_id,conseguida_en').eq('atleta_id', id);
     if(!ra.error) (ra.data || []).forEach(function(x){ MIAS[x.medalla_id] = x.conseguida_en; });
 
-    /* La escala entera, con su etiqueta de emblema. */
-    var rg = await sb.from('juego_rangos').select('rango_clave,clave,nombre,desde_puntos,orden').order('desde_puntos');
-    if(rg.error) FALLO = true;
-    RANGOS = rg.error ? [] : (rg.data || []);
+    if(!(await cargarRangos())) FALLO = true;
 
     var rj = await sb.from('perfil_juego')
       .select('atleta_id,participa,autoriza_parental_en,puntos').eq('atleta_id', id).maybeSingle();
@@ -263,8 +276,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ------------------------------------------------------------
      El rango se saca SIEMPRE de los puntos contra la escala, que es
      exactamente lo que hace la base de datos. Así la ficha de otra
-     persona también sabe qué disco pintarle sin tener que adivinarlo
-     por el nombre.
+     persona también sabe qué medalla pintarle sin tener que
+     adivinarla por el nombre.
      ============================================================ */
   function misPuntos(){
     if(PJ && PJ.puntos != null) return Number(PJ.puntos);
@@ -280,185 +293,154 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     return { actual: actual, siguiente: siguiente };
   }
-  function nombreRango(r, deReserva){
-    return (r && r.nombre) ? r.nombre : (deReserva || '');
+  function nombreRango(r, deReserva){ return (r && r.nombre) ? r.nombre : (deReserva || ''); }
+
+  /* Cuánto le falta a un reto, en tanto por uno: es lo que ordena la
+     lista. Primero lo que está más cerca de caer. */
+  function restanteDe(r){
+    if(LOGROS[r.id]) return -1;
+    var obj = Number(r.objetivo||0), val = Number(PROGRESO[r.id]||0);
+    if(obj <= 0) return 1;
+    return Math.max(0, (obj - val) / obj);
   }
 
   /* ============================================================
-     BANDAS · la regla del ritmo
-     ------------------------------------------------------------
-     Cabecera oscura a sangre con el dato duro, secciones alternando
-     crema flojo y crema fuerte, y cierre oscuro abajo. Ninguna banda
-     lleva radio: una banda no es una tarjeta.
+     PINTADO
      ============================================================ */
-  var _tono = 0;
-  function banda(html, clase){
-    if(!html) return '';
-    var t = clase || (_tono++ % 2 ? 'rt-b2' : 'rt-b1');
-    return '<section class="rt-banda ' + t + '"><div class="rt-dentro">' + html + '</div></section>';
+  function cabecera(volverA, volverTxt, titulo){
+    return '<a class="rt-migas" href="' + volverA + '"><span class="fl" aria-hidden="true">&larr;</span>' +
+           esc(volverTxt) + '</a><h1>' + esc(titulo) + '</h1>';
   }
-  function titulo(t, cuenta){
-    return '<h2 class="rt-h">' + esc(t) +
-      (cuenta != null ? '<span class="cuenta">' + esc(String(cuenta)) + '</span>' : '') + '</h2>';
+  function rotulo(t, der){
+    return '<div class="rt-rot"><b>' + esc(t) + '</b>' +
+           (der ? '<span class="cifra">' + esc(der) + '</span>' : '') + '</div>';
   }
 
-  /* ============================================================
-     PINTADO · la cabecera oscura
-     ============================================================ */
-  function pintarCabecera(){
+  /* --- la única tarjeta navy: el rango, con las dos cotas escritas --- */
+  function tarjetaRango(){
     var p = misPuntos(), r = rangoDe(p);
-    var hechos = Object.keys(LOGROS).length;
-    var medallas = Object.keys(MIAS).length;
-    var enCurso = RETOS.filter(function(x){ return !LOGROS[x.id]; }).length;
-
-    var pct = 100, falta = 'Has llegado a lo más alto de la escala. Ahora toca mantenerlo.';
+    if(!RANGOS.length) return '';
+    var pct = 100, sub = 'Has llegado a lo más alto de la escala.', cotas = '';
     if(r.siguiente){
       var base = Number(r.actual ? r.actual.desde_puntos : 0), techo = Number(r.siguiente.desde_puntos||0);
       pct = techo > base ? Math.max(0, Math.min(100, Math.round((p - base) * 100 / (techo - base)))) : 0;
       var quedan = techo - p;
-      falta = 'Te ' + (quedan===1 ? 'queda 1 punto' : ('quedan ' + quedan + ' puntos')) +
-              ' para ' + nombreRango(r.siguiente) + '.';
-    } else if(!RANGOS.length){
-      pct = 0; falta = '';
+      sub = p + (p===1 ? ' punto · ' : ' puntos · ') + quedan + ' para ' + nombreRango(r.siguiente);
+      cotas = '<div class="cotas"><span>' + esc(nombreRango(r.actual)) + ' · ' + base + '</span>' +
+              '<span>' + esc(nombreRango(r.siguiente)) + ' · ' + techo + '</span></div>';
+    } else {
+      sub = p + (p===1 ? ' punto' : ' puntos') + ' · lo más alto de la escala';
     }
-
-    var h = '<a class="rt-volver" href="../atleta/#mas"><i aria-hidden="true">&larr;</i>Volver</a>' +
-      '<h1>Mis retos</h1>' +
-      '<p class="rt-lema">El club propone y la cuenta se lleva sola con lo que ya queda apuntado: ' +
-      'no hay que apuntarse a nada. Esto es cosa tuya.</p>';
-
-    if(FICHAS.length > 1){
-      h += '<div class="rt-quien">' + FICHAS.map(function(f){
-        return '<button type="button" data-ficha="' + esc(f.id) + '" aria-pressed="' + (f.id===ATLETA.id) + '">' +
-               esc(((f.nombre||'') + ' ' + (f.apellidos||'')).trim()) + '</button>';
-      }).join('') + '</div>';
-    }
-
-    h += '<div class="rt-rango">' +
-        disco(r.actual, 'g', true) +
-        '<div class="rt-rango-txt">' +
-          '<span class="eti">tu rango</span>' +
-          '<span class="nombre">' + esc(nombreRango(r.actual, 'Sin rango')) + '</span>' +
-        '</div>' +
-        '<div class="rt-rango-pts"><span class="eti">puntos</span><b>' + p + '</b></div>' +
+    return '<div class="rt-rango">' +
+      '<div class="fila">' + medalla(r.actual, 'm') +
+        '<div class="quien"><span class="nombre">' + esc(nombreRango(r.actual, 'Sin rango')) + '</span>' +
+        '<span class="sub">' + esc(sub) + '</span></div>' +
       '</div>' +
-      (RANGOS.length ? '<div class="rt-progreso"><i style="width:' + pct + '%"></i></div>' : '') +
-      (falta ? '<p class="rt-falta">' + esc(falta) + '</p>' : '') +
-      '<div class="rt-datos">' +
-        '<div><b>' + enCurso + '</b><span>' + (enCurso===1?'reto abierto':'retos abiertos') + '</span></div>' +
-        '<div><b>' + hechos + '</b><span>' + (hechos===1?'conseguido':'conseguidos') + '</span></div>' +
-        '<div><b>' + medallas + '</b><span>' + (medallas===1?'medalla':'medallas') + '</span></div>' +
-      '</div>';
-
-    return '<header class="rt-banda rt-cab"><div class="rt-dentro">' + h + '</div></header>';
+      '<div><div class="barra"><i style="width:' + pct + '%"></i></div>' + cotas + '</div>' +
+    '</div>';
   }
 
-  /* ============================================================
-     LA TARJETA DE RETO · maqueta 29b
-     ------------------------------------------------------------
-     Cuatro estados. El que hace volver es el segundo: no dice «67 %»,
-     dice qué falta exactamente y cuánto tiempo queda para hacerlo.
-     El azul se reserva para lo que se pulsa, así que ese estado se
-     marca con trazo navy de 3 px, que es la voz de los datos.
-     ============================================================ */
-  function tarjetaReto(r, hecho){
+  /* --- la tarjeta de reto (38a) --- */
+  function tarjetaReto(r, cerca){
     var obj = Number(r.objetivo||0);
-    var val = hecho ? Math.max(Number(LOGROS[r.id].valor_alcanzado||0), obj) : Number(PROGRESO[r.id]||0);
+    var val = Number(PROGRESO[r.id]||0);
     var pct = obj > 0 ? Math.max(0, Math.min(100, Math.round(val*100/obj))) : 0;
     var falta = Math.max(0, obj - val);
-    /* «Te queda poco»: empezado, cerca y todavía a tiempo. */
-    var cerca = !hecho && pct >= 60 && pct < 100;
-    var clase = 'rt-reto' + (hecho ? ' hecho' : (cerca ? ' cerca' : ''));
 
-    var h = '<article class="' + clase + '">' +
+    var h = '<article class="rt-reto' + (cerca?' cerca':'') + '">' +
       '<div class="cab">' +
-        '<span class="ic-caja">' + ico(hecho ? 'hecho' : iconoDe(r.metrica), 20) + '</span>' +
-        '<div class="tit"><h3>' + esc(r.titulo) + '</h3>' +
+        '<span class="ic-caja">' + ico(iconoDe(r.metrica), 19) + '</span>' +
+        '<div class="tit"><h2>' + esc(r.titulo) + '</h2>' +
           (r.descripcion ? '<p>' + esc(r.descripcion) + '</p>' : '<p>' + esc(cuando(r)) + '</p>') + '</div>' +
         '<span class="pts">+' + Number(r.puntos||0) + '</span>' +
-      '</div>';
+      '</div>' +
+      '<span class="barra"><i style="width:' + pct + '%"></i></span><div class="pie">';
 
-    if(hecho){
-      h += '<p class="hecho-pie"><b>Conseguido</b> · ' + esc(fCorta(LOGROS[r.id].completado_en)) + '</p>';
+    if(pct >= 100){
+      h += '<span class="n">Ya está: ' + nDe(obj) + ' de ' + nDe(obj) + '</span>' +
+           '<span class="p">falta que el club lo apunte</span>';
+    } else if(cerca){
+      h += '<span class="n">Te ' + (falta===1 ? 'falta 1 ' : ('faltan ' + nDe(falta) + ' ')) +
+           esc(unidad(r.metrica, falta)) + '</span>' +
+           '<span class="p">' + esc(loQueQueda(r) || cuando(r)) + '</span>';
     } else {
-      h += '<div class="rt-progreso"><i style="width:' + pct + '%"></i></div><div class="pie">';
-      if(pct >= 100){
-        h += '<span class="n">Ya está: ' + nDe(obj) + ' de ' + nDe(obj) + '</span>' +
-             '<span class="p">falta que el club lo apunte</span>';
-      } else if(cerca){
-        h += '<span class="n">Te ' + (falta===1 ? 'falta 1 ' : ('faltan ' + nDe(falta) + ' ')) +
-             esc(unidad(r.metrica, falta)) + '</span>' +
-             '<span class="p">' + esc(loQueQueda(r)) + '</span>';
-      } else {
-        h += '<span class="n">' + nDe(val) + ' de ' + nDe(obj) + ' ' + esc(unidad(r.metrica, nDe(obj))) + '</span>' +
-             '<span class="p">' + esc(loQueQueda(r) || cuando(r)) + '</span>';
-      }
-      h += '</div>';
+      h += '<span class="n">' + nDe(val) + ' de ' + nDe(obj) + ' ' + esc(unidad(r.metrica, nDe(obj))) + '</span>' +
+           '<span class="p">' + esc(loQueQueda(r) || cuando(r)) + '</span>';
     }
-
+    h += '</div>';
     if(r.premio) h += '<p class="premio"><b>Premio del club:</b> ' + esc(r.premio) + '</p>';
     return h + '</article>';
   }
 
   function pintarEnCurso(){
     if(FALLO){
-      return titulo('En curso') + APOLANA_UI.error('No hemos podido cargar tus retos',
+      return rotulo('Tus retos') + APOLANA_UI.error('No hemos podido cargar tus retos',
         'Puede ser tu conexión. Tus puntos y tus medallas siguen guardados: no se pierde nada.');
     }
-    var enCurso = RETOS.filter(function(r){ return !LOGROS[r.id]; });
-    return titulo('En curso', enCurso.length || null) + (enCurso.length
-      ? enCurso.map(function(r){ return tarjetaReto(r, false); }).join('')
-      : APOLANA_UI.vacio('Ahora mismo no hay ningún reto abierto',
-          'El club irá proponiendo retos nuevos a lo largo de la temporada. Mientras tanto, todo lo que ' +
-          'entrenas se sigue apuntando y cuenta igual.',
-          APOLANA_UI.boton('Ver el calendario del club', '../../calendario/')));
+    /* Se ordenan por lo que falta menos, no por fecha ni por puntos. */
+    var abiertos = RETOS.filter(function(r){ return !LOGROS[r.id]; }).sort(function(a,b){
+      var d = restanteDe(a) - restanteDe(b);
+      if(d) return d;
+      return diasQuedan(a) - diasQuedan(b);
+    });
+    if(!abiertos.length){
+      return rotulo('Tus retos') + APOLANA_UI.vacio('Ahora mismo no hay ningún reto abierto',
+        'El club irá proponiendo retos nuevos a lo largo de la temporada. Mientras tanto, todo lo que entrenas ' +
+        'se sigue apuntando y cuenta igual.',
+        APOLANA_UI.boton('Ver el calendario del club', '../../calendario/'));
+    }
+    /* El primero lleva borde ámbar cuando de verdad le falta poco: está
+       empezado y todavía no ha caído. Eso lo convierte en un plan. */
+    var p0 = abiertos[0];
+    var v0 = Number(PROGRESO[p0.id]||0), o0 = Number(p0.objetivo||0);
+    var destacar = v0 > 0 && o0 > 0 && v0 < o0;
+    return rotulo(destacar ? 'Te falta poco' : 'Tus retos', abiertos.length + (abiertos.length===1?' abierto':' abiertos')) +
+      abiertos.map(function(r, i){ return tarjetaReto(r, destacar && i === 0); }).join('');
   }
 
   function pintarConseguidos(){
-    var hechos = RETOS.filter(function(r){ return !!LOGROS[r.id]; });
+    var hechos = RETOS.filter(function(r){ return !!LOGROS[r.id]; }).sort(function(a,b){
+      return String(LOGROS[b.id].completado_en).localeCompare(String(LOGROS[a.id].completado_en));
+    });
     if(!hechos.length) return '';
-    return titulo('Conseguidos', hechos.length) + hechos.map(function(r){ return tarjetaReto(r, true); }).join('');
+    return rotulo('Conseguidos', hechos.length + ' de ' + RETOS.length) +
+      '<div class="rt-filas">' + hechos.map(function(r){
+        return '<div class="rt-fila"><span class="visto">' + ico('hecho', 16) + '</span>' +
+          '<span class="t">' + esc(r.titulo) + '</span>' +
+          '<span class="f">' + esc(fCorta(LOGROS[r.id].completado_en)) + '</span></div>';
+      }).join('') + '</div>';
   }
 
-  /* ============================================================
-     LA ESCALA · maqueta 29a
-     ============================================================ */
+  /* --- la escala de los siete rangos · 29a --- */
   function pintarEscala(){
     if(!RANGOS.length) return '';
     var p = misPuntos(), r = rangoDe(p);
-    var h = titulo('Los ' + (RANGOS.length === 7 ? 'siete' : RANGOS.length) + ' rangos') +
-      '<p class="rt-nota-sec">Los puntos de cada reto suben de rango. El rango no se pierde nunca.</p>' +
+    var h = rotulo('Los ' + (RANGOS.length === 7 ? 'siete' : RANGOS.length) + ' rangos') +
       '<ol class="rt-escala">';
     RANGOS.forEach(function(x){
       var mio = r.actual && r.actual.clave === x.clave;
       h += '<li class="' + (mio ? 'mio' : '') + (p < Number(x.desde_puntos||0) ? ' porllegar' : '') + '">' +
-        disco(x, 'm') +
-        '<span class="n">' + esc(x.nombre) + '</span>' +
+        disco(x) + '<span class="n">' + esc(x.nombre) + '</span>' +
         '<span class="d">' + Number(x.desde_puntos||0) + '</span>' +
         (mio ? '<span class="tuyo">tu rango</span>' : '') + '</li>';
     });
-    h += '</ol>' +
+    return h + '</ol>' +
       '<div class="rt-porques">' +
         '<div><b>El rango no se pierde</b><span>Una vez alcanzado, se queda. Quien deja el club un año y vuelve, ' +
           'vuelve con el suyo.</span></div>' +
-        '<div><b>Leyenda es de varios años</b><span>El último rango no se alcanza en una temporada: es a propósito, ' +
-          'para que siempre quede a dónde ir.</span></div>' +
-        '<div><b>No hay clasificación</b><span>Te comparas contigo, no con los demás. La competición del club es la ' +
-          'Liga Apolana.</span></div>' +
+        '<div><b>El último es de varios años</b><span>No se alcanza en una temporada: es a propósito, para que ' +
+          'siempre quede a dónde ir.</span></div>' +
+        '<div><b>No hay clasificación</b><span>Te comparas contigo, no con los demás. La competición del club es ' +
+          'la Liga Apolana.</span></div>' +
       '</div>';
-    return h;
   }
 
-  /* ============================================================
-     MEDALLAS
-     Ámbar y en trazo, nunca en bloque de fondo: así no se confunden
-     con un aviso. Ni dorados ni medallas de emoji.
-     ============================================================ */
+  /* --- medallas: rejilla de cuatro con aro ámbar (38b) --- */
   function pintarMedallas(){
     var tengo = MEDALLAS.filter(function(m){ return !!MIAS[m.id]; });
     var faltan = MEDALLAS.filter(function(m){ return !MIAS[m.id]; });
     var lista = tengo.concat(faltan);
-    var h = titulo('Medallas', MEDALLAS.length ? (tengo.length + ' de ' + MEDALLAS.length) : null);
+    var h = rotulo('Medallas', MEDALLAS.length ? (tengo.length + ' de ' + MEDALLAS.length) : null);
     if(!lista.length){
       return h + APOLANA_UI.vacio('Todavía no hay medallas',
         'El club aún no ha creado ninguna. En cuanto las tenga aparecerán aquí y se irán encendiendo solas ' +
@@ -466,39 +448,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     h += '<div class="rt-medallas">' + lista.map(function(m){
       var si = !!MIAS[m.id];
-      return '<div class="rt-med ' + (si?'si':'no') + '">' +
-        '<span class="disco-med">' + ico(iconoDe(m.criterio), 22) + '</span>' +
-        '<span class="n">' + esc(m.titulo) + '</span>' +
-        '<span class="d">' + esc(si ? ('Conseguida el ' + fCorta(MIAS[m.id])) : (m.descripcion||'')) + '</span></div>';
+      var pie = si ? ('Conseguida el ' + fCorta(MIAS[m.id])) : (m.descripcion || '');
+      return '<div class="rt-med ' + (si?'si':'no') + '" title="' + esc(pie) + '">' +
+        '<span class="aro">' + ico(iconoDe(m.criterio), 22) + '</span>' +
+        '<span class="n">' + esc(m.titulo) + '</span></div>';
     }).join('') + '</div>';
-    if(!tengo.length){
-      h += '<p class="rt-nota-sec">Todas se consiguen solas: no hay que pedir ninguna.</p>';
-    }
+    if(!tengo.length) h += '<p class="rt-nota-sec">Todas se consiguen solas: no hay que pedir ninguna.</p>';
     return h;
   }
 
-  /* ============================================================
-     CLASIFICACIÓN
-     Solo existe si el club enciende el interruptor en la base de
-     datos. Apagado —que es como viene— esta sección no se pinta.
-     ============================================================ */
-  function filaTabla(f, yo){
-    var foto = fotoUrl(f.foto_ruta);
-    var cara = foto ? '<img src="' + esc(foto) + '" alt="">' : esc(inicialesTxt(f.nombre));
-    var r = rangoDe(Number(f.puntos||0)).actual;
-    return '<div class="rt-fila' + (yo?' yo':'') + '">' +
-      '<span class="pos">' + Number(f.puesto) + '</span>' +
-      '<span class="cara">' + cara + '</span>' +
-      '<span class="qui"><b>' + esc(f.nombre) + '</b><span>' +
-        (r ? '<i class="rg">' + esc(nombreRango(r, f.rango)) + '</i>' : esc(f.rango||'')) +
-        (Number(f.medallas)>0 ? ' · ' + f.medallas + (Number(f.medallas)===1?' medalla':' medallas') : '') +
-      '</span></span>' +
-      '<span class="num">' + Number(f.puntos) + '</span></div>';
-  }
-
+  /* --- clasificación: solo si el club enciende el interruptor --- */
   function pintarTabla(){
     if(!RANKING) return '';
-    var h = titulo('Clasificación del club');
+    var h = rotulo('Clasificación del club');
     if(!TABLA.length){
       return h + APOLANA_UI.vacio('Todavía no hay nadie en la clasificación',
         'En cuanto la gente del club diga que quiere participar, esto se llena solo.');
@@ -507,15 +469,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var yoDentro = top.some(function(f){ return f.atleta_id === ATLETA.id; });
     var yoFila = null;
     for(var i=0;i<TABLA.length;i++) if(TABLA[i].atleta_id === ATLETA.id) yoFila = TABLA[i];
-    h += '<div class="rt-lista">' + top.map(function(f){ return filaTabla(f, f.atleta_id===ATLETA.id); }).join('');
-    if(yoFila && !yoDentro) h += '<div class="rt-corte">Tu posición</div>' + filaTabla(yoFila, true);
+    function fila(f){
+      var r = rangoDe(Number(f.puntos||0)).actual;
+      return '<div class="rt-fila"><span class="t">' + Number(f.puesto) + '. ' + esc(f.nombre) + '</span>' +
+             '<span class="f">' + esc(nombreRango(r, f.rango)) + ' · ' + Number(f.puntos) + '</span></div>';
+    }
+    h += '<div class="rt-filas">' + top.map(fila).join('');
+    if(yoFila && !yoDentro) h += '<div class="rt-corte">Tu posición</div>' + fila(yoFila);
     return h + '</div>';
   }
 
   /* ============================================================
      GENTE DEL CLUB
-     Solo sale quien se deja ver, y un menor solo si consta la
-     autorización de su familia. Eso lo decide la base de datos.
+     Solo sale quien se deja ver. Ni marcas, ni tiempos, ni datos de
+     contacto: solo rango, medallas y retos.
      ============================================================ */
   function filaMiembro(m){
     var foto = fotoUrl(m.foto_ruta);
@@ -529,22 +496,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="qui"><b>' + esc(m.nombre) + '</b><span>' +
         '<i class="rg">' + esc(nombreRango(r, m.rango)) + '</i>' +
         (bajo.length ? ' · ' + esc(bajo.join(' · ')) : '') + '</span></span>' +
-      (r ? disco(r, 's') : '') +
       '<span class="chev" aria-hidden="true">' + ico('entrar', 20) + '</span></a>';
   }
 
   function pintarBuscador(){
-    var h = titulo('Gente del club') +
-      '<p class="rt-nota-sec">Mira las medallas y los retos de quien ha dicho que quiere dejarse ver. Nada más: ' +
-      'ni contacto, ni marcas, ni pagos.</p>';
+    var h = rotulo('Gente del club');
     if(!MIEMBROS.length){
       return h + APOLANA_UI.vacio('Todavía no se deja ver nadie',
-        'Nadie del club ha dicho aún que quiera que le abran la ficha. Puedes ser la primera persona: se ' +
-        'activa aquí abajo, en «Quién puede verte».');
+        'Aquí saldrá quien haya dicho que quiere que el resto del club pueda abrir su ficha: su rango, sus ' +
+        'medallas y los retos que ha cumplido. Nada más.');
     }
-    h += '<input type="search" id="bs-txt" class="rt-buscar" placeholder="Buscar por nombre…" ' +
+    h += '<p class="rt-nota-sec">De cada persona se ve su rango, sus medallas y sus retos. Ni marcas, ni tiempos, ' +
+         'ni datos de contacto.</p>' +
+         '<input type="search" id="bs-txt" class="rt-buscar" placeholder="Buscar por nombre…" ' +
          'aria-label="Buscar a alguien del club" autocomplete="off" value="' + esc(BUSCA) + '">' +
-         '<div class="rt-lista" id="bs-lista">' + listaMiembros() + '</div>';
+         '<div class="rt-filas" id="bs-lista">' + listaMiembros() + '</div>';
     return h;
   }
 
@@ -559,37 +525,43 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   /* ============================================================
-     AJUSTES · quién puede verte
+     QUIÉN PUEDE VERTE
+     A una cuenta de menor no se le ofrece el interruptor: los
+     menores no tienen perfil visible para otros socios, ni con
+     permiso familiar. Sus medallas las ven su familia y su
+     entrenador, que es como no da problemas.
      ============================================================ */
   function pintarAjustes(){
     var menor = esMenor(ATLETA.fecha_nacimiento);
-    var autorizado = !!(PJ && PJ.autoriza_parental_en);
     var participa = !!(PJ && PJ.participa);
-    var visible = participa && (!menor || autorizado);
+    var h = rotulo('Quién puede verte');
 
-    var h = titulo('Quién puede verte');
-
-    if(menor && !autorizado){
-      h += '<div class="rt-aviso"><span class="ic-caja">' + ico('aviso', 20) + '</span>' +
-        '<div><b>Falta el permiso de tu familia</b>' +
-        '<p>Eres menor de edad, así que tu nombre y tu foto no salen en ninguna lista del club hasta que tu ' +
-        'padre, tu madre o quien te tutele lo autorice. Díselo al club y lo dejan registrado en un momento. ' +
-        'Mientras tanto tus retos, tus puntos y tus medallas cuentan igual para ti.</p></div></div>';
+    if(menor){
+      h += '<div class="rt-ajustes"><p class="intro"><b>Tus retos son tuyos y los ves siempre.</b> Lo que no hay ' +
+        'es ficha abierta al resto del club: mientras seas menor de edad, tu nombre y tu foto no salen en ninguna ' +
+        'lista de socios. Tus medallas y tus retos los ven tu familia y tu entrenador.</p>' +
+        (participa
+          ? '<button type="button" class="rt-btn-borde" id="aj-quitar">Quitarme de la lista del club</button>'
+          : '') +
+        '<div class="rt-sep"></div>' +
+        '<a class="rt-enlace" href="../perfil/"><span><b>Tu foto y tu nombre</b>' +
+          'Se cambian en Mi perfil, junto con el resto de tus datos.</span>' +
+          '<span class="fl" aria-hidden="true">' + ico('entrar', 20) + '</span></a>' +
+        '</div>';
+      return h;
     }
 
+    var visible = participa;
     h += '<div class="rt-ajustes">' +
-      '<p class="intro">Tus retos son tuyos y los ves siempre. Esto solo decide si el resto del club puede ' +
-      'abrir tu ficha. Se apaga cuando quieras y desapareces al momento.</p>' +
-
-      '<label class="rt-sw"><span class="txt"><b>Que otros socios puedan ver mi perfil</b>' +
-        '<span>Verían tu nombre, tu foto, tu rango, tus medallas y los retos que has cumplido. Nada más.' +
+      '<label class="sw"><span class="txt"><b>Perfil visible para otros socios</b>' +
+        '<span>Ven tu nombre, tu rango y tus medallas. Nunca tus marcas, tus pagos ni tus datos.' +
         (RANKING ? ' Y saldrías en la clasificación del club.' : '') + '</span></span>' +
         '<input type="checkbox" id="aj-participa"' + (participa?' checked':'') + '><span class="palanca"></span></label>' +
 
       (visible
-        ? '<button type="button" class="rt-btn-azul" id="aj-ver">Ver mi ficha como la ven los demás</button>'
-        : '<p class="intro" style="margin:14px 0 0;">Ahora mismo tu ficha no se puede abrir: no sales en la ' +
-          'lista del club.</p>') +
+        ? '<a class="rt-btn-azul" href="?atleta=' + encodeURIComponent(ATLETA.id) + '">Ver cómo te ven ahora mismo</a>'
+        : '<p class="intro" style="margin-top:12px;">Ahora mismo no sales en la lista del club: nadie puede abrir ' +
+          'tu ficha.</p>') +
 
       '<div class="rt-sep"></div>' +
 
@@ -600,67 +572,134 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return h;
   }
 
-  /* ============================================================
-     CIERRE OSCURO
-     ============================================================ */
   function pintarCierre(){
-    return '<footer class="rt-banda rt-cierre"><div class="rt-dentro">' +
-      '<h2>Esto se cuenta solo</h2>' +
+    return '<div class="rt-cierre"><b>Esto se cuenta solo</b>' +
       '<p>No hay que apuntarse a ningún reto ni avisar de nada: sale de las asistencias, las competiciones, ' +
       'las marcas y los tests que el club ya apunta cada día. Si algo no te cuadra, díselo a tu entrenador.</p>' +
-      '<p class="fino">Aquí no se compara a nadie con nadie. La competición del club es la ' +
-      '<a href="../../liga/">Liga Apolana</a>.</p>' +
-      '</div></footer>';
+      '<p>Aquí no se compara a nadie con nadie. La competición del club es la ' +
+      '<a href="../../liga/">Liga Apolana</a>.</p></div>';
+  }
+
+  /* ============================================================
+     SUBIR DE RANGO · pantalla completa
+     ------------------------------------------------------------
+     Solo al subir de rango: siete veces en la vida de un atleta. Un
+     reto normal no interrumpe nada; si todo interrumpe, nada
+     importa. Siempre dice POR QUÉ, y va sin confeti ni animación.
+     ============================================================ */
+  function memoriaClave(){ return 'apolana.retos.rango.' + ATLETA.id; }
+  function rangoGuardado(){
+    try { var v = localStorage.getItem(memoriaClave()); return v == null ? null : parseInt(v, 10); }
+    catch(e){ return null; }
+  }
+  function guardarRango(orden){
+    try { localStorage.setItem(memoriaClave(), String(orden)); } catch(e){ /* sin memoria, no se celebra y ya está */ }
+  }
+
+  function porQue(){
+    var retos = Object.keys(LOGROS).length, medallas = Object.keys(MIAS).length;
+    var partes = [];
+    if(retos) partes.push(retos + (retos===1 ? ' reto conseguido' : ' retos conseguidos'));
+    if(medallas) partes.push(medallas + (medallas===1 ? ' medalla' : ' medallas'));
+    if(!partes.length) return 'Lo has ganado entrenando con el club.';
+    return 'Llevas ' + partes.join(' y ') + ' con el club.';
+  }
+
+  function ultimoLogro(){
+    var mejor = null;
+    RETOS.forEach(function(r){
+      var l = LOGROS[r.id];
+      if(!l) return;
+      if(!mejor || String(l.completado_en) > String(mejor.logro.completado_en)) mejor = { reto: r, logro: l };
+    });
+    return mejor;
+  }
+
+  function mirarSiHeSubido(){
+    if(!RANGOS.length) return;
+    var r = rangoDe(misPuntos()).actual;
+    if(!r) return;
+    var ahora = Number(r.orden || 0);
+    var antes = rangoGuardado();
+    guardarRango(ahora);
+    /* La primera vez no se celebra nada: no se sabe de dónde viene. */
+    if(antes == null || ahora <= antes) return;
+
+    var u = ultimoLogro();
+    var caja = '';
+    if(u){
+      caja = '<div class="caja"><span class="rot">Lo que lo ha desbloqueado</span>' +
+        '<div class="reto"><span class="ic">' + ico(iconoDe(u.reto.metrica), 17) + '</span>' +
+        '<span class="t">' + esc(u.reto.titulo) + '</span>' +
+        '<span class="p">+' + Number(u.logro.puntos_otorgados||0) + '</span></div>' +
+        '<div class="total"><span>Total</span><b>' + misPuntos() + ' puntos</b></div></div>';
+    } else {
+      caja = '<div class="caja"><div class="total"><span>Total</span><b>' + misPuntos() + ' puntos</b></div></div>';
+    }
+
+    var capa = document.createElement('div');
+    capa.className = 'rt-subida';
+    capa.setAttribute('role', 'dialog');
+    capa.setAttribute('aria-modal', 'true');
+    capa.innerHTML =
+      '<div class="cima">' + medalla(r, 'g') +
+        '<span class="eti">Has subido de rango</span>' +
+        '<span class="rango">' + esc(nombreRango(r)) + '</span>' +
+        '<span class="porque">' + esc(porQue()) + '</span>' +
+      '</div>' + caja +
+      '<div class="salida"><button type="button" id="sub-cerrar">Seguir</button></div>';
+    document.body.appendChild(capa);
+    var b = document.getElementById('sub-cerrar');
+    b.addEventListener('click', function(){ if(capa.parentNode) capa.parentNode.removeChild(capa); });
+    setTimeout(function(){ b.focus(); }, 40);
   }
 
   /* ============================================================
      MONTAJE
      ============================================================ */
   function pintar(){
-    _tono = 0;
-    var partes = [
-      pintarEnCurso(), pintarConseguidos(), pintarEscala(), pintarMedallas(),
-      pintarTabla(), pintarBuscador(), pintarAjustes()
-    ];
-    /* Dos secciones seguidas nunca comparten fondo: el tono se reparte
-       sobre las que de verdad se pintan, no sobre las que se saltan. */
-    wrap.innerHTML = pintarCabecera() +
-      partes.map(function(p){ return banda(p); }).join('') +
-      pintarCierre();
+    var h = cabecera('../atleta/#mas', 'Más', 'Mis retos');
+    if(FICHAS.length > 1){
+      h += '<div class="rt-quien">' + FICHAS.map(function(f){
+        return '<button type="button" data-ficha="' + esc(f.id) + '" aria-pressed="' + (f.id===ATLETA.id) + '">' +
+               esc(((f.nombre||'') + ' ' + (f.apellidos||'')).trim()) + '</button>';
+      }).join('') + '</div>';
+    }
+    h += tarjetaRango() + pintarEnCurso() + pintarConseguidos() + pintarEscala() + pintarMedallas() +
+         pintarTabla() + pintarBuscador() + pintarAjustes() + pintarCierre();
+    wrap.innerHTML = h;
     enganchar();
+    mirarSiHeSubido();
+  }
+
+  function cargando(){
+    wrap.innerHTML = cabecera('../atleta/#mas', 'Más', 'Mis retos') + APOLANA_UI.cargando('tarjeta');
   }
 
   /* ============================================================
-     FICHA DE UNA PERSONA (?atleta=…)
-     Se enseña lo que esa persona ha elegido enseñar y nada más.
+     FICHA DE OTRA PERSONA (?atleta=…) · 38b
+     Rango, medallas y retos cumplidos. Ni una marca, ni un tiempo,
+     ni un dato de contacto.
      ============================================================ */
   async function abrirFicha(id, esMia){
-    wrap.innerHTML = '<div class="rt-banda rt-b1"><div class="rt-dentro">' + APOLANA_UI.cargando('tarjeta') + '</div></div>';
-
-    var rg = await sb.from('juego_rangos').select('rango_clave,clave,nombre,desde_puntos,orden').order('desde_puntos');
-    RANGOS = rg.error ? [] : (rg.data || []);
+    wrap.innerHTML = cabecera('./', 'Mis retos', 'Ficha') + APOLANA_UI.cargando('tarjeta');
+    await cargarRangos();
 
     var rm = await sb.from('miembros_juego')
       .select('atleta_id,nombre,foto_ruta,puntos,medallas,retos,rango').eq('atleta_id', id).maybeSingle();
     var m = (rm && !rm.error && rm.data) ? rm.data : null;
-    var volver = '<a class="rt-volver" href="./"><i aria-hidden="true">&larr;</i>' +
-                 (esMia ? 'Volver a mis retos' : 'Volver a los retos') + '</a>';
+    var cab = cabecera('./', esMia ? 'Mis retos' : 'Gente del club', 'Ficha');
 
     if(rm && rm.error){
-      wrap.innerHTML = '<header class="rt-banda rt-cab"><div class="rt-dentro">' + volver + '<h1>Ficha</h1></div></header>' +
-        '<section class="rt-banda rt-b1"><div class="rt-dentro">' +
-        APOLANA_UI.error('No hemos podido abrir esta ficha',
-          'Puede ser tu conexión. No se ha perdido nada: vuelve a intentarlo en un momento.') + '</div></section>';
+      wrap.innerHTML = cab + APOLANA_UI.error('No hemos podido abrir esta ficha',
+        'Puede ser tu conexión. No se ha perdido nada: vuelve a intentarlo en un momento.');
       return;
     }
-
     if(!m){
-      wrap.innerHTML = '<header class="rt-banda rt-cab"><div class="rt-dentro">' + volver + '<h1>Ficha</h1></div></header>' +
-        '<section class="rt-banda rt-b1"><div class="rt-dentro">' +
-        APOLANA_UI.vacio('Esta ficha no se puede abrir',
-          'Puede que esa persona haya preferido no dejarse ver, o que sea menor de edad y todavía no conste el ' +
-          'permiso de su familia.',
-          APOLANA_UI.boton('Volver a los retos', './')) + '</div></section>';
+      wrap.innerHTML = cab + APOLANA_UI.vacio('Esta ficha no se puede abrir',
+        'Puede que esa persona haya preferido no dejarse ver. Las cuentas de menores no tienen ficha abierta al ' +
+        'resto del club.',
+        APOLANA_UI.boton('Volver a los retos', './'));
       return;
     }
 
@@ -678,52 +717,51 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var foto = fotoUrl(m.foto_ruta);
     var cara = foto ? '<img src="' + esc(foto) + '" alt="">' : esc(inicialesTxt(m.nombre));
     var r = rangoDe(Number(m.puntos||0)).actual;
+    var puesto = r ? (ROMANOS.indexOf(claveRango(r)) + 1) : 0;
 
-    var cab = '<header class="rt-banda rt-cab"><div class="rt-dentro">' + volver +
-      '<div class="rt-ficha">' +
-        '<span class="cara-g">' + cara + '</span>' +
-        '<div class="quien"><h1>' + esc(m.nombre) + '</h1>' +
-          '<span class="rg">' + esc(nombreRango(r, m.rango)) + '</span></div>' +
-        (r ? disco(r, 'm', true) : '') +
-      '</div>' +
-      '<div class="rt-datos">' +
-        '<div><b>' + Number(m.puntos||0) + '</b><span>puntos</span></div>' +
-        '<div><b>' + Number(m.medallas||0) + '</b><span>' + (Number(m.medallas)===1?'medalla':'medallas') + '</span></div>' +
-        '<div><b>' + Number(m.retos||0) + '</b><span>' + (Number(m.retos)===1?'reto':'retos') + '</span></div>' +
-      '</div></div></header>';
-
-    _tono = 0;
-    var partes = [];
+    var h = cab;
 
     if(esMia){
-      partes.push('<div class="rt-aviso"><span class="ic-caja">' + ico('aviso', 20) + '</span>' +
+      h += '<div class="rt-aviso"><span class="ic-caja">' + ico('aviso', 20) + '</span>' +
         '<div><b>Así te ven los demás</b><p>Esto es exactamente lo que enseña tu ficha al resto del club: ni una ' +
-        'cosa más. Se cambia o se apaga desde «Quién puede verte», en la pantalla anterior.</p></div></div>');
+        'cosa más. Se apaga desde «Quién puede verte», en la pantalla anterior.</p></div></div>';
     }
 
-    partes.push(titulo('Medallas', meds.length || null) + (meds.length
+    h += '<div class="rt-cabficha">' +
+        '<div class="fila"><span class="cara-g">' + cara + '</span>' +
+          '<div class="quien"><b>' + esc(m.nombre) + '</b>' +
+          '<span>' + Number(m.retos||0) + (Number(m.retos)===1 ? ' reto cumplido' : ' retos cumplidos') + '</span></div>' +
+        '</div>' +
+        (r ? '<div class="caja">' + medalla(r, 's') +
+          '<div><span class="n">' + esc(nombreRango(r, m.rango)) + '</span>' +
+          '<span class="d">' + (puesto>0 && RANGOS.length ? ('Rango ' + puesto + ' de ' + RANGOS.length) : 'Su rango') +
+          '</span></div></div>' : '') +
+      '</div>';
+
+    h += rotulo('Medallas', meds.length || null);
+    h += meds.length
       ? '<div class="rt-medallas">' + meds.map(function(x){
-          return '<div class="rt-med si">' +
-            '<span class="disco-med">' + ico('hecho', 22) + '</span>' +
-            '<span class="n">' + esc(x.titulo) + '</span>' +
-            '<span class="d">' + esc('Conseguida el ' + fCorta(x.conseguida_en)) + '</span></div>';
+          return '<div class="rt-med si" title="' + esc(x.descripcion||'') + '">' +
+            '<span class="aro">' + ico('hecho', 22) + '</span>' +
+            '<span class="n">' + esc(x.titulo) + '</span></div>';
         }).join('') + '</div>'
       : APOLANA_UI.vacio('Todavía no tiene ninguna medalla',
-          'Cuando consiga la primera aparecerá aquí, con el día en que la ganó.')));
+          'Cuando consiga la primera aparecerá aquí.');
 
-    partes.push(titulo('Retos cumplidos', logs.length || null) + (logs.length
-      ? logs.map(function(x){
-          return '<article class="rt-reto hecho"><div class="cab">' +
-            '<span class="ic-caja">' + ico('hecho', 20) + '</span>' +
-            '<div class="tit"><h3>' + esc(x.titulo) + '</h3>' +
-              (x.descripcion ? '<p>' + esc(x.descripcion) + '</p>' : '') + '</div>' +
-            '<span class="pts">+' + Number(x.puntos_otorgados||0) + '</span></div>' +
-            '<p class="hecho-pie"><b>Conseguido</b> · ' + esc(fCorta(x.completado_en)) + '</p></article>';
-        }).join('')
+    h += rotulo('Retos cumplidos', logs.length || null);
+    h += logs.length
+      ? '<div class="rt-filas">' + logs.map(function(x){
+          return '<div class="rt-fila"><span class="visto">' + ico('hecho', 16) + '</span>' +
+            '<span class="t">' + esc(x.titulo) + '</span>' +
+            '<span class="f">' + esc(fCorta(x.completado_en)) + '</span></div>';
+        }).join('') + '</div>'
       : APOLANA_UI.vacio('Todavía no ha cumplido ningún reto',
-          'En cuanto el club dé por bueno el primero, saldrá en esta lista con los puntos que sumó.')));
+          'En cuanto el club dé por bueno el primero, saldrá en esta lista.');
 
-    wrap.innerHTML = cab + partes.map(function(p){ return banda(p); }).join('') + pintarCierre();
+    h += '<div class="rt-cierre"><p>Aquí no se ven marcas, tiempos, pagos ni datos de contacto. Solo el rango, ' +
+         'las medallas y los retos cumplidos.</p></div>';
+
+    wrap.innerHTML = h;
   }
 
   /* ============================================================
@@ -735,17 +773,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var id = b.getAttribute('data-ficha');
         if(id === ATLETA.id) return;
         for(var i=0;i<FICHAS.length;i++) if(FICHAS[i].id === id) ATLETA = FICHAS[i];
-        wrap.innerHTML = '<div class="rt-banda rt-b1"><div class="rt-dentro">' + APOLANA_UI.cargando('tarjeta') + '</div></div>';
+        cargando();
         await cargarTodo(); pintar();
       });
     });
 
     /* Un solo interruptor: se guarda al momento, sin botón de por medio. */
     var sw = $('aj-participa');
-    if(sw) sw.addEventListener('change', function(){ guardarParticipa(this); });
+    if(sw) sw.addEventListener('change', function(){ guardarParticipa(this.checked, this); });
 
-    var ver = $('aj-ver');
-    if(ver) ver.addEventListener('click', function(){ location.href = '?atleta=' + encodeURIComponent(ATLETA.id); });
+    var quitar = $('aj-quitar');
+    if(quitar) quitar.addEventListener('click', function(){ guardarParticipa(false, null); });
 
     var bs = $('bs-txt');
     if(bs) bs.addEventListener('input', function(){
@@ -755,20 +793,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
-  async function guardarParticipa(chk){
-    var quiere = chk.checked;
-    chk.disabled = true;
+  async function guardarParticipa(quiere, chk){
+    if(chk) chk.disabled = true;
     var r = await sb.from('perfil_juego')
       .upsert({ atleta_id: ATLETA.id, participa: quiere }, { onConflict: 'atleta_id' })
       .select('atleta_id,participa,autoriza_parental_en,puntos').maybeSingle();
-    chk.disabled = false;
+    if(chk) chk.disabled = false;
     if(r.error){
-      chk.checked = !quiere;
+      if(chk) chk.checked = !quiere;
       aviso('No hemos podido guardar el cambio', 'error', { detalle: 'Puede ser tu conexión.' });
       return;
     }
     PJ = r.data || PJ;
-    aviso(quiere ? 'Hecho: ya puedes salir en el club' : 'Hecho: has dejado de ser visible');
+    aviso(quiere ? 'Hecho: ya puedes salir en la lista del club' : 'Hecho: has dejado de salir en la lista');
 
     /* Lo que se deja ver cambia al momento: se vuelven a pedir las listas. */
     if(RANKING) TABLA = await cargarTabla();
@@ -784,24 +821,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var hayFichas = await cargarFichas();
 
   if(!hayFichas){
-    wrap.innerHTML = '<header class="rt-banda rt-cab"><div class="rt-dentro">' +
-      '<a class="rt-volver" href="../"><i aria-hidden="true">&larr;</i>Volver al portal</a>' +
-      '<h1>Mis retos</h1></div></header>' +
-      '<section class="rt-banda rt-b1"><div class="rt-dentro">' +
+    wrap.innerHTML = cabecera('../', 'Portal', 'Mis retos') +
       APOLANA_UI.error('No hemos podido cargar tus retos',
-        'Puede ser tu conexión. No se ha perdido nada de lo que llevas conseguido.') + '</div></section>';
+        'Puede ser tu conexión. No se ha perdido nada de lo que llevas conseguido.');
     return;
   }
 
   if(!FICHAS.length){
-    wrap.innerHTML = '<header class="rt-banda rt-cab"><div class="rt-dentro">' +
-      '<a class="rt-volver" href="../"><i aria-hidden="true">&larr;</i>Volver al portal</a>' +
-      '<h1>Mis retos</h1></div></header>' +
-      '<section class="rt-banda rt-b1"><div class="rt-dentro">' +
+    wrap.innerHTML = cabecera('../', 'Portal', 'Mis retos') +
       APOLANA_UI.vacio('Esta pantalla es para los atletas del club',
         'Tu cuenta no tiene ninguna ficha de atleta asociada, y los retos se cuentan por atleta. Si crees que ' +
         'es un error, escríbele al club y lo miran.',
-        APOLANA_UI.boton('Volver al portal', '../')) + '</div></section>';
+        APOLANA_UI.boton('Volver al portal', '../'));
     return;
   }
   ATLETA = FICHAS[0];

@@ -116,8 +116,12 @@
     }
     try {
       var r = await db().rpc('avisos_clave_publica');
-      cacheClave = (r && !r.error && r.data) ? String(r.data).trim() : null;
-    } catch (e) { cacheClave = null; }
+      /* Si la consulta falla (todavía no hay sesión, mala cobertura…) NO
+         se guarda el resultado: si no, quedaría «apagado» para toda la
+         visita y el botón no volvería a salir al entrar en la cuenta. */
+      if (!r || r.error) return null;
+      cacheClave = r.data ? String(r.data).trim() : null;
+    } catch (e) { return null; }
     return cacheClave;
   }
 

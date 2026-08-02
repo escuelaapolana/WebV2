@@ -74,12 +74,18 @@
 
   /* La marca tal y como se guardó. A los saltos y lanzamientos se
      les pone el metro, que en la base no está. A los tiempos no se
-     les toca nada: 4:02.14 se lee solo. */
-  function marcaTexto(f) {
+     les toca nada: 4:02.14 se lee solo.
+
+     La unidad («m», «puntos») sale en letra normal y más pequeña:
+     la monoespaciada es para la cifra, que es lo que se compara en
+     columna. Un «m» tan grande como el número descuadra la lectura. */
+  function marcaHTML(f) {
     var t = (f.marca === null || f.marca === undefined) ? '' : String(f.marca).trim();
     if (!t) return '';
     if (f.unidad === 'distancia' && !/\s?m$/i.test(t)) t += ' m';
-    return t;
+    var partes = t.match(/^(.*?[\d)])\s*([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)$/);
+    if (partes) return esc(partes[1]) + '<span class="uni">' + esc(partes[2]) + '</span>';
+    return esc(t);
   }
 
   function nombreDe(f) { return (f.nombre && String(f.nombre).trim()) || ''; }
@@ -143,14 +149,23 @@
       var el = $(mapa[k]);
       if (el) el.hidden = (k !== cual);
     });
+    /* El título de la prueba solo acompaña a una clasificación de
+       verdad. En vacío y en error, el propio cartel ya lleva el
+       suyo, y dejar el anterior colgado confunde. */
     var t = $('rk-titulo-fila');
-    if (t) t.hidden = (cual === 'cargando' || cual === 'error');
+    if (t) t.hidden = (cual !== 'datos');
   }
 
   /* --- Cabecera: el dato duro ------------------------------ */
   function pintarDatoDuro() {
     var cont = $('rk-datos');
     if (!cont) return;
+    /* Una fila de ceros en la primera pantalla transmite abandono.
+       Sin marcas todavía, se dice con palabras. */
+    if (!filas.length) {
+      cont.innerHTML = '<p class="rk-sin-dato">El ranking arranca en cuanto se anoten las primeras marcas de la temporada.</p>';
+      return;
+    }
     var atletas = {}, pruebas = {};
     filas.forEach(function (f) { atletas[f.clave] = 1; pruebas[f.prueba] = 1; });
     var trozos = [
@@ -346,13 +361,16 @@
     return '<span class="rk-mejora">' + t + '</span>';
   }
 
-  function metaDe(f, conCategoria) {
+  /* La sede solo va en el podio. En la ficha de móvil se pierde a
+     propósito: es la columna menos importante y sin ella la línea
+     de datos cabe entera. */
+  function metaDe(f, conSede) {
     var trozos = [];
-    if (conCategoria && f.categoria) trozos.push(esc(f.categoria));
+    if (f.categoria) trozos.push(esc(f.categoria));
     if (f.fecha) trozos.push(esc(fechaCorta(f.fecha)));
     /* Si no hay sede anotada no se pone nada: un guion aquí
        significaría «no ha corrido», y sí ha corrido. */
-    if (f.sede) trozos.push(esc(f.sede));
+    if (conSede && f.sede) trozos.push(esc(f.sede));
     return trozos.join(' · ');
   }
 
@@ -378,7 +396,7 @@
         '<div class="rk-pod rk-pod--' + (i + 1) + '">' +
           '<span class="puesto">' + (i + 1) + '</span>' +
           '<span class="quien' + (q.anonimo ? ' sin-nombre' : '') + '">' + esc(q.texto) + '</span>' +
-          '<span class="marca">' + esc(marcaTexto(f)) + '</span>' +
+          '<span class="marca">' + marcaHTML(f) + '</span>' +
           '<span class="meta">' + metaDe(f, true) + '</span>' +
           insigniaMejora(f, true) +
         '</div>');
@@ -406,9 +424,9 @@
         '<span class="c-puesto">' + (DESDE_TABLA + i) + '</span>' +
         '<span class="c-atleta' + (q.anonimo ? ' sin-nombre' : '') + '">' + esc(q.texto) + '</span>' +
         '<span class="c-cat">' + (f.categoria ? esc(f.categoria) : '') + '</span>' +
-        '<span class="c-marca">' + esc(marcaTexto(f)) + '</span>' +
+        '<span class="c-marca">' + marcaHTML(f) + '</span>' +
         '<span class="c-fecha">' + esc(fechaCorta(f.fecha)) + '</span>' +
-        '<span class="c-meta">' + metaDe(f, true) + '</span>' +
+        '<span class="c-meta">' + metaDe(f, false) + '</span>' +
         insigniaMejora(f, false) +
       '</div>';
     }).join('');
@@ -513,6 +531,10 @@
         var tit = $('rk-vacio-tit'), txt = $('rk-vacio-txt');
         if (tit) tit.textContent = 'El ranking arranca en cuanto haya marcas';
         if (txt) txt.textContent = 'Todavía no hay ninguna marca publicable en el sistema. En cuanto el club empiece a anotarlas, esta página se llena sola.';
+        /* Sin nada que listar, «ver todas las pruebas» no lleva a
+           ninguna parte: la única salida útil es los récords. */
+        var quitar = $('rk-vacio-reset');
+        if (quitar) quitar.hidden = true;
         mostrar('vacio');
         return;
       }

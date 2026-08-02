@@ -41,3 +41,57 @@ self.addEventListener('fetch', function (e) {
     }
   })());
 });
+
+/* ============================================================
+   AVISOS AL MÓVIL
+   ------------------------------------------------------------
+   Estos dos trozos son los que hacen que un aviso salga en la
+   pantalla aunque la app esté cerrada. El móvil despierta este
+   archivo un segundo, pinta el aviso y lo vuelve a dormir.
+   Lo manda la función `aviso-enviar` (ver docs/avisos-al-movil.md).
+   ============================================================ */
+
+/* 1 · Llega un aviso → se pinta. */
+self.addEventListener('push', function (e) {
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; }
+  catch (err) { d = { titulo: 'Club Apolana', cuerpo: e.data ? e.data.text() : '' }; }
+
+  var destino = d.url || (self.registration.scope + 'portal/');
+
+  /* `showNotification` es obligatorio: si llega un aviso y no se
+     pinta nada, el navegador acaba retirándole el permiso a la web. */
+  e.waitUntil(self.registration.showNotification(d.titulo || 'Club Apolana', {
+    body:  d.cuerpo || '',
+    icon:  self.registration.scope + 'assets/img/app-icon-192.png',
+    badge: self.registration.scope + 'assets/img/app-icon-192.png',
+    lang:  'es',
+    /* Misma etiqueta = el aviso nuevo sustituye al viejo en vez de
+       apilarse. Nadie quiere ocho avisos del club en la pantalla. */
+    tag: d.etiqueta || 'apolana',
+    renotify: true,
+    data: { url: destino }
+  }));
+});
+
+/* 2 · Se toca el aviso → se abre la app donde toca. */
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var destino = (e.notification.data && e.notification.data.url) ||
+                (self.registration.scope + 'portal/');
+
+  e.waitUntil((async function () {
+    /* Si la app ya está abierta, se aprovecha esa ventana: abrir otra
+       deja al usuario con dos apps iguales y sin saber cuál es cuál. */
+    var abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (var i = 0; i < abiertas.length; i++) {
+      var c = abiertas[i];
+      if (c.url.indexOf(self.registration.scope) === 0 && 'focus' in c) {
+        await c.focus();
+        if ('navigate' in c) { try { await c.navigate(destino); } catch (err) { /* da igual */ } }
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(destino);
+  })());
+});

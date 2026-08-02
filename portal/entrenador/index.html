@@ -285,8 +285,6 @@
   /* natación: salida y descanso son cosas distintas y se distinguen por color */
   .f-cel-rec.rec-salida .f-rec-modo { color:#1F5C8F; background:#E7F0F8; border-color:#C7DDF0; }
   .f-cel-rec.rec-descanso .f-rec-modo { color:#6B5227; background:#F7EFDD; border-color:#E6D4AE; }
-  .rec-ayuda { flex:1 1 100%; font-size:13px; color: var(--texto-suave); line-height:1.35; margin-top:1px; }
-  .f-cel-rec.rec-vacia .rec-ayuda { display:none; }
 
   /* montaña: el desnivel de la subida */
   .fila-l2 .f-desnivel { flex:0 1 150px; min-width:0; display:none; font-family: var(--fuente-dato); }
@@ -2485,8 +2483,170 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }).join('')+'</div>';
   }
 
+  // ============================================================
+  // LA RECUPERACIÓN DE CADA SERIE
+  // ------------------------------------------------------------
+  // Sin recuperación una serie no dice nada: 6×800 con 90" no tiene
+  // nada que ver con 6×800 con 3'. El campo suelto de texto se
+  // sustituye por tres controles —modo, valor y si es trote o
+  // parado— que se adaptan al deporte del grupo. Los textos, el
+  // cálculo y el guardado los pone `assets/js/descansos.js`, para que
+  // las cinco pantallas del club digan exactamente lo mismo.
+  // ============================================================
+  var Dsc = window.APOLANA_DESCANSOS || null;
+
+  function disciplinaActual(){
+    if(!Dsc) return 'pista';
+    var tipo = $('pl-tipo') ? $('pl-tipo').value : '';
+    var gr = grupoPorId($('pl-grupo') ? $('pl-grupo').value : '');
+    return Dsc.disciplinaDe({ tipo: tipo }, gr);
+  }
+
+  // Cómo se llama cada modo en cada deporte (en cristiano y en minúscula)
+  var REC_TXT = {
+    natacion: { salida:'salida cada', fijo:'descanso' },
+    pista:    { tiempo:'rec en tiempo', distancia:'rec en metros' },
+    running:  { tiempo:'rec en tiempo', distancia:'rec en metros' },
+    cubo:     { tiempo:'descanso' },
+    montana:  { bajada:'bajada', tiempo:'rec en tiempo' }
+  };
+  var REC_TXT_GEN = { salida:'salida cada', fijo:'descanso', tiempo:'rec en tiempo',
+                      distancia:'rec en metros', bajada:'bajada', texto:'tal cual' };
+  var REC_PLACE = { salida:'1\'00"', fijo:'20"', tiempo:'2\'', distancia:'200 m',
+                    bajada:'4\' (si lo sabes)', texto:'lo que escribiste' };
+  var REC_TIT = {
+    salida: 'Salida cada X: nadar y descansar caben dentro del intervalo.',
+    fijo:   'Descanso fijo: segundos parado al tocar la pared, tardes lo que tardes.',
+    bajada: 'En montaña la recuperación es la bajada.'
+  };
+  // Cómo se recupera. En natación y en El Cubo no se pregunta.
+  var REC_FORMAS = {
+    pista:   ['trote','parado','andando'],
+    running: ['trote','parado','andando'],
+    montana: ['suave','andando','trote','bastones']
+  };
+  var REC_FORMA_TIT = { montana:'cómo baja' };
+
+  function recModosDe(dis){ return (Dsc && Dsc.MODOS[dis]) ? Dsc.MODOS[dis].slice() : ['tiempo']; }
+
+  function opcionesRecModo(dis, sel){
+    var lista = recModosDe(dis);
+    // lo que ya estaba escrito no se pierde nunca, aunque no sea de este deporte
+    if(sel && lista.indexOf(sel)<0) lista.push(sel);
+    var html = '<option value="">sin recuperación</option>';
+    lista.forEach(function(m){
+      var t = (REC_TXT[dis] && REC_TXT[dis][m]) || REC_TXT_GEN[m] || m;
+      html += '<option value="'+escAttr(m)+'"'+(m===sel?' selected':'')+'>'+esc(t)+'</option>';
+    });
+    return html;
+  }
+
+  function opcionesRecForma(dis, sel){
+    var lista = (REC_FORMAS[dis]||[]).slice();
+    if(sel && lista.indexOf(sel)<0) lista.push(sel);
+    var html = '<option value="">'+esc(REC_FORMA_TIT[dis]||'trote o parado')+'</option>';
+    lista.forEach(function(f){ html += '<option value="'+escAttr(f)+'"'+(f===sel?' selected':'')+'>'+esc(f)+'</option>'; });
+    return html;
+  }
+
+  // «200 m» → 200 · «1.000 m» → 1000 · «1,5 km» → 1500
+  function metrosDeTexto(v){
+    var t = String(v==null?'':v).toLowerCase().trim();
+    if(!t) return null;
+    var esKm = /km/.test(t);
+    var n = parseFloat(t.replace(/\.(?=\d{3}\b)/g,'').replace(',', '.').replace(/[^\d.]/g,''));
+    if(isNaN(n) || n<=0) return null;
+    return Math.round(esKm ? n*1000 : n);
+  }
+
+  // Lo que se escribe en la casilla del valor a partir de lo guardado
+  function recValorTexto(rec){
+    if(!rec || !Dsc) return '';
+    if(rec.modo==='texto')     return rec.texto||'';
+    if(rec.modo==='distancia') return Dsc.fmtMetros(rec.metros);
+    if(rec.modo==='salida')    return Dsc.fmtSalida(rec.segundos);
+    return rec.segundos>0 ? Dsc.fmtSegundos(rec.segundos) : '';
+  }
+
+  function recCeldaHTML(dis){
+    return '<div class="f-cel-rec">'+
+      '<select class="f-rec-modo">'+opcionesRecModo(dis, '')+'</select>'+
+      '<input class="f-rec-valor" inputmode="numeric" placeholder="">'+
+      '<select class="f-rec-forma">'+opcionesRecForma(dis, '')+'</select>'+
+    '</div>';
+  }
+
+  // Deja los tres controles como estaba guardada la fila
+  function cargarRecEnFila(fe, data, dis){
+    if(!Dsc) return;
+    var rec = Dsc.recDeFila(data||{}, dis);
+    var modo = rec ? rec.modo : '';
+    if(modo==='ninguna') { modo = ''; rec = null; }
+    fe.querySelector('.f-rec-modo').innerHTML  = opcionesRecModo(dis, modo);
+    fe.querySelector('.f-rec-modo').value      = modo;
+    fe.querySelector('.f-rec-valor').value     = recValorTexto(rec);
+    fe.querySelector('.f-rec-forma').innerHTML = opcionesRecForma(dis, (rec && rec.forma) || '');
+    fe.querySelector('.f-rec-forma').value     = (rec && rec.forma) || '';
+    refrescarRecFila(fe);
+  }
+
+  // Rehace los desplegables al cambiar el deporte, sin tocar lo escrito
+  function rehacerRecFila(fe, dis){
+    var selM = fe.querySelector('.f-rec-modo'), selF = fe.querySelector('.f-rec-forma');
+    if(!selM || !selF) return;
+    var m = selM.value, f = selF.value;
+    selM.innerHTML = opcionesRecModo(dis, m); selM.value = m;
+    selF.innerHTML = opcionesRecForma(dis, f); selF.value = f;
+    refrescarRecFila(fe);
+  }
+
+  // Qué se ve y qué no: nunca un campo vacío esperando a que lo rellenen
+  function refrescarRecFila(fe){
+    var celda = fe.querySelector('.f-cel-rec'); if(!celda) return;
+    var dis  = disciplinaActual();
+    var selM = fe.querySelector('.f-rec-modo');
+    var modo = selM.value;
+    var val  = fe.querySelector('.f-rec-valor');
+    var serEl = fe.querySelector('.f-series');
+    var series = parseFloat(String(serEl ? serEl.value : '').replace(',', '.')) || 0;
+
+    val.placeholder = REC_PLACE[modo] || '';
+    selM.title = REC_TIT[modo] || '';
+    celda.classList.toggle('rec-vacia', !modo);
+    celda.classList.toggle('rec-sin-forma', !((REC_FORMAS[dis]||[]).length && modo && modo!=='texto'));
+    celda.classList.toggle('rec-salida',   dis==='natacion' && modo==='salida');
+    celda.classList.toggle('rec-descanso', dis==='natacion' && modo==='fijo');
+    // rodaje o tirada (una sola repetición): no hay nada que recuperar y el campo se va
+    var deSeries = (dis==='pista' || dis==='running');
+    celda.classList.toggle('rec-oculta', deSeries && series>0 && series<2 && !modo);
+    // en pista y running una serie sin recuperación no se entiende: se marca
+    celda.classList.toggle('rec-falta',  deSeries && series>=2 && !modo);
+  }
+
+  // Lee los tres controles y devuelve el objeto rec (o null si no hay)
+  function leerRecDeFila(fe){
+    if(!Dsc) return null;
+    var selM = fe.querySelector('.f-rec-modo'); if(!selM) return null;
+    var modo = selM.value; if(!modo) return null;
+    var val = (fe.querySelector('.f-rec-valor').value||'').trim();
+    var forma = (fe.querySelector('.f-rec-forma').value||'') || null;
+    if(modo==='texto')     return val ? { modo:'texto', texto:val, forma:forma } : null;
+    if(modo==='distancia'){ var m = metrosDeTexto(val); return m ? { modo:'distancia', metros:m, forma:forma } : null; }
+    var s = Dsc.segundosDeTexto(val);
+    if(modo==='bajada')    return { modo:'bajada', segundos:(s>0?s:null), forma: forma||'suave' };
+    return s>0 ? { modo:modo, segundos:s, forma:forma } : null;
+  }
+
+  // Cuántas series de pista o running se han quedado sin recuperación
+  function seriesSinRec(){
+    var n = 0, cont = $('bloques-cont'); if(!cont) return 0;
+    cont.querySelectorAll('.f-cel-rec.rec-falta').forEach(function(){ n++; });
+    return n;
+  }
+
   function nuevaFila(filasCont, data){
     data = data||{};
+    var dis = disciplinaActual();
     var div=document.createElement('div'); div.className='editor-fila';
     div.innerHTML =
       '<div class="fila-l1">'+
@@ -2494,7 +2654,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<input class="f-series" placeholder="series">'+
         '<input class="f-distancia" placeholder="distancia">'+
         '<input class="f-ritmo" placeholder="ritmo">'+
-        '<input class="f-descanso" placeholder="rec">'+
+        recCeldaHTML(dis)+
         '<div class="f-cel-cz">'+
           '<select class="f-calzado">'+CALZADO_OPTS+'</select>'+
           '<input class="f-carga" placeholder="carga (80% RM)">'+
@@ -2502,6 +2662,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<button type="button" class="mini-x" title="Quitar fila">×</button>'+
       '</div>'+
       '<div class="fila-l2">'+
+        '<input class="f-desnivel" placeholder="desnivel (400 m D+)">'+
         '<input class="f-detalle" placeholder="detalle">'+
         '<input class="f-observaciones" placeholder="observaciones (objetivos por atleta, matices…)">'+
         materialHTML()+
@@ -2513,7 +2674,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     div.querySelector('.f-series').value=data.series||'';
     div.querySelector('.f-distancia').value=data.distancia||'';
     div.querySelector('.f-ritmo').value=data.ritmo||'';
-    div.querySelector('.f-descanso').value=data.descanso||'';
+    div.querySelector('.f-desnivel').value = (data.desnivel_m!=null && data.desnivel_m!=='') ? data.desnivel_m : '';
+    cargarRecEnFila(div, data, dis);
+    div.querySelector('.f-rec-modo').addEventListener('change', function(){ refrescarRecFila(div); pedirResumen(); });
+    div.querySelector('.f-series').addEventListener('input', function(){ refrescarRecFila(div); });
     div.querySelector('.f-detalle').value=data.detalle||'';
     div.querySelector('.f-carga').value=data.carga||'';
     div.querySelector('.f-observaciones').value=data.observaciones||'';
@@ -2577,14 +2741,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="b-cab"><input class="b-etiqueta" list="etiquetas-dl" placeholder="Etiqueta del bloque (Velocidad máxima, Fuerza / potencia…)">'+
         '<input class="b-matiz" placeholder="Matiz (lo que va tras el guion: «Calidad pura»)">'+
         '<button type="button" class="mini-x b-quitar" title="Quitar bloque">×</button></div>'+
-      '<div class="filas-cab"><span>Ejercicio</span><span class="cab-series">Series</span><span>Distancia</span><span>Ritmo</span><span>Rec</span><span class="cab-cz">Calzado</span><span></span></div>'+
+      '<div class="filas-cab"><span>Ejercicio</span><span class="cab-series">Series</span><span>Distancia</span><span>Ritmo</span><span>Recuperación</span><span class="cab-cz">Calzado</span><span></span></div>'+
       '<div class="filas-cont"></div>'+
-      '<div style="margin-top:8px;"><button type="button" class="btn-mini b-add-fila">+ Añadir fila</button></div>';
+      '<div class="b-pie">'+
+        '<button type="button" class="btn-mini b-add-fila">+ Añadir fila</button>'+
+        '<label class="b-rec-caja"><span>descanso tras el bloque</span>'+
+          '<input class="b-rec" inputmode="numeric" placeholder="3\'"></label>'+
+        '<label class="b-rec-caja b-rec-ej-caja"><span>entre ejercicios</span>'+
+          '<input class="b-rec-ej" inputmode="numeric" placeholder="3\'"></label>'+
+      '</div>';
     cont.appendChild(div);
+    // Lo que este editor todavía no sabe editar (la calle de natación, los
+    // atletas del bloque) se guarda aquí para devolverlo intacto al grabar.
+    div.__extra = { calle: (data.calle!=null ? data.calle : null),
+                    atletas: (data.atletas!=null ? data.atletas : null) };
     div.querySelector('.b-etiqueta').value = data.etiqueta||'';
     div.querySelector('.b-matiz').value = data.matiz||'';
+    if(Dsc){
+      var sB = Dsc.recEntreBloques(data), sE = Dsc.recEntreEjercicios(data);
+      div.querySelector('.b-rec').value    = sB>0 ? Dsc.fmtSegundos(sB) : '';
+      div.querySelector('.b-rec-ej').value = sE>0 ? Dsc.fmtSegundos(sE) : '';
+    }
     var filasCont = div.querySelector('.filas-cont');
-    div.querySelector('.b-quitar').addEventListener('click', function(){ div.remove(); });
+    div.querySelector('.b-quitar').addEventListener('click', function(){ div.remove(); pedirResumen(); });
     div.querySelector('.b-add-fila').addEventListener('click', function(){ nuevaFila(filasCont, {}); });
     var filas = Array.isArray(data.filas)?data.filas:[];
     if(filas.length){ filas.forEach(function(f){ nuevaFila(filasCont, f); }); }
@@ -2598,7 +2777,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   //   gym                          -> Carga (% RM), sin Calzado
   //   pista / continuo / activación-> Calzado y Rec, sin Carga
   // El material de natación es un interruptor aparte (ver más abajo).
+  // Y la recuperación se adapta al DEPORTE del grupo: salida o
+  // descanso en natación, tiempo o metros en pista y running, entre
+  // series y entre ejercicios en El Cubo, y la bajada en montaña.
   // ------------------------------------------------------------
+  var DISCIPLINAS_UI = ['natacion','pista','running','cubo','montana'];
+
   function aplicarModoFilas(){
     var cont = $('bloques-cont'); if(!cont) return;
     var tipo = $('pl-tipo') ? $('pl-tipo').value : '';
@@ -2608,10 +2792,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cont.classList.toggle('con-material', conMaterial);
     cont.querySelectorAll('.cab-cz').forEach(function(el){ el.textContent = esGym ? 'Carga' : 'Calzado'; });
     cont.querySelectorAll('.cab-series').forEach(function(el){ el.textContent = esGym ? 'Series × reps' : 'Series'; });
+    var dis = disciplinaActual();
+    DISCIPLINAS_UI.forEach(function(d){ cont.classList.toggle('modo-'+d, d===dis); });
+    cont.querySelectorAll('.editor-fila').forEach(function(fe){ rehacerRecFila(fe, dis); });
+    pintarAyudaRec(dis);
+    pedirResumen();
+  }
+
+  // Una sola línea que explica lo que hay que explicar de este deporte.
+  // Si no hay nada que aclarar, la línea desaparece: nunca un hueco.
+  var AYUDA_REC = {
+    natacion: '<strong>Salida cada X</strong>: nadar y descansar caben dentro del intervalo. '+
+              '<strong>Descanso</strong>: segundos parado al tocar la pared, tardes lo que tardes.',
+    pista:    'La recuperación va en tiempo (<code>2\'</code>, <code>90"</code>) o en metros (<code>200 m</code>), diciendo si es trote o parado. En un rodaje o una tirada el campo se quita solo.',
+    running:  'La recuperación va en tiempo (<code>2\'</code>, <code>90"</code>) o en metros (<code>200 m</code>), diciendo si es trote o parado. En un rodaje o una tirada el campo se quita solo.',
+    cubo:     'Dos descansos distintos: el de <strong>entre series</strong> va en cada fila y el de <strong>entre ejercicios</strong>, al pie del bloque.',
+    montana:  'La recuperación es la bajada. El desnivel de la subida se apunta en la segunda línea de cada fila.'
+  };
+  function pintarAyudaRec(dis){
+    var el = $('pl-ayuda-rec'); if(!el) return;
+    var t = AYUDA_REC[dis] || '';
+    el.innerHTML = t;
+    el.hidden = !t;
   }
 
   function limpiarFormulario(){
     editandoId = null;
+    DURACION_EDIT = null;
     if($('pl-fecha')) $('pl-fecha').value = todayISO;
     if($('pl-titulo')) $('pl-titulo').value = '';
     if($('pl-tipo')) $('pl-tipo').value = '';
@@ -2635,6 +2842,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function cargarSesionEnForm(s){
     editandoId = s.id;
+    // si el entrenador ya escribió la duración, esa manda: es un dato, no una estimación
+    DURACION_EDIT = (s.duracion_min > 0) ? s.duracion_min : null;
     $('pl-grupo').value = s.grupo_id||'';
     $('pl-fecha').value = s.fecha||todayISO;
     $('pl-titulo').value = s.titulo||'';
@@ -2667,7 +2876,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!selEditar) return;
     selEditar.innerHTML = '<option value="">— nueva sesión —</option>';
     if(!grupoId) return;
-    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
+    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
     if(r.error || !r.data){ return; }
     window.__SESIONES_GRUPO = {};
     r.data.forEach(function(s){
@@ -2678,7 +2887,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function serializarBloques(){
-    var bloques=[];
+    var bloques=[], dis = disciplinaActual();
     $('bloques-cont').querySelectorAll('.editor-bloque').forEach(function(be){
       var etiqueta = be.querySelector('.b-etiqueta').value.trim();
       var matiz = be.querySelector('.b-matiz').value.trim();
@@ -2687,10 +2896,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var f={};
         var ej = fe.querySelector('.f-ejercicio').value.trim(); if(ej) f.ejercicio=ej;
         // 'detalle' se mantiene tal cual: la zona del atleta ya lo lee.
-        ['series','distancia','ritmo','descanso','detalle','calzado','carga','observaciones'].forEach(function(k){
+        ['series','distancia','ritmo','detalle','calzado','carga','observaciones'].forEach(function(k){
           var el = fe.querySelector('.f-'+k); if(!el) return;
           var v = el.value.trim(); if(v) f[k]=v;
         });
+        // ⚠️ Los dos campos nuevos, 'rec' y 'desnivel_m', NO salen de un input
+        // suelto y por eso no pueden ir en la lista de arriba: se arman aquí.
+        // Si alguien vuelve a montar la fila desde una lista de campos, tienen
+        // que estar los dos, o el descanso se pierde al guardar y no se nota
+        // hasta que se recarga la página.
+        var elD = fe.querySelector('.f-desnivel');                   // «400 m D+» -> 400
+        var dm  = elD ? metrosDeTexto(elD.value) : null;
+        if(dm) f.desnivel_m = dm;
+        // `ponerRec` escribe a la vez el objeto `rec` y el texto de siempre en
+        // `descanso`, para que ninguna pantalla se quede sin el dato.
+        if(Dsc){
+          var rec = leerRecDeFila(fe);
+          if(rec) Dsc.ponerRec(f, rec, dis); else Dsc.quitarRec(f);
+        }
         var mats = [];
         fe.querySelectorAll('.f-material-chk').forEach(function(chk){ if(chk.checked) mats.push(chk.value); });
         if(mats.length) f.material = mats;
@@ -2699,10 +2922,65 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(etiqueta || matiz || filas.length){
         var b = { etiqueta: etiqueta, filas: filas };
         if(matiz) b.matiz = matiz;
+        // el separador que faltaba: el descanso DESPUÉS de este bloque
+        if(Dsc){
+          var elB = be.querySelector('.b-rec'), elE = be.querySelector('.b-rec-ej');
+          Dsc.ponerRecEntreBloques(b, elB ? Dsc.segundosDeTexto(elB.value) : 0);
+          if(dis==='cubo') Dsc.ponerRecEntreEjercicios(b, elE ? Dsc.segundosDeTexto(elE.value) : 0);
+          else if(elE && Dsc.segundosDeTexto(elE.value) > 0) Dsc.ponerRecEntreEjercicios(b, Dsc.segundosDeTexto(elE.value));
+        }
+        // lo que este editor no edita (calle de natación, atletas del bloque)
+        // se devuelve tal cual llegó, para no borrarlo sin querer
+        var ex = be.__extra || {};
+        if(ex.calle != null) b.calle = ex.calle;
+        if(ex.atletas != null) b.atletas = ex.atletas;
         bloques.push(b);
       }
     });
     return bloques;
+  }
+
+  // ------------------------------------------------------------
+  // Volumen y tiempo, SEPARADOS, en la cabecera de la sesión.
+  // Las familias planifican con el tiempo, no con los metros. Si
+  // faltan datos para estimarlo, se enseña solo el volumen: aquí no
+  // se inventa un número.
+  // ------------------------------------------------------------
+  var DURACION_EDIT = null;    // la duración escrita a mano, si la sesión ya la traía
+  var TIMER_RESUMEN = null;
+
+  function pedirResumen(){
+    if(TIMER_RESUMEN) clearTimeout(TIMER_RESUMEN);
+    TIMER_RESUMEN = setTimeout(refrescarResumenSesion, 180);
+  }
+
+  function refrescarResumenSesion(){
+    var caja = $('pl-resumen'); if(!caja) return;
+    if(!Dsc){ caja.hidden = true; return; }
+    var dis = disciplinaActual();
+    var ses = { tipo: $('pl-tipo') ? $('pl-tipo').value : '', duracion_min: DURACION_EDIT, bloques: serializarBloques() };
+    var r = Dsc.resumen(ses, { disciplina: dis });
+    var html = '', notas = [];
+
+    if(r.tiene_calles){
+      // cada nadador hace los bloques comunes MÁS los de su calle: por calle
+      Dsc.estimarPorCalles(ses, { disciplina: dis }).forEach(function(e){
+        var t = [Dsc.fmtMetros(e.metros), e.minutos>0 ? Dsc.fmtEstimado(e.minutos) : ''].filter(Boolean).join(' · ');
+        if(t) html += '<span class="sr-dato">calle '+esc(e.calle)+' · '+esc(t)+'</span>';
+      });
+    }
+    if(r.volumen) html += '<span class="sr-dato">'+esc(r.volumen)+'</span>';
+    if(r.tiempo)  html += '<span class="sr-dato sr-tiempo">'+esc(r.tiempo)+'</span>';
+
+    if(r.volumen && r.volumen_parcial) notas.push('Hay series medidas en tiempo o en repeticiones: los metros no lo cuentan todo.');
+    if(!r.tiempo && r.faltan && r.faltan.length){
+      notas.push('Todavía no se puede estimar el tiempo: '+r.faltan.slice(0,2).join(' · ')+'.');
+    }
+    if(r.tiempo && r.supuesto) notas.push('El tiempo sale de un ritmo supuesto: tómalo como orientación.');
+    if(html && notas.length) html += '<p class="sr-nota">'+esc(notas.join(' '))+'</p>';
+
+    caja.innerHTML = html;
+    caja.hidden = !html;      // si no hay nada que decir, no hay hueco que rellenar
   }
 
   (function renderPlanificar(){
@@ -2729,6 +3007,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           'Si lo marcas, aparece con el botón de <strong>apuntarse</strong> para la gente que digas debajo.')+
         '<label>Nota / razonamiento</label><textarea id="pl-nota" placeholder="Objetivo del día, sensaciones a buscar, avisos…"></textarea>'+
         '<h3>Bloques del entreno</h3>'+
+        '<div class="ses-resumen" id="pl-resumen" hidden></div>'+
+        '<p class="pista" id="pl-ayuda-rec" style="margin:10px 0 10px;" hidden></p>'+
         '<p class="pista" style="margin-bottom:10px;">'+PISTA_RITMO_HTML+'</p>'+
         '<div class="check" style="margin:0 0 10px;"><input type="checkbox" id="pl-material"><label for="pl-material">Sesión de agua: mostrar el <strong>material de natación</strong> en cada fila (tabla, palas, aletas…). Se puede marcar más de uno.</label></div>'+
         '<p class="pista" style="margin:0 0 12px;">Las columnas se ajustan solas al tipo de sesión: en <strong>gimnasio</strong> aparece <strong>Carga</strong> (<code>80% RM</code>) y en <strong>pista, rodaje o activación</strong> aparecen <strong>Calzado</strong> y <strong>Rec</strong>.</p>'+
@@ -2802,6 +3082,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
     $('pl-tipo').addEventListener('change', aplicarModoFilas);
     $('pl-material').addEventListener('change', aplicarModoFilas);
+    // el volumen y el tiempo se recalculan solos según se escribe
+    $('bloques-cont').addEventListener('input', pedirResumen);
+    $('bloques-cont').addEventListener('change', pedirResumen);
 
     // ---- ¿para quién es? ----
     pintarListaDest('pl', $('pl-grupo').value, []);
@@ -2868,7 +3151,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         abierto = ' · abierto a '+textoSecciones(abre.abierta_a)+(abre.plazas ? ' ('+abre.plazas+' plazas)' : ' (sin límite de plazas)');
         if(!payload.publicada) abierto += ' · ojo: en borrador nadie se puede apuntar';
       }
-      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien+abierto; msg.className='msg ok';
+      // en pista y running una serie sin recuperación no se entiende: se avisa,
+      // pero nunca se tira lo que el entrenador ya había escrito
+      var sinRec = seriesSinRec();
+      var falta = sinRec ? ' · ojo: '+sinRec+' serie(s) sin recuperación' : '';
+      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien+abierto+falta; msg.className='msg ok';
       $('pl-estado').textContent = 'Editando: '+(payload.titulo||formatFecha(payload.fecha));
       await cargarSesionesGrupo(grupoId);
       if(editandoId) $('pl-editar').value = editandoId;
@@ -2991,6 +3278,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!f.descanso && (/^(desc|rec|r)\b/.test(np) || /\bdescanso\b|\bpausa\b/.test(np))){
         f.descanso = p.replace(/^(descansos?|desc\.?|recup\w*|rec\.?|pausa|r)\s*[:.]?\s*/i,'').trim() || p; return;
       }
+      // montaña: «400 m D+» es el desnivel de la subida, no la distancia
+      if(!f.desnivel_m && (/\bd\s*\+/.test(np) || /\bdesnivel\b/.test(np))){
+        var dv = metrosDeTexto(p); if(dv){ f.desnivel_m = dv; return; }
+      }
       if(!f.distancia && /^\d+(?:[.,]\d+)?\s*(m|km|metros)\.?$/.test(np)){ f.distancia = p; return; }
       sobra.push(p);
     });
@@ -3079,6 +3370,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     'series':'series','repeticiones':'series','reps':'series','series x reps':'series',
     'distancia':'distancia','ritmo':'ritmo','intensidad':'ritmo',
     'descanso':'descanso','recuperacion':'descanso','rec':'descanso',
+    'desnivel':'desnivel_m','desnivel m':'desnivel_m','d+':'desnivel_m','desnivel positivo':'desnivel_m',
     'calzado':'calzado','zapatillas':'calzado',
     'carga':'carga','carga rm':'carga','% rm':'carga',
     'material':'material','material natacion':'material',
@@ -3160,14 +3452,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!ses.titulo && r.titulo) ses.titulo = r.titulo;
       if(r.nota) ses.nota_razonamiento = (ses.nota_razonamiento ? ses.nota_razonamiento+' ' : '') + r.nota;
       if(!r.ejercicio && !r.series && !r.distancia && !r.ritmo && !r.descanso && !r.detalle &&
-         !r.calzado && !r.carga && !r.material && !r.observaciones) return;
+         !r.calzado && !r.carga && !r.material && !r.observaciones && !r.desnivel_m) return;
       var etq = r.bloque || 'Parte principal', bl = null;
       for(var b=0;b<ses.bloques.length;b++){ if(ses.bloques[b].etiqueta===etq) bl = ses.bloques[b]; }
       if(!bl){ bl = { etiqueta: etq, filas: [] }; ses.bloques.push(bl); }
       if(r.matiz && !bl.matiz) bl.matiz = r.matiz;
       var celda = {};
       celda.ejercicio = r.ejercicio || '(sin nombre)';
-      ['series','distancia','ritmo','descanso','detalle','carga','observaciones'].forEach(function(k){ if(r[k]) celda[k] = r[k]; });
+      // ⚠️ 'rec' y 'desnivel_m' tienen que seguir en esta lista: si se caen, el
+      // descanso de la fila se pierde al guardar y no se nota hasta recargar.
+      ['series','distancia','ritmo','descanso','rec','desnivel_m','detalle','carga','observaciones'].forEach(function(k){ if(r[k]) celda[k] = r[k]; });
+      if(celda.desnivel_m){ var dmc = metrosDeTexto(celda.desnivel_m); if(dmc) celda.desnivel_m = dmc; else delete celda.desnivel_m; }
       // calzado y material son listas cerradas: se traducen, y lo que no esté en la lista
       // no se pierde (se guarda en detalle) y se avisa.
       if(r.calzado){
@@ -3383,19 +3678,36 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     pintarPrevisualizacion();
   }
 
-  function filaTexto(f){
+  function filaTexto(f, dis){
     var p = [];
-    if(f.series && f.distancia) p.push(esc(f.series)+' × '+esc(f.distancia));
-    else if(f.series) p.push(esc(f.series)+' series');
-    else if(f.distancia) p.push(esc(f.distancia));
-    if(f.ritmo) p.push('ritmo '+esc(f.ritmo));
-    if(f.descanso) p.push('rec '+esc(f.descanso));
+    // la serie y la recuperación las escribe el módulo, para que las cinco
+    // pantallas del club digan exactamente lo mismo
+    if(Dsc){
+      Dsc.partesFila(f, dis||'pista').forEach(function(x){ p.push(esc(x)); });
+    } else {
+      if(f.series && f.distancia) p.push(esc(f.series)+' × '+esc(f.distancia));
+      else if(f.series) p.push(esc(f.series)+' series');
+      else if(f.distancia) p.push(esc(f.distancia));
+      if(f.ritmo) p.push('ritmo '+esc(f.ritmo));
+      if(f.descanso) p.push('rec '+esc(f.descanso));
+    }
     if(f.calzado) p.push('calzado '+esc(calzadoCorto(f.calzado)));   // en la lista va la abreviatura (Z / C)
-    if(f.carga) p.push('carga '+esc(f.carga));
+    if(f.carga && !(Dsc && dis==='cubo')) p.push('carga '+esc(f.carga));   // en El Cubo ya va dentro de la serie
     if(f.material && f.material.length) p.push('material '+esc(f.material.join(' + ')));
     if(f.detalle) p.push(esc(f.detalle));
     if(f.observaciones) p.push('obs. '+esc(f.observaciones));
     return '<li><b>'+esc(f.ejercicio||'—')+'</b>'+(p.length ? ' — '+p.join(' · ') : '')+'</li>';
+  }
+
+  // Volumen y tiempo de un día de la semana previsualizada, separados y sin
+  // inventar: si no se puede estimar el tiempo, solo sale el volumen.
+  function resumenChips(s){
+    if(!Dsc) return '';
+    var r = Dsc.resumen(s, { grupo: grupoPorId(SEMANA ? SEMANA.grupo_id : '') });
+    var h = '';
+    if(r.volumen) h += '<span class="sw-chip">'+esc(r.volumen)+'</span>';
+    if(r.tiempo)  h += '<span class="sw-chip">'+esc(r.tiempo)+'</span>';
+    return h;
   }
 
   function pintarPrevisualizacion(){
@@ -3428,6 +3740,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<span class="sw-fecha">'+esc(s.dia_semana||'')+' · '+esc(formatFecha(s.fecha))+'</span>'+
           (ex[s.fecha] ? '<span class="sw-choque">Ya existe</span>' : '')+
           '<span class="pill">'+nFilas+' ejercicio(s)</span>'+
+          resumenChips(s)+
           '<span style="flex:1 1 auto"></span>'+
           '<span class="check"><input type="checkbox" class="sw-inc"'+(s.incluir===false?'':' checked')+'><label>Incluir</label></span>'+
         '</div>'+
@@ -3441,9 +3754,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><span class="sw-lab">Lugar</span><input class="sw-lugar" list="lugares-dl" placeholder="Dónde se queda" value="'+escAttr(s.lugar||'')+'"></div>'+
           '<div><span class="sw-lab">Apuntarse</span><span class="check"><input type="checkbox" class="sw-abre-dia"'+(s.abierta?' checked':'')+'><label>Abierto</label></span></div>'+
         '</div>';
-      (s.bloques||[]).forEach(function(b){
+      var disSem = Dsc ? Dsc.disciplinaDe(s, grupoPorId(SEMANA.grupo_id)) : 'pista';
+      var bloquesSem = s.bloques||[];
+      bloquesSem.forEach(function(b, bi){
         html += '<div class="sw-bloque"><h4>'+esc(b.etiqueta||'Bloque')+(b.matiz?' — '+esc(b.matiz):'')+'</h4><ul>'+
-          (b.filas||[]).map(filaTexto).join('')+'</ul></div>';
+          (b.filas||[]).map(function(f){ return filaTexto(f, disSem); }).join('')+'</ul>';
+        // el separador entre bloques. Si ese bloque no lleva descanso, no se pinta nada
+        if(Dsc){
+          var entreEj = Dsc.textoEntreEjercicios(b);
+          if(entreEj) html += '<p class="sw-nota">'+esc(entreEj)+'</p>';
+          var entre = Dsc.textoEntreBloques(b);
+          if(entre && bi < bloquesSem.length-1) html += '<p class="sw-nota">'+esc(entre)+'</p>';
+        }
+        html += '</div>';
       });
       if(!(s.bloques||[]).length) html += '<p class="sw-nota">Sin bloques (día de descanso o solo cabecera).</p>';
       if(s.nota_razonamiento) html += '<p class="sw-nota">Nota: '+esc(s.nota_razonamiento)+'</p>';
@@ -3687,7 +4010,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<ul>'+
             '<li>Columnas: <code>dia</code>, <code>fecha</code>, <code>hora</code>, <code>lugar</code>, <code>tipo</code>, <code>rol</code>, <code>titulo</code>, <code>bloque</code>, <code>matiz</code>, <code>ejercicio</code>, <code>series</code>, <code>distancia</code>, <code>ritmo</code>, <code>rec</code>, <code>calzado</code>, <code>carga</code>, <code>material</code>, <code>observaciones</code>, <code>detalle</code>.</li>'+
             '<li><code>hora</code> (<code>9:00</code>, <code>17:30</code>) y <code>lugar</code> son los que se ven en el calendario del club. Si los dejas vacíos se usan los que hayas puesto arriba, en «¿Estos entrenos están abiertos?».</li>'+
-            '<li><code>calzado</code>: <code>Z</code>, <code>C</code>, <code>zapatillas</code>, <code>clavos</code>, <code>zapatillas de gimnasio</code> o <code>descalzo</code>. <code>carga</code>: el % RM del gimnasio (<code>80% RM</code>). <code>rec</code>: la recuperación entre series.</li>'+
+            '<li><code>calzado</code>: <code>Z</code>, <code>C</code>, <code>zapatillas</code>, <code>clavos</code>, <code>zapatillas de gimnasio</code> o <code>descalzo</code>. <code>carga</code>: el % RM del gimnasio (<code>80% RM</code>). <code>rec</code>: la recuperación entre series (<code>2\'</code>, <code>90"</code>, <code>200 m trote</code>, <code>salida 1\'00"</code>). Puedes añadir una columna <code>desnivel</code> para las subidas de montaña (<code>400 m D+</code>).</li>'+
             '<li><code>material</code>: material de natación, separado por <code>+</code> si es más de uno (<code>Tabla + Aletas</code>). Vale: Tabla, Pull-buoy, Palas, Aletas, Manoplas, Snorkel frontal, Goma elástica, Sin material.</li>'+
             '<li><code>observaciones</code>: el texto libre de cada ejercicio, que es donde van los objetivos por atleta (<code>Rafa 40-42 seg · Adri 43-45 seg</code>). <code>matiz</code> es lo que en la planificación va tras el guion del bloque (<code>Calidad pura</code>).</li>'+
             '<li>Si escribes un calzado o un material que no está en la lista, no se pierde: se pasa a <code>detalle</code> y te lo aviso en la previsualización.</li>'+

@@ -192,8 +192,10 @@
      fila —hecha con su tiempo y su diferencia, la actual con borde azul, las que
      faltan en discontinuo—. Así se ve de un vistazo por dónde vas. */
   .serie-inputs { display:flex; flex-direction:column; gap:8px; padding:0; border:0; margin:0; }
+  /* El borde es siempre de 2 px (transparente cuando no toca): así al escribir
+     el tiempo la fila no da un salto de un píxel. */
   .serie-hueco { display:flex; align-items:center; gap:13px; margin:0; font-weight:400; box-sizing:border-box;
-    min-height:52px; padding:6px 12px; border-radius:12px; background: var(--crema); border:1px solid var(--linea); }
+    min-height:52px; padding:5px 11px; border-radius:12px; background: var(--crema); border:2px solid transparent; }
   .serie-hueco .s-n { flex:none; width:22px; font-family: var(--fuente-dato); font-size:14px; color: var(--texto-suave); }
   /* Los tiempos por serie se comparan en columna: van en monoespaciada */
   .serie-in { flex:1 1 auto; min-width:0; box-sizing:border-box; min-height:40px; padding:6px 0; border:0; background:none;
@@ -204,12 +206,12 @@
   .serie-hueco .s-dif.mejora { color: var(--verde); font-weight:600; }
   .serie-hueco .s-dif.peor { color:#B0563A; }
   /* pendiente: ni fondo ni peso, solo el hueco marcado en discontinuo */
-  .serie-hueco.pendiente { background:none; border:1px dashed var(--linea-borde); }
+  .serie-hueco.pendiente { background:none; border:2px dashed var(--linea); }
   .serie-hueco.pendiente .s-n, .serie-hueco.pendiente .serie-in::placeholder { color: var(--texto-suave); }
   /* la que toca ahora */
-  .serie-hueco.actual { background:#fff; border:2px solid var(--azul); padding:5px 11px; }
+  .serie-hueco.actual { background:#fff; border-color: var(--azul); }
   .serie-hueco.actual .serie-in::placeholder { color: var(--azul-oscuro); font-weight:600; }
-  .serie-hueco:focus-within { border-color: var(--azul); }
+  .serie-hueco:focus-within { border-color: var(--azul); border-style:solid; }
   .fb-sucio { font-size:13px; color:#B96F09; }
   .fb-sucio[hidden] { display:none; }
   .chip.personal { background: var(--azul-suave); color: var(--azul-oscuro); font-weight:700; }
@@ -435,9 +437,9 @@
   body.trabajo .serie-hueco .s-dif { color: rgba(255,255,255,.5); }
   body.trabajo .serie-hueco .s-dif.mejora { color:#7FC08D; }
   body.trabajo .serie-hueco .s-dif.peor { color:#E8A48C; }
-  body.trabajo .serie-hueco.pendiente { background:none; border:1px dashed rgba(255,255,255,.25); }
+  body.trabajo .serie-hueco.pendiente { background:none; border:2px dashed rgba(255,255,255,.25); }
   body.trabajo .serie-hueco.pendiente .s-n { color: rgba(255,255,255,.35); }
-  body.trabajo .serie-hueco.actual { background: rgba(255,255,255,.14); border-color: var(--azul); }
+  body.trabajo .serie-hueco.actual { background: rgba(255,255,255,.14); border-color: var(--azul); border-style:solid; }
   body.trabajo .serie-hueco.actual .serie-in::placeholder { color:#8FC0E8; }
 
   body.trabajo .escala-tit b { color:#fff; }
@@ -765,9 +767,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return;
   }
 
-  // Mi grupo: da nombre y horario/lugar a la tarjeta de hoy
-  var GRUPO=null;
-  if(at.grupo_id){ try { var gq=await sb.from('grupos').select('nombre,seccion,horario').eq('id',at.grupo_id).maybeSingle(); if(!gq.error) GRUPO=gq.data; } catch(e){} }
+  // Mi grupo: da nombre, horario, lugar y entrenador a la tarjeta de hoy
+  var GRUPO=null, ENTRENA='';
+  if(at.grupo_id){ try { var gq=await sb.from('grupos').select('nombre,seccion,horario,entrenador_id').eq('id',at.grupo_id).maybeSingle(); if(!gq.error) GRUPO=gq.data; } catch(e){} }
+  // El nombre de quien lleva el grupo sale de la vista pública: solo el nombre,
+  // ni correos ni teléfonos ni el resto de la ficha del personal.
+  if(GRUPO && GRUPO.entrenador_id){
+    try {
+      var eq=await sb.from('entrenadores_publicos').select('nombre').eq('id',GRUPO.entrenador_id).maybeSingle();
+      if(!eq.error && eq.data) ENTRENA=eq.data.nombre||'';
+    } catch(e){}
+  }
+  // De «Mar y Jue 18:00-20:00 · Estadio Joaquín Villar» salen la hora y el sitio
+  function horaGrupo(){ var m=(GRUPO&&GRUPO.horario)?String(GRUPO.horario).match(/\d{1,2}[:.]\d{2}/):null; return m?m[0].replace('.',':'):''; }
+  function lugarGrupo(){
+    if(!GRUPO||!GRUPO.horario) return '';
+    var p=String(GRUPO.horario).split('·');
+    return p.length>1 ? p[p.length-1].trim() : '';
+  }
+  /* Los nombres propios del club (La Tribu, Madre Tierra, El Cubo…) van en ámbar;
+     los genéricos, en navy. La diferencia de color enseña qué tiene identidad. */
+  function esNombrePropio(n){ return /(la tribu|madre tierra|el cubo|familia apolana|vertical apolana|kil[óo]metro cero)/i.test(n||''); }
+  function nombreGrupoHTML(n){
+    if(!n) return '';
+    return esNombrePropio(n) ? '<span class="propio">'+esc(n)+'</span>' : esc(n);
+  }
 
   // Aviso del club: mismo criterio que la web pública (activo, el más reciente)
   var AVISO=null;
@@ -798,6 +822,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   try {
     var nn=await sb.from('noticias').select('id').eq('publicada',true).gte('fecha_publicacion',addDias(todayISO,-30)).limit(20);
     if(!nn.error && nn.data) NOTIS=nn.data.length;
+  } catch(e){}
+
+  // Rango del juego de retos: la fila de Inicio con la medalla en ámbar y qué
+  // falta para el siguiente. Solo si el atleta participa: si no, no hay fila.
+  var RANGO=null;
+  try {
+    var pj=await sb.from('perfil_juego').select('participa,puntos').eq('atleta_id',at.id).maybeSingle();
+    if(!pj.error && pj.data && pj.data.participa){
+      var rg=await sb.from('juego_rangos').select('clave,nombre,desde_puntos,orden').order('desde_puntos');
+      if(!rg.error && rg.data && rg.data.length){
+        var pts=pj.data.puntos||0, actual=rg.data[0], siguiente=null;
+        rg.data.forEach(function(r){
+          if(pts>=r.desde_puntos) actual=r;
+          else if(!siguiente) siguiente=r;
+        });
+        RANGO={ puntos:pts, nombre:actual.nombre, orden:actual.orden,
+                sigNombre: siguiente?siguiente.nombre:'', sigFaltan: siguiente?(siguiente.desde_puntos-pts):0 };
+      }
+    }
   } catch(e){}
 
   // Catálogo de pruebas (atletismo + natación): para el desplegable y para saber si "más es mejor"
@@ -854,7 +897,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // Secciones MARCAS y PAGOS se rellenan con funciones (para poder refrescar)
-  var layout = cab+
+  var layout =
+    '<div id="cab-cont"></div>'+
     '<div class="layout">'+
       '<aside class="side"><nav>'+
         '<a data-sec="hoy" class="activo">Inicio</a>'+
@@ -868,7 +912,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<section id="sec-hoy">'+APOLANA_UI.cargando('tarjeta')+'</section>'+
         '<section id="sec-entreno" hidden>'+entrenoSec+'</section>'+
         '<section id="sec-marcas" hidden>'+
-          '<div class="tarjeta"><h2>Añadir marca</h2>'+
+          /* El formulario no abre la pantalla: se despliega desde «Añadir», que
+             está en la cabecera. Lo primero que se ve son las marcas. */
+          '<div class="tarjeta" id="mk-form" hidden>'+
             '<div class="grid2">'+
               '<div><label>Prueba</label><select id="mk-prueba">'+opcionesPruebas()+'</select></div>'+
               '<div><label id="mk-tiempo-lbl">Marca</label><input id="mk-tiempo" placeholder="7.85 · 1:02.3 · 6.85"></div>'+
@@ -883,10 +929,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '</div>'+
             '<div class="acciones"><button class="btn btn--primario" id="mk-guardar">Guardar marca</button><span class="msg" id="mk-msg"></span></div>'+
           '</div>'+
-          '<div class="tarjeta"><h2>Mis marcas</h2><div id="marcas-cont">'+APOLANA_UI.cargando('filas',5)+'</div></div>'+
+          '<div id="marcas-cont">'+APOLANA_UI.cargando('filas',5)+'</div>'+
         '</section>'+
         '<section id="sec-pagos" hidden>'+
-          '<div class="tarjeta"><h2>Pagos y recibos</h2><div id="pagos-cont">'+APOLANA_UI.cargando('filas',4)+'</div></div>'+
+          '<div id="pagos-cont">'+APOLANA_UI.cargando('filas',4)+'</div>'+
         '</section>'+
         '<section id="sec-mas" hidden></section>'+
       '</main>'+
@@ -894,23 +940,59 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     '<div id="tabbar-cont"></div>';
   wrap.innerHTML = layout;
 
+  // ---------- cabecera de pantalla ----------
+  // Cada pantalla tiene la suya: Inicio saluda, Marcas trae su acción y el
+  // Entreno es una pantalla de trabajo —navy y con «Salir»—.
+  var tituloEntreno='Entreno';
+  function cabeceraDe(sec){
+    if(sec==='entreno'){
+      var quien=[nombreGrupoHTML((GRUPO&&GRUPO.nombre)||''), ENTRENA?esc(ENTRENA):''].filter(Boolean).join(' · ');
+      return '<div class="tb-cab"><div><span class="tb-quien">'+(quien||'Tu entreno')+'</span>'+
+        '<h1>'+esc(tituloEntreno)+'</h1></div>'+
+        '<button type="button" class="tb-salir" data-sec-ir="hoy">Salir</button></div>';
+    }
+    if(sec==='marcas')
+      return '<div class="at-cab"><h1>Marcas</h1>'+
+        '<button type="button" class="at-acc" id="mk-abrir" aria-expanded="false" aria-controls="mk-form">Añadir</button></div>';
+    if(sec==='pagos')
+      return '<div class="at-cab"><div><span class="sub">Lo que el club te gira</span><h1>Pagos</h1></div></div>';
+    if(sec==='mas') return '<div class="at-cab"><h1>Más</h1></div>';
+    return '<div class="at-cab"><div><span class="sub">'+esc(fechaLarga(todayISO))+'</span>'+
+      '<h1>Hola, '+esc(perfil.nombre||nombre)+'</h1></div>'+
+      '<div class="at-ini" aria-hidden="true">'+esc(ini)+'</div></div>';
+  }
+  function pintarCabecera(){ $('cab-cont').innerHTML = cabeceraDe(SEC); }
+
   // ---------- navegación por secciones ----------
   var SECCIONES=['hoy','entreno','marcas','pagos','mas'];
   var SEC='hoy';
-  function pintarTabbar(){ $('tabbar-cont').innerHTML = tabbarHTML(SEC); }
+  // En modo trabajo no se pinta la barra: de pie en la pista se pulsa sin querer
+  function pintarTabbar(){ $('tabbar-cont').innerHTML = (SEC==='entreno') ? '' : tabbarHTML(SEC); }
   function activarSeccion(sec){
     SEC=sec;
     wrap.querySelectorAll('.side nav a').forEach(function(x){ x.classList.toggle('activo', x.getAttribute('data-sec')===sec); });
     SECCIONES.forEach(function(s){ $('sec-'+s).hidden = (s!==sec); });
-    var elCab=wrap.querySelector('.at-cab'); if(elCab) elCab.hidden=(sec==='mas');
+    document.body.classList.toggle('trabajo', sec==='entreno');
+    pintarCabecera();
     if(sec==='mas') pintarMas();
     pintarTabbar();
   }
+  pintarCabecera();
   pintarTabbar();
-  // Un solo manejador: sirve para la barra lateral y para la barra inferior,
-  // que se repinta entera cada vez que cambia la pestaña activa.
+  // Un solo manejador: sirve para la barra lateral, para la barra inferior y
+  // para el «Salir» de la cabecera de trabajo.
   wrap.addEventListener('click', function(ev){
     var t=ev.target; if(!t||!t.closest) return;
+    var salir=t.closest('#cab-cont [data-sec-ir]');
+    if(salir){ activarSeccion(salir.getAttribute('data-sec-ir')); window.scrollTo(0,0); return; }
+    var abrir=t.closest('#mk-abrir');
+    if(abrir){
+      var f=$('mk-form'); if(!f) return;
+      f.hidden=!f.hidden;
+      abrir.setAttribute('aria-expanded', f.hidden?'false':'true');
+      if(!f.hidden) $('mk-prueba').focus();
+      return;
+    }
     var a=t.closest('.side nav a[data-sec], .tabbar a[data-sec]');
     if(!a) return;
     activarSeccion(a.getAttribute('data-sec'));
@@ -1080,10 +1162,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     ev.preventDefault(); ev.returnValue='';
   });
 
+  // El título de la cabecera de trabajo es el del entreno que se está viendo
+  function fijarTituloEntreno(lista, iso){
+    tituloEntreno = (lista && lista.length===1) ? tituloSesion(lista[0])
+      : (lista && lista.length>1 ? 'Entrenos del día'
+        : (iso===todayISO ? 'Hoy no toca' : 'Sin entreno'));
+    if(SEC==='entreno') pintarCabecera();
+  }
   function pintarDia(iso){
     diaSel=iso;
     pintarSemana();
     var lista=sesionesDe(iso), cont=$('entreno-cont');
+    fijarTituloEntreno(lista, iso);
     if(!lista.length){
       var haySemana=(SEM[lunesVis]||[]).length;
       var titulo = (iso===todayISO) ? 'Hoy no toca entreno' : 'Ese día no hay entreno';
@@ -1241,8 +1331,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     wrap.scrollIntoView({block:'start'});
   }
 
-  // Cifras del entreno: series, ritmo objetivo y volumen total (maqueta 22a)
-  function cifrasSesion(s){
+  // La fila que manda de una sesión: la del bloque principal con series o ritmo
+  function filaClave(s){
     var bloques=Array.isArray(s.bloques)?s.bloques:[];
     var principal=null;
     bloques.forEach(function(b){ if(!principal && /principal/i.test(b.etiqueta||'')) principal=b; });
@@ -1250,20 +1340,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     (principal?[principal]:bloques).forEach(function(b){ (b.filas||[]).forEach(function(f){ filas.push(f); }); });
     var f=null;
     filas.forEach(function(x){ if(!f && (x.series||x.ritmo)) f=x; });
-    if(!f) f=filas[0];
-    if(!f) return [];
+    return f || filas[0] || null;
+  }
+  /* Los tres datos de la tarjeta de hoy (maqueta 37b): series, ritmo y
+     RECUPERACIÓN. Antes salía el ritmo pero no la recuperación, que es lo que
+     de verdad define la sesión: 6×800 con 90" no es 6×800 con 3'. */
+  function cifrasSesion(s){
+    var f=filaClave(s); if(!f) return [];
+    var dis=disciplinaDe(s), D=DESC();
     var out=[];
-    if(f.series && f.distancia) out.push({v:String(f.series)+' × '+String(f.distancia).replace(/\s*m$/i,''), l:'Series'});
-    else if(f.series) out.push({v:String(f.series), l:'Series'});
-    else if(f.distancia) out.push({v:String(f.distancia), l:'Distancia'});
-    if(f.ritmo) out.push({v:String(f.ritmo), l:'Ritmo obj.'});
-    // Volumen: series × metros, si se puede leer de los datos
-    var nS=parseFloat(String(f.series||'').replace(',','.'));
-    var mD=String(f.distancia||'').match(/(\d[\d.,]*)\s*m/i);
-    if(nS>0 && mD){
-      var metros=parseFloat(mD[1].replace(/\./g,'').replace(',','.'))*nS;
-      if(metros>0) out.push({v: metros>=1000 ? (metros/1000).toFixed(metros%1000?1:0)+' km' : Math.round(metros)+' m', l:'Total'});
-    } else if(f.tiempo) out.push({v:String(f.tiempo), l:'Tiempo'});
+    if(f.series && f.distancia) out.push({v:String(f.series)+' × '+String(f.distancia).replace(/\s*m$/i,''), l:'series'});
+    else if(f.series) out.push({v:String(f.series), l:'series'});
+    else if(f.distancia) out.push({v:String(f.distancia), l:'distancia'});
+    if(f.ritmo) out.push({v:String(f.ritmo), l:'ritmo'});
+    var rec='';
+    if(D && dis){ try { rec=D.textoRecPlano ? D.textoRecPlano(D.recDeFila(f, dis), dis) : ''; } catch(e){}
+      if(!rec){ try { rec=D.textoRec(D.recDeFila(f, dis), dis)||''; } catch(e){} } }
+    if(!rec && f.descanso) rec=String(f.descanso);
+    if(rec) out.push({v: rec, l:'recuperación'});
+    else if(f.tiempo) out.push({v:String(f.tiempo), l:'tiempo'});
     return out.slice(0,3);
   }
 

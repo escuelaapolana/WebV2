@@ -106,6 +106,17 @@
   .eg-linea { font-size: 14px; line-height: 1.45; color: var(--texto-suave); }
   .eg-linea b { font-weight: 600; color: var(--texto); }
 
+  /* Los grupos que hay dentro de una escuela, de pequeños a mayores */
+  .eg-sub { display: flex; flex-direction: column; }
+  .eg-sub .uno {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 9px 0; border-top: 1px solid var(--linea-marcada);
+  }
+  .eg-sub .uno:first-child { border-top: 0; padding-top: 0; }
+  .eg-sub b { font-size: 14.5px; font-weight: 600; color: var(--navy); }
+  .eg-sub .q { font-size: 13.5px; line-height: 1.4; color: var(--texto); }
+  .eg-sub .h { font-size: 13px; line-height: 1.4; color: var(--texto-suave); }
+
   .eg-precio {
     background: #fff; border: 1px solid var(--linea-marcada); border-radius: 10px;
     padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
@@ -240,8 +251,6 @@
   }
   .eg-cierre .wa:hover { background: rgba(255,255,255,0.1); color: #fff; }
   .eg-cierre .wa svg { width: 20px; height: 20px; }
-  /* El cierre navy toca el pie: sin crema entre medias. */
-  .pie { margin-top: 0; }
 
   /* ---------- Barra de móvil: el resultado siempre a mano ---------- */
   .eg-barra {
@@ -439,8 +448,11 @@
 
 </main>
 
-<!-- ================= PIE (compartido) ================= -->
-<apolana-pie></apolana-pie>
+<!-- ================= PIE (compartido) =================
+     Con «sin-cierre»: el cierre de esta página es la banda navy de
+     WhatsApp de aquí arriba, y va pegada al pie. Si dejáramos el cierre
+     de serie saldrían dos bandas navy seguidas diciendo casi lo mismo. -->
+<apolana-pie sin-cierre></apolana-pie>
 
 <!-- Barra de móvil: el resultado sigue a mano aunque estés eligiendo arriba -->
 <div class="eg-barra" id="eg-barra" hidden>
@@ -509,6 +521,26 @@
   function cuandoYDonde(horario) {
     var p = String(horario || '').split('·');
     return { cuando: limpio(p[0]), donde: limpio(p.slice(1).join(' · ')) };
+  }
+
+  /* Primera frase de la descripción que escribe el entrenador en el panel:
+     en los grupos de la escuela es justo la que dice la edad. */
+  function primeraFrase(txt) {
+    var s = limpio(txt);
+    if (!s) return '';
+    var m = /^(.+?[.!?])(\s|$)/.exec(s);
+    return m ? m[1] : s;
+  }
+
+  /* Ordena los grupos de la escuela de pequeños a mayores leyendo su
+     propia ficha. No hay campo de edad en la base: esto es lo que hay. */
+  function edadDe(g) {
+    var d = sinTildes(String(g.descripcion || '').toLowerCase());
+    if (d.indexOf('mas pequen') !== -1) return 0;
+    if (/de\s*5\s*a\s*8|benjam/.test(d + ' ' + sinTildes(String(g.nombre || '').toLowerCase()))) return 1;
+    if (d.indexOf('sub-12') !== -1 || d.indexOf('sub-14') !== -1) return 2;
+    if (d.indexOf('sub-16') !== -1 || d.indexOf('mayores') !== -1) return 3;
+    return 2.5;
   }
 
   /* Nombres propios del club: van en ámbar. Los genéricos, en navy. */
@@ -684,12 +716,19 @@
     return { k: 'Cuota de socio', v: euros(f.importe_socio) + '/año' };
   }
 
-  /* Bonos de natación de adultos: el precio va por días de la semana. */
-  function bonoNatacion(dias) {
-    var claves = { 1: 'natacion-bono-4', 2: 'natacion-bono-8', 3: 'natacion-bono-12' };
-    var n = dias ? Math.min(3, Math.max(1, parseInt(dias, 10))) : 2;
-    var f = t(claves[n]);
-    return { fila: f, n: n };
+  var NUMERO = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+  function enLetra(n) { return (n >= 0 && n < NUMERO.length) ? NUMERO[n] : String(n); }
+
+  /* Cuántas clases por semana se pueden pagar: las que pides, pero nunca
+     más de las que tiene publicadas el grupo en su horario. */
+  function clasesSemana(entrada) {
+    var pedidas = sel.dias ? Math.max(1, parseInt(sel.dias, 10)) : 2;
+    var g = entrada.grupo ? grupoReal(entrada.grupo) : null;
+    var tope = g ? diasDe(g.horario) : 0;
+    var n = Math.min(3, pedidas);
+    var recortado = false;
+    if (tope > 0 && n > tope) { n = tope; recortado = true; }
+    return { n: Math.max(1, n), recortado: recortado, tope: tope };
   }
 
   function preciosDe(entrada) {
@@ -720,15 +759,17 @@
         break;
 
       case 'natacion':
-        r = bonoNatacion(sel.dias);
-        if (r.fila && r.fila.importe_socio != null) {
-          filas.push({ k: 'Entrenamiento · ' + (r.fila.concepto || '').replace('Natación · ', ''), v: euros(r.fila.importe_socio) + '/mes' });
-          if (r.fila.importe_no_socio != null) notas.push('Sin ser socio, ' + euros(r.fila.importe_no_socio) + ' al mes.');
+        r = clasesSemana(entrada);
+        f = t({ 1: 'natacion-bono-4', 2: 'natacion-bono-8', 3: 'natacion-bono-12' }[r.n]);
+        if (f && f.importe_socio != null) {
+          filas.push({ k: 'Entrenamiento · ' + (f.concepto || '').replace('Natación · ', ''), v: euros(f.importe_socio) + '/mes' });
+          if (f.importe_no_socio != null) notas.push('Sin ser socio, ' + euros(f.importe_no_socio) + ' al mes.');
         } else {
           filas.push(filaPendiente('Entrenamiento'));
         }
         filas.push(filaSocio());
-        if (sel.dias === '4') notas.push('El bono más grande son 12 clases al mes, tres por semana: no hay bono de cuatro días.');
+        if (r.recortado) notas.push('Este grupo entrena ' + enLetra(r.tope) + ' días a la semana, así que el bono es de ' + enLetra(r.n) + '.');
+        else if (sel.dias === '4') notas.push('El bono más grande son 12 clases al mes, tres por semana: no hay bono de cuatro días.');
         break;
 
       case 'escuela':
@@ -745,27 +786,39 @@
         break;
 
       case 'escuela-natacion':
-        var clavesEN = { 1: 'escuela-natacion-1', 2: 'escuela-natacion-2', 3: 'escuela-natacion-3' };
-        var nEN = sel.dias ? Math.min(3, Math.max(1, parseInt(sel.dias, 10))) : 2;
-        f = t(clavesEN[nEN]);
+        r = clasesSemana(entrada);
+        f = t({ 1: 'escuela-natacion-1', 2: 'escuela-natacion-2', 3: 'escuela-natacion-3' }[r.n]);
         if (f && f.importe_socio != null) {
-          filas.push({ k: 'Entrenamiento · ' + nEN + (nEN === 1 ? ' clase' : ' clases') + ' por semana', v: euros(f.importe_socio) + '/mes' });
+          filas.push({
+            k: 'Entrenamiento · ' + enLetra(r.n) + (r.n === 1 ? ' clase' : ' clases') + ' por semana',
+            v: euros(f.importe_socio) + '/mes'
+          });
           if (f.notas) notas.push(f.notas);
         } else {
           filas.push(filaPendiente('Entrenamiento'));
         }
-        if (sel.dias === '4') notas.push('La escuela de natación llega hasta tres clases por semana.');
+        if (r.recortado) notas.push('El horario publicado de este grupo son ' + enLetra(r.tope) + ' clases por semana.');
         break;
 
       case 'cubo':
-        f = t('cubo-padres');
-        if (f && f.importe_socio != null) {
-          filas.push({ k: 'El Cubo · ' + (f.dias || 'por sesiones'), v: euros(f.importe_socio) + '/mes' });
-        } else { filas.push(filaPendiente('El Cubo')); }
+        /* Si has dicho que entrenas mientras tu hijo está en la escuela,
+           el precio que sale es el reducido: es tu precio, no el general. */
         var reducida = t('cubo-padres-escuela');
-        if (reducida && reducida.importe_socio != null) {
+        var general = t('cubo-padres');
+        var conHijo = (sel.meta === 'conhijo' && reducida && reducida.importe_socio != null);
+        f = conHijo ? reducida : general;
+        if (f && f.importe_socio != null) {
+          filas.push({
+            k: 'El Cubo · ' + (conHijo ? 'con hijo en la escuela' : (f.dias || 'por sesiones')),
+            v: euros(f.importe_socio) + '/mes'
+          });
+        } else { filas.push(filaPendiente('El Cubo')); }
+        if (conHijo && general && general.importe_socio != null) {
+          notas.push('Sin hijo o hija en la escuela son ' + euros(general.importe_socio) + ' al mes.');
+        } else if (!conHijo && reducida && reducida.importe_socio != null) {
           notas.push('Si tu hijo o hija está en la escuela, ' + euros(reducida.importe_socio) + ' al mes.');
         }
+        if (general && general.notas) notas.push(general.notas);
         break;
 
       case 'cubo-escuela':
@@ -823,16 +876,19 @@
     if (entrada.escuela) {
       var hijos = GRUPOS.filter(function (g) { return clave(g.seccion) === 'escuela'; });
       if (!hijos.length) return null;
+      /* De pequeños a mayores, según lo que dice la ficha de cada grupo. */
+      hijos = hijos.slice().sort(function (a, b) { return edadDe(a) - edadDe(b); });
       return {
         nombre: entrada.nombre,
         propio: false,
-        frase: 'Cuatro grupos por edad, del que empieza jugando a los que ya preparan la competición.',
+        frase: (hijos.length === 1 ? 'Un grupo' : enLetra(hijos.length).charAt(0).toUpperCase() + enLetra(hijos.length).slice(1) + ' grupos') +
+               ' por edad, del que empieza jugando a los que ya preparan la competición.',
         horario: '',
         entrenador: '',
         dias: 2,
         sub: hijos.map(function (g) {
           var cd = cuandoYDonde(g.horario);
-          return { nombre: g.nombre, txt: limpio(g.descripcion) || cd.cuando, cuando: cd.cuando };
+          return { nombre: g.nombre, txt: primeraFrase(g.descripcion), cuando: cd.cuando };
         }),
         pagina: entrada.pagina,
         seccionTxt: entrada.seccionTxt,
@@ -968,9 +1024,11 @@
 
   function lineaHorario(p) {
     if (p.sub) {
-      return '<span class="eg-linea">' + p.sub.map(function (s) {
-        return '<b>' + esc(s.nombre) + '</b>' + (s.cuando ? ' · ' + esc(s.cuando) : '');
-      }).join('<br>') + '</span>';
+      return '<div class="eg-sub">' + p.sub.map(function (s) {
+        return '<div class="uno"><b>' + esc(s.nombre) + '</b>' +
+               (s.txt ? '<span class="q">' + esc(s.txt) + '</span>' : '') +
+               (s.cuando ? '<span class="h">' + esc(s.cuando) + '</span>' : '') + '</div>';
+      }).join('') + '</div>';
     }
     var out = '';
     if (p.horario) out += '<span class="eg-linea"><b>' + esc(p.horario) + '</b>' + (p.donde ? ' · ' + esc(p.donde) : '') + '</span>';
@@ -1007,13 +1065,28 @@
            '</div>';
   }
 
-  /* La frase de escape: cuál es el otro grupo parecido. */
+  /* La frase de escape: cuál es el otro grupo parecido, para quien no se
+     vea reflejado en el que le hemos dicho. */
   function escapeHTML(lista, mostrados) {
-    var resto = lista.slice(mostrados);
+    var principal = lista[0];
+    if (sel.deporte === 'nose') {
+      return '<span class="eg-escape">Por estos dos se empieza de cero, y desde ahí se pasa a cualquier otro grupo. ' +
+             'Si te tira más la pista, la montaña o el triatlón, vuelve al paso 2 y dínoslo.</span>';
+    }
+    /* Si el resultado es la escuela entera, no se propone como «otro» uno
+       de sus propios grupos: ya están todos arriba. */
+    var dentro = {};
+    if (principal && principal.sub) principal.sub.forEach(function (s) { dentro[clave(s.nombre)] = true; });
+    var resto = lista.slice(mostrados).filter(function (p) { return !dentro[clave(p.nombre)]; });
+
     if (resto.length) {
       var o = resto[0];
       return '<span class="eg-escape">Si no te ves ahí, el otro grupo parecido es <b>' + esc(o.nombre) + '</b>' +
              (o.horario ? ' (' + esc(o.horario) + ')' : '') + '. Se puede probar y cambiar sin problema.</span>';
+    }
+    if (principal && principal.sub) {
+      return '<span class="eg-escape">Se entra por el grupo que va con su edad, y se cambia solo al crecer. ' +
+             'Si dudas entre dos, pregúntanos y lo miramos con su entrenador.</span>';
     }
     return '<span class="eg-escape">Es el único grupo de este deporte en el club. Si no te encaja, dínoslo por WhatsApp y buscamos otra cosa.</span>';
   }
@@ -1037,7 +1110,21 @@
     ponerBarra(null);
   }
 
+  /* Si la base no contesta, nada se queda con el esqueleto puesto: un
+     esqueleto eterno es el «cargando…» colgado de siempre. */
+  function apagarEsqueletos() {
+    var datos = document.querySelector('.eg-datos');
+    if (datos) datos.hidden = true;
+    var imp = document.getElementById('eg-socio-importe');
+    if (imp && imp.querySelector('.eg-esq')) {
+      imp.textContent = 'Pregúntanos';
+      imp.style.fontFamily = 'var(--fuente-texto)';
+      imp.style.fontSize = '17px';
+    }
+  }
+
   function pintarError() {
+    apagarEsqueletos();
     cajaRes.innerHTML =
       '<div class="eg-error">' +
         '<div class="fila-icono">' +
@@ -1110,8 +1197,9 @@
     var i;
     for (i = 1; i < mostrados; i++) html += tarjetaSecundariaHTML(lista[i]);
 
-    /* Aviso honesto si los días que pides no existen en este deporte. */
-    if (sel.dias) {
+    /* Aviso honesto si los días que pides no existen en este deporte.
+       (En natación no hace falta: ya lo dice la línea del bono.) */
+    if (sel.dias && sel.deporte !== 'natacion') {
       var pedidos = parseInt(sel.dias, 10);
       var maximo = 0;
       lista.forEach(function (p) { if (p.dias > maximo) maximo = p.dias; });
@@ -1142,7 +1230,21 @@
     }
     revisarBarra();
   }
+  var cajaResultado = document.getElementById('eg-res');
+
+  /* ¿Se ve ya la tarjeta del resultado? Se mira a mano en cada scroll:
+     es barato y funciona en todos los navegadores. */
+  var bandaCierre = document.querySelector('.eg-cierre');
+  function miraSiSeVe() {
+    var r = cajaResultado.getBoundingClientRect();
+    var alto = window.innerHeight || document.documentElement.clientHeight;
+    resVisible = (r.top < alto - 60) && (r.bottom > 80);
+    /* Al llegar al cierre y al pie la barra sobra: ya has pasado el test
+       y solo taparía enlaces. */
+    if (!resVisible && bandaCierre && bandaCierre.getBoundingClientRect().top < alto) resVisible = true;
+  }
   function revisarBarra() {
+    miraSiSeVe();
     var estrecho = window.matchMedia('(max-width: 940px)').matches;
     var mostrar = estrecho && hayResultado && !resVisible;
     barra.hidden = !mostrar;
@@ -1150,17 +1252,21 @@
     document.body.classList.toggle('eg-con-barra', mostrar);
   }
   barraBtn.addEventListener('click', function () {
-    document.getElementById('eg-res').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    cajaResultado.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
-  if ('IntersectionObserver' in window) {
-    new IntersectionObserver(function (entradas) {
-      resVisible = entradas[0].isIntersecting;
-      revisarBarra();
-    }, { threshold: 0.25 }).observe(document.getElementById('eg-res'));
-  } else {
-    resVisible = false;
+
+  /* Se mira como mucho una vez cada 80 ms: suficiente y sin castigar el
+     scroll. (Nada de requestAnimationFrame: en una pestaña de fondo no
+     se ejecuta y la barra se quedaría pegada.) */
+  var ultima = 0;
+  function alMover() {
+    var ahora = Date.now();
+    if (ahora - ultima < 80) return;
+    ultima = ahora;
+    revisarBarra();
   }
-  window.addEventListener('resize', revisarBarra);
+  window.addEventListener('scroll', alMover, { passive: true });
+  window.addEventListener('resize', alMover);
 
   /* =========================================================
      9 · Interacción
@@ -1193,6 +1299,8 @@
     });
     document.getElementById('eg-n-grupos').textContent = String(GRUPOS.length);
     document.getElementById('eg-n-deportes').textContent = String(Object.keys(deportes).length);
+    var caja = document.querySelector('.eg-datos');
+    if (caja) caja.hidden = false;   /* por si venía de un fallo */
   }
 
   function pintarCuotaSocio() {

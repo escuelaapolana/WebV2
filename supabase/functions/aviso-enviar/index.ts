@@ -41,7 +41,10 @@ const ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY") ??
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
-const VAPID_PUBLICA = (Deno.env.get("VAPID_PUBLIC_KEY") ?? "").trim();
+// Se normaliza el formato: hay páginas que dan las claves con «+», «/»
+// o «=» al final, y así valen igual sin que nadie tenga que darse cuenta.
+const VAPID_PUBLICA = (Deno.env.get("VAPID_PUBLIC_KEY") ?? "").trim()
+  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const VAPID_PRIVADA = (Deno.env.get("VAPID_PRIVATE_KEY") ?? "").trim();
 const VAPID_CONTACTO = (Deno.env.get("VAPID_SUBJECT") ?? "mailto:escuelaapolana@gmail.com").trim();
 
@@ -247,10 +250,16 @@ async function mandarA(d: Destino, carga: string): Promise<"ok" | "muerto" | "fa
       body: cuerpo,
     });
 
-    if (r.status === 201 || r.status === 200 || r.status === 202) return "ok";
+    if (r.status === 201 || r.status === 200 || r.status === 202) {
+      await r.body?.cancel();                  // sin esto la conexión se queda colgada
+      return "ok";
+    }
     // 404 y 410: la app se desinstaló o se borraron los datos del
     // navegador. Ese buzón ya no existe y hay que quitarlo.
-    if (r.status === 404 || r.status === 410) return "muerto";
+    if (r.status === 404 || r.status === 410) {
+      await r.body?.cancel();
+      return "muerto";
+    }
     console.error("aviso rechazado", r.status, (await r.text()).slice(0, 200));
     return "fallo";
   } catch (e) {

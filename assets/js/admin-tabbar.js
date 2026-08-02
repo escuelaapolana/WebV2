@@ -151,6 +151,7 @@
       { t: 'La web', enlaces: [
         { txt: 'Noticias', url: r + '#noticias' },
         { txt: 'Avisos de portada', url: r + '#avisos' },
+        { txt: 'Avisos al móvil', url: r + 'avisos-push/' },
         { txt: 'Tienda', url: r + '#tienda' },
         { txt: 'Páginas', url: r + 'paginas/' },
         { txt: 'Textos de las páginas', url: r + 'contenido/' },
