@@ -312,6 +312,10 @@
   function ponerFranja(d) {
     if (document.querySelector('.pap-franja')) return;
     ponerEstilo();
+    /* Que no se pinte dos veces: si ya hay franja, fuera la vieja. Así
+       aunque montar() se llame más de una vez, nunca se apilan. */
+    var vieja = document.querySelector('.pap-franja');
+    if (vieja) vieja.parentNode.removeChild(vieja);
     var manda = !!(PAPEL[d.activo] && PAPEL[d.activo].mando);
     var f = document.createElement('div');
     f.className = 'pap-franja' + (manda ? ' pap-franja--mando' : '');

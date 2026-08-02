@@ -444,6 +444,10 @@
     document.body.insertBefore(login, document.body.firstChild);
 
     function barra(perfil, email) {
+      /* Nunca dos barras: si ya hay una pintada, no se pinta otra. Esto
+         evita el «barra, franja, barra» que salía al entrar en algunas
+         pantallas (la función se llamaba más de una vez). */
+      if (document.querySelector('.pt-top')) { montarPapeles(); return; }
       var nombre = (perfil && perfil.nombre) ? perfil.nombre : email;
       var top = document.createElement('div');
       top.className = 'pt-top';
