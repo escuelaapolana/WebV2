@@ -25,7 +25,9 @@
     F.parse = _D.parse; F.UTC = _D.UTC; F.prototype = _D.prototype;
     window.Date = F;
   }
-  if (MAQ.rango && DATOS.perfil_juego && DATOS.perfil_juego.length) {
+  if (MAQ.rango) {
+    var aid = (DATOS.atletas && DATOS.atletas[0] && DATOS.atletas[0].id) || null;
+    if (!DATOS.perfil_juego || !DATOS.perfil_juego.length) DATOS.perfil_juego = [{ atleta_id: aid, participa: true, puntos: 168 }];
     DATOS.perfil_juego[0].participa = true;
   }
 

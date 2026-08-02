@@ -12,6 +12,7 @@
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/datos.js" defer></script>
 <script src="../../assets/js/info-pagos.js" defer></script>
+<script src="../../assets/js/descansos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <style>
   body { background: var(--crema-media); }
@@ -648,34 +649,85 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<div class="tarjeta"><h2>Marcas</h2>'+recordsHtml+lista+'</div>';
   }
 
-  function filaHTML(f){
-    var main=esc(f.ejercicio||f.nombre||''); var parts=[];
-    if(f.series&&f.distancia) parts.push(esc(f.series)+' × '+esc(f.distancia));
-    else if(f.series) parts.push(esc(f.series)+' series'); else if(f.distancia) parts.push(esc(f.distancia));
-    if(f.ritmo) parts.push('ritmo '+esc(f.ritmo));
-    if(f.descanso) parts.push('desc. '+esc(f.descanso));
-    if(f.tiempo) parts.push(esc(f.tiempo));
-    if(f.detalle) parts.push(esc(f.detalle));
-    if(f.nota) parts.push(esc(f.nota));
-    var chips=parts.map(function(p){return '<span class="fchip">'+p+'</span>';}).join('');
+  /* Módulo compartido de descansos: es quien escribe «rec 2' trote»,
+     «salida 1'00"» o «desc. 2'» según la disciplina. Aquí solo se lee. */
+  function DESC(){ return window.APOLANA_DESCANSOS || null; }
+  function disciplinaSes(s, hijo){
+    var D=DESC(); if(!D) return null;
+    var g = (hijo && hijo.grupo_id) ? grupos[hijo.grupo_id] : null;
+    try { return D.disciplinaDe(s, g); } catch(e){ return null; }
+  }
+  function piezasFila(f, dis){
+    var D=DESC();
+    if(D && dis){ try { return D.partesFila(f, dis)||[]; } catch(e){} }
+    var p=[];
+    if(f.series&&f.distancia) p.push(f.series+' × '+f.distancia);
+    else if(f.series) p.push(f.series+' series'); else if(f.distancia) p.push(String(f.distancia));
+    if(f.ritmo) p.push('ritmo '+f.ritmo);
+    if(f.descanso) p.push('rec. '+f.descanso);
+    return p;
+  }
+  /* En natación «salida cada X» y «descanso de X» son cosas distintas: el
+     módulo da la palabra y el color de cada una para que no se confundan. */
+  function chipNatacion(f, dis){
+    var D=DESC(); if(!D || dis!=='natacion') return '';
+    var et=null;
+    try { et=D.etiquetaNatacion(D.recDeFila(f, dis)); } catch(e){ return ''; }
+    if(!et) return '';
+    return '<span class="fchip nat" title="'+esc(et.ayuda||'').replace(/"/g,'&quot;')+'" style="color:'+et.color+';background:'+et.fondo+';border:1px solid '+et.borde+'">'+
+           esc(et.texto)+' '+esc(et.valor)+'</span>';
+  }
+  function filaHTML(f, dis){
+    var main=esc(f.ejercicio||f.nombre||'');
+    var parts=piezasFila(f, dis).slice();
+    if(f.tiempo) parts.push(String(f.tiempo));
+    if(f.detalle) parts.push(String(f.detalle));
+    if(f.nota) parts.push(String(f.nota));
+    var chips=parts.map(function(p){return '<span class="fchip">'+esc(p)+'</span>';}).join('');
+    chips+=chipNatacion(f, dis);
     return '<div class="fila"><span class="ej">'+main+'</span><span class="fparams">'+chips+'</span></div>';
   }
-  function entrenoHTML(s){
+  /* Volumen y tiempo, separados: «2.000 m» y «~55'». Una familia planifica la
+     tarde con el tiempo, no con los metros. Si no se puede saber la duración,
+     se enseña solo el volumen; nunca se inventa una hora de vuelta. */
+  function resumenSes(s, hijo, dis){
+    var D=DESC(); if(!D) return [];
+    var g = (hijo && hijo.grupo_id) ? grupos[hijo.grupo_id] : null;
+    var r=null;
+    try { r=D.resumen(s, { disciplina: dis, grupo: g }); } catch(e){ return []; }
+    if(!r) return [];
+    var out=[];
+    if(r.volumen) out.push({ v:r.volumen, l: r.volumen_parcial ? 'volumen (parte)' : 'volumen' });
+    if(r.tiempo)  out.push({ v:r.tiempo,  l: r.estimado ? 'tiempo estimado' : 'duración' });
+    return out;
+  }
+  function entrenoHTML(s, hijo){
     if(!s) return '<div class="tarjeta"><h2>Entreno publicado</h2>'+
       APOLANA_UI.vacio('Su entrenador aún no ha publicado nada',
         'En cuanto suba la sesión, aquí veréis el calentamiento, la parte principal y la vuelta a la calma.',
         APOLANA_UI.boton('Ver el calendario', '../calendario/')) +'</div>';
     var esHoy=s.fecha===todayISO; var fechaTxt=(esHoy?'Hoy · ':'')+formatFecha(s.fecha);
+    var dis=disciplinaSes(s, hijo), D=DESC();
     var chips=[s.tipo,(s.rol||'').replace(/_/g,' ')].filter(Boolean).map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('');
     var bloques=Array.isArray(s.bloques)?s.bloques:[];
-    var bloquesHtml=bloques.map(function(b){
-      var filas=(b.filas||[]).map(function(f){return filaHTML(f);}).join('')||'<div class="fila"><span class="ej vacio">Por definir</span></div>';
-      return '<div class="bloque"><h3>'+esc(b.etiqueta||'')+'</h3>'+filas+'</div>';
+    var bloquesHtml=bloques.map(function(b,bi){
+      var filas=(b.filas||[]).map(function(f){return filaHTML(f, dis);}).join('')||'<div class="fila"><span class="ej vacio">Por definir</span></div>';
+      var entreEj=''; if(D){ try { entreEj=D.textoEntreEjercicios(b)||''; } catch(e){} }
+      var bloque='<div class="bloque"><h3>'+esc(b.etiqueta||'')+'</h3>'+filas+
+        (entreEj?'<div class="bl-entre">'+esc(entreEj)+'</div>':'')+'</div>';
+      // El descanso entre bloques: si ese bloque no lo lleva, no se pinta nada
+      var entre=''; if(D && bi<bloques.length-1){ try { entre=D.textoEntreBloques(b)||''; } catch(e){} }
+      return bloque+(entre?'<div class="bl-sep"><i></i><span>'+esc(entre)+'</span><i></i></div>':'');
     }).join('');
+    var res=resumenSes(s, hijo, dis);
+    var resHtml = res.length ? '<div class="ses-cifras">'+res.map(function(c){
+      return '<span class="ses-cifra"><b>'+esc(c.v)+'</b><span>'+esc(c.l)+'</span></span>';
+    }).join('')+'</div>' : '';
     return '<div class="tarjeta">'+
       '<div class="entreno-cab"><h2>Entreno'+(esHoy?' de hoy':' publicado')+'</h2><span class="fecha-pill">'+esc(fechaTxt)+'</span></div>'+
       (s.titulo?'<div class="entreno-titulo">'+esc(s.titulo)+'</div>':'')+
       (chips?'<div class="chips">'+chips+'</div>':'')+
+      resHtml+
       (s.nota_razonamiento?'<p class="nota">'+esc(s.nota_razonamiento)+'</p>':'')+
       '<div class="bloques">'+bloquesHtml+'</div></div>';
   }
@@ -685,8 +737,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function esMio(a){ return !a.avisado_por || a.avisado_por === perfil.id; }
   function tituloSesion(s){ return s.titulo || (s.tipo ? ('Sesión de '+s.tipo) : 'Entrenamiento'); }
 
-  // Cifras del entreno: series, ritmo objetivo y volumen total (maqueta 22a)
-  function cifrasSesion(s){
+  /* Los tres datos de la tarjeta del entreno: series, ritmo y RECUPERACIÓN.
+     Antes salía el ritmo pero no la recuperación, que es lo que de verdad
+     define la sesión: 6×800 con 90" no es 6×800 con 3'. */
+  function cifrasSesion(s, hijo){
     var bloques = (s && Array.isArray(s.bloques)) ? s.bloques : [];
     var principal = null;
     bloques.forEach(function(b){ if(!principal && /principal/i.test(b.etiqueta||'')) principal = b; });
@@ -696,17 +750,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     filas.forEach(function(x){ if(!f && (x.series||x.ritmo)) f = x; });
     if(!f) f = filas[0];
     if(!f) return [];
+    var dis = disciplinaSes(s, hijo), D = DESC();
     var out = [];
-    if(f.series && f.distancia) out.push({v:String(f.series)+' × '+String(f.distancia).replace(/\s*m$/i,''), l:'Series'});
-    else if(f.series) out.push({v:String(f.series), l:'Series'});
-    else if(f.distancia) out.push({v:String(f.distancia), l:'Distancia'});
-    if(f.ritmo) out.push({v:String(f.ritmo), l:'Ritmo obj.'});
-    var nS = parseFloat(String(f.series||'').replace(',','.'));
-    var mD = String(f.distancia||'').match(/(\d[\d.,]*)\s*m/i);
-    if(nS>0 && mD){
-      var metros = parseFloat(mD[1].replace(/\./g,'').replace(',','.'))*nS;
-      if(metros>0) out.push({v: metros>=1000 ? (metros/1000).toFixed(metros%1000?1:0)+' km' : Math.round(metros)+' m', l:'Total'});
-    } else if(f.tiempo) out.push({v:String(f.tiempo), l:'Tiempo'});
+    if(f.series && f.distancia) out.push({v:String(f.series)+' × '+String(f.distancia).replace(/\s*m$/i,''), l:'series'});
+    else if(f.series) out.push({v:String(f.series), l:'series'});
+    else if(f.distancia) out.push({v:String(f.distancia), l:'distancia'});
+    if(f.ritmo) out.push({v:String(f.ritmo), l:'ritmo'});
+    var rec='';
+    if(D && dis){ try { rec=D.textoRecPlano(D.recDeFila(f, dis), dis)||''; } catch(e){} }
+    if(!rec && f.descanso) rec=String(f.descanso);
+    if(rec) out.push({v: rec, l:'recuperación'});
+    else if(f.tiempo) out.push({v:String(f.tiempo), l:'tiempo'});
     return out.slice(0,3);
   }
 
@@ -748,7 +802,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var esHoy = prox.fecha === todayISO;
       var sub = (gr ? '<b class="nom-grupo">'+esc(gr.nombre)+'</b>' : 'Grupo por asignar') +
                 (gr && gr.horario ? ' · '+esc(gr.horario) : '');
-      var cifras = (dat.sesion && dat.sesion.id === prox.id) ? cifrasSesion(dat.sesion) : [];
+      var cifras = (dat.sesion && dat.sesion.id === prox.id) ? cifrasSesion(dat.sesion, hijo) : [];
       html += '<div class="prox-card">'+
         '<div class="pc-top"><span class="pc-et">'+esc(esHoy ? 'Entreno de hoy' : 'Próximo entreno · '+diaCorto(prox.fecha))+
           (hijos.length>1 ? ' · '+esc(hijo.nombre||'') : '')+'</span>'+
@@ -886,7 +940,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             'No hay avisos para los próximos días, así que su entrenador cuenta con que va a ir a todos los entrenos.'))+
       '</div>';
 
-    html += entrenoHTML(dat.sesion);
+    html += entrenoHTML(dat.sesion, hijo);
     return html;
   }
 

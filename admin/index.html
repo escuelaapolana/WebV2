@@ -548,13 +548,20 @@
             </div>
             <div class="dato">
               <span class="et">Esta semana</span>
-              <span class="val" id="ini-auto-sesiones">·</span>
+              <span class="val" id="ini-auto-sesiones"><span class="adm-esq" style="width:74px;height:15px;margin:3px 0"></span></span>
             </div>
             <div class="dato" style="border-top:0;padding-top:0;">
               <span class="et">Grupos con horario</span>
-              <span class="val" id="ini-auto-grupos">·</span>
+              <span class="val" id="ini-auto-grupos"><span class="adm-esq" style="width:26px;height:15px;margin:3px 0"></span></span>
             </div>
-            <span class="expl">Se cambian solo cuando cambias el horario del grupo. Un festivo o un cierre de pista se marcan una vez y afectan a todos.</span>
+            <div class="dato" style="border-top:0;padding-top:0;">
+              <span class="et">Publicadas por delante</span>
+              <span class="val" id="ini-auto-publi"><span class="adm-esq" style="width:52px;height:15px;margin:3px 0"></span></span>
+            </div>
+            <span class="expl" id="ini-auto-expl">Se cambian solo cuando cambias el horario del grupo. Un festivo o un cierre de pista se marcan una vez y afectan a todos.</span>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+              <a class="accion accion--texto" href="automatizaciones/" style="padding-left:0;">Ver cómo se publica</a>
+            </div>
           </div>
 
           <div class="ini-auto ini-auto--club">
@@ -1284,7 +1291,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (sec) mostrarSec(sec);
   });
 
-  /* «Solo lo mío»: filtra por el papel de quien entra y recuerda la elección.
+  /* «Solo lo mío»: filtra por lo que le toca a quien entra y recuerda la
+     elección. Manda el reparto que hay guardado en `perfiles.areas` (se
+     pone en Se pone solo › Quién ve qué); si esa persona no tiene nada
+     repartido, se cae al reparto por rol de siempre.
      Si a esa persona le toca todo, el filtro no se enseña: mentiría. */
   async function prepararSoloMio() {
     var caja = $('ini-solo-mio');
@@ -1294,8 +1304,11 @@ document.addEventListener('DOMContentLoaded', function () {
       var s = await sb.auth.getSession();
       var correo = s.data.session && s.data.session.user.email;
       if (correo) {
-        var pr = await sb.from('perfiles').select('rol').eq('email', correo).maybeSingle();
-        if (!pr.error && pr.data) MIS_PAPELES = PAPELES_POR_ROL[pr.data.rol] || null;
+        var pr = await sb.from('perfiles').select('rol,areas').eq('email', correo).maybeSingle();
+        if (!pr.error && pr.data) {
+          var suyas = (pr.data.areas || []).filter(function (a) { return PAPELES.indexOf(a) !== -1; });
+          MIS_PAPELES = suyas.length ? suyas : (PAPELES_POR_ROL[pr.data.rol] || null);
+        }
       }
     } catch (e) { MIS_PAPELES = null; }
     if (!MIS_PAPELES || MIS_PAPELES.length >= PAPELES.length) {
@@ -1310,57 +1323,115 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  /* --- «Se pone solo»: las dos automatizaciones, a la vista --------- */
-  var DIAS = ['lunes', 'martes', 'miércoles', 'miercoles', 'jueves', 'viernes', 'sábado', 'sabado', 'domingo'];
-  function sesionesSemana(horario) {
-    var t = (horario || '').toLowerCase();
-    var n = 0, ya = {};
-    DIAS.forEach(function (d) {
-      var clave = d.replace('miercoles', 'miércoles').replace('sabado', 'sábado');
-      if (t.indexOf(d) !== -1 && !ya[clave]) { ya[clave] = true; n++; }
-    });
-    return n;
-  }
+  /* --- «Se pone solo»: las dos automatizaciones, a la vista y funcionando ---
+     Que 27 grupos publiquen 64 sesiones sin tocarlas es el mayor ahorro del
+     sistema, y hay que verlo funcionando para confiar en él. Los números
+     salen de la base (`automatizacion_resumen`), no de una cuenta a ojo.
+
+     La distinción entre los dos bloques es a propósito:
+       · los entrenos van solos porque no hay nada que decidir;
+       · las carreras se proponen porque una prueba comunicada puede estar
+         mal escrita o ser de otro club. */
+  var PROPUESTAS_LIGA = [];
 
   async function cargarSePoneSolo() {
-    // (a) Entrenamientos fijos: salen de los horarios de los grupos
-    var rg = await sb.from('grupos').select('id,nombre,horario,activo');
-    if (rg.error) {
+    // (a) Entrenamientos fijos
+    var rr = await sb.rpc('automatizacion_resumen');
+    var res = (!rr.error && rr.data && rr.data.length) ? rr.data[0] : null;
+    if (!res) {
       $('ini-auto-sesiones').textContent = 'sin leer';
       $('ini-auto-grupos').textContent = 'sin leer';
+      $('ini-auto-publi').textContent = 'sin leer';
     } else {
-      var conHorario = (rg.data || []).filter(function (g) {
-        return g.activo !== false && g.horario && sesionesSemana(g.horario) > 0;
-      });
-      var sesiones = conHorario.reduce(function (s, g) { return s + sesionesSemana(g.horario); }, 0);
-      $('ini-auto-sesiones').textContent = sesiones + (sesiones === 1 ? ' sesión' : ' sesiones');
-      $('ini-auto-grupos').textContent = conHorario.length;
+      $('ini-auto-sesiones').textContent = res.sesiones_semana +
+        (res.sesiones_semana === 1 ? ' sesión' : ' sesiones');
+      $('ini-auto-grupos').textContent = res.grupos_con_horario;
+      $('ini-auto-publi').textContent = res.publicadas_futuras
+        ? res.publicadas_futuras + (res.ultima_publicada ? ' · hasta el ' + fechaCorta(res.ultima_publicada) : '')
+        : 'ninguna aún';
+
+      var expl = $('ini-auto-expl');
+      if (!res.activo) {
+        expl.innerHTML = '<b style="color:#8A5307;">Está parado.</b> No se publica nada nuevo. ' +
+          'Lo que ya estaba en el calendario sigue ahí.';
+      } else if (!res.publicadas_futuras) {
+        expl.textContent = 'Todavía no se ha publicado ninguna. Entra en «Ver cómo se publica» y dale una vez: ' +
+          'a partir de ahí se mantiene solo.';
+      } else {
+        expl.textContent = 'Se cambian solo cuando cambias el horario del grupo. Un festivo o un cierre de pista ' +
+          'se marcan una vez y afectan a todos.';
+      }
     }
 
-    // (b) Carreras de la Liga: se proponen, no se publican solas
+    // (b) Carreras de la Liga: se proponen, y desde aquí se publican
     var caja = $('ini-auto-liga');
     var rp = await sb.from('liga_propuestas_prueba')
-      .select('id,nombre,fecha,estado').eq('estado', 'pendiente').order('fecha');
+      .select('id,nombre,fecha,lugar,estado').eq('estado', 'pendiente').order('fecha');
     if (rp.error) {
-      caja.innerHTML = ADM.error('No hemos podido leer las carreras propuestas.');
+      caja.innerHTML = ADM.error('No hemos podido leer las carreras propuestas.', cargarSePoneSolo);
       return;
     }
-    var props = rp.data || [];
-    if (!props.length) {
+    PROPUESTAS_LIGA = rp.data || [];
+    if (!PROPUESTAS_LIGA.length) {
       caja.innerHTML = '<span class="expl">Ahora mismo no hay ninguna carrera esperando. ' +
         'Cuando un socio comunique una prueba, aparecerá aquí para darle el visto bueno.</span>';
       return;
     }
-    caja.innerHTML = props.slice(0, 2).map(function (p) {
+    var conFecha = PROPUESTAS_LIGA.filter(function (p) { return !!p.fecha; }).length;
+    caja.innerHTML = PROPUESTAS_LIGA.slice(0, 3).map(function (p) {
       return '<div class="propuesta"><span class="txt">' +
         '<b>' + esc(p.nombre || 'Prueba sin nombre') + '</b>' +
-        '<span>' + esc(p.fecha ? fechaCorta(p.fecha) : 'sin fecha') + '</span>' +
-        '</span><a class="accion accion--azul" href="liga/">Revisar</a></div>';
+        '<span>' + esc(p.fecha ? fechaCorta(p.fecha) : 'sin fecha · no se puede publicar así') +
+          (p.lugar ? ' · ' + esc(p.lugar) : '') + '</span>' +
+        '</span>' +
+        (p.fecha
+          ? '<button type="button" class="accion accion--azul" data-publicar-liga="' + esc(p.id) + '">Publicar</button>'
+          : '<a class="accion" href="liga/">Ponerle fecha</a>') +
+      '</div>';
     }).join('') +
-    (props.length > 2
-      ? '<a class="accion accion--texto" href="liga/" style="align-self:flex-start;">Ver las ' + props.length + ' de golpe</a>'
+    (conFecha > 1
+      ? '<button type="button" class="accion accion--texto" data-publicar-liga-todas style="align-self:flex-start;">' +
+        'Publicar las ' + conFecha + ' de golpe</button>'
       : '');
   }
+
+  /* Publicar una carrera es meterla en el calendario público del club:
+     siempre se pregunta antes, y siempre se dice qué día va a salir. */
+  async function publicarCarrera(id) {
+    var p = PROPUESTAS_LIGA.filter(function (x) { return x.id === id; })[0];
+    if (!await apoConfirm({
+      titulo: 'Publicar «' + (p ? p.nombre : 'la carrera') + '»',
+      texto: 'Saldrá en el calendario público del club' +
+             (p && p.fecha ? ' el ' + diaSemana(p.fecha) + ' ' + fechaCorta(p.fecha) : '') + '.',
+      confirmar: 'Publicar'
+    })) return;
+    var r = await sb.rpc('liga_publicar_propuesta', { p_id: id });
+    if (r.error) { apoToast('No se pudo publicar: ' + r.error.message, 'error'); return; }
+    apoToast('Publicada en el calendario.', 'ok');
+    cargarSePoneSolo();
+  }
+
+  async function publicarCarrerasTodas() {
+    var n = PROPUESTAS_LIGA.filter(function (p) { return !!p.fecha; }).length;
+    if (!await apoConfirm({
+      titulo: 'Publicar las ' + n + ' de golpe',
+      texto: 'Todas saldrán en el calendario público. Las que no tienen fecha se quedan como están.',
+      confirmar: 'Publicar las ' + n
+    })) return;
+    var r = await sb.rpc('liga_publicar_pendientes');
+    if (r.error) { apoToast('No se pudo: ' + r.error.message, 'error'); return; }
+    var d = (r.data && r.data[0]) || {};
+    apoToast('Publicadas ' + (d.publicadas || 0) + ((d.publicadas === 1) ? ' carrera' : ' carreras') +
+      (d.sin_fecha ? ' · ' + d.sin_fecha + (d.sin_fecha === 1 ? ' se queda sin fecha' : ' se quedan sin fecha') : '') + '.', 'ok');
+    cargarSePoneSolo();
+  }
+
+  $('ini-auto-liga').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-publicar-liga], [data-publicar-liga-todas]') : null;
+    if (!b) return;
+    if (b.hasAttribute('data-publicar-liga-todas')) { publicarCarrerasTodas(); return; }
+    publicarCarrera(b.getAttribute('data-publicar-liga'));
+  });
 
   // --- Noticias: listar ---
   async function cargarNoticias() {

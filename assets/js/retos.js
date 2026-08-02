@@ -821,6 +821,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* ============================================================
      ARRANQUE
      ============================================================ */
+  /* Sin perfil no se puede saber de quién son los retos: se dice y se sale.
+     Pasa si la sesión está abierta pero su ficha de usuario no se ha podido
+     leer, y sin esta guardia la pantalla se quedaría en el esqueleto. */
+  if(!perfil || !perfil.id){
+    wrap.innerHTML = cabecera('../', 'Portal', 'Mis retos') +
+      APOLANA_UI.error('No hemos podido cargar tu cuenta',
+        'Puede ser tu conexión. Vuelve a intentarlo y, si sigue igual, cierra sesión y entra otra vez.');
+    return;
+  }
+
   var hayFichas = await cargarFichas();
 
   if(!hayFichas){

@@ -85,13 +85,14 @@
   .lista-tit .enl:hover { color: var(--azul-hover); }
   .lista-caja { background:#fff; border:1px solid var(--linea); border-radius:14px; overflow:hidden; margin-bottom:14px; }
   .lista-fila { display:flex; align-items:center; gap:12px; min-height:48px; box-sizing:border-box; width:100%;
-    padding:11px 15px; border-bottom:1px solid var(--linea); text-align:left; font:inherit; background:none; color:inherit; }
+    padding:11px 15px; border:0; border-bottom:1px solid var(--linea); text-align:left; font:inherit; background:none; color:inherit; }
   .lista-fila:last-child { border-bottom:none; }
   button.lista-fila, a.lista-fila { cursor:pointer; text-decoration:none; -webkit-tap-highlight-color:transparent; }
   button.lista-fila:hover, a.lista-fila:hover { background: var(--crema); }
   .lista-fila .lf-txt { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
   .lista-fila .lf-nom { font-size:15px; color: var(--navy); overflow-wrap:anywhere; }
-  .lista-fila .lf-sub { font-size:14px; color: var(--texto-suave); }
+  /* Máximo dos líneas por fila: si hiciera falta una tercera, sería una tarjeta */
+  .lista-fila .lf-sub { font-size:14px; color: var(--texto-suave); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .lista-fila .lf-dato { flex:none; font-family: var(--fuente-dato); font-size:16px; color: var(--navy); }
   .lista-fila .lf-dia { flex:none; width:52px; font-size:15px; font-weight:600; color: var(--navy); font-variant-numeric: tabular-nums; }
   .lista-fila .lf-hora { flex:none; font-size:14px; color: var(--texto-suave); font-variant-numeric: tabular-nums; }
@@ -105,7 +106,7 @@
      Segmentado: los tres ocupan el ancho y el activo va en navy relleno. */
   .mk-filtro { display:flex; gap:6px; margin:0 0 14px; }
   .mk-f { flex:1 1 0; min-width:0; min-height:44px; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:9px 8px; box-sizing:border-box;
-    border-radius:10px; border:0; background: var(--crema-banda); color: var(--texto);
+    border-radius:10px; border:0; background: var(--crema-banda); color: var(--texto); white-space:nowrap; overflow:hidden;
     font:inherit; font-size:14px; line-height:1; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .mk-f:hover { color: var(--navy); }
   .mk-f .n { font-size:13px; color: var(--texto-suave); }
@@ -931,7 +932,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var quien=[nombreGrupoHTML((GRUPO&&GRUPO.nombre)||''), ENTRENA?esc(ENTRENA):''].filter(Boolean).join(' · ');
       return '<div class="tb-cab"><div><span class="tb-quien">'+(quien||'Tu entreno')+'</span>'+
         '<h1>'+esc(tituloEntreno)+'</h1></div>'+
-        '<button type="button" class="tb-salir" data-sec-ir="hoy">Salir</button></div>';
+        /* «Salir del entreno», no «Salir» a secas: la barra de arriba del portal
+           ya tiene un «Salir» que cierra la sesión y se confundían. */
+        '<button type="button" class="tb-salir" data-sec-ir="hoy">Salir del entreno</button></div>';
     }
     if(sec==='marcas')
       return '<div class="at-cab"><h1>Marcas</h1>'+
@@ -1377,10 +1380,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (enlA?'<span class="fr-acc">'+esc(AVISO.texto_enlace||'Ver')+'</span>':'')+'</div>';
     }
 
-    // 2 · el entreno de hoy: la única tarjeta navy de la pantalla
+    /* 2 · el entreno de hoy: la ÚNICA tarjeta navy de la pantalla. Si hoy hay
+       dos sesiones (pista y gimnasio, por ejemplo) solo la primera va en navy;
+       la otra baja a una fila. Con dos bloques navy ninguno ancla nada. */
     var hoySes=lista.filter(function(s){ return s.fecha===todayISO; });
     if(hoySes.length){
-      html+=hoySes.map(function(s){
+      html+=hoySes.slice(0,1).map(function(s){
         var hecho=!!REG[s.id];
         var cifras=cifrasSesion(s);
         // grupo · sitio · entrenador, con el nombre propio del grupo en ámbar
@@ -1401,6 +1406,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             (hecho?'Ya has contado cómo fue':'¿Cómo fue?')+'</button>'+
           '</div>';
       }).join('');
+      // Las demás sesiones de hoy, en filas: nunca una segunda tarjeta navy
+      if(hoySes.length>1){
+        html+='<div class="lista-caja">'+hoySes.slice(1).map(function(s){
+          return '<button type="button" class="lista-fila" data-ir="'+todayISO+'">'+
+            '<span class="lf-txt"><span class="lf-nom">'+esc(tituloSesion(s))+'</span>'+
+            '<span class="lf-sub">también hoy · '+esc(tipoCorto(s.tipo))+'</span></span>'+
+            '<span class="lf-hora">&rsaquo;</span></button>';
+        }).join('')+'</div>';
+      }
     } else {
       var sig=null;
       lista.forEach(function(s){ if(s.fecha>todayISO && (!sig||s.fecha<sig.fecha)) sig=s; });
@@ -1551,7 +1565,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return MARCAS.filter(function(x){ return x.contexto===f; });
   }
   function filtroHTML(){
-    var opciones=[['todas','Todas'],['competicion','Competición'],['entreno','Entrenamiento']];
+    var opciones=[['todas','Todas'],['competicion','Competición'],['entreno','Entreno']];
     return '<div class="mk-filtro" role="group" aria-label="Ver solo marcas de…">'+opciones.map(function(o){
       var n=marcasDe(o[0]).length;
       return '<button type="button" class="mk-f" data-mk-f="'+o[0]+'" aria-pressed="'+(mkFiltro===o[0]?'true':'false')+'">'+
@@ -1583,36 +1597,44 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     pintarMarcas();
   }
 
-  /* La mejor marca del año: entre las marcas de este año se busca la que más
-     mejoró respecto a la mejor anterior de esa misma prueba. Si ninguna mejoró,
-     la más reciente del año. Si no hay marcas de este año, la última de todas.
-     Nada de esto se inventa: sale de lo que hay apuntado. */
+  /* La mejor marca del año. Dos marcas de pruebas distintas no se pueden
+     comparar entre sí, así que «la mejor» es la más reciente de este año que
+     además sea tu mejor marca de esa prueba. Si este año no has batido
+     ninguna, se enseña la última que apuntaste, dicha por su nombre.
+     Nada se inventa: todo sale de lo que hay apuntado. */
   function mejorDelAnio(datos){
     var anio=String(new Date().getFullYear());
     var deEsteAnio=datos.filter(function(x){ return x.fecha && String(x.fecha).slice(0,4)===anio; });
-    var pool=deEsteAnio.length?deEsteAnio:datos;
-    if(!pool.length) return null;
-    var mejor=null;
-    pool.forEach(function(x){
-      var y=tiempoANum(x.tiempo_display); if(y==null) return;
+    // la mejor de cada prueba, mirando TODAS las marcas
+    var topes={};
+    datos.forEach(function(x){
+      var y=tiempoANum(x.tiempo_display); if(y==null||!x.prueba) return;
       var mas=catMasMejor(x.prueba);
-      // la mejor anterior de esa prueba, de entre TODAS las marcas
-      var previa=null;
+      if(topes[x.prueba]==null || (mas?y>topes[x.prueba]:y<topes[x.prueba])) topes[x.prueba]=y;
+    });
+    function conDelta(x){
+      var y=tiempoANum(x.tiempo_display); if(y==null) return null;
+      var mas=catMasMejor(x.prueba), previa=null;
       datos.forEach(function(o){
         if(o===x || o.prueba!==x.prueba || !o.fecha || !x.fecha || o.fecha>=x.fecha) return;
         var oy=tiempoANum(o.tiempo_display); if(oy==null) return;
         if(previa==null || (mas?oy>previa:oy<previa)) previa=oy;
       });
-      var gana = previa!=null ? (mas ? y-previa : previa-y) : null;
-      var cand={ x:x, y:y, mas:mas, gana:gana };
-      if(!mejor) { mejor=cand; return; }
-      var a=(mejor.gana!=null&&mejor.gana>0)?mejor.gana:-1;
-      var b=(gana!=null&&gana>0)?gana:-1;
-      if(b>a || (b===a && x.fecha>mejor.x.fecha)) mejor=cand;
-    });
-    if(!mejor) return null;
-    mejor.esDelAnio=deEsteAnio.length>0;
-    return mejor;
+      return { x:x, y:y, mas:mas, gana: previa!=null ? (mas?y-previa:previa-y) : null };
+    }
+    var recordsDelAnio=deEsteAnio.filter(function(x){
+      var y=tiempoANum(x.tiempo_display);
+      return y!=null && topes[x.prueba]!=null && Math.abs(y-topes[x.prueba])<0.0001;
+    }).sort(function(a,b){ return a.fecha<b.fecha?1:-1; });
+    if(recordsDelAnio.length){
+      var r=conDelta(recordsDelAnio[0]); if(r){ r.et='Tu mejor marca del año'; return r; }
+    }
+    var resto=(deEsteAnio.length?deEsteAnio:datos).slice().sort(function(a,b){ return (a.fecha||'')<(b.fecha||'')?1:-1; });
+    for(var i=0;i<resto.length;i++){
+      var c=conDelta(resto[i]);
+      if(c){ c.et='Tu última marca'; return c; }
+    }
+    return null;
   }
   function difTexto(seg, mas){
     var s=Math.abs(seg);
@@ -1649,7 +1671,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(mj){
       var donde=[mj.x.sede, fechaCorta(mj.x.fecha)].filter(Boolean).join(' · ');
       mejorHtml='<div class="mejor">'+
-        '<span class="mj-et">'+(mj.esDelAnio?'Tu mejor marca del año':'Tu última marca')+'</span>'+
+        '<span class="mj-et">'+esc(mj.et)+'</span>'+
         '<div class="mj-cifra"><span class="mj-dato">'+esc(mj.x.tiempo_display||'')+'</span>'+
         '<span class="mj-prueba">'+esc(mj.x.prueba||'')+'</span></div>'+
         ((mj.gana!=null&&mj.gana>0)||donde ?

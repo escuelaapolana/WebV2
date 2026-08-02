@@ -502,8 +502,10 @@
       h += '</div>';
 
       if (mia && mia.respuesta === 'voy' && mia.en_espera) {
-        h += '<p class="cf-estado cf-espera">Estás en la lista de espera. Si se cae alguien, entras tú ' +
-             'y te lo decimos.</p>';
+        /* Ojo con lo que se promete: la plaza se da sola, pero hoy no sale
+           ningún aviso al móvil. Por eso se dice «mira aquí», no «te avisamos». */
+        h += '<p class="cf-estado cf-espera">Estás en la lista de espera. Si alguien se cae, ' +
+             'entras tú automáticamente: vuelve a mirar aquí.</p>';
       } else if (mia && mia.respuesta === 'voy' && res.plazas != null) {
         h += '<p class="cf-estado">Tienes plaza.</p>';
       }

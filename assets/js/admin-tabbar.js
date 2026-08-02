@@ -142,6 +142,7 @@
       { t: 'Actividad', enlaces: [
         { txt: 'Calendario y eventos', url: r + 'eventos/' },
         { txt: 'Competiciones', url: r + 'competiciones/' },
+        { txt: 'Quién va a ir', url: r + 'confirmaciones/' },
         { txt: 'Liga Apolana', url: r + 'liga/' },
         { txt: 'Retos y medallas', url: r + 'retos/' },
         { txt: 'El Cubo', url: r + 'cubo/' },

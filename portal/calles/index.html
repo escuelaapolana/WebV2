@@ -12,13 +12,10 @@
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
-<!-- HUECO RESERVADO · descansos de las cinco disciplinas.
-     El modelo de recuperación lo está montando otra persona en
-     assets/js/descansos.js. En cuanto ese archivo exista se descomenta la línea
-     de abajo y manda él: calles.js le pregunta antes de decidir nada y solo usa
-     su propio mínimo de natación mientras no esté. No hay nada más que tocar.
+<!-- Los descansos de las cinco disciplinas (cómo se leen, cómo se escriben, de
+     qué color va la etiqueta y cuánto dura la sesión) los decide este módulo y
+     nadie más. Va antes que calles.js, que le pregunta a él. -->
 <script src="../../assets/js/descansos.js"></script>
--->
 <!-- El modelo de calles: leer una sesión repartida por calles -->
 <script src="../../assets/js/calles.js"></script>
 <style>
@@ -131,9 +128,10 @@
 
   /* ---- descanso: los dos modos, con etiqueta de color -------------------
      Salida y descanso fijo se confunden y son cosas distintas, así que no
-     comparten color: salida en azul, descanso al tocar pared en morado. */
+     comparten color. Los colores los pone descansos.js, que es quien manda
+     en esto para las cinco disciplinas: aquí solo se pintan. */
   .desc { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-  .desc .tag { border-radius:999px; padding:3px 10px; color:#fff; font-size:13px; line-height:1.3; }
+  .desc .tag { border-radius:999px; padding:3px 10px; border:1px solid; font-size:13px; line-height:1.3; font-weight:600; }
   .desc .val { font-family: var(--fuente-dato); font-size:15px; color: var(--navy); }
   .desc .nota { font-size:13px; color: var(--texto-suave); }
 
@@ -238,8 +236,7 @@
                   cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; }
   .modos button .pnt { width:9px; height:9px; border-radius:999px; background: currentColor; }
   .modos button.on { color:#fff; border-color:transparent; font-weight:600; }
-  .modos button.on.salida { background:#2F6FA8; }
-  .modos button.on.fijo { background:#6B5B8A; }
+  .modos button.on .pnt { background:#fff !important; }
 
   .chips-mat { display:flex; flex-wrap:wrap; gap:6px; }
   .chips-mat label { display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 13px;
@@ -281,6 +278,9 @@
 <script>
 APOLANA_PORTAL.listo(async function (sb, perfil) {
   var C = window.APOLANA_CALLES;
+  /* Quien manda en los descansos y en la duración de las cinco disciplinas.
+     Esta pantalla no decide nada de eso por su cuenta. */
+  var DESC = window.APOLANA_DESCANSOS;
   var app = document.getElementById('app');
 
   /* ---------- utilidades de texto ---------- */
@@ -338,13 +338,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ====================================================================== */
 
   /* Los dos modos de descanso, con su etiqueta de color. Nunca un campo
-     vacío: si el bloque no lleva recuperación, esto no devuelve nada. */
+     vacío: si el ejercicio no lleva recuperación, esto no devuelve nada. */
   function htmlDescanso(f){
-    var d = C.descanso(f);
+    var d = C.etiqueta(f);
     if (!d) return '';
-    return '<div class="desc"><span class="tag" style="background:'+escAt(d.color)+'">'+esc(d.etiqueta)+'</span>'+
+    /* El recordatorio corto es el del diseñador (maqueta 25b); la explicación
+       larga la escribe descansos.js y va en el título, para quien la busque. */
+    var corto = d.clave === 'salida' ? 'nadar y descansar dentro' : 'al tocar la pared';
+    return '<div class="desc"'+(d.ayuda?' title="'+escAt(d.ayuda)+'"':'')+'>'+
+           '<span class="tag" style="color:'+escAt(d.color)+';background:'+escAt(d.fondo)+';border-color:'+escAt(d.borde)+'">'+
+             esc(d.texto)+'</span>'+
            '<span class="val">'+esc(d.valor)+'</span>'+
-           (d.nota ? '<span class="nota">· '+esc(d.nota)+'</span>' : '')+'</div>';
+           '<span class="nota">· '+esc(corto)+'</span></div>';
   }
 
   function htmlMaterial(f){
@@ -374,8 +379,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     opciones = opciones || {};
     var h = '<div class="bloques">';
     lista.forEach(function(x, i){
-      var prev = C.descansoPrevio(x.b);
-      if (prev && i > 0) h += '<div class="entre"><i></i><span>'+esc(prev)+'</span><i></i></div>';
       var estado = i < hechos ? 'hecho' : (i === hechos ? 'curso' : '');
       var m = C.metrosBloque(x.b);
       var derecha = i < hechos ? '<span class="der ok">hecho</span>'
@@ -390,6 +393,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             }).join('')
           : '<span class="obs">Por definir</span>')+
       '</div>';
+      /* Separador de descanso entre bloques. Va detrás del bloque, que es
+         donde lo guarda descansos.js, y solo si de verdad lo lleva escrito. */
+      var entre = C.entreBloques(x.b);
+      if (entre && i < lista.length - 1) {
+        h += '<div class="entre"><i></i><span>'+esc(entre)+' antes del siguiente</span><i></i></div>';
+      }
     });
     return h + '</div>';
   }
@@ -461,7 +470,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var ses = [];
     try {
       var rs = await sb.from('sesiones')
-        .select('id,fecha,hora,lugar,titulo,nota_razonamiento,bloques,calles,grupo_id,publicada')
+        .select('id,fecha,hora,lugar,titulo,nota_razonamiento,bloques,calles,grupo_id,publicada,duracion_min')
         .eq('grupo_id', at.grupo_id).eq('publicada', true)
         .gte('fecha', desplazar(HOY, -21)).lte('fecha', desplazar(HOY, 21))
         .order('fecha', { ascending:true });
@@ -495,8 +504,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var sep = C.separar(s.bloques);
     var cal = miCalle(s, at.id);
     var lista = C.secuencia(sep, cal.n);
+    /* Volumen y tiempo, separados: la familia planifica con el tiempo y el
+       nadador con los metros. Los dos los calcula descansos.js. */
+    var res = C.resumenCalle(s, cal.n);
     var metros = C.metrosSecuencia(lista);
-    var dur = C.duracion(lista);
+    var dur = res.tiempo || '';
     var reg = await leerRegistro(s.id, at.id);
 
     var etiquetaCalle = cal.b.etiqueta || ('Calle ' + cal.n);
@@ -512,7 +524,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             (s.hora ? '<span class="hora">'+esc(horaCorta(s.hora))+'</span>' : '')+'</div>'+
           '<div class="tit"><b>'+esc(etiquetaCalle)+'</b>'+(cal.b.matiz?'<i>'+esc(cal.b.matiz)+'</i>':'')+'</div>'+
           htmlCifras([
-            { v: String(metros).replace(/\B(?=(\d{3})+(?!\d))/g,'.'), l:'metros' },
+            { v: (res.volumen || C.volumen(metros)).replace(/\s*m$/,''), l:'metros' },
             { v: String(lista.length), l:'bloques' }
           ].concat(dur ? [{ v: dur, l:'duración' }] : []))+
           (s.titulo || s.nota_razonamiento
@@ -520,7 +532,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</div>'+
         htmlBloques(lista, -1, {
           destacarPropio: true,
-          marcarComun: 'Lo hace todo el grupo, no solo tu calle',
+          marcarComun: 'de todo el grupo, no solo tu calle',
           huecos: function(bi, fi, f){ return htmlHuecos(bi, fi, f, reg); }
         })+
         '<div class="msg" id="n-msg"></div>'+
@@ -580,7 +592,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      que usa el portal del atleta: los dos escriben el mismo sitio. */
   function htmlHuecos(bi, fi, f, reg){
     var n = C.repeticiones(f);
-    if (!(n > 1) || !C.metros(f.distancia)) return '';
+    if (!(n > 1) || !C.metrosBloque({ filas:[f] })) return '';
     if (n > 30) n = 30;
     var key = 'b'+bi+'f'+fi;
     var ya = (reg && reg[key] && reg[key].tiempos) ? reg[key].tiempos : [];
@@ -640,8 +652,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* `orden` es el sitio que ocupa el bloque de esta calle dentro de la sesión:
      entre el calentamiento y la vuelta a la calma, donde lo puso el
      entrenador. Se conserva al guardar; si no, la sesión se recolocaría sola. */
-  function calleVacia(i){ return { n:i+1, etiqueta:'Calle '+(i+1), matiz:'', atletas:[], filas:[filaVacia()], descanso_previo:'', orden:null }; }
-  function filaVacia(){ return { ejercicio:'', series:'', distancia:'', ritmo:'', descanso:'', descanso_modo:'salida', material:[], observaciones:'' }; }
+  function calleVacia(i){ return { n:i+1, etiqueta:'Calle '+(i+1), matiz:'', atletas:[], filas:[filaVacia()], entre:'', orden:null }; }
+  /* `_modo` y `_tiempo` son solo para escribir: al guardar los traduce
+     descansos.js al modelo de verdad (`rec` + el texto de siempre). Los campos
+     que empiezan por guion bajo nunca llegan a la base. */
+  function filaVacia(){ return { ejercicio:'', series:'', distancia:'', ritmo:'', material:[], observaciones:'', _modo:'salida', _tiempo:'' }; }
   function atletaPorId(id){ for (var i=0;i<EST.atletas.length;i++) if (EST.atletas[i].id===id) return EST.atletas[i]; return null; }
   function calleDe(id){ for (var i=0;i<EST.calles.length;i++) if (EST.calles[i].atletas.indexOf(id)>-1) return i; return -1; }
 
@@ -671,7 +686,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       EST.atletas = (ra.data||[]).filter(function(a){ return a.estado !== 'baja'; });
 
       var rs = await sb.from('sesiones')
-        .select('id,fecha,hora,lugar,tipo,titulo,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,calles')
+        .select('id,fecha,hora,lugar,tipo,titulo,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,calles,duracion_min')
         .eq('grupo_id', EST.grupo).eq('fecha', EST.fecha).order('created_at', { ascending:true });
       if (rs.error) throw rs.error;
       EST.sesionesDia = rs.data || [];
@@ -709,12 +724,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         orden: c.idx,
         etiqueta: c.b.etiqueta || ('Calle '+c.n),
         matiz: c.b.matiz || '',
-        descanso_previo: c.b.descanso_previo || '',
+        entre: DESC.textoEntreBloques(c.b) ? String(DESC.recEntreBloques(c.b)) + ' s' : '',
         atletas: (Array.isArray(c.b.atletas)?c.b.atletas:[]).slice(),
         filas: (Array.isArray(c.b.filas) && c.b.filas.length) ? c.b.filas.map(function(f){
           var o = {}; for (var k in f) if (Object.prototype.hasOwnProperty.call(f,k)) o[k] = f[k];
           o.material = Array.isArray(f.material) ? f.material.slice() : (f.material ? [f.material] : []);
-          o.descanso_modo = C.modoDe(f);
+          o._modo = C.modoDe(f);
+          o._tiempo = f.descanso || '';
           return o;
         }) : [filaVacia()]
       };
@@ -739,7 +755,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var c = EST.calles[i];
     if (c) lista.push({
       idx: ordenDe(c),
-      b: { etiqueta:c.etiqueta, matiz:c.matiz, filas:c.filas, descanso_previo:c.descanso_previo },
+      b: bloqueDeCalle(c),
       propio: true
     });
     lista.sort(function(a, b){ return a.idx - b.idx; });
@@ -856,7 +872,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (!f && curso) (curso.b.filas||[]).forEach(function(x){ if (!f && C.cifra(x)) f = x; });
     var suTurno = !!(curso && curso.propio);
     var metros = C.metrosSecuencia(seq);
-    var d = f ? C.descanso(f) : null;
+    var d = f ? C.etiqueta(f) : null;
     var gente = c.atletas.map(function(id){ return atletaPorId(id); }).filter(Boolean);
     var avat = gente.slice(0,3).map(function(a){
       return '<span class="avat">'+esc(C.iniciales(a.nombre, a.apellidos))+'</span>';
@@ -868,7 +884,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (metros ? '<span class="m">'+esc(C.volumen(metros))+'</span>' : '')+'</div>'+
       (f
         ? '<div class="lin2"><span class="cifra">'+esc(C.cifra(f))+'</span>'+
-            (d ? '<span class="pt">·</span><span class="cifra" style="color:'+escAt(d.color)+'">'+esc(d.etiqueta+' '+d.valor.replace(/^(cada|fijo) /,''))+'</span>' : '')+
+            (d ? '<span class="pt">·</span><span class="cifra" style="color:'+escAt(d.color)+'">'+esc(d.texto+' '+d.valor)+'</span>' : '')+
             '<span class="nad-n">'+gente.length+' nad.</span></div>'
         : '<div class="vacio-t">Sin trabajo escrito todavía. Tócala para montarla.</div>')+
       '<div class="lin3">'+avat+'<span class="chv" aria-hidden="true">&rsaquo;</span></div>'+
@@ -883,8 +899,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (!c) { EST.vista = 'tablero'; pintar(); return; }
     var seq = secuenciaDe(i);
     var hechos = C.leerProgreso(s.id, EST.calle);
-    var metros = C.metrosSecuencia(seq);
-    var dur = C.duracion(seq);
+    /* Volumen y tiempo van separados y los calcula descansos.js sobre lo que
+       hay en pantalla, sin esperar a guardar. */
+    var res = C.resumenCalle({ bloques: bloquesParaGuardar(), duracion_min: s.duracion_min }, EST.calle) || {};
+    var dur = res.tiempo || '';
 
     var cab = '<header class="cab"><div class="dentro">'+
       '<button class="volver" id="e-atras">‹ Las '+EST.calles.length+' calles</button>'+
@@ -900,10 +918,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } else {
       cuerpo =
         htmlCifras([
-          { v: C.volumen(metros), l:'total de la calle' },
+          { v: res.volumen || C.volumen(C.metrosSecuencia(seq)), l:'total de la calle' },
           { v: String(c.atletas.length), l: c.atletas.length===1?'nadador':'nadadores' }
         ].concat(dur ? [{ v: dur, l:'duración' }] : []))+
-        htmlBloques(seq, hechos, { marcarComun: 'De todo el grupo · no se ajusta desde aquí' })+
+        /* Sin descanso ni ritmo no se puede decir cuánto dura, y decir un
+           número inventado sería peor: se dice qué falta para poder decirlo. */
+        (!dur && res.faltan && res.faltan.length
+          ? '<p class="pista" style="margin:-4px 0 0">Todavía no se puede decir cuánto dura: falta el tiempo o el ritmo en '+
+            res.faltan.length+(res.faltan.length===1?' ejercicio.':' ejercicios.')+'</p>'
+          : '')+
+        htmlBloques(seq, hechos, { marcarComun: 'de todo el grupo' })+
         '<div class="franja-ambar"><p>Ajustar solo esta calle: metros, repeticiones, salida y quién nada en ella.</p>'+
           '<button class="btn-am" id="e-ajustar">Ajustar</button></div>'+
         '<div class="barra">'+
@@ -938,8 +962,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<input type="text" id="a-et" value="'+escAt(c.etiqueta||'')+'" placeholder="Calle '+EST.calle+'"></div>'+
         '<div><label class="et" for="a-mt">Nivel de la calle</label>'+
           '<input type="text" id="a-mt" value="'+escAt(c.matiz||'')+'" placeholder="Rápidos, fondo, crol medio…"></div>'+
-        '<div class="ancho"><label class="et" for="a-dp">Descanso antes de este bloque (opcional)</label>'+
-          '<input type="text" id="a-dp" class="dato" value="'+escAt(c.descanso_previo||'')+'" placeholder="1 min"></div>'+
+        '<div class="ancho"><label class="et" for="a-dp">Descanso al acabar este bloque (opcional)</label>'+
+          '<input type="text" id="a-dp" class="dato" value="'+escAt(c.entre||'')+'" placeholder="1 min"></div>'+
       '</div>'+
     '</div>'+
 
@@ -976,7 +1000,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function htmlFilaEditable(f, fi){
     var mats = Array.isArray(f.material) ? f.material : (f.material ? [f.material] : []);
-    var modo = C.modoDe(f);
+    var modo = f._modo === 'fijo' ? 'fijo' : 'salida';
+    /* Los colores de los dos modos los pone descansos.js, para que la etiqueta
+       que se escribe aquí sea exactamente la que luego se lee en la calle. */
+    var col = DESC.COLORES;
     return '<div class="ejfila" data-f="'+fi+'">'+
       '<div class="ancho"><label class="et" for="f-ej'+fi+'">Ejercicio</label>'+
         '<input type="text" id="f-ej'+fi+'" data-f="'+fi+'" data-k="ejercicio" value="'+escAt(f.ejercicio||'')+'" placeholder="Crol a tope, pies con tabla…"></div>'+
@@ -987,13 +1014,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="corto"><label class="et" for="f-ri'+fi+'">Ritmo</label>'+
         '<input class="dato" type="text" id="f-ri'+fi+'" data-f="'+fi+'" data-k="ritmo" value="'+escAt(f.ritmo||'')+'" placeholder="fuerte"></div>'+
       '<div class="corto"><label class="et" for="f-de'+fi+'">Tiempo</label>'+
-        '<input class="dato" type="text" id="f-de'+fi+'" data-f="'+fi+'" data-k="descanso" value="'+escAt(f.descanso||'')+'" placeholder="1\'00&quot;"></div>'+
+        '<input class="dato" type="text" id="f-de'+fi+'" data-f="'+fi+'" data-k="_tiempo" value="'+escAt(f._tiempo||'')+'" placeholder="1\'00&quot;"></div>'+
       '<button class="quitar" data-quitar="'+fi+'" title="Quitar este ejercicio" aria-label="Quitar este ejercicio">×</button>'+
       '<div class="modos">'+
-        '<button type="button" class="salida'+(modo==='salida'?' on':'')+'" data-modo="salida" data-f="'+fi+'">'+
-          '<span class="pnt" style="background:#2F6FA8"></span>salida cada</button>'+
-        '<button type="button" class="fijo'+(modo==='fijo'?' on':'')+'" data-modo="fijo" data-f="'+fi+'">'+
-          '<span class="pnt" style="background:#6B5B8A"></span>descanso fijo</button>'+
+        '<button type="button"'+(modo==='salida'?' class="on" style="background:'+escAt(col.salida.texto)+'"':'')+' data-modo="salida" data-f="'+fi+'">'+
+          '<span class="pnt" style="background:'+escAt(col.salida.texto)+'"></span>salida cada</button>'+
+        '<button type="button"'+(modo==='fijo'?' class="on" style="background:'+escAt(col.descanso.texto)+'"':'')+' data-modo="fijo" data-f="'+fi+'">'+
+          '<span class="pnt" style="background:'+escAt(col.descanso.texto)+'"></span>descanso fijo</button>'+
       '</div>'+
       '<p class="pista ancho" style="margin:-2px 0 0">'+
         (modo==='salida' ? 'Salen cada ese tiempo: nadar y descansar caben dentro.'
@@ -1025,7 +1052,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (!c || !t.getAttribute) return;
       if (t.id === 'a-et') { c.etiqueta = t.value; return; }
       if (t.id === 'a-mt') { c.matiz = t.value; return; }
-      if (t.id === 'a-dp') { c.descanso_previo = t.value; return; }
+      if (t.id === 'a-dp') { c.entre = t.value; return; }
       var k = t.getAttribute('data-k');
       if (!k) return;
       var fi = parseInt(t.getAttribute('data-f'), 10);
@@ -1187,7 +1214,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (t.hasAttribute('data-modo')) {
         if (!c) return;
         var fm = parseInt(t.getAttribute('data-f'), 10);
-        if (c.filas[fm]) c.filas[fm].descanso_modo = t.getAttribute('data-modo');
+        if (c.filas[fm]) c.filas[fm]._modo = t.getAttribute('data-modo');
         pintar();
         return;
       }
@@ -1261,30 +1288,42 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   /* ---------- guardar ---------- */
+
+  /* El bloque de una calle, tal y como va a la base. La recuperación la
+     escribe descansos.js: se le dan el modo y el tiempo y él deja el objeto
+     `rec` y, además, el texto de siempre en `descanso`, para que ninguna otra
+     pantalla del portal se quede sin el dato. */
+  function bloqueDeCalle(c){
+    var i = EST.calles.indexOf(c);
+    var filas = c.filas.map(function(f){
+      var o = {};
+      for (var k in f) if (Object.prototype.hasOwnProperty.call(f,k)) {
+        if (k.charAt(0) === '_' || k === 'rec' || k === 'descanso') continue;   /* se recalculan */
+        var v = f[k];
+        if (v === '' || v === null || v === undefined) continue;
+        if (Array.isArray(v) && !v.length) continue;
+        o[k] = v;
+      }
+      var seg = DESC.segundosDeTexto(f._tiempo || '');
+      if (seg > 0) DESC.ponerRec(o, { modo: (f._modo === 'fijo' ? 'fijo' : 'salida'), segundos: seg }, C.DISCIPLINA);
+      return o;
+    }).filter(function(o){ return Object.keys(o).length > 0; });
+
+    var b = { etiqueta: (c.etiqueta||'').trim() || ('Calle '+(i+1)), calle: i+1,
+              atletas: c.atletas.slice(), filas: filas };
+    if ((c.matiz||'').trim()) b.matiz = c.matiz.trim();
+    var entre = DESC.segundosDeTexto(c.entre || '');
+    if (entre > 0) DESC.ponerRecEntreBloques(b, entre);
+    return b;
+  }
+
   function bloquesParaGuardar(){
     /* Se guarda en el mismo orden en el que se ve: si no, la sesión se
        recolocaría sola cada vez que el entrenador ajusta una calle. */
     var out = EST.comunes.map(function(x){ return { orden:x.orden, b:x.b }; });
-    EST.calles.forEach(function(c, i){
-      var filas = c.filas.map(function(f){
-        var o = {};
-        for (var k in f) if (Object.prototype.hasOwnProperty.call(f,k)) {
-          var v = f[k];
-          if (v === '' || v === null || v === undefined) continue;
-          if (Array.isArray(v) && !v.length) continue;
-          o[k] = v;
-        }
-        /* El modo solo se guarda si hay descanso: nunca un campo vacío */
-        if (!o.descanso) delete o.descanso_modo;
-        return o;
-      }).filter(function(o){
-        var ks = Object.keys(o);
-        return ks.length > 0 && !(ks.length === 1 && ks[0] === 'descanso_modo');
-      });
-      if (!filas.length && !c.atletas.length) return;
-      var b = { etiqueta: (c.etiqueta||'').trim() || ('Calle '+(i+1)), calle: i+1, atletas: c.atletas.slice(), filas: filas };
-      if ((c.matiz||'').trim()) b.matiz = c.matiz.trim();
-      if ((c.descanso_previo||'').trim()) b.descanso_previo = c.descanso_previo.trim();
+    EST.calles.forEach(function(c){
+      var b = bloqueDeCalle(c);
+      if (!b.filas.length && !c.atletas.length) return;    /* calle vacía del todo */
       out.push({ orden: ordenDe(c), b: b });
     });
     out.sort(function(x, y){ return x.orden - y.orden; });
