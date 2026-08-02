@@ -148,6 +148,8 @@ document.addEventListener('DOMContentLoaded', async function () {
       .from('avisos')
       .select('texto, tipo, enlace, texto_enlace')
       .eq('activo', true)
+      /* Si el aviso tiene fecha de caducidad, deja de salir solo al pasarla. */
+      .or('fecha_fin.is.null,fecha_fin.gte.' + new Date().toISOString().slice(0, 10))
       .order('created_at', { ascending: false })
       .limit(1);
     if (res.error || !res.data || !res.data.length) return;
