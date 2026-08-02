@@ -14,7 +14,7 @@
   var seq = 1;
   (D.retos || []).forEach(function (r) { r.activo = true; r.created_at = r.id; });
   (D.medallas || []).forEach(function (m) { m.activa = true; });
-  (D.juego_ajustes || []).forEach(function (a) { a.perfil_socios = !!window.__PERFIL_SOCIOS__; });
+  (D.juego_ajustes || []).forEach(function (a) { a.perfil_socios = sessionStorage.getItem('ps') === '1'; });
 
   function valorDe(metrica, periodo) {
     var h = (D.historial[metrica] || []).filter(function (x) { return x.periodo === periodo; })[0];
