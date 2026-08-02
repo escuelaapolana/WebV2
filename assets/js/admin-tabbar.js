@@ -242,6 +242,18 @@
         { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' },
         { txt: 'Avisos al móvil',      url: r + 'avisos-push/',   desc: 'notificaciones que se envían' }
       ] },
+      /* Esta no es del panel, es del portal, pero se busca desde aquí:
+         quien quiere que le lleguen los avisos a SU teléfono entra al
+         panel a buscarlo y no lo encuentra, porque desde el panel se
+         mandan, no se reciben. */
+      { t: 'Tu cuenta', enlaces: [
+        { txt: 'Recibir avisos en mi móvil', url: base() + 'portal/avisos/',
+          desc: 'activarlos en tu propio teléfono' },
+        { txt: 'Mi perfil',                  url: base() + 'portal/perfil/',
+          desc: 'tu foto, tu nombre y tu contraseña' },
+        { txt: 'Ver la app como socio',      url: base() + 'portal/',
+          desc: 'el portal, lo que ve la gente del club' }
+      ] },
       { t: 'La web', enlaces: [
         { txt: 'Franja informativa',    url: r + '#avisos',   desc: 'el aviso de la portada', panel: true },
         { txt: 'Noticias',              url: r + '#noticias', desc: 'lo que se publica en la web', panel: true },
@@ -367,7 +379,11 @@
      «notificaciones» o «avisar».
      ============================================================ */
   var SINONIMOS = {
-    'avisos al móvil':        'notificaciones push avisar movil telefono alertas',
+    'avisos al móvil':        'notificaciones push avisar movil telefono alertas mandar enviar',
+    'recibir avisos en mi móvil': 'activar avisos notificaciones push permiso mi movil mi telefono ' +
+                                  'avisarme configuracion ajustes suscribirme alertas',
+    'mi perfil':              'cuenta contrasena foto nombre datos configuracion ajustes',
+    'ver la app como socio':  'portal app atleta socio ver como probar',
     'franja informativa':     'avisos de portada banner franja barra aviso web arriba',
     'noticias':               'blog articulos web publicar',
     'tienda':                 'ropa productos venta equipacion',

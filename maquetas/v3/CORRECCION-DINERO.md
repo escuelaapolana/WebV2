@@ -13,7 +13,7 @@ presidente queda fuera del circuito de dinero». No es así.
 |---|---|
 | **Isabel Fuentes** · contable | **Socios y adultos.** Gestiona, gira remesas y hace transferencias |
 | **Adrián Onandía** · presidente | **Escuela** |
-| **Andrés Clavero** · tesorero | **Escuela** |
+| **Andrés Clavero Giménez** · tesorero | **Escuela** |
 
 Adrián y Andrés tienen **acceso a todo**, no solo a escuela. Isabel ejecuta.
 
