@@ -181,3 +181,67 @@ Cobros**, y que de ahí salga el patrón para el resto.
   solo con sesión iniciada.
 - **La app es la web instalada** (PWA), así que lo que se maquete para móvil
   vale para las dos.
+
+---
+
+## Restricciones técnicas que condicionan el diseño
+
+Conviene saberlas antes de maquetar, para no diseñar algo que luego no se pueda
+hacer o que quede raro:
+
+- **No hay servidor.** La web es estática y los datos llegan del navegador. Eso
+  significa que **siempre hay un instante de carga**: hay que diseñar el estado
+  "cargando" como parte del producto (esqueletos, no un "Cargando…" gris).
+- **No usamos librerías** (ni Tailwind, ni React, ni librerías de gráficas):
+  todo es HTML, CSS y JavaScript a mano. Si el diseño se apoya en componentes de
+  una librería concreta, habrá que traducirlo. Las gráficas se dibujan a mano.
+- **La app es la web instalada.** No hay barra del navegador ni botón "atrás":
+  por eso la barra inferior es crítica y por eso hay que respetar el hueco de la
+  barra de gestos del móvil.
+- **Fuentes disponibles**: Barlow Condensed, IBM Plex Sans y Archivo (Google
+  Fonts). Si se propone otra, hay que cargarla y afecta a la velocidad.
+- **Formato de entrega**: los `.dc.html` que manda funcionan muy bien; se pueden
+  leer y reproducir fielmente. Que siga así.
+
+## Volúmenes reales (para no diseñar con datos de mentira)
+
+Una lista de 5 se diseña distinto que una de 206:
+
+- **206 atletas**, 27 grupos, 8 secciones
+- **31 participantes** en la Liga, con 11 columnas de puntuación
+- **26 páginas** en el panel · **14** en el portal · **35** públicas
+- **80 huecos de foto** editables
+- Un entrenador puede llevar **4 calles a la vez** en natación
+
+## Casos que rompen los diseños bonitos
+
+- **Nombres largos**: "Sergio Redondo del Río", "Natación · Perfeccionamiento",
+  "Escuela municipal de atletismo". En 375 px se parten en tres líneas.
+- **Cero datos**: el club acaba de empezar con la app. Muchas pantallas se verán
+  vacías las primeras semanas (0 marcas, 0 retos, 0 participantes en la liga).
+  **Los estados vacíos no son un caso raro: son el estado inicial.**
+- **Textos que escribe el club** desde el panel: pueden ser más largos de lo
+  previsto. Nada debe descuadrarse por un título de 60 caracteres.
+
+## Los estados que siempre se olvidan
+
+Para cada pantalla que maquete, harían falta: **cargando · vacío · con pocos
+datos · con muchos · error · sin permiso**. Es justo donde se nota si algo está
+cuidado o no.
+
+## Contexto de uso (importa más de lo que parece)
+
+- **A pie de pista, con sol y una mano ocupada**: pasar lista y anotar tiempos.
+  Contraste alto y objetivos grandes, más de lo que pediría un diseño de oficina.
+- **Gente de 8 a 70+ años**: hay categoría "60 en adelante" y escuela desde los
+  3. Nada de texto de 10 px ni gris sobre gris.
+- **El panel también se usa en ordenador**, con sesiones largas. Ahí sí caben
+  tablas densas, pero con jerarquía.
+
+## Decisiones abiertas que le corresponden al club
+
+- **Modo oscuro**: no existe. ¿Interesa?
+- **Color por sección** (atletismo, natación, montaña…): hoy solo se usa en
+  horarios y calendario. ¿Lo llevamos a todo el sistema?
+- **El escudo del club** está infrautilizado: solo aparece en la cabecera y el
+  pie. ¿Puede formar parte del lenguaje visual?
