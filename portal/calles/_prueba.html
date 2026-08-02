@@ -26,8 +26,10 @@ window.__FIX = {"grupos": [{"id": "dddddddd-0002-4000-8000-000000000008", "nombr
       : { id:'dddddddd-0001-4000-8000-000000000007', nombre:'Lucía', apellidos:'Sanchís Moreno', email:'lucia.sanchis@demo.apolana.test', rol:'entrenador', seccion:'natacion' } ];
     return [];
   }
+  var FALLO = P.get('fallo');
   function Q(nombre){
     var filas = tabla(nombre), self;
+    if (FALLO && nombre === FALLO) { return { select:function(){return this;}, eq:function(){return this;}, gte:function(){return this;}, lte:function(){return this;}, in:function(){return this;}, order:function(){return this;}, limit:function(){return this;}, maybeSingle:function(){ return Promise.resolve(res(null,{message:'boom'})); }, then:function(ok,ko){ return Promise.resolve(res(null,{message:'boom'})).then(ok,ko); } }; }
     function f(k,v){ filas = filas.filter(function(r){ return String(r[k])===String(v); }); return self; }
     self = {
       select: function(){ return self; },
@@ -73,19 +75,25 @@ window.__FIX = {"grupos": [{"id": "dddddddd-0002-4000-8000-000000000008", "nombr
 
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
-<!-- El modelo de calles (leer una sesión repartida por calles) va aparte -->
+<!-- HUECO RESERVADO · descansos de las cinco disciplinas.
+     El modelo de recuperación lo está montando otra persona en
+     assets/js/descansos.js. En cuanto ese archivo exista se descomenta la línea
+     de abajo y manda él: calles.js le pregunta antes de decidir nada y solo usa
+     su propio mínimo de natación mientras no esté. No hay nada más que tocar.
+<script src="../../assets/js/descansos.js"></script>
+-->
+<!-- El modelo de calles: leer una sesión repartida por calles -->
 <script src="../../assets/js/calles.js"></script>
-<!-- Descansos de las cinco disciplinas. Lo monta otra persona; si todavía no
-     existe, calles.js se apaña con el mínimo de natación. El 404 no rompe nada. -->
-<script src="../../assets/js/descansos.js" onerror="this.remove()"></script>
 <style>
   /* ==========================================================================
      CALLES DE NATACIÓN · maqueta v3, bloques 25a-25d
      Pantalla de trabajo: se abre a pie de piscina, con una mano y el brazo
      mojado. Móvil primero; en pantalla grande no se ensancha, se centra.
      ========================================================================== */
+  /* En pantalla grande la pantalla no se ensancha: se centra. Es una pantalla
+     de móvil y estirarla a 1.200 px la volvería ilegible. La banda navy sí va
+     de lado a lado, como cualquier cabecera del sistema. */
   body { background: var(--crema); }
-  #app { max-width: 680px; margin: 0 auto; }
 
   /* ---- cabecera navy · kit 30h ------------------------------------------
      El navy se reserva para las pantallas donde se está trabajando. Aquí
@@ -114,7 +122,7 @@ window.__FIX = {"grupos": [{"id": "dddddddd-0002-4000-8000-000000000008", "nombr
 
   /* El hueco de abajo deja que la última tarjeta suba por encima de la barra
      de acción: si no, la barra pegajosa se le queda encima al llegar al final. */
-  .wrap { padding: 14px 16px 76px; display:flex; flex-direction:column; gap:12px; }
+  .wrap { max-width:680px; margin:0 auto; padding: 14px 16px 76px; display:flex; flex-direction:column; gap:12px; }
   @media (max-width:760px) { .wrap { padding-bottom: 124px; } }
 
   /* ---- rótulo de sección con hilo -------------------------------------- */
@@ -165,6 +173,9 @@ window.__FIX = {"grupos": [{"id": "dddddddd-0002-4000-8000-000000000008", "nombr
   .bq:last-child { border-bottom:0; }
   .bq.hecho { opacity:.55; }
   .bq.comun { background: var(--crema); }
+  /* Lo del nadador, delante; lo de todo el grupo, detrás. El filo azul va en
+     sombra interior para que el texto no se mueva tres píxeles. */
+  .bq.mio { background:#F1F7FC; box-shadow: inset 3px 0 0 var(--azul); }
   .bq.curso { background:#F1F7FC; }
   .bq .cab-b { display:flex; align-items:baseline; gap:8px; }
   .bq .cab-b .et { font-size:13px; line-height:1.4; color: var(--texto-suave); }
@@ -432,10 +443,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var m = C.metrosBloque(x.b);
       var derecha = i < hechos ? '<span class="der ok">hecho</span>'
                   : (m ? '<span class="der'+(i===hechos?' az':'')+'">'+esc(C.volumen(m))+'</span>' : '');
-      h += '<div class="bq '+estado+(x.propio?'':' comun')+'">'+
+      h += '<div class="bq '+estado+(x.propio ? (opciones.destacarPropio?' mio':'') : ' comun')+'">'+
         '<div class="cab-b"><span class="et">'+esc((i+1)+' · '+(x.b.etiqueta||'Bloque'))+
           (i===hechos ? ' · en curso' : '')+'</span>'+derecha+'</div>'+
-        (!x.propio && opciones.marcarComun ? '<span class="marca-todos">Lo hace todo el grupo, no solo tu calle</span>' : '')+
+        (!x.propio && opciones.marcarComun ? '<span class="marca-todos">'+esc(opciones.marcarComun)+'</span>' : '')+
         ((x.b.filas||[]).length
           ? (x.b.filas||[]).map(function(f, fi){
               return htmlEjercicio(f, opciones.huecos ? opciones.huecos(x.idx, fi, f) : '');
@@ -571,7 +582,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             ? '<p>'+esc([s.titulo, s.nota_razonamiento].filter(Boolean).join('. '))+'</p>' : '')+
         '</div>'+
         htmlBloques(lista, -1, {
-          marcarComun: true,
+          destacarPropio: true,
+          marcarComun: 'Lo hace todo el grupo, no solo tu calle',
           huecos: function(bi, fi, f){ return htmlHuecos(bi, fi, f, reg); }
         })+
         '<div class="msg" id="n-msg"></div>'+
@@ -688,7 +700,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     ajustando: false, cambiando: false
   };
 
-  function calleVacia(i){ return { n:i+1, etiqueta:'Calle '+(i+1), matiz:'', atletas:[], filas:[filaVacia()], descanso_previo:'' }; }
+  /* `orden` es el sitio que ocupa el bloque de esta calle dentro de la sesión:
+     entre el calentamiento y la vuelta a la calma, donde lo puso el
+     entrenador. Se conserva al guardar; si no, la sesión se recolocaría sola. */
+  function calleVacia(i){ return { n:i+1, etiqueta:'Calle '+(i+1), matiz:'', atletas:[], filas:[filaVacia()], descanso_previo:'', orden:null }; }
   function filaVacia(){ return { ejercicio:'', series:'', distancia:'', ritmo:'', descanso:'', descanso_modo:'salida', material:[], observaciones:'' }; }
   function atletaPorId(id){ for (var i=0;i<EST.atletas.length;i++) if (EST.atletas[i].id===id) return EST.atletas[i]; return null; }
   function calleDe(id){ for (var i=0;i<EST.calles.length;i++) if (EST.calles[i].atletas.indexOf(id)>-1) return i; return -1; }
@@ -741,7 +756,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     EST.ajustando = false;
     if (!s) { EST.calles = []; EST.comunes = []; return; }
     var sep = C.separar(s.bloques);
-    EST.comunes = sep.comunes.map(function(x){ return x.b; });
+    EST.comunes = sep.comunes.map(function(x){ return { orden:x.idx, b:x.b }; });
     var n = parseInt(s.calles,10) || 0;
     sep.calles.forEach(function(c){ if (c.n > n) n = c.n; });
     if (!n) n = 4;
@@ -754,6 +769,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (i < 0 || i >= EST.calles.length) return;
       EST.calles[i] = {
         n: c.n,
+        orden: c.idx,
         etiqueta: c.b.etiqueta || ('Calle '+c.n),
         matiz: c.b.matiz || '',
         descanso_previo: c.b.descanso_previo || '',
@@ -768,11 +784,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
-  /* Lo que ve una calle: los bloques comunes más el suyo, en orden */
+  /* Dónde va el bloque de una calle. Si ya lo tenía, en su sitio de siempre.
+     Si es nueva, junto a las demás calles; y si no hay ninguna, al final pero
+     antes de la vuelta a la calma, que es donde se espera encontrarla. */
+  function ordenDe(c){
+    if (c.orden != null) return c.orden;
+    var o = null;
+    EST.calles.forEach(function(x){ if (o === null && x.orden != null) o = x.orden; });
+    if (o !== null) return o + 0.5;
+    if (EST.comunes.length > 1) return EST.comunes[EST.comunes.length-1].orden - 0.5;
+    return EST.comunes.length ? EST.comunes[0].orden + 0.5 : 0;
+  }
+
+  /* Lo que ve una calle: los bloques comunes más el suyo, en el orden del vaso */
   function secuenciaDe(i){
-    var lista = EST.comunes.map(function(b, k){ return { idx:k, b:b, propio:false }; });
+    var lista = EST.comunes.map(function(x){ return { idx:x.orden, b:x.b, propio:false }; });
     var c = EST.calles[i];
-    if (c) lista.push({ idx: 1000+i, b: { etiqueta:c.etiqueta, matiz:c.matiz, filas:c.filas, descanso_previo:c.descanso_previo }, propio:true });
+    if (c) lista.push({
+      idx: ordenDe(c),
+      b: { etiqueta:c.etiqueta, matiz:c.matiz, filas:c.filas, descanso_previo:c.descanso_previo },
+      propio: true
+    });
+    lista.sort(function(a, b){ return a.idx - b.idx; });
     return lista;
   }
 
@@ -933,7 +966,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           { v: C.volumen(metros), l:'total de la calle' },
           { v: String(c.atletas.length), l: c.atletas.length===1?'nadador':'nadadores' }
         ].concat(dur ? [{ v: dur, l:'duración' }] : []))+
-        htmlBloques(seq, hechos, {})+
+        htmlBloques(seq, hechos, { marcarComun: 'De todo el grupo · no se ajusta desde aquí' })+
         '<div class="franja-ambar"><p>Ajustar solo esta calle: metros, repeticiones, salida y quién nada en ella.</p>'+
           '<button class="btn-am" id="e-ajustar">Ajustar</button></div>'+
         '<div class="barra">'+
@@ -1292,7 +1325,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* ---------- guardar ---------- */
   function bloquesParaGuardar(){
-    var out = EST.comunes.slice();
+    /* Se guarda en el mismo orden en el que se ve: si no, la sesión se
+       recolocaría sola cada vez que el entrenador ajusta una calle. */
+    var out = EST.comunes.map(function(x){ return { orden:x.orden, b:x.b }; });
     EST.calles.forEach(function(c, i){
       var filas = c.filas.map(function(f){
         var o = {};
@@ -1313,9 +1348,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var b = { etiqueta: (c.etiqueta||'').trim() || ('Calle '+(i+1)), calle: i+1, atletas: c.atletas.slice(), filas: filas };
       if ((c.matiz||'').trim()) b.matiz = c.matiz.trim();
       if ((c.descanso_previo||'').trim()) b.descanso_previo = c.descanso_previo.trim();
-      out.push(b);
+      out.push({ orden: ordenDe(c), b: b });
     });
-    return out;
+    out.sort(function(x, y){ return x.orden - y.orden; });
+    return out.map(function(x){ return x.b; });
   }
 
   async function guardarSesion(op){

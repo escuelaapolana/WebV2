@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Se pone solo · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1060px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande);
+           padding: clamp(18px,3vw,26px); box-shadow: var(--sombra-suave); margin-bottom: 20px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:21px; color: var(--navy); margin:0 0 4px; }
+  .panel .sub { font-size:15px; line-height:1.5; color: var(--texto); margin:0 0 16px; max-width: 62ch; }
+
+  /* Cabecera de pantalla del panel (kit 30h): migas, título 28 px y el
+     recuento al lado en mono, nunca como tarjeta aparte. */
+  .cab { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; justify-content:space-between; margin-bottom:20px; }
+  .cab h1 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:28px; line-height:1; color: var(--navy); margin:0; }
+  .cab h1 .n { font-family: var(--fuente-dato); font-weight:400; font-size:15px; color: var(--texto-suave); margin-left:11px; vertical-align: baseline; }
+  .cab .contexto { font-size:14px; color: var(--texto-suave); margin-top:6px; }
+  .cab .acciones { display:flex; gap:10px; flex-wrap:wrap; }
+
+  /* Etiquetas: 13 px, minúscula, sin espaciado ancho (fundamentos 0) */
+  label, .et { display:block; font-family: var(--fuente-texto); font-size:13px; text-transform:none;
+               letter-spacing: normal; color: var(--texto-suave); margin: 0 0 5px; }
+  input, select, textarea {
+    width:100%; box-sizing:border-box; padding:11px 13px; border:1px solid var(--linea-borde);
+    border-radius:10px; font-family: var(--fuente-texto); font-size:15px; background:#fff;
+    color: var(--navy); min-height:44px;
+  }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--azul); border-color: var(--azul); }
+  input[type=checkbox] { width:auto; min-height:0; }
+
+  .btn { cursor:pointer; }
+  .btn--mini { padding:11px 20px; font-size:15px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+  .bmini { cursor:pointer; font-family: var(--fuente-texto); font-size:15px; min-height:44px; padding:11px 18px;
+           border-radius:999px; border:1px solid var(--linea-borde); background:#fff; color: var(--texto); white-space:nowrap; }
+  .bmini:hover { border-color: var(--azul); color: var(--azul-oscuro); }
+  .bmini[disabled] { opacity:.45; cursor:default; }
+  .btexto { cursor:pointer; border:0; background:none; color: var(--azul-oscuro); font-family: var(--fuente-texto);
+            font-size:15px; font-weight:600; min-height:44px; padding:10px 4px; }
+  .oculto { display:none !important; }
+
+  /* Las cifras del bloque: dato en mono, rótulo debajo en minúscula */
+  .cifras { display:grid; grid-template-columns: repeat(auto-fit, minmax(132px,1fr)); gap:10px; margin-bottom:18px; }
+  .cifra { background: var(--crema); border:1px solid var(--linea); border-radius:14px; padding:14px 16px; }
+  .cifra .et { margin:0 0 3px; }
+  .cifra .num { display:block; font-family: var(--fuente-dato); font-weight:700; font-size:26px; line-height:1; color: var(--navy); }
+  .cifra .nota { display:block; font-size:13px; color: var(--texto-suave); margin-top:3px; min-height:17px; }
+  .cifra.ambar .num { color:#8A5307; }
+
+  /* El interruptor general: una banda, y las bandas no llevan radio */
+  .banda { margin: 0 0 20px; padding: 14px clamp(16px,4vw,40px); background: var(--crema-banda);
+           border-top:1px solid var(--linea); border-bottom:1px solid var(--linea);
+           display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .banda .txt { flex:1 1 260px; min-width:0; font-size:15px; line-height:1.45; color: var(--texto); }
+  .banda .txt b { display:block; color: var(--navy); font-weight:600; }
+  .banda--parado { background: var(--ambar-fondo); border-color: var(--ambar-borde); }
+
+  /* Filas: un contenedor con separadores, nunca diez tarjetas (kit 30d) */
+  .lista { border:1px solid var(--linea-marcada); border-radius:14px; overflow:hidden; background:#fff; }
+  .fila { display:flex; align-items:center; gap:12px; padding:12px 16px; min-height:48px;
+          box-sizing:border-box; border-bottom:1px solid var(--crema-media); }
+  .fila:last-child { border-bottom:0; }
+  .fila .cuerpo { flex:1 1 auto; min-width:0; }
+  .fila .t1 { font-size:15px; color: var(--navy); line-height:1.35; }
+  .fila .t2 { font-size:14px; color: var(--texto-suave); line-height:1.35; }
+  .fila .dato { font-family: var(--fuente-dato); font-size:14px; color: var(--navy); white-space:nowrap; }
+  .fila--apagada .t1, .fila--apagada .dato { color: var(--texto-suave); }
+
+  .pill { display:inline-block; font-size:13px; padding:4px 11px; border-radius:999px; white-space:nowrap; }
+  .pill-ok    { background: var(--verde-fondo); color:#3F7A4C; }
+  .pill-pend  { background:#EAF2F9; color:#2F6FA8; }
+  .pill-ambar { background: var(--ambar-fondo); color:#8A5307; }
+  .pill-gris  { background: var(--crema-banda); color: var(--texto-suave); }
+
+  /* Cada día del avance, con su fecha en mono para poder comparar */
+  .dias { display:grid; gap:10px; }
+  .dia { border:1px solid var(--linea); border-radius:14px; background:#fff; padding:12px 16px; }
+  .dia .cabdia { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .dia .cabdia .f { font-family: var(--fuente-texto); font-size:15px; font-weight:600; color: var(--navy); }
+  .dia .cabdia .n { font-family: var(--fuente-dato); font-size:13px; color: var(--texto-suave); }
+  .dia .cosas { display:flex; flex-wrap:wrap; gap:6px; }
+  .cosa { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--linea); border-radius:999px;
+          padding:6px 12px; font-size:14px; color: var(--texto); background: var(--crema); }
+  .cosa .h { font-family: var(--fuente-dato); font-size:13px; color: var(--texto-suave); }
+  .cosa--excepcion { opacity:.55; text-decoration: line-through; }
+  .cosa--tocada { border-color:#EBD9B8; background: var(--ambar-fondo); }
+  .cosa--a_mano { border-color:#CBE0CE; background: var(--verde-fondo); }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+  @media (max-width: 720px) { .grid2, .grid3 { grid-template-columns:1fr; } }
+
+  .form-pie { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px; }
+  .nota-pie { font-size:14px; line-height:1.5; color: var(--texto-suave); margin-top:14px; }
+
+  /* Áreas: la fila entera es pulsable, no solo la casilla */
+  .areas { display:flex; flex-wrap:wrap; gap:8px; }
+  .areas label { display:inline-flex; align-items:center; gap:8px; margin:0; min-height:44px;
+                 padding:9px 14px; border:1px solid var(--linea-borde); border-radius:999px;
+                 font-size:14px; color: var(--texto); cursor:pointer; background:#fff; }
+  .areas label:hover { border-color: var(--azul); }
+  .areas label.puesta { background: var(--navy); border-color: var(--navy); color:#fff; }
+  .areas label.puesta input { accent-color:#fff; }
+
+  .persona { border-bottom:1px solid var(--crema-media); padding:14px 0; }
+  .persona:last-child { border-bottom:0; }
+  .persona .quien { font-size:15px; color: var(--navy); margin-bottom:8px; }
+  .persona .quien small { color: var(--texto-suave); font-size:14px; margin-left:8px; }
+
+  @media (max-width: 560px) {
+    .fila { flex-wrap:wrap; row-gap:8px; }
+    .fila .cuerpo { flex:1 1 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+
+  <!-- El interruptor general va en banda: se ve antes de nada y, si está
+       parado, se ve que está parado sin tener que buscarlo. -->
+  <div class="banda" id="banda-estado">
+    <span class="txt" id="banda-txt"><span class="adm-esq adm-esq--medio" style="height:15px;margin:4px 0"></span></span>
+    <button type="button" class="bmini" id="btn-interruptor" hidden>Parar</button>
+  </div>
+
+  <div class="admin-wrap">
+
+    <div class="cab">
+      <div>
+        <h1>Se pone solo<span class="n" id="cab-n"></span></h1>
+        <div class="contexto" id="contexto"><span class="adm-esq adm-esq--medio" style="height:13px;margin:5px 0"></span></div>
+      </div>
+      <div class="acciones">
+        <a class="bmini" href="../../calendario/" target="_blank" rel="noopener">Ver el calendario público</a>
+      </div>
+    </div>
+
+    <!-- ============ 1 · LOS ENTRENOS FIJOS ============ -->
+    <div class="panel">
+      <h2>Entrenamientos fijos</h2>
+      <p class="sub">Los grupos con horario fijo se publican en el calendario cada semana sin que nadie
+        los toque. Se cambian solos cuando cambias el horario del grupo. Aquí no hay nada que decidir:
+        por eso van solos.</p>
+
+      <div class="cifras" id="cifras">
+        <div class="cifra"><span class="et">Grupos con horario</span><span class="num" id="c-grupos"><span class="adm-esq" style="width:44px;height:20px;margin:2px 0"></span></span><span class="nota" id="n-grupos"></span></div>
+        <div class="cifra"><span class="et">Sesiones por semana</span><span class="num" id="c-semana"><span class="adm-esq" style="width:44px;height:20px;margin:2px 0"></span></span><span class="nota">se repiten solas</span></div>
+        <div class="cifra"><span class="et">Ya publicadas</span><span class="num" id="c-publi"><span class="adm-esq" style="width:44px;height:20px;margin:2px 0"></span></span><span class="nota" id="n-publi"></span></div>
+        <div class="cifra ambar"><span class="et">Cambiadas a mano</span><span class="num" id="c-tocadas"><span class="adm-esq" style="width:44px;height:20px;margin:2px 0"></span></span><span class="nota">no se vuelven a tocar</span></div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label for="semanas">Cuántas semanas se publican por adelantado</label>
+          <select id="semanas">
+            <option value="4">4 semanas</option>
+            <option value="6">6 semanas</option>
+            <option value="8">8 semanas</option>
+            <option value="12">12 semanas</option>
+          </select>
+        </div>
+        <div>
+          <label>Qué pasaría si lo publicas ahora</label>
+          <div id="simulacion" style="font-size:15px;line-height:1.5;color:var(--texto);padding-top:9px;">
+            <span class="adm-esq adm-esq--medio" style="height:15px;margin:4px 0"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-pie">
+        <button type="button" class="btn btn--primario btn--mini" id="btn-publicar">Publicar ahora</button>
+        <button type="button" class="btexto" id="btn-recalcular">Volver a mirar</button>
+      </div>
+
+      <p class="nota-pie">Nunca se toca lo que ha hecho una persona: si un entrenador cambia una sesión
+        publicada, esa sesión se queda como él la dejó y no se vuelve a generar. Si la borra, no vuelve.</p>
+    </div>
+
+    <!-- ============ 2 · LO QUE SE VA A PUBLICAR ============ -->
+    <div class="panel">
+      <h2>Las dos próximas semanas</h2>
+      <p class="sub">Lo que va a salir en el calendario, día a día. Así se ve antes de que salga.</p>
+      <div class="dias" id="previstos"></div>
+      <p class="nota-pie">Tachado = ese día está tapado por un festivo o un cierre.
+        En ámbar = alguien la cambió a mano. En verde = esa sesión la puso una persona, no el sistema.</p>
+    </div>
+
+    <!-- ============ 3 · FESTIVOS Y CIERRES ============ -->
+    <div class="panel">
+      <h2>Festivos y cierres de instalación</h2>
+      <p class="sub">Se marcan una vez y afectan a todos los grupos que ese día usan esa instalación.
+        Sin poner instalación, el día se cae para todo el club.</p>
+
+      <div class="lista" id="lista-excepciones" style="margin-bottom:18px;"></div>
+
+      <form id="form-excepcion">
+        <div class="grid3">
+          <div>
+            <label for="e-fecha">Desde el día</label>
+            <input type="date" id="e-fecha" required>
+          </div>
+          <div>
+            <label for="e-fecha-fin">Hasta el día (si dura más de uno)</label>
+            <input type="date" id="e-fecha-fin">
+          </div>
+          <div>
+            <label for="e-tipo">Qué es</label>
+            <select id="e-tipo">
+              <option value="festivo">Festivo</option>
+              <option value="cierre">Cierre de instalación</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2" style="margin-top:14px;">
+          <div>
+            <label for="e-motivo">Motivo (se ve solo en el panel)</label>
+            <input type="text" id="e-motivo" placeholder="Ej.: Nochebuena · Limpieza de la piscina" required maxlength="120">
+          </div>
+          <div>
+            <label for="e-lugar">Instalación afectada</label>
+            <select id="e-lugar"><option value="">Todas · es un festivo del club</option></select>
+          </div>
+        </div>
+        <div class="form-pie">
+          <button type="submit" class="bmini" id="btn-excepcion">Marcar el día</button>
+          <span class="nota-pie" style="margin:0;">Al marcarlo se quitan las sesiones automáticas de ese día.
+            Las que haya puesto una persona no se tocan.</span>
+        </div>
+      </form>
+    </div>
+
+    <!-- ============ 4 · LOS HORARIOS DE CADA GRUPO ============ -->
+    <div class="panel">
+      <h2>De dónde salen los horarios</h2>
+      <p class="sub">Del horario que ya está escrito en la ficha de cada grupo. Si algo no cuadra, se
+        arregla ahí y aquí se rehace solo. Una franja se puede apagar sin tocar el texto: útil para lo
+        que solo se hace unos meses al año, como la salida a la playa.</p>
+      <div id="horarios"></div>
+      <div class="form-pie">
+        <button type="button" class="btexto" id="btn-releer">Volver a leer los horarios de los grupos</button>
+        <a class="btexto" href="../grupos/" style="text-decoration:none;">Ir a los grupos</a>
+      </div>
+    </div>
+
+    <!-- ============ 5 · CARRERAS DE LA LIGA ============ -->
+    <div class="panel">
+      <h2>Carreras de la Liga</h2>
+      <p class="sub">Estas <b>no se publican solas</b>. Una prueba que comunica un socio puede estar mal
+        escrita o ser de otro club, así que espera un clic. Al publicarla aparece en el calendario público
+        como competición.</p>
+      <div class="lista" id="lista-liga"></div>
+      <div class="form-pie" id="pie-liga"></div>
+    </div>
+
+    <!-- ============ 6 · QUIÉN VE QUÉ ============ -->
+    <div class="panel">
+      <h2>Quién ve qué en la bandeja</h2>
+      <p class="sub">El interruptor «Solo lo mío» del inicio del panel filtra por esto. Sin nada marcado,
+        a esa persona le sale todo. Isabel no tiene que ver lesiones; Adrián no tiene que ver recibos
+        devueltos.</p>
+      <div id="personas"></div>
+    </div>
+
+    <!-- ============ 7 · LO QUE NUNCA SE PUBLICA SOLO ============ -->
+    <div class="panel" style="background: var(--crema-banda); border-color: var(--linea-marcada); box-shadow:none;">
+      <h2>Lo que nunca se publica solo</h2>
+      <p class="sub" style="margin:0;">Noticias, fotos y cualquier cosa con el nombre de un menor. Eso se
+        propone y espera un clic, siempre. Lo automático llega hasta donde no hay que decidir nada, y ni
+        un paso más.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var sb = null;
+  var RESUMEN = null, HORARIOS = [], GRUPOS = {}, EXCEPCIONES = [], PROPUESTAS = [], PERSONAS = [];
+  var LUGARES = [];
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var DIAS = ['', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  function fLarga(iso) {
+    if (!iso) return '';
+    var p = String(iso).slice(0, 10).split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  function fCorta(iso) {
+    if (!iso) return '';
+    var p = String(iso).slice(0, 10).split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+  }
+  function hCorta(h) { return h ? String(h).slice(0, 5) : ''; }
+  function hoyIso() { var d = new Date(); return d.toISOString().slice(0, 10); }
+  function masDias(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+  function plural(n, uno, varios) { return n + ' ' + (n === 1 ? uno : varios); }
+
+  /* ---------------- 1 · estado general ---------------- */
+  async function cargarResumen() {
+    var r = await sb.rpc('automatizacion_resumen');
+    if (r.error || !r.data || !r.data.length) {
+      $('banda-txt').innerHTML = '<b>No hemos podido leer cómo está la automatización</b>Puede ser la conexión.';
+      $('contexto').textContent = '';
+      return false;
+    }
+    RESUMEN = r.data[0];
+
+    var b = $('banda-estado'), t = $('banda-txt'), bt = $('btn-interruptor');
+    bt.hidden = false;
+    if (RESUMEN.activo) {
+      b.classList.remove('banda--parado');
+      t.innerHTML = '<b>Está funcionando</b>Los entrenos fijos se publican solos ' +
+        plural(RESUMEN.semanas_vista, 'semana', 'semanas') + ' por delante.';
+      bt.textContent = 'Parar';
+    } else {
+      b.classList.add('banda--parado');
+      t.innerHTML = '<b>Está parado</b>No se publica nada nuevo. Lo que ya estaba publicado sigue ahí: ' +
+        'parar no es deshacer.';
+      bt.textContent = 'Volver a ponerlo en marcha';
+    }
+
+    $('cab-n').textContent = RESUMEN.sesiones_semana ? RESUMEN.sesiones_semana + '/semana' : '';
+    $('contexto').textContent = 'Hoy es ' + fLarga(hoyIso()) +
+      (RESUMEN.ultima_publicada ? ' · publicado hasta el ' + fCorta(RESUMEN.ultima_publicada) : '');
+
+    $('c-grupos').textContent = RESUMEN.grupos_con_horario;
+    $('n-grupos').textContent = RESUMEN.franjas_activas ? plural(RESUMEN.franjas_activas, 'franja', 'franjas') : '';
+    $('c-semana').textContent = RESUMEN.sesiones_semana;
+    $('c-publi').textContent = RESUMEN.publicadas_futuras;
+    $('n-publi').textContent = RESUMEN.ultima_publicada ? 'hasta el ' + fCorta(RESUMEN.ultima_publicada) : 'ninguna todavía';
+    $('c-tocadas').textContent = RESUMEN.tocadas;
+
+    var sel = $('semanas');
+    if (!sel.dataset.puesto) {
+      var v = String(RESUMEN.semanas_vista);
+      if (!Array.prototype.some.call(sel.options, function (o) { return o.value === v; })) {
+        var o = document.createElement('option'); o.value = v; o.textContent = v + ' semanas'; sel.appendChild(o);
+      }
+      sel.value = v;
+      sel.dataset.puesto = '1';
+    }
+    return true;
+  }
+
+  /* ---------------- simulación: el número, antes de escribir ------------- */
+  async function simular() {
+    var caja = $('simulacion');
+    caja.innerHTML = ADM.esqueleto(1);
+    var r = await sb.rpc('generar_entrenos_fijos', { p_simular: true });
+    if (r.error) { caja.innerHTML = ADM.error(r.error.message, simular); return; }
+    var s = (r.data && r.data[0]) || null;
+    if (!s) { caja.innerHTML = ADM.error('No hemos podido calcularlo.', simular); return; }
+    if (!RESUMEN || !RESUMEN.activo) {
+      caja.innerHTML = '<span style="color:#8A5307;">Está parado: no publicaría nada.</span>';
+      return;
+    }
+    var partes = [];
+    if (s.creadas)      partes.push('<b>' + plural(s.creadas, 'sesión nueva', 'sesiones nuevas') + '</b>');
+    if (s.actualizadas) partes.push(plural(s.actualizadas, 'sesión al día', 'sesiones al día'));
+    if (s.borradas)     partes.push(plural(s.borradas, 'sesión que sobra', 'sesiones que sobran') + ' se quitarían');
+    if (!partes.length) {
+      caja.innerHTML = 'Todo está ya publicado hasta el ' + esc(fCorta(s.hasta)) + '. No haría falta tocar nada.';
+    } else {
+      caja.innerHTML = partes.join(' · ') +
+        '<br><span style="font-size:14px;color:var(--texto-suave);">de aquí al ' + esc(fCorta(s.hasta)) + '</span>' +
+        (s.intactas ? '<br><span style="font-size:14px;color:var(--texto-suave);">' +
+          plural(s.intactas, 'sesión cambiada a mano se respeta', 'sesiones cambiadas a mano se respetan') + '</span>' : '');
+    }
+  }
+
+  async function publicar() {
+    var s = await sb.rpc('generar_entrenos_fijos', { p_simular: true });
+    if (s.error) { apoToast('No hemos podido calcularlo: ' + s.error.message, 'error', { reintentar: publicar }); return; }
+    var d = (s.data && s.data[0]) || { creadas: 0, actualizadas: 0, borradas: 0 };
+    if (!d.creadas && !d.actualizadas && !d.borradas) {
+      apoToast('Ya estaba todo publicado. No hacía falta tocar nada.', 'ok');
+      return;
+    }
+    var texto = 'Se van a publicar ' + plural(d.creadas, 'sesión', 'sesiones') +
+      ' en el calendario del club, de aquí al ' + fCorta(d.hasta) + '.' +
+      (d.actualizadas ? ' Se ponen al día ' + plural(d.actualizadas, 'sesión', 'sesiones') + '.' : '') +
+      (d.borradas ? ' Se quitan ' + plural(d.borradas, 'sesión que ya no toca', 'sesiones que ya no tocan') + '.' : '') +
+      ' Nada de lo que haya hecho una persona se toca.';
+    if (!await apoConfirm({ titulo: 'Publicar los entrenos fijos', texto: texto, confirmar: 'Publicar' })) return;
+
+    var b = $('btn-publicar'); b.disabled = true;
+    var r = await sb.rpc('generar_entrenos_fijos');
+    b.disabled = false;
+    if (r.error) { apoToast('No se pudo publicar: ' + r.error.message, 'error', { reintentar: publicar }); return; }
+    var x = (r.data && r.data[0]) || {};
+    apoToast('Publicadas ' + plural(x.creadas || 0, 'sesión', 'sesiones') + ' en el calendario.', 'ok');
+    cargarTodo();
+  }
+
+  async function cambiarInterruptor() {
+    if (!RESUMEN) return;
+    var apagar = RESUMEN.activo;
+    if (apagar && !await apoConfirm({
+      titulo: 'Parar la publicación automática',
+      texto: 'Dejará de publicarse nada nuevo. Lo que ya está en el calendario se queda: parar no borra.',
+      confirmar: 'Parar'
+    })) return;
+    var r = await sb.from('automatizaciones_ajustes')
+      .update({ valor: apagar ? 'no' : 'si', updated_at: new Date().toISOString() })
+      .eq('clave', 'entrenos_activo');
+    if (r.error) { apoToast('No se pudo cambiar: ' + r.error.message, 'error'); return; }
+    apoToast(apagar ? 'Parado. No se publicará nada nuevo.' : 'En marcha otra vez.', 'ok');
+    cargarTodo();
+  }
+
+  async function cambiarSemanas() {
+    var v = $('semanas').value;
+    var r = await sb.from('automatizaciones_ajustes')
+      .update({ valor: v, updated_at: new Date().toISOString() })
+      .eq('clave', 'semanas_vista');
+    if (r.error) { apoToast('No se pudo guardar: ' + r.error.message, 'error'); return; }
+    apoToast('A partir de ahora se publican ' + v + ' semanas por delante.', 'ok');
+    await cargarResumen();
+    simular();
+  }
+
+  /* ---------------- 2 · lo previsto, día a día ---------------- */
+  var ROTULO = {
+    pendiente: '', publicada: '', tocada: 'cambiada a mano', excepcion: 'festivo o cierre',
+    quitada: 'quitada a mano', a_mano: 'la puso una persona'
+  };
+  async function cargarPrevistos() {
+    var caja = $('previstos');
+    caja.innerHTML = ADM.esqueleto(4);
+    var r = await sb.rpc('entrenos_previstos', { p_desde: hoyIso(), p_hasta: masDias(13) });
+    if (r.error) { caja.innerHTML = ADM.error(r.error.message, cargarPrevistos); return; }
+    var filas = r.data || [];
+    if (!filas.length) {
+      caja.innerHTML = ADM.vacio(
+        'Todavía no hay ningún horario que publicar',
+        'Los entrenos salen del horario escrito en la ficha de cada grupo. En cuanto un grupo tenga horario, aparecerá aquí.',
+        '<a class="bmini" href="../grupos/">Ir a los grupos</a>',
+        '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>');
+      return;
+    }
+    var porDia = {}, orden = [];
+    filas.forEach(function (f) {
+      if (!porDia[f.fecha]) { porDia[f.fecha] = []; orden.push(f.fecha); }
+      porDia[f.fecha].push(f);
+    });
+    caja.innerHTML = orden.map(function (d) {
+      var cosas = porDia[d];
+      var vivas = cosas.filter(function (c) { return c.estado !== 'excepcion' && c.estado !== 'quitada'; }).length;
+      return '<div class="dia">' +
+        '<div class="cabdia"><span class="f">' + esc(fLarga(d)) + '</span>' +
+          '<span class="n">' + vivas + '</span></div>' +
+        '<div class="cosas">' + cosas.map(function (c) {
+          return '<span class="cosa cosa--' + c.estado + '" title="' + esc(ROTULO[c.estado] || '') + '">' +
+            '<span class="h">' + esc(hCorta(c.hora)) + '</span>' + esc(c.grupo) + '</span>';
+        }).join('') + '</div></div>';
+    }).join('');
+  }
+
+  /* ---------------- 3 · festivos y cierres ---------------- */
+  async function cargarExcepciones() {
+    var caja = $('lista-excepciones');
+    caja.innerHTML = ADM.esqueleto(2);
+    var r = await sb.from('calendario_excepciones')
+      .select('id,fecha,fecha_fin,tipo,motivo,lugar,seccion,activa')
+      .gte('fecha', masDias(-30)).order('fecha');
+    if (r.error) { caja.innerHTML = ADM.error(r.error.message, cargarExcepciones); return; }
+    EXCEPCIONES = r.data || [];
+    if (!EXCEPCIONES.length) {
+      caja.innerHTML = ADM.vacio(
+        'No hay ningún día marcado',
+        'Cuando llegue Navidad, un puente o cierren la pista, márcalo aquí una sola vez: se cae para todos los grupos que ese día usan esa instalación.',
+        '', '<circle cx="12" cy="12" r="8.6"/><path d="M12 8v4.5"/><circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/>');
+      return;
+    }
+    caja.innerHTML = EXCEPCIONES.map(function (e) {
+      var cuando = fCorta(e.fecha) + (e.fecha_fin && e.fecha_fin !== e.fecha ? ' al ' + fCorta(e.fecha_fin) : '');
+      var donde = e.lugar ? e.lugar : 'todo el club';
+      var pasado = (e.fecha_fin || e.fecha) < hoyIso();
+      return '<div class="fila' + (pasado || !e.activa ? ' fila--apagada' : '') + '">' +
+        '<span class="cuerpo">' +
+          '<span class="t1">' + esc(e.motivo) + '</span>' +
+          '<span class="t2">' + esc(cuando) + ' · ' + esc(donde) + (pasado ? ' · ya pasó' : '') + '</span>' +
+        '</span>' +
+        '<span class="pill ' + (e.tipo === 'cierre' ? 'pill-ambar' : 'pill-gris') + '">' +
+          (e.tipo === 'cierre' ? 'cierre' : 'festivo') + '</span>' +
+        '<button type="button" class="bmini" data-quitar-exc="' + e.id + '">Quitar</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  async function guardarExcepcion(ev) {
+    ev.preventDefault();
+    var fecha = $('e-fecha').value, fin = $('e-fecha-fin').value, motivo = $('e-motivo').value.trim();
+    if (!fecha || !motivo) { apoToast('Faltan el día y el motivo.', 'error'); return; }
+    if (fin && fin < fecha) { apoToast('El día de fin no puede ser antes que el de inicio.', 'error'); return; }
+    var b = $('btn-excepcion'); b.disabled = true;
+    var r = await sb.from('calendario_excepciones').insert({
+      fecha: fecha, fecha_fin: fin || null, tipo: $('e-tipo').value,
+      motivo: motivo, lugar: $('e-lugar').value || null
+    });
+    b.disabled = false;
+    if (r.error) { apoToast('No se pudo guardar: ' + r.error.message, 'error'); return; }
+    $('form-excepcion').reset();
+    apoToast('Día marcado. Publica para que se quiten las sesiones de ese día.', 'ok');
+    await cargarExcepciones();
+    simular();
+    cargarPrevistos();
+  }
+
+  async function quitarExcepcion(id) {
+    var e = EXCEPCIONES.filter(function (x) { return x.id === id; })[0];
+    if (!await apoConfirm({
+      titulo: 'Quitar «' + (e ? e.motivo : 'este día') + '»',
+      texto: 'Ese día vuelve a ser normal. Las sesiones se volverán a publicar la próxima vez.',
+      confirmar: 'Quitar', peligro: true
+    })) return;
+    var r = await sb.from('calendario_excepciones').delete().eq('id', id);
+    if (r.error) { apoToast('No se pudo quitar: ' + r.error.message, 'error'); return; }
+    apoToast('Quitado.', 'ok');
+    await cargarExcepciones();
+    simular();
+    cargarPrevistos();
+  }
+
+  /* ---------------- 4 · los horarios leídos ---------------- */
+  async function cargarHorarios() {
+    var caja = $('horarios');
+    caja.innerHTML = ADM.esqueleto(3);
+    var rg = await sb.from('grupos').select('id,nombre,seccion,horario,activo').order('seccion').order('nombre');
+    if (rg.error) { caja.innerHTML = ADM.error(rg.error.message, cargarHorarios); return; }
+    var rh = await sb.from('grupo_horarios')
+      .select('id,grupo_id,dia_semana,hora_inicio,hora_fin,lugar,nota,activo,apagado_a_mano')
+      .order('dia_semana').order('hora_inicio');
+    if (rh.error) { caja.innerHTML = ADM.error(rh.error.message, cargarHorarios); return; }
+
+    GRUPOS = {}; (rg.data || []).forEach(function (g) { GRUPOS[g.id] = g; });
+    HORARIOS = rh.data || [];
+
+    // Los sitios que hay, para el desplegable de cierres
+    var vistos = {};
+    LUGARES = [];
+    HORARIOS.forEach(function (h) { if (h.lugar && !vistos[h.lugar]) { vistos[h.lugar] = 1; LUGARES.push(h.lugar); } });
+    LUGARES.sort();
+    var sl = $('e-lugar');
+    sl.innerHTML = '<option value="">Todas · es un festivo del club</option>' +
+      LUGARES.map(function (l) { return '<option value="' + esc(l) + '">' + esc(l) + '</option>'; }).join('');
+
+    var porGrupo = {};
+    HORARIOS.forEach(function (h) { (porGrupo[h.grupo_id] = porGrupo[h.grupo_id] || []).push(h); });
+
+    var ids = Object.keys(GRUPOS).filter(function (id) { return (porGrupo[id] || []).length; });
+    if (!ids.length) {
+      caja.innerHTML = ADM.vacio(
+        'Ningún grupo tiene horario escrito',
+        'El horario se escribe en la ficha del grupo, tal cual: «Martes y jueves 20:00-21:15 · Parque Municipal».',
+        '<a class="bmini" href="../grupos/">Ir a los grupos</a>',
+        '<circle cx="12" cy="12" r="8.6"/><path d="M12 7v5.2l3.2 2"/>');
+      return;
+    }
+    caja.innerHTML = '<div class="lista">' + ids.map(function (id) {
+      var g = GRUPOS[id];
+      return (porGrupo[id] || []).map(function (h, i) {
+        return '<div class="fila' + (h.activo ? '' : ' fila--apagada') + '">' +
+          '<span class="cuerpo">' +
+            '<span class="t1">' + esc(i === 0 ? g.nombre : '') + (i === 0 ? '' : '<span style="color:var(--texto-suave);">·</span>') + '</span>' +
+            '<span class="t2">' + esc(DIAS[h.dia_semana]) + ' · ' + esc(h.lugar || 'sin sitio') +
+              (h.nota ? ' · ' + esc(h.nota) : '') + '</span>' +
+          '</span>' +
+          '<span class="dato">' + esc(hCorta(h.hora_inicio)) + (h.hora_fin ? '–' + esc(hCorta(h.hora_fin)) : '') + '</span>' +
+          '<button type="button" class="bmini" data-franja="' + h.id + '" data-poner="' + (h.activo ? '0' : '1') + '">' +
+            (h.activo ? 'Apagar' : 'Encender') + '</button>' +
+        '</div>';
+      }).join('');
+    }).join('') + '</div>';
+  }
+
+  async function cambiarFranja(id, encender) {
+    var r = await sb.from('grupo_horarios')
+      .update({ activo: encender, apagado_a_mano: !encender, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (r.error) { apoToast('No se pudo cambiar: ' + r.error.message, 'error'); return; }
+    apoToast(encender ? 'Encendida. Publica para que salga en el calendario.'
+                      : 'Apagada. Publica para que deje de salir.', 'ok');
+    await cargarHorarios();
+    simular();
+    cargarPrevistos();
+  }
+
+  async function releerHorarios() {
+    if (!await apoConfirm({
+      titulo: 'Volver a leer los horarios',
+      texto: 'Se vuelve a interpretar el texto del horario de cada grupo. Las franjas que hayas apagado a mano siguen apagadas.',
+      confirmar: 'Leer otra vez'
+    })) return;
+    var r = await sb.rpc('sincronizar_horarios_todos');
+    if (r.error) { apoToast('No se pudo: ' + r.error.message, 'error'); return; }
+    apoToast('Horarios releídos: ' + plural(r.data || 0, 'grupo', 'grupos') + '.', 'ok');
+    cargarTodo();
+  }
+
+  /* ---------------- 5 · carreras de la Liga ---------------- */
+  async function cargarLiga() {
+    var caja = $('lista-liga'), pie = $('pie-liga');
+    caja.innerHTML = ADM.esqueleto(2); pie.innerHTML = '';
+    var r = await sb.from('liga_propuestas_prueba')
+      .select('id,nombre,fecha,lugar,disciplina,enlace,estado,competicion_id')
+      .eq('estado', 'pendiente').order('fecha', { ascending: true, nullsFirst: false });
+    if (r.error) { caja.innerHTML = ADM.error(r.error.message, cargarLiga); return; }
+    PROPUESTAS = r.data || [];
+    if (!PROPUESTAS.length) {
+      caja.innerHTML = ADM.vacio(
+        'No hay ninguna carrera esperando',
+        'Cuando un socio comunique una prueba desde la app, aparecerá aquí para darle el visto bueno antes de que salga en el calendario.',
+        '<a class="bmini" href="../liga/">Ver la Liga</a>',
+        '<path d="M12 3l2.6 5.6 6.1.8-4.4 4.3 1 6-5.3-2.9L6.7 19.7l1-6L3.3 9.4l6.1-.8L12 3z"/>');
+      return;
+    }
+    caja.innerHTML = PROPUESTAS.map(function (p) {
+      var sinFecha = !p.fecha;
+      return '<div class="fila">' +
+        '<span class="cuerpo">' +
+          '<span class="t1">' + esc(p.nombre) + '</span>' +
+          '<span class="t2">' + esc(p.fecha ? fLarga(p.fecha) : 'sin fecha · no se puede publicar así') +
+            (p.lugar ? ' · ' + esc(p.lugar) : '') + '</span>' +
+        '</span>' +
+        (p.enlace ? '<a class="bmini" href="' + esc(p.enlace) + '" target="_blank" rel="noopener">Verla</a>' : '') +
+        '<button type="button" class="bmini" data-publicar-liga="' + p.id + '"' + (sinFecha ? ' disabled' : '') + '>Publicar</button>' +
+      '</div>';
+    }).join('');
+    var conFecha = PROPUESTAS.filter(function (p) { return !!p.fecha; }).length;
+    if (conFecha > 1) {
+      pie.innerHTML = '<button type="button" class="btexto" id="btn-liga-todas">Publicar las ' + conFecha + ' de golpe</button>';
+      $('btn-liga-todas').addEventListener('click', publicarTodasLiga);
+    }
+  }
+
+  async function publicarLiga(id) {
+    var p = PROPUESTAS.filter(function (x) { return x.id === id; })[0];
+    if (!await apoConfirm({
+      titulo: 'Publicar «' + (p ? p.nombre : 'la carrera') + '»',
+      texto: 'Saldrá en el calendario público del club el ' + (p && p.fecha ? fLarga(p.fecha) : '') + '.',
+      confirmar: 'Publicar'
+    })) return;
+    var r = await sb.rpc('liga_publicar_propuesta', { p_id: id });
+    if (r.error) { apoToast('No se pudo publicar: ' + r.error.message, 'error'); return; }
+    apoToast('Publicada en el calendario.', 'ok');
+    cargarLiga();
+  }
+
+  async function publicarTodasLiga() {
+    var n = PROPUESTAS.filter(function (p) { return !!p.fecha; }).length;
+    if (!await apoConfirm({
+      titulo: 'Publicar las ' + n + ' de golpe',
+      texto: 'Todas saldrán en el calendario público. Las que no tienen fecha se quedan como están.',
+      confirmar: 'Publicar las ' + n
+    })) return;
+    var r = await sb.rpc('liga_publicar_pendientes');
+    if (r.error) { apoToast('No se pudo: ' + r.error.message, 'error'); return; }
+    var d = (r.data && r.data[0]) || {};
+    apoToast('Publicadas ' + plural(d.publicadas || 0, 'carrera', 'carreras') +
+      (d.sin_fecha ? ' · ' + plural(d.sin_fecha, 'se queda sin fecha', 'se quedan sin fecha') : '') + '.', 'ok');
+    cargarLiga();
+  }
+
+  /* ---------------- 6 · quién ve qué ---------------- */
+  var AREAS = [
+    { c: 'personas', t: 'Personas',  d: 'altas, periodos de prueba, lesiones' },
+    { c: 'dinero',   t: 'Dinero',    d: 'recibos, pedidos, tarifas' },
+    { c: 'web',      t: 'La web',    d: 'noticias, fotos, redes' },
+    { c: 'liga',     t: 'Liga',      d: 'pruebas y carreras' },
+    { c: 'club',     t: 'Club',      d: 'buzón, competiciones, eventos' }
+  ];
+  var ROL = { admin: 'administración', coordinador: 'coordinación', entrenador: 'entrenador' };
+
+  async function cargarPersonas() {
+    var caja = $('personas');
+    caja.innerHTML = ADM.esqueleto(3);
+    var r = await sb.from('perfiles').select('id,nombre,apellidos,rol,areas,activo')
+      .in('rol', ['admin', 'coordinador', 'entrenador']).order('rol').order('nombre');
+    if (r.error) { caja.innerHTML = ADM.error(r.error.message, cargarPersonas); return; }
+    PERSONAS = (r.data || []).filter(function (p) { return p.activo !== false; });
+    if (!PERSONAS.length) {
+      caja.innerHTML = ADM.vacio('Aún no hay nadie en el equipo',
+        'Cuando haya entrenadores o coordinadores dados de alta, aquí se reparte qué le toca a cada uno.',
+        '<a class="bmini" href="../usuarios/">Ir a usuarios</a>',
+        '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>');
+      return;
+    }
+    caja.innerHTML = PERSONAS.map(function (p) {
+      var suyas = p.areas || [];
+      return '<div class="persona">' +
+        '<div class="quien">' + esc((p.nombre || '') + ' ' + (p.apellidos || '')).trim() +
+          '<small>' + esc(ROL[p.rol] || p.rol) + (suyas.length ? '' : ' · le sale todo') + '</small></div>' +
+        '<div class="areas">' + AREAS.map(function (a) {
+          var puesta = suyas.indexOf(a.c) !== -1;
+          return '<label class="' + (puesta ? 'puesta' : '') + '" title="' + esc(a.d) + '">' +
+            '<input type="checkbox" data-persona="' + p.id + '" data-area="' + a.c + '"' + (puesta ? ' checked' : '') + '>' +
+            esc(a.t) + '</label>';
+        }).join('') + '</div></div>';
+    }).join('');
+  }
+
+  async function cambiarArea(idPersona, area, puesta) {
+    var p = PERSONAS.filter(function (x) { return x.id === idPersona; })[0];
+    if (!p) return;
+    var lista = (p.areas || []).slice();
+    var i = lista.indexOf(area);
+    if (puesta && i === -1) lista.push(area);
+    if (!puesta && i !== -1) lista.splice(i, 1);
+    var r = await sb.from('perfiles').update({ areas: lista.length ? lista : null }).eq('id', idPersona);
+    if (r.error) { apoToast('No se pudo guardar: ' + r.error.message, 'error'); cargarPersonas(); return; }
+    p.areas = lista.length ? lista : null;
+    apoToast('Guardado.', 'ok');
+    cargarPersonas();
+  }
+
+  /* ---------------- arranque y clics ---------------- */
+  async function cargarTodo() {
+    var ok = await cargarResumen();
+    await Promise.all([cargarHorarios(), cargarExcepciones(), cargarLiga(), cargarPersonas(), cargarPrevistos()]);
+    if (ok) simular();
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.getAttribute) return;
+    var q = t.getAttribute('data-quitar-exc');   if (q) { quitarExcepcion(q); return; }
+    var f = t.getAttribute('data-franja');       if (f) { cambiarFranja(f, t.getAttribute('data-poner') === '1'); return; }
+    var l = t.getAttribute('data-publicar-liga');if (l) { publicarLiga(l); return; }
+  });
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.getAttribute && t.getAttribute('data-persona')) {
+      cambiarArea(t.getAttribute('data-persona'), t.getAttribute('data-area'), t.checked);
+    }
+  });
+
+  APOLANA_ADMIN.listo(function (cliente) {
+    sb = cliente;
+    $('btn-publicar').addEventListener('click', publicar);
+    $('btn-recalcular').addEventListener('click', function () { cargarResumen().then(simular); cargarPrevistos(); });
+    $('btn-interruptor').addEventListener('click', cambiarInterruptor);
+    $('btn-releer').addEventListener('click', releerHorarios);
+    $('semanas').addEventListener('change', cambiarSemanas);
+    $('form-excepcion').addEventListener('submit', guardarExcepcion);
+    cargarTodo();
+  });
+})();
+</script>
+</body>
+</html>

@@ -727,6 +727,7 @@ begin
 
   if p_simular then
     drop table if exists _apo_plan;
+    perform set_config('apolana.generador', 'no', true);
     return query select v_crea, v_act, v_bor, v_int, v_salt, v_desde, v_hasta, true;
     return;
   end if;
@@ -786,6 +787,10 @@ begin
      and not exists (select 1 from public.sesion_inscripciones si where si.sesion_id = s.id);
 
   drop table if exists _apo_plan;
+  -- Se baja la bandera enseguida: si en la misma transacción alguien
+  -- edita una sesión después de generar, esa edición SÍ tiene que
+  -- marcarse como suya. Sin esto, el generador la pisaría a la vuelta.
+  perform set_config('apolana.generador', 'no', true);
   return query select v_crea, v_act, v_bor, v_int, v_salt, v_desde, v_hasta, false;
 end;
 $$;
@@ -821,6 +826,23 @@ alter table public.liga_propuestas_prueba
   add column if not exists competicion_id uuid references public.competiciones(id) on delete set null,
   add column if not exists publicada_en   timestamptz;
 
+-- Publicar en el calendario público no es cosa de cualquiera del equipo:
+-- `competiciones` es tabla de administración. Aquí abren la puerta quien
+-- lleva el club y quien coordina, que son los que miran la Liga.
+create or replace function public.es_responsable_liga()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.perfiles p
+     where p.email = (auth.jwt() ->> 'email')
+       and p.rol in ('admin', 'coordinador')
+  );
+$$;
+
 create or replace function public.liga_publicar_propuesta(p_id uuid)
 returns uuid
 language plpgsql
@@ -832,8 +854,8 @@ declare
   v_comp  uuid;
   v_ambito text;
 begin
-  if auth.uid() is not null and not public.es_staff() then
-    raise exception 'Solo el equipo del club puede publicar carreras';
+  if auth.uid() is not null and not public.es_responsable_liga() then
+    raise exception 'Solo quien lleva el club o la Liga puede publicar carreras';
   end if;
 
   select * into p from public.liga_propuestas_prueba where id = p_id;
@@ -893,8 +915,8 @@ set search_path = public
 as $$
 declare r record; n int := 0; s int := 0;
 begin
-  if auth.uid() is not null and not public.es_staff() then
-    raise exception 'Solo el equipo del club puede publicar carreras';
+  if auth.uid() is not null and not public.es_responsable_liga() then
+    raise exception 'Solo quien lleva el club o la Liga puede publicar carreras';
   end if;
   for r in select id, fecha from public.liga_propuestas_prueba
             where estado = 'pendiente' order by fecha nulls last, created_at loop
@@ -973,6 +995,7 @@ stable
 security definer
 set search_path = public
 as $$
+  -- Esto es trabajo interno del club: no lo ve un atleta ni un padre.
   select
     coalesce(public.automatizacion_ajuste('entrenos_activo','si'),'si') = 'si',
     coalesce(nullif(public.automatizacion_ajuste('semanas_vista','6'),'')::int, 6),
@@ -993,7 +1016,8 @@ as $$
     (select count(*)::int from public.calendario_excepciones e
       where e.activa and coalesce(e.fecha_fin, e.fecha) >= current_date),
     (select max(s.fecha) from public.sesiones s where s.auto_generada),
-    (select count(*)::int from public.liga_propuestas_prueba where estado = 'pendiente');
+    (select count(*)::int from public.liga_propuestas_prueba where estado = 'pendiente')
+  where auth.uid() is null or public.es_staff();
 $$;
 
 -- Lo que se va a publicar, día a día: para poder mirarlo antes.
@@ -1036,7 +1060,8 @@ as $$
     join public.grupos g on g.id = h.grupo_id
     cross join rango r
     cross join lateral generate_series(r.d1::timestamp, r.d2::timestamp, interval '1 day') as gs(d)
-   where h.activo and coalesce(g.activo,true) and coalesce(g.seccion,'') <> 'cubo'
+   where (auth.uid() is null or public.es_staff())
+     and h.activo and coalesce(g.activo,true) and coalesce(g.seccion,'') <> 'cubo'
      and extract(isodow from gs.d)::int = h.dia_semana
    order by 1, 2, 3;
 $$;
@@ -1108,6 +1133,7 @@ revoke all on function public.horario_matiz(text)                               
 revoke all on function public.horario_franjas(text)                                  from public, anon, authenticated;
 revoke all on function public.hay_excepcion(date, uuid, text, text)                  from public, anon, authenticated;
 revoke all on function public.automatizacion_ajuste(text, text)                      from public, anon, authenticated;
+revoke all on function public.es_responsable_liga()                                  from public, anon, authenticated;
 revoke all on function public.sincronizar_horarios_grupo(uuid)                       from public, anon, authenticated;
 revoke all on function public.sincronizar_horarios_todos()                           from public, anon, authenticated;
 revoke all on function public.generar_entrenos_fijos(date, date, uuid, boolean, boolean) from public, anon, authenticated;

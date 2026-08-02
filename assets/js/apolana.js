@@ -51,6 +51,10 @@ const MENU = [
     { texto: 'El club',          url: '/club/' },
     { texto: 'Historia',         url: '/club/historia/' },
     { texto: 'Junta directiva',  url: '/club/#junta' },
+    /* Récords y Ranking van juntos a propósito: uno es lo mejor de la
+       historia y el otro quién va mejor esta temporada. */
+    { texto: 'Récords',          url: '/club/records/' },
+    { texto: 'Ranking',          url: '/club/ranking/' },
     { texto: 'Instalaciones',    url: '/instalaciones/' },
     { texto: 'Familias',         url: '/familias/' },
     { texto: 'Galería',          url: '/galeria/' },
@@ -234,6 +238,35 @@ function pintarColaboradores(lista) {
        un cambio de tono sobre crema no se ve a pie de pista. */
     '.menu a.activo{box-shadow:inset 0 -2px 0 currentColor}',
 
+    /* ============ CABECERA DE PÁGINA INTERIOR ============
+       Franja a sangre y sin radio: navy si no hay foto, foto con velo si
+       la hay. Siempre con el dato duro a la derecha. */
+    '.pag-hero{position:relative;background:var(--navy,#2E4256);color:#fff;overflow:hidden}',
+    '.pag-hero .contenedor{position:relative;display:flex;align-items:flex-end;' +
+      'justify-content:space-between;gap:24px;flex-wrap:wrap;padding-block:30px}',
+    '.pag-hero-txt{display:flex;flex-direction:column;gap:9px;max-width:620px;min-width:0}',
+    '.pag-hero-txt .encima{font-size:14px;color:rgba(255,255,255,0.6)}',
+    /* 46 px y a dos líneas: es un titular de interior, no el de portada. */
+    '.pag-hero h1{font-family:var(--fuente-titulo);font-weight:700;font-size:46px;' +
+      'line-height:0.96;text-transform:uppercase;color:#fff;margin:0;overflow-wrap:anywhere}',
+    '.pag-hero p{margin:0;font-size:17px;line-height:1.45;color:rgba(255,255,255,0.82);max-width:560px}',
+    '.pag-hero-dato{display:flex;align-items:baseline;gap:8px;flex:none}',
+    '.pag-hero-dato b{font-family:var(--fuente-dato);font-size:34px;font-weight:700;line-height:1;color:#fff}',
+    '.pag-hero-dato span{font-size:15px;color:rgba(255,255,255,0.7)}',
+    /* Con foto: a sangre, sin esquinas, con velo en diagonal. */
+    '.pag-hero-foto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%}',
+    '.pag-hero-velo{position:absolute;inset:0;background:linear-gradient(96deg,' +
+      'rgba(22,31,40,0.90) 0%,rgba(22,31,40,0.74) 40%,rgba(22,31,40,0.28) 100%)}',
+    '.pag-hero--foto .contenedor{padding-block:52px}',
+    '@media (max-width:700px){.pag-hero h1{font-size:34px}',
+      '.pag-hero .contenedor{padding-block:22px;align-items:flex-start}',
+      '.pag-hero--foto .contenedor{padding-block:34px}',
+      '.pag-hero p{font-size:15px}.pag-hero-dato b{font-size:26px}}',
+
+    /* Secciones que alternan crema flojo y crema fuerte, a sangre y sin
+       radio: dos secciones seguidas nunca comparten fondo. */
+    '.seccion--banda{background:var(--crema-banda,#F1EADC);border-radius:0}',
+
     /* ============ CIERRE OSCURO ============
        A sangre y sin radio: es una banda, no una tarjeta gigante. Va pegado
        al pie, que también es navy, para que no quede crema entre los dos. */
@@ -414,7 +447,60 @@ class ApolanaPie extends HTMLElement {
   }
 }
 
+/* ============================================================
+   CABECERA DE PÁGINA INTERIOR
+   Una franja a sangre con el título, una frase y el dato que importa.
+   Antes el título de una interior era texto navy sobre crema y no se
+   distinguía de un título de sección: la página entera flotaba.
+
+   Se usa así, y con eso basta:
+     <apolana-hero titulo="Escuelas" frase="…" dato="4" rotulo="escuelas">
+     <apolana-hero titulo="…" foto="/assets/img/x.jpg">   ← con foto y velo
+
+   El dato se puede rellenar después desde la página (cuando llega de la
+   base) con:  document.querySelector('apolana-hero').dato(27, 'grupos')
+   ============================================================ */
+class ApolanaHero extends HTMLElement {
+  connectedCallback() {
+    const t = a => escaparHTML(this.getAttribute(a) || '');
+    const foto = this.getAttribute('foto');
+    const dato = this.getAttribute('dato');
+    const rotulo = this.getAttribute('rotulo');
+    const frase = this.getAttribute('frase');
+    const encima = this.getAttribute('encima');
+
+    this.innerHTML = `
+      <section class="pag-hero${foto ? ' pag-hero--foto' : ''}">
+        ${foto ? `<img class="pag-hero-foto" src="${escaparHTML(ruta(foto))}" alt=""${
+          this.getAttribute('foto-hueco') ? ` data-img="${t('foto-hueco')}"` : ''}>
+          <div class="pag-hero-velo"></div>` : ''}
+        <div class="contenedor">
+          <div class="pag-hero-txt">
+            ${encima ? `<span class="encima"${this.getAttribute('id-encima') ? ` id="${t('id-encima')}"` : ''}>${t('encima')}</span>` : ''}
+            <h1${this.getAttribute('id-titulo') ? ` id="${t('id-titulo')}"` : ''}>${t('titulo')}</h1>
+            ${frase ? `<p${this.getAttribute('id-frase') ? ` id="${t('id-frase')}"` : ''}>${t('frase')}</p>` : ''}
+          </div>
+          <div class="pag-hero-dato" data-dato${dato ? '' : ' hidden'}>
+            <b>${dato ? t('dato') : ''}</b><span>${rotulo ? t('rotulo') : ''}</span>
+          </div>
+        </div>
+      </section>`;
+  }
+  /* Para rellenar el dato duro cuando llega de la base. Con cero o sin
+     número no se enseña un «0»: se esconde y ya está. */
+  dato(valor, rotulo) {
+    const caja = this.querySelector('[data-dato]');
+    if (!caja) return;
+    const n = parseInt(valor, 10);
+    if (!n) { caja.hidden = true; return; }
+    caja.querySelector('b').textContent = n;
+    caja.querySelector('span').textContent = rotulo || '';
+    caja.hidden = false;
+  }
+}
+
 customElements.define('apolana-cabecera', ApolanaCabecera);
+customElements.define('apolana-hero', ApolanaHero);
 customElements.define('apolana-pie', ApolanaPie);
 
 /* --- Colaboradores de verdad: UNA consulta que sirve al pie y a la portada.

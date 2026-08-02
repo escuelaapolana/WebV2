@@ -301,7 +301,7 @@
   /* «Quedan 3 plazas de 20» / «Completo, con lista de espera» */
   function fraseplazas(r) {
     if (!r || r.plazas == null) return '';
-    if (r.libres > 0) return 'Quedan ' + plural(r.libres, 'plaza', 'plazas') + ' de ' + r.plazas;
+    if (r.libres > 0) return (r.libres === 1 ? 'Queda ' : 'Quedan ') + plural(r.libres, 'plaza', 'plazas') + ' de ' + r.plazas;
     return 'Sin plazas libres (' + r.plazas + '). Quien diga que va entra en lista de espera';
   }
 
@@ -321,7 +321,7 @@
     '.cf-persona:first-of-type{border-top:0;padding-top:0;margin-top:0}',
     '.cf-quien{font-size:15px;font-weight:600;color:var(--navy,#2E4256);margin:0 0 8px}',
     '.cf-ops{display:flex;flex-wrap:wrap;gap:8px}',
-    '.cf-op{flex:1 1 auto;min-width:96px;min-height:44px;padding:11px 16px;border-radius:999px;cursor:pointer;',
+    '.cf-op{flex:1 1 auto;min-width:88px;min-height:44px;padding:11px 14px;border-radius:999px;cursor:pointer;',
       'border:1px solid var(--linea-borde,#D4CBB9);background:#fff;color:var(--navy,#2E4256);',
       'font-family:inherit;font-size:15px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center}',
     '.cf-op:hover{border-color:#B9AE99}',
@@ -350,7 +350,7 @@
       'animation:cf-brillo 1.25s linear infinite}',
     '.cf-esq--l{width:82%}.cf-esq--m{width:60%}.cf-esq--c{width:38%}',
     '@media (prefers-reduced-motion:reduce){.cf-esq{animation:none}}',
-    '@media (max-width:380px){.cf{padding:14px 16px}.cf-op{min-width:0;flex:1 1 100%}}'
+    '@media (max-width:380px){.cf{padding:14px 16px}}'
   ].join('');
 
   function ponerCss() {
