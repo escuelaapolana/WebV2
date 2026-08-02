@@ -118,10 +118,11 @@
     if (!claves.length) return;
 
     /* La foto que trae el HTML, guardada antes de tocar nada: es a lo que
-       se vuelve si la de móvil deja de tocar (o si nunca la hubo). */
+       se vuelve cuando la pantalla se ensancha y la de móvil deja de
+       tocar. Solo hace falta en los huecos que tienen versión de móvil. */
     var deSiempre = [];
     Array.prototype.forEach.call(nodos, function (el) {
-      deSiempre.push(el.tagName === 'IMG'
+      deSiempre.push(el.tagName === 'IMG' && el.hasAttribute('data-img-movil')
         ? { src: el.getAttribute('src') || '', alt: el.getAttribute('alt') || '' }
         : null);
     });
@@ -138,8 +139,13 @@
           function pinta() {
             Array.prototype.forEach.call(nodos, function (el, i) {
               var escritorio = porClave[el.getAttribute('data-img')];
-              var movil = el.hasAttribute('data-img-movil')
-                ? porClave[el.getAttribute('data-img-movil')] : null;
+              if (!el.hasAttribute('data-img-movil')) {
+                /* Sin versión de móvil no hay nada que decidir ni que
+                   deshacer: se hace lo de toda la vida. */
+                aplicar(el, escritorio);
+                return;
+              }
+              var movil = porClave[el.getAttribute('data-img-movil')];
               /* La de móvil solo entra si existe, tiene foto y la pantalla
                  es estrecha. En cualquier otro caso manda la de siempre. */
               var usaMovil = !!(movil && movil.url && String(movil.url).trim() && esMovil());
