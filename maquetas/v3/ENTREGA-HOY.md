@@ -107,6 +107,12 @@ competiciones se pierden entre veinte entrenos al mes.
 
 ---
 
+## No tocar por ahora
+
+- **Campus se queda como está**, página propia y en el menú. El punto 3 de
+  `PAGINAS-NUEVAS.md` (moverla a `/escuela/#campus`) queda aplazado: no
+  implementarlo todavía.
+
 ## Pendiente de decisión
 
 - Colapsar los entrenos por defecto en la web: gana legibilidad, pero si la
