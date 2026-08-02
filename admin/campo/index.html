@@ -34,6 +34,27 @@
 
   /* Selector de grupo (chips) */
   .grupos-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  /* Lo que entrena hoy, primero y destacado */
+  .hoy-bloque { background: var(--azul-suave); border:1px solid #C9D9E7; border-radius:14px; padding:12px 14px; margin-bottom:14px; }
+  .hoy-et { display:block; font-size:12.5px; color: var(--azul-oscuro); font-weight:600; margin-bottom:8px; }
+  /* Los grupos, por sección y plegados */
+  .secciones { display:flex; flex-direction:column; gap:6px; }
+  .sec-bloque { border:1px solid var(--linea); border-radius:14px; background:#fff; }
+  .sec-bloque > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:14px 16px; min-height:52px; font-size:16px; font-weight:600; color: var(--navy); }
+  .sec-bloque > summary::-webkit-details-marker { display:none; }
+  .sec-bloque > summary::after { content:""; width:8px; height:8px; flex:0 0 auto; margin-left:4px;
+    border-right:2px solid var(--texto-tenue); border-bottom:2px solid var(--texto-tenue);
+    transform:rotate(45deg) translate(-2px,-2px); transition:transform .18s ease; }
+  .sec-bloque[open] > summary::after { transform:rotate(-135deg) translate(-2px,-2px); }
+  .sec-bloque .cuenta { font-size:12.5px; font-weight:400; color: var(--texto-suave); }
+  .sec-bloque .grupos-chips { padding:0 14px 14px; }
+  /* Cabecera al entrar en un grupo (la pantalla cambia, no se abre debajo) */
+  .lst-cab { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .volver-g { width:44px; height:44px; flex:0 0 44px; border-radius:22px; border:1px solid var(--linea); background:#fff;
+    color: var(--navy); font-size:20px; line-height:1; cursor:pointer; }
+  .lst-tit h2 { margin:0; }
+  .lst-sec { font-size:13px; color: var(--texto-suave); }
   .g-chip { border:1px solid var(--linea); background:#fff; color: var(--navy); border-radius:999px; padding:9px 14px; font-size:14px; font-family:inherit; cursor:pointer; }
   .g-chip.activo { background: var(--navy); color:#fff; border-color: var(--navy); }
   .g-chip small { display:block; font-size:12px; color: var(--texto-tenue); }
@@ -161,14 +182,77 @@ window.APOLANA_ADMIN.listo(function (sb) {
   var LST = { grupo:'', marcas:{}, guardadas:{}, ausencias:{} };
   function atletasDeGrupo(gid){ return ATLETAS.filter(function(a){ return a.grupo_id===gid && a.estado!=='baja'; }); }
 
+  /* Los grupos, agrupados por sección y plegados: con 27 grupos, una lista
+     alfabética suelta era imposible de mirar a pie de pista. */
+  var SECCIONES_ORDEN = ['escuela','escuela-natacion','competicion','natacion','running','montana','triatlon','cubo'];
+  var SECCION_NOMBRE = {
+    'escuela':'Escuela', 'escuela-natacion':'Escuela de natación', 'competicion':'Atletismo',
+    'natacion':'Natación', 'running':'Running', 'montana':'Montaña',
+    'triatlon':'Triatlón', 'cubo':'El Cubo'
+  };
+  /* ¿Este grupo entrena hoy? Se mira en el texto del horario. */
+  var DIAS_HOY = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  function entrenaHoy(g){
+    var t = (g.horario||'').toLowerCase()
+      .replace(/miercoles/g,'miércoles').replace(/sabado/g,'sábado');
+    var hoy = DIAS_HOY[new Date().getDay()];
+    if(t.indexOf('de lunes a viernes')!==-1 && hoy!=='sábado' && hoy!=='domingo') return true;
+    return t.indexOf(hoy)!==-1;
+  }
+  function chipGrupo(g){
+    var n = atletasDeGrupo(g.id).length;
+    return '<button type="button" class="g-chip'+(g.id===LST.grupo?' activo':'')+'" data-g="'+g.id+'">'+
+             esc(g.nombre)+'<small>'+n+' atletas</small></button>';
+  }
   function pintarLista(){
-    var chips = GRUPOS.map(function(g){
-      var n = atletasDeGrupo(g.id).length;
-      return '<button type="button" class="g-chip'+(g.id===LST.grupo?' activo':'')+'" data-g="'+g.id+'">'+esc(g.nombre)+'<small>'+n+' atletas</small></button>';
-    }).join('');
-    var html = '<div class="card"><h2>Pasar lista</h2>'+
-      '<div class="grupos-chips">'+chips+'</div>'+
-      '<div id="lista-cuerpo"></div></div>';
+    /* Con un grupo elegido, la pantalla se convierte en SU lista: no se abre
+       nada debajo, se cambia de vista y se vuelve con la flecha. */
+    if(LST.grupo){
+      var gr = GMAP[LST.grupo];
+      $('sec-lista').innerHTML =
+        '<div class="card">'+
+          '<div class="lst-cab">'+
+            '<button type="button" class="volver-g" id="lst-volver" aria-label="Volver a los grupos">←</button>'+
+            '<div class="lst-tit"><h2>'+esc(gr?gr.nombre:'Pasar lista')+'</h2>'+
+              (gr&&gr.seccion?'<span class="lst-sec">'+esc(SECCION_NOMBRE[gr.seccion]||gr.seccion)+'</span>':'')+
+            '</div>'+
+          '</div>'+
+          '<div id="lista-cuerpo"></div>'+
+        '</div>';
+      $('lst-volver').addEventListener('click', function(){ LST.grupo=''; LST.marcas={}; pintarLista(); window.scrollTo(0,0); });
+      pintarCuerpoLista();
+      return;
+    }
+
+    var hoyGrupos = GRUPOS.filter(entrenaHoy);
+    var html = '<div class="card"><h2>Pasar lista</h2>';
+
+    /* Primero, lo que toca hoy: es lo que se busca con el móvil en la mano. */
+    if(hoyGrupos.length){
+      html += '<div class="hoy-bloque"><span class="hoy-et">Entrenan hoy</span>'+
+              '<div class="grupos-chips">'+hoyGrupos.map(chipGrupo).join('')+'</div></div>';
+    }
+
+    /* Debajo, todos los grupos por sección, plegados. */
+    var porSeccion = {};
+    GRUPOS.forEach(function(g){ (porSeccion[g.seccion||'otros'] = porSeccion[g.seccion||'otros'] || []).push(g); });
+    var claves = Object.keys(porSeccion).sort(function(a,b){
+      var ia = SECCIONES_ORDEN.indexOf(a), ib = SECCIONES_ORDEN.indexOf(b);
+      return (ia<0?99:ia) - (ib<0?99:ib);
+    });
+    html += '<div class="secciones">'+claves.map(function(k){
+      var gs = porSeccion[k];
+      var atl = gs.reduce(function(s,g){ return s + atletasDeGrupo(g.id).length; }, 0);
+      var abierto = gs.some(function(g){ return g.id===LST.grupo; });
+      return '<details class="sec-bloque"'+(abierto?' open':'')+'>'+
+               '<summary>'+esc(SECCION_NOMBRE[k]||k)+
+                 '<span class="cuenta">'+gs.length+(gs.length===1?' grupo':' grupos')+' · '+atl+' atletas</span>'+
+               '</summary>'+
+               '<div class="grupos-chips">'+gs.map(chipGrupo).join('')+'</div>'+
+             '</details>';
+    }).join('')+'</div>';
+
+    html += '<div id="lista-cuerpo"></div></div>';
     $('sec-lista').innerHTML = html;
     $('sec-lista').querySelectorAll('.g-chip').forEach(function(b){ b.addEventListener('click', function(){ seleccionarGrupo(b.getAttribute('data-g')); }); });
     if(LST.grupo) pintarCuerpoLista();
