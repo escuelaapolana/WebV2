@@ -199,7 +199,9 @@ async function firmaVapid(endpoint: string): Promise<string> {
   const jwk: JsonWebKey = {
     kty: "EC",
     crv: "P-256",
-    d: VAPID_PRIVADA,
+    // Algunas páginas dan la clave con «+», «/» o «=» al final. Se
+    // normaliza, que si no la criptografía la rechaza sin explicar nada.
+    d: VAPID_PRIVADA.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
     x: bytesAB64url(publica.slice(1, 33)),
     y: bytesAB64url(publica.slice(33, 65)),
     ext: true,
@@ -265,10 +267,17 @@ function enlaceSeguro(v: unknown): string | null {
   if (!s) return null;
   try {
     const u = new URL(s, URL_BASE);
-    const base = new URL(URL_BASE);
+    // Ni «javascript:» ni «data:» ni nada raro.
     if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-    if (u.origin !== base.origin) return null;     // nada de llevar a webs de fuera
-    return u.toString();
+
+    const base = new URL(URL_BASE);
+    if (u.origin === base.origin) return u.toString();
+
+    // Viene de otro sitio: se queda SOLO el camino y se pega a la web
+    // del club. Así el aviso nunca puede llevar fuera, ni por un
+    // despiste al copiar una dirección ni a propósito.
+    const camino = u.pathname.replace(/^\/+/, "") + u.search + u.hash;
+    return new URL(camino, URL_BASE).toString();
   } catch { return null; }
 }
 
@@ -378,7 +387,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (cuerpo.url && !enlace) {
     return responder({
       error: "enlace",
-      mensaje: "El enlace tiene que ser de la web del club. Un aviso del club no puede llevar fuera.",
+      mensaje: "Ese enlace no vale. Un aviso del club solo puede llevar a una página de la web del club.",
     }, 400, origen);
   }
 

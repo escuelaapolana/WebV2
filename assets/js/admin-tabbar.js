@@ -372,7 +372,7 @@
     /* --- tabla de escritorio: separadores horizontales y nada más (kit 30e) --- */
     P + 'table td,' + P + 'table th{border-left:0;border-right:0}',
     /* en el panel caben tablas densas: el botón manda su altura, no el aire */
-    P + 'table tbody td{padding-top:6px;padding-bottom:6px}',
+    P + 'table tbody td{padding-top:6px;padding-bottom:6px;vertical-align:middle}',
     P + 'table tbody tr:nth-child(even){background:none}',
     P + 'td.num,' + P + 'td.importe,' + P + 'td.dato{text-align:right;font-family:var(--fuente-dato);' +
       'font-variant-numeric:tabular-nums;white-space:nowrap}',

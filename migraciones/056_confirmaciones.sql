@@ -542,13 +542,14 @@ create policy "confirmaciones respuestas admin gestiona"
 -- «authenticated» sobre las tablas nuevas del esquema public. En este
 -- proyecto ya nos ha pasado dos veces: hay que quitarlos a mano.
 -- ============================================================
-revoke all on table public.confirmaciones            from anon, public;
-revoke all on table public.confirmaciones_respuestas from anon, public;
+revoke all on table public.confirmaciones            from anon, public, authenticated;
+revoke all on table public.confirmaciones_respuestas from anon, public, authenticated;
 
-grant select                         on public.confirmaciones            to authenticated;
-grant insert, update, delete         on public.confirmaciones            to authenticated;
-grant select                         on public.confirmaciones_respuestas to authenticated;
-grant insert, update, delete         on public.confirmaciones_respuestas to authenticated;
+-- Y se devuelve solo lo justo: nada de TRUNCATE (que se salta el candado
+-- RLS), nada de REFERENCES ni TRIGGER. Quien entra con su cuenta puede
+-- leer y escribir, y lo que ve o cambia lo deciden las políticas de arriba.
+grant select, insert, update, delete on public.confirmaciones            to authenticated;
+grant select, insert, update, delete on public.confirmaciones_respuestas to authenticated;
 
 -- Las funciones nacen con permiso para todo el mundo: se retira y se
 -- da solo a quien ha entrado con su cuenta.

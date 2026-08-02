@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confirmar asistencia · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<script src="../../assets/js/confirmaciones.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1040px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  /* --- rótulos: 13 px, minúscula, sin espaciado (fundamentos, punto 0) --- */
+  label, .rotulo { display: block; font-size: 13px; font-weight: 600; letter-spacing: normal;
+                   text-transform: none; color: var(--navy); margin: 14px 0 5px; }
+  .pista { font-size: 13px; color: var(--texto-suave); line-height: 1.5; margin: 4px 0 0; }
+
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; min-height: 44px;
+    border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
+
+  /* --- tarjeta contenedora: radio 14 (kit 30b) --- */
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: 14px;
+           padding: clamp(18px,3vw,28px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 21px;
+              color: var(--navy); margin: 0 0 4px; line-height: 1.1; }
+  .panel .intro { margin: 0 0 12px; color: var(--texto-suave); font-size: 15px; line-height: 1.55; }
+  .panel-cab { display: flex; align-items: flex-start; justify-content: space-between;
+               gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .panel-cab .cuenta { font-family: var(--fuente-dato); font-variant-numeric: tabular-nums;
+                       font-size: 15px; color: var(--texto-suave); }
+
+  /* --- botones: tres niveles, 44 px, uno azul por pantalla (kit 30f) --- */
+  .bot { display: inline-flex; align-items: center; justify-content: center; min-height: 44px;
+         padding: 13px 22px; border-radius: 999px; cursor: pointer; border: 0;
+         font-family: inherit; font-size: 15px; line-height: 1.2; }
+  .bot--azul { background: var(--azul); color: #fff; }
+  .bot--azul:hover { background: var(--azul-hover); }
+  .bot--azul[disabled] { opacity: .55; cursor: default; }
+  .bot--borde { background: #fff; color: var(--navy); border: 1px solid #C9C0AE; }
+  .bot--borde:hover { background: var(--crema); }
+  .bot--texto { background: none; color: var(--azul-oscuro); padding: 13px 10px; }
+  .bot--texto:hover { text-decoration: underline; }
+  .bot--sm { min-height: 44px; padding: 10px 16px; }
+  .botonera { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 16px; }
+
+  /* --- chips (kit 30f) --- */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+  .chips button { min-height: 44px; padding: 11px 18px; border-radius: 999px; cursor: pointer;
+                  border: 1px solid var(--linea-borde); background: #fff; color: var(--navy);
+                  font-family: inherit; font-size: 15px; line-height: 1.2; }
+  .chips button:hover { background: var(--crema); }
+  .chips button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+  /* --- recuento de cabecera: cifras en mono, rótulo debajo en minúscula --- */
+  .cifras { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 16px; }
+  .cifra { flex: 1 1 110px; border: 1px solid var(--linea); border-radius: 10px;
+           background: var(--crema); padding: 12px 14px; }
+  .cifra b { display: block; font-family: var(--fuente-dato); font-variant-numeric: tabular-nums;
+             font-size: 24px; line-height: 1.1; color: var(--navy); font-weight: 600; }
+  .cifra span { font-size: 13px; line-height: 1.4; color: var(--texto-suave); }
+  .cifra--espera { background: var(--ambar-fondo); border-color: var(--ambar-borde); }
+  .cifra--espera b { color: var(--ambar); }
+
+  .aviso { background: var(--crema-media); border: 1px solid var(--linea); border-radius: 10px;
+           padding: 13px 15px; font-size: 15px; color: var(--texto-suave); line-height: 1.55; margin: 0 0 16px; }
+  .aviso strong { color: var(--navy); }
+  .aviso--ambar { background: var(--ambar-fondo); border-color: var(--ambar-borde); color: var(--texto); }
+  .aviso--ambar b { color: var(--ambar); }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea);
+           font-size: 15px; vertical-align: top; }
+  th { font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;
+       color: var(--texto-suave); }
+  td .sub { display: block; font-size: 14px; color: var(--texto-suave); line-height: 1.4; }
+  .acciones-fila { display: flex; gap: 8px; flex-wrap: wrap; }
+  td select { min-width: 150px; }
+
+  .pill { display: inline-flex; align-items: center; font-size: 13px; padding: 4px 10px;
+          border-radius: 999px; white-space: nowrap; line-height: 1.3; }
+  .pill--si { background: var(--verde-fondo); color: var(--verde); border: 1px solid var(--verde-borde); }
+  .pill--no { background: var(--crema-media); color: var(--texto-suave); border: 1px solid var(--linea); }
+  .pill--duda { background: #fff; color: var(--texto-suave); border: 1px solid var(--linea-borde); }
+  .pill--espera { background: var(--ambar-fondo); color: var(--ambar); border: 1px solid var(--ambar-borde); }
+  .pill--falta { background: #fff; color: var(--azul-oscuro); border: 1px dashed var(--linea-borde); }
+
+  .oculto { display: none !important; }
+  .msg { margin-top: 10px; font-size: 15px; }
+  .msg.error { color: #B0563A; }
+  .msg.ok { color: var(--verde, #3F7A4C); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .lista-grupos { border: 1px solid var(--linea-borde); border-radius: 10px; padding: 6px 12px;
+                  max-height: 190px; overflow: auto; }
+  .lista-grupos label { display: flex; align-items: center; gap: 10px; min-height: 44px;
+                        margin: 0; font-weight: 400; font-size: 15px; color: var(--texto); }
+  .lista-grupos input { width: auto; min-height: 0; }
+  .fila-check { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; }
+  .fila-check input { width: auto; min-height: 0; }
+  .fila-check label { margin: 0; font-weight: 400; font-size: 15px; color: var(--texto); }
+
+  /* --- la ventana de editar --- */
+  #caja-form { position: fixed; inset: 0; z-index: 1000; background: rgba(46,66,86,.45);
+               display: flex; align-items: flex-start; justify-content: center;
+               padding: clamp(16px,5vh,60px) 16px; overflow: auto;
+               -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  #caja-form .modal-caja { background: #fff; border: 1px solid var(--linea); border-radius: 14px;
+                           box-shadow: 0 30px 70px -25px rgba(46,66,86,.55); padding: 22px;
+                           width: min(680px,100%); }
+  #caja-form h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 21px;
+                  color: var(--navy); margin: 0 0 4px; }
+
+  #texto-lista { width: 100%; min-height: 150px; font-family: var(--fuente-dato); font-size: 13px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <!-- ===== LAS QUE PIDEN CONFIRMACIÓN ===== -->
+    <div class="panel">
+      <div class="panel-cab">
+        <div>
+          <h2>Confirmar asistencia</h2>
+          <p class="intro">Le pides «¿vas?» a una actividad del calendario y aquí ves quién va,
+            quién no y quién falta por contestar. Los menores los confirma su familia.</p>
+        </div>
+        <span class="cuenta" id="cuenta-cab"></span>
+      </div>
+      <div class="botonera" style="margin-top:0;">
+        <button class="bot bot--azul" id="btn-nueva">Pedir confirmación</button>
+      </div>
+      <div class="adm-envoltorio">
+        <table class="adm-tabla" id="tabla-peticiones">
+          <thead><tr>
+            <th>Actividad</th><th>Cuándo</th><th>Contestado</th><th>Plazas</th><th>Estado</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== QUIÉN VA ===== -->
+    <div class="panel oculto" id="panel-lista">
+      <div class="panel-cab">
+        <div>
+          <h2 id="lista-titulo">Quién va</h2>
+          <p class="intro" id="lista-sub"></p>
+        </div>
+        <span class="cuenta" id="lista-cuenta"></span>
+      </div>
+
+      <div class="cifras" id="lista-cifras"></div>
+      <div id="lista-avisos"></div>
+
+      <div class="chips" id="lista-filtros" role="group" aria-label="Filtrar la lista"></div>
+      <div class="adm-buscador oculto" id="caja-buscador">
+        <input type="search" id="buscador" placeholder="Buscar un atleta" aria-label="Buscar un atleta">
+        <span class="adm-buscador-n" id="buscador-n"></span>
+      </div>
+
+      <div class="adm-envoltorio">
+        <table class="adm-tabla" id="tabla-lista">
+          <thead><tr>
+            <th>Atleta</th><th>Grupo</th><th>Respuesta</th><th>Nota</th><th>Contestó</th><th>Apuntar respuesta</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="adm-mas oculto" id="caja-mas"><button type="button" id="btn-mas">Ver más</button></div>
+
+      <div class="botonera">
+        <button class="bot bot--borde" id="btn-descargar">Descargar la lista</button>
+        <button class="bot bot--texto" id="btn-copiar">Copiar la lista</button>
+        <button class="bot bot--texto" id="btn-cerrar-lista">Cerrar</button>
+      </div>
+      <textarea id="texto-lista" class="oculto" readonly aria-label="Lista para copiar"></textarea>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== VENTANA: PEDIR O CAMBIAR LA CONFIRMACIÓN ===== -->
+<div id="caja-form" class="oculto" role="dialog" aria-modal="true" aria-labelledby="form-titulo">
+  <div class="modal-caja">
+    <h2 id="form-titulo">Pedir confirmación</h2>
+    <p class="intro" id="form-intro">Elige la actividad y a quién se le pregunta. Se puede cambiar después.</p>
+    <form id="form-peticion">
+      <input type="hidden" id="f-id">
+
+      <div id="caja-actividad">
+        <label for="f-actividad">Actividad del calendario</label>
+        <select id="f-actividad" required></select>
+        <p class="pista">Solo salen las que aún no piden confirmación. Si falta alguna, créala antes
+          en «Calendario y eventos» o en «Competiciones».</p>
+      </div>
+      <p class="aviso oculto" id="f-actividad-fija"></p>
+
+      <label for="f-pregunta">La pregunta</label>
+      <input type="text" id="f-pregunta" maxlength="120" placeholder="¿Vas al desplazamiento a Elche?">
+      <p class="pista">Si lo dejas vacío se pregunta «¿Vas?».</p>
+
+      <label for="f-nota">Recado para quien contesta</label>
+      <textarea id="f-nota" maxlength="400" placeholder="Salimos a las 8:00 del pabellón. Llevad almuerzo."></textarea>
+
+      <div class="grid2">
+        <div>
+          <label for="f-limite">Hasta cuándo se puede contestar</label>
+          <input type="datetime-local" id="f-limite">
+          <p class="pista">Pasada esa hora dejan de poder contestar. El club sí puede seguir apuntando respuestas.</p>
+        </div>
+        <div>
+          <label for="f-plazas">Plazas</label>
+          <input type="number" id="f-plazas" min="0" step="1" inputmode="numeric" placeholder="sin límite">
+          <p class="pista">Autobús o coches compartidos. Cuando se llenan, quien diga que va entra
+            en lista de espera y sube solo si alguien se cae.</p>
+        </div>
+      </div>
+
+      <label for="f-publico">A quién se le pregunta</label>
+      <select id="f-publico">
+        <option value="club">A todo el club</option>
+        <option value="grupos">Solo a unos grupos</option>
+        <option value="inscritos">Solo a quien ya está apuntado a esa actividad</option>
+      </select>
+
+      <div id="caja-grupos" class="oculto">
+        <label>Grupos</label>
+        <div class="lista-grupos" id="lista-grupos"></div>
+      </div>
+
+      <div class="fila-check">
+        <input type="checkbox" id="f-permite-nota" checked>
+        <label for="f-permite-nota">Dejar escribir una nota corta al contestar</label>
+      </div>
+      <div class="fila-check">
+        <input type="checkbox" id="f-abierta" checked>
+        <label for="f-abierta">Está pidiéndose (quítalo para dejar de preguntar sin borrar nada)</label>
+      </div>
+
+      <div class="botonera">
+        <button class="bot bot--azul" type="submit" id="btn-guardar">Guardar</button>
+        <button class="bot bot--texto" type="button" id="btn-cancelar">Cancelar</button>
+        <span class="msg" id="msg-form"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var CONF = window.APOLANA_CONF;
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  function plural(n, uno, varios) { return n + ' ' + (n === 1 ? uno : varios); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function aInput(iso) {
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+           'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function deInput(v) { if (!v) return null; var d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString(); }
+  var MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function fechaCorta(iso) {
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d.getTime())) return '';
+    var t = d.getDate() + ' ' + MES[d.getMonth()] + ' ' + d.getFullYear();
+    if (String(iso).indexOf('T') > -1 && (d.getHours() || d.getMinutes())) t += ' · ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    return t;
+  }
+  function pasado(iso) { if (!iso) return false; var d = new Date(iso); return !isNaN(d.getTime()) && d.getTime() <= Date.now(); }
+
+  var PETICIONES = [], RESUMENES = {}, GRUPOS = [], LIBRES = { eventos: [], competiciones: [] };
+  var actual = null, FILAS = [], filtro = 'todos', busca = '', tope = 20;
+
+  function nombreActividad(p) {
+    if (p.eventos) return p.eventos.titulo;
+    if (p.competiciones) return p.competiciones.nombre;
+    return 'Actividad';
+  }
+  function cuandoActividad(p) {
+    if (p.eventos) return p.eventos.fecha_inicio;
+    if (p.competiciones) return p.competiciones.fecha_inicio;
+    return null;
+  }
+  function dondeActividad(p) {
+    if (p.eventos) return p.eventos.lugar || '';
+    if (p.competiciones) return p.competiciones.sede || '';
+    return '';
+  }
+  function publicoTexto(p) {
+    if (p.publico === 'inscritos') return 'a quien ya está apuntado';
+    if (p.publico === 'grupos') {
+      var n = (p.grupos || []).map(function (g) {
+        for (var i = 0; i < GRUPOS.length; i++) if (GRUPOS[i].id === g) return GRUPOS[i].nombre;
+        return null;
+      }).filter(Boolean);
+      return n.length ? ('a ' + n.join(', ')) : 'a unos grupos (ninguno elegido todavía)';
+    }
+    return 'a todo el club';
+  }
+
+  // =========================================================
+  // LISTA DE PETICIONES
+  // =========================================================
+  async function cargarPeticiones() {
+    var tb = $('tabla-peticiones').querySelector('tbody');
+    tb.innerHTML = ADM.filaCargando(6, 3);
+    var r = await sb.from('confirmaciones')
+      .select('id,evento_id,competicion_id,pregunta,nota_club,fecha_limite,plazas,publico,grupos,permite_nota,abierta,created_at,' +
+              'eventos(titulo,fecha_inicio,lugar,tipo),competiciones(nombre,fecha_inicio,sede)')
+      .order('created_at', { ascending: false });
+    if (r.error) { tb.innerHTML = ADM.filaError(6, r.error.message, cargarPeticiones); return; }
+    PETICIONES = r.data || [];
+
+    if (!PETICIONES.length) {
+      $('cuenta-cab').textContent = '';
+      tb.innerHTML = ADM.filaVacia(6,
+        'Todavía no le has pedido confirmación a nadie',
+        'Elige una carrera, un desplazamiento o un entreno especial del calendario y pregúntale al club si va. ' +
+        'Aquí verás la lista y el recuento.',
+        '<button type="button" class="bot bot--borde" data-nueva>Pedir confirmación</button>',
+        '<path d="M5 12.5l4.5 4.5L19 7.5"/>');
+      return;
+    }
+
+    PETICIONES.sort(function (a, b) {
+      var fa = cuandoActividad(a) || '', fb = cuandoActividad(b) || '';
+      return fa < fb ? 1 : (fa > fb ? -1 : 0);
+    });
+
+    tb.innerHTML = PETICIONES.map(function (p) {
+      var res = RESUMENES[p.id];
+      var cerrada = !p.abierta || pasado(p.fecha_limite);
+      var estado = cerrada
+        ? '<span class="pill pill--no">' + (p.abierta ? 'Plazo pasado' : 'Parada') + '</span>'
+        : '<span class="pill pill--si">Preguntando</span>';
+      var contestado = res
+        ? '<b>' + res.contestados + '</b> de ' + res.esperados +
+          '<span class="sub">' + esc(CONF.frase(res)) + '</span>'
+        : '<span class="sub">contando…</span>';
+      var plazas = (p.plazas == null)
+        ? '<span class="sub">sin límite</span>'
+        : (res ? (res.libres + ' de ' + p.plazas + (res.en_espera ? '<span class="sub">' + plural(res.en_espera, 'en espera', 'en espera') + '</span>' : ''))
+               : p.plazas);
+      return '<tr>' +
+        '<td class="adm-titulo" data-etiqueta="">' + esc(nombreActividad(p)) +
+          '<span class="sub">' + esc(p.pregunta || '¿Vas?') + ' · ' + esc(publicoTexto(p)) + '</span></td>' +
+        '<td data-etiqueta="cuándo">' + esc(fechaCorta(cuandoActividad(p))) +
+          (p.fecha_limite ? '<span class="sub">contestan hasta el ' + esc(fechaCorta(p.fecha_limite)) + '</span>' : '') + '</td>' +
+        '<td data-etiqueta="contestado">' + contestado + '</td>' +
+        '<td data-etiqueta="plazas">' + plazas + '</td>' +
+        '<td class="adm-estado" data-etiqueta="">' + estado + '</td>' +
+        '<td class="adm-acciones" data-etiqueta="">' +
+          '<button class="bot bot--borde bot--sm" data-ver="' + p.id + '">Ver quién va</button>' +
+          '<button class="bot bot--texto bot--sm" data-editar="' + p.id + '">Editar</button>' +
+          '<button class="bot bot--texto bot--sm" data-borrar="' + p.id + '">Quitar</button>' +
+        '</td></tr>';
+    }).join('');
+
+    var pidiendo = PETICIONES.filter(function (p) { return p.abierta && !pasado(p.fecha_limite); }).length;
+    $('cuenta-cab').textContent = plural(pidiendo, 'actividad preguntando', 'actividades preguntando');
+
+    /* Los recuentos, después de pintar: la tabla no espera a las cifras. */
+    for (var i = 0; i < PETICIONES.length; i++) {
+      var res = await CONF.resumen(PETICIONES[i].id);
+      if (res) RESUMENES[PETICIONES[i].id] = res;
+    }
+    if (PETICIONES.length) pintarSoloRecuentos();
+  }
+
+  function pintarSoloRecuentos() {
+    var filas = $('tabla-peticiones').querySelectorAll('tbody tr');
+    for (var i = 0; i < filas.length && i < PETICIONES.length; i++) {
+      var p = PETICIONES[i], res = RESUMENES[p.id];
+      if (!res) continue;
+      var tds = filas[i].querySelectorAll('td');
+      tds[2].innerHTML = '<b>' + res.contestados + '</b> de ' + res.esperados +
+        '<span class="sub">' + esc(CONF.frase(res)) + '</span>';
+      tds[3].innerHTML = (p.plazas == null)
+        ? '<span class="sub">sin límite</span>'
+        : (res.libres + ' de ' + p.plazas + (res.en_espera ? '<span class="sub">' + plural(res.en_espera, 'en espera', 'en espera') + '</span>' : ''));
+    }
+  }
+
+  // =========================================================
+  // ACTIVIDADES LIBRES Y GRUPOS (para el formulario)
+  // =========================================================
+  async function cargarAuxiliares() {
+    var g = await sb.from('grupos').select('id,nombre,seccion,activo').order('nombre');
+    GRUPOS = (g.error ? [] : (g.data || [])).filter(function (x) { return x.activo !== false; });
+
+    var desde = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    var e = await sb.from('eventos').select('id,titulo,fecha_inicio,tipo,lugar')
+      .gte('fecha_inicio', desde + 'T00:00:00').order('fecha_inicio');
+    LIBRES.eventos = e.error ? [] : (e.data || []);
+    var c = await sb.from('competiciones').select('id,nombre,fecha_inicio,sede')
+      .gte('fecha_inicio', desde).order('fecha_inicio');
+    LIBRES.competiciones = c.error ? [] : (c.data || []);
+  }
+
+  function opcionesActividad() {
+    var usadosE = {}, usadosC = {};
+    PETICIONES.forEach(function (p) {
+      if (p.evento_id) usadosE[p.evento_id] = true;
+      if (p.competicion_id) usadosC[p.competicion_id] = true;
+    });
+    var ev = LIBRES.eventos.filter(function (x) { return !usadosE[x.id]; });
+    var co = LIBRES.competiciones.filter(function (x) { return !usadosC[x.id]; });
+    var h = '<option value="">Elige la actividad…</option>';
+    if (ev.length) {
+      h += '<optgroup label="Eventos del calendario">' + ev.map(function (x) {
+        return '<option value="evento:' + x.id + '">' + esc(x.titulo) + ' · ' + esc(fechaCorta(x.fecha_inicio)) + '</option>';
+      }).join('') + '</optgroup>';
+    }
+    if (co.length) {
+      h += '<optgroup label="Competiciones">' + co.map(function (x) {
+        return '<option value="competicion:' + x.id + '">' + esc(x.nombre) + ' · ' + esc(fechaCorta(x.fecha_inicio)) + '</option>';
+      }).join('') + '</optgroup>';
+    }
+    if (!ev.length && !co.length) h = '<option value="">No queda ninguna actividad por preguntar</option>';
+    return h;
+  }
+
+  function pintarGrupos(elegidos) {
+    elegidos = elegidos || [];
+    $('lista-grupos').innerHTML = GRUPOS.map(function (g) {
+      var marcado = elegidos.indexOf(g.id) > -1 ? ' checked' : '';
+      return '<label><input type="checkbox" value="' + g.id + '"' + marcado + '> ' + esc(g.nombre) + '</label>';
+    }).join('') || '<p class="pista">Todavía no hay grupos creados.</p>';
+  }
+
+  // =========================================================
+  // FORMULARIO
+  // =========================================================
+  function abrirForm(p) {
+    p = p || {};
+    $('form-titulo').textContent = p.id ? 'Cambiar la confirmación' : 'Pedir confirmación';
+    $('f-id').value = p.id || '';
+    $('f-pregunta').value = p.pregunta || '';
+    $('f-nota').value = p.nota_club || '';
+    $('f-limite').value = aInput(p.fecha_limite);
+    $('f-plazas').value = (p.plazas == null ? '' : p.plazas);
+    $('f-publico').value = p.publico || 'club';
+    $('f-permite-nota').checked = p.permite_nota !== false;
+    $('f-abierta').checked = p.abierta !== false;
+    pintarGrupos(p.grupos || []);
+    $('caja-grupos').classList.toggle('oculto', $('f-publico').value !== 'grupos');
+    if (p.id) {
+      $('caja-actividad').classList.add('oculto');
+      $('f-actividad').required = false;
+      $('f-actividad-fija').classList.remove('oculto');
+      $('f-actividad-fija').innerHTML = '<strong>' + esc(nombreActividad(p)) + '</strong> · ' +
+        esc(fechaCorta(cuandoActividad(p))) + (dondeActividad(p) ? ' · ' + esc(dondeActividad(p)) : '');
+      $('form-intro').textContent = 'La actividad no se cambia. Si te has equivocado de actividad, quita esta confirmación y pide otra.';
+    } else {
+      $('caja-actividad').classList.remove('oculto');
+      $('f-actividad').required = true;
+      $('f-actividad').innerHTML = opcionesActividad();
+      $('f-actividad-fija').classList.add('oculto');
+      $('form-intro').textContent = 'Elige la actividad y a quién se le pregunta. Se puede cambiar después.';
+    }
+    $('msg-form').textContent = '';
+    $('caja-form').classList.remove('oculto');
+    setTimeout(function () { (p.id ? $('f-pregunta') : $('f-actividad')).focus(); }, 30);
+  }
+  function cerrarForm() { $('caja-form').classList.add('oculto'); }
+
+  $('btn-nueva').addEventListener('click', function () { abrirForm(); });
+  $('btn-cancelar').addEventListener('click', cerrarForm);
+  $('caja-form').addEventListener('click', function (e) { if (e.target === this) cerrarForm(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('caja-form').classList.contains('oculto')) cerrarForm();
+  });
+  $('f-publico').addEventListener('change', function () {
+    $('caja-grupos').classList.toggle('oculto', this.value !== 'grupos');
+  });
+
+  $('form-peticion').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var m = $('msg-form');
+    var datos = {
+      id: $('f-id').value || null,
+      pregunta: $('f-pregunta').value.trim() || null,
+      nota_club: $('f-nota').value.trim() || null,
+      fecha_limite: deInput($('f-limite').value),
+      plazas: $('f-plazas').value === '' ? null : $('f-plazas').value,
+      publico: $('f-publico').value,
+      grupos: [].map.call($('lista-grupos').querySelectorAll('input:checked'), function (i) { return i.value; }),
+      permite_nota: $('f-permite-nota').checked,
+      abierta: $('f-abierta').checked
+    };
+    if (!datos.id) {
+      var v = $('f-actividad').value;
+      if (!v) { m.textContent = 'Elige primero la actividad.'; m.className = 'msg error'; return; }
+      var trozos = v.split(':');
+      if (trozos[0] === 'evento') datos.evento_id = trozos[1]; else datos.competicion_id = trozos[1];
+    }
+    if (datos.publico === 'grupos' && !datos.grupos.length) {
+      m.textContent = 'Marca al menos un grupo, o cambia a «todo el club».'; m.className = 'msg error'; return;
+    }
+    m.textContent = 'Guardando…'; m.className = 'msg';
+    var r = await CONF.guardarPeticion(datos);
+    if (r.error) { m.textContent = 'No se ha podido guardar: ' + r.error; m.className = 'msg error'; return; }
+    cerrarForm();
+    apoToast(datos.id ? 'Confirmación cambiada' : 'Ya se está preguntando', 'ok');
+    RESUMENES = {};
+    await cargarPeticiones();
+    if (actual && actual.id === r.peticion.id) verLista(r.peticion.id);
+  });
+
+  // =========================================================
+  // ACCIONES DE LA TABLA
+  // =========================================================
+  $('tabla-peticiones').addEventListener('click', async function (e) {
+    var t = e.target;
+    if (t.getAttribute('data-nueva') != null) { abrirForm(); return; }
+    var ver = t.getAttribute('data-ver');
+    var ed = t.getAttribute('data-editar');
+    var bo = t.getAttribute('data-borrar');
+    if (ver) verLista(ver);
+    if (ed) {
+      var p = PETICIONES.filter(function (x) { return x.id === ed; })[0];
+      if (p) abrirForm(p);
+    }
+    if (bo) {
+      var q = PETICIONES.filter(function (x) { return x.id === bo; })[0];
+      var ok = await apoConfirm({
+        titulo: 'Quitar la confirmación',
+        texto: 'Se deja de preguntar «¿vas?» en «' + (q ? nombreActividad(q) : 'esta actividad') +
+               '» y se borran las respuestas que ya haya. La actividad del calendario no se toca.',
+        confirmar: 'Quitar', peligro: true
+      });
+      if (!ok) return;
+      var r = await CONF.borrarPeticion(bo);
+      if (r.error) { apoToast('No se ha podido quitar: ' + r.error, 'error'); return; }
+      if (actual && actual.id === bo) { $('panel-lista').classList.add('oculto'); actual = null; }
+      apoToast('Confirmación quitada', 'ok');
+      cargarPeticiones();
+    }
+  });
+
+  // =========================================================
+  // QUIÉN VA
+  // =========================================================
+  var FILTROS = [
+    { id: 'todos',    txt: 'Todos' },
+    { id: 'voy',      txt: 'Van' },
+    { id: 'no_voy',   txt: 'No van' },
+    { id: 'no_lo_se', txt: 'Aún no lo saben' },
+    { id: 'falta',    txt: 'Sin contestar' },
+    { id: 'espera',   txt: 'Lista de espera' }
+  ];
+
+  async function verLista(id) {
+    actual = PETICIONES.filter(function (x) { return x.id === id; })[0] || null;
+    if (!actual) return;
+    filtro = 'todos'; busca = ''; tope = 20;
+    $('panel-lista').classList.remove('oculto');
+    $('buscador').value = '';
+    $('texto-lista').classList.add('oculto');
+    $('lista-titulo').textContent = 'Quién va · ' + nombreActividad(actual);
+    $('lista-sub').textContent = fechaCorta(cuandoActividad(actual)) +
+      (dondeActividad(actual) ? ' · ' + dondeActividad(actual) : '') +
+      ' · se pregunta ' + publicoTexto(actual) +
+      (actual.fecha_limite ? ' · contestan hasta el ' + fechaCorta(actual.fecha_limite) : '');
+    $('lista-cifras').innerHTML = '';
+    $('lista-avisos').innerHTML = '';
+    $('lista-filtros').innerHTML = '';
+    $('tabla-lista').querySelector('tbody').innerHTML = ADM.filaCargando(6, 4);
+    $('panel-lista').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    var res = await CONF.resumen(id);
+    if (res) RESUMENES[id] = res;
+    var r = await CONF.lista(id);
+    if (r.error) {
+      $('tabla-lista').querySelector('tbody').innerHTML = ADM.filaError(6, r.error, function () { verLista(id); });
+      return;
+    }
+    FILAS = r.filas;
+    pintarCifras(res);
+    pintarFiltros();
+    pintarFilas();
+  }
+
+  function pintarCifras(res) {
+    if (!res) { $('lista-cifras').innerHTML = ''; return; }
+    var h = '';
+    h += '<div class="cifra"><b>' + res.voy + '</b><span>van</span></div>';
+    h += '<div class="cifra"><b>' + res.no_voy + '</b><span>no van</span></div>';
+    h += '<div class="cifra"><b>' + res.no_lo_se + '</b><span>aún no lo saben</span></div>';
+    h += '<div class="cifra"><b>' + res.faltan + '</b><span>sin contestar</span></div>';
+    if (res.plazas != null) {
+      h += '<div class="cifra"><b>' + res.libres + '</b><span>plazas libres de ' + res.plazas + '</span></div>';
+      if (res.en_espera) h += '<div class="cifra cifra--espera"><b>' + res.en_espera + '</b><span>en lista de espera</span></div>';
+    }
+    $('lista-cifras').innerHTML = h;
+    $('lista-cuenta').textContent = res.contestados + ' de ' + res.esperados + ' han contestado';
+
+    var avisos = '';
+    if (res.en_plazo === false) {
+      avisos += '<p class="aviso">El plazo para contestar ya pasó' +
+        (actual.fecha_limite ? ' (' + esc(fechaCorta(actual.fecha_limite)) + ')' : '') +
+        '. Tú sí puedes seguir apuntando respuestas desde aquí.</p>';
+    }
+    var sinFamilia = FILAS.filter(function (f) { return f.sin_familia; }).length;
+    if (sinFamilia) {
+      avisos += '<p class="aviso aviso--ambar"><b>' + plural(sinFamilia, 'menor sin familia enlazada', 'menores sin familia enlazada') + '</b>' +
+        'La confirmación de un menor la hace su familia, y esas fichas no tienen ninguna cuenta de familia. ' +
+        'O enlazas la familia en «Atletas», o apuntas tú la respuesta en la columna de la derecha.</p>';
+    }
+    $('lista-avisos').innerHTML = avisos;
+  }
+
+  function pintarFiltros() {
+    var h = FILTROS.map(function (f) {
+      return '<button type="button" data-filtro="' + f.id + '" aria-pressed="' + (filtro === f.id ? 'true' : 'false') + '">' +
+             f.txt + '</button>';
+    }).join('');
+    if (filtro !== 'todos') h += '<button type="button" class="bot bot--texto" data-filtro="todos" style="border:0;background:none">Quitar filtros</button>';
+    $('lista-filtros').innerHTML = h;
+    $('caja-buscador').classList.toggle('oculto', FILAS.length < 30);
+  }
+
+  function filtradas() {
+    var t = busca.trim().toLowerCase();
+    return FILAS.filter(function (f) {
+      if (filtro === 'falta' && f.respuesta) return false;
+      if (filtro === 'espera' && !(f.respuesta === 'voy' && f.en_espera)) return false;
+      if (filtro !== 'todos' && filtro !== 'falta' && filtro !== 'espera' && f.respuesta !== filtro) return false;
+      if (t) {
+        var nom = ((f.nombre || '') + ' ' + (f.apellidos || '') + ' ' + (f.grupo || '')).toLowerCase();
+        if (nom.indexOf(t) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function pillDe(f) {
+    if (!f.respuesta) return '<span class="pill pill--falta">Sin contestar</span>';
+    if (f.respuesta === 'voy') {
+      return f.en_espera ? '<span class="pill pill--espera">En lista de espera</span>'
+                         : '<span class="pill pill--si">Va</span>';
+    }
+    if (f.respuesta === 'no_voy') return '<span class="pill pill--no">No va</span>';
+    return '<span class="pill pill--duda">Aún no lo sabe</span>';
+  }
+
+  function pintarFilas() {
+    var tb = $('tabla-lista').querySelector('tbody');
+    var lista = filtradas();
+    $('buscador-n').textContent = plural(lista.length, 'atleta', 'atletas');
+
+    if (!lista.length) {
+      tb.innerHTML = ADM.filaVacia(6,
+        (FILAS.length ? 'Aquí no hay nadie' : 'Todavía no hay a quién preguntar'),
+        (FILAS.length
+          ? 'Con este filtro no queda ningún atleta. Quita el filtro para ver la lista entera.'
+          : 'Esta confirmación se le pregunta ' + publicoTexto(actual) + ', y ahí no hay ninguna ficha de atleta. Cambia a quién se pregunta desde «Editar».'),
+        (FILAS.length ? '<button type="button" class="bot bot--borde" data-filtro="todos">Quitar filtros</button>' : ''));
+      $('caja-mas').classList.add('oculto');
+      return;
+    }
+
+    var visibles = lista.slice(0, tope);
+    tb.innerHTML = visibles.map(function (f) {
+      var nombre = ((f.nombre || '') + ' ' + (f.apellidos || '')).trim();
+      var quien = f.respondido_por ? esc(f.respondido_por) : '';
+      var cuando = f.respondido_en ? fechaCorta(f.respondido_en) : '';
+      var opciones = '<option value="">Apuntar…</option>' +
+        '<option value="voy"' + (f.respuesta === 'voy' ? ' selected' : '') + '>Va</option>' +
+        '<option value="no_voy"' + (f.respuesta === 'no_voy' ? ' selected' : '') + '>No va</option>' +
+        '<option value="no_lo_se"' + (f.respuesta === 'no_lo_se' ? ' selected' : '') + '>Aún no lo sabe</option>';
+      return '<tr>' +
+        '<td class="adm-titulo" data-etiqueta="">' + esc(nombre) +
+          (f.es_menor ? '<span class="sub">menor · contesta ' + (f.sin_familia ? 'el club (sin familia enlazada)' : 'su familia') + '</span>' : '') + '</td>' +
+        '<td data-etiqueta="grupo">' + esc(f.grupo || 'sin grupo') + '</td>' +
+        '<td class="adm-estado" data-etiqueta="">' + pillDe(f) + '</td>' +
+        '<td data-etiqueta="nota">' + esc(f.nota || '') + '</td>' +
+        '<td data-etiqueta="contestó">' + (quien || '') + (cuando ? '<span class="sub">' + esc(cuando) + '</span>' : '') + '</td>' +
+        '<td data-etiqueta="apuntar respuesta"><select data-apuntar="' + f.atleta_id + '" ' +
+          'aria-label="Apuntar la respuesta de ' + esc(nombre) + '">' + opciones + '</select></td>' +
+      '</tr>';
+    }).join('');
+
+    var quedan = lista.length - visibles.length;
+    $('caja-mas').classList.toggle('oculto', quedan <= 0);
+    if (quedan > 0) $('btn-mas').textContent = 'Ver ' + plural(Math.min(quedan, 20), 'más', 'más');
+  }
+
+  $('lista-filtros').addEventListener('click', function (e) {
+    var f = e.target.getAttribute('data-filtro');
+    if (!f) return;
+    filtro = f; tope = 20;
+    pintarFiltros(); pintarFilas();
+  });
+  $('tabla-lista').addEventListener('click', function (e) {
+    var f = e.target.getAttribute('data-filtro');
+    if (!f) return;
+    filtro = f; tope = 20;
+    pintarFiltros(); pintarFilas();
+  });
+  $('btn-mas').addEventListener('click', function () { tope += 20; pintarFilas(); });
+  $('buscador').addEventListener('input', function () { busca = this.value; tope = 20; pintarFilas(); });
+
+  /* Apuntar la respuesta que ha llegado por otro sitio (una llamada, un
+     WhatsApp). Pasa por la misma puerta que la app: reparte plaza o
+     lista de espera igual. */
+  $('tabla-lista').addEventListener('change', async function (e) {
+    var atleta = e.target.getAttribute && e.target.getAttribute('data-apuntar');
+    if (!atleta || !e.target.value) return;
+    var r = await CONF.responder(actual.id, atleta, e.target.value, null);
+    if (r.error) { apoToast('No se ha podido apuntar: ' + r.error, 'error'); return; }
+    apoToast(r.datos && r.datos.en_espera ? 'Apuntado en la lista de espera' : 'Respuesta apuntada', 'ok');
+    verLista(actual.id);
+    cargarPeticiones();
+  });
+
+  $('btn-cerrar-lista').addEventListener('click', function () {
+    $('panel-lista').classList.add('oculto'); actual = null;
+  });
+
+  // ---------- exportar ----------
+  function textoPlano() {
+    var lista = filtradas();
+    var cab = nombreActividad(actual) + ' · ' + fechaCorta(cuandoActividad(actual));
+    var van = lista.filter(function (f) { return f.respuesta === 'voy' && !f.en_espera; });
+    var esp = lista.filter(function (f) { return f.respuesta === 'voy' && f.en_espera; });
+    var no = lista.filter(function (f) { return f.respuesta === 'no_voy'; });
+    var duda = lista.filter(function (f) { return f.respuesta === 'no_lo_se'; });
+    var falta = lista.filter(function (f) { return !f.respuesta; });
+    function bloque(titulo, arr) {
+      if (!arr.length) return '';
+      return '\n' + titulo + ' (' + arr.length + '):\n' + arr.map(function (f) {
+        return '   - ' + ((f.nombre || '') + ' ' + (f.apellidos || '')).trim() +
+               (f.grupo ? ' (' + f.grupo + ')' : '') + (f.nota ? ' — ' + f.nota : '');
+      }).join('\n') + '\n';
+    }
+    return cab + '\n' +
+      bloque('VAN', van) + bloque('EN LISTA DE ESPERA', esp) + bloque('NO VAN', no) +
+      bloque('AÚN NO LO SABEN', duda) + bloque('SIN CONTESTAR', falta);
+  }
+
+  $('btn-copiar').addEventListener('click', async function () {
+    if (!actual) return;
+    var txt = textoPlano();
+    var ta = $('texto-lista');
+    ta.value = txt; ta.classList.remove('oculto');
+    try { await navigator.clipboard.writeText(txt); apoToast('Lista copiada', 'ok'); }
+    catch (err) { ta.select(); apoToast('Selecciona el texto de abajo y cópialo', 'info'); }
+  });
+
+  $('btn-descargar').addEventListener('click', function () {
+    if (!actual) return;
+    /* Con BOM para que el Excel en español abra bien las tildes. */
+    var csv = '﻿' + CONF.csv(filtradas());
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    a.download = 'confirmaciones-' + nombreActividad(actual).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    apoToast('Lista descargada', 'ok');
+  });
+
+  // =========================================================
+  // ARRANQUE
+  // =========================================================
+  (async function () {
+    await cargarAuxiliares();
+    await cargarPeticiones();
+  })();
+});
+</script>
+
+</body>
+</html>

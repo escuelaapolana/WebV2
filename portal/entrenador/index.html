@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/descansos.js"></script>
 <style>
   body { background: var(--crema-media); }
   .en-wrap { max-width: 1060px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
@@ -258,15 +259,54 @@
   .b-cab { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
   .b-cab .b-etiqueta { flex:1 1 210px; font-weight:600; }
   .b-cab .b-matiz { flex:1 1 190px; font-style:italic; }
-  .filas-cab { display:grid; grid-template-columns:1.7fr .72fr .85fr .8fr .8fr .95fr 34px; gap:6px; font-family: var(--fuente-mono); font-size:13px;  text-transform:none; color: var(--texto-suave); padding:0 2px 4px; }
+  .filas-cab { display:grid; grid-template-columns:1.6fr .62fr .8fr .78fr 1.5fr .9fr 34px; gap:6px; font-family: var(--fuente-mono); font-size:13px;  text-transform:none; color: var(--texto-suave); padding:0 2px 4px; }
   .editor-fila { margin-bottom:9px; }
-  .fila-l1 { display:grid; grid-template-columns:1.7fr .72fr .85fr .8fr .8fr .95fr 34px; gap:6px; align-items:center; }
+  .fila-l1 { display:grid; grid-template-columns:1.6fr .62fr .8fr .78fr 1.5fr .9fr 34px; gap:6px; align-items:center; }
   .fila-l2 { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:5px; padding-right:40px; }
   .fila-l2 .f-detalle { flex:1 1 150px; min-width:0; }
   .fila-l2 .f-observaciones { flex:2 1 280px; min-width:0; }
   .editor-fila input, .editor-fila select { padding:8px 8px; font-size:13px; border-radius:10px; }
   .f-cel-cz { min-width:0; }
   .f-cel-cz select, .f-cel-cz input { width:100%; }
+
+  /* ---- recuperación de la fila (modo + valor + trote/parado) ----
+     Tres controles en una sola celda: se adaptan al deporte y bajan a
+     dos líneas cuando no caben, en vez de encogerse hasta no poder
+     tocarlos. */
+  .f-cel-rec { display:flex; gap:5px; flex-wrap:wrap; min-width:0; align-items:center; }
+  .f-cel-rec select, .f-cel-rec input { min-width:0; }
+  .f-cel-rec .f-rec-modo  { flex:1 1 96px; }
+  .f-cel-rec .f-rec-valor { flex:1 1 62px; font-family: var(--fuente-dato); }
+  .f-cel-rec .f-rec-forma { flex:1 1 84px; }
+  .f-cel-rec.rec-oculta { visibility:hidden; }                 /* rodaje o tirada: no hay nada que recuperar */
+  .f-cel-rec.rec-vacia .f-rec-valor, .f-cel-rec.rec-vacia .f-rec-forma { display:none; }
+  .f-cel-rec.rec-sin-forma .f-rec-forma { display:none; }
+  .f-cel-rec.rec-falta .f-rec-modo { border-color:#D9A441; background:#FFFBF0; }
+  /* natación: salida y descanso son cosas distintas y se distinguen por color */
+  .f-cel-rec.rec-salida .f-rec-modo { color:#1F5C8F; background:#E7F0F8; border-color:#C7DDF0; }
+  .f-cel-rec.rec-descanso .f-rec-modo { color:#6B5227; background:#F7EFDD; border-color:#E6D4AE; }
+  .rec-ayuda { flex:1 1 100%; font-size:13px; color: var(--texto-suave); line-height:1.35; margin-top:1px; }
+  .f-cel-rec.rec-vacia .rec-ayuda { display:none; }
+
+  /* montaña: el desnivel de la subida */
+  .fila-l2 .f-desnivel { flex:0 1 150px; min-width:0; display:none; font-family: var(--fuente-dato); }
+  #bloques-cont.modo-montana .f-desnivel { display:block; }
+
+  /* pie del bloque: el descanso que va DESPUÉS (el separador que faltaba) */
+  .b-pie { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+  .b-pie .btn-mini { flex:0 0 auto; }
+  .b-rec-caja { display:flex; gap:6px; align-items:center; flex:1 1 210px; min-width:0; }
+  .b-rec-caja > span { font-size:13px; color: var(--texto-suave); white-space:nowrap; }
+  .b-rec-caja input { flex:0 1 78px; min-width:0; padding:8px; font-size:13px; border-radius:10px; font-family: var(--fuente-dato); }
+  .b-rec-ej-caja { display:none; }
+  #bloques-cont.modo-cubo .b-rec-ej-caja { display:flex; }
+
+  /* volumen y tiempo de la sesión, separados */
+  .ses-resumen { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:12px 0 0; }
+  .ses-resumen[hidden] { display:none; }
+  .sr-dato { font-family: var(--fuente-dato); font-size:15px; color: var(--navy); background: var(--crema-media); border-radius:999px; padding:5px 12px; }
+  .sr-dato.sr-tiempo { background: var(--azul-suave); color: var(--azul-oscuro); }
+  .sr-nota { flex:1 1 100%; font-size:13px; color: var(--texto-suave); line-height:1.4; margin:0; }
 
   /* calzado / carga según el tipo de sesión */
   #bloques-cont .f-carga { display:none; }
@@ -482,6 +522,14 @@
     .fila-l2 { padding-right:0; }
     .editor-fila { border:1px solid var(--linea); border-radius:10px; padding:8px; background:#fff; }
     .editor-fila .mini-x { grid-column: span 2; width:100%; }
+    /* al borde de la pista se escribe con una mano: la recuperación se lleva
+       la fila entera y sus tres controles se tocan sin apuntar */
+    .f-cel-rec { grid-column: span 2; }
+    .f-cel-rec select, .f-cel-rec input { min-height:44px; }
+    .f-cel-rec.rec-oculta { display:none; }
+    .fila-l2 .f-desnivel { flex:1 1 100%; }
+    .b-pie .btn-mini, .b-rec-caja { flex:1 1 100%; }
+    .b-rec-caja input { flex:1 1 auto; min-height:44px; }
   }
 </style>
 <script>
