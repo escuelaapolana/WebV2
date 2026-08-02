@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liga Apolana · Club Atletismo Apolana</title>
+<meta name="description" content="Clasificación de la Liga Apolana, la competición interna del Club Atletismo Apolana en Alicante: puntúa participar, no el resultado. Clasificación general, por disciplina y por categoría, normativa y tabla de puntos.">
+<link rel="icon" href="../assets/img/logo.png">
+<link rel="stylesheet" href="../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../";</script>
+<script src="../assets/js/datos.js" defer></script>
+<script src="../assets/js/apolana.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../assets/js/db.js" defer></script>
+<style>
+  /* ===========================================================
+     LA LIGA APOLANA · página pública
+     Usa las piezas del sistema (apolana.css) y añade solo lo
+     propio: la tabla de la clasificación y la tabla de puntos.
+     =========================================================== */
+
+  .lg-cab { max-width: 720px; display:flex; flex-direction:column; gap:8px; }
+  .lg-cab .intro { margin:0; }
+
+  /* ---- Cifras de cabecera ---- */
+  .lg-cifras { display:grid; grid-template-columns: repeat(4,1fr); gap:12px; margin-top:26px; }
+  .lg-cifras div { background:#fff; border:1px solid var(--linea); border-radius:16px; padding:16px 18px; }
+  .lg-cifras .et { display:block; font-size:12.5px; color: var(--texto-tenue); }
+  .lg-cifras .num { display:block; font-family: var(--fuente-display); font-weight:800; font-size: clamp(24px,4vw,32px); color: var(--navy); line-height:1.15; }
+  @media (max-width: 720px) { .lg-cifras { grid-template-columns: repeat(2,1fr); } }
+
+  /* ---- Pestañas ---- */
+  .lg-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  .lg-tabs button {
+    font-family: inherit; font-size:14.5px; line-height:1; cursor:pointer;
+    min-height:44px; padding:9px 18px; border-radius: var(--radio-pastilla);
+    background:#fff; border:1px solid var(--linea-borde); color: var(--texto);
+  }
+  .lg-tabs button:hover { border-color: var(--azul); color: var(--azul-oscuro); }
+  .lg-tabs button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color:#fff; font-weight:600; }
+
+  .lg-sub { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+  .lg-sub button {
+    font-family: inherit; font-size:14px; cursor:pointer; min-height:42px; padding:8px 16px;
+    border-radius: var(--radio-pastilla); background:transparent; border:1px solid var(--linea-borde); color: var(--texto-suave);
+  }
+  .lg-sub button[aria-pressed="true"] { background: var(--azul-suave); border-color:#CFE0EE; color: var(--azul-oscuro); font-weight:600; }
+
+  /* ---- Tabla de la clasificación ---- */
+  .lg-tabla-caja { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(14px,3vw,22px); box-shadow: var(--sombra-suave); }
+  .lg-scroll { overflow-x:auto; }
+  table.lg { width:100%; min-width:780px; border-collapse:collapse; }
+  table.lg th, table.lg td { text-align:left; padding:11px 8px; border-bottom:1px solid var(--linea); font-size:14.5px; }
+  table.lg th { font-size:12.5px; color: var(--texto-tenue); white-space:nowrap; font-weight:600; }
+  table.lg td.num, table.lg th.num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+  table.lg td.pos { font-family: var(--fuente-display); font-weight:800; color: var(--navy); width:52px; }
+  table.lg td.nombre { font-weight:600; color: var(--navy); }
+  table.lg td.total { font-family: var(--fuente-display); font-weight:800; color: var(--azul-oscuro); }
+  table.lg tr.podio-1 td.pos { color:#B08B2E; }
+  table.lg tr.podio-2 td.pos { color:#8A8A8A; }
+  table.lg tr.podio-3 td.pos { color:#A5703F; }
+  table.lg td.cero { color: var(--texto-tenue); }
+  table.lg .fin { display:inline-block; font-family: var(--fuente-texto); font-weight:400; text-transform:none;
+    font-size:12px; background: var(--azul-suave); color: var(--azul-oscuro); border-radius:999px; padding:2px 9px; vertical-align:middle; }
+
+  /* ---- En móvil, cada persona es una ficha ---- */
+  @media (max-width: 760px) {
+    table.lg { min-width:0; }
+    table.lg, table.lg thead, table.lg tbody, table.lg tr, table.lg th, table.lg td { display:block; }
+    table.lg thead { display:none; }
+    table.lg tr { border:1px solid var(--linea); border-radius:16px; margin-bottom:12px; padding:12px 14px; background:#fff; position:relative; }
+    table.lg td { border-bottom:none; padding:3px 0; font-size:14px; }
+    table.lg td.pos { position:absolute; right:14px; top:12px; font-size:26px; width:auto; }
+    table.lg td.nombre { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:21px; line-height:1.05; padding-right:56px; }
+    table.lg td.cat { color: var(--texto-suave); font-size:13.5px; margin-bottom:8px; }
+    table.lg td.num { display:inline-block; text-align:left; margin-right:14px; }
+    table.lg td.num::before { content: attr(data-etiqueta) ' '; color: var(--texto-tenue); font-size:12.5px; }
+    table.lg td.cero { display:none; }
+    table.lg td.total { display:block; margin-top:8px; padding-top:8px; border-top:1px solid var(--crema-media); font-size:20px; }
+    table.lg td.total::before { content:'Total '; font-family: var(--fuente-texto); font-weight:400; font-size:12.5px; color: var(--texto-tenue); }
+  }
+
+  /* ---- Bloques de normativa ---- */
+  .lg-normativa { display:grid; grid-template-columns: repeat(2,1fr); gap:16px; }
+  @media (max-width: 820px) { .lg-normativa { grid-template-columns:1fr; } }
+  .lg-bloque { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(16px,3vw,24px); }
+  .lg-bloque h3 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:21px; color: var(--navy); margin:0 0 8px; line-height:1.05; }
+  .lg-bloque ul { margin:0; padding-left:19px; font-size:14.5px; line-height:1.65; }
+  .lg-bloque p { margin:0 0 8px; font-size:14.5px; line-height:1.6; }
+  .lg-bloque li + li { margin-top:5px; }
+
+  /* ---- Tabla de puntos ---- */
+  .lg-baremo { display:grid; grid-template-columns: repeat(3,1fr); gap:14px; }
+  @media (max-width: 940px) { .lg-baremo { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 620px) { .lg-baremo { grid-template-columns:1fr; } }
+  .lg-baremo section { background:#fff; border:1px solid var(--linea); border-radius:16px; padding:16px 18px; }
+  .lg-baremo h3 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:19px; color: var(--navy); margin:0 0 8px; }
+  .lg-baremo dl { margin:0; display:grid; grid-template-columns: 1fr auto; gap:4px 12px; }
+  .lg-baremo dt { font-size:14px; color: var(--texto); }
+  .lg-baremo dd { margin:0; font-variant-numeric: tabular-nums; font-weight:700; color: var(--navy); font-size:14px; text-align:right; }
+  .lg-baremo dd.cero { font-weight:400; color: var(--texto-tenue); }
+
+  .lg-vacio { border:1px dashed var(--linea-borde); border-radius:16px; padding:26px; text-align:center; color: var(--texto-tenue); font-size:14.5px; }
+  .lg-nota { font-size:13.5px; color: var(--texto-suave); margin-top:14px; }
+</style>
+</head>
+<body>
+
+<!-- ================= CABECERA (compartida) ================= -->
+<apolana-cabecera activo="liga"></apolana-cabecera>
+
+<main>
+
+  <!-- ================= CABECERA DE LA PÁGINA ================= -->
+  <section class="seccion" style="padding-bottom:0;">
+    <div class="contenedor">
+      <div class="lg-cab">
+        <span class="eyebrow eyebrow--azul" id="lg-eyebrow">Liga Apolana · competición interna del club</span>
+        <h1 class="display">Liga Apolana</h1>
+        <p class="intro">Una liga que no premia marcas ni resultados: premia <strong>participar</strong>.
+          Cada carrera, cada travesía y cada control suman puntos, sea cual sea el crono. Se compite
+          a lo largo de todo el año y se entrega en la Gala Anual del club.</p>
+      </div>
+      <div class="lg-cifras">
+        <div><span class="et">Edición</span><span class="num" id="c-anio">—</span></div>
+        <div><span class="et">Participantes</span><span class="num" id="c-part">—</span></div>
+        <div><span class="et">Pruebas puntuadas</span><span class="num" id="c-pruebas">—</span></div>
+        <div><span class="et">Camiseta Finisher</span><span class="num" id="c-fin">—</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CLASIFICACIÓN ================= -->
+  <section class="seccion">
+    <div class="contenedor">
+      <h2 class="titulo titulo--grande">Clasificación</h2>
+      <div class="lg-tabs" id="lg-tabs" role="group" aria-label="Ver la clasificación">
+        <button type="button" data-modo="general"    aria-pressed="true">General</button>
+        <button type="button" data-modo="disciplina" aria-pressed="false">Por disciplina</button>
+        <button type="button" data-modo="categoria"  aria-pressed="false">Por categoría</button>
+      </div>
+      <div class="lg-sub" id="lg-sub" hidden></div>
+      <div class="lg-tabla-caja">
+        <div class="lg-scroll"><table class="lg" id="lg-tabla"><thead></thead><tbody></tbody></table></div>
+        <p class="lg-nota" id="lg-nota">«Bonus» son los puntos del reglamento: participación mensual, constancia y multideporte.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= NORMATIVA ================= -->
+  <section class="seccion" style="background: var(--crema-banda);">
+    <div class="contenedor">
+      <h2 class="titulo titulo--grande">Cómo funciona</h2>
+      <div class="lg-normativa">
+
+        <div class="lg-bloque">
+          <h3>El objeto</h3>
+          <p>La Liga Apolana es una competición interna y <strong>participativa</strong>. Busca fomentar
+            la constancia, la participación y la multidisciplina entre los socios del club.</p>
+          <p>No se premian los resultados ni las marcas: <strong>solo la participación</strong>.</p>
+          <p>Disciplinas que puntúan: atletismo, running, trail y montaña, triatlón (y duatlón,
+            aquabike y acuatlón) y natación y travesías.</p>
+        </div>
+
+        <div class="lg-bloque">
+          <h3>Cómo se puntúa</h3>
+          <ul>
+            <li>Se puntúa <strong>exclusivamente por participar</strong> en pruebas oficiales o reconocidas,
+              conforme a la tabla de puntos.</li>
+            <li>En la inscripción debe constar como <strong>Club Atletismo Apolana</strong>.</li>
+            <li>Hay que competir con la <strong>ropa del club</strong>.</li>
+            <li>Los entrenamientos no puntúan.</li>
+            <li>Una prueba cuya distancia esté entre dos de la tabla puntúa por la menor
+              (de 7,5 km a 9,900 km puntúa como 5 km).</li>
+            <li>Los relevos de atletismo y natación no puntúan.</li>
+            <li>En una competición de atletismo o natación con más de dos pruebas, solo puntúan las dos
+              de mayor puntuación.</li>
+            <li>En esta primera edición no se dan puntos por licencia federativa.</li>
+          </ul>
+        </div>
+
+        <div class="lg-bloque">
+          <h3>Los bonus</h3>
+          <p>Se acumulan entre sí.</p>
+          <ul>
+            <li><strong>Participación mensual</strong>: 3 pruebas en el mes, +2 puntos; 5 o más, +5.
+              Dentro del mismo mes solo cuenta el tramo superior, pero se acumula a lo largo de la temporada.</li>
+            <li><strong>Constancia anual</strong>: 10 o más pruebas individuales validadas en la temporada,
+              +10 puntos, una sola vez al final.</li>
+            <li><strong>Multideporte</strong>: 2 disciplinas, +5; 3 disciplinas, +10; 4 o más, +15.
+              Una sola vez al final.</li>
+          </ul>
+        </div>
+
+        <div class="lg-bloque">
+          <h3>Premios y categorías</h3>
+          <p>Camiseta <strong>«Finisher Liga Apolana»</strong> para quien complete 8 pruebas puntuables en una
+            misma disciplina, o 6 pruebas en al menos 2 disciplinas distintas.</p>
+          <p>Trofeos para campeón, subcampeón y tercero absolutos, y opcionalmente para el campeón de cada
+            sección y de cada categoría de edad.</p>
+          <p><strong>Categorías</strong> (edad a 31 de diciembre): hasta 17 años · de 18 a 35 · de 36 a 47 ·
+            de 48 a 59 · de 60 en adelante.</p>
+        </div>
+
+        <div class="lg-bloque">
+          <h3>Validación y plazos</h3>
+          <ul>
+            <li>Solo cuentan pruebas oficiales o reconocidas.</li>
+            <li>La acreditación válida es el <strong>enlace a la clasificación oficial</strong>.</li>
+            <li>Cada prueba debe comunicarse <strong>antes del día 5 del mes siguiente</strong>.</li>
+          </ul>
+          <p style="margin-top:10px;">Los socios comunican sus pruebas desde
+            <a href="../portal/">el portal del club</a>, y desde ahí se ve en todo momento cómo va cada uno.</p>
+        </div>
+
+        <div class="lg-bloque">
+          <h3>El periodo</h3>
+          <p id="lg-periodo">La liga va del 1 de enero hasta 7 días antes de la Gala Anual del club,
+            donde se entregan los premios.</p>
+          <p>Las clasificaciones se publican por disciplina, por categoría y en la general, y se actualizan
+            en esta misma página.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TABLA DE PUNTOS ================= -->
+  <section class="seccion">
+    <div class="contenedor">
+      <h2 class="titulo titulo--grande">Tabla de puntos</h2>
+      <p class="intro" style="max-width:720px;margin-bottom:22px;">Lo que suma cada prueba. Si una distancia
+        queda entre dos de la tabla, puntúa por la menor.</p>
+      <div class="lg-baremo" id="lg-baremo"></div>
+    </div>
+  </section>
+
+</main>
+
+<apolana-pie></apolana-pie>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  var DISC = { atletismo:'Atletismo', running:'Running', trail:'Trail', triatlon:'Triatlón', natacion:'Natación' };
+  var COLS = [
+    { k:'p_atletismo', t:'Atletismo' },
+    { k:'p_running',   t:'Running' },
+    { k:'p_trail',     t:'Trail' },
+    { k:'p_triatlon',  t:'Triatlón' },
+    { k:'p_natacion',  t:'Natación' }
+  ];
+  var GRUPOS = [
+    { clave:'atletismo', titulo:'Atletismo' },
+    { clave:'running',   titulo:'Running' },
+    { clave:'trail',     titulo:'Trail y montaña' },
+    { clave:'triatlon',  titulo:'Triatlón' },
+    { clave:'duatlon',   titulo:'Duatlón' },
+    { clave:'aquabike',  titulo:'Aquabike' },
+    { clave:'acuatlon',  titulo:'Acuatlón' },
+    { clave:'natacion',  titulo:'Natación' }
+  ];
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fLarga(f) { if (!f) return ''; var t = String(f).slice(0,10).split('-'); return t.length===3 ? (parseInt(t[2],10)+' de '+MESES[parseInt(t[1],10)-1]+' de '+t[0]) : f; }
+
+  var FILAS = [], modo = 'general', sub = '';
+
+  function pintarCabeceras() {
+    var t = $('lg-tabla').querySelector('thead');
+    if (modo === 'disciplina') {
+      t.innerHTML = '<tr><th class="num">Pos.</th><th>Nombre</th><th>Categoría</th><th class="num">Puntos</th></tr>';
+      return;
+    }
+    t.innerHTML = '<tr><th class="num">Pos.</th><th>Nombre</th><th>Categoría</th>' +
+      COLS.map(function (c) { return '<th class="num">' + c.t + '</th>'; }).join('') +
+      '<th class="num">Bonus</th>' + (hayAjustes() ? '<th class="num">Ajustes</th>' : '') +
+      '<th class="num">Total</th><th class="num">Pruebas</th></tr>';
+  }
+  function hayAjustes() { return FILAS.some(function (f) { return f.ajustes; }); }
+
+  function pintarSub() {
+    var caja = $('lg-sub');
+    if (modo === 'general') { caja.hidden = true; caja.innerHTML = ''; return; }
+    caja.hidden = false;
+    var lista;
+    if (modo === 'disciplina') {
+      lista = COLS.filter(function (c) { return FILAS.some(function (f) { return f[c.k] > 0; }); })
+                  .map(function (c) { return { v: c.k, t: c.t }; });
+    } else {
+      var vistas = [];
+      FILAS.slice().sort(function (a, b) { return (a.categoria_orden || 99) - (b.categoria_orden || 99); })
+           .forEach(function (f) { if (vistas.indexOf(f.categoria) === -1) vistas.push(f.categoria); });
+      lista = vistas.map(function (c) { return { v: c, t: c }; });
+    }
+    if (!lista.length) { caja.hidden = true; caja.innerHTML = ''; return; }
+    if (!sub || !lista.some(function (x) { return x.v === sub; })) sub = lista[0].v;
+    caja.innerHTML = lista.map(function (x) {
+      return '<button type="button" data-sub="' + esc(x.v) + '" aria-pressed="' + (sub === x.v ? 'true' : 'false') + '">' + esc(x.t) + '</button>';
+    }).join('');
+  }
+
+  function pintarFilas() {
+    var tb = $('lg-tabla').querySelector('tbody');
+    if (!FILAS.length) {
+      tb.innerHTML = '<tr><td colspan="12"><div class="lg-vacio">La clasificación todavía está vacía: en cuanto se validen las primeras pruebas aparecerá aquí.</div></td></tr>';
+      return;
+    }
+    var ajustes = hayAjustes();
+
+    if (modo === 'disciplina') {
+      var filas = FILAS.filter(function (f) { return f[sub] > 0; })
+                       .sort(function (a, b) { return b[sub] - a[sub] || a.nombre.localeCompare(b.nombre, 'es'); });
+      var pos = 0, anterior = null, mismo = 0;
+      tb.innerHTML = filas.map(function (f) {
+        mismo++; if (f[sub] !== anterior) { pos = mismo; anterior = f[sub]; }
+        return '<tr class="podio-' + pos + '">' +
+          '<td class="pos">' + pos + '</td>' +
+          '<td class="nombre">' + esc(f.nombre) + '</td>' +
+          '<td class="cat">' + esc(f.categoria) + '</td>' +
+          '<td class="num total" data-etiqueta="Puntos">' + f[sub] + '</td></tr>';
+      }).join('') || '<tr><td colspan="4"><div class="lg-vacio">Nadie ha puntuado todavía en esta disciplina.</div></td></tr>';
+      return;
+    }
+
+    var base = modo === 'categoria' ? FILAS.filter(function (f) { return f.categoria === sub; }) : FILAS.slice();
+    base.sort(function (a, b) { return b.total - a.total || b.pruebas - a.pruebas || a.nombre.localeCompare(b.nombre, 'es'); });
+    var p = 0, ant = null, k = 0;
+    tb.innerHTML = base.map(function (f) {
+      k++; if (f.total !== ant) { p = k; ant = f.total; }
+      return '<tr class="podio-' + p + '">' +
+        '<td class="pos">' + p + '</td>' +
+        '<td class="nombre">' + esc(f.nombre) + (f.finisher ? ' <span class="fin">finisher</span>' : '') + '</td>' +
+        '<td class="cat">' + esc(f.categoria) + '</td>' +
+        COLS.map(function (c) {
+          return '<td class="num' + (f[c.k] ? '' : ' cero') + '" data-etiqueta="' + c.t + '">' + f[c.k] + '</td>';
+        }).join('') +
+        '<td class="num' + (f.bonus ? '' : ' cero') + '" data-etiqueta="Bonus">' + f.bonus + '</td>' +
+        (ajustes ? '<td class="num' + (f.ajustes ? '' : ' cero') + '" data-etiqueta="Ajustes">' + f.ajustes + '</td>' : '') +
+        '<td class="num total">' + f.total + '</td>' +
+        '<td class="num" data-etiqueta="Pruebas">' + f.pruebas + '</td></tr>';
+    }).join('') || '<tr><td colspan="12"><div class="lg-vacio">Todavía no hay nadie en esta categoría.</div></td></tr>';
+  }
+
+  function pintar() { pintarCabeceras(); pintarSub(); pintarFilas(); }
+
+  $('lg-tabs').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button[data-modo]') : null;
+    if (!b) return;
+    modo = b.getAttribute('data-modo'); sub = '';
+    $('lg-tabs').querySelectorAll('button').forEach(function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    pintar();
+  });
+  $('lg-sub').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button[data-sub]') : null;
+    if (!b) return;
+    sub = b.getAttribute('data-sub');
+    $('lg-sub').querySelectorAll('button').forEach(function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    pintarFilas();
+  });
+
+  function pintarBaremo(filas) {
+    var caja = $('lg-baremo');
+    if (!filas.length) { caja.innerHTML = '<div class="lg-vacio">La tabla de puntos aún no está publicada.</div>'; return; }
+    caja.innerHTML = GRUPOS.map(function (g) {
+      var f = filas.filter(function (b) { return b.disciplina === g.clave; })
+                   .sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
+      if (!f.length) return '';
+      return '<section><h3>' + esc(g.titulo) + '</h3><dl>' + f.map(function (b) {
+        return '<dt>' + esc(b.modalidad) + '</dt><dd' + (b.es_relevo ? ' class="cero"' : '') + '>' +
+               (b.es_relevo ? 'no puntúa' : b.puntos) + '</dd>';
+      }).join('') + '</dl></section>';
+    }).join('');
+  }
+
+  async function arranque() {
+    var sb = window.APOLANA_DB;
+    if (!sb) {
+      $('lg-tabla').querySelector('tbody').innerHTML =
+        '<tr><td colspan="12"><div class="lg-vacio">No se ha podido conectar con los datos del club.</div></td></tr>';
+      return;
+    }
+
+    var re = await sb.from('liga_edicion_publica').select('*').maybeSingle();
+    if (!re.error && re.data) {
+      $('c-anio').textContent = re.data.anio;
+      $('lg-eyebrow').textContent = re.data.nombre + ' · competición interna del club';
+      $('lg-periodo').textContent = 'Esta edición va del ' + fLarga(re.data.fecha_inicio) + ' al ' +
+        fLarga(re.data.fecha_fin) + '. El reglamento la cierra 7 días antes de la Gala Anual del club, ' +
+        'donde se entregan los premios.';
+    }
+
+    var rc = await sb.from('liga_clasificacion_publica').select('*').order('posicion');
+    FILAS = rc.error ? [] : (rc.data || []);
+    if (rc.error) console.warn('[Apolana] clasificación de la liga:', rc.error.message);
+
+    $('c-part').textContent = FILAS.length;
+    $('c-pruebas').textContent = FILAS.reduce(function (s, f) { return s + (f.pruebas || 0); }, 0);
+    $('c-fin').textContent = FILAS.filter(function (f) { return f.finisher; }).length;
+
+    pintar();
+
+    var rb = await sb.from('liga_baremo_publico').select('*').order('orden');
+    pintarBaremo(rb.error ? [] : (rb.data || []));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arranque);
+  else arranque();
+})();
+</script>
+
+</body>
+</html>
