@@ -82,7 +82,7 @@ body.pista-viva .adm-top { background: #22303D; }
     --f-linea: var(--linea);
     --f-txt: var(--navy);
     --f-sub: var(--texto-suave);
-    --f-ambar: #B96F09;
+    --f-ambar: #8A5307;   /* el ámbar de MARCA no llega a 4,5:1 sobre crema; el de TEXTO sí */
     --f-ambar-fondo: var(--ambar-fondo);
     --f-ambar-borde: var(--ambar-borde);
     --f-ambar-txt: #8A5307;
@@ -99,7 +99,7 @@ body.pista-viva .adm-top { background: #22303D; }
   text-transform: uppercase; color: var(--f-txt); margin: 0; }
 .p-cuerpo { flex: 1; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px; }
 /* hueco para que la barra de abajo no tape la última fila */
-.p-movil .p-cuerpo { padding-bottom: 104px; }
+.p-movil .p-cuerpo { padding-bottom: calc(136px + env(safe-area-inset-bottom)); }
 
 /* buscador */
 .p-buscar { display: flex; align-items: center; gap: 12px; background: var(--f-caja);
@@ -276,7 +276,7 @@ body.pista-viva .adm-top { background: #22303D; }
 .pt--nada { background: #F1EADC; }
 .pt--sin { border: 2px dashed #DCD3C1; }
 .rej-mes { font-family: var(--fuente-dato); font-size: 15px; color: var(--navy); text-align: right; }
-.rej-mes.baja { color: #B96F09; }
+.rej-mes.baja { color: var(--f-ambar); }
 .rej-mes.texto { font-family: var(--fuente-texto); color: var(--texto-suave); }
 .rej-pie { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-top: 10px; }
 .rej-pie .l { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--texto); }
@@ -434,7 +434,6 @@ window.APOLANA_ADMIN.listo(function (sb) {
   var GRUPOS = [], GMAP = {}, HOR = {}, ATLETAS = [], AMAP = {}, PERSONAS = {}, YO = '';
   /* ASIS[atleta_id][fecha] = true/false. Es la copia de lo que hay GUARDADO. */
   var ASIS = {};
-  var RANGO = { desde: '', hasta: '' };     /* qué trozo de asistencia tenemos cargado */
   var AUSENCIAS = {};                        /* AUSENCIAS[atleta_id] = aviso de la familia de ESE día */
   var NOTAS_HOY = {};                        /* notas del día de la lista, por atleta */
   var NOTAS_AT = [];                         /* notas del atleta abierto en la ficha */
@@ -580,7 +579,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
      de la ficha y la rejilla de la semana. */
   async function cargarAsistencia(gid, desde, hasta) {
     var ids = atletasDeGrupo(gid).map(function (a) { return a.id; });
-    if (!ids.length) { RANGO = { desde: desde, hasta: hasta }; return true; }
+    if (!ids.length) return true;
     var r = await sb.from('asistencia').select('atleta_id,fecha,presente')
       .in('atleta_id', ids).gte('fecha', desde).lte('fecha', hasta);
     if (r.error) return false;
@@ -590,7 +589,6 @@ window.APOLANA_ADMIN.listo(function (sb) {
       Object.keys(ASIS[id]).forEach(function (f) { if (f >= desde && f <= hasta) delete ASIS[id][f]; });
     });
     (r.data || []).forEach(function (x) { (ASIS[x.atleta_id] = ASIS[x.atleta_id] || {})[x.fecha] = !!x.presente; });
-    RANGO = { desde: desde, hasta: hasta };
     return true;
   }
 
@@ -631,16 +629,24 @@ window.APOLANA_ADMIN.listo(function (sb) {
      guarda. Guardar en vez de descartar porque a pie de pista el error caro es
      perder la lista, nunca guardarla de más: una marca de sobra se corrige en
      dos toques, una lista perdida hay que repetirla entera. */
+  var PREGUNTA = null;     /* la pregunta que ya está en pantalla */
   async function puedoSalirDeLaLista() {
     if (!LST.sucio) return true;
-    var ok = window.apoConfirm ? await window.apoConfirm({
-      titulo: 'Tienes marcas sin guardar',
-      texto: 'Has marcado a alguien y todavía no se ha guardado. Si sales ahora se perdería.',
-      confirmar: 'Guardar y salir',
-      cancelar: 'Seguir en la lista'
-    }) : true;
-    if (!ok) return false;
-    return await guardarLista();
+    /* Si ya hay una pregunta abierta se espera a ESA. Dos ventanas encima de
+       la otra dejan la pantalla bloqueada, y aquí eso significa un entrenador
+       de pie sin poder pasar lista. */
+    if (PREGUNTA) return await PREGUNTA;
+    PREGUNTA = (async function () {
+      var ok = window.apoConfirm ? await window.apoConfirm({
+        titulo: 'Tienes marcas sin guardar',
+        texto: 'Has marcado a alguien y todavía no se ha guardado. Si sales ahora se perdería.',
+        confirmar: 'Guardar y salir',
+        cancelar: 'Seguir en la lista'
+      }) : true;
+      if (!ok) return false;
+      return await guardarLista();
+    })();
+    try { return await PREGUNTA; } finally { PREGUNTA = null; }
   }
 
   /* Última red: si se cierra la pestaña o se sale del panel con marcas sin
@@ -874,15 +880,6 @@ window.APOLANA_ADMIN.listo(function (sb) {
   /* ============================================================
      6 · MÓVIL · pasar lista
      ============================================================ */
-  function textoEstadoGrupo(gid) {
-    var c = cuentaGrupo(gid);
-    var hora = horaDelDia(gid, dowDe(LST.fecha || fechaHoy()));
-    var estado = c.marcados === 0 ? 'sin empezar'
-               : c.marcados < c.total ? c.marcados + ' marcados de ' + c.total
-               : 'lista pasada';
-    return (hora ? hora + ' · ' : '') + estado;
-  }
-
   function pintarMovil() {
     if (PANTALLA === 'ficha' && FICHA) { pintarFichaMovil(); return; }
 
@@ -1220,6 +1217,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
       '<button type="button" id="e-sig" aria-label="Semana siguiente">›</button></span></div>';
 
     if (CARGA_ERROR) h += '<p class="p-error">' + esc(CARGA_ERROR) + '</p>';
+    if (LST.error) h += '<p class="p-error">' + esc(LST.error) + '</p>';
 
     if (!g) {
       h += '<p class="p-vacio">Elige arriba el grupo que quieras repasar.</p></div>';

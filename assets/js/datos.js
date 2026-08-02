@@ -50,8 +50,11 @@ window.APOLANA = {
     { nombre: 'Atletismo pista',  desc: 'Federado, técnica y competición en pista, cross y ruta', dias: 'L · X · V', precio: '40-55€/mes', url: '/competicion/' },
     { nombre: 'Running',          desc: 'Madre Tierra para empezar, La Tribu para apretar',        dias: 'M · J · S', precio: '40-60€/mes', url: '/running/' },
     { nombre: 'Natación adultos', desc: 'Técnica y series en la piscina del Monte Tossal',          dias: 'L a V',     precio: '35-55€/mes', url: '/natacion/' },
-    { nombre: 'Triatlón',         desc: 'Natación, bici y carrera con calendario propio',           dias: 'Según bloque', precio: 'Consultar', url: '/triatlon/' },
-    { nombre: 'Montaña',          desc: 'Trail y senderismo por las sierras de Alicante',           dias: 'Fines de semana', precio: 'Consultar', url: '/montana/' },
+    /* Estas dos no tienen cuota de entrenamiento porque no tienen entrenador
+       asignado. Se escribe el motivo, nunca «Consultar»: «Consultar» parece un
+       descuido y obliga a llamar para algo que se explica en una línea. */
+    { nombre: 'Triatlón',         desc: 'Natación, bici y carrera; ahora sin entrenador de sección', dias: 'Según bloque', precio: 'Sin cuota · solo la de socio', url: '/triatlon/' },
+    { nombre: 'Montaña',          desc: 'Trail y senderismo por las sierras de Alicante',           dias: 'Fines de semana', precio: 'Sin cuota · solo la de socio', url: '/montana/' },
   ],
 
   /* --- Entrenos de hoy (home + calendario + app) --- */

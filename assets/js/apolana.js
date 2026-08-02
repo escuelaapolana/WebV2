@@ -288,7 +288,11 @@ function pintarColaboradores(lista) {
     '.cierre-acc{display:flex;gap:12px;flex-wrap:wrap}',
     '.cierre .btn--claro{background:transparent;color:#fff;border-color:rgba(255,255,255,0.45);font-weight:600}',
     '.cierre .btn--claro:hover{background:rgba(255,255,255,0.14);color:#fff}',
-    '@media (max-width:700px){.cierre .contenedor{padding-block:26px}.cierre-tit{font-size:28px}}',
+    /* En móvil los dos botones no caben en fila: van apilados y a ancho
+       completo, que es como se pulsa con una mano. */
+    '@media (max-width:700px){.cierre .contenedor{padding-block:26px}.cierre-tit{font-size:28px}',
+      '.cierre-txt{min-width:0}',
+      '.cierre-acc{width:100%;flex-direction:column;gap:9px}.cierre-acc .btn{width:100%}}',
 
     /* ============ EL PIE ES LA BANDA ============
        Navy a sangre y sin radio, pegado al cierre de arriba. Nada de
