@@ -171,6 +171,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var MIOS = [], MIOS_VAL = {}, HIST = {}, FALLO_MIOS = false, FORM = null;
   var TOPE_MIOS = 3;
   var RANKING = false;   /* la clasificación viene apagada: la enciende el club */
+  /* El perfil entre socios está construido pero apagado (068). Mientras lo
+     esté, no se enseña la lista del club: decirle a alguien «todavía no se
+     deja ver nadie» suena a que nadie ha querido, cuando lo que pasa es que
+     no está encendido. Y el interruptor de verdad vive en «Mi perfil». */
+  var PERFIL_SOCIOS = false;
   var FALLO = false;     /* si lo importante no ha llegado, se dice y se ofrece salida */
 
   /* LAS FOTOS · vienen de «Mi perfil», que las guarda en un almacén
@@ -253,12 +258,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .select('atleta_id,participa,autoriza_parental_en,puntos').eq('atleta_id', id).maybeSingle();
     PJ = (rj && !rj.error && rj.data) ? rj.data : null;
 
-    /* La clasificación solo se pide si el club la tiene encendida. */
-    var rk = await sb.from('juego_ajustes').select('ranking_publico').eq('id', 1).maybeSingle();
-    RANKING = !!(rk && !rk.error && rk.data && rk.data.ranking_publico);
+    /* La clasificación y el perfil entre socios solo se piden si el club los
+       tiene encendidos. Los dos nacen apagados. */
+    var rk = await sb.from('juego_ajustes').select('ranking_publico,perfil_socios').eq('id', 1).maybeSingle();
+    RANKING       = !!(rk && !rk.error && rk.data && rk.data.ranking_publico);
+    PERFIL_SOCIOS = !!(rk && !rk.error && rk.data && rk.data.perfil_socios);
     TABLA = RANKING ? await cargarTabla() : [];
 
-    MIEMBROS = await cargarMiembros();
+    MIEMBROS = PERFIL_SOCIOS ? await cargarMiembros() : [];
     await cargarMios();
 
     await firmarFotos(MIEMBROS.map(function(x){ return x.foto_ruta; })
@@ -893,6 +900,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function pintarBuscador(){
+    /* Apagado = no existe. Ni lista, ni estado vacío, ni explicación. */
+    if(!PERFIL_SOCIOS) return '';
     var h = rotulo('Gente del club');
     if(!MIEMBROS.length){
       return h + APOLANA_UI.vacio('Todavía no se deja ver nadie',
@@ -924,42 +933,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      permiso familiar. Sus medallas las ven su familia y su
      entrenador, que es como no da problemas.
      ============================================================ */
+  /* UN SOLO INTERRUPTOR, Y NO ESTÁ AQUÍ.
+     Antes había dos para lo mismo —este y el de «Mi perfil»—, y había que
+     encender los dos para salir: se encendía uno y no pasaba nada, sin
+     entender por qué. Desde 068 manda uno solo y se decide en «Mi perfil»,
+     junto a la foto y el nombre, que es donde la gente ya va. Aquí queda la
+     explicación y el camino, nada más. */
   function pintarAjustes(){
-    var menor = esMenor(ATLETA.fecha_nacimiento);
-    var participa = !!(PJ && PJ.participa);
     var h = rotulo('Quién puede verte');
-
-    if(menor){
-      h += '<div class="rt-ajustes"><p class="intro"><b>Tus retos son tuyos y los ves siempre.</b> Lo que no hay ' +
-        'es ficha abierta al resto del club: mientras seas menor de edad, tu nombre y tu foto no salen en ninguna ' +
-        'lista de socios. Tus medallas y tus retos los ven tu familia y tu entrenador.</p>' +
-        (participa
-          ? '<button type="button" class="rt-btn-borde" id="aj-quitar">Quitarme de la lista del club</button>'
-          : '') +
-        '<div class="rt-sep"></div>' +
-        '<a class="rt-enlace" href="../perfil/"><span><b>Tu foto y tu nombre</b>' +
-          'Se cambian en Mi perfil, junto con el resto de tus datos.</span>' +
-          '<span class="fl" aria-hidden="true">' + ico('entrar', 20) + '</span></a>' +
-        '</div>';
-      return h;
-    }
-
-    var visible = participa;
-    h += '<div class="rt-ajustes">' +
-      '<label class="sw"><span class="txt"><b>Perfil visible para otros socios</b>' +
-        '<span>Ven tu nombre, tu rango y tus medallas. Nunca tus marcas, tus pagos ni tus datos.' +
-        (RANKING ? ' Y saldrías en la clasificación del club.' : '') + '</span></span>' +
-        '<input type="checkbox" id="aj-participa"' + (participa?' checked':'') + '><span class="palanca"></span></label>' +
-
-      (visible
-        ? '<a class="rt-btn-azul" href="?atleta=' + encodeURIComponent(ATLETA.id) + '">Ver cómo te ven ahora mismo</a>'
-        : '<p class="intro" style="margin-top:12px;">Ahora mismo no sales en la lista del club: nadie puede abrir ' +
-          'tu ficha.</p>') +
-
-      '<div class="rt-sep"></div>' +
-
-      '<a class="rt-enlace" href="../perfil/"><span><b>Tu foto y tu nombre</b>' +
-        'Se cambian en Mi perfil, junto con el resto de tus datos.</span>' +
+    h += '<div class="rt-ajustes"><p class="intro"><b>Tus retos son tuyos y los ves siempre.</b> ' +
+      'El perfil que otros socios pueden abrir está apagado: llegará más adelante.</p>' +
+      '<a class="rt-enlace" href="../perfil/"><span><b>Tu perfil entre socios</b>' +
+        'Se decide en Mi perfil, junto con tu foto y tu nombre.</span>' +
         '<span class="fl" aria-hidden="true">' + ico('entrar', 20) + '</span></a>' +
     '</div>';
     return h;
@@ -1173,13 +1158,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
     });
 
-    /* Un solo interruptor: se guarda al momento, sin botón de por medio. */
-    var sw = $('aj-participa');
-    if(sw) sw.addEventListener('change', function(){ guardarParticipa(this.checked, this); });
-
-    var quitar = $('aj-quitar');
-    if(quitar) quitar.addEventListener('click', function(){ guardarParticipa(false, null); });
-
     /* Ponerme un reto y cambiar uno que ya tengo. */
     ['mi-nuevo', 'mi-nuevo-vacio'].forEach(function(id){
       var b = $(id);
@@ -1198,28 +1176,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var lista = $('bs-lista');
       if(lista) lista.innerHTML = listaMiembros();
     });
-  }
-
-  async function guardarParticipa(quiere, chk){
-    if(chk) chk.disabled = true;
-    var r = await sb.from('perfil_juego')
-      .upsert({ atleta_id: ATLETA.id, participa: quiere }, { onConflict: 'atleta_id' })
-      .select('atleta_id,participa,autoriza_parental_en,puntos').maybeSingle();
-    if(chk) chk.disabled = false;
-    if(r.error){
-      if(chk) chk.checked = !quiere;
-      aviso('No hemos podido guardar el cambio', 'error', { detalle: 'Puede ser tu conexión.' });
-      return;
-    }
-    PJ = r.data || PJ;
-    aviso(quiere ? 'Hecho: ya puedes salir en la lista del club' : 'Hecho: has dejado de salir en la lista');
-
-    /* Lo que se deja ver cambia al momento: se vuelven a pedir las listas. */
-    if(RANKING) TABLA = await cargarTabla();
-    MIEMBROS = await cargarMiembros();
-    await firmarFotos(MIEMBROS.map(function(x){ return x.foto_ruta; })
-      .concat(TABLA.map(function(x){ return x.foto_ruta; })));
-    pintar();
   }
 
   /* ============================================================

@@ -689,11 +689,16 @@
       /* un cuadro de espera para que la transición se vea */
       ajustar();
       mirarTeclado(true);
-      /* un cuadro de espera para que la transición se vea */
-      requestAnimationFrame(function () {
+      /* un cuadro de espera para que la transición se vea. Con la pestaña
+         en segundo plano no hay cuadros, así que el reloj hace de red: la
+         hoja nunca se queda a medio abrir. */
+      var ensenar = function () {
+        if (!abierta) return;
         fondo.classList.add('ver');
         hoja.classList.add('ver');
-      });
+      };
+      requestAnimationFrame(ensenar);
+      setTimeout(ensenar, 40);
     }
     var primero = conFoco ? campo : hoja.querySelector('.cerrar');
     if (primero) { try { primero.focus({ preventScroll: true }); } catch (e) { primero.focus(); } }
