@@ -84,7 +84,7 @@
            font-size: 15px; vertical-align: top; }
   th { font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;
        color: var(--texto-suave); }
-  td .sub { display: block; font-size: 14px; color: var(--texto-suave); line-height: 1.4; }
+  td .sub { display: block; font-size: 14px; font-weight: 400; color: var(--texto-suave); line-height: 1.4; }
   .acciones-fila { display: flex; gap: 8px; flex-wrap: wrap; }
   td select { min-width: 150px; }
 
@@ -136,11 +136,11 @@
     <div class="panel">
       <div class="panel-cab">
         <div>
+          <!-- el recuento lo pone solo la piel del panel, al lado del título (kit 30h) -->
           <h2>Confirmar asistencia</h2>
           <p class="intro">Le pides «¿vas?» a una actividad del calendario y aquí ves quién va,
             quién no y quién falta por contestar. Los menores los confirma su familia.</p>
         </div>
-        <span class="cuenta" id="cuenta-cab"></span>
       </div>
       <div class="botonera" style="margin-top:0;">
         <button class="bot bot--azul" id="btn-nueva">Pedir confirmación</button>
@@ -169,11 +169,9 @@
       <div id="lista-avisos"></div>
 
       <div class="chips" id="lista-filtros" role="group" aria-label="Filtrar la lista"></div>
-      <div class="adm-buscador oculto" id="caja-buscador">
-        <input type="search" id="buscador" placeholder="Buscar un atleta" aria-label="Buscar un atleta">
-        <span class="adm-buscador-n" id="buscador-n"></span>
-      </div>
 
+      <!-- el buscador y el «Ver más» los pone sola la piel del panel a partir
+           de 30 y de 20 filas: aquí no se repiten -->
       <div class="adm-envoltorio">
         <table class="adm-tabla" id="tabla-lista">
           <thead><tr>
@@ -182,7 +180,6 @@
           <tbody></tbody>
         </table>
       </div>
-      <div class="adm-mas oculto" id="caja-mas"><button type="button" id="btn-mas">Ver más</button></div>
 
       <div class="botonera">
         <button class="bot bot--borde" id="btn-descargar">Descargar la lista</button>
@@ -288,7 +285,7 @@ APOLANA_ADMIN.listo(function (sb) {
   function pasado(iso) { if (!iso) return false; var d = new Date(iso); return !isNaN(d.getTime()) && d.getTime() <= Date.now(); }
 
   var PETICIONES = [], RESUMENES = {}, GRUPOS = [], LIBRES = { eventos: [], competiciones: [] };
-  var actual = null, FILAS = [], filtro = 'todos', busca = '', tope = 20;
+  var actual = null, FILAS = [], filtro = 'todos';
 
   function nombreActividad(p) {
     if (p.eventos) return p.eventos.titulo;
@@ -331,7 +328,6 @@ APOLANA_ADMIN.listo(function (sb) {
     PETICIONES = r.data || [];
 
     if (!PETICIONES.length) {
-      $('cuenta-cab').textContent = '';
       tb.innerHTML = ADM.filaVacia(6,
         'Todavía no le has pedido confirmación a nadie',
         'Elige una carrera, un desplazamiento o un entreno especial del calendario y pregúntale al club si va. ' +
@@ -374,9 +370,6 @@ APOLANA_ADMIN.listo(function (sb) {
           '<button class="bot bot--texto bot--sm" data-borrar="' + p.id + '">Quitar</button>' +
         '</td></tr>';
     }).join('');
-
-    var pidiendo = PETICIONES.filter(function (p) { return p.abierta && !pasado(p.fecha_limite); }).length;
-    $('cuenta-cab').textContent = plural(pidiendo, 'actividad preguntando', 'actividades preguntando');
 
     /* Los recuentos, después de pintar: la tabla no espera a las cifras. */
     for (var i = 0; i < PETICIONES.length; i++) {
@@ -572,9 +565,8 @@ APOLANA_ADMIN.listo(function (sb) {
   async function verLista(id) {
     actual = PETICIONES.filter(function (x) { return x.id === id; })[0] || null;
     if (!actual) return;
-    filtro = 'todos'; busca = ''; tope = 20;
+    filtro = 'todos';
     $('panel-lista').classList.remove('oculto');
-    $('buscador').value = '';
     $('texto-lista').classList.add('oculto');
     $('lista-titulo').textContent = 'Quién va · ' + nombreActividad(actual);
     $('lista-sub').textContent = fechaCorta(cuandoActividad(actual)) +
@@ -636,20 +628,14 @@ APOLANA_ADMIN.listo(function (sb) {
     }).join('');
     if (filtro !== 'todos') h += '<button type="button" class="bot bot--texto" data-filtro="todos" style="border:0;background:none">Quitar filtros</button>';
     $('lista-filtros').innerHTML = h;
-    $('caja-buscador').classList.toggle('oculto', FILAS.length < 30);
   }
 
   function filtradas() {
-    var t = busca.trim().toLowerCase();
     return FILAS.filter(function (f) {
-      if (filtro === 'falta' && f.respuesta) return false;
-      if (filtro === 'espera' && !(f.respuesta === 'voy' && f.en_espera)) return false;
-      if (filtro !== 'todos' && filtro !== 'falta' && filtro !== 'espera' && f.respuesta !== filtro) return false;
-      if (t) {
-        var nom = ((f.nombre || '') + ' ' + (f.apellidos || '') + ' ' + (f.grupo || '')).toLowerCase();
-        if (nom.indexOf(t) < 0) return false;
-      }
-      return true;
+      if (filtro === 'falta') return !f.respuesta;
+      if (filtro === 'espera') return f.respuesta === 'voy' && f.en_espera;
+      if (filtro === 'todos') return true;
+      return f.respuesta === filtro;
     });
   }
 
@@ -666,7 +652,6 @@ APOLANA_ADMIN.listo(function (sb) {
   function pintarFilas() {
     var tb = $('tabla-lista').querySelector('tbody');
     var lista = filtradas();
-    $('buscador-n').textContent = plural(lista.length, 'atleta', 'atletas');
 
     if (!lista.length) {
       tb.innerHTML = ADM.filaVacia(6,
@@ -675,12 +660,10 @@ APOLANA_ADMIN.listo(function (sb) {
           ? 'Con este filtro no queda ningún atleta. Quita el filtro para ver la lista entera.'
           : 'Esta confirmación se le pregunta ' + publicoTexto(actual) + ', y ahí no hay ninguna ficha de atleta. Cambia a quién se pregunta desde «Editar».'),
         (FILAS.length ? '<button type="button" class="bot bot--borde" data-filtro="todos">Quitar filtros</button>' : ''));
-      $('caja-mas').classList.add('oculto');
       return;
     }
 
-    var visibles = lista.slice(0, tope);
-    tb.innerHTML = visibles.map(function (f) {
+    tb.innerHTML = lista.map(function (f) {
       var nombre = ((f.nombre || '') + ' ' + (f.apellidos || '')).trim();
       var quien = f.respondido_por ? esc(f.respondido_por) : '';
       var cuando = f.respondido_en ? fechaCorta(f.respondido_en) : '';
@@ -699,26 +682,17 @@ APOLANA_ADMIN.listo(function (sb) {
           'aria-label="Apuntar la respuesta de ' + esc(nombre) + '">' + opciones + '</select></td>' +
       '</tr>';
     }).join('');
-
-    var quedan = lista.length - visibles.length;
-    $('caja-mas').classList.toggle('oculto', quedan <= 0);
-    if (quedan > 0) $('btn-mas').textContent = 'Ver ' + plural(Math.min(quedan, 20), 'más', 'más');
   }
 
+  function cambiarFiltro(f) { filtro = f; pintarFiltros(); pintarFilas(); }
   $('lista-filtros').addEventListener('click', function (e) {
     var f = e.target.getAttribute('data-filtro');
-    if (!f) return;
-    filtro = f; tope = 20;
-    pintarFiltros(); pintarFilas();
+    if (f) cambiarFiltro(f);
   });
   $('tabla-lista').addEventListener('click', function (e) {
     var f = e.target.getAttribute('data-filtro');
-    if (!f) return;
-    filtro = f; tope = 20;
-    pintarFiltros(); pintarFilas();
+    if (f) cambiarFiltro(f);
   });
-  $('btn-mas').addEventListener('click', function () { tope += 20; pintarFilas(); });
-  $('buscador').addEventListener('input', function () { busca = this.value; tope = 20; pintarFilas(); });
 
   /* Apuntar la respuesta que ha llegado por otro sitio (una llamada, un
      WhatsApp). Pasa por la misma puerta que la app: reparte plaza o

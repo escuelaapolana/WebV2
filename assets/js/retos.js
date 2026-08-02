@@ -127,8 +127,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(d === 99999) return '';
     if(d < 0) return 'ya se ha cerrado';
     if(d === 0) return 'último día';
-    var cola = r.periodo === 'mes' ? ' de mes' : (r.periodo === 'semana' ? ' de semana' : '');
-    return d === 1 ? ('queda 1 día' + cola) : ('quedan ' + d + ' días' + cola);
+    if(d === 1) return 'queda 1 día';
+    if(r.periodo === 'mes') return 'quedan ' + d + ' de mes';
+    if(r.periodo === 'semana') return 'quedan ' + d + ' de semana';
+    return 'quedan ' + d + ' días';
   }
 
   /* ============================================================
@@ -389,11 +391,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         'se sigue apuntando y cuenta igual.',
         APOLANA_UI.boton('Ver el calendario del club', '../../calendario/'));
     }
-    /* El primero lleva borde ámbar cuando de verdad le falta poco: está
-       empezado y todavía no ha caído. Eso lo convierte en un plan. */
+    /* El primero lleva borde ámbar cuando de verdad le falta poco: va por
+       la mitad o más y todavía no ha caído. Eso lo convierte en un plan.
+       Si nadie está cerca no se destaca ninguno: sería mentir. */
     var p0 = abiertos[0];
     var v0 = Number(PROGRESO[p0.id]||0), o0 = Number(p0.objetivo||0);
-    var destacar = v0 > 0 && o0 > 0 && v0 < o0;
+    var destacar = v0 > 0 && o0 > 0 && v0 < o0 && restanteDe(p0) <= 0.5;
     return rotulo(destacar ? 'Te falta poco' : 'Tus retos', abiertos.length + (abiertos.length===1?' abierto':' abiertos')) +
       abiertos.map(function(r, i){ return tarjetaReto(r, destacar && i === 0); }).join('');
   }

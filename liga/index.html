@@ -60,6 +60,41 @@
   .lg-fallo button { background:#fff; border:1px solid #E0CDA8; color:#6B5227; }
   .lg-arranque a { background:#fff; border:1px solid var(--linea-borde); color: var(--navy); }
 
+  /* ---- El podio, fuera de la tabla ----
+     Mismo patrón que /club/ranking/, para que las pantallas de clasificación
+     del club se lean todas igual: tres tarjetas, la primera navy con el
+     número en ámbar, sin dorados ni medallas, y la tabla desde el 4º. */
+  :root { --ambar-sobre-navy: #F0B968; }
+  .lg-podio { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:14px; margin-bottom:22px; }
+  @media (max-width: 760px) { .lg-podio { grid-template-columns:1fr; } }
+  .lg-pod {
+    border:1px solid var(--linea-marcada); border-radius:14px; background:#fff;
+    padding:18px; display:flex; flex-direction:column; gap:10px; min-width:0;
+  }
+  .lg-pod--1 { background: var(--navy); border-color: var(--navy); }
+  .lg-pod .puesto {
+    font-family: var(--fuente-dato); font-weight:700; font-size:30px; line-height:1;
+    color: var(--texto-suave); font-variant-numeric: tabular-nums;
+  }
+  .lg-pod--1 .puesto { color: var(--ambar-sobre-navy); }
+  .lg-pod .quien {
+    font-family: var(--fuente-titulo); font-weight:700; text-transform:uppercase;
+    font-size:21px; line-height:1.05; color: var(--navy);
+    overflow-wrap: break-word; hyphens: auto;
+  }
+  .lg-pod--1 .quien { color:#fff; }
+  .lg-pod .marca {
+    font-family: var(--fuente-dato); font-weight:700; font-size: clamp(26px, 4.4vw, 34px);
+    line-height:1; color: var(--navy); font-variant-numeric: tabular-nums;
+  }
+  .lg-pod--1 .marca { color:#fff; }
+  .lg-pod .marca .uni {
+    font-family: var(--fuente-texto); font-weight:600; letter-spacing:0;
+    font-size:0.52em; margin-left:5px;
+  }
+  .lg-pod .meta { font-size:13px; line-height:1.45; color: var(--texto-suave); }
+  .lg-pod--1 .meta { color:#B9C6D4; }
+
   /* ---- Pestañas ---- */
   .lg-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
   .lg-tabs button {
@@ -189,6 +224,9 @@
   <section class="seccion">
     <div class="contenedor">
       <h2 class="titulo titulo--grande">Clasificación</h2>
+      <!-- El podio sale de la tabla: tres tarjetas, la primera en navy con el
+           número en ámbar. Sin dorados ni medallas. La tabla empieza en el 4º. -->
+      <div class="lg-podio" id="lg-podio" hidden></div>
       <div class="lg-tabs" id="lg-tabs" role="group" aria-label="Ver la clasificación">
         <button type="button" data-modo="general"    aria-pressed="true">General</button>
         <button type="button" data-modo="disciplina" aria-pressed="false">Por disciplina</button>
@@ -380,17 +418,42 @@
     caja.querySelector('button').textContent = 'Ver más · quedan ' + (total - mostradas);
   }
 
+  /* El podio se saca de la tabla: son los tres primeros de la vista general,
+     y solo cuando no hay filtro ni búsqueda (si no, «podio» no significaría
+     nada). La tabla sigue debajo empezando por el cuarto. */
+  var PODIO = [];
+  function pintarPodio(base) {
+    var caja = $('lg-podio');
+    if (!caja) return;
+    PODIO = [];
+    if (modo !== 'general' || busca || base.length < 3) { caja.hidden = true; caja.innerHTML = ''; return; }
+    PODIO = base.slice(0, 3);
+    caja.hidden = false;
+    caja.innerHTML = PODIO.map(function (f, i) {
+      var meta = [f.categoria || ''];
+      if (f.pruebas) meta.push(f.pruebas + (f.pruebas === 1 ? ' prueba' : ' pruebas'));
+      if (f.finisher) meta.push('camiseta finisher');
+      return '<div class="lg-pod lg-pod--' + (i + 1) + '">' +
+        '<span class="puesto">' + (i + 1) + '</span>' +
+        '<span class="quien">' + esc(f.nombre) + '</span>' +
+        '<span class="marca">' + f.total + '<span class="uni">puntos</span></span>' +
+        '<span class="meta">' + esc(meta.filter(Boolean).join(' · ')) + '</span></div>';
+    }).join('');
+  }
+
   function pintarFilas() {
     var tb = $('lg-tabla').querySelector('tbody');
     $('lg-buscar').hidden = FILAS.length < 30;
     if (!FILAS.length) {
       $('lg-mas').hidden = true;
+      $('lg-podio').hidden = true;
       tb.innerHTML = '<tr><td colspan="12"><div class="lg-vacio">La clasificación todavía está vacía: en cuanto se validen las primeras pruebas aparecerá aquí.</div></td></tr>';
       return;
     }
     var ajustes = hayAjustes();
 
     if (modo === 'disciplina') {
+      pintarPodio([]);
       var filas = filtra(FILAS.filter(function (f) { return f[sub] > 0; }))
                        .sort(function (a, b) { return b[sub] - a[sub] || a.nombre.localeCompare(b.nombre, 'es'); });
       var pos = 0, anterior = null, mismo = 0;
@@ -410,8 +473,14 @@
 
     var base = filtra(modo === 'categoria' ? FILAS.filter(function (f) { return f.categoria === sub; }) : FILAS.slice());
     base.sort(function (a, b) { return b.total - a.total || b.pruebas - a.pruebas || a.nombre.localeCompare(b.nombre, 'es'); });
+    pintarPodio(base);
+    /* Si hay podio, la tabla arranca en el cuarto: los tres primeros ya están
+       arriba y repetirlos resta fuerza a las tarjetas. */
+    var desde = PODIO.length ? PODIO.length : 0;
     var p = 0, ant = null, k = 0;
-    tb.innerHTML = base.slice(0, visibles).map(function (f) {
+    /* La numeración sigue contando desde el 1 aunque se salten los del podio. */
+    base.slice(0, desde).forEach(function (f) { k++; if (f.total !== ant) { p = k; ant = f.total; } });
+    tb.innerHTML = base.slice(desde, desde + visibles).map(function (f) {
       k++; if (f.total !== ant) { p = k; ant = f.total; }
       return '<tr class="podio-' + p + '">' +
         '<td class="pos">' + p + '</td>' +
@@ -427,7 +496,7 @@
     }).join('') || '<tr><td colspan="12"><div class="lg-vacio">' +
       (busca ? 'Nadie con ese nombre en esta vista.' : 'Todavía no hay nadie en esta categoría.') +
       '</div></td></tr>';
-    pintarMas(base.length, Math.min(visibles, base.length));
+    pintarMas(base.length - desde, Math.min(visibles, base.length - desde));
   }
 
   $('lg-mas').querySelector('button').addEventListener('click', function () {
