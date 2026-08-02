@@ -210,24 +210,42 @@ document.addEventListener('DOMContentLoaded', async function () {
   // En las páginas del portal ya hay barra propia: no hace falta el botón.
   if (/\/portal\//.test(location.pathname)) return;
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function montarVolver() {
     var b = document.createElement('button');
     b.type = 'button';
     b.setAttribute('aria-label', 'Volver a mi perfil');
     b.innerHTML = '<span aria-hidden="true">←</span> Volver a mi perfil';
+    /* Barra propia arriba del todo: ocupa su sitio y no tapa el aviso ni la
+       cabecera (antes era un botón flotante que se comía lo de detrás). */
+    var barra = document.createElement('div');
+    barra.style.cssText = [
+      'position:fixed', 'z-index:9500', 'top:0', 'left:0', 'right:0',
+      'display:flex', 'align-items:center',
+      'background:#2E4256',
+      'padding:calc(6px + env(safe-area-inset-top)) 12px 6px',
+      'box-shadow:0 2px 10px rgba(46,66,86,.22)'
+    ].join(';');
     b.style.cssText = [
-      'position:fixed', 'z-index:9500',
-      'top:calc(10px + env(safe-area-inset-top))', 'left:12px',
       'display:inline-flex', 'align-items:center', 'gap:6px',
-      'background:#2E4256', 'color:#fff', 'border:0', 'cursor:pointer',
+      'background:transparent', 'color:#fff', 'border:0', 'cursor:pointer',
       'font-family:inherit', 'font-size:14px', 'font-weight:600',
-      'padding:9px 15px', 'border-radius:999px',
-      'box-shadow:0 4px 14px rgba(46,66,86,.28)'
+      'padding:8px 6px', 'min-height:36px'
     ].join(';');
     b.addEventListener('click', function () {
       /* Directo al portal (tu perfil), no un "atrás" página a página. */
       location.assign(base + 'portal/');
     });
-    document.body.appendChild(b);
-  });
+    barra.appendChild(b);
+    document.body.appendChild(barra);
+    /* Se aparta el contenido justo lo que mide la barra. */
+    function hueco() {
+      var h = barra.getBoundingClientRect().height;
+      document.body.style.paddingTop = h + 'px';
+    }
+    hueco();
+    window.addEventListener('resize', hueco);
+  }
+  /* Si la página ya está montada (el script llegó tarde), se pinta ya. */
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montarVolver);
+  else montarVolver();
 })();
