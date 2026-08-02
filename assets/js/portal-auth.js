@@ -316,8 +316,10 @@
       'font-size:15px;font-weight:600;padding:11px 22px;border-radius:999px;border:1px solid #C9C0AE;background:#fff;' +
       'color:var(--navy,#2E4256);cursor:pointer;min-height:44px}' +
     '.apx-btn:hover{border-color:#C9D9E7}' +
-    '.apx-btn.apx-ok{background:var(--azul,#3B85C0);border-color:var(--azul,#3B85C0);color:#fff}' +
-    '.apx-btn.apx-ok:hover{background:var(--azul-oscuro,#2F6FA8)}' +
+    '.apx-btn.apx-ok{background:var(--azul,#2F6FA8);border-color:var(--azul,#2F6FA8);color:#fff}' +
+    /* el hover tiene que ser MÁS oscuro que el botón: --azul-oscuro vale
+       ahora lo mismo que --azul, así que el hover no se notaría */
+    '.apx-btn.apx-ok:hover{background:var(--azul-hover,#1E4E78)}' +
     '.apx-btn.apx-danger{background:#B0563A;border-color:#B0563A;color:#fff}' +
     '.apx-btn.apx-danger:hover{background:#8f4229}' +
     '@media(max-width:420px){.apx-dlg-btns{flex-direction:column-reverse}.apx-btn{width:100%}}';
