@@ -200,13 +200,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(/^(https?:|data:)/.test(v)) return v;
     return FOTOS[v] || '';
   }
-  function esMenor(fnac){
-    if(!fnac) return true;                       /* sin fecha, se protege */
-    var f = dia(fnac), limite = new Date();
-    limite.setFullYear(limite.getFullYear()-18);
-    return f > limite;
-  }
-
   /* ============================================================
      CARGA
      ============================================================ */
@@ -543,17 +536,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function pintarMios(){
+    var enMarcha = MIOS.filter(function(r){ return !logradoMio(r) && !cerradoMio(r); })
+                       .sort(function(a,b){ return restanteMio(a) - restanteMio(b); });
+    var pasados  = MIOS.filter(function(r){ return !logradoMio(r) && cerradoMio(r); });
+
+    /* Con tres en marcha el botón se apaga: mejor eso que dejar rellenar
+       una pantalla entera para decir que no al final. El porqué va escrito
+       debajo de la lista. */
     var h = '<div class="rt-rot rt-rot--boton"><b>Míos</b>' +
-            '<button type="button" class="rt-nuevo" id="mi-nuevo">+ Nuevo</button></div>';
+            '<button type="button" class="rt-nuevo" id="mi-nuevo"' +
+            (enMarcha.length >= TOPE_MIOS ? ' disabled' : '') + '>+ Nuevo</button></div>';
 
     if(FALLO_MIOS){
       return h + APOLANA_UI.error('No hemos podido cargar tus retos',
         'Puede ser tu conexión. Los que te hayas puesto siguen guardados: no se pierde nada.');
     }
-
-    var enMarcha = MIOS.filter(function(r){ return !logradoMio(r) && !cerradoMio(r); })
-                       .sort(function(a,b){ return restanteMio(a) - restanteMio(b); });
-    var pasados  = MIOS.filter(function(r){ return !logradoMio(r) && cerradoMio(r); });
 
     if(!enMarcha.length && !pasados.length){
       return h + APOLANA_UI.vacio('Todavía no te has puesto ninguno',
@@ -604,16 +601,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ============================================================ */
   function propuesta(metrica, periodo){
     var d = hist(metrica, periodo);
-    var suelo = MI_DEFECTO[metrica][periodo];
-    if(!d) return suelo;
-    var ant = Number(d.anterior || 0), mej = Number(d.mejor || 0);
-    if(ant <= 0 && mej <= 0) return suelo;
-    /* Un poco por encima de la última vez, pero sin pedirte más de lo
-       que ya has hecho alguna vez: así se pone un objetivo que se cumple. */
-    var p = Math.round(ant > 0 ? ant * 1.25 : mej * 0.9);
-    if(mej > 0) p = Math.min(p, Math.max(mej, ant + 1));
-    p = Math.max(p, ant + 1, 1);
-    if(metrica === 'metros_natacion') p = Math.max(100, Math.round(p / 100) * 100);
+    if(!d) return MI_DEFECTO[metrica][periodo];
+    var ant = Number(d.anterior || 0), mej = Number(d.mejor || 0), act = Number(d.actual || 0);
+    var p;
+    if(ant > 0 || mej > 0){
+      /* Un poco por encima de la última vez, pero sin pedirte más de lo
+         que ya has hecho alguna vez: así se pone un objetivo que se cumple. */
+      p = Math.round(ant > 0 ? ant * 1.25 : mej * 0.9);
+      if(mej > 0) p = Math.min(p, Math.max(mej, ant + 1));
+    } else if(act > 0){
+      p = Math.round(act * 1.25);              /* sin historial, pero ya llevas algo */
+    } else {
+      p = MI_DEFECTO[metrica][periodo];        /* nada de nada: un número por el que empezar */
+    }
+    /* Y nunca por debajo de lo que ya llevas hecho: un reto que nace
+       cumplido no es un reto. */
+    p = Math.max(p, ant + 1, act + 1, 1);
+    if(metrica === 'metros_natacion') p = Math.max(100, Math.ceil(p / 100) * 100);
     return p;
   }
 
@@ -769,11 +773,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       : await sb.from('retos_propios').update(fila).eq('id', FORM.id);
     btn.disabled = false;
     if(r.error){
-      /* El tope de tres lo pone la base de datos, y lo dice con estas
-         mismas palabras: se enseña tal cual en vez de inventar otro texto. */
+      /* El tope de tres lo pone la base de datos, y lo dice con estas mismas
+         palabras: se enseña tal cual en vez de inventar otro texto. Y sin
+         «Reintentar», que aquí no arreglaría nada: no es un fallo, es la regla. */
       var m = String(r.error.message || '');
-      aviso(/tres retos/.test(m) ? m : 'No hemos podido guardar el reto', 'error',
-        /tres retos/.test(m) ? null : { detalle: 'Puede ser tu conexión. Vuelve a intentarlo.' });
+      if(/tres retos/.test(m)) aviso(m, 'error', { accion: { texto: 'Entendido', fn: function(){} } });
+      else aviso('No hemos podido guardar el reto', 'error', { detalle: 'Puede ser tu conexión. Vuelve a intentarlo.' });
       return;
     }
     FORM = null;
