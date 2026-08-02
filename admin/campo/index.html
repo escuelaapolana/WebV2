@@ -129,6 +129,8 @@ body.pista-viva .adm-top { background: #22303D; }
 .g-pleg .n { font-family: var(--fuente-titulo); font-weight: 700; font-size: 20px; line-height: 1.05;
   text-transform: uppercase; color: var(--f-sub); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-pleg .e { margin-left: auto; font-size: 14px; color: var(--f-sub); white-space: nowrap; }
+/* queda trabajo ahí: en ámbar, como los recuentos del panel */
+.g-pleg .e.pend { color: var(--f-ambar); }
 .g-pleg .v { flex: 0 0 auto; width: 9px; height: 9px; border-right: 2px solid var(--f-sub);
   border-bottom: 2px solid var(--f-sub); transform: rotate(45deg) translate(-2px,-2px); }
 .g-pleg:hover .n, .g-pleg:hover .e { color: var(--f-txt); }
@@ -455,10 +457,30 @@ window.APOLANA_ADMIN.listo(function (sb) {
     return horariosDe(gid).some(function (h) { return h.dia_semana === dow; });
   }
   function dowDe(fechaISO) { var d = deISO(fechaISO).getDay(); return d === 0 ? 7 : d; }
-  function horaDelDia(gid, dow) {
+  function franjaDelDia(gid, dow) {
     var h = horariosDe(gid).filter(function (x) { return x.dia_semana === dow; })
       .sort(function (a, b) { return a.hora_inicio < b.hora_inicio ? -1 : 1; })[0];
-    return h ? hhmm(h.hora_inicio) : '';
+    if (!h) return null;
+    var ini = hhmm(h.hora_inicio);
+    return { ini: ini, fin: h.hora_fin ? hhmm(h.hora_fin) : masMinutos(ini, 90) };
+  }
+  function horaDelDia(gid, dow) { var f = franjaDelDia(gid, dow); return f ? f.ini : ''; }
+  function masMinutos(hm, min) {
+    var p = (hm || '00:00').split(':');
+    var t = Math.min((+p[0]) * 60 + (+p[1]) + min, 1439);
+    return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+  }
+  function ahoraHM() { var d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  /* ¿Ese entreno de hoy está por llegar, en marcha o ya pasado? Se dan 20
+     minutos de cortesía al final: la lista se suele pasar al terminar. */
+  var CORTESIA = 20;
+  function momentoDe(gid) {
+    var f = franjaDelDia(gid, dowDe(fechaHoy()));
+    if (!f) return null;
+    var ahora = ahoraHM();
+    if (ahora < f.ini) return 'antes';
+    if (ahora <= masMinutos(f.fin, CORTESIA)) return 'ahora';
+    return 'despues';
   }
   function gruposDeHoy() {
     var dow = dowDe(fechaHoy());
@@ -493,6 +515,57 @@ window.APOLANA_ADMIN.listo(function (sb) {
       var p = await sb.from('perfiles').select('id,nombre,apellidos');
       if (!p.error && p.data) p.data.forEach(function (x) { PERSONAS[x.id] = [x.nombre, x.apellidos].filter(Boolean).join(' '); });
     } catch (e) {}
+
+    /* La lista de HOY de todos los grupos que entrenan hoy. Hace falta antes
+       de pintar nada: es lo que permite decir en cada grupo plegado cuánto
+       lleva marcado, y sobre todo saber DÓNDE QUEDA TRABAJO para abrir ese y
+       no otro. */
+    try {
+      var ids = [];
+      gruposDeHoy().forEach(function (g) { atletasDeGrupo(g.id).forEach(function (a) { ids.push(a.id); }); });
+      if (ids.length) {
+        var r = await sb.from('asistencia').select('atleta_id,fecha,presente').in('atleta_id', ids).eq('fecha', fechaHoy());
+        if (!r.error && r.data) r.data.forEach(function (x) { (ASIS[x.atleta_id] = ASIS[x.atleta_id] || {})[x.fecha] = !!x.presente; });
+      }
+    } catch (e) {}
+  }
+
+  /* ============================================================
+     Qué grupo se abre solo
+     ------------------------------------------------------------
+     «Un solo grupo abierto, el que toca ahora». Pero cuando ya no
+     hay ninguno «ahora», la pregunta cambia: pasa a ser dónde
+     queda trabajo por hacer. Por orden:
+       1. el que está entrenando ahora mismo
+       2. si no, el siguiente que empieza hoy
+       3. si ya han pasado todos, el MÁS TEMPRANO que aún tenga
+          gente sin marcar — ahí es donde queda trabajo
+       4. si está todo pasado, ninguno: abrir un entreno terminado
+          no aporta nada y hace dudar de si falta algo
+     ============================================================ */
+  function grupoQueToca() {
+    var hoyG = gruposDeHoy().filter(function (g) { return atletasDeGrupo(g.id).length; });
+    if (!hoyG.length) return null;
+    var enMarcha = hoyG.filter(function (g) { return momentoDe(g.id) === 'ahora'; });
+    if (enMarcha.length) return enMarcha[0];
+    var porLlegar = hoyG.filter(function (g) { return momentoDe(g.id) === 'antes'; });
+    if (porLlegar.length) return porLlegar[0];
+    var pendientes = hoyG.filter(function (g) { return cuentaGrupo(g.id).sinMarcar > 0; });
+    if (pendientes.length) return pendientes[0];
+    return null;
+  }
+
+  /* Qué trozo de calendario hace falta tener cargado: el mes de la lista, el
+     mes de la semana que se esté mirando y la propia semana. De un tirón, para
+     que el recuento «7 / 8» cuente el mes entero y no solo lo que se vea. */
+  function primeroDelMes(f) { return (f || fechaHoy()).slice(0, 8) + '01'; }
+  function rangoNecesario() {
+    var f = LST.fecha || fechaHoy();
+    var sem = semanaDe(SEMANA);
+    var candidatos = [primeroDelMes(f), primeroDelMes(sem.hasta), sem.desde];
+    var desde = candidatos.sort()[0];
+    var hasta = [f, sem.hasta].sort().pop();
+    return { desde: desde, hasta: hasta };
   }
 
   /* Trae la asistencia YA GUARDADA de un grupo entre dos fechas y la deja en
@@ -635,24 +708,23 @@ window.APOLANA_ADMIN.listo(function (sb) {
   /* ============================================================
      3 · Abrir un grupo (y un día)
      ============================================================ */
+  /* Devuelve true solo si de verdad se ha cambiado de grupo o de día. Si el
+     entrenador dice «seguir en la lista», se queda TODO como estaba: ni se
+     suelta el grupo abierto ni se pierde una marca. */
   async function abrirGrupo(gid, fecha) {
-    if (gid === LST.grupo && (!fecha || fecha === LST.fecha)) return;
-    if (!(await puedoSalirDeLaLista())) return;
+    var f = fecha || fechaHoy();
+    if (gid === LST.grupo && f === LST.fecha) return true;
+    if (!(await puedoSalirDeLaLista())) return false;
     LST.grupo = gid;
-    LST.fecha = fecha || fechaHoy();
+    LST.fecha = f;
     LST.marcas = {}; LST.guardadas = {}; LST.sucio = false; LST.guardadoEn = ''; LST.error = '';
     AUSENCIAS = {}; NOTAS_HOY = {};
     pintar();
 
     var ids = atletasDeGrupo(gid).map(function (a) { return a.id; });
     if (ids.length) {
-      /* De golpe: el mes de la lista (para los recuentos) y la semana que se
-         esté mirando en escritorio. Una sola consulta. */
-      var d1 = LST.fecha.slice(0, 8) + '01';
-      var sem = semanaDe(SEMANA);
-      var desde = d1 < sem.desde ? d1 : sem.desde;
-      var hasta = LST.fecha > sem.hasta ? LST.fecha : sem.hasta;
-      var ok = await cargarAsistencia(gid, desde, hasta);
+      var r = rangoNecesario();
+      var ok = await cargarAsistencia(gid, r.desde, r.hasta);
       if (!ok) {
         /* Si no se ha podido leer lo ya guardado hay que decirlo: si no, el
            entrenador vería la lista en blanco y creería que nadie está pasado. */
@@ -681,6 +753,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
       LST.error = 'Se han recuperado las marcas que quedaron sin guardar en este móvil. Repásalas y dale a «Guardar lista».';
     }
     pintar();
+    return true;
   }
 
   /* ============================================================
@@ -868,8 +941,14 @@ window.APOLANA_ADMIN.listo(function (sb) {
         (abierto ? 'También entrenan hoy' : 'Entrenan hoy') + '</span>' +
         restoHoy.map(function (g) { return grupoPlegadoHTML(g, true); }).join('') + '</div>';
     }
-    if (!abierto && !restoHoy.length) {
-      h += '<p class="p-vacio">Hoy no tiene entreno ningún grupo con horario fijo. Abre abajo el que necesites.</p>';
+    if (!abierto) {
+      if (!hoyG.length) {
+        h += '<p class="p-vacio">Hoy no tiene entreno ningún grupo con horario fijo. Abre abajo el que necesites.</p>';
+      } else if (!hoyG.some(function (g) { return cuentaGrupo(g.id).sinMarcar > 0; })) {
+        /* No se abre ninguno a propósito: abrir un entreno terminado no aporta
+           nada y hace dudar de si falta algo. */
+        h = '<p class="p-vacio">Todo pasado hoy. Los entrenos de hoy tienen su lista completa.</p>' + h;
+      }
     }
     if (otros.length) {
       h += '<div class="g-plegados"><span class="g-et">El resto de grupos</span>' +
@@ -890,29 +969,41 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var dow = dowDe(LST.fecha || fechaHoy());
     var hora = horaDelDia(g.id, dow);
     var c = cuentaGrupo(g.id);
-    var estado;
+    var estado, pendiente = false;
     if (!esHoy) {
       /* Hoy no le toca: decir cuándo entrena es más útil que «sin empezar». */
       estado = c.total === 0 ? 'sin atletas' : (diasDeGrupo(g.id) || 'sin horario fijo');
+    } else if (c.total === 0) {
+      estado = 'sin atletas';
+    } else if (c.marcados === c.total) {
+      estado = 'lista pasada';
     } else {
-      estado = c.total === 0 ? 'sin atletas'
-             : c.marcados === 0 ? 'sin empezar'
-             : c.marcados < c.total ? c.marcados + ' marcados de ' + c.total
-             : 'lista pasada';
+      var m = momentoDe(g.id);
+      if (m === 'despues') {
+        /* Un entreno de hace diez horas al que nadie pasó lista NO está «sin
+           empezar»: está sin pasar lista, y eso es trabajo pendiente. */
+        estado = c.marcados === 0 ? 'sin pasar lista' : c.marcados + ' marcados de ' + c.total;
+        pendiente = true;
+      } else if (m === 'ahora') {
+        estado = c.marcados === 0 ? 'entrenando ahora' : c.marcados + ' marcados de ' + c.total;
+      } else {
+        estado = c.marcados === 0 ? 'sin empezar' : c.marcados + ' marcados de ' + c.total;
+      }
     }
     return '<button type="button" class="g-pleg" data-grupo="' + esc(g.id) + '">' +
       '<span class="n">' + esc(g.nombre) + '</span>' +
-      '<span class="e">' + (esHoy && hora ? esc(hora) + ' · ' : '') + esc(estado) + '</span>' +
+      '<span class="e' + (pendiente ? ' pend' : '') + '">' + (esHoy && hora ? esc(hora) + ' · ' : '') + esc(estado) + '</span>' +
       '<span class="v"></span></button>';
   }
 
   function barraHTML() {
-    var c = LST.grupo ? cuentaGrupo(LST.grupo) : null;
+    /* Sin grupo abierto no hay nada que guardar: la barra sobra. */
+    if (!LST.grupo) return '';
+    var c = cuentaGrupo(LST.grupo);
     var estado, clase = '';
-    if (!LST.grupo) { estado = 'Elige el grupo que te toca ahora.'; }
-    else if (LST.sucio) { estado = 'Cambios sin guardar'; clase = 'sucio'; }
+    if (LST.sucio) { estado = 'Cambios sin guardar'; clase = 'sucio'; }
     else if (LST.guardadoEn) { estado = 'Guardado a las ' + LST.guardadoEn; clase = 'ok'; }
-    else if (c && c.marcados === 0) { estado = 'Todavía no has marcado a nadie.'; }
+    else if (c.marcados === 0) { estado = 'Todavía no has marcado a nadie.'; }
     else { estado = c.marcados + ' marcados de ' + c.total; }
     return '<div class="p-barra">' +
       '<span class="p-estado ' + clase + '">' + esc(estado) + '</span>' +
@@ -1104,6 +1195,10 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var atls = atletasDeGrupo(g.id);
     var dias = diasDeLaSemana(g.id, sem);
     var cols = '1.8fr repeat(' + Math.max(dias.length, 1) + ', 60px) 92px';
+    /* El recuento del mes se cuenta HASTA la semana que se está mirando, y el
+       aviso del lateral usa exactamente el mismo corte: si no, dirían cosas
+       distintas en la misma pantalla. */
+    var corte = sem.hasta > fechaHoy() ? fechaHoy() : sem.hasta;
 
     h += '<div class="e-cols"><div><div class="rej">' +
       '<div class="rej-fila rej-cab" style="grid-template-columns:' + cols + '"><span>Atleta</span>' +
@@ -1114,7 +1209,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
       h += '<p class="p-vacio">Este grupo no tiene atletas en activo.</p>';
     } else {
       h += atls.map(function (a) {
-        var m = mesDe(a.id, sem.hasta > fechaHoy() ? fechaHoy() : sem.hasta);
+        var m = mesDe(a.id, corte);
         var etiq = a.estado === 'lesionado' ? (ella(a) ? 'lesionada' : 'lesionado') : a.estado === 'prueba' ? 'en prueba' : '';
         var mes = (a.estado === 'lesionado' && !m.dias) ? '<span class="rej-mes texto">baja</span>'
           : !m.dias ? '<span class="rej-mes texto">sin datos</span>'
@@ -1133,7 +1228,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
         '<span class="l"><span class="pt pt--sin"></span>Aún sin dato</span>' +
         '<span class="n">' + atls.length + ' atletas</span></div>';
     }
-    h += '</div></div>' + lateralHTML(g, atls) + '</div></div>';
+    h += '</div></div>' + lateralHTML(g, atls, corte) + '</div></div>';
     RAIZ.innerHTML = h;
     engancharComunes();
   }
@@ -1144,9 +1239,9 @@ window.APOLANA_ADMIN.listo(function (sb) {
   }
 
   /* El aviso convierte el dato en algo que hacer: una tabla sola no sirve. */
-  function lateralHTML(g, atls) {
+  function lateralHTML(g, atls, corte) {
     var h = '<div class="e-lat">';
-    var flojos = atls.map(function (a) { return { a: a, m: mesDe(a.id, fechaHoy()) }; })
+    var flojos = atls.map(function (a) { return { a: a, m: mesDe(a.id, corte) }; })
       .filter(function (x) { return x.a.estado !== 'lesionado' && x.m.dias >= 4 && x.m.vino * 2 < x.m.dias; })
       .sort(function (p, q) { return (p.m.vino / p.m.dias) - (q.m.vino / q.m.dias); });
     if (flojos.length) {
@@ -1158,12 +1253,12 @@ window.APOLANA_ADMIN.listo(function (sb) {
     }
     var media = 0, conDato = 0, prueba = 0, lesion = 0;
     atls.forEach(function (a) {
-      var m = mesDe(a.id, fechaHoy());
+      var m = mesDe(a.id, corte);
       if (m.dias) { media += m.vino / m.dias; conDato++; }
       if (a.estado === 'prueba') prueba++;
       if (a.estado === 'lesionado') lesion++;
     });
-    var diasMes = atls.length ? Math.max.apply(null, atls.map(function (a) { return mesDe(a.id, fechaHoy()).dias; })) : 0;
+    var diasMes = atls.length ? Math.max.apply(null, atls.map(function (a) { return mesDe(a.id, corte).dias; })) : 0;
     h += '<div class="e-caja"><h3>El grupo este mes</h3>' +
       '<div class="r"><span>Asistencia media</span><b>' +
         (conDato && diasMes ? (Math.round((media / conDato) * diasMes * 10) / 10).toString().replace('.', ',') + ' / ' + diasMes : 'sin datos') + '</b></div>' +
@@ -1258,16 +1353,16 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (eg) eg.addEventListener('change', function () {
       var v = eg.value;
       if (!v) return;
-      abrirGrupo(v, LST.fecha || fechaHoy()).then(function () {
-        if (LST.grupo !== v) eg.value = LST.grupo;   /* se quedó donde estaba */
+      abrirGrupo(v, LST.fecha || fechaHoy()).then(function (hecho) {
+        if (!hecho) eg.value = LST.grupo;            /* se queda donde estaba */
       });
     });
     var ef = $('e-fecha');
     if (ef) ef.addEventListener('change', function () {
       var f = ef.value || fechaHoy();
-      var gid = LST.grupo;
-      LST.grupo = '';                                 /* fuerza la recarga del día */
-      abrirGrupo(gid, f);
+      abrirGrupo(LST.grupo, f).then(function (hecho) {
+        if (!hecho) ef.value = LST.fecha;             /* se queda donde estaba */
+      });
     });
     var ea = $('e-ant'); if (ea) ea.addEventListener('click', function () { moverSemana(-1); });
     var es = $('e-sig'); if (es) es.addEventListener('click', function () { moverSemana(1); });
@@ -1287,11 +1382,8 @@ window.APOLANA_ADMIN.listo(function (sb) {
   async function moverSemana(paso) {
     SEMANA = (paso === null) ? 0 : SEMANA + paso;
     if (LST.grupo) {
-      var sem = semanaDe(SEMANA);
-      var d1 = (LST.fecha || fechaHoy()).slice(0, 8) + '01';
-      var desde = d1 < sem.desde ? d1 : sem.desde;
-      var hasta = (LST.fecha || fechaHoy()) > sem.hasta ? (LST.fecha || fechaHoy()) : sem.hasta;
-      await cargarAsistencia(LST.grupo, desde, hasta);
+      var r = rangoNecesario();
+      await cargarAsistencia(LST.grupo, r.desde, r.hasta);
     }
     pintar();
   }
@@ -1321,7 +1413,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var dias = diasDeLaSemana(g.id, sem);
     var lin = ['Atleta;' + dias.map(function (d) { return d.et + ' ' + fechaBonita(d.fecha); }).join(';') + ';Mes'];
     atletasDeGrupo(g.id).forEach(function (a) {
-      var m = mesDe(a.id, fechaHoy());
+      var m = mesDe(a.id, sem.hasta > fechaHoy() ? fechaHoy() : sem.hasta);
       lin.push([nombreDe(a)].concat(dias.map(function (d) {
         var v = ASIS[a.id] ? ASIS[a.id][d.fecha] : undefined;
         return v === true ? 'ha venido' : v === false ? 'no ha venido' : '';
@@ -1517,17 +1609,9 @@ window.APOLANA_ADMIN.listo(function (sb) {
       '<div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span>' +
       '<span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div></div>';
     await cargar();
-    /* Se abre solo el grupo que toca AHORA: el que ya ha empezado y aún no ha
-       acabado, y si no hay ninguno, el siguiente de hoy. */
-    var hoyG = gruposDeHoy();
-    if (hoyG.length) {
-      var ahora = new Date().toTimeString().slice(0, 5);
-      var dow = dowDe(fechaHoy());
-      var elegido = hoyG.filter(function (g) { return horaDelDia(g.id, dow) >= ahora; })[0] || hoyG[hoyG.length - 1];
-      await abrirGrupo(elegido.id);
-    } else {
-      pintar();
-    }
+    var elegido = grupoQueToca();
+    if (elegido) await abrirGrupo(elegido.id);
+    else pintar();
   })();
 });
 </script>

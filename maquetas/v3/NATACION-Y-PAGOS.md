@@ -114,7 +114,7 @@ Concepto según el pago: `Licencia · nombre`, `Bono Cubo · nombre`, `Ropa · n
 
 ## Contacto
 Isabel Fuentes (contable) a un toque desde las cuatro pantallas.
-Pendiente de decidir: atajo a Adriana (escuelas) siempre, o solo cuando el pago
+Pendiente de decidir: atajo a Adrián (escuelas) siempre, o solo cuando el pago
 es de la escuela.
 
 ## Pago con tarjeta (Stripe)
@@ -138,7 +138,7 @@ motivo de existir del pago con tarjeta.
 
 ## Decisiones abiertas
 - ¿El club repercute la comisión o la absorbe? Si la absorbe, se quita la línea.
-- Atajo a Adriana: ¿siempre o solo en pagos de escuela?
+- Atajo a Adrián: ¿siempre o solo en pagos de escuela?
 
 ---
 
