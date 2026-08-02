@@ -150,6 +150,7 @@
         { txt: 'Tienda', url: r + '#tienda' },
         { txt: 'Páginas', url: r + 'paginas/' },
         { txt: 'Textos de las páginas', url: r + 'contenido/' },
+        { txt: 'Fotos de la web', url: r + 'imagenes/' },
         { txt: 'Biblioteca de fotos', url: r + 'biblioteca/' },
         { txt: 'Documentos', url: r + 'documentos/' },
         { txt: 'Peticiones de redes', url: r + 'redes/' },

@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fotos de la web · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .aviso { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 13px 16px;
+    font-size: 14px; color: var(--texto-suave); margin-bottom: 18px; line-height: 1.5; }
+
+  .cod { font-family: var(--fuente-mono); font-size: 11px; color: var(--texto-tenue); }
+  .oculto { display: none !important; }
+  .btn { cursor: pointer; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; }
+
+  /* --- Buscador --- */
+  .barra-busca { position: sticky; top: 0; z-index: 5; background: var(--crema-media);
+    padding: 4px 0 12px; margin-bottom: 4px; }
+  .barra-busca input { max-width: 420px; }
+
+  /* --- Un bloque por página --- */
+  .grupo { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande);
+    padding: clamp(16px,3vw,26px); box-shadow: var(--sombra-suave); margin-bottom: 20px; }
+  .grupo h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; color: var(--navy); }
+  .grupo .cuenta { font-size: 13px; color: var(--texto-tenue); margin-bottom: 14px; display: block; }
+
+  .huecos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  .hueco { display: block; text-align: left;
+    border: 1px solid var(--linea); border-radius: var(--radio); background: var(--crema-media);
+    padding: 0; overflow: hidden; cursor: pointer; font-family: inherit; color: inherit;
+    min-height: 44px; -webkit-tap-highlight-color: transparent; }
+  .hueco:hover, .hueco:focus-visible { border-color: var(--azul); outline: none; }
+  .hueco .mini { width: 100%; aspect-ratio: 4 / 3; background: #EFEADF; display: block; overflow: hidden; }
+  .hueco .mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hueco .hueco-txt { display: block; padding: 9px 11px 11px; background: #fff; }
+  .hueco .nom { display: block; font-size: 14px; font-weight: 600; color: var(--navy); line-height: 1.35; }
+  .hueco .est { display: block; margin-top: 4px; font-size: 12px; color: var(--texto-tenue); }
+  .hueco .est.propia { color: #1e7a3d; }
+  /* En el móvil, dos por fila: se ven todas de un vistazo sin scroll infinito */
+  @media (max-width: 560px) {
+    .huecos { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hueco .nom { font-size: 13px; }
+    .hueco .est { font-size: 11px; }
+    .hueco .hueco-txt { padding: 8px 9px 10px; }
+  }
+
+  /* --- Ventana de edición de un hueco --- */
+  .capa { position: fixed; inset: 0; z-index: 1000; background: rgba(46,66,86,.45);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: clamp(16px,5vh,60px) 16px; overflow: auto;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  .caja { background: #fff; border: 1px solid var(--linea); border-radius: 18px;
+    box-shadow: 0 30px 70px -25px rgba(46,66,86,.55); padding: 22px; width: min(620px, 100%); }
+  .caja h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; color: var(--navy); }
+  @media (max-width: 620px) {
+    .capa { padding: 0; align-items: stretch; }
+    .caja { border-radius: 0; border: 0; width: 100%; min-height: 100vh;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  }
+
+  /* Marco de encuadre (mismo comportamiento que en «Páginas») */
+  .encuadre-marco { width: 100%; overflow: hidden; position: relative;
+    border: 1px solid var(--linea); border-radius: var(--radio); background: var(--crema-media);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--texto-tenue); font-size: 13px; text-align: center; padding: 8px; box-sizing: border-box;
+    touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; margin-top: 6px; }
+  .encuadre-marco.arrastrando { cursor: grabbing; }
+  .encuadre-marco img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    display: block; pointer-events: none; -webkit-user-drag: none; }
+  .encuadre-pie { font-size: 12px; color: var(--texto-tenue); margin-top: 6px; line-height: 1.4; }
+  .encuadre-fila { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .encuadre-fila > span.et { font-size: 13px; font-weight: 600; color: var(--navy); white-space: nowrap; }
+  .encuadre-fila > span.val { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-tenue); min-width: 46px; text-align: right; }
+  input[type="range"] { flex: 1; width: auto; padding: 0; border: none; background: transparent; accent-color: var(--azul); }
+  input[type="range"]:focus { outline: 2px solid var(--azul); outline-offset: 3px; border-color: transparent; }
+  .botonera { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .botonera .btn { min-height: 44px; }
+
+  /* --- Selector de biblioteca: por encima de la ventana de edición --- */
+  .modal-fondo { position: fixed; inset: 0; background: rgba(11,26,45,.55);
+    display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1200; }
+  @media (max-width: 760px) {
+    .modal-fondo { padding: 0; align-items: stretch; }
+    .modal-fondo > * { width: 100%; max-width: none; max-height: 100vh; border-radius: 0; overflow: auto;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  }
+  .modal { background: #fff; border-radius: var(--radio-grande); box-shadow: var(--sombra-suave);
+    width: min(860px, 100%); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-cab { padding: 16px 20px; border-bottom: 1px solid var(--linea);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .modal-cab h3 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 20px; color: var(--navy); }
+  .modal-cuerpo { padding: 16px 20px; overflow-y: auto; }
+  .modal-x { background: transparent; border: none; font-size: 28px; line-height: 1; color: var(--texto-suave);
+    cursor: pointer; min-width: 44px; min-height: 44px; }
+  /* En el móvil ocupa la pantalla entera: se elige la foto sin distracciones */
+  @media (max-width: 760px) {
+    .modal { max-height: 100vh; height: 100vh; border-radius: 0; }
+  }
+
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .foto-op { border: 2px solid var(--linea); border-radius: var(--radio); overflow: hidden;
+    background: var(--crema-media); cursor: pointer; padding: 0; display: flex; flex-direction: column;
+    text-align: left; position: relative; }
+  .foto-op:hover, .foto-op:focus { border-color: var(--azul); outline: none; }
+  .foto-op .thumb { width: 100%; aspect-ratio: 4 / 3; overflow: hidden; }
+  .foto-op .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .foto-op .nom { padding: 8px; font-size: 11px; color: var(--texto-suave); word-break: break-all; line-height: 1.3; }
+  .foto-op .fav-marca { position: absolute; top: 6px; right: 6px; font-size: 15px; color: #f2b705; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+
+  .biblio-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+  .biblio-filtros > div { display: flex; flex-direction: column; }
+  .biblio-filtros label { margin: 0 0 5px; }
+  .biblio-filtros .crece { flex: 1 1 180px; }
+  .biblio-filtros select, .biblio-filtros input { padding: 9px 12px; font-size: 14px; }
+  .btn-fav { border: 1px solid var(--linea-borde); background: #fff; color: var(--navy);
+    padding: 10px 14px; border-radius: 999px; font-size: 14px; cursor: pointer; white-space: nowrap; min-height: 44px; }
+  .btn-fav.activo { border-color: #e0a800; background: #fff8e1; color: #7a5b00; }
+
+  .subir-zona { border-top: 1px solid var(--linea); margin-top: 14px; padding-top: 14px; }
+  .subir-zona input[type="file"] { padding: 9px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="aviso">
+      Todas las fotos de la web, una por una. Pulsa cualquiera para cambiarla: eliges otra de la
+      <a href="../biblioteca/">biblioteca</a> o subes una nueva, y decides qué parte se ve.<br>
+      Mientras no cambies una foto, la web sigue enseñando la de siempre.
+      Los <em>textos</em> de cada página se editan en <a href="../paginas/">Páginas</a>.
+    </div>
+
+    <div class="barra-busca">
+      <input type="search" id="busca" placeholder="Buscar una foto: portada, junta, galería…" aria-label="Buscar un hueco de foto">
+    </div>
+
+    <div class="msg" id="msg-lista">Cargando las fotos de la web…</div>
+    <div id="lista"></div>
+
+  </div>
+</div>
+
+<!-- ===== VENTANA: CAMBIAR UNA FOTO ===== -->
+<div class="capa oculto" id="editor">
+  <div class="caja" role="dialog" aria-modal="true" aria-labelledby="ed-titulo">
+    <h2 id="ed-titulo">Cambiar la foto</h2>
+    <p class="cod" id="ed-donde"></p>
+
+    <div class="encuadre-marco" id="ed-marco">Sin foto</div>
+    <p class="encuadre-pie" id="ed-pie">Arrastra la foto para elegir qué parte se ve.</p>
+
+    <div class="encuadre-fila oculto" id="ed-fila-zoom">
+      <span class="et">Acercar</span>
+      <input type="range" id="ed-zoom" min="100" max="250" step="1" value="100" aria-label="Acercar la foto">
+      <span class="val" id="ed-zoom-val">100 %</span>
+    </div>
+    <div class="botonera oculto" id="ed-atajos">
+      <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="centrar">Centrar</button>
+      <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="arriba">Arriba</button>
+      <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="centro">Centro</button>
+      <button type="button" class="btn btn--fantasma btn--mini" data-encuadre="abajo">Abajo</button>
+    </div>
+
+    <div class="botonera">
+      <button type="button" class="btn btn--primario btn--mini" id="ed-elegir">Elegir otra foto</button>
+      <button type="button" class="btn btn--fantasma btn--mini oculto" id="ed-restaurar">Volver a la de siempre</button>
+    </div>
+
+    <div class="botonera" style="margin-top:18px;">
+      <button type="button" class="btn btn--primario btn--mini" id="ed-guardar">Guardar</button>
+      <button type="button" class="btn btn--fantasma btn--mini" id="ed-cancelar">Cancelar</button>
+    </div>
+    <span class="msg" id="ed-msg"></span>
+  </div>
+</div>
+
+<!-- ===== SELECTOR DE BIBLIOTECA ===== -->
+<div class="modal-fondo oculto" id="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Elegir una foto">
+    <div class="modal-cab">
+      <h3>Elegir una foto</h3>
+      <button type="button" class="modal-x" id="modal-cerrar" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="modal-cuerpo">
+      <div class="biblio-filtros" id="biblio-filtros">
+        <div>
+          <label for="b-categoria">Sección</label>
+          <select id="b-categoria"></select>
+        </div>
+        <div class="crece">
+          <label for="b-busca">Buscar por nombre o título</label>
+          <input type="text" id="b-busca" placeholder="Escribe para buscar…">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button type="button" class="btn-fav" id="b-favoritas">☆ Solo favoritas</button>
+        </div>
+      </div>
+      <div class="msg" id="msg-biblio"></div>
+      <div class="rejilla" id="rejilla-biblio"></div>
+
+      <div class="subir-zona">
+        <label for="b-archivo">…o sube una foto nueva desde este aparato</label>
+        <input type="file" id="b-archivo" accept="image/*">
+        <div class="msg" id="msg-subida"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  var CARPETA = 'biblioteca';         // misma carpeta que la Biblioteca de fotos
+  var RAIZ_WEB = '../../';            // desde /admin/imagenes/ hasta la raíz de la web
+
+  // Nombres legibles de las secciones (para las fotos de cabecera).
+  var NOMBRES = {
+    'campus': 'Campus de verano', 'competicion': 'Atletismo en pista', 'cubo': 'El Cubo',
+    'deporte-adaptado': 'Deporte adaptado', 'escuela': 'Escuela de atletismo',
+    'escuela-municipal': 'Escuela municipal de atletismo', 'escuela-natacion': 'Escuela de natación',
+    'instalaciones': 'Instalaciones', 'montana': 'Montaña', 'mun-atletismo': 'Atletismo municipal',
+    'mun-triatlon': 'Triatlón municipal', 'natacion': 'Natación', 'running': 'Running', 'triatlon': 'Triatlón'
+  };
+
+  // Orden en el que salen los bloques (lo que no esté aquí va al final).
+  var ORDEN_PAGINAS = [
+    'Portada', 'El club', 'Historia del club', 'Escuelas', 'Escuela de atletismo',
+    'Escuela de natación', 'Escuela municipal de atletismo', 'Campus de verano',
+    'Atletismo en pista', 'Running', 'Natación', 'Triatlón', 'Montaña', 'El Cubo',
+    'Deporte adaptado', 'Instalaciones', 'Galería', 'Familias', 'Hazte socio'
+  ];
+
+  // Forma del marco de encuadre, para que se parezca a como se ve en la web.
+  function formaDe(clave) {
+    if (/junta|entrenador|gestor/.test(clave)) return '1 / 1';
+    if (/\.hero$|^cs:|foto$/.test(clave)) return '16 / 7';
+    return '4 / 3';
+  }
+
+  // ------------------------------------------------------------
+  // CARGAR TODOS LOS HUECOS (dos orígenes, una sola lista)
+  // ------------------------------------------------------------
+  var HUECOS = [];   // { clave, origen:'web'|'cabecera', id, pagina, titulo, url, encuadre, zoom, respaldo }
+
+  async function cargar() {
+    $('msg-lista').textContent = 'Cargando las fotos de la web…';
+    $('msg-lista').className = 'msg';
+
+    var res = await Promise.all([
+      sb.from('imagenes_web').select('clave,pagina,titulo,url,encuadre,zoom,respaldo,orden').order('pagina').order('orden'),
+      sb.from('contenido_secciones').select('id,seccion,imagen_url,imagen_encuadre,imagen_zoom').order('seccion')
+    ]);
+    var rw = res[0], rc = res[1];
+    if (rw.error && rc.error) {
+      $('msg-lista').textContent = 'No se pudieron cargar las fotos: ' + rw.error.message;
+      $('msg-lista').className = 'msg error';
+      return;
+    }
+
+    HUECOS = [];
+    (rw.data || []).forEach(function (f) {
+      HUECOS.push({
+        clave: f.clave, origen: 'web', id: f.clave, pagina: f.pagina, titulo: f.titulo,
+        url: f.url || '', encuadre: f.encuadre || '', zoom: f.zoom, respaldo: f.respaldo || '', orden: f.orden || 0
+      });
+    });
+    (rc.data || []).forEach(function (c) {
+      if (c.seccion === 'home') return;   // la portada no tiene foto en esta tabla
+      HUECOS.push({
+        clave: 'cs:' + c.seccion, origen: 'cabecera', id: c.id,
+        pagina: NOMBRES[c.seccion] || c.seccion, titulo: 'Foto de cabecera (la grande de arriba)',
+        url: c.imagen_url || '', encuadre: c.imagen_encuadre || '', zoom: c.imagen_zoom,
+        respaldo: '', orden: -1
+      });
+    });
+
+    $('msg-lista').textContent = '';
+    pintar();
+  }
+
+  // ------------------------------------------------------------
+  // PINTAR LA LISTA, agrupada por página
+  // ------------------------------------------------------------
+  function pintar() {
+    var q = $('busca').value.trim().toLowerCase();
+    var visibles = HUECOS.filter(function (h) {
+      if (!q) return true;
+      return ((h.pagina || '') + ' ' + (h.titulo || '') + ' ' + h.clave).toLowerCase().indexOf(q) !== -1;
+    });
+
+    if (!visibles.length) {
+      $('lista').innerHTML = '';
+      $('msg-lista').textContent = 'No hay ninguna foto con ese nombre.';
+      $('msg-lista').className = 'msg';
+      return;
+    }
+    $('msg-lista').textContent = '';
+
+    var porPagina = {}, paginas = [];
+    visibles.forEach(function (h) {
+      if (!porPagina[h.pagina]) { porPagina[h.pagina] = []; paginas.push(h.pagina); }
+      porPagina[h.pagina].push(h);
+    });
+    paginas.sort(function (a, b) {
+      var ia = ORDEN_PAGINAS.indexOf(a), ib = ORDEN_PAGINAS.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b, 'es');
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+
+    $('lista').innerHTML = paginas.map(function (p) {
+      var hs = porPagina[p].slice().sort(function (a, b) { return (a.orden || 0) - (b.orden || 0); });
+      var propias = hs.filter(function (h) { return !!h.url; }).length;
+      return '<section class="grupo">' +
+        '<h2>' + esc(p) + '</h2>' +
+        '<span class="cuenta">' + hs.length + (hs.length === 1 ? ' foto' : ' fotos') +
+          (propias ? ' · ' + propias + ' cambiada' + (propias === 1 ? '' : 's') + ' desde aquí' : '') + '</span>' +
+        '<div class="huecos">' + hs.map(tarjeta).join('') + '</div>' +
+      '</section>';
+    }).join('');
+  }
+
+  // Qué foto se enseña en la miniatura: la elegida o, si no hay, la de siempre.
+  function miniatura(h) {
+    if (h.url) return h.url;
+    if (h.respaldo) return RAIZ_WEB + h.respaldo;
+    return '';
+  }
+
+  function tarjeta(h) {
+    var m = miniatura(h);
+    var estado = h.url
+      ? '<span class="est propia">Cambiada desde el panel</span>'
+      : '<span class="est">La de siempre</span>';
+    return '<button type="button" class="hueco" data-clave="' + esc(h.clave) + '">' +
+      '<span class="mini">' + (m ? '<img src="' + esc(m) + '" alt="" loading="lazy">' : '') + '</span>' +
+      '<span class="hueco-txt"><span class="nom">' + esc(h.titulo) + '</span>' + estado + '</span>' +
+    '</button>';
+  }
+
+  $('busca').addEventListener('input', pintar);
+  $('lista').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.hueco') : null;
+    if (!b) return;
+    var h = HUECOS.filter(function (x) { return x.clave === b.getAttribute('data-clave'); })[0];
+    if (h) abrirEditor(h);
+  });
+
+  // ------------------------------------------------------------
+  // ENCUADRE (arrastrar + acercar), igual que en «Páginas»
+  // ------------------------------------------------------------
+  var ENC = { x: 50, y: 50, zoom: 1 };
+  var imgMarco = null;
+  var ACTUAL = null;      // hueco que se está editando
+  var urlElegida = '';    // foto elegida en esta ventana ('' = la de siempre)
+
+  function limita(v, min, max) { return v < min ? min : (v > max ? max : v); }
+  function redondea1(v) { return Math.round(v * 10) / 10; }
+
+  function leerEncuadre(txt) {
+    var res = { x: 50, y: 50 };
+    if (!txt) return res;
+    var p = String(txt).trim().split(/\s+/);
+    if (p.length < 2) return res;
+    var a = parseFloat(p[0]), b = parseFloat(p[1]);
+    if (isNaN(a) || isNaN(b)) return res;
+    res.x = limita(a, 0, 100); res.y = limita(b, 0, 100);
+    return res;
+  }
+  function textoEncuadre() { return redondea1(ENC.x) + '% ' + redondea1(ENC.y) + '%'; }
+
+  function aplicarEncuadre() {
+    if (!imgMarco) return;
+    var pos = textoEncuadre();
+    imgMarco.style.objectPosition = pos;
+    imgMarco.style.transformOrigin = pos;
+    imgMarco.style.transform = ENC.zoom > 1 ? 'scale(' + ENC.zoom + ')' : 'none';
+    $('ed-zoom-val').textContent = Math.round(ENC.zoom * 100) + ' %';
+  }
+
+  function recorrido() {
+    var marco = $('ed-marco');
+    var W = marco.clientWidth, H = marco.clientHeight;
+    var nw = imgMarco ? (imgMarco.naturalWidth || 0) : 0;
+    var nh = imgMarco ? (imgMarco.naturalHeight || 0) : 0;
+    if (!W || !H || !nw || !nh) return { x: 0, y: 0 };
+    var escala = Math.max(W / nw, H / nh);
+    return { x: Math.max(0, ENC.zoom * nw * escala - W), y: Math.max(0, ENC.zoom * nh * escala - H) };
+  }
+
+  function pintarMarco(url, encuadre, zoom) {
+    var marco = $('ed-marco');
+    var e = leerEncuadre(encuadre);
+    ENC.x = e.x; ENC.y = e.y;
+    var z = parseFloat(zoom);
+    ENC.zoom = (!isNaN(z) && z >= 1 && z <= 2.5) ? z : 1;
+
+    marco.textContent = '';
+    if (url) {
+      var im = document.createElement('img');
+      im.alt = '';
+      im.addEventListener('load', aplicarEncuadre);
+      im.src = url;
+      marco.appendChild(im);
+      imgMarco = im;
+      $('ed-fila-zoom').classList.remove('oculto');
+      $('ed-atajos').classList.remove('oculto');
+      $('ed-zoom').value = String(Math.round(ENC.zoom * 100));
+      aplicarEncuadre();
+    } else {
+      marco.textContent = 'Sin foto';
+      imgMarco = null;
+      $('ed-fila-zoom').classList.add('oculto');
+      $('ed-atajos').classList.add('oculto');
+      $('ed-zoom').value = '100';
+    }
+  }
+
+  (function () {
+    var marco = $('ed-marco');
+    var activo = false, ultX = 0, ultY = 0, puntero = null;
+    marco.addEventListener('pointerdown', function (e) {
+      if (!imgMarco) return;
+      activo = true; puntero = e.pointerId; ultX = e.clientX; ultY = e.clientY;
+      marco.classList.add('arrastrando');
+      if (marco.setPointerCapture) { try { marco.setPointerCapture(e.pointerId); } catch (err) {} }
+      e.preventDefault();
+    });
+    marco.addEventListener('pointermove', function (e) {
+      if (!activo || e.pointerId !== puntero || !imgMarco) return;
+      var dx = e.clientX - ultX, dy = e.clientY - ultY;
+      ultX = e.clientX; ultY = e.clientY;
+      var r = recorrido();
+      if (r.x > 0) ENC.x = limita(ENC.x - (dx * 100 / r.x), 0, 100);
+      if (r.y > 0) ENC.y = limita(ENC.y - (dy * 100 / r.y), 0, 100);
+      aplicarEncuadre();
+      e.preventDefault();
+    });
+    function soltar(e) {
+      if (!activo) return;
+      activo = false; puntero = null;
+      marco.classList.remove('arrastrando');
+      if (marco.releasePointerCapture && e && e.pointerId != null) {
+        try { marco.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    }
+    marco.addEventListener('pointerup', soltar);
+    marco.addEventListener('pointercancel', soltar);
+    marco.addEventListener('lostpointercapture', soltar);
+  })();
+
+  $('ed-zoom').addEventListener('input', function () {
+    var v = parseInt(this.value, 10); if (isNaN(v)) v = 100;
+    ENC.zoom = limita(v, 100, 250) / 100;
+    aplicarEncuadre();
+  });
+
+  $('ed-atajos').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-encuadre]') : null;
+    if (!b) return;
+    var q = b.getAttribute('data-encuadre');
+    if (q === 'centrar') { ENC.x = 50; ENC.y = 50; ENC.zoom = 1; $('ed-zoom').value = '100'; }
+    else if (q === 'arriba') { ENC.y = 0; }
+    else if (q === 'centro') { ENC.y = 50; }
+    else if (q === 'abajo') { ENC.y = 100; }
+    aplicarEncuadre();
+  });
+
+  // ------------------------------------------------------------
+  // ABRIR / CERRAR LA VENTANA DE EDICIÓN
+  // ------------------------------------------------------------
+  function abrirEditor(h) {
+    ACTUAL = h;
+    urlElegida = h.url || '';
+    $('ed-titulo').textContent = h.titulo;
+    $('ed-donde').textContent = h.pagina + (h.origen === 'web' ? ' · ' + h.clave : '');
+    $('ed-marco').style.aspectRatio = formaDe(h.clave);
+    $('ed-msg').textContent = '';
+    $('ed-restaurar').classList.toggle('oculto', !h.url);
+    $('ed-pie').textContent = urlElegida || h.respaldo
+      ? 'Arrastra la foto para elegir qué parte se ve.'
+      : 'Elige una foto y después decides qué parte se ve.';
+    pintarMarco(miniatura(h), h.encuadre, h.zoom);
+    $('editor').classList.remove('oculto');
+    document.body.style.overflow = 'hidden';
+  }
+  function cerrarEditor() {
+    $('editor').classList.add('oculto');
+    document.body.style.overflow = '';
+    ACTUAL = null;
+  }
+  $('ed-cancelar').addEventListener('click', cerrarEditor);
+  $('editor').addEventListener('click', function (e) { if (e.target === this) cerrarEditor(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('modal').classList.contains('oculto')) { cerrarBiblioteca(); return; }
+    if (!$('editor').classList.contains('oculto')) cerrarEditor();
+  });
+
+  // Volver a la foto que trae la página de serie.
+  $('ed-restaurar').addEventListener('click', function () {
+    urlElegida = '';
+    ENC.x = 50; ENC.y = 50; ENC.zoom = 1;
+    pintarMarco(ACTUAL && ACTUAL.respaldo ? RAIZ_WEB + ACTUAL.respaldo : '', '', 1);
+    $('ed-restaurar').classList.add('oculto');
+    $('ed-msg').textContent = 'Al guardar volverá la foto de siempre.';
+    $('ed-msg').className = 'msg';
+  });
+
+  // ------------------------------------------------------------
+  // GUARDAR
+  // ------------------------------------------------------------
+  $('ed-guardar').addEventListener('click', async function () {
+    if (!ACTUAL) return;
+    var hay = !!urlElegida;
+    $('ed-msg').textContent = 'Guardando…'; $('ed-msg').className = 'msg';
+
+    var r;
+    if (ACTUAL.origen === 'web') {
+      r = await sb.from('imagenes_web').update({
+        url: hay ? urlElegida : null,
+        encuadre: hay ? textoEncuadre() : null,
+        zoom: hay ? redondea1(ENC.zoom * 100) / 100 : null,
+        updated_at: new Date().toISOString()
+      }).eq('clave', ACTUAL.id);
+    } else {
+      r = await sb.from('contenido_secciones').update({
+        imagen_url: hay ? urlElegida : null,
+        imagen_encuadre: hay ? textoEncuadre() : null,
+        imagen_zoom: hay ? redondea1(ENC.zoom * 100) / 100 : null,
+        updated_at: new Date().toISOString()
+      }).eq('id', ACTUAL.id);
+    }
+    if (r.error) { $('ed-msg').textContent = 'Error: ' + r.error.message; $('ed-msg').className = 'msg error'; return; }
+
+    // Se refresca la ficha en memoria para no recargar toda la pantalla.
+    ACTUAL.url = hay ? urlElegida : '';
+    ACTUAL.encuadre = hay ? textoEncuadre() : '';
+    ACTUAL.zoom = hay ? redondea1(ENC.zoom * 100) / 100 : null;
+    pintar();
+    cerrarEditor();
+  });
+
+  // ------------------------------------------------------------
+  // SELECTOR DE BIBLIOTECA (y subida de una foto nueva)
+  // ------------------------------------------------------------
+  var CATS = [
+    { v: 'escuela', t: 'Escuela' }, { v: 'escuela-natacion', t: 'Escuela de natación' },
+    { v: 'escuela-municipal', t: 'Escuela municipal' }, { v: 'competicion', t: 'Competición' },
+    { v: 'running', t: 'Running' }, { v: 'natacion', t: 'Natación' }, { v: 'triatlon', t: 'Triatlón' },
+    { v: 'montana', t: 'Montaña' }, { v: 'cubo', t: 'El Cubo' }, { v: 'campus', t: 'Campus' },
+    { v: 'instalaciones', t: 'Instalaciones' }, { v: 'club', t: 'Club / general' },
+    { v: 'eventos', t: 'Eventos' }, { v: 'equipacion', t: 'Equipación' }, { v: 'otras', t: 'Otras' }
+  ];
+  var SIN = 'Sin categoría';
+
+  function urlDeRuta(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
+  function urlPublica(nombre){ return sb.storage.from('imagenes').getPublicUrl(CARPETA + '/' + nombre).data.publicUrl; }
+
+  var BIBLIO = [], bCat = '', bFav = false, bBusca = '';
+
+  function pintarFiltroBiblio() {
+    var cuenta = {}, sinCat = 0;
+    BIBLIO.forEach(function (f) { if (!f.categoria) sinCat++; else cuenta[f.categoria] = (cuenta[f.categoria] || 0) + 1; });
+    var h = '<option value="">Todas las secciones (' + BIBLIO.length + ')</option>';
+    CATS.forEach(function (c) { var n = cuenta[c.v] || 0; if (n > 0) h += '<option value="' + c.v + '">' + esc(c.t) + ' (' + n + ')</option>'; });
+    if (sinCat > 0) h += '<option value="__sin">' + esc(SIN) + ' (' + sinCat + ')</option>';
+    $('b-categoria').innerHTML = h;
+    $('b-categoria').value = bCat;
+  }
+
+  function filtradasBiblio() {
+    var q = bBusca.trim().toLowerCase();
+    return BIBLIO.filter(function (f) {
+      if (bFav && !f.favorita) return false;
+      if (bCat === '__sin') { if (f.categoria) return false; }
+      else if (bCat && f.categoria !== bCat) return false;
+      if (q && (((f.titulo || '') + ' ' + (f.nombre || '')).toLowerCase().indexOf(q) === -1)) return false;
+      return true;
+    });
+  }
+
+  function renderBiblio() {
+    var favTotal = BIBLIO.filter(function (f) { return f.favorita; }).length;
+    $('b-favoritas').innerHTML = (bFav ? '★ Solo favoritas' : '☆ Solo favoritas') + ' (' + favTotal + ')';
+    $('b-favoritas').classList.toggle('activo', bFav);
+
+    var rej = $('rejilla-biblio');
+    if (!BIBLIO.length) {
+      rej.innerHTML = '';
+      $('msg-biblio').innerHTML = 'Todavía no hay fotos en la biblioteca. Puedes subir una aquí abajo o gestionarlas en la <a href="../biblioteca/">Biblioteca de fotos</a>.';
+      $('msg-biblio').className = 'msg';
+      return;
+    }
+    var lista = filtradasBiblio();
+    if (!lista.length) { $('msg-biblio').textContent = 'No hay fotos con esos filtros.'; $('msg-biblio').className = 'msg'; rej.innerHTML = ''; return; }
+    $('msg-biblio').textContent = '';
+    rej.innerHTML = lista.map(function (f) {
+      return '<button type="button" class="foto-op" data-url="' + esc(f.url) + '">' +
+        (f.favorita ? '<span class="fav-marca">★</span>' : '') +
+        '<div class="thumb"><img src="' + esc(f.url) + '" alt="" loading="lazy"></div>' +
+        '<div class="nom">' + esc(f.titulo || f.nombre || '') + '</div>' +
+      '</button>';
+    }).join('');
+  }
+
+  async function abrirBiblioteca() {
+    $('modal').classList.remove('oculto');
+    bCat = ''; bFav = false; bBusca = '';
+    $('b-busca').value = '';
+    $('msg-subida').textContent = '';
+    $('rejilla-biblio').innerHTML = '';
+    $('msg-biblio').textContent = 'Cargando fotos…'; $('msg-biblio').className = 'msg';
+
+    // 1º: las fichas de la biblioteca (con categoría y favoritas).
+    var r = await sb.from('biblioteca_fotos')
+      .select('id,ruta,nombre,titulo,categoria,favorita,created_at')
+      .order('created_at', { ascending: false });
+
+    if (!r.error && r.data && r.data.length) {
+      BIBLIO = r.data.map(function (f) {
+        return { ruta: f.ruta, nombre: f.nombre || f.ruta, titulo: f.titulo || '',
+                 categoria: f.categoria || '', favorita: !!f.favorita, url: urlDeRuta(f.ruta) };
+      });
+      $('b-categoria').parentNode.style.display = '';
+      $('b-favoritas').parentNode.style.display = '';
+      pintarFiltroBiblio();
+      renderBiblio();
+      return;
+    }
+
+    // Recambio: listar el bucket directamente (sin categorías ni favoritas).
+    var rb = await sb.storage.from('imagenes').list(CARPETA, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+    if (rb.error) { $('msg-biblio').textContent = 'No se pudo cargar la biblioteca: ' + rb.error.message; $('msg-biblio').className = 'msg error'; return; }
+    BIBLIO = (rb.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; })
+      .map(function (f) { return { ruta: CARPETA + '/' + f.name, nombre: f.name, titulo: '', categoria: '', favorita: false, url: urlPublica(f.name) }; });
+    $('b-categoria').parentNode.style.display = 'none';
+    $('b-favoritas').parentNode.style.display = 'none';
+    renderBiblio();
+  }
+  function cerrarBiblioteca() { $('modal').classList.add('oculto'); }
+
+  $('ed-elegir').addEventListener('click', abrirBiblioteca);
+  $('modal-cerrar').addEventListener('click', cerrarBiblioteca);
+  $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) cerrarBiblioteca(); });
+  $('b-categoria').addEventListener('change', function () { bCat = this.value; renderBiblio(); });
+  $('b-busca').addEventListener('input', function () { bBusca = this.value; renderBiblio(); });
+  $('b-favoritas').addEventListener('click', function () { bFav = !bFav; renderBiblio(); });
+
+  function usarFoto(url) {
+    urlElegida = url;
+    ENC.x = 50; ENC.y = 50; ENC.zoom = 1;
+    pintarMarco(url, '50% 50%', 1);
+    $('ed-pie').textContent = 'Arrastra la foto para elegir qué parte se ve.';
+    $('ed-restaurar').classList.toggle('oculto', !(ACTUAL && ACTUAL.respaldo) && !url);
+    if (ACTUAL && ACTUAL.respaldo) $('ed-restaurar').classList.remove('oculto');
+    cerrarBiblioteca();
+  }
+
+  $('rejilla-biblio').addEventListener('click', function (e) {
+    var op = e.target.closest ? e.target.closest('.foto-op') : null;
+    if (!op) return;
+    usarFoto(op.getAttribute('data-url'));
+  });
+
+  // Subir una foto nueva: va a la biblioteca y se usa aquí de golpe.
+  $('b-archivo').addEventListener('change', async function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    $('msg-subida').textContent = 'Subiendo la foto…'; $('msg-subida').className = 'msg';
+
+    var pid = null;
+    try { var rp = await sb.rpc('mi_perfil_id'); if (!rp.error) pid = rp.data || null; } catch (e) {}
+
+    var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    var ruta = CARPETA + '/' + Date.now() + '-' + limpio;
+    var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+    if (up.error) { $('msg-subida').textContent = 'No se pudo subir: ' + up.error.message; $('msg-subida').className = 'msg error'; return; }
+
+    var ins = await sb.from('biblioteca_fotos').insert({ ruta: ruta, nombre: file.name, subida_por: pid });
+    if (ins.error) {
+      // Queda en el bucket pero sin ficha: se retira para no dejar huérfanos.
+      await sb.storage.from('imagenes').remove([ruta]);
+      $('msg-subida').textContent = 'No se pudo guardar en la biblioteca: ' + ins.error.message;
+      $('msg-subida').className = 'msg error';
+      return;
+    }
+    this.value = '';
+    $('msg-subida').textContent = 'Subida ✓';
+    $('msg-subida').className = 'msg ok';
+    usarFoto(urlDeRuta(ruta));
+  });
+
+  cargar();
+});
+</script>
+
+</body>
+</html>
