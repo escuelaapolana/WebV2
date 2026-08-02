@@ -14,50 +14,84 @@ function base() { return window.APOLANA_BASE || './'; }
 function ruta(u) { return base() + String(u).replace(/^\//, ''); }
 
 /* Enlaces del menú principal. La "clave" sirve para marcar en azul
-   la página en la que estás (con el atributo activo="..."). */
+   la página en la que estás (con el atributo activo="...").
+
+   SIETE entradas y ni una más: nueve no caben en 1100 px y esconderlas
+   tras el botón de menú hace que la web parezca una app. Se agrupa:
+   «Entrena con nosotros» se queda con los adultos, «Escuelas» con los
+   niños, y «Club» con todo lo que no es «cómo me apunto». Liga va
+   suelta, junto a Calendario y Noticias: es lo que está pasando. */
 const MENU = [
-  { clave: 'club', texto: 'El club', url: '/club/', sub: [
-    { texto: 'Resumen',               url: '/club/' },
-    { texto: 'Historia',              url: '/club/historia/' },
-    { texto: 'Galería',              url: '/galeria/' },
-    { texto: 'Normativa y documentos', url: '/club/normativa/' },
-    { texto: 'Palmarés',              url: '/club/palmares/' },
-    { texto: 'Récords',               url: '/club/records/' },
-    { texto: 'Liga Apolana',          url: '/liga/' },
-  ] },
-  { clave: 'entrena', texto: 'Entrena con nosotros', url: '/competicion/', sub: [
-    { texto: 'Atletismo en pista', url: '/competicion/' },
-    { texto: 'Running',            url: '/running/' },
-    { texto: 'Natación adultos',   url: '/natacion/' },
-    { texto: 'Triatlón',           url: '/triatlon/' },
-    { texto: 'Montaña',            url: '/montana/' },
-    { texto: 'El Cubo',            url: '/cubo/' },
-    { texto: 'Instalaciones',      url: '/instalaciones/' },
+  /* «Entrenar», el nombre corto: cuatro sílabas menos y no pierde nada.
+     Quien busca dónde entrenar lo entiende igual, y deja holgura en la barra. */
+  { clave: 'entrena', texto: 'Entrenar', url: '/competicion/', sub: [
+    { texto: 'Atletismo en pista',  url: '/competicion/' },
+    { texto: 'Running',             url: '/running/' },
+    { texto: 'Natación adultos',    url: '/natacion/' },
+    { texto: 'Montaña',             url: '/montana/' },
+    { texto: 'Triatlón',            url: '/triatlon/' },
+    { texto: 'Deporte adaptado',    url: '/escuela-municipal-atletismo/#otros' },
+    { texto: 'Programas municipales', url: '/escuela-municipal-atletismo/' },
+    /* El Cubo, el último: es el único que va por bonos de uso y no por
+       cuota mensual, así que se separa del resto a propósito. */
+    { texto: 'El Cubo · por bonos de uso', url: '/cubo/' },
   ] },
   { clave: 'escuelas', texto: 'Escuelas', url: '/escuelas/', sub: [
-    { texto: 'Todas las escuelas', url: '/escuelas/' },
+    { texto: 'Todas las escuelas',   url: '/escuelas/' },
     { texto: 'Escuela de atletismo', url: '/escuela/' },
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
-    { texto: 'Escuela municipal',    url: '/escuela-municipal-atletismo/' },
     { texto: 'Campus de verano',     url: '/campus/' },
   ] },
-  { clave: 'familias',   texto: 'Familias',   url: '/familias/' },
   { clave: 'horarios',   texto: 'Horarios',   url: '/horarios/' },
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
+  /* «Liga» va en ámbar: es un nombre propio del club, no una categoría. */
+  { clave: 'liga', texto: 'Liga', url: '/liga/', marca: true },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
-  { clave: 'tienda',     texto: 'Tienda',     url: '/tienda/' },
-  { clave: 'contacto',   texto: 'Contacto',   url: '/contacto/' },
+  { clave: 'club', texto: 'Club', url: '/club/', sub: [
+    { texto: 'El club',          url: '/club/' },
+    { texto: 'Historia',         url: '/club/historia/' },
+    { texto: 'Junta directiva',  url: '/club/#junta' },
+    { texto: 'Instalaciones',    url: '/instalaciones/' },
+    { texto: 'Familias',         url: '/familias/' },
+    { texto: 'Galería',          url: '/galeria/' },
+    { texto: 'Tienda',           url: '/tienda/' },
+    { texto: 'Patrocinadores',   url: '/#colaboradores' },
+    { texto: 'Contacto',         url: '/contacto/' },
+  ] },
 ];
+
+/* --- Iconos de las redes (un solo grosor, 24 px de caja) --- */
+const ICONO = {
+  instagram: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.9"/><circle cx="17" cy="7" r="1.2" fill="currentColor"/></svg>',
+  tiktok:    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 3.5v10.8a3.7 3.7 0 11-3.7-3.7c.4 0 .8.06 1.2.18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 3.5c.5 2.4 2.3 4 4.7 4.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+  facebook:  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 21v-8h2.8l.4-3.2h-3.2V7.9c0-.9.3-1.5 1.6-1.5h1.7V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.4-4 4.1v2.3H8.6V13h2.8v8h3.1z" fill="currentColor"/></svg>',
+  whatsapp:  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1120 12a8 8 0 01-12.1 6.9L4 20z" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+/* --- Enlace de WhatsApp de la cabecera ---
+   Sale dos veces a propósito (aquí y en el pie): arriba no es una red
+   social, es cómo pregunta la gente. Solo texto e icono, SIN fondo verde:
+   un botón verde de WhatsApp en la cabecera se lee como publicidad. */
+function whatsappCabeceraHTML() {
+  const w = (window.APOLANA && window.APOLANA.contacto && window.APOLANA.contacto.whatsapp) || null;
+  if (!w || !w.url) return '';
+  return `<a class="cab-whatsapp" href="${w.url}" target="_blank" rel="noopener"
+             title="Escríbenos por WhatsApp al ${escaparHTML(w.usuario || '')}">
+            ${ICONO.whatsapp}<span>Pregúntanos</span></a>`;
+}
 
 /* --- Cabecera --- */
 class ApolanaCabecera extends HTMLElement {
   connectedCallback() {
     const activo = this.getAttribute('activo') || '';
     const enlaces = MENU.map(m => {
-      const act = m.clave === activo ? ' class="activo" aria-current="page"' : '';
+      const clases = [m.clave === activo ? 'activo' : '', m.marca ? 'marca-club' : ''].filter(Boolean);
+      const act = (clases.length ? ` class="${clases.join(' ')}"` : '') +
+                  (m.clave === activo ? ' aria-current="page"' : '');
       if (m.sub) {
         const items = m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('');
-        return `<div class="tiene-sub"><a class="top"${act} href="${ruta(m.url)}">${m.texto}<span class="caret" aria-hidden="true"></span></a><div class="submenu">${items}</div></div>`;
+        const clasesTop = ['top'].concat(clases).join(' ');
+        return `<div class="tiene-sub"><a class="${clasesTop}"${m.clave === activo ? ' aria-current="page"' : ''} href="${ruta(m.url)}">${m.texto}<span class="caret" aria-hidden="true"></span></a><div class="submenu">${items}</div></div>`;
       }
       return `<a href="${ruta(m.url)}"${act}>${m.texto}</a>`;
     }).join('');
@@ -65,7 +99,12 @@ class ApolanaCabecera extends HTMLElement {
       let h = `<a href="${ruta(m.url)}">${m.texto}</a>`;
       if (m.sub) h += `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>`;
       return h;
-    }).join('') + `<a href="${ruta('/portal/')}">Entrar</a>` + redesHTML();
+    }).join('') +
+      `<a href="${ruta('/portal/')}">Acceso</a>` +
+      `<a href="${ruta('/inscripcion/')}">Inscribirse</a>` +
+      /* En móvil WhatsApp va aquí dentro y en la página de contacto: flotando
+         encima del contenido molesta. */
+      redesFilasHTML('menu-redes');
 
     this.innerHTML = `
       <header class="cabecera">
@@ -74,13 +113,13 @@ class ApolanaCabecera extends HTMLElement {
             <img src="${ruta('/assets/img/logo.png')}" alt="Club Atletismo Apolana">
             <span class="marca-txt">
               <span class="nombre">Apolana</span>
-              <span class="sub">ALICANTE · 1988</span>
+              <span class="sub">Alicante · 1988</span>
             </span>
           </a>
           <nav class="menu">${enlaces}</nav>
           <div class="cabecera-acciones">
-            <a class="btn btn--neutro" href="${ruta('/portal/')}">Entrar</a>
-            <a class="btn btn--primario btn--sm" href="${ruta('/inscripcion/')}">Inscribirse</a>
+            ${whatsappCabeceraHTML()}
+            <a class="btn btn--neutro" href="${ruta('/portal/')}">Acceso</a>
             <details class="menu-movil">
               <summary aria-label="Abrir menú">☰</summary>
               <div class="menu-movil-panel">${enlacesMovil}</div>
@@ -154,29 +193,87 @@ function pintarColaboradores(lista) {
   if (portada) portada.innerHTML = lista.map(c => colaboradorHTML(c, 'colab-logo')).join('');
 }
 
-/* Estilos de los colaboradores. Van aquí (y no en la hoja general) para
-   que cualquier página que use el pie los traiga puestos. */
-(function estiloColaboradores() {
+/* Estilos de la cabecera nueva, las redes y los colaboradores. Van aquí
+   (y no en la hoja general) para que cualquier página que use la cabecera
+   o el pie los traiga puestos sin tocar nada. */
+(function estiloCabeceraYPie() {
   const st = document.createElement('style');
   st.textContent = [
-    '.pie-redes{display:flex;gap:10px;margin-top:4px}',
-    '.pie-redes a{width:38px;height:38px;display:flex;align-items:center;justify-content:center;border:1px solid var(--linea,#EAE3D5);border-radius:10px;color:var(--navy,#2E4256);background:#fff}',
-    '.pie-redes a:hover{border-color:var(--azul,#3B85C0);color:var(--azul-oscuro,#2F6FA8)}',
-    '.pie-redes svg{width:19px;height:19px}',
-    '.menu-movil-panel .pie-redes{margin-top:10px;padding-top:10px;border-top:1px solid var(--linea,#EAE3D5)}',
-    /* --- En el pie --- */
-    '.pie-colab{display:flex;flex-direction:column;gap:9px;align-items:flex-start}',
-    '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;color:var(--texto);text-decoration:none;line-height:1.3}',
-    'a.colab-pie-item:hover{color:var(--azul-oscuro)}',
-    /* Los logos, apagados para que no canten sobre el crema; al pasar por
-       encima recuperan su color. */
-    '.colab-pie-item img{height:24px;width:auto;max-width:120px;object-fit:contain;display:block;' +
-      'filter:grayscale(1);opacity:.62;transition:filter .2s ease,opacity .2s ease}',
-    'a.colab-pie-item:hover img,.colab-pie-item:hover img{filter:none;opacity:1}',
-    /* En móvil el pie va a dos columnas y los colaboradores ocupan el ancho:
-       ahí se ponen en línea y se reparten, en vez de hacer una lista larga. */
-    '@media (max-width:700px){.pie-colab{flex-direction:row;flex-wrap:wrap;gap:10px 16px;align-items:center}',
-      '.colab-pie-item img{height:22px}}'
+    /* ============ CABECERA ============
+       Siete entradas van justas de sitio: el logotipo compacto y el menú
+       algo más apretado para que quepan sin recortar nada. */
+    '.cabecera .contenedor{gap:20px}',
+    '.cabecera .menu{gap:20px}',
+    '.cabecera .marca img{height:38px}',
+    '.cabecera .marca{gap:10px}',
+    '.cabecera .marca .nombre{font-size:19px}',
+    '.cabecera .marca .sub{font-size:11px;letter-spacing:0;text-transform:none;color:var(--texto-suave)}',
+    /* Ámbar = el club como institución (Liga, récords, nombres propios de
+       grupo). El azul se reserva para lo que se pulsa, así que aquí va en
+       texto y nunca en bloque de fondo: no se confunde con un aviso. */
+    '.menu a.marca-club{color:#8A5307}',
+    '.menu a.marca-club:hover{color:#6F4206}',
+    '.menu a.marca-club.activo{color:#8A5307;font-weight:600}',
+
+    /* WhatsApp arriba: solo texto e icono, sin fondo verde. */
+    '.cab-whatsapp{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 6px;' +
+      'font-size:15px;font-weight:600;color:var(--verde,#3F7A4C);white-space:nowrap}',
+    '.cab-whatsapp:hover{color:#2F5C3A}',
+    '.cab-whatsapp svg{width:18px;height:18px;flex:none}',
+
+    /* El botón de acceso no se esconde nunca: es la única puerta al portal. */
+    '.cabecera-acciones .btn--neutro{display:inline-flex}',
+
+    /* Aprietes progresivos antes de rendirse al menú de hamburguesa. */
+    '@media (max-width:1300px){.cabecera .menu{gap:15px;font-size:14.5px}.cabecera .marca .sub{display:none}}',
+    '@media (max-width:1120px){.cabecera .menu{gap:11px;font-size:14px}.cab-whatsapp span{display:none}.cab-whatsapp{padding:0 4px}}',
+    /* En móvil WhatsApp se queda dentro del menú, no flotando arriba. */
+    '@media (max-width:950px){.cabecera-acciones .cab-whatsapp{display:none}}',
+
+    /* ============ REDES: cuatro filas de 44 px ============ */
+    '.redes-filas{display:flex;flex-direction:column;gap:2px}',
+    '.red-fila{display:flex;align-items:center;gap:11px;min-height:44px;padding:0 8px;' +
+      'border-radius:9px;text-decoration:none;color:inherit}',
+    '.red-icono{width:34px;height:34px;flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(255,255,255,0.12)}',
+    '.red-icono svg{width:18px;height:18px}',
+    '.red-cuenta{flex:1;min-width:0;font-size:15px;overflow-wrap:anywhere}',
+    '.red-nombre{font-size:14px;flex:none}',
+
+    /* --- Panel de redes y colaboradores del pie (sobre el azul del club) --- */
+    '.pie-social{background:var(--navy,#2E4256);border-radius:14px;padding:18px 20px;' +
+      'display:flex;flex-direction:column;gap:14px;flex:0 1 380px;min-width:280px;color:#fff}',
+    '.pie-social-cab{display:flex;flex-direction:column;gap:3px}',
+    '.pie-social-tit{font-family:var(--fuente-titulo);font-weight:700;font-size:22px;' +
+      'text-transform:uppercase;line-height:1;color:#fff}',
+    '.pie-social-sub{font-size:14px;color:rgba(255,255,255,0.78)}',
+    '.pie-social .red-fila{color:#fff}',
+    '.pie-social .red-fila:hover{background:rgba(255,255,255,0.09)}',
+    '.pie-social .red-nombre{color:rgba(255,255,255,0.62)}',
+
+    /* --- Colaboradores del pie: 26 px de alto y en un solo tono --- */
+    '.pie-colab-caja{border-top:1px solid rgba(255,255,255,0.14);padding-top:13px;' +
+      'display:flex;flex-direction:column;gap:9px}',
+    '.pie-colab-rotulo{font-size:14px;color:rgba(255,255,255,0.62)}',
+    '.pie-colab{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}',
+    '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;min-height:26px;' +
+      'color:rgba(255,255,255,0.82);text-decoration:none;font-size:13px;line-height:1.35}',
+    'a.colab-pie-item:hover{color:#fff}',
+    /* Todos a la misma altura y en blanco: se leen como un conjunto. */
+    '.colab-pie-item img{height:26px;width:auto;max-width:120px;object-fit:contain;display:block;' +
+      'filter:brightness(0) invert(1);opacity:.85;transition:opacity .2s ease}',
+    'a.colab-pie-item:hover img{opacity:1}',
+    /* Cuando el colaborador enseña logo y nombre, el nombre va debajo en texto
+       para quien no reconozca el logotipo. */
+    '.colab-pie-item--ambos{flex-direction:column;align-items:flex-start;gap:4px}',
+
+    /* --- Las redes dentro del menú de móvil --- */
+    '.menu-movil-panel .menu-redes{margin-top:10px;padding-top:10px;border-top:1px solid var(--linea,#EAE3D5)}',
+    '.menu-movil-panel .red-fila{border-bottom:1px solid var(--linea,#EAE3D5);border-radius:0;padding:0;color:var(--texto)}',
+    '.menu-movil-panel .red-icono{background:var(--crema-media,#EFE9DC);color:var(--navy,#2E4256)}',
+    '.menu-movil-panel .red-nombre{color:var(--texto-suave,#6E6656)}',
+
+    '@media (max-width:900px){.pie-social{flex:1 1 100%}}'
     /* El bloque de la portada («Con la colaboración de») lleva sus propios
        estilos dentro de index.html, junto al resto de esa página. */
   ].join('');
@@ -184,26 +281,25 @@ function pintarColaboradores(lista) {
 })();
 
 
-/* --- Redes sociales del club (salen de datos.js) --- */
-function redesHTML() {
+/* --- Redes sociales del club (salen de datos.js) ---
+   Cuatro filas de 44 px: icono + la cuenta + el nombre de la red. Nada de
+   fila de iconos sueltos: un icono sin la cuenta al lado no dice a dónde
+   lleva, y arriba robaba el sitio que necesita la navegación. */
+function redesFilasHTML(clase) {
   const c = (window.APOLANA && window.APOLANA.contacto) || {};
-  const ic = {
-    instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none"/></svg>',
-    facebook:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14.5 8.5H17V5.5h-2.5A3.5 3.5 0 0 0 11 9v2H9v3h2v7h3v-7h2.2l.5-3H14V9c0-.3.2-.5.5-.5z"/></svg>',
-    tiktok:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46"/><path d="M14 4c.4 2.2 2 3.7 4.2 3.9"/></svg>',
-    whatsapp:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11.8a7.8 7.8 0 0 1-11.3 7L4 20l1.3-4.5A7.8 7.8 0 1 1 20 11.8z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5"/></svg>',
-    email:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6 8.5-6"/></svg>'
-  };
   const lista = [
-    c.instagram && { k:'instagram', url:c.instagram.url, txt:'Instagram' },
-    c.facebook  && { k:'facebook',  url:c.facebook.url,  txt:'Facebook' },
-    c.tiktok    && { k:'tiktok',    url:c.tiktok.url,    txt:'TikTok' },
-    c.whatsapp  && { k:'whatsapp',  url:c.whatsapp.url,  txt:'WhatsApp' },
-    c.email     && { k:'email',     url:'mailto:'+c.email, txt:'Correo' }
+    c.instagram && { k:'instagram', url:c.instagram.url, cuenta:c.instagram.usuario || '@apolana.alicante', red:'Instagram' },
+    c.tiktok    && { k:'tiktok',    url:c.tiktok.url,    cuenta:c.tiktok.usuario    || '@escuela.apolana',  red:'TikTok' },
+    c.facebook  && { k:'facebook',  url:c.facebook.url,  cuenta:'/' + String(c.facebook.usuario || '').replace(/^\//, ''), red:'Facebook' },
+    c.whatsapp  && { k:'whatsapp',  url:c.whatsapp.url,  cuenta:c.whatsapp.usuario  || '',                  red:'WhatsApp' }
   ].filter(Boolean);
   if (!lista.length) return '';
-  return '<div class="pie-redes">' + lista.map(r =>
-    `<a href="${r.url}" aria-label="${r.txt}" title="${r.txt}"${r.k==='email'?'':' target="_blank" rel="noopener"'}>${ic[r.k]}</a>`
+  return `<div class="redes-filas ${clase || ''}">` + lista.map(r =>
+    `<a class="red-fila" href="${escaparHTML(r.url)}" target="_blank" rel="noopener">` +
+      `<span class="red-icono">${ICONO[r.k]}</span>` +
+      `<span class="red-cuenta">${escaparHTML(r.cuenta)}</span>` +
+      `<span class="red-nombre">${escaparHTML(r.red)}</span>` +
+    '</a>'
   ).join('') + '</div>';
 }
 
@@ -225,7 +321,6 @@ class ApolanaPie extends HTMLElement {
               <span class="nombre">Club Apolana</span>
             </div>
             <span class="lema">${lema}</span>
-            ${redesHTML()}
           </div>
           <div class="pie-cols">
             <div class="pie-col">
@@ -243,8 +338,18 @@ class ApolanaPie extends HTMLElement {
               ${tel(c.tel_escuela)}
               ${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : ''}
             </div>
-            <div class="pie-col">
-              <span class="eyebrow">Colaboran</span>
+          </div>
+          <!-- Las cuatro redes y los colaboradores, en el mismo panel: los logos
+               a la misma altura y en un solo tono se leen como un conjunto y no
+               como cuatro pegatinas. -->
+          <div class="pie-social">
+            <div class="pie-social-cab">
+              <span class="pie-social-tit">Síguenos</span>
+              <span class="pie-social-sub">Lo que pasa en el club se cuenta en Instagram.</span>
+            </div>
+            ${redesFilasHTML('pie-redes-filas')}
+            <div class="pie-colab-caja">
+              <span class="pie-colab-rotulo">Con la colaboración de</span>
               <div class="pie-colab" data-colab-pie>${colab}</div>
             </div>
           </div>
@@ -299,6 +404,25 @@ document.addEventListener('DOMContentLoaded', async function () {
       urgente: 'urgente'
     };
     var nivel = NIVELES[String(a.tipo || '').toLowerCase()] || 'informativo';
+
+    /* En la portada el aviso NO va arriba del todo: una franja a todo el ancho
+       por encima del logotipo manda demasiado para lo que dice. Si la página
+       ofrece un hueco dentro de la foto, se coloca ahí, al pie y discreto. */
+    var hueco = document.getElementById('aviso-en-hero');
+    if (hueco && nivel !== 'urgente') {
+      var t = document.createElement('span');
+      t.className = 'texto';
+      t.textContent = a.texto;
+      hueco.appendChild(t);
+      if (a.enlace) {
+        var b = document.createElement('a');
+        b.href = /^https?:\/\//.test(a.enlace) ? a.enlace : ruta(a.enlace);
+        b.textContent = a.texto_enlace || 'Ver más';
+        hueco.appendChild(b);
+      }
+      hueco.hidden = false;
+      return;
+    }
 
     var bar = document.createElement('div');
     bar.className = 'aviso-portada aviso-portada--' + nivel;

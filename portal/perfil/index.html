@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi perfil · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .pf-wrap { max-width: 720px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
+  /* Cabecera de pantalla (kit 30h): migas a 14 px, título a 28 px, sobre crema. */
+  .pf-wrap h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size:28px; line-height:1.05; color: var(--navy); margin: 0 0 4px; }
+  .pf-wrap .sub { font-size:14px; color: var(--texto-suave); display:block; margin-bottom: 4px; }
+  .migas { display:inline-block; margin-bottom:10px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; padding:6px 0; }
+
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius:14px; padding: clamp(18px,3vw,26px); margin-top:18px; }
+  .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size:21px; color: var(--navy); margin: 0 0 6px; }
+  .intro { color: var(--texto-suave); font-size:15px; line-height:1.55; margin:0 0 8px; }
+  .pista { font-size:13px; color: var(--texto-suave); margin:6px 0 0; line-height:1.5; }
+  .oculto { display:none !important; }
+
+  label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:14px 0 5px; }
+  input[type=text], input[type=tel], input[type=email] {
+    box-sizing:border-box; width:100%; padding:12px 13px; border:1px solid var(--linea-borde); border-radius:10px;
+    font-family: var(--fuente-texto); font-size:16px; background:#fff; color: var(--navy); min-height:44px;
+  }
+  input:focus { outline:2px solid var(--azul); border-color: var(--azul); }
+  input[readonly] { background: var(--crema-media); color: var(--texto-suave); }
+  .dos { display:grid; grid-template-columns: 1fr 1fr; gap:0 14px; }
+  @media (max-width:520px) { .dos { grid-template-columns: 1fr; } }
+
+  /* --- foto --- */
+  .foto-fila { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:6px; }
+  /* Vive dentro de una tarjeta, así que su radio es el pequeño (kit 30b). */
+  .avatar { width:104px; height:104px; flex:0 0 104px; border-radius:10px; background: var(--navy);
+            color:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden;
+            font-family: var(--fuente-titulo); font-size:36px; font-weight:700; }
+  .avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+  .foto-acciones { flex:1; min-width:200px; display:flex; flex-wrap:wrap; gap:10px; }
+  .foto-acciones .btn { min-height:44px; display:inline-flex; align-items:center; }
+
+  /* --- interruptor de privacidad --- */
+  .interruptor { display:flex; align-items:center; gap:14px; cursor:pointer; padding:8px 0; min-height:44px; }
+  .interruptor input { position:absolute; opacity:0; width:1px; height:1px; }
+  .interruptor .palanca { flex:0 0 52px; width:52px; height:30px; border-radius:999px; background:#D9D2C2;
+                          position:relative; transition:background .15s ease; }
+  .interruptor .palanca::after { content:''; position:absolute; top:3px; left:3px; width:24px; height:24px;
+                                 border-radius:999px; background:#fff; box-shadow:0 1px 3px rgba(46,66,86,.35);
+                                 transition:transform .15s ease; }
+  .interruptor input:checked + .palanca { background: var(--azul); }
+  .interruptor input:checked + .palanca::after { transform: translateX(22px); }
+  .interruptor input:focus-visible + .palanca { outline:2px solid var(--azul); outline-offset:3px; }
+  .interruptor .texto { font-size:15px; color: var(--navy); font-weight:600; }
+
+  .msg { margin-top:12px; font-size:14px; line-height:1.5; }
+  /* Rojo solo para lo que se ha escrito mal; si falla la carga o el guardado, ámbar. */
+  .msg.error { color:#b3261e; }
+  .msg.fallo { color:#B96F09; }
+  .msg.ok { color:#1e7a3d; }
+
+  .guardar { position:sticky; bottom:0; margin-top:18px; }
+  .guardar .caja { background:#fff; border:1px solid var(--linea-marcada); border-radius:14px;
+                   padding:14px 16px; box-shadow: var(--sombra-suave); display:flex; align-items:center;
+                   gap:14px; flex-wrap:wrap; }
+  .guardar .btn { min-height:48px; display:inline-flex; align-items:center; }
+  .guardar .msg { margin:0; flex:1; min-width:160px; }
+  .btn[disabled] { opacity:.55; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+<div class="pf-wrap">
+
+  <a class="migas" href="../">← Volver al portal</a>
+  <h1>Mi perfil</h1>
+  <span class="sub">Tu foto, cómo quieres que te llamemos y tus datos de contacto.</span>
+
+  <div id="pf-cargando"><div class="tarjeta"><div class="ap-esq" data-esq="tarjeta"></div></div></div>
+
+  <div id="pf-todo" class="oculto">
+
+    <!-- ---------- FOTO ---------- -->
+    <section class="tarjeta">
+      <h2>Mi foto</h2>
+      <p class="intro">Se ve en el portal del club. Si no pones ninguna, se muestran tus iniciales.</p>
+      <div class="foto-fila">
+        <div class="avatar" id="pf-avatar"><span id="pf-iniciales">··</span></div>
+        <div class="foto-acciones">
+          <button type="button" class="btn btn--neutro" id="pf-cambiar">Cambiar foto</button>
+          <button type="button" class="btn btn--fantasma oculto" id="pf-quitar">Quitar foto</button>
+        </div>
+      </div>
+      <p class="pista">Puedes hacerla con el móvil en ese momento. La recortamos cuadrada y la reducimos aquí mismo, así que no gasta datos aunque la foto original sea enorme.</p>
+      <input type="file" id="pf-archivo" class="oculto" accept="image/*">
+      <p class="msg" id="pf-msg-foto"></p>
+    </section>
+
+    <!-- ---------- APODO ---------- -->
+    <section class="tarjeta">
+      <h2>Cómo me llaman</h2>
+      <label for="pf-apodo">Nombre público</label>
+      <input type="text" id="pf-apodo" maxlength="40" autocomplete="nickname" placeholder="Por ejemplo: Nacho">
+      <p class="pista">Es el nombre con el que apareces en el portal. Si lo dejas vacío usamos tu nombre: <b id="pf-nombre-real"></b>.</p>
+    </section>
+
+    <!-- ---------- DATOS ---------- -->
+    <section class="tarjeta">
+      <h2>Mis datos</h2>
+      <div class="dos">
+        <div>
+          <label for="pf-nombre">Nombre</label>
+          <input type="text" id="pf-nombre" autocomplete="given-name">
+        </div>
+        <div>
+          <label for="pf-apellidos">Apellidos</label>
+          <input type="text" id="pf-apellidos" autocomplete="family-name">
+        </div>
+      </div>
+      <label for="pf-telefono">Teléfono</label>
+      <input type="tel" id="pf-telefono" autocomplete="tel" inputmode="tel" placeholder="Para avisos del club">
+      <label for="pf-email">Correo con el que entras</label>
+      <input type="email" id="pf-email" readonly>
+      <p class="pista">Este correo es tu llave para entrar, por eso no se cambia desde aquí. Si lo has cambiado, avisa al club y lo actualizamos.</p>
+    </section>
+
+    <!-- ---------- PRIVACIDAD ---------- -->
+    <section class="tarjeta">
+      <h2>Privacidad</h2>
+      <label class="interruptor" for="pf-visible">
+        <input type="checkbox" id="pf-visible">
+        <span class="palanca" aria-hidden="true"></span>
+        <span class="texto">Que otros socios puedan ver mi perfil</span>
+      </label>
+      <p class="pista">Si lo dejas activado, el resto de socios ve tu nombre o apodo, tu foto, tus medallas y los retos que has cumplido. No ven tu teléfono, tu correo, tus pagos ni tus marcas: eso es solo tuyo y del equipo del club.</p>
+    </section>
+
+    <!-- ---------- GUARDAR ---------- -->
+    <div class="guardar">
+      <div class="caja">
+        <button type="button" class="btn btn--primario" id="pf-guardar">Guardar cambios</button>
+        <p class="msg" id="pf-msg"></p>
+      </div>
+    </div>
+
+    <!-- ---------- CONTRASEÑA ---------- -->
+    <section class="tarjeta">
+      <h2>Contraseña</h2>
+      <p class="intro">Por seguridad, la contraseña no se escribe aquí. Te mandamos un correo con un enlace y la cambias tú desde ahí.</p>
+      <button type="button" class="btn btn--fantasma" id="pf-pass">Enviarme el correo para cambiarla</button>
+      <p class="msg" id="pf-msg-pass"></p>
+    </section>
+
+  </div>
+
+  <div id="pf-sin-ficha" class="oculto"></div>
+
+</div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+
+  var BUCKET   = 'fotos-perfil';
+  var LADO     = 512;         /* la foto se guarda a 512×512, de sobra para el portal */
+  var MAX_MB   = 5;           /* lo que aceptamos que llegue del móvil antes de reducir */
+  var FIRMA_S  = 3600;        /* la URL de la foto caduca a la hora: el bucket es privado */
+
+  function $(id) { return document.getElementById(id); }
+  function mostrar(el, si) { if (el) el.classList[si ? 'remove' : 'add']('oculto'); }
+  function aviso(el, texto, clase) { if (!el) return; el.className = 'msg' + (clase ? ' ' + clase : ''); el.textContent = texto || ''; }
+
+  var cargando  = $('pf-cargando');
+  var todo      = $('pf-todo');
+  var sinFicha  = $('pf-sin-ficha');
+  var msg       = $('pf-msg');
+  var msgFoto   = $('pf-msg-foto');
+
+  /* ------------------------------------------------------------
+     1 · TRAER MI FICHA
+     portal-auth.js ya la busca por correo, pero solo pide unas
+     columnas. Aquí hacen falta también la foto, el apodo y la
+     visibilidad, así que se vuelve a pedir completa.
+     ------------------------------------------------------------ */
+  /* Estados de un bloque que lee datos (fundamentos 28f): el esqueleto se
+     retira siempre, y en su sitio va una explicación con salida. */
+  function quitarEsqueleto() { if (cargando) cargando.innerHTML = ''; mostrar(cargando, false); }
+  function verSinFicha() {
+    quitarEsqueleto();
+    sinFicha.innerHTML = APOLANA_UI.vacio('Todavía no encontramos tu ficha en el club',
+      'Has entrado bien con tu cuenta, pero tu ficha aún no está enlazada con ella. Avisa al club y lo dejan listo enseguida.',
+      APOLANA_UI.boton('Volver al portal', '../'));
+    mostrar(sinFicha, true);
+  }
+
+  if (!perfil || !perfil.id) { verSinFicha(); return; }
+
+  var yo = null;
+  try {
+    var r = await sb.from('perfiles')
+      .select('id,nombre,apellidos,email,telefono,rol,foto_ruta,nombre_publico,perfil_visible')
+      .eq('id', perfil.id).maybeSingle();
+    if (r.error) throw r.error;
+    yo = r.data;
+  } catch (e) {
+    cargando.innerHTML = APOLANA_UI.error('No hemos podido cargar tus datos',
+      'Puede ser tu conexión. Tus datos siguen guardados; vuelve a intentarlo en un momento.');
+    mostrar(cargando, true);
+    return;
+  }
+  if (!yo) { verSinFicha(); return; }
+
+  quitarEsqueleto();
+  mostrar(todo, true);
+
+  /* ------------------------------------------------------------
+     2 · PINTAR LO QUE HAY
+     ------------------------------------------------------------ */
+  function iniciales() {
+    var n = (yo.nombre || '').trim();
+    var a = (yo.apellidos || '').trim();
+    var x = (n.charAt(0) || '') + (a.charAt(0) || '');
+    if (!x) x = (yo.email || '').substring(0, 2);
+    return x.toUpperCase() || '··';
+  }
+
+  async function pintarFoto() {
+    var caja = $('pf-avatar');
+    var quitar = $('pf-quitar');
+    caja.innerHTML = '';
+    if (!yo.foto_ruta) {
+      var s = document.createElement('span');
+      s.textContent = iniciales();
+      caja.appendChild(s);
+      $('pf-cambiar').textContent = 'Poner una foto';
+      mostrar(quitar, false);
+      return;
+    }
+    $('pf-cambiar').textContent = 'Cambiar foto';
+    mostrar(quitar, true);
+    try {
+      var f = await sb.storage.from(BUCKET).createSignedUrl(yo.foto_ruta, FIRMA_S);
+      if (f.error || !f.data || !f.data.signedUrl) throw (f.error || new Error('sin url'));
+      var img = document.createElement('img');
+      img.alt = 'Tu foto de perfil';
+      img.src = f.data.signedUrl;
+      img.addEventListener('error', function () {
+        caja.innerHTML = '';
+        var s2 = document.createElement('span');
+        s2.textContent = iniciales();
+        caja.appendChild(s2);
+      });
+      caja.appendChild(img);
+    } catch (e) {
+      var s3 = document.createElement('span');
+      s3.textContent = iniciales();
+      caja.appendChild(s3);
+      aviso(msgFoto, 'No hemos podido mostrar tu foto ahora mismo. Sigue guardada.', 'fallo');
+    }
+  }
+
+  function pintarCampos() {
+    $('pf-apodo').value       = yo.nombre_publico || '';
+    $('pf-nombre').value      = yo.nombre || '';
+    $('pf-apellidos').value   = yo.apellidos || '';
+    $('pf-telefono').value    = yo.telefono || '';
+    $('pf-email').value       = yo.email || '';
+    $('pf-visible').checked   = (yo.perfil_visible !== false);
+    $('pf-nombre-real').textContent = (yo.nombre || '').trim() || 'el que tenemos en tu ficha';
+  }
+
+  pintarCampos();
+  pintarFoto();
+
+  /* ------------------------------------------------------------
+     3 · LA FOTO
+     Muchas se harán con el móvil, así que llegan de 6 u 8 MB. Se
+     recorta un cuadrado del centro y se reduce a 512×512 en el
+     propio navegador: lo que sube pesa unos pocos KB.
+     ------------------------------------------------------------ */
+  function reducir(archivo) {
+    return new Promise(function (ok, mal) {
+      var url = URL.createObjectURL(archivo);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var an = img.naturalWidth || img.width;
+          var al = img.naturalHeight || img.height;
+          if (!an || !al) throw new Error('vacia');
+          var lado = Math.min(an, al);                 /* cuadrado centrado */
+          var x = Math.round((an - lado) / 2);
+          var y = Math.round((al - lado) / 2);
+          var lienzo = document.createElement('canvas');
+          lienzo.width = LADO; lienzo.height = LADO;
+          var ctx = lienzo.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, LADO, LADO);             /* fondo por si es un PNG con transparencia */
+          ctx.drawImage(img, x, y, lado, lado, 0, 0, LADO, LADO);
+          lienzo.toBlob(function (b) {
+            URL.revokeObjectURL(url);
+            if (b) ok(b); else mal(new Error('no se pudo preparar'));
+          }, 'image/jpeg', 0.85);
+        } catch (e) { URL.revokeObjectURL(url); mal(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); mal(new Error('formato')); };
+      img.src = url;
+    });
+  }
+
+  $('pf-cambiar').addEventListener('click', function () { $('pf-archivo').click(); });
+
+  $('pf-archivo').addEventListener('change', async function () {
+    var archivo = this.files && this.files[0];
+    this.value = '';                                   /* para poder repetir la misma foto */
+    if (!archivo) return;
+
+    if (archivo.type && archivo.type.indexOf('image/') !== 0) {
+      aviso(msgFoto, 'Eso no es una imagen. Elige una foto (JPG, PNG o la del móvil).', 'error');
+      return;
+    }
+    if (archivo.size > MAX_MB * 1024 * 1024) {
+      aviso(msgFoto, 'La foto pesa más de ' + MAX_MB + ' MB. Haz una nueva o elige otra más ligera.', 'error');
+      return;
+    }
+
+    var boton = $('pf-cambiar');
+    boton.disabled = true;
+    aviso(msgFoto, 'Preparando la foto…');
+
+    var trozo;
+    try {
+      trozo = await reducir(archivo);
+    } catch (e) {
+      boton.disabled = false;
+      aviso(msgFoto, 'No hemos podido leer esa imagen. Prueba con otra o haz la foto de nuevo.', 'error');
+      return;
+    }
+
+    var anterior = yo.foto_ruta || null;
+    var ruta = yo.id + '/perfil-' + Date.now() + '.jpg';
+
+    try {
+      aviso(msgFoto, 'Subiendo…');
+      var sube = await sb.storage.from(BUCKET)
+        .upload(ruta, trozo, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
+      if (sube.error) throw sube.error;
+
+      var guarda = await sb.from('perfiles').update({ foto_ruta: ruta }).eq('id', yo.id);
+      if (guarda.error) {
+        /* La foto está en el almacén pero no se pudo apuntar: la retiramos
+           para no dejar archivos sueltos. */
+        try { await sb.storage.from(BUCKET).remove([ruta]); } catch (x) {}
+        throw guarda.error;
+      }
+
+      yo.foto_ruta = ruta;
+      if (anterior && anterior !== ruta) { try { await sb.storage.from(BUCKET).remove([anterior]); } catch (x) {} }
+      await pintarFoto();
+      aviso(msgFoto, 'Foto actualizada.', 'ok');
+    } catch (e) {
+      aviso(msgFoto, 'No hemos podido guardar la foto. Puede ser tu conexión: inténtalo otra vez en un momento.', 'fallo');
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  $('pf-quitar').addEventListener('click', async function () {
+    if (!yo.foto_ruta) return;
+    if (!await APX.confirm('¿Quitamos tu foto? Volverán a salir tus iniciales.', { aceptar:'Quitar la foto', peligro:true })) return;
+    var boton = this;
+    boton.disabled = true;
+    aviso(msgFoto, 'Quitando…');
+    var vieja = yo.foto_ruta;
+    try {
+      var g = await sb.from('perfiles').update({ foto_ruta: null }).eq('id', yo.id);
+      if (g.error) throw g.error;
+      yo.foto_ruta = null;
+      try { await sb.storage.from(BUCKET).remove([vieja]); } catch (x) {}
+      await pintarFoto();
+      aviso(msgFoto, 'Ya no tienes foto: se muestran tus iniciales.', 'ok');
+    } catch (e) {
+      aviso(msgFoto, 'No hemos podido quitar la foto. Puede ser tu conexión: inténtalo otra vez en un momento.', 'fallo');
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  /* ------------------------------------------------------------
+     4 · GUARDAR LOS DATOS
+     El rol, la sección y el correo no se mandan: son cosa del
+     club y la base de datos los protege por su cuenta.
+     ------------------------------------------------------------ */
+  $('pf-guardar').addEventListener('click', async function () {
+    var boton = this;
+    var apodo     = $('pf-apodo').value.trim();
+    var nombre    = $('pf-nombre').value.trim();
+    var apellidos = $('pf-apellidos').value.trim();
+    var telefono  = $('pf-telefono').value.trim();
+
+    if (!nombre)    { aviso(msg, 'Escribe tu nombre.', 'error'); $('pf-nombre').focus(); return; }
+    if (!apellidos) { aviso(msg, 'Escribe tus apellidos.', 'error'); $('pf-apellidos').focus(); return; }
+    if (apodo && apodo.length < 2) {
+      aviso(msg, 'El nombre público necesita al menos dos letras (o déjalo vacío).', 'error');
+      $('pf-apodo').focus(); return;
+    }
+
+    boton.disabled = true;
+    aviso(msg, 'Guardando…');
+    try {
+      var cambios = {
+        nombre: nombre,
+        apellidos: apellidos,
+        telefono: telefono || null,
+        nombre_publico: apodo || null,
+        perfil_visible: $('pf-visible').checked
+      };
+      var r2 = await sb.from('perfiles').update(cambios).eq('id', yo.id).select().maybeSingle();
+      if (r2.error) throw r2.error;
+      if (r2.data) yo = r2.data; else { for (var k in cambios) yo[k] = cambios[k]; }
+      pintarCampos();
+      aviso(msg, 'Guardado. Así es como te verá el club.', 'ok');
+    } catch (e) {
+      aviso(msg, 'No hemos podido guardar los cambios. Puede ser tu conexión: inténtalo otra vez en un momento.', 'fallo');
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  /* ------------------------------------------------------------
+     5 · CONTRASEÑA
+     Nunca se escribe aquí: se manda un correo con enlace.
+     ------------------------------------------------------------ */
+  $('pf-pass').addEventListener('click', async function () {
+    var boton = this;
+    var mp = $('pf-msg-pass');
+    var correo = yo.email || (perfil && perfil.email) || '';
+    if (!correo) { aviso(mp, 'No tenemos tu correo. Avisa al club.', 'error'); return; }
+    boton.disabled = true;
+    aviso(mp, 'Enviando…');
+    try {
+      var r3 = await sb.auth.resetPasswordForEmail(correo);
+      if (r3 && r3.error) throw r3.error;
+      aviso(mp, 'Te hemos enviado un correo a ' + correo + ' con el enlace para poner una contraseña nueva.', 'ok');
+    } catch (e) {
+      aviso(mp, 'No hemos podido enviar el correo. Puede ser tu conexión: inténtalo otra vez en un momento.', 'fallo');
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+});
+</script>
+
+</body>
+</html>

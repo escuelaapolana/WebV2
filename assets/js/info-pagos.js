@@ -128,8 +128,12 @@
 
   /* Botón de copiar: siempre 44 px de alto, con su confirmación. */
   function botonCopiar(valor, queEs) {
+    /* Icono del juego del kit (30a): lienzo 24, trazo 1,9, sin relleno */
+    var ic = '<svg class="ipg-c-ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+             'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+             '<rect x="8" y="8" width="12" height="13" rx="2.5"/><path d="M16 5.5H6.5A2.5 2.5 0 004 8v9.5"/></svg>';
     return '<button type="button" class="ipg-copiar" data-copiar="' + escA(valor) + '"' +
-           ' aria-label="Copiar ' + escA(queEs || '') + '">' +
+           ' aria-label="Copiar ' + escA(queEs || '') + '">' + ic +
            '<span class="ipg-c-txt">Copiar</span></button>';
   }
 
@@ -390,7 +394,7 @@
     var s = document.createElement('style');
     s.id = 'ipg-css';
     s.textContent =
-      '.ipg{background:#fff;border:1px solid var(--linea,#EAE3D5);border-radius:var(--radio,16px);' +
+      '.ipg{background:#fff;border:1px solid var(--linea,#EAE3D5);border-radius:14px;' +
         'box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));margin:18px 0 0;overflow:hidden}' +
       '.ipg--pegado{margin:0}' +
       '.ipg>summary::-webkit-details-marker{display:none}' +
@@ -401,40 +405,40 @@
       '.ipg-cab:focus-visible{outline:2px solid var(--azul,#3B85C0);outline-offset:-2px}' +
       '.ipg-cab-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}' +
       '.ipg-cab-txt b{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);text-transform:uppercase;' +
-        'font-weight:700;font-size:20px;line-height:1.05;color:var(--navy,#2E4256);letter-spacing:.01em}' +
-      '.ipg-cab-txt small{font-size:13px;color:var(--texto-suave,#7A7365)}' +
-      '.ipg-cab-fl{flex:none;width:11px;height:11px;border-right:2px solid var(--azul-oscuro,#2F6FA8);' +
-        'border-bottom:2px solid var(--azul-oscuro,#2F6FA8);transform:rotate(45deg);margin-right:4px;transition:transform .15s}' +
+        'font-weight:700;font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
+      '.ipg-cab-txt small{font-size:13px;line-height:1.4;color:var(--texto-suave,#6E6656)}' +
+      '.ipg-cab-fl{flex:none;width:11px;height:11px;border-right:2px solid var(--texto-suave,#6E6656);' +
+        'border-bottom:2px solid var(--texto-suave,#6E6656);transform:rotate(45deg);margin-right:4px;transition:transform .15s}' +
       '.ipg[open] .ipg-cab-fl{transform:rotate(-135deg)}' +
       '.ipg[open] .ipg-cab{border-bottom:1px solid var(--linea,#EAE3D5)}' +
       '.ipg-cuerpo{padding:4px clamp(14px,3vw,20px) clamp(14px,3vw,18px)}' +
       '.ipg-cuenta+.ipg-cuenta{margin-top:18px;padding-top:16px;border-top:1px solid var(--linea,#EAE3D5)}' +
       '.ipg-cuenta-tit{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);text-transform:uppercase;' +
-        'font-weight:700;font-size:19px;color:var(--navy,#2E4256);margin:14px 0 2px}' +
+        'font-weight:700;font-size:21px;line-height:1.1;color:var(--navy,#2E4256);margin:14px 0 2px}' +
       /* etiqueta + valor */
-      '.ipg-et{display:block;font-size:12.5px;color:var(--texto-tenue,#A79F8E);margin-bottom:3px}' +
+      '.ipg-et{display:block;font-size:13px;line-height:1.4;color:var(--texto-suave,#6E6656);margin-bottom:3px}' +
       '.ipg-linea{padding:12px 0;border-bottom:1px solid var(--linea,#EAE3D5)}' +
       '.ipg-val{display:flex;flex-direction:column;gap:3px;font-size:15px;color:var(--navy,#2E4256)}' +
       '.ipg-val b{font-weight:600}' +
-      '.ipg-sub{font-size:14px;color:var(--texto,#5E5849);line-height:1.5}' +
+      '.ipg-sub{font-size:14px;color:var(--texto,#4A4437);line-height:1.5}' +
       /* bloque de transferencia */
       '.ipg-transf{background:var(--crema,#FBF9F4);border:1px solid var(--linea,#EAE3D5);border-radius:14px;' +
         'padding:13px 14px;margin:14px 0 0}' +
-      '.ipg-otros{margin:0 0 4px;font-size:14.5px;line-height:1.55;color:var(--texto,#5E5849)}' +
+      '.ipg-otros{margin:0 0 4px;font-size:14px;line-height:1.5;color:var(--texto,#4A4437)}' +
       '.ipg-dato{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:9px 0;' +
         'border-bottom:1px solid var(--linea,#EAE3D5)}' +
       '.ipg-dato:last-child{border-bottom:0}' +
-      '.ipg-d-et{display:block;flex:1 0 100%;font-size:12.5px;color:var(--texto-tenue,#A79F8E)}' +
+      '.ipg-d-et{display:block;flex:1 0 100%;font-size:13px;line-height:1.4;color:var(--texto-suave,#6E6656)}' +
       '.ipg-d-val{flex:1 1 auto;min-width:0;font-size:15px;color:var(--navy,#2E4256);overflow-wrap:anywhere}' +
       /* El número de cuenta, grande y en grupos de cuatro: se comprueba de un vistazo */
-      '.ipg-iban{font-size:17px;font-weight:600;letter-spacing:.04em;line-height:1.4;color:var(--azul-oscuro,#2F6FA8)}' +
+      '.ipg-iban{font-family:var(--fuente-dato,ui-monospace,monospace);font-size:16px;font-weight:600;line-height:1.45;color:var(--navy,#2E4256)}' +
       /* conceptos */
       '.ipg-conceptos{padding-top:11px}' +
       '.ipg-lista{list-style:none;margin:7px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}' +
       '.ipg-lista li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:#fff;' +
-        'border:1px solid var(--linea,#EAE3D5);border-radius:12px;padding:9px 11px}' +
-      '.ipg-ej{flex:1 1 140px;min-width:0;font-size:14.5px;color:var(--navy,#2E4256);overflow-wrap:anywhere}' +
-      '.ipg-pista{font-size:13px;color:var(--texto-suave,#7A7365);margin:9px 0 0;line-height:1.5}' +
+        'border:1px solid var(--linea,#EAE3D5);border-radius:10px;padding:9px 11px}' +
+      '.ipg-ej{flex:1 1 140px;min-width:0;font-family:var(--fuente-dato,ui-monospace,monospace);font-size:14px;color:var(--navy,#2E4256);overflow-wrap:anywhere}' +
+      '.ipg-pista{font-size:13px;color:var(--texto-suave,#6E6656);margin:9px 0 0;line-height:1.5}' +
       /* botón de copiar: 44 px reales, y confirma que ha copiado */
       '.ipg-copiar{flex:0 0 auto;min-height:44px;min-width:96px;display:inline-flex;align-items:center;' +
         'justify-content:center;gap:6px;padding:10px 16px;box-sizing:border-box;border-radius:999px;' +
@@ -442,14 +446,16 @@
         'font:inherit;font-size:14px;line-height:1;cursor:pointer;transition:background .12s,color .12s,border-color .12s;' +
         '-webkit-tap-highlight-color:transparent}' +
       '.ipg-copiar:hover{background:var(--azul-suave,#EAF2F9)}' +
-      '.ipg-copiar.copiado{background:#E9F2E0;border-color:#4C7A28;color:#3D6220;font-weight:600}' +
+      '.ipg-copiar.copiado{background:var(--verde-fondo,#EDF5EE);border-color:var(--verde-borde,#CBE0CE);color:var(--verde,#3F7A4C);font-weight:600}' +
       '.ipg-copiar.copiado .ipg-c-txt::before{content:"✓ "}' +
-      '.ipg-copiar.fallo{background:#F8E4E3;border-color:#C9908B;color:#8E3A35}' +
+      '.ipg-copiar .ipg-c-ic{flex:0 0 18px}' +
+      '.ipg-copiar.copiado .ipg-c-ic{display:none}' +
+      '.ipg-copiar.fallo{background:var(--ambar-fondo,#FDF3E3);border-color:var(--ambar-borde,#EBD9B8);color:#6B5227}' +
       /* recibo devuelto: avisa sin sonar a morosidad */
       '.ipg-devuelto{margin:14px 0 0;background:var(--aviso-fondo,#FDF5DF);border:1px solid var(--aviso-borde,#EBDCAE);' +
         'border-radius:14px;padding:13px 14px}' +
       '.ipg-dv-tit{display:block;font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);text-transform:uppercase;' +
-        'font-weight:700;font-size:18px;color:var(--navy,#2E4256);margin-bottom:4px}' +
+        'font-weight:700;font-size:21px;line-height:1.1;color:var(--navy,#2E4256);margin-bottom:4px}' +
       '.ipg-devuelto p{margin:0 0 11px;font-size:14px;line-height:1.55;color:var(--aviso-texto,#4A4335)}' +
       '.ipg-dv-btn{display:inline-flex;align-items:center;min-height:44px;padding:11px 20px;box-sizing:border-box;' +
         'border-radius:999px;background:var(--azul,#3B85C0);color:#fff;font-size:15px;text-decoration:none}' +
@@ -458,9 +464,9 @@
       '.ipg-contacto{padding:13px 0 2px;margin-top:4px;border-top:1px solid var(--linea,#EAE3D5)}' +
       '.ipg-persona{display:flex;flex-direction:column;gap:1px;padding:3px 0}' +
       '.ipg-persona b{font-weight:600;font-size:15px;color:var(--navy,#2E4256)}' +
-      '.ipg-persona span,.ipg-contacto .ipg-val{font-size:14.5px;color:var(--texto,#5E5849);overflow-wrap:anywhere}' +
-      '.ipg-nota{font-size:13.5px;color:var(--texto-suave,#7A7365);margin:12px 0 0;line-height:1.55}' +
-      '.ipg-futuro{font-size:13px;color:var(--texto-tenue,#A79F8E);margin:15px 0 0;line-height:1.55}' +
+      '.ipg-persona span,.ipg-contacto .ipg-val{font-size:14px;color:var(--texto,#4A4437);overflow-wrap:anywhere}' +
+      '.ipg-nota{font-size:13px;color:var(--texto-suave,#6E6656);margin:12px 0 0;line-height:1.5}' +
+      '.ipg-futuro{font-size:13px;color:var(--texto-suave,#6E6656);margin:15px 0 0;line-height:1.55}' +
       '.ipg-vivo{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
       /* Móvil: el botón de copiar baja a su propia línea y ocupa el ancho */
       '@media(max-width:420px){' +

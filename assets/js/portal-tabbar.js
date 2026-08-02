@@ -42,11 +42,11 @@
   /* ---------- iconos (línea de 24 px, sin relleno) ---------- */
   function svg(p) {
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-           'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
+           'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
   }
   var IC = {
     inicio:  svg('<path d="M3 10.5L12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>'),
-    entreno: svg('<circle cx="15.5" cy="4.5" r="2"/><path d="M7 21l3-5.5 3.5-2.5-1-4.5-4 2-1.5 3"/><path d="M13.5 13l3.5 2 1.5 4"/>'),
+    entreno: svg('<circle cx="15.5" cy="4.8" r="2"/><path d="M7 21l3-5.5 3.5-2.5-1-4.5-4 2-1.5 3"/><path d="M13.5 13l3.5 2 1.5 4"/>'),
     agenda:  svg('<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
     marcas:  svg('<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>'),
     lista:   svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 3v3M16 3v3M8 11l2 2 3.5-3.5M8 16h6"/>'),
@@ -70,16 +70,14 @@
         'border-top:1px solid var(--linea,#EAE3D5);' +
         'padding:10px 6px calc(10px + env(safe-area-inset-bottom))}' +
       '.pt-tabbar a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
-        'min-height:48px;padding:0 2px;text-decoration:none;color:var(--texto-tenue,#A79F8E);' +
-        'font-family:inherit;font-size:11px;font-weight:400;line-height:1.2;letter-spacing:.01em;text-transform:none;' +
+        'min-height:48px;padding:0 2px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
+        'font-family:inherit;font-size:11px;font-weight:400;line-height:1.2;text-transform:none;' +
         '-webkit-tap-highlight-color:transparent}' +
       '.pt-tabbar a span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       '.pt-tabbar .ic{width:24px;height:24px;flex:0 0 24px}' +
-      '.pt-tabbar a.activo{color:var(--azul-oscuro,#2F6FA8)}' +
+      '.pt-tabbar a.activo{color:#2F6FA8}' +
       '.pt-tabbar a.activo span{font-weight:600}' +
-      '.pt-tabbar a.activo .ic{stroke-width:2}' +
-      /* los avisos flotantes suben por encima de la barra en vez de quedar debajo */
-      'body.pt-con-tabbar .apx-host{bottom:calc(14px + ' + ALTO + 'px + env(safe-area-inset-bottom))}' +
+            /* los avisos flotantes suben por encima de la barra en vez de quedar debajo */
     '}';
   document.head.appendChild(css);
 

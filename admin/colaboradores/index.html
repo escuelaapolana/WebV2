@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colaboradores · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, select:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  /* El botón de subir es nuestro; el campo de archivo de verdad va escondido
+     detrás, para que se vea igual en todos los navegadores y móviles. */
+  .archivo-oculto { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .archivo-nombre { font-size: 13px; color: var(--texto-suave); line-height: 1.4; overflow-wrap: anywhere; }
+  input[type="checkbox"], input[type="radio"] { width: auto; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 21px; color: var(--navy); margin-bottom: 4px; }
+  .panel .intro { margin-bottom: 10px; }
+  .panel-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+
+  .aviso { background: var(--crema-media); border: 1px solid var(--linea); border-radius: 10px; padding: 12px 15px; font-size: 14px; color: var(--texto-suave); margin-bottom: 18px; }
+
+  .btn { cursor: pointer; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; min-height: 44px; }
+  .oculto { display: none !important; }
+
+  /* ---- Lista de colaboradores (tarjetas: van bien en móvil y en pantalla grande) ---- */
+  .lista { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+  .fila {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    border: 1px solid var(--linea); border-radius: 14px; padding: 12px 14px; background: #fff;
+  }
+  .fila.inactiva { background: var(--crema-media); opacity: .72; }
+  .fila .thumb {
+    width: 86px; height: 54px; flex: none; border-radius: 10px; border: 1px solid var(--linea);
+    background: var(--crema-media); display: flex; align-items: center; justify-content: center;
+    overflow: hidden; font-size: 13px; color: var(--texto-suave); text-align: center; padding: 4px; box-sizing: border-box;
+  }
+  .fila .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .fila .datos { flex: 1 1 190px; min-width: 0; }
+  .fila .nom { font-weight: 600; color: var(--navy); font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+  .fila .pistas { font-size: 13px; color: var(--texto-suave); margin-top: 3px; line-height: 1.45; overflow-wrap: anywhere; }
+  .fila .mandos { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .flecha {
+    width: 44px; height: 44px; flex: none; border: 1px solid var(--linea-borde); background: #fff; color: var(--navy);
+    border-radius: 10px; font-size: 17px; line-height: 1; cursor: pointer;
+  }
+  .flecha:hover:not(:disabled) { border-color: var(--azul); color: var(--azul-oscuro); }
+  .flecha:disabled { opacity: .35; cursor: default; }
+  .etq {
+    display: inline-block; font-size: 13px; padding: 3px 9px; border-radius: 999px;
+    background: var(--azul-suave); color: var(--azul-oscuro); margin-right: 6px;
+  }
+  .etq--apagada { background: var(--crema-banda); color: var(--texto-suave); }
+  @media (max-width: 620px) {
+    .fila .datos { flex-basis: 100%; }
+    .fila .mandos { width: 100%; }
+    .fila .mandos .btn { flex: 1 1 auto; }
+  }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* ---- Formulario en ventana emergente ---- */
+  #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none; margin:0;
+    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+  #panel-form .modal-caja { background:#fff; border:1px solid var(--linea); border-radius: 14px;
+    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:24px; width:min(680px,100%);
+    animation:modal-sube .2s ease; }
+  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
+
+  /* Vista previa del logo dentro del formulario */
+  .logo-bloque { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-top: 6px; }
+  .logo-vista { flex: 0 0 auto; width: min(240px, 100%); }
+  .logo-marco {
+    width: 100%; aspect-ratio: 5 / 3; border: 1px solid var(--linea); border-radius: var(--radio);
+    background: var(--crema-media); display: flex; align-items: center; justify-content: center;
+    overflow: hidden; color: var(--texto-suave); font-size: 13px; text-align: center; padding: 10px; box-sizing: border-box;
+  }
+  .logo-marco img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .logo-controles { display: flex; flex-direction: column; gap: 8px; flex: 1 1 210px; }
+  .logo-pie { font-size: 13px; color: var(--texto-suave); margin-top: 6px; line-height: 1.45; }
+
+  /* Cómo se muestra: tres opciones grandes, cómodas de tocar */
+  .opciones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px; }
+  @media (max-width: 520px) { .opciones { grid-template-columns: 1fr; } }
+  .opcion {
+    display: flex; align-items: center; gap: 9px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    padding: 12px; min-height: 44px; cursor: pointer; background: #fff; font-size: 14px; color: var(--navy); margin: 0;
+  }
+  .opcion input { margin: 0; flex: none; width: auto; accent-color: var(--azul); }
+  .opcion .txt { min-width: 0; }
+  .opcion:has(input:checked) { border-color: var(--azul); background: var(--azul-suave); }
+
+  /* ---- Selector de la biblioteca de fotos ---- */
+  .modal-fondo { position: fixed; inset: 0; background: rgba(11,26,45,.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1200; }
+  @media (max-width: 760px) {
+    .modal-fondo { padding: 0; align-items: stretch; }
+    .modal-fondo > * { width: 100%; max-width: none; max-height: 100vh; border-radius: 0; overflow: auto;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  }
+  .modal { background: #fff; border-radius: var(--radio-grande); box-shadow: var(--sombra-suave); width: min(860px, 100%); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-cab { padding: 18px 22px; border-bottom: 1px solid var(--linea); display: flex; align-items: center; justify-content: space-between; }
+  .modal-cab h3 { font-family: var(--fuente-texto); font-size: 17px; color: var(--navy); font-weight: 600;}
+  .modal-cuerpo { padding: 18px 22px; overflow-y: auto; }
+  .modal-x { background: transparent; border: none; font-size: 21px; line-height: 1; color: var(--texto-suave); cursor: pointer; padding: 8px 12px; min-height: 44px; }
+
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+  .foto-op { border: 2px solid var(--linea); border-radius: var(--radio); overflow: hidden; background: var(--crema-media); cursor: pointer; padding: 0; display: flex; flex-direction: column; text-align: left; }
+  .foto-op:hover, .foto-op:focus { border-color: var(--azul); outline: none; }
+  .foto-op .thumb { width: 100%; aspect-ratio: 4 / 3; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; }
+  .foto-op .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .foto-op .nom { padding: 8px; font-size: 13px; color: var(--texto-suave); word-break: break-all; line-height: 1.3; }
+  .biblio-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+  .biblio-filtros label { margin: 0 0 5px; }
+  .biblio-filtros .crece { flex: 1 1 180px; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="aviso">
+      Los colaboradores salen en el <strong>pie de todas las páginas</strong> y en el bloque
+      «Con la colaboración de» de la <strong>portada</strong>. De cada uno puedes elegir si se ve
+      solo el logo, solo el nombre o los dos, y el orden en el que aparecen.<br>
+      Los logos se ven mejor en <strong>PNG con fondo transparente</strong>.
+    </div>
+
+    <div class="panel">
+      <div class="panel-cab">
+        <div>
+          <h2>Colaboradores</h2>
+          <p class="intro">Arriba los que salen primero. Con las flechas cambias el orden.</p>
+        </div>
+        <button class="btn btn--primario btn--mini" type="button" id="btn-nuevo">Añadir colaborador</button>
+      </div>
+      <div class="msg" id="msg-lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+      <div class="lista" id="lista"></div>
+    </div>
+
+    <!-- ===== FORMULARIO (ventana emergente) ===== -->
+    <div class="panel oculto" id="panel-form">
+      <div class="modal-caja">
+      <h2 id="form-titulo">Nuevo colaborador</h2>
+      <form id="form-colab">
+        <input type="hidden" id="c-id">
+
+        <label for="c-nombre">Nombre</label>
+        <input type="text" id="c-nombre" maxlength="120" required placeholder="Diputación de Alicante">
+        <p class="logo-pie">Hace falta siempre: si eliges enseñar solo el logo, el nombre se usa para quien no ve las imágenes.</p>
+
+        <label>Logo</label>
+        <div class="logo-bloque">
+          <div class="logo-vista">
+            <div class="logo-marco" id="c-marco">Sin logo</div>
+            <p class="logo-pie" id="c-pie">Súbelo desde el ordenador o elígelo de la biblioteca de fotos.</p>
+          </div>
+          <div class="logo-controles">
+            <input type="file" id="c-archivo" class="archivo-oculto" accept="image/*" tabindex="-1" aria-hidden="true">
+            <button type="button" class="btn btn--primario btn--mini" id="btn-subir">Subir un logo</button>
+            <button type="button" class="btn btn--fantasma btn--mini" id="btn-biblio">Elegir de la biblioteca</button>
+            <button type="button" class="btn btn--fantasma btn--mini oculto" id="btn-quitar-logo">Quitar el logo</button>
+            <p class="archivo-nombre" id="c-archivo-nombre"></p>
+          </div>
+        </div>
+        <input type="hidden" id="c-logo-url">
+        <input type="hidden" id="c-logo-ruta">
+
+        <label>Cómo se muestra en la web</label>
+        <div class="opciones">
+          <label class="opcion"><input type="radio" name="c-mostrar" value="logo"><span class="txt">Solo el logo</span></label>
+          <label class="opcion"><input type="radio" name="c-mostrar" value="nombre"><span class="txt">Solo el nombre</span></label>
+          <label class="opcion"><input type="radio" name="c-mostrar" value="ambos" checked><span class="txt">Logo y nombre</span></label>
+        </div>
+        <p class="logo-pie" id="c-aviso-logo"></p>
+
+        <div class="grid2">
+          <div>
+            <label for="c-enlace">Su página web (opcional)</label>
+            <input type="url" id="c-enlace" placeholder="https://…">
+          </div>
+          <div>
+            <label for="c-orden">Orden</label>
+            <input type="number" id="c-orden" step="1" min="0">
+          </div>
+        </div>
+
+        <label class="opcion" style="margin-top:14px;max-width:280px;">
+          <input type="checkbox" id="c-activo" checked><span class="txt">Se ve en la web</span>
+        </label>
+
+        <div style="margin-top:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn--primario btn--mini" type="submit" id="btn-guardar">Guardar</button>
+          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+          <span class="msg" id="msg-form"></span>
+        </div>
+      </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== SELECTOR DE LA BIBLIOTECA DE FOTOS ===== -->
+<div class="modal-fondo oculto" id="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Elegir un logo de la biblioteca">
+    <div class="modal-cab">
+      <h3>Elegir de la biblioteca</h3>
+      <button type="button" class="modal-x" id="modal-cerrar" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="modal-cuerpo">
+      <div class="biblio-filtros">
+        <div class="crece">
+          <label for="b-busca">Buscar por nombre o título</label>
+          <input type="text" id="b-busca" placeholder="Escribe para buscar…">
+        </div>
+      </div>
+      <div class="msg" id="msg-biblio"></div>
+      <div class="rejilla" id="rejilla-biblio"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  var CARPETA_LOGOS = 'colaboradores';  // dentro del bucket «imagenes»
+  var CARPETA_BIBLIO = 'biblioteca';
+
+  var TEXTO_MOSTRAR = { logo: 'Solo el logo', nombre: 'Solo el nombre', ambos: 'Logo y nombre' };
+
+  var COLABS = [];        // lo que hay ahora mismo en pantalla
+  var guardando = false;
+
+  function urlDeRuta(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
+
+  /* ---------------------------------------------------------------
+     LISTA
+     --------------------------------------------------------------- */
+  async function cargar() {
+    $('msg-lista').innerHTML = ADM.esqueleto(2);
+    $('msg-lista').className = 'msg';
+    var r = await sb.from('colaboradores')
+      .select('id,nombre,logo_url,logo_ruta,enlace,mostrar,orden,activo')
+      .order('orden', { ascending: true })
+      .order('nombre', { ascending: true });
+    if (r.error) {
+      $('msg-lista').textContent = 'No se pudo cargar: ' + r.error.message;
+      $('msg-lista').className = 'msg error';
+      $('lista').innerHTML = '';
+      return;
+    }
+    COLABS = r.data || [];
+    pintarLista();
+  }
+
+  function pintarLista() {
+    if (!COLABS.length) {
+      $('msg-lista').textContent = 'Todavía no hay colaboradores. Pulsa «Añadir colaborador» para poner el primero.';
+      $('msg-lista').className = 'msg';
+      $('lista').innerHTML = '';
+      return;
+    }
+    $('msg-lista').textContent = '';
+    $('lista').innerHTML = COLABS.map(function (c, i) {
+      var thumb = c.logo_url
+        ? '<img src="' + esc(c.logo_url) + '" alt="" loading="lazy">'
+        : 'Sin logo';
+      var pistas = [];
+      pistas.push('<span class="etq">' + esc(TEXTO_MOSTRAR[c.mostrar] || c.mostrar) + '</span>');
+      if (!c.activo) pistas.push('<span class="etq etq--apagada">No se ve en la web</span>');
+      var linea2 = c.enlace ? '<br>' + esc(c.enlace) : '';
+      return '<div class="fila' + (c.activo ? '' : ' inactiva') + '">' +
+        '<div class="thumb">' + thumb + '</div>' +
+        '<div class="datos">' +
+          '<div class="nom">' + esc(c.nombre) + '</div>' +
+          '<div class="pistas">' + pistas.join('') + linea2 + '</div>' +
+        '</div>' +
+        '<div class="mandos">' +
+          '<button type="button" class="flecha" data-subir="' + i + '" aria-label="Subir ' + esc(c.nombre) + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+          '<button type="button" class="flecha" data-bajar="' + i + '" aria-label="Bajar ' + esc(c.nombre) + '"' + (i === COLABS.length - 1 ? ' disabled' : '') + '>↓</button>' +
+          '<button type="button" class="btn btn--primario btn--mini" data-editar="' + esc(c.id) + '">Editar</button>' +
+          '<button type="button" class="btn btn--fantasma btn--mini" data-borrar="' + esc(c.id) + '">Borrar</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* Reordenar: se mueve la tarjeta en la lista y se vuelven a numerar
+     todas de 1 en adelante, para que nunca queden órdenes repetidos. */
+  async function mover(desde, hasta) {
+    if (hasta < 0 || hasta >= COLABS.length) return;
+    var fila = COLABS.splice(desde, 1)[0];
+    COLABS.splice(hasta, 0, fila);
+    pintarLista();                      // se ve al instante; luego se guarda
+    $('msg-lista').textContent = 'Guardando el orden…';
+    $('msg-lista').className = 'msg';
+    for (var i = 0; i < COLABS.length; i++) {
+      var nuevo = i + 1;
+      if (COLABS[i].orden === nuevo) continue;
+      COLABS[i].orden = nuevo;
+      /* Se pide de vuelta la fila (.select) para saber que se guardó de verdad:
+         si el permiso lo impidiera, no vendría ninguna y hay que avisar. */
+      var r = await sb.from('colaboradores')
+        .update({ orden: nuevo, updated_at: new Date().toISOString() })
+        .eq('id', COLABS[i].id)
+        .select('id');
+      if (r.error || !r.data || !r.data.length) {
+        $('msg-lista').textContent = 'No se pudo guardar el orden' + (r.error ? ': ' + r.error.message : '. Vuelve a entrar en el panel e inténtalo otra vez.');
+        $('msg-lista').className = 'msg error';
+        return;
+      }
+    }
+    $('msg-lista').textContent = 'Orden guardado ✓';
+    $('msg-lista').className = 'msg ok';
+  }
+
+  $('lista').addEventListener('click', async function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b) return;
+
+    if (b.hasAttribute('data-subir')) { var s = +b.getAttribute('data-subir'); return mover(s, s - 1); }
+    if (b.hasAttribute('data-bajar')) { var j = +b.getAttribute('data-bajar'); return mover(j, j + 1); }
+
+    var ed = b.getAttribute('data-editar');
+    if (ed) {
+      var c = COLABS.filter(function (x) { return x.id === ed; })[0];
+      if (c) abrirForm(c);
+      return;
+    }
+
+    var bo = b.getAttribute('data-borrar');
+    if (bo) {
+      var f = COLABS.filter(function (x) { return x.id === bo; })[0];
+      if (!f) return;
+      if (!confirm('¿Borrar «' + f.nombre + '»? Dejará de salir en la web.\n\nSi solo quieres esconderlo un tiempo, edítalo y quita «Se ve en la web».')) return;
+      var rd = await sb.from('colaboradores').delete().eq('id', bo).select('id');
+      if (rd.error || !rd.data || !rd.data.length) {
+        $('msg-lista').textContent = 'No se pudo borrar' + (rd.error ? ': ' + rd.error.message : '. Vuelve a entrar en el panel e inténtalo otra vez.');
+        $('msg-lista').className = 'msg error';
+        return;
+      }
+      // Si su logo era un archivo propio (carpeta «colaboradores/»), se retira
+      // también del almacén. Los de la biblioteca NO se tocan: son de todos.
+      if (f.logo_ruta && f.logo_ruta.indexOf(CARPETA_LOGOS + '/') === 0) {
+        try { await sb.storage.from('imagenes').remove([f.logo_ruta]); } catch (err) {}
+      }
+      cargar();
+    }
+  });
+
+  /* ---------------------------------------------------------------
+     FORMULARIO
+     --------------------------------------------------------------- */
+  var rutaAnterior = null;  // logo propio que habrá que retirar si se cambia
+
+  function pintarLogo(url) {
+    var marco = $('c-marco');
+    if (url) {
+      marco.innerHTML = '<img src="' + esc(url) + '" alt="">';
+      $('btn-quitar-logo').classList.remove('oculto');
+      $('c-pie').textContent = 'Así se verá el logo. Para cambiarlo, sube otro o elígelo de la biblioteca.';
+    } else {
+      marco.textContent = 'Sin logo';
+      $('btn-quitar-logo').classList.add('oculto');
+      $('c-pie').textContent = 'Súbelo desde el ordenador o elígelo de la biblioteca de fotos.';
+    }
+    avisoCoherencia();
+  }
+
+  function mostrarElegido() {
+    var m = document.querySelector('input[name="c-mostrar"]:checked');
+    return m ? m.value : 'ambos';
+  }
+
+  /* Si pide enseñar el logo pero no hay logo, se avisa (y la web enseñará
+     el nombre igualmente, para no dejar un hueco vacío). */
+  function avisoCoherencia() {
+    var m = mostrarElegido();
+    var hay = !!$('c-logo-url').value;
+    $('c-aviso-logo').textContent = (!hay && m !== 'nombre')
+      ? 'Todavía no tiene logo: hasta que le pongas uno, en la web saldrá su nombre.'
+      : '';
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="c-mostrar"]'), function (r) {
+    r.addEventListener('change', avisoCoherencia);
+  });
+
+  function abrirForm(c) {
+    c = c || {};
+    $('form-titulo').textContent = c.id ? 'Editar colaborador' : 'Nuevo colaborador';
+    $('c-id').value = c.id || '';
+    $('c-nombre').value = c.nombre || '';
+    $('c-enlace').value = c.enlace || '';
+    $('c-orden').value = (c.orden != null ? c.orden : (COLABS.length + 1));
+    $('c-activo').checked = c.id ? !!c.activo : true;
+    $('c-logo-url').value = c.logo_url || '';
+    $('c-logo-ruta').value = c.logo_ruta || '';
+    rutaAnterior = c.logo_ruta || null;
+    var m = c.mostrar || 'ambos';
+    var radio = document.querySelector('input[name="c-mostrar"][value="' + m + '"]');
+    if (radio) radio.checked = true;
+    $('c-archivo').value = '';
+    $('c-archivo-nombre').textContent = '';
+    pintarLogo(c.logo_url || '');
+    $('msg-form').textContent = '';
+    $('panel-form').classList.remove('oculto');
+    $('panel-form').scrollTop = 0;
+    setTimeout(function () { $('c-nombre').focus(); }, 40);
+  }
+  function cerrarForm() { $('panel-form').classList.add('oculto'); }
+
+  $('btn-nuevo').addEventListener('click', function () { abrirForm(null); });
+  $('cancelar').addEventListener('click', cerrarForm);
+  $('panel-form').addEventListener('click', function (e) { if (e.target === this) cerrarForm(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('modal').classList.contains('oculto')) { cerrarBiblioteca(); return; }
+    if (!$('panel-form').classList.contains('oculto')) cerrarForm();
+  });
+
+  $('btn-quitar-logo').addEventListener('click', function () {
+    $('c-logo-url').value = '';
+    $('c-logo-ruta').value = '';
+    $('c-archivo').value = '';
+    $('c-archivo-nombre').textContent = '';
+    pintarLogo('');
+  });
+
+  /* El botón visible abre el buscador de archivos del dispositivo. */
+  $('btn-subir').addEventListener('click', function () { $('c-archivo').click(); });
+
+  /* Vista previa inmediata del archivo elegido, antes de subirlo. */
+  $('c-archivo').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) { $('c-archivo-nombre').textContent = ''; return; }
+    if (!/^image\//.test(f.type)) {
+      $('msg-form').textContent = 'Ese archivo no es una imagen.';
+      $('msg-form').className = 'msg error';
+      this.value = '';
+      $('c-archivo-nombre').textContent = '';
+      return;
+    }
+    $('msg-form').textContent = '';
+    $('c-archivo-nombre').textContent = 'Elegido: ' + f.name;
+    var lector = new FileReader();
+    lector.onload = function () {
+      $('c-marco').innerHTML = '<img src="' + lector.result + '" alt="">';
+      $('btn-quitar-logo').classList.remove('oculto');
+      $('c-pie').textContent = 'Logo nuevo sin guardar. Pulsa «Guardar» para dejarlo puesto.';
+      $('c-aviso-logo').textContent = '';
+    };
+    lector.readAsDataURL(f);
+  });
+
+  /* ---------------------------------------------------------------
+     GUARDAR
+     --------------------------------------------------------------- */
+  $('form-colab').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (guardando) return;
+    var nombre = $('c-nombre').value.trim();
+    if (!nombre) { $('msg-form').textContent = 'Pon un nombre.'; $('msg-form').className = 'msg error'; return; }
+
+    guardando = true;
+    $('btn-guardar').disabled = true;
+    $('msg-form').textContent = 'Guardando…';
+    $('msg-form').className = 'msg';
+
+    var logoUrl = $('c-logo-url').value.trim() || null;
+    var logoRuta = $('c-logo-ruta').value.trim() || null;
+
+    // 1) Si hay archivo nuevo, primero se sube al almacén.
+    var file = $('c-archivo').files && $('c-archivo').files[0];
+    if (file) {
+      var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+      var ruta = CARPETA_LOGOS + '/' + Date.now() + '-' + limpio;
+      var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+      if (up.error) {
+        $('msg-form').textContent = 'No se pudo subir el logo: ' + up.error.message;
+        $('msg-form').className = 'msg error';
+        guardando = false; $('btn-guardar').disabled = false;
+        return;
+      }
+      logoRuta = ruta;
+      logoUrl = urlDeRuta(ruta);
+    }
+
+    var orden = parseInt($('c-orden').value, 10);
+    if (isNaN(orden) || orden < 0) orden = COLABS.length + 1;
+
+    var datos = {
+      nombre: nombre,
+      logo_url: logoUrl,
+      logo_ruta: logoRuta,
+      enlace: $('c-enlace').value.trim() || null,
+      mostrar: mostrarElegido(),
+      orden: orden,
+      activo: $('c-activo').checked,
+      updated_at: new Date().toISOString()
+    };
+
+    var id = $('c-id').value;
+    var r = id
+      ? await sb.from('colaboradores').update(datos).eq('id', id).select('id')
+      : await sb.from('colaboradores').insert(datos).select('id');
+
+    if (!r.error && (!r.data || !r.data.length)) {
+      r = { error: { message: 'no se guardó ninguna ficha. Vuelve a entrar en el panel e inténtalo otra vez.' } };
+    }
+    if (r.error) {
+      // Si la fila no se guardó pero el archivo sí subió, se retira el archivo.
+      if (file && logoRuta) { try { await sb.storage.from('imagenes').remove([logoRuta]); } catch (err) {} }
+      $('msg-form').textContent = 'Error: ' + r.error.message;
+      $('msg-form').className = 'msg error';
+      guardando = false; $('btn-guardar').disabled = false;
+      return;
+    }
+
+    // El logo propio que ha quedado sin usar se retira del almacén.
+    if (rutaAnterior && rutaAnterior !== logoRuta && rutaAnterior.indexOf(CARPETA_LOGOS + '/') === 0) {
+      try { await sb.storage.from('imagenes').remove([rutaAnterior]); } catch (err) {}
+    }
+
+    guardando = false;
+    $('btn-guardar').disabled = false;
+    $('msg-form').textContent = 'Guardado ✓';
+    $('msg-form').className = 'msg ok';
+    cerrarForm();
+    cargar();
+  });
+
+  /* ---------------------------------------------------------------
+     BIBLIOTECA DE FOTOS (para reaprovechar un logo ya subido)
+     --------------------------------------------------------------- */
+  var BIBLIO = [], bBusca = '';
+
+  function renderBiblio() {
+    var rej = $('rejilla-biblio');
+    if (!BIBLIO.length) {
+      rej.innerHTML = '';
+      $('msg-biblio').innerHTML = 'Todavía no hay fotos. Súbelas en la <a href="../biblioteca/">Biblioteca de fotos</a>, o usa el botón de subir del formulario.';
+      $('msg-biblio').className = 'msg';
+      return;
+    }
+    var q = bBusca.trim().toLowerCase();
+    var lista = BIBLIO.filter(function (f) {
+      if (!q) return true;
+      return ((f.titulo || '') + ' ' + (f.nombre || '')).toLowerCase().indexOf(q) !== -1;
+    });
+    if (!lista.length) { $('msg-biblio').textContent = 'No hay fotos con ese nombre.'; $('msg-biblio').className = 'msg'; rej.innerHTML = ''; return; }
+    $('msg-biblio').textContent = '';
+    rej.innerHTML = lista.map(function (f) {
+      return '<button type="button" class="foto-op" data-url="' + esc(f.url) + '" data-ruta="' + esc(f.ruta) + '">' +
+        '<div class="thumb"><img src="' + esc(f.url) + '" alt="" loading="lazy"></div>' +
+        '<div class="nom">' + esc(f.titulo || f.nombre || '') + '</div>' +
+      '</button>';
+    }).join('');
+  }
+
+  async function abrirBiblioteca() {
+    $('modal').classList.remove('oculto');
+    bBusca = ''; $('b-busca').value = '';
+    $('rejilla-biblio').innerHTML = '';
+    $('msg-biblio').innerHTML = ADM.esqueleto(2); $('msg-biblio').className = 'msg';
+
+    var r = await sb.from('biblioteca_fotos')
+      .select('ruta,nombre,titulo,created_at')
+      .order('created_at', { ascending: false });
+    if (!r.error && r.data && r.data.length) {
+      BIBLIO = r.data.map(function (f) {
+        return { ruta: f.ruta, nombre: f.nombre || f.ruta, titulo: f.titulo || '', url: urlDeRuta(f.ruta) };
+      });
+      renderBiblio();
+      return;
+    }
+    // Recambio: si la tabla de fichas falla o está vacía, se lista el almacén.
+    var rb = await sb.storage.from('imagenes').list(CARPETA_BIBLIO, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+    if (rb.error) { $('msg-biblio').textContent = 'No se pudo cargar la biblioteca: ' + rb.error.message; $('msg-biblio').className = 'msg error'; return; }
+    BIBLIO = (rb.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; })
+      .map(function (f) { return { ruta: CARPETA_BIBLIO + '/' + f.name, nombre: f.name, titulo: '', url: urlDeRuta(CARPETA_BIBLIO + '/' + f.name) }; });
+    renderBiblio();
+  }
+  function cerrarBiblioteca() { $('modal').classList.add('oculto'); }
+
+  $('btn-biblio').addEventListener('click', abrirBiblioteca);
+  $('modal-cerrar').addEventListener('click', cerrarBiblioteca);
+  $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) cerrarBiblioteca(); });
+  $('b-busca').addEventListener('input', function () { bBusca = this.value; renderBiblio(); });
+  $('rejilla-biblio').addEventListener('click', function (e) {
+    var op = e.target.closest ? e.target.closest('.foto-op') : null;
+    if (!op) return;
+    $('c-logo-url').value = op.getAttribute('data-url');
+    // Foto de la biblioteca: NO se guarda su ruta como «propia», para que al
+    // cambiar o borrar el colaborador no se borre una foto que es de todos.
+    $('c-logo-ruta').value = '';
+    $('c-archivo').value = '';
+    $('c-archivo-nombre').textContent = '';
+    pintarLogo(op.getAttribute('data-url'));
+    cerrarBiblioteca();
+  });
+
+  cargar();
+});
+</script>
+
+</body>
+</html>
