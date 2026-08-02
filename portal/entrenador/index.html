@@ -47,7 +47,7 @@
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
   .acciones { display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap:wrap; }
-  .msg { font-size:14px; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
+  .msg { font-size:14px; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; } .msg.pendiente { color:#A8453F; font-weight:600; }
   .check { display:flex; align-items:center; gap:8px; }
   .check input { width:auto; }
   .check label { margin:0; }
@@ -966,7 +966,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // Abre la lista del día en el grupo que toque
-  function irAPasarLista(grupoId, fecha){
+  async function irAPasarLista(grupoId, fecha){
+    // Si ya había una lista a medias sin guardar, primero se pone a salvo.
+    if(!(await puedoDejarLaLista())) { irASeccion('lista'); cerrarMas(); window.scrollTo(0,0); return; }
     irASeccion('lista'); cerrarMas();
     var sg = $('lst-grupo'), sf = $('lst-fecha');
     if(sg && grupoId){ sg.value = grupoId; LST.grupo = grupoId; }
@@ -1227,16 +1229,69 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return MIS_ATLETAS.filter(function(x){ return x.grupo_id===grupoId && x.estado!=='baja'; });
   }
 
-  var LST = { grupo:'', fecha: todayISO, marcas:{}, guardadas:{}, ausencias:{}, sesion:null, filtro:'', buscando:false, cargando:false };
+  /* `sucio`  = hay marcas puestas a mano que todavía no están en la base.
+     `aviso`  = el mensaje del pie (guardado, error, etc.), guardado en el
+                estado para que no se borre al repintar la lista.
+     `sobrantes` = atletas del grupo que NO están asignados a este entrenador:
+                se ven en el grupo pero el club no le deja pasarles lista. */
+  var LST = { grupo:'', fecha: todayISO, marcas:{}, guardadas:{}, ausencias:{}, sesion:null, filtro:'', buscando:false, cargando:false,
+              sucio:false, guardando:false, aviso:null, sobrantes:[], version:0 };
+
+  /* BORRADOR EN EL PROPIO MÓVIL
+     Aunque al cambiar de grupo o de día ya se pregunta, la pestaña de un móvil
+     se puede cerrar sola a pie de pista. Cada toque deja copia de lo marcado en
+     el teléfono; al volver a esa misma lista se recupera. Se borra en cuanto
+     queda guardado en la base, así que nunca reaparece nada viejo. */
+  var BORRADOR = 'apolana.lista.entrenador';
+  function guardarBorrador(){
+    try {
+      var m = {};
+      Object.keys(LST.marcas).forEach(function(id){ m[id] = (LST.marcas[id]===undefined ? null : LST.marcas[id]); });
+      localStorage.setItem(BORRADOR, JSON.stringify({ grupo:LST.grupo, fecha:LST.fecha, marcas:m }));
+    } catch(e){}
+  }
+  function borrarBorrador(){ try { localStorage.removeItem(BORRADOR); } catch(e){} }
+  function recuperarBorrador(){
+    var b = null;
+    try { b = JSON.parse(localStorage.getItem(BORRADOR) || 'null'); } catch(e){ b = null; }
+    if(!b || b.grupo!==LST.grupo || b.fecha!==LST.fecha || !b.marcas) return false;
+    var distinto = false;
+    Object.keys(b.marcas).forEach(function(id){
+      var v = (b.marcas[id]===null ? undefined : b.marcas[id]);
+      if(LST.marcas[id] !== v){
+        if(v===undefined) delete LST.marcas[id]; else LST.marcas[id] = v;
+        distinto = true;
+      }
+    });
+    return distinto;
+  }
 
   async function cargarLista(){
     var atls = atletasParaLista(LST.grupo);
     LST.marcas = {}; LST.guardadas = {}; LST.ausencias = {}; LST.sesion = null;
+    LST.sucio = false; LST.aviso = null; LST.sobrantes = [];
+
+    /* Aviso de huecos: si en el grupo hay atletas que el club no le ha
+       asignado, no salen en la lista y nadie se entera. Mejor decirlo. */
+    try {
+      var todos = await sb.from('atletas').select('id,nombre,apellidos').eq('grupo_id', LST.grupo).neq('estado','baja');
+      if(!todos.error && todos.data){
+        var mios = {}; atls.forEach(function(x){ mios[x.id] = true; });
+        LST.sobrantes = todos.data.filter(function(x){ return !mios[x.id]; });
+      }
+    } catch(e){}
+
     if(!atls.length || !LST.fecha) return;
     var ids = atls.map(function(x){ return x.id; });
 
     var asis = await sb.from('asistencia').select('atleta_id,presente').eq('fecha', LST.fecha).in('atleta_id', ids);
-    if(!asis.error && asis.data) asis.data.forEach(function(r){ LST.marcas[r.atleta_id] = !!r.presente; LST.guardadas[r.atleta_id] = true; });
+    if(asis.error){
+      /* Sin esto, un fallo de red se vería como "no hay nadie pasado" y el
+         entrenador repetiría la lista creyendo que se había perdido. */
+      LST.aviso = { tipo:'error', texto:'No se ha podido leer la lista de ese día: '+(asis.error.message||'sin conexión')+'. Vuelve a cargarla antes de marcar.' };
+    } else if(asis.data){
+      asis.data.forEach(function(r){ LST.marcas[r.atleta_id] = !!r.presente; LST.guardadas[r.atleta_id] = true; });
+    }
 
     // Faltas avisadas por la familia (tabla `ausencias`, del portal de
     // familias). Si el atleta tiene falta avisada y todavía no se le ha
@@ -1252,6 +1307,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var se = await sb.from('sesiones').select('id,titulo,fecha,publicada').eq('grupo_id', LST.grupo).eq('fecha', LST.fecha).order('publicada',{ascending:false}).limit(1);
     if(!se.error && se.data && se.data.length) LST.sesion = se.data[0];
+
+    if(recuperarBorrador()){
+      LST.sucio = true;
+      LST.aviso = { tipo:'pendiente', texto:'Se han recuperado las marcas que quedaron sin guardar en este móvil. Repásalas y dale a Guardar lista.' };
+    }
   }
 
   function contadorLista(){
@@ -1274,8 +1334,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cab = '<div class="lst-cab"><div><span class="lst-ctx">'+esc(ctx)+'</span><span class="lst-tit">Pasar lista</span></div>'+
       '<span class="lst-contador'+(c.presentes?'':' cero')+'">'+c.presentes+'/'+c.total+'</span></div>';
 
+    /* Atletas del grupo que el club no te ha asignado: no se les puede pasar
+       lista (el permiso va por entrenador asignado, no por grupo). */
+    var sobra = LST.sobrantes.length
+      ? '<div class="lst-avisos"><strong>'+LST.sobrantes.length+' atleta'+(LST.sobrantes.length>1?'s de este grupo no están':' de este grupo no está')+' a tu nombre</strong><ul>'+
+          LST.sobrantes.map(function(x){ return '<li><b>'+esc(nombreAtleta(x))+'</b></li>'; }).join('')+
+        '</ul><p>No salen en la lista y no puedes marcarles. Pídele al club que te los asigne.</p></div>'
+      : '';
+
     if(!atls.length){
-      cont.innerHTML = cab + vacioHTML(icVacGrupo, 'Este grupo no tiene atletas en activo. Cuando el club te asigne atletas, aparecerán aquí para pasar lista.');
+      cont.innerHTML = cab + sobra + vacioHTML(icVacGrupo, 'Este grupo no tiene atletas en activo. Cuando el club te asigne atletas, aparecerán aquí para pasar lista.');
       return;
     }
 
@@ -1293,7 +1361,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</ul><p>Ya están marcados como ausentes. Si al final vinieron, cámbialo con el ✓.</p></div>'
       : '';
 
-    var acciones = avisos + '<div class="lst-acciones">'+
+    var acciones = sobra + avisos + '<div class="lst-acciones">'+
       '<button type="button" id="lst-todos">Marcar todos</button>'+
       '<button type="button" id="lst-buscar">Buscar</button>'+
     '</div>'+
@@ -1319,10 +1387,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if(!visibles.length) filas = vacioHTML(icVacGrupo, 'Ningún atleta con ese nombre.');
 
+    /* El aviso vive en el estado: así sobrevive a los repintados y no se pierde
+       el «Lista guardada ✓» (ni un error) en cuanto se toca otro botón. */
+    var avisoPie = LST.aviso || (LST.sucio ? { tipo:'pendiente', texto:'Cambios sin guardar' } : null);
     var pie = '<div class="lst-pie">'+
       '<p class="lst-resumen">'+c.presentes+' de '+c.total+' presentes'+(c.marcados<c.total ? ' · '+(c.total-c.marcados)+' sin marcar' : '')+'</p>'+
-      '<button class="btn btn--primario" id="lst-guardar">Guardar lista</button>'+
-      '<span class="msg" id="lst-msg"></span>'+
+      '<button class="btn btn--primario" id="lst-guardar"'+(LST.guardando?' disabled':'')+'>'+(LST.guardando?'Guardando…':'Guardar lista')+'</button>'+
+      '<span class="msg'+(avisoPie?' '+avisoPie.tipo:'')+'" id="lst-msg">'+(avisoPie?esc(avisoPie.texto):'')+'</span>'+
     '</div>'+
     '<details class="ayuda"><summary>¿Cómo funciona?</summary>'+
       '<p class="pista">La familia ve la asistencia en su portal. El aviso automático de las faltas sin avisar todavía no está en marcha.</p>'+
@@ -1335,6 +1406,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var id = b.getAttribute('data-atleta'), val = b.getAttribute('data-val')==='si';
         LST.marcas[id] = (LST.marcas[id]===val) ? undefined : val;   // volver a pulsar lo desmarca
         if(LST.marcas[id]===undefined) delete LST.marcas[id];
+        LST.sucio = true; LST.aviso = null; LST.version++;
+        guardarBorrador();
         pintarLista();
       });
     });
@@ -1344,6 +1417,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('lst-todos').addEventListener('click', function(){
       // No pisa a quien tiene falta avisada por la familia.
       visibles.forEach(function(x){ if(!LST.ausencias[x.id]) LST.marcas[x.id] = true; });
+      LST.sucio = true; LST.aviso = null; LST.version++;
+      guardarBorrador();
       pintarLista();
     });
     $('lst-buscar').addEventListener('click', function(){
@@ -1361,8 +1436,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('lst-guardar').addEventListener('click', guardarLista);
   }
 
+  /* Devuelve true solo si TODO ha quedado escrito en la base. */
   async function guardarLista(){
-    var msg = $('lst-msg'); if(msg){ msg.className='msg'; msg.textContent='Guardando…'; }
+    if(LST.guardando) return false;                 // dos toques seguidos = un solo guardado
     var atls = atletasParaLista(LST.grupo);
     var filas = [], borrar = [];
     atls.forEach(function(x){
@@ -1372,22 +1448,58 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         filas.push({ atleta_id: x.id, fecha: LST.fecha, grupo_id: LST.grupo, sesion_id: (LST.sesion?LST.sesion.id:null), presente: LST.marcas[x.id] });
       }
     });
-    if(!filas.length && !borrar.length){ if(msg){ msg.textContent='No has marcado a nadie todavía.'; msg.className='msg error'; } return; }
+    if(!filas.length && !borrar.length){
+      LST.aviso = { tipo:'error', texto:'No has marcado a nadie todavía.' };
+      pintarLista(); return false;
+    }
 
-    if(filas.length){
-      var res = await sb.from('asistencia').upsert(filas, { onConflict: 'atleta_id,fecha' });
-      if(res.error){ if(msg){ msg.textContent='Error: '+res.error.message; msg.className='msg error'; } return; }
-    }
-    if(borrar.length){
-      var del = await sb.from('asistencia').delete().eq('fecha', LST.fecha).in('atleta_id', borrar);
-      if(del.error){ if(msg){ msg.textContent='Error al quitar marcas: '+del.error.message; msg.className='msg error'; } return; }
-    }
-    LST.guardadas = {}; filas.forEach(function(f){ LST.guardadas[f.atleta_id]=true; });
-    var c = contadorLista();
+    LST.guardando = true; LST.aviso = { tipo:'', texto:'Guardando…' };
+    var version0 = LST.version;   // por si se marca a alguien más mientras se guarda
     pintarLista();
-    var m2 = $('lst-msg');
-    if(m2){ m2.textContent = 'Lista guardada ✓ · '+c.presentes+' de '+c.total+' presentes'; m2.className='msg ok'; }
+    try {
+      if(filas.length){
+        var res = await sb.from('asistencia').upsert(filas, { onConflict: 'atleta_id,fecha' });
+        if(res.error) throw res.error;
+      }
+      if(borrar.length){
+        var del = await sb.from('asistencia').delete().eq('fecha', LST.fecha).in('atleta_id', borrar);
+        if(del.error) throw del.error;
+      }
+      LST.guardadas = {}; filas.forEach(function(f){ LST.guardadas[f.atleta_id]=true; });
+      LST.sucio = (LST.version !== version0);   // si tocó algo mientras tanto, sigue pendiente
+      LST.guardando = false;
+      if(LST.sucio) guardarBorrador(); else borrarBorrador();
+      var c = contadorLista();
+      var hora = new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+      LST.aviso = LST.sucio ? null : { tipo:'ok', texto:'Lista guardada ✓ · '+c.presentes+' de '+c.total+' presentes · '+hora };
+      pintarLista();
+      return !LST.sucio;
+    } catch(e){
+      /* Nada se toca en pantalla: las marcas siguen ahí para reintentar. */
+      LST.guardando = false;
+      LST.aviso = { tipo:'error', texto:'NO se ha guardado: '+((e&&e.message)||e)+'. Las marcas siguen aquí; comprueba la conexión y vuelve a darle a Guardar lista.' };
+      pintarLista();
+      if(window.APX) APX.toast('No se ha guardado la lista. Vuelve a intentarlo.','error');
+      return false;
+    }
   }
+
+  /* Cambiar de grupo o de día repinta la lista desde cero: si hay marcas sin
+     guardar hay que guardarlas antes, o se pierden sin que nadie se entere.
+     Se guarda (en vez de descartar) porque perder una lista cuesta repetirla
+     entera y una marca de más se corrige en dos toques. */
+  async function puedoDejarLaLista(){
+    if(!LST.sucio) return true;
+    var ok = window.APX
+      ? await APX.confirm('Tienes marcas sin guardar en esta lista. Si sales ahora se perderían.', { aceptar:'Guardar y salir', cancelar:'Seguir en la lista' })
+      : true;
+    if(!ok) return false;
+    return await guardarLista();
+  }
+
+  window.addEventListener('beforeunload', function(e){
+    if(LST.sucio){ e.preventDefault(); e.returnValue = ''; return ''; }
+  });
 
   async function refrescarLista(){
     LST.cargando = true; pintarLista();
@@ -1413,8 +1525,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</details>'+
         '<div id="lst-cont" style="margin-top:10px;"></div>'+
       '</div>';
-    $('lst-grupo').addEventListener('change', function(){ LST.grupo = $('lst-grupo').value; refrescarLista(); });
-    $('lst-fecha').addEventListener('change', function(){ LST.fecha = $('lst-fecha').value || todayISO; refrescarLista(); });
+    /* Si el entrenador dice «seguir en la lista», el desplegable vuelve a lo
+       que estaba: lo que se ve en pantalla y lo que hay marcado no se separan. */
+    $('lst-grupo').addEventListener('change', async function(){
+      var nuevo = $('lst-grupo').value, anterior = LST.grupo;
+      if(!(await puedoDejarLaLista())){ $('lst-grupo').value = anterior; return; }
+      LST.grupo = nuevo; refrescarLista();
+    });
+    $('lst-fecha').addEventListener('change', async function(){
+      var nueva = $('lst-fecha').value || todayISO, anterior = LST.fecha;
+      if(!(await puedoDejarLaLista())){ $('lst-fecha').value = anterior; return; }
+      LST.fecha = nueva; refrescarLista();
+    });
     refrescarLista();
   })();
 
