@@ -113,6 +113,11 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   var BAJA = '<span class="baja">' + (icono('descargar', 22) || '↓') + '</span>';
   var MIGAS = '<a class="migas" href="../">← Volver al portal</a>';
 
+  /* Documentos reservados a socios: no guardan enlace, guardan la ruta dentro
+     del cubo cerrado. El enlace se pide al pulsar y dura un minuto. */
+  var CUBO_SOCIOS = 'documentos-socios';
+  function esReservado(v) { return !!v && !/^https?:\/\//i.test(v); }
+
   var SECCIONES = {
     escuela: 'Escuela', competicion: 'Competición', running: 'Running',
     triatlon: 'Triatlón', natacion: 'Natación', gimnasio: 'Gimnasio', adultos: 'Adultos',
@@ -412,13 +417,35 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
         var dentro = '<span class="info"><span class="tit">' + t +
           (d.categoria ? ' <span class="pill">' + esc(d.categoria) + '</span>' : '') + '</span>' +
           (d.descripcion ? '<span class="sub-linea">' + esc(d.descripcion) + '</span>' : '') + '</span>';
-        return '<li>' + (d.archivo_url
-          ? '<a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download>' + dentro + BAJA + '</a>'
-          : '<a>' + dentro + '</a>') + '</li>';
+        /* Los reservados a socios no guardan enlace, sino la ruta dentro del cubo
+           cerrado: el enlace se pide al pulsar y dura un minuto. */
+        var abre = esReservado(d.archivo_url)
+          ? '<a href="#" data-reservado="' + esc(d.archivo_url) + '">' + dentro + BAJA + '</a>'
+          : (d.archivo_url
+              ? '<a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download>' + dentro + BAJA + '</a>'
+              : '<a>' + dentro + '</a>');
+        return '<li>' + abre + '</li>';
       }).join('') + '</ul>';
     }
     caja.innerHTML = html;
   }
+
+  var CUBO_SOCIOS = 'documentos-socios';
+  function esReservado(v) { return !!v && !/^https?:\/\//i.test(v); }
+
+  document.addEventListener('click', async function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[data-reservado]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    var v = window.open('', '_blank');
+    var s = await sb.storage.from(CUBO_SOCIOS).createSignedUrl(a.getAttribute('data-reservado'), 60);
+    if (!s || s.error || !s.data || !s.data.signedUrl) {
+      if (v) v.close();
+      if (window.APX) APX.toast('No hemos podido abrir el documento', 'error', { detalle: 'Prueba otra vez en un momento.' });
+      return;
+    }
+    if (v) v.location.href = s.data.signedUrl; else window.location.href = s.data.signedUrl;
+  });
 });
 </script>
 

@@ -80,7 +80,8 @@
       categoria: 'altas', variables: ['nombre'], buzon_palabras: [], activa: true }
   ];
 
-  var TABLAS = { buzon_bandeja: MENSAJES, plantillas_email: PLANTILLAS, buzon_destinos: DESTINOS, perfiles: EQUIPO };
+  var TABLAS = { buzon_bandeja: MENSAJES, mensajes: MENSAJES, plantillas_email: PLANTILLAS,
+                 buzon_destinos: DESTINOS, perfiles: EQUIPO };
 
   function Consulta(tabla) {
     this.t = tabla; this.filtros = []; this.op = 'select'; this.datos = null;

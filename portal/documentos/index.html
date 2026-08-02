@@ -66,8 +66,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var html = '<a class="migas" href="../">← Volver al portal</a>' +
              '<h1>Documentos del club</h1><span class="sub">Impresos, normativa y circulares</span>';
 
+  /* Los documentos reservados no guardan enlace: guardan la ruta dentro del
+     cubo cerrado `documentos-socios`. El enlace se pide en el momento de
+     pulsar y dura un minuto, así no queda nada que se pueda reenviar. */
+  var CUBO_SOCIOS = 'documentos-socios';
+  function esReservado(v) { return !!v && !/^https?:\/\//i.test(v); }
+
   var r = await sb.from('documentos').select('titulo,descripcion,categoria,archivo_url,nombre_archivo,tipo_mime,tamano_bytes,visibilidad,orden')
     .eq('activo', true).order('categoria').order('orden');
+
+  /* Sin sesión no se enseña ni el nombre de un documento reservado.
+     (A esta pantalla no se llega sin entrar, pero el filtro va igual.) */
+  var sesion = null;
+  try { var s0 = await sb.auth.getSession(); sesion = s0 && s0.data && s0.data.session; } catch (e) {}
+  if (r.data) r.data = r.data.filter(function (d) { return d.visibilidad !== 'socios' || !!sesion; });
 
   if (r.error) {
     html += caja(APOLANA_UI.error('No hemos podido cargar los documentos',
@@ -88,7 +100,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       html += '<div class="tarjeta"><h2>' + esc(c) + '</h2>' + grupos[c].map(function (d) {
         var ext = (d.nombre_archivo || '').split('.').pop().toUpperCase();
         var meta = [ext && ext.length <= 5 ? ext : '', tam(d.tamano_bytes)].filter(Boolean).join(' · ');
-        return '<a class="doc" href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download>' +
+        var abre = esReservado(d.archivo_url)
+          ? 'href="#" data-reservado="' + esc(d.archivo_url) + '"'
+          : 'href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download';
+        return '<a class="doc" ' + abre + '>' +
           '<span class="info">' +
             '<span class="tit">' + esc(d.titulo) + (d.visibilidad === 'socios' ? '<span class="etq socios">solo socios</span>' : '') + '</span>' +
             (d.descripcion ? '<span class="desc">' + esc(d.descripcion) + '</span>' : '') +
@@ -98,6 +113,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
   wrap.innerHTML = html;
+
+  /* Al pulsar un documento reservado se pide su enlace temporal. La pestaña se
+     abre dentro de la pulsación, si no el navegador la toma por un anuncio. */
+  wrap.addEventListener('click', async function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[data-reservado]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    var v = window.open('', '_blank');
+    var s = await sb.storage.from(CUBO_SOCIOS).createSignedUrl(a.getAttribute('data-reservado'), 60);
+    if (!s || s.error || !s.data || !s.data.signedUrl) {
+      if (v) v.close();
+      if (window.APX) APX.toast('No hemos podido abrir el documento', 'error', { detalle: 'Prueba otra vez en un momento.' });
+      return;
+    }
+    if (v) v.location.href = s.data.signedUrl; else window.location.href = s.data.signedUrl;
+  });
 });
 </script>
 

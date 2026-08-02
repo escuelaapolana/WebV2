@@ -156,7 +156,14 @@
 <script>
 APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
-  var BUCKET = 'imagenes';
+  /* Dos almacenes, según quién puede ver el documento:
+     · público      → cubo `imagenes`, que es abierto. En la fila guardamos su enlace fijo.
+     · solo socios  → cubo `documentos-socios`, cerrado. En la fila guardamos SOLO la ruta
+                      de dentro del cubo, nunca un enlace: los enlaces de Supabase no
+                      caducan, así que uno guardado sería una puerta abierta para siempre.
+     Para abrirlo se pide un enlace temporal en el momento (createSignedUrl). */
+  var BUCKET_PUBLICO = 'imagenes';
+  var BUCKET_SOCIOS = 'documentos-socios';
   var CARPETA = 'documentos';
   var LIMITE_AVISO = 20 * 1024 * 1024; // 20 MB
   var miPerfilId = null;
@@ -172,15 +179,45 @@ APOLANA_ADMIN.listo(function (sb) {
     return (Math.round(bytes / (1024 * 1024) * 10) / 10).toString().replace('.', ',') + ' MB';
   }
 
-  // De la URL pública sacamos la ruta dentro del bucket, para poder borrar el archivo.
-  function rutaDesdeUrl(url) {
-    if (!url) return null;
-    var marca = '/' + BUCKET + '/';
-    var i = url.indexOf(marca);
+  function cuboDe(visibilidad) { return visibilidad === 'socios' ? BUCKET_SOCIOS : BUCKET_PUBLICO; }
+
+  function nombreLimpio(n) { return String(n || 'archivo').toLowerCase().replace(/[^a-z0-9.]+/g, '-'); }
+
+  // ¿Dónde está de verdad el archivo de esta fila? Devuelve { cubo, ruta }.
+  //   · guardamos una ruta suelta  → está en el cubo cerrado
+  //   · guardamos un enlace nuestro → está en el cubo abierto
+  //   · null: es un enlace de fuera (los PDF viejos que viven en la propia web),
+  //     así que no lo tenemos en el almacén y no lo podemos mover ni borrar.
+  function refArchivo(d) {
+    if (!d || !d.archivo_url) return null;
+    var v = String(d.archivo_url);
+    if (!/^https?:\/\//i.test(v)) return { cubo: BUCKET_SOCIOS, ruta: v };
+    var marca = '/' + BUCKET_PUBLICO + '/';
+    var i = v.indexOf(marca);
     if (i === -1) return null;
-    var ruta = url.slice(i + marca.length).split('?')[0];
+    var ruta = v.slice(i + marca.length).split('?')[0];
     try { ruta = decodeURIComponent(ruta); } catch (e) {}
-    return ruta || null;
+    return ruta ? { cubo: BUCKET_PUBLICO, ruta: ruta } : null;
+  }
+
+  // Enlace para abrir el archivo. Si está en el cubo cerrado se pide uno
+  // temporal (un minuto), que es lo único que puede salir de aquí.
+  async function enlaceParaVer(d) {
+    var ref = refArchivo(d);
+    if (!ref) return d && d.archivo_url ? d.archivo_url : '';
+    if (ref.cubo === BUCKET_PUBLICO) return d.archivo_url;
+    var s = await sb.storage.from(BUCKET_SOCIOS).createSignedUrl(ref.ruta, 60);
+    return (s && s.data && s.data.signedUrl) || '';
+  }
+
+  // Abrir un documento sin que el navegador tome la ventana por un anuncio:
+  // se abre la pestaña dentro de la pulsación y luego se le pone la dirección.
+  async function abrirDocumento(id) {
+    var v = window.open('', '_blank');
+    var r = await sb.from('documentos').select('archivo_url,visibilidad').eq('id', id).single();
+    var url = r.error ? '' : await enlaceParaVer(r.data);
+    if (!url) { if (v) v.close(); apoToast('No hemos podido abrir el archivo.', 'error'); return; }
+    if (v) v.location.href = url; else window.location.href = url;
   }
 
   // --- Listar ---
@@ -198,6 +235,11 @@ APOLANA_ADMIN.listo(function (sb) {
       var vis = d.visibilidad === 'socios'
         ? '<span class="pill-estado pill-socios">Solo socios</span>'
         : '<span class="pill-estado pill-publico">Público</span>';
+      // Los del cubo cerrado no tienen enlace fijo: se pide en el momento al pulsar.
+      var ref = refArchivo(d);
+      var ver = (ref && ref.cubo === BUCKET_SOCIOS)
+        ? '<button class="btn btn--fantasma btn--mini" data-ver="' + d.id + '">Ver</button>'
+        : '<a class="btn btn--fantasma btn--mini" href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">Ver</a>';
       return '<tr>' +
         '<td><div class="titulo-doc">' + esc(d.titulo) + '</div>' +
           (d.descripcion ? '<div class="desc-doc">' + esc(d.descripcion) + '</div>' : '') +
@@ -209,7 +251,7 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td>' + esc(d.orden == null ? 0 : d.orden) + '</td>' +
         '<td>' + (d.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
         '<td><div class="acciones-fila">' +
-          '<a class="btn btn--fantasma btn--mini" href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">Ver</a>' +
+          ver +
           '<button class="btn btn--fantasma btn--mini" data-editar="' + d.id + '">Editar</button>' +
           '<button class="btn btn--fantasma btn--mini" data-activo="' + d.id + '" data-valor="' + (d.activo ? '0' : '1') + '">' + (d.activo ? 'Desactivar' : 'Activar') + '</button>' +
           '<button class="btn btn--peligro" data-borrar="' + d.id + '" data-nom="' + esc(d.titulo) + '">Borrar</button>' +
@@ -231,14 +273,23 @@ APOLANA_ADMIN.listo(function (sb) {
     $('d-orden').value = (d.orden == null ? 0 : d.orden);
     $('d-activo').checked = d.id ? !!d.activo : true;
     $('d-archivo').value = '';
+    var refA = refArchivo(d);
+    var nombreA = esc(d.nombre_archivo || 'ver archivo');
+    var enlaceA = (refA && refA.cubo === BUCKET_SOCIOS)
+      ? '<button type="button" class="enlace-archivo" data-ver-actual="' + d.id + '">' + nombreA + '</button>'
+      : '<a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">' + nombreA + '</a>';
     $('archivo-actual').innerHTML = d.archivo_url
-      ? 'Archivo actual: <a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener">' + esc(d.nombre_archivo || 'ver archivo') + '</a> (' + esc(tam(d.tamano_bytes)) + '). Si no eliges otro, se queda el mismo.'
+      ? 'Archivo actual: ' + enlaceA + ' (' + esc(tam(d.tamano_bytes)) + '). Si no eliges otro, se queda el mismo.'
       : '';
     $('msg-form').textContent = ''; $('msg-form').className = 'msg';
     $('panel-form').classList.remove('oculto');
     $('panel-form').scrollTop = 0;
   }
   $('nuevo-doc').addEventListener('click', function () { abrirForm(); });
+  $('archivo-actual').addEventListener('click', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-ver-actual');
+    if (id) abrirDocumento(id);
+  });
   $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
   $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
@@ -248,6 +299,9 @@ APOLANA_ADMIN.listo(function (sb) {
     var ed = e.target.getAttribute('data-editar');
     var bo = e.target.getAttribute('data-borrar');
     var ac = e.target.getAttribute('data-activo');
+    var ve = e.target.getAttribute('data-ver');
+
+    if (ve) { abrirDocumento(ve); return; }
 
     if (ed) {
       var r = await sb.from('documentos').select('*').eq('id', ed).single();
@@ -264,12 +318,13 @@ APOLANA_ADMIN.listo(function (sb) {
 
     if (bo) {
       if (!await apoConfirm({ texto: '¿Borrar el documento "' + e.target.getAttribute('data-nom') + '"? Se borra también el archivo. No se puede deshacer.', peligro: true })) return;
-      var f = await sb.from('documentos').select('archivo_url').eq('id', bo).single();
-      var ruta = (f.data && f.data.archivo_url) ? rutaDesdeUrl(f.data.archivo_url) : null;
+      var f = await sb.from('documentos').select('archivo_url,visibilidad').eq('id', bo).single();
+      var ref = f.error ? null : refArchivo(f.data);
       var d = await sb.from('documentos').delete().eq('id', bo);
       if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
-      if (ruta) {
-        var rm = await sb.storage.from(BUCKET).remove([ruta]);
+      // El archivo se quita del cubo donde esté de verdad, no del que suponíamos.
+      if (ref) {
+        var rm = await sb.storage.from(ref.cubo).remove([ref.ruta]);
         if (rm.error) console.warn('[Apolana] no se pudo borrar el archivo:', rm.error.message);
       }
       cargarDocs();
@@ -281,6 +336,8 @@ APOLANA_ADMIN.listo(function (sb) {
     e.preventDefault();
     var id = $('d-id').value;
     var file = $('d-archivo').files[0] || null;
+    var visibilidad = $('d-visibilidad').value;
+    var cubo = cuboDe(visibilidad);
 
     if (!id && !file) {
       $('msg-form').textContent = 'Elige un archivo para subir.'; $('msg-form').className = 'msg error'; return;
@@ -293,34 +350,79 @@ APOLANA_ADMIN.listo(function (sb) {
     $('msg-form').textContent = file ? 'Subiendo archivo…' : 'Guardando…';
     $('msg-form').className = 'msg';
 
+    function fallo(texto) {
+      $('msg-form').textContent = texto;
+      $('msg-form').className = 'msg error';
+      $('btn-guardar').disabled = false;
+    }
+
     var datos = {
       titulo: $('d-titulo').value.trim(),
       descripcion: $('d-descripcion').value.trim() || null,
       categoria: $('d-categoria').value || null,
-      visibilidad: $('d-visibilidad').value,
+      visibilidad: visibilidad,
       orden: parseInt($('d-orden').value, 10) || 0,
       activo: $('d-activo').checked
     };
 
-    var rutaVieja = null;
+    // refVieja: lo que hay que limpiar SI todo sale bien (para no dejar copias colgando).
+    // refNueva: lo que hay que limpiar SI algo falla (para no dejar huérfanos).
+    var refVieja = null, refNueva = null;
+
+    var anterior = null;
+    if (id) {
+      var ant = await sb.from('documentos').select('archivo_url,visibilidad,nombre_archivo,tipo_mime').eq('id', id).single();
+      if (ant.error) { fallo('No hemos podido leer el documento: ' + ant.error.message); return; }
+      anterior = ant.data;
+    }
 
     if (file) {
-      // Si estamos sustituyendo el archivo de un documento existente, guardamos la ruta vieja para limpiarla después.
-      if (id) {
-        var ant = await sb.from('documentos').select('archivo_url').eq('id', id).single();
-        if (ant.data && ant.data.archivo_url) rutaVieja = rutaDesdeUrl(ant.data.archivo_url);
-      }
-      var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
-      var ruta = CARPETA + '/' + Date.now() + '-' + limpio;
-      var up = await sb.storage.from(BUCKET).upload(ruta, file, { cacheControl: '3600', upsert: false });
-      if (up.error) {
-        $('msg-form').textContent = 'No se pudo subir el archivo: ' + up.error.message;
-        $('msg-form').className = 'msg error'; $('btn-guardar').disabled = false; return;
-      }
-      datos.archivo_url = sb.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl;
+      // Archivo nuevo: va al cubo que le toca según quién lo puede ver.
+      var ruta = CARPETA + '/' + Date.now() + '-' + nombreLimpio(file.name);
+      var up = await sb.storage.from(cubo).upload(ruta, file, { cacheControl: '3600', upsert: false });
+      if (up.error) { fallo('No se pudo subir el archivo: ' + up.error.message); return; }
+      refNueva = { cubo: cubo, ruta: ruta };
+      datos.archivo_url = (cubo === BUCKET_SOCIOS)
+        ? ruta                                                           // ruta interna, nunca un enlace
+        : sb.storage.from(BUCKET_PUBLICO).getPublicUrl(ruta).data.publicUrl;
       datos.nombre_archivo = file.name;
       datos.tipo_mime = file.type || null;
       datos.tamano_bytes = file.size;
+      if (anterior) refVieja = refArchivo(anterior);
+
+    } else if (anterior && (anterior.visibilidad || 'publico') !== visibilidad) {
+      // Cambia quién lo puede ver: el archivo TIENE que mudarse de cubo. Si solo
+      // cambiásemos la etiqueta, el enlace viejo seguiría descargándose sin cuenta.
+      var vieja = refArchivo(anterior);
+      if (!vieja) {
+        if (visibilidad === 'socios') {
+          fallo('Este archivo no está guardado en el almacén del club, así que no podemos mudarlo al sitio cerrado. Elige el archivo aquí abajo y lo subimos como «solo socios».');
+          return;
+        }
+        // Es un enlace de fuera y sigue siendo público: no hay nada que mudar.
+      } else {
+        $('msg-form').textContent = 'Moviendo el archivo…';
+        var baja = await sb.storage.from(vieja.cubo).download(vieja.ruta);
+        if (baja.error || !baja.data) {
+          fallo('No hemos podido mover el archivo: ' + ((baja.error && baja.error.message) || 'no se pudo descargar') + '. El documento se queda como estaba.');
+          return;
+        }
+        var rutaDestino = CARPETA + '/' + Date.now() + '-' +
+          nombreLimpio(anterior.nombre_archivo || vieja.ruta.split('/').pop());
+        var opciones = { cacheControl: '3600', upsert: false };
+        var tipo = anterior.tipo_mime || baja.data.type || '';
+        if (tipo) opciones.contentType = tipo;
+        var sube = await sb.storage.from(cubo).upload(rutaDestino, baja.data, opciones);
+        if (sube.error) {
+          fallo('No hemos podido mover el archivo: ' + sube.error.message + '. El documento se queda como estaba.');
+          return;
+        }
+        refNueva = { cubo: cubo, ruta: rutaDestino };
+        refVieja = vieja;
+        datos.archivo_url = (cubo === BUCKET_SOCIOS)
+          ? rutaDestino
+          : sb.storage.from(BUCKET_PUBLICO).getPublicUrl(rutaDestino).data.publicUrl;
+      }
     }
 
     var r;
@@ -330,12 +432,21 @@ APOLANA_ADMIN.listo(function (sb) {
       r = await sb.from('documentos').insert(datos);
     }
 
+    if (r.error) {
+      // No se ha guardado: retiramos la copia recién subida para no dejarla huérfana.
+      if (refNueva) {
+        var rmn = await sb.storage.from(refNueva.cubo).remove([refNueva.ruta]);
+        if (rmn.error) console.warn('[Apolana] no se pudo retirar la copia nueva:', rmn.error.message);
+      }
+      fallo('Error: ' + r.error.message);
+      return;
+    }
     $('btn-guardar').disabled = false;
-    if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
 
-    // Archivo antiguo sustituido: lo quitamos del almacén para no acumular basura.
-    if (rutaVieja) {
-      var rm2 = await sb.storage.from(BUCKET).remove([rutaVieja]);
+    // Ya está guardado: ahora sí se puede quitar el archivo de donde estaba antes.
+    // Es el paso que cierra el agujero: el enlace viejo deja de servir.
+    if (refVieja && !(refNueva && refVieja.cubo === refNueva.cubo && refVieja.ruta === refNueva.ruta)) {
+      var rm2 = await sb.storage.from(refVieja.cubo).remove([refVieja.ruta]);
       if (rm2.error) console.warn('[Apolana] no se pudo borrar el archivo anterior:', rm2.error.message);
     }
 
