@@ -24,6 +24,9 @@ window.APOLANA = {
     email:       'administracion@atletismoapolana.com',
     email_junta: 'junta@atletismoapolana.com',
     instagram:   { usuario: '@apolana.alicante', url: 'https://instagram.com/apolana.alicante' },
+    facebook:    { usuario: 'atletismo.apolana.alicante', url: 'https://www.facebook.com/atletismo.apolana.alicante' },
+    tiktok:      { usuario: '@escuela.apolana', url: 'https://www.tiktok.com/@escuela.apolana' },
+    whatsapp:    { usuario: '636 06 17 00', url: 'https://wa.me/34636061700' },
   },
 
   colaboradores: ['Deportes Alicante', 'Comunitat Esport', 'Diputación de Alicante', 'Vithas'],

@@ -245,3 +245,49 @@ cuidado o no.
   horarios y calendario. ¿Lo llevamos a todo el sistema?
 - **El escudo del club** está infrautilizado: solo aparece en la cabecera y el
   pie. ¿Puede formar parte del lenguaje visual?
+
+---
+
+## Lo más urgente de todo: DENSIDAD ⚠️⚠️⚠️
+
+El dueño lo ha dicho con estas palabras: *"el hecho de que yo abra la página y,
+al ser la foto y el título tan grandes, no quepa en mi campo visual, no me
+gusta. Es todo muy grande."*
+
+Es la crítica más importante de todas las que ha hecho, y tiene razón:
+
+- Al abrir la web en un portátil, **la foto del hero y el titular ocupaban la
+  pantalla entera**. No se veía nada más: ni el botón de "Prueba 4 días gratis",
+  ni el resto de la página.
+- He reducido de urgencia el hero (foto a un tercio del alto de la ventana y
+  titular más contenido), pero es un parche: **hace falta una decisión de diseño
+  sobre la densidad de todo el sitio**.
+- La referencia que él usa es la web anterior del club: mucha más información
+  por pantalla, sin sensación de cartel.
+
+Lo que pediría: **una escala tipográfica y de espaciados pensada** (hoy los
+números los fui ajustando a ojo, bajándolos cuando él decía "más pequeño"), y un
+criterio claro de cuánto debe verse en la primera pantalla, en portátil y en
+móvil.
+
+## La barra de navegación no cabe
+
+La web tiene **9 entradas de primer nivel** (El club · Entrena con nosotros ·
+Escuelas · Familias · Horarios · Calendario · Noticias · Tienda · Contacto).
+En portátiles de 1000-1200 px **no caben**: o se salen por la derecha o hay que
+esconderlas tras el botón de menú, y entonces la web parece una app.
+
+La web anterior tenía nueve entradas más cortas y sí cabían ("Club · Únete al
+club · Entrena con nosotros · Secciones · Escuela · Noticias · Tienda ·
+Contacto · Liga").
+
+Hace falta decidir: ¿menos entradas de primer nivel? ¿nombres más cortos?
+¿doble fila? Es decisión de diseño, no de código.
+
+## Redes sociales
+
+La web anterior tenía una fila de iconos arriba: Facebook, correo, Instagram,
+WhatsApp y TikTok. **En la nueva no estaban**; los acabo de añadir al pie y al
+menú del móvil, pero convendría que el diseño les dé un sitio propio.
+Cuentas: Instagram @apolana.alicante · TikTok @escuela.apolana ·
+Facebook /atletismo.apolana.alicante · WhatsApp 636 06 17 00.

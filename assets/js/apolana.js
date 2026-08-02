@@ -23,6 +23,7 @@ const MENU = [
     { texto: 'Normativa y documentos', url: '/club/normativa/' },
     { texto: 'Palmarés',              url: '/club/palmares/' },
     { texto: 'Récords',               url: '/club/records/' },
+    { texto: 'Liga Apolana',          url: '/liga/' },
   ] },
   { clave: 'entrena', texto: 'Entrena con nosotros', url: '/competicion/', sub: [
     { texto: 'Atletismo en pista', url: '/competicion/' },
@@ -42,7 +43,6 @@ const MENU = [
   ] },
   { clave: 'familias',   texto: 'Familias',   url: '/familias/' },
   { clave: 'horarios',   texto: 'Horarios',   url: '/horarios/' },
-  { clave: 'liga',       texto: 'Liga',       url: '/liga/' },
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
   { clave: 'tienda',     texto: 'Tienda',     url: '/tienda/' },
@@ -65,7 +65,7 @@ class ApolanaCabecera extends HTMLElement {
       let h = `<a href="${ruta(m.url)}">${m.texto}</a>`;
       if (m.sub) h += `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>`;
       return h;
-    }).join('') + `<a href="${ruta('/portal/')}">Entrar</a>`;
+    }).join('') + `<a href="${ruta('/portal/')}">Entrar</a>` + redesHTML();
 
     this.innerHTML = `
       <header class="cabecera">
@@ -91,13 +91,129 @@ class ApolanaCabecera extends HTMLElement {
   }
 }
 
+/* ============================================================
+   COLABORADORES
+   Los gestiona el club desde el panel (tabla `colaboradores`): nombre,
+   logo, enlace y si se enseña el logo, el nombre o los dos.
+   Mientras la base contesta —o si no contesta— se pintan los de
+   datos.js, que es como estaban antes. El pie nunca se queda cojo.
+   ============================================================ */
+
+/* Escapa un texto para poder meterlo en el HTML sin sustos.
+   Nombre largo a propósito: varias páginas tienen su propio «esc» y este
+   archivo se carga en todas; con un nombre corto se pisarían entre ellos. */
+function escaparHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* Solo se aceptan enlaces normales (http, https) o de la propia web.
+   Cualquier otra cosa se descarta y el colaborador sale sin enlazar. */
+function enlaceSeguro(u) {
+  const t = String(u || '').trim();
+  if (!t) return '';
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^\/(?!\/)/.test(t) || /^\.{1,2}\//.test(t)) return t;
+  return '';
+}
+
+/* Los de siempre (datos.js), como respaldo: solo nombre, sin logo. */
+function colaboradoresRespaldo() {
+  return ((window.APOLANA && window.APOLANA.colaboradores) || [])
+    .map(n => ({ nombre: n, logo_url: null, enlace: null, mostrar: 'nombre' }));
+}
+
+/* Un colaborador, en HTML. `caja` es la clase del envoltorio, para que
+   el pie y la portada compartan la misma lógica con distinta pinta. */
+function colaboradorHTML(c, caja) {
+  /* Si aún no tiene logo, se enseña el nombre aunque pida «solo logo»:
+     antes un hueco vacío, mejor su nombre. */
+  const modo = c.logo_url ? (c.mostrar || 'ambos') : 'nombre';
+  let dentro = '';
+  if (modo !== 'nombre') {
+    /* Con el nombre a la vista el alt sobra (sería leerlo dos veces). */
+    dentro += `<img src="${escaparHTML(c.logo_url)}" alt="${modo === 'logo' ? escaparHTML(c.nombre) : ''}" loading="lazy" decoding="async">`;
+  }
+  if (modo !== 'logo') dentro += `<span class="colab-nombre">${escaparHTML(c.nombre)}</span>`;
+
+  const clases = `${caja} ${caja}--${modo}`;
+  const url = enlaceSeguro(c.enlace);
+  return url
+    ? `<a class="${clases}" href="${escaparHTML(url)}" target="_blank" rel="noopener noreferrer" title="${escaparHTML(c.nombre)}">${dentro}</a>`
+    : `<span class="${clases}">${dentro}</span>`;
+}
+
+/* Pinta la lista en el pie y en el bloque de la portada (si está). */
+function pintarColaboradores(lista) {
+  if (!lista || !lista.length) return;
+  document.querySelectorAll('[data-colab-pie]').forEach(caja => {
+    caja.innerHTML = lista.map(c => colaboradorHTML(c, 'colab-pie-item')).join('');
+  });
+  const portada = document.getElementById('colab-portada');
+  if (portada) portada.innerHTML = lista.map(c => colaboradorHTML(c, 'colab-logo')).join('');
+}
+
+/* Estilos de los colaboradores. Van aquí (y no en la hoja general) para
+   que cualquier página que use el pie los traiga puestos. */
+(function estiloColaboradores() {
+  const st = document.createElement('style');
+  st.textContent = [
+    '.pie-redes{display:flex;gap:10px;margin-top:4px}',
+    '.pie-redes a{width:38px;height:38px;display:flex;align-items:center;justify-content:center;border:1px solid var(--linea,#EAE3D5);border-radius:10px;color:var(--navy,#2E4256);background:#fff}',
+    '.pie-redes a:hover{border-color:var(--azul,#3B85C0);color:var(--azul-oscuro,#2F6FA8)}',
+    '.pie-redes svg{width:19px;height:19px}',
+    '.menu-movil-panel .pie-redes{margin-top:10px;padding-top:10px;border-top:1px solid var(--linea,#EAE3D5)}',
+    /* --- En el pie --- */
+    '.pie-colab{display:flex;flex-direction:column;gap:9px;align-items:flex-start}',
+    '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;color:var(--texto);text-decoration:none;line-height:1.3}',
+    'a.colab-pie-item:hover{color:var(--azul-oscuro)}',
+    /* Los logos, apagados para que no canten sobre el crema; al pasar por
+       encima recuperan su color. */
+    '.colab-pie-item img{height:24px;width:auto;max-width:120px;object-fit:contain;display:block;' +
+      'filter:grayscale(1);opacity:.62;transition:filter .2s ease,opacity .2s ease}',
+    'a.colab-pie-item:hover img,.colab-pie-item:hover img{filter:none;opacity:1}',
+    /* En móvil el pie va a dos columnas y los colaboradores ocupan el ancho:
+       ahí se ponen en línea y se reparten, en vez de hacer una lista larga. */
+    '@media (max-width:700px){.pie-colab{flex-direction:row;flex-wrap:wrap;gap:10px 16px;align-items:center}',
+      '.colab-pie-item img{height:22px}}'
+    /* El bloque de la portada («Con la colaboración de») lleva sus propios
+       estilos dentro de index.html, junto al resto de esa página. */
+  ].join('');
+  document.head.appendChild(st);
+})();
+
+
+/* --- Redes sociales del club (salen de datos.js) --- */
+function redesHTML() {
+  const c = (window.APOLANA && window.APOLANA.contacto) || {};
+  const ic = {
+    instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none"/></svg>',
+    facebook:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14.5 8.5H17V5.5h-2.5A3.5 3.5 0 0 0 11 9v2H9v3h2v7h3v-7h2.2l.5-3H14V9c0-.3.2-.5.5-.5z"/></svg>',
+    tiktok:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 4v10.5a3.5 3.5 0 1 1-3-3.46"/><path d="M14 4c.4 2.2 2 3.7 4.2 3.9"/></svg>',
+    whatsapp:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11.8a7.8 7.8 0 0 1-11.3 7L4 20l1.3-4.5A7.8 7.8 0 1 1 20 11.8z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5"/></svg>',
+    email:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6 8.5-6"/></svg>'
+  };
+  const lista = [
+    c.instagram && { k:'instagram', url:c.instagram.url, txt:'Instagram' },
+    c.facebook  && { k:'facebook',  url:c.facebook.url,  txt:'Facebook' },
+    c.tiktok    && { k:'tiktok',    url:c.tiktok.url,    txt:'TikTok' },
+    c.whatsapp  && { k:'whatsapp',  url:c.whatsapp.url,  txt:'WhatsApp' },
+    c.email     && { k:'email',     url:'mailto:'+c.email, txt:'Correo' }
+  ].filter(Boolean);
+  if (!lista.length) return '';
+  return '<div class="pie-redes">' + lista.map(r =>
+    `<a href="${r.url}" aria-label="${r.txt}" title="${r.txt}"${r.k==='email'?'':' target="_blank" rel="noopener"'}>${ic[r.k]}</a>`
+  ).join('') + '</div>';
+}
+
 /* --- Pie de página (los datos salen de datos.js) --- */
 class ApolanaPie extends HTMLElement {
   connectedCallback() {
     const d = window.APOLANA || {};
     const c = d.contacto || {};
     const lema = (d.club && d.club.lema) || '';
-    const colab = (d.colaboradores || []).map(x => `<span>${x}</span>`).join('');
+    const colab = colaboradoresRespaldo().map(x => colaboradorHTML(x, 'colab-pie-item')).join('');
     const tel = t => t ? `<a href="tel:${t.tel}">${t.texto} · ${t.nota}</a>` : '';
     const anio = new Date().getFullYear();
     this.innerHTML = `
@@ -109,6 +225,7 @@ class ApolanaPie extends HTMLElement {
               <span class="nombre">Club Apolana</span>
             </div>
             <span class="lema">${lema}</span>
+            ${redesHTML()}
           </div>
           <div class="pie-cols">
             <div class="pie-col">
@@ -128,7 +245,7 @@ class ApolanaPie extends HTMLElement {
             </div>
             <div class="pie-col">
               <span class="eyebrow">Colaboran</span>
-              ${colab}
+              <div class="pie-colab" data-colab-pie>${colab}</div>
             </div>
           </div>
         </div>
@@ -139,6 +256,24 @@ class ApolanaPie extends HTMLElement {
 
 customElements.define('apolana-cabecera', ApolanaCabecera);
 customElements.define('apolana-pie', ApolanaPie);
+
+/* --- Colaboradores de verdad: UNA consulta que sirve al pie y a la portada.
+   Se lanza cuando la página ya está pintada, así que no retrasa nada; si
+   falla, si no hay conexión o si todavía no hay ninguno guardado, se
+   quedan los de datos.js que ya están puestos. --- */
+document.addEventListener('DOMContentLoaded', async function () {
+  if (!window.APOLANA_DB) return;
+  try {
+    const res = await window.APOLANA_DB
+      .from('colaboradores')
+      .select('nombre, logo_url, enlace, mostrar, orden')
+      .eq('activo', true)
+      .order('orden', { ascending: true })
+      .order('nombre', { ascending: true });
+    if (res.error || !res.data || !res.data.length) return;
+    pintarColaboradores(res.data);
+  } catch (e) { /* sin conexión: se quedan los de siempre */ }
+});
 
 /* --- Aviso de portada (barra superior si hay un aviso activo en la BD) --- */
 document.addEventListener('DOMContentLoaded', async function () {
