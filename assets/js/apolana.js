@@ -181,6 +181,11 @@ document.addEventListener('DOMContentLoaded', async function () {
       wrap.appendChild(link);
     }
     bar.appendChild(wrap);
+    /* En móvil el texto sale recortado a dos líneas; al tocarlo se ve entero. */
+    bar.addEventListener('click', function (ev) {
+      if (ev.target.closest('a')) return;         // los enlaces, a lo suyo
+      bar.classList.toggle('abierto');
+    });
     var cab = document.querySelector('apolana-cabecera');
     if (cab && cab.parentNode) cab.parentNode.insertBefore(bar, cab);
     else document.body.insertBefore(bar, document.body.firstChild);
