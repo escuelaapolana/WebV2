@@ -260,11 +260,17 @@ create table if not exists public.retos_propios (
   -- El plazo se congela el día que se pone el reto: «este mes» quiere
   -- decir ESTE, y cuando se acaba el reto se cierra en vez de empezar
   -- otra vez de cero sin avisar.
-  desde       date not null,
-  hasta       date not null,
+  -- Con valor por defecto para que la pantalla no tenga ni que mandarlos:
+  -- los pone la guardia de abajo a partir del plazo elegido.
+  desde       date not null default current_date,
+  hasta       date not null default current_date,
   creado_en   timestamptz not null default now(),
   actualizado timestamptz not null default now()
 );
+
+-- Por si la tabla venía de una versión anterior de este archivo sin ellos.
+alter table public.retos_propios alter column desde set default current_date;
+alter table public.retos_propios alter column hasta set default current_date;
 
 do $$
 begin

@@ -262,16 +262,18 @@ select 'quien ejecuta las funciones nuevas' as que, p.proname as funcion, p.proa
 --      este archivo.
 --   2. Pedir el permiso familiar de los menores de 13 a 17 y apuntarlo
 --      en `perfil_juego.autoriza_parental_por` y `autoriza_parental_en`.
---   3. Quitar el `disabled` del interruptor de «Mi perfil» en
---      portal/perfil/index.html (está señalado con un comentario).
---   4. Y por último, encender el maestro:
+--   3. Y encender el maestro:
 --
 --        update public.juego_ajustes
 --           set perfil_socios = true, actualizado = now()
 --         where id = 1;
 --
---      Sale del apagado nadie, porque `perfil_juego.participa` nace
+--      No sale nadie de golpe, porque `perfil_juego.participa` nace
 --      apagado: solo aparecerá quien lo encienda a mano en «Mi perfil».
+--
+-- La página «Mi perfil» no hay que tocarla: pregunta por
+-- `perfil_socios_encendido()` al cargar y, en cuanto esto diga que sí,
+-- el interruptor del socio se activa solo.
 --
 -- Para volver a apagarlo, lo mismo con `false`. Es instantáneo y no
 -- borra nada: las fichas dejan de verse y ya está.

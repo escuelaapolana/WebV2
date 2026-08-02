@@ -63,7 +63,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ============================================================ */
   var EXTRA = {
     racha: '<path d="M4 12h16"/><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/>',
-    crono: '<circle cx="12" cy="14" r="7"/><path d="M12 10.5V14l2.5 1.6M9.5 3.5h5M12 3.5V7"/>'
+    crono: '<circle cx="12" cy="14" r="7"/><path d="M12 10.5V14l2.5 1.6M9.5 3.5h5M12 3.5V7"/>',
+    lapiz: '<path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>'
   };
   function ico(nombre, tam){
     if(EXTRA[nombre]){
@@ -165,6 +166,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var FICHAS = [], ATLETA = null;
   var RETOS = [], PROGRESO = {}, LOGROS = {}, MEDALLAS = [], MIAS = {}, RANGOS = [], TABLA = [], PJ = null;
   var MIEMBROS = [], BUSCA = '';
+  /* Los retos que se pone uno mismo (38b y 38c). Van aparte de los del
+     club a propósito: ni dan puntos, ni suben de rango, ni los ve nadie. */
+  var MIOS = [], MIOS_VAL = {}, HIST = {}, FALLO_MIOS = false, FORM = null;
+  var TOPE_MIOS = 3;
   var RANKING = false;   /* la clasificación viene apagada: la enciende el club */
   var FALLO = false;     /* si lo importante no ha llegado, se dice y se ofrece salida */
 
@@ -254,6 +259,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     TABLA = RANKING ? await cargarTabla() : [];
 
     MIEMBROS = await cargarMiembros();
+    await cargarMios();
 
     await firmarFotos(MIEMBROS.map(function(x){ return x.foto_ruta; })
       .concat(TABLA.map(function(x){ return x.foto_ruta; })));
@@ -264,6 +270,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .select('atleta_id,nombre,foto_ruta,puntos,medallas,retos,rango')
       .order('nombre').limit(400);
     return r.error ? [] : (r.data || []);
+  }
+
+  /* Los retos propios y cuánto llevas de cada uno. Lo que llevas NO se
+     guarda en ninguna parte: se calcula cada vez con las asistencias,
+     los entrenos contados y las competiciones que ya están apuntadas.
+     Por eso no hay nada que marcar a mano. */
+  async function cargarMios(){
+    FALLO_MIOS = false;
+    var r = await sb.from('retos_propios')
+      .select('id,metrica,objetivo,periodo,desde,hasta')
+      .eq('atleta_id', ATLETA.id).order('hasta').order('creado_en');
+    if(r.error){ FALLO_MIOS = true; MIOS = []; MIOS_VAL = {}; return; }
+    MIOS = r.data || [];
+    MIOS_VAL = {};
+    if(!MIOS.length) return;
+    var p = await sb.rpc('retos_propios_progreso', { p_atleta: ATLETA.id });
+    if(p.error){ FALLO_MIOS = true; return; }
+    (p.data || []).forEach(function(x){ MIOS_VAL[x.reto_id] = Number(x.valor || 0); });
   }
 
   async function cargarTabla(){
@@ -376,7 +400,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function pintarEnCurso(){
     if(FALLO){
-      return rotulo('Tus retos') + APOLANA_UI.error('No hemos podido cargar tus retos',
+      return rotulo('Del club') + APOLANA_UI.error('No hemos podido cargar tus retos',
         'Puede ser tu conexión. Tus puntos y tus medallas siguen guardados: no se pierde nada.');
     }
     /* Se ordenan por lo que falta menos, no por fecha ni por puntos. */
@@ -386,7 +410,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return diasQuedan(a) - diasQuedan(b);
     });
     if(!abiertos.length){
-      return rotulo('Tus retos') + APOLANA_UI.vacio('Ahora mismo no hay ningún reto abierto',
+      return rotulo('Del club') + APOLANA_UI.vacio('Ahora mismo no hay ningún reto abierto',
         'El club irá proponiendo retos nuevos a lo largo de la temporada. Mientras tanto, todo lo que entrenas ' +
         'se sigue apuntando y cuenta igual.',
         APOLANA_UI.boton('Ver el calendario del club', '../../calendario/'));
@@ -397,21 +421,387 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var p0 = abiertos[0];
     var v0 = Number(PROGRESO[p0.id]||0), o0 = Number(p0.objetivo||0);
     var destacar = v0 > 0 && o0 > 0 && v0 < o0 && restanteDe(p0) <= 0.5;
-    return rotulo(destacar ? 'Te falta poco' : 'Tus retos', abiertos.length + (abiertos.length===1?' abierto':' abiertos')) +
+    return rotulo('Del club', abiertos.length + (abiertos.length===1?' abierto':' abiertos')) +
       abiertos.map(function(r, i){ return tarjetaReto(r, destacar && i === 0); }).join('');
+  }
+
+  /* ============================================================
+     LOS RETOS QUE SE PONE UNO MISMO · 38b y 38c
+     ------------------------------------------------------------
+     LOS TUYOS EN NAVY, LOS DEL CLUB EN ÁMBAR. Los tuyos, además, sin
+     icono y sin puntos: así se distinguen de un vistazo y sin rótulos
+     largos. Y no dan puntos a propósito — si los dieran, cualquiera se
+     pondría «entrenar 1 día» y subiría de rango.
+
+     QUÉ SE SABE CONTAR DE VERDAD, y por qué no están los cinco de la
+     maqueta: los días de entreno, los metros a nado y las competiciones
+     salen de lo que el club ya apunta. Los KILÓMETROS no: la distancia
+     de cada serie se escribe a mano y mezcla minutos, metros y «40 min
+     en bici», así que no hay de dónde sacar un total honesto. El
+     DESNIVEL no existe en ninguna tabla. Ofrecer un contador que
+     siempre marca cero es peor que no ofrecerlo.
+     ============================================================ */
+  var MIS_METRICAS = ['dias_entreno', 'metros_natacion', 'competiciones'];
+  var MI_FMT = {
+    dias_entreno:    { chip: 'Días de entreno', uno: 'día',    varios: 'días',
+                       largo: 'días de entreno', largoUno: 'día de entreno', suf: '' },
+    metros_natacion: { chip: 'Metros a nado',   uno: 'metro',  varios: 'metros',
+                       largo: 'metros a nado',   largoUno: 'metro a nado',   suf: ' m' },
+    competiciones:   { chip: 'Competiciones',   uno: 'competición', varios: 'competiciones',
+                       largo: 'competiciones',   largoUno: 'competición',    suf: '' }
+  };
+  var MI_PLAZO   = { mes: 'Este mes',        trimestre: 'Este trimestre',        temporada: 'La temporada' };
+  var MI_CUANDO  = { mes: 'este mes',        trimestre: 'este trimestre',        temporada: 'esta temporada' };
+  var MI_ESTE    = { mes: 'Este mes',        trimestre: 'Este trimestre',        temporada: 'Esta temporada' };
+  var MI_ANTES   = { mes: 'mes pasado',      trimestre: 'trimestre pasado',      temporada: 'temporada pasada' };
+  var MI_MEJOR   = { mes: 'mes',             trimestre: 'trimestre',             temporada: 'temporada' };
+  /* Un punto de partida para quien todavía no tiene historial. No es
+     una recomendación de nadie: es un número redondo por el que empezar. */
+  var MI_DEFECTO = {
+    dias_entreno:    { mes: 8,    trimestre: 24,    temporada: 80 },
+    metros_natacion: { mes: 8000, trimestre: 24000, temporada: 80000 },
+    competiciones:   { mes: 1,    trimestre: 2,     temporada: 4 }
+  };
+  var MESES_LARGOS = ['enero','febrero','marzo','abril','mayo','junio',
+                      'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+  function nf(n){ return Number(n || 0).toLocaleString('es-ES'); }
+  function fLarga(iso){
+    var p = String(iso || '').slice(0,10).split('-');
+    return p.length === 3 ? (parseInt(p[2],10) + ' de ' + MESES_LARGOS[parseInt(p[1],10)-1]) : '';
+  }
+  /* «junio», «sep–nov» o «2025-26»: el plazo dicho como lo diría una persona. */
+  function etiquetaPlazo(iso, periodo){
+    var p = String(iso || '').slice(0,10).split('-');
+    if(p.length !== 3) return '';
+    var y = parseInt(p[0],10), m = parseInt(p[1],10) - 1;
+    if(periodo === 'temporada') return y + '-' + String(y + 1).slice(2);
+    if(periodo === 'trimestre') return MESES[m] + '–' + MESES[(m + 2) % 12];
+    return MESES_LARGOS[m] + (y === new Date().getFullYear() ? '' : ' de ' + y);
+  }
+
+  function unidadMia(metrica, n){
+    var f = MI_FMT[metrica]; if(!f) return '';
+    return Number(n) === 1 ? f.largoUno : f.largo;
+  }
+  function tituloMio(r){
+    var f = MI_FMT[r.metrica], o = Number(r.objetivo || 0);
+    if(!f) return '';
+    return nf(o) + ' ' + (o === 1 ? f.uno : f.varios) + ' ' + MI_CUANDO[r.periodo];
+  }
+  function valorMio(r){ return Number(MIOS_VAL[r.id] || 0); }
+  function logradoMio(r){ return valorMio(r) >= Number(r.objetivo || 0); }
+  function cerradoMio(r){ return dia(r.hasta) < hoy(); }
+  function diasMio(r){ return Math.round((dia(r.hasta) - hoy()) / 86400000); }
+  function quedaMio(r){
+    var d = diasMio(r);
+    if(d < 0) return 'se cerró el ' + fCorta(r.hasta);
+    if(d === 0) return 'último día';
+    if(d === 1) return 'queda 1 día';
+    if(r.periodo === 'mes') return 'quedan ' + d + ' de mes';
+    return 'quedan ' + d + ' días';
+  }
+  function restanteMio(r){
+    var o = Number(r.objetivo || 0);
+    if(o <= 0) return 1;
+    return Math.max(0, (o - valorMio(r)) / o);
+  }
+  /* El historial ya pedido para esa métrica, si lo hay. */
+  function hist(metrica, periodo){
+    var h = HIST[metrica];
+    return (h && !h.fallo && h[periodo]) ? h[periodo] : null;
+  }
+
+  function tarjetaMia(r, cerca){
+    var f = MI_FMT[r.metrica];
+    if(!f) return '';
+    var obj = Number(r.objetivo || 0), val = valorMio(r);
+    var pct = obj > 0 ? Math.max(0, Math.min(100, Math.round(val * 100 / obj))) : 0;
+    var cerrado = cerradoMio(r);
+    var d = hist(r.metrica, r.periodo);
+    var sub = (d && Number(d.mejor) > 0)
+      ? ('Tu mejor ' + MI_MEJOR[r.periodo] + ', ' + nf(d.mejor))
+      : ('Desde el ' + fLarga(r.desde));
+
+    return '<article class="rt-mio' + (cerca ? ' cerca' : '') + (cerrado ? ' cerrado' : '') + '">' +
+      '<div class="cab">' +
+        '<div class="tit"><h2>' + esc(tituloMio(r)) + '</h2><p>' + esc(sub) + '</p></div>' +
+        '<button type="button" class="editar" data-mio="' + esc(r.id) + '" ' +
+          'aria-label="Cambiar el reto: ' + esc(tituloMio(r)) + '"><i>' + ico('lapiz', 19) + '</i></button>' +
+      '</div>' +
+      '<span class="barra"><i style="width:' + pct + '%"></i></span>' +
+      '<div class="pie"><span class="n">' + nf(val) + ' de ' + nf(obj) + esc(f.suf) + '</span>' +
+        '<span class="p">' + esc(quedaMio(r)) + '</span></div>' +
+    '</article>';
+  }
+
+  function pintarMios(){
+    var h = '<div class="rt-rot rt-rot--boton"><b>Míos</b>' +
+            '<button type="button" class="rt-nuevo" id="mi-nuevo">+ Nuevo</button></div>';
+
+    if(FALLO_MIOS){
+      return h + APOLANA_UI.error('No hemos podido cargar tus retos',
+        'Puede ser tu conexión. Los que te hayas puesto siguen guardados: no se pierde nada.');
+    }
+
+    var enMarcha = MIOS.filter(function(r){ return !logradoMio(r) && !cerradoMio(r); })
+                       .sort(function(a,b){ return restanteMio(a) - restanteMio(b); });
+    var pasados  = MIOS.filter(function(r){ return !logradoMio(r) && cerradoMio(r); });
+
+    if(!enMarcha.length && !pasados.length){
+      return h + APOLANA_UI.vacio('Todavía no te has puesto ninguno',
+        'Un reto tuyo es solo tuyo: no da puntos, no sube de rango y no lo ve nadie más, ni tu entrenador. ' +
+        'Se cuenta solo con los entrenos y las competiciones que el club ya apunta.',
+        '<button type="button" class="ap-btn" id="mi-nuevo-vacio">Ponerme un reto</button>');
+    }
+
+    h += '<p class="rt-nota-sec">Solo los ves tú. No dan puntos y no salen en ningún sitio del club.</p>';
+    /* El primero, al que menos le falta, con borde navy de 2 px: es el
+       que tienes más a mano y el que convierte el reto en un plan. */
+    h += enMarcha.map(function(r, i){ return tarjetaMia(r, i === 0); }).join('');
+    h += pasados.map(function(r){ return tarjetaMia(r, false); }).join('');
+    if(enMarcha.length >= TOPE_MIOS){
+      h += '<p class="rt-nota-sec">Ya llevas tres a la vez, que es el tope. Quita uno y te pones otro.</p>';
+    }
+    return h;
   }
 
   function pintarConseguidos(){
     var hechos = RETOS.filter(function(r){ return !!LOGROS[r.id]; }).sort(function(a,b){
       return String(LOGROS[b.id].completado_en).localeCompare(String(LOGROS[a.id].completado_en));
     });
-    if(!hechos.length) return '';
-    return rotulo('Conseguidos', hechos.length + ' de ' + RETOS.length) +
-      '<div class="rt-filas">' + hechos.map(function(r){
+    var miosHechos = MIOS.filter(logradoMio);
+    if(!hechos.length && !miosHechos.length) return '';
+    return rotulo('Conseguidos', String(hechos.length + miosHechos.length)) +
+      '<div class="rt-filas">' +
+      hechos.map(function(r){
         return '<div class="rt-fila"><span class="visto">' + ico('hecho', 16) + '</span>' +
           '<span class="t">' + esc(r.titulo) + '</span>' +
           '<span class="f">' + esc(fCorta(LOGROS[r.id].completado_en)) + '</span></div>';
+      }).join('') +
+      /* Los tuyos también se pueden quitar desde aquí: por eso llevan lápiz. */
+      miosHechos.map(function(r){
+        return '<div class="rt-fila"><span class="visto">' + ico('hecho', 16) + '</span>' +
+          '<span class="t">' + esc(tituloMio(r)) + '</span>' +
+          '<button type="button" class="editar" data-mio="' + esc(r.id) + '" ' +
+            'aria-label="Cambiar el reto: ' + esc(tituloMio(r)) + '"><i>' + ico('lapiz', 18) + '</i></button></div>';
       }).join('') + '</div>';
+  }
+
+  /* ============================================================
+     PONERME UN RETO · tres toques · 38b
+     ------------------------------------------------------------
+     Qué contar · cuántos · hasta cuándo. Y el objetivo se propone con
+     el historial de esa persona: sin eso la gente pone un número al
+     azar y falla.
+     ============================================================ */
+  function propuesta(metrica, periodo){
+    var d = hist(metrica, periodo);
+    var suelo = MI_DEFECTO[metrica][periodo];
+    if(!d) return suelo;
+    var ant = Number(d.anterior || 0), mej = Number(d.mejor || 0);
+    if(ant <= 0 && mej <= 0) return suelo;
+    /* Un poco por encima de la última vez, pero sin pedirte más de lo
+       que ya has hecho alguna vez: así se pone un objetivo que se cumple. */
+    var p = Math.round(ant > 0 ? ant * 1.25 : mej * 0.9);
+    if(mej > 0) p = Math.min(p, Math.max(mej, ant + 1));
+    p = Math.max(p, ant + 1, 1);
+    if(metrica === 'metros_natacion') p = Math.max(100, Math.round(p / 100) * 100);
+    return p;
+  }
+
+  function pistaHistorial(){
+    var h = HIST[FORM.metrica];
+    if(!h) return 'Mirando lo que llevas hecho…';
+    if(h.fallo) return 'No hemos podido mirar tu historial. Pon el número que te parezca.';
+    var d = h[FORM.periodo];
+    if(!d) return '';
+    var ant = Number(d.anterior || 0), mej = Number(d.mejor || 0), act = Number(d.actual || 0);
+    if(!ant && !mej && !act){
+      return 'De esto no tienes todavía nada apuntado, así que el número es solo un punto de partida.';
+    }
+    var t = [];
+    if(ant > 0) t.push('El ' + MI_ANTES[FORM.periodo] + ' hiciste ' + nf(ant) + '.');
+    if(mej > 0){
+      t.push('Tu mejor ' + MI_MEJOR[FORM.periodo] + ', ' + nf(mej) +
+             (d.mejor_desde ? ' (' + etiquetaPlazo(d.mejor_desde, FORM.periodo) + ')' : '') + '.');
+    }
+    if(act > 0) t.push(MI_ESTE[FORM.periodo] + ' llevas ' + nf(act) + '.');
+    return t.join(' ');
+  }
+
+  function refrescarCuantos(){
+    var inp = $('fm-objetivo');
+    if(FORM && !FORM.tocado){
+      FORM.objetivo = propuesta(FORM.metrica, FORM.periodo);
+      if(inp) inp.value = FORM.objetivo;
+    }
+    var u = $('fm-unidad'); if(u) u.textContent = unidadMia(FORM.metrica, FORM.objetivo);
+    var p = $('fm-pista');  if(p) p.textContent = pistaHistorial();
+  }
+
+  async function cargarHistorial(metrica){
+    if(HIST[metrica]){ refrescarCuantos(); return; }
+    var r = await sb.rpc('retos_propios_historial', { p_atleta: ATLETA.id, p_metrica: metrica });
+    if(r.error){ HIST[metrica] = { fallo: true }; }
+    else {
+      var o = {};
+      (r.data || []).forEach(function(x){ o[x.periodo] = x; });
+      HIST[metrica] = o;
+    }
+    if(FORM && FORM.metrica === metrica) refrescarCuantos();
+  }
+
+  function chips(nombre, opciones, elegida){
+    return '<div class="rt-chips">' + opciones.map(function(o){
+      return '<button type="button" data-' + nombre + '="' + esc(o.v) + '" aria-pressed="' +
+             (o.v === elegida) + '">' + esc(o.t) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function pintarForm(){
+    var nuevo = !FORM.id;
+    var h = '<a class="rt-migas" href="./" id="fm-volver"><span class="fl" aria-hidden="true">&larr;</span>Mis retos</a>' +
+            '<h1>' + (nuevo ? 'Un reto para mí' : 'Cambiar el reto') + '</h1>';
+
+    h += '<div class="rt-campo"><span class="eti">Qué quieres contar</span>' +
+      chips('metrica', MIS_METRICAS.map(function(m){ return { v: m, t: MI_FMT[m].chip }; }), FORM.metrica) +
+      '</div>';
+
+    h += '<div class="rt-campo"><span class="eti">Cuántos</span>' +
+      '<div class="rt-cifra"><input type="number" id="fm-objetivo" inputmode="numeric" min="1" step="1" ' +
+        'value="' + (FORM.objetivo == null ? '' : FORM.objetivo) + '" aria-label="Cuántos"> ' +
+        '<span class="u" id="fm-unidad">' + esc(unidadMia(FORM.metrica, FORM.objetivo)) + '</span></div>' +
+      '<p class="pista" id="fm-pista">' + esc(pistaHistorial()) + '</p>' +
+      '</div>';
+
+    h += '<div class="rt-campo"><span class="eti">Hasta cuándo</span>' +
+      chips('plazo', ['mes','trimestre','temporada'].map(function(p){ return { v: p, t: MI_PLAZO[p] }; }), FORM.periodo) +
+      '</div>';
+
+    h += '<div class="rt-privado"><b>Solo lo ves tú</b>' +
+      '<p>Los retos que te pones no dan puntos ni suben de rango, no los ve tu entrenador y no salen en ningún ' +
+      'sitio del club. Se cuentan solos con tus entrenos y tus competiciones: no hay nada que ir marcando.</p></div>';
+
+    h += '<div class="rt-pie">' +
+      '<button type="button" class="principal" id="fm-guardar">' +
+        (nuevo ? 'Ponerme el reto' : 'Guardar el cambio') + '</button>' +
+      (nuevo ? '' : '<button type="button" class="quitar" id="fm-quitar">Quitar este reto</button>') +
+    '</div>';
+
+    wrap.innerHTML = h;
+    engancharForm();
+  }
+
+  function abrirForm(reto){
+    FORM = reto
+      ? { id: reto.id, metrica: reto.metrica, objetivo: Number(reto.objetivo), periodo: reto.periodo, tocado: true }
+      : { id: null, metrica: MIS_METRICAS[0], objetivo: null, periodo: 'mes', tocado: false };
+    if(!FORM.tocado) FORM.objetivo = propuesta(FORM.metrica, FORM.periodo);
+    pintarForm();
+    window.scrollTo(0, 0);
+    cargarHistorial(FORM.metrica);
+  }
+
+  function engancharForm(){
+    var volver = $('fm-volver');
+    if(volver) volver.addEventListener('click', function(e){ e.preventDefault(); FORM = null; pintar(); });
+
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-metrica]'), function(b){
+      b.addEventListener('click', function(){
+        var m = b.getAttribute('data-metrica');
+        if(m === FORM.metrica) return;
+        FORM.metrica = m;
+        Array.prototype.forEach.call(wrap.querySelectorAll('[data-metrica]'), function(x){
+          x.setAttribute('aria-pressed', String(x.getAttribute('data-metrica') === m));
+        });
+        refrescarCuantos();
+        cargarHistorial(m);
+      });
+    });
+
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-plazo]'), function(b){
+      b.addEventListener('click', function(){
+        var p = b.getAttribute('data-plazo');
+        if(p === FORM.periodo) return;
+        FORM.periodo = p;
+        Array.prototype.forEach.call(wrap.querySelectorAll('[data-plazo]'), function(x){
+          x.setAttribute('aria-pressed', String(x.getAttribute('data-plazo') === p));
+        });
+        refrescarCuantos();
+      });
+    });
+
+    var inp = $('fm-objetivo');
+    if(inp) inp.addEventListener('input', function(){
+      FORM.tocado = true;
+      FORM.objetivo = parseInt(this.value, 10);
+      var u = $('fm-unidad'); if(u) u.textContent = unidadMia(FORM.metrica, FORM.objetivo);
+    });
+
+    var g = $('fm-guardar');
+    if(g) g.addEventListener('click', function(){ guardarMio(g); });
+
+    var q = $('fm-quitar');
+    if(q) q.addEventListener('click', function(){ quitarMio(FORM.id); });
+  }
+
+  async function guardarMio(btn){
+    var o = parseInt(FORM.objetivo, 10);
+    if(!(o > 0)){
+      aviso('Escribe cuántos quieres hacer', 'error', { detalle: 'Un reto sin número no se puede contar.' });
+      var i = $('fm-objetivo'); if(i) i.focus();
+      return;
+    }
+    btn.disabled = true;
+    var esNuevo = !FORM.id;
+    var fila = { metrica: FORM.metrica, objetivo: o, periodo: FORM.periodo };
+    var r = esNuevo
+      ? await sb.from('retos_propios').insert({ atleta_id: ATLETA.id, metrica: fila.metrica,
+                                                objetivo: fila.objetivo, periodo: fila.periodo })
+      : await sb.from('retos_propios').update(fila).eq('id', FORM.id);
+    btn.disabled = false;
+    if(r.error){
+      /* El tope de tres lo pone la base de datos, y lo dice con estas
+         mismas palabras: se enseña tal cual en vez de inventar otro texto. */
+      var m = String(r.error.message || '');
+      aviso(/tres retos/.test(m) ? m : 'No hemos podido guardar el reto', 'error',
+        /tres retos/.test(m) ? null : { detalle: 'Puede ser tu conexión. Vuelve a intentarlo.' });
+      return;
+    }
+    FORM = null;
+    await cargarMios();
+    pintar();
+    aviso(esNuevo ? 'Hecho: ya tienes tu reto' : 'Hecho: reto cambiado');
+    await historialesDeMisRetos();
+  }
+
+  async function quitarMio(id){
+    var ok = await APX.confirm('¿Quitamos este reto? No hace falta explicar nada.',
+      { aceptar: 'Quitarlo', cancelar: 'Dejarlo', peligro: true });
+    if(!ok) return;
+    var r = await sb.from('retos_propios').delete().eq('id', id);
+    if(r.error){
+      aviso('No hemos podido quitarlo', 'error', { detalle: 'Puede ser tu conexión. Vuelve a intentarlo.' });
+      return;
+    }
+    FORM = null;
+    await cargarMios();
+    pintar();
+    aviso('Hecho: reto quitado');
+  }
+
+  /* El historial se pide después de pintar, para que la pantalla no
+     espere por él: es lo que hace que la tarjeta pueda decir «tu mejor
+     mes fueron 15» en vez de solo la fecha de arranque. */
+  async function historialesDeMisRetos(){
+    var faltan = [];
+    MIOS.forEach(function(r){
+      if(!HIST[r.metrica] && faltan.indexOf(r.metrica) === -1) faltan.push(r.metrica);
+    });
+    if(!faltan.length) return;
+    for(var i = 0; i < faltan.length; i++) await cargarHistorial(faltan[i]);
+    if(!FORM) pintar();
   }
 
   /* --- la escala de los siete rangos · 29a --- */
@@ -668,8 +1058,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                esc(((f.nombre||'') + ' ' + (f.apellidos||'')).trim()) + '</button>';
       }).join('') + '</div>';
     }
-    h += tarjetaRango() + pintarEnCurso() + pintarConseguidos() + pintarEscala() + pintarMedallas() +
-         pintarTabla() + pintarBuscador() + pintarAjustes() + pintarCierre();
+    /* Una sola pantalla y este orden: el rango, los del club (ámbar y con
+       puntos), los míos (navy, sin icono y sin puntos) y los conseguidos. */
+    h += tarjetaRango() + pintarEnCurso() + pintarMios() + pintarConseguidos() + pintarEscala() +
+         pintarMedallas() + pintarTabla() + pintarBuscador() + pintarAjustes() + pintarCierre();
     wrap.innerHTML = h;
     enganchar();
     mirarSiHeSubido();
@@ -788,6 +1180,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var quitar = $('aj-quitar');
     if(quitar) quitar.addEventListener('click', function(){ guardarParticipa(false, null); });
 
+    /* Ponerme un reto y cambiar uno que ya tengo. */
+    ['mi-nuevo', 'mi-nuevo-vacio'].forEach(function(id){
+      var b = $(id);
+      if(b) b.addEventListener('click', function(){ abrirForm(null); });
+    });
+    Array.prototype.forEach.call(wrap.querySelectorAll('[data-mio]'), function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-mio');
+        for(var i=0;i<MIOS.length;i++) if(MIOS[i].id === id) abrirForm(MIOS[i]);
+      });
+    });
+
     var bs = $('bs-txt');
     if(bs) bs.addEventListener('input', function(){
       BUSCA = this.value || '';
@@ -860,4 +1264,5 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   await cargarTodo();
   pintar();
+  await historialesDeMisRetos();
 });

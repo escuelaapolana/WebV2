@@ -197,6 +197,8 @@ APOLANA_ADMIN.listo(async function (sb) {
   var SEC_LABEL = { competicion:'Competición', natacion:'Natación', escuela:'Escuela', running:'Running',
                     triatlon:'Triatlón', montana:'Montaña', 'escuela-natacion':'Escuela de natación', cubo:'El Cubo' };
 
+  function estrecho() { return window.matchMedia('(max-width: 760px)').matches; }
+
   /* ---------- piezas de dibujo ----------
      Barras planas, dos tonos y la cifra siempre al lado, en mono y
      alineada a la derecha: nada de pasar el ratón para saber cuánto
@@ -208,7 +210,8 @@ APOLANA_ADMIN.listo(async function (sb) {
     filas.forEach(function (f) { if (f.valor > max) max = f.valor; });
     if (!max) max = 1;
     return '<div class="barras"' + (ancho ? ' style="--rot:' + ancho + 'px"' : '') + '>' + filas.map(function (f) {
-      var ancho = Math.max(1, Math.round(f.valor / max * 100));
+      /* Un cero no pinta barra: una raya mínima haría creer que hay algo. */
+      var ancho = f.valor > 0 ? Math.max(1, Math.round(f.valor / max * 100)) : 0;
       return '<div class="fila">' +
         '<span class="rot' + (f.hora ? ' hora' : '') + '" title="' + esc(f.rot) + '">' + esc(f.rot) + '</span>' +
         '<span class="pista"><i class="' + (f.mal ? 'mal' : '') + '" style="width:' + ancho + '%"></i></span>' +
@@ -271,8 +274,10 @@ APOLANA_ADMIN.listo(async function (sb) {
     cubClases = r[3].data || []; cubReservas = r[4].data || [];
     escHist = r[5].data || []; asistencia = r[6].data || [];
   } catch (e) {
-    $('decide').innerHTML = '<div class="fallo" style="border:0;border-radius:0"><b>No hemos podido leer los datos del club</b>' +
-      'Puede ser la conexión. Vuelve a intentarlo en un momento.</div>';
+    /* Error en ámbar, nunca en rojo, y siempre con un botón de reintentar. */
+    $('decide').outerHTML = '<div class="fallo" id="decide"><b>No hemos podido leer los datos del club</b>' +
+      'Puede ser la conexión. <button type="button" class="bmini" style="margin-top:10px" ' +
+      'onclick="location.reload()">Volver a intentarlo</button></div>';
     $('graficas').innerHTML = '';
     return;
   }
@@ -333,6 +338,11 @@ APOLANA_ADMIN.listo(async function (sb) {
         if ((serie[i].apuntados_total || 0) < (serie[i - 1].apuntados_total || 0)) bajadas++;
         else break;
       }
+      /* En columnas trece temporadas no caben en un móvil sin que las cifras
+         se peguen unas a otras: ahí la misma serie va en barras tumbadas. */
+      var cuerpoEsc = estrecho()
+        ? barrasH(cols.map(function (c) { return { rot: c.rot, valor: c.valor, mal: false }; }), 56)
+        : barrasV(cols, 156);
       var techo = serie.reduce(function (a, f) { return Math.max(a, Number(f.apuntados_total) || 0); }, 0);
       var titular, frase, tono;
       if (bajadas >= 2) {
@@ -353,7 +363,7 @@ APOLANA_ADMIN.listo(async function (sb) {
       bloques.push({ ancho: 'dos', html: tarjeta({
         titular: titular,
         quemide: 'Personas apuntadas a la escuela del club, por temporada',
-        cuerpo: barrasV(cols, 156),
+        cuerpo: cuerpoEsc,
         frase: frase, tono: tono,
         accion: accion('Ver el histórico', '../historico/')
       }) });
@@ -530,21 +540,25 @@ APOLANA_ADMIN.listo(async function (sb) {
         claves.push(a + '-' + (m < 10 ? '0' : '') + m);
         m++; if (m > 12) { m = 1; a++; }
       }
-      claves = claves.slice(-10);
+      claves = claves.slice(-8);
       var mejor = claves.reduce(function (x, k) { return (mes[k] || 0) > (mes[x] || 0) ? k : x; }, claves[0]);
-      var cols = claves.map(function (k) {
+      var total = claves.reduce(function (x, k) { return x + (mes[k] || 0); }, 0);
+      /* En horizontal porque los importes son largos: así la cifra cabe
+         entera al lado de su barra y se pueden sumar con la vista. */
+      var filas = claves.map(function (k) {
         var t = k.split('-');
         return { rot: MESES[+t[1] - 1].slice(0, 3) + ' ' + t[0].slice(2), valor: mes[k] || 0,
-                 texto: num(mes[k] || 0), foco: k === mejor };
+                 texto: num(mes[k] || 0) };
       });
-      var media = claves.reduce(function (x, k) { return x + (mes[k] || 0); }, 0) / claves.length;
       var tm = mejor.split('-');
+      var parte = pct(mes[mejor] || 0, total);
       bloques.push({ ancho: 'dos', html: tarjeta({
         titular: 'El grueso entra en ' + MESES[+tm[1] - 1],
         quemide: 'Cobrado por mes, según la fecha de cobro del recibo',
-        cuerpo: barrasV(cols, 150),
-        frase: 'Media de ' + eur(media) + ' al mes, con el pico en ' + MESES[+tm[1] - 1] + ' de ' + tm[0] +
-               ' (' + eur(mes[mejor]) + '). Es el mes en que la web tiene que estar lista.',
+        cuerpo: barrasH(filas, 62),
+        frase: 'De los ' + eur(total) + ' cobrados en estos ' + claves.length + ' meses, ' +
+               eur(mes[mejor] || 0) + ' entraron en ' + MESES[+tm[1] - 1] + ' de ' + tm[0] +
+               ' (' + parte + ' de cada 100). Es el mes en que la web tiene que estar lista.',
         tono: ''
       }) });
     })();
@@ -643,6 +657,18 @@ APOLANA_ADMIN.listo(async function (sb) {
   }
 
   pintar();
+
+  /* Al girar el móvil o cambiar el tamaño, la misma serie puede tener que
+     pasar de columnas a barras tumbadas. */
+  var espera = null, eraEstrecho = estrecho();
+  window.addEventListener('resize', function () {
+    clearTimeout(espera);
+    espera = setTimeout(function () {
+      if (estrecho() === eraEstrecho) return;
+      eraEstrecho = estrecho();
+      pintar();
+    }, 180);
+  });
 });
 </script>
 

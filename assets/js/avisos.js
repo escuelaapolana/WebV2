@@ -44,11 +44,13 @@
      (migración 054). Todos encendidos de fábrica menos las noticias.
      --------------------------------------------------------------- */
   var TIPOS = [
-    { clave: 'entrenos',      titulo: 'Entrenos',              texto: 'Cambios de última hora: lluvia, pista cerrada, cambio de sitio.', defecto: true },
-    { clave: 'competiciones', titulo: 'Competiciones',         texto: 'Convocatorias, horarios de la carrera y cierres de inscripción.',  defecto: true },
-    { clave: 'pagos',         titulo: 'Pagos y recibos',       texto: 'Un recibo devuelto o algo pendiente de pagar.',                    defecto: true },
-    { clave: 'noticias',      titulo: 'Noticias del club',     texto: 'Lo que se publica en la web. No son urgentes.',                    defecto: false },
-    { clave: 'retos',         titulo: 'Retos y logros',        texto: 'Cuando consigues una medalla o se abre un reto nuevo.',            defecto: true }
+    /* Cada uno dice SU FRECUENCIA, no lo que es (maqueta 44b). Lo que da
+       miedo no es el aviso: es no saber cuántos van a llegar. */
+    { clave: 'entrenos',      titulo: 'Cambios en mi entreno', texto: 'Cancelaciones y cambios de hora.',        defecto: true },
+    { clave: 'competiciones', titulo: 'Competiciones',         texto: 'Cuando cierra una inscripción.',          defecto: true },
+    { clave: 'pagos',         titulo: 'Pagos',                 texto: 'Solo si algo sale mal.',                  defecto: true },
+    { clave: 'noticias',      titulo: 'Noticias del club',     texto: 'Como mucho una a la semana.',             defecto: false },
+    { clave: 'retos',         titulo: 'Mis retos',             texto: 'Cuando consigues uno.',                   defecto: false }
   ];
 
   var sb = null;

@@ -1,29 +1,40 @@
 /* ============================================================
-   BARRA INFERIOR DEL PANEL · Club Atletismo Apolana
+   UNA SOLA NAVEGACIÓN DEL PANEL · Club Atletismo Apolana
    ------------------------------------------------------------
-   En el móvil, para cambiar de sección del panel había que
-   volver atrás al panel y abrir el menú. Esta barra pone las
-   cuatro pantallas del día a día siempre a mano y deja el resto
-   del panel a un toque, en «Menú».
+   El dueño del club lo dijo usándolo en el móvil: «hay dos menús,
+   uno abajo y otro arriba, no sé dónde están las cosas». Así que
+   hay uno.
 
-       Inicio · Pista · Personas · Dinero · Menú
+     · Por debajo de 900 px la barra lateral NO EXISTE. No se
+       colapsa ni se esconde en un cajón: desaparece. La única
+       navegación es la barra de cinco de abajo.
+     · A partir de 900 px vuelve la lateral y la barra de abajo
+       desaparece. Nunca se ven las dos a la vez.
+
+         Inicio · Pista · Personas · Dinero · Menú
+
+     · «Menú» va en tres capas: buscador, «las que más usas» y
+       «todo, por bloques» (plegado y con su recuento).
+     · El buscador vive en la cabecera navy de TODAS las páginas
+       del panel, no enterrado dentro de «Menú»: enterrado está a
+       dos toques, en la cabecera está a uno. Y busca pantallas y
+       personas a la vez, que con 32 pantallas y 420 atletas es el
+       camino más corto para todo.
+     · Cada resultado dice su bloque debajo («Actividad ·
+       notificaciones que se envían»), que es lo que evita
+       confundir dos pantallas de nombre parecido.
 
    Mismo aspecto que la barra del portal (assets/js/portal-tabbar.js):
-   - Iconos de línea de 24 px, trazo único de 1,9 px, sin relleno.
-   - El activo se distingue por COLOR (#2F6FA8 sobre #6E6656),
-     nunca por una píldora de fondo ni engordando el trazo.
-   - Etiquetas de 13 px y objetivos táctiles de 48 px.
-   - Respeta el hueco de los móviles con barra de gestos.
+   iconos de línea de 24 px, el activo se distingue por COLOR
+   (#2F6FA8 sobre #6E6656) y objetivos táctiles de 48 px.
 
-   Solo aparece en móvil (≤760 px) y solo con la sesión de
-   administración ya abierta. Si la página se pinta su propia
-   barra (`.tabbar`, como «En la pista»), este componente se
-   aparta y no pinta nada.
+   Solo con la sesión de administración ya abierta.
    ============================================================ */
 (function () {
   'use strict';
 
-  var ALTO = 78;   /* hueco que se reserva al final del contenido */
+  var ALTO  = 78;    /* hueco que se reserva al final del contenido */
+  var CORTE = 899;   /* hasta aquí manda la barra de abajo; a partir de 900, la lateral */
 
   if (location.pathname.indexOf('/admin/') === -1) return;
 
@@ -41,15 +52,117 @@
     personas: svg('<circle cx="9" cy="8" r="3.3"/><path d="M2.8 20c0-3.4 2.8-5.5 6.2-5.5s6.2 2.1 6.2 5.5"/><path d="M16.5 5.6a3.3 3.3 0 0 1 0 6.3M18 14.9c2 .7 3.3 2.4 3.3 4.6"/>'),
     dinero:   svg('<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/>'),
     menu:     '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-              '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>'
+              '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>',
+    lupa:     '<svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+              'stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.6"/><path d="M16 16l4.5 4.5"/></svg>'
   };
 
   /* ---------- estilos ---------- */
   var css = document.createElement('style');
+  css.setAttribute('data-piel', 'navegacion');
   css.textContent =
-    '.at-tabbar,.at-hoja,.at-fondo{display:none}' +
-    '@media (max-width:760px){' +
-      /* hueco al final del contenido para que la barra no tape nada */
+    /* la barra de abajo solo existe en móvil; la hoja y el buscador, en las dos */
+    '.at-tabbar{display:none}' +
+    '.at-hoja[hidden],.at-fondo[hidden],.at-tabbar[hidden]{display:none !important}' +
+
+    /* --- buscador de la cabecera navy (todas las páginas del panel) --- */
+    '.adm-top,.admin-top{flex-wrap:wrap}' +
+    '.adm-top .izq,.admin-top .marca{order:1}' +
+    '.adm-top .der,.admin-top .sesion{order:3}' +
+    '.adm-top .at-busca-cab,.admin-top .at-busca-cab{order:2;display:flex;align-items:center;gap:11px;box-sizing:border-box;' +
+      'flex:1 1 200px;max-width:380px;margin:0 12px;min-height:44px;padding:10px 15px;' +
+      'border:0;border-radius:999px;background:rgba(255,255,255,.12);cursor:pointer;text-align:left;' +
+      'font-family:inherit;font-size:15px;line-height:1.2;color:rgba(255,255,255,.72);' +
+      '-webkit-tap-highlight-color:transparent}' +
+    '.adm-top .at-busca-cab:hover,.admin-top .at-busca-cab:hover{background:rgba(255,255,255,.2);color:#fff}' +
+    '.adm-top .at-busca-cab:focus-visible,.admin-top .at-busca-cab:focus-visible{outline:2px solid #9FC7E8;outline-offset:2px}' +
+    '.adm-top .at-busca-cab .lupa,.admin-top .at-busca-cab .lupa{flex:0 0 18px;width:18px;height:18px}' +
+    '.adm-top .at-busca-cab span,.admin-top .at-busca-cab span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+
+    /* --- la hoja: buscador, las que más usas y todo por bloques --- */
+    '.at-fondo{display:block;position:fixed;inset:0;z-index:700;background:rgba(46,66,86,.45);' +
+      'opacity:0;transition:opacity .18s ease}' +
+    '.at-fondo.ver{opacity:1}' +
+    '.at-hoja{display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:0;z-index:701;' +
+      'box-sizing:border-box;max-width:100%;max-height:86vh;' +
+      'background:var(--crema,#FBF9F4);border-top-left-radius:14px;border-top-right-radius:14px;' +
+      'box-shadow:0 -20px 44px -22px rgba(46,66,86,.55);' +
+      'transform:translateY(100%);transition:transform .22s ease}' +
+    '.at-hoja.ver{transform:none}' +
+    '.at-hoja .cab{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;' +
+      'padding:14px 18px 10px}' +
+    '.at-hoja .cab h2{margin:0;font-family:var(--fuente-titulo,inherit);text-transform:uppercase;' +
+      'font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
+    '.at-hoja .cerrar{flex:0 0 auto;min-height:44px;min-width:44px;border:0;background:none;cursor:pointer;' +
+      'font-size:15px;font-weight:600;font-family:inherit;color:var(--azul-oscuro,#2F6FA8);padding:0 6px;' +
+      '-webkit-tap-highlight-color:transparent}' +
+    '.at-hoja .buscar{flex:0 0 auto;position:relative;padding:0 18px 12px}' +
+    '.at-hoja .buscar .lupa{position:absolute;left:33px;top:50%;margin-top:-15px;width:18px;height:18px;' +
+      'color:var(--texto-suave,#6E6656);pointer-events:none}' +
+    '.at-hoja .buscar input{box-sizing:border-box;width:100%;min-height:44px;padding:11px 15px 11px 40px;' +
+      'border:1px solid var(--linea-borde,#D4CBB9);border-radius:999px;background:#fff;' +
+      'font-family:inherit;font-size:16px;color:var(--navy,#2E4256)}' +
+    '.at-hoja .buscar input:focus{outline:2px solid var(--azul,#3B85C0);border-color:var(--azul,#3B85C0)}' +
+    '.at-hoja .cuerpo{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
+      'padding:0 18px calc(20px + env(safe-area-inset-bottom))}' +
+
+    /* rótulo de bloque: 13 px, minúscula y sin espaciado (kit, punto 0) */
+    '.at-hoja h3{margin:0 0 7px;font-family:inherit;font-size:13px;font-weight:600;' +
+      'letter-spacing:normal;text-transform:none;color:var(--texto-suave,#6E6656)}' +
+    '.at-hoja .seccion{padding-top:13px;margin-top:13px;border-top:1px solid var(--linea-marcada,#E4DCCB)}' +
+    '.at-hoja .seccion:first-child{padding-top:0;margin-top:0;border-top:0}' +
+    '.at-hoja .seccion[hidden]+.seccion{padding-top:0;margin-top:0;border-top:0}' +
+    '.at-hoja .nota{margin:9px 2px 0;font-size:14px;line-height:1.45;color:var(--texto-suave,#6E6656)}' +
+
+    /* resultados: nombre y, debajo, su bloque */
+    '.at-hoja .lista{background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;overflow:hidden}' +
+    '.at-hoja .lista a{display:flex;align-items:center;gap:12px;min-height:48px;box-sizing:border-box;' +
+      'padding:11px 15px;border-top:1px solid var(--crema-media,#EFE9DC);text-decoration:none;' +
+      'color:var(--navy,#2E4256);-webkit-tap-highlight-color:transparent}' +
+    '.at-hoja .lista a:first-child{border-top:0}' +
+    '.at-hoja .lista a:hover{background:var(--crema,#FBF9F4)}' +
+    '.at-hoja .lista a .txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}' +
+    '.at-hoja .lista a .t{font-size:15px;line-height:1.3;color:var(--navy,#2E4256)}' +
+    '.at-hoja .lista a .b{font-size:14px;line-height:1.3;color:var(--texto-suave,#6E6656)}' +
+    '.at-hoja .lista a .chev{flex:0 0 auto;font-style:normal;font-size:19px;line-height:1;color:var(--texto-suave,#6E6656)}' +
+    '.at-hoja .lista a.aqui .t{font-weight:600;color:var(--azul-oscuro,#2F6FA8)}' +
+
+    /* «Las que más usas»: rejilla de dos */
+    '.at-hoja .atajos{display:grid;grid-template-columns:1fr 1fr;gap:9px}' +
+    '.at-hoja .atajos a{display:flex;align-items:center;min-height:48px;box-sizing:border-box;' +
+      'padding:10px 14px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:12px;background:#fff;' +
+      'text-decoration:none;color:var(--navy,#2E4256);font-size:15px;line-height:1.25;' +
+      '-webkit-tap-highlight-color:transparent}' +
+    '.at-hoja .atajos a:hover{border-color:var(--azul,#3B85C0)}' +
+
+    /* «Todo, por bloques»: plegados y con su recuento al lado */
+    '.at-hoja .bloque{border-top:1px solid var(--crema-media,#EFE9DC)}' +
+    '.at-hoja .bloque:first-of-type{border-top:0}' +
+    '.at-hoja .bloque > summary{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:center;' +
+      'gap:12px;min-height:48px;box-sizing:border-box;padding:11px 2px;font-size:15px;color:var(--navy,#2E4256);' +
+      '-webkit-tap-highlight-color:transparent}' +
+    '.at-hoja .bloque > summary::-webkit-details-marker{display:none}' +
+    '.at-hoja .bloque > summary .nom{flex:1 1 auto;min-width:0}' +
+    '.at-hoja .bloque > summary .n{font-family:var(--fuente-dato,inherit);font-size:14px;color:var(--texto-suave,#6E6656)}' +
+    '.at-hoja .bloque > summary .fl{flex:0 0 auto;width:7px;height:7px;margin-right:4px;' +
+      'border-right:2px solid var(--texto-suave,#6E6656);border-bottom:2px solid var(--texto-suave,#6E6656);' +
+      'transform:rotate(45deg) translate(-2px,-2px);transition:transform .18s ease}' +
+    '.at-hoja .bloque[open] > summary .fl{transform:rotate(-135deg) translate(-2px,-2px)}' +
+    '.at-hoja .bloque > .lista{margin:0 0 12px}' +
+    '.at-hoja .oculto-busca{display:none !important}' +
+    'body.at-hoja-abierta{overflow:hidden}' +
+
+    /* --- de 900 px para arriba la hoja es una ventana centrada arriba --- */
+    '@media (min-width:' + (CORTE + 1) + 'px){' +
+      '.at-hoja{left:50%;right:auto;bottom:auto;top:7vh;width:min(620px,calc(100vw - 48px));' +
+        'max-height:76vh;border-radius:14px;box-shadow:0 30px 70px -25px rgba(46,66,86,.6);' +
+        'transform:translate(-50%,14px);opacity:0}' +
+      '.at-hoja.ver{transform:translate(-50%,0);opacity:1}' +
+      '.at-hoja .cuerpo{padding-bottom:20px}' +
+    '}' +
+
+    /* --- de 899 px para abajo: barra de cinco y ni rastro de la lateral --- */
+    '@media (max-width:' + CORTE + 'px){' +
       'body.at-con-tabbar{padding-bottom:calc(' + ALTO + 'px + env(safe-area-inset-bottom))}' +
       '.at-tabbar{display:flex;align-items:stretch;position:fixed;left:0;right:0;bottom:0;z-index:600;' +
         'box-sizing:border-box;max-width:100%;' +
@@ -66,46 +179,10 @@
       /* el activo cambia de color, nunca de grosor de trazo */
       '.at-tabbar .activo{color:var(--azul-oscuro,#2F6FA8)}' +
       '.at-tabbar .activo span{font-weight:600}' +
-
-      /* --- hoja con todas las secciones --- */
-      '.at-fondo{display:block;position:fixed;inset:0;z-index:700;background:rgba(46,66,86,.45);' +
-        'opacity:0;transition:opacity .18s ease}' +
-      '.at-fondo.ver{opacity:1}' +
-      '.at-hoja{display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:0;z-index:701;' +
-        'box-sizing:border-box;max-width:100%;max-height:82vh;' +
-        'background:var(--crema,#FBF9F4);border-top-left-radius:14px;border-top-right-radius:14px;' +
-        'box-shadow:0 -20px 44px -22px rgba(46,66,86,.55);' +
-        'transform:translateY(100%);transition:transform .22s ease}' +
-      '.at-hoja.ver{transform:none}' +
-      '.at-hoja .cab{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;' +
-        'padding:14px 18px 10px;border-bottom:1px solid var(--linea,#EAE3D5)}' +
-      '.at-hoja .cab h2{margin:0;font-family:var(--fuente-titulo,inherit);text-transform:uppercase;' +
-        'font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
-      '.at-hoja .cerrar{flex:0 0 auto;min-height:44px;min-width:44px;border:0;background:none;cursor:pointer;' +
-        'font-size:15px;font-family:inherit;color:var(--texto-suave,#5E5849);padding:0 6px;' +
-        '-webkit-tap-highlight-color:transparent}' +
-      /* Buscador: 32 pantallas son demasiadas para encontrar una a ojo. */
-      '.at-hoja .buscar{flex:0 0 auto;padding:10px 18px 4px}' +
-      '.at-hoja .buscar input{box-sizing:border-box;width:100%;min-height:44px;padding:11px 13px;' +
-        'border:1px solid var(--linea-borde,#D4CBB9);border-radius:10px;background:#fff;' +
-        'font-family:inherit;font-size:16px;color:var(--navy,#2E4256)}' +
-      '.at-hoja .buscar input:focus{outline:2px solid var(--azul,#3B85C0);border-color:var(--azul,#3B85C0)}' +
-      '.at-hoja .sin-nada{margin:18px 2px;font-size:15px;line-height:1.55;color:var(--texto-suave,#6E6656)}' +
-      '.at-hoja .oculto-busca{display:none !important}' +
-      '.at-hoja .cuerpo{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
-        'padding:6px 18px calc(20px + env(safe-area-inset-bottom))}' +
-      '.at-hoja .grupo{margin-top:14px}' +
-      /* rótulo de bloque: 13 px, minúscula y sin espaciado (kit, punto 0) */
-      '.at-hoja .grupo h3{margin:0 0 6px;font-family:inherit;font-size:13px;font-weight:600;' +
-        'letter-spacing:normal;text-transform:none;color:var(--texto-suave,#6E6656)}' +
-      '.at-hoja .enlaces{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
-      '.at-hoja .enlaces a{display:flex;align-items:center;min-height:48px;box-sizing:border-box;' +
-        'padding:10px 12px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:10px;background:#fff;' +
-        'text-decoration:none;color:var(--navy,#2E4256);font-size:15px;line-height:1.25;' +
-        '-webkit-tap-highlight-color:transparent}' +
-      '.at-hoja .enlaces a.aqui{border-color:var(--azul-oscuro,#2F6FA8);color:var(--azul-oscuro,#2F6FA8);font-weight:600}' +
-      '.at-hoja .enlaces a.ancho{grid-column:1 / -1}' +
-      'body.at-hoja-abierta{overflow:hidden}' +
+      /* el buscador de la cabecera pasa a su propia línea, a ancho completo,
+         y la sesión se queda arriba con el nombre de la pantalla */
+      '.adm-top .der,.admin-top .sesion{order:2}' +
+      '.adm-top .at-busca-cab,.admin-top .at-busca-cab{order:3;flex:1 1 100%;max-width:none;margin:2px 0 0}' +
       /* el aviso queda 16 px por encima de la barra de pestañas (kit 30g) */
       'body.at-con-tabbar .apx-host{bottom:calc(16px + ' + ALTO + 'px + env(safe-area-inset-bottom))}' +
     '}';
@@ -122,62 +199,101 @@
     ];
   }
 
-  /* Todas las secciones del panel, agrupadas igual que la barra lateral. */
-  function bloques() {
+  /* ============================================================
+     El panel entero, en un solo sitio
+     ------------------------------------------------------------
+     Cada pantalla trae su bloque y una línea de qué hace: es lo
+     que sale debajo de cada resultado del buscador y lo que evita
+     confundir «Avisos al móvil» con «Franja informativa».
+
+     `panel: true` marca lo que NO es un destino: son pestañas de
+     contenido dentro del inicio del panel (#noticias, #avisos,
+     #tienda, #buzon). Se buscan, porque hay que poder llegar,
+     pero no salen en «Todo, por bloques»: el menú solo lleva a
+     destinos reales.
+     ============================================================ */
+  function mapa() {
     var r = raiz();
     return [
       { t: '', enlaces: [
-        { txt: 'Inicio del panel', url: r, ancho: true },
-        { txt: 'En la pista', url: r + 'campo/', ancho: true }
+        { txt: 'Inicio del panel', url: r,           desc: 'lo que hay que resolver hoy', ancho: true },
+        { txt: 'En la pista',      url: r + 'campo/', desc: 'pasar lista y ver los grupos', ancho: true }
       ] },
       { t: 'Personas', enlaces: [
-        { txt: 'Atletas', url: r + 'atletas/' },
-        { txt: 'Importar personas', url: r + 'importar/' },
-        { txt: 'Grupos', url: r + 'grupos/' },
-        { txt: 'Usuarios y permisos', url: r + 'usuarios/' }
+        { txt: 'Atletas',                 url: r + 'atletas/',        desc: 'las fichas de los socios' },
+        { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
+        { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'horarios, entrenador y cuota' },
+        { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' },
+        { txt: 'Quién va a ir',           url: r + 'confirmaciones/', desc: 'confirmaciones para una carrera' }
       ] },
       { t: 'Dinero', enlaces: [
-        { txt: 'Cobros y recibos', url: r + 'cobros/' },
-        { txt: 'Tarifas', url: r + 'tarifas/' },
-        { txt: 'Pedidos de ropa', url: r + 'pedidos/' },
-        { txt: 'Pagos con tarjeta', url: r + 'pagos-online/' }
-      ] },
-      { t: 'Análisis de datos', enlaces: [
-        { txt: 'Estadísticas del club', url: r + 'estadisticas/' },
-        { txt: 'Informes y datos', url: r + 'informes/' },
-        { txt: 'Histórico de la escuela', url: r + 'historico/' }
+        { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
+        { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
+        { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' },
+        { txt: 'Pagos con tarjeta', url: r + 'pagos-online/', desc: 'lo que se cobra por internet' }
       ] },
       { t: 'Actividad', enlaces: [
-        { txt: 'Calendario y eventos', url: r + 'eventos/' },
-        { txt: 'Competiciones', url: r + 'competiciones/' },
-        { txt: 'Quién va a ir', url: r + 'confirmaciones/' },
-        { txt: 'Liga Apolana', url: r + 'liga/' },
-        { txt: 'Retos y medallas', url: r + 'retos/' },
-        { txt: 'El Cubo', url: r + 'cubo/' },
-        { txt: 'Batería de tests', url: r + 'tests/' },
-        { txt: 'Catálogo de pruebas', url: r + 'pruebas/' }
+        { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
+        { txt: 'Competiciones',        url: r + 'competiciones/', desc: 'carreras e inscripciones' },
+        { txt: 'Liga Apolana',         url: r + 'liga/',          desc: 'clasificación y puntos' },
+        { txt: 'El Cubo',              url: r + 'cubo/',          desc: 'clases de fuerza y bonos' },
+        { txt: 'Batería de tests',     url: r + 'tests/',         desc: 'pruebas físicas y marcas' },
+        { txt: 'Retos y medallas',     url: r + 'retos/',         desc: 'los logros de los atletas' },
+        { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' },
+        { txt: 'Avisos al móvil',      url: r + 'avisos-push/',   desc: 'notificaciones que se envían' }
       ] },
       { t: 'La web', enlaces: [
-        { txt: 'Noticias', url: r + '#noticias' },
-        { txt: 'Avisos de portada', url: r + '#avisos' },
-        { txt: 'Avisos al móvil', url: r + 'avisos-push/' },
-        { txt: 'Tienda', url: r + '#tienda' },
-        { txt: 'Páginas', url: r + 'paginas/' },
-        { txt: 'Textos de las páginas', url: r + 'contenido/' },
-        { txt: 'Fotos de la web', url: r + 'imagenes/' },
-        { txt: 'Biblioteca de fotos', url: r + 'biblioteca/' },
-        { txt: 'Colaboradores', url: r + 'colaboradores/' },
-        { txt: 'Documentos', url: r + 'documentos/' },
-        { txt: 'Peticiones de redes', url: r + 'redes/' },
-        { txt: 'Mapa de contenido', url: r + 'mapa/' }
+        { txt: 'Franja informativa',    url: r + '#avisos',   desc: 'el aviso de la portada', panel: true },
+        { txt: 'Noticias',              url: r + '#noticias', desc: 'lo que se publica en la web', panel: true },
+        { txt: 'Tienda',                url: r + '#tienda',   desc: 'los productos del club', panel: true },
+        { txt: 'Páginas',               url: r + 'paginas/',      desc: 'las páginas de la web' },
+        { txt: 'Textos de las páginas', url: r + 'contenido/',    desc: 'lo que pone en cada una' },
+        { txt: 'Fotos de la web',       url: r + 'imagenes/',     desc: 'las imágenes de cada página' },
+        { txt: 'Biblioteca de fotos',   url: r + 'biblioteca/',   desc: 'todas las fotos subidas' },
+        { txt: 'Colaboradores',         url: r + 'colaboradores/', desc: 'patrocinadores y logos' },
+        { txt: 'Documentos',            url: r + 'documentos/',   desc: 'papeles y autorizaciones' },
+        { txt: 'Peticiones de redes',   url: r + 'redes/',        desc: 'lo que proponen los socios' },
+        { txt: 'Mapa de contenido',     url: r + 'mapa/',         desc: 'qué hay en cada página' }
       ] },
       { t: 'Club', enlaces: [
-        { txt: 'Buzón', url: r + 'buzon/' },
-        { txt: 'Plantillas de email', url: r + 'plantillas/' },
-        { txt: 'Récords', url: r + 'records/' },
-        { txt: 'Palmarés', url: r + 'palmares/' }
+        { txt: 'Buzón',                    url: r + 'buzon/',            desc: 'mensajes de contacto' },
+        { txt: 'Buzón',                    url: r + '#buzon',            desc: 'solicitudes de inscripción', panel: true },
+        { txt: 'Se pone solo',             url: r + 'automatizaciones/', desc: 'lo que se publica sin tocar nada' },
+        { txt: 'Plantillas de email',      url: r + 'plantillas/',       desc: 'respuestas ya escritas' },
+        { txt: 'Récords',                  url: r + 'records/',          desc: 'las mejores marcas del club' },
+        { txt: 'Palmarés',                 url: r + 'palmares/',         desc: 'medallas y podios' },
+        { txt: 'Estadísticas del club',    url: r + 'estadisticas/',     desc: 'los números del club' },
+        { txt: 'Informes y datos',         url: r + 'informes/',         desc: 'informes para exportar' },
+        { txt: 'Histórico de la escuela',  url: r + 'historico/',        desc: 'las temporadas pasadas' }
       ] }
     ];
+  }
+
+  /* Todas las pantallas en una lista plana, con su bloque ya puesto. */
+  var PLANO = null;
+  function plano() {
+    if (PLANO) return PLANO;
+    PLANO = [];
+    mapa().forEach(function (b) {
+      b.enlaces.forEach(function (e) {
+        PLANO.push({
+          txt: e.txt, url: e.url, desc: e.desc || '', panel: !!e.panel,
+          bloque: b.t || 'El panel',
+          clave: clave(e.url),
+          busca: palabras(e.txt, b.t, e.desc)
+        });
+      });
+    });
+    return PLANO;
+  }
+
+  /* La llave con la que se cuenta el uso: la carpeta («atletas») o
+     el panel («#avisos»). No sale del navegador de cada persona. */
+  function clave(url) {
+    var h = url.indexOf('#');
+    if (h !== -1) return url.slice(h);
+    var m = url.match(/admin\/(.*)$/);
+    return m ? m[1].replace(/\/+$/, '') : '';
   }
 
   /* ---------- en qué página estamos ---------- */
@@ -202,16 +318,307 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* ---------- la hoja con todo el panel ---------- */
+  /* ============================================================
+     Lo que abre cada persona
+     ------------------------------------------------------------
+     «En la práctica cada uno usa cinco o seis pantallas de las 32».
+     El recuento se guarda en el propio navegador: no hace falta
+     base de datos y no sale de ahí.
+     ============================================================ */
+  var LLAVE_USO = 'apolana-panel-uso';
+  function uso() {
+    try { return JSON.parse(localStorage.getItem(LLAVE_USO) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function anotar(k) {
+    if (k === null || k === undefined) return;
+    try {
+      var u = uso();
+      u[k] = (u[k] || 0) + 1;
+      localStorage.setItem(LLAVE_USO, JSON.stringify(u));
+    } catch (e) {}
+  }
+
+  /* Las cuatro de arriba. Al principio no hay historial, así que se
+     arranca con cuatro sensatas y se dice que van a cambiar solas:
+     una rejilla vacía no le sirve a nadie el primer día. */
+  var PRIMERAS = ['atletas', 'cobros', 'buzon', 'liga'];
+  function masUsadas() {
+    var u = uso(), todas = plano();
+    var con = todas.filter(function (e) { return e.clave !== '' && u[e.clave] > 0; })
+      .sort(function (a, b) { return u[b.clave] - u[a.clave]; });
+    var elegidas = con.slice(0, 4);
+    var faltan = 4 - elegidas.length;
+    if (faltan > 0) {
+      PRIMERAS.forEach(function (k) {
+        if (faltan <= 0) return;
+        var e = todas.filter(function (x) { return x.clave === k; })[0];
+        if (!e) return;
+        if (elegidas.indexOf(e) !== -1) return;
+        elegidas.push(e); faltan--;
+      });
+    }
+    return { lista: elegidas, estrenando: con.length < 4 };
+  }
+
+  /* ============================================================
+     Sinónimos: cada pantalla se busca por su nombre y por como la
+     llama la gente. Nadie escribe «avisos-push»: escribe
+     «notificaciones» o «avisar».
+     ============================================================ */
+  var SINONIMOS = {
+    'avisos al móvil':        'notificaciones push avisar movil telefono alertas',
+    'franja informativa':     'avisos de portada banner franja barra aviso web arriba',
+    'noticias':               'blog articulos web publicar',
+    'tienda':                 'ropa productos venta equipacion',
+    'cobros y recibos':       'dinero pagos recibos domiciliacion remesas banco impagados devueltos',
+    'tarifas':                'precios cuotas dinero',
+    'pagos con tarjeta':      'stripe tarjeta online dinero',
+    'pedidos de ropa':        'tienda equipacion camiseta ropa',
+    'atletas':                'personas fichas socios ninos alumnos',
+    'importar personas':      'altas csv excel importar',
+    'grupos de entrenamiento':'grupos horarios entrenos secciones entrenador',
+    'quién entra al panel':   'usuarios permisos cuentas acceso contrasenas roles administradores',
+    'en la pista':            'asistencia pasar lista campo entrenamiento',
+    'quién va a ir':          'confirmar asistencia carrera desplazamiento plazas autobus',
+    'calendario y eventos':   'agenda fechas eventos',
+    'competiciones':          'carreras pruebas inscripciones',
+    'liga apolana':           'liga clasificacion puntos',
+    'retos y medallas':       'juego rangos medallas logros',
+    'el cubo':                'fuerza bonos clases',
+    'batería de tests':       'pruebas fisicas tests marcas',
+    'catálogo de pruebas':    'pruebas distancias catalogo',
+    'estadísticas del club':  'datos analisis metricas graficas',
+    'informes y datos':       'informes exportar datos pdf',
+    'histórico de la escuela':'historico temporadas pasadas',
+    'páginas':                'web contenido paginas',
+    'textos de las páginas':  'contenido textos web copys',
+    'fotos de la web':        'imagenes fotos web',
+    'biblioteca de fotos':    'imagenes fotos galeria mediateca',
+    'colaboradores':          'patrocinadores logos empresas',
+    'documentos':             'papeles normativa autorizaciones pdf',
+    'peticiones de redes':    'instagram propuestas socios redes',
+    'mapa de contenido':      'mapa web estructura',
+    'buzón':                  'mensajes correo dudas contacto solicitudes inscripcion',
+    'se pone solo':           'automatizaciones automatico solo publica',
+    'plantillas de email':    'correos plantillas respuestas',
+    'récords':                'marcas historicas records',
+    'palmarés':               'medallas podios historico'
+  };
+  function sinTildes(s) {
+    return String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  function palabras(titulo, grupo, desc) {
+    return sinTildes(titulo + ' ' + (grupo || '') + ' ' + (desc || '') + ' ' +
+                     (SINONIMOS[String(titulo).toLowerCase()] || ''));
+  }
+
+  /* ============================================================
+     Las personas del club
+     ------------------------------------------------------------
+     Salen de la base con la sesión de quien está mirando, así que
+     cada uno ve lo que le dejan ver las reglas de acceso: aquí no
+     se monta ninguna lista aparte que se las salte.
+     ============================================================ */
+  var GENTE = null, PIDIENDO = false;
+  function gente(cuando) {
+    if (GENTE) { cuando(GENTE); return; }
+    if (PIDIENDO) return;
+    var sb = window.APOLANA_DB;
+    if (!sb || !sb.from) { GENTE = []; cuando(GENTE); return; }
+    PIDIENDO = true;
+    sb.from('atletas').select('id,nombre,apellidos,categoria,estado').order('apellidos').limit(1200)
+      .then(function (r) {
+        PIDIENDO = false;
+        GENTE = (r && !r.error && r.data ? r.data : []).map(function (a) {
+          var n = ((a.nombre || '') + ' ' + (a.apellidos || '')).replace(/\s+/g, ' ').trim();
+          return { id: a.id, nombre: n, cat: a.categoria || '', estado: a.estado || '', busca: sinTildes(n) };
+        });
+        cuando(GENTE);
+      }, function () { PIDIENDO = false; GENTE = []; cuando(GENTE); });
+  }
+
+  /* ============================================================
+     La hoja: buscador, «las que más usas» y «todo, por bloques»
+     ============================================================ */
   var fondo = null, hoja = null, abierta = false, ultimoFoco = null, botonMenu = null;
+  var campo = null, cajaRes = null, cajaAtajos = null, cajaTodo = null;
 
   function avisarBoton() {
     if (botonMenu) botonMenu.setAttribute('aria-expanded', abierta ? 'true' : 'false');
   }
 
+  function itemHTML(txt, sub, url, aqui) {
+    return '<a href="' + esc(url) + '"' + (aqui ? ' class="aqui"' : '') + ' data-clave="' + esc(clave(url)) + '">' +
+           '<span class="txt"><span class="t">' + esc(txt) + '</span>' +
+           '<span class="b">' + esc(sub) + '</span></span>' +
+           '<i class="chev" aria-hidden="true">›</i></a>';
+  }
+
+  function pintarAtajos() {
+    var m = masUsadas(), aqui = carpeta();
+    var html = '<h3>Las que más usas</h3><div class="atajos">';
+    m.lista.forEach(function (e) {
+      html += '<a href="' + esc(e.url) + '" data-clave="' + esc(e.clave) + '"' +
+              (!e.panel && e.clave === aqui ? ' class="aqui"' : '') + '>' + esc(e.txt) + '</a>';
+    });
+    html += '</div>';
+    if (m.estrenando) {
+      html += '<p class="nota">Todavía no sabemos cuáles usas tú: estas cuatro son el punto de partida. ' +
+              'Según vayas abriendo pantallas, se cambian solas.</p>';
+    }
+    cajaAtajos.innerHTML = html;
+  }
+
+  function pintarTodo() {
+    var aqui = carpeta();
+    var html = '<h3>Todo, por bloques</h3>';
+    mapa().forEach(function (b) {
+      var reales = b.enlaces.filter(function (e) { return !e.panel; });
+      if (!reales.length) return;
+      if (!b.t) {
+        html += '<div class="lista" style="margin-bottom:12px">';
+        reales.forEach(function (e) {
+          html += itemHTML(e.txt, e.desc, e.url, clave(e.url) === aqui);
+        });
+        html += '</div>';
+        return;
+      }
+      var dentro = reales.some(function (e) { return clave(e.url) === aqui; });
+      html += '<details class="bloque"' + (dentro ? ' open' : '') + '>' +
+              '<summary><span class="nom">' + esc(b.t) + '</span>' +
+              '<span class="n">' + reales.length + '</span><i class="fl" aria-hidden="true"></i></summary>' +
+              '<div class="lista">';
+      reales.forEach(function (e) {
+        html += itemHTML(e.txt, e.desc, e.url, clave(e.url) === aqui);
+      });
+      html += '</div></details>';
+    });
+    cajaTodo.innerHTML = html;
+  }
+
+  /* Filtra mientras se escribe: pantallas y personas a la vez. */
+  var TOPE_PANTALLAS = 8, TOPE_PERSONAS = 6;
+  function filtrar(texto) {
+    var q = sinTildes(texto).trim();
+    var trozos = q ? q.split(/\s+/) : [];
+    if (!trozos.length) {
+      cajaRes.hidden = true;
+      cajaRes.innerHTML = '';
+      cajaAtajos.hidden = false;
+      cajaTodo.hidden = false;
+      return;
+    }
+    cajaAtajos.hidden = false;
+    cajaTodo.hidden = false;
+    cajaRes.hidden = false;
+
+    var pantallas = plano().filter(function (e) {
+      return trozos.every(function (t) { return e.busca.indexOf(t) !== -1; });
+    });
+
+    function pinta(personas) {
+      var html = '<h3>Resultados</h3>';
+      var total = pantallas.length + personas.length;
+      if (!total) {
+        html += '<p class="nota" style="margin-top:0">No hay ninguna pantalla ni ninguna persona con eso. ' +
+                'Prueba con una palabra suelta: cobros, grupos, fotos, avisos…</p>';
+        cajaRes.innerHTML = html;
+        aLaVista();
+        return;
+      }
+      html += '<div class="lista">';
+      pantallas.slice(0, TOPE_PANTALLAS).forEach(function (e) {
+        html += itemHTML(e.txt, e.bloque + ' · ' + e.desc, e.url, false);
+      });
+      personas.slice(0, TOPE_PERSONAS).forEach(function (p) {
+        var sub = 'Personas · ' + (p.cat ? 'ficha de ' + p.cat : 'ficha del atleta');
+        html += itemHTML(p.nombre, sub, raiz() + 'atletas/?ficha=' + encodeURIComponent(p.id), false);
+      });
+      html += '</div>';
+      var mas = (pantallas.length - Math.min(pantallas.length, TOPE_PANTALLAS)) +
+                (personas.length - Math.min(personas.length, TOPE_PERSONAS));
+      if (mas > 0) html += '<p class="nota">Y ' + mas + ' más. Escribe un poco más para afinar.</p>';
+      cajaRes.innerHTML = html;
+      aLaVista();
+    }
+
+    /* Las personas tardan lo que tarde la base: las pantallas salen ya. */
+    pinta(coincidenPersonas(GENTE || [], trozos));
+    gente(function (lista) {
+      if (campo && sinTildes(campo.value).trim() !== q) return;   /* ya se escribió otra cosa */
+      pinta(coincidenPersonas(lista, trozos));
+    });
+  }
+
+  function coincidenPersonas(lista, trozos) {
+    if (!lista || !lista.length) return [];
+    return lista.filter(function (p) {
+      return trozos.every(function (t) { return p.busca.indexOf(t) !== -1; });
+    });
+  }
+
+  /* ============================================================
+     El teclado no puede tapar los resultados
+     ------------------------------------------------------------
+     «Al buscar y escribir avisos, los resultados quedan abajo y
+     son tapados por el teclado.» En el móvil el teclado se come
+     el 40-45 % del alto, y en iOS `vh` NO baja cuando sale: una
+     hoja de 82vh anclada abajo queda medio tapada.
+
+     Así que el alto no se le pregunta a `vh`: se le pregunta a
+     `visualViewport`, que es lo único que sabe qué se ve de
+     verdad. La hoja se sube por encima del teclado y los
+     resultados se quedan pegados al buscador, con su propio
+     desplazamiento si no caben.
+     ============================================================ */
+  function ajustar() {
+    if (!hoja || hoja.hidden) return;
+    var vv = window.visualViewport;
+    var ancha = window.innerWidth > CORTE;
+    if (!vv) { hoja.style.bottom = ''; hoja.style.top = ''; hoja.style.maxHeight = ''; return; }
+
+    /* lo que queda tapado por debajo: el teclado, casi siempre */
+    var tapado = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    var visible = Math.round(vv.height);
+
+    if (ancha) {
+      /* ventana centrada arriba: basta con no pasarse de alto */
+      hoja.style.bottom = '';
+      hoja.style.top = Math.round(vv.offsetTop + Math.min(visible * 0.07, 56)) + 'px';
+      hoja.style.maxHeight = Math.max(260, visible - 96) + 'px';
+    } else {
+      /* hoja de abajo: se apoya en el borde de arriba del teclado */
+      hoja.style.top = '';
+      hoja.style.bottom = tapado + 'px';
+      hoja.style.maxHeight = Math.max(240, visible - 12) + 'px';
+    }
+  }
+
+  /* Al escribir, el primer resultado tiene que verse sin arrastrar. */
+  function aLaVista() {
+    if (!hoja || hoja.hidden) return;
+    ajustar();
+    var cuerpo = hoja.querySelector('.cuerpo');
+    if (cuerpo) cuerpo.scrollTop = 0;
+    var primero = cajaRes && !cajaRes.hidden ? cajaRes.querySelector('.lista a') : null;
+    if (primero && primero.scrollIntoView) {
+      try { primero.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+    }
+  }
+
+  var mirandoTeclado = false;
+  function mirarTeclado(si) {
+    var vv = window.visualViewport;
+    if (!vv || mirandoTeclado === si) return;
+    mirandoTeclado = si;
+    if (si) { vv.addEventListener('resize', ajustar); vv.addEventListener('scroll', ajustar); }
+    else    { vv.removeEventListener('resize', ajustar); vv.removeEventListener('scroll', ajustar); }
+  }
+
   function crearHoja() {
     if (hoja) return;
-    var aqui = carpeta();
 
     fondo = document.createElement('div');
     fondo.className = 'at-fondo';
@@ -221,134 +628,78 @@
     hoja.className = 'at-hoja';
     hoja.setAttribute('role', 'dialog');
     hoja.setAttribute('aria-modal', 'true');
-    hoja.setAttribute('aria-label', 'Todas las secciones del panel');
+    hoja.setAttribute('aria-label', 'Menú y buscador del panel');
     hoja.hidden = true;
-
-    var html = '<div class="cab"><h2>Todo el panel</h2>' +
-               '<button type="button" class="cerrar">Cerrar</button></div>' +
-               '<div class="buscar"><input type="search" id="at-buscar" autocomplete="off" ' +
-               'placeholder="Buscar una pantalla: cobros, avisos, fotos…" ' +
-               'aria-label="Buscar una pantalla del panel"></div>' +
-               '<div class="cuerpo">';
-    bloques().forEach(function (b) {
-      html += '<div class="grupo">';
-      if (b.t) html += '<h3>' + esc(b.t) + '</h3>';
-      html += '<div class="enlaces">';
-      b.enlaces.forEach(function (e) {
-        var m = e.url.match(/admin\/([^#]*)$/);
-        var carp = m ? m[1].replace(/\/+$/, '') : null;
-        var clases = [];
-        if (e.ancho) clases.push('ancho');
-        if (e.url.indexOf('#') === -1 && carp === aqui) clases.push('aqui');
-        html += '<a href="' + esc(e.url) + '"' +
-                (clases.length ? ' class="' + clases.join(' ') + '"' : '') +
-                ' data-busca="' + esc(palabras(e.txt, b.t)) + '"' +
-                '>' + esc(e.txt) + '</a>';
-      });
-      html += '</div></div>';
-    });
-    html += '<p class="sin-nada oculto-busca">No hay ninguna pantalla con ese nombre. Prueba con una palabra suelta: cobros, grupos, fotos, avisos…</p>';
-    html += '</div>';
-    hoja.innerHTML = html;
+    hoja.innerHTML =
+      '<div class="cab"><h2>Menú</h2><button type="button" class="cerrar">Cerrar</button></div>' +
+      '<div class="buscar">' + IC.lupa +
+        '<input type="search" id="at-buscar" autocomplete="off" ' +
+        'placeholder="Buscar una pantalla o una persona" ' +
+        'aria-label="Buscar una pantalla del panel o una persona del club"></div>' +
+      '<div class="cuerpo">' +
+        '<div class="seccion" id="at-res" hidden></div>' +
+        '<div class="seccion" id="at-atajos"></div>' +
+        '<div class="seccion" id="at-todo"></div>' +
+      '</div>';
 
     document.body.appendChild(fondo);
     document.body.appendChild(hoja);
 
+    campo      = hoja.querySelector('#at-buscar');
+    cajaRes    = hoja.querySelector('#at-res');
+    cajaAtajos = hoja.querySelector('#at-atajos');
+    cajaTodo   = hoja.querySelector('#at-todo');
+
+    pintarAtajos();
+    pintarTodo();
+
     fondo.addEventListener('click', cerrar);
     hoja.querySelector('.cerrar').addEventListener('click', cerrar);
-
-    var campo = hoja.querySelector('#at-buscar');
     campo.addEventListener('input', function () { filtrar(campo.value); });
-    /* Enter con una sola pantalla a la vista: se entra directamente. */
+    /* al enfocar sube el teclado: se vuelve a medir lo que se ve de verdad */
+    campo.addEventListener('focus', function () {
+      ajustar(); setTimeout(ajustar, 150); setTimeout(ajustar, 450);
+    });
+    campo.addEventListener('blur', function () { setTimeout(ajustar, 150); });
+    window.addEventListener('resize', ajustar);
+    window.addEventListener('orientationchange', function () { setTimeout(ajustar, 260); });
+    /* Enter con un solo resultado a la vista: se entra directamente. */
     campo.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter') return;
-      var vivos = hoja.querySelectorAll('.enlaces a:not(.oculto-busca)');
+      var vivos = cajaRes.hidden ? [] : cajaRes.querySelectorAll('.lista a');
       if (vivos.length === 1) { e.preventDefault(); vivos[0].click(); }
     });
-  }
-
-  /* Cada pantalla se busca por su nombre y por como la llama la gente:
-     nadie escribe «avisos-push», escribe «notificaciones» o «avisar». */
-  var SINONIMOS = {
-    'avisos al móvil':      'notificaciones push avisar movil telefono alertas',
-    'avisos de portada':    'franja informativa banner portada web',
-    'cobros y recibos':     'dinero pagos recibos domiciliacion remesas banco impagados devueltos',
-    'tarifas':              'precios cuotas dinero',
-    'pagos con tarjeta':    'stripe tarjeta online dinero',
-    'pedidos de ropa':      'tienda equipacion camiseta ropa',
-    'atletas':              'personas fichas socios ninos alumnos',
-    'importar personas':    'altas csv excel importar',
-    'grupos':               'horarios entrenos secciones',
-    'usuarios y permisos':  'cuentas acceso contrasenas roles',
-    'en la pista':          'asistencia pasar lista campo entrenamiento',
-    'quién va a ir':        'confirmar asistencia carrera desplazamiento plazas autobus',
-    'calendario y eventos': 'agenda fechas eventos',
-    'competiciones':        'carreras pruebas inscripciones',
-    'liga apolana':         'liga clasificacion puntos',
-    'retos y medallas':     'juego rangos medallas logros',
-    'el cubo':              'fuerza bonos clases',
-    'batería de tests':     'pruebas fisicas tests marcas',
-    'catálogo de pruebas':  'pruebas distancias catalogo',
-    'estadísticas del club':'datos analisis metricas graficas',
-    'informes y datos':     'informes exportar datos pdf',
-    'histórico de la escuela':'historico temporadas pasadas',
-    'noticias':             'blog articulos web',
-    'tienda':               'ropa productos venta',
-    'páginas':              'web contenido paginas',
-    'textos de las páginas':'contenido textos web copys',
-    'fotos de la web':      'imagenes fotos web',
-    'biblioteca de fotos':  'imagenes fotos galeria mediateca',
-    'colaboradores':        'patrocinadores logos empresas',
-    'documentos':           'papeles normativa autorizaciones pdf',
-    'peticiones de redes':  'instagram propuestas socios redes',
-    'mapa de contenido':    'mapa web estructura',
-    'buzón':                'mensajes correo dudas contacto',
-    'plantillas de email':  'correos plantillas respuestas',
-    'récords':              'marcas historicas records',
-    'palmarés':             'medallas podios historico'
-  };
-  function sinTildes(s) {
-    return String(s || '').toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  }
-  function palabras(titulo, grupo) {
-    return sinTildes(titulo + ' ' + (grupo || '') + ' ' + (SINONIMOS[String(titulo).toLowerCase()] || ''));
-  }
-  function filtrar(texto) {
-    var q = sinTildes(texto).trim();
-    var trozos = q ? q.split(/\s+/) : [];
-    var vistos = 0;
-    Array.prototype.forEach.call(hoja.querySelectorAll('.grupo'), function (g) {
-      var dentro = 0;
-      Array.prototype.forEach.call(g.querySelectorAll('.enlaces a'), function (a) {
-        var heno = a.getAttribute('data-busca') || '';
-        var vale = trozos.every(function (t) { return heno.indexOf(t) !== -1; });
-        a.classList.toggle('oculto-busca', !vale);
-        if (vale) dentro++;
-      });
-      g.classList.toggle('oculto-busca', dentro === 0);
-      vistos += dentro;
+    /* Lo que se abre desde aquí también cuenta para «las que más usas». */
+    hoja.addEventListener('click', function (e) {
+      var a = e.target.closest ? e.target.closest('a[data-clave]') : null;
+      if (a) anotar(a.getAttribute('data-clave'));
     });
-    var nada = hoja.querySelector('.sin-nada');
-    if (nada) nada.classList.toggle('oculto-busca', vistos > 0);
   }
 
-  function abrir() {
+  function abrir(conFoco) {
     crearHoja();
-    if (abierta) return;
-    abierta = true;
-    ultimoFoco = document.activeElement;
-    fondo.hidden = false;
-    hoja.hidden = false;
-    document.body.classList.add('at-hoja-abierta');
-    avisarBoton();
-    /* un cuadro de espera para que la transición se vea */
-    requestAnimationFrame(function () {
-      fondo.classList.add('ver');
-      hoja.classList.add('ver');
-    });
-    var primero = hoja.querySelector('.cerrar');
-    if (primero) primero.focus();
+    if (!abierta) {
+      abierta = true;
+      ultimoFoco = document.activeElement;
+      pintarAtajos();
+      fondo.hidden = false;
+      hoja.hidden = false;
+      document.body.classList.add('at-hoja-abierta');
+      avisarBoton();
+      /* un cuadro de espera para que la transición se vea */
+      ajustar();
+      mirarTeclado(true);
+      /* un cuadro de espera para que la transición se vea */
+      requestAnimationFrame(function () {
+        fondo.classList.add('ver');
+        hoja.classList.add('ver');
+      });
+    }
+    var primero = conFoco ? campo : hoja.querySelector('.cerrar');
+    if (primero) { try { primero.focus({ preventScroll: true }); } catch (e) { primero.focus(); } }
+    /* iOS tarda un momento en levantar el teclado: se vuelve a medir después */
+    setTimeout(ajustar, 120);
+    setTimeout(ajustar, 420);
   }
 
   function cerrar() {
@@ -358,24 +709,48 @@
     hoja.classList.remove('ver');
     document.body.classList.remove('at-hoja-abierta');
     avisarBoton();
+    mirarTeclado(false);
+    if (campo) campo.blur();
     setTimeout(function () {
       if (abierta) return;
       fondo.hidden = true;
       hoja.hidden = true;
-    }, 220);
-    if (ultimoFoco && ultimoFoco.focus) ultimoFoco.focus();
+      hoja.style.top = ''; hoja.style.bottom = ''; hoja.style.maxHeight = '';
+    }, 240);
+    if (ultimoFoco && ultimoFoco.focus) { try { ultimoFoco.focus(); } catch (e) {} }
   }
 
   document.addEventListener('keydown', function (e) {
     if (abierta && (e.key === 'Escape' || e.key === 'Esc')) { e.preventDefault(); cerrar(); }
   });
 
+  /* ---------- el buscador de la cabecera navy ---------- */
+  function buscadorArriba() {
+    var top = document.querySelector('.adm-top') || document.querySelector('.admin-top');
+    if (!top || top.querySelector('.at-busca-cab')) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'at-busca-cab';
+    b.setAttribute('aria-haspopup', 'dialog');
+    b.innerHTML = IC.lupa + '<span>Buscar una pantalla o una persona</span>';
+    b.addEventListener('click', function () { abrir(true); });
+    top.appendChild(b);
+  }
+
   /* ---------- pintado ---------- */
-  var nodo = null;
+  var nodo = null, ya = false;
   function pintar() {
-    if (nodo) return;
-    /* La página se pinta su propia barra («En la pista»): no ponemos otra. */
-    if (document.querySelector('.tabbar')) return;
+    if (ya) return;
+    ya = true;
+
+    buscadorArriba();
+    anotar(carpeta());   /* esta pantalla, para «las que más usas» */
+
+    /* Si la página se pinta de verdad su propia barra, no ponemos otra.
+       Un `<nav class="tabbar" hidden></nav>` vacío no cuenta: eso deja la
+       página sin ninguna navegación. */
+    var propia = document.querySelector('.tabbar');
+    if (propia && !propia.hidden && propia.children.length) return;
 
     var act = activa();
     var html = pestanas().map(function (t) {
@@ -394,9 +769,13 @@
 
     botonMenu = nodo.querySelector('.at-menu');
     botonMenu.addEventListener('click', function () {
-      if (abierta) cerrar(); else abrir();
+      if (abierta) cerrar(); else abrir(false);
     });
   }
+
+  /* Dentro del inicio del panel los paneles se cambian con el hash:
+     si alguien llega con «#avisos», eso también es una pantalla usada. */
+  if (carpeta() === '' && location.hash) anotar(location.hash);
 
   /* ---------- arranque ----------
      La barra solo aparece con la sesión de administración abierta: la
