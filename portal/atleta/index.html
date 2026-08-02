@@ -10,6 +10,8 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/datos.js" defer></script>
+<script src="../../assets/js/info-pagos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <style>
   body { background: var(--crema-media); }
@@ -483,7 +485,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // ---------- datos ----------
   var at=null;
-  try { var r=await sb.from('atletas').select('id,nombre,apellidos,categoria,grupo_id,estado,especialidades').eq('perfil_id',perfil.id).maybeSingle(); if(!r.error) at=r.data; } catch(e){}
+  // fecha_nacimiento y tipo_membresia hacen falta para saber si le toca la
+  // cuenta de la escuela o la del club en el bloque «Cómo se paga».
+  try { var r=await sb.from('atletas').select('id,nombre,apellidos,categoria,grupo_id,estado,especialidades,fecha_nacimiento,tipo_membresia').eq('perfil_id',perfil.id).maybeSingle(); if(!r.error) at=r.data; } catch(e){}
 
   var todayISO=isoDe(new Date());
   var nombre = at ? ((at.nombre||'')+' '+(at.apellidos||'')) : (perfil.nombre||'');
@@ -1262,21 +1266,44 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(p.error){ cont.innerHTML='<p class="vacio">Error: '+esc(p.error.message)+'</p>'; return; }
     PAGOS = p.data || [];
     if(hoyPintado) pintarHoy();   // ya podemos avisar de un recibo vencido en «Hoy»
+
+    var lista;
     if(!PAGOS.length){
-      cont.innerHTML='<div class="vacio-caja"><div class="vc-ic" aria-hidden="true">'+icPagos+'</div>'+
+      lista='<div class="vacio-caja"><div class="vc-ic" aria-hidden="true">'+icPagos+'</div>'+
         '<h3>Sin recibos por ahora</h3><p>Cuando el club emita un recibo a tu nombre lo verás aquí, con su estado y su fecha.</p></div>';
-      return;
+    } else {
+      // Un recibo por fila: cuatro columnas se apretaban demasiado en el móvil
+      lista='<div class="mk-lista">'+PAGOS.map(function(x){
+        var ok=(x.estado==='pagado'||x.estado==='cobrado');
+        var cuando = x.fecha_vencimiento ? ((ok?'Cobrado el ':'Se cobra el ')+fechaCorta(x.fecha_vencimiento)) : '';
+        return '<div class="mk-fila">'+
+          '<span class="mk-txt"><span class="mk-nom">'+esc(x.concepto||'')+'</span>'+
+          (cuando?'<span class="mk-cuando">'+esc(cuando)+'</span>':'')+'</span>'+
+          '<span class="mk-der"><span class="pg-importe">'+(x.importe!=null?esc(eur(x.importe)):'')+'</span>'+
+          '<span class="pill'+(ok?' ok':'')+'">'+esc(x.estado||'')+'</span></span></div>';
+      }).join('')+'</div>';
     }
-    // Un recibo por fila: cuatro columnas se apretaban demasiado en el móvil
-    cont.innerHTML='<div class="mk-lista">'+PAGOS.map(function(x){
-      var ok=(x.estado==='pagado'||x.estado==='cobrado');
-      var cuando = x.fecha_vencimiento ? ((ok?'Cobrado el ':'Se cobra el ')+fechaCorta(x.fecha_vencimiento)) : '';
-      return '<div class="mk-fila">'+
-        '<span class="mk-txt"><span class="mk-nom">'+esc(x.concepto||'')+'</span>'+
-        (cuando?'<span class="mk-cuando">'+esc(cuando)+'</span>':'')+'</span>'+
-        '<span class="mk-der"><span class="pg-importe">'+(x.importe!=null?esc(eur(x.importe)):'')+'</span>'+
-        '<span class="pill'+(ok?' ok':'')+'">'+esc(x.estado||'')+'</span></span></div>';
-    }).join('')+'</div>';
+    cont.innerHTML=lista;
+
+    // --- Cómo se paga --------------------------------------------------
+    // Antes aquí se veía el importe y ya está: nadie decía dónde pagarlo.
+    // El bloque sale debajo de los recibos, con la cuenta que le toca a
+    // esta persona (escuela o club) y a quién preguntar si algo falla.
+    if(window.APOLANA_INFO_PAGOS){
+      try {
+        await APOLANA_INFO_PAGOS.cargar(sb);
+        var pend = PAGOS.filter(function(x){ var e=(x.estado||'').toLowerCase(); return e==='pendiente'||e==='impagado'; });
+        var dev  = PAGOS.filter(function(x){ var e=(x.estado||'').toLowerCase();
+          return e==='impagado' || e==='devuelto' ||
+                 (e==='pendiente' && x.fecha_vencimiento && x.fecha_vencimiento < isoDe(new Date())); });
+        var b = APOLANA_INFO_PAGOS.bloque({
+          clave: APOLANA_INFO_PAGOS.claveDe(at),
+          pendientes: pend.length,
+          devueltos: dev.length
+        });
+        if(b){ cont.insertAdjacentHTML('beforeend', b); APOLANA_INFO_PAGOS.activar(cont); }
+      } catch(e){ /* si falla, la lista de recibos se queda como estaba */ }
+    }
   })();
 
   // ---------- llegar directo a una sección ----------

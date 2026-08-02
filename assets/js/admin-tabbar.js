@@ -130,7 +130,8 @@
       { t: 'Dinero', enlaces: [
         { txt: 'Cobros y recibos', url: r + 'cobros/' },
         { txt: 'Tarifas', url: r + 'tarifas/' },
-        { txt: 'Pedidos de ropa', url: r + 'pedidos/' }
+        { txt: 'Pedidos de ropa', url: r + 'pedidos/' },
+        { txt: 'Pagos con tarjeta', url: r + 'pagos-online/' }
       ] },
       { t: 'Análisis de datos', enlaces: [
         { txt: 'Estadísticas del club', url: r + 'estadisticas/' },
@@ -154,6 +155,7 @@
         { txt: 'Textos de las páginas', url: r + 'contenido/' },
         { txt: 'Fotos de la web', url: r + 'imagenes/' },
         { txt: 'Biblioteca de fotos', url: r + 'biblioteca/' },
+        { txt: 'Colaboradores', url: r + 'colaboradores/' },
         { txt: 'Documentos', url: r + 'documentos/' },
         { txt: 'Peticiones de redes', url: r + 'redes/' },
         { txt: 'Mapa de contenido', url: r + 'mapa/' }

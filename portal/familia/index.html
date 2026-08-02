@@ -10,6 +10,8 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/datos.js" defer></script>
+<script src="../../assets/js/info-pagos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <style>
   body { background: var(--crema-media); }
@@ -382,7 +384,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ---------- datos de la familia ----------
   var hijos = [];
   try {
-    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento').eq('perfil_padre_id', perfil.id).order('nombre');
+    // tipo_membresia hace falta para saber si a esta casa le toca la cuenta
+    // de la escuela o la del club en el bloque «Cómo se paga».
+    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia').eq('perfil_padre_id', perfil.id).order('nombre');
     if (!r.error && r.data) hijos = r.data;
   } catch (e) {}
 
@@ -423,6 +427,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var pp = await sb.from('pagos').select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,fecha_pago,notas').in('atleta_id', IDS).order('fecha_vencimiento',{ascending:false});
     if(!pp.error && pp.data){ pagosTodos = pp.data; pp.data.forEach(function(x){ (pagosPorHijo[x.atleta_id]=pagosPorHijo[x.atleta_id]||[]).push(x); }); }
   } catch(e){}
+
+  // Cómo se paga: los datos bancarios del club, que solo se pueden leer con
+  // la sesión iniciada. Se piden aquí una vez y luego el bloque se pinta sin
+  // esperar a nada. Si la consulta falla, el bloque sencillamente no sale.
+  if(window.APOLANA_INFO_PAGOS){ try { await APOLANA_INFO_PAGOS.cargar(sb); } catch(e){} }
 
   // Tienda del club
   var productos = [];
@@ -818,8 +827,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<p class="vacio" style="margin:12px 0 0;">Un recibo, una familia: todo junto el día 3, con el desglose por persona que veis arriba. Si vuestra situación no encaja, la junta la estudia caso por caso: <a href="../../contacto/">escribir a la junta →</a></p>'+
         '</div>';
     }
+    // --- Cómo se paga ---------------------------------------------------
+    // Aquí se veían los importes pero no dónde pagarlos. El bloque enseña la
+    // cuenta que le toca a esta casa (escuela o club), qué poner en el
+    // concepto y a quién preguntar. Si los hijos están repartidos entre las
+    // dos cuentas, salen las dos con su título: mejor eso que la equivocada.
+    if(window.APOLANA_INFO_PAGOS){
+      var pendFam = pagosTodos.filter(function(x){ var e=(x.estado||'').toLowerCase(); return e==='pendiente'||e==='impagado'; });
+      var devFam  = pagosTodos.filter(function(x){ var e=(x.estado||'').toLowerCase();
+        return e==='impagado' || e==='devuelto' ||
+               (e==='pendiente' && x.fecha_vencimiento && x.fecha_vencimiento < todayISO); });
+      html += APOLANA_INFO_PAGOS.bloque({
+        clave: APOLANA_INFO_PAGOS.claveDeVarios(hijos),
+        pendientes: pendFam.length,
+        devueltos: devFam.length
+      });
+    }
+
     // Los descuentos, en una línea: quien quiera el detalle lo tiene a un clic
-    html += '<div class="desc-linea" style="margin-bottom:18px;">'+
+    html += '<div class="desc-linea" style="margin:18px 0;">'+
       '<span>Los descuentos Familia Apolana se aplican solos.</span>'+
       '<a href="../../familias/">Cómo funcionan →</a></div>';
     return html;
@@ -953,6 +979,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // En «Más» manda su propio titular, como en la maqueta 22b
     var cabecera = (SEC==='mas') ? '' : cab;
     wrap.innerHTML = cabecera + '<div class="layout">'+nav+'<main class="cont">'+selector+cuerpo+'</main></div>'+ tabbarHTML();
+    // Los botones de «Copiar» del bloque «Cómo se paga». Va sobre `wrap`, que
+    // no se destruye al cambiar de sección, así que se engancha una sola vez.
+    if(window.APOLANA_INFO_PAGOS) APOLANA_INFO_PAGOS.activar(wrap);
   }
 
   // ---------- hoja de justificantes ----------

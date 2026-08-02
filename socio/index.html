@@ -13,6 +13,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="../assets/js/db.js" defer></script>
 <script src="../assets/js/imagenes-web.js" defer></script>
+<script src="../assets/js/info-pagos.js" defer></script>
 <!-- El acceso es el mismo del portal: sin defer y con el contenido privado
      dentro de #portal-contenido, igual que en /portal/. -->
 <script src="../assets/js/portal-auth.js"></script>
@@ -609,6 +610,11 @@ async function pintarPanelSocio(sb, perfil) {
     if (!rp.error && rp.data) PAGOS = rp.data;
   } catch (e) {}
 
+  /* Cómo se paga: los datos bancarios del club. Solo se pueden leer con la
+     sesión iniciada, así que esta consulta nunca devuelve nada a un
+     visitante anónimo. Si falla, el bloque sencillamente no se pinta. */
+  if (window.APOLANA_INFO_PAGOS) { try { await APOLANA_INFO_PAGOS.cargar(sb); } catch (e) {} }
+
   /* Marcas propias */
   var MARCAS = [];
   if (mi) {
@@ -910,7 +916,25 @@ async function pintarPanelSocio(sb, perfil) {
       }).join('') + '</div>'
     : '<p class="sp-vacio">Todavía no te has apuntado a ninguna competición del club.</p>';
 
+  /* Cómo se paga: va junto al historial de recibos, que es donde se
+     pregunta. Con recibos pendientes se abre solo; al día se queda en una
+     línea plegada, para no dar la matraca a quien no debe nada. */
+  var comoSePaga = '';
+  if (window.APOLANA_INFO_PAGOS) {
+    var vencidos = PENDIENTES.filter(function (p) {
+      var e = (p.estado || '').toLowerCase();
+      return e === 'impagado' || e === 'devuelto' || (p.fecha_vencimiento && p.fecha_vencimiento < HOY);
+    });
+    comoSePaga = APOLANA_INFO_PAGOS.bloque({
+      clave: APOLANA_INFO_PAGOS.claveDeVarios(hogar),
+      pendientes: PENDIENTES.length,
+      devueltos: vencidos.length,
+      margen: false
+    });
+  }
+
   html += '<div class="sp-plegables" style="margin-top:clamp(26px,3.4vw,34px);">' +
+    comoSePaga +
     '<details class="sp-plegable" id="sp-pagos"><summary>' +
       '<span class="sp-p-txt"><b>Historial y recibos</b><small>' +
       (PAGOS.length ? PAGOS.length + (PAGOS.length === 1 ? ' recibo' : ' recibos') + (DESDE ? ' desde ' + DESDE : '') + ' · descargables en PDF' : 'Sin recibos por ahora') +
@@ -958,6 +982,9 @@ async function pintarPanelSocio(sb, perfil) {
     '</div></div>';
 
   panel.innerHTML = html;
+
+  /* Los botones de «Copiar» del bloque «Cómo se paga» */
+  if (window.APOLANA_INFO_PAGOS) APOLANA_INFO_PAGOS.activar(panel);
 
   /* ---------- acciones ---------- */
 

@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pagos con tarjeta · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1040px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+  input, textarea, select {
+    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--azul); border-color: var(--azul); }
+  input[type="checkbox"] { width: auto; }
+  textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
+
+  .msg { margin-top: 12px; font-size: 14px; }
+  .msg.error { color: #b3261e; }
+  .msg.ok { color: #1e7a3d; }
+
+  .panel { background: #fff; border: 1px solid var(--linea); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 24px; color: var(--navy); margin-bottom: 4px; }
+  .panel .intro { margin-bottom: 10px; color: var(--texto-suave); font-size: 15px; line-height: 1.55; }
+  .panel-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+
+  .aviso { background: var(--crema-media); border: 1px solid var(--linea); border-radius: 12px; padding: 12px 15px; font-size: 14px; color: var(--texto-suave); margin-bottom: 18px; line-height: 1.55; }
+  .aviso strong { color: var(--navy); }
+  .aviso--rojo { background: #fdf1f0; border-color: #f2cfcb; color: #7d2a22; }
+  .aviso--rojo strong { color: #7d2a22; }
+
+  .btn { cursor: pointer; }
+  .btn--mini { padding: 8px 14px; font-size: 14px; min-height: 44px; }
+  .oculto { display: none !important; }
+
+  /* ---- El interruptor grande ---- */
+  .llave { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+           border: 1px solid var(--linea); border-radius: 16px; padding: 16px 18px; background: var(--crema-media); }
+  .llave.encendido { background: #f0f7f1; border-color: #bcdcc4; }
+  .llave .bombilla { width: 14px; height: 14px; border-radius: 50%; background: var(--texto-tenue); flex: none; }
+  .llave.encendido .bombilla { background: #1e7a3d; }
+  .llave .qué { flex: 1 1 240px; min-width: 0; }
+  .llave .qué b { display: block; color: var(--navy); font-size: 17px; }
+  .llave .qué span { font-size: 14px; color: var(--texto-suave); line-height: 1.5; }
+
+  .opciones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+  @media (max-width: 520px) { .opciones { grid-template-columns: 1fr; } }
+  .opcion {
+    display: flex; align-items: center; gap: 9px; border: 1px solid var(--linea-borde); border-radius: 12px;
+    padding: 12px; min-height: 44px; cursor: pointer; background: #fff; font-size: 14px; color: var(--navy); margin: 0;
+  }
+  .opcion input { margin: 0; flex: none; accent-color: var(--azul); }
+  .opcion:has(input:checked) { border-color: var(--azul); background: var(--azul-suave); }
+
+  /* ---- Listas ---- */
+  .lista { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+  .fila { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+          border: 1px solid var(--linea); border-radius: 14px; padding: 12px 14px; background: #fff; }
+  .fila .datos { flex: 1 1 240px; min-width: 0; }
+  .fila .nom { font-weight: 600; color: var(--navy); font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+  .fila .pistas { font-size: 13px; color: var(--texto-suave); margin-top: 3px; line-height: 1.5; overflow-wrap: anywhere; }
+  .fila .importe { font-family: var(--fuente-titulo); font-size: 21px; color: var(--navy); flex: none; }
+  .fila .mandos { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .fila.apagada { background: var(--crema-media); opacity: .74; }
+
+  .etq { display: inline-block; font-size: 12px; padding: 3px 9px; border-radius: 999px;
+         background: var(--azul-suave); color: var(--azul-oscuro); margin-right: 6px; }
+  .etq--verde { background: #e2f1e6; color: #1e7a3d; }
+  .etq--gris  { background: var(--crema-banda); color: var(--texto-suave); }
+  .etq--rojo  { background: #fbe6e4; color: #b3261e; }
+  .etq--ambar { background: #fdf3dd; color: #8a6212; }
+
+  .filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 14px; }
+  .filtros label { margin: 0 0 5px; }
+  .filtros .crece { flex: 1 1 220px; }
+  .filtros .estrecho { flex: 0 1 190px; }
+
+  .resumen { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .caja { flex: 1 1 150px; border: 1px solid var(--linea); border-radius: 14px; padding: 12px 14px; background: var(--crema-media); }
+  .caja b { display: block; font-family: var(--fuente-titulo); font-size: 26px; color: var(--navy); line-height: 1.1; }
+  .caja span { font-size: 13px; color: var(--texto-suave); }
+
+  .pasos { margin: 8px 0 0 18px; font-size: 14px; color: var(--texto-suave); line-height: 1.7; }
+  .pasos code { background: var(--crema-banda); padding: 1px 6px; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
+
+  @media (max-width: 620px) {
+    .fila .datos { flex-basis: 100%; }
+    .fila .mandos { width: 100%; }
+    .fila .mandos .btn { flex: 1 1 auto; }
+  }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div class="aviso">
+      Aquí se cobran con tarjeta los <strong>bonos de El Cubo</strong>, las <strong>licencias federativas</strong>
+      y la <strong>ropa del club</strong>. Las <strong>cuotas no</strong>: esas siguen domiciliadas en el banco,
+      igual que siempre.<br>
+      Cuando alguien paga un bono, <strong>los usos se le añaden en el acto</strong>, sin esperar a que el dinero
+      llegue a la cuenta.
+    </div>
+
+    <!-- ===================== EL INTERRUPTOR ===================== -->
+    <div class="panel">
+      <h2>Encendido y apagado</h2>
+      <p class="intro">
+        Mientras esté apagado, en la web no sale ningún botón de pagar y no se puede cobrar nada.
+        Así puede quedarse todo el tiempo que haga falta.
+      </p>
+
+      <div class="llave" id="llave">
+        <span class="bombilla" aria-hidden="true"></span>
+        <div class="qué">
+          <b id="llave-titulo">Cargando…</b>
+          <span id="llave-pie"></span>
+        </div>
+        <button class="btn btn--primario btn--mini" type="button" id="btn-llave" disabled>…</button>
+      </div>
+
+      <div id="ajustes" class="oculto">
+        <label>Modo</label>
+        <div class="opciones">
+          <label class="opcion"><input type="radio" name="modo" value="prueba"> Pruebas · con tarjetas de mentira</label>
+          <label class="opcion"><input type="radio" name="modo" value="real"> Real · dinero de verdad</label>
+        </div>
+        <p class="intro" style="margin-top:6px;">
+          Esto es solo una etiqueta para saber en qué estáis. Lo que manda de verdad es qué clave de Stripe
+          esté puesta en Supabase: si es de prueba, no se mueve un euro aunque aquí ponga «real».
+        </p>
+
+        <label class="opcion" style="margin-top:12px;max-width:520px;">
+          <input type="checkbox" id="comision">
+          Sumar la comisión de la tarjeta al importe (la paga quien compra)
+        </label>
+        <p class="intro" style="margin-top:6px;">
+          Sin marcar, la comisión la asume el club: de un bono de 55&nbsp;€ entran unos 53,92&nbsp;€.
+          Marcado, al bono de 55&nbsp;€ se le suman unos 1,08&nbsp;€ y al club le entran los 55&nbsp;€ limpios.
+          La comisión de una tarjeta europea ronda el <strong>1,5&nbsp;% + 0,25&nbsp;€</strong>.
+        </p>
+
+        <label for="ayuda">Texto que se ve junto al botón de pagar</label>
+        <textarea id="ayuda" maxlength="400" placeholder="Por ejemplo: «El cargo aparecerá en tu extracto como CLUB APOLANA. Si algo falla, escríbenos y lo resolvemos.»"></textarea>
+
+        <div style="margin-top:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn--primario btn--mini" type="button" id="btn-guardar-cfg">Guardar los ajustes</button>
+          <span class="msg" id="msg-cfg"></span>
+        </div>
+      </div>
+
+      <div class="aviso aviso--rojo" id="aviso-claves" style="margin-top:18px;">
+        <strong>Antes de encenderlo hace falta la cuenta de Stripe.</strong>
+        Las claves no se escriben aquí ni en la web: van en los ajustes de Supabase
+        (<code>STRIPE_SECRET_KEY</code> y <code>STRIPE_WEBHOOK_SECRET</code>).
+        Está explicado paso a paso en <code>docs/pagos-con-tarjeta.md</code>.
+      </div>
+    </div>
+
+    <!-- ===================== QUÉ SE PUEDE PAGAR ===================== -->
+    <div class="panel">
+      <div class="panel-cab">
+        <div>
+          <h2>Qué se puede pagar</h2>
+          <p class="intro">
+            El precio sale <strong>de aquí</strong>, nunca del navegador de quien compra.
+            Si un precio cambia, se cambia en esta lista y ya está.
+          </p>
+        </div>
+        <button class="btn btn--primario btn--mini" type="button" id="btn-nuevo-art">Añadir</button>
+      </div>
+      <div class="msg" id="msg-art">Cargando…</div>
+      <div class="lista" id="lista-art"></div>
+    </div>
+
+    <!-- ===================== LOS PAGOS ===================== -->
+    <div class="panel">
+      <h2>Pagos recibidos</h2>
+      <p class="intro">
+        Todo lo que se ha intentado pagar con tarjeta. El estado lo pone Stripe solo:
+        desde aquí no se toca (así no hay manera de marcar un cobro que no ha entrado).
+      </p>
+
+      <div class="resumen" id="resumen"></div>
+
+      <div class="filtros">
+        <div class="crece">
+          <label for="busca">Buscar</label>
+          <input type="text" id="busca" placeholder="Referencia, concepto, nombre…">
+        </div>
+        <div class="estrecho">
+          <label for="f-estado">Estado</label>
+          <select id="f-estado">
+            <option value="">Todos</option>
+            <option value="pagado">Pagados</option>
+            <option value="iniciado">Sin terminar</option>
+            <option value="fallido">Fallidos</option>
+            <option value="cancelado">Cancelados</option>
+            <option value="reembolsado">Devueltos</option>
+          </select>
+        </div>
+        <div class="estrecho">
+          <label for="f-tipo">Qué es</label>
+          <select id="f-tipo">
+            <option value="">Todo</option>
+            <option value="bono">Bonos de El Cubo</option>
+            <option value="licencia">Licencias</option>
+            <option value="ropa">Ropa</option>
+            <option value="otro">Otros</option>
+          </select>
+        </div>
+        <button class="btn btn--fantasma btn--mini" type="button" id="btn-recargar">Actualizar</button>
+      </div>
+
+      <div class="msg" id="msg-pagos">Cargando…</div>
+      <div class="lista" id="lista-pagos"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== FICHA DE UN ARTÍCULO (ventana emergente) ===== -->
+<div class="panel oculto" id="panel-art" style="position:fixed;inset:0;z-index:1000;background:rgba(46,66,86,.45);display:flex;align-items:flex-start;justify-content:center;padding:clamp(16px,5vh,60px) 16px;overflow:auto;border:0;border-radius:0;box-shadow:none;margin:0;">
+  <div style="background:#fff;border:1px solid var(--linea);border-radius:18px;box-shadow:0 30px 70px -25px rgba(46,66,86,.55);padding:24px;width:min(640px,100%);">
+    <h2 id="art-titulo">Añadir algo que se pueda pagar</h2>
+    <form id="form-art">
+      <input type="hidden" id="a-id">
+
+      <label for="a-tipo">Qué es</label>
+      <select id="a-tipo">
+        <option value="bono">Bono de El Cubo (añade usos al momento)</option>
+        <option value="licencia">Licencia federativa</option>
+        <option value="ropa">Ropa o equipación</option>
+        <option value="otro">Otra cosa</option>
+      </select>
+
+      <label for="a-titulo-txt">Cómo se llama</label>
+      <input type="text" id="a-titulo-txt" maxlength="120" required placeholder="Licencia federativa · temporada 2026/27">
+
+      <label for="a-clave">Nombre corto (el que usa la web)</label>
+      <input type="text" id="a-clave" maxlength="60" required placeholder="licencia-2026" pattern="[a-z0-9\-]+">
+      <p class="intro" style="margin-top:4px;">Solo minúsculas, números y guiones. Una vez puesto, mejor no cambiarlo.</p>
+
+      <label for="a-desc">Explicación (opcional)</label>
+      <textarea id="a-desc" maxlength="300" placeholder="Lo que verá quien va a pagar."></textarea>
+
+      <label for="a-importe">Precio en euros</label>
+      <input type="number" id="a-importe" step="0.01" min="0.5" placeholder="55,00">
+
+      <div id="bloque-bono">
+        <label for="a-usos">Usos que añade el bono</label>
+        <input type="number" id="a-usos" step="1" min="1" placeholder="10">
+        <label for="a-dias">Días que dura (en blanco = no caduca)</label>
+        <input type="number" id="a-dias" step="1" min="1" placeholder="365">
+      </div>
+
+      <label class="opcion" style="margin-top:14px;"><input type="checkbox" id="a-atleta"> Hay que decir de qué atleta es</label>
+      <label class="opcion" style="margin-top:10px;"><input type="checkbox" id="a-activo" checked> Se puede pagar</label>
+
+      <div style="margin-top:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
+        <button class="btn btn--fantasma btn--mini" type="button" id="art-cancelar">Cancelar</button>
+        <span class="msg" id="msg-form-art"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  function euros(c) {
+    var n = Number(c);
+    if (!isFinite(n)) return '—';
+    try { return (n/100).toLocaleString('es-ES', { style:'currency', currency:'EUR' }); }
+    catch (e) { return (n/100).toFixed(2).replace('.', ',') + ' €'; }
+  }
+  function fecha(t) {
+    if (!t) return '';
+    try { return new Date(t).toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' }); }
+    catch (e) { return String(t).slice(0,10); }
+  }
+
+  /* =============================================================
+     1 · EL INTERRUPTOR
+     ============================================================= */
+  var CFG = null;
+
+  async function cargarCfg() {
+    var r = await sb.from('pagos_config')
+      .select('activo,modo,repercutir_comision,texto_ayuda').eq('id', 1).single();
+    if (r.error) {
+      $('llave-titulo').textContent = 'No se ha podido cargar';
+      $('llave-pie').textContent = r.error.message;
+      return;
+    }
+    CFG = r.data;
+    pintarCfg();
+  }
+
+  function pintarCfg() {
+    var on = !!CFG.activo;
+    $('llave').classList.toggle('encendido', on);
+    $('llave-titulo').textContent = on ? 'Encendido · se puede pagar con tarjeta' : 'Apagado · nadie ve botones de pagar';
+    $('llave-pie').textContent = on
+      ? (CFG.modo === 'real' ? 'En modo real: los cobros son de verdad.' : 'En modo pruebas: con tarjetas de mentira, no se mueve dinero.')
+      : 'En la web no sale ningún botón de pagar y no se puede cobrar nada.';
+    $('btn-llave').disabled = false;
+    $('btn-llave').textContent = on ? 'Apagar' : 'Encender';
+    $('ajustes').classList.remove('oculto');
+    $('aviso-claves').classList.toggle('oculto', on);
+
+    var radio = document.querySelector('input[name="modo"][value="' + (CFG.modo || 'prueba') + '"]');
+    if (radio) radio.checked = true;
+    $('comision').checked = !!CFG.repercutir_comision;
+    $('ayuda').value = CFG.texto_ayuda || '';
+  }
+
+  async function guardarCfg(cambios, dondeMsg) {
+    var caja = $(dondeMsg);
+    caja.textContent = 'Guardando…'; caja.className = 'msg';
+    var r = await sb.from('pagos_config').update(cambios).eq('id', 1);
+    if (r.error) { caja.textContent = 'No se ha podido guardar: ' + r.error.message; caja.className = 'msg error'; return false; }
+    caja.textContent = 'Guardado ✓'; caja.className = 'msg ok';
+    Object.keys(cambios).forEach(function (k) { CFG[k] = cambios[k]; });
+    pintarCfg();
+    if (window.APOLANA_PAGO && window.APOLANA_PAGO.refrescar) window.APOLANA_PAGO.refrescar();
+    return true;
+  }
+
+  $('btn-llave').addEventListener('click', async function () {
+    var encender = !CFG.activo;
+    if (encender) {
+      if (!confirm('Se va a ENCENDER el pago con tarjeta.\n\nAsegúrate de que las claves de Stripe ya están puestas en Supabase; si no, la gente verá botones que dan error.\n\n¿Seguimos?')) return;
+    } else {
+      if (!confirm('Se va a APAGAR el pago con tarjeta.\n\nDejarán de salir los botones de pagar. Los pagos ya cobrados no se tocan.\n\n¿Seguimos?')) return;
+    }
+    $('btn-llave').disabled = true;
+    await guardarCfg({ activo: encender }, 'msg-cfg');
+  });
+
+  $('btn-guardar-cfg').addEventListener('click', function () {
+    var m = document.querySelector('input[name="modo"]:checked');
+    guardarCfg({
+      modo: m ? m.value : 'prueba',
+      repercutir_comision: $('comision').checked,
+      texto_ayuda: $('ayuda').value.trim() || null
+    }, 'msg-cfg');
+  });
+
+  /* =============================================================
+     2 · QUÉ SE PUEDE PAGAR
+     ============================================================= */
+  var ARTS = [];
+  var NOMBRE_TIPO = { bono:'Bono de El Cubo', licencia:'Licencia', ropa:'Ropa', otro:'Otro' };
+
+  async function cargarArts() {
+    $('msg-art').textContent = 'Cargando…'; $('msg-art').className = 'msg';
+    var r = await sb.from('pagos_articulos')
+      .select('id,clave,tipo,titulo,descripcion,importe_centimos,producto_id,bono_usos,bono_caducidad_dias,exige_atleta,activo,orden')
+      .order('orden', { ascending: true });
+    if (r.error) { $('msg-art').textContent = 'No se ha podido cargar: ' + r.error.message; $('msg-art').className = 'msg error'; return; }
+    ARTS = r.data || [];
+    pintarArts();
+  }
+
+  function pintarArts() {
+    if (!ARTS.length) {
+      $('msg-art').textContent = 'Todavía no hay nada dado de alta. Pulsa «Añadir» para poner lo primero.';
+      $('lista-art').innerHTML = '';
+      return;
+    }
+    $('msg-art').textContent = '';
+    $('lista-art').innerHTML = ARTS.map(function (a) {
+      var pistas = ['<span class="etq">' + esc(NOMBRE_TIPO[a.tipo] || a.tipo) + '</span>'];
+      if (a.tipo === 'bono' && a.bono_usos) pistas.push('<span class="etq etq--verde">' + a.bono_usos + ' usos</span>');
+      if (a.producto_id) pistas.push('<span class="etq etq--gris">precio de la tienda</span>');
+      if (!a.activo) pistas.push('<span class="etq etq--gris">no se puede pagar</span>');
+      var pie = esc(a.clave) + (a.descripcion ? ' · ' + esc(a.descripcion) : '');
+      return '<div class="fila' + (a.activo ? '' : ' apagada') + '">' +
+        '<div class="datos"><div class="nom">' + esc(a.titulo) + '</div>' +
+          '<div class="pistas">' + pistas.join('') + '<br>' + pie + '</div></div>' +
+        '<div class="importe">' + (a.importe_centimos ? euros(a.importe_centimos) : 'de la tienda') + '</div>' +
+        '<div class="mandos">' +
+          '<button type="button" class="btn btn--primario btn--mini" data-editar="' + esc(a.id) + '">Editar</button>' +
+          '<button type="button" class="btn btn--fantasma btn--mini" data-borrar="' + esc(a.id) + '">Borrar</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function abrirArt(a) {
+    a = a || {};
+    $('art-titulo').textContent = a.id ? 'Editar' : 'Añadir algo que se pueda pagar';
+    $('a-id').value = a.id || '';
+    $('a-tipo').value = a.tipo || 'bono';
+    $('a-titulo-txt').value = a.titulo || '';
+    $('a-clave').value = a.clave || '';
+    $('a-desc').value = a.descripcion || '';
+    $('a-importe').value = a.importe_centimos ? (a.importe_centimos / 100).toFixed(2) : '';
+    $('a-usos').value = a.bono_usos || '';
+    $('a-dias').value = a.bono_caducidad_dias || '';
+    $('a-atleta').checked = a.id ? !!a.exige_atleta : true;
+    $('a-activo').checked = a.id ? !!a.activo : true;
+    $('msg-form-art').textContent = '';
+    verBloqueBono();
+    $('panel-art').classList.remove('oculto');
+    setTimeout(function () { $('a-titulo-txt').focus(); }, 40);
+  }
+  function cerrarArt() { $('panel-art').classList.add('oculto'); }
+
+  function verBloqueBono() {
+    var esBono = $('a-tipo').value === 'bono';
+    $('bloque-bono').classList.toggle('oculto', !esBono);
+    if (esBono) $('a-atleta').checked = true;
+  }
+  $('a-tipo').addEventListener('change', verBloqueBono);
+
+  $('btn-nuevo-art').addEventListener('click', function () { abrirArt(null); });
+  $('art-cancelar').addEventListener('click', cerrarArt);
+  $('panel-art').addEventListener('click', function (e) { if (e.target === this) cerrarArt(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('panel-art').classList.contains('oculto')) cerrarArt();
+  });
+
+  $('lista-art').addEventListener('click', async function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b) return;
+    var ed = b.getAttribute('data-editar');
+    if (ed) { var a = ARTS.filter(function (x) { return x.id === ed; })[0]; if (a) abrirArt(a); return; }
+    var bo = b.getAttribute('data-borrar');
+    if (bo) {
+      var f = ARTS.filter(function (x) { return x.id === bo; })[0];
+      if (!f) return;
+      if (!confirm('¿Borrar «' + f.titulo + '»?\n\nLos pagos ya hechos NO se pierden.\nSi solo quieres dejar de venderlo, edítalo y quita «Se puede pagar».')) return;
+      var r = await sb.from('pagos_articulos').delete().eq('id', bo);
+      if (r.error) { $('msg-art').textContent = 'No se ha podido borrar: ' + r.error.message; $('msg-art').className = 'msg error'; return; }
+      cargarArts();
+    }
+  });
+
+  $('form-art').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var caja = $('msg-form-art');
+    var tipo = $('a-tipo').value;
+    var importe = parseFloat(String($('a-importe').value).replace(',', '.'));
+
+    if (!isFinite(importe) || importe <= 0) {
+      caja.textContent = 'Pon un precio.'; caja.className = 'msg error'; return;
+    }
+    if (tipo === 'bono' && !(parseInt($('a-usos').value, 10) > 0)) {
+      caja.textContent = 'Un bono tiene que decir cuántos usos añade.'; caja.className = 'msg error'; return;
+    }
+
+    var datos = {
+      clave: $('a-clave').value.trim().toLowerCase(),
+      tipo: tipo,
+      titulo: $('a-titulo-txt').value.trim(),
+      descripcion: $('a-desc').value.trim() || null,
+      importe_centimos: Math.round(importe * 100),
+      bono_usos: tipo === 'bono' ? parseInt($('a-usos').value, 10) : null,
+      bono_caducidad_dias: tipo === 'bono' && $('a-dias').value ? parseInt($('a-dias').value, 10) : null,
+      exige_atleta: $('a-atleta').checked,
+      activo: $('a-activo').checked
+    };
+
+    caja.textContent = 'Guardando…'; caja.className = 'msg';
+    var id = $('a-id').value;
+    var r = id
+      ? await sb.from('pagos_articulos').update(datos).eq('id', id)
+      : await sb.from('pagos_articulos').insert(datos);
+    if (r.error) { caja.textContent = 'Error: ' + r.error.message; caja.className = 'msg error'; return; }
+    caja.textContent = 'Guardado ✓'; caja.className = 'msg ok';
+    cerrarArt();
+    cargarArts();
+  });
+
+  /* =============================================================
+     3 · LOS PAGOS
+     ============================================================= */
+  var PAGOS = [];
+  var ETQ_ESTADO = {
+    pagado:      ['etq--verde', 'Pagado'],
+    iniciado:    ['etq--ambar', 'Sin terminar'],
+    fallido:     ['etq--rojo',  'No pasó la tarjeta'],
+    cancelado:   ['etq--gris',  'Cancelado'],
+    reembolsado: ['etq--gris',  'Devuelto']
+  };
+
+  async function cargarPagos() {
+    $('msg-pagos').textContent = 'Cargando…'; $('msg-pagos').className = 'msg';
+    var r = await sb.from('pagos_online')
+      .select('id,referencia,concepto,tipo,importe_centimos,estado,creado_en,pagado_en,aplicado_en,' +
+              'atletas(nombre,apellidos),perfiles(nombre,apellidos,email)')
+      .order('creado_en', { ascending: false })
+      .limit(500);
+    if (r.error) {
+      /* Si el enlace con atletas/perfiles diera guerra, al menos que se
+         vean los pagos: se pide otra vez lo básico. */
+      var r2 = await sb.from('pagos_online')
+        .select('id,referencia,concepto,tipo,importe_centimos,estado,creado_en,pagado_en,aplicado_en')
+        .order('creado_en', { ascending: false }).limit(500);
+      if (r2.error) { $('msg-pagos').textContent = 'No se ha podido cargar: ' + r2.error.message; $('msg-pagos').className = 'msg error'; return; }
+      PAGOS = r2.data || [];
+    } else {
+      PAGOS = r.data || [];
+    }
+    pintarPagos();
+  }
+
+  function quien(p) {
+    if (p.atletas) return ((p.atletas.nombre || '') + ' ' + (p.atletas.apellidos || '')).trim();
+    if (p.perfiles) return ((p.perfiles.nombre || '') + ' ' + (p.perfiles.apellidos || '')).trim() || (p.perfiles.email || '');
+    return '';
+  }
+
+  function pintarPagos() {
+    var q = $('busca').value.trim().toLowerCase();
+    var fe = $('f-estado').value, ft = $('f-tipo').value;
+
+    var lista = PAGOS.filter(function (p) {
+      if (fe && p.estado !== fe) return false;
+      if (ft && p.tipo !== ft) return false;
+      if (!q) return true;
+      return ((p.referencia || '') + ' ' + (p.concepto || '') + ' ' + quien(p)).toLowerCase().indexOf(q) !== -1;
+    });
+
+    /* Resumen: solo de lo que se está viendo, para que cuadre con el filtro. */
+    var cobrado = 0, nPagados = 0, nPendientes = 0;
+    lista.forEach(function (p) {
+      if (p.estado === 'pagado') { cobrado += p.importe_centimos; nPagados++; }
+      else if (p.estado === 'iniciado') nPendientes++;
+    });
+    $('resumen').innerHTML =
+      '<div class="caja"><b>' + euros(cobrado) + '</b><span>cobrado</span></div>' +
+      '<div class="caja"><b>' + nPagados + '</b><span>pagos completados</span></div>' +
+      '<div class="caja"><b>' + nPendientes + '</b><span>empezados sin terminar</span></div>';
+
+    if (!lista.length) {
+      $('msg-pagos').textContent = PAGOS.length
+        ? 'No hay ningún pago que encaje con lo que buscas.'
+        : 'Todavía no hay ningún pago con tarjeta.';
+      $('msg-pagos').className = 'msg';
+      $('lista-pagos').innerHTML = '';
+      return;
+    }
+    $('msg-pagos').textContent = '';
+
+    $('lista-pagos').innerHTML = lista.map(function (p) {
+      var e = ETQ_ESTADO[p.estado] || ['etq--gris', p.estado];
+      var pistas = ['<span class="etq ' + e[0] + '">' + esc(e[1]) + '</span>'];
+      if (p.tipo === 'bono' && p.estado === 'pagado') {
+        pistas.push(p.aplicado_en
+          ? '<span class="etq etq--verde">usos añadidos</span>'
+          : '<span class="etq etq--rojo">usos SIN añadir · revisar</span>');
+      }
+      var pers = quien(p);
+      var pie = esc(p.referencia) + ' · ' + fecha(p.pagado_en || p.creado_en) + (pers ? ' · ' + esc(pers) : '');
+      return '<div class="fila">' +
+        '<div class="datos"><div class="nom">' + esc(p.concepto) + '</div>' +
+          '<div class="pistas">' + pistas.join('') + '<br>' + pie + '</div></div>' +
+        '<div class="importe">' + euros(p.importe_centimos) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  $('busca').addEventListener('input', pintarPagos);
+  $('f-estado').addEventListener('change', pintarPagos);
+  $('f-tipo').addEventListener('change', pintarPagos);
+  $('btn-recargar').addEventListener('click', cargarPagos);
+
+  cargarCfg();
+  cargarArts();
+  cargarPagos();
+});
+</script>
+
+</body>
+</html>
