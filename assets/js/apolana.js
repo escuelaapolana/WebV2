@@ -215,21 +215,21 @@ document.addEventListener('DOMContentLoaded', async function () {
     b.type = 'button';
     b.setAttribute('aria-label', 'Volver a mi perfil');
     b.innerHTML = '<span aria-hidden="true">←</span> Volver a mi perfil';
-    /* Barra propia arriba del todo: ocupa su sitio y no tapa el aviso ni la
-       cabecera (antes era un botón flotante que se comía lo de detrás). */
+    /* Barra fija ABAJO, como en las apps: no pelea con el aviso ni con la
+       cabecera, y el pulgar llega mejor. Reserva su hueco al final. */
     var barra = document.createElement('div');
     barra.style.cssText = [
-      'position:fixed', 'z-index:9500', 'top:0', 'left:0', 'right:0',
-      'display:flex', 'align-items:center',
+      'position:fixed', 'z-index:9500', 'left:0', 'right:0', 'bottom:0',
+      'display:flex', 'align-items:center', 'justify-content:center',
       'background:#2E4256',
-      'padding:calc(6px + env(safe-area-inset-top)) 12px 6px',
-      'box-shadow:0 2px 10px rgba(46,66,86,.22)'
+      'padding:8px 12px calc(8px + env(safe-area-inset-bottom))',
+      'box-shadow:0 -2px 12px rgba(46,66,86,.25)'
     ].join(';');
     b.style.cssText = [
-      'display:inline-flex', 'align-items:center', 'gap:6px',
+      'display:inline-flex', 'align-items:center', 'gap:8px',
       'background:transparent', 'color:#fff', 'border:0', 'cursor:pointer',
-      'font-family:inherit', 'font-size:14px', 'font-weight:600',
-      'padding:8px 6px', 'min-height:36px'
+      'font-family:inherit', 'font-size:15px', 'font-weight:600',
+      'padding:8px 10px', 'min-height:36px'
     ].join(';');
     b.addEventListener('click', function () {
       /* Directo al portal (tu perfil), no un "atrás" página a página. */
@@ -237,10 +237,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     });
     barra.appendChild(b);
     document.body.appendChild(barra);
-    /* Se aparta el contenido justo lo que mide la barra. */
+    /* Se aparta el contenido justo lo que mide la barra, para que no tape el pie. */
     function hueco() {
-      var h = barra.getBoundingClientRect().height;
-      document.body.style.paddingTop = h + 'px';
+      document.body.style.paddingBottom = barra.getBoundingClientRect().height + 'px';
     }
     hueco();
     window.addEventListener('resize', hueco);
