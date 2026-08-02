@@ -88,8 +88,36 @@
     meta('apple-mobile-web-app-status-bar-style', 'default');
     meta('apple-mobile-web-app-title', 'Apolana');
     if ('serviceWorker' in navigator) {
+      /* La app se actualiza SOLA. Antes solo se registraba y se
+         quedaba pegada a la versión que se guardó la primera vez, y
+         la gente tenía que borrar y reinstalar la app para ver los
+         cambios. Eso no lo va a hacer nadie. Ahora:
+           · al abrir la app y cada vez que se vuelve a ella, se
+             pregunta al servidor si hay una versión nueva;
+           · si la hay, el service worker nuevo se activa y toma el
+             control, y la página se recarga UNA vez, sola.
+         Con internet, abrir la app ya trae lo último. */
+      var teniaControl = !!navigator.serviceWorker.controller;
+      var yaRecargado = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        /* Solo recargamos si ya había una versión antes (una
+           actualización de verdad), no en la primera instalación, y
+           nunca dos veces. */
+        if (yaRecargado || !teniaControl) return;
+        yaRecargado = true;
+        window.location.reload();
+      });
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register(base + 'sw.js').catch(function () { /* sin conexión o no soportado: no pasa nada */ });
+        navigator.serviceWorker.register(base + 'sw.js').then(function (reg) {
+          function comprobar() { try { reg.update(); } catch (e) { /* sin conexión: se comprueba a la próxima */ } }
+          comprobar();
+          /* Cada vez que la app vuelve a primer plano, se mira si hay
+             algo nuevo. Es cuando la gente abre la app, que es cuando
+             toca traer lo último. */
+          document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') comprobar();
+          });
+        }).catch(function () { /* sin conexión o no soportado: no pasa nada */ });
       });
     }
   } catch (e) { /* si algo falla, la web sigue funcionando igual */ }
