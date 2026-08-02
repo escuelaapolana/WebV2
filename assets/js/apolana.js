@@ -230,50 +230,88 @@ function pintarColaboradores(lista) {
     /* En móvil WhatsApp se queda dentro del menú, no flotando arriba. */
     '@media (max-width:950px){.cabecera-acciones .cab-whatsapp{display:none}}',
 
-    /* ============ REDES: cuatro filas de 44 px ============ */
-    '.redes-filas{display:flex;flex-direction:column;gap:2px}',
-    '.red-fila{display:flex;align-items:center;gap:11px;min-height:44px;padding:0 8px;' +
-      'border-radius:9px;text-decoration:none;color:inherit}',
-    '.red-icono{width:34px;height:34px;flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;' +
-      'background:rgba(255,255,255,0.12)}',
-    '.red-icono svg{width:18px;height:18px}',
-    '.red-cuenta{flex:1;min-width:0;font-size:15px;overflow-wrap:anywhere}',
-    '.red-nombre{font-size:14px;flex:none}',
+    /* El menú activo se marca con un subrayado de 2 px, no solo con color:
+       un cambio de tono sobre crema no se ve a pie de pista. */
+    '.menu a.activo{box-shadow:inset 0 -2px 0 currentColor}',
 
-    /* --- Panel de redes y colaboradores del pie (sobre el azul del club) --- */
-    '.pie-social{background:var(--navy,#2E4256);border-radius:14px;padding:18px 20px;' +
-      'display:flex;flex-direction:column;gap:14px;flex:0 1 380px;min-width:280px;color:#fff}',
-    '.pie-social-cab{display:flex;flex-direction:column;gap:3px}',
-    '.pie-social-tit{font-family:var(--fuente-titulo);font-weight:700;font-size:22px;' +
+    /* ============ CIERRE OSCURO ============
+       A sangre y sin radio: es una banda, no una tarjeta gigante. Va pegado
+       al pie, que también es navy, para que no quede crema entre los dos. */
+    '.cierre{background:var(--navy,#2E4256);color:#fff}',
+    '.cierre .contenedor{display:flex;align-items:center;justify-content:space-between;' +
+      'gap:24px;flex-wrap:wrap;padding-block:34px}',
+    '.cierre-txt{display:flex;flex-direction:column;gap:6px;min-width:260px}',
+    '.cierre-tit{font-family:var(--fuente-titulo);font-weight:700;font-size:36px;' +
+      'line-height:1;text-transform:uppercase;color:#fff}',
+    '.cierre-sub{font-size:15px;line-height:1.5;color:rgba(255,255,255,0.78);max-width:520px}',
+    '.cierre-acc{display:flex;gap:12px;flex-wrap:wrap}',
+    '.cierre .btn--claro{background:transparent;color:#fff;border-color:rgba(255,255,255,0.45);font-weight:600}',
+    '.cierre .btn--claro:hover{background:rgba(255,255,255,0.14);color:#fff}',
+    '@media (max-width:700px){.cierre .contenedor{padding-block:26px}.cierre-tit{font-size:28px}}',
+
+    /* ============ EL PIE ES LA BANDA ============
+       Navy a sangre y sin radio, pegado al cierre de arriba. Nada de
+       tarjeta interior flotando dentro del crema: el pie entero es la
+       masa oscura que cierra la página. */
+    '.pie{background:var(--navy,#2E4256);color:rgba(255,255,255,0.85);' +
+      'margin-top:0;border-top:0;border-radius:0}',
+    /* Cuatro columnas en una sola rejilla: identidad · Club · Contacto · Síguenos. */
+    '.pie .contenedor{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.1fr;' +
+      'gap:30px;padding-block:34px 26px;align-items:start}',
+    '.pie-col{display:flex;flex-direction:column;gap:8px;min-width:0}',
+    '.pie-rotulo{font-size:14px;color:rgba(255,255,255,0.55);margin-bottom:2px}',
+    '.pie-col a{color:rgba(255,255,255,0.85);min-height:28px;display:flex;align-items:center;overflow-wrap:anywhere}',
+    '.pie-col a:hover{color:#fff}',
+    /* La identidad va dentro del navy y ocupa la primera columna. */
+    '.pie-col--marca{gap:10px}',
+    '.pie-col--marca .fila{display:flex;align-items:center;gap:10px}',
+    '.pie-col--marca img{height:36px;width:auto;filter:brightness(0) invert(1)}',
+    '.pie-col--marca .nombre{font-family:var(--fuente-titulo);font-weight:700;font-size:21px;' +
       'text-transform:uppercase;line-height:1;color:#fff}',
-    '.pie-social-sub{font-size:14px;color:rgba(255,255,255,0.78)}',
-    '.pie-social .red-fila{color:#fff}',
-    '.pie-social .red-fila:hover{background:rgba(255,255,255,0.09)}',
-    '.pie-social .red-nombre{color:rgba(255,255,255,0.62)}',
+    '.pie-col--marca .lema{font-size:14px;line-height:1.5;color:rgba(255,255,255,0.7)}',
 
-    /* --- Colaboradores del pie: 26 px de alto y en un solo tono --- */
-    '.pie-colab-caja{border-top:1px solid rgba(255,255,255,0.14);padding-top:13px;' +
-      'display:flex;flex-direction:column;gap:9px}',
-    '.pie-colab-rotulo{font-size:14px;color:rgba(255,255,255,0.62)}',
+    /* ============ REDES: icono + cuenta, sin caja detrás ============
+       Sobre el navy el icono ya contrasta; un cuadrado de fondo solo
+       añadía ruido. */
+    '.redes-filas{display:flex;flex-direction:column;gap:2px}',
+    '.red-fila{display:flex;align-items:center;gap:10px;min-height:44px;' +
+      'text-decoration:none;color:rgba(255,255,255,0.85)}',
+    '.red-fila:hover{color:#fff}',
+    '.red-icono{width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center}',
+    '.red-icono svg{width:18px;height:18px}',
+    '.red-cuenta{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}',
+    /* El nombre de la red se queda para el menú de móvil, donde no hay
+       rótulo de columna que lo explique. */
+    '.pie .red-nombre{display:none}',
+
+    /* --- Colaboradores: una fila final, separada con una línea --- */
+    '.pie-colab-fila{border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;' +
+      'padding-bottom:20px;display:flex;flex-direction:column;gap:10px}',
     '.pie-colab{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}',
     '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;min-height:26px;' +
       'color:rgba(255,255,255,0.82);text-decoration:none;font-size:13px;line-height:1.35}',
     'a.colab-pie-item:hover{color:#fff}',
-    /* Todos a la misma altura y en blanco: se leen como un conjunto. */
+    /* Todos a 26 px y en un solo tono: se leen como un conjunto. */
     '.colab-pie-item img{height:26px;width:auto;max-width:120px;object-fit:contain;display:block;' +
       'filter:brightness(0) invert(1);opacity:.85;transition:opacity .2s ease}',
     'a.colab-pie-item:hover img{opacity:1}',
-    /* Cuando el colaborador enseña logo y nombre, el nombre va debajo en texto
-       para quien no reconozca el logotipo. */
     '.colab-pie-item--ambos{flex-direction:column;align-items:flex-start;gap:4px}',
 
-    /* --- Las redes dentro del menú de móvil --- */
-    '.menu-movil-panel .menu-redes{margin-top:10px;padding-top:10px;border-top:1px solid var(--linea,#EAE3D5)}',
-    '.menu-movil-panel .red-fila{border-bottom:1px solid var(--linea,#EAE3D5);border-radius:0;padding:0;color:var(--texto)}',
-    '.menu-movil-panel .red-icono{background:var(--crema-media,#EFE9DC);color:var(--navy,#2E4256)}',
-    '.menu-movil-panel .red-nombre{color:var(--texto-suave,#6E6656)}',
+    '.pie-credito{border-top:1px solid rgba(255,255,255,0.14);color:rgba(255,255,255,0.6);letter-spacing:0}',
+    '.pie-credito strong{color:rgba(255,255,255,0.85)}',
 
-    '@media (max-width:900px){.pie-social{flex:1 1 100%}}'
+    /* --- Las redes dentro del menú de móvil (ahí sí, sobre crema) --- */
+    '.menu-movil-panel .menu-redes{margin-top:10px;padding-top:10px;border-top:1px solid var(--linea,#EAE3D5)}',
+    '.menu-movil-panel .red-fila{border-bottom:1px solid var(--linea,#EAE3D5);color:var(--texto)}',
+    '.menu-movil-panel .red-icono{width:24px;height:24px;color:var(--navy,#2E4256)}',
+    '.menu-movil-panel .red-nombre{font-size:14px;color:var(--texto-suave,#6E6656)}',
+
+    /* En móvil, dos columnas: es lo que ya funcionaba y se respeta. */
+    '@media (max-width:700px){.pie .contenedor{grid-template-columns:minmax(0,1fr) minmax(0,1fr);' +
+      'gap:22px 18px;padding-block:26px 20px}',
+      '.pie-col--marca{grid-column:1 / -1}',
+      '.pie-col a,.pie-col .red-cuenta{font-size:13.5px;line-height:1.35}',
+      '.pie-colab-fila{padding-bottom:16px}}'
     /* El bloque de la portada («Con la colaboración de») lleva sus propios
        estilos dentro de index.html, junto al resto de esa página. */
   ].join('');
@@ -312,47 +350,64 @@ class ApolanaPie extends HTMLElement {
     const colab = colaboradoresRespaldo().map(x => colaboradorHTML(x, 'colab-pie-item')).join('');
     const tel = t => t ? `<a href="tel:${t.tel}">${t.texto} · ${t.nota}</a>` : '';
     const anio = new Date().getFullYear();
+    /* Cierre oscuro pegado al pie: la página termina en dos masas oscuras
+       seguidas, sin crema entre medias. Es lo que le da ritmo —oscuro,
+       claro, oscuro— en vez de dejarlo todo flotando sobre el mismo crema.
+       Una página puede quitarlo con <apolana-pie sin-cierre>. */
+    const cierre = this.hasAttribute('sin-cierre') ? '' : `
+      <section class="cierre">
+        <div class="contenedor">
+          <div class="cierre-txt">
+            <span class="cierre-tit">Ven a probar cuatro días</span>
+            <span class="cierre-sub">Gratis y sin compromiso, a cualquier edad. Te decimos qué grupo te encaja.</span>
+          </div>
+          <div class="cierre-acc">
+            <a class="btn btn--primario" href="${ruta('/inscripcion/')}">Prueba 4 días gratis</a>
+            <a class="btn btn--claro" href="${ruta('/horarios/')}">Ver los horarios</a>
+          </div>
+        </div>
+      </section>`;
+
     this.innerHTML = `
+      ${cierre}
+      <!-- El pie ES la banda: todo dentro del navy, a sangre y sin radio.
+           Cuatro columnas en una sola rejilla, para que nada quede
+           desalineado ni flotando en una tarjeta interior. -->
       <footer class="pie">
         <div class="contenedor">
-          <div class="pie-marca">
+          <div class="pie-col pie-col--marca">
             <div class="fila">
               <img src="${ruta('/assets/img/logo.png')}" alt="Club Apolana">
               <span class="nombre">Club Apolana</span>
             </div>
             <span class="lema">${lema}</span>
           </div>
-          <div class="pie-cols">
-            <div class="pie-col">
-              <span class="eyebrow">Club</span>
-              <a href="${base()}">Inicio</a>
-              <a href="${ruta('/socio/')}">Hazte socio</a>
-              <a href="${ruta('/calendario/')}">Calendario</a>
-              <a href="${ruta('/noticias/')}">Noticias</a>
-              <a href="${ruta('/tienda/')}">Tienda</a>
-              <a href="${ruta('/app/')}">Instalar la app</a>
-            </div>
-            <div class="pie-col">
-              <span class="eyebrow">Contacto</span>
-              ${tel(c.tel_socios)}
-              ${tel(c.tel_escuela)}
-              ${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : ''}
-            </div>
+          <div class="pie-col">
+            <span class="pie-rotulo">Club</span>
+            <a href="${base()}">Inicio</a>
+            <a href="${ruta('/socio/')}">Hazte socio</a>
+            <a href="${ruta('/calendario/')}">Calendario</a>
+            <a href="${ruta('/noticias/')}">Noticias</a>
+            <a href="${ruta('/tienda/')}">Tienda</a>
+            <a href="${ruta('/app/')}">Instalar la app</a>
           </div>
-          <!-- Las cuatro redes y los colaboradores, en el mismo panel: los logos
-               a la misma altura y en un solo tono se leen como un conjunto y no
-               como cuatro pegatinas. -->
-          <div class="pie-social">
-            <div class="pie-social-cab">
-              <span class="pie-social-tit">Síguenos</span>
-              <span class="pie-social-sub">Lo que pasa en el club se cuenta en Instagram.</span>
-            </div>
+          <div class="pie-col">
+            <span class="pie-rotulo">Contacto</span>
+            ${tel(c.tel_socios)}
+            ${tel(c.tel_escuela)}
+            ${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : ''}
+          </div>
+          <div class="pie-col">
+            <span class="pie-rotulo">Síguenos</span>
             ${redesFilasHTML('pie-redes-filas')}
-            <div class="pie-colab-caja">
-              <span class="pie-colab-rotulo">Con la colaboración de</span>
-              <div class="pie-colab" data-colab-pie>${colab}</div>
-            </div>
           </div>
+        </div>
+        <!-- Los colaboradores, en una fila final separada por una línea: a la
+             misma altura y en un solo tono se leen como un conjunto y no como
+             cuatro pegatinas. -->
+        <div class="contenedor pie-colab-fila">
+          <span class="pie-rotulo">Con la colaboración de</span>
+          <div class="pie-colab" data-colab-pie>${colab}</div>
         </div>
         <div class="pie-credito">© ${anio} Club Atletismo Apolana · Creada por <strong>Andrés Clavero Giménez</strong></div>
       </footer>`;

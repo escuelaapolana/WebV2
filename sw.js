@@ -3,7 +3,7 @@
    (por eso los cambios se ven al momento); si no hay conexión, sirve lo último
    que se vio. No toca las peticiones a Supabase ni a los CDN (siempre a la red,
    para que los datos y el acceso vayan en vivo). */
-const CACHE = 'apolana-v1';
+const CACHE = 'apolana-v2';
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 
@@ -23,8 +23,12 @@ self.addEventListener('fetch', function (e) {
   e.respondWith((async function () {
     try {
       const fresh = await fetch(req);
-      const cache = await caches.open(CACHE);
-      cache.put(req, fresh.clone());
+      // Solo se guarda lo que ha venido bien: si un día la web contesta con un
+      // error, no queremos que se quede pegado y se sirva sin conexión.
+      if (fresh && fresh.ok && fresh.type === 'basic') {
+        const cache = await caches.open(CACHE);
+        cache.put(req, fresh.clone());
+      }
       return fresh;
     } catch (err) {
       const cached = await caches.match(req);

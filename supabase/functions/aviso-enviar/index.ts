@@ -1,0 +1,504 @@
+// ============================================================
+// aviso-enviar · manda un aviso a los móviles del club
+// ------------------------------------------------------------
+// QUÉ HACE, EN CRISTIANO
+//   Alguien del club escribe «Mañana no hay entreno» en el panel y
+//   pulsa enviar. Esta función mira a quién le toca, respeta lo que
+//   cada uno haya elegido recibir, cifra el aviso para cada móvil y
+//   se lo entrega a Google (Android y Chrome) o a Apple (iPhone con
+//   la app instalada), que son quienes lo hacen sonar.
+//
+// LO QUE NO SE FÍA DEL NAVEGADOR
+//   · Quién eres. Se comprueba el JWT contra Supabase y después se
+//     pregunta a la base si esa persona es del equipo del club
+//     (`es_staff()`). No se cree el correo que venga en el cuerpo.
+//   · A quién va. La lista de destinatarios la calcula la BASE, con
+//     las preferencias ya aplicadas. Aquí no llega ni un endpoint
+//     que el navegador haya podido elegir.
+//   · A dónde lleva el aviso. El enlace tiene que ser de la propia
+//     web del club: si no, se tira. Un aviso del club que lleva a
+//     una web de fuera es la puerta de entrada de una estafa.
+//
+// CLAVES · ninguna está en este archivo ni puede estarlo
+//   VAPID_PUBLIC_KEY   · la pública  (la pone el club en Supabase)
+//   VAPID_PRIVATE_KEY  · la PRIVADA  (la pone el club en Supabase)
+//   VAPID_SUBJECT      · «mailto:escuelaapolana@gmail.com»
+//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY
+//                      · las pone Supabase sola
+//   Opcionales: AVISOS_URL_BASE (la web del club), AVISOS_ORIGENES.
+//
+// Si falta cualquier clave, la función contesta «todavía no está
+// activado» con buenos modales. No revienta ni deja botones muertos.
+//
+// Cómo se despliega:  supabase functions deploy aviso-enviar
+// ============================================================
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY =
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
+const ANON_KEY =
+  Deno.env.get("SUPABASE_ANON_KEY") ??
+  Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
+
+const VAPID_PUBLICA = (Deno.env.get("VAPID_PUBLIC_KEY") ?? "").trim();
+const VAPID_PRIVADA = (Deno.env.get("VAPID_PRIVATE_KEY") ?? "").trim();
+const VAPID_CONTACTO = (Deno.env.get("VAPID_SUBJECT") ?? "mailto:escuelaapolana@gmail.com").trim();
+
+const URL_BASE = (Deno.env.get("AVISOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
+  .replace(/\/*$/, "/");
+
+const CATEGORIAS = ["entrenos", "competiciones", "pagos", "noticias", "retos"];
+const PUBLICOS = ["todos", "grupo", "rol", "persona"];
+const ROLES = ["admin", "coordinador", "entrenador", "atleta", "padre"];
+
+// ------------------------------------------------------------
+// Cabeceras para que el navegador pueda llamarnos
+// ------------------------------------------------------------
+function cors(origen: string | null): Record<string, string> {
+  const permitidos = (Deno.env.get("AVISOS_ORIGENES") ?? Deno.env.get("PAGOS_ORIGENES") ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  const valor = permitidos.length
+    ? (origen && permitidos.includes(origen) ? origen : permitidos[0])
+    : (origen ?? "*");
+  return {
+    "Access-Control-Allow-Origin": valor,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
+
+function responder(cuerpo: unknown, estado: number, origen: string | null): Response {
+  return new Response(JSON.stringify(cuerpo), {
+    status: estado,
+    headers: { ...cors(origen), "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+// ------------------------------------------------------------
+// Hablar con la base con la llave de servicio
+// ------------------------------------------------------------
+type Opciones = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
+
+async function consulta(ruta: string, opciones: Opciones = {}) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${ruta}`, {
+    ...opciones,
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      ...(opciones.headers ?? {}),
+    },
+  });
+  const texto = await r.text();
+  let datos: unknown = null;
+  try { datos = texto ? JSON.parse(texto) : null; } catch { datos = texto; }
+  return { ok: r.ok, estado: r.status, datos };
+}
+
+// ============================================================
+// EL CIFRADO DEL AVISO (Web Push)
+// ------------------------------------------------------------
+// Se hace a mano con la criptografía que ya trae el propio Deno, sin
+// añadir ninguna librería: son cuarenta líneas y así no hay una
+// dependencia más que mantener al día. Es el estándar de siempre
+// (RFC 8291 y RFC 8188, «aes128gcm»).
+//
+// La idea, en una frase: el aviso se cifra con una clave que solo
+// puede calcular ESE móvil. Ni Google ni Apple ven lo que pone: para
+// ellos es un churro de bytes que reparten y ya está.
+// ============================================================
+
+function b64urlABytes(s: string): Uint8Array {
+  const relleno = "=".repeat((4 - (s.length % 4)) % 4);
+  const limpia = (s + relleno).replace(/-/g, "+").replace(/_/g, "/");
+  const crudo = atob(limpia);
+  const bytes = new Uint8Array(crudo.length);
+  for (let i = 0; i < crudo.length; i++) bytes[i] = crudo.charCodeAt(i);
+  return bytes;
+}
+
+function bytesAB64url(b: ArrayBuffer | Uint8Array): string {
+  const bytes = b instanceof Uint8Array ? b : new Uint8Array(b);
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function unir(...trozos: Uint8Array[]): Uint8Array {
+  const total = trozos.reduce((n, t) => n + t.length, 0);
+  const salida = new Uint8Array(total);
+  let i = 0;
+  for (const t of trozos) { salida.set(t, i); i += t.length; }
+  return salida;
+}
+
+const texto = new TextEncoder();
+
+/** HKDF: de un secreto compartido saca una clave del largo que haga falta. */
+async function derivar(ikm: Uint8Array, salt: Uint8Array, info: Uint8Array, bytes: number) {
+  const clave = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info }, clave, bytes * 8,
+  );
+  return new Uint8Array(bits);
+}
+
+/** El cuerpo cifrado del aviso, tal y como lo espera el móvil. */
+async function cifrar(carga: string, p256dh: string, auth: string): Promise<Uint8Array> {
+  const claveMovil = b64urlABytes(p256dh);      // 65 bytes
+  const secretoMovil = b64urlABytes(auth);      // 16 bytes
+
+  // Un par de claves de usar y tirar, distintas en cada envío.
+  const efimeras = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"],
+  ) as CryptoKeyPair;
+  const publicaServidor = new Uint8Array(await crypto.subtle.exportKey("raw", efimeras.publicKey));
+
+  const publicaMovil = await crypto.subtle.importKey(
+    "raw", claveMovil, { name: "ECDH", namedCurve: "P-256" }, false, [],
+  );
+  const compartido = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "ECDH", public: publicaMovil }, efimeras.privateKey, 256,
+  ));
+
+  // Paso 1 · mezclar el secreto compartido con el del móvil
+  const infoClave = unir(texto.encode("WebPush: info"), new Uint8Array([0]), claveMovil, publicaServidor);
+  const ikm = await derivar(compartido, secretoMovil, infoClave, 32);
+
+  // Paso 2 · de ahí salen la clave de cifrado y el número de un solo uso
+  const sal = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await derivar(ikm, sal, unir(texto.encode("Content-Encoding: aes128gcm"), new Uint8Array([0])), 16);
+  const nonce = await derivar(ikm, sal, unir(texto.encode("Content-Encoding: nonce"), new Uint8Array([0])), 12);
+
+  // Paso 3 · cifrar (el 0x02 del final marca que no hay más trozos)
+  const claveAes = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
+  const claro = unir(texto.encode(carga), new Uint8Array([2]));
+  const cifrado = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce, tagLength: 128 }, claveAes, claro,
+  ));
+
+  // Paso 4 · la cabecera que dice cómo desenvolverlo
+  const tamano = new Uint8Array(4);
+  new DataView(tamano.buffer).setUint32(0, 4096, false);
+  return unir(sal, tamano, new Uint8Array([publicaServidor.length]), publicaServidor, cifrado);
+}
+
+/** La firma que demuestra que el aviso lo manda el club y no un tercero. */
+const jwtCache = new Map<string, { valor: string; caduca: number }>();
+
+async function firmaVapid(endpoint: string): Promise<string> {
+  const destino = new URL(endpoint).origin;
+  const ahora = Math.floor(Date.now() / 1000);
+
+  const guardada = jwtCache.get(destino);
+  if (guardada && guardada.caduca > ahora + 300) return guardada.valor;
+
+  const publica = b64urlABytes(VAPID_PUBLICA);           // 65 bytes: 0x04 || x || y
+  const jwk: JsonWebKey = {
+    kty: "EC",
+    crv: "P-256",
+    d: VAPID_PRIVADA,
+    x: bytesAB64url(publica.slice(1, 33)),
+    y: bytesAB64url(publica.slice(33, 65)),
+    ext: true,
+  };
+  const clave = await crypto.subtle.importKey(
+    "jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"],
+  );
+
+  const caduca = ahora + 12 * 3600;
+  const cabecera = bytesAB64url(texto.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const cuerpo = bytesAB64url(texto.encode(JSON.stringify({
+    aud: destino, exp: caduca, sub: VAPID_CONTACTO,
+  })));
+  const sinFirma = `${cabecera}.${cuerpo}`;
+  const firma = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" }, clave, texto.encode(sinFirma),
+  );
+  const jwt = `${sinFirma}.${bytesAB64url(firma)}`;
+  jwtCache.set(destino, { valor: jwt, caduca });
+  return jwt;
+}
+
+type Destino = { id: string; endpoint: string; p256dh: string; auth: string };
+
+/** Manda el aviso a UN aparato. Devuelve qué ha pasado. */
+async function mandarA(d: Destino, carga: string): Promise<"ok" | "muerto" | "fallo"> {
+  try {
+    const cuerpo = await cifrar(carga, d.p256dh, d.auth);
+    const jwt = await firmaVapid(d.endpoint);
+
+    const r = await fetch(d.endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `vapid t=${jwt}, k=${VAPID_PUBLICA}`,
+        "Content-Encoding": "aes128gcm",
+        "Content-Type": "application/octet-stream",
+        // Cuánto tiempo lo guarda Google/Apple si el móvil está
+        // apagado. Cuatro horas: un aviso de «hoy no hay entreno»
+        // que llega mañana no vale para nada.
+        "TTL": "14400",
+        "Urgency": "high",
+      },
+      body: cuerpo,
+    });
+
+    if (r.status === 201 || r.status === 200 || r.status === 202) return "ok";
+    // 404 y 410: la app se desinstaló o se borraron los datos del
+    // navegador. Ese buzón ya no existe y hay que quitarlo.
+    if (r.status === 404 || r.status === 410) return "muerto";
+    console.error("aviso rechazado", r.status, (await r.text()).slice(0, 200));
+    return "fallo";
+  } catch (e) {
+    console.error("aviso no enviado:", e instanceof Error ? e.message : e);
+    return "fallo";
+  }
+}
+
+// ------------------------------------------------------------
+// El enlace tiene que ser de la web del club. Punto.
+// ------------------------------------------------------------
+function enlaceSeguro(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s, URL_BASE);
+    const base = new URL(URL_BASE);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    if (u.origin !== base.origin) return null;     // nada de llevar a webs de fuera
+    return u.toString();
+  } catch { return null; }
+}
+
+function recortar(v: unknown, tope: number): string {
+  return String(v ?? "").replace(/\s+/g, " ").trim().slice(0, tope);
+}
+
+// ============================================================
+Deno.serve(async (req: Request): Promise<Response> => {
+  const origen = req.headers.get("origin");
+
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
+  if (req.method !== "POST") return responder({ error: "Método no admitido." }, 405, origen);
+
+  // ---------------------------------------------------------------
+  // 0 · ¿Está todo montado? Si falta una clave, se dice sin dramas.
+  // ---------------------------------------------------------------
+  if (!SUPABASE_URL || !SERVICE_KEY) {
+    return responder({ error: "config", mensaje: "Los avisos no están configurados." }, 503, origen);
+  }
+  if (!VAPID_PUBLICA || !VAPID_PRIVADA) {
+    return responder({
+      error: "no_activado",
+      mensaje: "Los avisos al móvil todavía no están activados. Faltan las claves en Supabase.",
+    }, 503, origen);
+  }
+
+  // ---------------------------------------------------------------
+  // 1 · ¿Quién eres? El JWT se comprueba de verdad, contra Supabase.
+  // ---------------------------------------------------------------
+  const cabecera = req.headers.get("Authorization") ?? "";
+  const jwt = cabecera.toLowerCase().startsWith("bearer ") ? cabecera.slice(7).trim() : "";
+  if (!jwt) return responder({ error: "sin_sesion", mensaje: "Entra en tu cuenta." }, 401, origen);
+
+  const rUsuario = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` },
+  });
+  if (!rUsuario.ok) {
+    return responder({ error: "sin_sesion", mensaje: "Tu sesión ha caducado. Vuelve a entrar." }, 401, origen);
+  }
+  const usuario = await rUsuario.json();
+  const correo: string = (usuario?.email ?? "").toLowerCase();
+  if (!correo) return responder({ error: "sin_sesion", mensaje: "No hemos podido identificarte." }, 401, origen);
+
+  // 1.b · ¿Es del equipo del club? Se lo preguntamos a la BASE con SU
+  //       sesión, no con la llave de servicio: así manda la misma
+  //       regla que en todas las pantallas.
+  const rStaff = await fetch(`${SUPABASE_URL}/rest/v1/rpc/es_staff`, {
+    method: "POST",
+    headers: {
+      apikey: ANON_KEY || SERVICE_KEY,
+      Authorization: `Bearer ${jwt}`,
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+  const esStaff = rStaff.ok && (await rStaff.json()) === true;
+  if (!esStaff) {
+    return responder({ error: "sin_permiso", mensaje: "Solo el equipo del club puede mandar avisos." }, 403, origen);
+  }
+
+  // ---------------------------------------------------------------
+  // 2 · ¿Está encendido el sistema?
+  // ---------------------------------------------------------------
+  const rCfg = await consulta("avisos_config?select=activo&id=eq.1&limit=1");
+  const cfg = Array.isArray(rCfg.datos) ? rCfg.datos[0] : null;
+  if (!cfg?.activo) {
+    return responder({
+      error: "no_activado",
+      mensaje: "Los avisos están apagados. Se encienden desde el panel cuando estén puestas las claves.",
+    }, 503, origen);
+  }
+
+  // ---------------------------------------------------------------
+  // 3 · Qué se quiere mandar
+  // ---------------------------------------------------------------
+  let cuerpo: Record<string, unknown> = {};
+  try { cuerpo = await req.json(); } catch { /* cuerpo vacío */ }
+
+  const titulo = recortar(cuerpo.titulo, 80);
+  const mensaje = recortar(cuerpo.cuerpo ?? cuerpo.texto, 200);
+  const enlace = enlaceSeguro(cuerpo.url);
+  const publico = String(cuerpo.publico ?? "todos");
+  const categoria = String(cuerpo.categoria ?? "entrenos");
+  const grupoId = cuerpo.grupo_id ? String(cuerpo.grupo_id) : null;
+  const rol = cuerpo.rol ? String(cuerpo.rol) : null;
+  const perfilId = cuerpo.perfil_id ? String(cuerpo.perfil_id) : null;
+  const soloPrueba = cuerpo.prueba === true;
+
+  if (!titulo) return responder({ error: "falta_titulo", mensaje: "El aviso necesita un título." }, 400, origen);
+  if (!mensaje) return responder({ error: "falta_texto", mensaje: "El aviso necesita un texto." }, 400, origen);
+  if (!PUBLICOS.includes(publico)) {
+    return responder({ error: "publico", mensaje: "No sabemos a quién mandarlo." }, 400, origen);
+  }
+  if (!CATEGORIAS.includes(categoria)) {
+    return responder({ error: "categoria", mensaje: "Ese tipo de aviso no existe." }, 400, origen);
+  }
+  if (publico === "grupo" && !grupoId) {
+    return responder({ error: "falta_grupo", mensaje: "Elige el grupo." }, 400, origen);
+  }
+  if (publico === "rol" && (!rol || !ROLES.includes(rol))) {
+    return responder({ error: "falta_rol", mensaje: "Elige a qué papel del club va." }, 400, origen);
+  }
+  if (publico === "persona" && !perfilId) {
+    return responder({ error: "falta_persona", mensaje: "Elige a la persona." }, 400, origen);
+  }
+  if (cuerpo.url && !enlace) {
+    return responder({
+      error: "enlace",
+      mensaje: "El enlace tiene que ser de la web del club. Un aviso del club no puede llevar fuera.",
+    }, 400, origen);
+  }
+
+  // ---------------------------------------------------------------
+  // 4 · Quién lo manda (para el historial)
+  // ---------------------------------------------------------------
+  const rPerfil = await consulta(
+    `perfiles?select=id&email=eq.${encodeURIComponent(correo)}&limit=1`,
+  );
+  const autor = (Array.isArray(rPerfil.datos) ? rPerfil.datos[0] : null)?.id ?? null;
+
+  // ---------------------------------------------------------------
+  // 5 · A quién va · LA LISTA LA CALCULA LA BASE
+  //     Con las preferencias de cada uno ya aplicadas: quien apagó
+  //     «noticias del club» no sale de aquí aunque el aviso vaya a
+  //     todo el club.
+  // ---------------------------------------------------------------
+  const rDestinos = await consulta("rpc/avisos_destinatarios", {
+    method: "POST",
+    body: JSON.stringify({
+      p_publico: publico,
+      p_categoria: categoria,
+      p_grupo: grupoId,
+      p_rol: rol,
+      p_perfil: perfilId,
+    }),
+  });
+  if (!rDestinos.ok) {
+    console.error("no se ha podido calcular a quién va:", rDestinos.datos);
+    return responder({ error: "interno", mensaje: "No hemos podido calcular a quién va el aviso." }, 500, origen);
+  }
+  const destinos = (Array.isArray(rDestinos.datos) ? rDestinos.datos : []) as Destino[];
+
+  // Modo «solo mirar»: dice a cuántos llegaría sin mandar nada.
+  if (soloPrueba) {
+    return responder({ ok: true, prueba: true, alcance: destinos.length }, 200, origen);
+  }
+
+  if (destinos.length === 0) {
+    return responder({
+      ok: true, enviados: 0, fallidos: 0,
+      mensaje: "No hay nadie con los avisos activados para esto todavía.",
+    }, 200, origen);
+  }
+
+  // ---------------------------------------------------------------
+  // 6 · Cómo se llama a quién va, para el historial
+  // ---------------------------------------------------------------
+  let publicoTexto = "Todo el club";
+  if (publico === "grupo") {
+    const r = await consulta(`grupos?select=nombre&id=eq.${encodeURIComponent(grupoId!)}&limit=1`);
+    const g = Array.isArray(r.datos) ? r.datos[0] : null;
+    publicoTexto = g?.nombre ? `Grupo ${g.nombre}` : "Un grupo";
+  } else if (publico === "rol") {
+    const nombres: Record<string, string> = {
+      admin: "Administración", coordinador: "Coordinadores",
+      entrenador: "Entrenadores", atleta: "Atletas", padre: "Familias",
+    };
+    publicoTexto = nombres[rol!] ?? "Un papel del club";
+  } else if (publico === "persona") {
+    const r = await consulta(`perfiles?select=nombre,apellidos&id=eq.${encodeURIComponent(perfilId!)}&limit=1`);
+    const p = Array.isArray(r.datos) ? r.datos[0] : null;
+    publicoTexto = p ? `${p.nombre ?? ""} ${p.apellidos ?? ""}`.trim() : "Una persona";
+  }
+
+  // ---------------------------------------------------------------
+  // 7 · A repartir
+  // ---------------------------------------------------------------
+  const carga = JSON.stringify({
+    titulo,
+    cuerpo: mensaje,
+    url: enlace ?? URL_BASE + "portal/",
+    categoria,
+    etiqueta: `apolana-${categoria}`,
+  });
+
+  let enviados = 0, fallidos = 0;
+  const muertos: string[] = [];
+  const vivos: string[] = [];
+
+  // De veinte en veinte: ni se atasca la función ni se le manda a
+  // Google mil peticiones a la vez.
+  const TANDA = 20;
+  for (let i = 0; i < destinos.length; i += TANDA) {
+    const tanda = destinos.slice(i, i + TANDA);
+    const resultados = await Promise.all(tanda.map((d) => mandarA(d, carga)));
+    resultados.forEach((r, j) => {
+      if (r === "ok") { enviados++; vivos.push(tanda[j].id); }
+      else if (r === "muerto") { fallidos++; muertos.push(tanda[j].endpoint); }
+      else fallidos++;
+    });
+  }
+
+  // Limpieza: los buzones que ya no existen se quitan, o el número de
+  // «fallidos» crecería para siempre.
+  for (const endpoint of muertos) {
+    await consulta("rpc/avisos_baja_endpoint", {
+      method: "POST", body: JSON.stringify({ p_endpoint: endpoint }),
+    });
+  }
+  if (vivos.length) {
+    await consulta("rpc/avisos_marcar_uso", {
+      method: "POST", body: JSON.stringify({ p_ids: vivos }),
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // 8 · Al historial
+  // ---------------------------------------------------------------
+  await consulta("rpc/avisos_registrar", {
+    method: "POST",
+    body: JSON.stringify({
+      p_titulo: titulo, p_cuerpo: mensaje, p_url: enlace,
+      p_publico: publico, p_categoria: categoria,
+      p_grupo: grupoId, p_rol: rol, p_perfil: perfilId,
+      p_texto: publicoTexto,
+      p_enviados: enviados, p_fallidos: fallidos,
+      p_autor: autor,
+    }),
+  });
+
+  return responder({ ok: true, enviados, fallidos, alcance: destinos.length }, 200, origen);
+});

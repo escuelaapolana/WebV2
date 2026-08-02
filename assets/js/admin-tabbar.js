@@ -371,6 +371,8 @@
 
     /* --- tabla de escritorio: separadores horizontales y nada más (kit 30e) --- */
     P + 'table td,' + P + 'table th{border-left:0;border-right:0}',
+    /* en el panel caben tablas densas: el botón manda su altura, no el aire */
+    P + 'table tbody td{padding-top:6px;padding-bottom:6px}',
     P + 'table tbody tr:nth-child(even){background:none}',
     P + 'td.num,' + P + 'td.importe,' + P + 'td.dato{text-align:right;font-family:var(--fuente-dato);' +
       'font-variant-numeric:tabular-nums;white-space:nowrap}',
@@ -379,6 +381,12 @@
     /* --- zona pulsable de 44 px con letra de 15: crece el relleno --- */
     P + '.btn,' + P + '.bmini,' + P + '.chip,' + P + '.toggle,' + P + '.btn--mini{min-height:44px;' +
       'display:inline-flex;align-items:center;justify-content:center}',
+    /* tres niveles de botón y ni uno más (kit 30f) */
+    P + '.btn--fantasma,' + P + '.bmini,' + P + '.toggle{border-color:#C9C0AE;color:var(--navy)}',
+    /* chips: el activo relleno navy, el resto con borde */
+    P + '.chip{border:1px solid var(--linea-borde,#D4CBB9);background:#fff;color:var(--texto)}',
+    P + '.chip.activo,' + P + '.chip[aria-selected="true"],' + P + '.chip.sel{' +
+      'background:var(--navy);border-color:var(--navy);color:#fff}',
 
     /* --- 1 · cargando: bloques con la forma del dato, nunca «Cargando…» en gris --- */
     '@keyframes adm-brillo{0%{background-position:200% 0}100%{background-position:-200% 0}}',
@@ -416,6 +424,10 @@
       'padding:11px 14px;border:1px solid var(--linea-borde,#D4CBB9);border-radius:10px;' +
       'font-family:inherit;font-size:15px;color:var(--navy);background:#fff}',
     '.adm-buscador .adm-buscador-n{font-size:13px;color:var(--texto-suave);font-family:var(--fuente-dato)}',
+    /* el recuento, al lado del título y en mono (kit 30h) */
+    '.adm-cuenta-tit:not(:empty){font-family:var(--fuente-dato);font-size:14px;font-weight:400;' +
+      'letter-spacing:normal;text-transform:none;color:var(--texto-suave);margin-left:11px;' +
+      'vertical-align:baseline}',
 
     /* --- 5 · por debajo de 720 px la tabla es ficha: nunca se arrastra (kit 30e) --- */
     '@media (max-width:720px){',
@@ -424,18 +436,24 @@
       P + 'table.adm-tabla td{display:block;width:auto;min-width:0}',
     P + 'table.adm-tabla{min-width:0!important}',
     P + 'table.adm-tabla thead{display:none}',
-    P + 'table.adm-tabla tbody tr{border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;' +
-      'background:#fff;margin:0 0 12px;padding:14px 16px}',
-    P + 'table.adm-tabla tbody td{border:0;padding:3px 0;font-size:15px}',
+    P + 'table.adm-tabla tbody tr{position:relative;border:1px solid var(--linea-marcada,#E4DCCB);' +
+      'border-radius:14px;background:#fff;margin:0 0 12px;padding:13px 16px}',
+    P + 'table.adm-tabla tbody td{border:0;padding:2px 0;font-size:15px;line-height:1.4}',
     P + 'table.adm-tabla tbody td:empty{display:none}',
-    P + 'table.adm-tabla tbody td::before{content:attr(data-etiqueta);display:block;font-size:13px;' +
-      'color:var(--texto-suave);margin-bottom:1px}',
+    /* el resto de columnas, en una línea de datos: rótulo y valor seguidos */
+    P + 'table.adm-tabla tbody td::before{content:attr(data-etiqueta);display:inline;font-size:13px;' +
+      'color:var(--texto-suave);margin-right:7px}',
     P + 'table.adm-tabla tbody td.sin-etiqueta::before,' +
       P + 'table.adm-tabla tbody td[data-etiqueta=""]::before{content:none}',
+    /* la columna que más dice hace de título de la ficha */
     P + 'table.adm-tabla tbody td.adm-titulo{font-size:17px;font-weight:600;color:var(--navy);' +
-      'padding:0 0 4px;line-height:1.3}',
+      'padding:0 92px 5px 0;line-height:1.3}',
     P + 'table.adm-tabla tbody td.adm-titulo::before{content:none}',
-    P + 'table.adm-tabla tbody td.adm-sobra{display:none}',
+    /* y el estado, arriba a la derecha */
+    P + 'table.adm-tabla tbody td.adm-estado{position:absolute;top:12px;right:14px;padding:0;' +
+      'max-width:88px;text-align:right}',
+    P + 'table.adm-tabla tbody td.adm-estado::before{content:none}',
+    P + 'table.adm-tabla tbody td.adm-acciones{display:flex;flex-wrap:wrap;gap:8px;padding-top:9px}',
     '}',
 
     /* --- 7 · aviso unificado: el de la app, navy y abajo (kit 30g) --- */
@@ -535,6 +553,20 @@
   });
 
   window.ADM = ADM;
+
+  /* Un esqueleto no se queda para siempre: a los dos segundos y medio se
+     convierte en error, con su botón de volver a intentarlo (kit 28f). */
+  var ESPERA = 2500;
+  setInterval(function () {
+    var ahora = Date.now();
+    Array.prototype.forEach.call(document.querySelectorAll('.adm-cargando'), function (n) {
+      if (!n.__desde) { n.__desde = ahora; return; }
+      if (ahora - n.__desde < ESPERA) return;
+      var caja = document.createElement('div');
+      caja.innerHTML = ADM.error('Está tardando más de la cuenta. Puede ser la conexión.');
+      n.replaceWith(caja.firstChild);
+    });
+  }, 1000);
 
   /* ============================================================
      Un solo sistema de avisos: el de la app (kit 30g)
@@ -672,17 +704,42 @@
     });
   }
 
+  /* Cuál es la columna que manda: la que lleva el nombre de la cosa. Si
+     ninguna cabecera lo dice, la que trae más texto en la primera fila. */
+  var MANDA = /(nombre|t[ií]tulo|atleta|socio|persona|concepto|prueba|grupo|carrera|evento|documento|p[áa]gina|plantilla|art[ií]culo|producto|noticia|foto)/i;
+
+  function columnaTitulo(cab, fila) {
+    for (var i = 0; i < cab.length; i++) if (MANDA.test(cab[i])) return i;
+    var mejor = 0, largo = -1;
+    Array.prototype.forEach.call(fila.cells, function (c, i) {
+      var n = (c.textContent || '').trim().length;
+      if (c.querySelector('button,input,a.btn')) return;   /* la de acciones no */
+      if (n > largo) { largo = n; mejor = i; }
+    });
+    return mejor;
+  }
+
   function etiquetar(tabla) {
     var cab = tabla.tHead && tabla.tHead.rows.length
       ? Array.prototype.map.call(tabla.tHead.rows[tabla.tHead.rows.length - 1].cells,
           function (c) { return (c.textContent || '').trim(); })
       : [];
     if (!cab.length) return;
-    filasReales(tabla).forEach(function (f) {
+    var filas = filasReales(tabla);
+    if (!filas.length) return;
+    var iTit = columnaTitulo(cab, filas[0]);
+    filas.forEach(function (f) {
       Array.prototype.forEach.call(f.cells, function (c, i) {
         if (!c.hasAttribute('data-etiqueta') && cab[i]) c.setAttribute('data-etiqueta', cab[i]);
-        /* la primera columna con texto hace de título de la ficha */
-        if (i === 0) c.classList.add('adm-titulo');
+        if (i === iTit) { c.classList.add('adm-titulo'); return; }
+        /* la pastilla de estado —solo esa— va arriba a la derecha */
+        var soloPastilla = c.children.length === 1 &&
+          /(^|\s)(pill|pill-estado|estado|etq|pastilla)(\s|$)/.test(c.children[0].className || '');
+        if (soloPastilla && /estado|situaci|publicad|activ/i.test(cab[i] || '')) {
+          c.classList.add('adm-estado');
+          return;
+        }
+        if (c.querySelector('button,a.btn')) c.classList.add('adm-acciones');
       });
     });
   }
@@ -729,6 +786,29 @@
 
     if (tabla.__cuenta) {
       tabla.__cuenta.textContent = texto ? (coinciden + ' de ' + filas.length) : (filas.length + '');
+    }
+    cuentaEnElTitulo(tabla, filas.length);
+  }
+
+  /* El recuento va al lado del título de la pantalla y en mono (kit 30h),
+     no como una tarjeta aparte. Solo para la lista principal de la página. */
+  var TITULO = null, YA_TITULO = false;
+  function cuentaEnElTitulo(tabla, n) {
+    if (!YA_TITULO) {
+      YA_TITULO = true;
+      var raiz = document.getElementById('admin-contenido') || document.body;
+      TITULO = raiz.querySelector('.cab h1') || raiz.querySelector('h1') ||
+               raiz.querySelector('.panel h2, .card h2, h2');
+      if (TITULO) {
+        var s = document.createElement('span');
+        s.className = 'adm-cuenta-tit';
+        TITULO.appendChild(s);
+        TITULO.__cuenta = s;
+        TITULO.__tabla = tabla;
+      }
+    }
+    if (TITULO && TITULO.__cuenta && TITULO.__tabla === tabla) {
+      TITULO.__cuenta.textContent = n ? String(n) : '';
     }
   }
 

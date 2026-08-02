@@ -145,7 +145,26 @@
   .sp-datos .sp-campo b { font-size: 15px; font-weight: 400; color: var(--navy); overflow-wrap: anywhere; }
   .sp-msg { font-size: 14px; color: var(--texto-suave); }
   .sp-msg.ok { color: #2C6B3F; }
-  .sp-cargando { padding: clamp(40px, 8vw, 80px) 0; text-align: center; color: var(--texto-suave); font-size: 15px; }
+  /* ---- Los cuatro estados del panel ---- */
+  .sp-esqueleto { display: flex; flex-direction: column; gap: 12px; }
+  .sp-hueso { display: block; background: var(--crema-media); border-radius: 5px; animation: sp-latido 1.2s ease-in-out infinite; }
+  .sp-hueso--caja { flex: 1; min-width: 160px; height: 92px; border-radius: 14px; }
+  .sp-esq-fila { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+  @keyframes sp-latido { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { .sp-hueso { animation: none; } }
+  /* Error en ámbar: el rojo se reserva para lo que ha hecho mal quien mira. */
+  .sp-fallo {
+    background: var(--ambar-fondo); border: 1px solid var(--ambar-borde); border-radius: 14px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; max-width: 640px;
+  }
+  .sp-fallo b { font-size: 15px; font-weight: 600; color: #6B5227; }
+  .sp-fallo p { margin: 0; font-size: 14px; line-height: 1.5; color: #6B5227; }
+  .sp-fallo .acc { display: flex; gap: 10px; flex-wrap: wrap; }
+  .sp-fallo button, .sp-fallo a {
+    font-family: inherit; font-size: 15px; font-weight: 600; color: #6B5227;
+    background: #fff; border: 1px solid #E0CDA8; border-radius: var(--radio-pastilla);
+    padding: 13px 22px; min-height: 44px; display: inline-flex; align-items: center; cursor: pointer;
+  }
 
   /* Hoja de justificantes: solo se ve al imprimir (mismo criterio que el portal de familias) */
   #sp-hoja { display: none; }
@@ -299,7 +318,21 @@
        PANEL DEL SOCIO · solo con sesión (portal-auth lo enseña)
        ========================================================= -->
   <div id="portal-contenido">
-    <div id="sp-panel"><p class="sp-cargando">Cargando tu panel…</p></div>
+    <!-- Esqueleto con la forma del panel, no un «Cargando…» en gris: así la
+         página no salta cuando llegan los datos. Máximo dos segundos. -->
+    <div id="sp-panel">
+      <section class="seccion"><div class="contenedor">
+        <div class="sp-esqueleto" aria-busy="true" aria-label="Cargando tu panel">
+          <span class="sp-hueso" style="width:180px;height:26px"></span>
+          <span class="sp-hueso" style="width:min(420px,80%);height:15px"></span>
+          <div class="sp-esq-fila">
+            <span class="sp-hueso sp-hueso--caja"></span>
+            <span class="sp-hueso sp-hueso--caja"></span>
+            <span class="sp-hueso sp-hueso--caja"></span>
+          </div>
+        </div>
+      </div></section>
+    </div>
   </div>
 
   <!-- =========================================================
@@ -1042,28 +1075,96 @@ async function pintarPanelSocio(sb, perfil) {
   });
 }
 
-if (window.APOLANA_PORTAL) APOLANA_PORTAL.listo(pintarPanelSocio);
+/* ============================================================
+   QUE ESTA PÁGINA NUNCA SE QUEDE «CARGANDO»
+   Antes, si la sesión tardaba en resolverse o el panel fallaba a
+   medias, se quedaba un «Cargando tu panel…» para siempre. Ahora:
+   dos segundos como mucho y siempre se enseña algo — el panel, la
+   cara pública de «hazte socio», o un error en ámbar con reintentar.
+   ============================================================ */
+(function () {
+  var resuelto = false;
+  var tempo = null;
 
-/* ------------------------------------------------------------
-   SIN SESIÓN: la cara pública.
-   La tarjeta de acceso que crea portal-auth se muda al hueco del
-   hero, para que quien llega de fuera lea primero de qué va ser
-   socio y tenga la entrada al lado, sin una pared de login.
-   ------------------------------------------------------------ */
-document.addEventListener('DOMContentLoaded', function () {
-  var hueco = document.getElementById('socio-acceso');
-  var login = document.querySelector('.pt-login');
-  if (hueco && login) hueco.appendChild(login);
+  function cerrar() { resuelto = true; if (tempo) { clearTimeout(tempo); tempo = null; } }
 
-  var publico = document.getElementById('socio-publico');
-  function mostrarPublico() { if (publico) publico.style.display = ''; }
+  function mostrarPublico() {
+    cerrar();
+    var p = document.getElementById('portal-contenido');
+    var u = document.getElementById('socio-publico');
+    if (p) p.style.display = 'none';
+    if (u) u.style.display = '';
+  }
 
-  var sb = window.APOLANA_DB;
-  if (!sb || !sb.auth) { mostrarPublico(); return; }
-  sb.auth.getSession().then(function (s) {
-    if (!s || !s.data || !s.data.session) mostrarPublico();
-  }).catch(mostrarPublico);
-});
+  function mostrarFallo(reintentar) {
+    cerrar();
+    var panel = document.getElementById('sp-panel');
+    var cont = document.getElementById('portal-contenido');
+    if (!panel) { mostrarPublico(); return; }
+    if (cont) cont.style.display = '';
+    panel.innerHTML = '<section class="seccion"><div class="contenedor"><div class="sp-fallo">' +
+      '<b>No hemos podido cargar tu panel</b>' +
+      '<p>Puede ser tu conexión. Vuelve a intentarlo o mira mientras tanto la información del club.</p>' +
+      '<span class="acc"><button type="button">Volver a intentarlo</button>' +
+      '<a href="../">Ir al inicio</a></span></div></div></section>';
+    panel.querySelector('button').addEventListener('click', function () {
+      if (typeof reintentar === 'function') { location.reload(); }
+      else location.reload();
+    });
+  }
+
+  /* El panel de verdad. Si revienta a mitad, se ve el error, no un
+     cargador eterno. */
+  window.APOLANA_SOCIO_PANEL = async function (sb, perfil) {
+    try {
+      await pintarPanelSocio(sb, perfil);
+      cerrar();
+      var u = document.getElementById('socio-publico');
+      if (u) u.style.display = 'none';
+    } catch (e) {
+      console.warn('[Apolana] panel del socio:', e);
+      mostrarFallo();
+    }
+  };
+  if (window.APOLANA_PORTAL) APOLANA_PORTAL.listo(window.APOLANA_SOCIO_PANEL);
+
+  /* ------------------------------------------------------------
+     SIN SESIÓN: la cara pública.
+     La tarjeta de acceso que crea portal-auth se muda al hueco del
+     hero, para que quien llega de fuera lea primero de qué va ser
+     socio y tenga la entrada al lado, sin una pared de login.
+     ------------------------------------------------------------ */
+  document.addEventListener('DOMContentLoaded', function () {
+    var hueco = document.getElementById('socio-acceso');
+    var login = document.querySelector('.pt-login');
+    if (hueco && login) hueco.appendChild(login);
+
+    /* El vigilante: a los 2 s, si nadie ha resuelto, manda la cara
+       pública. Quien llega de fuera —que es la mayoría— nunca ve un
+       cargador; y si de verdad había sesión, el panel se pinta encima
+       en cuanto llegue. */
+    tempo = setTimeout(function () { if (!resuelto) mostrarPublico(); }, 2000);
+
+    var sb = window.APOLANA_DB;
+    if (!sb || !sb.auth) { mostrarPublico(); return; }
+    sb.auth.getSession().then(function (s) {
+      if (!s || !s.data || !s.data.session) mostrarPublico();
+    }).catch(function () { mostrarPublico(); });
+  });
+
+  /* Si la tarjeta de acceso aparece más tarde (portal-auth la crea al
+     confirmar que no hay sesión), se muda igualmente a su hueco. */
+  document.addEventListener('DOMContentLoaded', function () {
+    var hueco = document.getElementById('socio-acceso');
+    if (!hueco || hueco.querySelector('.pt-login')) return;
+    var intentos = 0;
+    var t = setInterval(function () {
+      var login = document.querySelector('.pt-login');
+      if (login && login.parentNode !== hueco) { hueco.appendChild(login); clearInterval(t); }
+      if (++intentos > 20) clearInterval(t);
+    }, 150);
+  });
+})();
 </script>
 
 </body>
