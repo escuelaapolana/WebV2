@@ -9,6 +9,12 @@
    ============================================================ */
 (function () {
   var _cb = null;
+
+  /* Pantallas del panel que son herramienta de campo y usa el equipo
+     técnico, no solo administración. Pasar lista es la primera: un
+     entrenador tiene que poder hacerlo desde el borde de la pista.
+     Todo lo demás del panel sigue siendo solo de administración. */
+  var DEL_EQUIPO = /\/admin\/campo\//;
   window.APOLANA_ADMIN = { listo: function (cb) { _cb = cb; } };
 
   function base() { return window.APOLANA_BASE || '../../'; }
@@ -106,10 +112,19 @@
       var admin = await sb.rpc('es_admin');
       if (admin.error) { mostrarLogin('No se pudo comprobar tu acceso. Inténtalo de nuevo.'); return; }
       if (!admin.data) {
-        /* Hay sesión pero no es admin (p. ej. un entrenador que acabó en una
-           página de /admin/ cacheada en la app): al portal, que es su zona. */
-        location.replace(base() + 'portal/');
-        return;
+        /* No es administración. Aun así hay pantallas del panel que son
+           herramienta de campo y las tiene que usar el equipo técnico:
+           pasar lista es la primera. Lo que ve dentro lo deciden las
+           reglas de acceso de la base de datos, que solo le enseñan sus
+           atletas — esto no abre datos, solo abre la puerta. */
+        var staff = await sb.rpc('es_staff');
+        if (staff.error || !staff.data || !DEL_EQUIPO.test(location.pathname)) {
+          /* Ni administración ni equipo técnico en una pantalla suya
+             (p. ej. un atleta que llega a una página de /admin/ que se
+             quedó guardada en la app): al portal, que es su zona. */
+          location.replace(base() + 'portal/');
+          return;
+        }
       }
       login.style.display = 'none';
       barra(s.data.session.user.email);
