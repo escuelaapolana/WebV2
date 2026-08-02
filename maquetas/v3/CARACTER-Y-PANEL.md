@@ -129,7 +129,7 @@ Tipos de aviso, en este orden:
   donde volver a buscar: las cinco cosas más repetidas se resuelven desde la
   propia fila
 - **«Solo lo mío»** filtra por papel y recuerda la elección. Isabel no tiene que
-  ver lesiones; Adrián no tiene que ver recibos devueltos
+  ver lesiones; Adriana no tiene que ver recibos devueltos
 - **Los contadores del menú lateral van en ámbar** `#E0A33C` sobre navy. En azul
   se confundirían con lo pulsable; en rojo parecería que algo va mal, y no va
   mal: hay trabajo

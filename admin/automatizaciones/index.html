@@ -46,6 +46,9 @@
            border-radius:999px; border:1px solid var(--linea-borde); background:#fff; color: var(--texto); white-space:nowrap; }
   .bmini:hover { border-color: var(--azul); color: var(--azul-oscuro); }
   .bmini[disabled] { opacity:.45; cursor:default; }
+  /* Con un aviso de la red de seguridad el botón azul se apaga: se ve que
+     está ahí, y se ve que ahora no se puede pulsar. */
+  .btn--primario[disabled] { opacity:.45; cursor:not-allowed; }
   .btexto { cursor:pointer; border:0; background:none; color: var(--azul-oscuro); font-family: var(--fuente-texto);
             font-size:15px; font-weight:600; min-height:44px; padding:10px 4px; }
   .oculto { display:none !important; }
@@ -197,6 +200,15 @@
         En ámbar = alguien la cambió a mano. En verde = esa sesión la puso una persona, no el sistema.</p>
     </div>
 
+    <!-- ============ 2b · DÍAS CON DOS ENTRENOS ============ -->
+    <div class="panel">
+      <h2>Días con dos entrenos<span class="adm-cuenta-tit" id="dup-n"></span></h2>
+      <p class="sub">Días en que un grupo tiene más entrenos de los que dice su horario. El sistema se niega
+        a publicar si el duplicado fuese suyo; los que vienen de la planificación a mano hay que arreglarlos
+        en el calendario.</p>
+      <div class="lista" id="duplicados"></div>
+    </div>
+
     <!-- ============ 3 · FESTIVOS Y CIERRES ============ -->
     <div class="panel">
       <h2>Festivos y cierres de instalación</h2>
@@ -291,6 +303,7 @@
   var sb = null;
   var RESUMEN = null, HORARIOS = [], GRUPOS = {}, EXCEPCIONES = [], PROPUESTAS = [], PERSONAS = [];
   var LUGARES = [];
+  var AVISO = null;   /* lo que dice la red de seguridad; si hay algo, no se publica */
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
@@ -370,26 +383,67 @@
     if (!s) { caja.innerHTML = ADM.error('No hemos podido calcularlo.', simular); return; }
     if (!RESUMEN || !RESUMEN.activo) {
       caja.innerHTML = '<span style="color:#8A5307;">Está parado: no publicaría nada.</span>';
+      AVISO = null; pintarBotonPublicar();
       return;
     }
+
+    // Si la red de seguridad ve que algo quedaría duplicado, no se publica.
+    AVISO = s.aviso || null;
+    if (AVISO) {
+      caja.innerHTML = '<span style="color:#8A5307;font-weight:600;">No se puede publicar todavía</span><br>' +
+        '<span style="font-size:14px;color:#8A5307;">' + esc(AVISO) + '</span>';
+      pintarBotonPublicar();
+      return;
+    }
+
     var partes = [];
     if (s.creadas)      partes.push('<b>' + plural(s.creadas, 'sesión nueva', 'sesiones nuevas') + '</b>');
     if (s.actualizadas) partes.push(plural(s.actualizadas, 'sesión al día', 'sesiones al día'));
     if (s.borradas)     partes.push(plural(s.borradas, 'sesión que sobra', 'sesiones que sobran') + ' se quitarían');
+
+    // Lo que NO se toca, dicho con su número: si sale 0 y hay trabajo hecho
+    // a mano, es que algo no va bien y hay que poder verlo.
+    var salta = [];
+    if (s.saltadas_persona)  salta.push(plural(s.saltadas_persona, 'día ya tiene sesión de una persona', 'días ya tienen sesión de una persona'));
+    if (s.saltadas_festivo)  salta.push(plural(s.saltadas_festivo, 'día es festivo o cierre', 'días son festivo o cierre'));
+    if (s.saltadas_quitadas) salta.push(plural(s.saltadas_quitadas, 'día se quitó a mano', 'días se quitaron a mano'));
+
     if (!partes.length) {
       caja.innerHTML = 'Todo está ya publicado hasta el ' + esc(fCorta(s.hasta)) + '. No haría falta tocar nada.';
     } else {
       caja.innerHTML = partes.join(' · ') +
-        '<br><span style="font-size:14px;color:var(--texto-suave);">de aquí al ' + esc(fCorta(s.hasta)) + '</span>' +
-        (s.intactas ? '<br><span style="font-size:14px;color:var(--texto-suave);">' +
-          plural(s.intactas, 'sesión cambiada a mano se respeta', 'sesiones cambiadas a mano se respetan') + '</span>' : '');
+        '<br><span style="font-size:14px;color:var(--texto-suave);">de aquí al ' + esc(fCorta(s.hasta)) + '</span>';
     }
+    if (salta.length) {
+      caja.innerHTML += '<br><span style="font-size:14px;color:var(--texto-suave);">Se respetan: ' +
+        esc(salta.join(' · ')) + '</span>';
+    }
+    if (s.intactas) {
+      caja.innerHTML += '<br><span style="font-size:14px;color:var(--texto-suave);">' +
+        plural(s.intactas, 'sesión cambiada a mano se respeta', 'sesiones cambiadas a mano se respetan') + '</span>';
+    }
+    pintarBotonPublicar();
+  }
+
+  /* Con un aviso de la red de seguridad, el botón azul no se puede pulsar:
+     más vale no poder que publicar algo duplicado en el calendario real. */
+  function pintarBotonPublicar() {
+    var b = $('btn-publicar');
+    if (!b) return;
+    b.disabled = !!AVISO;
+    b.title = AVISO || '';
   }
 
   async function publicar() {
     var s = await sb.rpc('generar_entrenos_fijos', { p_simular: true });
     if (s.error) { apoToast('No hemos podido calcularlo: ' + s.error.message, 'error', { reintentar: publicar }); return; }
     var d = (s.data && s.data[0]) || { creadas: 0, actualizadas: 0, borradas: 0 };
+    if (d.aviso) {
+      AVISO = d.aviso; pintarBotonPublicar();
+      apoToast(d.aviso, 'error');
+      cargarDuplicados();
+      return;
+    }
     if (!d.creadas && !d.actualizadas && !d.borradas) {
       apoToast('Ya estaba todo publicado. No hacía falta tocar nada.', 'ok');
       return;
@@ -398,6 +452,8 @@
       ' en el calendario del club, de aquí al ' + fCorta(d.hasta) + '.' +
       (d.actualizadas ? ' Se ponen al día ' + plural(d.actualizadas, 'sesión', 'sesiones') + '.' : '') +
       (d.borradas ? ' Se quitan ' + plural(d.borradas, 'sesión que ya no toca', 'sesiones que ya no tocan') + '.' : '') +
+      (d.saltadas_persona ? ' Se respetan ' + plural(d.saltadas_persona, 'día que ya tiene', 'días que ya tienen') +
+        ' sesión puesta por una persona.' : '') +
       ' Nada de lo que haya hecho una persona se toca.';
     if (!await apoConfirm({ titulo: 'Publicar los entrenos fijos', texto: texto, confirmar: 'Publicar' })) return;
 
@@ -471,6 +527,41 @@
           return '<span class="cosa cosa--' + c.estado + '" title="' + esc(ROTULO[c.estado] || '') + '">' +
             '<span class="h">' + esc(hCorta(c.hora)) + '</span>' + esc(c.grupo) + '</span>';
         }).join('') + '</div></div>';
+    }).join('');
+  }
+
+  /* ---------------- 2b · días con dos entrenos ----------------
+     Un grupo puede entrenar dos veces el mismo día si su horario tiene dos
+     franjas ese día: eso NO es un duplicado y aquí no sale. Sale solo lo que
+     pasa del listón que marca su propio horario. */
+  async function cargarDuplicados() {
+    var caja = $('duplicados');
+    caja.innerHTML = ADM.esqueleto(2);
+    var r = await sb.rpc('entrenos_duplicados', { p_desde: hoyIso(), p_hasta: masDias(41) });
+    if (r.error) { caja.innerHTML = ADM.error(r.error.message, cargarDuplicados); return; }
+    var filas = r.data || [];
+    $('dup-n').textContent = filas.length ? String(filas.length) : '';
+    if (!filas.length) {
+      caja.innerHTML = ADM.vacio(
+        'Ningún grupo tiene entrenos de más',
+        'Cada grupo tiene los entrenos que dice su horario, ni uno más. Es como tiene que estar.',
+        '', '<path d="M5 12.5l4.5 4.5L19 7.5"/>');
+      return;
+    }
+    caja.innerHTML = filas.map(function (f) {
+      var deQuien = f.automaticas === 0
+        ? 'las puso una persona · no es cosa del sistema'
+        : (f.de_personas === 0 ? 'las puso el sistema' : 'una del sistema y otra de una persona');
+      return '<div class="fila">' +
+        '<span class="cuerpo">' +
+          '<span class="t1">' + esc(f.grupo) + ' · ' + esc(fLarga(f.fecha)) + '</span>' +
+          '<span class="t2">' + esc(f.detalle || '') + '</span>' +
+          '<span class="t2">' + esc(deQuien) + '</span>' +
+        '</span>' +
+        '<span class="dato">' + f.cuantas + ' de ' + f.deberia + '</span>' +
+        '<span class="pill ' + (f.automaticas ? 'pill-ambar' : 'pill-gris') + '">' +
+          (f.automaticas ? 'del sistema' : 'a mano') + '</span>' +
+      '</div>';
     }).join('');
   }
 
@@ -735,7 +826,8 @@
   /* ---------------- arranque y clics ---------------- */
   async function cargarTodo() {
     var ok = await cargarResumen();
-    await Promise.all([cargarHorarios(), cargarExcepciones(), cargarLiga(), cargarPersonas(), cargarPrevistos()]);
+    await Promise.all([cargarHorarios(), cargarExcepciones(), cargarLiga(), cargarPersonas(),
+                       cargarPrevistos(), cargarDuplicados()]);
     if (ok) simular();
   }
 
@@ -757,7 +849,9 @@
   APOLANA_ADMIN.listo(function (cliente) {
     sb = cliente;
     $('btn-publicar').addEventListener('click', publicar);
-    $('btn-recalcular').addEventListener('click', function () { cargarResumen().then(simular); cargarPrevistos(); });
+    $('btn-recalcular').addEventListener('click', function () {
+      cargarResumen().then(simular); cargarPrevistos(); cargarDuplicados();
+    });
     $('btn-interruptor').addEventListener('click', cambiarInterruptor);
     $('btn-releer').addEventListener('click', releerHorarios);
     $('semanas').addEventListener('change', cambiarSemanas);

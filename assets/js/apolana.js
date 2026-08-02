@@ -231,8 +231,16 @@ function pintarColaboradores(lista) {
     /* Aprietes progresivos antes de rendirse al menú de hamburguesa. */
     '@media (max-width:1300px){.cabecera .menu{gap:15px;font-size:14.5px}.cabecera .marca .sub{display:none}}',
     '@media (max-width:1120px){.cabecera .menu{gap:11px;font-size:14px}.cab-whatsapp span{display:none}.cab-whatsapp{padding:0 4px}}',
-    /* En móvil WhatsApp se queda dentro del menú, no flotando arriba. */
-    '@media (max-width:950px){.cabecera-acciones .cab-whatsapp{display:none}}',
+    /* En móvil WhatsApp se queda dentro del menú, no flotando arriba.
+       Y las acciones se van a la derecha del todo: sin el menú horizontal
+       en medio se quedaban pegadas al logotipo, con un hueco a la derecha. */
+    '@media (max-width:950px){.cabecera-acciones .cab-whatsapp{display:none}' +
+      '.cabecera-acciones{margin-left:auto}}',
+    /* En el móvil la cabecera va compacta: escudo a 28 px y «Apolana». Cuanto
+       menos ocupe aquí arriba, más pantalla queda para lo que importa. */
+    '@media (max-width:700px){.cabecera .contenedor{gap:10px;padding-block:10px}' +
+      '.cabecera .marca img{height:28px}.cabecera .marca{gap:9px}' +
+      '.cabecera .marca .nombre{font-size:19px}.cabecera-acciones{gap:8px}}',
 
     /* El menú activo se marca con un subrayado de 2 px, no solo con color:
        un cambio de tono sobre crema no se ve a pie de pista. */

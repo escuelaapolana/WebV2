@@ -98,6 +98,45 @@ sistema: la automatización nunca pisa el trabajo de una persona.
 Dicho al revés: el sistema solo toca las sesiones que ha puesto él mismo y que
 nadie ha tocado después.
 
+### Por qué a veces publica menos de las que esperas
+
+Es lo normal, y es buena señal. En la semana del 2 al 9 de agosto, por ejemplo,
+hay 64 entrenos de horario pero solo se publican 24: los otros 40 se saltan
+porque **esos días ya tienen sesión puesta por una persona** (planificación de
+los entrenadores). El sistema no se mete.
+
+Debajo de «Qué pasaría si lo publicas ahora» te lo dice con su número: *«Se
+respetan: 42 días ya tienen sesión de una persona»*. Si ese número te sale a
+cero y sabes que hay trabajo hecho a mano, entonces sí hay algo raro.
+
+### La red de seguridad
+
+Antes de escribir una sola línea, el sistema calcula cómo quedaría el calendario
+y comprueba dos cosas:
+
+- que **ninguna sesión suya caiga el mismo día** que una puesta por una persona;
+- que **ningún grupo acabe con más entrenos un día** de los que dice su horario.
+
+Si algo no cuadra, **no publica nada** y te lo dice: el botón azul se apaga y
+sale el aviso en ámbar. No hay forma de que duplique el calendario, ni aunque
+nadie esté mirando.
+
+Un grupo que entrena dos veces el mismo día (mañana y tarde) **no es un
+duplicado**: el listón es su propio horario, así que si su horario dice dos, dos
+se publican.
+
+### Días con dos entrenos
+
+Hay una sección con ese nombre que lista los días en que un grupo tiene más
+entrenos de los que le tocan, y dice de quién son:
+
+- **«del sistema»** — no debería pasar nunca; si sale, el sistema ya se habrá
+  negado a publicar.
+- **«a mano»** — dos sesiones que puso una persona, normalmente porque dos
+  microciclos se solapan. Eso se arregla en la planificación, no aquí. Hoy hay
+  cuatro días así en *Velocidad · Sub-20*, y no son cosa de la automatización:
+  estaban antes.
+
 ---
 
 ## 4 · Cuando algo no se hace todo el año
