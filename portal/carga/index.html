@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/descansos.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
 <style>
   body { background: var(--crema-media); }
@@ -210,8 +211,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ================================================================== */
   var DUR_ESTIMADA = { pista:90, natacion:75, gym:60, continuo:60, activacion:40, competicion:120, descanso:0 };
   var DUR_POR_DEFECTO = 75;
+  var Dsc = window.APOLANA_DESCANSOS || null;
+
+  /* Tres fuentes, por orden de fiabilidad:
+       1) la duración que escribió el entrenador — es un dato
+       2) la que sale de sumar el trabajo y las recuperaciones de la sesión,
+          y SOLO cuando el cálculo sale completo (si falta un ritmo o un
+          tiempo, el módulo devuelve null y aquí no se usa)
+       3) la tabla fija por tipo de sesión, la de siempre
+     Las dos últimas siguen contando como estimadas: en pantalla se dice. */
   function duracionDe(ses){
     if (ses && ses.duracion_min > 0) return { min: ses.duracion_min, estimada:false };
+    if (Dsc && ses && ses.bloques && ses.bloques.length) {
+      var r = Dsc.estimarSesion(ses, {});
+      // con bloques por calle cada nadador hace un entreno distinto: sin saber
+      // la calle no se puede dar un número, y se deja la tabla de siempre
+      if (r.completo && !r.supuesto && !r.tiene_calles && r.minutos > 0) return { min: r.minutos, estimada:true, calculada:true };
+    }
     var t = ses && ses.tipo ? ses.tipo : '';
     var m = (DUR_ESTIMADA[t] != null) ? DUR_ESTIMADA[t] : DUR_POR_DEFECTO;
     return { min: m, estimada:true };
@@ -340,8 +356,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     molLista.sort(function(a,b){ return b.veces - a.veces; });
     molSueltas.sort(function(a,b){ return a.fecha<b.fecha?1:-1; });
 
-    var estimadas = 0;
-    for (i=0;i<regs.length;i++) if (regs[i].estimada) estimadas++;
+    var estimadas = 0, calculadas = 0;
+    for (i=0;i<regs.length;i++){ if (regs[i].estimada) estimadas++; if (regs[i].calculada) calculadas++; }
 
     var ult = dias.length-1;
     var cargaSem = semanas.length ? semanas[semanas.length-1].carga : 0;
@@ -361,7 +377,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       cumpl28: esperadas28 ? Math.round(hechas28*100/esperadas28) : null,
       esperadas28: esperadas28,
       cumpl: esperadas.length ? Math.round((esperadas.length-pendientes.length)*100/esperadas.length) : null,
-      duracionesEstimadas: estimadas, totalRegs: regs.length
+      duracionesEstimadas: estimadas, duracionesCalculadas: calculadas, totalRegs: regs.length
     };
   }
 
@@ -631,10 +647,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function notaEstimacion(m){
     if (!m.duracionesEstimadas) return '';
-    return '<p class="pie-tarjeta"><b>Duración estimada.</b> ' + m.duracionesEstimadas + ' de las ' + m.totalRegs +
-           ' sesiones apuntadas no tienen la duración escrita, así que se ha estimado por el tipo de sesión ' +
-           '(pista 90 min, natación 75, gimnasio 60, rodaje 60, activación 40, competición 120). En cuanto el ' +
-           'entrenador escriba la duración real, los números se afinan solos.</p>';
+    var calc = m.duracionesCalculadas || 0;
+    var porTabla = m.duracionesEstimadas - calc;
+    var t = '<p class="pie-tarjeta"><b>Duración estimada.</b> ' + m.duracionesEstimadas + ' de las ' + m.totalRegs +
+            ' sesiones apuntadas no tienen la duración escrita. ';
+    if (calc) {
+      t += 'En ' + calc + ' se ha podido calcular sumando el trabajo y las recuperaciones de la propia sesión. ';
+    }
+    if (porTabla) {
+      t += 'En ' + porTabla + ' no había datos suficientes para calcularla y se ha estimado por el tipo de sesión ' +
+           '(pista 90 min, natación 75, gimnasio 60, rodaje 60, activación 40, competición 120). ';
+    }
+    return t + 'En cuanto el entrenador escriba la duración real, los números se afinan solos.</p>';
   }
 
   /* ==================================================================
@@ -651,7 +675,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         sesion_id: r.sesion_id, fecha: s.fecha, tipo: s.tipo || '', titulo: s.titulo || '',
         rpe: rpe, sensacion: num(r.sensacion_general), sueno: num(r.horas_sueno), peso: num(r.peso_kg),
         molestias: r.molestias || '', notas: r.notas_atleta || '',
-        dur: d.min, estimada: d.estimada,
+        dur: d.min, estimada: d.estimada, calculada: !!d.calculada,
         carga: (rpe != null && d.min > 0) ? rpe * d.min : 0
       });
     }
@@ -660,7 +684,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   var CAMPOS_REG = 'sesion_id,rpe,sensacion_general,horas_sueno,peso_kg,molestias,notas_atleta,' +
-                   'sesiones!inner(id,fecha,tipo,titulo,duracion_min,grupo_id)';
+                   'sesiones!inner(id,fecha,tipo,titulo,duracion_min,grupo_id,bloques)';
 
   async function registrosDe(idsAtletas){
     var r = await sb.from('registros_sesion')
@@ -674,7 +698,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   async function sesionesPublicadas(gruposIds){
     var q = sb.from('sesiones')
-      .select('id,fecha,tipo,titulo,duracion_min,grupo_id,atletas_ids')
+      .select('id,fecha,tipo,titulo,duracion_min,grupo_id,atletas_ids,bloques')
       .eq('publicada', true)
       .gte('fecha', DESDE).lte('fecha', HOY);
     if (gruposIds && gruposIds.length) q = q.in('grupo_id', gruposIds);

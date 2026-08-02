@@ -240,6 +240,22 @@ document.addEventListener('DOMContentLoaded', async function () {
   // Sin datos o con error: se queda la página tal cual, sin sección vacía.
   if (r.error || !r.data || !r.data.length) return;
 
+  /* Los documentos reservados a socios no guardan enlace: guardan la ruta
+     dentro del cubo cerrado `documentos-socios`, y el enlace se pide al pulsar
+     (dura un minuto). Sin sesión no se enseña ni su nombre: esta página la ve
+     cualquiera. Las reglas del servidor ya los filtran; el filtro de aquí es
+     el segundo cerrojo. */
+  var CUBO_SOCIOS = 'documentos-socios';
+  function esReservado(v) { return !!v && !/^https?:\/\//i.test(v); }
+
+  var sesion = null;
+  try {
+    var s0 = await window.APOLANA_DB.auth.getSession();
+    sesion = s0 && s0.data && s0.data.session;
+  } catch (e) {}
+  r.data = r.data.filter(function (d) { return d.visibilidad !== 'socios' || !!sesion; });
+  if (!r.data.length) return;
+
   function esc(s){ var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
   function tam(bytes) {
@@ -289,13 +305,15 @@ document.addEventListener('DOMContentLoaded', async function () {
       var t = tam(d.tamano_bytes); if (t) meta.push(t);
       if (d.descripcion) meta.push(d.descripcion);
       var nombre = (d.nombre_archivo || d.titulo || 'documento').replace(/"/g, '');
+      var boton = esReservado(d.archivo_url)
+        ? '<a class="btn-descargar" href="#" data-reservado="' + esc(d.archivo_url) + '">Descargar</a>'
+        : '<a class="btn-descargar" href="' + esc(d.archivo_url) + '" download="' + esc(nombre) + '" target="_blank" rel="noopener">Descargar</a>';
       return '<div class="doc">' +
         '<div class="doc-info">' +
           '<span class="doc-nombre">' + esc(d.titulo) + '</span>' +
           (meta.length ? '<span class="doc-meta">' + esc(meta.join(' · ')) + '</span>' : '') +
           (d.visibilidad === 'socios' ? '<span class="doc-etiqueta">Solo socios</span>' : '') +
-        '</div>' +
-        '<a class="btn-descargar" href="' + esc(d.archivo_url) + '" download="' + esc(nombre) + '" target="_blank" rel="noopener">Descargar</a>' +
+        '</div>' + boton +
       '</div>';
     }).join('');
     return '<div class="docs-grupo"><h3>' + esc(g.categoria) + '</h3><div class="docs">' + tarjetas + '</div></div>';
@@ -310,6 +328,26 @@ document.addEventListener('DOMContentLoaded', async function () {
   var haySocios = r.data.some(function (d) { return d.visibilidad === 'socios'; });
   var aviso = document.getElementById('docs-aviso-socios');
   if (aviso && !haySocios) aviso.hidden = false;
+
+  /* Un documento reservado no tiene enlace fijo: se pide uno temporal al
+     pulsar. La pestaña se abre dentro de la pulsación, si no el navegador la
+     toma por un anuncio. */
+  lista.addEventListener('click', async function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[data-reservado]') : null;
+    if (!a) return;
+    ev.preventDefault();
+    var texto = a.textContent;
+    var v = window.open('', '_blank');
+    var s = await window.APOLANA_DB.storage.from(CUBO_SOCIOS)
+      .createSignedUrl(a.getAttribute('data-reservado'), 60);
+    if (!s || s.error || !s.data || !s.data.signedUrl) {
+      if (v) v.close();
+      a.textContent = 'No se ha podido abrir';
+      setTimeout(function () { a.textContent = texto; }, 3000);
+      return;
+    }
+    if (v) v.location.href = s.data.signedUrl; else window.location.href = s.data.signedUrl;
+  });
 });
 </script>
 

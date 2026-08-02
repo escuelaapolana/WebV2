@@ -216,6 +216,7 @@ body.pista-viva .adm-top { background: #22303D; }
 .f-cifra b { font-family: var(--fuente-dato); font-size: 30px; font-weight: 700; color: var(--f-txt); }
 .f-cifra span { font-size: 15px; color: var(--f-verde-txt); }
 .f-cifra span.mal { color: var(--f-ambar-txt); }
+.f-cifra span.gris { color: var(--f-sub); }
 .f-ambar { background: var(--f-ambar-fondo); border: 1px solid var(--f-ambar-borde); border-radius: 12px;
   padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; }
 .f-ambar .t { font-size: 15px; font-weight: 600; color: var(--f-ambar-txt); }
@@ -383,6 +384,18 @@ window.APOLANA_ADMIN.listo(function (sb) {
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
   function norm(s) { return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
   function nombreDe(a) { return [a.nombre, a.apellidos].filter(Boolean).join(' '); }
+  /* En la lista, a 375 px, «Laura Espí» se lee de un vistazo y «Laura Espí
+     Doménech» se corta a la mitad. Se enseña el nombre y el primer apellido,
+     salvo que en ese grupo haya dos que se llamen igual: entonces, el
+     nombre entero. La ficha y el buscador siempre lo dicen completo. */
+  function nombreCorto(a) {
+    var uno = [a.nombre, (a.apellidos || '').split(' ')[0]].filter(Boolean).join(' ');
+    var repes = ATLETAS.filter(function (x) {
+      return x.grupo_id === a.grupo_id && x.id !== a.id &&
+        [x.nombre, (x.apellidos || '').split(' ')[0]].filter(Boolean).join(' ') === uno;
+    });
+    return repes.length ? nombreDe(a) : uno;
+  }
   function iniciales(a) { return ((a.nombre || '?')[0] + (a.apellidos ? a.apellidos[0] : '')).toUpperCase(); }
   function anoNac(a) { return a.fecha_nacimiento ? String(a.fecha_nacimiento).slice(0, 4) : ''; }
   function ella(a) { return a && a.sexo === 'mujer'; }
@@ -743,7 +756,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     return '<div class="at ' + clase + '" data-fila="' + esc(a.id) + '">' +
       '<button type="button" class="at-tog" data-girar="' + esc(a.id) + '" aria-label="' + esc(nombreDe(a) + ': ' + dice + '. Tocar para cambiar') + '">' +
         '<span class="at-cir">' + cir + '</span>' +
-        '<span class="at-txt"><span class="at-nom">' + esc(nombreDe(a)) + '</span>' +
+        '<span class="at-txt"><span class="at-nom">' + esc(nombreCorto(a)) + '</span>' +
           (sub ? '<span class="at-sub">' + esc(sub) + '</span>' : '') + '</span>' +
         '<span class="at-meta">' + esc(meta) + '</span>' +
       '</button>' +
@@ -853,29 +866,43 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (restoHoy.length) {
       h += '<div class="g-plegados"><span class="g-et">' +
         (abierto ? 'También entrenan hoy' : 'Entrenan hoy') + '</span>' +
-        restoHoy.map(grupoPlegadoHTML).join('') + '</div>';
+        restoHoy.map(function (g) { return grupoPlegadoHTML(g, true); }).join('') + '</div>';
     }
     if (!abierto && !restoHoy.length) {
       h += '<p class="p-vacio">Hoy no tiene entreno ningún grupo con horario fijo. Abre abajo el que necesites.</p>';
     }
     if (otros.length) {
       h += '<div class="g-plegados"><span class="g-et">El resto de grupos</span>' +
-        otros.map(grupoPlegadoHTML).join('') + '</div>';
+        otros.map(function (g) { return grupoPlegadoHTML(g, false); }).join('') + '</div>';
     }
     return h;
   }
 
-  function grupoPlegadoHTML(g) {
+  /* Qué días entrena un grupo, para los que hoy no tocan: «lun · mié · vie». */
+  function diasDeGrupo(gid) {
+    var d = {};
+    horariosDe(gid).forEach(function (h) { d[h.dia_semana] = true; });
+    var o = Object.keys(d).map(Number).sort(function (a, b) { return a - b; });
+    return o.map(function (n) { return DIAS_CORTO[n === 7 ? 0 : n]; }).join(' · ');
+  }
+
+  function grupoPlegadoHTML(g, esHoy) {
     var dow = dowDe(LST.fecha || fechaHoy());
     var hora = horaDelDia(g.id, dow);
     var c = cuentaGrupo(g.id);
-    var estado = c.total === 0 ? 'sin atletas'
-               : c.marcados === 0 ? 'sin empezar'
-               : c.marcados < c.total ? c.marcados + ' marcados de ' + c.total
-               : 'lista pasada';
+    var estado;
+    if (!esHoy) {
+      /* Hoy no le toca: decir cuándo entrena es más útil que «sin empezar». */
+      estado = c.total === 0 ? 'sin atletas' : (diasDeGrupo(g.id) || 'sin horario fijo');
+    } else {
+      estado = c.total === 0 ? 'sin atletas'
+             : c.marcados === 0 ? 'sin empezar'
+             : c.marcados < c.total ? c.marcados + ' marcados de ' + c.total
+             : 'lista pasada';
+    }
     return '<button type="button" class="g-pleg" data-grupo="' + esc(g.id) + '">' +
       '<span class="n">' + esc(g.nombre) + '</span>' +
-      '<span class="e">' + (hora ? esc(hora) + ' · ' : '') + esc(estado) + '</span>' +
+      '<span class="e">' + (esHoy && hora ? esc(hora) + ' · ' : '') + esc(estado) + '</span>' +
       '<span class="v"></span></button>';
   }
 
@@ -954,9 +981,10 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (v !== undefined) h += '<button type="button" class="f-quitar" data-marcar="quitar">Quitar la marca</button>';
 
     var malMes = m.dias >= 4 && m.vino * 2 < m.dias;
+    var claseMes = !m.dias ? 'gris' : malMes ? 'mal' : '';
     h += '<div class="f-bloque"><span class="f-et">Asistencia este mes</span>' +
       '<div class="f-cifra"><b>' + m.vino + ' / ' + m.dias + '</b>' +
-      '<span class="' + (malMes ? 'mal' : '') + '">' + esc(frasePorFaltas(m)) + '</span></div></div>';
+      '<span class="' + claseMes + '">' + esc(frasePorFaltas(m)) + '</span></div></div>';
 
     /* Bloque ámbar si la prueba se acaba: es una decisión que hay que tomar
        con la familia y aquí lleva sus dos botones. */
@@ -989,7 +1017,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
   function correoFamilia(a) { return a.email_tutor || a.email || ''; }
   function botonFamiliaHTML(a, clase) {
     var c = correoFamilia(a);
-    if (!c) return '<span class="b-fino" style="opacity:.6">Sin correo de la familia</span>';
+    if (!c) return '<span class="f-nota-quien">No tenemos el correo de la familia. Se apunta en Personas → Atletas.</span>';
     var asunto = 'Club Atletismo Apolana · ' + nombreDe(a);
     return '<a class="' + clase + '" href="mailto:' + esc(c) + '?subject=' + encodeURIComponent(asunto) + '">Escribir a la familia</a>';
   }

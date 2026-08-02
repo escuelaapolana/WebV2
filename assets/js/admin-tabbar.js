@@ -84,6 +84,14 @@
       '.at-hoja .cerrar{flex:0 0 auto;min-height:44px;min-width:44px;border:0;background:none;cursor:pointer;' +
         'font-size:15px;font-family:inherit;color:var(--texto-suave,#5E5849);padding:0 6px;' +
         '-webkit-tap-highlight-color:transparent}' +
+      /* Buscador: 32 pantallas son demasiadas para encontrar una a ojo. */
+      '.at-hoja .buscar{flex:0 0 auto;padding:10px 18px 4px}' +
+      '.at-hoja .buscar input{box-sizing:border-box;width:100%;min-height:44px;padding:11px 13px;' +
+        'border:1px solid var(--linea-borde,#D4CBB9);border-radius:10px;background:#fff;' +
+        'font-family:inherit;font-size:16px;color:var(--navy,#2E4256)}' +
+      '.at-hoja .buscar input:focus{outline:2px solid var(--azul,#3B85C0);border-color:var(--azul,#3B85C0)}' +
+      '.at-hoja .sin-nada{margin:18px 2px;font-size:15px;line-height:1.55;color:var(--texto-suave,#6E6656)}' +
+      '.at-hoja .oculto-busca{display:none !important}' +
       '.at-hoja .cuerpo{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
         'padding:6px 18px calc(20px + env(safe-area-inset-bottom))}' +
       '.at-hoja .grupo{margin-top:14px}' +
@@ -164,7 +172,7 @@
         { txt: 'Mapa de contenido', url: r + 'mapa/' }
       ] },
       { t: 'Club', enlaces: [
-        { txt: 'Buzón', url: r + '#buzon' },
+        { txt: 'Buzón', url: r + 'buzon/' },
         { txt: 'Plantillas de email', url: r + 'plantillas/' },
         { txt: 'Récords', url: r + 'records/' },
         { txt: 'Palmarés', url: r + 'palmares/' }
@@ -217,7 +225,11 @@
     hoja.hidden = true;
 
     var html = '<div class="cab"><h2>Todo el panel</h2>' +
-               '<button type="button" class="cerrar">Cerrar</button></div><div class="cuerpo">';
+               '<button type="button" class="cerrar">Cerrar</button></div>' +
+               '<div class="buscar"><input type="search" id="at-buscar" autocomplete="off" ' +
+               'placeholder="Buscar una pantalla: cobros, avisos, fotos…" ' +
+               'aria-label="Buscar una pantalla del panel"></div>' +
+               '<div class="cuerpo">';
     bloques().forEach(function (b) {
       html += '<div class="grupo">';
       if (b.t) html += '<h3>' + esc(b.t) + '</h3>';
@@ -230,10 +242,12 @@
         if (e.url.indexOf('#') === -1 && carp === aqui) clases.push('aqui');
         html += '<a href="' + esc(e.url) + '"' +
                 (clases.length ? ' class="' + clases.join(' ') + '"' : '') +
+                ' data-busca="' + esc(palabras(e.txt, b.t)) + '"' +
                 '>' + esc(e.txt) + '</a>';
       });
       html += '</div></div>';
     });
+    html += '<p class="sin-nada oculto-busca">No hay ninguna pantalla con ese nombre. Prueba con una palabra suelta: cobros, grupos, fotos, avisos…</p>';
     html += '</div>';
     hoja.innerHTML = html;
 
@@ -242,6 +256,81 @@
 
     fondo.addEventListener('click', cerrar);
     hoja.querySelector('.cerrar').addEventListener('click', cerrar);
+
+    var campo = hoja.querySelector('#at-buscar');
+    campo.addEventListener('input', function () { filtrar(campo.value); });
+    /* Enter con una sola pantalla a la vista: se entra directamente. */
+    campo.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var vivos = hoja.querySelectorAll('.enlaces a:not(.oculto-busca)');
+      if (vivos.length === 1) { e.preventDefault(); vivos[0].click(); }
+    });
+  }
+
+  /* Cada pantalla se busca por su nombre y por como la llama la gente:
+     nadie escribe «avisos-push», escribe «notificaciones» o «avisar». */
+  var SINONIMOS = {
+    'avisos al móvil':      'notificaciones push avisar movil telefono alertas',
+    'avisos de portada':    'franja informativa banner portada web',
+    'cobros y recibos':     'dinero pagos recibos domiciliacion remesas banco impagados devueltos',
+    'tarifas':              'precios cuotas dinero',
+    'pagos con tarjeta':    'stripe tarjeta online dinero',
+    'pedidos de ropa':      'tienda equipacion camiseta ropa',
+    'atletas':              'personas fichas socios ninos alumnos',
+    'importar personas':    'altas csv excel importar',
+    'grupos':               'horarios entrenos secciones',
+    'usuarios y permisos':  'cuentas acceso contrasenas roles',
+    'en la pista':          'asistencia pasar lista campo entrenamiento',
+    'quién va a ir':        'confirmar asistencia carrera desplazamiento plazas autobus',
+    'calendario y eventos': 'agenda fechas eventos',
+    'competiciones':        'carreras pruebas inscripciones',
+    'liga apolana':         'liga clasificacion puntos',
+    'retos y medallas':     'juego rangos medallas logros',
+    'el cubo':              'fuerza bonos clases',
+    'batería de tests':     'pruebas fisicas tests marcas',
+    'catálogo de pruebas':  'pruebas distancias catalogo',
+    'estadísticas del club':'datos analisis metricas graficas',
+    'informes y datos':     'informes exportar datos pdf',
+    'histórico de la escuela':'historico temporadas pasadas',
+    'noticias':             'blog articulos web',
+    'tienda':               'ropa productos venta',
+    'páginas':              'web contenido paginas',
+    'textos de las páginas':'contenido textos web copys',
+    'fotos de la web':      'imagenes fotos web',
+    'biblioteca de fotos':  'imagenes fotos galeria mediateca',
+    'colaboradores':        'patrocinadores logos empresas',
+    'documentos':           'papeles normativa autorizaciones pdf',
+    'peticiones de redes':  'instagram propuestas socios redes',
+    'mapa de contenido':    'mapa web estructura',
+    'buzón':                'mensajes correo dudas contacto',
+    'plantillas de email':  'correos plantillas respuestas',
+    'récords':              'marcas historicas records',
+    'palmarés':             'medallas podios historico'
+  };
+  function sinTildes(s) {
+    return String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  function palabras(titulo, grupo) {
+    return sinTildes(titulo + ' ' + (grupo || '') + ' ' + (SINONIMOS[String(titulo).toLowerCase()] || ''));
+  }
+  function filtrar(texto) {
+    var q = sinTildes(texto).trim();
+    var trozos = q ? q.split(/\s+/) : [];
+    var vistos = 0;
+    Array.prototype.forEach.call(hoja.querySelectorAll('.grupo'), function (g) {
+      var dentro = 0;
+      Array.prototype.forEach.call(g.querySelectorAll('.enlaces a'), function (a) {
+        var heno = a.getAttribute('data-busca') || '';
+        var vale = trozos.every(function (t) { return heno.indexOf(t) !== -1; });
+        a.classList.toggle('oculto-busca', !vale);
+        if (vale) dentro++;
+      });
+      g.classList.toggle('oculto-busca', dentro === 0);
+      vistos += dentro;
+    });
+    var nada = hoja.querySelector('.sin-nada');
+    if (nada) nada.classList.toggle('oculto-busca', vistos > 0);
   }
 
   function abrir() {

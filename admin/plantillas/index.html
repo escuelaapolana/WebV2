@@ -171,6 +171,7 @@
               <div>
                 <label for="p-categoria">Apartado</label>
                 <select id="p-categoria">
+                  <option value="buzon">Buzón · contestar un mensaje</option>
                   <option value="altas">Altas y bajas</option>
                   <option value="cuotas">Cuotas y recibos</option>
                   <option value="competiciones">Competiciones</option>
@@ -192,6 +193,19 @@
               Los huecos se escriben entre dobles llaves: <code>{{nombre}}</code>, <code>{{grupo}}</code>, <code>{{importe}}</code>,
               <code>{{fecha}}</code>… Pulsa uno de los botones de arriba para meterlo donde tengas el cursor. Al copiar el correo
               se cambian por los datos de verdad de la persona que elijas.
+            </p>
+
+            <!-- El buzón ofrece «la plantilla que toca según el asunto». Aquí se
+                 decide cuál toca: si una de estas palabras sale en el asunto o en
+                 el texto del mensaje, el buzón propone esta plantilla. Están aquí
+                 y no en el código para que el club las cambie sin pedir permiso. -->
+            <label for="p-palabras">Cuándo la propone el buzón</label>
+            <input type="text" id="p-palabras"
+                   placeholder="recibo, devuelto, banco, cambio de cuenta">
+            <p class="pie-ayuda">
+              Palabras separadas por comas. Si alguna sale en el asunto o en el texto de un mensaje del
+              buzón, ahí aparecerá esta plantilla como la que toca. No hace falta poner acentos ni
+              mayúsculas. Si se deja vacío, la plantilla sigue estando pero el buzón no la propone sola.
             </p>
 
             <div class="fila-interruptor">
@@ -246,6 +260,7 @@ APOLANA_ADMIN.listo(function (sb) {
   var FIRMA_CORREO = 'administracion@atletismoapolana.com';
 
   var CATEGORIAS = {
+    buzon: 'Buzón · contestar un mensaje',
     altas: 'Altas y bajas',
     cuotas: 'Cuotas y recibos',
     competiciones: 'Competiciones',
@@ -253,7 +268,7 @@ APOLANA_ADMIN.listo(function (sb) {
     tienda: 'Ropa y tienda',
     otros: 'Otros'
   };
-  var ORDEN_CAT = ['altas', 'cuotas', 'competiciones', 'avisos', 'tienda', 'otros'];
+  var ORDEN_CAT = ['buzon', 'altas', 'cuotas', 'competiciones', 'avisos', 'tienda', 'otros'];
 
   // Cómo se llama cada hueco por dentro y de dónde sale su dato.
   var ETIQUETAS_VAR = {
@@ -286,6 +301,18 @@ APOLANA_ADMIN.listo(function (sb) {
   function variablesDe(texto) {
     var out = [], re = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, m;
     while ((m = re.exec(texto)) !== null) { if (out.indexOf(m[1]) === -1) out.push(m[1]); }
+    return out;
+  }
+
+  /* Las palabras con las que el buzón reconoce esta plantilla. Se guardan
+     sin acentos y en minúscula porque así es como compara la pantalla del
+     buzón: quien las escribe no tiene que acordarse de eso. */
+  function palabrasDe(texto) {
+    var out = [];
+    String(texto || '').split(',').forEach(function (t) {
+      var k = t.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+      if (k && out.indexOf(k) === -1) out.push(k);
+    });
     return out;
   }
 
@@ -334,6 +361,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('p-categoria').value = p ? (CATEGORIAS[p.categoria] ? p.categoria : 'otros') : 'otros';
     $('p-asunto').value = p ? p.asunto : '';
     $('p-cuerpo').value = p ? p.cuerpo : '';
+    $('p-palabras').value = p && p.buzon_palabras ? p.buzon_palabras.join(', ') : '';
     $('p-activa').checked = p ? !!p.activa : true;
     $('btn-borrar').classList.toggle('oculto', !p);
     $('msg-form').textContent = '';
@@ -385,6 +413,7 @@ APOLANA_ADMIN.listo(function (sb) {
       asunto: asunto,
       cuerpo: cuerpo,
       variables: variablesDe(asunto + ' ' + cuerpo),
+      buzon_palabras: palabrasDe($('p-palabras').value),
       activa: $('p-activa').checked
     };
     if (!datos.nombre || !datos.asunto || !datos.cuerpo.trim()) {
@@ -568,7 +597,7 @@ APOLANA_ADMIN.listo(function (sb) {
   // ========================================================
   async function cargarPlantillas(idAMostrar) {
     var r = await sb.from('plantillas_email')
-      .select('id,nombre,asunto,cuerpo,categoria,variables,activa')
+      .select('id,nombre,asunto,cuerpo,categoria,variables,buzon_palabras,activa')
       .order('categoria').order('nombre');
     if (r.error) { $('lista').innerHTML = '<div class="cargando">No se han podido leer las plantillas: ' + esc(r.error.message) + '</div>'; return; }
     plantillas = r.data || [];
