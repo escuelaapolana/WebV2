@@ -387,7 +387,7 @@
       '.avs p{font-size:15px;line-height:1.5;color:var(--texto-suave,#6E6656);margin:0 0 12px}',
       '.avs .avs-bot{display:inline-flex;align-items:center;justify-content:center;min-height:44px;',
         'padding:13px 22px;border-radius:999px;border:0;cursor:pointer;font-family:inherit;font-size:15px;',
-        'background:var(--azul,#3B85C0);color:#fff}',
+        'background:var(--azul, #2F6FA8);color:#fff}',
       '.avs .avs-bot:hover{background:var(--azul-hover,#1E4E78)}',
       '.avs .avs-bot[disabled]{opacity:.6;cursor:default}',
       '.avs .avs-bot--borde{background:#fff;color:var(--navy,#2E4256);border:1px solid #C9C0AE}',

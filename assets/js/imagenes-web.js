@@ -23,6 +23,11 @@
        destino a la misma foto (lo usa el cartel del campus).
      · Si la marca está en algo que no es una <img>, se le pone la foto
        de fondo (background-image).
+     · data-img-movil="clave" JUNTO a data-img: segunda foto solo para
+       pantallas estrechas (hasta 700 px). Es opcional y hoy solo la usa
+       la portada. Si ese hueco está vacío, no pasa nada: se sigue
+       usando la foto de escritorio con el recorte que le da el CSS.
+       Al girar el móvil o cambiar el ancho, se recoloca sola.
 
    Se carga con:
      <script src="…/assets/js/imagenes-web.js" defer></script>
@@ -42,8 +47,18 @@
     } catch (e) { return false; }
   }
 
-  /* Pone una foto en su hueco. `fila` es lo que hay en la base. */
-  function aplicar(el, fila) {
+  /* Hasta aquí llega «el móvil». Es el mismo corte que usa la portada en
+     su CSS, para que la foto y el encuadre cambien a la vez. */
+  var ANCHO_MOVIL = '(max-width: 700px)';
+  function esMovil() {
+    try { return window.matchMedia(ANCHO_MOVIL).matches; } catch (e) { return false; }
+  }
+
+  /* Pone una foto en su hueco. `fila` es lo que hay en la base.
+     `propia` = la foto está hecha para esta pantalla (es la del hueco de
+     móvil), así que manda ella y se anula el recorte que el CSS hacía
+     para aproximar con la de escritorio. */
+  function aplicar(el, fila, propia) {
     if (!el || !fila) return;
     var url = fila.url && String(fila.url).trim();
     if (!url) return;                     // sin foto elegida → se queda la del HTML
@@ -55,12 +70,30 @@
       el.src = url;
       if (fila.alt != null && String(fila.alt).trim()) el.alt = String(fila.alt).trim();
       if (pos) { el.style.objectPosition = pos; el.style.transformOrigin = pos; }
+      else if (propia) { el.style.objectPosition = 'center'; el.style.transformOrigin = 'center'; }
       if (!isNaN(zoom) && zoom > 1 && recorta(el)) el.style.transform = 'scale(' + zoom + ')';
+      else if (propia) el.style.transform = 'none';
     } else {
       /* No es una imagen: se usa de fondo. */
       el.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
       el.style.backgroundSize = 'cover';
       if (pos) el.style.backgroundPosition = pos;
+      else if (propia) el.style.backgroundPosition = 'center';
+    }
+  }
+
+  /* Deja el hueco como venía del HTML, para poder repintarlo de cero
+     cuando la pantalla cambia de ancho (girar el móvil, por ejemplo). */
+  function desnudar(el, original) {
+    el.style.objectPosition = '';
+    el.style.transformOrigin = '';
+    el.style.transform = '';
+    el.style.backgroundImage = '';
+    el.style.backgroundSize = '';
+    el.style.backgroundPosition = '';
+    if (el.tagName === 'IMG' && original) {
+      if (el.getAttribute('src') !== original.src) el.src = original.src;
+      if (el.getAttribute('alt') !== original.alt) el.alt = original.alt;
     }
   }
 
@@ -80,9 +113,18 @@
       var k = el.getAttribute(attr);
       if (k && !vistas[k]) { vistas[k] = true; claves.push(k); }
     }
-    Array.prototype.forEach.call(nodos, function (el) { anota(el, 'data-img'); });
+    Array.prototype.forEach.call(nodos, function (el) { anota(el, 'data-img'); anota(el, 'data-img-movil'); });
     Array.prototype.forEach.call(enlaces, function (el) { anota(el, 'data-img-href'); });
     if (!claves.length) return;
+
+    /* La foto que trae el HTML, guardada antes de tocar nada: es a lo que
+       se vuelve si la de móvil deja de tocar (o si nunca la hubo). */
+    var deSiempre = [];
+    Array.prototype.forEach.call(nodos, function (el) {
+      deSiempre.push(el.tagName === 'IMG'
+        ? { src: el.getAttribute('src') || '', alt: el.getAttribute('alt') || '' }
+        : null);
+    });
 
     try {
       db.from('imagenes_web')
@@ -93,13 +135,38 @@
           var porClave = {};
           r.data.forEach(function (f) { porClave[f.clave] = f; });
 
-          Array.prototype.forEach.call(nodos, function (el) {
-            aplicar(el, porClave[el.getAttribute('data-img')]);
+          function pinta() {
+            Array.prototype.forEach.call(nodos, function (el, i) {
+              var escritorio = porClave[el.getAttribute('data-img')];
+              var movil = el.hasAttribute('data-img-movil')
+                ? porClave[el.getAttribute('data-img-movil')] : null;
+              /* La de móvil solo entra si existe, tiene foto y la pantalla
+                 es estrecha. En cualquier otro caso manda la de siempre. */
+              var usaMovil = !!(movil && movil.url && String(movil.url).trim() && esMovil());
+              desnudar(el, deSiempre[i]);
+              aplicar(el, usaMovil ? movil : escritorio, usaMovil);
+            });
+            Array.prototype.forEach.call(enlaces, function (el) {
+              var f = porClave[el.getAttribute('data-img-href')];
+              if (f && f.url) el.href = f.url;
+            });
+          }
+
+          pinta();
+
+          /* Si algún hueco tiene versión de móvil, se vuelve a decidir al
+             girar el aparato o al cambiar el ancho de la ventana. */
+          var hayMovil = Array.prototype.some.call(nodos, function (el) {
+            var k = el.getAttribute('data-img-movil');
+            return !!(k && porClave[k] && porClave[k].url);
           });
-          Array.prototype.forEach.call(enlaces, function (el) {
-            var f = porClave[el.getAttribute('data-img-href')];
-            if (f && f.url) el.href = f.url;
-          });
+          if (hayMovil) {
+            try {
+              var mq = window.matchMedia(ANCHO_MOVIL);
+              if (mq.addEventListener) mq.addEventListener('change', pinta);
+              else if (mq.addListener) mq.addListener(pinta);   // navegadores viejos
+            } catch (e) { /* sin matchMedia: se queda como se pintó */ }
+          }
         })
         .catch(function () { /* respaldo: se queda lo del HTML */ });
     } catch (e) { /* respaldo: se queda lo del HTML */ }

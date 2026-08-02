@@ -20,6 +20,33 @@
   function base() { return window.APOLANA_BASE || '../../'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
+  /* ------------------------------------------------------------
+     EL INTERRUPTOR DE PAPELES
+     Una persona del club puede llevar varios papeles a la vez
+     («soy tesorero, admin, entrenador y atleta»). El interruptor
+     para cambiar entre LOS SUYOS vive en assets/js/papeles.js y se
+     trae aquí, en vez de meterle una etiqueta <script> a las 32
+     pantallas del panel.
+
+     Se carga después de pintar la barra, y nunca antes de saber
+     que hay sesión: sin sesión no hay papeles que enseñar. Si el
+     archivo no llega (sin conexión, caché vieja), no pasa nada:
+     la página sigue funcionando exactamente igual que hoy.
+     ------------------------------------------------------------ */
+  function montarPapeles() {
+    function hazlo() {
+      if (!window.APOLANA_PAPELES) return;
+      try { window.APOLANA_PAPELES.montar(); } catch (e) {}
+    }
+    if (window.APOLANA_PAPELES) { hazlo(); return; }
+    var s = document.createElement('script');
+    s.src = base() + 'assets/js/papeles.js';
+    s.async = true;
+    s.addEventListener('load', hazlo);
+    s.addEventListener('error', function () { /* sin interruptor, pero la página entera sigue viva */ });
+    document.head.appendChild(s);
+  }
+
   /* Título de la página para la barra: "Atletas · Panel Apolana" → "Atletas". */
   function tituloPagina() {
     var t = (document.title || '').split('·')[0].replace(/\s+$/, '').replace(/^\s+/, '');
@@ -103,6 +130,11 @@
         password: document.getElementById('adm-pass').value
       });
       if (r.error) { document.getElementById('adm-msg').textContent = 'No se pudo entrar: ' + r.error.message; return; }
+      /* «Al entrar, abrir en»: si esa persona ha fijado un papel de
+         arranque, se le pone ahora. Si no ha fijado ninguno, se queda
+         con el último que usó, que es lo que ya estaba guardado.
+         Si falla, no pasa nada: se entra con el último. */
+      try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       arranque();
     });
 
@@ -112,22 +144,33 @@
       var admin = await sb.rpc('es_admin');
       if (admin.error) { mostrarLogin('No se pudo comprobar tu acceso. Inténtalo de nuevo.'); return; }
       if (!admin.data) {
-        /* No es administración. Aun así hay pantallas del panel que son
-           herramienta de campo y las tiene que usar el equipo técnico:
-           pasar lista es la primera. Lo que ve dentro lo deciden las
-           reglas de acceso de la base de datos, que solo le enseñan sus
-           atletas — esto no abre datos, solo abre la puerta. */
-        var staff = await sb.rpc('es_staff');
-        if (staff.error || !staff.data || !DEL_EQUIPO.test(location.pathname)) {
-          /* Ni administración ni equipo técnico en una pantalla suya
-             (p. ej. un atleta que llega a una página de /admin/ que se
-             quedó guardada en la app): al portal, que es su zona. */
-          location.replace(base() + 'portal/');
-          return;
+        /* No es administración. Al panel entran también los papeles del
+           club: tesorero, contable y junta. Tesorero y administrador son
+           papeles distintos a propósito, así que uno no vale por el otro. */
+        var q = await sb.rpc('dinero_quien_soy');
+        var delClub = !q.error && q.data && !!q.data.papel;
+        if (!delClub) {
+          /* Y aún hay pantallas del panel que son herramienta de campo y
+             las tiene que usar el equipo técnico: pasar lista es la
+             primera. Lo que ve dentro lo deciden las reglas de acceso de
+             la base de datos, que solo le enseñan sus atletas — esto no
+             abre datos, solo abre la puerta. */
+          var staff = await sb.rpc('es_staff');
+          if (staff.error || !staff.data || !DEL_EQUIPO.test(location.pathname)) {
+            /* Ni administración, ni papel del club, ni equipo técnico en
+               una pantalla suya (p. ej. alguien que está mirando el club
+               como atleta y llega a una página de /admin/ que se quedó
+               guardada en la app): al portal, que es su zona. Allí le
+               espera la franja de arriba para volver a cambiarse. */
+            location.replace(base() + 'portal/');
+            return;
+          }
         }
       }
       login.style.display = 'none';
       barra(s.data.session.user.email);
+      /* La franja «Estás como …», pegada arriba y sin botón de cerrar. */
+      montarPapeles();
       if (cont) cont.style.display = '';
       if (_cb) _cb(sb);
     }

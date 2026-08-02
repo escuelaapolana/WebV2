@@ -24,6 +24,31 @@
   function base() { return window.APOLANA_BASE || '../'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
+  /* ------------------------------------------------------------
+     EL INTERRUPTOR DE PAPELES
+     Una persona del club puede llevar varios papeles a la vez
+     («soy tesorero, admin, entrenador y atleta»). El interruptor
+     para cambiar entre LOS SUYOS vive en assets/js/papeles.js y se
+     trae desde aquí, en vez de meterle una etiqueta <script> a las
+     18 pantallas del portal.
+
+     Si el archivo no llega (sin conexión, caché vieja), no pasa
+     nada: la pantalla sigue funcionando exactamente igual que hoy.
+     ------------------------------------------------------------ */
+  function montarPapeles() {
+    function hazlo() {
+      if (!window.APOLANA_PAPELES) return;
+      try { window.APOLANA_PAPELES.montar(); } catch (e) {}
+    }
+    if (window.APOLANA_PAPELES) { hazlo(); return; }
+    var s = document.createElement('script');
+    s.src = base() + 'assets/js/papeles.js';
+    s.async = true;
+    s.addEventListener('load', hazlo);
+    s.addEventListener('error', function () { /* sin interruptor, pero el portal sigue vivo */ });
+    document.head.appendChild(s);
+  }
+
   var css = document.createElement('style');
   css.textContent =
     /* --- tarjeta de acceso (maqueta 19b · pantalla A) --- */
@@ -434,6 +459,8 @@
       document.getElementById('pt-salir').addEventListener('click', async function () {
         await sb.auth.signOut(); location.reload();
       });
+      /* La franja «Estás como …», pegada arriba de todo y sin cerrar. */
+      montarPapeles();
     }
 
     function mostrarLogin(m) { login.style.display = ''; if (m) { var e = document.getElementById('pt-msg'); if (e) e.textContent = m; } }
@@ -450,6 +477,10 @@
         password: document.getElementById('pt-pass').value
       });
       if (r.error) { msg.textContent = 'No se pudo entrar: ' + r.error.message; return; }
+      /* «Al entrar, abrir en»: si esa persona ha fijado un papel de
+         arranque, se le pone ahora; si no, se queda con el último que
+         usó. Si falla, se entra con el último y ya está. */
+      try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       arranque();
     });
 
@@ -470,12 +501,20 @@
     });
 
     /* --------------------------------------------------------
-       PAPELES DEL USUARIO
-       Un correo = una cuenta = una fila en `perfiles` con UN rol.
-       Pero una misma persona puede tener además ficha de atleta
-       (atletas.perfil_id), hijos (atletas.perfil_padre_id) o
-       grupos a su cargo (grupos.entrenador_id). Eso se deduce de
-       los datos que la propia persona ya puede leer.
+       ZONAS DEL USUARIO
+       Un correo = una cuenta = una fila en `perfiles`. La persona
+       puede tener varios papeles concedidos (`perfiles.roles`) y
+       actúa con uno cada vez (`perfiles.rol_activo`); además puede
+       tener ficha de atleta (atletas.perfil_id), hijos
+       (atletas.perfil_padre_id) o grupos a su cargo
+       (grupos.entrenador_id), que se deducen de los datos que ella
+       misma ya puede leer.
+
+       ⚠️ Coordinación y administración se miran por el papel
+       ACTIVO, no por el principal: si está probando el club como
+       atleta, ofrecerle la puerta del panel sería mentirle — la
+       base no le va a dejar entrar. Para volver está la banda de
+       arriba, que en ese caso sale siempre (assets/js/papeles.js).
        -------------------------------------------------------- */
     var ZONAS = {
       entrenador:  { titulo: 'Entrenador',     desc: 'Tus grupos: planificar y leer el feedback.', url: b + 'portal/entrenador/',  carpeta: '/portal/entrenador/' },
@@ -489,7 +528,9 @@
       var lista = [];
       if (!perfil || !perfil.id) return lista;
       var id = perfil.id;
-      var rol = perfil.rol || '';
+      /* El papel con el que está actuando ahora mismo. Si no ha
+         elegido ninguno, el suyo de siempre. */
+      var rol = perfil.rol_activo || perfil.rol || '';
       var esAtleta = (rol === 'atleta');
       var esFamilia = (rol === 'padre');
       var esEntrenador = (rol === 'entrenador');
@@ -522,7 +563,10 @@
       if (esAtleta) anadir('atleta');
       if (esFamilia) anadir('familia', hijos.length ? hijos.join(', ') : null);
       if (rol === 'coordinador') anadir('coordinador');
-      if (rol === 'admin') anadir('admin');
+      /* Administración, tesorería, contabilidad y junta entran por la
+         misma puerta: el panel. Lo que ven dentro lo deciden las reglas
+         de la base, no esta lista. */
+      if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
       return lista;
     }
 
@@ -590,7 +634,9 @@
       var email = s.data.session.user.email;
       var perfil = null;
       try {
-        var r = await sb.from('perfiles').select('id,nombre,apellidos,email,rol,seccion').eq('email', email).maybeSingle();
+        var r = await sb.from('perfiles')
+          .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion')
+          .eq('email', email).maybeSingle();
         if (!r.error) perfil = r.data;
       } catch (e) { /* si aún no hay permisos de lectura, perfil queda null */ }
       login.style.display = 'none';

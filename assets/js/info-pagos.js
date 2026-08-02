@@ -402,7 +402,7 @@
       '.ipg-cab{list-style:none;display:flex;align-items:center;gap:12px;min-height:56px;' +
         'padding:12px clamp(14px,3vw,20px);box-sizing:border-box;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
       '.ipg-cab:hover{background:var(--crema,#FBF9F4)}' +
-      '.ipg-cab:focus-visible{outline:2px solid var(--azul,#3B85C0);outline-offset:-2px}' +
+      '.ipg-cab:focus-visible{outline:2px solid var(--azul-filete, #3B85C0);outline-offset:-2px}' +
       '.ipg-cab-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}' +
       '.ipg-cab-txt b{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);text-transform:uppercase;' +
         'font-weight:700;font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
@@ -442,7 +442,7 @@
       /* botón de copiar: 44 px reales, y confirma que ha copiado */
       '.ipg-copiar{flex:0 0 auto;min-height:44px;min-width:96px;display:inline-flex;align-items:center;' +
         'justify-content:center;gap:6px;padding:10px 16px;box-sizing:border-box;border-radius:999px;' +
-        'border:1px solid var(--azul,#3B85C0);background:#fff;color:var(--azul-oscuro,#2F6FA8);' +
+        'border:1px solid var(--azul-filete, #3B85C0);background:#fff;color:var(--azul-oscuro,#2F6FA8);' +
         'font:inherit;font-size:14px;line-height:1;cursor:pointer;transition:background .12s,color .12s,border-color .12s;' +
         '-webkit-tap-highlight-color:transparent}' +
       '.ipg-copiar:hover{background:var(--azul-suave,#EAF2F9)}' +
@@ -458,8 +458,8 @@
         'font-weight:700;font-size:21px;line-height:1.1;color:var(--navy,#2E4256);margin-bottom:4px}' +
       '.ipg-devuelto p{margin:0 0 11px;font-size:14px;line-height:1.55;color:var(--aviso-texto,#4A4335)}' +
       '.ipg-dv-btn{display:inline-flex;align-items:center;min-height:44px;padding:11px 20px;box-sizing:border-box;' +
-        'border-radius:999px;background:var(--azul,#3B85C0);color:#fff;font-size:15px;text-decoration:none}' +
-      '.ipg-dv-btn:hover{background:var(--azul-oscuro,#2F6FA8);color:#fff}' +
+        'border-radius:999px;background:var(--azul, #2F6FA8);color:#fff;font-size:15px;text-decoration:none}' +
+      '.ipg-dv-btn:hover{background:var(--azul-hover, #1E4E78);color:#fff}' +
       /* contacto */
       '.ipg-contacto{padding:13px 0 2px;margin-top:4px;border-top:1px solid var(--linea,#EAE3D5)}' +
       '.ipg-persona{display:flex;flex-direction:column;gap:1px;padding:3px 0}' +

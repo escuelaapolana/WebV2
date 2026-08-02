@@ -70,13 +70,23 @@
     '.adm-top .izq,.admin-top .marca{order:1}' +
     '.adm-top .der,.admin-top .sesion{order:3}' +
     '.adm-top .at-busca-cab,.admin-top .at-busca-cab{order:2;display:flex;align-items:center;gap:11px;box-sizing:border-box;' +
-      'flex:1 1 200px;max-width:380px;margin:0 12px;min-height:44px;padding:10px 15px;' +
+      /* `min-width:0` es imprescindible: sin él, un título largo como
+         «Biblioteca de imágenes» empuja el buscador y la cabecera se
+         sale por la derecha. */
+      'flex:1 1 160px;min-width:0;max-width:380px;margin:0 12px;min-height:44px;padding:10px 15px;' +
       'border:0;border-radius:999px;background:rgba(255,255,255,.12);cursor:pointer;text-align:left;' +
       'font-family:inherit;font-size:15px;line-height:1.2;color:rgba(255,255,255,.72);' +
       '-webkit-tap-highlight-color:transparent}' +
     '.adm-top .at-busca-cab:hover,.admin-top .at-busca-cab:hover{background:rgba(255,255,255,.2);color:#fff}' +
     '.adm-top .at-busca-cab:focus-visible,.admin-top .at-busca-cab:focus-visible{outline:2px solid #9FC7E8;outline-offset:2px}' +
     '.adm-top .at-busca-cab .lupa,.admin-top .at-busca-cab .lupa{flex:0 0 18px;width:18px;height:18px}' +
+    /* Antes de que llegue a apretarse, el buscador se baja solo a su
+       propia línea. Vale para pantallas medianas y también para quien
+       tiene el navegador con la letra muy grande. */
+    '@media (max-width:1024px){' +
+      '.adm-top .at-busca-cab,.admin-top .at-busca-cab{order:3;flex:1 1 100%;max-width:none;margin:6px 0 0}' +
+      '.adm-top .der,.admin-top .sesion{order:2}' +
+    '}' +
     '.adm-top .at-busca-cab span,.admin-top .at-busca-cab span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
 
     /* --- la hoja: buscador, las que más usas y todo por bloques --- */
@@ -102,7 +112,7 @@
     '.at-hoja .buscar input{box-sizing:border-box;width:100%;min-height:44px;padding:11px 15px 11px 40px;' +
       'border:1px solid var(--linea-borde,#D4CBB9);border-radius:999px;background:#fff;' +
       'font-family:inherit;font-size:16px;color:var(--navy,#2E4256)}' +
-    '.at-hoja .buscar input:focus{outline:2px solid var(--azul,#3B85C0);border-color:var(--azul,#3B85C0)}' +
+    '.at-hoja .buscar input:focus{outline:2px solid var(--azul-filete, #3B85C0);border-color:var(--azul-filete, #3B85C0)}' +
     '.at-hoja .cuerpo{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
       'padding:0 18px calc(20px + env(safe-area-inset-bottom))}' +
 
@@ -133,7 +143,7 @@
       'padding:10px 14px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:12px;background:#fff;' +
       'text-decoration:none;color:var(--navy,#2E4256);font-size:15px;line-height:1.25;' +
       '-webkit-tap-highlight-color:transparent}' +
-    '.at-hoja .atajos a:hover{border-color:var(--azul,#3B85C0)}' +
+    '.at-hoja .atajos a:hover{border-color:var(--azul-filete, #3B85C0)}' +
 
     /* «Todo, por bloques»: plegados y con su recuento al lado */
     '.at-hoja .bloque{border-top:1px solid var(--crema-media,#EFE9DC)}' +

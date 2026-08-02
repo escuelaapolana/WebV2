@@ -1,9 +1,10 @@
 -- ============================================================
--- 071 · Tesorería y contabilidad: el reparto del dinero
+-- 071 · Papeles del club, tesorería y contabilidad
 -- ------------------------------------------------------------
--- Fuente: maquetas/v3/CORRECCION-DINERO.md (corrige lo anterior).
+-- Fuentes: maquetas/v3/CORRECCION-DINERO.md (manda) y el encargo
+-- del club de agosto de 2026.
 --
--- EL REPARTO REAL, confirmado por el club:
+-- EL REPARTO REAL DEL DINERO, confirmado por el club:
 --   · Isabel Fuentes  · contable   → socios y adultos. Gira remesas
 --                                    y hace transferencias
 --   · Adrián Onandía  · presidente → escuela (y acceso a todo)
@@ -14,16 +15,25 @@
 --    persona, y el panel lo refleja con un aviso entre los dos,
 --    no con un permiso que bloquea.»
 --
+-- Y LA SEGUNDA REGLA, del dueño del club:
+--   «Soy tesorero, admin, entrenador y atleta. Soy todo.»
+--   En un club pequeño una persona lleva varios papeles. Hasta hoy
+--   `perfiles.rol` era UNO, y para probar qué ve cada uno había que
+--   cambiárselo en la base. Se acabó: ahora cada persona tiene la
+--   LISTA de papeles que le han concedido y elige con cuál actúa.
+--
 -- QUÉ HACE ESTA MIGRACIÓN
---   1 · Tres papeles nuevos (tesorería, contabilidad, junta) sin
---       tocar los roles que ya existen ni es_admin()/es_staff().
---   2 · La etiqueta escuela/socio de cada ficha, puesta a mano,
+--   1 · Varios papeles por persona (`perfiles.roles`) y un papel
+--       activo (`perfiles.rol_activo`) que ella misma elige.
+--       es_admin() y es_staff() responden según el ACTIVO.
+--   2 · Los tres papeles del dinero: tesorería, contabilidad y junta.
+--   3 · La etiqueta escuela/socio de cada ficha, puesta a mano,
 --       nunca deducida: sin etiqueta = «sin etiquetar».
---   3 · La cuota mensual, que hasta hoy no existía en la ficha.
---   4 · Los avisos de dinero entre tesorería y contabilidad, con
---       las dos direcciones del flujo.
---   5 · Los permisos para que contabilidad pueda trabajar sin
---       poder cambiar importes.
+--   4 · La cuota mensual, que hasta hoy no existía en la ficha.
+--   5 · Los avisos de dinero entre tesorería y contabilidad, en las
+--       dos direcciones.
+--   6 · Los permisos para que contabilidad pueda trabajar sin poder
+--       cambiar importes.
 --
 -- Idempotente: se puede aplicar las veces que haga falta.
 --
@@ -35,38 +45,43 @@
 begin;
 
 -- ============================================================
--- 1 · LOS TRES PAPELES
+-- 1 · VARIOS PAPELES POR PERSONA, Y UNO ACTIVO
 -- ------------------------------------------------------------
--- `rol` es de un solo valor y lo usan es_admin() y es_staff(),
--- de los que depende el panel entero. Andrés y Adrián son admin
--- Y tesorería a la vez: si el papel fuera un `rol` habría que
--- quitarles el de admin y perderían el panel.
+-- Tres columnas, y ninguna pisa a la otra:
 --
--- Por eso el papel va en una columna aparte, `papeles`, que
--- admite varios. `rol` se queda como está y además se le abren
--- los tres valores nuevos por si algún día entra alguien que
--- SOLO es contable o SOLO es de la junta.
+--   rol         el de siempre. NO se toca. Es el papel principal
+--               y sigue siendo el que vale cuando no se ha elegido
+--               ningún otro. Todo lo que ya existe sigue leyéndolo.
+--   roles       la lista de papeles CONCEDIDOS. Concederlos es cosa
+--               de administración, y solo de administración.
+--   rol_activo  con cuál está actuando ahora. Lo elige la persona,
+--               solo entre los suyos, y se recuerda porque vive en
+--               la base, no en el navegador.
+--
+-- Para que no queden dos verdades: `rol` va SIEMPRE dentro de
+-- `roles` (lo garantiza un disparador), y el papel que vale en
+-- cada momento es `coalesce(rol_activo, rol)`. A medio plazo el
+-- sitio donde mirar es `roles`; `rol` se queda como el principal
+-- y como red de seguridad de todo lo escrito hasta hoy.
 -- ============================================================
 
+-- La columna `papeles` de una versión anterior de esta misma
+-- migración se retira: su trabajo lo hace `roles`. Nunca llegó a
+-- tener datos, así que no se pierde nada.
+drop trigger if exists trg_perfiles_protege_papeles on public.perfiles;
+drop function if exists public.perfiles_protege_papeles();
+alter table public.perfiles drop constraint if exists perfiles_papeles_check;
+alter table public.perfiles drop column if exists papeles;
+
 alter table public.perfiles
-  add column if not exists papeles text[];
+  add column if not exists roles          text[],
+  add column if not exists rol_activo     text,
+  -- «Al entrar, abrir en»: NULL = el último que usé (maqueta 47a).
+  add column if not exists papel_al_entrar text;
 
-do $$
-begin
-  if not exists (select 1 from pg_constraint where conname = 'perfiles_papeles_check') then
-    alter table public.perfiles
-      add constraint perfiles_papeles_check
-      check (papeles is null or papeles <@ array['tesoreria','contabilidad','junta']::text[]);
-  end if;
-end $$;
-
-comment on column public.perfiles.papeles is
-  'Papeles del dinero, sueltos del rol: tesoreria (fija cuotas y aprueba), '
-  'contabilidad (gira remesas y transferencias), junta (sin acceso a dinero). '
-  'Se ponen desde el panel. Ver docs/tesoreria.md.';
-
--- `rol` acepta ahora también los tres, para quien no sea ni admin
--- ni entrenador ni atleta. No cambia ninguna fila existente.
+-- Los ocho papeles que existen. Los cinco de siempre y los tres
+-- nuevos del dinero. `rol` acepta los mismos, para quien algún día
+-- entre siendo SOLO contable o SOLO de la junta.
 do $$
 begin
   if exists (select 1 from pg_constraint where conname = 'perfiles_rol_check') then
@@ -76,45 +91,515 @@ begin
     add constraint perfiles_rol_check
     check (rol = any (array['admin','coordinador','entrenador','atleta','padre',
                             'tesoreria','contabilidad','junta']::text[]));
+
+  if not exists (select 1 from pg_constraint where conname = 'perfiles_roles_check') then
+    alter table public.perfiles
+      add constraint perfiles_roles_check
+      check (roles is null or roles <@ array['admin','coordinador','entrenador','atleta','padre',
+                                             'tesoreria','contabilidad','junta']::text[]);
+  end if;
+
+  -- El papel activo tiene que ser uno de los concedidos. Además del
+  -- disparador de más abajo, que es quien lo corrige solo.
+  if not exists (select 1 from pg_constraint where conname = 'perfiles_rol_activo_check') then
+    alter table public.perfiles
+      add constraint perfiles_rol_activo_check
+      check (rol_activo is null or rol_activo = any(coalesce(roles, array[rol])));
+  end if;
+
+  -- Y el papel con el que se abre al entrar, lo mismo.
+  if not exists (select 1 from pg_constraint where conname = 'perfiles_papel_al_entrar_check') then
+    alter table public.perfiles
+      add constraint perfiles_papel_al_entrar_check
+      check (papel_al_entrar is null or papel_al_entrar = any(coalesce(roles, array[rol])));
+  end if;
 end $$;
 
+comment on column public.perfiles.roles is
+  'Todos los papeles concedidos a esta persona. Concederlos es cosa de '
+  'administración. `rol` va siempre dentro. Ver docs/tesoreria.md.';
+comment on column public.perfiles.rol_activo is
+  'Con qué papel está actuando ahora. Lo elige ella, solo entre los suyos, '
+  'y se recuerda. NULL = actúa con su papel principal (`rol`).';
+
 -- ------------------------------------------------------------
--- Anti-escalada: la columna nueva se protege igual que `areas`
--- y que `rol`. NO se toca ninguno de los dos disparadores que
--- ya existen (trg_perfiles_protege_areas, trg_perfiles_protege_rol):
--- este es un tercero, independiente, solo para `papeles`.
+-- Coherencia: `rol` nunca puede quedarse fuera de `roles`, y
+-- `rol_activo` nunca puede apuntar a un papel que ya no se tiene.
+-- Esto NO es seguridad, es que las tres columnas cuenten lo mismo.
+-- Se llama «zz» para que corra el último de los disparadores.
+-- ------------------------------------------------------------
+create or replace function public.perfiles_roles_coherentes()
+returns trigger
+language plpgsql
+set search_path to 'public'
+as $function$
+begin
+  new.roles := coalesce(new.roles, array[]::text[]);
+  if new.rol is not null and not (new.rol = any(new.roles)) then
+    new.roles := new.roles || new.rol;
+  end if;
+  if new.rol_activo is not null and not (new.rol_activo = any(new.roles)) then
+    new.rol_activo := null;
+  end if;
+  if new.papel_al_entrar is not null and not (new.papel_al_entrar = any(new.roles)) then
+    new.papel_al_entrar := null;
+  end if;
+  return new;
+end;
+$function$;
+
+drop trigger if exists trg_perfiles_zz_roles_coherentes on public.perfiles;
+create trigger trg_perfiles_zz_roles_coherentes
+  before insert or update on public.perfiles
+  for each row execute function public.perfiles_roles_coherentes();
+
+-- ------------------------------------------------------------
+-- ⚠️ ANTI-ESCALADA
+-- Los dos disparadores que ya había (trg_perfiles_protege_areas y
+-- trg_perfiles_protege_rol) NO se tocan: siguen tal cual y siguen
+-- defendiendo `rol`, `email`, `seccion`, `activo` y `areas`.
+--
+-- Este es un tercero, independiente, solo para lo nuevo:
+--
+--   · `roles` (lo concedido) NO lo puede cambiar quien no sea
+--     administración. Ni para sí mismo ni para nadie.
+--   · `rol_activo` SÍ lo puede cambiar cualquiera, pero SOLO a un
+--     papel que ya tuviera concedido. Elegir no concede nada.
 --
 -- Hace falta porque la política «escritura_propia» deja que
--- cualquiera actualice su propia fila: sin esto, cualquier
--- socio podría ponerse el papel de tesorería.
+-- cualquiera actualice su propia fila.
+--
+-- Y ojo, esto es a propósito: si alguien está actuando como atleta,
+-- es_admin() dice que no, y entonces tampoco puede repartir papeles
+-- mientras esté así. Volver a administración es un clic y no está
+-- bloqueado, porque cambiar de papel activo siempre se puede.
 -- ------------------------------------------------------------
-create or replace function public.perfiles_protege_papeles()
+create or replace function public.perfiles_protege_roles()
 returns trigger
 language plpgsql
 security definer
 set search_path to 'public'
 as $function$
 begin
-  if auth.uid() is not null and not public.es_admin() then
-    new.papeles := old.papeles;
+  if auth.uid() is null or public.es_admin() then
+    return new;
   end if;
+
+  if tg_op = 'INSERT' then
+    -- Nadie se da de alta con papeles puestos por él mismo.
+    new.roles := array[new.rol];
+    new.rol_activo := null;
+    new.papel_al_entrar := null;
+    return new;
+  end if;
+
+  -- Conceder es de administración.
+  new.roles := old.roles;
+
+  -- Elegir, sí; pero solo entre los suyos. Vale para el papel activo y
+  -- para el que se abre al entrar.
+  if new.rol_activo is distinct from old.rol_activo
+     and new.rol_activo is not null
+     and not (new.rol_activo = any(coalesce(old.roles, array[old.rol]))) then
+    new.rol_activo := old.rol_activo;
+  end if;
+  if new.papel_al_entrar is distinct from old.papel_al_entrar
+     and new.papel_al_entrar is not null
+     and not (new.papel_al_entrar = any(coalesce(old.roles, array[old.rol]))) then
+    new.papel_al_entrar := old.papel_al_entrar;
+  end if;
+
   return new;
 end;
 $function$;
 
-drop trigger if exists trg_perfiles_protege_papeles on public.perfiles;
-create trigger trg_perfiles_protege_papeles
-  before update on public.perfiles
-  for each row execute function public.perfiles_protege_papeles();
+drop trigger if exists trg_perfiles_protege_roles on public.perfiles;
+create trigger trg_perfiles_protege_roles
+  before insert or update on public.perfiles
+  for each row execute function public.perfiles_protege_roles();
 
 -- ------------------------------------------------------------
--- Quién es quién. Todas siguen el mismo patrón que es_admin():
--- se busca por el correo del testigo de sesión.
+-- Todo el mundo arranca con su papel de siempre, y solo con ese.
+-- Nadie gana nada con esta migración.
 -- ------------------------------------------------------------
+update public.perfiles
+   set roles = array[rol]
+ where roles is null or roles = '{}'::text[];
+
+-- Andrés Clavero es el dueño del club y los tiene los cuatro de
+-- verdad: administración, tesorería, entrenador y atleta. Se le
+-- AÑADEN, no se le sustituyen: si mañana le ponen otro desde el
+-- panel, volver a aplicar esto no se lo quita.
+update public.perfiles
+   set roles = (select array(select distinct unnest(
+                  coalesce(roles, '{}'::text[]) ||
+                  array['admin','tesoreria','entrenador','atleta']::text[])))
+ where email = 'andres.apolana@gmail.com';
+
+-- Adrián Onandía es presidente y lleva la escuela: administración y
+-- tesorería. Se le añade el papel de tesorero porque ahora son dos
+-- cosas distintas y, sin él, dejaría de poder tocar cobros.
+update public.perfiles
+   set roles = (select array(select distinct unnest(
+                  coalesce(roles, '{}'::text[]) ||
+                  array['admin','tesoreria']::text[])))
+ where email = 'escuelaapolana@gmail.com';
+
+-- ------------------------------------------------------------
+-- QUIÉN ES QUIÉN
+-- Todas miran el papel ACTIVO, no la lista entera: esa es la gracia.
+-- Si Andrés está actuando como atleta, es_admin() dice que no y el
+-- panel no le deja entrar. Así se prueba de verdad lo que ve cada uno.
+-- ------------------------------------------------------------
+
+-- El papel con el que estoy actuando ahora mismo.
+create or replace function public.mi_rol()
+returns text
+language sql
+stable security definer
+set search_path to 'public'
+as $function$
+  select coalesce(p.rol_activo, p.rol)
+    from public.perfiles p
+   where p.email = (auth.jwt() ->> 'email')
+   limit 1;
+$function$;
+
+-- ¿Tengo concedido este papel? (No: ¿estoy actuando con él?)
+create or replace function public.tengo_rol(p_rol text)
+returns boolean
+language sql
+stable security definer
+set search_path to 'public'
+as $function$
+  select exists (
+    select 1 from public.perfiles p
+    where p.email = (auth.jwt() ->> 'email')
+      and p_rol = any(coalesce(p.roles, array[p.rol]))
+  );
+$function$;
+
+-- es_admin(): igual que siempre, pero mirando el papel activo.
+-- Con `rol_activo` a NULL en todo el mundo (que es como queda tras
+-- aplicar esto) devuelve exactamente lo mismo que antes.
+create or replace function public.es_admin()
+returns boolean
+language sql
+stable security definer
+set search_path to 'public'
+as $function$
+  select exists (
+    select 1 from public.perfiles p
+    where p.email = (auth.jwt() ->> 'email')
+      and coalesce(p.rol_activo, p.rol) = 'admin'
+  );
+$function$;
+
+-- es_staff(): lo mismo, y se le suman los tres papeles nuevos para
+-- que quien entre SOLO como contable o SOLO como junta pueda usar
+-- el panel. Hoy no los tiene nadie: no cambia nada para los 15.
+create or replace function public.es_staff()
+returns boolean
+language sql
+stable security definer
+set search_path to 'public'
+as $function$
+  select exists (
+    select 1 from public.perfiles p
+    where p.email = (auth.jwt() ->> 'email')
+      and coalesce(p.rol_activo, p.rol)
+          in ('admin','coordinador','entrenador','tesoreria','contabilidad','junta')
+  );
+$function$;
+
+-- ------------------------------------------------------------
+-- Cambiar de papel activo. Es lo único que la persona hace sola.
+-- Solo entre los suyos; elegir no concede nada.
+-- ------------------------------------------------------------
+create or replace function public.rol_activo_poner(p_rol text)
+returns text
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare v_id uuid; v_roles text[]; v_principal text;
+begin
+  select p.id, coalesce(p.roles, array[p.rol]), p.rol
+    into v_id, v_roles, v_principal
+    from public.perfiles p
+   where p.email = (auth.jwt() ->> 'email')
+   limit 1;
+
+  if v_id is null then
+    raise exception 'No hay ninguna ficha con tu correo.';
+  end if;
+
+  -- NULL o el principal = volver a lo de siempre.
+  if p_rol is null or p_rol = v_principal then
+    update public.perfiles set rol_activo = null where id = v_id;
+    return v_principal;
+  end if;
+
+  if not (p_rol = any(v_roles)) then
+    raise exception 'Ese papel no es tuyo. Pídeselo a administración.';
+  end if;
+
+  update public.perfiles set rol_activo = p_rol where id = v_id;
+  return p_rol;
+end;
+$function$;
+
+-- Lo que el interruptor necesita saber, en una sola llamada.
+create or replace function public.mis_papeles()
+returns jsonb
+language sql
+stable security definer
+set search_path to 'public'
+as $function$
+  select jsonb_build_object(
+    'nombre',    btrim(coalesce(p.nombre,'') || ' ' || coalesce(p.apellidos,'')),
+    'principal', p.rol,
+    'activo',    coalesce(p.rol_activo, p.rol),
+    'elegido',   p.rol_activo,                 -- null = está en el suyo de siempre
+    'al_entrar', p.papel_al_entrar,            -- null = el último que usé
+    'roles',     to_jsonb(coalesce(p.roles, array[p.rol]))
+  )
+    from public.perfiles p
+   where p.email = (auth.jwt() ->> 'email')
+   limit 1;
+$function$;
+
+-- ------------------------------------------------------------
+-- «Al entrar, abrir en» (maqueta 47a). NULL = el último que usé,
+-- que es lo que ya hace `rol_activo` por sí solo.
+-- ------------------------------------------------------------
+create or replace function public.rol_al_entrar_poner(p_rol text)
+returns text
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare v_id uuid; v_roles text[];
+begin
+  select p.id, coalesce(p.roles, array[p.rol]) into v_id, v_roles
+    from public.perfiles p where p.email = (auth.jwt() ->> 'email') limit 1;
+  if v_id is null then raise exception 'No hay ninguna ficha con tu correo.'; end if;
+
+  if p_rol is not null and not (p_rol = any(v_roles)) then
+    raise exception 'Ese papel no es tuyo. Pídeselo a administración.';
+  end if;
+
+  update public.perfiles set papel_al_entrar = p_rol where id = v_id;
+  return p_rol;
+end;
+$function$;
+
+-- Se llama justo después de entrar con la contraseña: si esa persona
+-- ha fijado un papel de arranque, se le pone. Si no, se queda con el
+-- último que usó, que es lo que ya había guardado.
+create or replace function public.rol_al_entrar_aplicar()
+returns text
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare v_id uuid; v_fijo text; v_roles text[]; v_rol text;
+begin
+  select p.id, p.papel_al_entrar, coalesce(p.roles, array[p.rol]), p.rol
+    into v_id, v_fijo, v_roles, v_rol
+    from public.perfiles p where p.email = (auth.jwt() ->> 'email') limit 1;
+  if v_id is null then return null; end if;
+  if v_fijo is null or not (v_fijo = any(v_roles)) then
+    return coalesce((select rol_activo from public.perfiles where id = v_id), v_rol);
+  end if;
+  update public.perfiles
+     set rol_activo = case when v_fijo = v_rol then null else v_fijo end
+   where id = v_id;
+  return v_fijo;
+end;
+$function$;
+
+-- ------------------------------------------------------------
+-- LO QUE TIENE PENDIENTE CADA PAPEL (maqueta 47a)
+-- «Así se elige por el trabajo y no por el nombre, y se ve lo de los
+--  otros papeles sin entrar.»
+--
+-- Se calcula de verdad, con los datos que ya hay. Lo que no se puede
+-- calcular se devuelve NULL y la fila sale sin recuento: no se
+-- inventa un número para rellenar.
+--
+-- Ojo: esto se mira con los papeles CONCEDIDOS, no con el activo. Es
+-- justamente para ver el trabajo de los otros papeles sin ponérselos.
+-- ------------------------------------------------------------
+create or replace function public.papeles_pendientes()
+returns jsonb
+language plpgsql
+stable security definer
+set search_path to 'public'
+as $function$
+declare
+  v_id uuid; v_roles text[]; v_hoy date := current_date;
+  r jsonb := '{}'::jsonb;
+  n int; m int; t text;
+begin
+  select p.id, coalesce(p.roles, array[p.rol]) into v_id, v_roles
+    from public.perfiles p where p.email = (auth.jwt() ->> 'email') limit 1;
+  if v_id is null then return r; end if;
+
+  -- ATLETA · su próximo entreno, que es lo que va a mirar
+  if 'atleta' = any(v_roles) then
+    select g.nombre || ' · ' ||
+           case when e.fecha = v_hoy then 'hoy'
+                when e.fecha = v_hoy + 1 then 'mañana'
+                else 'el ' || to_char(e.fecha, 'DD/MM') end
+      into t
+      from public.entrenamientos e
+      join public.atletas a on a.grupo_id = e.grupo_id
+      left join public.grupos g on g.id = e.grupo_id
+     where a.perfil_id = v_id and e.fecha >= v_hoy
+     order by e.fecha
+     limit 1;
+    r := r || jsonb_build_object('atleta', t);   -- NULL si no hay: fila sin recuento
+  end if;
+
+  -- FAMILIA · recibos sin cobrar de sus hijos
+  if 'padre' = any(v_roles) then
+    select count(*) into n
+      from public.pagos pg
+      join public.atletas a on a.id = pg.atleta_id
+     where a.perfil_padre_id = v_id
+       and (pg.estado = 'impagado'
+            or (pg.estado = 'pendiente' and pg.fecha_vencimiento is not null and pg.fecha_vencimiento < v_hoy));
+    r := r || jsonb_build_object('padre',
+           case when n > 0 then n || case when n = 1 then ' recibo sin pagar' else ' recibos sin pagar' end end);
+  end if;
+
+  -- ENTRENADOR · entrenos de sus grupos de la última semana sin lista pasada
+  if 'entrenador' = any(v_roles) then
+    select count(*) into n
+      from public.entrenamientos e
+     where e.fecha between v_hoy - 7 and v_hoy
+       and (e.entrenador_id = v_id
+            or e.grupo_id in (select g.id from public.grupos g where g.entrenador_id = v_id))
+       and not exists (select 1 from public.asistencia s where s.entrenamiento_id = e.id);
+    r := r || jsonb_build_object('entrenador',
+           case when n > 0 then n || ' por pasar lista' end);
+  end if;
+
+  -- TESORERO · cobros por resolver + cambios de cuota por aprobar
+  if 'tesoreria' = any(v_roles) then
+    select count(*) into n
+      from public.pagos pg
+     where pg.anulado = false
+       and (pg.estado = 'impagado'
+            or (pg.estado = 'pendiente' and pg.fecha_vencimiento is not null and pg.fecha_vencimiento < v_hoy));
+    select count(*) into m
+      from public.dinero_avisos d where d.estado = 'pendiente' and d.para = 'tesoreria';
+    r := r || jsonb_build_object('tesoreria',
+           case when n + m > 0 then
+             trim(both ' · ' from
+               coalesce(case when n > 0 then n || ' cobros por resolver' end, '') ||
+               case when n > 0 and m > 0 then ' · ' else '' end ||
+               coalesce(case when m > 0 then m || case when m = 1 then ' cuota por aprobar' else ' cuotas por aprobar' end end, ''))
+           end);
+  end if;
+
+  -- CONTABILIDAD · lo que le han mandado y está sin ver
+  if 'contabilidad' = any(v_roles) then
+    select count(*) into n
+      from public.dinero_avisos d where d.estado = 'pendiente' and d.para = 'contabilidad';
+    r := r || jsonb_build_object('contabilidad',
+           case when n > 0 then n || case when n = 1 then ' aviso de tesorería' else ' avisos de tesorería' end end);
+  end if;
+
+  -- ADMINISTRADOR · los avisos del panel, con los de la Liga aparte
+  if 'admin' = any(v_roles) then
+    select
+      (select count(*) from public.liga_participaciones where estado = 'pendiente')
+      into m;
+    select m
+      + (select count(*) from public.mensajes where coalesce(atendido, false) = false)
+      + (select count(*) from public.solicitudes_inscripcion where coalesce(atendida, false) = false)
+      + (select count(*) from public.peticiones_redes where estado = 'pendiente')
+      into n;
+    r := r || jsonb_build_object('admin',
+           case when n > 0 then
+             n || case when n = 1 then ' aviso' else ' avisos' end ||
+             case when m > 0 then ' · ' || m || ' de la Liga' else '' end
+           end);
+  end if;
+
+  -- JUNTA y COORDINACIÓN · no hay nada que contar que sea suyo y solo suyo.
+  -- Se dejan sin recuento a propósito, antes que inventar un número.
+  return r;
+end;
+$function$;
+
+-- Repartir papeles: solo administración. Es lo que hará falta el día
+-- que Isabel tenga cuenta: añadirle «contabilidad» y ya está.
+-- Deja `areas` coherente con el papel del dinero, porque el filtro
+-- «Solo lo mío» del inicio ya se apoya en esa columna
+-- (059_automatizaciones.sql) y no se va a crear otra cosa al lado.
+create or replace function public.perfil_roles_poner(p_perfil uuid, p_roles text[])
+returns text[]
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare v_areas text[]; v_rol text;
+begin
+  if not public.es_admin() then
+    raise exception 'Repartir papeles es cosa de administración.';
+  end if;
+  if p_roles is null or array_length(p_roles, 1) is null then
+    raise exception 'Hay que dejarle al menos un papel.';
+  end if;
+  if not (p_roles <@ array['admin','coordinador','entrenador','atleta','padre',
+                           'tesoreria','contabilidad','junta']::text[]) then
+    raise exception 'Hay algún papel que no existe.';
+  end if;
+
+  select rol into v_rol from public.perfiles where id = p_perfil;
+  if v_rol is null then raise exception 'Esa persona no existe.'; end if;
+
+  v_areas := case
+    when 'admin'        = any(p_roles) then array['personas','dinero','web','liga','club']
+    when 'tesoreria'    = any(p_roles) then array['personas','dinero','web','liga','club']
+    when 'contabilidad' = any(p_roles) then array['dinero']
+    when 'junta'        = any(p_roles) then array['personas','web','liga','club']
+    else null
+  end;
+
+  update public.perfiles
+     set roles = p_roles,
+         areas = coalesce(v_areas, areas)
+   where id = p_perfil;
+
+  return p_roles;
+end;
+$function$;
+
+-- ============================================================
+-- 2 · LOS TRES PAPELES DEL DINERO
+-- ------------------------------------------------------------
+-- Miran el papel activo, igual que es_admin().
+--
+-- ⚠️ ADMINISTRADOR Y TESORERO SON PAPELES DISTINTOS
+-- (maquetas/v3/DECISIONES-Y-PAPELES.md, apartado 9):
+--
+--   · Tesorero      → cobros, cuotas, remesas, excepciones
+--   · Administrador → contenido, Liga, fotos, personas, grupos
+--
+-- «Separarlos evita abrir una pantalla con 32 secciones cuando solo
+--  vienes a girar una remesa.»
+--
+-- Con una salvedad para no dejar al club sin poder cobrar por un
+-- reparto a medias: si a alguien SOLO le han dado administración,
+-- administración le sigue valiendo para el dinero. En cuanto tiene
+-- también el papel de tesorero, tiene que ponérselo para tocarlo.
+-- ============================================================
 
 -- Tesorería: fija cuotas y aprueba excepciones.
--- Los admin de hoy (Andrés y Adrián) son tesorería sin tocar nada:
--- así el panel sigue funcionando igual el minuto después de aplicar esto.
 create or replace function public.es_tesoreria()
 returns boolean
 language sql
@@ -125,7 +610,11 @@ as $function$
     select 1 from public.perfiles p
     where p.email = (auth.jwt() ->> 'email')
       and coalesce(p.activo, true)
-      and (p.rol in ('admin','tesoreria') or 'tesoreria' = any(coalesce(p.papeles, '{}')))
+      and (
+        coalesce(p.rol_activo, p.rol) = 'tesoreria'
+        or (coalesce(p.rol_activo, p.rol) = 'admin'
+            and not ('tesoreria' = any(coalesce(p.roles, array[p.rol]))))
+      )
   );
 $function$;
 
@@ -141,7 +630,7 @@ as $function$
     select 1 from public.perfiles p
     where p.email = (auth.jwt() ->> 'email')
       and coalesce(p.activo, true)
-      and (p.rol = 'contabilidad' or 'contabilidad' = any(coalesce(p.papeles, '{}')))
+      and coalesce(p.rol_activo, p.rol) = 'contabilidad'
   );
 $function$;
 
@@ -156,8 +645,8 @@ as $function$
     select 1 from public.perfiles p
     where p.email = (auth.jwt() ->> 'email')
       and coalesce(p.activo, true)
-      and (p.rol = 'junta' or 'junta' = any(coalesce(p.papeles, '{}')))
-  ) and not public.es_tesoreria() and not public.es_contabilidad();
+      and coalesce(p.rol_activo, p.rol) = 'junta'
+  );
 $function$;
 
 -- Ve el dinero: tesorería y contabilidad. La junta, no.
@@ -181,70 +670,20 @@ as $function$
 $function$;
 
 -- Ejecuta (girar la remesa, hacer la transferencia): contabilidad.
--- Los admin también, porque hoy no hay contable y alguien tiene que girar.
+-- Y tesorería también, porque hoy no hay contable y alguien tiene que
+-- girar. Administración a secas ya no: para el dinero está el papel de
+-- tesorero, que es un clic.
 create or replace function public.puede_girar()
 returns boolean
 language sql
 stable security definer
 set search_path to 'public'
 as $function$
-  select public.es_contabilidad() or public.es_admin();
-$function$;
-
--- es_staff(): se le añaden los tres papeles como rol, para que el día
--- que alguien entre SOLO como contable o SOLO como junta pueda usar el
--- panel. No cambia nada para los 15 perfiles de hoy: ninguno tiene esos
--- roles, así que la función devuelve exactamente lo mismo que antes.
-create or replace function public.es_staff()
-returns boolean
-language sql
-stable security definer
-set search_path to 'public'
-as $function$
-  select exists (
-    select 1 from public.perfiles p
-    where p.email = (auth.jwt() ->> 'email')
-      and p.rol in ('admin','coordinador','entrenador','tesoreria','contabilidad','junta')
-  );
-$function$;
-
--- Poner o quitar el papel del dinero a alguien, en un clic desde el panel.
--- Deja `areas` coherente para el filtro «Solo lo mío» del inicio, que ya
--- se apoya en esa columna (059_automatizaciones.sql).
-create or replace function public.perfil_papel_dinero(p_perfil uuid, p_papel text)
-returns text
-language plpgsql
-security definer
-set search_path to 'public'
-as $function$
-declare
-  v_areas text[];
-begin
-  if not public.es_admin() then
-    raise exception 'Solo un administrador reparte los papeles del dinero.';
-  end if;
-  if p_papel is not null and p_papel not in ('tesoreria','contabilidad','junta') then
-    raise exception 'Papel desconocido: %', p_papel;
-  end if;
-
-  v_areas := case p_papel
-    when 'tesoreria'    then array['personas','dinero','web','liga','club']
-    when 'contabilidad' then array['dinero']
-    when 'junta'        then array['personas','web','liga','club']
-    else null
-  end;
-
-  update public.perfiles
-     set papeles = case when p_papel is null then null else array[p_papel] end,
-         areas   = v_areas
-   where id = p_perfil;
-
-  return p_papel;
-end;
+  select public.es_contabilidad() or public.es_tesoreria();
 $function$;
 
 -- ============================================================
--- 2 · ESCUELA O SOCIO: SE ETIQUETA, NO SE DEDUCE
+-- 3 · ESCUELA O SOCIO: SE ETIQUETA, NO SE DEDUCE
 -- ------------------------------------------------------------
 -- Decisión del club: cada persona lleva su etiqueta puesta al
 -- darla de alta. Sin etiqueta NO se adivina por el año de
@@ -283,10 +722,10 @@ create index if not exists idx_atletas_tipo_membresia
 -- cosa (lo cobrado, no lo acordado).
 -- ------------------------------------------------------------
 alter table public.atletas
-  add column if not exists cuota_mensual   numeric(8,2),
-  add column if not exists cuota_nota      text,
+  add column if not exists cuota_mensual    numeric(8,2),
+  add column if not exists cuota_nota       text,
   add column if not exists cuota_fijada_por uuid,
-  add column if not exists cuota_fijada_en timestamptz;
+  add column if not exists cuota_fijada_en  timestamptz;
 
 do $$
 begin
@@ -307,7 +746,7 @@ comment on column public.atletas.cuota_mensual is
   'contabilidad la ve y pide el cambio (dinero_pedir_cambio_cuota).';
 
 -- ============================================================
--- 3 · EL CONTACTO DE PAGOS DEPENDE DE LA SECCIÓN
+-- 4 · EL CONTACTO DE PAGOS DEPENDE DE LA SECCIÓN
 -- ------------------------------------------------------------
 -- No del tipo de duda. La tabla `info_pagos` ya tiene las dos
 -- filas y los campos de contacto; estaban vacíos. Solo se
@@ -330,7 +769,7 @@ update public.info_pagos
  where clave = 'club';
 
 -- ============================================================
--- 4 · LOS AVISOS DE DINERO: EL FLUJO DE DOS PASOS
+-- 5 · LOS AVISOS DE DINERO: EL FLUJO DE DOS PASOS
 -- ------------------------------------------------------------
 -- Las dos direcciones en una sola tabla:
 --   · contabilidad pide un cambio de cuota → le llega a tesorería
@@ -597,6 +1036,11 @@ $function$;
 
 -- A quién hay que avisar al móvil. Devuelve perfiles, nunca correos
 -- ni teléfonos: la función `aviso-enviar` va por perfil.
+--
+-- Ojo: aquí se mira lo CONCEDIDO (`roles`), no el papel activo. Si
+-- Andrés está probando el panel como atleta, el aviso de tesorería
+-- le tiene que llegar igual: los avisos son de la persona, no del
+-- papel con el que esté mirando en ese momento.
 create or replace function public.dinero_destinatarios(p_para text)
 returns table (perfil_id uuid, nombre text)
 language sql
@@ -609,10 +1053,10 @@ as $function$
      and coalesce(p.activo, true)
      and (
        (p_para = 'tesoreria'
-         and (p.rol in ('admin','tesoreria') or 'tesoreria' = any(coalesce(p.papeles,'{}'))))
+         and (coalesce(p.roles, array[p.rol]) && array['admin','tesoreria']::text[]))
        or
        (p_para = 'contabilidad'
-         and (p.rol = 'contabilidad' or 'contabilidad' = any(coalesce(p.papeles,'{}'))))
+         and ('contabilidad' = any(coalesce(p.roles, array[p.rol]))))
      );
 $function$;
 
@@ -705,7 +1149,7 @@ as $function$
 $function$;
 
 -- ============================================================
--- 5 · PERMISOS PARA QUE CONTABILIDAD PUEDA TRABAJAR
+-- 6 · PERMISOS PARA QUE CONTABILIDAD PUEDA TRABAJAR
 -- ------------------------------------------------------------
 -- Se AÑADEN políticas; no se toca ni se quita ninguna de las que
 -- ya había, así que admin, entrenadores y atletas siguen igual.
@@ -746,7 +1190,7 @@ create policy "tesoreria gestiona tarifas" on public.tarifas
   using (public.es_tesoreria()) with check (public.es_tesoreria());
 
 -- ============================================================
--- 6 · PERMISOS DE TABLA · REVOKE EXPLÍCITO
+-- 7 · PERMISOS DE TABLA · REVOKE EXPLÍCITO
 -- ------------------------------------------------------------
 -- Supabase tiene un «alter default privileges … grant all» que
 -- reparte permisos solos a anon y authenticated en todo lo que se
@@ -763,8 +1207,16 @@ grant select on public.dinero_avisos to authenticated;
 
 -- Las funciones: fuera de anon en todas, y de `public` en las que
 -- tocan datos. Solo se le da EXECUTE a authenticated.
-revoke all on function public.perfiles_protege_papeles()                          from public, anon, authenticated;
-revoke all on function public.perfil_papel_dinero(uuid, text)                     from public, anon, authenticated;
+revoke all on function public.perfiles_protege_roles()                            from public, anon, authenticated;
+revoke all on function public.perfiles_roles_coherentes()                         from public, anon, authenticated;
+revoke all on function public.perfil_roles_poner(uuid, text[])                    from public, anon, authenticated;
+revoke all on function public.rol_activo_poner(text)                              from public, anon, authenticated;
+revoke all on function public.rol_al_entrar_poner(text)                           from public, anon, authenticated;
+revoke all on function public.rol_al_entrar_aplicar()                             from public, anon, authenticated;
+revoke all on function public.papeles_pendientes()                                from public, anon, authenticated;
+revoke all on function public.mis_papeles()                                       from public, anon, authenticated;
+revoke all on function public.mi_rol()                                            from public, anon, authenticated;
+revoke all on function public.tengo_rol(text)                                     from public, anon, authenticated;
 revoke all on function public.dinero_seccion_de(uuid)                             from public, anon, authenticated;
 revoke all on function public.dinero_pedir_cambio_cuota(uuid, numeric, text)      from public, anon, authenticated;
 revoke all on function public.dinero_fijar_cuota(uuid, numeric, text)             from public, anon, authenticated;
@@ -783,7 +1235,14 @@ revoke all on function public.ve_dinero()                                       
 revoke all on function public.puede_fijar_cuota()                                 from public, anon;
 revoke all on function public.puede_girar()                                       from public, anon;
 
-grant execute on function public.perfil_papel_dinero(uuid, text)                  to authenticated;
+grant execute on function public.perfil_roles_poner(uuid, text[])                 to authenticated;
+grant execute on function public.rol_activo_poner(text)                           to authenticated;
+grant execute on function public.rol_al_entrar_poner(text)                        to authenticated;
+grant execute on function public.rol_al_entrar_aplicar()                          to authenticated;
+grant execute on function public.papeles_pendientes()                             to authenticated;
+grant execute on function public.mis_papeles()                                    to authenticated;
+grant execute on function public.mi_rol()                                         to authenticated;
+grant execute on function public.tengo_rol(text)                                  to authenticated;
 grant execute on function public.dinero_pedir_cambio_cuota(uuid, numeric, text)   to authenticated;
 grant execute on function public.dinero_fijar_cuota(uuid, numeric, text)          to authenticated;
 grant execute on function public.dinero_resolver(uuid, text, text)                to authenticated;
@@ -801,8 +1260,8 @@ grant execute on function public.ve_dinero()                                    
 grant execute on function public.puede_fijar_cuota()                              to authenticated;
 grant execute on function public.puede_girar()                                    to authenticated;
 
--- `dinero_seccion_de` y `perfiles_protege_papeles` no se llaman nunca
--- desde el navegador: se quedan sin EXECUTE para nadie de fuera.
+-- `dinero_seccion_de` y los dos disparadores no se llaman nunca desde
+-- el navegador: se quedan sin EXECUTE para nadie de fuera.
 
 commit;
 
@@ -830,19 +1289,30 @@ select 'función abierta de más' as comprobacion,
    and r.grantee in ('anon','PUBLIC','public')
    and r.routine_name like any (array['dinero\_%','atletas\_etiquetar','atletas\_sin\_etiqueta%',
                                  'es\_tesoreria','es\_contabilidad','es\_junta','ve\_dinero',
-                                 'puede\_%','perfil\_papel\_dinero','perfiles\_protege\_papeles'])
+                                 'puede\_%','perfil\_roles\_poner','rol\_activo\_poner',
+                                 'rol\_al\_entrar\_%','papeles\_pendientes',
+                                 'mis\_papeles','mi\_rol','tengo\_rol','perfiles\_protege\_roles'])
  order by r.routine_name, r.grantee;
 
--- (c) Los tres papeles, a la vista. Hoy: contabilidad vacío.
-select 'quién lleva qué' as comprobacion, nombre, apellidos, email, rol, papeles, areas
+-- (c) Los papeles de cada uno, a la vista. Hoy: contabilidad vacío
+--     y Andrés con los cuatro.
+select 'quién lleva qué' as comprobacion, nombre, apellidos, email,
+       rol as principal, roles, rol_activo, areas
   from public.perfiles
- where rol in ('admin','tesoreria','contabilidad','junta')
-    or papeles is not null
+ where cardinality(coalesce(roles,'{}')) > 1
+    or rol in ('admin','tesoreria','contabilidad','junta')
  order by rol, apellidos;
 
--- (d) Cuántas fichas están sin etiquetar.
+-- (d) Nadie con el papel activo fuera de sus papeles concedidos.
+--     Lo esperado: cero.
+select 'papel activo imposible' as comprobacion, count(*) as cuantos
+  from public.perfiles
+ where rol_activo is not null
+   and not (rol_activo = any(coalesce(roles, array[rol])));
+
+-- (e) Cuántas fichas están sin etiquetar.
 select 'sin etiquetar' as comprobacion,
-       count(*) filter (where tipo_membresia is null)   as sin_etiquetar,
+       count(*) filter (where tipo_membresia is null)    as sin_etiquetar,
        count(*) filter (where tipo_membresia = 'escuela') as escuela,
        count(*) filter (where tipo_membresia = 'socio')   as socios
   from public.atletas;
