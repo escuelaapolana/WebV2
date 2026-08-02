@@ -637,11 +637,12 @@
          palabra si hacen cosas distintas (maqueta 44c). -->
     <div class="panel" data-sec="avisos">
       <h2>Franja informativa</h2>
-      <p class="intro" style="margin-bottom:10px;">La franja que sale arriba del todo en toda la web. Solo se muestra la que esté "activa".</p>
+      <p class="intro" style="margin-bottom:10px;">La franja de aviso de la web. Aunque tengas varias activas, solo se enseña una:
+        primero la urgente, y entre varias, la que caduque antes.</p>
       <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo-aviso">+ Nueva franja</button></div>
       <div style="overflow-x:auto;">
         <table id="tabla-avisos">
-          <thead><tr><th>Texto</th><th>Nivel</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Texto</th><th>Dónde sale</th><th>Activa</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -654,19 +655,43 @@
         <input type="hidden" id="a-id">
         <label for="a-texto">Texto de la franja</label>
         <textarea id="a-texto" style="min-height:70px;" required></textarea>
+        <div class="fila-check">
+          <input type="checkbox" id="a-urgente">
+          <label for="a-urgente">Es urgente (se ve nada más entrar)</label>
+        </div>
+        <p style="font-size:13.5px; line-height:1.5; color:var(--texto-suave); margin:6px 0 0;">
+          <b style="color:var(--texto);">Franja normal</b> — sale en la portada, más abajo, entre el resto de secciones.<br>
+          <b style="color:var(--texto);">Franja urgente</b> — sale arriba del todo, en rojo: es lo primero que se ve al entrar, sin bajar.
+          Úsala para lo que cambia los planes de hoy («mañana no hay entreno por lluvia»).<br>
+          Para algo que no se puede perder nadie, manda además un aviso al móvil (La web → Avisos al móvil):
+          la franja solo la ve quien entra en la web.
+        </p>
+
         <div class="grid2">
           <div>
-            <label for="a-tipo">Nivel</label>
-            <select id="a-tipo">
-              <option value="informativo">Informativo (azul)</option>
-              <option value="importante">Importante (ámbar)</option>
-              <option value="urgente">Urgente (rojo)</option>
-            </select>
+            <label for="a-fecha-inicio">Empieza a verse el (opcional)</label>
+            <input type="date" id="a-fecha-inicio">
           </div>
           <div>
             <label for="a-fecha">Se oculta después de (opcional)</label>
             <input type="date" id="a-fecha">
           </div>
+        </div>
+        <p style="font-size:13.5px; line-height:1.5; color:var(--texto-suave); margin:6px 0 0;">
+          En blanco, la franja se ve desde ya y no caduca. Con fecha de inicio puedes dejarla escrita hoy
+          y que aparezca sola el día que toque.
+        </p>
+
+        <div style="margin-top:14px;">
+          <label for="a-tipo">Color de la franja normal</label>
+          <select id="a-tipo">
+            <option value="informativo">Informativo (azul)</option>
+            <option value="importante">Importante (ámbar)</option>
+            <option value="urgente">Urgente (rojo)</option>
+          </select>
+          <p style="font-size:13.5px; line-height:1.5; color:var(--texto-suave); margin:6px 0 0;">
+            Si marcas «Es urgente», la franja sale en rojo y este color no se usa.
+          </p>
         </div>
         <div class="grid2">
           <div>
@@ -1690,15 +1715,19 @@ document.addEventListener('DOMContentLoaded', function () {
   async function cargarAvisos() {
     var tb = $('tabla-avisos').querySelector('tbody');
     tb.innerHTML = ADM.filaCargando(4);
-    var r = await sb.from('avisos').select('id,texto,tipo,activo').order('created_at', { ascending: false });
+    var r = await sb.from('avisos').select('id,texto,tipo,activo,urgente,fecha_inicio').order('created_at', { ascending: false });
     if (r.error) { tb.innerHTML = ADM.filaError(4, r.error.message); return; }
     if (!r.data.length) {
       tb.innerHTML = filaVacia(4, ICONO_MEGAFON, 'Todavía no hay ninguna franja', 'La franja de arriba de la web solo aparece cuando hay una activa.',
         '<button type="button" class="btn btn--primario btn--mini" data-nuevo-aviso>+ Crear una franja</button>');
       return;
     }
+    /* Hoy, para marcar las que están escritas pero aún no han entrado. */
+    var hoy = isoDia(new Date());
     tb.innerHTML = r.data.map(function (a) {
-      return '<tr><td>' + esc(a.texto) + '</td><td>' + esc(a.tipo || '') + '</td>' +
+      var donde = a.urgente ? 'Arriba del todo' : 'En la portada';
+      if (a.fecha_inicio && a.fecha_inicio > hoy) donde += ' · desde el ' + fechaCorta(a.fecha_inicio);
+      return '<tr><td>' + esc(a.texto) + '</td><td>' + esc(donde) + '</td>' +
         '<td>' + (a.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
         '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-ed-aviso="' + a.id + '">Editar</button>' +
         '<button class="btn btn--peligro" data-bo-aviso="' + a.id + '">Borrar</button></td></tr>';
@@ -1710,6 +1739,8 @@ document.addEventListener('DOMContentLoaded', function () {
     $('a-id').value = a.id || '';
     $('a-texto').value = a.texto || '';
     $('a-tipo').value = a.tipo || 'informativo';
+    $('a-urgente').checked = !!a.urgente;
+    $('a-fecha-inicio').value = a.fecha_inicio || '';
     $('a-fecha').value = a.fecha_fin || '';
     $('a-enlace').value = a.enlace || '';
     $('a-texto-enlace').value = a.texto_enlace || '';
@@ -1732,6 +1763,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var datos = {
       texto: $('a-texto').value.trim(),
       tipo: $('a-tipo').value,
+      urgente: $('a-urgente').checked,
+      fecha_inicio: $('a-fecha-inicio').value || null,
       fecha_fin: $('a-fecha').value || null,
       enlace: $('a-enlace').value.trim() || null,
       texto_enlace: $('a-texto-enlace').value.trim() || null,

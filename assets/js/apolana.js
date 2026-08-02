@@ -533,21 +533,55 @@ document.addEventListener('DOMContentLoaded', async function () {
   } catch (e) { /* sin conexión: se quedan los de siempre */ }
 });
 
-/* --- Aviso de portada (barra superior si hay un aviso activo en la BD) --- */
+/* --- Aviso de portada -------------------------------------------------
+   Puede haber varios avisos activos a la vez y la franja solo pinta UNO.
+   El orden de preferencia, dicho a las claras:
+     1º  el urgente, si lo hay (y si hay dos urgentes, el que caduque antes);
+     2º  entre los normales, el que caduque antes —es el que corre prisa—;
+     3º  a igualdad de todo, el más recién escrito.
+   Un aviso sin fecha de caducidad no corre prisa, así que va el último.
+   ---------------------------------------------------------------------- */
 document.addEventListener('DOMContentLoaded', async function () {
   if (!window.APOLANA_DB) return;
   try {
     var res = await window.APOLANA_DB
       .from('avisos')
-      .select('texto, tipo, enlace, texto_enlace')
-      .eq('activo', true)
-      /* Si el aviso tiene fecha de caducidad, deja de salir solo al pasarla. */
-      .or('fecha_fin.is.null,fecha_fin.gte.' + new Date().toISOString().slice(0, 10))
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .select('texto, tipo, enlace, texto_enlace, urgente, fecha_inicio, fecha_fin, created_at')
+      .eq('activo', true);
     if (res.error || !res.data || !res.data.length) return;
-    var a = res.data[0];
-    if (!a.texto) return;
+
+    /* El día de hoy en el calendario de aquí, no en el de Londres: un aviso
+       programado para mañana tiene que entrar a las 00:00 de España. */
+    var d = new Date();
+    var hoy = d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+
+    /* Ventana de fechas: las dos son opcionales. Sin fecha de inicio, el
+       aviso vale desde ya; sin fecha de fin, no caduca. */
+    var vigentes = res.data.filter(function (v) {
+      if (!v.texto) return false;
+      if (v.fecha_inicio && v.fecha_inicio > hoy) return false;   // aún no toca
+      if (v.fecha_fin && v.fecha_fin < hoy) return false;         // ya pasó
+      return true;
+    });
+    if (!vigentes.length) return;
+
+    /* Un aviso es urgente por su casilla. Se admite además el nivel
+       "urgente" de toda la vida, para que los que ya estuvieran puestos así
+       no se caigan de arriba al aplicar el cambio. */
+    function esUrgente(v) {
+      return v.urgente === true || String(v.tipo || '').toLowerCase() === 'urgente';
+    }
+    vigentes.sort(function (x, y) {
+      if (esUrgente(x) !== esUrgente(y)) return esUrgente(x) ? -1 : 1;
+      var fx = x.fecha_fin || '9999-12-31', fy = y.fecha_fin || '9999-12-31';
+      if (fx !== fy) return fx < fy ? -1 : 1;
+      return String(y.created_at || '').localeCompare(String(x.created_at || ''));
+    });
+
+    var a = vigentes[0];
+    var urgente = esUrgente(a);
 
     /* Tres niveles, como en la maqueta. Se admiten también los nombres
        antiguos ("info", "aviso") para que un aviso viejo no salga sin color. */
@@ -557,12 +591,16 @@ document.addEventListener('DOMContentLoaded', async function () {
       urgente: 'urgente'
     };
     var nivel = NIVELES[String(a.tipo || '').toLowerCase()] || 'informativo';
+    /* Un aviso urgente sale en rojo aunque el nivel diga otra cosa: si algo
+       manda subir arriba del todo, el color tiene que decir lo mismo. */
+    if (urgente) nivel = 'urgente';
 
-    /* En la portada el aviso NO va arriba del todo: una franja a todo el ancho
-       por encima del logotipo manda demasiado para lo que dice. Si la página
-       ofrece un hueco dentro de la foto, se coloca ahí, al pie y discreto. */
+    /* Un aviso normal NO va arriba del todo: una franja a todo el ancho por
+       encima del logotipo manda demasiado para lo que dice. Si la página
+       ofrece un hueco dentro de la portada, se coloca ahí, en su sitio.
+       El urgente se salta el hueco y se va arriba, que es de lo que se trata. */
     var hueco = document.getElementById('aviso-en-hero');
-    if (hueco && nivel !== 'urgente') {
+    if (hueco && !urgente) {
       var t = document.createElement('span');
       t.className = 'texto';
       t.textContent = a.texto;
@@ -601,9 +639,16 @@ document.addEventListener('DOMContentLoaded', async function () {
       if (ev.target.closest('a')) return;         // los enlaces, a lo suyo
       bar.classList.toggle('abierto');
     });
+    /* La franja se mete DESPUÉS de pintar la página, y el navegador compensa
+       solo lo que se cuela por encima para que no salte lo que estás leyendo
+       («scroll anchoring»): el resultado es que la franja nace justo fuera de
+       la pantalla. Si el visitante estaba arriba del todo —acaba de entrar—,
+       se le devuelve arriba y así la ve. Si ya había bajado, no se le mueve. */
+    var estabaArriba = window.scrollY <= 1;
     var cab = document.querySelector('apolana-cabecera');
     if (cab && cab.parentNode) cab.parentNode.insertBefore(bar, cab);
     else document.body.insertBefore(bar, document.body.firstChild);
+    if (estabaArriba && window.scrollY > 0) window.scrollTo(0, 0);
   } catch (e) { /* si falla, no pasa nada: no se muestra aviso */ }
 });
 

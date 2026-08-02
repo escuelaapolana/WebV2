@@ -1,0 +1,32 @@
+-- ============================================================
+-- 080 · FUERA UNA FICHA HUÉRFANA DE LA BIBLIOTECA
+-- ------------------------------------------------------------
+-- QUÉ RESUELVE
+--   En `biblioteca_fotos` había una ficha con la ruta
+--   `assets/img/club/pista-salida-de-tacos.jpg`, pero ese
+--   archivo NO existe en el repositorio. El que sí existe se
+--   llama `competicion-salida-de-tacos.jpg` (esa foto ya está
+--   registrada aparte, con su propia ficha), y de la salida de
+--   tacos de Dénia se ocupa `pista-salida-de-tacos-denia.jpg`.
+--
+--   Resultado: en `admin/biblioteca/` esa tarjeta salía con la
+--   imagen rota. Era la única descuadrada de las 89.
+--
+--   La ficha no la creó ninguna migración (la 073 solo dio de
+--   alta la versión `-denia`); se insertó suelta contra la base
+--   de datos. Aquí se retira, y queda por fin recogido en una
+--   migración para que la limpieza sea reproducible.
+--
+-- LO QUE NO CAMBIA
+--   Las otras 88 fichas siguen igual. Las dos fotos reales de
+--   salida de tacos (la de competición y la de Dénia) se quedan;
+--   solo desaparece la ficha que apuntaba a un archivo que no
+--   existe.
+--
+-- Idempotente: se puede pasar las veces que haga falta. Si la
+-- fila ya no está (como ocurre ahora), no hace nada; y como
+-- casa la ruta exacta, no toca ninguna otra ficha.
+-- ============================================================
+
+delete from public.biblioteca_fotos
+where ruta = 'assets/img/club/pista-salida-de-tacos.jpg';
