@@ -422,6 +422,17 @@
   .fb-tiempos { margin-top:6px; }
   .fb-tiempos .fb-ej { font-size:13px; color: var(--navy); }
   .fb-tiempos .fb-serie { display:inline-block; font-family: var(--fuente-dato); font-size:13px; background: var(--crema-media); color: var(--navy); border-radius:10px; padding:2px 7px; margin:2px 4px 2px 0; }
+  /* La serie que no se hizo se ve DISTINTA, no solo de otro color: en
+     discontinuo y sin fondo, que es la misma forma que usa el atleta en su
+     pantalla para decir «esto está sin hacer». */
+  .fb-tiempos .fb-serie.no { background:none; border:1px dashed var(--linea); color: var(--texto-suave); font-family: inherit; }
+  /* «Se quedó a medias · 7 de 10 series · no le dio tiempo». Va arriba de la
+     ficha del atleta porque cambia cómo se lee el resto: un RPE de 5 en medio
+     entrenamiento no es el mismo dato que en uno entero. */
+  .fb-medias { margin:6px 0 8px; padding:8px 11px; border-radius:10px; font-size:14px; line-height:1.45;
+    background: var(--ambar-fondo); border:1px solid var(--ambar-borde); color:#6B4A0B; }
+  .fb-medias b { font-weight:700; }
+  .fb-medias em { display:block; margin-top:3px; font-style:normal; font-size:13px; color:#8A5307; }
   .sin-registro { color: var(--texto-suave); font-size:13px; font-style:italic; }
 
   /* observaciones privadas (solo staff) */
@@ -2912,6 +2923,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     data = data||{};
     var dis = disciplinaActual();
     var div=document.createElement('div'); div.className='editor-fila';
+    /* ⚠️ EL ID DE LA FILA VIAJA EN EL FORMULARIO, Y NO ES OPCIONAL.
+       Cada fila de un entrenamiento lleva un id propio (migración 103) que es
+       la cuerda que une lo que el atleta apuntó —sus kilos, sus tiempos y las
+       series que no hizo— con SU ejercicio. Este editor rehace las filas desde
+       cero al guardar, así que si el id no se arrastra por aquí se pierde, la
+       base le pone uno nuevo creyendo que es una fila nueva, y lo que el atleta
+       apuntó se queda huérfano SIN QUE NADIE SE ENTERE hasta meses después.
+       Si algún día se toca `serializarBloques`, esto tiene que seguir. */
+    if(data.id) div.setAttribute('data-fid', data.id);
     div.innerHTML =
       '<div class="fila-l1">'+
         '<select class="f-ejercicio"></select>'+
@@ -3233,6 +3253,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var filas=[];
       be.querySelectorAll('.editor-fila').forEach(function(fe){
         var f={};
+        /* El id de la fila, lo primero: es lo que hace que lo que el atleta
+           apuntó siga pegado a su ejercicio aunque aquí se reordene todo. Ver
+           el aviso de `nuevaFila`. Una fila nueva no lo trae y se lo pone la
+           base al guardar. */
+        var fid = fe.getAttribute('data-fid'); if(fid) f.id=fid;
         var ej = fe.querySelector('.f-ejercicio').value.trim(); if(ej) f.ejercicio=ej;
         // 'detalle' se mantiene tal cual: la zona del atleta ya lo lee.
         ['series','distancia','ritmo','detalle','calzado','carga','observaciones'].forEach(function(k){
@@ -3256,7 +3281,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var mats = [];
         fe.querySelectorAll('.f-material-chk').forEach(function(chk){ if(chk.checked) mats.push(chk.value); });
         if(mats.length) f.material = mats;
-        if(Object.keys(f).length) filas.push(f);
+        /* Una fila vacía se sigue tirando. El `id` no cuenta como contenido: si
+           contara, una fila que el entrenador acaba de vaciar se quedaría
+           guardada para siempre solo por llevar su identificador. */
+        var tieneAlgo = Object.keys(f).some(function(k){ return k!=='id'; });
+        if(tieneAlgo) filas.push(f);
       });
       if(etiqueta || matiz || filas.length){
         var b = { etiqueta: etiqueta, filas: filas };
@@ -4809,6 +4838,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(prev && FB_SESIONES[prev]) sel.value = prev;
   }
 
+  /* Cómo se le cuenta al entrenador el motivo que eligió el atleta. «Me
+     molestaba» se dice «le molestaba algo», y entonces lo que hay que mirar es
+     el campo de molestias, que está tres líneas más abajo en su misma ficha. */
+  var MOTIVO_ENTRENADOR={ tiempo:'no le dio tiempo', molestia:'le molestaba algo', otro:'otro motivo' };
+
   async function pintarFeedback(sesionId){
     var cont = $('fb-cont');
     if(!sesionId){ cont.innerHTML = vacioHTML(icVacChat, 'Elige un entrenamiento para ver cómo lo vivieron tus atletas.'); return; }
@@ -4842,16 +4876,61 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(r.como_me_siento) txt += '<p class="fb-txt"><span>Cómo se siente</span>'+esc(r.como_me_siento)+'</p>';
       if(r.molestias) txt += '<p class="fb-txt"><span>Molestias</span>'+esc(r.molestias)+'</p>';
       if(r.notas_atleta) txt += '<p class="fb-txt"><span>Notas</span>'+esc(r.notas_atleta)+'</p>';
+      /* ------------------------------------------------------------
+         LO QUE SE QUEDÓ SIN HACER
+         De nada sirve que el atleta lo marque si aquí se queda enterrado. Va
+         arriba del todo de su ficha, antes que el RPE, porque cambia cómo se
+         lee todo lo demás: un RPE de 5 en un entrenamiento entero y en medio
+         entrenamiento no significan lo mismo.
+
+         Y se dice QUÉ se cayó, no solo cuánto: si alguien lleva tres semanas
+         saltándose siempre el core, eso es un dato, no un descuido, y solo se
+         ve si aparecen los nombres.
+         ------------------------------------------------------------ */
+      var aviso='';
+      if(r.estado==='a_medias' || r.estado==='no_hecho'){
+        var cayeron=[];
+        if(r.tiempos_reales && typeof r.tiempos_reales==='object'){
+          Object.keys(r.tiempos_reales).forEach(function(k){
+            var t=r.tiempos_reales[k]; if(!t || !Array.isArray(t.series)) return;
+            var sin=t.series.filter(function(s){ return !(s&&s.hecha); }).length;
+            if(sin) cayeron.push((t.ejercicio||k)+' ('+sin+')');
+          });
+        }
+        var cuanto = (r.series_previstas>0) ? r.series_hechas+' de '+r.series_previstas+' series' : '';
+        var porque = r.motivo_no_hecho ? MOTIVO_ENTRENADOR[r.motivo_no_hecho]||r.motivo_no_hecho : '';
+        aviso = '<div class="fb-medias"><b>'+(r.estado==='no_hecho'?'No lo hizo':'Se quedó a medias')+'</b>'+
+          (cuanto?'<span> · '+esc(cuanto)+'</span>':'')+
+          (porque?'<span> · '+esc(porque)+'</span>':'')+
+          (cayeron.length?'<em>Se cayó: '+esc(cayeron.slice(0,5).join(', '))+(cayeron.length>5?'…':'')+'</em>':'')+
+          (r.nota_no_hecho?'<em>«'+esc(r.nota_no_hecho)+'»</em>':'')+'</div>';
+      }
       var tiempos='';
       if(r.tiempos_reales && typeof r.tiempos_reales==='object'){
         Object.keys(r.tiempos_reales).forEach(function(k){
           var t=r.tiempos_reales[k]; if(!t) return;
-          var arr=(t.tiempos||[]).filter(function(v){return v!=null && String(v).trim()!=='';});
-          if(!arr.length) return;
-          tiempos += '<div class="fb-ej">'+esc(t.ejercicio||k)+': '+arr.map(function(v,i){ return '<span class="fb-serie">'+(i+1)+'ª '+esc(v)+'</span>'; }).join('')+'</div>';
+          /* Se enseña serie a serie, y la que no se hizo se dice con palabras.
+             Antes se filtraban los huecos y una serie sin hacer desaparecía;
+             ahora se ve, que es justo el dato que el club quería. */
+          var trozos=[];
+          if(Array.isArray(t.series)){
+            t.series.forEach(function(s,i){
+              var v=(t.tiempos&&t.tiempos[i])||'';
+              trozos.push('<span class="fb-serie'+(s&&s.hecha?'':' no')+'">'+(i+1)+'ª '+
+                          esc(s&&s.hecha ? (v||'hecha') : 'no la hizo')+'</span>');
+            });
+          } else {
+            (t.tiempos||[]).forEach(function(v,i){
+              if(v==null||String(v).trim()==='') return;
+              trozos.push('<span class="fb-serie">'+(i+1)+'ª '+esc(v)+'</span>');
+            });
+          }
+          if(!trozos.length) return;
+          tiempos += '<div class="fb-ej">'+esc(t.ejercicio||k)+': '+trozos.join('')+'</div>';
         });
       }
       return '<div class="fb-atleta"><div class="fb-nom"><strong>'+nom+'</strong>'+(at.categoria?'<span class="pill">'+esc(at.categoria)+'</span>':'')+'</div>'+
+        aviso +
         (metrics?'<div class="fb-metrics">'+metrics+'</div>':'')+ txt +
         (tiempos?'<div class="fb-tiempos">'+tiempos+'</div>':'')+'</div>';
     }).join('');
@@ -4866,7 +4945,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<label>Entrenamiento</label><select id="fb-sesion"><option value="">— elige un entrenamiento —</option></select>'+
         '<div id="fb-cont" style="margin-top:16px;">'+vacioHTML(icVacChat, 'Elige un entrenamiento para ver cómo lo vivieron tus atletas.')+'</div>'+
         '<details class="ayuda"><summary>¿Cómo funciona?</summary>'+
-          '<p class="pista">Cada atleta apunta desde su portal cómo fue el entrenamiento: el <strong>esfuerzo (RPE)</strong>, la <strong>sensación general</strong>, el sueño, las molestias y los tiempos que hizo. Aquí lo ves junto, atleta por atleta.</p>'+
+          '<p class="pista">Cada atleta apunta desde su portal cómo fue el entrenamiento: el <strong>esfuerzo (RPE)</strong>, la <strong>sensación general</strong>, el sueño, las molestias y lo que hizo en cada serie —los tiempos en atletismo y natación, los <strong>kilos y las repeticiones</strong> en fuerza—. Aquí lo ves junto, atleta por atleta.</p>'+
+          '<p class="pista">Marca cada serie según la va haciendo, así que <strong>la serie sin marcar es la que no hizo</strong>. Cuando un entrenamiento se queda a medias sale avisado arriba de su ficha, con cuántas series faltaron, qué ejercicios se cayeron y por qué: <em>no le dio tiempo</em> o <em>le molestaba algo</em>. El atleta no puede borrar nada, solo marcar, para que no se pierda la información de que ese ejercicio estaba puesto y no se hizo.</p>'+
         '</details>'+
       '</div>';
     $('fb-sesion').addEventListener('change', function(){ pintarFeedback($('fb-sesion').value); });

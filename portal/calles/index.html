@@ -608,14 +608,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* Los tiempos van DENTRO de cada serie, con su número, igual que en el
      resto del portal: así no hay duda de dónde se anota cada repetición.
-     La clave usa la posición real del bloque en la sesión, que es la misma
-     que usa el portal del atleta: los dos escriben el mismo sitio. */
+
+     LA CLAVE ES EL ID DE LA FILA (migración 103), la misma que usa el portal
+     del atleta: los dos escriben en el mismo sitio, y ese sitio no se mueve
+     aunque el entrenador reordene el entrenamiento. La posición de siempre
+     («b0f1») se sigue leyendo para lo guardado antes, y se sigue usando en las
+     filas que aún no tengan id. */
   function htmlHuecos(bi, fi, f, reg){
     var n = C.repeticiones(f);
     if (!(n > 1) || !C.metrosBloque({ filas:[f] })) return '';
     if (n > 30) n = 30;
-    var key = 'b'+bi+'f'+fi;
-    var ya = (reg && reg[key] && reg[key].tiempos) ? reg[key].tiempos : [];
+    var pos = 'b'+bi+'f'+fi;
+    var key = f.id || pos;
+    var guardado = (reg && (reg[key] || reg[pos])) || null;
+    var ya = (guardado && guardado.tiempos) ? guardado.tiempos : [];
     var puestos = 0, h = '';
     for (var i=0;i<n;i++){
       var v = ya[i] == null ? '' : String(ya[i]);
@@ -626,7 +632,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            'aria-label="Serie '+(i+1)+' de '+n+' de '+escAt(f.ejercicio||C.cifra(f))+'"></label>';
     }
     return '<div class="tcap"><b>Tus tiempos</b><span>'+puestos+' de '+n+'</span></div>'+
-           '<div class="thuecos" data-eje="'+escAt(f.ejercicio || C.cifra(f))+'">'+h+'</div>';
+           '<div class="thuecos" data-eje="'+escAt(f.ejercicio || C.cifra(f))+'"'+
+           (f.id ? ' data-fid="'+escAt(f.id)+'"' : '')+'>'+h+'</div>';
   }
 
   async function guardarTiempos(s, at){
@@ -640,7 +647,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (!ins.length) return;
       var key = ins[0].getAttribute('data-key'), vals = [], hay = false;
       Array.prototype.forEach.call(ins, function(x){ var v = x.value.trim(); vals.push(v); if (v) hay = true; });
-      if (hay) tiempos[key] = { ejercicio: g.getAttribute('data-eje'), tiempos: vals };
+      /* Se escribe también `series` con su ✓ para que el recuento de lo hecho
+         y lo no hecho salga igual desde aquí que desde el portal del atleta:
+         en natación un tiempo escrito es una serie nadada. */
+      if (hay) tiempos[key] = { fila_id: g.getAttribute('data-fid') || null,
+                                ejercicio: g.getAttribute('data-eje'),
+                                medida: 'tiempo',
+                                series: vals.map(function(v){ return { hecha: !!v.trim(), tiempo: v }; }),
+                                tiempos: vals };
     });
     var r = await sb.from('registros_sesion').upsert(
       { sesion_id: s.id, atleta_id: at.id, tiempos_reales: Object.keys(tiempos).length ? tiempos : null },

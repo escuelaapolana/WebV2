@@ -218,6 +218,13 @@
     var seg = rec.segundos != null ? numero(rec.segundos) : segundosDeTexto(rec.valor || rec.texto);
     var met = rec.metros != null ? numero(rec.metros) : null;
     var forma = rec.forma ? String(rec.forma).toLowerCase() : null;
+    /* Lo que el entrenador escribió y no se puede reinterpretar: si
+       puso un rango, sigue siendo un rango; si puso kilómetros,
+       siguen siendo kilómetros. Se arrastran por aquí o se pierden
+       en el primer viaje de ida y vuelta. */
+    var rango = rec.rango || null;
+    var unidad = rec.unidad || null;
+    var valor = rec.valor != null && !isNaN(parseFloat(rec.valor)) ? numero(rec.valor) : null;
 
     if (!modo) {
       if (met > 0) modo = 'distancia';
@@ -231,11 +238,12 @@
     }
     if (modo === 'distancia') {
       if (!(met > 0)) return null;
-      return { modo: 'distancia', segundos: null, metros: met, forma: forma, texto: rec.texto || null };
+      return { modo: 'distancia', segundos: null, metros: met, valor: valor, unidad: unidad,
+               forma: forma, texto: rec.texto || null };
     }
     if (modo === 'salida' || modo === 'fijo' || modo === 'tiempo') {
       if (!(seg > 0)) return rec.texto ? interpretarDescanso(rec.texto, disciplina) : null;
-      return { modo: modo, segundos: seg, metros: null, forma: forma, texto: rec.texto || null };
+      return { modo: modo, segundos: seg, metros: null, rango: rango, forma: forma, texto: rec.texto || null };
     }
     return interpretarDescanso(rec.texto || rec.valor, disciplina);
   }
@@ -276,17 +284,28 @@
       if (segS > 0) return { modo: 'salida', segundos: segS, metros: null, forma: null, texto: null };
     }
 
-    /* Recuperación en metros: «200 m», «rec 200m», «vuelta de 300 m». */
+    /* Recuperación en metros: «200 m», «rec 200m», «vuelta de 300 m».
+       La UNIDAD se guarda tal como la escribió el entrenador: si
+       puso «1 km» se enseña «1 km», no «1.000 m». Los metros se
+       calculan igual, porque sumar volumen sí necesita una unidad
+       común, pero para pintar manda lo que él escribió. */
     var mm = bajo.match(/(\d+(?:[.,]\d+)?)\s*(km|m)\b(?!in)/);
     if (mm && !/\bmin\b/.test(bajo)) {
-      var met = parseFloat(mm[1].replace(',', '.')) * (mm[2] === 'km' ? 1000 : 1);
-      if (met > 0) return { modo: 'distancia', segundos: null, metros: Math.round(met), forma: forma, texto: null };
+      var val = parseFloat(mm[1].replace(',', '.'));
+      var uni = (mm[2] === 'km') ? 'km' : 'm';
+      var met = val * (uni === 'km' ? 1000 : 1);
+      if (met > 0) return { modo: 'distancia', segundos: null, metros: Math.round(met),
+                            valor: val, unidad: uni, forma: forma, texto: null };
     }
 
     var seg = segundosDeTexto(bajo);
     if (seg > 0) {
       var modo = (disciplina === 'natacion') ? 'fijo' : 'tiempo';
-      return { modo: modo, segundos: seg, metros: null, forma: forma,
+      /* Si venía un rango, se guarda que lo era: al pintarlo se
+         enseña el rango entero y no el promedio, que es un número
+         que el entrenador no escribió. */
+      var rg = rangoDeTexto(bajo);
+      return { modo: modo, segundos: seg, metros: null, forma: forma, rango: rg ? rg.texto : null,
                texto: /[a-z]{3}/.test(bajo.replace(/min|seg|segundos|minutos|s\b|m\b/g, '')) ? t : null };
     }
 
@@ -317,13 +336,13 @@
     var t = quitarTildes(String(txt).toLowerCase()).replace(/\s+/g, ' ').trim();
     if (!t) return null;
 
-    /* Rango «3-4 min» / «2 a 3 min»: se toma el punto medio. */
-    var rango = t.match(/(\d+(?:[.,]\d+)?)\s*(?:-|–|a)\s*(\d+(?:[.,]\d+)?)\s*(min|minutos|'|s|seg|segundos|")/);
-    if (rango) {
-      var a = parseFloat(rango[1].replace(',', '.')), b = parseFloat(rango[2].replace(',', '.'));
-      var mult = /min|'/.test(rango[3]) ? 60 : 1;
-      return Math.round(((a + b) / 2) * mult);
-    }
+    /* Rango «3-4 min» / «45-60 s»: para CALCULAR se toma el punto
+       medio, que para estimar cuánto dura la sesión es razonable.
+       Para ENSEÑARLO no: «45-60 s» no se escribe «53"», porque 53
+       no lo dijo nadie. De eso se encarga `rangoDeTexto()`, que
+       usan las funciones de texto para pintar el rango entero. */
+    var rango = rangoDeTexto(t);
+    if (rango) return Math.round(((rango.a + rango.b) / 2) * rango.mult);
 
     /* «1:30» o «1:30.5» → mm:ss */
     var reloj = t.match(/(\d{1,2})\s*:\s*(\d{1,2})(?:[.,]\d+)?/);
@@ -345,6 +364,34 @@
     if (solo) return Math.round(parseFloat(solo[1].replace(',', '.')));
     return null;
   }
+
+  /* ¿El entrenador escribió un rango? «45-60 s», «3-4 min», «2 a 3
+     min». Devuelve los dos extremos y cómo se escribe el rango
+     entero, para poder enseñarlo tal cual.
+
+     POR QUÉ ESTO EXISTE: un rango es una INDICACIÓN («entre 45 y 60
+     segundos, según cómo vayas»), y al promediarlo se convierte en
+     una orden falsa («53 segundos»). El entrenador escribió un
+     rango a propósito; enseñarlo es respetarlo. */
+  function rangoDeTexto(txt) {
+    if (txt == null) return null;
+    var t = quitarTildes(String(txt).toLowerCase()).replace(/\s+/g, ' ').trim();
+    var m = t.match(/(\d+(?:[.,]\d+)?)\s*(?:-|–|—|a)\s*(\d+(?:[.,]\d+)?)\s*(min|minutos?|'|s|seg|segundos?|")/);
+    if (!m) return null;
+    var a = parseFloat(m[1].replace(',', '.')), b = parseFloat(m[2].replace(',', '.'));
+    if (!(a > 0) || !(b > 0)) return null;
+    var enMinutos = /min|'/.test(m[3]);
+    return {
+      a: a, b: b,
+      mult: enMinutos ? 60 : 1,
+      unidad: enMinutos ? 'min' : 's',
+      /* Se escribe con el símbolo corto, que es como se lee de un
+         vistazo a pie de pista: «45-60"», «3-4'». */
+      texto: numTxt(a) + '-' + numTxt(b) + (enMinutos ? '\'' : '"')
+    };
+  }
+
+  function numTxt(n) { return String(n).replace('.', ','); }
 
   /* Qué mide el campo `distancia` de una fila, que unas veces son
      metros («400 m», «1.000 m», «18 km»), otras tiempo («10 min»,
@@ -374,7 +421,11 @@
       return { metros: Math.round(n), segundos: null, reps: null, texto: txt };
     }
 
-    var seg = /\bmin\b|\bminutos?\b|\bseg\b|\bsegundos?\b|:|'|"/.test(t) ? segundosDeTexto(t) : null;
+    /* «40 s» y «45 s por pie» también son tiempo: la «s» suelta
+       entraba antes por ninguna parte y esas filas se leían como si
+       no midieran nada. Va detrás del bloque de metros a propósito,
+       para que «50 m» siga siendo metros. */
+    var seg = /\bmin\b|\bminutos?\b|\bseg\b|\bsegundos?\b|\d\s*s\b|:|'|"/.test(t) ? segundosDeTexto(t) : null;
     if (seg > 0) return { metros: null, segundos: seg, reps: null, texto: txt };
 
     var solo = t.match(/^(\d+)$/);
@@ -433,6 +484,18 @@
     return miles(Math.round(m)) + ' m';
   }
 
+  /* Una distancia escrita CON LA UNIDAD QUE PUSO EL ENTRENADOR.
+     «12 km» se enseña «12 km», no «12.000 m»: convertir por detrás
+     es donde aparecen los errores de mil, y además «12 km» es como
+     lo dice un entrenador y «12.000 m» no lo dice nadie. Si no
+     consta la unidad original, se cae a metros, que es lo
+     mayoritario en pista. */
+  function fmtDistancia(r) {
+    if (!r) return '';
+    if (r.unidad === 'km' && r.valor > 0) return numTxt(r.valor) + ' km';
+    return fmtMetros(r.metros);
+  }
+
   function miles(n) {
     return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   }
@@ -470,7 +533,7 @@
     if (!r || r.modo === 'ninguna') return '';
 
     if (r.modo === 'salida') return 'salida ' + fmtSalida(r.segundos);
-    if (r.modo === 'fijo')   return 'descanso ' + fmtSegundos(r.segundos);
+    if (r.modo === 'fijo')   return 'descanso ' + (r.rango || fmtSegundos(r.segundos));
 
     if (r.modo === 'bajada') {
       var comoBaja = r.forma && r.forma !== 'parado' ? r.forma : 'suave';
@@ -479,8 +542,10 @@
     if (r.modo === 'texto') return 'rec ' + (r.texto || '');
 
     var etiq = (disciplina === 'cubo') ? 'desc. ' : 'rec ';
-    if (r.modo === 'distancia') return etiq + fmtMetros(r.metros) + (r.forma ? ' ' + r.forma : '');
-    if (r.modo === 'tiempo')    return etiq + fmtSegundos(r.segundos) + (r.forma ? ' ' + r.forma : '');
+    if (r.modo === 'distancia') return etiq + fmtDistancia(r) + (r.forma ? ' ' + r.forma : '');
+    /* El rango manda sobre el número: si el entrenador escribió
+       «45-60 s», eso es lo que se lee, no el promedio. */
+    if (r.modo === 'tiempo')    return etiq + (r.rango || fmtSegundos(r.segundos)) + (r.forma ? ' ' + r.forma : '');
     return '';
   }
 
@@ -491,11 +556,11 @@
     var r = normalizarRec(rec, disciplina);
     if (!r || r.modo === 'ninguna') return '';
     if (r.modo === 'salida')    return 'salida ' + fmtSalida(r.segundos);
-    if (r.modo === 'fijo')      return fmtSegundos(r.segundos);
+    if (r.modo === 'fijo')      return r.rango || fmtSegundos(r.segundos);
     if (r.modo === 'bajada')    return 'bajada ' + (r.forma && r.forma !== 'parado' ? r.forma : 'suave');
     if (r.modo === 'texto')     return r.texto || '';
-    if (r.modo === 'distancia') return fmtMetros(r.metros) + (r.forma ? ' ' + r.forma : '');
-    if (r.modo === 'tiempo')    return fmtSegundos(r.segundos) + (r.forma ? ' ' + r.forma : '');
+    if (r.modo === 'distancia') return fmtDistancia(r) + (r.forma ? ' ' + r.forma : '');
+    if (r.modo === 'tiempo')    return (r.rango || fmtSegundos(r.segundos)) + (r.forma ? ' ' + r.forma : '');
     return '';
   }
 
@@ -816,7 +881,247 @@
   }
 
   /* ==========================================================
-     7 · AYUDAS SUELTAS
+     7 · QUÉ SE APUNTA EN CADA EJERCICIO, Y CON QUÉ UNIDAD
+     ----------------------------------------------------------
+     EL PROBLEMA
+     La pantalla del atleta pedía «apuntar el tiempo» en TODOS los
+     ejercicios. En una sentadilla nadie apunta un tiempo: apunta
+     los kilos y las repeticiones que ha hecho. La pantalla daba
+     por hecho que todo era atletismo.
+
+     LA UNIDAD LA PONE EL SISTEMA, NO EL ATLETA
+     Un número sin unidad no es un dato: dentro de seis meses,
+     «200» no dice si eran metros, segundos o kilos. Nadie tiene
+     que escribir la unidad ni elegirla de un desplegable: con el
+     deporte del entrenamiento y lo que el entrenador escribió en
+     la fila, ya se sabe.
+
+     Y MANDA LO QUE ESCRIBIÓ EL ENTRENADOR, no el deporte. Un día
+     puede ser de dos deportes (pesas y luego series), y una fila
+     que pone «6 × 200 m» pide un tiempo aunque el entrenamiento
+     esté marcado como fuerza. Se mira primero la fila, y el
+     deporte solo decide cuando la fila no lo aclara.
+     ========================================================== */
+
+  /* Las tres cosas que un atleta puede apuntar de una serie. */
+  var CAMPO_PESO = { k: 'peso', etiqueta: 'peso',  unidad: 'kg',  decimal: true,  ph: '60' };
+  var CAMPO_REPS = { k: 'reps', etiqueta: 'reps',  unidad: 'rep', decimal: false, ph: '10' };
+  var CAMPO_TIEMPO = { k: 'tiempo', etiqueta: 'tiempo', unidad: null, decimal: true, ph: '' };
+  var CAMPO_DIST = { k: 'distancia', etiqueta: 'distancia', unidad: 'm', decimal: true, ph: '' };
+
+  function esFuerza(dep) { return dep === 'fuerza' || dep === 'cubo'; }
+
+  /* Qué se le pide al atleta en ESTA fila:
+
+       peso_reps  →  «60 kg × 11»       (sentadilla, dominadas…)
+       peso       →  «10 kg»            (plancha con disco 40 s: el
+                                         tiempo lo manda el entrenador,
+                                         lo que varía es el peso)
+       tiempo     →  «68.2»             (6 × 400 m, 8 × 50 m)
+       distancia  →  «12 km» / «800 m»  (un rodaje: el entrenador dice
+                                         los minutos, el atleta cuánto hizo)
+
+     `unidades` sale con dos valores solo cuando de verdad hay que
+     poder elegir: en atletismo conviven «6 × 150 m» y «rodaje de
+     12 km», y adivinarlo por el tamaño del número acertaría casi
+     siempre y fallaría justo en los casos raros, que son los que
+     se notan. Mejor que lo diga quien escribe. En fuerza y en
+     natación no hay nada que elegir: kilos y metros, y punto. */
+  function medidaDeFila(fila, opts) {
+    opts = opts || {};
+    var dep = (opts.deporte || '').toLowerCase();
+    var med = medidaDeDistancia(fila && fila.distancia);
+    var txt = quitarTildes(String((fila && fila.distancia) || '').toLowerCase());
+
+    /* 1 · «12 rep», «3 rep»: lo dice la propia fila y no hay más que hablar. */
+    if (/\brep\b|\breps\b|\brepetici/.test(txt)) {
+      return { clave: 'peso_reps', campos: [CAMPO_PESO, CAMPO_REPS], unidades: null, unidad: 'kg' };
+    }
+
+    /* 2 · La fila va en metros o kilómetros: se corre, y lo que se
+           apunta es el tiempo. El «200 m» de al lado ya dice de qué
+           distancia es ese tiempo. */
+    if (med.metros > 0) {
+      return { clave: 'tiempo', campos: [CAMPO_TIEMPO], unidades: null, unidad: null,
+               referencia: String(fila.distancia || '') };
+    }
+
+    /* 3 · La fila va en tiempo («40 s», «8 min»). Lo que apunta el
+           atleta depende de para qué: en sala, el peso que usó; a la
+           calle, cuánto le dio tiempo a hacer. */
+    if (med.segundos > 0) {
+      if (esFuerza(dep)) {
+        /* Con carga, el peso: en una plancha con disco el tiempo lo
+           manda el entrenador y lo que cambia semana a semana es el
+           disco. Sin carga —movilidad, respiración, estiramientos—
+           no hay nada que apuntar y pedir kilos sería pedir un dato
+           que no existe: basta con decir si se hizo. */
+        if (fila && fila.carga && /\d/.test(String(fila.carga))) {
+          return { clave: 'peso', campos: [CAMPO_PESO], unidades: null, unidad: 'kg' };
+        }
+        return { clave: 'hecho', campos: [], unidades: null, unidad: null,
+                 referencia: String((fila && fila.distancia) || '') };
+      }
+      return { clave: 'distancia', campos: [CAMPO_DIST], unidades: ['m', 'km'], unidad: 'm' };
+    }
+
+    /* 4 · La fila no lo aclara («6 saltos», «5 vallas», o nada):
+           entonces sí decide el deporte del día. */
+    if (esFuerza(dep)) return { clave: 'peso_reps', campos: [CAMPO_PESO, CAMPO_REPS], unidades: null, unidad: 'kg' };
+    if (dep === 'natacion') return { clave: 'tiempo', campos: [CAMPO_TIEMPO], unidades: null, unidad: null };
+    return { clave: 'tiempo', campos: [CAMPO_TIEMPO], unidades: null, unidad: null };
+  }
+
+  /* Una serie ya apuntada, escrita con su unidad pegada al número:
+     «60 kg × 11», «12 km», «68.2». Pegada y no en la cabecera de la
+     columna a propósito: en el móvil se hace scroll y la cabecera
+     se pierde de vista, y entonces el número vuelve a quedarse sin
+     unidad. */
+  function textoSerieHecha(serie, medida) {
+    if (!serie || !medida) return '';
+    /* Un ejercicio que solo se marca no tiene número que enseñar: el
+       dato es el ✓, y decirlo con palabras es más claro que un hueco. */
+    if (medida.clave === 'hecho') return serie.hecha ? 'hecha' : '';
+    var p = [];
+    if (medida.clave === 'peso_reps' || medida.clave === 'peso') {
+      if (serie.peso != null && serie.peso !== '') p.push(numTxt(serie.peso) + ' kg');
+      if (serie.reps != null && serie.reps !== '') p.push(numTxt(serie.reps) + ' rep');
+      return p.join(' × ');
+    }
+    if (medida.clave === 'distancia') {
+      if (serie.distancia == null || serie.distancia === '') return '';
+      return numTxt(serie.distancia) + ' ' + (serie.unidad || medida.unidad || 'm');
+    }
+    return serie.tiempo != null ? String(serie.tiempo) : '';
+  }
+
+  /* ==========================================================
+     8 · EL RESUMEN DE LA TARJETA, DEPORTE A DEPORTE
+     ----------------------------------------------------------
+     La tarjeta de inicio resumía un full body de ocho ejercicios
+     como «3 × 10-12 rep · 2' recuperación». Eso es el PRIMER
+     ejercicio, no el entrenamiento: con ocho ejercicios distintos,
+     resumir por el primero engaña.
+
+     Lo que resume de verdad no es lo mismo en cada deporte:
+
+       · En FUERZA, el volumen y qué se trabaja. «8 ejercicios ·
+         Tren superior y core» dice de qué va el día; la primera
+         sentadilla no.
+       · En ATLETISMO y NATACIÓN, la serie principal SÍ tiene
+         sentido: un día de 6 × 800 se llama «6 × 800», y el resto
+         es calentar y soltar.
+
+     Y SI NO HAY UN RESUMEN HONESTO, NO SE PONE NINGUNO. Un hueco
+     no engaña a nadie; un resumen que miente, sí.
+     ========================================================== */
+
+  /* Etiquetas de bloque que no dicen QUÉ se trabaja, solo CUÁNDO:
+     no sirven para resumir de qué va el día. */
+  var ETIQUETA_ESTRUCTURAL = /^(parte\s*(inicial|principal|final)?|bloque\s*\d*|calentamiento|vuelta a la calma|activacion|principal|inicial|final|soltar|estiramientos?)$/;
+
+  function etiquetasDeTrabajo(bloques) {
+    var out = [];
+    (bloques || []).forEach(function (b) {
+      var e = String((b && b.etiqueta) || '').trim();
+      if (!e) return;
+      if (ETIQUETA_ESTRUCTURAL.test(quitarTildes(e.toLowerCase()))) return;
+      if (!(b.filas || []).length) return;
+      if (out.indexOf(e) < 0) out.push(e);
+    });
+    return out;
+  }
+
+  function cuentaEjercicios(bloques) {
+    var n = 0;
+    (bloques || []).forEach(function (b) {
+      (b.filas || []).forEach(function (f) { if (f && (f.ejercicio || f.nombre)) n++; });
+    });
+    return n;
+  }
+
+  function cuentaSeries(bloques) {
+    var n = 0;
+    (bloques || []).forEach(function (b) {
+      (b.filas || []).forEach(function (f) {
+        var s = parseInt(f && f.series, 10);
+        if (s > 0 && s <= 30) n += s;
+      });
+    });
+    return n;
+  }
+
+  /* La fila que manda en un día de correr o nadar: la del bloque
+     principal que lleva series o ritmo. */
+  function filaClave(bloques) {
+    var principal = null;
+    (bloques || []).forEach(function (b) { if (!principal && /principal/i.test(b.etiqueta || '')) principal = b; });
+    var filas = [];
+    (principal ? [principal] : (bloques || [])).forEach(function (b) {
+      (b.filas || []).forEach(function (f) { filas.push(f); });
+    });
+    var f = null;
+    filas.forEach(function (x) { if (!f && (x.series || x.ritmo)) f = x; });
+    return f || filas[0] || null;
+  }
+
+  /* El resumen de una línea. Devuelve '' cuando no hay nada honesto
+     que decir, y entonces la tarjeta no pinta resumen. */
+  function resumenCorto(sesion, opts) {
+    opts = opts || {};
+    var bloques = (sesion && Array.isArray(sesion.bloques)) ? sesion.bloques : [];
+    if (!bloques.length) return '';
+    var dep = (opts.deporte || (sesion && sesion.deporte) || '').toLowerCase();
+    var dis = opts.disciplina || disciplinaDe(sesion, opts.grupo);
+
+    if (esFuerza(dep)) {
+      var n = cuentaEjercicios(bloques);
+      if (!n) return '';
+      var p = [n === 1 ? '1 ejercicio' : n + ' ejercicios'];
+      /* Las etiquetas las escribió el entrenador: «Tren superior y
+         core», «Tobillo y pie». No se deducen de los nombres de los
+         ejercicios, que sería inventar. Dos como mucho: la tercera
+         ya no se lee. */
+      etiquetasDeTrabajo(bloques).slice(0, 2).forEach(function (e) { p.push(e); });
+      return p.join(' · ');
+    }
+
+    var f = filaClave(bloques);
+    if (!f) return '';
+    var linea = textoFila(f, dis);
+    if (!linea) return '';
+    return (f.ejercicio && dis !== 'cubo') ? f.ejercicio + ' · ' + linea : linea;
+  }
+
+  /* Los datos sueltos de la tarjeta, ya con su etiqueta: en fuerza,
+     el volumen; en atletismo y natación, la serie que manda. */
+  function cifrasDe(sesion, opts) {
+    opts = opts || {};
+    var bloques = (sesion && Array.isArray(sesion.bloques)) ? sesion.bloques : [];
+    if (!bloques.length) return [];
+    var dep = (opts.deporte || (sesion && sesion.deporte) || '').toLowerCase();
+    var dis = opts.disciplina || disciplinaDe(sesion, opts.grupo);
+    var out = [];
+
+    if (esFuerza(dep)) {
+      var ne = cuentaEjercicios(bloques), ns = cuentaSeries(bloques);
+      if (ne) out.push({ v: String(ne), l: ne === 1 ? 'ejercicio' : 'ejercicios' });
+      if (ns) out.push({ v: String(ns), l: ns === 1 ? 'serie' : 'series' });
+      return out;
+    }
+
+    var f = filaClave(bloques);
+    if (!f) return [];
+    var serie = textoSerie(f, dis);
+    if (serie) out.push({ v: serie, l: 'series' });
+    if (f.ritmo) out.push({ v: String(f.ritmo), l: 'ritmo' });
+    var rec = textoRecPlano(recDeFila(f, dis), dis);
+    if (rec) out.push({ v: rec, l: 'recuperación' });
+    return out.slice(0, 3);
+  }
+
+  /* ==========================================================
+     9 · AYUDAS SUELTAS
      ========================================================== */
 
   function numero(v) {
@@ -850,12 +1155,25 @@
 
     interpretarDescanso: interpretarDescanso,
     segundosDeTexto: segundosDeTexto,
+    rangoDeTexto: rangoDeTexto,
     medidaDeDistancia: medidaDeDistancia,
     ritmoDeTexto: ritmoDeTexto,
+
+    /* Qué se apunta en cada ejercicio y con qué unidad */
+    medidaDeFila: medidaDeFila,
+    textoSerieHecha: textoSerieHecha,
+
+    /* El resumen honesto de la tarjeta */
+    resumenCorto: resumenCorto,
+    cifrasDe: cifrasDe,
+    filaClave: filaClave,
+    cuentaEjercicios: cuentaEjercicios,
+    cuentaSeries: cuentaSeries,
 
     fmtSegundos: fmtSegundos,
     fmtSalida: fmtSalida,
     fmtMetros: fmtMetros,
+    fmtDistancia: fmtDistancia,
     fmtDuracion: fmtDuracion,
     fmtEstimado: fmtEstimado,
 

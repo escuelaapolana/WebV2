@@ -1,0 +1,186 @@
+# ============================================================
+# PING DIARIO A LA BASE DE DATOS · NO BORRAR ESTE ARCHIVO
+# ------------------------------------------------------------
+# POR QUÉ EXISTE
+#
+# La base del club está en Supabase, en el plan gratuito. Ese plan
+# APAGA el proyecto cuando pasa una semana entera sin que nadie le
+# pida nada. Y no vuelve solo: hay que entrar al panel de Supabase y
+# darle a «Resume project» a mano. Que entren cuatrocientas familias a
+# la web NO lo despierta; lo único que ven es una web sin datos.
+#
+# El club para en agosto. Si están dos semanas sin que nadie entre y el
+# día de la vuelta se manda un aviso a todas las familias, se
+# encontrarían la web en blanco —sin horarios, sin grupos, sin precios
+# y sin poder entrar al portal— hasta que alguien abra el panel. Es el
+# peor momento posible para que pase.
+#
+# Este archivo lo evita: una vez al día pide UNA fila de los grupos.
+# Con eso el proyecto cuenta como «en uso» y no se apaga nunca.
+#
+# LO QUE HACE, EXACTAMENTE
+#   Una lectura. Nada más. Pide un identificador de la tabla `grupos`,
+#   que es de lectura pública (la usa cualquiera que abra la web sin
+#   haber entrado con su cuenta). No escribe, no borra y no toca ningún
+#   dato de nadie.
+#
+# LA CLAVE QUE USA
+#   Es la clave «publishable» de Supabase, la misma que va en
+#   assets/js/db.js y que viaja en el navegador de todo el que abre la
+#   web. Es pública por diseño: quien manda de verdad son las reglas
+#   RLS de la base. AQUÍ NO SE PONE NUNCA UNA CLAVE SECRETA (service
+#   role): este repositorio es público y quedaría a la vista de todos.
+#
+# SI ALGÚN DÍA HAY QUE TOCARLO
+#   La dirección y la clave están abajo, en `env`. Si cambian en
+#   assets/js/db.js, hay que cambiarlas también aquí.
+#
+# CÓMO SE SABE QUE ESTO SIGUE VIVO
+#   Ver el archivo NO es comprobar nada. Se comprueba en GitHub, en la
+#   pestaña «Actions»: ahí sale una ejecución verde por día. Y si un
+#   día falla, no se queda callado: ver el bloque «avisar» del final.
+#
+# LA OTRA FORMA DE QUE ESTO SE MUERA, Y CÓMO SE AVISA
+#   GitHub apaga las tareas programadas de un repositorio público
+#   cuando pasan 60 días sin que nadie toque el repositorio (ningún
+#   cambio, ninguna subida). No avisa este archivo: avisa GitHub, por
+#   correo al dueño del repositorio, diciendo que ha desactivado la
+#   tarea; se vuelve a encender con un botón en la pestaña Actions.
+#   Es difícil que pase —la web se toca a menudo— pero conviene saberlo:
+#   si un mes de agosto largo nadie tocara nada, este correo es el que
+#   hay que mirar.
+# ============================================================
+
+name: Ping diario a la base
+
+on:
+  schedule:
+    # Todos los días a las 06:23 UTC (08:23 en España en verano).
+    # El minuto es raro a propósito: a las horas en punto GitHub tiene
+    # cola y las tareas programadas se retrasan.
+    - cron: '23 6 * * *'
+  # Y a mano, desde la pestaña Actions, para comprobar que funciona
+  # sin esperar a mañana.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write        # solo para poder abrir el aviso si falla
+
+concurrency:
+  group: ping-base-de-datos
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Despertar la base
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pedir una fila pública a la base
+        env:
+          # Los mismos dos valores que hay en assets/js/db.js.
+          SUPABASE_URL: 'https://icaxokjsvhlreuwpyxeb.supabase.co'
+          SUPABASE_KEY: 'sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH'
+        run: |
+          set -uo pipefail
+
+          # Se intenta tres veces con medio minuto de espera. Un corte de
+          # red de diez segundos no es «la base está caída», y un aviso
+          # falso a la semana enseña a la gente a no hacer caso de los
+          # avisos: cuando el problema sea de verdad, nadie lo mirará.
+          ok=0
+          for intento in 1 2 3; do
+            # Se vacía antes de cada intento: si curl no llega a conectar no
+            # escribe nada, y sin esto se enseñaría la respuesta del intento
+            # anterior como si fuera la de ahora.
+            : > cuerpo.json
+            codigo=$(curl -sS -o cuerpo.json -w '%{http_code}' --max-time 30 \
+              -H "apikey: ${SUPABASE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_KEY}" \
+              "${SUPABASE_URL}/rest/v1/grupos?select=id&limit=1") || codigo='sin respuesta'
+            cuerpo=$(head -c 300 cuerpo.json 2>/dev/null || true)
+            echo "Intento ${intento} · HTTP ${codigo} · ${cuerpo}"
+
+            # Tiene que contestar 200 Y devolver una lista de verdad. Una
+            # página de error de Supabase también puede venir con un 200,
+            # así que mirar solo el código no basta.
+            case "${codigo}:${cuerpo}" in
+              200:\[*) ok=1; break ;;
+            esac
+
+            if [ "${intento}" -lt 3 ]; then sleep 30; fi
+          done
+
+          if [ "${ok}" = "1" ]; then
+            echo "La base ha contestado. Sigue despierta." >> "$GITHUB_STEP_SUMMARY"
+            echo "Respuesta: ${cuerpo}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## La base del club NO contesta"
+            echo ""
+            echo "Última respuesta: HTTP \`${codigo}\` · \`${cuerpo}\`"
+            echo ""
+            echo "Si el proyecto de Supabase se ha apagado, la web sale sin"
+            echo "datos y nadie puede entrar al portal. Se arregla entrando en"
+            echo "supabase.com, abriendo el proyecto del club y pulsando"
+            echo "**Resume project**."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      # ------------------------------------------------------------
+      # AVISAR · un ping que se rompe en silencio es peor que no tenerlo
+      # ------------------------------------------------------------
+      # Si el paso de arriba falla, GitHub ya manda un correo a quien
+      # tocó este archivo por última vez. Pero un correo se pierde entre
+      # otros cien, así que además se abre un aviso en la pestaña
+      # «Issues» del repositorio, que se queda ahí hasta que alguien lo
+      # cierra. Si ya hay uno abierto no se abre otro: se añade una
+      # línea, para no llenar la lista con el mismo problema.
+      - name: Avisar de que la base no contesta
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ENLACE: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          TITULO='La base de datos del club no contesta'
+
+          abierto=$(gh issue list --repo "$REPO" --state open \
+            --label 'base-caida' --limit 1 --json number --jq '.[0].number' 2>/dev/null || true)
+
+          if [ -n "${abierto:-}" ]; then
+            gh issue comment "$abierto" --repo "$REPO" \
+              --body "Hoy tampoco ha contestado. Detalle: ${ENLACE}" || true
+            exit 0
+          fi
+
+          gh label create 'base-caida' --repo "$REPO" \
+            --color 'B60205' --description 'La base de Supabase no responde' 2>/dev/null || true
+
+          {
+            echo "El ping diario no ha conseguido leer nada de la base, ni al tercer intento."
+            echo ""
+            echo "**Qué significa**"
+            echo "Si el proyecto de Supabase se ha apagado, la web pública sale sin"
+            echo "horarios, sin grupos y sin precios, y nadie puede entrar al portal"
+            echo "ni al panel."
+            echo ""
+            echo "**Qué hacer**"
+            echo "1. Entrar en https://supabase.com y abrir el proyecto del club."
+            echo "2. Si sale el cartel de proyecto pausado, pulsar **Resume project**."
+            echo "3. Esperar un par de minutos y recargar la web del club."
+            echo "4. Volver a lanzar «Ping diario a la base» a mano desde la pestaña"
+            echo "   Actions. Si sale en verde, cerrar este aviso."
+            echo ""
+            echo "Si el proyecto NO estaba pausado, es que Supabase tiene una avería o"
+            echo "que la clave pública ha cambiado: está en assets/js/db.js y en"
+            echo ".github/workflows/ping-base-de-datos.yml, y tienen que ser la misma."
+            echo ""
+            echo "Detalle de la ejecución: ${ENLACE}"
+          } > aviso.md
+
+          gh issue create --repo "$REPO" --title "$TITULO" \
+            --label 'base-caida' --body-file aviso.md || true
