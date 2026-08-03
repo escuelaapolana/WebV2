@@ -52,6 +52,21 @@
   .aviso-privacidad p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--texto); }
   .aviso-privacidad p + p { margin-top: 7px; }
 
+  /* ---- Buscador de la lista: mismo patrón que en Atletas ---- */
+  .banda-busca { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0 4px; }
+  .banda-busca input[type="search"] {
+    flex: 1 1 240px; max-width: 320px; box-sizing: border-box; min-height: 44px;
+    padding: 10px 14px; border: 1px solid var(--linea-borde); border-radius: 999px;
+    background: #fff; font-family: inherit; font-size: 15px; color: var(--navy); }
+  .banda-busca select { flex: 0 1 auto; max-width: 280px; width: auto; min-height: 44px;
+    padding: 10px 14px; border-radius: 999px; }
+  .banda-busca .cuenta { margin-left: auto; font-family: var(--fuente-dato); font-size: 14px;
+    color: var(--texto-suave); white-space: nowrap; }
+  @media (max-width: 620px) {
+    .banda-busca input[type="search"], .banda-busca select { max-width: none; flex: 1 1 100%; }
+    .banda-busca .cuenta { margin-left: 0; width: 100%; }
+  }
+
   /* ---- Ficha de cada persona ---- */
   .lista { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
   .ficha { border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 14px; padding: 15px 16px; background: #fff; }
@@ -155,6 +170,21 @@
         </div>
         <button class="btn btn--primario btn--mini" type="button" id="btn-nuevo">Añadir persona</button>
       </div>
+      <div class="banda-busca">
+        <input type="search" id="f-buscar" placeholder="Buscar por nombre, cargo o sección…" aria-label="Buscar una persona de contacto">
+        <select id="f-seccion" aria-label="Sección">
+          <option value="">Todas las secciones</option>
+          <option value="pista">Atletismo en pista y competición</option>
+          <option value="running">Running (La Tribu, Madre Tierra)</option>
+          <option value="natacion">Natación (adultos y escuela)</option>
+          <option value="escuela">Escuela de atletismo</option>
+          <option value="club">Presidencia y club</option>
+          <option value="administracion">Administración, socios y cuotas</option>
+          <option value="_sin">Sin sección</option>
+        </select>
+        <span class="cuenta" id="f-cuenta" aria-live="polite"></span>
+      </div>
+
       <div class="msg" id="msg-lista"></div>
       <div class="lista" id="lista"></div>
     </div>
@@ -324,14 +354,31 @@ APOLANA_ADMIN.listo(function (sb) {
     if (r.error) {
       $('msg-lista').innerHTML = ADM.error(r.error.message, cargar);
       $('lista').innerHTML = '';
+      $('f-cuenta').textContent = '';
       return;
     }
     GENTE = r.data || [];
     pintarLista();
   }
 
+  /* Con esta lista se busca a alguien por el nombre, no se repasa entera:
+     el buscador y el recuento son el mismo patrón que en Atletas. */
+  function filtrada() {
+    var texto = ($('f-buscar').value || '').trim().toLowerCase();
+    var sec = $('f-seccion').value;
+    return GENTE.filter(function (c) {
+      if (sec === '_sin') { if (c.seccion) return false; }
+      else if (sec && c.seccion !== sec) return false;
+      if (!texto) return true;
+      var t = [c.nombre, c.nombre_corto, c.cargo, c.cargo_detalle, SECCIONES[c.seccion] || c.seccion]
+                .map(limpio).join(' ').toLowerCase();
+      return t.indexOf(texto) !== -1;
+    });
+  }
+
   function pintarLista() {
     if (!GENTE.length) {
+      $('f-cuenta').textContent = '';
       $('msg-lista').innerHTML = ADM.vacio(
         'Todavía no hay nadie',
         'Añade a quien lleva cada sección: la web sacará de aquí su nombre y su teléfono.',
@@ -339,8 +386,25 @@ APOLANA_ADMIN.listo(function (sb) {
       $('lista').innerHTML = '';
       return;
     }
+
+    var lista = filtrada();
+    $('f-cuenta').textContent = lista.length === GENTE.length
+      ? GENTE.length + (GENTE.length === 1 ? ' persona' : ' personas')
+      : lista.length + ' de ' + GENTE.length;
+
+    /* Hay gente, pero no con esta búsqueda: no es lo mismo que no haber nadie. */
+    if (!lista.length) {
+      $('msg-lista').innerHTML = ADM.vacio(
+        'Nadie encaja con esta búsqueda',
+        'Prueba con el apellido solo, o vuelve a «Todas las secciones».',
+        '<button class="btn btn--fantasma btn--mini" type="button" data-limpiar>Quitar el filtro</button>',
+        '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>');
+      $('lista').innerHTML = '';
+      return;
+    }
+
     $('msg-lista').innerHTML = '';
-    $('lista').innerHTML = GENTE.map(function (c) {
+    $('lista').innerHTML = lista.map(function (c) {
       var etqs = '';
       if (c.seccion) {
         etqs += '<span class="etq">' + esc(SECCIONES[c.seccion] || c.seccion) +
@@ -427,8 +491,15 @@ APOLANA_ADMIN.listo(function (sb) {
     }
   });
   $('msg-lista').addEventListener('click', function (e) {
-    if (e.target.closest && e.target.closest('[data-nuevo]')) abrirForm(null);
+    if (!e.target.closest) return;
+    if (e.target.closest('[data-nuevo]')) { abrirForm(null); return; }
+    if (e.target.closest('[data-limpiar]')) {
+      $('f-buscar').value = ''; $('f-seccion').value = ''; pintarLista();
+    }
   });
+
+  $('f-buscar').addEventListener('input', pintarLista);
+  $('f-seccion').addEventListener('change', pintarLista);
 
   /* ---------------------------------------------------------------
      FORMULARIO

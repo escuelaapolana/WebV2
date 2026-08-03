@@ -36,7 +36,29 @@
     padding: 10px 12px; font-size: 13.5px; line-height: 1.5; color: var(--texto-suave); }
   .oculto { display: none !important; }
   .btn { cursor: pointer; }
-  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .btn--mini { padding: 8px 16px; font-size: 14px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+
+  /* Lo que se lee una vez va plegado: esta explicación se entiende el primer
+     día y luego solo aleja el buscador de las fotos. */
+  .plegable { background: var(--crema-banda); border: 1px solid var(--linea); border-radius: 14px; margin: 0 0 18px; }
+  .plegable > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 9px; min-height: 44px;
+    padding: 11px 16px; border-radius: 14px;
+    font-size: 15px; font-weight: 600; color: var(--navy);
+  }
+  .plegable > summary::-webkit-details-marker { display: none; }
+  .plegable > summary::before {
+    content: ''; flex: 0 0 auto; width: 7px; height: 7px;
+    border-right: 2px solid var(--texto-suave); border-bottom: 2px solid var(--texto-suave);
+    transform: rotate(-45deg); transition: transform .15s ease;
+  }
+  .plegable[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
+  .plegable > summary:hover { background: var(--crema-media); }
+  .plegable .dentro { padding: 0 16px 15px; font-size: 14px; line-height: 1.55; color: var(--texto); }
+  .plegable .dentro p { margin: 0 0 9px; }
+  .plegable .dentro > :last-child { margin-bottom: 0; }
 
   /* --- Buscador --- */
   .barra-busca { position: sticky; top: 0; z-index: 5; background: var(--crema-media);
@@ -155,12 +177,15 @@
 <div id="admin-contenido">
   <div class="admin-wrap">
 
-    <div class="aviso">
-      Todas las fotos de la web, una por una. Pulsa cualquiera para cambiarla: eliges otra de la
-      <a href="../biblioteca/">biblioteca</a> o subes una nueva, y decides qué parte se ve.<br>
-      Mientras no cambies una foto, la web sigue enseñando la de siempre.
-      Los <em>textos</em> de cada página se editan en <a href="../paginas/">Páginas</a>.
-    </div>
+    <details class="plegable">
+      <summary>Cómo se cambia una foto</summary>
+      <div class="dentro">
+        <p>Todas las fotos de la web, una por una. Pulsa cualquiera para cambiarla: eliges otra de la
+          <a href="../biblioteca/">biblioteca</a> o subes una nueva, y decides qué parte se ve.</p>
+        <p>Mientras no cambies una foto, la web sigue enseñando la de siempre.
+          Los <em>textos</em> de cada página se editan en <a href="../paginas/">Páginas</a>.</p>
+      </div>
+    </details>
 
     <div class="barra-busca">
       <input type="search" id="busca" placeholder="Buscar una foto: portada, junta, galería…" aria-label="Buscar un hueco de foto">
@@ -322,11 +347,19 @@ APOLANA_ADMIN.listo(function (sb) {
       sb.from('contenido_secciones').select('id,seccion,imagen_url,imagen_encuadre,imagen_zoom').order('seccion')
     ]);
     var rw = res[0], rc = res[1];
+    /* Antes solo se avisaba si fallaban LAS DOS consultas. Si fallaba una, la
+       lista salía a medias y parecía que esos huecos no existen: se ponía una
+       foto donde no tocaba y nadie se enteraba. */
     if (rw.error && rc.error) {
-      $('msg-lista').textContent = 'No se pudieron cargar las fotos: ' + rw.error.message;
-      $('msg-lista').className = 'msg error';
+      $('msg-lista').className = 'msg';
+      $('msg-lista').innerHTML = ADM.error('No hemos podido cargar las fotos de la web. ' +
+        (rw.error.message || ''), cargar);
+      $('lista').innerHTML = '';
       return;
     }
+    var aMedias = '';
+    if (rw.error) aMedias = 'las fotos sueltas de cada página';
+    if (rc.error) aMedias = 'las fotos de cabecera';
 
     HUECOS = [];
     (rw.data || []).forEach(function (f) {
@@ -347,6 +380,13 @@ APOLANA_ADMIN.listo(function (sb) {
 
     $('msg-lista').textContent = '';
     pintar();
+    /* Si una de las dos listas no se ha podido leer, se dice: la lista de
+       abajo está incompleta y hay que saberlo antes de dar nada por hecho. */
+    if (aMedias) {
+      $('msg-lista').className = 'msg';
+      $('msg-lista').innerHTML = ADM.error('No hemos podido leer ' + aMedias +
+        ', así que faltan huecos en esta lista.', cargar);
+    }
   }
 
   // ------------------------------------------------------------
@@ -359,10 +399,20 @@ APOLANA_ADMIN.listo(function (sb) {
       return ((h.pagina || '') + ' ' + (h.titulo || '') + ' ' + h.clave).toLowerCase().indexOf(q) !== -1;
     });
 
+    /* Que no haya ni un hueco y que la búsqueda no encuentre nada son dos
+       cosas distintas: la primera es que aún no hay nada montado, la segunda
+       se arregla borrando lo escrito. */
     if (!visibles.length) {
       $('lista').innerHTML = '';
-      $('msg-lista').textContent = 'No hay ninguna foto con ese nombre.';
       $('msg-lista').className = 'msg';
+      $('msg-lista').innerHTML = HUECOS.length
+        ? ADM.vacio('Ninguna foto se llama así',
+            'Prueba con otra palabra o borra la búsqueda para verlas todas.',
+            '<button type="button" class="btn btn--fantasma" id="vacio-limpiar" style="min-height:44px">Ver todas</button>')
+        : ADM.vacio('Todavía no hay ningún hueco de foto',
+            'Los huecos salen de las páginas de la web. En cuanto haya una página dada de alta, aquí aparecerá su foto de cabecera.');
+      var b = document.getElementById('vacio-limpiar');
+      if (b) b.addEventListener('click', function () { $('busca').value = ''; pintar(); });
       return;
     }
     $('msg-lista').textContent = '';
@@ -609,7 +659,14 @@ APOLANA_ADMIN.listo(function (sb) {
         updated_at: new Date().toISOString()
       }).eq('id', ACTUAL.id);
     }
-    if (r.error) { $('ed-msg').textContent = 'Error: ' + r.error.message; $('ed-msg').className = 'msg error'; return; }
+    // No es culpa de quien guarda: aviso ámbar de la casa y con reintentar,
+    // en vez de un texto rojo que se queda ahí sin ofrecer nada.
+    if (r.error) {
+      $('ed-msg').textContent = '';
+      apoToast('No se ha podido guardar la foto: ' + r.error.message, 'error',
+        { reintentar: function () { $('ed-guardar').click(); } });
+      return;
+    }
 
     // Se refresca la ficha en memoria para no recargar toda la pantalla.
     ACTUAL.url = hay ? urlElegida : '';
@@ -636,6 +693,9 @@ APOLANA_ADMIN.listo(function (sb) {
   function urlPublica(nombre){ return sb.storage.from('imagenes').getPublicUrl(CARPETA + '/' + nombre).data.publicUrl; }
 
   var BIBLIO = [], bCat = '', bFav = false, bBusca = '';
+  // Guarda el motivo si la biblioteca no se ha podido leer: sin esto, una lista
+  // vacía por un fallo se contaba como «no hay fotos».
+  var FALLO_BIBLIO = '';
 
   function pintarFiltroBiblio() {
     var cuenta = {}, sinCat = 0;
@@ -664,14 +724,36 @@ APOLANA_ADMIN.listo(function (sb) {
     $('b-favoritas').classList.toggle('activo', bFav);
 
     var rej = $('rejilla-biblio');
+    $('msg-biblio').className = 'msg';
+    /* Si la lista viene vacía porque la lectura falló, decir «no hay fotos»
+       sería mentira: primero se mira si se ha podido mirar. */
+    if (!BIBLIO.length && FALLO_BIBLIO) {
+      rej.innerHTML = '';
+      $('msg-biblio').innerHTML = ADM.error('No hemos podido leer la biblioteca de fotos. ' + FALLO_BIBLIO, abrirBiblioteca);
+      return;
+    }
     if (!BIBLIO.length) {
       rej.innerHTML = '';
-      $('msg-biblio').innerHTML = 'Todavía no hay fotos en la biblioteca. Puedes subir una aquí abajo o gestionarlas en la <a href="../biblioteca/">Biblioteca de fotos</a>.';
-      $('msg-biblio').className = 'msg';
+      $('msg-biblio').innerHTML = ADM.vacio('La biblioteca está vacía',
+        'Sube aquí abajo la primera foto, o organízalas todas en la Biblioteca de fotos.',
+        '<a class="btn btn--fantasma btn--mini" href="../biblioteca/">Ir a la Biblioteca de fotos</a>',
+        '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 16l4.5-4 4 3.5 3-2.5 4.5 4"/>');
       return;
     }
     var lista = filtradasBiblio();
-    if (!lista.length) { $('msg-biblio').textContent = 'No hay fotos con esos filtros.'; $('msg-biblio').className = 'msg'; rej.innerHTML = ''; return; }
+    if (!lista.length) {
+      rej.innerHTML = '';
+      $('msg-biblio').innerHTML = ADM.vacio('Ninguna foto encaja con estos filtros',
+        'Hay ' + BIBLIO.length + ' fotos en la biblioteca, pero ninguna cumple lo que has puesto.',
+        '<button type="button" class="btn btn--fantasma btn--mini" id="biblio-limpiar">Quitar los filtros</button>');
+      var bl = document.getElementById('biblio-limpiar');
+      if (bl) bl.addEventListener('click', function () {
+        bCat = ''; bFav = false; bBusca = '';
+        $('b-busca').value = ''; $('b-categoria').value = '';
+        renderBiblio();
+      });
+      return;
+    }
     $('msg-biblio').textContent = '';
     rej.innerHTML = lista.map(function (f) {
       return '<button type="button" class="foto-op" data-url="' + esc(f.url) + '">' +
@@ -696,6 +778,7 @@ APOLANA_ADMIN.listo(function (sb) {
       .order('created_at', { ascending: false });
 
     if (!r.error && r.data && r.data.length) {
+      FALLO_BIBLIO = '';
       BIBLIO = r.data.map(function (f) {
         return { ruta: f.ruta, nombre: f.nombre || f.ruta, titulo: f.titulo || '',
                  categoria: f.categoria || '', favorita: !!f.favorita, url: urlDeRuta(f.ruta) };
@@ -708,8 +791,15 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     // Recambio: listar el bucket directamente (sin categorías ni favoritas).
+    // Nos guardamos si la lectura de fichas falló, porque entonces una lista
+    // vacía no significa «no hay fotos», sino «no hemos podido mirar».
+    FALLO_BIBLIO = r.error ? (r.error.message || 'Puede ser la conexión.') : '';
     var rb = await sb.storage.from('imagenes').list(CARPETA, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-    if (rb.error) { $('msg-biblio').textContent = 'No se pudo cargar la biblioteca: ' + rb.error.message; $('msg-biblio').className = 'msg error'; return; }
+    if (rb.error) {
+      $('msg-biblio').className = 'msg';
+      $('msg-biblio').innerHTML = ADM.error('No hemos podido cargar la biblioteca. ' + rb.error.message, abrirBiblioteca);
+      return;
+    }
     BIBLIO = (rb.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; })
       .map(function (f) { return { ruta: CARPETA + '/' + f.name, nombre: f.name, titulo: '', categoria: '', favorita: false, url: urlPublica(f.name) }; });
     $('b-categoria').parentNode.style.display = 'none';

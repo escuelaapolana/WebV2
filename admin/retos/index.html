@@ -57,7 +57,10 @@
   .btn--mini { padding:8px 18px; font-size:14px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
   .btn--peligro { background:transparent; border:1px solid #e0b4b0; color:#B0563A; padding:8px 16px; border-radius:999px;
                   font-size:14px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
-  .acciones-fila { display:flex; gap:8px; flex-wrap:wrap; }
+  .acciones-fila { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  /* Lo que borra o retira no se pega al botón de editar: se va a la derecha
+     para que no se pulse de pasada. */
+  .acciones-fila .btn--peligro { margin-left:auto; }
   .msg { font-size:14px; margin-left:8px; }
   .msg.error { color:#B0563A; } .msg.ok { color:#1e7a3d; }
   .oculto { display:none !important; }
@@ -495,9 +498,14 @@ APOLANA_ADMIN.listo(function (sb) {
       .neq('estado','baja').order('apellidos').order('nombre');
     ERR.gente = r.error ? (r.error.message || 'Puede ser la conexión.') : null;
     ATLETAS = r.error ? [] : (r.data || []);
+    /* De esta tabla salen «se deja ver», el permiso familiar y los puntos. Si
+       no se puede leer, todo el mundo saldría como «no» y los menores como
+       «falta el permiso»: justo lo contrario de lo que puede estar guardado.
+       En una pantalla de permisos eso no se deja pasar. */
     JUEGO = {};
     var j = await sb.from('perfil_juego')
       .select('atleta_id,participa,autoriza_parental_por,autoriza_parental_en,puntos');
+    ERR.juego = j.error ? (j.error.message || 'Puede ser la conexión.') : null;
     if(!j.error) (j.data||[]).forEach(function(x){ JUEGO[x.atleta_id] = x; });
 
     /* El nombre público y la foto viven en `perfiles` y se cambian en «Mi
@@ -621,7 +629,8 @@ APOLANA_ADMIN.listo(function (sb) {
     tb.innerHTML = lista.slice(0, 400).map(function(l){
       var a = porId[l.atleta_id], r = porReto[l.reto_id];
       return '<tr>' +
-        '<td data-etiqueta="Atleta"><b>' + esc(a ? nombreAt(a) : 'Atleta dado de baja') + '</b></td>' +
+        /* Sin la lista de atletas no se sabe de quién es: eso no es «dado de baja». */
+        '<td data-etiqueta="Atleta"><b>' + esc(a ? nombreAt(a) : (ERR.gente ? 'nombre no disponible ahora' : 'Atleta dado de baja')) + '</b></td>' +
         '<td data-etiqueta="Reto">' + esc(r ? r.titulo : '—') + '</td>' +
         '<td data-etiqueta="Valor">' + nDe(l.valor_alcanzado) + (r ? ' / ' + nDe(r.objetivo) : '') + '</td>' +
         '<td data-etiqueta="Puntos">' + Number(l.puntos_otorgados) + '</td>' +
@@ -636,7 +645,13 @@ APOLANA_ADMIN.listo(function (sb) {
      ============================================================ */
   function pintarGente(){
     var tbG = $('tabla-gente').querySelector('tbody');
-    if(ERR.gente){ $('c-gente').textContent = ''; tbG.innerHTML = filaErr('gente', 7); return; }
+    /* Sin la lista de atletas o sin la de participación, esta tabla no tiene
+       ni una columna que pueda afirmarse: mejor el aviso que siete «no». */
+    if(ERR.gente || ERR.juego){
+      $('c-gente').textContent = '';
+      tbG.innerHTML = filaErr(ERR.gente ? 'gente' : 'juego', 7);
+      return;
+    }
     var f = $('f-gente').value;
     var texto = ($('f-gente-buscar').value || '').trim().toLowerCase();
     var lista = ATLETAS.filter(function(a){
@@ -1039,7 +1054,7 @@ APOLANA_ADMIN.listo(function (sb) {
   /* ============================================================
      ARRANQUE
      ============================================================ */
-  (async function(){
+  async function arrancar(){
     await cargarMiPerfil();
     await cargarAjustes();
     await cargarRetos();
@@ -1048,7 +1063,8 @@ APOLANA_ADMIN.listo(function (sb) {
     await cargarGente();
     pintarTodo();
     verFechas(); verPista();
-  })();
+  }
+  arrancar();
 });
 </script>
 

@@ -40,14 +40,19 @@
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
   th { font-size: 13px; text-transform: none; color: var(--texto-suave); }
   .acciones-fila { display: flex; gap: 8px; white-space: nowrap; }
+  /* «Borrar» no se pone pegado a «Editar»: así no se pulsa sin querer */
+  .acciones-fila .btn--peligro { margin-left: 18px; }
 
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
 
   .btn { cursor: pointer; }
-  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  /* Todo lo que se pulsa, 44 px de alto. */
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .btn--peligro:hover { background: #fbeceb; }
-  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .btn--mini { padding: 8px 14px; font-size: 14px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .oculto { display: none !important; }
   /* Edición en ventana emergente (modal), no al fondo de la página */
   #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
@@ -165,13 +170,24 @@ APOLANA_ADMIN.listo(function (sb) {
   // --- Listar ---
   async function cargarEventos() {
     var tb = $('tabla-eventos').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="5" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr>';
+    tb.innerHTML = ADM.filaCargando(5, 3);
     var r = await sb.from('eventos')
       .select('id,titulo,tipo,fecha_inicio,lugar')
       .order('fecha_inicio', { ascending: true });
-    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
-    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay eventos todavía.</td></tr>'; return; }
-    tb.innerHTML = r.data.map(function (n) {
+    // Si la consulta falla no sabemos si hay eventos o no: error con reintento,
+    // nunca «no hay eventos», que sería mentir.
+    if (r.error) { tb.innerHTML = ADM.filaError(5, r.error.message, cargarEventos); return; }
+    var eventos = r.data || [];
+    if (!eventos.length) {
+      tb.innerHTML = ADM.filaVacia(5, 'Todavía no hay ningún evento',
+        'Aquí van las competiciones, salidas y quedadas del club. En cuanto crees el primero, saldrá en el calendario de la web.',
+        '<button class="btn btn--primario btn--mini" type="button" id="vacio-nuevo">+ Nuevo evento</button>',
+        '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>');
+      var b = document.getElementById('vacio-nuevo');
+      if (b) b.addEventListener('click', function () { abrirForm(); });
+      return;
+    }
+    tb.innerHTML = eventos.map(function (n) {
       return '<tr>' +
         '<td>' + esc(soloFecha(n.fecha_inicio)) + '</td>' +
         '<td>' + esc(n.titulo) + '</td>' +
@@ -210,7 +226,9 @@ APOLANA_ADMIN.listo(function (sb) {
     var bo = e.target.getAttribute('data-borrar');
     if (ed) {
       var r = await sb.from('eventos').select('*').eq('id', ed).single();
-      if (!r.error) abrirForm(r.data);
+      // Antes, si fallaba, no pasaba nada al pulsar «Editar» y parecía que la página se había colgado.
+      if (r.error) { apoToast('No hemos podido abrir el evento: ' + r.error.message, 'error'); return; }
+      abrirForm(r.data);
     }
     if (bo) {
       if (!await apoConfirm({ texto: '¿Borrar el evento "' + e.target.getAttribute('data-tit') + '"? No se puede deshacer.', peligro: true })) return;

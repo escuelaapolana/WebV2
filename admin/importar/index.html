@@ -137,8 +137,14 @@
       </div>
     </div>
 
+    <!-- ============ EL FRENO ============
+         Si no se ha podido leer lo que ya está guardado, esta pantalla no
+         deja seguir. No es un aviso: es un freno. El porqué está donde se
+         declara «faltanReferencias». -->
+    <div id="freno-referencias"></div>
+
     <!-- ============ PASO 1: SUBIR ============ -->
-    <div class="panel">
+    <div class="panel" id="panel-subir">
       <span class="paso">Paso 1</span>
       <h2>Sube el fichero</h2>
       <label for="fichero">Fichero CSV</label>
@@ -648,17 +654,39 @@ APOLANA_ADMIN.listo(function (sb) {
   });
 
   // ---------- Datos que hacen falta para revisar ----------
+  /* Lo que no se ha podido leer. Mientras haya algo aquí, esta pantalla no
+     deja importar.
+
+     El porqué, que es el motivo de que esto sea un freno y no un aviso:
+     saber quién existe ya sale de UNA consulta, la de `atletas`. Si esa
+     consulta falla, el índice de duplicados se queda vacío, y un índice
+     vacío no se distingue de «no hay nadie guardado»: todas las filas del
+     fichero parecerían gente nueva. Darle a importar entonces crearía una
+     ficha repetida de cada persona del club — 206 duplicados que hay que
+     deshacer a mano. Lo mismo, en menor grado, con los grupos: sin ellos
+     todo el mundo entraría sin grupo asignado.
+
+     Por eso no vale un aviso ámbar que se pueda ignorar con prisa. */
+  var faltanReferencias = [];
+
   async function cargarReferencias() {
+    faltanReferencias = [];
+
     var g = await sb.from('grupos').select('id,nombre').order('nombre');
-    if (!g.error && g.data) {
+    if (g.error || !g.data) faltanReferencias.push('los grupos del club');
+    else {
       grupos = g.data;
+      gruposPorNombre = {};
       grupos.forEach(function (x) { gruposPorNombre[NUC.norm(x.nombre)] = x.id; });
     }
+
     var p = await sb.from('pruebas').select('nombre').eq('activa', true);
-    if (!p.error && p.data) p.data.forEach(function (x) { pruebas[NUC.norm(x.nombre)] = x.nombre; });
+    if (p.error || !p.data) faltanReferencias.push('el catálogo de pruebas');
+    else { pruebas = {}; p.data.forEach(function (x) { pruebas[NUC.norm(x.nombre)] = x.nombre; }); }
 
     var a = await sb.from('atletas').select(NUC.COLUMNAS_FICHA.concat(['id']).join(','));
-    if (!a.error && a.data) {
+    if (a.error || !a.data) faltanReferencias.push('las fichas que ya están guardadas');
+    else {
       existentes = a.data;
       indiceExistentes = {};
       existentes.forEach(function (x) {
@@ -668,8 +696,42 @@ APOLANA_ADMIN.listo(function (sb) {
         });
       });
     }
+
     var u = await sb.auth.getUser();
     if (u && u.data && u.data.user) miPerfilId = u.data.user.id;
+
+    pintarFreno();
+  }
+
+  /* El freno, a la vista y con salida. Mientras esté puesto no se puede
+     elegir fichero ni importar: se apagan los dos, no solo el de importar,
+     porque revisar un fichero con el índice vacío ya enseña «206 nuevos» y
+     eso es justo lo que no queremos que nadie llegue a leer. */
+  function pintarFreno() {
+    var caja = $('freno-referencias');
+    var roto = faltanReferencias.length > 0;
+
+    var entrada = $('fichero');
+    if (entrada) entrada.disabled = roto;
+    var panel = $('panel-subir');
+    if (panel) panel.style.opacity = roto ? '.5' : '';
+    if (roto) {
+      $('btn-importar').disabled = true;
+      $('panel-revision').classList.add('oculto');
+      $('panel-importar').classList.add('oculto');
+      lectura = null;
+    }
+
+    if (!roto) { caja.innerHTML = ''; return; }
+
+    var qué = faltanReferencias.length === 1
+      ? faltanReferencias[0]
+      : faltanReferencias.slice(0, -1).join(', ') + ' y ' + faltanReferencias[faltanReferencias.length - 1];
+
+    caja.innerHTML = ADM.error(
+      'No se ha podido leer ' + qué + ', así que no se puede saber quién está ya en el club. ' +
+      'Importar ahora crearía una ficha repetida de cada persona. La importación queda parada hasta que esto cargue.',
+      cargarReferencias);
   }
 
   // ---------- Leer el fichero ----------
@@ -678,6 +740,8 @@ APOLANA_ADMIN.listo(function (sb) {
     $('resultado-final').innerHTML = '';
     $('msg-importar').textContent = '';
     if (!f) return;
+    /* Ni siquiera se lee el fichero: la revisión diría «todos nuevos». */
+    if (faltanReferencias.length) { this.value = ''; pintarFreno(); return; }
     nombreFichero = f.name;
     $('msg-fichero').textContent = 'Leyendo «' + f.name + '»…';
     $('msg-fichero').className = 'msg';
@@ -854,7 +918,9 @@ APOLANA_ADMIN.listo(function (sb) {
     $('texto-importar').textContent = haran
       ? 'Se van a guardar ' + haran + ' fila' + (haran === 1 ? '' : 's') + ': ' + nuevos + ' ficha' + (nuevos === 1 ? '' : 's') + ' nueva' + (nuevos === 1 ? '' : 's') + ' y ' + act + ' actualizada' + (act === 1 ? '' : 's') + '. Las filas con error se quedan fuera y puedes corregirlas y volver a subir el fichero.'
       : 'Ahora mismo no hay nada que guardar. Corrige los errores de arriba y vuelve a subir el fichero.';
-    $('btn-importar').disabled = !haran;
+    /* Aunque se hubiera revisado un fichero antes de que fallara la lectura,
+       sin saber quién existe no se guarda nada. */
+    $('btn-importar').disabled = !haran || faltanReferencias.length > 0;
   }
 
   $('lista-grupos').addEventListener('change', function (e) {
@@ -873,6 +939,9 @@ APOLANA_ADMIN.listo(function (sb) {
 
   $('btn-importar').addEventListener('click', async function () {
     if (!lectura) return;
+    /* Último cierre, por si la lectura se hubiera caído entre la revisión y
+       este clic: lo que se guarda no puede depender de un botón apagado. */
+    if (faltanReferencias.length) { pintarFreno(); return; }
     var ev = evaluar();
     var aCrear = ev.filas.filter(function (f) { return f.accion === 'crear'; });
     var aActualizar = ev.filas.filter(function (f) { return f.accion === 'actualizar'; });

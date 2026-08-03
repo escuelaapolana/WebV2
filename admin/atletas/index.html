@@ -451,6 +451,7 @@ APOLANA_ADMIN.listo(function (sb) {
   var TODOS = [];      // fichas cargadas
   var CORREOS = {};    // perfil_id → correo (solo para la ficha, nunca en la lista)
   var ULTIMO = {};     // atleta_id → último recibo { importe, sinCobrar }
+  var SIN_RECIBOS = false;   // true si la consulta de recibos se cayó: entonces no se sabe nada de dinero
   var VISTA = [];      // lo que se está viendo ahora mismo (para exportar)
 
   /* Un recibo cuenta como «sin cobrar» si está marcado impagado o si está
@@ -502,7 +503,8 @@ APOLANA_ADMIN.listo(function (sb) {
 
     tb.innerHTML = lista.map(function (a) {
       var u = ULTIMO[a.id];
-      var recibo = !u ? '<span class="nada">sin recibos</span>'
+      var recibo = SIN_RECIBOS ? '<span class="nada">sin poder mirarlo</span>'
+        : !u ? '<span class="nada">sin recibos</span>'
         : (u.sinCobrar
             ? '<span class="debe">' + esc(fmtEur.format(u.importe)) + '</span><span class="sinc">sin cobrar</span>'
             : esc(fmtEur.format(u.importe)));
@@ -564,7 +566,14 @@ APOLANA_ADMIN.listo(function (sb) {
         '</div>';
     }
     var deben = TODOS.filter(function (a) { return ULTIMO[a.id] && ULTIMO[a.id].sinCobrar; });
-    if (deben.length) {
+    if (SIN_RECIBOS) {
+      /* Callarse el aviso de impagados equivaldría a decir que no hay ninguno. */
+      av += '<div class="avis">' +
+        '<span class="t">No se han podido leer los recibos</span>' +
+        '<span class="d">La columna «Último recibo» y el aviso de impagados están en blanco porque la consulta no ha contestado, no porque esté todo cobrado.</span>' +
+        '<button type="button" class="b2" data-recargar>Volver a intentarlo</button>' +
+        '</div>';
+    } else if (deben.length) {
       av += '<div class="avis">' +
         '<span class="t">' + deben.length + (deben.length === 1 ? ' atleta con el último recibo sin cobrar' : ' atletas con el último recibo sin cobrar') + '</span>' +
         '<span class="d">Se resuelven en Cobros: ahí está a quién escribir y qué recibo volver a pasar.</span>' +
@@ -590,6 +599,9 @@ APOLANA_ADMIN.listo(function (sb) {
     var rp = await sb.from('pagos')
       .select('atleta_id,importe,estado,fecha_vencimiento')
       .order('fecha_vencimiento', { ascending: false, nullsFirst: false });
+    /* Si los recibos no se han podido leer, la columna no puede decir «sin
+       recibos» de todo el mundo ni el lateral callarse los impagados. */
+    SIN_RECIBOS = !!rp.error;
     if (!rp.error && rp.data) {
       rp.data.forEach(function (p) {
         if (!p.atleta_id || ULTIMO[p.atleta_id]) return;
@@ -696,6 +708,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   /* «Ver los N en prueba» deja el filtro puesto, con su chip. */
   $('avisos-lateral').addEventListener('click', function (e) {
+    if (e.target.closest('[data-recargar]')) { cargar(); return; }
     if (!e.target.closest('[data-ver-prueba]')) return;
     $('f-estado').value = 'prueba';
     if (window.APOLANA_FILTROS) APOLANA_FILTROS.repasar();

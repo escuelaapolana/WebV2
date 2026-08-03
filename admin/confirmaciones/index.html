@@ -54,6 +54,9 @@
   .bot--texto { background: none; color: var(--azul-oscuro); padding: 13px 10px; }
   .bot--texto:hover { text-decoration: underline; }
   .bot--sm { min-height: 44px; padding: 10px 16px; }
+  /* Quitar borra la petición y todo lo que ha contestado la gente: se separa
+     de «Ver» y «Editar» para que no caiga bajo el dedo sin querer. */
+  .bot--quitar { margin-left: 18px; color: #B0563A; }
   .botonera { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 16px; }
 
   /* --- chips (kit 30f) --- */
@@ -80,7 +83,17 @@
   .aviso--ambar { background: var(--ambar-fondo); border-color: var(--ambar-borde); color: var(--texto); }
   .aviso--ambar b { display: block; color: var(--ambar); font-weight: 600; }
 
-  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  /* Seis columnas, y una de ellas con un desplegable de 150 px: entre 720 y
+     760 px de ancho —la tablet en vertical— la tabla todavía es tabla y no
+     cabe. El arrastre va aquí dentro, nunca en la página entera. Por debajo
+     de 720 px manda la piel del panel, que la convierte en fichas y anula
+     este arrastre con su !important. */
+  .adm-envoltorio { overflow-x: auto; max-width: 100%; }
+  table { width: 100%; min-width: 700px; border-collapse: collapse; margin-top: 6px; }
+  /* Los estados vacíos y los avisos ocupan la fila entera: no heredan el ancho
+     mínimo pensado para las columnas de datos. */
+  td[colspan] .adm-vacio, td[colspan] .adm-error { min-width: 0; }
+  @media (max-width: 720px) { table { min-width: 0; } }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea);
            font-size: 15px; vertical-align: top; }
   th { font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;
@@ -372,7 +385,7 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td class="adm-acciones" data-etiqueta="">' +
           '<button class="bot bot--borde bot--sm" data-ver="' + p.id + '">Ver quién va</button>' +
           '<button class="bot bot--texto bot--sm" data-editar="' + p.id + '">Editar</button>' +
-          '<button class="bot bot--texto bot--sm" data-borrar="' + p.id + '">Quitar</button>' +
+          '<button class="bot bot--texto bot--sm bot--quitar" data-borrar="' + p.id + '">Quitar</button>' +
         '</td></tr>';
     }).join('');
 
@@ -401,20 +414,30 @@ APOLANA_ADMIN.listo(function (sb) {
   // =========================================================
   // ACTIVIDADES LIBRES Y GRUPOS (para el formulario)
   // =========================================================
+  /* Si el calendario no se ha podido leer, el desplegable no puede decir «no
+     queda ninguna actividad por preguntar»: eso haría cerrar la ventana
+     pensando que no hay nada, cuando puede haber media agenda. */
+  var ERR_AUX = null;
+
   async function cargarAuxiliares() {
+    ERR_AUX = null;
     var g = await sb.from('grupos').select('id,nombre,seccion,activo').order('nombre');
+    if (g.error) ERR_AUX = g.error.message;
     GRUPOS = (g.error ? [] : (g.data || [])).filter(function (x) { return x.activo !== false; });
 
     var desde = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
     var e = await sb.from('eventos').select('id,titulo,fecha_inicio,tipo,lugar')
       .gte('fecha_inicio', desde + 'T00:00:00').order('fecha_inicio');
+    if (e.error) ERR_AUX = ERR_AUX || e.error.message;
     LIBRES.eventos = e.error ? [] : (e.data || []);
     var c = await sb.from('competiciones').select('id,nombre,fecha_inicio,sede')
       .gte('fecha_inicio', desde).order('fecha_inicio');
+    if (c.error) ERR_AUX = ERR_AUX || c.error.message;
     LIBRES.competiciones = c.error ? [] : (c.data || []);
   }
 
   function opcionesActividad() {
+    if (ERR_AUX) return '<option value="">No se ha podido leer el calendario. Cierra y vuelve a abrir esta ventana.</option>';
     var usadosE = {}, usadosC = {};
     PETICIONES.forEach(function (p) {
       if (p.evento_id) usadosE[p.evento_id] = true;
@@ -442,7 +465,9 @@ APOLANA_ADMIN.listo(function (sb) {
     $('lista-grupos').innerHTML = GRUPOS.map(function (g) {
       var marcado = elegidos.indexOf(g.id) > -1 ? ' checked' : '';
       return '<label><input type="checkbox" value="' + g.id + '"' + marcado + '> ' + esc(g.nombre) + '</label>';
-    }).join('') || '<p class="pista">Todavía no hay grupos creados.</p>';
+    }).join('') || (ERR_AUX
+      ? '<p class="pista">No se ha podido leer la lista de grupos. Cierra y vuelve a abrir esta ventana.</p>'
+      : '<p class="pista">Todavía no hay grupos creados.</p>');
   }
 
   // =========================================================

@@ -10,10 +10,17 @@
         por esa sección y escribe lo que le digan:
 
           · contenido_secciones → foto, antetítulo, título, frase,
-                                  y la lista de «qué incluye»
+                                  «qué incluye» y «qué traer»
           · grupos              → nombre, días y sede, qué se hace
-          · tarifas             → precio de cada grupo y la cuota
+                                  y las pruebas que se entrenan
+          · tarifas_vigentes    → precio de cada grupo y la cuota
                                   de socio, que se dice aparte
+          · contactos_publicos  → las cifras de quien entrena, y
+                                  saber si hay alguien o no lo hay
+
+     SIEMPRE la vista `contactos_publicos`, nunca la tabla
+     `contactos`: la vista devuelve vacíos el teléfono y el correo
+     que el club ha decidido no publicar; la tabla en crudo, no.
 
      3. Los huecos que rellena son siempre los mismos, en el mismo
         orden, en todas las secciones. Eso es la plantilla.
@@ -243,6 +250,17 @@
       else t.appendChild(nodo('span', 'cuando sec-vacio', 'Días y sede, todavía sin publicar'));
 
       if (limpio(g.descripcion)) t.appendChild(nodo('p', 'que', limpio(g.descripcion)));
+
+      /* Las pruebas que entrena el grupo, en pastillas. Es lo que hace que
+         «Velocidad A» signifique algo para quien no es del mundillo. Lo
+         escribe el club en Panel → Grupos; vacío, no sale nada. */
+      var pruebas = lineas(g.pruebas);
+      if (pruebas.length) {
+        var chips = nodo('div', 'sec-chips');
+        pruebas.forEach(function (p) { chips.appendChild(nodo('span', 'chip', p)); });
+        t.appendChild(chips);
+      }
+
       lista.appendChild(t);
     });
     caja.appendChild(lista);
@@ -354,6 +372,70 @@
     if (traer.length)   caja.appendChild(listaDePuntos('Qué traer', traer, '·'));
   }
 
+  /* ---------------------------------------------------------
+     5 · Quién entrena · las cifras, y quitar al que no está
+     ------------------------------------------------------------
+     El nombre, el cargo, la trayectoria y el teléfono los escribe
+     `contactos-web.js` leyendo la vista `contactos_publicos`. Aquí
+     se hacen las dos cosas que ese ayudante no puede hacer:
+
+       · las CIFRAS (`datos`), que no son una línea de texto sino
+         varias, cada una con su número y su rótulo;
+       · quitar de en medio a quien no existe. Una ficha sin nombre
+         no es una ficha de nadie, así que se retira; y si no queda
+         ninguna, el bloque entero desaparece. Nada de «pendiente».
+
+     Lo que ya venía escrito a mano de antes (el nombre y el correo
+     de quien lleva montaña o triatlón, que todavía no están en la
+     base) se queda: eso es un nombre visible y cuenta como ficha.
+     --------------------------------------------------------- */
+  function pintaDatos(caja, texto) {
+    caja.textContent = '';
+    lineas(texto).forEach(function (l) {
+      /* «+400: atletas entrenados» → el número grande y el rótulo debajo. */
+      var corte = l.indexOf(':');
+      if (corte < 1) return;
+      var stat = nodo('div', 'stat');
+      stat.appendChild(nodo('b', null, l.slice(0, corte).trim()));
+      stat.appendChild(nodo('span', null, l.slice(corte + 1).trim()));
+      caja.appendChild(stat);
+    });
+  }
+
+  function pintaEquipo(personas) {
+    var fichas = document.querySelectorAll('.sec-persona');
+    if (!fichas.length) return;
+
+    var porClave = {}, porSeccion = {};
+    personas.forEach(function (p) {
+      if (p.clave) porClave[p.clave] = p;
+      /* Si hay varias personas en la misma sección manda la responsable;
+         si ninguna lo es, la primera que llegue, que viene por orden. */
+      if (p.seccion && (!porSeccion[p.seccion] || p.es_responsable)) porSeccion[p.seccion] = p;
+    });
+
+    var quedan = 0;
+    Array.prototype.forEach.call(fichas, function (ficha) {
+      var quien = limpio(ficha.getAttribute('data-persona'));
+      var fila = porClave[quien] || porSeccion[quien] || null;
+
+      /* ¿Trae esta ficha un nombre escrito de antes que se vea? */
+      var nombre = ficha.querySelector('.nombre');
+      var aMano = !!(nombre && !nombre.hidden && limpio(nombre.textContent));
+
+      if (!fila && !aMano) { ficha.remove(); return; }
+      quedan++;
+
+      var caja = ficha.querySelector('.sec-datos');
+      if (caja && fila && limpio(fila.datos)) pintaDatos(caja, fila.datos);
+    });
+
+    if (!quedan) {
+      var bloque = document.querySelector('.sec-equipo');
+      if (bloque) bloque.hidden = true;
+    }
+  }
+
   /* --------------------------------------------------------- */
   function noSePudo(caja) {
     if (!caja) return;
@@ -384,7 +466,7 @@
         .select('titulo,dirigido_a,descripcion,precio,puntos_destacados,que_traer,imagen_url,imagen_encuadre,imagen_zoom')
         .eq('seccion', clave).limit(1),
       db.from('grupos')
-        .select('nombre,horario,descripcion')
+        .select('nombre,horario,descripcion,pruebas')
         .eq('seccion', clave).eq('activo', true).order('nombre'),
       /* «tarifas_vigentes» y no «tarifas»: esa vista deja fuera las
          caducadas y las que todavía no han entrado en vigor. Con la tabla
@@ -392,9 +474,15 @@
          que viene saldrían los dos a la vez. Es lo que ya hace /entrenar/. */
       db.from('tarifas_vigentes')
         .select('clave,ambito,concepto,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
-        .or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden')
+        .or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden'),
+      /* SIEMPRE la vista, nunca la tabla `contactos`: la vista devuelve
+         vacíos el teléfono y el correo que el club ha decidido NO
+         publicar, y la tabla en crudo no. */
+      db.from('contactos_publicos')
+        .select('clave,seccion,es_responsable,datos')
+        .order('orden')
     ]).then(function (res) {
-      var rf = res[0], rg = res[1], rt = res[2];
+      var rf = res[0], rg = res[1], rt = res[2], rp = res[3];
       if (rf.error || rg.error || rt.error) throw new Error('lectura');
 
       var todas = rt.data || [];
@@ -418,6 +506,7 @@
       if (cajaGrupos)  pintaGrupos(cajaGrupos, datos);
       if (cajaPrecio)  pintaPrecio(cajaPrecio, datos);
       if (cajaIncluye) pintaIncluye(cajaIncluye, datos);
+      pintaEquipo((rp && !rp.error && rp.data) || []);
     }).catch(function () {
       [cajaGrupos, cajaPrecio].forEach(noSePudo);
       if (cajaIncluye && cajaIncluye.closest('.sec-banda')) cajaIncluye.closest('.sec-banda').hidden = true;

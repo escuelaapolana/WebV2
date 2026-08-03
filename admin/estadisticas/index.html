@@ -136,6 +136,7 @@
   .fallo { background: var(--ambar-fondo); border:1px solid var(--ambar-borde); border-radius:14px;
            padding:14px 16px; font-size:15px; line-height:1.45; color: var(--texto); }
   .fallo b { display:block; color:#8A5307; }
+  .oculto { display:none !important; }
   .nota-pie { font-size:13px; line-height:1.5; color: var(--texto-suave); margin-top:8px; max-width:78ch; }
 </style>
 </head>
@@ -257,7 +258,16 @@ APOLANA_ADMIN.listo(async function (sb) {
 
   /* ================= CARGA ================= */
   var grupos, atletas, pagos, cubClases, cubReservas, escHist, asistencia;
-  try {
+  var secDe = {}, vivos = [], hayDatos = false;
+
+  var ESQUELETO_DECIDE = '<h2>Lo que pide una decisión</h2>' +
+    '<div class="fila"><span class="dato"><span class="adm-esq" style="width:52px;height:20px;margin:0"></span></span>' +
+    '<span class="que"><span class="adm-esq adm-esq--medio" style="margin:0"></span></span></div>';
+
+  /* Las siete consultas se leen de una vez porque los titulares se calculan
+     cruzando unas con otras: si falla cualquiera, no se puede pintar ni una
+     gráfica sin arriesgarse a decir algo que no es. */
+  async function leerTodo() {
     var r = await Promise.all([
       sb.from('grupos').select('id,nombre,seccion,activo').limit(5000),
       sb.from('atletas').select('id,nombre,estado,categoria,grupo_id,fecha_prueba_fin').limit(5000),
@@ -274,36 +284,59 @@ APOLANA_ADMIN.listo(async function (sb) {
     pagos = (r[2].data || []).filter(function (p) { return !p.anulado; });
     cubClases = r[3].data || []; cubReservas = r[4].data || [];
     escHist = r[5].data || []; asistencia = r[6].data || [];
-  } catch (e) {
-    /* Error en ámbar, nunca en rojo, y siempre con un botón de reintentar. */
-    $('decide').outerHTML = '<div class="fallo" id="decide"><b>No hemos podido leer los datos del club</b>' +
-      'Puede ser la conexión. <button type="button" class="bmini" style="margin-top:10px" ' +
-      'onclick="location.reload()">Volver a intentarlo</button></div>';
-    $('graficas').innerHTML = '';
-    return;
   }
 
-  var hoy = new Date();
-  $('txt-leido').textContent = 'leído el ' + hoy.getDate() + ' de ' + MESES[hoy.getMonth()] + ' de ' + hoy.getFullYear();
-
-  var secDe = {};
-  grupos.forEach(function (g) { secDe[g.id] = g.seccion; });
-  var vivos = atletas.filter(function (a) { return a.estado !== 'baja'; });
-  $('cuenta-cab').textContent = num(vivos.length) + (vivos.length === 1 ? ' persona' : ' personas');
-
-  /* Selector de sección */
-  (function () {
+  /* El desplegable se rehace con cada lectura y se respeta la sección que
+     hubiera elegida; el escuchador se engancha una sola vez, para que un
+     reintento no acabe pintando dos veces con cada cambio. */
+  var selectorEnganchado = false;
+  function prepararSelector() {
     var n = {};
     vivos.forEach(function (a) { var s = secDe[a.grupo_id]; if (s) n[s] = (n[s] || 0) + 1; });
     var claves = Object.keys(n).sort(function (a, b) { return n[b] - n[a]; });
-    var sel = $('f-seccion');
+    var sel = $('f-seccion'), previa = sel.value;
+    sel.innerHTML = '<option value="">Todo el club</option>';
     claves.forEach(function (k) {
       var o = document.createElement('option');
       o.value = k; o.textContent = (SEC_LABEL[k] || k) + ' · ' + n[k];
       sel.appendChild(o);
     });
-    sel.addEventListener('change', pintar);
-  })();
+    if (claves.indexOf(previa) > -1) sel.value = previa;
+    if (!selectorEnganchado) { sel.addEventListener('change', pintar); selectorEnganchado = true; }
+  }
+
+  /* Volver a intentarlo repite solo la lectura de esta pantalla. Recargar la
+     página entera hacía perder la sección elegida y volvía a pasar por el
+     control de acceso sin necesidad. */
+  async function arrancar() {
+    hayDatos = false;
+    $('decide').classList.remove('oculto');
+    $('decide').innerHTML = ESQUELETO_DECIDE;
+    $('graficas').innerHTML = '';
+    $('nota-pie').textContent = '';
+    try {
+      await leerTodo();
+    } catch (e) {
+      /* Sin datos no hay ni decisiones ni gráficas: se apaga el bloque de
+         arriba y manda el aviso, en ámbar y con su botón de reintentar. */
+      $('decide').classList.add('oculto');
+      $('cuenta-cab').textContent = '';
+      $('graficas').innerHTML = ADM.error((e && e.message) ? e.message : 'Puede ser la conexión.', arrancar);
+      return;
+    }
+
+    var hoy = new Date();
+    $('txt-leido').textContent = 'leído el ' + hoy.getDate() + ' de ' + MESES[hoy.getMonth()] + ' de ' + hoy.getFullYear();
+
+    secDe = {};
+    grupos.forEach(function (g) { secDe[g.id] = g.seccion; });
+    vivos = atletas.filter(function (a) { return a.estado !== 'baja'; });
+    $('cuenta-cab').textContent = num(vivos.length) + (vivos.length === 1 ? ' persona' : ' personas');
+
+    hayDatos = true;
+    prepararSelector();
+    pintar();
+  }
 
   /* ================= HISTÓRICO DE LA ESCUELA =================
      Es la única serie larga que tiene el club: trece temporadas de
@@ -657,14 +690,16 @@ APOLANA_ADMIN.listo(async function (sb) {
     $('decide').innerHTML = html;
   }
 
-  pintar();
+  arrancar();
 
   /* Al girar el móvil o cambiar el tamaño, la misma serie puede tener que
-     pasar de columnas a barras tumbadas. */
+     pasar de columnas a barras tumbadas. Si la lectura falló no hay nada que
+     repintar: lo que se ve es el aviso, y girar el móvil no lo arregla. */
   var espera = null, eraEstrecho = estrecho();
   window.addEventListener('resize', function () {
     clearTimeout(espera);
     espera = setTimeout(function () {
+      if (!hayDatos) return;
       if (estrecho() === eraEstrecho) return;
       eraEstrecho = estrecho();
       pintar();

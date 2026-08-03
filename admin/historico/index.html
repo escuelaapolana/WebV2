@@ -94,7 +94,11 @@
   .panel { background:#fff; border:1px solid var(--linea-marcada); border-radius:14px; padding: clamp(16px,3vw,24px); }
   .panel h2 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:21px; color: var(--navy); margin:0 0 4px; }
   .panel .sub { font-size:14px; line-height:1.5; color: var(--texto-suave); margin:0 0 12px; max-width:78ch; }
-  .tabla-scroll { overflow-x:auto; }
+  /* Trece columnas de números no caben en una tablet en vertical. La tabla se
+     arrastra de lado SIEMPRE: antes, por debajo de 760 px se le quitaba el
+     ancho mínimo y el scroll, y lo que hacía era desbordarse fuera de la
+     pantalla en vez de dejarse arrastrar. */
+  .tabla-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   table { width:100%; min-width:700px; border-collapse:collapse; }
   th, td { text-align:right; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; white-space:nowrap; }
   th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left; }
@@ -104,7 +108,26 @@
   .etq { display:inline-block; font-size:13px; padding:3px 10px; border-radius:999px;
          background: var(--crema-banda); color: var(--texto-suave); }
   .etq.mun { background:#F6EBD6; color:#8A5307; }
-  @media (max-width: 760px) { table { min-width:0; } .tabla-scroll { overflow-x:visible; } }
+
+  /* Las columnas que no se miran cada día van plegadas: siguen todas ahí,
+     pero no obligan a arrastrar la tabla para llegar a lo principal. */
+  .plegable { background: var(--crema-banda); border:1px solid var(--linea); border-radius:14px; margin:14px 0 0; }
+  .plegable > summary {
+    list-style:none; cursor:pointer; user-select:none;
+    display:flex; align-items:center; gap:9px; min-height:44px;
+    padding:11px 16px; border-radius:14px;
+    font-size:15px; font-weight:600; color: var(--navy);
+  }
+  .plegable > summary::-webkit-details-marker { display:none; }
+  .plegable > summary::before {
+    content:''; flex:0 0 auto; width:7px; height:7px;
+    border-right:2px solid var(--texto-suave); border-bottom:2px solid var(--texto-suave);
+    transform: rotate(-45deg); transition: transform .15s ease;
+  }
+  .plegable[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
+  .plegable > summary:hover { background: var(--crema-media); }
+  .plegable .dentro { padding:0 16px 15px; }
+  .plegable .dentro table { background:#fff; }
 
   .vacio { border:1px solid var(--linea-marcada); border-radius:14px; padding:24px 20px; text-align:center;
            background: var(--crema); color: var(--texto-suave); font-size:15px; line-height:1.5; }
@@ -158,6 +181,13 @@
       <p class="sub">Una fila por temporada y programa. El guión (—) significa que ese dato no se recogió
         esa temporada, no que fuera cero.</p>
       <div class="tabla-scroll"><table id="tabla"><thead></thead><tbody></tbody></table></div>
+
+      <details class="plegable">
+        <summary>El resto de columnas: nuevos, renovaciones, hermanos, turnos y chicos y chicas</summary>
+        <div class="dentro">
+          <div class="tabla-scroll"><table id="tabla-mas"><thead></thead><tbody></tbody></table></div>
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -285,8 +315,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!serie.length) {
       $('graficas').innerHTML = '<div class="vacio"><b>No hay datos de este programa</b>' +
         'Elige otro programa arriba, o carga las temporadas en la base de datos.</div>';
-      $('tabla').querySelector('thead').innerHTML = '';
-      $('tabla').querySelector('tbody').innerHTML = '';
+      ['tabla', 'tabla-mas'].forEach(function (id) {
+        $(id).querySelector('thead').innerHTML = '';
+        $(id).querySelector('tbody').innerHTML = '';
+      });
       return;
     }
 
@@ -467,20 +499,32 @@ APOLANA_ADMIN.listo(function (sb) {
     pintarTabla(prog);
   }
 
+  /* Trece columnas de una vez obligaban a arrastrar la tabla para llegar a lo
+     que se mira siempre. Se parte en dos: las cuatro de cabecera a la vista y
+     el resto plegado. No se ha quitado ninguna. */
+  var COLS_PRINCIPALES = [
+    { c:'apuntados_total', n:'Apuntados' }, { c:'vinieron_a_probar', n:'Probaron' },
+    { c:'se_quedaron', n:'Se quedaron' }, { c:'pct_inscripciones', n:'% se queda', p:true }
+  ];
+  var COLS_RESTO = [
+    { c:'nuevos', n:'Nuevos' }, { c:'renovacion', n:'Renuevan' }, { c:'hermanos', n:'Hermanos' },
+    { c:'turno_lx', n:'L-X' }, { c:'turno_mj', n:'M-J' },
+    { c:'chicos', n:'Chicos' }, { c:'chicas', n:'Chicas' }
+  ];
+
   function pintarTabla(prog) {
-    var cols = [
-      { c:'apuntados_total', n:'Apuntados' }, { c:'vinieron_a_probar', n:'Probaron' },
-      { c:'se_quedaron', n:'Se quedaron' }, { c:'pct_inscripciones', n:'% se queda', p:true },
-      { c:'nuevos', n:'Nuevos' }, { c:'renovacion', n:'Renuevan' }, { c:'hermanos', n:'Hermanos' },
-      { c:'turno_lx', n:'L-X' }, { c:'turno_mj', n:'M-J' },
-      { c:'chicos', n:'Chicos' }, { c:'chicas', n:'Chicas' }
-    ];
     var filas = datos.filter(function (f) { return prog === 'ambos' || f.programa === prog; })
       .slice().sort(function (a, b) {
         if (a.temporada !== b.temporada) return a.temporada < b.temporada ? 1 : -1;
         return a.programa < b.programa ? -1 : 1;
       });
-    var t = $('tabla');
+    volcar($('tabla'), COLS_PRINCIPALES, filas);
+    volcar($('tabla-mas'), COLS_RESTO, filas);
+  }
+
+  /* Las dos tablas repiten temporada y programa: sin esas dos columnas, las
+     filas de la plegada no se sabría a qué temporada pertenecen. */
+  function volcar(t, cols, filas) {
     if (!filas.length) {
       t.querySelector('thead').innerHTML = '';
       t.querySelector('tbody').innerHTML = '<tr><td class="sin-etiqueta">Sin datos de este programa.</td></tr>';
@@ -509,10 +553,16 @@ APOLANA_ADMIN.listo(function (sb) {
       '<span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div>';
     var r = await sb.from('escuela_historico').select('*').order('temporada', { ascending: true });
     if (r.error) {
-      /* Error en ámbar, nunca en rojo, y siempre con un botón de reintentar. */
-      $('graficas').innerHTML = '<div class="fallo"><b>No hemos podido cargar el histórico</b>' +
-        'Puede ser la conexión. <button type="button" class="reintentar">Volver a intentarlo</button></div>';
-      $('graficas').querySelector('.reintentar').addEventListener('click', cargar);
+      /* El aviso de error es el del kit: ámbar, nunca rojo, y su botón repite
+         solo esta lectura. Las tablas se vacían para que no quede debajo lo de
+         la vez anterior como si siguiera siendo lo que hay. */
+      $('graficas').innerHTML = ADM.error(r.error.message, cargar);
+      $('cuenta-cab').textContent = '';
+      $('txt-rango').textContent = '';
+      ['tabla', 'tabla-mas'].forEach(function (id) {
+        $(id).querySelector('thead').innerHTML = '';
+        $(id).querySelector('tbody').innerHTML = '';
+      });
       return;
     }
     datos = (r.data || []).map(function (f) {

@@ -44,9 +44,12 @@
   @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
 
   .btn { cursor: pointer; }
-  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  /* Todo lo que se pulsa, 44 px de alto. */
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .btn--peligro:hover { background: #fbeceb; }
-  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .btn--mini { padding: 8px 14px; font-size: 14px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .oculto { display: none !important; }
   /* Edición en ventana emergente (modal), no al fondo de la página */
   #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
@@ -185,11 +188,13 @@ APOLANA_ADMIN.listo(function (sb) {
   // --- Cargar desde BD ---
   async function cargarPruebas() {
     var tb = $('tabla-pruebas').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="7" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr>';
+    tb.innerHTML = ADM.filaCargando(7, 3);
     var r = await sb.from('pruebas')
       .select('id,nombre,disciplina,ambito,unidad,mas_es_mejor,orden,activa')
       .order('ambito').order('orden', { nullsFirst: false }).order('nombre');
-    if (r.error) { tb.innerHTML = '<tr><td colspan="7">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
+    // Si falla la consulta no se ha podido mirar: error con reintento, y que
+    // no se pinte la lista vacía como si el catálogo estuviera de verdad vacío.
+    if (r.error) { tb.innerHTML = ADM.filaError(7, r.error.message, cargarPruebas); return; }
     TODAS = r.data || [];
     poblarDisciplinasFiltro();
     poblarDatalistDisciplinas();
@@ -235,7 +240,28 @@ APOLANA_ADMIN.listo(function (sb) {
       return true;
     });
 
-    if (!lista.length) { tb.innerHTML = '<tr><td colspan="7">No hay pruebas que coincidan.</td></tr>'; return; }
+    // No es lo mismo que el catálogo esté vacío que que el filtro no encuentre nada:
+    // en el primer caso hay que crear una prueba, en el segundo basta con quitar el filtro.
+    if (!lista.length) {
+      if (!TODAS.length) {
+        tb.innerHTML = ADM.filaVacia(7, 'Todavía no hay ninguna prueba',
+          'Las pruebas son el catálogo con el que luego se registran las marcas: 100 m lisos, longitud, 50 libres…',
+          '<button class="btn btn--primario btn--mini" type="button" id="vacio-nueva">+ Nueva prueba</button>',
+          '<path d="M4 19h16"/><path d="M7 19V9l5-4 5 4v10"/><path d="M10 19v-5h4v5"/>');
+        var bv = document.getElementById('vacio-nueva');
+        if (bv) bv.addEventListener('click', function () { abrirForm(); });
+      } else {
+        tb.innerHTML = ADM.filaVacia(7, 'Ninguna prueba encaja con la búsqueda',
+          'Hay ' + TODAS.length + ' pruebas en el catálogo, pero ninguna cumple estos filtros.',
+          '<button class="btn btn--fantasma btn--mini" type="button" id="vacio-limpiar">Quitar los filtros</button>');
+        var bl = document.getElementById('vacio-limpiar');
+        if (bl) bl.addEventListener('click', function () {
+          $('f-ambito').value = ''; $('f-disciplina').value = ''; $('f-texto').value = '';
+          poblarDisciplinasFiltro(); render();
+        });
+      }
+      return;
+    }
 
     var html = '', grupoActual = null;
     lista.forEach(function (p) {

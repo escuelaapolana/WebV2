@@ -82,8 +82,12 @@
   .filtros { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
   .filtros > div { flex:1 1 200px; }
   label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin: 0 0 5px; }
-  input, select {
-    width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px;
+  /* Los desplegables de cada informe (sección, periodo, atleta, fechas) son el
+     mando principal de la pantalla: 44 px para poder darles con el dedo. La
+     casilla de proteger menores queda fuera, porque es un cuadradito de 18 px
+     dentro de una etiqueta que ya mide 44 px de alto. */
+  input:not([type="checkbox"]), select {
+    width:100%; box-sizing:border-box; min-height:44px; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px;
     font-family: var(--fuente-texto); font-size:15px; background:#fff; color: var(--navy);
   }
   input:focus, select:focus { outline:2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
@@ -105,6 +109,20 @@
   .oculto { display:none !important; }
   .cargando { color: var(--texto-suave); font-size:14px; padding:20px 0; }
   h3.bloque { font-family: var(--fuente-texto); font-size: 17px; color:var(--navy); margin:26px 0 6px; font-weight: 600;}
+
+  /* Bloques de cifras plegados: el título hace de mando, a 44 px */
+  details.inf-bloque { border-top:1px solid var(--linea); margin-top:6px; }
+  details.inf-bloque > summary { display:flex; align-items:center; gap:11px; min-height:44px; cursor:pointer;
+    font-family: var(--fuente-texto); font-size:17px; font-weight:600; color:var(--navy); padding:10px 0; }
+  details.inf-bloque > summary:hover { color: var(--azul-oscuro); }
+  details.inf-bloque > summary .cuantas { font-family: var(--fuente-dato); font-size:13px; font-weight:400; color: var(--texto-suave); }
+  details.inf-bloque[open] > summary { border-bottom:1px solid var(--crema-banda); }
+  details.inf-bloque > *:not(summary) { margin-bottom:14px; }
+
+  /* Las explicaciones se leen una vez: plegadas */
+  details.explica > summary { display:inline-flex; align-items:center; min-height:44px; cursor:pointer;
+    font-size:14px; font-weight:600; color: var(--azul-oscuro); }
+  details.explica .nota-pie { margin:4px 0 0; }
 
   @media (max-width: 640px) {
     table.datos { min-width:0; }
@@ -142,6 +160,14 @@
   #area-impresion .adm-mas,
   #area-impresion .adm-buscador,
   #area-impresion .adm-cargando { display:none !important; }
+  /* En pantalla los bloques van plegados; en papel salen todos abiertos y el
+     título del bloque vuelve a ser un encabezado normal. */
+  #area-impresion details.inf-bloque { border:0; }
+  #area-impresion details.inf-bloque > summary { display:block; list-style:none;
+    font-size:10.5pt; color:#2F6FA8; text-transform:uppercase; letter-spacing:.05em;
+    margin:16px 0 6px; padding-bottom:4px; border-bottom:1px solid #E3DED3; }
+  #area-impresion details.inf-bloque > summary::-webkit-details-marker { display:none; }
+  #area-impresion details.inf-bloque > summary .cuantas { display:none; }
   #area-impresion th { background:#F3EFE6; color:#2E4256; text-align:left; font-size:8pt; padding:6px 8px; border-bottom:2px solid #2E4256; }
   #area-impresion td { padding:5px 8px; border-bottom:1px solid #E3DED3; }
   #area-impresion td.num, #area-impresion th.num { text-align:right; font-variant-numeric:tabular-nums; }
@@ -195,11 +221,14 @@
       <div id="lienzo" class="oculto"></div>
     </div>
 
-    <p class="nota-pie">
-      Todos los números salen directos de la base de datos del club en el momento de abrir esta página.
-      Usa «Imprimir / PDF» para guardar un informe en PDF (en el diálogo de impresión, elige «Guardar como PDF»)
-      y «Descargar CSV» para abrirlo en Excel.
-    </p>
+    <details class="explica">
+      <summary>Cómo guardar un informe en PDF o en Excel</summary>
+      <p class="nota-pie">
+        Todos los números salen directos de la base de datos del club en el momento de abrir esta página.
+        Usa «Imprimir / PDF» para guardar un informe en PDF (en el diálogo de impresión, elige «Guardar como PDF»)
+        y «Descargar CSV» para abrirlo en Excel.
+      </p>
+    </details>
 
   </div>
 </div>
@@ -277,10 +306,20 @@ APOLANA_ADMIN.listo(function (sb) {
          completo fuera del club (misma tabla que usa el juego de retos). */
       sb.from('perfil_juego').select('atleta_id,autoriza_parental_en')
     ]);
+    /* Solo las ocho primeras consultas son imprescindibles. La novena —quién
+       tiene autorización familiar— puede fallar por permisos sin que eso deba
+       tumbar todos los informes: si falla se protege a todos los menores, que
+       es lo prudente (se ve más abajo). */
     var err = null;
-    r.forEach(function (x) { if (x.error && !err) err = x.error; });
+    r.slice(0, 8).forEach(function (x) { if (x.error && !err) err = x.error; });
+    /* Sin datos no hay informe: error en ámbar con «Volver a intentarlo». Aquí
+       no puede salir nunca una pantalla de ceros, que se leería como que el
+       club no tiene ni atletas ni recibos. */
     if (err) {
-      $('cargando-global').innerHTML = 'No se pudieron cargar los datos: ' + esc(err.message);
+      $('cargando-global').innerHTML = ADM.error(err.message, function () {
+        $('cargando-global').innerHTML = ADM.esqueleto(3);
+        arrancar();
+      });
       return false;
     }
     D.atletas = r[0].data || [];
@@ -404,6 +443,10 @@ APOLANA_ADMIN.listo(function (sb) {
     // ⚠ menores: el papel sale del club, así que pasa por la misma regla.
     $('area-impresion').innerHTML =
       protegido(membrete(titulo, subtitulo) + contenidoHtml) + pieDoc();
+    /* En papel no hay nada que desplegar: un bloque cerrado saldría en blanco
+       y el informe llegaría cojo sin que se note. */
+    Array.prototype.slice.call($('area-impresion').querySelectorAll('details'))
+      .forEach(function (d) { d.open = true; });
     window.print();
   }
 
@@ -422,6 +465,17 @@ APOLANA_ADMIN.listo(function (sb) {
     });
     h += '</tbody></table></div>';
     return h;
+  }
+
+  /* Un informe puede traer ocho tablas seguidas: todas abiertas es un muro de
+     cifras. Cada bloque se pliega con su título y dice cuántas filas trae, así
+     que no se pierde ninguna cifra: solo hay que abrir la que interesa.
+     Al imprimir se abren todas (ver imprimir()). */
+  function bloquePlegable(titulo, contenido, abierto, nFilas) {
+    return '<details class="inf-bloque"' + (abierto ? ' open' : '') + '>' +
+      '<summary>' + esc(titulo) +
+        (nFilas ? '<span class="cuantas">' + num(nFilas) + (nFilas === 1 ? ' fila' : ' filas') + '</span>' : '') +
+      '</summary>' + contenido + '</details>';
   }
 
   // ============================================================
@@ -459,7 +513,8 @@ APOLANA_ADMIN.listo(function (sb) {
     ordenEstado.forEach(function (e) { if (porEstado[e]) filasEstado.push({ et: ESTADOS[e], n: num(porEstado[e]) }); delete porEstado[e]; });
     Object.keys(porEstado).forEach(function (e) { filasEstado.push({ et: e, n: num(porEstado[e]) }); });
     filasEstado.push({ et: 'Total', n: num(D.atletas.length), _cls: 'total' });
-    html += '<h3 class="bloque">Por estado</h3>' + tablaHtml([{ t: 'Estado', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasEstado);
+    html += bloquePlegable('Por estado',
+      tablaHtml([{ t: 'Estado', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasEstado), false, filasEstado.length);
 
     // --- Por sección (solo en activo) ---
     var secc = {};
@@ -470,8 +525,9 @@ APOLANA_ADMIN.listo(function (sb) {
       return { et: s, n: num(secc[s]), g: num(gruposPorSecc[s] || 0) };
     });
     filasSecc.push({ et: 'Total', n: num(vivos.length), g: num(D.grupos.length), _cls: 'total' });
-    html += '<h3 class="bloque">Por sección (atletas en activo)</h3>' +
-      tablaHtml([{ t: 'Sección', k: 'et' }, { t: 'Atletas', k: 'n', num: true }, { t: 'Grupos', k: 'g', num: true }], filasSecc);
+    html += bloquePlegable('Por sección (atletas en activo)',
+      tablaHtml([{ t: 'Sección', k: 'et' }, { t: 'Atletas', k: 'n', num: true }, { t: 'Grupos', k: 'g', num: true }], filasSecc),
+      true, filasSecc.length);
 
     // --- Escuela vs socios ---
     var mem = { escuela: 0, socio: 0, desconocido: 0 };
@@ -482,26 +538,30 @@ APOLANA_ADMIN.listo(function (sb) {
     ];
     if (mem.desconocido) filasMem.push({ et: 'Sin determinar', n: num(mem.desconocido) });
     filasMem.push({ et: 'Total', n: num(vivos.length), _cls: 'total' });
-    html += '<h3 class="bloque">Escuela y socios</h3>' + tablaHtml([{ t: 'Grupo', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasMem);
+    html += bloquePlegable('Escuela y socios',
+      tablaHtml([{ t: 'Grupo', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasMem), false, filasMem.length);
 
     // --- Por categoría ---
     var cat = {};
     vivos.forEach(function (a) { var c = a.categoria || '(sin categoría)'; cat[c] = (cat[c] || 0) + 1; });
     var filasCat = Object.keys(cat).sort().map(function (c) { return { et: c, n: num(cat[c]) }; });
     filasCat.push({ et: 'Total', n: num(vivos.length), _cls: 'total' });
-    html += '<h3 class="bloque">Por categoría (atletas en activo)</h3>' + tablaHtml([{ t: 'Categoría', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasCat);
+    html += bloquePlegable('Por categoría (atletas en activo)',
+      tablaHtml([{ t: 'Categoría', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasCat), false, filasCat.length);
 
     // --- Por sexo ---
     var conSexo = vivos.filter(function (a) { return a.sexo; }).length;
     if (conSexo === 0) {
-      html += '<h3 class="bloque">Por sexo</h3><div class="aviso">El sexo no está registrado todavía para ninguna persona, así que este reparto no se puede calcular.</div>';
+      html += bloquePlegable('Por sexo',
+        '<div class="aviso">El sexo no está registrado todavía para ninguna persona, así que este reparto no se puede calcular.</div>', false, 0);
     } else {
       var sx = { hombre: 0, mujer: 0, otro: 0, '(sin dato)': 0 };
       vivos.forEach(function (a) { sx[a.sexo || '(sin dato)']++; });
       var filasSx = [];
       ['hombre','mujer','otro','(sin dato)'].forEach(function (k) { if (sx[k]) filasSx.push({ et: k.charAt(0).toUpperCase() + k.slice(1), n: num(sx[k]) }); });
       filasSx.push({ et: 'Total', n: num(vivos.length), _cls: 'total' });
-      html += '<h3 class="bloque">Por sexo (atletas en activo)</h3>' + tablaHtml([{ t: 'Sexo', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasSx);
+      html += bloquePlegable('Por sexo (atletas en activo)',
+        tablaHtml([{ t: 'Sexo', k: 'et' }, { t: 'Atletas', k: 'n', num: true }], filasSx), false, filasSx.length);
     }
 
     pintar(html);
@@ -679,22 +739,25 @@ APOLANA_ADMIN.listo(function (sb) {
         return { m: esc(d.txt), c: eur(d.c), p: eur(d.p), i: eur(d.i), t: eur(d.c + d.p + d.i) };
       });
       filasMes.push({ m: 'Total', c: eur(tMes.c), p: eur(tMes.p), i: eur(tMes.i), t: eur(tMes.c + tMes.p + tMes.i), _cls: 'total' });
-      cuerpo += '<h3 class="bloque">Por mes (todos los periodos)</h3>' +
-        tablaHtml([{ t: 'Periodo', k: 'm' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }, { t: 'Total', k: 't', num: true }], filasMes);
+      cuerpo += bloquePlegable('Por mes (todos los periodos)',
+        tablaHtml([{ t: 'Periodo', k: 'm' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }, { t: 'Total', k: 't', num: true }], filasMes),
+        true, filasMes.length);
 
       // Por sección (según filtro)
       datosSecc = Object.keys(porSecc).sort().map(function (s) { return { s: s, c: porSecc[s].c, p: porSecc[s].p, i: porSecc[s].i }; });
       var filasSecc = datosSecc.map(function (d) { return { s: esc(d.s), c: eur(d.c), p: eur(d.p), i: eur(d.i) }; });
       filasSecc.push({ s: 'Total', c: eur(estado.cobrado), p: eur(estado.pendiente), i: eur(estado.impagado), _cls: 'total' });
-      cuerpo += '<h3 class="bloque">Por sección (' + esc(selTexto) + ')</h3>' +
-        tablaHtml([{ t: 'Sección', k: 's' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }], filasSecc);
+      cuerpo += bloquePlegable('Por sección (' + selTexto + ')',
+        tablaHtml([{ t: 'Sección', k: 's' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }], filasSecc),
+        false, filasSecc.length);
 
       // Por cuenta
       datosCuenta = Object.keys(porCuenta).filter(function (k) { var x = porCuenta[k]; return x.c || x.p || x.i; })
         .map(function (k) { return { cu: k, c: porCuenta[k].c, p: porCuenta[k].p, i: porCuenta[k].i }; });
       var filasCu = datosCuenta.map(function (d) { return { cu: esc(d.cu), c: eur(d.c), p: eur(d.p), i: eur(d.i) }; });
-      cuerpo += '<h3 class="bloque">Por cuenta (' + esc(selTexto) + ')</h3>' +
-        tablaHtml([{ t: 'Cuenta', k: 'cu' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }], filasCu);
+      cuerpo += bloquePlegable('Por cuenta (' + selTexto + ')',
+        tablaHtml([{ t: 'Cuenta', k: 'cu' }, { t: 'Cobrado', k: 'c', num: true }, { t: 'Pendiente', k: 'p', num: true }, { t: 'Impagado', k: 'i', num: true }], filasCu),
+        false, filasCu.length);
 
       $('eco-cuerpo').innerHTML = cuerpo;
     }
@@ -928,30 +991,31 @@ APOLANA_ADMIN.listo(function (sb) {
         '<div class="cifra rojo"><span class="et">Bajas actuales</span><span class="num">' + num(bajas.length) + '</span></div>' +
         '</div>';
 
-      cuerpo += '<h3 class="bloque">Altas</h3>';
+      var dentroA;
       if (!altas.length) {
-        cuerpo += '<div class="aviso">No hay altas en el periodo elegido.</div>';
+        dentroA = '<div class="aviso">No hay altas en el periodo elegido.</div>';
       } else {
         var filasA = altas.map(function (d) {
           return { nombre: esc(d.nombre), seccion: esc(d.seccion), categoria: esc(d.categoria), estado: esc(ESTADOS[d.estado] || d.estado), alta: fechaCorta(d.alta) };
         });
-        cuerpo += tablaHtml([
+        dentroA = tablaHtml([
           { t: 'Atleta', k: 'nombre' }, { t: 'Sección', k: 'seccion' }, { t: 'Categoría', k: 'categoria' }, { t: 'Estado', k: 'estado' }, { t: 'Fecha de alta', k: 'alta', num: true }
         ], filasA);
       }
+      cuerpo += bloquePlegable('Altas', dentroA, true, altas.length);
 
-      cuerpo += '<h3 class="bloque">Bajas actuales</h3>';
-      cuerpo += '<div class="aviso">Las bajas no guardan la fecha en que se produjeron, así que se muestran todas las bajas actuales sin filtrar por mes.</div>';
+      var dentroB = '<div class="aviso">Las bajas no guardan la fecha en que se produjeron, así que se muestran todas las bajas actuales sin filtrar por mes.</div>';
       if (!bajas.length) {
-        cuerpo += '<div class="aviso">No hay ninguna persona de baja.</div>';
+        dentroB += '<div class="aviso">No hay ninguna persona de baja.</div>';
       } else {
         var filasB = bajas.map(function (d) {
           return { nombre: esc(d.nombre), seccion: esc(d.seccion), categoria: esc(d.categoria), alta: fechaCorta(d.alta) };
         });
-        cuerpo += tablaHtml([
+        dentroB += tablaHtml([
           { t: 'Atleta', k: 'nombre' }, { t: 'Sección', k: 'seccion' }, { t: 'Categoría', k: 'categoria' }, { t: 'Alta original', k: 'alta', num: true }
         ], filasB);
       }
+      cuerpo += bloquePlegable('Bajas actuales', dentroB, false, bajas.length);
       $('ab-cuerpo').innerHTML = cuerpo;
     }
     $('f-mes').onchange = render;
@@ -979,24 +1043,34 @@ APOLANA_ADMIN.listo(function (sb) {
   function infAsistencia() {
     var html = '';
     html += '<h2 class="inf-tit">Asistencia</h2>';
-    html += '<p class="inf-sub">Porcentaje de asistencia a los entrenamientos por grupo.</p>';
-    pintar(html + '<div id="asis-cuerpo"><div class="cargando">Comprobando datos de asistencia…</div></div>');
+    /* Este informe NO calcula porcentajes por grupo: no está hecho. Antes lo
+       prometía y mandaba «volver a abrir la página», que no calculaba nada.
+       Mientras no se haga, la pantalla dice lo único que sabe: cuántas listas
+       hay pasadas, y por dónde sí se puede ver la asistencia hoy (Historial
+       de un atleta, que sí la cuenta persona a persona). */
+    html += '<p class="inf-sub">Cuántas listas de entrenamiento hay pasadas en el club.</p>';
+    pintar(html + '<div id="asis-cuerpo">' + ADM.esqueleto(2) + '</div>');
 
-    // Recuento real de la tabla de asistencia (por si hubiese datos aunque el modelo no la cargue).
     sb.from('asistencia').select('id', { count: 'exact', head: true }).then(function (res) {
-      var n = res.count || 0;
       if (res.error) {
-        $('asis-cuerpo').innerHTML = '<div class="aviso">No se pudo comprobar la asistencia: ' + esc(res.error.message) + '</div>';
+        $('asis-cuerpo').innerHTML = ADM.error(res.error.message, infAsistencia);
         return;
       }
+      var n = res.count || 0;
       if (n === 0) {
-        $('asis-cuerpo').innerHTML =
-          '<div class="aviso">Todavía no se ha registrado ninguna asistencia a entrenamientos, así que no se puede calcular ningún porcentaje. ' +
-          'En cuanto los entrenadores empiecen a pasar lista, este informe mostrará el porcentaje por grupo.</div>' +
-          '<p class="nota-pie">Sí hay ' + num(D.movs.length ? D.movs.length : 0) + ' registros en otras tablas de actividad, pero no sirven para medir asistencia a entrenamientos.</p>';
-      } else {
-        $('asis-cuerpo').innerHTML = '<div class="aviso">Hay ' + num(n) + ' registros de asistencia. Vuelve a abrir esta página para calcular los porcentajes por grupo.</div>';
+        $('asis-cuerpo').innerHTML = ADM.vacio('Todavía no se ha pasado lista ni una vez',
+          'En cuanto los entrenadores empiecen a pasar lista en el panel, aparecerá aquí lo que se haya registrado.',
+          '', '<path d="M5 12.5l4.5 4.5L19 7.5"/>');
+        return;
       }
+      $('asis-cuerpo').innerHTML =
+        '<div class="cifras"><div class="cifra"><span class="et">Listas pasadas</span>' +
+        '<span class="num">' + num(n) + '</span><span class="nota">registros de asistencia en el club</span></div></div>' +
+        '<div class="aviso">El reparto por grupo todavía no está hecho. Para ver la asistencia de alguien hoy, ' +
+        'usa <strong>Historial de un atleta</strong>: sale día a día, con el porcentaje y las faltas avisadas.</div>' +
+        '<div class="acciones-inf no-print"><button class="btn btn--primario btn--mini" id="b-ir-historial">Ir a Historial de un atleta</button></div>';
+      var b = $('b-ir-historial');
+      if (b) b.onclick = function () { abrir('historial'); };
     });
   }
 
@@ -1072,7 +1146,9 @@ APOLANA_ADMIN.listo(function (sb) {
       }
       actual = D.atletasById[id];
       rango = 'Del ' + fechaCorta(desde) + ' al ' + fechaCorta(hasta);
-      $('hist-cuerpo').innerHTML = '<div class="cargando">Buscando el historial…</div>';
+      /* Esqueleto con la forma de lo que va a llegar, nunca un «Buscando…» en
+         gris: así la página no da un salto cuando entran los datos. */
+      $('hist-cuerpo').innerHTML = ADM.esqueleto(3);
 
       var r = await Promise.all([
         sb.from('asistencia').select('fecha,presente,grupo_id').eq('atleta_id', id).gte('fecha', desde).lte('fecha', hasta),
@@ -1081,8 +1157,9 @@ APOLANA_ADMIN.listo(function (sb) {
       ]);
       var err = null;
       r.forEach(function (x) { if (x.error && !err) err = x.error; });
+      /* Un fallo aquí no puede leerse como «esta persona no vino nunca». */
       if (err) {
-        $('hist-cuerpo').innerHTML = '<div class="aviso">No se pudo leer el historial: ' + esc(err.message) + '</div>';
+        $('hist-cuerpo').innerHTML = ADM.error(err.message, render);
         return;
       }
 
@@ -1133,13 +1210,13 @@ APOLANA_ADMIN.listo(function (sb) {
         TIPOS_NOTA.forEach(function (t) {
           if (resumen.porTipo[t.v]) filasTipo.push({ tipo: esc(t.t), n: num(resumen.porTipo[t.v]) });
         });
-        cuerpo += '<h3 class="bloque">Notas por tipo</h3>' +
-          tablaHtml([{ t: 'Tipo de nota', k: 'tipo' }, { t: 'Cuántas', k: 'n', num: true }], filasTipo);
+        cuerpo += bloquePlegable('Notas por tipo',
+          tablaHtml([{ t: 'Tipo de nota', k: 'tipo' }, { t: 'Cuántas', k: 'n', num: true }], filasTipo), false, filasTipo.length);
       }
 
-      cuerpo += '<h3 class="bloque">Día a día</h3>';
+      var dentroDias;
       if (!dias.length) {
-        cuerpo += '<div class="aviso">No hay nada registrado de esta persona en esas fechas: ni listas pasadas, ni avisos de la familia, ni notas.</div>';
+        dentroDias = '<div class="aviso">No hay nada registrado de esta persona en esas fechas: ni listas pasadas, ni avisos de la familia, ni notas.</div>';
       } else {
         var filasDia = dias.map(function (d) {
           var asis = d.presente === true ? '<span class="pill pill-pagado">Vino</span>'
@@ -1163,11 +1240,12 @@ APOLANA_ADMIN.listo(function (sb) {
             notas: notasTxt
           };
         });
-        cuerpo += tablaHtml([
+        dentroDias = tablaHtml([
           { t: 'Día', k: 'fecha' }, { t: 'Asistencia', k: 'asis' },
           { t: 'Aviso de la familia', k: 'aviso' }, { t: 'Lo que se apuntó', k: 'notas' }
         ], filasDia);
       }
+      cuerpo += bloquePlegable('Día a día', dentroDias, true, dias.length);
       $('hist-cuerpo').innerHTML = cuerpo;
       $('b-print').disabled = false;
       $('b-csv').disabled = false;
@@ -1266,18 +1344,19 @@ APOLANA_ADMIN.listo(function (sb) {
       '<div class="cifra"><span class="et">Ocupación media</span><span class="num">' + ocupMedia + '%</span><span class="nota">clases ya celebradas</span></div>' +
       '</div>';
 
-    cuerpo += '<h3 class="bloque">Ocupación de las clases ya celebradas</h3>';
+    var dentroCubo;
     if (!clasesPasadas.length) {
-      cuerpo += '<div class="aviso">Todavía no hay clases pasadas para medir la ocupación.</div>';
+      dentroCubo = '<div class="aviso">Todavía no hay clases pasadas para medir la ocupación.</div>';
     } else {
       var filas = datosClases.slice(0, 40).map(function (d) {
         return { fecha: fechaCorta(d.fecha), titulo: esc(d.titulo), ocup: num(d.ocup) + ' / ' + num(d.plazas), pct: Math.round(d.pct * 100) + '%' };
       });
-      cuerpo += tablaHtml([
+      dentroCubo = tablaHtml([
         { t: 'Fecha', k: 'fecha' }, { t: 'Clase', k: 'titulo' }, { t: 'Ocupación', k: 'ocup', num: true }, { t: '% ocupación', k: 'pct', num: true }
       ], filas);
-      if (datosClases.length > 40) cuerpo += '<p class="nota-pie">Se muestran las 40 clases más recientes de ' + num(datosClases.length) + '. El CSV incluye todas.</p>';
+      if (datosClases.length > 40) dentroCubo += '<p class="nota-pie">Se muestran las 40 clases más recientes de ' + num(datosClases.length) + '. El CSV incluye todas.</p>';
     }
+    cuerpo += bloquePlegable('Ocupación de las clases ya celebradas', dentroCubo, true, clasesPasadas.length);
     $('cubo-cuerpo').innerHTML = cuerpo;
 
     $('b-print').onclick = function () {
@@ -1340,16 +1419,19 @@ APOLANA_ADMIN.listo(function (sb) {
   })();
 
   // ================= ARRANQUE =================
-  cargar().then(function (ok) {
-    if (!ok) { $('contexto').textContent = 'No se pudieron cargar los datos.'; return; }
-    $('cargando-global').classList.add('oculto');
-    $('lienzo').classList.remove('oculto');
-    var vivos = D.atletas.filter(function (a) { return a.estado !== 'baja'; }).length;
-    $('cuenta-cab').textContent = num(vivos) + ' en activo';
-    $('contexto').textContent = num(D.grupos.length) + ' grupos · ' + num(D.pagos.length) + ' recibos' +
-      (N_PROTEGIDOS ? ' · ' + num(N_PROTEGIDOS) + ' menores sin autorización familiar' : '');
-    abrir('resumen');
-  });
+  function arrancar() {
+    return cargar().then(function (ok) {
+      if (!ok) { $('contexto').textContent = 'No se pudieron cargar los datos.'; return; }
+      $('cargando-global').classList.add('oculto');
+      $('lienzo').classList.remove('oculto');
+      var vivos = D.atletas.filter(function (a) { return a.estado !== 'baja'; }).length;
+      $('cuenta-cab').textContent = num(vivos) + ' en activo';
+      $('contexto').textContent = num(D.grupos.length) + ' grupos · ' + num(D.pagos.length) + ' recibos' +
+        (N_PROTEGIDOS ? ' · ' + num(N_PROTEGIDOS) + ' menores sin autorización familiar' : '');
+      abrir('resumen');
+    });
+  }
+  arrancar();
 });
 </script>
 </body>

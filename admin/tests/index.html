@@ -94,6 +94,27 @@
                border-radius: 10px; padding:12px 15px; }
   .oculto { display:none !important; }
 
+  /* Lo que se lee una vez va plegado: estas explicaciones no hacen falta
+     cada día entre el título y el primer dato. */
+  .plegable { background: var(--crema-banda); border:1px solid var(--linea); border-radius:14px; margin:12px 0; max-width:74ch; }
+  .plegable > summary {
+    list-style:none; cursor:pointer; user-select:none;
+    display:flex; align-items:center; gap:9px; min-height:44px;
+    padding:11px 16px; border-radius:14px;
+    font-size:15px; font-weight:600; color: var(--navy);
+  }
+  .plegable > summary::-webkit-details-marker { display:none; }
+  .plegable > summary::before {
+    content:''; flex:0 0 auto; width:7px; height:7px;
+    border-right:2px solid var(--texto-suave); border-bottom:2px solid var(--texto-suave);
+    transform: rotate(-45deg); transition: transform .15s ease;
+  }
+  .plegable[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
+  .plegable > summary:hover { background: var(--crema-media); }
+  .plegable .dentro { padding:0 16px 15px; font-size:14px; line-height:1.55; color: var(--texto); }
+  .plegable .dentro p { margin:0 0 9px; }
+  .plegable .dentro > :last-child { margin-bottom:0; }
+
   /* Móvil: la tabla de una batería pasa a fichas */
   @media (max-width: 760px) {
     .tabla-bateria table, .tabla-bateria thead, .tabla-bateria tbody,
@@ -114,9 +135,16 @@
 
     <div class="cab">
       <h1>Batería de tests</h1>
-      <div class="contexto">Lo que se toma a pie de pista desde el móvil se lee aquí. La unidad va siempre pegada al dato,
-        los índices se calculan solos y la comparación es únicamente dentro del club y por categoría.</div>
+      <div class="contexto">Lo que se toma a pie de pista desde el móvil se lee aquí.</div>
     </div>
+
+    <details class="plegable">
+      <summary>Cómo se leen estos números</summary>
+      <div class="dentro">
+        <p>La unidad va siempre pegada al dato, los índices se calculan solos y la comparación es
+          únicamente dentro del club y por categoría.</p>
+      </div>
+    </details>
 
     <div id="aviso"></div>
 
@@ -167,8 +195,13 @@
       </div>
       <div class="comp" id="comparativa"></div>
       <div class="grafica" id="grafica-reparto" style="margin-top:22px"></div>
-      <p class="nota-privacidad">La comparación se hace solo dentro del club y por categoría. No se publican datos de
-        otros atletas con nombre: de los demás solo se usa la media y el reparto del grupo.</p>
+      <details class="plegable">
+        <summary>Qué datos de los demás se usan aquí</summary>
+        <div class="dentro">
+          <p>La comparación se hace solo dentro del club y por categoría. No se publican datos de
+            otros atletas con nombre: de los demás solo se usa la media y el reparto del grupo.</p>
+        </div>
+      </details>
     </div>
 
   </div>
@@ -320,7 +353,18 @@ APOLANA_ADMIN.listo(async function (sb) {
   var BATERIAS = [], ATLETAS = {}, GRUPOS = {}, RESULTADOS = [];
   var TEST_EVOLUCION = '30_lanzado';
 
-  function fallo(m){ $('aviso').innerHTML = '<p class="msg-error">'+esc(m)+'</p>'; }
+  /* Un fallo de lectura no es culpa de quien mira: va en ámbar y con botón
+     de volver a intentarlo, no en rojo y sin salida. Además se esconden los
+     paneles: enseñarlos vacíos haría creer que no hay tests. */
+  function verPaneles(si){
+    document.querySelectorAll('.admin-wrap > .panel').forEach(function(p){ p.classList.toggle('oculto', !si); });
+  }
+  /* El reintento vuelve a leer solo esta pantalla. Antes recargaba la página
+     entera, que es más lento y hace perder la batería y el atleta elegidos. */
+  function fallo(m){
+    $('aviso').innerHTML = ADM.error(m, arrancar);
+    verPaneles(false);
+  }
 
   // La base de datos devuelve como mucho mil filas de una vez, y de
   // resultados hay muchas más: se piden por tandas hasta acabar.
@@ -338,342 +382,371 @@ APOLANA_ADMIN.listo(async function (sb) {
     return { data: filas, error: null };
   }
 
-  var qb = await sb.from('test_baterias').select('id,fecha,grupo_id,sede,temperatura,viento,notas').order('fecha',{ascending:false});
-  if(qb.error){ fallo('No se han podido leer las baterías: '+qb.error.message); return; }
-  BATERIAS = qb.data || [];
+  /* Devuelve false en cuanto una lectura se cae: sin esa tabla lo que se
+     pintara sería mentira, así que no se sigue. */
+  async function leerDatos(){
+    BATERIAS = []; RESULTADOS = []; ATLETAS = {}; GRUPOS = {};
 
-  var qg = await sb.from('grupos').select('id,nombre');
-  (qg.data||[]).forEach(function(g){ GRUPOS[g.id]=g; });
+    var qb = await sb.from('test_baterias').select('id,fecha,grupo_id,sede,temperatura,viento,notas').order('fecha',{ascending:false});
+    if(qb.error){ fallo('No se han podido leer las baterías: '+qb.error.message); return false; }
+    BATERIAS = qb.data || [];
 
-  var qa = await todas('atletas', 'id,nombre,apellidos,categoria,grupo_id,estado');
-  if(qa.error){ fallo('No se han podido leer los atletas: '+qa.error.message); return; }
-  (qa.data||[]).forEach(function(a){ ATLETAS[a.id]=a; });
+    /* Sin los grupos, todas las baterías dirían «sin grupo» y parecería que
+       nadie las apuntó a ninguno: eso no se puede dejar pasar en silencio. */
+    var qg = await sb.from('grupos').select('id,nombre');
+    if(qg.error){ fallo('No se han podido leer los grupos: '+qg.error.message); return false; }
+    (qg.data||[]).forEach(function(g){ GRUPOS[g.id]=g; });
 
-  // Los intentos sueltos no hacen falta para leer: aquí manda el mejor.
-  var qr = await todas('test_resultados', 'id,bateria_id,atleta_id,test,mejor,formato_rsi,no_asiste');
-  if(qr.error){ fallo('No se han podido leer los resultados: '+qr.error.message); return; }
-  RESULTADOS = qr.data || [];
+    var qa = await todas('atletas', 'id,nombre,apellidos,categoria,grupo_id,estado');
+    if(qa.error){ fallo('No se han podido leer los atletas: '+qa.error.message); return false; }
+    (qa.data||[]).forEach(function(a){ ATLETAS[a.id]=a; });
 
-  if(!BATERIAS.length || !RESULTADOS.length){
-    $('aviso').innerHTML = '<div class="panel"><h2>Todavía no hay tests</h2>'+
-      '<p class="sub">En cuanto se pase la primera batería desde el móvil, aquí aparecerán los resultados, la evolución de cada atleta y la comparativa por categoría.</p>'+
-      '<p style="margin:0"><a href="../../portal/tests/">Ir a la toma de datos</a></p></div>';
-    document.querySelectorAll('.admin-wrap > .panel').forEach(function(p){ p.classList.add('oculto'); });
-    return;
+    // Los intentos sueltos no hacen falta para leer: aquí manda el mejor.
+    var qr = await todas('test_resultados', 'id,bateria_id,atleta_id,test,mejor,formato_rsi,no_asiste');
+    if(qr.error){ fallo('No se han podido leer los resultados: '+qr.error.message); return false; }
+    RESULTADOS = qr.data || [];
+    return true;
   }
 
-  var FECHA = {}; BATERIAS.forEach(function(b){ FECHA[b.id]=b.fecha; });
-
-  // Índices rápidos
-  var PORBATERIA = {}, PORATLETA = {};
-  RESULTADOS.forEach(function(r){
-    (PORBATERIA[r.bateria_id] = PORBATERIA[r.bateria_id] || []).push(r);
-    (PORATLETA[r.atleta_id]  = PORATLETA[r.atleta_id]  || []).push(r);
-  });
-
-  // Marcas de un atleta en un test, de la más antigua a la más nueva.
-  function serieDe(atletaId, testK, formatoRsi){
-    var t = T(testK);
-    return (PORATLETA[atletaId]||[])
-      .filter(function(r){
-        if(r.test!==testK || r.no_asiste || r.mejor==null) return false;
-        if(t.serie && formatoRsi && r.formato_rsi!==formatoRsi) return false;
-        return true;
-      })
-      .map(function(r){ return { fecha: FECHA[r.bateria_id], valor: Number(r.mejor), formato: r.formato_rsi }; })
-      .sort(function(a,b){ return a.fecha<b.fecha ? -1 : (a.fecha>b.fecha?1:0); });
-  }
-  function ultima(atletaId, testK){
-    var s = serieDe(atletaId, testK);
-    return s.length ? s[s.length-1] : null;
+  /* Aquí sí se ha podido mirar y de verdad no hay nada: por eso este hueco
+     explica qué falta y lleva al sitio donde se empieza. */
+  function sinTests(){
+    $('aviso').innerHTML = '<div class="panel">' + ADM.vacio('Todavía no hay tests',
+      'En cuanto se pase la primera batería desde el móvil, aquí aparecerán los resultados, la evolución de cada atleta y la comparativa por categoría.',
+      '<a class="btn btn--primario" href="../../portal/tests/">Ir a la toma de datos</a>',
+      '<path d="M12 20.5V9"/><path d="m7.5 13.5 4.5-4.5 4.5 4.5"/><path d="M4 20.5h16"/>') + '</div>';
+    verPaneles(false);
   }
 
-  // ============================================================
-  // 4 · PANEL 1 · UNA BATERÍA
-  // ============================================================
-  var selBat = $('f-bateria');
-  selBat.innerHTML = BATERIAS.map(function(b){
-    var g = GRUPOS[b.grupo_id];
-    return '<option value="'+b.id+'">'+esc(fCorta(b.fecha)+' · '+(g?g.nombre:'sin grupo'))+'</option>';
-  }).join('');
-  selBat.addEventListener('change', pintarBateria);
-  $('f-buscar').addEventListener('input', pintarBateria);
+  /* Los paneles ya traen su propio esqueleto puesto en el HTML: aquí solo se
+     limpia el aviso de la vez anterior y se vuelven a enseñar. */
+  async function arrancar(){
+    $('aviso').innerHTML = '';
+    verPaneles(true);
+    if(!await leerDatos()) return;
+    if(!BATERIAS.length || !RESULTADOS.length){ sinTests(); return; }
+    montarPantalla();
+  }
 
-  function pintarBateria(){
-    var b = BATERIAS.filter(function(x){ return x.id===selBat.value; })[0] || BATERIAS[0];
-    var g = GRUPOS[b.grupo_id];
-    var cond = [
-      b.sede,
-      b.temperatura!=null ? num(b.temperatura,1)+' ºC' : null,
-      b.viento!=null ? 'viento '+(b.viento>0?'+':'')+num(b.viento,1)+' m/s' : null
-    ].filter(Boolean).join(' · ');
-    $('cond-bateria').innerHTML =
-      '<p class="sub" style="margin:-6px 0 14px">'+esc(g?g.nombre:'Sin grupo')+' · '+esc(fCorta(b.fecha))+
-      (cond ? ' · '+esc(cond) : '')+(b.notas ? ' · '+esc(b.notas) : '')+'</p>';
+  /* Todo lo de abajo solo se monta cuando la lectura ha ido bien. Al estar
+     dentro de una función, «Volver a intentarlo» puede rehacer la pantalla
+     entera sin recargar la página ni volver a pasar por la puerta. */
+  function montarPantalla(){
+    var FECHA = {}; BATERIAS.forEach(function(b){ FECHA[b.id]=b.fecha; });
 
-    var filas = PORBATERIA[b.id] || [];
-    var porAtleta = {};
-    filas.forEach(function(r){ (porAtleta[r.atleta_id] = porAtleta[r.atleta_id] || {})[r.test] = r; });
-
-    var busca = ($('f-buscar').value||'').trim().toLowerCase();
-    var ids = Object.keys(porAtleta).filter(function(id){
-      var a = ATLETAS[id]; if(!a) return false;
-      return !busca || nombreAt(a).toLowerCase().indexOf(busca)>=0;
-    }).sort(function(x,y){
-      var ax=ATLETAS[x], ay=ATLETAS[y];
-      return (ax.apellidos||'').localeCompare(ay.apellidos||'','es') || (ax.nombre||'').localeCompare(ay.nombre||'','es');
+    // Índices rápidos
+    var PORBATERIA = {}, PORATLETA = {};
+    RESULTADOS.forEach(function(r){
+      (PORBATERIA[r.bateria_id] = PORBATERIA[r.bateria_id] || []).push(r);
+      (PORATLETA[r.atleta_id]  = PORATLETA[r.atleta_id]  || []).push(r);
     });
 
-    if(!ids.length){ $('tabla-bateria').innerHTML = '<p class="vacio">Ningún atleta con ese nombre en esta batería.</p>'; return; }
-
-    var cabeceras = TESTS.map(function(t){
-      return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>';
-    }).join('');
-
-    var cuerpo = ids.map(function(id){
-      var a = ATLETAS[id], fila = porAtleta[id];
-      var celdas = TESTS.map(function(t){
-        var r = fila[t.k];
-        var etiqueta = t.nombre + (t.unidad ? ' ('+t.unidad+')' : '');
-        if(!r) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="falta">sin dato</span></td>';
-        if(r.no_asiste) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="falta">no asiste</span></td>';
-        // En el RSI la cabecera ya dice que es un índice: aquí lo que
-        // importa pegado al dato es el formato de la serie.
-        if(t.serie) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="v">'+num(Number(r.mejor),t.dec)+
-          (r.formato_rsi ? '<u> serie de '+r.formato_rsi+'</u>' : '')+'</span></td>';
-        return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="v">'+conUnidad(Number(r.mejor),t)+'</span></td>';
-      }).join('');
-
-      // Los tres índices salen de los datos, nunca se teclean.
-      var cmj = fila['cmj'] && !fila['cmj'].no_asiste ? Number(fila['cmj'].mejor) : null;
-      var sj  = fila['sj']  && !fila['sj'].no_asiste  ? Number(fila['sj'].mejor)  : null;
-      var abk = fila['abalakov'] && !fila['abalakov'].no_asiste ? Number(fila['abalakov'].mejor) : null;
-      var lan = fila['30_lanzado'] && !fila['30_lanzado'].no_asiste ? Number(fila['30_lanzado'].mejor) : null;
-      var elastico = (cmj && sj)  ? num((cmj-sj)/sj*100,1)+' <u>%</u>'   : '<span class="falta">—</span>';
-      var brazos   = (abk && cmj) ? num((abk-cmj)/cmj*100,1)+' <u>%</u>' : '<span class="falta">—</span>';
-      var vmax     = lan          ? num(30/lan,2)+' <u>m/s</u>'          : '<span class="falta">—</span>';
-
-      return '<tr>'+
-        '<td class="quien" data-et="">'+esc(nombreAt(a))+'<div style="font-weight:400;font-size:13px;color:var(--texto-suave)">'+esc(a.categoria||'sin categoría')+'</div></td>'+
-        celdas+
-        '<td class="dato" data-et="Velocidad máxima"><span class="v">'+vmax+'</span></td>'+
-        '<td class="dato" data-et="Índice elástico"><span class="v">'+elastico+'</span></td>'+
-        '<td class="dato" data-et="Uso de brazos"><span class="v">'+brazos+'</span></td>'+
-      '</tr>';
-    }).join('');
-
-    $('tabla-bateria').innerHTML =
-      '<table><thead><tr><th>Atleta</th>'+cabeceras+
-      '<th>Vel. máx. · m/s</th><th>Í. elástico · %</th><th>Brazos · %</th></tr></thead>'+
-      '<tbody>'+cuerpo+'</tbody></table>';
-  }
-
-  // ============================================================
-  // 5 · PANEL 2 · EVOLUCIÓN DE UN ATLETA
-  // ============================================================
-  var conMarcas = Object.keys(PORATLETA).filter(function(id){ return !!ATLETAS[id]; })
-    .sort(function(x,y){
-      var ax=ATLETAS[x], ay=ATLETAS[y];
-      return (ax.apellidos||'').localeCompare(ay.apellidos||'','es') || (ax.nombre||'').localeCompare(ay.nombre||'','es');
-    });
-  var selAt = $('f-atleta');
-  selAt.innerHTML = conMarcas.map(function(id){
-    var a = ATLETAS[id];
-    return '<option value="'+id+'">'+esc(nombreAt(a)+' · '+(a.categoria||'sin categoría'))+'</option>';
-  }).join('');
-  selAt.addEventListener('change', function(){ pintarAtleta(); sincronizarCategoria(); pintarComparativa(); });
-
-  $('pastillas-evolucion').innerHTML = TESTS.map(function(t){
-    return '<button type="button" data-t="'+t.k+'"'+(t.k===TEST_EVOLUCION?' class="activo"':'')+'>'+esc(t.nombre)+'</button>';
-  }).join('');
-  $('pastillas-evolucion').querySelectorAll('[data-t]').forEach(function(b){
-    b.addEventListener('click', function(){
-      TEST_EVOLUCION = b.getAttribute('data-t');
-      $('pastillas-evolucion').querySelectorAll('[data-t]').forEach(function(x){ x.classList.toggle('activo', x===b); });
-      pintarEvolucion();
-      pintarComparativa();
-    });
-  });
-
-  function pintarAtleta(){
-    var id = selAt.value, a = ATLETAS[id];
-    if(!a) return;
-
-    // Cuatro cifras de cabecera: los tres tests con más peso y el RSI.
-    var claves = ['30_lanzado','cmj','rsi'];
-    var html = claves.map(function(k){
-      var t = T(k), s = serieDe(id, k);
-      if(!s.length) return '<div class="cifra"><div class="et">'+esc(t.nombre)+'</div>'+
-        '<div class="num"><b>—</b></div><div class="pie">sin marcas todavía</div></div>';
-      var ult = s[s.length-1], pri = s[0];
-      var pie = s.length>1 ? difHTML(t, ult.valor, pri.valor, 'desde '+fCorta(pri.fecha)) : '<span class="neutro">primera marca</span>';
-      var etiqueta = t.nombre + (t.serie && ult.formato ? ' · serie de '+ult.formato : '');
-      return '<div class="cifra"><div class="et">'+esc(etiqueta)+'</div>'+
-        '<div class="num"><b>'+num(ult.valor,t.dec)+'</b><u>'+esc(t.unidad||t.unidadLarga||'')+'</u></div>'+
-        '<div class="pie">'+pie+'</div></div>';
-    }).join('');
-
-    // Velocidad máxima: calculada, nunca tecleada.
-    var lan = ultima(id,'30_lanzado');
-    html += '<div class="cifra"><div class="et">Velocidad máxima</div>'+
-      '<div class="num"><b>'+(lan?num(30/lan.valor,2):'—')+'</b><u>m/s</u></div>'+
-      '<div class="pie neutro">se calcula: 30 ÷ tiempo lanzado</div></div>';
-
-    $('cifras-atleta').innerHTML = html;
-    pintarEvolucion();
-    pintarTablaAtleta();
-  }
-
-  function pintarEvolucion(){
-    var id = selAt.value, t = T(TEST_EVOLUCION);
-    var s = serieDe(id, TEST_EVOLUCION);
-    // Un RSI de 6 y uno de 10 no se comparan: si los hay de los dos
-    // formatos, se dibuja el del último que se pasó.
-    if(t.serie && s.length){
-      var formato = s[s.length-1].formato;
-      s = s.filter(function(p){ return p.formato===formato; });
+    // Marcas de un atleta en un test, de la más antigua a la más nueva.
+    function serieDe(atletaId, testK, formatoRsi){
+      var t = T(testK);
+      return (PORATLETA[atletaId]||[])
+        .filter(function(r){
+          if(r.test!==testK || r.no_asiste || r.mejor==null) return false;
+          if(t.serie && formatoRsi && r.formato_rsi!==formatoRsi) return false;
+          return true;
+        })
+        .map(function(r){ return { fecha: FECHA[r.bateria_id], valor: Number(r.mejor), formato: r.formato_rsi }; })
+        .sort(function(a,b){ return a.fecha<b.fecha ? -1 : (a.fecha>b.fecha?1:0); });
     }
-    var nota = t.menosMejor ? 'segundos · menos es mejor, así que la barra más alta es la mejor marca'
-             : (t.unidad ? t.unidad+' · más es mejor' : 'índice · más es mejor');
-    if(t.serie && s.length) nota = 'serie de '+s[s.length-1].formato+' saltos · más es mejor';
-    $('grafica-evolucion').innerHTML = '<div class="g-cab"><h3>Evolución · '+esc(t.nombre)+'</h3>'+
-      '<span class="g-nota">'+esc(nota)+'</span></div><div id="lienzo-evolucion"></div>';
-    barrasEvolucion('lienzo-evolucion', s.map(function(p){
-      return { etiqueta: fCorta(p.fecha), valor: p.valor };
-    }), t);
-  }
+    function ultima(atletaId, testK){
+      var s = serieDe(atletaId, testK);
+      return s.length ? s[s.length-1] : null;
+    }
 
-  function pintarTablaAtleta(){
-    var id = selAt.value;
-    var suyas = (PORATLETA[id]||[]);
-    var porBat = {};
-    suyas.forEach(function(r){ (porBat[r.bateria_id] = porBat[r.bateria_id] || {})[r.test] = r; });
-    var ids = Object.keys(porBat).sort(function(x,y){ return FECHA[x]<FECHA[y] ? 1 : -1; });
-    if(!ids.length){ $('tabla-atleta').innerHTML = '<p class="vacio">Este atleta no aparece en ninguna batería.</p>'; return; }
-
-    var cab = TESTS.map(function(t){ return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>'; }).join('');
-    var cuerpo = ids.map(function(bid, i){
-      var fila = porBat[bid];
-      var celdas = TESTS.map(function(t){
-        var r = fila[t.k];
-        if(!r) return '<td class="dato"><span class="falta">—</span></td>';
-        if(r.no_asiste) return '<td class="dato"><span class="falta">no asiste</span></td>';
-        if(t.serie) return '<td class="dato">'+num(Number(r.mejor),t.dec)+
-          (r.formato_rsi ? '<u> serie de '+r.formato_rsi+'</u>' : '')+'</td>';
-        return '<td class="dato">'+conUnidad(Number(r.mejor),t)+'</td>';
-      }).join('');
-      var b = BATERIAS.filter(function(x){ return x.id===bid; })[0];
-      var cond = b && b.sede ? b.sede : '';
-      return '<tr'+(i===0?' class="destacada"':'')+'><td class="quien">'+esc(fCorta(FECHA[bid]))+
-        (cond?'<div style="font-weight:400;font-size:13px;color:var(--texto-suave)">'+esc(cond)+'</div>':'')+
-        '</td>'+celdas+'</tr>';
+    // ============================================================
+    // 4 · PANEL 1 · UNA BATERÍA
+    // ============================================================
+    var selBat = $('f-bateria');
+    selBat.innerHTML = BATERIAS.map(function(b){
+      var g = GRUPOS[b.grupo_id];
+      return '<option value="'+b.id+'">'+esc(fCorta(b.fecha)+' · '+(g?g.nombre:'sin grupo'))+'</option>';
     }).join('');
-    $('tabla-atleta').innerHTML = '<table><thead><tr><th>Fecha</th>'+cab+'</tr></thead><tbody>'+cuerpo+'</tbody></table>';
-  }
+    selBat.addEventListener('change', pintarBateria);
+    $('f-buscar').addEventListener('input', pintarBateria);
 
-  // ============================================================
-  // 6 · PANEL 3 · COMPARATIVA POR CATEGORÍA
-  // ============================================================
-  var CATEGORIAS = [];
-  Object.keys(PORATLETA).forEach(function(id){
-    var a = ATLETAS[id]; if(!a) return;
-    var c = a.categoria || 'Sin categoría';
-    if(CATEGORIAS.indexOf(c)<0) CATEGORIAS.push(c);
-  });
-  CATEGORIAS.sort(function(a,b){ return a.localeCompare(b,'es'); });
-  $('f-categoria').innerHTML = CATEGORIAS.map(function(c){ return '<option>'+esc(c)+'</option>'; }).join('');
-  $('f-categoria').addEventListener('change', pintarComparativa);
+    function pintarBateria(){
+      var b = BATERIAS.filter(function(x){ return x.id===selBat.value; })[0] || BATERIAS[0];
+      var g = GRUPOS[b.grupo_id];
+      var cond = [
+        b.sede,
+        b.temperatura!=null ? num(b.temperatura,1)+' ºC' : null,
+        b.viento!=null ? 'viento '+(b.viento>0?'+':'')+num(b.viento,1)+' m/s' : null
+      ].filter(Boolean).join(' · ');
+      $('cond-bateria').innerHTML =
+        '<p class="sub" style="margin:-6px 0 14px">'+esc(g?g.nombre:'Sin grupo')+' · '+esc(fCorta(b.fecha))+
+        (cond ? ' · '+esc(cond) : '')+(b.notas ? ' · '+esc(b.notas) : '')+'</p>';
 
-  function atletasDe(categoria){
-    return Object.keys(PORATLETA).filter(function(id){
-      var a = ATLETAS[id];
-      return a && (a.categoria || 'Sin categoría') === categoria;
-    });
-  }
+      var filas = PORBATERIA[b.id] || [];
+      var porAtleta = {};
+      filas.forEach(function(r){ (porAtleta[r.atleta_id] = porAtleta[r.atleta_id] || {})[r.test] = r; });
 
-  // Al cambiar de atleta, la categoría se pone sola en la suya.
-  function sincronizarCategoria(){
-    var a = ATLETAS[selAt.value];
-    var c = a ? (a.categoria || 'Sin categoría') : null;
-    if(c && CATEGORIAS.indexOf(c)>=0) $('f-categoria').value = c;
-  }
-
-  function pintarComparativa(){
-    var id = selAt.value, a = ATLETAS[id];
-    var cat = $('f-categoria').value;
-    var suyos = atletasDe(cat);
-    var deLaCategoria = (a && (a.categoria||'Sin categoría')===cat);
-
-    var html = TESTS.map(function(t){
-      var valores = [];
-      suyos.forEach(function(oid){
-        var u = ultima(oid, t.k);
-        // El RSI solo se compara con series del mismo formato.
-        if(!u) return;
-        valores.push({ id:oid, valor:u.valor, formato:u.formato });
+      var busca = ($('f-buscar').value||'').trim().toLowerCase();
+      var ids = Object.keys(porAtleta).filter(function(id){
+        var a = ATLETAS[id]; if(!a) return false;
+        return !busca || nombreAt(a).toLowerCase().indexOf(busca)>=0;
+      }).sort(function(x,y){
+        var ax=ATLETAS[x], ay=ATLETAS[y];
+        return (ax.apellidos||'').localeCompare(ay.apellidos||'','es') || (ax.nombre||'').localeCompare(ay.nombre||'','es');
       });
-      if(t.serie){
-        var mio = deLaCategoria ? ultima(id, t.k) : null;
-        var f = mio ? mio.formato : (valores.length ? valores[0].formato : null);
-        valores = valores.filter(function(v){ return v.formato===f; });
-      }
-      if(valores.length < 2) return '';
 
-      var nums = valores.map(function(v){ return v.valor; });
-      var media = nums.reduce(function(x,y){ return x+y; },0)/nums.length;
-      var min = Math.min.apply(null,nums), max = Math.max.apply(null,nums);
-      var mio2 = deLaCategoria ? (valores.filter(function(v){ return v.id===id; })[0]||null) : null;
+      if(!ids.length){ $('tabla-bateria').innerHTML = '<p class="vacio">Ningún atleta con ese nombre en esta batería.</p>'; return; }
 
-      // La barra mide «lo bueno»: en tiempos se invierte para que más
-      // barra siempre signifique mejor marca.
-      function bondad(v){
-        if(max===min) return 1;
-        return t.menosMejor ? (max-v)/(max-min) : (v-min)/(max-min);
-      }
-      var pMio = mio2 ? Math.round(bondad(mio2.valor)*100) : null;
-      var pMedia = Math.round(bondad(media)*100);
-      var mejorQueLaMedia = mio2 ? (t.menosMejor ? mio2.valor<media : mio2.valor>media) : null;
+      var cabeceras = TESTS.map(function(t){
+        return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>';
+      }).join('');
 
-      var derecha = mio2
-        ? textoUnidad(mio2.valor,t)+' · media '+num(media,t.dec)
-        : 'media '+textoUnidad(media,t)+' · '+valores.length+' atletas';
+      var cuerpo = ids.map(function(id){
+        var a = ATLETAS[id], fila = porAtleta[id];
+        var celdas = TESTS.map(function(t){
+          var r = fila[t.k];
+          var etiqueta = t.nombre + (t.unidad ? ' ('+t.unidad+')' : '');
+          if(!r) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="falta">sin dato</span></td>';
+          if(r.no_asiste) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="falta">no asiste</span></td>';
+          // En el RSI la cabecera ya dice que es un índice: aquí lo que
+          // importa pegado al dato es el formato de la serie.
+          if(t.serie) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="v">'+num(Number(r.mejor),t.dec)+
+            (r.formato_rsi ? '<u> serie de '+r.formato_rsi+'</u>' : '')+'</span></td>';
+          return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="v">'+conUnidad(Number(r.mejor),t)+'</span></td>';
+        }).join('');
 
-      return '<div class="fila">'+
-        '<div class="cabecera"><span>'+esc(t.nombre)+(t.serie && valores[0].formato ? ' · serie de '+valores[0].formato : '')+'</span>'+
-        '<em'+(mejorQueLaMedia===false?' class="flojo"':'')+'>'+esc(derecha)+'</em></div>'+
-        '<div class="barra">'+
-          (pMio!=null ? '<i class="'+(mejorQueLaMedia===false?'flojo':'')+'" style="width:'+Math.max(3,pMio)+'%"></i>' : '<i style="width:0"></i>')+
-          '<u style="left:calc('+pMedia+'% - 1px)" title="media de la categoría"></u>'+
-        '</div>'+
-      '</div>';
-    }).filter(Boolean).join('');
+        // Los tres índices salen de los datos, nunca se teclean.
+        var cmj = fila['cmj'] && !fila['cmj'].no_asiste ? Number(fila['cmj'].mejor) : null;
+        var sj  = fila['sj']  && !fila['sj'].no_asiste  ? Number(fila['sj'].mejor)  : null;
+        var abk = fila['abalakov'] && !fila['abalakov'].no_asiste ? Number(fila['abalakov'].mejor) : null;
+        var lan = fila['30_lanzado'] && !fila['30_lanzado'].no_asiste ? Number(fila['30_lanzado'].mejor) : null;
+        var elastico = (cmj && sj)  ? num((cmj-sj)/sj*100,1)+' <u>%</u>'   : '<span class="falta">—</span>';
+        var brazos   = (abk && cmj) ? num((abk-cmj)/cmj*100,1)+' <u>%</u>' : '<span class="falta">—</span>';
+        var vmax     = lan          ? num(30/lan,2)+' <u>m/s</u>'          : '<span class="falta">—</span>';
 
-    if(!html){
-      $('comparativa').innerHTML = '<p class="vacio">Todavía no hay bastantes atletas con marca en esta categoría para comparar.</p>';
-      $('grafica-reparto').innerHTML = '';
-      return;
+        return '<tr>'+
+          '<td class="quien" data-et="">'+esc(nombreAt(a))+'<div style="font-weight:400;font-size:13px;color:var(--texto-suave)">'+esc(a.categoria||'sin categoría')+'</div></td>'+
+          celdas+
+          '<td class="dato" data-et="Velocidad máxima"><span class="v">'+vmax+'</span></td>'+
+          '<td class="dato" data-et="Índice elástico"><span class="v">'+elastico+'</span></td>'+
+          '<td class="dato" data-et="Uso de brazos"><span class="v">'+brazos+'</span></td>'+
+        '</tr>';
+      }).join('');
+
+      $('tabla-bateria').innerHTML =
+        '<table><thead><tr><th>Atleta</th>'+cabeceras+
+        '<th>Vel. máx. · m/s</th><th>Í. elástico · %</th><th>Brazos · %</th></tr></thead>'+
+        '<tbody>'+cuerpo+'</tbody></table>';
     }
-    $('comparativa').innerHTML =
-      '<p class="sub" style="margin:-4px 0 4px">'+esc(cat)+' · '+suyos.length+' atletas del club con alguna marca'+
-      (deLaCategoria ? ' · la barra es '+esc(nombreAt(a)) : ' · el atleta elegido no es de esta categoría')+'</p>'+
-      html +
-      '<div class="pie-leyenda"><span><i></i>el atleta elegido</span><span><i class="media"></i>media de la categoría</span></div>';
 
-    // Reparto del grupo en el test que se esté mirando arriba.
-    var t2 = T(TEST_EVOLUCION);
-    var vals = [];
-    suyos.forEach(function(oid){ var u = ultima(oid, TEST_EVOLUCION); if(u) vals.push(u.valor); });
-    var mio3 = deLaCategoria ? ultima(id, TEST_EVOLUCION) : null;
-    repartoCategoria('grafica-reparto', vals, mio3?mio3.valor:null, t2, 'Reparto de la categoría · '+t2.nombre);
+    // ============================================================
+    // 5 · PANEL 2 · EVOLUCIÓN DE UN ATLETA
+    // ============================================================
+    var conMarcas = Object.keys(PORATLETA).filter(function(id){ return !!ATLETAS[id]; })
+      .sort(function(x,y){
+        var ax=ATLETAS[x], ay=ATLETAS[y];
+        return (ax.apellidos||'').localeCompare(ay.apellidos||'','es') || (ax.nombre||'').localeCompare(ay.nombre||'','es');
+      });
+    var selAt = $('f-atleta');
+    selAt.innerHTML = conMarcas.map(function(id){
+      var a = ATLETAS[id];
+      return '<option value="'+id+'">'+esc(nombreAt(a)+' · '+(a.categoria||'sin categoría'))+'</option>';
+    }).join('');
+    selAt.addEventListener('change', function(){ pintarAtleta(); sincronizarCategoria(); pintarComparativa(); });
+
+    $('pastillas-evolucion').innerHTML = TESTS.map(function(t){
+      return '<button type="button" data-t="'+t.k+'"'+(t.k===TEST_EVOLUCION?' class="activo"':'')+'>'+esc(t.nombre)+'</button>';
+    }).join('');
+    $('pastillas-evolucion').querySelectorAll('[data-t]').forEach(function(b){
+      b.addEventListener('click', function(){
+        TEST_EVOLUCION = b.getAttribute('data-t');
+        $('pastillas-evolucion').querySelectorAll('[data-t]').forEach(function(x){ x.classList.toggle('activo', x===b); });
+        pintarEvolucion();
+        pintarComparativa();
+      });
+    });
+
+    function pintarAtleta(){
+      var id = selAt.value, a = ATLETAS[id];
+      if(!a) return;
+
+      // Cuatro cifras de cabecera: los tres tests con más peso y el RSI.
+      var claves = ['30_lanzado','cmj','rsi'];
+      var html = claves.map(function(k){
+        var t = T(k), s = serieDe(id, k);
+        if(!s.length) return '<div class="cifra"><div class="et">'+esc(t.nombre)+'</div>'+
+          '<div class="num"><b>—</b></div><div class="pie">sin marcas todavía</div></div>';
+        var ult = s[s.length-1], pri = s[0];
+        var pie = s.length>1 ? difHTML(t, ult.valor, pri.valor, 'desde '+fCorta(pri.fecha)) : '<span class="neutro">primera marca</span>';
+        var etiqueta = t.nombre + (t.serie && ult.formato ? ' · serie de '+ult.formato : '');
+        return '<div class="cifra"><div class="et">'+esc(etiqueta)+'</div>'+
+          '<div class="num"><b>'+num(ult.valor,t.dec)+'</b><u>'+esc(t.unidad||t.unidadLarga||'')+'</u></div>'+
+          '<div class="pie">'+pie+'</div></div>';
+      }).join('');
+
+      // Velocidad máxima: calculada, nunca tecleada.
+      var lan = ultima(id,'30_lanzado');
+      html += '<div class="cifra"><div class="et">Velocidad máxima</div>'+
+        '<div class="num"><b>'+(lan?num(30/lan.valor,2):'—')+'</b><u>m/s</u></div>'+
+        '<div class="pie neutro">se calcula: 30 ÷ tiempo lanzado</div></div>';
+
+      $('cifras-atleta').innerHTML = html;
+      pintarEvolucion();
+      pintarTablaAtleta();
+    }
+
+    function pintarEvolucion(){
+      var id = selAt.value, t = T(TEST_EVOLUCION);
+      var s = serieDe(id, TEST_EVOLUCION);
+      // Un RSI de 6 y uno de 10 no se comparan: si los hay de los dos
+      // formatos, se dibuja el del último que se pasó.
+      if(t.serie && s.length){
+        var formato = s[s.length-1].formato;
+        s = s.filter(function(p){ return p.formato===formato; });
+      }
+      var nota = t.menosMejor ? 'segundos · menos es mejor, así que la barra más alta es la mejor marca'
+               : (t.unidad ? t.unidad+' · más es mejor' : 'índice · más es mejor');
+      if(t.serie && s.length) nota = 'serie de '+s[s.length-1].formato+' saltos · más es mejor';
+      $('grafica-evolucion').innerHTML = '<div class="g-cab"><h3>Evolución · '+esc(t.nombre)+'</h3>'+
+        '<span class="g-nota">'+esc(nota)+'</span></div><div id="lienzo-evolucion"></div>';
+      barrasEvolucion('lienzo-evolucion', s.map(function(p){
+        return { etiqueta: fCorta(p.fecha), valor: p.valor };
+      }), t);
+    }
+
+    function pintarTablaAtleta(){
+      var id = selAt.value;
+      var suyas = (PORATLETA[id]||[]);
+      var porBat = {};
+      suyas.forEach(function(r){ (porBat[r.bateria_id] = porBat[r.bateria_id] || {})[r.test] = r; });
+      var ids = Object.keys(porBat).sort(function(x,y){ return FECHA[x]<FECHA[y] ? 1 : -1; });
+      if(!ids.length){ $('tabla-atleta').innerHTML = '<p class="vacio">Este atleta no aparece en ninguna batería.</p>'; return; }
+
+      var cab = TESTS.map(function(t){ return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>'; }).join('');
+      var cuerpo = ids.map(function(bid, i){
+        var fila = porBat[bid];
+        var celdas = TESTS.map(function(t){
+          var r = fila[t.k];
+          if(!r) return '<td class="dato"><span class="falta">—</span></td>';
+          if(r.no_asiste) return '<td class="dato"><span class="falta">no asiste</span></td>';
+          if(t.serie) return '<td class="dato">'+num(Number(r.mejor),t.dec)+
+            (r.formato_rsi ? '<u> serie de '+r.formato_rsi+'</u>' : '')+'</td>';
+          return '<td class="dato">'+conUnidad(Number(r.mejor),t)+'</td>';
+        }).join('');
+        var b = BATERIAS.filter(function(x){ return x.id===bid; })[0];
+        var cond = b && b.sede ? b.sede : '';
+        return '<tr'+(i===0?' class="destacada"':'')+'><td class="quien">'+esc(fCorta(FECHA[bid]))+
+          (cond?'<div style="font-weight:400;font-size:13px;color:var(--texto-suave)">'+esc(cond)+'</div>':'')+
+          '</td>'+celdas+'</tr>';
+      }).join('');
+      $('tabla-atleta').innerHTML = '<table><thead><tr><th>Fecha</th>'+cab+'</tr></thead><tbody>'+cuerpo+'</tbody></table>';
+    }
+
+    // ============================================================
+    // 6 · PANEL 3 · COMPARATIVA POR CATEGORÍA
+    // ============================================================
+    var CATEGORIAS = [];
+    Object.keys(PORATLETA).forEach(function(id){
+      var a = ATLETAS[id]; if(!a) return;
+      var c = a.categoria || 'Sin categoría';
+      if(CATEGORIAS.indexOf(c)<0) CATEGORIAS.push(c);
+    });
+    CATEGORIAS.sort(function(a,b){ return a.localeCompare(b,'es'); });
+    $('f-categoria').innerHTML = CATEGORIAS.map(function(c){ return '<option>'+esc(c)+'</option>'; }).join('');
+    $('f-categoria').addEventListener('change', pintarComparativa);
+
+    function atletasDe(categoria){
+      return Object.keys(PORATLETA).filter(function(id){
+        var a = ATLETAS[id];
+        return a && (a.categoria || 'Sin categoría') === categoria;
+      });
+    }
+
+    // Al cambiar de atleta, la categoría se pone sola en la suya.
+    function sincronizarCategoria(){
+      var a = ATLETAS[selAt.value];
+      var c = a ? (a.categoria || 'Sin categoría') : null;
+      if(c && CATEGORIAS.indexOf(c)>=0) $('f-categoria').value = c;
+    }
+
+    function pintarComparativa(){
+      var id = selAt.value, a = ATLETAS[id];
+      var cat = $('f-categoria').value;
+      var suyos = atletasDe(cat);
+      var deLaCategoria = (a && (a.categoria||'Sin categoría')===cat);
+
+      var html = TESTS.map(function(t){
+        var valores = [];
+        suyos.forEach(function(oid){
+          var u = ultima(oid, t.k);
+          // El RSI solo se compara con series del mismo formato.
+          if(!u) return;
+          valores.push({ id:oid, valor:u.valor, formato:u.formato });
+        });
+        if(t.serie){
+          var mio = deLaCategoria ? ultima(id, t.k) : null;
+          var f = mio ? mio.formato : (valores.length ? valores[0].formato : null);
+          valores = valores.filter(function(v){ return v.formato===f; });
+        }
+        if(valores.length < 2) return '';
+
+        var nums = valores.map(function(v){ return v.valor; });
+        var media = nums.reduce(function(x,y){ return x+y; },0)/nums.length;
+        var min = Math.min.apply(null,nums), max = Math.max.apply(null,nums);
+        var mio2 = deLaCategoria ? (valores.filter(function(v){ return v.id===id; })[0]||null) : null;
+
+        // La barra mide «lo bueno»: en tiempos se invierte para que más
+        // barra siempre signifique mejor marca.
+        function bondad(v){
+          if(max===min) return 1;
+          return t.menosMejor ? (max-v)/(max-min) : (v-min)/(max-min);
+        }
+        var pMio = mio2 ? Math.round(bondad(mio2.valor)*100) : null;
+        var pMedia = Math.round(bondad(media)*100);
+        var mejorQueLaMedia = mio2 ? (t.menosMejor ? mio2.valor<media : mio2.valor>media) : null;
+
+        var derecha = mio2
+          ? textoUnidad(mio2.valor,t)+' · media '+num(media,t.dec)
+          : 'media '+textoUnidad(media,t)+' · '+valores.length+' atletas';
+
+        return '<div class="fila">'+
+          '<div class="cabecera"><span>'+esc(t.nombre)+(t.serie && valores[0].formato ? ' · serie de '+valores[0].formato : '')+'</span>'+
+          '<em'+(mejorQueLaMedia===false?' class="flojo"':'')+'>'+esc(derecha)+'</em></div>'+
+          '<div class="barra">'+
+            (pMio!=null ? '<i class="'+(mejorQueLaMedia===false?'flojo':'')+'" style="width:'+Math.max(3,pMio)+'%"></i>' : '<i style="width:0"></i>')+
+            '<u style="left:calc('+pMedia+'% - 1px)" title="media de la categoría"></u>'+
+          '</div>'+
+        '</div>';
+      }).filter(Boolean).join('');
+
+      if(!html){
+        $('comparativa').innerHTML = '<p class="vacio">Todavía no hay bastantes atletas con marca en esta categoría para comparar.</p>';
+        $('grafica-reparto').innerHTML = '';
+        return;
+      }
+      $('comparativa').innerHTML =
+        '<p class="sub" style="margin:-4px 0 4px">'+esc(cat)+' · '+suyos.length+' atletas del club con alguna marca'+
+        (deLaCategoria ? ' · la barra es '+esc(nombreAt(a)) : ' · el atleta elegido no es de esta categoría')+'</p>'+
+        html +
+        '<div class="pie-leyenda"><span><i></i>el atleta elegido</span><span><i class="media"></i>media de la categoría</span></div>';
+
+      // Reparto del grupo en el test que se esté mirando arriba.
+      var t2 = T(TEST_EVOLUCION);
+      var vals = [];
+      suyos.forEach(function(oid){ var u = ultima(oid, TEST_EVOLUCION); if(u) vals.push(u.valor); });
+      var mio3 = deLaCategoria ? ultima(id, TEST_EVOLUCION) : null;
+      repartoCategoria('grafica-reparto', vals, mio3?mio3.valor:null, t2, 'Reparto de la categoría · '+t2.nombre);
+    }
+
+    // ============================================================
+    // 7 · ARRANQUE
+    // ============================================================
+    pintarBateria();
+    pintarAtleta();
+    sincronizarCategoria();
+    pintarComparativa();
   }
 
-  // ============================================================
-  // 7 · ARRANQUE
-  // ============================================================
-  pintarBateria();
-  pintarAtleta();
-  sincronizarCategoria();
-  pintarComparativa();
+  arrancar();
 });
 </script>
 

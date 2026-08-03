@@ -42,8 +42,16 @@
   .aviso--rojo strong { color: #7d2a22; }
 
   .btn { cursor: pointer; }
-  .btn--mini { padding: 8px 14px; font-size: 14px; min-height: 44px; }
+  .btn--mini { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    padding: 10px 16px; font-size: 14px; min-height: 44px; }
   .oculto { display: none !important; }
+
+  /* Las explicaciones se leen una vez: van plegadas */
+  details.explica { margin: 0 0 18px; }
+  details.explica > summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: var(--azul-oscuro); }
+  details.explica > summary::marker { color: var(--texto-suave); }
+  details.explica .aviso, details.explica .intro { margin: 6px 0 0; }
 
   /* ---- El interruptor grande ---- */
   .llave { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -107,24 +115,30 @@
 <div id="admin-contenido">
   <div class="admin-wrap">
 
-    <div class="aviso">
-      Aquí se cobran con tarjeta los <strong>bonos de El Cubo</strong>, las <strong>licencias federativas</strong>
-      y la <strong>ropa del club</strong>. Las <strong>cuotas no</strong>: esas siguen domiciliadas en el banco,
-      igual que siempre.<br>
-      Cuando alguien paga un bono, <strong>los usos se le añaden en el acto</strong>, sin esperar a que el dinero
-      llegue a la cuenta.
-    </div>
+    <details class="explica">
+      <summary>Qué se cobra por aquí y qué no</summary>
+      <div class="aviso">
+        Aquí se cobran con tarjeta los <strong>bonos de El Cubo</strong>, las <strong>licencias federativas</strong>
+        y la <strong>ropa del club</strong>. Las <strong>cuotas no</strong>: esas siguen domiciliadas en el banco,
+        igual que siempre.<br>
+        Cuando alguien paga un bono, <strong>los usos se le añaden en el acto</strong>, sin esperar a que el dinero
+        llegue a la cuenta.
+      </div>
+    </details>
 
     <!-- ===================== EL INTERRUPTOR ===================== -->
     <div class="panel">
       <h2>Encendido y apagado</h2>
-      <p class="intro">
-        Mientras esté apagado no se puede cobrar nada. La pantalla de pago sí se ve —el socio
-        elige el bono y ve el desglose y el total— pero en el último paso, en vez del botón de
-        pagar, sale un aviso de que el pago con tarjeta todavía no está en marcha y cómo se
-        paga hoy: por transferencia o en efectivo, con la cuenta y el contacto que le tocan.
-        Así puede quedarse todo el tiempo que haga falta.
-      </p>
+      <details class="explica">
+        <summary>Qué pasa mientras está apagado</summary>
+        <p class="intro">
+          Mientras esté apagado no se puede cobrar nada. La pantalla de pago sí se ve —el socio
+          elige el bono y ve el desglose y el total— pero en el último paso, en vez del botón de
+          pagar, sale un aviso de que el pago con tarjeta todavía no está en marcha y cómo se
+          paga hoy: por transferencia o en efectivo, con la cuenta y el contacto que le tocan.
+          Así puede quedarse todo el tiempo que haga falta.
+        </p>
+      </details>
 
       <div class="llave" id="llave">
         <span class="bombilla" aria-hidden="true"></span>
@@ -307,11 +321,15 @@ APOLANA_ADMIN.listo(function (sb) {
   async function cargarCfg() {
     var r = await sb.from('pagos_config')
       .select('activo,modo,repercutir_comision,texto_ayuda').eq('id', 1).single();
+    /* Sin leer los ajustes no se sabe si está encendido o apagado: no se
+       puede pintar «apagado» por defecto, que sería una respuesta inventada. */
     if (r.error) {
-      $('llave-titulo').textContent = 'No se ha podido cargar';
-      $('llave-pie').textContent = r.error.message;
+      $('llave-titulo').textContent = 'No se sabe si está encendido';
+      $('llave-pie').innerHTML = ADM.error(r.error.message, cargarCfg);
+      $('btn-llave').classList.add('oculto');
       return;
     }
+    $('btn-llave').classList.remove('oculto');
     CFG = r.data;
     pintarCfg();
   }
@@ -377,14 +395,26 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('pagos_articulos')
       .select('id,clave,tipo,titulo,descripcion,importe_centimos,producto_id,bono_usos,bono_caducidad_dias,exige_atleta,activo,orden')
       .order('orden', { ascending: true });
-    if (r.error) { $('msg-art').textContent = 'No se ha podido cargar: ' + r.error.message; $('msg-art').className = 'msg error'; return; }
+    /* Si falla la lectura, «todavía no hay nada dado de alta» sería mentira. */
+    if (r.error) {
+      $('msg-art').className = 'msg';
+      $('msg-art').innerHTML = ADM.error(r.error.message, cargarArts);
+      $('lista-art').innerHTML = '';
+      return;
+    }
     ARTS = r.data || [];
     pintarArts();
   }
 
   function pintarArts() {
     if (!ARTS.length) {
-      $('msg-art').textContent = 'Todavía no hay nada dado de alta. Pulsa «Añadir» para poner lo primero.';
+      $('msg-art').className = 'msg';
+      $('msg-art').innerHTML = ADM.vacio('Todavía no hay nada que se pueda pagar',
+        'Da de alta lo primero —un bono, una licencia o una prenda— con el botón «Añadir».',
+        '<button type="button" class="btn btn--primario btn--mini" id="b-primer-art">Añadir</button>',
+        '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>');
+      var b = $('b-primer-art');
+      if (b) b.onclick = function () { abrirArt(null); };
       $('lista-art').innerHTML = '';
       return;
     }
@@ -517,7 +547,16 @@ APOLANA_ADMIN.listo(function (sb) {
       var r2 = await sb.from('pagos_online')
         .select('id,referencia,concepto,tipo,importe_centimos,estado,creado_en,pagado_en,aplicado_en')
         .order('creado_en', { ascending: false }).limit(500);
-      if (r2.error) { $('msg-pagos').textContent = 'No se ha podido cargar: ' + r2.error.message; $('msg-pagos').className = 'msg error'; return; }
+      /* Pantalla de dinero: un fallo NUNCA puede quedarse como «0 € cobrado»
+         ni como «todavía no hay ningún pago». Se dice el error y se ofrece
+         volver a intentarlo, y el resumen se vacía. */
+      if (r2.error) {
+        $('msg-pagos').className = 'msg';
+        $('msg-pagos').innerHTML = ADM.error(r2.error.message, cargarPagos);
+        $('resumen').innerHTML = '';
+        $('lista-pagos').innerHTML = '';
+        return;
+      }
       PAGOS = r2.data || [];
     } else {
       PAGOS = r.data || [];
@@ -553,11 +592,24 @@ APOLANA_ADMIN.listo(function (sb) {
       '<div class="caja"><b>' + nPagados + '</b><span>pagos completados</span></div>' +
       '<div class="caja"><b>' + nPendientes + '</b><span>empezados sin terminar</span></div>';
 
+    /* Dos vacíos distintos: que no haya cobrado nunca nadie no es lo mismo que
+       que el filtro no encuentre nada. */
     if (!lista.length) {
-      $('msg-pagos').textContent = PAGOS.length
-        ? 'No hay ningún pago que encaje con lo que buscas.'
-        : 'Todavía no hay ningún pago con tarjeta.';
       $('msg-pagos').className = 'msg';
+      $('msg-pagos').innerHTML = PAGOS.length
+        ? ADM.vacio('Ningún pago encaja con lo que buscas',
+            'Prueba a quitar el estado o a buscar solo por el nombre.',
+            '<button type="button" class="btn btn--fantasma btn--mini" id="b-limpiar-pagos">Quitar los filtros</button>',
+            '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>')
+        : ADM.vacio('Todavía no ha pagado nadie con tarjeta',
+            'Cuando alguien pague, el cobro aparecerá aquí solo, con el estado que le ponga Stripe.',
+            '', '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/>');
+      var bl = $('b-limpiar-pagos');
+      if (bl) bl.onclick = function () {
+        $('busca').value = ''; $('f-estado').value = ''; $('f-tipo').value = '';
+        if (window.APOLANA_FILTROS) APOLANA_FILTROS.repasar();
+        pintarPagos();
+      };
       $('lista-pagos').innerHTML = '';
       return;
     }

@@ -541,12 +541,16 @@ APOLANA_ADMIN.listo(function (sb) {
 
   var recibos = [], atletas = [], atletasPorId = {}, CORREOS = {};
   var VISTA = [], TOPE_RESOLVER = 8;
+  /* Si la lista de atletas o la de correos no se ha podido leer, la pantalla
+     no puede afirmar «atleta no encontrado» ni «falta el correo»: no lo sabe. */
+  var sinLeer = { atletas: false, correos: false };
 
   function nombreAtleta(a) { return a ? ((a.nombre || '') + ' ' + (a.apellidos || '')).trim() : ''; }
   function nombreDe(p) {
     if (!p.atleta_id) return 'Sin atleta asignado';
     var a = atletasPorId[p.atleta_id];
-    return a ? nombreAtleta(a) : 'Atleta no encontrado';
+    if (a) return nombreAtleta(a);
+    return sinLeer.atletas ? 'Nombre sin leer' : 'Atleta no encontrado';
   }
   /* A quién se le escribe: primero a la familia, después al propio atleta y,
      si tiene cuenta en el portal, al correo de la cuenta. El correo no sale
@@ -573,7 +577,9 @@ APOLANA_ADMIN.listo(function (sb) {
 
   /* ---------- carga ---------- */
   async function cargar() {
+    sinLeer = { atletas: false, correos: false };
     var ra = await sb.from('atletas').select('id,nombre,apellidos,email,email_tutor,perfil_id').order('apellidos').order('nombre');
+    if (ra.error) sinLeer.atletas = true;
     if (!ra.error) {
       atletas = ra.data || [];
       atletasPorId = {};
@@ -594,7 +600,8 @@ APOLANA_ADMIN.listo(function (sb) {
       var ids = atletas.map(function (a) { return a.perfil_id; }).filter(Boolean);
       if (ids.length) {
         var pr = await sb.from('perfiles').select('id,email').in('id', ids);
-        if (!pr.error && pr.data) pr.data.forEach(function (x) { CORREOS[x.id] = x.email; });
+        if (pr.error) sinLeer.correos = true;
+        else if (pr.data) pr.data.forEach(function (x) { CORREOS[x.id] = x.email; });
       }
     }
 
@@ -642,7 +649,9 @@ APOLANA_ADMIN.listo(function (sb) {
     var h = '';
     h += '<div class="dato manda"><span class="et">Sin cobrar</span><span class="n">' + esc(eur(total)) + '</span></div>';
     h += '<span class="raya"></span>';
-    h += '<div class="dato"><span class="et">Recibos</span><span class="n">' + recibos.length + '</span></div>';
+    /* Cuántos recibos hay se dice UNA vez, en el recuento de la banda de
+       filtros: allí ya dice a la vez lo filtrado y el total. Repetirlo aquí y
+       al pie de la lista era decir tres veces el mismo número. */
     h += '<div class="dato ojo"><span class="et">Impagados</span><span class="n">' + nImp + '</span></div>';
     h += '<div class="dato ojo"><span class="et">Vencidos</span><span class="n">' + nVen + '</span></div>';
     h += '<span class="hueco"></span>';
@@ -752,7 +761,9 @@ APOLANA_ADMIN.listo(function (sb) {
           (correo
             ? '<a class="b2" href="mailto:' + esc(correo) + '?subject=' + encodeURIComponent('Tu recibo del Club Atletismo Apolana') + '">Escribirle</a>'
             : (p.atleta_id
-                ? '<a class="b3" href="../atletas/?ficha=' + esc(p.atleta_id) + '">Falta el correo</a>'
+                ? (sinLeer.atletas || sinLeer.correos
+                    ? '<span class="w">correo sin leer</span>'
+                    : '<a class="b3" href="../atletas/?ficha=' + esc(p.atleta_id) + '">Falta el correo</a>')
                 : '<span class="w">sin atleta asignado</span>')) +
           '<button type="button" class="b2" data-marcar="pagado" data-id="' + esc(p.id) + '"' +
             (cerrado ? ' disabled title="' + esc(MOTIVO_EMITIDO) + '"' : '') + '>Marcar cobrado</button>' +
@@ -848,9 +859,8 @@ APOLANA_ADMIN.listo(function (sb) {
           (cerrado ? ' disabled title="' + esc(MOTIVO_EMITIDO) + '"' : '') + '>Cobrado</button>') + '</td>' +
       '</tr>';
     }).join('');
-    $('pie-lista').textContent = lista.length === recibos.length
-      ? recibos.length + ' recibos en total'
-      : lista.length + ' recibos con estos filtros, de ' + recibos.length;
+    /* El recuento vive en la banda de filtros y no se repite aquí abajo. */
+    $('pie-lista').textContent = '';
   }
 
   /* ---------- acciones ---------- */

@@ -482,12 +482,22 @@ APOLANA_ADMIN.listo(function (sb) {
       sb.from('contenido_secciones').select('seccion').order('seccion'),
       sb.from('grupos').select('id,nombre,seccion').eq('activo', true).order('nombre')
     ]);
-    if (r[0].error) { $('tar-filas').innerHTML = '<div class="fila">No se pudieron leer las tarifas: ' + esc(r[0].error.message) + '</div>'; return; }
+    /* Si las tarifas no se leen, la tabla no puede quedarse vacía como si no
+       hubiera precios: sale el error en ámbar con «Volver a intentarlo». */
+    if (r[0].error) {
+      $('tar-cuenta').textContent = '';
+      $('tar-filas').innerHTML = ADM.error(r[0].error.message, cargarTodo);
+      return;
+    }
     estado.filas = r[0].data || [];
     // 'home' es la portada de la web, no una sección deportiva: no tiene tarifa.
     estado.secciones = (r[1].data || []).map(function (x) { return x.seccion; })
       .filter(function (s) { return s !== 'home'; });
     estado.grupos = r[2].data || [];
+    /* Un desplegable vacío no puede parecer «no hay secciones» si lo que ha
+       pasado es que no se han podido leer. */
+    estado.sinSecciones = !!r[1].error;
+    estado.sinGrupos = !!r[2].error;
     pintarSelectores();
     pintarTabla();
   }
@@ -556,7 +566,7 @@ APOLANA_ADMIN.listo(function (sb) {
      --------------------------------------------------------- */
   /* Quita tildes y mayúsculas para que «natacion» encuentre «Natación». */
   function llano(s) {
-    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
   function pintarTabla() {
@@ -643,7 +653,11 @@ APOLANA_ADMIN.listo(function (sb) {
     '</div>';
   }
 
+  /* Buscador: filtra la pestaña que se está viendo y actualiza el recuento. */
+  $('tar-buscar').addEventListener('input', function () { pintarTabla(); });
+
   $('tar-filas').addEventListener('click', function (e) {
+    if (e.target.id === 'tar-limpiar') { $('tar-buscar').value = ''; pintarTabla(); return; }
     var ed = e.target.getAttribute('data-editar');
     var fi = e.target.getAttribute('data-ficha');
     var hi = e.target.getAttribute('data-hist');
@@ -855,6 +869,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }).join('');
 
     $('f-seccion').innerHTML = '<option value="">— sin sección —</option>' +
+      (estado.sinSecciones ? '<option value="" disabled>(no se han podido leer las secciones)</option>' : '') +
       estado.secciones.slice().sort(function (a, b) {
         return nombreSeccion(a).localeCompare(nombreSeccion(b), 'es');
       }).map(function (s) {
@@ -862,6 +877,7 @@ APOLANA_ADMIN.listo(function (sb) {
       }).join('');
 
     $('f-grupo').innerHTML = '<option value="">— sin grupo concreto —</option>' +
+      (estado.sinGrupos ? '<option value="" disabled>(no se han podido leer los grupos)</option>' : '') +
       estado.grupos.map(function (g) {
         return '<option value="' + esc(g.id) + '">' + esc(g.nombre) + (g.seccion ? ' · ' + esc(nombreSeccion(g.seccion)) : '') + '</option>';
       }).join('');

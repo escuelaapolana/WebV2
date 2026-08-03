@@ -56,7 +56,29 @@
   .gestion label { margin-top:0; }
   .gestion select, .gestion input[type=text] { width:100%; }
   .acciones { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px; }
-  .btn--mini { padding:9px 16px; font-size:14px; }
+  /* Todo lo que se pulsa, 44 px de alto. */
+  .btn--mini { padding:9px 16px; font-size:14px;
+    min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+
+  /* Lo que se lee una vez va plegado. */
+  .plegable { background: var(--crema-banda); border:1px solid var(--linea); border-radius:14px; margin:10px 0 0; }
+  .plegable > summary {
+    list-style:none; cursor:pointer; user-select:none;
+    display:flex; align-items:center; gap:9px; min-height:44px;
+    padding:11px 16px; border-radius:14px;
+    font-size:15px; font-weight:600; color: var(--navy);
+  }
+  .plegable > summary::-webkit-details-marker { display:none; }
+  .plegable > summary::before {
+    content:''; flex:0 0 auto; width:7px; height:7px;
+    border-right:2px solid var(--texto-suave); border-bottom:2px solid var(--texto-suave);
+    transform: rotate(-45deg); transition: transform .15s ease;
+  }
+  .plegable[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
+  .plegable > summary:hover { background: var(--crema-media); }
+  .plegable .dentro { padding:0 16px 15px; font-size:14px; line-height:1.55; color: var(--texto); }
+  .plegable .dentro p { margin:0 0 9px; }
+  .plegable .dentro > :last-child { margin-bottom:0; }
   .msg-fila { font-size:13px; margin-left:4px; }
   .msg-fila.ok { color:#1e7a3d; } .msg-fila.error { color:#B0563A; }
 
@@ -66,8 +88,6 @@
   .prep textarea { width:100%; min-height:150px; font-family: var(--fuente-dato); font-size:13px; line-height:1.5; }
   .prep .acciones { margin-top:10px; }
 
-  .vacio { color: var(--texto-suave); font-size:15px; margin-top:16px; }
-  .cuenta { font-size:13px; color: var(--texto-suave); margin-top:10px; }
 
   /* Visor de foto a tamaño grande */
   .visor { position:fixed; inset:0; background:rgba(30,40,52,.85); display:flex; align-items:center; justify-content:center; z-index:9500; padding:24px; }
@@ -82,9 +102,16 @@
 
     <div class="panel">
       <h2>Peticiones de redes</h2>
-      <p class="intro">Propuestas de socios, atletas y familias para un post en el Instagram del club. Revisa cada una, cambia su estado y, cuando quieras montarla, usa «Preparar publicación»: junta el texto listo para copiar y descarga las fotos. <b>La web no publica sola en Instagram: el post lo subes tú a mano</b> desde la cuenta del club.</p>
+      <p class="intro">Propuestas de socios, atletas y familias para un post en el Instagram del club.
+        <b>La web no publica sola: el post lo subes tú a mano</b> desde la cuenta del club.</p>
+      <details class="plegable">
+        <summary>Cómo se monta una publicación</summary>
+        <div class="dentro">
+          <p>Revisa cada una, cambia su estado y, cuando quieras montarla, usa «Preparar publicación»:
+            junta el texto listo para copiar y descarga las fotos.</p>
+        </div>
+      </details>
       <div class="filtros" id="filtros" style="margin-top:14px;"></div>
-      <div class="cuenta" id="cuenta"></div>
     </div>
 
     <div class="msg" id="msg-lista"></div>
@@ -204,10 +231,22 @@ APOLANA_ADMIN.listo(function (sb) {
   // --- Pintar la lista ---
   function render() {
     var lista = visibles();
-    $('cuenta').textContent = 'Mostrando ' + lista.length + ' de ' + TODAS.length + ' petición' + (TODAS.length === 1 ? '' : 'es') + '.';
+    /* El recuento ya lo dan los propios filtros de arriba —«Todas (12)»,
+       «Pendiente (3)»—, así que no se repite aquí debajo otra vez. */
     var cont = $('lista');
-    if (!TODAS.length) { cont.innerHTML = '<p class="vacio">Todavía no hay peticiones de redes.</p>'; return; }
-    if (!lista.length) { cont.innerHTML = '<p class="vacio">No hay peticiones con ese estado.</p>'; return; }
+    /* Que no haya ni una petición y que el filtro de estado no encuentre
+       ninguna son dos cosas distintas, y se dicen distinto. */
+    if (!TODAS.length) {
+      cont.innerHTML = ADM.vacio('Todavía no hay ninguna propuesta',
+        'Cuando un socio o una familia proponga una publicación desde la app, aparecerá aquí para revisarla.',
+        '', '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 16l4.5-4 4 3.5 3-2.5 4.5 4"/>');
+      return;
+    }
+    if (!lista.length) {
+      cont.innerHTML = ADM.vacio('Ninguna propuesta con ese estado',
+        'Prueba a elegir «Todas» ahí arriba para ver el resto.');
+      return;
+    }
 
     cont.innerHTML = lista.map(function (p) {
       var de = ET_TIPO[p.tipo] || p.tipo;
@@ -342,7 +381,14 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('peticiones_redes')
       .select('id,solicitante_id,tipo,atleta_id,seccion,titulo,descripcion,fotos,estado,nota_club,publicado_url,created_at')
       .order('created_at', { ascending: false });
-    if (r.error) { $('msg-lista').textContent = 'No se pudo cargar la lista: ' + r.error.message; $('msg-lista').className = 'msg error'; return; }
+    /* Sin esto la lista se quedaba con un mensaje rojo y sin salida, y la
+       caja de abajo diciendo que no hay peticiones. Ámbar y reintentar. */
+    if (r.error) {
+      $('msg-lista').className = 'msg';
+      $('msg-lista').innerHTML = ADM.error('No hemos podido cargar las peticiones. ' + r.error.message, cargar);
+      $('lista').innerHTML = '';
+      return;
+    }
     $('msg-lista').textContent = '';
     TODAS = r.data || [];
 

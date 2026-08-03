@@ -38,15 +38,35 @@
   table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
   th { font-size: 13px; text-transform: none; color: var(--texto-suave); }
-  .acciones-fila { display: flex; gap: 8px; white-space: nowrap; }
+  .acciones-fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  /* Borrar un grupo no se deshace: se aparta del botón de editar. */
+  .acciones-fila .btn--peligro { margin-left: auto; }
+
+  /* --- Buscador de la lista: mismo patrón que en Atletas --- */
+  .banda-busca { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .banda-busca input[type="search"] {
+    flex: 1 1 240px; max-width: 320px; box-sizing: border-box; min-height: 44px;
+    padding: 10px 14px; border: 1px solid var(--linea-borde); border-radius: 999px;
+    background: #fff; font-family: inherit; font-size: 15px; color: var(--navy); }
+  .banda-busca select { flex: 0 1 auto; max-width: 240px; min-height: 44px; border-radius: 999px; }
+  .banda-busca .cuenta { margin-left: auto; font-family: var(--fuente-dato); font-size: 14px;
+    color: var(--texto-suave); white-space: nowrap; }
+  @media (max-width: 620px) {
+    .banda-busca input[type="search"], .banda-busca select { max-width: none; flex: 1 1 100%; }
+    .banda-busca .cuenta { margin-left: 0; width: 100%; }
+  }
 
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
 
   .btn { cursor: pointer; }
-  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
+  /* Todo lo pulsable llega a 44 px de alto: es lo que se acierta con el pulgar. */
+  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 10px 16px;
+    border-radius: 999px; font-size: 14px; min-height: 44px; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center; font-family: inherit; }
   .btn--peligro:hover { background: #fbeceb; }
-  .btn--mini { padding: 8px 14px; font-size: 14px; }
+  .btn--mini { padding: 10px 16px; font-size: 14px; min-height: 44px; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center; }
   .oculto { display: none !important; }
   /* Edición en ventana emergente (modal), no al fondo de la página */
   #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
@@ -73,6 +93,17 @@
       <h2>Grupos de entrenamiento</h2>
       <p class="intro" style="margin-bottom:10px;">Crea, edita o borra los grupos de entrenamiento del club.</p>
       <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nuevo-grupo">+ Nuevo grupo</button></div>
+
+      <div class="banda-busca">
+        <input type="search" id="f-buscar" placeholder="Buscar por nombre o sección…" aria-label="Buscar un grupo">
+        <select id="f-activo" aria-label="Activo en la web">
+          <option value="">Activos y apagados</option>
+          <option value="si">Solo los activos</option>
+          <option value="no">Solo los apagados</option>
+        </select>
+        <span class="cuenta" id="f-cuenta" aria-live="polite"></span>
+      </div>
+
       <div style="overflow-x:auto;">
         <table id="tabla-grupos">
           <thead><tr><th>Nombre</th><th>Sección</th><th>Horario</th><th>Activo</th><th></th></tr></thead>
@@ -106,6 +137,9 @@
         </div>
         <label for="g-descripcion">Descripción</label>
         <textarea id="g-descripcion"></textarea>
+
+        <label for="g-pruebas">Pruebas del grupo</label>
+        <textarea id="g-pruebas" placeholder="Una por línea: 60 m, 100 m, vallas, longitud… Salen como pastillas en la página de la sección. Si lo dejas vacío, no sale nada."></textarea>
         <div class="fila-check">
           <input type="checkbox" id="g-activo" checked>
           <label for="g-activo">Activo (visible en la web)</label>
@@ -136,23 +170,68 @@ APOLANA_ADMIN.listo(function (sb) {
   function nombreSeccion(s) { return s ? (SECCIONES[s] || s) : '—'; }
 
   // --- Listar ---
+  var GRUPOS = [];
+
   async function cargarGrupos() {
     var tb = $('tabla-grupos').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="5" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr>';
+    tb.innerHTML = ADM.filaCargando(5);
+    $('f-cuenta').textContent = '';
     var r = await sb.from('grupos').select('id,nombre,seccion,horario,activo').order('nombre');
-    if (r.error) { tb.innerHTML = '<tr><td colspan="5">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
-    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="5">No hay grupos todavía.</td></tr>'; return; }
-    tb.innerHTML = r.data.map(function (g) {
+    /* Con la consulta caída `data` viene vacío: decir «no hay grupos todavía»
+       sería dar por mirado lo que no se ha podido mirar. */
+    if (r.error) { GRUPOS = []; tb.innerHTML = ADM.filaError(5, r.error.message, cargarGrupos); return; }
+    GRUPOS = r.data || [];
+    pintarGrupos();
+  }
+
+  function pintarGrupos() {
+    var tb = $('tabla-grupos').querySelector('tbody');
+    var texto = ($('f-buscar').value || '').trim().toLowerCase();
+    var estado = $('f-activo').value;
+
+    var lista = GRUPOS.filter(function (g) {
+      if (estado === 'si' && !g.activo) return false;
+      if (estado === 'no' && g.activo) return false;
+      if (!texto) return true;
+      var t = ((g.nombre || '') + ' ' + (g.seccion || '') + ' ' + nombreSeccion(g.seccion) + ' ' + (g.horario || '')).toLowerCase();
+      return t.indexOf(texto) !== -1;
+    });
+
+    $('f-cuenta').textContent = lista.length === GRUPOS.length
+      ? GRUPOS.length + (GRUPOS.length === 1 ? ' grupo' : ' grupos')
+      : lista.length + ' de ' + GRUPOS.length;
+
+    /* «No hay grupos» y «la búsqueda no encuentra ninguno» piden cosas
+       distintas: crear uno, o quitar el filtro. */
+    if (!GRUPOS.length) {
+      tb.innerHTML = ADM.filaVacia(5, 'Todavía no hay ningún grupo',
+        'Los grupos son la base de los horarios, las listas de asistencia y la web pública. Crea el primero.',
+        '<button type="button" class="btn btn--primario btn--mini" data-primero>+ Nuevo grupo</button>',
+        '<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5c.9-3 3.1-4.5 5.5-4.5s4.6 1.5 5.5 4.5"/><path d="M16 6.2a3.2 3.2 0 0 1 0 6"/><path d="M17.5 15.4c1.6.7 2.7 2 3.2 4.1"/>');
+      return;
+    }
+    if (!lista.length) {
+      tb.innerHTML = ADM.filaVacia(5, 'Ningún grupo encaja con la búsqueda',
+        'Prueba con una palabra suelta del nombre o vuelve a «Activos y apagados».',
+        '<button type="button" class="btn btn--fantasma btn--mini" data-limpiar>Quitar el filtro</button>',
+        '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>');
+      return;
+    }
+
+    tb.innerHTML = lista.map(function (g) {
       return '<tr>' +
         '<td>' + esc(g.nombre) + '</td>' +
         '<td>' + esc(nombreSeccion(g.seccion)) + '</td>' +
         '<td>' + esc(g.horario || '—') + '</td>' +
         '<td>' + (g.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
-        '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-editar="' + g.id + '">Editar</button>' +
-        '<button class="btn btn--peligro" data-borrar="' + g.id + '" data-nom="' + esc(g.nombre) + '">Borrar</button></td>' +
+        '<td><div class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-editar="' + g.id + '">Editar</button>' +
+        '<button class="btn btn--peligro" data-borrar="' + g.id + '" data-nom="' + esc(g.nombre) + '">Borrar</button></div></td>' +
       '</tr>';
     }).join('');
   }
+
+  $('f-buscar').addEventListener('input', pintarGrupos);
+  $('f-activo').addEventListener('change', pintarGrupos);
 
   // --- Crear/editar ---
   function abrirForm(g) {
@@ -163,6 +242,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('g-seccion').value = g.seccion || '';
     $('g-horario').value = g.horario || '';
     $('g-descripcion').value = g.descripcion || '';
+    $('g-pruebas').value = g.pruebas || '';
     $('g-activo').checked = g.id ? !!g.activo : true;
     $('msg-form').textContent = '';
     $('panel-form').classList.remove('oculto');
@@ -174,11 +254,18 @@ APOLANA_ADMIN.listo(function (sb) {
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
 
   $('tabla-grupos').addEventListener('click', async function (e) {
+    if (e.target.closest && e.target.closest('[data-primero]')) { abrirForm(); return; }
+    if (e.target.closest && e.target.closest('[data-limpiar]')) {
+      $('f-buscar').value = ''; $('f-activo').value = ''; pintarGrupos(); return;
+    }
     var ed = e.target.getAttribute('data-editar');
     var bo = e.target.getAttribute('data-borrar');
     if (ed) {
       var r = await sb.from('grupos').select('*').eq('id', ed).single();
-      if (!r.error) abrirForm(r.data);
+      /* Si la ficha no se puede leer hay que decirlo: antes el botón «Editar»
+         no hacía nada y parecía que la pantalla se había quedado colgada. */
+      if (r.error) { apoToast('No se ha podido abrir el grupo: ' + r.error.message, 'error'); return; }
+      abrirForm(r.data);
     }
     if (bo) {
       if (!await apoConfirm({ texto: '¿Borrar el grupo "' + e.target.getAttribute('data-nom') + '"? No se puede deshacer.', peligro: true })) return;
@@ -195,6 +282,7 @@ APOLANA_ADMIN.listo(function (sb) {
       seccion: $('g-seccion').value.trim() || null,
       horario: $('g-horario').value.trim() || null,
       descripcion: $('g-descripcion').value.trim() || null,
+      pruebas: $('g-pruebas').value.trim() || null,
       activo: $('g-activo').checked
     };
     $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
