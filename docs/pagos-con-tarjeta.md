@@ -5,6 +5,32 @@ y hasta el último paso **no se cobra ni un euro de verdad**.
 
 ---
 
+## Qué hay montado hoy, con el interruptor apagado
+
+Todo el camino, y se puede recorrer entero desde ya:
+
+1. En **El Cubo → Mi bono**, abajo del todo, sale **«comprar más usos»** con los
+   bonos que hay a la venta, su precio y **cuánto sale la clase** con cada uno.
+   Esos precios **no están escritos en la web**: salen del catálogo de la base,
+   que es el mismo sitio del que los lee el servidor al cobrar. Si se cambia un
+   precio en el panel, cambia también aquí, solo.
+2. Al pulsar uno se abre **«Revisa el pago»**: qué se compra, a nombre de quién,
+   el desglose y el total. La segunda línea del desglose dice **«Gastos de
+   gestión · los paga el club»** en verde, y **el total es el precio limpio**:
+   se ve que el club no cobra de más por pagar con tarjeta.
+3. Ahí se acaba, de momento, **y se dice con todas las letras**: un aviso en
+   ámbar explica que el pago con tarjeta todavía no está en marcha, y debajo
+   sale **cómo se paga hoy** —la cuenta, el concepto que hay que poner y a quién
+   preguntar—, con los datos de la persona que toca: Isabel para socios y
+   adultos, Adrián o Andrés para la escuela.
+
+**No hay ningún botón de pagar que no cobre.** Mientras el interruptor esté
+apagado, nadie puede llegar a creer que ha pagado sin haber pagado. El día que
+se encienda, **esa misma pantalla** cambia el aviso por el botón azul de pagar,
+sin tocar una línea de código.
+
+---
+
 ## Lo primero: qué se cobra con tarjeta y qué no
 
 | | Cómo se paga |
@@ -25,14 +51,20 @@ persona espere dos días para poder reservar clase.
 
 ## Cuánto cuesta
 
-Stripe cobra una comisión por cada pago. Con tarjeta europea normal ronda el
-**1,5 % + 0,25 €**.
+⚠️ **Stripe cobra una comisión por cada cobro, y la paga el club.** Con tarjeta
+europea normal ronda el **1,5 % + 0,25 €**. Es dinero que no llega a la cuenta
+del club: de lo que se cobra hay que restarlo siempre.
 
 | Se cobra | Comisión aproximada | Le entra al club |
 |---|---|---|
 | Bono de 55 € | ~1,08 € | ~53,92 € |
+| Bono de 90 € | ~1,60 € | ~88,40 € |
 | Bono de 95 € | ~1,68 € | ~93,32 € |
 | Licencia de 42 € | ~0,88 € | ~41,12 € |
+
+Dicho de otra forma: **un bono de 90 € deja unos 88,50 €**. Con cien bonos al
+año son unos 150 € que se quedan por el camino. Es el precio de que los usos se
+den solos y de no tener que mirar el banco.
 
 No hay cuota mensual ni alta: si no se cobra nada, no se paga nada.
 
@@ -157,6 +189,10 @@ la web comprueba la firma → se dan los usos del bono.
    (10 usos · 55 € y 20 usos · 95 €). Si los precios han cambiado, se corrigen
    ahí. Las licencias y la ropa se añaden con el botón «Añadir».
 
+> ⚠️ **Comprueba los dos precios antes de encender.** En esa lista es donde está
+> la verdad: lo que ponga ahí es lo que verá el socio en la pantalla y lo que le
+> cobrará Stripe. En la web no hay ningún precio escrito a mano.
+
 ---
 
 ## PASO 7 · Probar sin gastar dinero
@@ -220,8 +256,10 @@ Sí, desde Stripe (botón «Refund»). En el panel del club el pago pasará solo
 hayan gastado, así que esa decisión la toma el club a mano.
 
 **¿Y si quiero apagarlo todo un tiempo?**
-Panel → Pagos con tarjeta → **Apagar**. Al momento dejan de salir los botones de
-pagar en toda la web. Los pagos ya cobrados no se tocan.
+Panel → Pagos con tarjeta → **Apagar**. Al momento desaparece el botón de pagar
+de toda la web y en su sitio vuelve a salir el aviso de que todavía no está en
+marcha, con la cuenta para pagar por transferencia. Los pagos ya cobrados no se
+tocan.
 
 **¿Dónde veo el dinero?**
 En Stripe. Lo va enviando a la cuenta del club cada pocos días, en un solo
@@ -247,7 +285,9 @@ ingreso que agrupa varios pagos.
 | Tablas, reglas y candados | `migraciones/053_pagos_tarjeta.sql` |
 | Crear la sesión de pago | `supabase/functions/pago-crear/index.ts` |
 | Recibir el aviso de Stripe | `supabase/functions/pago-webhook/index.ts` |
-| Módulo para las pantallas | `assets/js/pago-tarjeta.js` |
+| Módulo para las pantallas (incluida la de confirmar) | `assets/js/pago-tarjeta.js` |
+| Elegir bono y abrir la confirmación | `portal/cubo/index.html` |
+| Cómo se paga hoy (cuenta y contacto, de la base) | `assets/js/info-pagos.js` |
 | Pantalla del panel | `admin/pagos-online/index.html` |
 
 Variables de entorno que usan las funciones:
@@ -261,16 +301,29 @@ Variables de entorno que usan las funciones:
 | `SUPABASE_ANON_KEY` | Supabase, sola |
 | `PAGOS_URL_BASE`, `PAGOS_URL_OK`, `PAGOS_URL_KO` | opcionales: a dónde vuelve la persona al terminar |
 
-Enganchar un botón de pagar en cualquier pantalla:
+Sin tocar nada, al volver de Stripe un bono deja a la persona en su pantalla del
+bono de El Cubo (`/portal/cubo/`), que es donde están los usos que acaba de
+comprar. Lo demás vuelve a la portada.
+
+Poner la pantalla de confirmar en cualquier página:
 
 ```html
+<script src="../../assets/js/info-pagos.js" defer></script>
 <script src="../../assets/js/pago-tarjeta.js" defer></script>
 ```
 
 ```js
-// Si está apagado, el botón se esconde solo. Nada de botones muertos.
-APOLANA_PAGO.prepararBoton(document.getElementById('btn-bono'), {
-  tipo: 'bono-cubo-10',
-  atleta_id: idDelAtleta
+// Se pinta igual esté encendido o apagado. Lo que cambia es el final:
+// con tarjeta, o el aviso de que todavía no está y cómo se paga hoy.
+APOLANA_PAGO.confirmar({
+  contenedor: document.getElementById('pantalla'),
+  clave:      'bono-cubo-10',
+  atleta_id:  idDelAtleta,
+  aNombreDe:  'Nombre y apellidos',
+  atleta:     fichaDelAtleta,      // decide qué cuenta y qué contacto salen
+  alVolver:   function () { /* atrás */ }
 });
 ```
+
+Y, para un botón suelto (sin pantalla de confirmar), sigue estando
+`APOLANA_PAGO.prepararBoton(...)`, que se esconde solo si está apagado.

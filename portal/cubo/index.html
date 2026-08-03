@@ -12,6 +12,9 @@
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
+<!-- Cómo se paga (cuenta y contacto salen de la base) y el pago con tarjeta -->
+<script src="../../assets/js/info-pagos.js" defer></script>
+<script src="../../assets/js/pago-tarjeta.js" defer></script>
 <style>
   body { background: var(--crema); }
 
@@ -96,14 +99,29 @@
   .mov .n { font-family: var(--fuente-dato); font-size:13px; color: var(--navy); }
   .mov .n.mas { color: #3F7A4C; }
 
-  .comprar { margin-top: 22px; padding: 16px 20px 0; border-top: 1px solid var(--linea);
+  /* ---- comprar más usos (maqueta 27a) ---- */
+  .comprar { margin-top: 22px; padding: 16px 16px 0; border-top: 1px solid var(--linea);
              display: flex; flex-direction: column; gap: 10px; }
-  .comprar .opciones { display: flex; gap: 10px; }
-  .comprar .opciones button { flex: 1; border: 1px solid var(--linea-borde); background: #fff; text-align: center;
-                              padding: 13px; border-radius:10px; font-size:14px; color: var(--texto);
-                              cursor: pointer; font-family: inherit; }
-  .comprar .opciones button.destacada { background: var(--azul); color: #fff; border-color: var(--azul); font-weight: 600; }
-  .comprar .nota-pie { font-size:13px; color: var(--texto-suave); text-align: center; }
+  .comprar .eti { font-size:13px; color: var(--texto-suave); padding: 0 4px; }
+  .comprar .opciones { display: flex; flex-direction: column; gap: 10px; }
+  /* Fila pulsable: borde marcado y chevron, sin sombra (diseño plano). */
+  .opcion { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px;
+            padding: 14px 16px; border: 1px solid var(--linea-marcada); border-radius:14px;
+            background: #fff; text-align: left; cursor: pointer; font-family: inherit; }
+  .opcion:hover { background: var(--crema); }
+  .opcion:focus-visible { outline: 2px solid var(--azul-filete); outline-offset: 2px; }
+  .opcion .col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .opcion .nombre { font-family: var(--fuente-titulo); font-weight: 700; font-size:21px; line-height: 1.1;
+                    text-transform: uppercase; color: var(--navy); }
+  .opcion .por-uso { font-size:13px; color: var(--texto-suave); }
+  /* Importes: cifras que se comparan en columna, en mono. */
+  .opcion .precio { font-family: var(--fuente-dato); font-weight: 700; font-size:21px; color: var(--navy); white-space: nowrap; }
+  .opcion .fl { flex: none; width: 9px; height: 9px; border-right: 2px solid #6E6656;
+                border-bottom: 2px solid #6E6656; transform: rotate(-45deg); }
+  .opcion .marca-mejor { display: inline-block; align-self: flex-start; margin-bottom: 1px;
+                         background: var(--verde-fondo); border: 1px solid var(--verde-borde); color: var(--verde);
+                         font-size:13px; line-height: 1.3; border-radius: 999px; padding: 2px 10px; }
+  .comprar .nota-pie { font-size:13px; color: var(--texto-suave); padding: 0 4px; line-height: 1.5; }
 
   .mensaje { margin: 10px 16px 0; font-size:14px; line-height:1.5; }
   /* Si algo no se ha podido guardar va en ámbar: el rojo es para lo que hace mal el socio. */
@@ -147,6 +165,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ---- estado de la pantalla ----
   var atletas = [], atletaId = null, clases = [], reservas = {}, bonos = [], movs = [];
   var pestana = 'semana', vista = 'clases', verTodos = false, aviso = '', falloCarga = false;
+  /* Lo que se puede comprar. Los precios NO se escriben aquí: salen del
+     catálogo de la base, que es de donde los lee también el servidor al
+     cobrar. Así no puede haber dos precios distintos. */
+  var bonosVenta = [], claveElegida = null;
+
+  function atletaActual() {
+    for (var i = 0; i < atletas.length; i++) if (atletas[i].id === atletaId) return atletas[i];
+    return null;
+  }
+  function nombreDe(a) { return a ? (a.nombre + ' ' + (a.apellidos || '')).trim() : ''; }
+  /* En la pantalla de El Cubo, «· El Cubo» en cada bono sobra. */
+  function tituloCorto(t) { return String(t || '').replace(/\s*·\s*el cubo\s*$/i, ''); }
 
   // ---------- datos ----------
   async function cargarTodo() {
@@ -169,6 +199,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var rm = await sb.from('cubo_movimientos').select('tipo,usos,concepto,fecha')
       .eq('atleta_id', atletaId).neq('tipo', 'alta').order('fecha', { ascending: false }).limit(40);
     movs = rm.error ? [] : rm.data;
+  }
+
+  /* Los bonos que están a la venta, con su precio ya resuelto. Se pide
+     una sola vez por visita. */
+  async function cargarVenta() {
+    if (!window.APOLANA_PAGO) { bonosVenta = []; return; }
+    var lista = await APOLANA_PAGO.catalogo('bono');
+    bonosVenta = (lista || []).filter(function (a) { return /^bono-cubo-/.test(a.clave); });
   }
 
   function bonoVigente() {
@@ -321,6 +359,73 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     pintar();
   }
 
+  /* ---------- comprar más usos · maqueta 27a ----------
+     El precio por uso al lado del total, para que nadie tenga que
+     echar cuentas. Se marca el que sale mejor por clase, que es un
+     dato que se puede comprobar aquí mismo. */
+  function bloqueComprar() {
+    if (!bonosVenta.length) {
+      return '<div class="comprar"><span class="eti">comprar más usos</span>' +
+        '<span class="nota-pie">Ahora mismo no hay bonos a la venta desde aquí. ' +
+        'Pídelo en El Cubo o al club y te lo activan ellos.</span></div>';
+    }
+
+    var mejor = null, mejorPrecio = Infinity;
+    bonosVenta.forEach(function (a) {
+      if (!a.bono_usos) return;
+      var p = a.importe_centimos / a.bono_usos;
+      if (p < mejorPrecio - 0.5) { mejorPrecio = p; mejor = a.clave; }
+    });
+
+    var opciones = bonosVenta.map(function (a) {
+      var porUso = a.bono_usos
+        ? APOLANA_PAGO.euros(Math.round(a.importe_centimos / a.bono_usos)) + ' por clase'
+        : '';
+      return '<button type="button" class="opcion" data-clave="' + esc(a.clave) + '">' +
+        '<span class="col">' +
+          (a.clave === mejor && bonosVenta.length > 1
+            ? '<span class="marca-mejor">mejor precio por clase</span>' : '') +
+          '<span class="nombre">' + esc(tituloCorto(a.titulo)) + '</span>' +
+          (porUso ? '<span class="por-uso">' + esc(porUso) + '</span>' : '') +
+        '</span>' +
+        '<span class="precio">' + esc(APOLANA_PAGO.euros(a.importe_centimos)) + '</span>' +
+        '<span class="fl" aria-hidden="true"></span>' +
+      '</button>';
+    }).join('');
+
+    return '<div class="comprar"><span class="eti">comprar más usos</span>' +
+      '<div class="opciones">' + opciones + '</div>' +
+      '<span class="nota-pie">Elige un bono y verás el desglose y el total antes de pagar nada.</span></div>';
+  }
+
+  function conectarComprar() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-clave]'), function (b) {
+      b.addEventListener('click', function () {
+        claveElegida = b.getAttribute('data-clave');
+        vista = 'confirmar'; aviso = ''; pintar();
+      });
+    });
+  }
+
+  /* ---------- confirmar el pago · maqueta 27b ----------
+     La pantalla la pinta el módulo compartido, que es el mismo que
+     usarán la licencia y la ropa. Con el pago con tarjeta apagado se
+     ve igual (concepto, desglose y total) pero el último paso no
+     cobra: avisa de que todavía no está en marcha y enseña cómo se
+     paga hoy. */
+  function pintarConfirmar() {
+    var a = atletaActual();
+    wrap.innerHTML = '<a class="migas" href="../">← Volver al portal</a><div id="pago-pantalla"></div>';
+    APOLANA_PAGO.confirmar({
+      contenedor: document.getElementById('pago-pantalla'),
+      clave: claveElegida,
+      atleta_id: atletaId,
+      aNombreDe: nombreDe(a),
+      atleta: a,
+      alVolver: function () { vista = 'bono'; pintar(); }
+    });
+  }
+
   // ---------- pantalla del bono ----------
   function pintarBono() {
     var b = bonoVigente();
@@ -370,10 +475,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if (aviso) h += '<p class="mensaje ' + (aviso.charAt(0) === '!' ? 'fallo' : 'ok') + '">' + esc(aviso.replace(/^!/, '')) + '</p>';
 
-    h += '<div class="comprar"><div class="opciones">' +
-         '<button data-comprar="10 usos · 50 €">10 usos · 50 €</button>' +
-         '<button class="destacada" data-comprar="20 usos · 90 €">20 usos · 90 €</button>' +
-         '</div><span class="nota-pie">Se cobra con la cuota del mes siguiente.</span></div>';
+    h += bloqueComprar();
 
     wrap.innerHTML = h;
 
@@ -384,18 +486,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
     var vt = document.getElementById('ver-todos');
     if (vt) vt.addEventListener('click', function () { verTodos = !verTodos; pintar(); });
-    Array.prototype.forEach.call(document.querySelectorAll('[data-comprar]'), function (b) {
-      b.addEventListener('click', function () {
-        aviso = 'Apunta el bono de ' + b.getAttribute('data-comprar') + ' con el club o en El Cubo: te lo activan ellos y se cobra con la cuota del mes siguiente.';
-        pintar();
-      });
-    });
+    conectarComprar();
   }
 
-  function pintar() { if (vista === 'bono') pintarBono(); else pintarClases(); }
+  function pintar() {
+    if (vista === 'confirmar') pintarConfirmar();
+    else if (vista === 'bono') pintarBono();
+    else pintarClases();
+  }
 
   // ---------- arranque ----------
-  var ra = await sb.from('atletas').select('id,nombre,apellidos').order('nombre');
+  /* `tipo_membresia` y `fecha_nacimiento` no se pintan: sirven para saber
+     qué cuenta y qué contacto le tocan si hay que pagar por transferencia
+     (escuela → Adrián o Andrés; socios y adultos → Isabel). */
+  var ra = await sb.from('atletas').select('id,nombre,apellidos,tipo_membresia,fecha_nacimiento').order('nombre');
   atletas = ra.error ? [] : ra.data;
 
   if (!atletas.length) {
@@ -410,6 +514,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   atletaId = atletas[0].id;
   await cargarTodo();
+  await cargarVenta();
+
+  /* Si volvemos de la pasarela, la pantalla que toca es la del bono:
+     ahí se ven los usos nuevos y el movimiento recién apuntado. */
+  var vuelta = new URLSearchParams(location.search).get('pago');
+  if (vuelta === 'hecho') {
+    vista = 'bono';
+    aviso = 'Pago recibido. Los usos ya están en tu bono; si no los ves, refresca en un momento.';
+    history.replaceState(null, '', location.pathname);
+  } else if (vuelta === 'cancelado') {
+    vista = 'bono';
+    aviso = '!El pago se ha quedado a medias y no se te ha cobrado nada. Tu bono sigue igual.';
+    history.replaceState(null, '', location.pathname);
+  }
+
   pintar();
 });
 </script>
