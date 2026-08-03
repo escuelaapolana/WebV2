@@ -42,6 +42,12 @@
   .pill.activo { background: var(--verde-fondo); color: var(--verde); }
   .pill.lesionado { background:#fdeceb; color:#b3261e; }
   .pill.prueba { background: var(--azul-suave); color: var(--azul-oscuro); }
+  /* «Copia sin guardar»: tiene que verse que lo de la pantalla ya no es el
+     entrenamiento que se abrió, sino uno nuevo que todavía no existe. */
+  .pill--copia { background: var(--azul-suave); color: var(--azul-oscuro); font-weight:600; text-transform:none; }
+  /* La línea que dice qué va a pasar al guardar. Va pegada a los botones,
+     justo encima, porque es lo que explica lo que hacen. */
+  .pl-modo { margin:16px 0 -4px; padding:10px 12px; border-radius:10px; background: var(--crema-media); color: var(--texto); }
 
   /* formularios */
   label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:10px 0 5px; }
@@ -655,7 +661,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        pintar: sin una salida dentro del aviso se queda uno encerrado. */
     wrap.innerHTML = '<div class="tarjeta">'+APOLANA_UI.vacio('No encontramos tu ficha en el club',
       'Tu cuenta existe, pero todavía no está unida a una ficha de entrenador. Avisa al club y podrás entrar en cuanto te den de alta.',
-      APOLANA_UI.boton('Volver al portal', '../'))+'</div>';
+      APOLANA_UI.volver())+'</div>';
     return;
   }
 
@@ -2380,7 +2386,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(modoDest(pref) !== 'algunos') return 'Ahora mismo '+(singular?'el entrenamiento lo verán':'los entrenamientos los verán')+' todos los atletas del grupo.';
     var n = idsMarcadosDest(pref).length;
     if(!n) return 'No has marcado a ningún atleta todavía.';
-    return 'Dirigid'+(singular?'a':'as')+' solo a '+n+' atleta(s): el resto del grupo no '+(singular?'la verá':'las verá')+'.';
+    /* «Dirigida … no la verá» venía de cuando esto se llamaba «sesión», que
+       era femenino. Ahora es «el entrenamiento»: masculino. */
+    return 'Dirigid'+(singular?'o':'os')+' solo a '+n+' atleta(s): el resto del grupo no '+(singular?'lo verá':'los verá')+'.';
   }
   // Conecta los botones y radios; devuelve la función que refresca el estado visible
   function conectarDest(pref, singular, alCambiar){
@@ -2540,6 +2548,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // SECCIÓN 2 · PLANIFICAR ENTRENO
   // ============================================================
   var editandoId = null;        // id de sesión en edición (null = nueva)
+  var COPIA_DE = null;          // { fecha, titulo } del original, mientras se está duplicando
   var refrescarDestPl = null;   // se asigna al pintar el formulario
   var refrescarAbrirPl = null;  // ídem, para «¿Abierto para apuntarse?»
 
@@ -2921,8 +2930,55 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     el.hidden = !t;
   }
 
+  // ------------------------------------------------------------
+  // EN QUÉ MODO ESTÁ EL FORMULARIO
+  // ------------------------------------------------------------
+  // Tres modos, y hay que verlos ANTES de guardar, porque el botón
+  // de guardar hace cosas distintas en cada uno:
+  //   · nuevo   → crea un entrenamiento.
+  //   · editando→ CAMBIA el que está abierto. Si alguien abre el
+  //               del lunes pasado, le cambia la fecha y guarda, el
+  //               del lunes pasado se mueve: no se queda una copia.
+  //               Por eso aquí se dice, y por eso existe «Duplicar».
+  //   · copia   → crea uno NUEVO y el original no se toca.
+  // ------------------------------------------------------------
+  function pintarModo(){
+    var pill = $('pl-estado'), aviso = $('pl-aviso-modo'), dup = $('pl-duplicar');
+    if(!pill) return;
+    var fecha = $('pl-fecha') ? $('pl-fecha').value : '';
+    var titulo = $('pl-titulo') ? $('pl-titulo').value.trim() : '';
+    var comoSeLlama = titulo || (fecha ? formatFecha(fecha) : 'sin título');
+    if(COPIA_DE){
+      pill.textContent = 'Copia sin guardar';
+      pill.className = 'pill pill--copia';
+      if(aviso){
+        aviso.innerHTML = 'Esto es una <strong>copia</strong> de «'+esc(COPIA_DE.titulo || formatFecha(COPIA_DE.fecha))+'» ('+esc(formatFecha(COPIA_DE.fecha))+'). '+
+          'El original <strong>no se toca</strong>: al guardar se creará un entrenamiento nuevo'+(fecha?' el '+esc(formatFecha(fecha)):'')+', en borrador. Cambia lo que quieras antes de guardar.';
+        aviso.hidden = false;
+      }
+      if(dup) dup.hidden = true;
+      return;
+    }
+    if(editandoId){
+      pill.textContent = 'Editando: '+comoSeLlama;
+      pill.className = 'pill';
+      if(aviso){
+        aviso.innerHTML = 'Al guardar se cambia <strong>ese mismo</strong> entrenamiento, también si le cambias la fecha. '+
+          'Si lo que quieres es otro parecido para otro día, pulsa <strong>Duplicar</strong>.';
+        aviso.hidden = false;
+      }
+      if(dup) dup.hidden = false;
+      return;
+    }
+    pill.textContent = 'Nuevo entrenamiento';
+    pill.className = 'pill';
+    if(aviso){ aviso.innerHTML = ''; aviso.hidden = true; }
+    if(dup) dup.hidden = true;
+  }
+
   function limpiarFormulario(){
     editandoId = null;
+    COPIA_DE = null;
     DURACION_EDIT = null;
     if($('pl-fecha')) $('pl-fecha').value = todayISO;
     if($('pl-titulo')) $('pl-titulo').value = '';
@@ -2940,13 +2996,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     nuevoBloque({etiqueta:'Parte principal'});
     nuevoBloque({etiqueta:'Vuelta a la calma'});
     aplicarModoFilas();
-    $('pl-estado').textContent = 'Nuevo entrenamiento';
     $('pl-msg').textContent=''; $('pl-msg').className='msg';
     if($('pl-editar')) $('pl-editar').value='';
+    pintarModo();
   }
 
   function cargarSesionEnForm(s){
     editandoId = s.id;
+    COPIA_DE = null;
     // si el entrenador ya escribió la duración, esa manda: es un dato, no una estimación
     DURACION_EDIT = (s.duracion_min > 0) ? s.duracion_min : null;
     $('pl-grupo').value = s.grupo_id||'';
@@ -2972,8 +3029,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // Una sesión sin bloques (p. ej. un día de descanso) se queda vacía: se sigue editando, no se convierte en nueva.
     bloques.forEach(function(b){ nuevoBloque(b); });
     aplicarModoFilas();
-    $('pl-estado').textContent = 'Editando: '+(s.titulo||formatFecha(s.fecha));
     $('pl-msg').textContent=''; $('pl-msg').className='msg';
+    pintarModo();
   }
 
   async function cargarSesionesGrupo(grupoId){
@@ -2981,14 +3038,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!selEditar) return;
     selEditar.innerHTML = '<option value="">— nuevo entrenamiento —</option>';
     if(!grupoId) return;
-    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(60);
+    /* 200 en vez de 60: este desplegable ya no es solo «el de la semana
+       pasada», es por donde se llega a lo de hace meses. */
+    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(200);
     if(r.error || !r.data){ return; }
     window.__SESIONES_GRUPO = {};
+    /* Agrupados por mes: una lista de 200 fechas seguidas no se lee, y
+       «lo de mayo» es como se busca de verdad un entrenamiento antiguo. */
+    var html = '', mesActual = '';
     r.data.forEach(function(s){
       window.__SESIONES_GRUPO[s.id] = s;
+      var d = new Date((s.fecha||'')+'T00:00:00');
+      var mes = isNaN(d.getTime()) ? 'sin fecha' : (MESES_LARGOS[d.getMonth()]+' de '+d.getFullYear());
+      if(mes !== mesActual){
+        if(mesActual) html += '</optgroup>';
+        html += '<optgroup label="'+esc(mes)+'">';
+        mesActual = mes;
+      }
       var soloAlgunos = Array.isArray(s.atletas_ids) && s.atletas_ids.length;
-      selEditar.innerHTML += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+s.atletas_ids.length+' atleta(s)':'')+(s.abierta_inscripcion?' · abierta':'')+'</option>';
+      html += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+s.atletas_ids.length+' atleta(s)':'')+(s.abierta_inscripcion?' · abierta':'')+'</option>';
     });
+    if(mesActual) html += '</optgroup>';
+    selEditar.innerHTML += html;
   }
 
   function serializarBloques(){
@@ -3098,7 +3169,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<h2>Planificar entrenamiento</h2>'+
         '<div class="grid2">'+
           '<div><label>Grupo</label><select id="pl-grupo">'+MIS_GRUPOS.map(function(gr){return '<option value="'+gr.id+'">'+esc(gr.nombre)+'</option>';}).join('')+'</select></div>'+
-          '<div><label>Editar entrenamiento existente</label><select id="pl-editar"><option value="">— nuevo entrenamiento —</option></select></div>'+
+          '<div><label>Abrir un entrenamiento del grupo</label><select id="pl-editar"><option value="">— nuevo entrenamiento —</option></select>'+
+            '<p class="ej-ayuda">Los anteriores, del más reciente al más antiguo. Al abrir uno puedes cambiarlo o <strong>duplicarlo</strong> para otro día.</p></div>'+
         '</div>'+
         '<div class="grid2">'+
           '<div><label>Fecha</label><input id="pl-fecha" type="date" value="'+todayISO+'"></div>'+
@@ -3112,7 +3184,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         cajaAbrirHTML('pl', '¿Abierto para apuntarse?',
           'Si lo dejas <strong>sin marcar</strong>, el entrenamiento es solo para tu grupo: en el calendario del club se ve que existe, pero nadie de fuera se puede apuntar. '+
           'Si lo marcas, aparece con el botón de <strong>apuntarse</strong> para la gente que digas debajo.')+
+        /* Este campo NO es un cuaderno interno: sale tal cual en la zona del
+           atleta y en la de la familia. Lo interno va en «Observaciones»,
+           que tiene su propio permiso y no lo ve nadie más. */
         '<label>Nota / razonamiento</label><textarea id="pl-nota" placeholder="Objetivo del día, sensaciones a buscar, avisos…"></textarea>'+
+        '<p class="ej-ayuda"><strong>Esto lo leen el atleta y su familia</strong>, debajo del entrenamiento. Lo que sea solo para el equipo técnico va en <strong>Observaciones</strong>.</p>'+
         '<h3>Bloques del entrenamiento</h3>'+
         '<div class="ses-resumen" id="pl-resumen" hidden></div>'+
         '<p class="pista" id="pl-ayuda-rec" style="margin:10px 0 10px;" hidden></p>'+
@@ -3133,8 +3209,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div id="bloques-cont" style="margin-top:12px;"></div>'+
         '<div style="margin-top:4px;"><button type="button" class="btn-mini" id="pl-add-bloque">+ Añadir bloque</button></div>'+
         '<div class="check" style="margin-top:16px;"><input type="checkbox" id="pl-publicar"><label for="pl-publicar">Publicar (visible en la zona de atleta, para quien lo hayas dirigido arriba)</label></div>'+
+        '<p class="pista pl-modo" id="pl-aviso-modo" hidden></p>'+
         '<div class="acciones">'+
           '<button class="btn btn--primario" id="pl-guardar">Guardar entrenamiento</button>'+
+          /* «Duplicar» solo aparece cuando hay un entrenamiento abierto:
+             sobre uno nuevo no hay nada que copiar. */
+          '<button class="btn btn--neutro" id="pl-duplicar" hidden>Duplicar</button>'+
           '<button class="btn btn--neutro" id="pl-nueva">Nuevo / limpiar</button>'+
           '<span class="pill" id="pl-estado">Nuevo entrenamiento</span>'+
           '<span class="msg" id="pl-msg"></span>'+
@@ -3192,6 +3272,34 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     $('pl-add-bloque').addEventListener('click', function(){ nuevoBloque({}); });
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
+
+    /* DUPLICAR
+       El lunes 4×100 y el lunes siguiente 5×100: se abre el del lunes,
+       se pulsa aquí y solo hay que cambiar el 4 por el 5.
+       Lo único que hace es soltar el vínculo con el original (para que
+       guardar CREE en vez de CAMBIAR), adelantar la fecha una semana y
+       dejarlo en borrador. Todo lo escrito se queda tal cual, incluidos
+       los destinatarios y el «abierto para apuntarse». */
+    $('pl-duplicar').addEventListener('click', function(){
+      if(!editandoId) return;
+      COPIA_DE = { fecha: $('pl-fecha').value, titulo: $('pl-titulo').value.trim() };
+      editandoId = null;
+      if($('pl-fecha').value) $('pl-fecha').value = addDias($('pl-fecha').value, 7);
+      // Una copia nace en borrador: publicarla es una decisión aparte.
+      $('pl-publicar').checked = false;
+      if(refrescarAbrirPl) refrescarAbrirPl(true);
+      // El desplegable ya no señala a nada: lo de la pantalla es otro entrenamiento.
+      if($('pl-editar')) $('pl-editar').value = '';
+      var m = $('pl-msg');
+      m.className = 'msg';
+      m.textContent = 'Copia preparada. Cambia lo que quieras y pulsa «Guardar entrenamiento»: el original no se toca.';
+      pintarModo();
+      $('pl-titulo').focus();
+    });
+
+    // El rótulo dice de qué entrenamiento se está hablando: se refresca al escribir.
+    $('pl-fecha').addEventListener('change', pintarModo);
+    $('pl-titulo').addEventListener('input', pintarModo);
     $('pl-tipo').addEventListener('change', aplicarModoFilas);
     $('pl-material').addEventListener('change', aplicarModoFilas);
     // el volumen y el tiempo se recalculan solos según se escribe
@@ -3217,6 +3325,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // el sitio habitual del nuevo grupo, para no escribirlo a mano
       aplicarAbrir('pl', { lugar: lugarDeGrupo($('pl-grupo').value) });
       refrescarAbrirPl(true);
+      pintarModo();
       cargarSesionesGrupo($('pl-grupo').value);
     });
     $('pl-editar').addEventListener('change', function(){
@@ -3256,6 +3365,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(editandoId){ res = await sb.from('sesiones').update(payload).eq('id', editandoId).select('id').maybeSingle(); }
       else { payload.creado_por = perfil.id; res = await sb.from('sesiones').insert(payload).select('id').maybeSingle(); }
       if(res.error){ msg.textContent='Error: '+res.error.message; msg.className='msg error'; return; }
+      /* Si era una copia, ya es un entrenamiento de verdad y con su propio
+         id: deja de ser copia y pasa a estar en edición, como cualquier otro. */
+      var eraCopia = !!COPIA_DE;
+      COPIA_DE = null;
       if(res.data && res.data.id) editandoId = res.data.id;
       var quien = dest.ids ? ' · solo para '+dest.ids.length+' atleta(s)' : ' · para todo el grupo';
       var abierto = '';
@@ -3267,8 +3380,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // pero nunca se tira lo que el entrenador ya había escrito
       var sinRec = seriesSinRec();
       var falta = sinRec ? ' · ojo: '+sinRec+' serie(s) sin recuperación' : '';
-      msg.textContent = 'Guardado ✓'+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien+abierto+falta; msg.className='msg ok';
-      $('pl-estado').textContent = 'Editando: '+(payload.titulo||formatFecha(payload.fecha));
+      msg.textContent = (eraCopia ? 'Copia guardada como entrenamiento nuevo ✓' : 'Guardado ✓')+($('pl-publicar').checked?' (publicada)':' (borrador)')+quien+abierto+falta; msg.className='msg ok';
+      pintarModo();
       await cargarSesionesGrupo(grupoId);
       if(editandoId) $('pl-editar').value = editandoId;
       cargarSesionesFeedback(); // refrescar el desplegable de feedback
@@ -3866,7 +3979,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><span class="sw-lab">Rol</span><select class="sw-rol">'+optsPares(ROLES, s.rol||'', '— sin rol —')+'</select></div>'+
         '</div>'+
         '<div class="sw-dia-campos">'+
-          '<div><span class="sw-lab">Hora</span><input class="sw-hora" type="time" value="'+escAttr(horaCorta(s.hora||''))+'"></div>'+
+          /* La hora se puede dejar en blanco, y de hecho es lo normal: si no
+             se pone, el atleta ve la del horario de su grupo. Solo se rellena
+             cuando ese día se entrena a otra hora. Vacío y sin decir nada, al
+             lado de «Lugar» ya relleno, parecía que faltaba algo. */
+          '<div><span class="sw-lab">Hora (si no, la del grupo)</span><input class="sw-hora" type="time" value="'+escAttr(horaCorta(s.hora||''))+'"></div>'+
           '<div><span class="sw-lab">Lugar</span><input class="sw-lugar" list="lugares-dl" placeholder="Dónde se queda" value="'+escAttr(s.lugar||'')+'"></div>'+
           '<div><span class="sw-lab">Apuntarse</span><label class="check"><input type="checkbox" class="sw-abre-dia"'+(s.abierta?' checked':'')+'><span>Abierto</span></label></div>'+
         '</div>';
@@ -4109,7 +4226,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<li>Detrás del día, separados por <code>·</code> (también vale <code>|</code> o <code>-</code>): tipo, rol y título. Lo que no sea un tipo o un rol válido pasa a ser el título.</li>'+
             '<li>Tipos válidos: <code>pista</code>, <code>gym</code>, <code>continuo</code>, <code>activacion</code>, <code>competicion</code>, <code>descanso</code>.</li>'+
             '<li>Roles válidos: <code>calidad_fuerte</code>, <code>secundaria</code>, <code>activacion</code>, <code>ultimo_toque_48h</code>, <code>descarga</code>, <code>competicion</code>.</li>'+
-            '<li>Una línea <code>Nota:</code> u <code>Objetivo:</code> se guarda como nota del día.</li>'+
+            '<li>Una línea <code>Nota:</code> u <code>Objetivo:</code> se guarda como nota del día. <strong>La leen el atleta y su familia.</strong> Ojo: <code>Observaciones:</code> al principio de una línea hace lo mismo, no son las Observaciones privadas del apartado de seguimiento.</li>'+
             '<li>Una línea <code>Hora: 9:00</code> o <code>Lugar: Playa del Postiguet</code> pone la hora y el sitio de ese día (los que se ven en el calendario del club). También vale poner la hora en la línea del día: <code>SÁBADO · continuo · 9:00 · Tirada larga</code>.</li>'+
             '<li>Una línea que empiece por <code>#</code> abre un bloque. También vale <code>Calentamiento:</code>. Si pones un guion detrás (<code># VELOCIDAD MÁXIMA — Calidad pura</code>), lo de después se guarda como <strong>matiz</strong> del bloque.</li>'+
             '<li>Una línea que empiece por <code>-</code> o <code>*</code> es un ejercicio. Los datos se separan con <code>|</code>: <code>4x60 m</code> son series y distancia, algo con <code>%</code> es el ritmo, algo con <code>rec</code> o <code>desc</code> es la recuperación y el resto va a detalle.</li>'+

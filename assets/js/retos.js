@@ -1212,7 +1212,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       APOLANA_UI.vacio('Esta pantalla es para los atletas del club',
         'Tu cuenta no tiene ninguna ficha de atleta asociada, y los retos se cuentan por atleta. Si crees que ' +
         'es un error, escríbele al club y lo miran.',
-        APOLANA_UI.boton('Volver al portal', '../'));
+        APOLANA_UI.volver());
     return;
   }
   ATLETA = FICHAS[0];

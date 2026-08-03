@@ -77,7 +77,11 @@
     'html,body{max-width:100%;overflow-x:hidden}' +
     /* --- barra superior --- */
     '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
-    '.pt-top .izq{display:flex;align-items:center;gap:14px;min-width:0;overflow:hidden}' +
+    '.pt-top .izq{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden}' +
+    /* Escudo 26 px + APOLANA, según la barra única del maquetador. De momento
+       NO se pulsa: que el logo lleve a la web vendrá con esa barra entera.
+       Va aquí porque al quitar la flecha este lado se quedaba vacío. */
+    '.pt-top .escudo{width:26px;height:26px;flex:0 0 26px;object-fit:contain;display:block}' +
     /* «Ir a la web» va a la DERECHA, junto a «Salir», y sin flecha. En la
        esquina de arriba a la izquierda el móvil tiene el gesto de volver
        atrás: una flecha ahí que además te saca del portal se pulsa sola.
@@ -102,9 +106,17 @@
        derecha (Cambiar de perfil · Ir a la web · Salir). Se deja envolver
        antes que recortar: la página tiene overflow-x oculto, así que sin
        esto «Salir» se cortaría por el borde. */
+    /* El escudo y APOLANA se quedan también en el móvil: son justo lo que
+       llena ese lado. Lo que se aparta si no cabe es el nombre, nunca el
+       escudo, y solo en pantallas muy estrechas con varios papeles. */
     '@media(max-width:560px){.pt-top{padding:6px 14px;gap:8px;flex-wrap:wrap;row-gap:2px}' +
-      '.pt-top .marca{display:none}.pt-top .aweb{padding:0 8px}.pt-top button{padding:0 13px}' +
-      '.pt-top .der{flex:1 1 auto;justify-content:flex-end}}' +
+      '.pt-top .aweb{padding:0 8px}.pt-top button{padding:0 13px}' +
+      '.pt-top .der{flex:0 1 auto;justify-content:flex-end}' +
+      /* Con tres mandos a la derecha (quien tiene varios papeles) el nombre
+         no cabe en un móvil y la barra se partía en dos filas. En ese caso
+         se aparta el nombre y se queda el escudo, que es lo que llena la
+         esquina. El escudo no se quita nunca. */
+      '.pt-top.pt-mas-mandos .marca{display:none}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
     '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px}' +
@@ -221,6 +233,12 @@
     boton: function (texto, href) {
       return href ? '<a class="ap-btn" href="' + href + '">' + esc(texto) + '</a>'
                   : '<button type="button" class="ap-btn">' + esc(texto) + '</button>';
+    },
+    /* La vuelta al portal, definida UNA sola vez: misma flecha, mismas
+       palabras y mismo aspecto en todas las pantallas. Antes cada estado
+       vacío se lo escribía por su cuenta y unos llevaban flecha y otros no. */
+    volver: function (texto, href) {
+      return '<a class="ap-btn" href="' + (href || '../') + '">← ' + esc(texto || 'Volver al portal') + '</a>';
     }
   };
 
@@ -475,7 +493,8 @@
       top.className = 'pt-top';
       top.innerHTML =
         '<div class="izq">' +
-          '<a class="marca" href="' + b + 'portal/">Portal Apolana</a>' +
+          '<img class="escudo" src="' + b + 'assets/img/logo.png" alt="" aria-hidden="true">' +
+          '<span class="marca">Apolana</span>' +
         '</div>' +
         '<div class="der">' +
           '<button id="pt-cambiar" style="display:none">Cambiar de perfil</button>' +
@@ -718,6 +737,10 @@
         var bt = document.getElementById('pt-cambiar');
         if (!bt) return;
         bt.style.display = '';
+        /* Con este botón ya son tres mandos a la derecha: se avisa a la barra
+           para que en un móvil aparte el nombre y no se parta en dos filas. */
+        var top = document.querySelector('.pt-top');
+        if (top) top.classList.add('pt-mas-mandos');
         bt.addEventListener('click', function () { abrirHoja(lista, perfil, email); });
       });
     }

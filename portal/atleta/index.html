@@ -378,8 +378,16 @@
   .tb-cab .tb-quien .propio { color:#E0A33C; }
   .tb-cab h1 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:30px; line-height:1; color:#fff; margin:0; }
   .tb-salir { flex:none; min-height:44px; box-sizing:border-box; display:inline-flex; align-items:center; padding:0 16px;
-    border-radius:999px; border:1px solid rgba(255,255,255,.4); background:none; color:#fff; font:inherit; font-size:14px; line-height:1; cursor:pointer; }
+    border-radius:999px; border:1px solid rgba(255,255,255,.4); background:none; color:#fff; font:inherit; font-size:14px; line-height:1; cursor:pointer;
+    white-space:nowrap; }
   .tb-salir:hover { background: rgba(255,255,255,.14); }
+  /* El botón dice adónde se sale, y eso son más letras de las que caben al
+     lado de un título de 30 px en un móvil. En pantalla estrecha baja a su
+     propia línea: antes que encogerlo o partirlo en dos, se le hace sitio. */
+  @media (max-width:460px){
+    .tb-cab { flex-direction:column; align-items:stretch; gap:10px; }
+    .tb-salir { align-self:flex-start; }
+  }
 
   /* El cuerpo del entreno usa las MISMAS piezas que el resto de la app
      (tarjetas blancas sobre crema, huecos de serie, escala…): no hace
@@ -434,7 +442,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     wrap.innerHTML = APOLANA_UI.vacio('No encontramos tu ficha',
       'Tu cuenta está bien, pero todavía no la vemos unida a ninguna ficha del club. Escríbenos y la enlazamos en un momento.',
       APOLANA_UI.boton('Escribir al club', '../../contacto/') +
-      APOLANA_UI.boton('← Volver al portal', '../'));
+      APOLANA_UI.volver());
     return;
   }
 
@@ -725,7 +733,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       : APOLANA_UI.vacio('Tu cuenta aún no tiene ficha de atleta',
           'En cuanto el club enlace tu cuenta con tu ficha, verás aquí tus entrenamientos, tus marcas y tus recibos.',
           APOLANA_UI.boton('Escribir al club', '../../contacto/'))) +
-      '<p style="margin-top:14px"><a class="ap-btn" href="../">← Volver al portal</a></p>';
+      '<p style="margin-top:14px">' + APOLANA_UI.volver() + '</p>';
     return;
   }
 
@@ -927,7 +935,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         /* «← Volver», no «Salir»: la barra de arriba del portal ya tiene un
            «Salir» que cierra la sesión y se confundían. Además «Salir del
            entrenamiento» no cabe al lado del título en un móvil. */
-        '<button type="button" class="tb-salir" data-sec-ir="hoy">← Volver</button></div>';
+        '<button type="button" class="tb-salir" data-sec-ir="hoy">← Salir del entrenamiento</button></div>';
     }
     if(sec==='marcas')
       return '<div class="at-cab"><h1>Marcas</h1>'+
@@ -1528,6 +1536,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (extra||'')+
       (dest?'<span class="ml-chev">&rsaquo;</span>':'')+'</a>';
   }
+  /* Los usos que quedan, en la fila de «Más». En ámbar cuando quedan 1 o 0:
+     es el momento en que hay que comprar más y nadie quiere enterarse al
+     llegar a la piscina. Si no se ha podido leer, no se pinta nada. */
+  function usosCuboHTML(){
+    if (USOS_CUBO == null) return '';
+    var pocos = USOS_CUBO <= 1;
+    return '<span class="ml-dato' + (pocos ? ' pend' : '') + '">' +
+           USOS_CUBO + (USOS_CUBO === 1 ? ' uso' : ' usos') + '</span>';
+  }
   function bloqueMas(titulo, filas){
     return '<div class="ml-bloque"><span class="ml-tit">'+esc(titulo)+'</span>'+
       '<div class="ml-caja">'+filas.join('')+'</div></div>';
@@ -1552,7 +1569,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        comprados y no por cuota, así que saber cuántos quedan se consulta
        antes de cada sesión, no una vez al mes. Estaba el sexto de once. */
     html+=bloqueMas('Mi cuenta', [
-      filaMas('Bonos de El Cubo', '', '../cubo/'),
+      filaMas('Bonos de El Cubo', usosCuboHTML(), '../cubo/'),
       filaMas('Pagos y recibos', pend.length?'<span class="ml-dato pend">'+pend.length+' pendiente'+(pend.length>1?'s':'')+'</span>':'<span class="ml-dato">Al día</span>', '#pagos'),
       filaMas('Mi perfil', '', '../perfil/'),
       filaMas('Mis retos y medallas', '', '../retos/'),
@@ -1799,6 +1816,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value=''; $('mk-contexto').value='';
     cargarMarcas();
   });
+
+  /* ---------- BONO DE EL CUBO ----------
+     Los usos que quedan se leen en la propia fila de «Más», sin entrar: es
+     lo único que va por usos comprados y no por cuota, así que se consulta
+     antes de cada sesión. Si la consulta falla no se dice «0 usos» — eso
+     sería peor que no decir nada: se deja la fila sin cifra. */
+  var USOS_CUBO = null;
+  (async function cargarBonoCubo(){
+    var r = await sb.from('cubo_bono_saldo').select('usos_disponibles,activo,caducado').eq('atleta_id', at.id);
+    if (r.error || !r.data) return;
+    USOS_CUBO = r.data.reduce(function(s, b){
+      return s + ((b.activo && !b.caducado) ? (b.usos_disponibles || 0) : 0);
+    }, 0);
+    if (SEC === 'mas') pintarMas();
+  })();
 
   // ---------- PAGOS ----------
   (async function cargarPagos(){

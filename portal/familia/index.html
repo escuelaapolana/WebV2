@@ -533,7 +533,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       'No encontramos tu ficha',
       'Tu cuenta existe, pero todavía no está enlazada con ninguna familia del club. Escribid al club y os la enlazan en un momento.',
       APOLANA_UI.boton('Escribir al club', '../../contacto/') +
-      APOLANA_UI.boton('← Volver al portal', '../')) +'</div>';
+      APOLANA_UI.volver()) +'</div>';
     return;
   }
 
@@ -604,7 +604,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // se dice que no se ha podido cargar, en ámbar y con salida (28f).
   /* En los dos casos de abajo la pantalla se queda sin barra: la vuelta al
      portal va dentro del aviso, que si no desde aquí no se sale. */
-  var salidaPortal = '<p style="margin-top:14px"><a class="ap-btn" href="../">← Volver al portal</a></p>';
+  var salidaPortal = '<p style="margin-top:14px">' + APOLANA_UI.volver() + '</p>';
   if (falloCarga) {
     wrap.innerHTML = cab + '<div class="tarjeta" style="margin-top:18px;">'+
       APOLANA_UI.error('No hemos podido cargar vuestra ficha',
@@ -623,6 +623,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   var IDS = hijos.map(function(h){ return h.id; });
   var nombreHijo = {}; hijos.forEach(function(h){ nombreHijo[h.id] = ((h.nombre||'')+' '+(h.apellidos||'')).trim(); });
+
+  /* ---------- BONO DE EL CUBO ----------
+     Los usos que quedan, para leerlos en la fila de «Más» sin entrar. Se
+     guardan por hijo: con más de uno, un número solo no diría de quién es,
+     así que en ese caso la fila no lleva cifra y el reparto se ve dentro,
+     que es donde está el selector de hijo. Si la consulta falla no se pinta
+     un 0: eso se leería como «no te quedan usos». */
+  var USOS_CUBO = null;
+  (async function cargarBonoCubo(){
+    if (!IDS.length) return;
+    var r = await sb.from('cubo_bono_saldo').select('atleta_id,usos_disponibles,activo,caducado').in('atleta_id', IDS);
+    if (r.error || !r.data) return;
+    var porHijo = {};
+    r.data.forEach(function(b){
+      if (!b.activo || b.caducado) return;
+      porHijo[b.atleta_id] = (porHijo[b.atleta_id] || 0) + (b.usos_disponibles || 0);
+    });
+    var conBono = Object.keys(porHijo);
+    if (conBono.length === 1) USOS_CUBO = porHijo[conBono[0]];
+    if (SEC === 'mas') pintar();
+  })();
 
   /* ----------------------------------------------------------
      PERMISO PARA LAS CLASIFICACIONES PÚBLICAS
@@ -1394,6 +1415,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="ml-txt">'+esc(txt)+'</span>'+(extra||'')+
       (dest?'<span class="ml-chev">&rsaquo;</span>':'')+'</a>';
   }
+  /* Los usos que quedan, en la fila de «Más». En ámbar con 1 o 0: es cuando
+     hay que comprar más, y nadie quiere enterarse al llegar a la piscina. */
+  function usosCuboHTML(){
+    if (USOS_CUBO == null) return '';
+    return '<span class="ml-dato' + (USOS_CUBO <= 1 ? ' pend' : '') + '">' +
+           USOS_CUBO + (USOS_CUBO === 1 ? ' uso' : ' usos') + '</span>';
+  }
   function bloqueMas(titulo, filas){
     return '<div class="ml-bloque"><span class="ml-tit">'+esc(titulo)+'</span>'+
       '<div class="ml-caja">'+filas.join('')+'</div></div>';
@@ -1421,7 +1449,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        dirección. «Mensajes» y «Mi perfil» son las que más se echan de menos
        (hablar con el entrenador y cambiar la contraseña). */
     html += bloqueMas('Mi cuenta', [
-      filaMas('Bonos de El Cubo', '', '../cubo/'),
+      filaMas('Bonos de El Cubo', usosCuboHTML(), '../cubo/'),
       filaMas('Pagos y recibos', '', '#pagos'),
       filaMas('Mensajes', '', '../mensajes/'),
       filaMas('Mi perfil', '', '../perfil/'),
