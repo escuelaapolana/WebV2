@@ -150,6 +150,35 @@ Cobros**, y que de ahí salga el patrón para el resto.
 
 ---
 
+## PENDIENTE DE MAQUETA · dos pantallas que todavía no existen
+
+Estas dos **no están hechas**: la base ya está preparada para las dos, pero no
+se escribe ni una línea de pantalla hasta que haya maqueta.
+
+### Inscripción de la escuela ⚠️⚠️ — pantalla nueva, no existe
+Hoy la escuela no tiene formulario propio de inscripción. Cuando lo haya, el
+sistema tiene que **proponer solo el grupo** a partir del año de nacimiento del
+niño: los grupos de la escuela son nueve colores (rojo 1, 2 y 3 · azul 1, 2 y 3
+· verde 1, 2 y 3) y cada uno lleva escrito su año en la ficha del grupo.
+La propuesta es **solo una propuesta**: el club cambia de grupo a quien quiera.
+Qué hace falta decidir en la maqueta: cómo se pide el año de nacimiento, cómo
+se enseña el grupo propuesto (¿con su color?, ¿con sus días?), qué se ve cuando
+para ese año no hay grupo abierto, y cómo se avisa de que la plaza no es firme
+hasta que el club la confirma.
+
+### «Empezar temporada nueva» en Panel → Grupos ⚠️ — botón nuevo, no existe
+Cada septiembre los nueve colores suben un año: rojo 1 deja de ser el de 2023 y
+pasa a ser el de 2024, y así los nueve. La base ya sabe hacerlo de una vez
+(`grupos_avanza_temporada`), pero **no hay botón** que lo dispare, y hacerlo
+grupo a grupo son nueve ediciones seguidas y una equivocación segura.
+Qué hace falta: un botón en Panel → Grupos, una confirmación que enseñe **el
+antes y el después de los nueve** (no un «¿seguro?» a ciegas: se cambian los
+años de todo un club), y qué pasa con los grupos apagados. Después el club
+retoca a mano lo que haga falta, que es lo normal: un año no hay niños de una
+edad y ese grupo se apaga; otro se desborda y se duplica.
+
+---
+
 ## Patrones que inventé y conviene revisar o bendecir
 
 1. **Barra inferior de cinco pestañas** — en las 14 pantallas del portal

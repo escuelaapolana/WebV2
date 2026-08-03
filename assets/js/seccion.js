@@ -10,6 +10,7 @@
         por esa sección y escribe lo que le digan:
 
           · contenido_secciones → foto, antetítulo, título, frase,
+                                  «servicios», «a qué te comprometes»,
                                   «qué incluye» y «qué traer»
           · grupos              → nombre, días y sede, qué se hace
                                   y las pruebas que se entrenan
@@ -112,8 +113,11 @@
     /* Se prueba con el título entero («El Cubo · alquiler a grupos») y
        también con su primera palabra, porque en la base las tarifas de la
        escuela se llaman «Escuela · nacidos 2016 – 2023» y el título de la
-       página es «Escuela de atletismo». */
-    var prefijos = [t, t.split(' ')[0]];
+       página es «Escuela de atletismo». Y con la última, porque las de
+       pista se llaman «Pista · Velocidad A» y la página, «Atletismo en
+       pista»: sin esto, el precio salía con el prefijo puesto. */
+    var palabras = t.split(' ');
+    var prefijos = [t, palabras[0], palabras[palabras.length - 1]];
     for (var i = 0; i < prefijos.length; i++) {
       var p = prefijos[i];
       if (!p || c.toLowerCase().indexOf(p.toLowerCase() + ' · ') !== 0) continue;
@@ -221,7 +225,32 @@
   /* ---------------------------------------------------------
      4 · Grupos · días, sede y qué se hace en cada uno
      --------------------------------------------------------- */
+  /* «Nacidos en 2023», o «Nacidos en 2022 y 2023» cuando el club junta
+     dos años en un grupo. En atletismo la edad va por año de nacimiento:
+     cumplir años a mitad de curso no cambia a nadie de grupo, así que
+     aquí no se calcula ninguna edad. */
+  function aniosDeNacimiento(g) {
+    var desde = parseInt(g.nacidos_desde, 10);
+    var hasta = parseInt(g.nacidos_hasta, 10);
+    if (isNaN(desde) && isNaN(hasta)) return '';
+    if (isNaN(desde)) desde = hasta;
+    if (isNaN(hasta)) hasta = desde;
+    if (hasta < desde) { var x = desde; desde = hasta; hasta = x; }
+    if (desde === hasta) return 'Nacidos en ' + desde;
+    if (hasta - desde === 1) return 'Nacidos en ' + desde + ' y ' + hasta;
+    return 'Nacidos de ' + desde + ' a ' + hasta;
+  }
+
+  /* Qué tarifa le corresponde a un grupo. Primero se mira si el club la
+     ha colgado del grupo en Panel → Tarifas: eso es una decisión escrita
+     y no se discute. Solo si no lo está se recurre a que los nombres
+     cuadren, que es como funcionaba antes y falla en cuanto alguien
+     renombra un grupo. */
   function tarifaDelGrupo(grupo, tarifas, titulo) {
+    if (grupo.id) {
+      var atada = tarifas.filter(function (t) { return t.grupo_id === grupo.id; })[0];
+      if (atada) return atada;
+    }
     var n = limpio(grupo.nombre).toLowerCase();
     return tarifas.filter(function (t) {
       return conceptoCorto(t.concepto, titulo).toLowerCase() === n;
@@ -245,6 +274,14 @@
       var tar = tarifaDelGrupo(g, datos.tarifas, datos.ficha && datos.ficha.titulo);
       if (tar && importeDe(tar).esNumero) cab.appendChild(nodo('span', 'precio', importeDe(tar).texto));
       t.appendChild(cab);
+
+      /* El año de nacimiento de los grupos de la escuela. Para un padre
+         es el dato que decide: «Rojo 1» no le dice nada, «nacidos en
+         2023» sí. Va antes que los días porque es lo primero que se
+         busca. En las secciones de adultos el campo está vacío y aquí
+         no aparece nada. */
+      var anos = aniosDeNacimiento(g);
+      if (anos) t.appendChild(nodo('span', 'nacidos', anos));
 
       if (limpio(g.horario)) t.appendChild(nodo('span', 'cuando', limpio(g.horario)));
       else t.appendChild(nodo('span', 'cuando sec-vacio', 'Días y sede, todavía sin publicar'));
@@ -338,7 +375,53 @@
   }
 
   /* ---------------------------------------------------------
-     6 · Qué incluye
+     5 y 6 · Servicios · y a qué te comprometes
+     ------------------------------------------------------------
+     Las dos mitades del trato: lo que pone el club y lo que pone
+     el atleta. Las dos listas las escribe el club en Panel →
+     Páginas, una cosa por línea.
+
+     Los dos bloques NACEN ESCONDIDOS en el HTML y solo aparecen si
+     hay algo escrito. Así, si la base no contesta, no se queda un
+     título con el hueco debajo: sencillamente no hay bloque. Es lo
+     mismo que hacen «Qué incluye» y «Quién entrena».
+     --------------------------------------------------------- */
+  function bloqueSuelto(caja, selector, texto, dibuja) {
+    var bloque = caja.closest(selector);
+    var puntos = lineas(texto);
+    if (!puntos.length) { if (bloque) bloque.hidden = true; return; }
+    caja.textContent = '';
+    dibuja(caja, puntos);
+    if (bloque) bloque.hidden = false;
+  }
+
+  function pintaServicios(caja, ficha) {
+    bloqueSuelto(caja, '.sec-servicios', ficha && ficha.servicios, function (c, puntos) {
+      var lista = nodo('ul', 'sec-servicios__lista');
+      puntos.forEach(function (p) {
+        var li = nodo('li', 'sec-servicio');
+        var m = nodo('span', 'marca', '✓');
+        m.setAttribute('aria-hidden', 'true');
+        li.appendChild(m);
+        li.appendChild(nodo('span', 'texto', p));
+        lista.appendChild(li);
+      });
+      c.appendChild(lista);
+    });
+  }
+
+  function pintaCompromiso(caja, ficha) {
+    bloqueSuelto(caja, '.sec-compromiso', ficha && ficha.compromisos, function (c, puntos) {
+      var lista = nodo('ul', 'sec-compromiso__caja');
+      puntos.forEach(function (p) {
+        lista.appendChild(nodo('li', 'sec-compromiso__punto', p));
+      });
+      c.appendChild(lista);
+    });
+  }
+
+  /* ---------------------------------------------------------
+     8 · Qué incluye
      --------------------------------------------------------- */
   function listaDePuntos(titulo, puntos, marca) {
     var col = nodo('div', 'sec-banda__col');
@@ -373,7 +456,7 @@
   }
 
   /* ---------------------------------------------------------
-     5 · Quién entrena · las cifras, y quitar al que no está
+     7 · Quién entrena · las cifras, y quitar al que no está
      ------------------------------------------------------------
      El nombre, el cargo, la trayectoria y el teléfono los escribe
      `contactos-web.js` leyendo la vista `contactos_publicos`. Aquí
@@ -452,6 +535,8 @@
     var cajaVistazo = document.getElementById('cs-vistazo');
     var cajaGrupos  = document.getElementById('cs-grupos');
     var cajaPrecio  = document.getElementById('cs-precio');
+    var cajaServ    = document.getElementById('cs-servicios');
+    var cajaComp    = document.getElementById('cs-compromiso');
     var cajaIncluye = document.getElementById('cs-incluye');
 
     var db = window.APOLANA_DB;
@@ -462,18 +547,29 @@
     }
 
     Promise.all([
+      /* `servicios` y `compromisos` los crea la migración 094. Si se sube
+         esta web sin haberla lanzado, la base contesta que esas columnas
+         no existen y la página se queda sin grupos ni precios. O sea: la
+         migración va SIEMPRE antes que el despliegue. */
       db.from('contenido_secciones')
-        .select('titulo,dirigido_a,descripcion,precio,puntos_destacados,que_traer,imagen_url,imagen_encuadre,imagen_zoom')
+        .select('titulo,dirigido_a,descripcion,precio,servicios,compromisos,puntos_destacados,que_traer,imagen_url,imagen_encuadre,imagen_zoom')
         .eq('seccion', clave).limit(1),
+      /* Los grupos de la escuela van por año de nacimiento, y el orden
+         que entiende una familia es del más pequeño al más mayor: de
+         2023 hacia atrás. Por eso se ordena por año de forma descendente
+         y, dentro del mismo año (o cuando no hay año, que es lo normal
+         en las secciones de adultos), por nombre. */
       db.from('grupos')
-        .select('nombre,horario,descripcion,pruebas')
-        .eq('seccion', clave).eq('activo', true).order('nombre'),
+        .select('id,nombre,horario,descripcion,pruebas,nacidos_desde,nacidos_hasta')
+        .eq('seccion', clave).eq('activo', true)
+        .order('nacidos_desde', { ascending: false, nullsFirst: false })
+        .order('nombre'),
       /* «tarifas_vigentes» y no «tarifas»: esa vista deja fuera las
          caducadas y las que todavía no han entrado en vigor. Con la tabla
          en crudo, el día que el club prepare los precios de la temporada
          que viene saldrían los dos a la vez. Es lo que ya hace /entrenar/. */
       db.from('tarifas_vigentes')
-        .select('clave,ambito,concepto,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
+        .select('clave,ambito,concepto,grupo_id,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
         .or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden'),
       /* SIEMPRE la vista, nunca la tabla `contactos`: la vista devuelve
          vacíos el teléfono y el correo que el club ha decidido NO
@@ -505,6 +601,8 @@
       if (cajaVistazo) pintaVistazo(cajaVistazo, datos);
       if (cajaGrupos)  pintaGrupos(cajaGrupos, datos);
       if (cajaPrecio)  pintaPrecio(cajaPrecio, datos);
+      if (cajaServ)    pintaServicios(cajaServ, datos.ficha);
+      if (cajaComp)    pintaCompromiso(cajaComp, datos.ficha);
       if (cajaIncluye) pintaIncluye(cajaIncluye, datos);
       pintaEquipo((rp && !rp.error && rp.data) || []);
     }).catch(function () {
