@@ -278,6 +278,7 @@
         { txt: 'Mapa de contenido',     url: r + 'mapa/',         desc: 'qué hay en cada página' }
       ] },
       { t: 'Club', enlaces: [
+        { txt: 'Personas de contacto',     url: r + 'contactos/',        desc: 'quién lleva cada sección y su teléfono' },
         { txt: 'Buzón',                    url: r + 'buzon/',            desc: 'mensajes de contacto' },
         { txt: 'Buzón',                    url: r + '#buzon',            desc: 'solicitudes de inscripción', panel: true },
         { txt: 'Se pone solo',             url: r + 'automatizaciones/', desc: 'lo que se publica sin tocar nada' },
@@ -425,6 +426,8 @@
     'documentos':             'papeles normativa autorizaciones pdf',
     'peticiones de redes':    'instagram propuestas socios redes',
     'mapa de contenido':      'mapa web estructura',
+    'personas de contacto':   'contactos telefonos correos responsables junta directiva presidente ' +
+                              'secretario tesorero movil publicar privacidad quien lleva seccion',
     'buzón':                  'mensajes correo dudas contacto solicitudes inscripcion',
     'se pone solo':           'automatizaciones automatico solo publica',
     'plantillas de email':    'correos plantillas respuestas',

@@ -97,7 +97,30 @@
 APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
-  function urlPublica(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
+  /* Las fotos de las propuestas viven en un cubo PRIVADO propio
+     («propuestas-redes», migración 086): cada socio manda sobre su
+     carpeta y el club las ve todas para revisarlas. Al ser privado,
+     para enseñarlas hay que pedir un enlace que caduca solo. Las
+     propuestas antiguas tenían las fotos en el cubo público
+     «imagenes», dentro de «redes/»: esas se siguen viendo igual. */
+  var CUBO = 'propuestas-redes';
+  var FIRMA_S = 3600;
+  var ENLACES = {};          // ruta -> url para verla
+  function esAntigua(ruta){ return /^redes\//.test(String(ruta||'')); }
+  function cuboDe(ruta){ return esAntigua(ruta) ? 'imagenes' : CUBO; }
+  async function firmarTodas(rutas) {
+    var nuevas = [];
+    (rutas || []).forEach(function (r) {
+      if (ENLACES[r]) return;
+      if (esAntigua(r)) ENLACES[r] = sb.storage.from('imagenes').getPublicUrl(r).data.publicUrl;
+      else if (nuevas.indexOf(r) === -1) nuevas.push(r);
+    });
+    if (!nuevas.length) return;
+    try {
+      var s = await sb.storage.from(CUBO).createSignedUrls(nuevas, FIRMA_S);
+      if (!s.error && s.data) s.data.forEach(function (f) { if (f && f.signedUrl) ENLACES[f.path] = f.signedUrl; });
+    } catch (e) { /* sin enlace no se pinta la miniatura; la propuesta se lee igual */ }
+  }
   function fechaHora(ts){ if(!ts) return ''; try { return new Date(ts).toLocaleString('es-ES',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } }
 
   var ESTADOS = [
@@ -159,7 +182,7 @@ APOLANA_ADMIN.listo(function (sb) {
     for (var i = 0; i < rutas.length; i++) {
       boton.textContent = 'Descargando ' + (i + 1) + ' de ' + rutas.length + '…';
       try {
-        var dl = await sb.storage.from('imagenes').download(rutas[i]);
+        var dl = await sb.storage.from(cuboDe(rutas[i])).download(rutas[i]);
         if (dl.error) throw dl.error;
         var url = URL.createObjectURL(dl.data);
         var a = document.createElement('a');
@@ -168,8 +191,9 @@ APOLANA_ADMIN.listo(function (sb) {
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         setTimeout(function (u) { return function () { URL.revokeObjectURL(u); }; }(url), 4000);
       } catch (err) {
-        // Si la descarga directa falla, abrimos la pública en una pestaña
-        window.open(urlPublica(rutas[i]), '_blank');
+        // Si la descarga directa falla, se abre en una pestaña con el
+        // enlace temporal que ya tenemos de pintar la miniatura.
+        if (ENLACES[rutas[i]]) window.open(ENLACES[rutas[i]], '_blank');
       }
       await new Promise(function (r) { setTimeout(r, 350); });
     }
@@ -191,11 +215,13 @@ APOLANA_ADMIN.listo(function (sb) {
       if (p.tipo === 'seccion' && p.seccion) de += ': ' + (SEC_T[p.seccion] || p.seccion);
       var quien = solicitantes[p.solicitante_id] || 'Alguien del club';
 
-      var galeria = (p.fotos || []).length
-        ? '<div class="galeria">' + p.fotos.map(function (ru) {
-            var u = urlPublica(ru);
-            return '<a href="#" data-foto="' + esc(u) + '"><img src="' + esc(u) + '" alt="" loading="lazy"></a>';
-          }).join('') + '</div>'
+      var minis = (p.fotos || []).map(function (ru) {
+        var u = ENLACES[ru];
+        if (!u) return '';
+        return '<a href="#" data-foto="' + esc(u) + '"><img src="' + esc(u) + '" alt="" loading="lazy"></a>';
+      }).join('');
+      var galeria = minis
+        ? '<div class="galeria">' + minis + '</div>'
         : '<p class="sin-fotos">Sin fotos.</p>';
 
       var opciones = ESTADOS.map(function (e) {
@@ -332,6 +358,11 @@ APOLANA_ADMIN.listo(function (sb) {
       var raa = await sb.from('atletas').select('id,nombre,apellidos').in('id', listaA);
       if (!raa.error) raa.data.forEach(function (x) { nombresAtleta[x.id] = ((x.nombre || '') + ' ' + (x.apellidos || '')).trim(); });
     }
+
+    // Enlaces temporales de todas las fotos, de una vez.
+    var rutas = [];
+    TODAS.forEach(function (p) { (p.fotos || []).forEach(function (ru) { if (rutas.indexOf(ru) === -1) rutas.push(ru); }); });
+    await firmarTodas(rutas);
 
     pintarFiltros();
     render();

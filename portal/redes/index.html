@@ -82,9 +82,46 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var wrap = document.getElementById('rd-wrap');
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   function $(id){ return document.getElementById(id); }
-  function urlPublica(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
   function fecha(ts){ if(!ts) return ''; try { return new Date(ts).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}); } catch(e){ return ''; } }
   function mb(b){ return (b/1048576).toFixed(1).replace('.',',') + ' MB'; }
+
+  /* Las fotos de las propuestas viven en su propio cubo PRIVADO: cada
+     persona manda sobre su carpeta y el club las ve para revisarlas.
+     Como es privado, para enseñarlas se pide un enlace que caduca solo
+     (migración 086). Las propuestas de antes tenían las fotos en el
+     cubo público «imagenes», dentro de «redes/»: esas se siguen viendo
+     por su ruta de siempre. */
+  var CUBO    = 'propuestas-redes';
+  var FIRMA_S = 3600;
+  function esAntigua(ruta){ return /^redes\//.test(String(ruta||'')); }
+  async function firmar(rutas){
+    var mapa = {}, nuevas = [];
+    (rutas || []).forEach(function (r) {
+      if (esAntigua(r)) mapa[r] = sb.storage.from('imagenes').getPublicUrl(r).data.publicUrl;
+      else if (nuevas.indexOf(r) === -1) nuevas.push(r);
+    });
+    if (nuevas.length) {
+      try {
+        var r = await sb.storage.from(CUBO).createSignedUrls(nuevas, FIRMA_S);
+        if (!r.error && r.data) r.data.forEach(function (f) { if (f && f.signedUrl) mapa[f.path] = f.signedUrl; });
+      } catch (e) { /* sin enlace no se pinta la miniatura; el texto sigue */ }
+    }
+    return mapa;
+  }
+
+  /* Un fallo de permisos no es un fallo de cobertura, y decirle a
+     alguien que revise su conexión cuando el problema es otro le hace
+     perder la tarde. Aquí se distinguen. */
+  function esDePermisos(err){
+    if (!err) return false;
+    var codigo = String(err.statusCode || err.status || '');
+    if (codigo === '401' || codigo === '403') return true;
+    var t = String(err.message || '') + ' ' + String(err.error || '');
+    return /row-level security|violates|policy|unauthorized|forbidden|not authorized|permission|denied/i.test(t);
+  }
+  function noExisteElSitio(err){
+    return !!err && /bucket not found|not found/i.test(String(err.message || '') + ' ' + String(err.error || ''));
+  }
 
   var SECCIONES = [
     { v:'escuela',          t:'Escuela' },
@@ -223,7 +260,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('rd-enviar').disabled = true;
     msg.className = 'msg'; msg.textContent = 'Enviando…';
 
-    // 1) Subir las fotos al bucket «imagenes», carpeta «redes/»
+    // 1) Subir las fotos al cubo de las propuestas, cada una en la
+    //    carpeta de quien la manda: «<id de usuario>/<archivo>».
     var rutas = [];
     var barra = $('rd-barra'), barraInt = $('rd-barra-int');
     if (elegidas.length) barra.classList.remove('oculto');
@@ -232,11 +270,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       msg.textContent = 'Subiendo foto ' + (i + 1) + ' de ' + elegidas.length + '…';
       var f = elegidas[i].file;
       var limpio = f.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
-      var ruta = 'redes/' + Date.now() + '-' + i + '-' + limpio;
-      var up = await sb.storage.from('imagenes').upload(ruta, f, { cacheControl: '3600', upsert: false });
+      var ruta = miId + '/' + Date.now() + '-' + i + '-' + limpio;
+      var up = await sb.storage.from(CUBO).upload(ruta, f, { cacheControl: '3600', upsert: false });
       if (up.error) {
         enviando = false; $('rd-enviar').disabled = false; barra.classList.add('oculto');
-        msg.className = 'msg error'; msg.textContent = 'No hemos podido subir «' + f.name + '». Puede ser tu conexión: inténtalo otra vez en un momento.';
+        // Las fotos que ya habían subido se retiran: si no se envía la
+        // propuesta, no tienen por qué quedarse ahí.
+        if (rutas.length) { try { await sb.storage.from(CUBO).remove(rutas); } catch (x) {} }
+        msg.className = 'msg error';
+        msg.textContent = (esDePermisos(up.error) || noExisteElSitio(up.error))
+          ? 'No hemos podido subir «' + f.name + '»: tu cuenta no tiene permiso para subir fotos aquí. No es tu conexión. Escríbenos y lo dejamos listo.'
+          : 'No hemos podido subir «' + f.name + '». Puede ser tu conexión: inténtalo otra vez en un momento.';
         return;
       }
       rutas.push(ruta);
@@ -259,8 +303,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if (ins.error) {
       // Si falla al guardar, retiramos las fotos para no dejar huérfanas.
-      if (rutas.length) { try { await sb.storage.from('imagenes').remove(rutas); } catch (x) {} }
-      msg.className = 'msg error'; msg.textContent = 'No hemos podido enviar la propuesta. Puede ser tu conexión: vuelve a intentarlo en un momento.';
+      if (rutas.length) { try { await sb.storage.from(CUBO).remove(rutas); } catch (x) {} }
+      msg.className = 'msg error';
+      msg.textContent = esDePermisos(ins.error)
+        ? 'No hemos podido enviar la propuesta: tu cuenta no tiene permiso para hacerlo. No es tu conexión. Escríbenos y lo dejamos listo.'
+        : 'No hemos podido enviar la propuesta. Puede ser tu conexión: vuelve a intentarlo en un momento.';
       return;
     }
 
@@ -280,8 +327,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .select('id,tipo,seccion,titulo,descripcion,fotos,estado,publicado_url,created_at')
       .order('created_at', { ascending: false });
     if (r.error) {
-      cont.innerHTML = APOLANA_UI.error('No hemos podido cargar tus propuestas',
-        'Puede ser tu conexión. Lo que has enviado sigue guardado; vuelve a intentarlo en un momento.');
+      cont.innerHTML = esDePermisos(r.error)
+        ? APOLANA_UI.error('No hemos podido cargar tus propuestas',
+            'Tu cuenta no tiene permiso para verlas. No es tu conexión: escríbenos y lo dejamos listo.')
+        : APOLANA_UI.error('No hemos podido cargar tus propuestas',
+            'Puede ser tu conexión. Lo que has enviado sigue guardado; vuelve a intentarlo en un momento.');
       return;
     }
     var data = r.data || [];
@@ -291,9 +341,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return;
     }
     var etTipo = { atleta:'Atleta', seccion:'Sección', evento:'Evento', resultado:'Resultado', otro:'Otro' };
+    var todas = [];
+    data.forEach(function (p) { (p.fotos || []).forEach(function (ru) { if (todas.indexOf(ru) === -1) todas.push(ru); }); });
+    var enlaces = await firmar(todas);
     cont.innerHTML = data.map(function (p) {
       var galeria = (p.fotos || []).map(function (ru) {
-        var u = urlPublica(ru);
+        var u = enlaces[ru];
+        if (!u) return '';
         return '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt="" loading="lazy"></a>';
       }).join('');
       var meta = [etTipo[p.tipo] || p.tipo, p.seccion || '', 'Enviada el ' + fecha(p.created_at)].filter(Boolean).join(' · ');

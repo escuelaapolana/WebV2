@@ -245,6 +245,68 @@
   .vacio { font-size:14px; color: var(--texto-suave); background:#fff; border:1px dashed var(--linea-borde);
            border-radius:14px; padding:22px 16px; text-align:center; }
   .oculto { display:none !important; }
+
+  /* ============================================================
+     MIS RESULTADOS · lo que ve un atleta o una familia
+     ------------------------------------------------------------
+     La misma prueba, medida cuatro veces al año, es una línea que
+     sube o baja: eso es lo que se viene a ver aquí. Así que cada
+     test se cuenta con su última marca (en monoespaciada, como a
+     pie de pista), la diferencia con la vez anterior y la forma de
+     todas las tomas al lado. Tocando se abre el detalle día a día.
+     Mismos ladrillos que la toma de datos: nada nuevo que aprender.
+     ============================================================ */
+  .rotulo { font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+            color: var(--texto-suave); margin:22px 0 8px; }
+  .mt { border-bottom:1px solid var(--linea); background:#fff; }
+  .mt:last-child { border-bottom:0; }
+  /* Dos líneas, no una: en 375 px el nombre de la prueba y su marca no
+     caben en la misma fila que el resto sin partirse por la mitad.
+     Arriba, qué y cuánto; abajo, cuántas veces y cómo va. */
+  .mt > .cab-mt { display:grid; grid-template-columns: 1fr auto auto; grid-template-rows:auto auto;
+                  column-gap:10px; row-gap:2px; align-items:center; width:100%; text-align:left;
+                  background:#fff; border:0; border-radius:0; padding:12px 14px; min-height:64px;
+                  font-family:inherit; cursor:pointer; }
+  .mt > .cab-mt:hover { background: var(--crema); }
+  .mt .nom { grid-column:1; grid-row:1; font-size:16px; font-weight:600; color: var(--navy); }
+  .mt .dato { grid-column:2; grid-row:1; justify-self:end; font-family: var(--fuente-dato);
+              font-size:21px; font-weight:700; color: var(--navy); font-variant-numeric: tabular-nums;
+              white-space:nowrap; }
+  .mt .dato u { font-family: var(--fuente-texto); text-decoration:none; font-size:13px;
+                font-weight:400; color: var(--texto-suave); margin-left:2px; }
+  .mt .dato.vacia { font-family: var(--fuente-texto); font-size:14px; font-weight:400; color: var(--texto-suave); }
+  .mt .cuando { grid-column:1; grid-row:2; font-size:13px; color: var(--texto-suave); }
+  .mt .comova { grid-column:2; grid-row:2; justify-self:end; display:flex; align-items:flex-end; gap:8px; margin-top:3px; }
+  .mt .abre { grid-column:3; grid-row:1 / span 2; font-style:normal; color: var(--texto-suave);
+              font-size:21px; line-height:1; transition: transform .15s ease; }
+  .mt[data-abierta="si"] .abre { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce){ .mt .abre { transition:none; } }
+  /* La forma de la progresión: una barra por toma, la última en navy.
+     Sin ejes ni números: es el gesto; el dato exacto está justo encima. */
+  .mt .linea { display:flex; align-items:flex-end; gap:3px; height:20px; width:52px; }
+  .mt .linea i { flex:1; min-width:3px; background:#C3CCD6; border-radius:3px 3px 0 0; }
+  .mt .linea i.ult { background: var(--navy); }
+  .mt .dif { font-family: var(--fuente-dato); font-size:13px; white-space:nowrap; }
+  .mt .dif.igual { font-family: var(--fuente-texto); }
+
+  .mt-detalle { padding:0 14px 14px; }
+  .mt-detalle .expl { font-size:13px; color: var(--texto-suave); line-height:1.5; margin:0 0 10px; }
+  .mt-toma { display:flex; align-items:baseline; gap:10px; padding:7px 0; border-top:1px solid var(--linea); }
+  .mt-toma .cuando { flex:1; min-width:0; font-size:14px; color: var(--texto); }
+  .mt-toma .cuando small { display:block; font-size:13px; color: var(--texto-suave); }
+  .mt-toma .valor { font-family: var(--fuente-dato); font-size:16px; font-weight:700; color: var(--navy);
+                    font-variant-numeric: tabular-nums; }
+  .mt-toma .valor u { font-family: var(--fuente-texto); text-decoration:none; font-size:13px;
+                      font-weight:400; color: var(--texto-suave); margin-left:2px; }
+  .mt-toma .dif { flex:0 0 68px; text-align:right; font-family: var(--fuente-dato); font-size:13px; }
+  .mt-toma .dif.igual { font-family: var(--fuente-texto); }
+  .mt-toma.sin .valor { font-family: var(--fuente-texto); font-size:14px; font-weight:400; color: var(--texto-suave); }
+
+  /* Aviso de papeles: quien además entrena no se queda sin saber
+     dónde está la toma de datos. */
+  .otro-papel { background: var(--crema-banda); border:1px solid var(--linea-borde); border-radius:14px;
+                padding:14px 16px; margin-top:18px; font-size:14px; color: var(--texto); line-height:1.55; }
+  .otro-papel b { color: var(--navy); }
 </style>
 <script>
 /* Avisos suaves del portal (APX), iguales que en el resto de pantallas. */
@@ -385,23 +447,284 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function claveRes(atletaId, k){ return atletaId+'|'+k; }
 
   // ============================================================
-  // 3 · CARGA INICIAL: grupos y baterías recientes
+  // 3 · ¿QUIÉN ESTÁ MIRANDO?
+  // ------------------------------------------------------------
+  // Una misma persona puede ser entrenadora y atleta con la misma
+  // cuenta, y actúa con un papel cada vez (`perfiles.rol_activo`).
+  // Manda el papel ACTIVO, no lo que la persona «es»: si está
+  // actuando como atleta, la base no le va a dejar crear una
+  // batería, así que enseñarle el formulario sería mentirle. Esta
+  // es la misma cuenta que hace `es_staff()` en la base de datos.
+  // ============================================================
+  var PAPELES_TECNICOS = ['admin','coordinador','entrenador','tesoreria','contabilidad','junta'];
+  var ROL = (perfil && (perfil.rol_activo || perfil.rol)) || '';
+  var TOMA_DATOS = PAPELES_TECNICOS.indexOf(ROL) !== -1;
+  // ¿Tiene además algún papel del equipo técnico, aunque ahora no lo
+  // esté usando? Entonces se le dice dónde está la toma de datos.
+  var TIENE_OTRO_PAPEL = !TOMA_DATOS && (perfil && perfil.roles || []).some(function(r){
+    return PAPELES_TECNICOS.indexOf(r) !== -1;
+  });
+
+  // Un fallo de permisos no es un fallo de cobertura. Decirle a
+  // alguien que mire la antena cuando lo que pasa es que ese papel no
+  // puede hacer eso le hace perder la tarde a pie de pista.
+  function esDePermisos(err){
+    if(!err) return false;
+    var t = String(err.message||'')+' '+String(err.code||'')+' '+String(err.details||'')+' '+String(err.hint||'');
+    return /row-level security|policy|permission|denied|not authorized|forbidden|42501/i.test(t);
+  }
+  var CAMBIA_DE_PAPEL = 'Esto lo hace el equipo técnico. Si tienes varios papeles, cambia arriba a entrenador y vuelve a darle.';
+  function porQue(err, siEsLaRed){ return esDePermisos(err) ? CAMBIA_DE_PAPEL : siEsLaRed; }
+
+  // ============================================================
+  // 4 · CARGA INICIAL
   // ============================================================
   async function arrancar(){
+    if(!TOMA_DATOS){
+      document.title = 'Mis tests · Portal Apolana';
+      await pantallaMisResultados();
+      return;
+    }
     var g = await sb.from('grupos').select('id,nombre,seccion,activo').order('nombre');
-    if(g.error){ pantallaError(); return; }
+    if(g.error){ pantallaError(g.error); return; }
     GRUPOS = (g.data||[]).filter(function(x){ return x.activo !== false; });
     await pantallaInicio();
   }
 
   // El fallo de carga va en ámbar y en llano, con salida. El mensaje
   // crudo de la base de datos no se enseña a pie de pista (28f).
-  function pantallaError(){
+  function pantallaError(err){
     wrap.innerHTML = '<div class="tt-pad"><a class="volver" href="../entrenador/"><i>←</i>Volver</a>'+
       '<h1>Batería de tests</h1>'+
-      APOLANA_UI.error('No hemos podido cargar los datos',
-        'Puede ser la cobertura de la pista. Vuelve a intentarlo; lo que ya estaba guardado no se pierde.')+
+      (esDePermisos(err)
+        ? APOLANA_UI.error('Esta pantalla es del equipo técnico',
+            'Con el papel que tienes puesto no se pueden ver las baterías. Si además entrenas, cambia arriba de papel y vuelve a entrar.')
+        : APOLANA_UI.error('No hemos podido cargar los datos',
+            'Puede ser la cobertura de la pista. Vuelve a intentarlo; lo que ya estaba guardado no se pierde.'))+
       '</div>';
+  }
+
+  // ============================================================
+  // 4 bis · MIS RESULTADOS · lo que ve un atleta o una familia
+  // ------------------------------------------------------------
+  // Aquí no se crea nada ni se le toman datos a nadie: se leen las
+  // marcas propias (y las de los hijos, si los hay). La barrera de
+  // verdad la pone la base —solo deja leer lo de `mis_atletas()`—;
+  // esta pantalla lo único que hace es no enseñar botones que iban
+  // a fallar.
+  // ============================================================
+  var MIS_FICHAS = [], FICHA = null, TOMAS = {}, ABIERTA = null;
+
+  function cabeceraMis(){
+    var propia = MIS_FICHAS.length === 1 && MIS_FICHAS[0].perfil_id === (perfil && perfil.id);
+    var titulo = (MIS_FICHAS.length > 1 || (MIS_FICHAS.length === 1 && !propia)) ? 'Tests' : 'Mis tests';
+    return '<a class="volver" href="../"><i>←</i>Volver al portal</a>'+
+           '<h1>'+titulo+'</h1>'+
+           '<p class="sub">Las pruebas físicas que toma el club —velocidad y saltos— con la última marca y cómo ha ido cambiando.</p>';
+  }
+
+  function avisoOtroPapel(){
+    if(!TIENE_OTRO_PAPEL) return '';
+    return '<div class="otro-papel"><b>¿Vienes a tomar datos?</b> Crear una batería y anotar marcas '+
+           'lo hace el equipo técnico. Cambia arriba a entrenador y esta misma pantalla se convierte en la toma de datos.</div>';
+  }
+
+  async function pantallaMisResultados(){
+    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+APOLANA_UI.cargando('filas', 5)+'</div>';
+
+    var miId = perfil && perfil.id ? perfil.id : null;
+    if(!miId){ pintarMis(APOLANA_UI.vacio('Todavía no encontramos tu ficha',
+      'Has entrado bien, pero tu cuenta aún no está enlazada con una ficha del club. Avísanos y lo dejamos listo.')); return; }
+
+    var ra = await sb.from('atletas')
+      .select('id,nombre,apellidos,categoria,perfil_id')
+      .or('perfil_id.eq.'+miId+',perfil_padre_id.eq.'+miId)
+      .order('nombre');
+    if(ra.error){
+      pintarMis(esDePermisos(ra.error)
+        ? APOLANA_UI.error('No podemos enseñarte los tests con este papel',
+            'Con el papel que tienes puesto no se pueden leer las fichas. Cambia arriba de papel y vuelve a entrar.')
+        : APOLANA_UI.error('No hemos podido cargar tus tests',
+            'Puede ser la conexión. Vuelve a intentarlo en un momento; tus marcas siguen guardadas.'));
+      return;
+    }
+    MIS_FICHAS = ra.data || [];
+    if(!MIS_FICHAS.length){
+      pintarMis(APOLANA_UI.vacio('Todavía no hay una ficha enlazada con tu cuenta',
+        'Los tests se guardan en la ficha de cada atleta. En cuanto el club enlace la tuya, aparecerán aquí.'));
+      return;
+    }
+    FICHA = MIS_FICHAS[0];
+
+    var rr = await sb.from('test_resultados')
+      .select('atleta_id,test,mejor,formato_rsi,no_asiste,test_baterias(fecha,sede)')
+      .in('atleta_id', MIS_FICHAS.map(function(f){ return f.id; }));
+    if(rr.error){
+      pintarMis(esDePermisos(rr.error)
+        ? APOLANA_UI.error('No podemos enseñarte las marcas con este papel',
+            'Con el papel que tienes puesto no se pueden leer los resultados. Cambia arriba de papel y vuelve a entrar.')
+        : APOLANA_UI.error('No hemos podido cargar tus marcas',
+            'Puede ser la conexión. Vuelve a intentarlo en un momento; tus marcas siguen guardadas.'));
+      return;
+    }
+    TOMAS = {};
+    (rr.data||[]).forEach(function(f){
+      var fe = f.test_baterias && f.test_baterias.fecha;
+      if(!fe) return;                       // sin día no hay nada que contar
+      (TOMAS[f.atleta_id] = TOMAS[f.atleta_id] || []).push({
+        test: f.test, mejor: (f.mejor==null?null:Number(f.mejor)),
+        formato: f.formato_rsi, falta: !!f.no_asiste,
+        fecha: String(fe).slice(0,10), sede: (f.test_baterias.sede||'')
+      });
+    });
+    pintarMisResultados();
+  }
+
+  // Envoltorio común: cabecera + lo que toque debajo.
+  function pintarMis(html){
+    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+html+avisoOtroPapel()+'</div>';
+  }
+
+  // Las tomas de un atleta agrupadas por prueba. El RSI de 6 saltos y
+  // el de 10 son dos pruebas distintas y no se mezclan.
+  function pruebasDe(fichaId){
+    var filas = (TOMAS[fichaId]||[]).slice().sort(function(a,b){ return a.fecha<b.fecha?-1:(a.fecha>b.fecha?1:0); });
+    var mapa = {}, orden = [];
+    filas.forEach(function(f){
+      var t = testPorClave(f.test);
+      var k = f.test + (t.serie ? '|'+(f.formato||6) : '');
+      if(!mapa[k]){ mapa[k] = { clave:k, t:t, formato:f.formato, tomas:[] }; orden.push(k); }
+      mapa[k].tomas.push(f);
+    });
+    // En el orden de la lista de tests, no en el que lleguen de la base.
+    orden.sort(function(a,b){
+      var ia = TESTS.indexOf(mapa[a].t), ib = TESTS.indexOf(mapa[b].t);
+      return ia===ib ? String(a).localeCompare(String(b)) : ia-ib;
+    });
+    return orden.map(function(k){ return mapa[k]; });
+  }
+
+  function nombrePrueba(p){
+    return p.t.serie ? (p.t.nombre+' · serie de '+(p.formato||6)) : p.t.nombre;
+  }
+
+  /* En la fila, al lado de una barra de 52 px, «igual que antes» ocupa
+     más que el propio dato. Aquí basta «igual»; la frase entera se lee
+     al abrir el detalle. */
+  function difMini(t, ahora, antes){
+    return difHTML(t, ahora, antes).replace('igual que antes','igual');
+  }
+
+  // La forma de la progresión. Cuanto más alta la barra, mejor marca:
+  // en los tiempos eso quiere decir MENOS segundos, así que se le da
+  // la vuelta. Se explica al abrir el detalle.
+  function htmlLinea(p){
+    var v = p.tomas.filter(function(x){ return !x.falta && x.mejor!=null; }).map(function(x){ return x.mejor; });
+    if(v.length < 2) return '';
+    var max = Math.max.apply(null,v), min = Math.min.apply(null,v);
+    var base = Math.max(0.0001, max-min);
+    var barras = v.map(function(x,i){
+      // Cuanto más alta la barra, mejor marca: en los tiempos eso es
+      // MENOS segundos, así que ahí se le da la vuelta. Nunca pasa de
+      // los 20 px de alto de la caja.
+      var bondad = p.t.menosMejor ? (max-x)/base : (x-min)/base;
+      var alto = Math.round(5 + bondad*15);
+      return '<i class="'+(i===v.length-1?'ult':'')+'" style="height:'+alto+'px"></i>';
+    }).join('');
+    return '<span class="linea" aria-hidden="true">'+barras+'</span>';
+  }
+
+  function htmlDetalle(p){
+    var expl = p.t.ayuda +
+      (p.tomas.filter(function(x){ return !x.falta && x.mejor!=null; }).length > 1
+        ? ' En las barras, cuanto más alta, mejor marca.' : '');
+    var filas = p.tomas.slice().reverse().map(function(x){
+      // La comparación es siempre con la toma ANTERIOR en el tiempo.
+      var i = p.tomas.indexOf(x), ant = null;
+      for(var j=i-1;j>=0;j--){ if(!p.tomas[j].falta && p.tomas[j].mejor!=null){ ant = p.tomas[j].mejor; break; } }
+      if(x.falta){
+        return '<div class="mt-toma sin"><span class="cuando">'+esc(fLarga(x.fecha))+
+               (x.sede?'<small>'+esc(x.sede)+'</small>':'')+'</span>'+
+               '<span class="valor">no fuiste</span><span class="dif"></span></div>';
+      }
+      return '<div class="mt-toma"><span class="cuando">'+esc(fLarga(x.fecha))+
+             (x.sede?'<small>'+esc(x.sede)+'</small>':'')+'</span>'+
+             '<span class="valor">'+conUnidad(x.mejor, p.t)+'</span>'+
+             '<span class="dif">'+(difMini(p.t, x.mejor, ant) || '<span class="dif igual">primera</span>')+'</span></div>';
+    }).join('');
+    return '<div class="mt-detalle"><p class="expl">'+esc(expl)+'</p>'+filas+'</div>';
+  }
+
+  function fLarga(iso){
+    var p = String(iso||'').slice(0,10).split('-');
+    if(p.length!==3) return String(iso||'');
+    return parseInt(p[2],10)+' '+MESES[parseInt(p[1],10)-1]+' '+p[0];
+  }
+
+  function pintarMisResultados(){
+    var chips = MIS_FICHAS.length > 1
+      ? '<div class="chips" style="padding-left:0;padding-right:0">'+MIS_FICHAS.map(function(f){
+          return '<button type="button" data-ficha="'+esc(f.id)+'"'+(f.id===FICHA.id?' class="activo"':'')+'>'+
+                 esc(f.nombre||nombreAt(f))+'</button>';
+        }).join('')+'</div>'
+      : '';
+
+    var pruebas = pruebasDe(FICHA.id);
+    var cuerpo;
+    if(!pruebas.length){
+      cuerpo = APOLANA_UI.vacio('Todavía no hay marcas de tests',
+        'Cuando el club tome la primera batería —30 metros, saltos y RSI— aparecerá aquí con su fecha, y luego podrás ver cómo vas de una a otra.');
+    } else {
+      var ultima = null;
+      pruebas.forEach(function(p){ p.tomas.forEach(function(x){ if(!ultima || x.fecha>ultima) ultima = x.fecha; }); });
+      var grupos = [];
+      pruebas.forEach(function(p){ if(grupos.indexOf(p.t.grupo)===-1) grupos.push(p.t.grupo); });
+
+      cuerpo = '<p class="sub" style="margin:0 0 14px">Última toma: '+esc(fLarga(ultima))+'.</p>' +
+        grupos.map(function(g){
+          return '<p class="rotulo">'+esc(g)+'</p><div class="caja-filas">'+
+            pruebas.filter(function(p){ return p.t.grupo===g; }).map(function(p){
+              var buenas = p.tomas.filter(function(x){ return !x.falta && x.mejor!=null; });
+              var ult = buenas.length ? buenas[buenas.length-1] : null;
+              var ant = buenas.length>1 ? buenas[buenas.length-2].mejor : null;
+              var dato = ult
+                ? '<span class="dato">'+conUnidad(ult.mejor, p.t)+'</span>'
+                : '<span class="dato vacia">sin marca</span>';
+              var pie = ult
+                ? (buenas.length===1 ? 'Una sola toma · '+fCorta(ult.fecha)
+                                     : buenas.length+' tomas · última el '+fCorta(ult.fecha))
+                : 'No has llegado a hacerlo';
+              var abierta = ABIERTA === p.clave;
+              return '<div class="mt" data-abierta="'+(abierta?'si':'no')+'">'+
+                '<button type="button" class="cab-mt" data-prueba="'+esc(p.clave)+'" aria-expanded="'+(abierta?'true':'false')+'">'+
+                  '<span class="nom">'+esc(nombrePrueba(p))+'</span>'+
+                  dato+
+                  '<span class="cuando">'+esc(pie)+'</span>'+
+                  '<span class="comova">'+htmlLinea(p)+(ult?difMini(p.t, ult.mejor, ant):'')+'</span>'+
+                  '<i class="abre" aria-hidden="true">›</i>'+
+                '</button>'+
+                (abierta ? htmlDetalle(p) : '')+
+              '</div>';
+            }).join('')+'</div>';
+        }).join('');
+    }
+
+    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+cuerpo+avisoOtroPapel()+'</div>';
+
+    wrap.querySelectorAll('[data-ficha]').forEach(function(b){
+      b.addEventListener('click', function(){
+        FICHA = MIS_FICHAS.filter(function(f){ return f.id===b.getAttribute('data-ficha'); })[0] || FICHA;
+        ABIERTA = null;
+        pintarMisResultados();
+      });
+    });
+    wrap.querySelectorAll('[data-prueba]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var k = b.getAttribute('data-prueba');
+        ABIERTA = (ABIERTA === k) ? null : k;
+        pintarMisResultados();
+      });
+    });
   }
 
   async function pantallaInicio(){
@@ -480,7 +803,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     };
     var r = await sb.from('test_baterias').insert(fila).select('id').single();
     if(r.error){ msg.className='guardado error';
-      msg.textContent = /row-level security|permission|policy/i.test(r.error.message||'')
+      msg.textContent = esDePermisos(r.error)
         ? 'Las baterías de tests las crea el equipo técnico. Si tienes varios papeles, cambia arriba a entrenador y vuelve a darle.'
         : 'No se ha podido crear la batería. Comprueba la cobertura y vuelve a darle.';
       return; }
@@ -497,14 +820,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var b = await sb.from('test_baterias')
       .select('id,fecha,grupo_id,sede,temperatura,viento,notas').eq('id',id).single();
-    if(b.error){ pantallaError(); return; }
+    if(b.error){ pantallaError(b.error); return; }
     BATERIA = b.data;
 
     var qa = sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id')
       .neq('estado','baja').order('apellidos').order('nombre');
     qa = BATERIA.grupo_id ? qa.eq('grupo_id', BATERIA.grupo_id) : qa.limit(200);
     var a = await qa;
-    if(a.error){ pantallaError(); return; }
+    if(a.error){ pantallaError(a.error); return; }
     ATLETAS = a.data || [];
 
     RES = {}; ANT = {};
@@ -679,7 +1002,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         notas: $('c-notas').value.trim() || null
       };
       var r = await sb.from('test_baterias').update(cambios).eq('id', BATERIA.id);
-      if(r.error){ m.className='guardado error'; m.textContent='No se han podido guardar las condiciones. Comprueba la cobertura y vuelve a darle.'; return; }
+      if(r.error){ m.className='guardado error';
+        m.textContent = porQue(r.error, 'No se han podido guardar las condiciones. Comprueba la cobertura y vuelve a darle.');
+        return; }
       Object.keys(cambios).forEach(function(k){ BATERIA[k]=cambios[k]; });
       aviso('Condiciones guardadas','ok');
       pintarToma();
@@ -1004,7 +1329,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .upsert(fila, { onConflict:'bateria_id,atleta_id,test' })
       .select('id,atleta_id,test,intentos,mejor,formato_rsi,no_asiste').single();
     if(r.error){
-      if(msg){ msg.className='guardado error'; msg.textContent='No se ha podido guardar este dato. Sigue sin cobertura; vuelve a tocar el número dentro de un momento.'; }
+      if(msg){ msg.className='guardado error';
+        msg.textContent = porQue(r.error, 'No se ha podido guardar este dato. Sigue sin cobertura; vuelve a tocar el número dentro de un momento.'); }
       return false;
     }
     RES[claveRes(ACTIVO.id, TEST.k)] = r.data;
@@ -1018,7 +1344,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(guardando){ clearTimeout(guardando); guardando = null; }
     if(f && f.no_asiste){
       var d = await sb.from('test_resultados').delete().eq('id', f.id);
-      if(d.error){ if(msg){ msg.className='guardado error'; msg.textContent='No se ha podido deshacer. Vuelve a intentarlo en un momento.'; } return; }
+      if(d.error){ if(msg){ msg.className='guardado error';
+        msg.textContent = porQue(d.error, 'No se ha podido deshacer. Vuelve a intentarlo en un momento.'); } return; }
       delete RES[claveRes(ACTIVO.id, TEST.k)];
       BORRADOR = BORRADOR.map(function(){ return ''; });
       POS = 0;
@@ -1031,7 +1358,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                 intentos:[], mejor:null, formato_rsi: TEST.serie?FORMATO_RSI:null, no_asiste:true },
               { onConflict:'bateria_id,atleta_id,test' })
       .select('id,atleta_id,test,intentos,mejor,formato_rsi,no_asiste').single();
-    if(r.error){ if(msg){ msg.className='guardado error'; msg.textContent='No se ha podido guardar. Vuelve a intentarlo en un momento.'; } return; }
+    if(r.error){ if(msg){ msg.className='guardado error';
+      msg.textContent = porQue(r.error, 'No se ha podido guardar. Vuelve a intentarlo en un momento.'); } return; }
     RES[claveRes(ACTIVO.id, TEST.k)] = r.data;
     BORRADOR = BORRADOR.map(function(){ return ''; });
     pintarHoja();
