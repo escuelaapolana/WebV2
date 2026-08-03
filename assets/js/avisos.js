@@ -336,17 +336,31 @@
   /* ---------------------------------------------------------------
      LOS INTERRUPTORES DE CADA UNO
      --------------------------------------------------------------- */
+  /* La fila que hay guardada, tal cual, o null si esta persona todavía no
+     ha tocado ningún interruptor.
+
+     Existe porque saber si la fila EXISTE no es lo mismo que saber qué
+     dice: sin fila mandan los valores de fábrica, y con fila manda lo que
+     ella eligió aunque coincida con los de fábrica. La pantalla de avisos
+     necesitaba las dos cosas y acababa preguntando dos veces por lo mismo,
+     una por aquí y otra por su cuenta. Ahora se pregunta una sola vez. */
+  async function preferenciasGuardadas() {
+    try {
+      var r = await db().from('avisos_preferencias').select('*').maybeSingle();
+      if (r && !r.error && r.data) return r.data;
+    } catch (e) { /* sin fila, o sin conexión */ }
+    return null;
+  }
+
   async function preferencias() {
     var salida = {};
     TIPOS.forEach(function (t) { salida[t.clave] = t.defecto; });
-    try {
-      var r = await db().from('avisos_preferencias').select('*').maybeSingle();
-      if (r && !r.error && r.data) {
-        TIPOS.forEach(function (t) {
-          if (typeof r.data[t.clave] === 'boolean') salida[t.clave] = r.data[t.clave];
-        });
-      }
-    } catch (e) { /* sin fila: valen los de fábrica */ }
+    var fila = await preferenciasGuardadas();
+    if (fila) {
+      TIPOS.forEach(function (t) {
+        if (typeof fila[t.clave] === 'boolean') salida[t.clave] = fila[t.clave];
+      });
+    }
     return salida;
   }
 
@@ -468,6 +482,7 @@
     activar: activar,                   /* SOLO desde un clic */
     desactivar: desactivar,
     preferencias: preferencias,
+    preferenciasGuardadas: preferenciasGuardadas,   /* la fila tal cual, o null */
     guardarPreferencias: guardarPreferencias,
     montar: montar,
     nombreAparato: nombreAparato

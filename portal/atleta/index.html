@@ -801,10 +801,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!av.error && av.data && av.data.length && av.data[0].texto) AVISO=av.data[0];
   } catch(e){}
 
+  /* ---------- MIS MARCAS, PEDIDAS UNA SOLA VEZ ----------
+     Esta pantalla pedía las marcas dos veces seguidas al abrirse: una para
+     saber tus mejores marcas (con ellas los «%» del entrenamiento se
+     convierten en TU tiempo) y otra, un renglón después, para pintar la
+     lista de la sección Marcas. Misma tabla, mismo atleta, dos viajes.
+     Ahora se piden una vez, con todos los campos que necesitan las dos, y
+     de la más reciente hacia atrás. Quien apunta una marca nueva sí vuelve
+     a preguntar: para eso está `olvidarMarcas()`. */
+  var MARCAS_PROM=null;
+  function pedirMarcas(){
+    if(!MARCAS_PROM){
+      MARCAS_PROM = sb.from('marcas_atleta')
+        .select('prueba,tiempo_display,tiempo_segundos,fecha,sede,tipo,contexto')
+        .eq('atleta_id',at.id).order('fecha',{ascending:false}).limit(200);
+    }
+    return MARCAS_PROM;
+  }
+  function olvidarMarcas(){ MARCAS_PROM=null; }
+
   // Mis mejores marcas: sirven para convertir los "%" del entreno en TU tiempo
   var ULTIMA=null;   // la marca más reciente, para la tarjeta de Inicio
   try {
-    var mm=await sb.from('marcas_atleta').select('prueba,tiempo_display,tiempo_segundos,fecha').eq('atleta_id',at.id).limit(200);
+    var mm=await pedirMarcas();
     if(!mm.error&&mm.data) mm.data.forEach(function(x){
       if(x.fecha && (!ULTIMA || x.fecha>ULTIMA.fecha)) ULTIMA=x;
       var seg = (x.tiempo_segundos!=null) ? Number(x.tiempo_segundos) : tiempoANum(x.tiempo_display);
@@ -1058,7 +1077,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     SEM[lunes]=lista;
     var ids=lista.map(function(s){ return s.id; });
     if(ids.length){ try {
-      var rg=await sb.from('registros_sesion').select('*').eq('atleta_id',at.id).in('sesion_id',ids);
+      /* Se piden los campos por su nombre, no `*`. Son los nueve que se
+         usan de verdad para rellenar el formulario de feedback; los otros
+         tres (id, atleta_id y la hora en que se guardó) no los mira nadie
+         en esta pantalla y viajaban por costumbre. */
+      var rg=await sb.from('registros_sesion')
+        .select('sesion_id,sensacion_general,rpe,tiempos_reales,como_me_siento,molestias,notas_atleta,horas_sueno,peso_kg')
+        .eq('atleta_id',at.id).in('sesion_id',ids);
       if(!rg.error && rg.data) rg.data.forEach(function(r){ REG[r.sesion_id]=r; });
     } catch(e){} }
     return lista;
@@ -1678,8 +1703,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   async function cargarMarcas(){
     var cont=$('marcas-cont'); cont.innerHTML=APOLANA_UI.cargando('filas',5);
-    var m=await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo,contexto').eq('atleta_id',at.id).order('fecha',{ascending:false}).limit(80);
+    var m=await pedirMarcas();
     if(m.error){
+      /* Si ha fallado, se olvida: si no, el botón de «volver a intentarlo»
+         devolvería el mismo error guardado en vez de preguntar de nuevo. */
+      olvidarMarcas();
       cont.innerHTML=htmlError('No hemos podido cargar tus marcas',
         'Puede ser tu conexión. Tus marcas siguen guardadas: solo hay que volver a pedirlas.', cargarMarcas);
       return;
@@ -1862,6 +1890,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(ins.error){ msg.textContent='Error: '+ins.error.message; msg.className='msg error'; return; }
     msg.textContent='Marca guardada ✓'; msg.className='msg ok';
     $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value=''; $('mk-contexto').value='';
+    // Acaba de haber una marca nueva: aquí SÍ hay que volver a preguntar.
+    olvidarMarcas();
     cargarMarcas();
   });
 

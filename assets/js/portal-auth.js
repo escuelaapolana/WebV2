@@ -19,7 +19,15 @@
   var _papeles = null;      // promesa cacheada con los papeles del usuario
   window.APOLANA_PORTAL = {
     listo: function (cb) { _cb = cb; }
-    /* papeles() se añade más abajo, cuando ya hay sesión */
+    /* Cuando ya hay sesión se añaden aquí abajo, y las pantallas del
+       portal pueden usarlas para NO volver a pedir lo que esta
+       pantalla de acceso ya ha pedido:
+         papeles()     promesa · las zonas que puede abrir
+         misAtletas()  promesa · { error, data } con su ficha, las de
+                       sus hijos y las de los atletas que entrena
+         grupos()      promesa · { error, data } con todos los grupos
+       Las dos últimas devuelven filas COMPARTIDAS: se leen, no se
+       tocan. Quien necesite cambiar un campo, que copie la fila. */
   };
   function base() { return window.APOLANA_BASE || '../'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
@@ -571,6 +579,72 @@
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
     };
 
+    /* --------------------------------------------------------
+       LO QUE SE PREGUNTA UNA SOLA VEZ
+
+       Al entrar en el portal se preguntaba dos veces lo mismo: esta
+       misma pantalla de acceso pedía las fichas de atleta y los
+       grupos para saber qué puertas ofrecer, y acto seguido la
+       pantalla de familia (o la de atleta) volvía a pedir
+       exactamente eso. Dos viajes a la base para el mismo dato, en
+       el momento en que la pantalla todavía está en blanco.
+
+       Ahora se pide UNA vez, aquí, y quien lo necesite lo lee de
+       estas dos funciones. La petición sale nada más entrar y no
+       espera a nadie: cuando la pantalla la pide, muchas veces ya
+       está de vuelta.
+
+       Las dos devuelven siempre { error: sí/no, data: [...] }.
+       El `error` importa: una lista vacía porque no hay hijos y una
+       lista vacía porque se ha caído la conexión NO se pueden
+       contar igual. Con la primera se dice «todavía no hay nadie
+       enlazado»; con la segunda, «no hemos podido cargar».
+
+       Las filas que devuelven se comparten con las pantallas: quien
+       las lea que NO las modifique. Si necesita cambiar algo (por
+       ejemplo añadir los días al nombre del grupo), que se haga una
+       copia.
+       -------------------------------------------------------- */
+    var _atletasProm = null, _gruposProm = null;
+
+    /* Las fichas de atleta que le tocan a quien ha entrado: la suya,
+       las de sus hijos y las de los atletas que entrena. Los campos
+       son la suma de lo que piden las pantallas de familia y atleta,
+       para que a ninguna le falte nada y no tenga que volver a
+       preguntar. */
+    function misAtletas(id) {
+      if (_atletasProm) return _atletasProm;
+      _atletasProm = (async function () {
+        if (!id) return { error: false, data: [] };
+        try {
+          var r = await sb.from('atletas')
+            .select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia,especialidades,perfil_id,perfil_padre_id,entrenador_id')
+            .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id)
+            .order('nombre');
+          if (r && r.error) return { error: true, data: [] };
+          return { error: false, data: (r && r.data) || [] };
+        } catch (e) { return { error: true, data: [] }; }
+      })();
+      return _atletasProm;
+    }
+
+    /* Todos los grupos del club. Son cuarenta y siete y su lectura es
+       pública: cabe entero en una sola petición y así vale para todo
+       (saber si esta persona lleva algún grupo, y poner el nombre y el
+       horario del grupo de un hijo sin preguntar otra vez). */
+    function grupos() {
+      if (_gruposProm) return _gruposProm;
+      _gruposProm = (async function () {
+        try {
+          var r = await sb.from('grupos')
+            .select('id,nombre,horario,turno,seccion,entrenador_id');
+          if (r && r.error) return { error: true, data: [] };
+          return { error: false, data: (r && r.data) || [] };
+        } catch (e) { return { error: true, data: [] }; }
+      })();
+      return _gruposProm;
+    }
+
     async function calcularPapeles(perfil) {
       var lista = [];
       if (!perfil || !perfil.id) return lista;
@@ -583,23 +657,24 @@
       var esEntrenador = (rol === 'entrenador');
       var hijos = [];
 
-      try {
-        var r = await sb.from('atletas')
-          .select('id,nombre,apellidos,perfil_id,perfil_padre_id,entrenador_id')
-          .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id);
-        if (r && !r.error && r.data) {
-          r.data.forEach(function (a) {
-            if (a.perfil_id === id) esAtleta = true;
-            if (a.perfil_padre_id === id) { esFamilia = true; if (a.nombre) hijos.push(a.nombre); }
-            if (a.entrenador_id === id) esEntrenador = true;
-          });
-        }
-      } catch (e) { /* sin permisos: se queda con el rol del perfil */ }
+      /* Las fichas y los grupos NO se piden aquí: se piden una sola vez
+         al arrancar (ver `misAtletas()` y `grupos()` más abajo) y esta
+         función se limita a leer lo que ya viene de camino. */
+      var r = await misAtletas(id);
+      if (!r.error) {
+        r.data.forEach(function (a) {
+          if (a.perfil_id === id) esAtleta = true;
+          if (a.perfil_padre_id === id) { esFamilia = true; if (a.nombre) hijos.push(a.nombre); }
+          if (a.entrenador_id === id) esEntrenador = true;
+        });
+      }
 
-      try {
-        var g = await sb.from('grupos').select('id').eq('entrenador_id', id);
-        if (g && !g.error && g.data && g.data.length) esEntrenador = true;
-      } catch (e) { /* grupos es de lectura pública; si falla, da igual */ }
+      var g = await grupos();
+      if (!g.error) {
+        for (var iG = 0; iG < g.data.length; iG++) {
+          if (g.data[iG].entrenador_id === id) { esEntrenador = true; break; }
+        }
+      }
 
       /* Quien lleva varios papeles actúa con UNO cada vez, y el activo manda
          también aquí. Los datos de arriba dicen qué papeles PODRÍA usar esta
@@ -705,6 +780,15 @@
       login.style.display = 'none';
       barra(perfil, email);
       if (cont) cont.style.display = '';
+
+      /* Las fichas y los grupos se piden YA, antes de dar paso a la
+         pantalla, y en paralelo: así van de camino mientras la
+         pantalla se pinta, y cuando ella los pida ya están. Se piden
+         una sola vez para toda la página. */
+      window.APOLANA_PORTAL.misAtletas = function () { return misAtletas(perfil && perfil.id); };
+      window.APOLANA_PORTAL.grupos = grupos;
+      misAtletas(perfil && perfil.id);
+      grupos();
 
       /* Los papeles se calculan en paralelo: la promesa está disponible
          desde el primer momento, pero no retrasa el pintado de la página. */
