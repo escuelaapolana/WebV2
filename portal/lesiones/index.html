@@ -137,7 +137,7 @@
     '.apx-ov.apx-in .apx-dlg{transform:none}'+
     '.apx-dlg-msg{margin:0 0 18px;font-family:var(--fuente-texto,system-ui);font-size:15px;line-height:1.5;color:var(--texto,#4A4437)}'+
     '.apx-dlg-btns{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}'+
-    '.apx-btn{font-family:var(--fuente-texto,system-ui);font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;border:1px solid var(--linea-borde,#E0D8C8);background:#fff;color:var(--navy,#2E4256);cursor:pointer;min-height:42px}'+
+    '.apx-btn{font-family:var(--fuente-texto,system-ui);font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;border:1px solid var(--linea-borde,#E0D8C8);background:#fff;color:var(--navy,#2E4256);cursor:pointer;min-height:44px}'+
     '.apx-btn:hover{border-color:#C9D9E7}'+
     '.apx-ok{background:var(--azul, #2F6FA8);border-color:var(--azul, #2F6FA8);color:#fff}'+
     '.apx-ok:hover{background:var(--azul-hover, #1E4E78)}'+
@@ -229,11 +229,41 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* ---------------- datos ---------------- */
   var ATLETAS = [], GRUPOS = {}, LESIONES = [], MOLESTIAS = [];
   var GESTIONO = [], MIAS = [];
-  var esAdmin = (perfil.rol === 'admin');
+  /* El papel con el que se está actuando ahora, no el de siempre: quien es
+     administrador pero ha entrado como atleta no debe ver aquí las lesiones
+     de todo el club. Misma cuenta que hace la base en `es_admin()`. */
+  var esAdmin = ((perfil.rol_activo || perfil.rol) === 'admin');
 
   var filtroGrupo = '', verTodos = false, ficha = null, editando = null, creando = false, msgGlobal = '';
   /* Un fallo de carga no se traga en silencio: se dice arriba, en ámbar (28f) */
   var falloCarga = false;
+
+  /* Y además, ninguna lista de esta pantalla dice «no hay nada» cuando lo que
+     ha pasado es que no se ha podido mirar: en lesiones, «no tiene ninguna
+     lesión abierta» es la frase con la que se manda a entrenar a alguien. */
+  function vacioOError(titulo, texto, accion){
+    if (!falloCarga) return APOLANA_UI.vacio(titulo, texto, accion);
+    return htmlError('No hemos podido comprobarlo',
+      'Puede ser tu conexión. Aquí falta información, así que no des por hecho que no hay nada: vuelve a intentarlo.',
+      reintentar);
+  }
+
+  /* Reintentar solo la consulta, sin recargar la página: si se recarga se
+     pierde la lesión que se esté escribiendo en el formulario. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn){
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function(ev){
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
+  async function reintentar(){ await cargar(); pintar(); }
 
   async function cargar(){
     falloCarga = false;
@@ -257,6 +287,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var rm = await sb.from('registros_sesion').select('atleta_id,molestias,created_at')
       .not('molestias','is', null).order('created_at', { ascending: false }).limit(80);
+    if (rm.error) falloCarga = true;
     MOLESTIAS = (rm.error ? [] : (rm.data || [])).filter(function(m){ return (m.molestias||'').trim().length > 1; });
   }
 
@@ -391,11 +422,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     h += '<h3>Ahora mismo</h3>';
     h += abiertas.length ? abiertas.map(function(l){ return tarjetaLesion(l, true); }).join('')
-                         : APOLANA_UI.vacio('No tiene ninguna lesión abierta',
+                         : vacioOError('No tiene ninguna lesión abierta',
                              'Ahora mismo puede entrenar con normalidad. Si aparece algo, se registra aquí y su ficha cambia sola.');
 
     h += '<h3>Historial</h3>';
-    if (!pasadas.length) h += APOLANA_UI.vacio('Todavía no hay lesiones cerradas',
+    if (!pasadas.length) h += vacioOError('Todavía no hay lesiones cerradas',
       'Cuando una lesión se dé de alta, pasará a esta lista con los días que estuvo fuera.');
     else {
       h += '<div class="tabla-scroll"><table class="ficha"><thead><tr><th>Zona</th><th>Tipo</th><th>Gravedad</th><th>Inicio</th><th>Alta</th><th>Días</th><th></th></tr></thead><tbody>' +
@@ -416,7 +447,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       ? '<div class="tabla-scroll"><table><tbody>' + mm.map(function(m){
           return '<tr><td style="white-space:nowrap;color:var(--texto-suave)">' + esc(fCorta(m.created_at)) + '</td><td>' + esc(m.molestias) + '</td></tr>';
         }).join('') + '</tbody></table></div>'
-      : APOLANA_UI.vacio('No ha apuntado ninguna molestia',
+      : vacioOError('No ha apuntado ninguna molestia',
           'Al terminar cada entreno se puede dejar dicho si algo ha molestado. Cuando lo haga, aparecerá aquí con la fecha.');
 
     h += '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">' +
@@ -463,9 +494,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if (!muestra.length) {
       h += verTodos
-        ? APOLANA_UI.vacio('En este grupo no hay atletas',
+        ? vacioOError('En este grupo no hay atletas',
             'Prueba con otro grupo, o pide a la coordinación que te asignen los atletas que llevas.')
-        : APOLANA_UI.vacio('Ahora mismo están todos disponibles',
+        : vacioOError('Ahora mismo están todos disponibles',
             'Nadie de tus grupos está tocado ni de baja. Buena señal: a entrenar.');
     } else {
       h += muestra.map(function(a){
@@ -512,7 +543,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<span class="msg" id="m-msg-' + a.id + '"></span>';
 
       h += '<h3>Mi historial</h3>';
-      if (!pasadas.length) h += APOLANA_UI.vacio('Todavía no hay lesiones cerradas',
+      if (!pasadas.length) h += vacioOError('Todavía no hay lesiones cerradas',
         'Aquí irán quedando las que se den de alta, con los días que estuviste fuera. Que siga vacío mucho tiempo.');
       else {
         var total = 0;
@@ -544,8 +575,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pintar(){
     var h = cabecera();
     if (falloCarga) {
-      h += '<div class="tarjeta">' + APOLANA_UI.error('No hemos podido cargar toda la información',
-        'Puede ser tu conexión, y es posible que falte algún atleta o alguna lesión de las listas.') + '</div>';
+      h += '<div class="tarjeta">' + htmlError('No hemos podido cargar toda la información',
+        'Puede ser tu conexión, y es posible que falte algún atleta o alguna lesión de las listas. ' +
+        'Mientras tanto no te fíes de esta pantalla para decidir quién entrena.', reintentar) + '</div>';
     }
     if (msgGlobal) h += '<div class="tarjeta"><p class="msg ok" style="margin:0">' + esc(msgGlobal) + '</p></div>';
 

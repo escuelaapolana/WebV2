@@ -489,10 +489,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var foco = 'todo';                    // 'todo' | 'competiciones' | 'mio'
   var fTipos = {}, fSecs = {}, soloAbiertas = false;
   var diaElegido = HOY_ISO;             // el día que se lee debajo de la rejilla del mes
-  var atletas = [], atleta = null;
+  var atletas = [], atleta = null, falloFichas = false;
   var GRUPOS = {}, SECCIONES = [];
   var ACTIVIDADES = [], PROXIMA = null;
-  var USOS_CUBO = 0, HAY_CUBO = false;
+  var USOS_CUBO = 0, HAY_CUBO = false, FALLO_BONO = false;
   var ventanaCargada = '';
   var modalClave = null, modalAviso = '';
   var ultimoFoco = null;
@@ -815,13 +815,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     // --- bonos ---
     USOS_CUBO = 0;
+    FALLO_BONO = false;
     if (atleta) {
       try {
         var rb = await sb.from('cubo_bono_saldo').select('activo,caducado,usos_disponibles').eq('atleta_id', atleta.id);
-        if (!rb.error && rb.data) rb.data.forEach(function (b) {
+        /* Decir «todavía no tienes bono» cuando ha fallado la consulta puede
+           acabar en un segundo bono comprado sin necesidad. */
+        if (rb.error) FALLO_BONO = true;
+        else (rb.data || []).forEach(function (b) {
           if (b.activo && !b.caducado) USOS_CUBO += (b.usos_disponibles || 0);
         });
-      } catch (e) { /* nada */ }
+      } catch (e) { FALLO_BONO = true; }
     }
   }
 
@@ -1142,6 +1146,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function pintarBonos() {
+    if (!atleta && falloFichas) {
+      return '<div class="bonos"><span class="eti">Tu bono de El Cubo</span>' +
+             '<span class="txt">No hemos podido cargar tu ficha: puede ser tu conexión. No significa que no la ' +
+             'tengas, solo que ahora no podemos enseñarte tu bono ni dejarte apuntarte. Vuelve a entrar en un ' +
+             'momento.</span></div>';
+    }
     if (!atleta) {
       return '<div class="bonos"><span class="eti">Tu bono de El Cubo</span>' +
              '<span class="txt">Tu cuenta todavía no está unida a ninguna ficha de atleta, así que aquí no ' +
@@ -1165,12 +1175,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</div>' +
         '<span class="txt">El bono es solo de El Cubo: cada clase gasta un uso. Los entrenamientos del club no gastan bono, ' +
         'y las competiciones se pagan en la web de quien las organiza, nunca aquí.</span>';
+    } else if (FALLO_BONO) {
+      h += '<span class="txt">No hemos podido consultar tu bono: puede ser tu conexión. Si tenías usos, ahí siguen. ' +
+        'Antes de sacar otro, entra otra vez y compruébalo.</span>';
     } else {
       h += '<span class="txt">Todavía no tienes bono. El bono es solo de El Cubo: se compra por usos y cada clase ' +
         'gasta uno. Los entrenamientos del club no gastan bono, y las competiciones se pagan en la web de quien ' +
         'las organiza.</span>';
     }
-    h += '<a href="../cubo/">' + (USOS_CUBO ? 'Ver mi bono de El Cubo' : 'Sacar un bono de El Cubo') + '</a></div>';
+    h += '<a href="../cubo/">' + (USOS_CUBO || FALLO_BONO ? 'Ver mi bono de El Cubo' : 'Sacar un bono de El Cubo') + '</a></div>';
     return h;
   }
 
