@@ -125,6 +125,7 @@
             <input type="text" id="r-competicion">
           </div>
         </div>
+        <p class="pista" style="margin-left:0;">Sede y competición no salen en esta tabla, pero sí en la web: acompañan al récord en el bloque de «Lo último» de la página de récords del club. Si pones competición, se enseña esa; si no, la sede.</p>
         <label for="r-orden">Orden (para ordenar la lista)</label>
         <input type="number" id="r-orden" step="1" placeholder="0">
         <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
@@ -144,16 +145,26 @@ APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
+  var COLS = 6;
+
   // --- Listar ---
   async function cargarRecords() {
     var tb = $('tabla-records').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="6" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr>';
+    tb.innerHTML = ADM.filaCargando(COLS);
     var r = await sb.from('records_club')
       .select('id,prueba,categoria,marca,atleta,anyo,nombre_publico')
       .order('orden', { ascending: true })
       .order('prueba', { ascending: true });
-    if (r.error) { tb.innerHTML = '<tr><td colspan="6">Error: ' + esc(r.error.message) + '</td></tr>'; return; }
-    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="6">No hay récords todavía.</td></tr>'; return; }
+    /* Si la lectura falla, «no hay récords todavía» sería mentira: se dice que
+       no se ha podido leer y se ofrece volver a intentarlo. */
+    if (r.error) { tb.innerHTML = ADM.filaError(COLS, r.error.message, cargarRecords); return; }
+    if (!(r.data || []).length) {
+      tb.innerHTML = ADM.filaVacia(COLS, 'Todavía no hay récords',
+        'Apunta el primero con el botón de arriba: prueba, marca, atleta y año.',
+        '<button type="button" class="btn btn--primario btn--mini" data-primero>+ Nuevo récord</button>',
+        '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M12 14v4"/><path d="M8.5 20h7"/>');
+      return;
+    }
     tb.innerHTML = r.data.map(function (n) {
       return '<tr>' +
         '<td>' + esc(n.prueba) + '</td>' +
@@ -193,6 +204,7 @@ APOLANA_ADMIN.listo(function (sb) {
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
 
   $('tabla-records').addEventListener('click', async function (e) {
+    if (e.target.closest('[data-primero]')) { abrirForm(); return; }
     var ed = e.target.getAttribute('data-editar');
     var bo = e.target.getAttribute('data-borrar');
     if (ed) {

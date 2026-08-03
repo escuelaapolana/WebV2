@@ -101,10 +101,19 @@
      «Madre Tierra». El prefijo con el nombre de la sección sobra. */
   function conceptoCorto(concepto, titulo) {
     var c = limpio(concepto), t = limpio(titulo);
-    if (!t || c.toLowerCase().indexOf(t.toLowerCase() + ' · ') !== 0) return c;
-    var resto = c.slice(t.length + 3).trim();
-    if (!resto) return c;
-    return resto.charAt(0).toUpperCase() + resto.slice(1);
+    if (!t) return c;
+    /* Se prueba con el título entero («El Cubo · alquiler a grupos») y
+       también con su primera palabra, porque en la base las tarifas de la
+       escuela se llaman «Escuela · nacidos 2016 – 2023» y el título de la
+       página es «Escuela de atletismo». */
+    var prefijos = [t, t.split(' ')[0]];
+    for (var i = 0; i < prefijos.length; i++) {
+      var p = prefijos[i];
+      if (!p || c.toLowerCase().indexOf(p.toLowerCase() + ' · ') !== 0) continue;
+      var resto = c.slice(p.length + 3).trim();
+      if (resto) return resto.charAt(0).toUpperCase() + resto.slice(1);
+    }
+    return c;
   }
 
   function vacio(texto) { return nodo('p', 'sec-vacio', texto); }
@@ -120,7 +129,11 @@
         if (el && limpio(par[1])) el.textContent = limpio(par[1]);
       });
 
-    var img = document.getElementById('cs-hero-img');
+    /* La foto de la cabecera es #cs-hero-img en las páginas que la traen en
+       su propio HTML, y .pag-hero-foto en las que usan la cabecera oscura
+       compartida. Se busca la de siempre y, si no está, la de la cabecera:
+       así vale para las dos formas sin tocar nada más. */
+    var img = document.getElementById('cs-hero-img') || document.querySelector('.pag-hero-foto');
     if (!img) return;
     if (limpio(ficha.imagen_url)) img.src = limpio(ficha.imagen_url);
     /* El encuadre lo elige el club en el panel; aquí no se decide nada. */
@@ -160,8 +173,13 @@
 
     /* «Para quién» no se repite aquí: ya lo dice el antetítulo, dos dedos
        más arriba. Cada cosa se dice una vez. */
-    if (datos.grupos.length) {
+    /* Hasta tres grupos caben con su nombre; de cuatro en adelante la fila
+       se convierte en un párrafo y deja de ser «de un vistazo». Entonces
+       se dice cuántos son y punto: los nombres están dos dedos más abajo. */
+    if (datos.grupos.length && datos.grupos.length <= 3) {
       trozos.appendChild(fila(datos.grupos.length === 1 ? 'Grupo' : 'Grupos', nombresDeGrupos(datos.grupos)));
+    } else if (datos.grupos.length) {
+      trozos.appendChild(fila('Grupos', datos.grupos.length + ' grupos por nivel'));
     }
 
     /* Entrenamiento: el precio más bajo de la sección, o el texto que
@@ -242,6 +260,13 @@
        escrita arriba, en «De un vistazo»: aquí sonaría a repetición. */
     var hayNumero = datos.tarifas.some(function (t) { return importeDe(t).esNumero; });
 
+    /* Cuando todas las tarifas repiten la MISMA nota («recibo domiciliado
+       del 1 al 5»), se dice una vez debajo de la tabla y no tres veces
+       seguidas, que es como se lee en un contrato y no en una web. */
+    var notas = datos.tarifas.map(function (t) { return limpio(t.notas); });
+    var notaComun = (datos.tarifas.length > 1 && notas[0] && notas.every(function (n) { return n === notas[0]; }))
+      ? notas[0] : '';
+
     if (!datos.tarifas.length) {
       caja.appendChild(vacio('El precio de esta sección todavía no está publicado. Escríbenos y te lo decimos.'));
     } else {
@@ -251,7 +276,8 @@
         var imp = importeDe(t);
         var que = nodo('div', 'que');
         que.appendChild(nodo('span', 'concepto', conceptoCorto(t.concepto, titulo)));
-        var detalle = [limpio(t.dias), hayNumero ? limpio(t.notas) : ''].filter(Boolean).join(' · ');
+        var propia = (limpio(t.notas) === notaComun) ? '' : limpio(t.notas);
+        var detalle = [limpio(t.dias), hayNumero ? propia : ''].filter(Boolean).join(' · ');
         if (detalle) que.appendChild(nodo('span', 'detalle', detalle));
         f.appendChild(que);
 
@@ -266,6 +292,7 @@
         lista.appendChild(f);
       });
       caja.appendChild(lista);
+      if (notaComun) caja.appendChild(nodo('p', 'sec-nota', notaComun));
     }
 
     /* La cuota de socio no está dentro del precio del entrenamiento:
@@ -280,27 +307,51 @@
       caja.appendChild(suma);
       if (limpio(datos.socio.notas)) caja.appendChild(nodo('p', 'sec-nota', limpio(datos.socio.notas)));
     }
+
+    /* La letra pequeña de la sección: descuentos, quién tiene precio de
+       socio, cómo se amplían los días… Lo escribe el club en Panel →
+       Páginas, casilla «Nota del precio». Si está vacía, no sale nada. */
+    var nota = limpio(datos.ficha && datos.ficha.precio);
+    if (nota) {
+      lineas(nota).forEach(function (linea) {
+        caja.appendChild(nodo('p', 'sec-nota', linea));
+      });
+    }
   }
 
   /* ---------------------------------------------------------
      6 · Qué incluye
      --------------------------------------------------------- */
-  function pintaIncluye(caja, datos) {
-    var puntos = lineas(datos.ficha && datos.ficha.puntos_destacados);
-    var banda = caja.closest('.sec-banda');
-    if (!puntos.length) { if (banda) banda.hidden = true; return; }
-    if (banda) banda.hidden = false;
-    caja.textContent = '';
+  function listaDePuntos(titulo, puntos, marca) {
+    var col = nodo('div', 'sec-banda__col');
+    col.appendChild(nodo('h2', 'titulo titulo--grande', titulo));
     var lista = nodo('div', 'sec-banda__lista');
     puntos.forEach(function (p) {
       var f = nodo('div', 'sec-punto');
-      var marca = nodo('span', 'marca', '✓');
-      marca.setAttribute('aria-hidden', 'true');
-      f.appendChild(marca);
+      var m = nodo('span', 'marca', marca);
+      m.setAttribute('aria-hidden', 'true');
+      f.appendChild(m);
       f.appendChild(nodo('span', null, p));
       lista.appendChild(f);
     });
-    caja.appendChild(lista);
+    col.appendChild(lista);
+    return col;
+  }
+
+  function pintaIncluye(caja, datos) {
+    var incluye = lineas(datos.ficha && datos.ficha.puntos_destacados);
+    var traer   = lineas(datos.ficha && datos.ficha.que_traer);
+    var banda = caja.closest('.sec-banda');
+
+    /* Sin nada que decir, el bloque entero desaparece. Ni recuadro vacío
+       ni «pendiente»: si el club no lo ha escrito, aquí no hay bloque. */
+    if (!incluye.length && !traer.length) { if (banda) banda.hidden = true; return; }
+    if (banda) banda.hidden = false;
+
+    caja.textContent = '';
+    caja.classList.toggle('sec-banda__dos', incluye.length > 0 && traer.length > 0);
+    if (incluye.length) caja.appendChild(listaDePuntos('Qué incluye', incluye, '✓'));
+    if (traer.length)   caja.appendChild(listaDePuntos('Qué traer', traer, '·'));
   }
 
   /* --------------------------------------------------------- */
@@ -330,24 +381,32 @@
 
     Promise.all([
       db.from('contenido_secciones')
-        .select('titulo,dirigido_a,descripcion,puntos_destacados,imagen_url,imagen_encuadre,imagen_zoom')
+        .select('titulo,dirigido_a,descripcion,precio,puntos_destacados,que_traer,imagen_url,imagen_encuadre,imagen_zoom')
         .eq('seccion', clave).limit(1),
       db.from('grupos')
         .select('nombre,horario,descripcion')
         .eq('seccion', clave).eq('activo', true).order('nombre'),
       db.from('tarifas')
-        .select('clave,concepto,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
+        .select('clave,ambito,concepto,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
         .eq('activo', true).or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden')
     ]).then(function (res) {
       var rf = res[0], rg = res[1], rt = res[2];
       if (rf.error || rg.error || rt.error) throw new Error('lectura');
 
       var todas = rt.data || [];
+      var propias = todas.filter(function (t) { return t.clave !== 'cuota-socio'; });
+
+      /* La cuota de socio es de los adultos del club. En las escuelas la
+         cuota de la temporada lo incluye todo y NO se es socio por
+         apuntar a un hijo: sumarla aquí sería cobrar de más en la
+         cabeza de quien lee. Se sabe por el ámbito de sus tarifas. */
+      var deEscuela = propias.length && propias.every(function (t) { return limpio(t.ambito) === 'escuela'; });
+
       var datos = {
         ficha:   (rf.data || [])[0] || null,
         grupos:  rg.data || [],
-        tarifas: todas.filter(function (t) { return t.clave !== 'cuota-socio'; }),
-        socio:   todas.filter(function (t) { return t.clave === 'cuota-socio'; })[0] || null
+        tarifas: propias,
+        socio:   deEscuela ? null : (todas.filter(function (t) { return t.clave === 'cuota-socio'; })[0] || null)
       };
 
       pintaCabecera(datos.ficha);

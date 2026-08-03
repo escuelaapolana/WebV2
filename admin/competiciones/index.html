@@ -67,9 +67,12 @@
   .pill-no { background: var(--crema-media); color: var(--texto-suave); }
   .pill-aviso { background: #fdf1e3; color: #9a5b12; }
 
-  .saldo-ok { color: #1e7a3d; font-weight: 600; }
-  .saldo-mal { color: #B0563A; font-weight: 700; }
-  .aviso-rojo { color: #B0563A; font-size: 13px; display: block; }
+  /* Las explicaciones largas van plegadas: se leen una vez y estorban el resto */
+  details.explica { margin: 0 0 12px; }
+  details.explica > summary { display: inline-flex; align-items: center; min-height: 44px;
+    cursor: pointer; font-size: 14px; font-weight: 600; color: var(--azul-oscuro); }
+  details.explica > summary::marker { color: var(--texto-suave); }
+  details.explica .intro { margin: 4px 0 0; }
 
   .barra-acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
   .resumen { font-size: 14px; color: var(--texto-suave); }
@@ -85,7 +88,10 @@
     <!-- ===== LISTA DE COMPETICIONES ===== -->
     <div class="panel">
       <h2>Competiciones</h2>
-      <p class="intro" style="margin-bottom:10px;">Publica la competición con el enlace donde se inscriben, el coste y hasta cuándo se puede apuntar. Los atletas van a inscribirse a la web de la organización; en el portal solo le dicen al club que van, y tú lo confirmas aquí.</p>
+      <details class="explica">
+        <summary>Cómo funciona esto</summary>
+        <p class="intro">Publica la competición con el enlace donde se inscriben, el coste y hasta cuándo se puede apuntar. Los atletas van a inscribirse a la web de la organización; en el portal solo le dicen al club que van, y tú lo confirmas aquí.</p>
+      </details>
       <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nueva-comp">+ Nueva competición</button></div>
       <div style="overflow-x:auto;">
         <table id="tabla-comps">
@@ -171,7 +177,7 @@
       </div>
       <div style="overflow-x:auto;">
         <table id="tabla-inscritos">
-          <thead><tr><th>Atleta</th><th>Cat.</th><th>Prueba</th><th>Mejor marca</th><th>Marca acreditada</th><th>Bono</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Atleta</th><th>Cat.</th><th>Prueba</th><th>Mejor marca</th><th>Marca acreditada</th><th>Estado</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -200,20 +206,18 @@ APOLANA_ADMIN.listo(function (sb) {
   // Si pegan "www.algo.es/inscripcion" lo dejamos utilizable como enlace
   function enlaceLimpio(v){ v=(v==null?'':String(v)).trim(); if(!v) return null; if(!/^(https?:)?\/\//i.test(v)) v='https://'+v.replace(/^\/+/,''); return v; }
 
+  var COLS_COMP = 8;   // columnas de la tabla de competiciones
+  var COLS_INS  = 7;   // columnas de la tabla de inscritos
+
   var CATALOGO = {};   // nombre de prueba -> ficha del catálogo
-  var ATLETAS = [];    // para el desplegable del bono
   var compActual = null;
 
   // =========================================================
-  // CATÁLOGO Y ATLETAS (para saber si "más es mejor" y recargar bono)
+  // CATÁLOGO DE PRUEBAS (para saber si en esa prueba "más es mejor")
   // =========================================================
   async function cargarAuxiliares(){
     var p = await sb.from('pruebas').select('nombre,disciplina,ambito,unidad,mas_es_mejor').eq('activa', true).order('orden');
     if (!p.error && p.data) p.data.forEach(function(x){ CATALOGO[x.nombre] = x; });
-    var a = await sb.from('atletas').select('id,nombre,apellidos,categoria').order('apellidos');
-    if (!a.error && a.data) {
-      ATLETAS = a.data;
-    }
   }
   function masEsMejor(prueba){
     var p = CATALOGO[prueba];
@@ -226,17 +230,27 @@ APOLANA_ADMIN.listo(function (sb) {
   // =========================================================
   async function cargarComps(){
     var tb = $('tabla-comps').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="8" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr>';
+    tb.innerHTML = ADM.filaCargando(COLS_COMP);
     var r = await sb.from('competiciones')
       .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta')
       .order('fecha_inicio', { ascending: false });
-    if (r.error) { tb.innerHTML = '<tr><td colspan="8">Error: '+esc(r.error.message)+'</td></tr>'; return; }
-    if (!r.data.length) { tb.innerHTML = '<tr><td colspan="8">Todavía no hay competiciones. Crea la primera arriba.</td></tr>'; return; }
+    /* Un fallo de lectura no puede leerse como «no hay competiciones». */
+    if (r.error) { tb.innerHTML = ADM.filaError(COLS_COMP, r.error.message, cargarComps); return; }
+    if (!(r.data || []).length) {
+      tb.innerHTML = ADM.filaVacia(COLS_COMP, 'Todavía no hay competiciones',
+        'Crea la primera con el botón de arriba: nombre, fecha y enlace de inscripción.',
+        '<button type="button" class="btn btn--primario btn--mini" data-primera>+ Nueva competición</button>',
+        '<path d="M4 4v16"/><path d="M4 5.5h13l-2.5 4 2.5 4H4"/>');
+      return;
+    }
 
     // cuántos apuntados/confirmados hay en cada una
-    var conteo = {};
+    var conteo = {}, conteoRoto = false;
     var ins = await sb.from('competicion_atleta').select('competicion_id,estado,atleta_id');
-    if (!ins.error && ins.data) ins.data.forEach(function(x){
+    /* Si el recuento no se puede leer, la columna dice que no se sabe: poner
+       «0 atletas» haría creer que no va nadie cuando puede ir media pista. */
+    if (ins.error) conteoRoto = true;
+    else (ins.data || []).forEach(function(x){
       if (x.estado === 'cancelada') return;
       var c = conteo[x.competicion_id] || (conteo[x.competicion_id] = { total:0, conf:0, atletas:{} });
       c.total++; if (x.estado === 'confirmada') c.conf++;
@@ -258,7 +272,9 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td>'+eur(c.coste)+'</td>' +
         '<td>'+fechaTxt(c.fecha_limite_interna)+'</td>' +
         '<td>'+estado+'</td>' +
-        '<td>'+plural(nAtl,'atleta','atletas')+'<br><span class="resumen">'+plural(k.total,'prueba','pruebas')+' · '+plural(k.conf,'confirmada','confirmadas')+'</span></td>' +
+        '<td>' + (conteoRoto
+          ? '<span class="resumen">no se ha podido contar</span>'
+          : plural(nAtl,'atleta','atletas')+'<br><span class="resumen">'+plural(k.total,'prueba','pruebas')+' · '+plural(k.conf,'confirmada','confirmadas')+'</span>') + '</td>' +
         '<td class="acciones-fila">' +
           '<button class="btn btn--primario btn--mini" data-inscritos="'+c.id+'">Inscritos</button>' +
           '<button class="btn btn--fantasma btn--mini" data-editar="'+c.id+'">Editar</button>' +
@@ -335,6 +351,7 @@ APOLANA_ADMIN.listo(function (sb) {
   // ACCIONES DE LA TABLA DE COMPETICIONES
   // =========================================================
   $('tabla-comps').addEventListener('click', async function(e){
+    if (e.target.closest('[data-primera]')) { abrirForm(); return; }
     var ed = e.target.getAttribute('data-editar');
     var bo = e.target.getAttribute('data-borrar');
     var ins = e.target.getAttribute('data-inscritos');
@@ -362,12 +379,18 @@ APOLANA_ADMIN.listo(function (sb) {
     panel.classList.remove('oculto');
     panel.scrollIntoView({ behavior: 'smooth' });
     var tb = $('tabla-inscritos').querySelector('tbody');
-    tb.innerHTML = '<tr><td colspan="8" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr>';
+    tb.innerHTML = ADM.filaCargando(COLS_INS);
     $('msg-ins').textContent = '';
     $('lista-copiar').classList.add('oculto');
 
+    /* Si la consulta falla no se puede decir «no hay nadie apuntado»: se dice
+       que no se ha podido leer, y se ofrece volver a intentarlo. */
     var c = await sb.from('competiciones').select('*').eq('id', compId).single();
-    if (c.error) { tb.innerHTML = '<tr><td colspan="8">Error: '+esc(c.error.message)+'</td></tr>'; return; }
+    if (c.error) {
+      $('ins-resumen').textContent = '';
+      tb.innerHTML = ADM.filaError(COLS_INS, c.error.message, function(){ verInscritos(compId); });
+      return;
+    }
     compActual = c.data;
     $('ins-titulo').textContent = 'Inscritos · ' + compActual.nombre;
 
@@ -375,19 +398,25 @@ APOLANA_ADMIN.listo(function (sb) {
       .select('id,atleta_id,prueba,estado,marca_acreditada,created_at,atletas(nombre,apellidos,categoria,licencia)')
       .eq('competicion_id', compId)
       .order('prueba');
-    if (r.error) { tb.innerHTML = '<tr><td colspan="8">Error: '+esc(r.error.message)+'</td></tr>'; return; }
+    if (r.error) {
+      $('ins-resumen').textContent = '';
+      tb.innerHTML = ADM.filaError(COLS_INS, r.error.message, function(){ verInscritos(compId); });
+      return;
+    }
     filasIns = r.data || [];
 
     if (!filasIns.length) {
       $('ins-resumen').innerHTML = 'Coste por atleta: <b>'+eur(compActual.coste)+'</b> · Nadie se ha apuntado todavía.';
-      tb.innerHTML = '<tr><td colspan="8">Todavía no hay nadie apuntado.</td></tr>';
+      tb.innerHTML = ADM.filaVacia(COLS_INS, 'Todavía no hay nadie apuntado',
+        'Cuando alguien diga en el portal que va, aparecerá aquí para que lo confirmes.',
+        '', '<path d="M4 19.5c1.8-3.2 4.6-4.8 8-4.8s6.2 1.6 8 4.8"/><circle cx="12" cy="8" r="3.7"/>');
       return;
     }
 
     var ids = []; filasIns.forEach(function(x){ if (ids.indexOf(x.atleta_id) < 0) ids.push(x.atleta_id); });
 
-    // Mejores marcas de cada atleta (el bono no aplica: es solo de El Cubo)
-    var saldos = {}, marcas = {};
+    // Mejores marcas de cada atleta
+    var marcas = {};
     var m = await sb.from('marcas_atleta').select('atleta_id,prueba,tiempo_display,fecha').in('atleta_id', ids);
     if (!m.error && m.data) m.data.forEach(function(x){
       var k = x.atleta_id + '||' + x.prueba;
@@ -398,15 +427,13 @@ APOLANA_ADMIN.listo(function (sb) {
     });
 
     var coste = parseFloat(compActual.coste) || 0;
-    var nConf = 0, nPend = 0, sinSaldo = 0;
+    var nConf = 0, nPend = 0;
 
     tb.innerHTML = filasIns.map(function(x){
       var a = x.atletas || {};
       var nom = ((a.nombre||'')+' '+(a.apellidos||'')).trim() || '(atleta)';
-      var saldo = saldos[x.atleta_id] != null ? saldos[x.atleta_id] : 0;
-      var falta = saldo < coste;
       if (x.estado === 'confirmada') nConf++;
-      else if (x.estado === 'apuntado') { nPend++; if (falta) sinSaldo++; }
+      else if (x.estado === 'apuntado') nPend++;
       var mm = marcas[x.atleta_id + '||' + x.prueba];
       var estadoHtml = x.estado === 'confirmada'
         ? '<span class="pill-estado pill-si">Confirmada</span>'
@@ -421,7 +448,6 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td>'+esc(x.prueba||'—')+'</td>' +
         '<td>'+(mm ? esc(mm.disp)+'<br><span class="resumen">'+esc(mm.fecha||'')+'</span>' : '<span class="resumen">sin marca</span>')+'</td>' +
         '<td><input type="text" value="'+esc(x.marca_acreditada||'')+'" data-marca="'+x.id+'" placeholder="—" style="padding:6px 8px;font-size:13px;"></td>' +
-        '<td><span class="'+(falta?'saldo-mal':'saldo-ok')+'">'+eur(saldo)+'</span>'+(falta && x.estado!=='confirmada' ? '<span class="aviso-rojo">saldo insuficiente</span>' : '')+'</td>' +
         '<td>'+estadoHtml+'</td>' +
         '<td class="acciones-fila">'+acciones+'</td>' +
       '</tr>';
@@ -430,8 +456,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('ins-resumen').innerHTML =
       'Coste por atleta: <b>'+eur(coste)+'</b> · <b>'+ids.length+'</b> ' + (ids.length === 1 ? 'atleta' : 'atletas') +
       ', <b>'+filasIns.length+'</b> ' + (filasIns.length === 1 ? 'inscripción a una prueba' : 'inscripciones a pruebas') + ' · ' +
-      '<b>'+nConf+'</b> ' + (nConf === 1 ? 'confirmada' : 'confirmadas') + ', <b>'+nPend+'</b> ' + (nPend === 1 ? 'pendiente' : 'pendientes') +
-      (sinSaldo ? ' · <span class="saldo-mal">'+sinSaldo+' sin saldo suficiente</span>' : '');
+      '<b>'+nConf+'</b> ' + (nConf === 1 ? 'confirmada' : 'confirmadas') + ', <b>'+nPend+'</b> ' + (nPend === 1 ? 'pendiente' : 'pendientes');
   }
 
   // Confirmar la inscripción. NO toca ningún bono: el bono es solo de El Cubo
