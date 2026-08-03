@@ -401,8 +401,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const mensaje = recortar(cuerpo.cuerpo ?? cuerpo.texto, 200);
   const enlacePedido = enlaceSeguro(cuerpo.url);
   const categoria = String(cuerpo.categoria ?? "entrenos");
-  const rol = cuerpo.rol ? String(cuerpo.rol) : null;
-  const perfilId = cuerpo.perfil_id ? String(cuerpo.perfil_id) : null;
   const soloPrueba = cuerpo.prueba === true;
 
   const nivel = String(cuerpo.nivel ?? "informativo").toLowerCase().trim();
@@ -415,11 +413,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // yendo a un solo grupo por un descuido.
   const publico = esGrave ? "todos" : String(cuerpo.publico ?? "todos");
   const grupoId = esGrave ? null : (cuerpo.grupo_id ? String(cuerpo.grupo_id) : null);
+  const rol = esGrave ? null : (cuerpo.rol ? String(cuerpo.rol) : null);
+  const perfilId = esGrave ? null : (cuerpo.perfil_id ? String(cuerpo.perfil_id) : null);
   const excluir = esGrave ? uuidsSueltos(cuerpo.grupos_excluidos) : [];
 
   // Suena en el móvil si quien escribe lo ha marcado. En los graves no
   // se pregunta: un aviso de seguridad que no suena no sirve de nada.
-  const alMovil = esGrave ? true : cuerpo.al_movil === true;
+  // Si no viene el dato —una pantalla vieja sin desplegar— se manda,
+  // que es lo que se hacía siempre: nunca se deja de avisar por un
+  // campo que falta.
+  const alMovil = esGrave ? true : cuerpo.al_movil !== false;
 
   if (!titulo) return responder({ error: "falta_titulo", mensaje: "El aviso necesita un título." }, 400, origen);
   if (!mensaje) return responder({ error: "falta_texto", mensaje: "El aviso necesita un texto." }, 400, origen);

@@ -230,8 +230,12 @@ grant execute on function public.avisos_destino_perfiles(text, uuid, text, uuid,
 -- El recuento cuenta SOLO a quien de verdad lo va a recibir: ya
 -- descontados los que tienen esa categoría apagada. Decir «llegará a
 -- 120» y que lo reciban 40 es peor que no decir nada.
+-- Se tiran las dos versiones: la vieja de cinco y la nueva de seis, para
+-- que relanzar esta migración no choque con lo que ella misma dejó.
 drop function if exists public.avisos_alcance(text, text, uuid, text, uuid);
+drop function if exists public.avisos_alcance(text, text, uuid, text, uuid, uuid[]);
 drop function if exists public.avisos_destinatarios(text, text, uuid, text, uuid);
+drop function if exists public.avisos_destinatarios(text, text, uuid, text, uuid, uuid[]);
 
 create function public.avisos_alcance(
   p_publico   text,
@@ -492,6 +496,9 @@ grant execute on function public.avisos_marcar_leido(uuid) to authenticated;
 -- nombres y los cuatro nuevos se rellenan solos.
 drop function if exists public.avisos_registrar(
   text, text, text, text, text, uuid, text, uuid, text, integer, integer, uuid, uuid);
+drop function if exists public.avisos_registrar(
+  text, text, text, text, text, uuid, text, uuid, text, integer, integer, uuid, uuid,
+  text, date, boolean, uuid[]);
 
 create function public.avisos_registrar(
   p_titulo    text,
