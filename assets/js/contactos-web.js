@@ -7,7 +7,7 @@
         con QUIÉN es y QUÉ se enseña de ella:
 
             <span data-contacto="natacion"
-                  data-contacto-dato="nombre_corto,telefono">Mario Clavero · 666 03 30 44</span>
+                  data-contacto-dato="nombre_corto,telefono">Mario Clavero · 600 00 00 00</span>
 
         «natacion» es a quién se pregunta. Vale de dos maneras:
           · la clave de la persona  ('mario', 'andres'…), o
@@ -55,6 +55,12 @@
    ============================================================ */
 (function () {
   'use strict';
+
+  /* Este ayudante puede llegar por dos caminos: puesto a mano en la
+     página, o pedido por datos.js (que lo carga la web entera). Si
+     llegan los dos, se hace el trabajo una sola vez. */
+  if (window.__APOLANA_CONTACTOS) return;
+  window.__APOLANA_CONTACTOS = true;
 
   var CAMPOS = ['nombre', 'nombre_corto', 'cargo', 'cargo_detalle',
                 'descripcion', 'telefono', 'email'];
@@ -113,15 +119,142 @@
     }
   }
 
+  /* ============================================================
+     EL PIE Y LA CABECERA · que los pinta apolana.js
+     ------------------------------------------------------------
+     El pie de TODAS las páginas y el botón de WhatsApp de la
+     cabecera los dibuja `apolana.js` leyendo `datos.js`, y lo hace
+     nada más cargar la página, antes de que la base conteste. Como
+     ese archivo no se toca, lo que se hace es repasar lo que ya ha
+     dejado escrito en cuanto llegan los datos buenos.
+
+     Qué dato de la base le toca a cada hueco lo dice `datos.js` en
+     `contacto_desde_la_base`, que es donde el club puede leerlo.
+
+     Si un dato deja de publicarse, aquí NO basta con cambiarlo: hay
+     que quitar el enlace entero del pie. Si no, apagar el
+     interruptor en el panel dejaría el teléfono puesto abajo, en
+     todas las páginas, que es justo lo que veníamos a arreglar.
+     ============================================================ */
+
+  function telLimpio(v) { return limpio(v).replace(/[\s.\-()+]/g, ''); }
+
+  /* Los enlaces que apuntan a este dato, buscando SOLO entre los de su
+     clase. Es importante que no se mezclen: el teléfono de la escuela
+     y el de WhatsApp son el mismo número, y si el de WhatsApp tocara
+     también el enlace del pie le borraría el « · escuela» de detrás. */
+  var DONDE = {
+    tel:  'a[href^="tel:"]',
+    mail: 'a[href^="mailto:"]',
+    wa:   'a[href*="wa.me/"]'
+  };
+  function enlacesCon(tipo, valor) {
+    var v = (tipo === 'mail') ? limpio(valor).toLowerCase() : telLimpio(valor);
+    if (!v) return [];
+    return Array.prototype.filter.call(document.querySelectorAll(DONDE[tipo]), function (a) {
+      var h = a.getAttribute('href') || '';
+      return (tipo === 'mail' ? h.toLowerCase() : telLimpio(h)).indexOf(v) !== -1;
+    });
+  }
+
+  /* Se quita el enlace y, si estaba dentro de una fila de redes o de
+     una fila del pie que se queda vacía, también el envoltorio. */
+  function retirar(a) {
+    var fila = a.closest && a.closest('.red-fila');
+    (fila || a).remove();
+  }
+
+  function repasarPie(porClave) {
+    var A = window.APOLANA;
+    var C = A && A.contacto;
+    var MAPA = A && A.contacto_desde_la_base;
+    if (!C || !MAPA) return;
+
+    Object.keys(MAPA).forEach(function (hueco) {
+      var m = MAPA[hueco] || {};
+      var fila = porClave[m.clave];
+      if (!fila) return;                       // respaldo: no se toca
+
+      var nuevo = limpio(fila[m.campo]);
+      var esTel = (m.campo === 'telefono');
+      var actual = C[hueco];
+      var tipo = (hueco === 'whatsapp') ? 'wa' : (esTel ? 'tel' : 'mail');
+
+      /* El valor que apolana.js dejó escrito, para poder encontrarlo. */
+      var viejo = (typeof actual === 'string')
+        ? actual
+        : (actual && (actual.texto || actual.usuario)) || '';
+      var enlaces = enlacesCon(tipo, viejo);
+
+      if (!nuevo) {
+        /* El club ha dejado de publicarlo: fuera de todas las páginas. */
+        enlaces.forEach(retirar);
+        if (typeof actual === 'string') C[hueco] = '';
+        else if (actual) { actual.texto = ''; actual.tel = ''; actual.usuario = ''; actual.url = ''; }
+        return;
+      }
+
+      /* Se actualiza el objeto de datos.js, por si algo lo lee luego. */
+      if (typeof actual === 'string') {
+        C[hueco] = nuevo;
+      } else if (actual) {
+        if (hueco === 'whatsapp') {
+          actual.usuario = nuevo;
+          actual.url = 'https://wa.me/34' + telLimpio(nuevo).replace(/^34/, '');
+        } else {
+          actual.texto = nuevo;
+          actual.tel = '+34' + telLimpio(nuevo).replace(/^34/, '');
+        }
+      }
+
+      enlaces.forEach(function (a) {
+        var h = a.getAttribute('href') || '';
+        if (h.indexOf('wa.me/') !== -1) {
+          /* Se respeta el mensaje ya escrito que llevan algunos enlaces. */
+          var cola = h.indexOf('?');
+          a.setAttribute('href', 'https://wa.me/34' + telLimpio(nuevo).replace(/^34/, '') +
+            (cola !== -1 ? h.slice(cola) : ''));
+          if (a.hasAttribute('title')) {
+            a.setAttribute('title', 'Escríbenos por WhatsApp al ' + nuevo);
+          }
+          var cuenta = a.querySelector('.red-cuenta');
+          if (cuenta) cuenta.textContent = nuevo;
+          return;
+        }
+        a.setAttribute('href', (esTel ? 'tel:+34' + telLimpio(nuevo).replace(/^34/, '') : 'mailto:' + nuevo));
+        /* En el pie el enlace pone «600 00 00 00 · socios»: se cambia
+           el número y se respeta lo que iba detrás. */
+        var nota = (actual && actual.nota) ? ' · ' + actual.nota : '';
+        if (!a.querySelector('*')) a.textContent = nuevo + (viejo && nota ? nota : '');
+      });
+    });
+  }
+
   function arranca() {
     var nodos = document.querySelectorAll('[data-contacto]');
-    if (!nodos.length) return;
+    var hayPie = !!(window.APOLANA && window.APOLANA.contacto_desde_la_base);
+    if (!nodos.length && !hayPie) return;
 
-    /* Sin base de datos (sin conexión, o la librería no cargó):
-       no se toca nada y la página se queda con lo suyo de siempre. */
-    var db = window.APOLANA_DB;
-    if (!db || typeof db.from !== 'function') return;
+    /* La conexión puede no estar lista todavía: este ayudante lo carga
+       `datos.js` sin esperar a nadie, así que unas veces llega antes
+       que `db.js` y otras después. Se espera un rato corto en vez de
+       rendirse a la primera; si al final no aparece (sin conexión, la
+       librería no cargó), no se toca nada y la página se queda con lo
+       que lleva escrito. */
+    esperarBase(function (db) { consultar(db, nodos); });
+  }
 
+  function esperarBase(cuando) {
+    var t0 = Date.now();
+    (function mira() {
+      var db = window.APOLANA_DB;
+      if (db && typeof db.from === 'function') { cuando(db); return; }
+      if (Date.now() - t0 > 8000) return;      // se queda el respaldo
+      setTimeout(mira, 60);
+    })();
+  }
+
+  function consultar(db, nodos) {
     try {
       db.from('contactos_publicos')
         .select('clave,nombre,nombre_corto,cargo,cargo_detalle,seccion,es_responsable,descripcion,datos,telefono,email')
@@ -152,6 +285,9 @@
             if (!fila) return;          // respaldo: se queda lo del HTML
             aplicar(el, fila);
           });
+
+          /* Y el pie, que es de todas las páginas a la vez. */
+          try { repasarPie(porClave); } catch (e) { /* respaldo */ }
         })
         .catch(function () { /* respaldo: se queda lo del HTML */ });
     } catch (e) { /* respaldo: se queda lo del HTML */ }

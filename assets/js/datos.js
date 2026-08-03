@@ -17,7 +17,15 @@ window.APOLANA = {
     lema: 'Atletismo, running, triatlón y natación en Alicante desde 1988.',
   },
 
-  /* --- Contacto (aparece en el pie de TODAS las páginas) --- */
+  /* --- Contacto (aparece en el pie de TODAS las páginas) ---
+     ⚠️ ESTO YA NO ES DONDE SE CAMBIAN LOS TELÉFONOS.
+     Desde que los contactos viven en la base de datos (tabla
+     `contactos`, migración 085), lo que hay aquí abajo es el
+     RESPALDO: lo que se ve mientras la base contesta, y lo que se
+     queda si no contesta, para que el pie no salga mudo.
+
+     Para cambiar un teléfono: panel → Club → «Personas de contacto».
+     Cambiarlo aquí no sirve de nada, porque la base manda. */
   contacto: {
     tel_socios:  { texto: '625 47 38 30', tel: '+34625473830', nota: 'socios' },
     tel_escuela: { texto: '636 06 17 00', tel: '+34636061700', nota: 'escuela' },
@@ -27,6 +35,23 @@ window.APOLANA = {
     facebook:    { usuario: 'atletismo.apolana.alicante', url: 'https://www.facebook.com/atletismo.apolana.alicante' },
     tiktok:      { usuario: '@escuela.apolana', url: 'https://www.tiktok.com/@escuela.apolana' },
     whatsapp:    { usuario: '636 06 17 00', url: 'https://wa.me/34636061700' },
+  },
+
+  /* --- Y de quién es cada uno de esos huecos ---
+     Traduce el respaldo de arriba a la persona de la base que manda
+     sobre él. Lo lee `contactos-web.js`, que en cuanto la base
+     contesta repasa el pie de la página y deja el dato bueno (o lo
+     retira, si el club ha decidido no publicarlo).
+
+     El día que el teléfono de la escuela pase a ser de otra persona,
+     se cambia la clave de aquí y ya está: el pie de las 30 páginas
+     sigue solo. Las claves salen del panel, en «Personas de
+     contacto» (Adrián lleva la escuela, Isabel administración). */
+  contacto_desde_la_base: {
+    tel_escuela: { clave: 'adrian', campo: 'telefono' },
+    whatsapp:    { clave: 'adrian', campo: 'telefono' },
+    tel_socios:  { clave: 'isabel', campo: 'telefono' },
+    email:       { clave: 'isabel', campo: 'email'    },
   },
 
   colaboradores: ['Deportes Alicante', 'Comunitat Esport', 'Diputación de Alicante', 'Vithas'],
@@ -77,6 +102,36 @@ window.APOLANA = {
   /* --- Cifras del club (/club) --- */
   cifras: { fundacion: 1988, atletas: 420, socios: 175, secciones: 7, medallas: 64, anios: 38 },
 };
+
+/* ------------------------------------------------------------
+   Y que los contactos de verdad lleguen a TODAS las páginas
+   ------------------------------------------------------------
+   Este archivo lo carga la web entera, así que es el único sitio
+   desde el que se puede alcanzar el pie de las treinta páginas sin
+   ir tocándolas una a una. Aquí solo se pide el ayudante que hace
+   el trabajo (`contactos-web.js`); si ya viene puesto en la página,
+   no se repite.
+
+   Va con red por todos lados: si algo falla, la página se queda con
+   el respaldo de arriba y no se entera nadie. Este archivo no puede
+   romper nada, porque si se rompe se rompe toda la web a la vez.
+   ------------------------------------------------------------ */
+(function () {
+  try {
+    var yo = document.currentScript && document.currentScript.src;
+    if (!yo) return;                                   // sin saber dónde estoy, no hago nada
+    var url = yo.replace(/datos\.js(\?.*)?$/, 'contactos-web.js');
+    if (url === yo) return;                            // no era este archivo
+    if (document.querySelector('script[src*="contactos-web.js"]')) return;   // ya está
+    var s = document.createElement('script');
+    s.src = url;
+    /* `async = false` pide que se ejecute en orden y no en cuanto baje.
+       No siempre alcanza (el ayudante puede adelantar a `db.js`), y por
+       eso él espera a que la conexión aparezca antes de preguntar. */
+    s.async = false;
+    document.head.appendChild(s);
+  } catch (e) { /* la web se queda con el respaldo de este archivo */ }
+})();
 
 /* ------------------------------------------------------------
    Ayudante: rellena en el HTML cualquier elemento marcado con

@@ -44,18 +44,15 @@
 --   (ver el apartado 5). Quitar uno es ahora un clic, y antes era
 --   buscar por seis archivos.
 --
--- ⚠️ SOBRE ESCRIBIR DATOS REALES EN UNA MIGRACIÓN
---   La migración 052 (`info_pagos`) prohíbe, con razón, meter datos
---   sensibles en el repositorio: es público y Git guarda el histórico
---   para siempre. Aquí se hace una excepción medida y acotada:
---   estos cuatro teléfonos y estos correos YA ESTÁN hoy en este mismo
---   repositorio (en el HTML de /natacion/, /escuela-natacion/,
---   /competicion/, /contacto/, /campus/ y en las migraciones 011, 033
---   y 060), así que sembrarlos aquí no publica nada que no estuviera
---   publicado. Este cambio los RETIRA del HTML y les pone un
---   interruptor, que es justo lo contrario de exponerlos.
---   Los datos BANCARIOS siguen sin poder entrar aquí jamás: ésos
---   viven en `info_pagos` y nacen vacíos. Ver el apartado 6.
+-- ⚠️ NINGÚN DATO PERSONAL SE ESCRIBE EN ESTE ARCHIVO
+--   Ni un teléfono, ni un correo. Este repositorio es PÚBLICO: lo que
+--   se escribe aquí queda a la vista de cualquiera y en el histórico
+--   de Git para siempre. El interruptor `publicar_telefono` protege
+--   la WEB; no protege este archivo.
+--   Por eso esta migración trae el molde, los nombres y los cargos
+--   (que ya salen en la junta directiva de /club/), pero los datos de
+--   contacto van derechos a la base, por el mismo camino que los IBAN
+--   de `info_pagos` (migración 052). Ver el apartado 7.
 --
 -- Idempotente: se puede relanzar sin pisar lo que el club haya
 --   editado desde el panel (la siembra es `do nothing`).
@@ -77,7 +74,7 @@ create table if not exists public.contactos (
   nombre             text not null,
 
   -- El nombre como se dice de pasada en una línea de contacto
-  -- («Mario Clavero · 666 03 30 44»). Si está vacío se usa el largo.
+  -- («Mario Clavero · su teléfono»). Si está vacío se usa el largo.
   nombre_corto       text,
 
   -- El cargo en una palabra, que es lo que cabe debajo de la foto en
@@ -264,41 +261,44 @@ grant select on public.contactos_publicos to anon, authenticated;
 commit;
 
 -- ============================================================
--- 4 · LAS PERSONAS DE HOY
+-- 4 · LAS PERSONAS DE HOY · SIN SUS TELÉFONOS NI SUS CORREOS
 -- ------------------------------------------------------------
--- `do nothing`: si la fila ya existe porque el club la editó desde el
--- panel, esta migración NO la pisa. Relanzarla es inofensivo.
+-- ⚠️ AQUÍ NO HAY NI UN TELÉFONO NI UN CORREO, Y ES LA REGLA DE LA CASA
+--   Este repositorio es PÚBLICO. Un móvil escrito en una migración
+--   está tan a la vista en GitHub como uno escrito en una página, y
+--   además queda en el histórico de Git para siempre. El interruptor
+--   `publicar_telefono` protege la WEB, no este archivo.
+--   Así que los datos de contacto van derechos a la base, por el
+--   mismo camino que los IBAN de `info_pagos` (migración 052): se
+--   cargan una vez a mano o desde el panel, y no pasan por aquí.
+--
+--   Lo que sí puede estar escrito: el nombre, el cargo y la sección.
+--   Eso ya sale hoy en la junta directiva de /club/ y no es un dato
+--   de contacto.
+--
+-- `do nothing`: si la fila ya existe, esta migración NO la pisa, así
+-- que relanzarla nunca borra el teléfono que el club haya cargado.
 -- ============================================================
 insert into public.contactos
   (clave, nombre, nombre_corto, cargo, cargo_detalle,
-   telefono, email, publicar_telefono, publicar_email, seccion, es_responsable, orden)
+   publicar_telefono, publicar_email, seccion, es_responsable, orden)
 values
+  -- publicar_* = lo que estaba publicado en la web el día del cambio,
+  -- ni un dato más. El valor en sí se carga aparte (ver apartado 7).
   ('adrian', 'Adrián Onandía Bieco', 'Adrián Onandía',
    'Presidente', 'Presidente. Creador de la escuela',
-   '636 06 17 00', 'adri.apolana@gmail.com',
-   -- El 636 ya es hoy el teléfono público de la escuela (sale en
-   -- /escuela/, /campus/, /contacto/ y /encuentra-tu-grupo/); su
-   -- correo personal no estaba publicado en ninguna página.
    true, false, 'club', true, 1),
 
   ('andres', 'Andrés Clavero Giménez', 'Andrés Clavero',
    'Tesorero', 'Tesorero · coordinador de la escuela · responsable de atletismo en pista',
-   '681 968 563', 'andres.apolana@gmail.com',
-   -- El teléfono sale hoy dos veces en /competicion/; el correo, en
-   -- ninguna página pública.
    true, false, 'pista', true, 2),
 
   ('mario', 'Mario Clavero', 'Mario Clavero',
    'Secretario', 'Secretario · responsable de la sección de Natación',
-   '666 03 30 44', 'mario.apolana@gmail.com',
-   -- Los dos salen hoy: el teléfono en /natacion/ y /escuela-natacion/,
-   -- el correo en el cierre de /escuela-natacion/.
    true, true, 'natacion', true, 3),
 
   ('isabel', 'Isabel Fuentes Bernal', 'Isabel Fuentes',
    'Contable', 'Contable. Lleva socios y adultos',
-   '625 47 38 30', 'administracion@atletismoapolana.com',
-   -- Los dos salen hoy en /contacto/ y en los documentos del club.
    true, true, 'administracion', true, 4)
 on conflict (clave) do nothing;
 
@@ -395,6 +395,24 @@ on conflict (clave) do nothing;
 -- pantalla no se mete. Si algún día se quieren unificar, el camino
 -- es que info_pagos guarde una `clave` de esta tabla en vez del
 -- nombre suelto; hoy no se ha hecho para no tocar el panel de Cobros.
+-- ============================================================
+
+-- ============================================================
+-- 7 · CÓMO SE CARGAN LOS TELÉFONOS Y LOS CORREOS
+-- ------------------------------------------------------------
+-- No están en este archivo a propósito (ver la cabecera). Se cargan
+-- de una de estas dos maneras:
+--
+--   a) desde el panel: Club → «Personas de contacto» → Editar; o
+--   b) por psql, en local, escribiendo el valor real en el momento:
+--
+--      update public.contactos
+--         set telefono = '…', email = '…'
+--       where clave = 'mario';
+--
+-- Mientras estén vacíos no pasa nada malo: las páginas siguen
+-- enseñando lo que llevan escrito de respaldo en su HTML, así que
+-- ningún visitante ve un hueco en blanco.
 -- ============================================================
 
 -- --- Comprobación 1: qué hay y qué se publica ----------------------
