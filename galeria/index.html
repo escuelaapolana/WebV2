@@ -44,6 +44,10 @@
   .gal-foto img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; transition: transform .25s ease; }
   .gal-foto:hover img { transform: scale(1.04); }
   .gal-foto--grande { grid-column: 1; grid-row: span 3; }
+  /* Las fotos que se cuentan en el «+N»: no ocupan sitio en la página,
+     pero existen, para que el club también pueda cambiarlas desde el
+     panel y para que a pantalla completa salga la suya. */
+  .gal-guardadas { display: none; }
   /* El «+30»: se marca encima de la última, no como un hueco aparte. */
   .gal-foto .mas {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -155,7 +159,14 @@
 
   /* Las fotos, agrupadas por dónde se hicieron. Cuando el club suba las suyas
      desde el panel, cada bloque será una carrera con su fecha; de momento se
-     agrupan por sección, que es lo que hay y no inventa nada. */
+     agrupan por sección, que es lo que hay y no inventa nada.
+
+     TODAS se cambian desde Panel → Fotos de la web: cada una lleva su hueco
+     «galeria.<bloque>.<n>» (galeria.pista.1, galeria.agua.3…). Las cuatro
+     primeras de cada bloque son las que se ven en la rejilla; la que sobra
+     se cuenta en el «+N» y solo sale a pantalla completa, pero se cambia
+     igual. Si añades una foto a un bloque, dale su fila en la base
+     (migraciones/084_huecos_de_foto.sql) o no saldrá en el panel. */
   var BLOQUES = [
     { titulo: 'Pista y competición', hueco: 'pista', fotos: [
       { f: 'galeria-3.jpg', alt: 'Competición de atletismo en pista al aire libre' },
@@ -218,12 +229,36 @@
           var ultima = (i === visibles.length - 1) && resto > 0;
           return '<button type="button" class="gal-foto' + (i === 0 ? ' gal-foto--grande' : '') + '"' +
             ' data-i="' + indice + '" aria-label="' + esc(x.alt) + '">' +
-            '<img src="' + esc(url(x.f)) + '" data-img="galeria.' + esc(b.hueco) + '.' + (i + 1) + '" alt="" loading="lazy">' +
+            hueco(b, x, i, indice) +
             (ultima ? '<span class="mas">+' + resto + '</span>' : '') +
           '</button>';
         }).join('') + '</div>' +
+        /* Las que no caben en la tira siguen siendo del club: van aquí,
+           sin ocupar sitio, para que también tengan su hueco en el panel
+           y para que a pantalla completa salga la que se haya elegido. */
+        (resto > 0
+          ? '<div class="gal-guardadas">' + b.fotos.slice(4).map(function (x, i) {
+              return hueco(b, x, i + 4, desde + 4 + i);
+            }).join('') + '</div>'
+          : '') +
       '</section>';
     }).join('');
+
+    /* Cada foto se queda apuntada en su ficha. Así, cuando el club cambia
+       una desde el panel, a pantalla completa se abre LA MISMA que se ve
+       en la rejilla y no la que traía el HTML. */
+    Array.prototype.forEach.call(caja.querySelectorAll('img[data-i]'), function (im) {
+      var i = parseInt(im.getAttribute('data-i'), 10);
+      if (TODAS[i]) TODAS[i].nodo = im;
+    });
+  }
+
+  /* La foto de un hueco: su marca «galeria.<bloque>.<n>» para el panel y
+     su número de orden para el visor a pantalla completa. */
+  function hueco(b, x, i, indice) {
+    return '<img src="' + esc(url(x.f)) + '"' +
+      ' data-img="galeria.' + esc(b.hueco) + '.' + (i + 1) + '"' +
+      ' data-i="' + indice + '" alt="" loading="lazy">';
   }
   pintar();
 
@@ -237,7 +272,8 @@
     if (!TODAS.length) return;
     actual = (i + TODAS.length) % TODAS.length;
     var f = TODAS[actual];
-    img.src = f.src; img.alt = f.alt;
+    img.src = (f.nodo && f.nodo.getAttribute('src')) || f.src;
+    img.alt = (f.nodo && f.nodo.getAttribute('alt')) || f.alt;
     pie.textContent = f.bloque + ' · ' + (actual + 1) + ' de ' + TODAS.length;
   }
   function abrir(i) {
