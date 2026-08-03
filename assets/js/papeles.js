@@ -283,18 +283,42 @@
     fondo.addEventListener('click', function (e) {
       var b = e.target.closest('[data-rol]');
       if (b && !b.disabled) {
-        Array.prototype.forEach.call(fondo.querySelectorAll('button'), function (x) { x.disabled = true; });
-        cambiar(b.getAttribute('data-rol'));
+        /* Se apagan los botones mientras se cambia, para que nadie pulse dos
+           papeles seguidos. Pero si el cambio falla —basta un momento de mala
+           cobertura— hay que volver a encenderlos: si no, la ventana se queda
+           muerta y solo se arregla cerrándola y abriéndola otra vez. */
+        var apagados = Array.prototype.slice.call(fondo.querySelectorAll('button'));
+        apagados.forEach(function (x) { x.disabled = true; });
+        function reactivar() {
+          apagados.forEach(function (x) {
+            /* La fila del papel en el que ya estás sigue sin poder pulsarse. */
+            if (x.getAttribute('aria-current') !== 'true') x.disabled = false;
+          });
+        }
+        cambiar(b.getAttribute('data-rol')).then(function (ok) {
+          if (!ok) reactivar();
+        }, function () {
+          decir('No se ha podido cambiar de papel. Vuelve a intentarlo.', 'error');
+          reactivar();
+        });
         return;
       }
       var a = e.target.closest('[data-abrir]');
       if (a) {
         var rol = a.getAttribute('data-abrir') || null;
-        Array.prototype.forEach.call(fondo.querySelectorAll('[data-abrir]'), function (x) {
+        var chips = Array.prototype.slice.call(fondo.querySelectorAll('[data-abrir]'));
+        /* Se marca el elegido antes de guardar, para que responda al momento.
+           Pero se apunta cuál estaba marcado: si el guardado falla hay que
+           devolverlo, o queda un botón encendido que no corresponde a nada. */
+        var antes = chips.map(function (x) { return x.getAttribute('aria-pressed'); });
+        function volverAtras() {
+          chips.forEach(function (x, i) { x.setAttribute('aria-pressed', antes[i]); });
+        }
+        chips.forEach(function (x) {
           x.setAttribute('aria-pressed', x === a ? 'true' : 'false');
         });
         sb().rpc('rol_al_entrar_poner', { p_rol: rol }).then(function (r) {
-          if (r.error) { decir('No se ha podido guardar: ' + r.error.message, 'error'); return; }
+          if (r.error) { volverAtras(); decir('No se ha podido guardar: ' + r.error.message, 'error'); return; }
           if (DATOS) DATOS.al_entrar = rol;
           decir(rol ? 'Al entrar se abrirá en ' + titulo(rol) : 'Al entrar se abrirá en el último que uses', 'ok');
         });
