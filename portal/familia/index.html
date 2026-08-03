@@ -573,13 +573,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      de marcas y en la lista de «Más», diciendo cuatro veces lo mismo. */
 
   // ---------- datos de la familia ----------
+  /* Los hijos NO se piden aquí: la pantalla de acceso (portal-auth.js) ya
+     ha tenido que pedir las fichas para saber qué puertas ofrecerle a esta
+     persona, y las comparte. Antes se preguntaba dos veces lo mismo nada
+     más entrar. Los campos vienen ya con lo que hace falta aquí; entre
+     ellos `tipo_membresia`, para saber si a esta casa le toca la cuenta de
+     la escuela o la del club en el bloque «Cómo se paga».
+     De todas las fichas que llegan (la suya, las de sus hijos y las de los
+     atletas que entrena, si además entrena) aquí solo valen los hijos. */
   var hijos = [], falloCarga = false;
   try {
-    // tipo_membresia hace falta para saber si a esta casa le toca la cuenta
-    // de la escuela o la del club en el bloque «Cómo se paga».
-    var r = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia').eq('perfil_padre_id', perfil.id).order('nombre');
+    var r = await APOLANA_PORTAL.misAtletas();
     if (r.error) falloCarga = true;
-    else if (r.data) hijos = r.data;
+    else hijos = r.data.filter(function(a){ return a.perfil_padre_id === perfil.id; });
   } catch (e) { falloCarga = true; }
 
   // Cabecera de pantalla (kit 30h): migas a 14 px, título a 28 px debajo.
@@ -675,19 +681,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function autorizado(id){ return !!(JUEGO[id] && JUEGO[id].autoriza_parental_en); }
   function menoresCasa(){ return hijos.filter(function(h){ return ES_MENOR[h.id]; }); }
 
-  // Grupos (lectura pública): nombre y horario
+  /* Grupos (lectura pública): nombre y horario.
+     Tampoco se piden aquí: los trae la pantalla de acceso, que ya los
+     necesita para saber si esta persona lleva algún grupo. De los del
+     club entero nos quedamos con los de nuestros hijos. */
   var grupos = {}, falloGrupos = false;
   var gids = hijos.map(function(h){return h.grupo_id;}).filter(function(v,i,a){return v && a.indexOf(v)===i;});
   if (gids.length) {
     try {
-      var g = await sb.from('grupos').select('id,nombre,horario,turno').in('id', gids);
+      var g = await APOLANA_PORTAL.grupos();
       falloGrupos = !!g.error;
       /* En la escuela hay dos grupos con cada nombre, uno de lunes y
          miércoles y otro de martes y jueves. A un padre, «Azul 2» a
-         secas no le dice qué días lleva a su hijo; con los días, sí. */
-      if(!g.error && g.data) g.data.forEach(function(x){
-        if (x.turno && window.APOLANA_GRUPO_NOMBRE) x.nombre = window.APOLANA_GRUPO_NOMBRE(x);
-        grupos[x.id]=x;
+         secas no le dice qué días lleva a su hijo; con los días, sí.
+         Se trabaja sobre una COPIA: la fila es la misma que ven las
+         demás pantallas y cambiarle el nombre allí sería cambiárselo a
+         todo el mundo. */
+      if(!g.error) g.data.forEach(function(x){
+        if (gids.indexOf(x.id) === -1) return;
+        var gr = { id:x.id, nombre:x.nombre, horario:x.horario, turno:x.turno };
+        if (gr.turno && window.APOLANA_GRUPO_NOMBRE) gr.nombre = window.APOLANA_GRUPO_NOMBRE(gr);
+        grupos[gr.id]=gr;
       });
     } catch(e){ falloGrupos = true; }
   }
@@ -759,21 +773,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var hijo = null; hijos.forEach(function(h){ if(h.id===hid) hijo=h; });
     /* Una bandera por consulta: lo que no se ha podido mirar no se puede
        contar como «no hay nada». */
-    var dat = { proximas:[], sesion:null, ausencias:[], notas:[], marcas:[],
-                falloProximas:false, falloSesion:false, falloAusencias:false,
+    var dat = { proximas:[], ausencias:[], notas:[], marcas:[],
+                falloProximas:false, falloAusencias:false,
                 falloNotas:false, falloMarcas:false };
 
     if (hijo && hijo.grupo_id) {
       try {
-        var pr = await sb.from('sesiones').select('id,fecha,tipo,rol,titulo').eq('grupo_id',hijo.grupo_id).eq('publicada',true).gte('fecha',todayISO).order('fecha',{ascending:true}).limit(6);
+        /* CUÁNDO entrena, no QUÉ entrena.
+           El club ha decidido que una familia no ve el contenido del
+           entrenamiento ni el feedback de su hijo. Eso está cerrado en la
+           base (migración 100), así que esta pantalla ya no puede pedir
+           `sesiones`: le respondería vacío.
+           Lo que sí necesita —el día, la hora, el sitio y cómo se llama,
+           para saber cuándo hay que ir y para poder avisar de una falta—
+           sale de la vista `sesiones_agenda`, que solo expone eso y nunca
+           los bloques ni la nota del entrenador. Es la misma que usa el
+           calendario público del club. */
+        var pr = await sb.from('sesiones_agenda').select('id:sesion_id,fecha,hora,titulo,tipo,rol,lugar').eq('grupo_id',hijo.grupo_id).gte('fecha',todayISO).order('fecha',{ascending:true}).limit(6);
         dat.falloProximas = !!pr.error;
         if(!pr.error && pr.data) dat.proximas = pr.data;
       } catch(e){ dat.falloProximas = true; }
-      try {
-        var se = await sb.from('sesiones').select('id,fecha,tipo,rol,titulo,nota_razonamiento,bloques').eq('grupo_id',hijo.grupo_id).eq('publicada',true).order('fecha',{ascending:false}).limit(10);
-        dat.falloSesion = !!se.error;
-        if(!se.error && se.data && se.data.length){ dat.sesion = se.data.filter(function(x){return x.fecha===todayISO;})[0] || se.data[0]; }
-      } catch(e){ dat.falloSesion = true; }
     }
     try {
       var au = await sb.from('ausencias').select('id,fecha,motivo,sesion_id,avisado_por,avisado_por_nombre').eq('atleta_id',hid).gte('fecha',todayISO).order('fecha',{ascending:true});
@@ -815,7 +834,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="fc-linea">'+linea+'</span></span>'+
       '</div>';
     if (e != null && e >= 14) {
-      html += '<p class="aviso-caja" style="margin-top:14px;margin-bottom:0;">A partir de los 14 años '+esc(hijo.nombre||'')+' tiene su propia cuenta en el portal. Aquí seguís viendo los pagos, los entrenamientos publicados y las faltas; lo que hable con su entrenador (su feedback) es suyo.</p>';
+      /* Esta frase decía que aquí se ven «los entrenamientos publicados», y
+         ya no es verdad: el club ha decidido que el entrenamiento y el
+         feedback son del atleta y su entrenador, a cualquier edad, y así
+         está cerrado en la base (migración 100). Lo que sigue dependiendo
+         de la edad es tener cuenta propia, que es lo que dice el aviso. */
+      html += '<p class="aviso-caja" style="margin-top:14px;margin-bottom:0;">A partir de los 14 años '+esc(hijo.nombre||'')+' tiene su propia cuenta en el portal. Aquí seguís viendo los pagos, el calendario, sus marcas y las faltas; el entrenamiento y lo que hable con su entrenador son suyos.</p>';
     }
     html += '</div>';
 
@@ -924,11 +948,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* Módulo compartido de descansos: es quien escribe «rec 2' trote»,
      «salida 1'00"» o «desc. 2'» según la disciplina. Aquí solo se lee. */
   function DESC(){ return window.APOLANA_DESCANSOS || null; }
-  function disciplinaSes(s, hijo){
-    var D=DESC(); if(!D) return null;
-    var g = (hijo && hijo.grupo_id) ? grupos[hijo.grupo_id] : null;
-    try { return D.disciplinaDe(s, g); } catch(e){ return null; }
-  }
   function piezasFila(f, dis){
     var D=DESC();
     if(D && dis){ try { return D.partesFila(f, dis)||[]; } catch(e){} }
@@ -949,64 +968,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<span class="fchip nat" title="'+esc(et.ayuda||'').replace(/"/g,'&quot;')+'" style="color:'+et.color+';background:'+et.fondo+';border:1px solid '+et.borde+'">'+
            esc(et.texto)+' '+esc(et.valor)+'</span>';
   }
-  function filaHTML(f, dis){
-    var main=esc(f.ejercicio||f.nombre||'');
-    var parts=piezasFila(f, dis).slice();
-    if(f.tiempo) parts.push(String(f.tiempo));
-    if(f.detalle) parts.push(String(f.detalle));
-    if(f.nota) parts.push(String(f.nota));
-    var chips=parts.map(function(p){return '<span class="fchip">'+esc(p)+'</span>';}).join('');
-    chips+=chipNatacion(f, dis);
-    return '<div class="fila"><span class="ej">'+main+'</span><span class="fparams">'+chips+'</span></div>';
-  }
   /* Volumen y tiempo, separados: «2.000 m» y «~55'». Una familia planifica la
      tarde con el tiempo, no con los metros. Si no se puede saber la duración,
      se enseña solo el volumen; nunca se inventa una hora de vuelta. */
-  function resumenSes(s, hijo, dis){
-    var D=DESC(); if(!D) return [];
-    var g = (hijo && hijo.grupo_id) ? grupos[hijo.grupo_id] : null;
-    var r=null;
-    try { r=D.resumen(s, { disciplina: dis, grupo: g }); } catch(e){ return []; }
-    if(!r) return [];
-    var out=[];
-    if(r.volumen) out.push({ v:r.volumen, l: r.volumen_parcial ? 'volumen (parte)' : 'volumen' });
-    if(r.tiempo)  out.push({ v:r.tiempo,  l: r.estimado ? 'tiempo estimado' : 'duración' });
-    return out;
-  }
-  function entrenoHTML(s, hijo, fallo){
-    if(!s && fallo) return '<div class="tarjeta"><h2>Entrenamiento publicado</h2>'+
-      htmlError('No hemos podido cargar el entrenamiento',
-        'Puede ser la conexión. Si su entrenador lo ha publicado, sigue ahí; volved a intentarlo en un momento.',
-        reintentarHijo)+'</div>';
-    if(!s) return '<div class="tarjeta"><h2>Entrenamiento publicado</h2>'+
-      APOLANA_UI.vacio('Su entrenador aún no ha publicado nada',
-        'En cuanto suba el entrenamiento, aquí veréis el calentamiento, la parte principal y la vuelta a la calma.',
-        APOLANA_UI.boton('Ver el calendario', '../calendario/')) +'</div>';
-    var esHoy=s.fecha===todayISO; var fechaTxt=(esHoy?'Hoy · ':'')+formatFecha(s.fecha);
-    var dis=disciplinaSes(s, hijo), D=DESC();
-    var chips=[nombreTipo(s.tipo),nombreRol(s.rol)].filter(Boolean).map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('');
-    var bloques=Array.isArray(s.bloques)?s.bloques:[];
-    var bloquesHtml=bloques.map(function(b,bi){
-      var filas=(b.filas||[]).map(function(f){return filaHTML(f, dis);}).join('')||'<div class="fila"><span class="ej vacio">Por definir</span></div>';
-      var entreEj=''; if(D){ try { entreEj=D.textoEntreEjercicios(b)||''; } catch(e){} }
-      var bloque='<div class="bloque"><h3>'+esc(b.etiqueta||'')+'</h3>'+filas+
-        (entreEj?'<div class="bl-entre">'+esc(entreEj)+'</div>':'')+'</div>';
-      // El descanso entre bloques: si ese bloque no lo lleva, no se pinta nada
-      var entre=''; if(D && bi<bloques.length-1){ try { entre=D.textoEntreBloques(b)||''; } catch(e){} }
-      return bloque+(entre?'<div class="bl-sep"><i></i><span>'+esc(entre)+'</span><i></i></div>':'');
-    }).join('');
-    var res=resumenSes(s, hijo, dis);
-    var resHtml = res.length ? '<div class="ses-cifras">'+res.map(function(c){
-      return '<span class="ses-cifra"><b>'+esc(c.v)+'</b><span>'+esc(c.l)+'</span></span>';
-    }).join('')+'</div>' : '';
-    return '<div class="tarjeta">'+
-      '<div class="entreno-cab"><h2>Entrenamiento'+(esHoy?' de hoy':' publicado')+'</h2><span class="fecha-pill">'+esc(fechaTxt)+'</span></div>'+
-      (s.titulo?'<div class="entreno-titulo">'+esc(s.titulo)+'</div>':'')+
-      (chips?'<div class="chips">'+chips+'</div>':'')+
-      resHtml+
-      (s.nota_razonamiento?'<p class="nota">'+esc(s.nota_razonamiento)+'</p>':'')+
-      '<div class="bloques">'+bloquesHtml+'</div></div>';
-  }
+  /* Aquí vivían las piezas que pintaban el entrenamiento para la familia:
+     los bloques, cada ejercicio, las cifras del día y la nota del
+     entrenador. El club ha decidido que una familia no ve eso, y la
+     migración 100 lo cierra en la base. Se quitan enteras en vez de
+     dejarlas sin llamar: si se quedan, alguien las vuelve a enchufar y la
+     pantalla pediría un dato que ya no le van a dar. */
 
   /* Lo que guarda la base («activacion», «continuo», «gym», «ultimo_toque_48h»)
      no se enseña tal cual: un padre no tiene por qué saber qué es «activacion»,
@@ -1037,29 +1007,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* Los tres datos de la tarjeta del entreno: series, ritmo y RECUPERACIÓN.
      Antes salía el ritmo pero no la recuperación, que es lo que de verdad
      define la sesión: 6×800 con 90" no es 6×800 con 3'. */
-  function cifrasSesion(s, hijo){
-    var bloques = (s && Array.isArray(s.bloques)) ? s.bloques : [];
-    var principal = null;
-    bloques.forEach(function(b){ if(!principal && /principal/i.test(b.etiqueta||'')) principal = b; });
-    var filas = [];
-    (principal?[principal]:bloques).forEach(function(b){ (b.filas||[]).forEach(function(f){ filas.push(f); }); });
-    var f = null;
-    filas.forEach(function(x){ if(!f && (x.series||x.ritmo)) f = x; });
-    if(!f) f = filas[0];
-    if(!f) return [];
-    var dis = disciplinaSes(s, hijo), D = DESC();
-    var out = [];
-    if(f.series && f.distancia) out.push({v:String(f.series)+' × '+String(f.distancia).replace(/\s*m$/i,''), l:'series'});
-    else if(f.series) out.push({v:String(f.series), l:'series'});
-    else if(f.distancia) out.push({v:String(f.distancia), l:'distancia'});
-    if(f.ritmo) out.push({v:String(f.ritmo), l:'ritmo'});
-    var rec='';
-    if(D && dis){ try { rec=D.textoRecPlano(D.recDeFila(f, dis), dis)||''; } catch(e){} }
-    if(!rec && f.descanso) rec=String(f.descanso);
-    if(rec) out.push({v: rec, l:'recuperación'});
-    else if(f.tiempo) out.push({v:String(f.tiempo), l:'tiempo'});
-    return out.slice(0,3);
-  }
 
   // ---------- INICIO (maqueta 22a): solo hoy y lo pendiente ----------
   function inicioHTML(hijo, dat){
@@ -1107,22 +1054,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var esHoy = prox.fecha === todayISO;
       var sub = (gr ? '<b class="nom-grupo">'+esc(gr.nombre)+'</b>' : esc(sinGrupo())) +
                 (gr && gr.horario ? ' · '+esc(gr.horario) : '');
-      var cifras = (dat.sesion && dat.sesion.id === prox.id) ? cifrasSesion(dat.sesion, hijo) : [];
+      /* Sin cifras del entrenamiento (metros, series, duración): eso es
+         contenido del entrenamiento y una familia ya no lo ve. */
       html += '<div class="prox-card">'+
         '<div class="pc-top"><span class="pc-et">'+esc(esHoy ? 'Entrenamiento de hoy' : 'Próximo entrenamiento · '+diaCorto(prox.fecha))+
           (hijos.length>1 ? ' · '+esc(hijo.nombre||'') : '')+'</span>'+
           (prox.tipo?'<span class="pc-tipo">'+esc(nombreTipo(prox.tipo))+'</span>':'')+'</div>'+
         '<div><h2 class="pc-tit">'+esc(tituloSesion(prox))+'</h2>'+
           (sub?'<div class="pc-det">'+sub+'</div>':'')+'</div>'+
-        (cifras.length?'<div class="pc-cifras">'+cifras.map(function(c){
-          return '<span class="pc-cifra"><b>'+esc(c.v)+'</b><span>'+esc(c.l)+'</span></span>';
-        }).join('')+'</div>':'')+
         '<div class="pc-btns">'+
           (av
             ? '<span class="pc-det" style="margin:0;align-self:center;">Falta avisada</span>'+
               '<button type="button" class="pc-btn" data-sec="entrenos">Ver o quitar la falta</button>'
+            /* «Ver el entrenamiento» ya no lleva a ninguna parte: lo que
+               había detrás era el contenido, que una familia no ve. En su
+               sitio, el calendario, que es lo que sí necesita. */
             : '<button type="button" class="pc-btn claro" data-ir-falta="'+esc(prox.fecha)+'">Avisar falta</button>'+
-              '<button type="button" class="pc-btn" data-sec="entrenos">Ver el entrenamiento</button>')+
+              '<a class="pc-btn" href="../calendario/">Ver el calendario</a>')+
         '</div></div>';
     } else if (dat.falloProximas) {
       // «Sin entrenos por ahora» solo si de verdad se ha podido mirar.
@@ -1262,7 +1210,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
               'No hay ninguna falta avisada para los próximos días, así que su entrenador cuenta con que va a ir a todos los entrenamientos.'))+
       '</div>';
 
-    html += entrenoHTML(dat.sesion, hijo, dat.falloSesion);
+    /* Aquí iba el entrenamiento entero, con sus bloques y la nota del
+       entrenador. El club ha decidido que una familia no lo ve, y está
+       cerrado en la base (migración 100). No se deja un hueco ni un
+       «no se ha podido cargar»: la sección se acaba en las faltas. */
     return html;
   }
 
@@ -1387,7 +1338,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      de esta misma página. */
   var SECCIONES = [
     ['inicio','Inicio'],
-    ['entrenos','Entrenamiento'],
+    /* Ya no lleva a ningún entrenamiento: lo que hay dentro son los días
+       que toca ir, avisar de una falta y las competiciones. Se llama por
+       lo que hace. */
+    ['entrenos','Cuándo entrena y faltas'],
     ['calendario','Calendario','../calendario/'],
     ['marcas','Marcas'],
     ['pagos','Pagos y recibos'],

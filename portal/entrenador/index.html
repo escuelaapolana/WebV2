@@ -381,6 +381,17 @@
   .sw-dia-campos input, .sw-dia-campos select { padding:7px 9px; font-size:13px; border-radius:10px; }
   .sw-lab { display:block; font-family: var(--fuente-mono); font-size:13px;  text-transform:none; color: var(--texto-suave); margin-bottom:3px; }
   .sw-nota { font-size:13px; color: var(--texto-suave); font-style:italic; margin:6px 0 0; }
+  /* Destinatario de un día suelto: se lee sin abrir nada, y lo que hay que
+     tocar para cambiarlo va plegado al lado. */
+  .sw-dest-dia { margin-top:8px; }
+  .sw-dest-fila { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .sw-dest-txt { font-size:13px; color: var(--texto-suave); }
+  .sw-dest-caja { margin-top:8px; }
+  .sw-dest-caja .check { margin:0 0 4px; }
+  .sw-dest-lista { margin-top:8px; }
+  /* Un día que se ha salido de lo de la semana se ve sin leer: filete azul. */
+  .sw-dia.propio { border-left:3px solid var(--azul-filete, #3B85C0); }
+  .sw-dia.propio .sw-dest-txt { color: var(--azul-oscuro); font-weight:600; }
   .sw-bloque { margin-top:9px; }
   .sw-bloque h4 { margin:0 0 4px; font-size:13px; font-family: var(--fuente-mono); text-transform:none;  color: var(--texto-suave); }
   .sw-bloque ul { margin:0 0 0 17px; padding:0; }
@@ -828,6 +839,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function nombreGrupo(id){ for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id) return MIS_GRUPOS[i].nombre; return ''; }
   function nombreAtleta(x){ return ((x.nombre||'')+' '+(x.apellidos||'')).trim(); }
   function atletasDeGrupo(grupoId){ return MIS_ATLETAS.filter(function(x){ return x.grupo_id===grupoId; }); }
+  /* Un entrenamiento dirigido a alguien decía siempre CUÁNTOS («solo 2
+     atletas») y nunca QUIÉNES. Un número no se puede comprobar de un
+     vistazo: o se ven los nombres, o no te fías y dejas de usarlo. */
+  function nombresDeIds(ids, tope){
+    if(!ids || !ids.length) return '';
+    var max = tope || 3, dichos = [], resto = 0;
+    ids.forEach(function(id){
+      var a = null;
+      for(var i=0;i<MIS_ATLETAS.length;i++) if(MIS_ATLETAS[i].id===id){ a = MIS_ATLETAS[i]; break; }
+      var n = a ? (a.nombre_corto || nombreAtleta(a)) : '';
+      if(!n){ resto++; return; }
+      if(dichos.length < max) dichos.push(n); else resto++;
+    });
+    if(!dichos.length) return ids.length+' atleta'+(ids.length===1?'':'s');
+    var txt = dichos.length===1 ? dichos[0] : dichos.slice(0,-1).join(', ')+' y '+dichos[dichos.length-1];
+    return resto ? txt+' y '+resto+' más' : txt;
+  }
   function grupoPorId(id){ for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id) return MIS_GRUPOS[i]; return null; }
   function seccionDeGrupo(id){ var g = grupoPorId(id); return g ? (g.seccion||'') : ''; }
   // Sitio habitual del grupo, sacado de su horario ('… · Pista municipal')
@@ -1189,7 +1217,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var lugar = s.lugar || lugarDeGrupo(s.grupo_id);
         if(lugar) det.push('<span><i></i>'+esc(lugar)+'</span>');
         var soloAlgunos = Array.isArray(s.atletas_ids) && s.atletas_ids.length;
-        if(soloAlgunos) det.push('<span><i></i>solo '+s.atletas_ids.length+' atleta'+(s.atletas_ids.length===1?'':'s')+'</span>');
+        if(soloAlgunos) det.push('<span><i></i>solo '+esc(nombresDeIds(s.atletas_ids, 2))+'</span>');
         var tipo = tipoNombre(s.tipo);
         return '<div class="hoy-e">'+
           '<div class="he-top">'+
@@ -2388,7 +2416,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!n) return 'No has marcado a ningún atleta todavía.';
     /* «Dirigida … no la verá» venía de cuando esto se llamaba «sesión», que
        era femenino. Ahora es «el entrenamiento»: masculino. */
-    return 'Dirigid'+(singular?'o':'os')+' solo a '+n+' atleta(s): el resto del grupo no '+(singular?'lo verá':'los verá')+'.';
+    return 'Dirigid'+(singular?'o':'os')+' solo a '+nombresDeIds(idsMarcadosDest(pref), 4)+' ('+n+'): el resto del grupo no '+(singular?'lo verá':'los verá')+'.';
   }
   // Conecta los botones y radios; devuelve la función que refresca el estado visible
   function conectarDest(pref, singular, alCambiar){
@@ -3056,7 +3084,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         mesActual = mes;
       }
       var soloAlgunos = Array.isArray(s.atletas_ids) && s.atletas_ids.length;
-      html += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+s.atletas_ids.length+' atleta(s)':'')+(s.abierta_inscripcion?' · abierta':'')+'</option>';
+      html += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+esc(nombresDeIds(s.atletas_ids, 2)):'')+(s.abierta_inscripcion?' · abierta':'')+'</option>';
     });
     if(mesActual) html += '</optgroup>';
     selEditar.innerHTML += html;
@@ -3935,6 +3963,87 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return h;
   }
 
+  // ------------------------------------------------------------
+  // EL DESTINATARIO DE UN DÍA SUELTO
+  // ------------------------------------------------------------
+  // «A lo mejor el lunes es igual para dos, y el miércoles y el viernes
+  // no.» La base ya lo aguantaba: `atletas_ids` es de cada entrenamiento,
+  // no de la semana. El límite era solo de la pantalla.
+  //
+  // Lo de arriba («¿Para quién es esta semana?») sigue siendo el valor de
+  // toda la tanda, que es el caso normal —de 361 entrenamientos, 359 van
+  // al grupo entero— y es lo que sale puesto. Aquí solo se afina un día,
+  // y va plegado: quien no lo necesite no lo ve.
+  //
+  // Es el mismo reparto que ya tenía «Abierto»: arriba lo de la tanda,
+  // en cada día la excepción.
+  // ------------------------------------------------------------
+  function destDiaHTML(s, i){
+    var atls = atletasDeGrupo(SEMANA.grupo_id);
+    var propio = !!s.dest_propio;
+    var ids = Array.isArray(s.atletas_ids) ? s.atletas_ids : [];
+    return '<div class="sw-dest-dia">'+
+      '<span class="sw-lab">Para quién</span>'+
+      '<div class="sw-dest-fila">'+
+        '<span class="sw-dest-txt">'+esc(propio ? (ids.length ? 'Solo '+nombresDeIds(ids, 4) : 'No has marcado a nadie todavía') : 'Lo mismo que la semana')+'</span>'+
+        '<button type="button" class="btn-mini sw-dest-abrir" aria-expanded="false">Cambiar solo este día</button>'+
+      '</div>'+
+      '<div class="sw-dest-caja" hidden>'+
+        (atls.length
+          ? '<label class="check"><input type="radio" name="swd-'+i+'" value="tanda"'+(propio?'':' checked')+'><span>Lo mismo que la semana</span></label>'+
+            '<label class="check"><input type="radio" name="swd-'+i+'" value="propio"'+(propio?' checked':'')+'><span>Solo estos atletas</span></label>'+
+            '<div class="dest-lista sw-dest-lista"'+(propio?'':' hidden')+'>'+
+              atls.map(function(x){
+                return '<label><input type="checkbox" class="swd-chk" value="'+escAttr(x.id)+'"'+(ids.indexOf(x.id)>-1?' checked':'')+'>'+esc(nombreAtleta(x))+'</label>';
+              }).join('')+
+            '</div>'
+          : '<p class="sw-nota">Este grupo no tiene atletas visibles todavía.</p>')+
+      '</div>'+
+    '</div>';
+  }
+
+  // Deja `s.dest_propio` y `s.atletas_ids` al día con lo que hay marcado,
+  // y reescribe la línea que se lee sin abrir nada.
+  function conectarDestDia(el, s, i){
+    var abrir = el.querySelector('.sw-dest-abrir');
+    if(!abrir) return;
+    abrir.addEventListener('click', function(){
+      var caja = el.querySelector('.sw-dest-caja');
+      caja.hidden = !caja.hidden;
+      abrir.setAttribute('aria-expanded', caja.hidden ? 'false' : 'true');
+    });
+    function refrescar(){
+      var marcado = el.querySelector('input[name="swd-'+i+'"]:checked');
+      var esPropio = !!marcado && marcado.value === 'propio';
+      var lista = el.querySelector('.sw-dest-lista');
+      if(lista) lista.hidden = !esPropio;
+      var ids = [];
+      el.querySelectorAll('.swd-chk').forEach(function(c){ if(c.checked) ids.push(c.value); });
+      s.dest_propio = esPropio;
+      s.atletas_ids = esPropio ? ids : null;
+      var txt = el.querySelector('.sw-dest-txt');
+      if(txt) txt.textContent = esPropio
+        ? (ids.length ? 'Solo '+nombresDeIds(ids, 4) : 'No has marcado a nadie todavía')
+        : 'Lo mismo que la semana';
+      el.classList.toggle('propio', esPropio && ids.length > 0);
+      var res = $('sw-prev-dest');
+      if(res) res.textContent = textoDestSemana();
+    }
+    el.querySelectorAll('input[name="swd-'+i+'"]').forEach(function(r){ r.addEventListener('change', refrescar); });
+    el.querySelectorAll('.swd-chk').forEach(function(c){ c.addEventListener('change', refrescar); });
+  }
+
+  // La línea de arriba de la previsualización: lo de la tanda, y cuántos
+  // días se han salido de ella.
+  function textoDestSemana(){
+    var base = textoDest('sw', false);
+    if(!SEMANA) return base;
+    var aparte = SEMANA.sesiones.filter(function(s){ return s.incluir !== false && s.dest_propio && (s.atletas_ids||[]).length; });
+    if(!aparte.length) return base;
+    return base+' '+(aparte.length===1 ? 'Un día va aparte: ' : aparte.length+' días van aparte: ')+
+      aparte.map(function(s){ return (s.dia_semana||formatFecha(s.fecha))+' → '+nombresDeIds(s.atletas_ids, 3); }).join(' · ')+'.';
+  }
+
   function pintarPrevisualizacion(){
     var card = $('sw-prev-card'), cont = $('sw-prev');
     if(!card) return;
@@ -3946,7 +4055,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var html = '<p class="sw-resumen"><strong>'+incluidas.length+'</strong> entrenamiento(s) para <strong>'+esc(nombreGrupo(SEMANA.grupo_id)||'—')+
       '</strong> · semana del '+esc(formatFecha(SEMANA.sesiones[0].fecha))+'. Puedes corregir aquí mismo el título, el tipo, el rol, la hora, el sitio y si ese día está abierto, o desmarcar los días que no quieras crear.</p>'+
-      '<p class="pista" id="sw-prev-dest" style="margin:0 0 4px;">'+esc(textoDest('sw', false))+'</p>'+
+      '<p class="pista" id="sw-prev-dest" style="margin:0 0 4px;">'+esc(textoDestSemana())+'</p>'+
       '<p class="pista" id="sw-prev-abre" style="margin:0 0 12px;">Apuntarse: '+esc(textoAbrir('sw', $('sw-publicar') ? $('sw-publicar').checked : true))+'</p>';
 
     if(SEMANA.avisos && SEMANA.avisos.length){
@@ -3960,7 +4069,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     SEMANA.sesiones.forEach(function(s, i){
       var nFilas = 0;
       (s.bloques||[]).forEach(function(b){ nFilas += (b.filas||[]).length; });
-      html += '<div class="sw-dia'+(s.incluir===false?' excluido':'')+'" data-i="'+i+'">'+
+      html += '<div class="sw-dia'+(s.incluir===false?' excluido':'')+((s.dest_propio && (s.atletas_ids||[]).length)?' propio':'')+'" data-i="'+i+'">'+
         '<div class="sw-dia-cab">'+
           '<span class="sw-fecha">'+esc(s.dia_semana||'')+' · '+esc(formatFecha(s.fecha))+'</span>'+
           (ex[s.fecha] ? '<span class="sw-choque">Ya existe</span>' : '')+
@@ -3986,7 +4095,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><span class="sw-lab">Hora (si no, la del grupo)</span><input class="sw-hora" type="time" value="'+escAttr(horaCorta(s.hora||''))+'"></div>'+
           '<div><span class="sw-lab">Lugar</span><input class="sw-lugar" list="lugares-dl" placeholder="Dónde se queda" value="'+escAttr(s.lugar||'')+'"></div>'+
           '<div><span class="sw-lab">Apuntarse</span><label class="check"><input type="checkbox" class="sw-abre-dia"'+(s.abierta?' checked':'')+'><span>Abierto</span></label></div>'+
-        '</div>';
+        '</div>'+
+        destDiaHTML(s, i);
       var disSem = Dsc ? Dsc.disciplinaDe(s, grupoPorId(SEMANA.grupo_id)) : 'pista';
       var bloquesSem = s.bloques||[];
       bloquesSem.forEach(function(b, bi){
@@ -4017,6 +4127,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       el.querySelector('.sw-hora').addEventListener('input', function(){ s.hora = this.value; });
       el.querySelector('.sw-lugar').addEventListener('input', function(){ s.lugar = this.value; });
       el.querySelector('.sw-abre-dia').addEventListener('change', function(){ s.abierta = this.checked; });
+      conectarDestDia(el, s, i);
     });
   }
 
@@ -4027,6 +4138,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!incluidas.length){ swMsg('No has dejado ningún día marcado.', 'error'); return; }
     var dest = leerDest('sw');
     if(dest.error){ swMsg(dest.error, 'error'); return; }
+    /* Un día puesto en «Solo estos atletas» y sin nadie marcado no se
+       puede guardar en silencio: se quedaría para todo el grupo, que es
+       justo lo contrario de lo que se pidió. Se dice qué día es. */
+    var malDia = null;
+    incluidas.forEach(function(s){ if(!malDia && s.dest_propio && !(s.atletas_ids||[]).length) malDia = s; });
+    if(malDia){
+      swMsg('El '+(malDia.dia_semana||formatFecha(malDia.fecha))+' está en «Solo estos atletas» pero no has marcado a nadie. Márcalos, o déjalo en «Lo mismo que la semana».', 'error');
+      return;
+    }
     var abre = leerAbrir('sw');
     if(abre.error){ swMsg(abre.error, 'error'); return; }
     var modoEl = document.querySelector('input[name="sw-choque"]:checked');
@@ -4060,7 +4180,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         nota_razonamiento: (s.nota_razonamiento||'').trim() || null,
         bloques: s.bloques || [],
         publicada: publicar,
-        atletas_ids: dest.ids,  // el mismo destinatario para toda la tanda
+        /* El de la tanda, salvo que ese día se haya dicho otra cosa en la
+           previsualización. Así el lunes puede ir para dos y el miércoles
+           para todo el grupo, sin planificar la semana dos veces. */
+        atletas_ids: (s.dest_propio && (s.atletas_ids||[]).length) ? s.atletas_ids : dest.ids,
         // el «abierto» es de cada día; las plazas y las secciones, de la tanda
         abierta_inscripcion: !!s.abierta,
         plazas: s.abierta ? abre.plazas : null,
@@ -4093,7 +4216,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(creadas) partes.push(creadas+' creada(s)');
     if(actualizadas) partes.push(actualizadas+' sobrescrita(s)');
     if(saltadas) partes.push(saltadas+' saltada(s) porque ya existían');
-    var quien = dest.ids ? ' · solo para '+dest.ids.length+' atleta(s)' : ' · para todo el grupo';
+    var quien = dest.ids ? ' · solo para '+nombresDeIds(dest.ids, 4) : ' · para todo el grupo';
+    var nAparte = incluidas.filter(function(s){ return s.dest_propio && (s.atletas_ids||[]).length; }).length;
+    if(nAparte) quien += ' · '+nAparte+' día(s) con su propio destinatario';
     var nAbiertas = incluidas.filter(function(s){ return s.abierta; }).length;
     var abierto = nAbiertas
       ? ' · '+nAbiertas+' día(s) abiertos a '+textoSecciones(abre.abierta_a)+(abre.plazas ? ' ('+abre.plazas+' plazas)' : ' (sin límite de plazas)')+(publicar?'':' — en borrador nadie se puede apuntar')
@@ -4128,7 +4253,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return { idx: off, fecha: fecha, dia_semana: DIAS_TXT[off] || diaSemana(fecha),
                tipo: s.tipo||'', rol: s.rol||'', titulo: s.titulo||'', nota_razonamiento: s.nota_razonamiento||'',
                bloques: JSON.parse(JSON.stringify(s.bloques||[])), incluir: true,
+               /* Si aquel día iba dirigido a unos atletas concretos, la copia
+                  nace igual. Antes se leía y luego el guardado lo pisaba con
+                  el destinatario de la tanda: la copia perdía a quién iba. */
                atletas_ids: Array.isArray(s.atletas_ids) ? s.atletas_ids.slice() : null,
+               dest_propio: !!(Array.isArray(s.atletas_ids) && s.atletas_ids.length),
                // se copia tal cual si estaba abierto, a qué hora y dónde
                abierta: !!s.abierta_inscripcion, hora: horaCorta(s.hora||''), lugar: s.lugar||'' };
     }).sort(function(a,b){ return a.fecha < b.fecha ? -1 : 1; });
