@@ -24,7 +24,11 @@ function ruta(u) { return base() + String(u).replace(/^\//, ''); }
 const MENU = [
   /* «Entrenar», el nombre corto: cuatro sílabas menos y no pierde nada.
      Quien busca dónde entrenar lo entiende igual, y deja holgura en la barra. */
-  { clave: 'entrena', texto: 'Entrenar', url: '/competicion/', sub: [
+  /* El nombre del menú lleva a la lanzadera, no a una de sus hijas:
+     antes «Entrenar» caía en atletismo en pista y parecía que el club
+     solo hacía eso. Igual que «Escuelas» abre en «Todas las escuelas». */
+  { clave: 'entrena', texto: 'Entrenar', url: '/entrenar/', sub: [
+    { texto: 'Todas las secciones', url: '/entrenar/' },
     { texto: 'Atletismo en pista',  url: '/competicion/' },
     { texto: 'Running',             url: '/running/' },
     { texto: 'Natación adultos',    url: '/natacion/' },
