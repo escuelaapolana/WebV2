@@ -77,9 +77,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* Qué se mide en cada reto, dicho en cristiano y con su icono. */
   var UNIDAD = {
-    asistencias:          ['entreno','entrenos','entreno'],
-    racha_asistencias:    ['entreno seguido','entrenos seguidos','racha'],
-    entrenos_registrados: ['entreno contado','entrenos contados','mensaje'],
+    /* El tercer valor es el NOMBRE DEL ICONO, no texto que se lea: no se toca. */
+    asistencias:          ['entrenamiento','entrenamientos','entreno'],
+    racha_asistencias:    ['entrenamiento seguido','entrenamientos seguidos','racha'],
+    entrenos_registrados: ['entrenamiento contado','entrenamientos contados','mensaje'],
     cubo_clases:          ['clase de El Cubo','clases de El Cubo','cubo'],
     competiciones:        ['competición','competiciones','pista'],
     marcas:               ['marca','marcas','marcas'],
@@ -443,8 +444,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ============================================================ */
   var MIS_METRICAS = ['dias_entreno', 'metros_natacion', 'competiciones'];
   var MI_FMT = {
-    dias_entreno:    { chip: 'Días de entreno', uno: 'día',    varios: 'días',
-                       largo: 'días de entreno', largoUno: 'día de entreno', suf: '' },
+    /* «dias_entreno» es la clave de la métrica y no se toca; lo de abajo sí se lee. */
+    dias_entreno:    { chip: 'Días de entrenamiento', uno: 'día',    varios: 'días',
+                       largo: 'días de entrenamiento', largoUno: 'día de entrenamiento', suf: '' },
     metros_natacion: { chip: 'Metros a nado',   uno: 'metro',  varios: 'metros',
                        largo: 'metros a nado',   largoUno: 'metro a nado',   suf: ' m' },
     competiciones:   { chip: 'Competiciones',   uno: 'competición', varios: 'competiciones',
@@ -555,7 +557,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!enMarcha.length && !pasados.length){
       return h + APOLANA_UI.vacio('Todavía no te has puesto ninguno',
         'Un reto tuyo es solo tuyo: no da puntos, no sube de rango y no lo ve nadie más, ni tu entrenador. ' +
-        'Se cuenta solo con los entrenos y las competiciones que el club ya apunta.',
+        'Se cuenta solo con los entrenamientos y las competiciones que el club ya apunta.',
         '<button type="button" class="ap-btn" id="mi-nuevo-vacio">Ponerme un reto</button>');
     }
 
@@ -692,7 +694,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     h += '<div class="rt-privado"><b>Solo lo ves tú</b>' +
       '<p>Los retos que te pones no dan puntos ni suben de rango, no los ve tu entrenador y no salen en ningún ' +
-      'sitio del club. Se cuentan solos con tus entrenos y tus competiciones: no hay nada que ir marcando.</p></div>';
+      'sitio del club. Se cuentan solos con tus entrenamientos y tus competiciones: no hay nada que ir marcando.</p></div>';
 
     h += '<div class="rt-pie">' +
       '<button type="button" class="principal" id="fm-guardar">' +

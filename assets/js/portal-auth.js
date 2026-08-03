@@ -78,8 +78,15 @@
     /* --- barra superior --- */
     '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
     '.pt-top .izq{display:flex;align-items:center;gap:14px;min-width:0;overflow:hidden}' +
-    '.pt-top .volver{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}' +
-    '.pt-top .volver i{font-style:normal;font-size:17px;line-height:1}' +
+    /* «Ir a la web» va a la DERECHA, junto a «Salir», y sin flecha. En la
+       esquina de arriba a la izquierda el móvil tiene el gesto de volver
+       atrás: una flecha ahí que además te saca del portal se pulsa sola.
+       Se distingue de «Salir» por el peso: esta es texto suelto, «Salir»
+       es un botón perfilado. Nunca dos botones iguales al lado, porque uno
+       de los dos cierra la sesión. */
+    '.pt-top .aweb{display:inline-flex;align-items:center;justify-content:center;min-height:44px;' +
+      'padding:0 10px;flex:0 0 auto;border-radius:999px;font-size:15px;color:#cdd6e0}' +
+    '.pt-top .aweb:hover{background:rgba(255,255,255,.12);color:#fff}' +
     '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;text-decoration:none;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}' +
     '.pt-top .der{display:flex;align-items:center;gap:10px;font-size:14px;color:#cdd6e0;min-width:0}' +
     '.pt-top .der span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}' +
@@ -91,7 +98,13 @@
        del panel (assets/js/admin-auth.js). Quién eres sigue estando en la
        franja de debajo y en Mi perfil. */
     '@media(max-width:900px){.pt-top .der span{display:none}}' +
-    '@media(max-width:560px){.pt-top{padding:6px 14px;gap:8px}.pt-top .marca{display:none}.pt-top .volver{font-size:15px}.pt-top button{padding:0 13px}}' +
+    /* En un móvil estrecho, quien tiene varios papeles lleva tres mandos a la
+       derecha (Cambiar de perfil · Ir a la web · Salir). Se deja envolver
+       antes que recortar: la página tiene overflow-x oculto, así que sin
+       esto «Salir» se cortaría por el borde. */
+    '@media(max-width:560px){.pt-top{padding:6px 14px;gap:8px;flex-wrap:wrap;row-gap:2px}' +
+      '.pt-top .marca{display:none}.pt-top .aweb{padding:0 8px}.pt-top button{padding:0 13px}' +
+      '.pt-top .der{flex:1 1 auto;justify-content:flex-end}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
     '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px}' +
@@ -212,8 +225,12 @@
   };
 
   /* Un solo vigilante para toda la página: llena los marcadores que
-     escribe el HTML y, pasados dos segundos, los pasa a error. Si los
-     datos llegan después, la propia página reescribe el bloque. */
+     escribe el HTML y, pasados seis segundos, los pasa a error. Si los
+     datos llegan después, la propia página reescribe el bloque.
+
+     Seis y no dos: en la pista, al aire libre, la cobertura va justa y a
+     los dos segundos saltaba el aviso aunque todo fuera bien. Un aviso
+     que se equivoca a diario enseña a no hacer caso de los avisos. */
   setInterval(function () {
     var l = document.querySelectorAll('.ap-esq');
     if (!l.length) return;
@@ -224,7 +241,7 @@
          corre: si no, el esqueleto pasaría a error sin haberse llegado a ver. */
       if (e.offsetParent === null) { e.removeAttribute('data-t'); continue; }
       if (!e.getAttribute('data-t')) { llenar(e); continue; }
-      if (ahora - (+e.getAttribute('data-t')) > 2000) {
+      if (ahora - (+e.getAttribute('data-t')) > 6000) {
         var caja = document.createElement('div');
         caja.innerHTML = window.APOLANA_UI.error('Está tardando más de lo normal',
           'Puede ser tu conexión. Si no aparece en unos segundos, vuelve a intentarlo.');
@@ -458,12 +475,12 @@
       top.className = 'pt-top';
       top.innerHTML =
         '<div class="izq">' +
-          '<a class="volver" href="' + b + '" aria-label="Volver a la web"><i>←</i><span>Ir a la web</span></a>' +
           '<a class="marca" href="' + b + 'portal/">Portal Apolana</a>' +
         '</div>' +
         '<div class="der">' +
           '<button id="pt-cambiar" style="display:none">Cambiar de perfil</button>' +
           '<span>' + esc(nombre) + '</span>' +
+          '<a class="aweb" href="' + b + '">Ir a la web</a>' +
           '<button id="pt-salir">Salir</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
@@ -529,7 +546,7 @@
        -------------------------------------------------------- */
     var ZONAS = {
       entrenador:  { titulo: 'Entrenador',     desc: 'Tus grupos: planificar y leer el feedback.', url: b + 'portal/entrenador/',  carpeta: '/portal/entrenador/' },
-      atleta:      { titulo: 'Atleta',         desc: 'Tus entrenos y tus marcas.',                 url: b + 'portal/atleta/',      carpeta: '/portal/atleta/' },
+      atleta:      { titulo: 'Atleta',         desc: 'Tus entrenamientos y tus marcas.',           url: b + 'portal/atleta/',      carpeta: '/portal/atleta/' },
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }

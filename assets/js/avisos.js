@@ -46,7 +46,7 @@
   var TIPOS = [
     /* Cada uno dice SU FRECUENCIA, no lo que es (maqueta 44b). Lo que da
        miedo no es el aviso: es no saber cuántos van a llegar. */
-    { clave: 'entrenos',      titulo: 'Cambios en mi entreno', texto: 'Cancelaciones y cambios de hora.',        defecto: true },
+    { clave: 'entrenos',      titulo: 'Cambios en mi entrenamiento', texto: 'Cancelaciones y cambios de hora.',  defecto: true },
     { clave: 'competiciones', titulo: 'Competiciones',         texto: 'Cuando cierra una inscripción.',          defecto: true },
     { clave: 'pagos',         titulo: 'Pagos',                 texto: 'Solo si algo sale mal.',                  defecto: true },
     { clave: 'noticias',      titulo: 'Noticias del club',     texto: 'Como mucho una a la semana.',             defecto: false },

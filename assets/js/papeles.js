@@ -45,7 +45,7 @@
     coordinador:  { titulo: 'Coordinación',  que: 'Los grupos de tu sección.',                     va: 'portal/coordinador/', mando: true },
     junta:        { titulo: 'Junta',         que: 'El club, sin la parte del dinero.',             va: 'admin/',              mando: false },
     entrenador:   { titulo: 'Entrenador',    que: 'Tus grupos: planificar y pasar lista.',         va: 'portal/entrenador/',  mando: false },
-    atleta:       { titulo: 'Atleta',        que: 'Tus entrenos, tus marcas y tus recibos.',       va: 'portal/atleta/',      mando: false },
+    atleta:       { titulo: 'Atleta',        que: 'Tus entrenamientos, tus marcas y tus recibos.', va: 'portal/atleta/',      mando: false },
     padre:        { titulo: 'Familia',       que: 'La ficha de tus hijos, faltas y pagos.',        va: 'portal/familia/',     mando: false }
   };
   var ORDEN = ['atleta', 'padre', 'entrenador', 'coordinador', 'tesoreria', 'contabilidad', 'admin', 'junta'];

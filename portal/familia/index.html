@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css">
 <script>window.APOLANA_BASE="../../";</script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/datos.js" defer></script>
 <script src="../../assets/js/info-pagos.js" defer></script>
@@ -526,10 +526,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   });
 
   if (!perfil) {
+    /* Sin ficha no se llega a pintar la barra de abajo: la vuelta al portal
+       va aquí dentro. «Escribir al club» lleva fuera del portal, así que no
+       sirve de salida. */
     wrap.innerHTML = '<div class="tarjeta">'+ APOLANA_UI.vacio(
       'No encontramos tu ficha',
       'Tu cuenta existe, pero todavía no está enlazada con ninguna familia del club. Escribid al club y os la enlazan en un momento.',
-      APOLANA_UI.boton('Escribir al club', '../../contacto/')) +'</div>';
+      APOLANA_UI.boton('Escribir al club', '../../contacto/') +
+      APOLANA_UI.boton('← Volver al portal', '../')) +'</div>';
     return;
   }
 
@@ -552,10 +556,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function isoLocal(x){ var q=x||new Date(); var m=q.getMonth()+1, dd=q.getDate(); return q.getFullYear()+'-'+(m<10?'0':'')+m+'-'+(dd<10?'0':'')+dd; }
   var todayISO = isoLocal();
 
+  /* El estado venía tal cual de la base y se leía «impagado», en minúscula y
+     sin tilde, que parece que la pantalla está a medio hacer. Aquí solo se
+     escribe bien; cambiar la palabra en sí lo decide el club. */
+  var ESTADO_PAGO = { pagado:'Pagado', impagado:'Impagado', pendiente:'Pendiente',
+                      devuelto:'Devuelto', anulado:'Anulado' };
   function pillPago(estado){
     var e=(estado||'').toLowerCase();
     var cls = (e==='pagado') ? 'ok' : (e==='impagado' ? 'bad' : (e==='pendiente' ? 'warn' : ''));
-    return '<span class="pill '+cls+'">'+esc(estado||'—')+'</span>';
+    var txt = e ? (ESTADO_PAGO[e] || e.replace(/^./, function(c){ return c.toUpperCase(); })) : '—';
+    return '<span class="pill '+cls+'">'+esc(txt)+'</span>';
   }
   /* El estado de los pagos se dice UNA vez y en un solo sitio: el aviso del
      recibo pendiente de Inicio, que además lleva el importe y abre la
@@ -592,17 +602,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // Si la consulta se ha caído no se puede decir «no tienes hijos»:
   // se dice que no se ha podido cargar, en ámbar y con salida (28f).
+  /* En los dos casos de abajo la pantalla se queda sin barra: la vuelta al
+     portal va dentro del aviso, que si no desde aquí no se sale. */
+  var salidaPortal = '<p style="margin-top:14px"><a class="ap-btn" href="../">← Volver al portal</a></p>';
   if (falloCarga) {
     wrap.innerHTML = cab + '<div class="tarjeta" style="margin-top:18px;">'+
       APOLANA_UI.error('No hemos podido cargar vuestra ficha',
-        'Puede ser la conexión. Vuelve a intentarlo en un momento; si sigue igual, avisad al club.') +'</div>';
+        'Puede ser la conexión. Vuelve a intentarlo en un momento; si sigue igual, avisad al club.') +
+      salidaPortal +'</div>';
     return;
   }
   if (!hijos.length) {
     wrap.innerHTML = cab + '<div class="tarjeta" style="margin-top:18px;">'+
       APOLANA_UI.vacio('Todavía no hay nadie enlazado a vuestra cuenta',
-        'En cuanto el club enlace a vuestro hijo o hija, aquí veréis su entreno, sus marcas y sus recibos. Si creéis que es un error, escribidnos.',
-        APOLANA_UI.boton('Escribir al club', '../../contacto/')) +'</div>';
+        'En cuanto el club enlace a vuestro hijo o hija, aquí veréis su entrenamiento, sus marcas y sus recibos. Si creéis que es un error, escribidnos.',
+        APOLANA_UI.boton('Escribir al club', '../../contacto/')) +
+      salidaPortal +'</div>';
     return;
   }
 
@@ -779,7 +794,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="fc-linea">'+linea+'</span></span>'+
       '</div>';
     if (e != null && e >= 14) {
-      html += '<p class="aviso-caja" style="margin-top:14px;margin-bottom:0;">A partir de los 14 años '+esc(hijo.nombre||'')+' tiene su propia cuenta en el portal. Aquí seguís viendo los pagos, los entrenos publicados y las faltas; lo que hable con su entrenador (su feedback) es suyo.</p>';
+      html += '<p class="aviso-caja" style="margin-top:14px;margin-bottom:0;">A partir de los 14 años '+esc(hijo.nombre||'')+' tiene su propia cuenta en el portal. Aquí seguís viendo los pagos, los entrenamientos publicados y las faltas; lo que hable con su entrenador (su feedback) es suyo.</p>';
     }
     html += '</div>';
 
@@ -822,7 +837,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!rows || !rows.length) return '<div class="tarjeta"><h2>Marcas</h2>'+
       '<div class="vacio-caja"><div class="vc-ic" aria-hidden="true">'+icCrono+'</div>'+
       '<h3>Todavía no hay marcas</h3>'+
-      '<p>En cuanto compita o registre un tiempo en el entreno, aparecerá aquí con su récord.</p></div></div>';
+      '<p>En cuanto compita o registre un tiempo en el entrenamiento, aparecerá aquí con su récord.</p></div></div>';
     var porPrueba={}; rows.forEach(function(x){ var k=x.prueba||'Prueba sin nombre'; (porPrueba[k]=porPrueba[k]||[]).push(x); });
     function difTexto(seg, mas){ var s=Math.abs(seg); return (mas?'+':'−')+(s<60?s.toFixed(2):s.toFixed(2)); }
 
@@ -938,17 +953,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return out;
   }
   function entrenoHTML(s, hijo, fallo){
-    if(!s && fallo) return '<div class="tarjeta"><h2>Entreno publicado</h2>'+
-      htmlError('No hemos podido cargar el entreno',
+    if(!s && fallo) return '<div class="tarjeta"><h2>Entrenamiento publicado</h2>'+
+      htmlError('No hemos podido cargar el entrenamiento',
         'Puede ser la conexión. Si su entrenador lo ha publicado, sigue ahí; volved a intentarlo en un momento.',
         reintentarHijo)+'</div>';
-    if(!s) return '<div class="tarjeta"><h2>Entreno publicado</h2>'+
+    if(!s) return '<div class="tarjeta"><h2>Entrenamiento publicado</h2>'+
       APOLANA_UI.vacio('Su entrenador aún no ha publicado nada',
-        'En cuanto suba la sesión, aquí veréis el calentamiento, la parte principal y la vuelta a la calma.',
+        'En cuanto suba el entrenamiento, aquí veréis el calentamiento, la parte principal y la vuelta a la calma.',
         APOLANA_UI.boton('Ver el calendario', '../calendario/')) +'</div>';
     var esHoy=s.fecha===todayISO; var fechaTxt=(esHoy?'Hoy · ':'')+formatFecha(s.fecha);
     var dis=disciplinaSes(s, hijo), D=DESC();
-    var chips=[s.tipo,(s.rol||'').replace(/_/g,' ')].filter(Boolean).map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('');
+    var chips=[nombreTipo(s.tipo),nombreRol(s.rol)].filter(Boolean).map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('');
     var bloques=Array.isArray(s.bloques)?s.bloques:[];
     var bloquesHtml=bloques.map(function(b,bi){
       var filas=(b.filas||[]).map(function(f){return filaHTML(f, dis);}).join('')||'<div class="fila"><span class="ej vacio">Por definir</span></div>';
@@ -964,7 +979,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return '<span class="ses-cifra"><b>'+esc(c.v)+'</b><span>'+esc(c.l)+'</span></span>';
     }).join('')+'</div>' : '';
     return '<div class="tarjeta">'+
-      '<div class="entreno-cab"><h2>Entreno'+(esHoy?' de hoy':' publicado')+'</h2><span class="fecha-pill">'+esc(fechaTxt)+'</span></div>'+
+      '<div class="entreno-cab"><h2>Entrenamiento'+(esHoy?' de hoy':' publicado')+'</h2><span class="fecha-pill">'+esc(fechaTxt)+'</span></div>'+
       (s.titulo?'<div class="entreno-titulo">'+esc(s.titulo)+'</div>':'')+
       (chips?'<div class="chips">'+chips+'</div>':'')+
       resHtml+
@@ -972,10 +987,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="bloques">'+bloquesHtml+'</div></div>';
   }
 
+  /* Lo que guarda la base («activacion», «continuo», «gym», «ultimo_toque_48h»)
+     no se enseña tal cual: un padre no tiene por qué saber qué es «activacion»,
+     y en minúscula y sin tilde parece que la pantalla está rota. Son los mismos
+     nombres que ya usa la pantalla del entrenador. */
+  var TIPO_SESION = { pista:'Pista', gym:'Gimnasio', continuo:'Rodaje', activacion:'Activación',
+                      competicion:'Competición', descanso:'Descanso' };
+  var ROL_SESION  = { calidad_fuerte:'Calidad fuerte', secundaria:'Secundaria', activacion:'Activación',
+                      ultimo_toque_48h:'Último toque (48h)', descarga:'Descarga', competicion:'Competición' };
+  function enLimpio(mapa, v){
+    if (!v) return '';
+    return mapa[v] || String(v).replace(/_/g, ' ').replace(/^./, function(c){ return c.toUpperCase(); });
+  }
+  function nombreTipo(t){ return enLimpio(TIPO_SESION, t); }
+  function nombreRol(r){ return enLimpio(ROL_SESION, r); }
+
   var MOTIVOS = ['Está malo', 'Cita médica', 'Asunto familiar', 'Estudios o exámenes', 'Viaje', 'Molestia o lesión', 'Otro'];
   // Solo se puede retirar un aviso que dio esta misma cuenta
   function esMio(a){ return !a.avisado_por || a.avisado_por === perfil.id; }
-  function tituloSesion(s){ return s.titulo || (s.tipo ? ('Sesión de '+s.tipo) : 'Entrenamiento'); }
+  /* «Entrenamiento de pista», nunca «sesión». Descanso y competición se dicen
+     por su nombre: «Entrenamiento de descanso» se contradice a sí mismo. */
+  function tituloSesion(s){
+    if (s.titulo) return s.titulo;
+    if (s.tipo === 'descanso' || s.tipo === 'competicion') return nombreTipo(s.tipo);
+    return s.tipo ? ('Entrenamiento de '+nombreTipo(s.tipo).toLowerCase()) : 'Entrenamiento';
+  }
 
   /* Los tres datos de la tarjeta del entreno: series, ritmo y RECUPERACIÓN.
      Antes salía el ritmo pero no la recuperación, que es lo que de verdad
@@ -1052,9 +1088,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                 (gr && gr.horario ? ' · '+esc(gr.horario) : '');
       var cifras = (dat.sesion && dat.sesion.id === prox.id) ? cifrasSesion(dat.sesion, hijo) : [];
       html += '<div class="prox-card">'+
-        '<div class="pc-top"><span class="pc-et">'+esc(esHoy ? 'Entreno de hoy' : 'Próximo entreno · '+diaCorto(prox.fecha))+
+        '<div class="pc-top"><span class="pc-et">'+esc(esHoy ? 'Entrenamiento de hoy' : 'Próximo entrenamiento · '+diaCorto(prox.fecha))+
           (hijos.length>1 ? ' · '+esc(hijo.nombre||'') : '')+'</span>'+
-          (prox.tipo?'<span class="pc-tipo">'+esc(prox.tipo)+'</span>':'')+'</div>'+
+          (prox.tipo?'<span class="pc-tipo">'+esc(nombreTipo(prox.tipo))+'</span>':'')+'</div>'+
         '<div><h2 class="pc-tit">'+esc(tituloSesion(prox))+'</h2>'+
           (sub?'<div class="pc-det">'+sub+'</div>':'')+'</div>'+
         (cifras.length?'<div class="pc-cifras">'+cifras.map(function(c){
@@ -1062,21 +1098,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }).join('')+'</div>':'')+
         '<div class="pc-btns">'+
           (av
-            ? '<span class="pc-det" style="margin:0;align-self:center;">Falta ya avisada</span>'+
-              '<button type="button" class="pc-btn" data-sec="entrenos">Ver o quitar el aviso</button>'
+            ? '<span class="pc-det" style="margin:0;align-self:center;">Falta avisada</span>'+
+              '<button type="button" class="pc-btn" data-sec="entrenos">Ver o quitar la falta</button>'
             : '<button type="button" class="pc-btn claro" data-ir-falta="'+esc(prox.fecha)+'">Avisar falta</button>'+
-              '<button type="button" class="pc-btn" data-sec="entrenos">Ver el entreno</button>')+
+              '<button type="button" class="pc-btn" data-sec="entrenos">Ver el entrenamiento</button>')+
         '</div></div>';
     } else if (dat.falloProximas) {
       // «Sin entrenos por ahora» solo si de verdad se ha podido mirar.
-      html += '<div class="tarjeta">'+htmlError('No hemos podido cargar sus entrenos',
+      html += '<div class="tarjeta">'+htmlError('No hemos podido cargar sus entrenamientos',
         'Puede ser la conexión. Si su entrenador ha publicado algo, sigue ahí; volved a intentarlo en un momento.',
         reintentarHijo)+'</div>';
     } else {
       html += '<div class="tarjeta"><div class="vacio-caja"><div class="vc-ic" aria-hidden="true">'+icLuna+'</div>'+
-        '<h3>Sin entrenos por ahora</h3>'+
-        '<p>No hay ninguna sesión publicada para los próximos días. En cuanto su entrenador la publique aparecerá aquí.</p>'+
-        '<button type="button" class="btn-linea" data-sec="entrenos">Avisar de una falta</button></div></div>';
+        '<h3>Sin entrenamientos por ahora</h3>'+
+        '<p>No hay ningún entrenamiento publicado para los próximos días. En cuanto su entrenador lo publique aparecerá aquí.</p>'+
+        '<button type="button" class="btn-linea" data-sec="entrenos">Avisar falta</button></div></div>';
     }
 
     // 3 · dos tarjetas: próxima competición y última marca
@@ -1152,12 +1188,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="tarjeta-cab"><h2>Próximos entrenamientos</h2><a class="enlace-mini" href="../calendario/">Ver calendario</a></div>'+
       (filas ? '<div class="agenda">'+filas+'</div>'
              : dat.falloProximas
-               ? htmlError('No hemos podido cargar sus entrenos',
+               ? htmlError('No hemos podido cargar sus entrenamientos',
                    'Puede ser la conexión. Si hay algo publicado sigue ahí; volved a intentarlo en un momento.',
                    reintentarHijo)
                : '<div class="vacio-caja"><div class="vc-ic" aria-hidden="true">'+icLuna+'</div>'+
                  '<h3>Nada publicado aún</h3>'+
-                 '<p>No hay entrenos para los próximos días. Podéis avisar igualmente de una falta aquí abajo.</p></div>')+
+                 '<p>No hay entrenamientos para los próximos días. Podéis avisar una falta igualmente aquí abajo.</p></div>')+
       '</div>';
 
     html += '<div class="tarjeta">'+
@@ -1173,16 +1209,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<p class="vacio" style="margin-top:12px;">Las inscripciones (elegir prueba, ver la circular y el bono) se hacen en la página de competiciones.</p>'+
       '</div>';
 
-    // Formulario de aviso de falta
+    // Formulario para avisar una falta
     var opciones = MOTIVOS.map(function(m){ return '<option>'+esc(m)+'</option>'; }).join('');
     html += '<div class="tarjeta" id="caja-falta">'+
-      '<h2>Avisar de una falta</h2>'+
-      '<p class="aviso-caja">Avisad con tiempo si '+esc(hijo.nombre||'')+' no va a ir a entrenar. El aviso le llega a su entrenador. Solo se puede avisar de hoy en adelante.</p>'+
+      '<h2>Avisar falta</h2>'+
+      '<p class="aviso-caja">Avisad con tiempo si '+esc(hijo.nombre||'')+' no va a ir a entrenar. Su entrenador la verá al momento. Solo se puede avisar de hoy en adelante.</p>'+
       '<div class="form-falta">'+
         '<div><label for="falta-fecha">Día que no va</label><input type="date" id="falta-fecha" min="'+todayISO+'" value="'+todayISO+'"></div>'+
         '<div><label for="falta-motivo">Motivo</label><select id="falta-motivo">'+opciones+'</select></div>'+
         '<div><label for="falta-detalle">Algo más que contar (opcional)</label><input type="text" id="falta-detalle" maxlength="160" placeholder="Vuelve el lunes"></div>'+
-        '<div><button class="btn btn--primario" data-accion="enviar-falta" style="width:100%;">Enviar aviso</button></div>'+
+        '<div><button class="btn btn--primario" data-accion="enviar-falta" style="width:100%;">Avisar falta</button></div>'+
       '</div>'+
       '<span class="msg" id="falta-msg"></span>'+
       '</div>';
@@ -1199,10 +1235,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           }).join('')+'</div>'
         : dat.falloAusencias
           ? htmlError('No hemos podido cargar las faltas avisadas',
-              'Puede ser la conexión. Si ya avisasteis de una, el aviso sigue puesto: esto no lo borra. '+
-              'Volved a intentarlo antes de mandar otro.', reintentarHijo)
+              'Puede ser la conexión. Si ya avisasteis una, sigue avisada: esto no la borra. '+
+              'Volved a intentarlo antes de avisarla otra vez.', reintentarHijo)
           : APOLANA_UI.vacio('Ninguna falta avisada',
-              'No hay avisos para los próximos días, así que su entrenador cuenta con que va a ir a todos los entrenos.'))+
+              'No hay ninguna falta avisada para los próximos días, así que su entrenador cuenta con que va a ir a todos los entrenamientos.'))+
       '</div>';
 
     html += entrenoHTML(dat.sesion, hijo, dat.falloSesion);
@@ -1259,7 +1295,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           (mas>0 ? '<p style="margin:10px 0 0;"><button type="button" class="btn-linea" data-accion="ver-recibos">Ver los '+mas+' recibos anteriores</button></p>' : '');
         }).join('')+
         (hayRecibos
-          ? '<p style="margin-top:16px;"><button class="btn btn--fantasma" data-accion="recibos">Descargar recibos</button></p>'+
+          /* Decía «Descargar recibos» y no descarga nada: abre el diálogo de
+             imprimir. El botón dice lo que hace de verdad. */
+          ? '<p style="margin-top:16px;"><button class="btn btn--fantasma" data-accion="recibos">Imprimir los justificantes</button></p>'+
             '<p class="vacio" style="margin-top:6px;">Se abre la hoja de justificantes de los recibos ya cobrados, lista para imprimir o guardar en PDF.</p>'
           : '<p class="vacio" style="margin-top:16px;">Todavía no hay ningún recibo cobrado del que sacar justificante.</p>')+
         // Cómo se emiten los recibos se lee una vez: va plegado, entero.
@@ -1328,7 +1366,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      de esta misma página. */
   var SECCIONES = [
     ['inicio','Inicio'],
-    ['entrenos','Entreno'],
+    ['entrenos','Entrenamiento'],
     ['calendario','Calendario','../calendario/'],
     ['marcas','Marcas'],
     ['pagos','Pagos y recibos'],
@@ -1378,10 +1416,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     /* En «Pagos y recibos» ya no va cuántos quedan: eso se dice en Inicio,
        en el aviso del recibo, y decirlo aquí otra vez era la cuarta. */
+    /* Estas cinco pantallas el vestíbulo del portal dice que son de las
+       familias, pero desde aquí no se llegaba a ninguna: solo escribiendo la
+       dirección. «Mensajes» y «Mi perfil» son las que más se echan de menos
+       (hablar con el entrenador y cambiar la contraseña). */
     html += bloqueMas('Mi cuenta', [
-      filaMas('Pagos y recibos', '', '#pagos'),
-      filaMas('Familia Apolana', '<span class="ml-dato">'+hijos.length+' '+(hijos.length===1?'hijo':'hijos')+'</span>', '../../familias/'),
       filaMas('Bonos de El Cubo', '', '../cubo/'),
+      filaMas('Pagos y recibos', '', '#pagos'),
+      filaMas('Mensajes', '', '../mensajes/'),
+      filaMas('Mi perfil', '', '../perfil/'),
+      filaMas('Mis tests', '', '../tests/'),
+      filaMas('Liga Apolana', '', '../liga/'),
+      filaMas('Familia Apolana', '<span class="ml-dato">'+hijos.length+' '+(hijos.length===1?'hijo':'hijos')+'</span>', '../../familias/'),
       filaMas('Documentos', '', '../documentos/'),
       filaMas('Ficha y marcas', '', '#marcas'),
       filaMas('Nombre en las clasificaciones', permisoResumen(), '#permisos'),
@@ -1390,6 +1436,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     html += bloqueMas('Ayuda', [
       filaMas('Escribir al club', '', '../../contacto/'),
+      /* Los ajustes de qué llega al teléfono. Se llama igual que en el
+         vestíbulo, y no se confunde con «Avisos del club», que es la lista. */
+      filaMas('Avisos al móvil', '', '../avisos/'),
       /* Con la consulta caída no se dice «Ninguno»: no se ha podido mirar. */
       filaMas('Avisos del club', AVISO?'<span class="ml-dato pend">1</span>':(falloAviso?'<span class="ml-dato">Sin comprobar</span>':'<span class="ml-dato">Ninguno</span>'), '#inicio')
     ]);
@@ -1602,7 +1651,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       SEC = 'entrenos'; pintar();
       var ff = $('falta-fecha'); if(ff) ff.value = irFalta;
       var cf = $('caja-falta'); if(cf) cf.scrollIntoView({behavior:'smooth', block:'center'});
-      var mf = $('falta-msg'); if(mf){ mf.className='msg'; mf.textContent='Elegid el motivo y dadle a «Enviar aviso».'; }
+      var mf = $('falta-msg'); if(mf){ mf.className='msg'; mf.textContent='Elegid el motivo y dadle a «Avisar falta».'; }
       return;
     }
 
@@ -1619,15 +1668,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (falta) {
       var f = $('falta-fecha'); if(f) f.value = falta;
       var caja = $('caja-falta'); if(caja) caja.scrollIntoView({behavior:'smooth', block:'center'});
-      var m = $('falta-msg'); if(m){ m.className='msg'; m.textContent='Elegid el motivo y dadle a «Enviar aviso».'; }
+      var m = $('falta-msg'); if(m){ m.className='msg'; m.textContent='Elegid el motivo y dadle a «Avisar falta».'; }
       return;
     }
 
     var quitar = el.getAttribute('data-quitar');
     if (quitar) {
-      if(!await APX.confirm('¿Quitamos el aviso? Contaremos con que sí va a ir.', { aceptar:'Quitar aviso' })) return;
+      if(!await APX.confirm('¿Quitamos la falta? Contaremos con que sí va a ir.', { aceptar:'Quitar falta' })) return;
       var dq = await sb.from('ausencias').delete().eq('id', quitar);
-      if (dq.error) { APX.toast('No se pudo quitar el aviso: '+dq.error.message, 'error'); return; }
+      if (dq.error) { APX.toast('No se pudo quitar la falta: '+dq.error.message, 'error'); return; }
       await cargarHijo(HIJO); pintar();
       return;
     }
@@ -1649,20 +1698,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var sesionId = null;
       (D[HIJO].proximas||[]).forEach(function(s){ if(s.fecha===fecha) sesionId = s.id; });
 
-      msg.className='msg'; msg.textContent='Enviando el aviso…';
+      msg.className='msg'; msg.textContent='Avisando la falta…';
       var ins = await sb.from('ausencias').insert({ atleta_id: HIJO, fecha: fecha, motivo: texto, sesion_id: sesionId });
       if (ins.error && ins.error.code === '23505') {
         var upd = await sb.from('ausencias').update({ motivo: texto, sesion_id: sesionId }).eq('atleta_id', HIJO).eq('fecha', fecha);
-        if (upd.error) { msg.className='msg error'; msg.textContent='No se pudo cambiar el aviso: '+upd.error.message; return; }
+        if (upd.error) { msg.className='msg error'; msg.textContent='No se pudo cambiar la falta: '+upd.error.message; return; }
       } else if (ins.error) {
         msg.className='msg error';
-        msg.textContent='No se pudo enviar el aviso: '+ins.error.message;
+        msg.textContent='No se pudo avisar la falta: '+ins.error.message;
         return;
       }
       await cargarHijo(HIJO);
       pintar();
       var m2 = $('falta-msg');
-      if (m2) { m2.className='msg ok'; m2.textContent='Aviso enviado para el '+formatFecha(fecha)+'. Su entrenador ya lo ve.'; }
+      if (m2) { m2.className='msg ok'; m2.textContent='Falta avisada para el '+formatFecha(fecha)+'. Su entrenador ya la ve.'; }
       return;
     }
   });

@@ -77,8 +77,11 @@
       '.pt-tabbar .ic{width:24px;height:24px;flex:0 0 24px}' +
       '.pt-tabbar a.activo{color:#2F6FA8}' +
       '.pt-tabbar a.activo span{font-weight:600}' +
-            /* los avisos flotantes suben por encima de la barra en vez de quedar debajo */
     '}';
+  /* Los avisos flotantes suben por encima de la barra: de eso se encarga
+     apxSitio() en portal-auth.js, que mide el alto real de la barra al
+     mostrar cada aviso. Aquí antes había un comentario que anunciaba una
+     regla CSS que no llegó a escribirse, y hacía pensar que faltaba algo. */
   document.head.appendChild(css);
 
   /* ---------- ¿en qué zona está la persona? ----------
