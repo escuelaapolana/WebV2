@@ -6,6 +6,43 @@
    configuradas en Supabase (qué puede leer/escribir cada quién).
    Requiere que la librería supabase-js se haya cargado antes.
    ============================================================ */
+/* ============================================================
+   TURNOS · cómo se dice en voz alta «el Azul 2 del martes»
+   ------------------------------------------------------------
+   La escuela entrena el mismo grupo dos veces por semana con niños
+   distintos: hay un «Azul 2» de lunes y miércoles y otro de martes y
+   jueves. El club los llama a los dos «Azul 2», así que el nombre no se
+   toca; lo que los separa son los días.
+
+   Esto vive aquí, y no repetido en cada pantalla, porque si un día se
+   dice «lunes y miércoles» y en la de al lado «lun/mié», parecen dos
+   cosas. Va fuera del bloque de la conexión a propósito: sirve igual
+   aunque la base no conteste.
+   ============================================================ */
+(function () {
+  var EN_PALABRAS = {
+    'lunes-miercoles': 'lunes y miércoles',
+    'martes-jueves':   'martes y jueves'
+  };
+
+  /* Los días del turno, tal y como se leen. Vacío si el grupo no se
+     desdobla, que es lo normal fuera de la escuela. */
+  window.APOLANA_TURNO = function (turno) {
+    return EN_PALABRAS[turno] || '';
+  };
+
+  /* El nombre con el que hay que enseñar un grupo donde pueda haber dos
+     iguales: en una lista desplegable, en una tabla, en un aviso. «Azul
+     2 · martes y jueves». Si el grupo no tiene turno, es su nombre y ya
+     está: no se le cuelga nada. */
+  window.APOLANA_GRUPO_NOMBRE = function (g) {
+    if (!g) return '';
+    var nombre = (g.nombre == null ? '' : String(g.nombre)).trim();
+    var dias = window.APOLANA_TURNO(g.turno);
+    return dias ? nombre + ' · ' + dias : nombre;
+  };
+})();
+
 (function () {
   var URL = "https://icaxokjsvhlreuwpyxeb.supabase.co";
   var KEY = "sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH";

@@ -524,6 +524,30 @@
     return { cuando: limpio(p[0]), donde: limpio(p.slice(1).join(' · ')) };
   }
 
+  /* Cuándo entrena un grupo que existe dos veces. En la escuela, «Azul 2»
+     es uno de lunes y miércoles y otro de martes y jueves; aquí se enseña
+     una sola vez porque el color y el año son los mismos, y el turno se
+     elige al apuntarse. Pero decir solo los días de uno de los dos sería
+     esconderle a un padre la mitad de lo que puede elegir, así que se
+     dicen los dos y detrás la hora, que es la misma.
+
+     Si el horario no empieza por los días o lleva más días por el medio,
+     no se toca nada y se deja tal cual lo escribió el club. */
+  var RE_DIAS_DELANTE = /^(?:\s|,|y\b|o\b|lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bados?|domingos?)+/i;
+  var RE_DIA_SUELTO   = /(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo)/i;
+  var ORDEN_TURNOS    = ['lunes-miercoles', 'martes-jueves'];
+  function cuandoConTurnos(g, cuando) {
+    var turnos = g.turnos || [];
+    if (turnos.length < 2 || !window.APOLANA_TURNO) return cuando;
+    var hora = String(cuando || '').replace(RE_DIAS_DELANTE, '').trim();
+    if (!hora || hora === limpio(cuando) || RE_DIA_SUELTO.test(hora)) return cuando;
+    var dias = turnos.slice()
+      .sort(function (a, b) { return ORDEN_TURNOS.indexOf(a) - ORDEN_TURNOS.indexOf(b); })
+      .map(window.APOLANA_TURNO).filter(Boolean).join(' o ');
+    if (!dias) return cuando;
+    return dias.charAt(0).toUpperCase() + dias.slice(1) + ' ' + hora;
+  }
+
   /* Primera frase de la descripción que escribe el entrenador en el panel:
      en los grupos de la escuela es justo la que dice la edad. */
   function primeraFrase(txt) {
@@ -912,7 +936,8 @@
           /* El año de nacimiento manda: es lo que busca un padre para
              saber cuál es el grupo de su hijo. Si el grupo no va por año
              (el de competición), se queda lo que haya escrito el club. */
-          return { nombre: g.nombre, txt: aniosDeNacimiento(g) || primeraFrase(g.descripcion), cuando: cd.cuando };
+          return { nombre: g.nombre, txt: aniosDeNacimiento(g) || primeraFrase(g.descripcion),
+                   cuando: cuandoConTurnos(g, cd.cuando) };
         }),
         pagina: entrada.pagina,
         seccionTxt: entrada.seccionTxt,
@@ -1348,7 +1373,7 @@
     if (!window.APOLANA_DB) { fallo = true; pintarResultado(); return; }
 
     var qGrupos = window.APOLANA_DB.from('grupos')
-      .select('id, nombre, seccion, horario, descripcion, entrenador_id, nacidos_desde, nacidos_hasta')
+      .select('id, nombre, seccion, horario, descripcion, entrenador_id, nacidos_desde, nacidos_hasta, turno')
       .eq('activo', true).order('nombre');
     var qTarifas = window.APOLANA_DB.from('tarifas')
       .select('clave, concepto, seccion, dias, importe_socio, importe_socio_hasta, importe_no_socio, texto_importe, periodicidad, notas')
@@ -1360,7 +1385,23 @@
         console.warn('[Apolana] encuentra-tu-grupo · grupos:', rg.error && rg.error.message);
         fallo = true; pintarResultado(); return;
       }
-      GRUPOS = rg.data;
+      /* La escuela tiene cada grupo dos veces: el «Azul 2» de lunes y
+         miércoles y el de martes y jueves, con niños distintos y el
+         mismo nombre. Por dentro son dos y así tiene que ser, pero aquí
+         se está contestando «cuál es el grupo de mi hijo», y la
+         respuesta es la misma en los dos: el color y el año. Enseñarlos
+         por separado sería preguntarle a un padre algo que el club
+         decide después. Se queda uno de los dos, y el turno se elige al
+         apuntarse. */
+      var vistos = {};
+      GRUPOS = rg.data.filter(function (g) {
+        if (!g.turno) return true;
+        var k = clave(g.seccion) + '|' + clave(g.nombre);
+        if (vistos[k]) { vistos[k].turnos.push(g.turno); return false; }
+        g.turnos = [g.turno];
+        vistos[k] = g;
+        return true;
+      });
       POR_NOMBRE = {};
       GRUPOS.forEach(function (g) { POR_NOMBRE[clave(g.nombre)] = g; });
 

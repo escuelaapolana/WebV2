@@ -172,7 +172,9 @@
       <div class="oculto" id="caja-grupos">
         <h3>Grupos que no reconozco</h3>
         <p class="intro" style="font-size:15px;">
-          Estos nombres de grupo no coinciden con ninguno de los del club. Dime a cuál corresponde cada uno
+          Estos nombres de grupo no coinciden con ninguno de los del club, o coinciden con dos.
+          Los de la escuela existen dos veces, uno de lunes y miércoles y otro de martes y jueves,
+          y ahí no puedo elegir por ti. Dime a cuál corresponde cada uno
           (o déjalos sin grupo y lo colocas luego desde <a href="../atletas/">Atletas</a>).
         </p>
         <div id="lista-grupos"></div>
@@ -672,12 +674,29 @@ APOLANA_ADMIN.listo(function (sb) {
   async function cargarReferencias() {
     faltanReferencias = [];
 
-    var g = await sb.from('grupos').select('id,nombre').order('nombre');
+    var g = await sb.from('grupos').select('id,nombre,turno').order('nombre').order('turno', { nullsFirst: true });
     if (g.error || !g.data) faltanReferencias.push('los grupos del club');
     else {
       grupos = g.data;
+      /* En la escuela hay dos grupos con cada nombre: el «Azul 2» de
+         lunes y miércoles y el de martes y jueves, con niños distintos.
+         Cuando un fichero pone «Azul 2» a secas, NO se puede adivinar
+         cuál de los dos es: metería a media escuela en el turno que no
+         es, y sin que nadie se entere hasta que un entrenador pase lista
+         y le falte medio grupo. Los nombres repetidos se dejan fuera del
+         reconocimiento automático a propósito, para que el fichero pase
+         por la pantalla de «a qué grupo va esto» y lo diga una persona.
+         El nombre con el turno detrás («Azul 2 · martes y jueves») sí se
+         reconoce solo: eso no tiene ninguna duda. */
       gruposPorNombre = {};
-      grupos.forEach(function (x) { gruposPorNombre[NUC.norm(x.nombre)] = x.id; });
+      var repetidos = {};
+      grupos.forEach(function (x) {
+        var k = NUC.norm(x.nombre);
+        if (gruposPorNombre[k] !== undefined) repetidos[k] = true;
+        gruposPorNombre[k] = x.id;
+        if (x.turno) gruposPorNombre[NUC.norm(etiquetaGrupo(x))] = x.id;
+      });
+      Object.keys(repetidos).forEach(function (k) { delete gruposPorNombre[k]; });
     }
 
     var p = await sb.from('pruebas').select('nombre').eq('activa', true);
@@ -795,8 +814,13 @@ APOLANA_ADMIN.listo(function (sb) {
     return { id: null, texto: t, aMano: true, sinResolver: true };
   }
   function nombreGrupo(id) {
-    for (var i = 0; i < grupos.length; i++) { if (grupos[i].id === id) return grupos[i].nombre; }
+    for (var i = 0; i < grupos.length; i++) { if (grupos[i].id === id) return etiquetaGrupo(grupos[i]); }
     return '—';
+  }
+  /* El nombre con el que hay que enseñar un grupo cuando puede haber dos
+     que se llamen igual: «Azul 2 · martes y jueves». */
+  function etiquetaGrupo(g) {
+    return window.APOLANA_GRUPO_NOMBRE ? window.APOLANA_GRUPO_NOMBRE(g) : (g && g.nombre) || '—';
   }
 
   // ---------- Evaluar el fichero contra lo que ya hay ----------
@@ -879,7 +903,7 @@ APOLANA_ADMIN.listo(function (sb) {
         var elegido = mapeoGrupos[t] === undefined ? null : mapeoGrupos[t];
         var ops = '<option value=""' + (elegido === '' ? ' selected' : '') + '>(dejar sin grupo)</option>' +
           grupos.map(function (g) {
-            return '<option value="' + esc(g.id) + '"' + (elegido === g.id ? ' selected' : '') + '>' + esc(g.nombre) + '</option>';
+            return '<option value="' + esc(g.id) + '"' + (elegido === g.id ? ' selected' : '') + '>' + esc(etiquetaGrupo(g)) + '</option>';
           }).join('');
         if (elegido === null) ops = '<option value="__" selected>(elige uno)</option>' + ops;
         return '<div class="grupo-fila"><code>' + esc(t) + '</code>' +

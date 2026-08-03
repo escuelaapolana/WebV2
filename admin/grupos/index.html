@@ -81,6 +81,11 @@
   .pista-campo { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--texto-suave); }
   .anio-celda { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+  /* Los días del turno, debajo del nombre. Van en pequeño y en gris
+     porque son lo que separa a dos grupos que se llaman igual: hacen
+     falta para no confundirlos, pero el nombre sigue mandando. */
+  .celda-turno { display: block; margin-top: 2px; font-size: 13px; color: var(--texto-suave); }
+
   .pill-estado { font-size: 13px; padding: 2px 8px; border-radius: 999px; }
   .pill-si { background: #e6f4ea; color: #1e7a3d; }
   .pill-no { background: var(--crema-media); color: var(--texto-suave); }
@@ -142,6 +147,20 @@
             <input type="text" id="g-horario" placeholder="Lunes y miércoles, 18:00–19:30">
           </div>
         </div>
+
+        <!-- El turno. La escuela tiene el mismo grupo dos veces por
+             semana, con niños distintos: hay un «Azul 2» de lunes y
+             miércoles y otro de martes y jueves. Se llaman igual a
+             propósito, que es como los llama el club; lo que los separa
+             es esto. En los grupos que solo existen una vez se deja en
+             «no se desdobla» y no sale nada por ninguna parte. -->
+        <label for="g-turno">Turno</label>
+        <select id="g-turno">
+          <option value="">Este grupo no se desdobla</option>
+          <option value="lunes-miercoles">Lunes y miércoles</option>
+          <option value="martes-jueves">Martes y jueves</option>
+        </select>
+        <p class="pista-campo">Solo para los grupos de la escuela, que entrenan dos veces por semana con niños distintos y el mismo nombre. Es lo que los separa en las listas, en los avisos y al cambiar a un niño de grupo. El «Horario» se escribe entero como siempre (días, hora y sede); mientras esté vacío, la web enseña al menos los días que dice el turno.</p>
 
         <!-- El año de nacimiento del grupo. En atletismo la edad va por
              año de nacimiento, no por años cumplidos: cumplir años a
@@ -205,6 +224,12 @@ APOLANA_ADMIN.listo(function (sb) {
     return (h - d === 1) ? (d + ' y ' + h) : (d + ' a ' + h);
   }
 
+  /* Los días del turno, escritos igual que en la web (lo dice db.js, en
+     un solo sitio, para que no acaben dichos de dos maneras). */
+  function turnoEnPalabras(g) {
+    return (window.APOLANA_TURNO && g) ? window.APOLANA_TURNO(g.turno) : '';
+  }
+
   // --- Listar ---
   var GRUPOS = [];
 
@@ -212,7 +237,11 @@ APOLANA_ADMIN.listo(function (sb) {
     var tb = $('tabla-grupos').querySelector('tbody');
     tb.innerHTML = ADM.filaCargando(6);
     $('f-cuenta').textContent = '';
-    var r = await sb.from('grupos').select('id,nombre,seccion,horario,activo,nacidos_desde,nacidos_hasta').order('nombre');
+    /* Se pide también el turno: sin él, los dieciocho grupos de la
+       escuela salen como nueve nombres repetidos y no hay manera de
+       saber cuál es cuál. */
+    var r = await sb.from('grupos').select('id,nombre,seccion,horario,activo,nacidos_desde,nacidos_hasta,turno')
+      .order('nombre').order('turno', { nullsFirst: true });
     /* Con la consulta caída `data` viene vacío: decir «no hay grupos todavía»
        sería dar por mirado lo que no se ha podido mirar. */
     if (r.error) { GRUPOS = []; tb.innerHTML = ADM.filaError(6, r.error.message, cargarGrupos); return; }
@@ -229,8 +258,10 @@ APOLANA_ADMIN.listo(function (sb) {
       if (estado === 'si' && !g.activo) return false;
       if (estado === 'no' && g.activo) return false;
       if (!texto) return true;
+      /* Los días del turno entran en la búsqueda: quien lleva la escuela
+         busca «martes» para ver de golpe los nueve de ese turno. */
       var t = ((g.nombre || '') + ' ' + (g.seccion || '') + ' ' + nombreSeccion(g.seccion) + ' ' +
-               (g.horario || '') + ' ' + textoNacidos(g)).toLowerCase();
+               (g.horario || '') + ' ' + textoNacidos(g) + ' ' + turnoEnPalabras(g)).toLowerCase();
       return t.indexOf(texto) !== -1;
     });
 
@@ -256,8 +287,10 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     tb.innerHTML = lista.map(function (g) {
+      var dias = turnoEnPalabras(g);
       return '<tr>' +
-        '<td>' + esc(g.nombre) + '</td>' +
+        '<td>' + esc(g.nombre) +
+          (dias ? '<span class="celda-turno">' + esc(dias) + '</span>' : '') + '</td>' +
         '<td>' + esc(nombreSeccion(g.seccion)) + '</td>' +
         '<td class="anio-celda">' + esc(textoNacidos(g)) + '</td>' +
         '<td>' + esc(g.horario || '—') + '</td>' +
@@ -279,6 +312,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('g-nombre').value = g.nombre || '';
     $('g-seccion').value = g.seccion || '';
     $('g-horario').value = g.horario || '';
+    $('g-turno').value = g.turno || '';
     $('g-nacidos-desde').value = (g.nacidos_desde == null) ? '' : g.nacidos_desde;
     $('g-nacidos-hasta').value = (g.nacidos_hasta == null || g.nacidos_hasta === g.nacidos_desde) ? '' : g.nacidos_hasta;
     $('g-descripcion').value = g.descripcion || '';
@@ -332,6 +366,7 @@ APOLANA_ADMIN.listo(function (sb) {
       nombre: $('g-nombre').value.trim(),
       seccion: $('g-seccion').value.trim() || null,
       horario: $('g-horario').value.trim() || null,
+      turno: $('g-turno').value || null,
       nacidos_desde: isNaN(anioDesde) ? null : anioDesde,
       nacidos_hasta: isNaN(anioHasta) ? null : anioHasta,
       descripcion: $('g-descripcion').value.trim() || null,
@@ -342,7 +377,15 @@ APOLANA_ADMIN.listo(function (sb) {
     var id = $('g-id').value, r;
     if (id) r = await sb.from('grupos').update(datos).eq('id', id);
     else r = await sb.from('grupos').insert(datos);
-    if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
+    if (r.error) {
+      /* La base impide que haya tres grupos con el mismo nombre y el
+         mismo turno. El aviso que devuelve es de programador, así que
+         aquí se traduce a lo que ha pasado de verdad. */
+      var texto = /ux_grupos_escuela_nombre_turno|duplicate key/i.test(r.error.message || '')
+        ? 'Ya existe un grupo «' + datos.nombre + '» en ese turno. Cada grupo de la escuela existe dos veces como mucho: uno de lunes y miércoles y otro de martes y jueves.'
+        : 'Error: ' + r.error.message;
+      $('msg-form').textContent = texto; $('msg-form').className = 'msg error'; return;
+    }
     $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
     $('panel-form').classList.add('oculto');
     cargarGrupos();

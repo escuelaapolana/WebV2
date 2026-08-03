@@ -497,7 +497,22 @@
     grupos.forEach(function (g) {
       var fam = familiaDe(g.seccion);
       var crudo = limpio(g.horario);
-      if (!crudo) { otros.push({ nombre: g.nombre, texto: 'Horario por confirmar', familia: fam }); return; }
+      /* Sin horario escrito, antes solo se decía «por confirmar». Pero de
+         los grupos de la escuela sí se sabe una cosa: qué días entrenan,
+         porque cada uno existe dos veces (lunes y miércoles, o martes y
+         jueves) y eso es justo lo que los separa. Decir los días y que
+         falta la hora es más útil, y además evita que aparezcan dos
+         líneas idénticas con el mismo nombre. */
+      if (!crudo) {
+        var dias = window.APOLANA_TURNO ? window.APOLANA_TURNO(g.turno) : '';
+        otros.push({
+          nombre: g.nombre,
+          texto: dias ? (dias.charAt(0).toUpperCase() + dias.slice(1) + ' · hora y sede por confirmar')
+                      : 'Horario por confirmar',
+          familia: fam
+        });
+        return;
+      }
       var r = interpretar(crudo);
       if (!r.franjas.length) { otros.push({ nombre: g.nombre, texto: crudo, familia: fam }); return; }
       r.franjas.forEach(function (f) {
@@ -648,9 +663,13 @@
     }
     window.APOLANA_DB
       .from('grupos')
-      .select('id, nombre, seccion, horario, entrenador_id')
+      .select('id, nombre, seccion, horario, entrenador_id, turno')
       .eq('activo', true)
       .order('nombre')
+      /* Dentro del mismo nombre, primero el turno de lunes: dos líneas
+         iguales que unas veces empiezan por el lunes y otras por el
+         martes se leen como un desorden. */
+      .order('turno', { nullsFirst: true })
       .then(function (res) {
         if (res.error) {
           console.warn('[Apolana] horarios:', res.error.message);

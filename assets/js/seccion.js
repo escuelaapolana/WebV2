@@ -241,6 +241,87 @@
     return 'Nacidos de ' + desde + ' a ' + hasta;
   }
 
+  /* La escuela tiene el mismo grupo dos veces: el «Azul 2» de lunes y
+     miércoles y el «Azul 2» de martes y jueves. Por dentro son dos
+     grupos distintos y tienen que serlo (los niños no son los mismos y
+     cada uno pasa su lista), pero en la web serían dos tarjetas idénticas
+     una encima de otra, con el mismo nombre, el mismo año y el mismo
+     precio. Quien lee no entiende qué las diferencia y se pregunta si se
+     ha equivocado de página.
+
+     Así que se enseñan como una sola tarjeta que dice los dos días:
+     «Azul 2 · lunes y miércoles o martes y jueves». Es una manera de
+     enseñarlo, no un dato escrito a mano: los días siguen saliendo del
+     turno de cada grupo.
+
+     Solo se juntan si coinciden en todo lo demás. El día que el club
+     escriba un horario distinto para cada turno —porque uno entrene a
+     otra hora, por ejemplo— se separan solas en dos tarjetas, cada una
+     con lo suyo. */
+  /* Un horario del club se escribe siempre igual: primero los días, luego
+     la hora y detrás del punto el sitio. «Lunes y miércoles 17:30-18:30 ·
+     Estadio Joaquín Villar». Los dos turnos de un mismo grupo solo se
+     diferencian en el trozo de delante, así que para poder juntarlos en
+     una tarjeta hay que quedarse con lo de detrás: la hora y el sitio,
+     que en los dos es lo mismo.
+
+     Si después de quitar los días de delante todavía queda algún día
+     suelto por el medio (un grupo que entrena martes y jueves y además
+     los sábados, por ejemplo), esto devuelve vacío y el grupo se queda
+     con su tarjeta entera. Más vale una tarjeta de más que un horario
+     recortado por la mitad. */
+  var RE_DIA_SUELTO = /(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo)/i;
+  var RE_DIAS_DELANTE = /^(?:\s|,|y\b|o\b|lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bados?|domingos?)+/i;
+  function horaYSitio(horario) {
+    var t = limpio(horario);
+    if (!t) return '';
+    var resto = t.replace(RE_DIAS_DELANTE, '').trim();
+    if (!resto || resto === t) return '';       // no empezaba por días: no se toca
+    if (RE_DIA_SUELTO.test(resto)) return '';   // quedan más días detrás
+    return resto;
+  }
+
+  function juntaTurnos(grupos) {
+    var salida = [], vistos = {};
+    grupos.forEach(function (g) {
+      if (!g.turno) { salida.push(g); return; }
+      /* Con horario escrito, dos turnos solo se juntan si la hora y el
+         sitio salen limpios y coinciden. Si de un horario no se puede
+         separar el «cuándo» del «dónde», ese grupo va por su cuenta: se
+         le da su propio id como clave y así no se junta con nadie. */
+      var resto = horaYSitio(g.horario);
+      var comun = (!limpio(g.horario) || resto) ? resto : g.id;
+      var clave = [limpio(g.nombre).toLowerCase(), g.nacidos_desde, g.nacidos_hasta,
+                   comun, limpio(g.descripcion)].join('|');
+      if (vistos[clave]) { vistos[clave].turnos.push(g.turno); return; }
+      var copia = {};
+      for (var k in g) { if (Object.prototype.hasOwnProperty.call(g, k)) copia[k] = g[k]; }
+      copia.turnos = [g.turno];
+      vistos[clave] = copia;
+      salida.push(copia);
+    });
+    return salida;
+  }
+
+  /* Los días de un grupo: «Lunes y miércoles o martes y jueves». Vacío
+     en las secciones de mayores, donde no hay turnos.
+
+     Siempre en el orden de la semana, y no en el que vengan de la base:
+     si una tarjeta empieza por el lunes y la de abajo por el martes,
+     quien las lee se para a comparar creyendo que dicen cosas distintas
+     cuando dicen la misma. */
+  var ORDEN_TURNOS = ['lunes-miercoles', 'martes-jueves'];
+  function diasDeTurnos(g) {
+    var dias = (g.turnos || (g.turno ? [g.turno] : []))
+      .slice()
+      .sort(function (a, b) { return ORDEN_TURNOS.indexOf(a) - ORDEN_TURNOS.indexOf(b); })
+      .map(function (t) { return window.APOLANA_TURNO ? window.APOLANA_TURNO(t) : ''; })
+      .filter(function (t) { return !!t; });
+    if (!dias.length) return '';
+    var texto = dias.join(' o ');
+    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  }
+
   /* Qué tarifa le corresponde a un grupo. Primero se mira si el club la
      ha colgado del grupo en Panel → Tarifas: eso es una decisión escrita
      y no se discute. Solo si no lo está se recurre a que los nombres
@@ -283,7 +364,18 @@
       var anos = aniosDeNacimiento(g);
       if (anos) t.appendChild(nodo('span', 'nacidos', anos));
 
-      if (limpio(g.horario)) t.appendChild(nodo('span', 'cuando', limpio(g.horario)));
+      /* Cuándo entrena. En una tarjeta que vale para los dos turnos, los
+         días los ponen los turnos y la hora y el sitio salen del horario
+         que ha escrito el club: «Lunes y miércoles o martes y jueves
+         17:30-18:30 · Estadio Joaquín Villar». En los grupos que no se
+         desdoblan manda el horario tal cual, que ya lo dice todo. Y si no
+         hay nada escrito, se dice que falta: un hueco mudo parece un
+         error de la página. */
+      var dias = diasDeTurnos(g);
+      var resto = horaYSitio(g.horario);
+      var cuando = (dias && resto) ? (dias + ' ' + resto)
+                                   : (limpio(g.horario) || dias);
+      if (cuando) t.appendChild(nodo('span', 'cuando', cuando));
       else t.appendChild(nodo('span', 'cuando sec-vacio', 'Días y sede, todavía sin publicar'));
 
       if (limpio(g.descripcion)) t.appendChild(nodo('p', 'que', limpio(g.descripcion)));
@@ -301,6 +393,14 @@
       lista.appendChild(t);
     });
     caja.appendChild(lista);
+
+    /* Cómo se entra a la sede. Va una sola vez, debajo de todos los
+       grupos, porque es igual para todos: repetirlo en cada tarjeta
+       cargaría justo lo que hay que leer de un vistazo (qué grupo le
+       toca a mi hijo y cuándo). Lo escribe el club en Panel → Páginas,
+       casilla «Cómo se llega»; vacía, no aparece nada. */
+    var acceso = limpio(datos.ficha && datos.ficha.acceso);
+    if (acceso) caja.appendChild(nodo('p', 'sec-nota sec-acceso', acceso));
   }
 
   /* ---------------------------------------------------------
@@ -552,7 +652,7 @@
          no existen y la página se queda sin grupos ni precios. O sea: la
          migración va SIEMPRE antes que el despliegue. */
       db.from('contenido_secciones')
-        .select('titulo,dirigido_a,descripcion,precio,servicios,compromisos,puntos_destacados,que_traer,imagen_url,imagen_encuadre,imagen_zoom')
+        .select('titulo,dirigido_a,descripcion,precio,servicios,compromisos,puntos_destacados,que_traer,acceso,imagen_url,imagen_encuadre,imagen_zoom')
         .eq('seccion', clave).limit(1),
       /* Los grupos de la escuela van por año de nacimiento, y el orden
          que entiende una familia es del más pequeño al más mayor: de
@@ -560,7 +660,7 @@
          y, dentro del mismo año (o cuando no hay año, que es lo normal
          en las secciones de adultos), por nombre. */
       db.from('grupos')
-        .select('id,nombre,horario,descripcion,pruebas,nacidos_desde,nacidos_hasta')
+        .select('id,nombre,horario,descripcion,pruebas,nacidos_desde,nacidos_hasta,turno')
         .eq('seccion', clave).eq('activo', true)
         .order('nacidos_desde', { ascending: false, nullsFirst: false })
         .order('nombre'),
@@ -592,7 +692,7 @@
 
       var datos = {
         ficha:   (rf.data || [])[0] || null,
-        grupos:  rg.data || [],
+        grupos:  juntaTurnos(rg.data || []),
         tarifas: propias,
         socio:   deEscuela ? null : (todas.filter(function (t) { return t.clave === 'cuota-socio'; })[0] || null)
       };
