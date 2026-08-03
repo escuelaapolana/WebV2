@@ -1,10 +1,33 @@
 # Apolana · lo que hemos decidido
 
-Paquete de entrega para desarrollo e imprenta. Tres cosas dentro, en este orden:
+Paquete de entrega para desarrollo e imprenta. Cinco cosas dentro, en este orden:
 
+0. **Logo** — los originales del club
 1. **Portada de móvil** — el diseño y su documentación
 2. **Mapa del sitio** — qué páginas hay, qué hace cada una, qué se cae
 3. **Icono de la app** — el SVG y las notas de exportación
+4. **Avisos y pagos** — dos pantallas de la app
+
+---
+
+## 0 · Logo
+
+**Carpeta:** `0-logo/`
+
+| Archivo | Qué es | Para qué |
+|---|---|---|
+| `Logo Apolana vectorizado.pdf` | PDF/X de Illustrator, vectorial | **El máster.** Imprenta y cualquier reproducción grande |
+| `Logo Apolana.svg` | El mismo, convertido a SVG | Web y pantalla |
+| `Logo Apolana.png` | Ráster | Vistas rápidas, nada más |
+| `Logo Apolana natacion.png` | Variante de sección | Página de Natación |
+| `Logo Apolana fitness.png` | Variante de sección | Página de Fuerza / El Cubo |
+
+**Azul de marca: `#2E81BE`.** Leído del SVG vectorial. Los hex sacados de los PNG no son
+fiables. El PDF lleva perfil CMYK (Coated FOGRA39): para imprenta, pedir el CMYK o el
+Pantone exacto a quien hizo el original.
+
+**Falta:** las variantes de Natación y Fitness solo existen en PNG. Para usarlas en la web
+o en camisetas hay que vectorizarlas igual que la principal.
 
 ---
 
@@ -123,6 +146,41 @@ falta para otra cosa.
 
 ---
 
+## 4 · Avisos y pagos
+
+**Archivos:** `4-avisos-y-pagos/README.md` · `4-avisos-y-pagos/Avisos y pagos Apolana.html`
+
+Dos pantallas de la app. El README de esa carpeta lleva el detalle; lo esencial:
+
+**Avisos — tres niveles, y el rojo casi nunca.**
+
+| Nivel | Color | Cuándo |
+|---|---|---|
+| Informativo | gris azulado `#6E8CA6` | Novedades y crónicas. La mayoría. |
+| Importante | ámbar `#E08A18` | Cambia tu plan de esta semana. **El de diario.** |
+| Grave | rojo `#B3261E` | Seguridad y nada más. Solo la junta. |
+
+El `#FBECEB` se queda, pero solo para grave: el problema no era el tono, era que se usaba
+para todo. El color nunca va solo — siempre lleva la palabra.
+
+Otras decisiones: **sin tarjeta navy** para el aviso (el navy es para bloques de una línea,
+no para texto que hay que leer); **la fecha arriba**, con el tipo y el remitente; **nuevo
+vs. leído** es el mismo diseño con punto, negrita y fondo, no dos tarjetas; **los
+caducados no se borran**, se tachan y pasan a «Ya pasó».
+
+Tres cosas por decidir fuera del diseño: quién puede enviar cada nivel, qué avisos suenan
+en el móvil, y que quien envía ponga fecha de caducidad — sin ese dato «Ya pasó» no se
+puede calcular.
+
+**Pagos — cinco pantallas.** Elegir → confirmar → vuelta → fallo → estado sin Stripe. La
+regla: en cada pantalla se ve qué se compra y cuánto cuesta, incluida la de error. «Los
+gastos los paga el club» va en verde y sin importe, porque es una buena noticia y no una
+línea de factura. El error de pago es **ámbar, no rojo** — misma regla que los avisos — y
+lo primero que se lee es «no se te ha cobrado nada». Mientras no haya Stripe, el botón de
+tarjeta se ve apagado y la vía real es WhatsApp.
+
+---
+
 ## Lo que falta para poder publicar
 
 **Fotos.** Verticales y propias — las de hoy están recortadas para escritorio. Hace falta
@@ -138,14 +196,22 @@ mantenidos. Es lo que bloquea la portada entera y lo que menos se menciona.
 se lo está pensando?», máximo veinte palabras). El estado vacío de agosto para «Hoy en el
 club». El nombre real de quien contesta el WhatsApp.
 
-**Logos.** El escudo en SVG y los logos de los patrocinadores en SVG o PNG transparente.
+**Logos.** El escudo ya está en `0-logo/`. Faltan los logos de los patrocinadores en SVG o
+PNG transparente, y vectorizar las variantes de Natación y Fitness.
 
 ## Tres cosas sin decidir
 
-1. **«Atletismo en ruta» o «Running»** en la primera sección. Un padre entiende «Running»
-   antes; «ruta» es lenguaje de dentro del club.
-2. **Si «Club deportivo» sustituye a «Club de atletismo»** en el antetítulo del hero.
-3. **Cuántos patrocinadores hay**, para dimensionar la rejilla.
+1. **Si «Club deportivo» sustituye a «Club de atletismo»** en el antetítulo del hero.
+2. **Cuántos patrocinadores hay**, para dimensionar la rejilla.
+3. **El CMYK o Pantone exacto** del azul, para imprenta.
+
+## Ya decidido
+
+- **«Running»**, no «Atletismo en ruta».
+- **Redes: Facebook, TikTok, Instagram y WhatsApp.** Fuera Strava. Al ser cuatro, en el pie
+  van en dos filas de dos.
+- **Sin monoespaciada.** Solo vuelve donde los dígitos se comparan en columna: parrilla
+  semanal, tarifas y resultados.
 
 ## Cómo usar los HTML
 
