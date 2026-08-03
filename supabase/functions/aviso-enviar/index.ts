@@ -8,10 +8,19 @@
 //   se lo entrega a Google (Android y Chrome) o a Apple (iPhone con
 //   la app instalada), que son quienes lo hacen sonar.
 //
+// LOS TRES NIVELES (maqueta «4 · Avisos y pagos», apartado A)
+//   informativo · importante · grave. El nivel decide el color y la
+//   palabra de la pantalla, y aquí decide dos cosas más:
+//     · «grave» va siempre a todo el club (se pueden QUITAR grupos) y
+//       siempre suena en el móvil, sin que haya que marcarlo.
+//     · quien escribe elige, aviso a aviso, si además suena en el
+//       móvil. Un aviso que no suena no se pierde: queda en la app.
+//
 // LO QUE NO SE FÍA DEL NAVEGADOR
 //   · Quién eres. Se comprueba el JWT contra Supabase y después se
-//     pregunta a la base si esa persona es del equipo del club
-//     (`es_staff()`). No se cree el correo que venga en el cuerpo.
+//     pregunta a la base si esa persona puede mandar avisos
+//     (`avisos_puede_enviar()`: administración o tesorería, y con ese
+//     papel puesto). No se cree el correo que venga en el cuerpo.
 //   · A quién va. La lista de destinatarios la calcula la BASE, con
 //     las preferencias ya aplicadas. Aquí no llega ni un endpoint
 //     que el navegador haya podido elegir.
@@ -54,6 +63,7 @@ const URL_BASE = (Deno.env.get("AVISOS_URL_BASE") ?? "https://escuelaapolana.git
 const CATEGORIAS = ["entrenos", "competiciones", "pagos", "noticias", "retos"];
 const PUBLICOS = ["todos", "grupo", "rol", "persona"];
 const ROLES = ["admin", "coordinador", "entrenador", "atleta", "padre"];
+const NIVELES = ["informativo", "importante", "grave"];
 
 // ------------------------------------------------------------
 // Cabeceras para que el navegador pueda llamarnos
@@ -294,6 +304,21 @@ function recortar(v: unknown, tope: number): string {
   return String(v ?? "").replace(/\s+/g, " ").trim().slice(0, tope);
 }
 
+/** Una fecha «2026-09-30» y nada más. Cualquier otra cosa, nada. */
+function fechaSuelta(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(s + "T00:00:00Z");
+  return isNaN(d.getTime()) ? null : s;
+}
+
+/** Los grupos que se han quitado. Solo identificadores de verdad. */
+function uuidsSueltos(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const bueno = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return [...new Set(v.map((x) => String(x ?? "").trim()).filter((x) => bueno.test(x)))].slice(0, 60);
+}
+
 // ============================================================
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
@@ -331,10 +356,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const correo: string = (usuario?.email ?? "").toLowerCase();
   if (!correo) return responder({ error: "sin_sesion", mensaje: "No hemos podido identificarte." }, 401, origen);
 
-  // 1.b · ¿Es del equipo del club? Se lo preguntamos a la BASE con SU
+  // 1.b · ¿Puede mandar avisos? Se lo preguntamos a la BASE con SU
   //       sesión, no con la llave de servicio: así manda la misma
-  //       regla que en todas las pantallas.
-  const rStaff = await fetch(`${SUPABASE_URL}/rest/v1/rpc/es_staff`, {
+  //       regla que en todas las pantallas. Mandar avisos es de
+  //       administración y tesorería; los entrenadores no mandan.
+  //       Esconder el botón en el panel es cortesía; la barrera es
+  //       esta y la de `avisos_alcance`, que están en la base.
+  const rPuede = await fetch(`${SUPABASE_URL}/rest/v1/rpc/avisos_puede_enviar`, {
     method: "POST",
     headers: {
       apikey: ANON_KEY || SERVICE_KEY,
@@ -343,9 +371,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     },
     body: "{}",
   });
-  const esStaff = rStaff.ok && (await rStaff.json()) === true;
-  if (!esStaff) {
-    return responder({ error: "sin_permiso", mensaje: "Solo el equipo del club puede mandar avisos." }, 403, origen);
+  const puedeEnviar = rPuede.ok && (await rPuede.json()) === true;
+  if (!puedeEnviar) {
+    return responder({
+      error: "sin_permiso",
+      mensaje: "Los avisos los manda administración o tesorería. Si tienes los dos papeles, cambia al de administración y vuelve a intentarlo.",
+    }, 403, origen);
   }
 
   // ---------------------------------------------------------------
@@ -369,15 +400,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const titulo = recortar(cuerpo.titulo, 80);
   const mensaje = recortar(cuerpo.cuerpo ?? cuerpo.texto, 200);
   const enlacePedido = enlaceSeguro(cuerpo.url);
-  const publico = String(cuerpo.publico ?? "todos");
   const categoria = String(cuerpo.categoria ?? "entrenos");
-  const grupoId = cuerpo.grupo_id ? String(cuerpo.grupo_id) : null;
   const rol = cuerpo.rol ? String(cuerpo.rol) : null;
   const perfilId = cuerpo.perfil_id ? String(cuerpo.perfil_id) : null;
   const soloPrueba = cuerpo.prueba === true;
 
+  const nivel = String(cuerpo.nivel ?? "informativo").toLowerCase().trim();
+  const caduca = fechaSuelta(cuerpo.caduca_el);
+  const esGrave = nivel === "grave";
+
+  // Un aviso grave se reparte AL REVÉS: va a todo el club y se quitan
+  // los grupos a los que no aplica. Aquí se impone, no se pide: si el
+  // navegador dijera otra cosa, un aviso de seguridad podría acabar
+  // yendo a un solo grupo por un descuido.
+  const publico = esGrave ? "todos" : String(cuerpo.publico ?? "todos");
+  const grupoId = esGrave ? null : (cuerpo.grupo_id ? String(cuerpo.grupo_id) : null);
+  const excluir = esGrave ? uuidsSueltos(cuerpo.grupos_excluidos) : [];
+
+  // Suena en el móvil si quien escribe lo ha marcado. En los graves no
+  // se pregunta: un aviso de seguridad que no suena no sirve de nada.
+  const alMovil = esGrave ? true : cuerpo.al_movil === true;
+
   if (!titulo) return responder({ error: "falta_titulo", mensaje: "El aviso necesita un título." }, 400, origen);
   if (!mensaje) return responder({ error: "falta_texto", mensaje: "El aviso necesita un texto." }, 400, origen);
+  if (!NIVELES.includes(nivel)) {
+    return responder({ error: "nivel", mensaje: "Ese nivel de aviso no existe." }, 400, origen);
+  }
+  // Sin fecha de caducidad no se puede escribir «Ya pasó» y el aviso se
+  // queda para siempre como si siguiera en pie. En los informativos no
+  // hace falta: una crónica no caduca.
+  if ((nivel === "importante" || nivel === "grave") && !caduca) {
+    return responder({
+      error: "falta_caducidad",
+      mensaje: "Dinos hasta qué día vale este aviso. Sin esa fecha se queda para siempre como si siguiera en pie.",
+    }, 400, origen);
+  }
   if (!PUBLICOS.includes(publico)) {
     return responder({ error: "publico", mensaje: "No sabemos a quién mandarlo." }, 400, origen);
   }
@@ -427,41 +484,52 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // 5 · A quién va · LA LISTA LA CALCULA LA BASE
   //     Con las preferencias de cada uno ya aplicadas: quien apagó
   //     «noticias del club» no sale de aquí aunque el aviso vaya a
-  //     todo el club.
+  //     todo el club. TAMPOCO SI ES GRAVE: nada se salta lo que la
+  //     persona ha elegido. Si es algo que no se puede perder nadie,
+  //     hay que decirlo también por otra vía.
   // ---------------------------------------------------------------
-  const rDestinos = await consulta("rpc/avisos_destinatarios", {
-    method: "POST",
-    body: JSON.stringify({
-      p_publico: publico,
-      p_categoria: categoria,
-      p_grupo: grupoId,
-      p_rol: rol,
-      p_perfil: perfilId,
-    }),
-  });
-  if (!rDestinos.ok) {
-    console.error("no se ha podido calcular a quién va:", rDestinos.datos);
-    return responder({ error: "interno", mensaje: "No hemos podido calcular a quién va el aviso." }, 500, origen);
+  let destinos: Destino[] = [];
+  if (alMovil) {
+    const rDestinos = await consulta("rpc/avisos_destinatarios", {
+      method: "POST",
+      body: JSON.stringify({
+        p_publico: publico,
+        p_categoria: categoria,
+        p_grupo: grupoId,
+        p_rol: rol,
+        p_perfil: perfilId,
+        p_excluir: excluir,
+      }),
+    });
+    if (!rDestinos.ok) {
+      console.error("no se ha podido calcular a quién va:", rDestinos.datos);
+      return responder({ error: "interno", mensaje: "No hemos podido calcular a quién va el aviso." }, 500, origen);
+    }
+    destinos = (Array.isArray(rDestinos.datos) ? rDestinos.datos : []) as Destino[];
   }
-  const destinos = (Array.isArray(rDestinos.datos) ? rDestinos.datos : []) as Destino[];
 
   // Modo «solo mirar»: dice a cuántos llegaría sin mandar nada.
   if (soloPrueba) {
     return responder({ ok: true, prueba: true, alcance: destinos.length }, 200, origen);
   }
 
-  if (destinos.length === 0) {
-    return responder({
-      ok: true, enviados: 0, fallidos: 0,
-      mensaje: "No hay nadie con los avisos activados para esto todavía.",
-    }, 200, origen);
-  }
-
   // ---------------------------------------------------------------
   // 6 · Cómo se llama a quién va, para el historial
   // ---------------------------------------------------------------
   let publicoTexto = "Todo el club";
-  if (publico === "grupo") {
+  if (publico === "todos" && excluir.length) {
+    // «Todo el club menos Montaña y El Cubo». Se escribe entero
+    // porque el socio que lo abre tiene derecho a saber a quién más
+    // le ha llegado lo que está leyendo.
+    const lista = excluir.map((g) => `id.eq.${g}`).join(",");
+    const r = await consulta(`grupos?select=nombre&or=(${encodeURIComponent(lista)})`);
+    const nombres = (Array.isArray(r.datos) ? r.datos : [])
+      .map((g: { nombre?: string }) => g?.nombre).filter(Boolean) as string[];
+    if (nombres.length) {
+      const ultimo = nombres.pop()!;
+      publicoTexto = `Todo el club menos ${nombres.length ? nombres.join(", ") + " y " + ultimo : ultimo}`;
+    }
+  } else if (publico === "grupo") {
     const r = await consulta(`grupos?select=nombre&id=eq.${encodeURIComponent(grupoId!)}&limit=1`);
     const g = Array.isArray(r.datos) ? r.datos[0] : null;
     publicoTexto = g?.nombre ? `Grupo ${g.nombre}` : "Un grupo";
@@ -478,13 +546,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ---------------------------------------------------------------
-  // 7 · A repartir
+  // 7 · A repartir · solo si además tiene que sonar en el móvil
+  //     Si no, el aviso NO se pierde: se apunta igual en el historial
+  //     y aparece en la app la próxima vez que la abran.
   // ---------------------------------------------------------------
   const carga = JSON.stringify({
     titulo,
     cuerpo: mensaje,
     url: enlace,
     categoria,
+    nivel,
     etiqueta: `apolana-${categoria}`,
   });
 
@@ -536,8 +607,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_texto: publicoTexto,
       p_enviados: enviados, p_fallidos: fallidos,
       p_autor: autor,
+      // Lo nuevo: el nivel decide el color Y la palabra de la pantalla,
+      // la caducidad permite escribir «Ya pasó» sin tachar a mano, y
+      // los grupos quitados hacen que el socio de montaña no vea un
+      // aviso de la piscina en su lista.
+      p_nivel: nivel,
+      p_caduca: caduca,
+      p_movil: alMovil,
+      p_excluir: excluir,
     }),
   });
 
-  return responder({ ok: true, enviados, fallidos, alcance: destinos.length }, 200, origen);
+  return responder({
+    ok: true, enviados, fallidos, alcance: destinos.length, nivel, al_movil: alMovil,
+  }, 200, origen);
 });

@@ -6,14 +6,8 @@
 <title>Avisos al móvil · Portal Apolana</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="../../assets/img/logo.png">
-<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css">
 <script>window.APOLANA_BASE="../../";</script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-<script src="../../assets/js/db.js" defer></script>
-<script src="../../assets/js/portal-auth.js"></script>
-<script src="../../assets/js/portal-tabbar.js" defer></script>
-<script src="../../assets/js/avisos.js" defer></script>
 <style>
   /* ============================================================
      AVISOS DEL SOCIO
@@ -225,6 +219,99 @@
   .ajustes { margin-top:20px; padding-top:4px; border-top:1px solid var(--linea); }
   .nota { margin:8px 2px 0; font-size:14px; line-height:1.45; color: var(--texto-suave); }
 </style>
+
+<script>
+/* SIMULACRO SOLO PARA MIRAR LA PANTALLA. No toca la base ni la sesión. */
+(function () {
+  var HOY = new Date();
+  function hace(d, h) { var x = new Date(HOY); x.setDate(x.getDate() - d); x.setHours(h||18, 42, 0, 0); return x.toISOString(); }
+  function dia(d) { var x = new Date(HOY); x.setDate(x.getDate() + d); return x.toISOString().slice(0,10); }
+
+  var AVISOS = [
+    { id:'a1', titulo:'Mañana no hay entreno en Joaquín Villar',
+      cuerpo:'El ayuntamiento cierra la pista por mantenimiento del tartán, así que el entreno de mañana miércoles queda suspendido.\nEl viernes entrenamos con normalidad a las 17:30. Si tu hijo o hija va en el autobús del club, ese día tampoco sale.',
+      url:'../../horarios/', categoria:'entrenos', nivel:'importante', caduca_el:dia(2), caducado:false,
+      leido:false, publico_texto:'Escuela de atletismo', remitente:'Marta Segura', personas:84, created_at:hace(1) },
+    { id:'a2', titulo:'Alerta naranja por lluvias: se suspende todo hoy',
+      cuerpo:'Se suspenden todos los entrenamientos y salidas de hoy, en las cuatro sedes. No vayáis a los puntos de encuentro.\nMañana avisaremos por aquí en cuanto sepamos si se recupera la normalidad.',
+      url:null, categoria:'entrenos', nivel:'grave', caduca_el:dia(0), caducado:false,
+      leido:false, publico_texto:'Todo el club menos Montaña', remitente:'Junta directiva', personas:595, created_at:hace(0,7) },
+    { id:'a3', titulo:'Abierta la inscripción de la temporada',
+      cuerpo:'Ya se puede renovar la ficha para la temporada que viene.',
+      url:null, categoria:'noticias', nivel:'informativo', caduca_el:null, caducado:false,
+      leido:false, publico_texto:'Todo el club', remitente:'Isabel Ruiz', personas:595, created_at:hace(20) },
+    { id:'a4', titulo:'Cinco medallas en el autonómico de Castellón',
+      cuerpo:'Crónica del fin de semana.',
+      url:null, categoria:'noticias', nivel:'informativo', caduca_el:null, caducado:false,
+      leido:true, publico_texto:'Pista', remitente:'Isabel Ruiz', personas:120, created_at:hace(6) },
+    { id:'a5', titulo:'Cambio de hora del sábado: 08:30',
+      cuerpo:'La salida del sábado se adelanta media hora.',
+      url:null, categoria:'entrenos', nivel:'importante', caduca_el:dia(-5), caducado:true,
+      leido:true, publico_texto:'Montaña', remitente:'Marta Segura', personas:38, created_at:hace(15) },
+    { id:'a6', titulo:'El Cubo amplía horario en septiembre',
+      cuerpo:'Abrirá también las mañanas de sábado.',
+      url:null, categoria:'noticias', nivel:'informativo', caduca_el:null, caducado:false,
+      leido:true, publico_texto:'Todo el club', remitente:'Isabel Ruiz', personas:595, created_at:hace(22) }
+  ];
+
+  window.APOLANA_UI = {
+    icono: function () { return '<svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>'; },
+    vacio: function (t, p, b) { return '<div class="caja"><h2>' + t + '</h2><p>' + p + '</p>' + (b||'') + '</div>'; },
+    boton: function (t, h) { return '<a class="bot" href="' + h + '">' + t + '</a>'; }
+  };
+
+  var sb = {
+    rpc: function (nombre, args) {
+      args = args || {};
+      if (nombre === 'mis_avisos') {
+        var f = AVISOS.slice();
+        if (args.p_id) f = f.filter(function (a) { return a.id === args.p_id; });
+        return Promise.resolve({ data: f, error: null });
+      }
+      if (nombre === 'avisos_marcar_leido') {
+        AVISOS.forEach(function (a) { if (!args.p_id || a.id === args.p_id) a.leido = true; });
+        return Promise.resolve({ data: 1, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+    from: function () {
+      var q = {
+        select: function () { return q; },
+        eq: function () { return q; },
+        maybeSingle: function () { return Promise.resolve({ data: null, error: null }); },
+        upsert: function () { return Promise.resolve({ error: null }); }
+      };
+      return q;
+    }
+  };
+
+  var ESTADOS = {
+    activo:    { puede:true,  activo:true,  motivo:'activo',    texto:'Te llegarán los avisos a iPhone · app instalada.' },
+    listo:     { puede:true,  activo:false, motivo:'listo',     texto:'Te avisaremos de lo que pase en el club. Puedes quitarlo cuando quieras.' },
+    bloqueado: { puede:false, activo:false, motivo:'bloqueado', texto:'Los avisos están bloqueados para esta web.' },
+    apagado:   { puede:false, activo:false, motivo:'apagado',   texto:'' }
+  };
+  var CUAL = new URLSearchParams(location.search).get('estado') || 'activo';
+
+  window.APOLANA_AVISOS = {
+    estado: function () { return Promise.resolve(ESTADOS[CUAL] || ESTADOS.activo); },
+    preferencias: function () { return Promise.resolve({}); },
+    guardarPreferencias: function () { return Promise.resolve({ ok: true }); },
+    activar: function () { return Promise.resolve({ ok: true, mensaje: 'Listo.' }); },
+    desactivar: function () { return Promise.resolve({ ok: true, mensaje: 'Hecho.' }); }
+  };
+
+  window.APOLANA_PORTAL = {
+    listo: function (fn) {
+      document.addEventListener('DOMContentLoaded', function () {
+        fn(sb, { id: 'p1', email: 'socio@ejemplo.com' });
+      });
+    }
+  };
+  window.APX = { toast: function (m) { console.log('toast:', m); },
+                 confirm: function () { return Promise.resolve(true); } };
+})();
+</script>
 </head>
 <body>
 

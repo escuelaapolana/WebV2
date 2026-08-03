@@ -9,10 +9,6 @@
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css">
 <script>window.APOLANA_BASE="../../";</script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-<script src="../../assets/js/db.js" defer></script>
-<script src="../../assets/js/admin-auth.js"></script>
-<script src="../../assets/js/admin-tabbar.js" defer></script>
 <style>
   body { background: var(--crema-media); }
   .admin-wrap { max-width: 1040px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
@@ -207,6 +203,103 @@
   .etq--importante  { background:#FDF6EA; color:#8A5406; }
   .etq--grave       { background:#FBECEB; color:#8E1E17; }
 </style>
+
+<script>
+/* SIMULACRO SOLO PARA MIRAR LA PANTALLA. No manda nada ni toca la base. */
+(function () {
+  var PUEDE = new URLSearchParams(location.search).get('puede') !== 'no';
+
+  var GRUPOS = [
+    { id:'g1', nombre:'Escuela · Benjamines', seccion:'escuela',  activo:true },
+    { id:'g2', nombre:'Escuela · Sub-16',     seccion:'escuela',  activo:true },
+    { id:'g3', nombre:'Montaña',              seccion:'montana',  activo:true },
+    { id:'g4', nombre:'Pista',                seccion:'pista',    activo:true },
+    { id:'g5', nombre:'Escuela de natación',  seccion:'natacion', activo:true }
+  ];
+
+  var HIST = [
+    { id:'h1', titulo:'Mañana no hay entreno en Joaquín Villar', cuerpo:'Cierra la pista por mantenimiento.',
+      publico:'grupo', publico_texto:'Escuela de atletismo', categoria:'entrenos', enviados:71, fallidos:2,
+      created_at:new Date(Date.now()-86400000).toISOString(), nivel:'importante', caduca_el:'2026-08-05', al_movil:true },
+    { id:'h2', titulo:'Cinco medallas en el autonómico', cuerpo:'Crónica del fin de semana.',
+      publico:'todos', publico_texto:'Todo el club', categoria:'noticias', enviados:0, fallidos:0,
+      created_at:new Date(Date.now()-6*86400000).toISOString(), nivel:'informativo', caduca_el:null, al_movil:false },
+    { id:'h3', titulo:'Cambio de hora del sábado', cuerpo:'La salida se adelanta media hora.',
+      publico:'grupo', publico_texto:'Grupo Montaña', categoria:'entrenos', enviados:31, fallidos:0,
+      created_at:new Date(Date.now()-15*86400000).toISOString(), nivel:'importante', caduca_el:'2026-07-19', al_movil:true }
+  ];
+
+  function tabla(nombre) {
+    var q = {
+      _t: nombre, _f: null,
+      select: function () { return q; },
+      order: function () { return q; },
+      limit: function () { return Promise.resolve({ data: nombre === 'grupos' ? GRUPOS : (nombre === 'avisos_enviados' ? HIST : []), error: null }); },
+      eq: function () { return q; },
+      maybeSingle: function () {
+        if (nombre === 'avisos_config') return Promise.resolve({ data: { activo:true, clave_publica:'B'+'x'.repeat(86), contacto:'escuelaapolana@gmail.com' }, error: null });
+        return Promise.resolve({ data: null, error: null });
+      },
+      update: function () { return { eq: function () { return Promise.resolve({ error: null }); } }; },
+      then: undefined
+    };
+    /* `perfiles` se pide con .order(...) y se espera directamente */
+    q.order = function () {
+      return { limit: q.limit, then: function (res) { res({ data: nombre === 'grupos' ? GRUPOS : [], error: null }); } };
+    };
+    return q;
+  }
+
+  var sb = {
+    from: function (t) {
+      var base = tabla(t);
+      /* Las llamadas del panel acaban en .order(...) o en .limit(...) y se
+         esperan con await; se devuelve algo con `then`. */
+      var salida = {
+        select: function () {
+          var enc = {
+            order: function () {
+              var conOrden = {
+                limit: function () { return prom(t); },
+                then: function (ok) { prom(t).then(ok); }
+              };
+              return conOrden;
+            },
+            eq: function () { return { maybeSingle: base.maybeSingle }; },
+            limit: function () { return prom(t); }
+          };
+          return enc;
+        },
+        update: base.update
+      };
+      return salida;
+    },
+    rpc: function (nombre, args) {
+      if (nombre === 'avisos_puede_enviar') return Promise.resolve({ data: PUEDE, error: null });
+      if (nombre === 'mis_papeles') return Promise.resolve({ data: { roles: ['entrenador','admin'] }, error: null });
+      if (nombre === 'avisos_alcance')  return Promise.resolve({ data: 71 - ((args.p_excluir||[]).length * 12), error: null });
+      if (nombre === 'avisos_personas') return Promise.resolve({ data: 595 - ((args.p_excluir||[]).length * 40), error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
+    functions: { invoke: function () { return Promise.resolve({ data: { enviados: 0, fallidos: 0 }, error: null }); } }
+  };
+
+  function prom(t) {
+    return Promise.resolve({ data: t === 'grupos' ? GRUPOS : (t === 'avisos_enviados' ? HIST : []), error: null });
+  }
+
+  window.ADM = {
+    esqueleto: function () { return '<p class="pista">Cargando…</p>'; },
+    error: function (t) { return '<p class="pista">' + t + '</p>'; },
+    vacio: function (t, p) { return '<p class="pista"><b>' + t + '</b><br>' + p + '</p>'; }
+  };
+  window.apoToast = function (m) { console.log('toast:', m); };
+  window.apoConfirm = function () { return Promise.resolve(true); };
+  window.APOLANA_ADMIN = {
+    listo: function (fn) { document.addEventListener('DOMContentLoaded', function () { fn(sb); }); }
+  };
+})();
+</script>
 </head>
 <body>
 

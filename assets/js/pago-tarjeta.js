@@ -23,27 +23,46 @@
        siNoHay: 'ocultar'      // o 'texto', para explicar por qué no
      });
 
-   Y la pantalla de confirmar entera (la de la maqueta 27b), que es
-   la que se enseña justo antes de ir a Stripe:
+   Y la pantalla de confirmar entera, que es la que se enseña justo
+   antes de ir a Stripe:
 
      APOLANA_PAGO.confirmar({
        contenedor: document.getElementById('pantalla'),
        clave: 'bono-cubo-10',
        atleta_id: id,
-       aNombreDe: 'Elena Marín Ruiz',
+       aNombreDe: 'Elena Marín Ruiz',   // de quién son los usos
+       pagador: { nombre: 'Andrés Pérez', email: 'andres@correo.es' },
        atleta: fichaDelAtleta,        // para saber qué cuenta enseñar
-       alVolver: function () { ... }  // atrás
+       alVolver: function () { ... }  // atrás y «Cancelar»
      });
+
+   Es también la pantalla del pago que FALLA y la del que se deja a
+   medias: la misma, con la selección intacta y un aviso ámbar arriba.
+   En el texto del aviso, **esto** sale en negrita.
+
+     APOLANA_PAGO.confirmar({
+       ...
+       aviso: {
+         titulo: 'El pago no se ha completado',
+         texto: 'Tu banco no lo ha autorizado. **No se te ha cobrado ' +
+                'nada** y el bono sigue sin comprar.'
+       }
+     });
+
+   LA REGLA QUE LAS ORDENA
+   En cada pantalla se ve QUÉ SE COMPRA Y CUÁNTO CUESTA, la del error
+   incluida. Nadie llega al banco sin haber visto el total.
 
    LA REGLA DE ORO: NUNCA UN BOTÓN QUE FINJA COBRAR
    El circuito se ve entero desde el primer día: se elige, se revisa
    el desglose y se llega hasta el último paso. Lo que cambia con el
-   interruptor apagado es el final: en vez del botón de pagar sale un
-   aviso diciendo que el pago con tarjeta todavía no está en marcha,
-   y debajo cómo se paga hoy de verdad (transferencia o efectivo, con
-   la cuenta y el contacto que le tocan a esa persona). Nadie puede
-   llegar a creer que ha pagado sin haber pagado, y nada falla en
-   silencio ni saca un error del navegador.
+   interruptor apagado es el final: en vez del botón de pagar sale una
+   nota diciendo que el pago con tarjeta todavía no está en marcha, el
+   botón de verdad («pedir el bono a quien lleva los pagos») y el de
+   tarjeta a la vista pero apagado; debajo, cómo se paga hoy de verdad
+   (transferencia o efectivo, con la cuenta y el contacto que le tocan
+   a esa persona). Nadie puede llegar a creer que ha pagado sin haber
+   pagado, y nada falla en silencio ni saca un error del navegador.
 
    LO QUE ESTE ARCHIVO NO SABE (a propósito)
    Ni el importe ni las claves. Aquí solo se dice QUÉ se quiere pagar
@@ -74,6 +93,9 @@
     return d.innerHTML;
   }
 
+  /* Lo mismo, para meterlo dentro de un atributo entre comillas. */
+  function escA(s) { return esc(s).replace(/"/g, '&quot;'); }
+
   /* 5500 → «55,00 €» */
   function euros(centimos) {
     var n = Number(centimos);
@@ -83,6 +105,51 @@
     } catch (e) {
       return (n / 100).toFixed(2).replace('.', ',') + ' €';
     }
+  }
+
+  /* 5000 → «50 €» · 4550 → «45,50 €»
+     El redondo se enseña sin céntimos donde es un rótulo (la tarjeta de
+     la opción, el botón). En el desglose y en el total van completos,
+     que ahí sí es una cuenta. */
+  function eurosCorto(centimos) {
+    var n = Number(centimos);
+    if (!isFinite(n)) return '';
+    if (n % 100 === 0) return (n / 100) + ' €';
+    return euros(centimos);
+  }
+
+  /* Fechas en cristiano: '2027-08-03' → «3 de agosto de 2027». */
+  var MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+               'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  function comoFecha(f) {
+    if (f instanceof Date) return f;
+    var s = String(f || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    var p = s.split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+
+  function fechaLarga(f, conAnio) {
+    var x = comoFecha(f);
+    if (!x || isNaN(x.getTime())) return '';
+    return x.getDate() + ' de ' + MESES[x.getMonth()] +
+           (conAnio === false ? '' : ' de ' + x.getFullYear());
+  }
+
+  /* Hoy + N días, para decir cuándo caducará un bono que aún no existe. */
+  function dentroDe(dias) {
+    var x = new Date();
+    x.setHours(0, 0, 0, 0);
+    x.setDate(x.getDate() + Number(dias || 0));
+    return x;
+  }
+
+  /* Texto escapado en el que **esto** sale en negrita. Lo justo para
+     poder resaltar «no se te ha cobrado nada» sin abrir la puerta a
+     meter HTML desde fuera. */
+  function conNegritas(s) {
+    return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   }
 
   /* ---------------------------------------------------------------
@@ -203,20 +270,27 @@
   }
 
   /* ---------------------------------------------------------------
-     LA PANTALLA DE CONFIRMAR · maqueta 27b
+     LA PANTALLA DE CONFIRMAR · maqueta «comprar un bono», pantalla 2
      ---------------------------------------------------------------
-     Qué se compra, el desglose y el total, y de ahí a Stripe.
-     Se pinta dentro del contenedor que se le pase, así que sirve
-     igual para el bono de El Cubo, la licencia o la ropa.
+     Qué se compra, el desglose y el total, y de ahí a Stripe. Se
+     pinta dentro del contenedor que se le pase, así que sirve igual
+     para el bono de El Cubo, la licencia o la ropa.
+
+     Es TAMBIÉN la pantalla del pago que falla y la del pago que se
+     deja a medias: la misma, con la selección intacta y un aviso
+     ámbar arriba. Nunca una pantalla en blanco ni volver al principio.
 
        contenedor  → dónde se pinta (obligatorio)
        clave       → qué se paga ('bono-cubo-10')
        atleta_id   → para quién es
-       aNombreDe   → nombre que se enseña en la tarjeta
-       atleta      → su ficha, para saber qué cuenta enseñar si toca
-                     pagar por transferencia (escuela o club)
-       alVolver    → qué hacer al pulsar «atrás»
-       paso        → rótulo de la cabecera («paso 2 de 2»)
+       aNombreDe   → de quién son los usos (el atleta)
+       pagador     → { nombre, email } de quien pone la tarjeta
+       atleta      → su ficha, para saber qué cuenta y qué contacto
+                     le tocan si hay que pagar por transferencia
+       aviso       → { titulo, texto } del aviso ámbar de arriba.
+                     En el texto, **esto** sale en negrita.
+       alVolver    → qué hacer al pulsar «atrás» y «Cancelar»
+       titulo      → rótulo de la cabecera (por defecto «Confirmar»)
      --------------------------------------------------------------- */
   async function confirmar(o) {
     o = o || {};
@@ -239,11 +313,12 @@
 
     /* 2 · Error: el artículo no está o no tiene precio. Ámbar y salida. */
     if (!art) {
-      cont.innerHTML = marco(o, '<div class="pgc-fallo">' +
-        '<b>No hemos podido preparar este pago</b>' +
-        '<p>Puede ser tu conexión, o que el club haya cambiado los bonos mientras estabas aquí. ' +
-        'No se ha cobrado nada.</p>' +
-        '<button type="button" class="pgc-btn-borde" data-pgc="reintentar">Volver a intentarlo</button>' +
+      cont.innerHTML = marco(o, avisoAmbar({
+        titulo: 'No hemos podido preparar este pago',
+        texto: 'Puede ser tu conexión, o que el club haya cambiado los bonos mientras estabas aquí. ' +
+               '**No se te ha cobrado nada.**'
+      }) + '<div class="pgc-pie">' +
+        '<button type="button" class="pgc-btn" data-pgc="reintentar">Volver a intentarlo</button>' +
       '</div>');
       conectarAtras(cont, o);
       var rb = cont.querySelector('[data-pgc="reintentar"]');
@@ -251,91 +326,138 @@
       return false;
     }
 
-    /* 3 · Con datos. */
+    /* 3 · Con datos. El importe sale del catálogo de la base, que es
+       de donde lo lee también el servidor al cobrar. */
     var repercute = !!(cfg && cfg.repercutir_comision);
     var base = Number(art.importe_centimos);
     var total = repercute ? conComision(base) : base;
+    var encendido = !!(cfg && cfg.activo);
+
+    /* «Bono de 10 usos · El Cubo» → titular y contexto. */
+    var partes = texto(art.titulo).split(' · ');
+    var nombre = partes.shift();
+    var contexto = partes.join(' · ');
+    if (art.bono_caducidad_dias) {
+      contexto += (contexto ? ' · ' : '') + 'caduca el ' + fechaLarga(dentroDe(art.bono_caducidad_dias));
+    }
 
     var cuerpo = '';
 
+    if (o.aviso) cuerpo += avisoAmbar(o.aviso);
+
+    /* La tarjeta: qué se compra, qué se añade y el total. */
     cuerpo += '<div class="pgc-tarjeta">' +
-      '<span class="pgc-et">qué se paga</span>' +
-      '<h3 class="pgc-concepto">' + esc(art.titulo) + '</h3>' +
-      (o.aNombreDe ? '<span class="pgc-quien">A nombre de ' + esc(o.aNombreDe) + '</span>' : '') +
-      '<div class="pgc-desglose">' +
-        '<div class="pgc-fila"><span>' + esc(art.bono_usos
-            ? art.bono_usos + (art.bono_usos === 1 ? ' uso' : ' usos')
-            : 'Precio') + '</span>' +
-          '<span class="pgc-imp">' + esc(euros(base)) + '</span></div>' +
-        '<div class="pgc-fila"><span>Gastos de gestión</span>' +
-          (repercute
-            ? '<span class="pgc-imp">' + esc(euros(total - base)) + '</span>'
-            : '<span class="pgc-club">los paga el club</span>') +
-        '</div>' +
+      '<div class="pgc-fila pgc-fila--titulo">' +
+        '<span class="pgc-concepto">' + esc(nombre) + '</span>' +
+        '<span class="pgc-imp">' + esc(euros(base)) + '</span>' +
       '</div>' +
-      '<div class="pgc-total"><span class="pgc-total-et">Total</span>' +
-        '<span class="pgc-total-imp">' + esc(euros(total)) + '</span></div>' +
+      (contexto ? '<p class="pgc-contexto">' + esc(contexto) + '</p>' : '') +
+      '<div class="pgc-fila pgc-fila--linea">' +
+        '<span class="pgc-et">Gastos de gestión</span>' +
+        (repercute
+          ? '<span class="pgc-imp">' + esc(euros(total - base)) + '</span>'
+          /* Sin importe y en verde: es una buena noticia, no una línea de factura. */
+          : '<span class="pgc-club">Los paga el club</span>') +
+      '</div>' +
+      '<div class="pgc-fila pgc-fila--total">' +
+        '<span class="pgc-total-et">Total</span>' +
+        '<span class="pgc-total-imp">' + esc(euros(total)) + '</span>' +
+      '</div>' +
     '</div>';
 
-    if (art.bono_usos) {
-      cuerpo += '<p class="pgc-nota">Los ' + art.bono_usos + ' usos se añaden a tu bono en cuanto se ' +
-                'confirme el pago. No hay que esperar al banco.</p>';
-    } else if (art.descripcion) {
-      cuerpo += '<p class="pgc-nota">' + esc(art.descripcion) + '</p>';
+    /* Quién paga y para quién es. */
+    var pagador = o.pagador || {};
+    var quienPaga = [texto(pagador.nombre).trim(), texto(pagador.email).trim()]
+      .filter(Boolean).join(' · ');
+    if (quienPaga) {
+      cuerpo += '<div class="pgc-quien"><span class="pgc-rot">Pagas como</span>' +
+        '<span class="pgc-quien-val">' + esc(quienPaga) + '</span></div>';
+    }
+    if (o.aNombreDe) {
+      cuerpo += '<div class="pgc-quien"><span class="pgc-rot">' +
+        (art.bono_usos ? 'Los usos son para' : 'A nombre de') + '</span>' +
+        '<span class="pgc-quien-val">' + esc(o.aNombreDe) + '</span></div>';
     }
 
-    if (cfg && cfg.activo) {
-      cuerpo += '<div class="pgc-stripe">' +
-        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
-        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<rect x="4" y="10" width="16" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>' +
-        '<span>El pago se hace en Stripe. El club no guarda tu tarjeta.</span></div>';
+    /* La cuenta y el contacto de verdad salen de la base (info_pagos):
+       nunca están escritos en el repositorio. Se piden ANTES de armar
+       el pie, que es quien necesita saber a quién se le pide el bono. */
+    var comoSePaga = await bloqueComoSePaga(o, false);
+
+    /* El pie cambia entero según haya pasarela o no. */
+    var pie = '';
+
+    if (encendido) {
+      if (art.bono_usos) {
+        cuerpo += '<p class="pgc-nota">Los ' + art.bono_usos + ' usos se añaden a tu bono en cuanto se ' +
+                  'confirme el pago. No hay que esperar al banco.</p>';
+      } else if (art.descripcion) {
+        cuerpo += '<p class="pgc-nota">' + esc(art.descripcion) + '</p>';
+      }
       if (cfg.texto_ayuda) cuerpo += '<p class="pgc-nota">' + esc(cfg.texto_ayuda) + '</p>';
       if (cfg.modo === 'prueba') {
-        cuerpo += '<div class="pgc-previa"><b>Modo de pruebas</b>' +
-          '<p>El club está probando el pago con tarjeta. Aquí no se mueve dinero de verdad.</p></div>';
+        cuerpo += avisoAmbar({
+          titulo: 'Modo de pruebas',
+          texto: 'El club está probando el pago con tarjeta. Aquí no se mueve dinero de verdad.'
+        });
+      }
+      cuerpo += '<p class="pgc-nota pgc-nota--pie">El cobro lo hace Stripe. ' +
+                'El club no guarda los datos de tu tarjeta.</p>';
+
+      if (o.aviso) {
+        /* Después de un intento que no ha salido, el botón dice lo que
+           hace ahora («probar otra vez») y al lado está la salida de
+           verdad por si vuelve a fallar. */
+        var otroQuien = contactoDe(o);
+        if (otroQuien.nombre) {
+          cuerpo += '<p class="pgc-nota">Si vuelve a fallar, escribe a ' + esc(otroQuien.nombre) +
+                    ' y lo arreglamos por transferencia.</p>';
+        }
+        pie = '<button type="button" class="pgc-btn" data-pgc="pagar">Probar otra vez</button>' +
+              '<a class="pgc-btn-txt" href="' + escA(otroQuien.url) + '"' +
+                (otroQuien.fuera ? ' target="_blank" rel="noopener"' : '') + '>' +
+                (otroQuien.nombre ? 'Escribir a ' + esc(otroQuien.nombre) : 'Escribir al club') + '</a>';
+      } else {
+        pie = '<button type="button" class="pgc-btn" data-pgc="pagar">Pagar ' + esc(eurosCorto(total)) + '</button>' +
+              '<button type="button" class="pgc-btn-txt" data-pgc="cancelar">Cancelar</button>';
       }
     } else {
       /* Apagado: el circuito se ve entero, pero el último paso no
-         finge cobrar. Se dice qué pasa y cómo se paga hoy. */
-      cuerpo += '<div class="pgc-previa">' +
-        '<b>El pago con tarjeta todavía no está en marcha</b>' +
-        '<p>La pantalla ya está montada: es exactamente la que verás cuando el club abra su cuenta. ' +
-        'De momento desde aquí no se cobra nada, así que esto se sigue pagando como hasta ahora, ' +
-        'por transferencia o en efectivo. Aquí abajo tienes la cuenta, el concepto que hay que poner ' +
-        'y a quién preguntar.</p>' +
+         finge cobrar. Se dice qué pasa, cuál es la vía de verdad, y
+         el botón de tarjeta se queda a la vista pero apagado, para
+         que se entienda que va a existir. */
+      var quien = contactoDe(o);
+      var pedir = art.bono_usos
+        ? (quien.nombre ? 'Pedir el bono a ' + quien.nombre : 'Pedir el bono al club')
+        : (quien.nombre ? 'Escribir a ' + quien.nombre : 'Escribir al club');
+
+      cuerpo += '<div class="pgc-provisional" id="pgc-provisional">' +
+        '<b>Todavía no se puede pagar aquí</b>' +
+        '<p>Estamos terminando de conectar el pago con tarjeta. Mientras tanto lo hacemos por ' +
+        'transferencia y te cargamos el bono a mano.</p>' +
       '</div>';
+
+      pie = '<a class="pgc-btn" href="' + escA(quien.url) + '"' +
+              (quien.fuera ? ' target="_blank" rel="noopener"' : '') + '>' + esc(pedir) + '</a>' +
+            '<button type="button" class="pgc-btn-apagado" disabled ' +
+              'aria-describedby="pgc-provisional">Pagar con tarjeta</button>';
     }
 
-    /* El bloque «Cómo se paga» sale de la base (info_pagos): la cuenta
-       y el contacto que le tocan a esa persona, nunca los dos. */
-    var comoSePaga = await bloqueComoSePaga(o, !(cfg && cfg.activo));
-    cuerpo += comoSePaga;
-
-    /* El pie. Un solo botón azul, y solo si de verdad cobra. */
-    var pie;
-    if (cfg && cfg.activo) {
-      pie = '<button type="button" class="pgc-btn" data-pgc="pagar">Pagar ' + esc(euros(total)) + '</button>' +
-            (comoSePaga ? '<button type="button" class="pgc-btn-txt" data-pgc="otras">Otras formas de pago</button>' : '');
-    } else {
-      pie = '<button type="button" class="pgc-btn-borde" data-pgc="volver">Volver a los bonos</button>';
-    }
     cuerpo += '<div class="pgc-pie">' + pie + '</div>';
+    cuerpo += comoSePaga;
 
     cont.innerHTML = marco(o, cuerpo);
     conectarAtras(cont, o);
     if (window.APOLANA_INFO_PAGOS) window.APOLANA_INFO_PAGOS.activar(cont);
 
-    var otras = cont.querySelector('[data-pgc="otras"]');
-    if (otras) otras.addEventListener('click', function () {
-      var det = cont.querySelector('details.ipg');
-      if (det) { det.open = true; det.scrollIntoView({ block: 'nearest' }); }
-    });
+    /* Si se llega con un aviso, se lee en voz alta y se ve el primero. */
+    var caja = cont.querySelector('.pgc-aviso');
+    if (caja) { try { caja.focus(); } catch (e) { /* da igual */ } }
 
-    var volver = cont.querySelector('[data-pgc="volver"]');
-    if (volver && typeof o.alVolver === 'function') {
-      volver.addEventListener('click', function () { o.alVolver(); });
-    }
+    var cancelar = cont.querySelector('[data-pgc="cancelar"]');
+    if (cancelar) cancelar.addEventListener('click', function () {
+      if (typeof o.alVolver === 'function') o.alVolver(); else history.back();
+    });
 
     var btn = cont.querySelector('[data-pgc="pagar"]');
     if (btn) {
@@ -353,26 +475,30 @@
           nota: o.nota || null
         });
 
+        /* Si salió bien, el navegador ya se está yendo a Stripe.
+           Si no, es exactamente la pantalla del pago que falla: la
+           misma, con la selección intacta y el aviso ámbar arriba. */
         if (!res.ok) {
-          ocupado = false;
-          btn.disabled = false;
-          btn.setAttribute('aria-busy', 'false');
-          btn.textContent = 'Pagar ' + euros(total);
-          var caja = cont.querySelector('[data-pgc="aviso"]');
-          if (!caja) {
-            caja = document.createElement('div');
-            caja.className = 'pgc-fallo';
-            caja.setAttribute('data-pgc', 'aviso');
-            caja.setAttribute('role', 'status');
-            btn.parentNode.insertBefore(caja, btn);
-          }
-          caja.innerHTML = '<b>No se ha podido abrir el pago</b><p>' + esc(res.mensaje) +
-                           '</p><p>No se te ha cobrado nada.</p>';
+          var otra = {};
+          for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) otra[k] = o[k];
+          otra.aviso = {
+            titulo: 'El pago no se ha completado',
+            texto: res.mensaje + ' **No se te ha cobrado nada** y el bono sigue sin comprar.'
+          };
+          confirmar(otra);
         }
-        /* Si salió bien, el navegador ya se está yendo a Stripe. */
       });
     }
-    return !!(cfg && cfg.activo);
+    return encendido;
+  }
+
+  /* El aviso ámbar de arriba. Ámbar y no rojo: un pago que falla no es
+     una emergencia, y es la misma regla que los avisos del club. */
+  function avisoAmbar(a) {
+    return '<div class="pgc-aviso" role="alert" tabindex="-1">' +
+      '<b>' + esc(a.titulo) + '</b>' +
+      '<p>' + conNegritas(a.texto) + '</p>' +
+    '</div>';
   }
 
   /* La cabecera y el hueco: siempre el mismo, cambie lo que cambie
@@ -380,13 +506,13 @@
   function marco(o, dentro) {
     return '<div class="pgc">' +
       '<div class="pgc-cab">' +
-        '<button type="button" class="pgc-atras" data-pgc="atras">' +
+        '<button type="button" class="pgc-atras" data-pgc="atras" aria-label="Volver">' +
           '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
           'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>' +
-          '<span>' + esc(o.paso || 'paso 2 de 2') + '</span>' +
         '</button>' +
-        '<h2 class="pgc-tit">Revisa el pago</h2>' +
-      '</div>' + dentro +
+        '<h2 class="pgc-tit">' + esc(o.titulo || 'Confirmar') + '</h2>' +
+      '</div>' +
+      '<div class="pgc-cuerpo">' + dentro + '</div>' +
     '</div>';
   }
 
@@ -396,6 +522,36 @@
       if (typeof o.alVolver === 'function') o.alVolver();
       else history.back();
     });
+  }
+
+  /* A quién se le pide mientras no haya tarjeta. Sale de `info_pagos`,
+     que es donde el club tiene sus contactos: aquí no hay ni un
+     teléfono ni un nombre escrito a mano. */
+  function contactoDe(o) {
+    var salida = { nombre: '', url: (window.APOLANA_BASE || '../../') + 'contacto/', fuera: false };
+    var mod = window.APOLANA_INFO_PAGOS;
+    if (!mod) return salida;
+
+    var filas = mod.filas() || [];
+    if (!filas.length) return salida;
+
+    var clave = o.clavePago || (o.atleta ? mod.claveDe(o.atleta) : null);
+    var f = null;
+    for (var i = 0; i < filas.length; i++) {
+      if (!clave || filas[i].clave === clave) { f = filas[i]; break; }
+    }
+    if (!f) f = filas[0];
+
+    salida.nombre = texto(f.contacto_nombre).split('·')[0].trim();
+    var tel = texto(f.contacto_tel).replace(/[^\d+]/g, '');
+    var mail = texto(f.contacto_email).trim();
+    if (tel) {
+      salida.url = 'https://wa.me/' + tel.replace(/^\+/, '');
+      salida.fuera = true;
+    } else if (mail) {
+      salida.url = 'mailto:' + mail;
+    }
+    return salida;
   }
 
   /* «Cómo se paga» de verdad, con los datos de la base. Si no se
@@ -414,74 +570,79 @@
 
   /* ---------------------------------------------------------------
      EL ASPECTO · se inyecta una vez
-     Modo consulta: crema, una sola tarjeta, diseño plano (ni sombras
-     ni degradados). Cuerpo 15 px, rótulos 13 px en minúscula, radios
-     14 / 10 / 999 y 44 px de zona pulsable. Móvil primero.
+     Crema, una sola tarjeta blanca, diseño plano (ni sombras ni
+     degradados). Los importes NO van en monoespaciada: el total en
+     Barlow Condensed, que es la cifra que se mira, y los de línea de
+     lista en la tipografía de texto. Móvil primero: a 375 px nada se
+     sale, y todo lo que se pulsa mide 44 px o más.
      --------------------------------------------------------------- */
   function estilosConfirmar() {
     if (document.getElementById('pgc-css')) return;
     var s = document.createElement('style');
     s.id = 'pgc-css';
     s.textContent =
-      '.pgc{display:flex;flex-direction:column;gap:12px;padding:0 16px 28px;' +
-        'font-family:var(--fuente-texto,system-ui);color:var(--texto,#4A4437)}' +
-      '.pgc-cab{display:flex;flex-direction:column;gap:2px;padding:4px 0 6px}' +
-      '.pgc-atras{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:44px;' +
-        'padding:0 8px 0 0;background:none;border:0;cursor:pointer;font:inherit;font-size:13px;' +
-        'color:var(--texto-suave,#6E6656);-webkit-tap-highlight-color:transparent}' +
-      '.pgc-atras:hover{color:var(--azul,#2F6FA8)}' +
-      '.pgc-atras:focus-visible{outline:2px solid var(--azul-filete,#3B85C0);outline-offset:2px;border-radius:10px}' +
+      '.pgc{font-family:var(--fuente-texto,system-ui);color:var(--texto,#4A4437)}' +
+      /* cabecera de navegación: 50 px y filete, como el resto de la app */
+      '.pgc-cab{display:flex;align-items:center;gap:8px;min-height:50px;padding:0 6px 0 4px;' +
+        'border-bottom:1px solid var(--linea-marcada,#E4DCCB)}' +
+      '.pgc-atras{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;' +
+        'background:none;border:0;cursor:pointer;color:var(--azul,#2F6FA8);-webkit-tap-highlight-color:transparent}' +
+      '.pgc-atras:hover{color:var(--azul-hover,#1E4E78)}' +
+      '.pgc-atras:focus-visible{outline:2px solid var(--azul-filete,#3B85C0);outline-offset:-2px;border-radius:10px}' +
       '.pgc-tit{margin:0;font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;' +
-        'font-size:28px;line-height:1.05;text-transform:uppercase;color:var(--navy,#2E4256)}' +
-      /* la tarjeta única */
-      '.pgc-tarjeta{background:#fff;border:1px solid var(--linea,#EAE3D5);border-radius:14px;padding:16px 18px;' +
-        'display:flex;flex-direction:column;gap:10px}' +
-      '.pgc-et{font-size:13px;line-height:1.4;color:var(--texto-suave,#6E6656)}' +
-      '.pgc-concepto{margin:0;font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;' +
-        'font-size:21px;line-height:1.1;text-transform:uppercase;color:var(--navy,#2E4256)}' +
-      '.pgc-quien{font-size:14px;line-height:1.45;color:var(--texto,#4A4437);margin-top:-6px}' +
-      '.pgc-desglose{border-top:1px solid var(--linea,#EAE3D5);padding-top:11px;display:flex;' +
-        'flex-direction:column;gap:8px}' +
-      '.pgc-fila{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:15px;' +
-        'line-height:1.45;color:var(--texto,#4A4437)}' +
-      /* importes: cifra que se compara en columna, en mono */
-      '.pgc-imp{font-family:var(--fuente-dato,ui-monospace,monospace);font-size:15px;color:var(--navy,#2E4256);' +
-        'white-space:nowrap}' +
-      '.pgc-club{font-size:15px;color:var(--verde,#3F7A4C)}' +
-      '.pgc-total{border-top:1px solid var(--linea-marcada,#E4DCCB);padding-top:12px;display:flex;' +
-        'align-items:baseline;justify-content:space-between;gap:12px}' +
-      '.pgc-total-et{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;font-size:21px;' +
-        'line-height:1.1;text-transform:uppercase;color:var(--navy,#2E4256)}' +
-      '.pgc-total-imp{font-family:var(--fuente-dato,ui-monospace,monospace);font-weight:700;font-size:26px;' +
+        'font-size:21px;line-height:1;text-transform:uppercase;color:var(--navy,#2E4256)}' +
+      '.pgc-cuerpo{display:flex;flex-direction:column;gap:14px;padding:18px 16px 28px}' +
+      /* el aviso ámbar: el error nunca es rojo */
+      '.pgc-aviso{background:#FDF6EA;border:1px solid var(--ambar-borde,#EBD9B8);' +
+        'border-left:5px solid #E08A18;border-radius:12px;padding:15px 16px;display:flex;flex-direction:column;gap:7px}' +
+      '.pgc-aviso:focus{outline:none}' +
+      '.pgc-aviso:focus-visible{outline:2px solid var(--azul-filete,#3B85C0);outline-offset:2px}' +
+      '.pgc-aviso b{font-weight:600;font-size:16px;line-height:1.35;color:var(--navy,#2E4256)}' +
+      '.pgc-aviso p{margin:0;font-size:15px;line-height:1.45;color:var(--texto,#4A4437)}' +
+      /* la tarjeta única: qué se compra, qué se añade y el total */
+      '.pgc-tarjeta{background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;' +
+        'padding:17px 18px;display:flex;flex-direction:column;gap:13px}' +
+      '.pgc-fila{display:flex;align-items:baseline;justify-content:space-between;gap:12px}' +
+      '.pgc-concepto{font-size:17px;font-weight:500;line-height:1.3;color:var(--navy,#2E4256)}' +
+      '.pgc-imp{font-size:16px;line-height:1.3;color:var(--navy,#2E4256);white-space:nowrap}' +
+      '.pgc-contexto{margin:-8px 0 0;font-size:14px;line-height:1.4;color:var(--texto-suave,#6E6656)}' +
+      '.pgc-fila--linea,.pgc-fila--total{padding-top:12px;border-top:1px solid var(--crema-media,#EFE9DC)}' +
+      '.pgc-et{font-size:15px;line-height:1.3;color:var(--texto,#4A4437)}' +
+      '.pgc-club{font-size:15px;font-weight:500;line-height:1.3;color:var(--verde,#3F7A4C)}' +
+      '.pgc-total-et{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;font-size:24px;' +
+        'line-height:1;text-transform:uppercase;color:var(--navy,#2E4256)}' +
+      '.pgc-total-imp{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;font-size:30px;' +
         'line-height:1;color:var(--navy,#2E4256);white-space:nowrap}' +
-      /* notas y avisos */
-      '.pgc-nota{margin:0;font-size:14px;line-height:1.55;color:var(--texto,#4A4437);padding:0 2px}' +
-      '.pgc-stripe{display:flex;align-items:center;gap:10px;padding:0 2px;font-size:13px;line-height:1.45;' +
+      /* quién paga y para quién es */
+      '.pgc-quien{display:flex;flex-direction:column;gap:5px;padding:0 2px}' +
+      '.pgc-rot{font-size:12px;font-weight:500;line-height:1;letter-spacing:.09em;text-transform:uppercase;' +
         'color:var(--texto-suave,#6E6656)}' +
-      '.pgc-stripe svg{flex:none}' +
-      '.pgc-previa{background:var(--ambar-fondo,#FDF3E3);border:1px solid var(--ambar-borde,#EBD9B8);' +
-        'border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:5px}' +
-      '.pgc-previa b{font-size:15px;font-weight:600;color:var(--navy,#2E4256)}' +
-      '.pgc-previa p{margin:0;font-size:14px;line-height:1.55;color:var(--texto,#4A4437)}' +
-      '.pgc-fallo{background:var(--ambar-fondo,#FDF3E3);border:1px solid var(--ambar-borde,#EBD9B8);' +
-        'border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}' +
-      '.pgc-fallo b{font-size:15px;font-weight:600;color:var(--navy,#2E4256)}' +
-      '.pgc-fallo p{margin:0;font-size:14px;line-height:1.55;color:var(--texto,#4A4437)}' +
-      /* pie: un solo botón azul, y solo cuando de verdad cobra */
-      '.pgc-pie{display:flex;flex-direction:column;gap:6px;padding-top:4px}' +
-      '.pgc-btn{min-height:44px;padding:13px 22px;border:0;border-radius:999px;background:var(--azul,#2F6FA8);' +
-        'color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer;' +
+      '.pgc-quien-val{font-size:15px;line-height:1.4;color:var(--navy,#2E4256);overflow-wrap:anywhere}' +
+      /* notas */
+      '.pgc-nota{margin:0;font-size:14px;line-height:1.55;color:var(--texto,#4A4437);padding:0 2px}' +
+      '.pgc-nota--pie{font-size:13px;line-height:1.5;color:var(--texto-suave,#6E6656)}' +
+      /* mientras no haya pasarela */
+      '.pgc-provisional{background:var(--crema-banda,#F1EADC);border:1px solid #E0D7C4;border-radius:12px;' +
+        'padding:15px 16px;display:flex;flex-direction:column;gap:7px}' +
+      '.pgc-provisional b{font-weight:600;font-size:16px;line-height:1.35;color:var(--navy,#2E4256)}' +
+      '.pgc-provisional p{margin:0;font-size:15px;line-height:1.45;color:var(--texto,#4A4437)}' +
+      /* pie de botones */
+      '.pgc-pie{display:flex;flex-direction:column;gap:10px;padding-top:2px}' +
+      '.pgc-btn{display:flex;align-items:center;justify-content:center;min-height:52px;padding:14px 22px;' +
+        'box-sizing:border-box;border:0;border-radius:999px;background:var(--azul,#2F6FA8);color:#fff;' +
+        'font:inherit;font-size:16px;font-weight:500;text-align:center;text-decoration:none;cursor:pointer;' +
         '-webkit-tap-highlight-color:transparent}' +
-      '.pgc-btn:hover{background:var(--azul-hover,#1E4E78)}' +
+      '.pgc-btn:hover{background:var(--azul-hover,#1E4E78);color:#fff}' +
       '.pgc-btn[disabled]{opacity:.65;cursor:default}' +
-      '.pgc-btn-borde{min-height:44px;padding:13px 22px;border:1px solid var(--linea-borde,#D4CBB9);' +
-        'border-radius:999px;background:#fff;color:var(--navy,#2E4256);font:inherit;font-size:15px;' +
-        'cursor:pointer;-webkit-tap-highlight-color:transparent}' +
-      '.pgc-btn-borde:hover{background:var(--crema,#FBF9F4)}' +
-      '.pgc-btn-txt{min-height:44px;padding:11px 16px;border:0;background:none;color:var(--azul,#2F6FA8);' +
-        'font:inherit;font-size:15px;cursor:pointer}' +
+      /* visible pero apagado: se entiende que va a existir */
+      '.pgc-btn-apagado{min-height:52px;padding:14px 22px;box-sizing:border-box;border:1.5px solid #DCD3C0;' +
+        'border-radius:999px;background:transparent;color:#8C8474;font:inherit;font-size:16px;font-weight:500;' +
+        'cursor:not-allowed}' +
+      '.pgc-btn-txt{display:flex;align-items:center;justify-content:center;min-height:44px;padding:11px 16px;' +
+        'box-sizing:border-box;border:0;background:none;color:var(--azul,#2F6FA8);font:inherit;font-size:15px;' +
+        'text-align:center;text-decoration:none;cursor:pointer}' +
       '.pgc-btn-txt:hover{color:var(--azul-hover,#1E4E78)}' +
-      '.pgc-btn:focus-visible,.pgc-btn-borde:focus-visible,.pgc-btn-txt:focus-visible' +
+      '.pgc-btn:focus-visible,.pgc-btn-txt:focus-visible,.pgc-btn-apagado:focus-visible' +
         '{outline:2px solid var(--azul-filete,#3B85C0);outline-offset:2px}' +
       /* cargando: la forma del dato que va a llegar */
       '.pgc-esq{background:#fff;border:1px solid var(--linea,#EAE3D5);border-radius:14px;padding:18px;' +
@@ -662,6 +823,9 @@
     conComision: conComision,
     prepararBoton: prepararBoton,
     refrescar: refrescar,
-    euros: euros
+    euros: euros,
+    eurosCorto: eurosCorto,
+    fechaLarga: fechaLarga,
+    dentroDe: dentroDe
   };
 })();

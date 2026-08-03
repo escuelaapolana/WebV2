@@ -7,27 +7,58 @@ y hasta el último paso **no se cobra ni un euro de verdad**.
 
 ## Qué hay montado hoy, con el interruptor apagado
 
-Todo el camino, y se puede recorrer entero desde ya:
+Comprar un bono son **cinco pantallas**, y la regla que las ordena es una: **en
+cada una se ve qué se compra y cuánto cuesta**, la del error incluida. Nadie
+llega al banco sin haber visto el total.
 
-1. En **El Cubo → Mi bono**, abajo del todo, sale **«comprar más usos»** con los
-   bonos que hay a la venta, su precio y **cuánto sale la clase** con cada uno.
-   Esos precios **no están escritos en la web**: salen del catálogo de la base,
-   que es el mismo sitio del que los lee el servidor al cobrar. Si se cambia un
-   precio en el panel, cambia también aquí, solo.
-2. Al pulsar uno se abre **«Revisa el pago»**: qué se compra, a nombre de quién,
-   el desglose y el total. La segunda línea del desglose dice **«Gastos de
-   gestión · los paga el club»** en verde, y **el total es el precio limpio**:
-   se ve que el club no cobra de más por pagar con tarjeta.
-3. Ahí se acaba, de momento, **y se dice con todas las letras**: un aviso en
-   ámbar explica que el pago con tarjeta todavía no está en marcha, y debajo
-   sale **cómo se paga hoy** —la cuenta, el concepto que hay que poner y a quién
-   preguntar—, con los datos de la persona que toca: Isabel para socios y
-   adultos, Adrián o Andrés para la escuela.
+**1 · Elegir.** En **El Cubo → Mi bono → «Comprar más usos»**. Arriba, lo que ya
+tienes («Te quedan 2 usos. Caducan el 30 de septiembre»). Debajo, los bonos como
+dos tarjetas para marcar, cada una con **el precio por sesión**, y la de 20 usos
+con **«ahorras 10 €»** en verde: la comparación se hace sola. El botón lleva el
+importe puesto —**«Continuar · 50 €»**—, nunca un «continuar» a ciegas.
+
+Ni los precios ni el ahorro están escritos en la web: los precios salen del
+catálogo de la base, que es el mismo sitio del que los lee el servidor al
+cobrar, y el ahorro es una cuenta con esos precios. Si se cambia un precio en el
+panel, cambia también aquí, solo.
+
+**2 · Confirmar.** Una tarjeta blanca con cuatro líneas: qué se compra y su
+importe, dónde vale y cuándo caduca, **«Gastos de gestión → Los paga el club»**
+en verde y sin importe (es una buena noticia, no una línea de factura) y el
+**total en grande**, que es la cifra que se mira. Debajo, quién paga, de quién
+son los usos y la nota de que el club no guarda los datos de la tarjeta.
+
+**3 · La vuelta, si el pago sale.** No dice «gracias por tu compra»: dice
+**«Ya tienes 12 usos»**, los nuevos sumados a los que quedaban, con su
+caducidad. Y ofrece lo siguiente de verdad: reservar la próxima sesión, o ver el
+recibo. Al final, el historial de pagos.
+
+**4 · Si el pago falla o se deja a medias.** Se vuelve a **la misma pantalla de
+confirmar, con lo elegido intacto**, y arriba un aviso **ámbar** —no rojo: un
+pago que falla no es una emergencia— cuya primera frase es la que quita el
+miedo: **«No se te ha cobrado nada»**. Debajo, «Probar otra vez» y a quién
+escribir. Si se cierra el navegador del banco a mitad, la misma pantalla con
+otro texto: «Dejaste el pago sin terminar». **Nunca una pantalla en blanco ni
+volver al principio.**
+
+**5 · Mientras no haya Stripe (hoy).** La pantalla de confirmar se ve entera
+—concepto, desglose y total— y en el último paso **no finge cobrar**: una nota
+explica que todavía se paga por transferencia y que el bono se carga a mano,
+el botón de verdad es **«Pedir el bono a…»** (a Isabel para socios y adultos, a
+Adrián o Andrés para la escuela; sale de la base, no está escrito en la web) y
+el de **«Pagar con tarjeta» se queda a la vista pero apagado**, para que se
+entienda que va a existir. Debajo sigue estando **«Cómo se paga»** con la
+cuenta, el concepto y a quién preguntar.
 
 **No hay ningún botón de pagar que no cobre.** Mientras el interruptor esté
 apagado, nadie puede llegar a creer que ha pagado sin haber pagado. El día que
-se encienda, **esa misma pantalla** cambia el aviso por el botón azul de pagar,
+se encienda, **esa misma pantalla** cambia la nota por el botón azul de pagar,
 sin tocar una línea de código.
+
+> Para que el botón de pedir el bono lleve a **WhatsApp**, hay que rellenar el
+> teléfono del contacto en **Cobros → «Cómo se paga»**. Si solo hay correo, el
+> botón abre el correo; y si no hay ninguno, lleva a la página de contacto.
+> Nunca se inventa un teléfono.
 
 ---
 
@@ -285,8 +316,8 @@ ingreso que agrupa varios pagos.
 | Tablas, reglas y candados | `migraciones/053_pagos_tarjeta.sql` |
 | Crear la sesión de pago | `supabase/functions/pago-crear/index.ts` |
 | Recibir el aviso de Stripe | `supabase/functions/pago-webhook/index.ts` |
-| Módulo para las pantallas (incluida la de confirmar) | `assets/js/pago-tarjeta.js` |
-| Elegir bono y abrir la confirmación | `portal/cubo/index.html` |
+| Confirmar, el pago que falla y el estado sin Stripe | `assets/js/pago-tarjeta.js` |
+| Elegir el bono, la vuelta del pago y el recibo | `portal/cubo/index.html` |
 | Cómo se paga hoy (cuenta y contacto, de la base) | `assets/js/info-pagos.js` |
 | Pantalla del panel | `admin/pagos-online/index.html` |
 
@@ -301,9 +332,17 @@ Variables de entorno que usan las funciones:
 | `SUPABASE_ANON_KEY` | Supabase, sola |
 | `PAGOS_URL_BASE`, `PAGOS_URL_OK`, `PAGOS_URL_KO` | opcionales: a dónde vuelve la persona al terminar |
 
-Sin tocar nada, al volver de Stripe un bono deja a la persona en su pantalla del
-bono de El Cubo (`/portal/cubo/`), que es donde están los usos que acaba de
-comprar. Lo demás vuelve a la portada.
+Sin tocar nada, al volver de Stripe un bono deja a la persona en El Cubo
+(`/portal/cubo/?pago=hecho&ref=…` o `?pago=cancelado&ref=…`). Con esa referencia
+la pantalla sabe **de quién era el pago, qué se compraba y en qué quedó**, así
+que no depende de que el navegador se acuerde de nada: si salió, enseña cuántos
+usos hay ahora; si no, vuelve a la de confirmar con lo mismo elegido y el aviso
+ámbar. Por si acaso, lo elegido también se guarda en el propio navegador
+(`sessionStorage`) antes de salir a la pasarela. Lo demás vuelve a la portada.
+
+El bono se apunta cuando Stripe avisa al club, y eso puede tardar unos segundos.
+Si al volver todavía no está, la pantalla **no se inventa el número**: dice
+«Pago recibido · estamos añadiendo los usos» y se corrige sola en cuanto llega.
 
 Poner la pantalla de confirmar en cualquier página:
 
@@ -314,14 +353,30 @@ Poner la pantalla de confirmar en cualquier página:
 
 ```js
 // Se pinta igual esté encendido o apagado. Lo que cambia es el final:
-// con tarjeta, o el aviso de que todavía no está y cómo se paga hoy.
+// con tarjeta, o la nota de que todavía no está y a quién pedírselo.
 APOLANA_PAGO.confirmar({
   contenedor: document.getElementById('pantalla'),
   clave:      'bono-cubo-10',
   atleta_id:  idDelAtleta,
-  aNombreDe:  'Nombre y apellidos',
-  atleta:     fichaDelAtleta,      // decide qué cuenta y qué contacto salen
-  alVolver:   function () { /* atrás */ }
+  aNombreDe:  'Nombre y apellidos',   // de quién son los usos
+  pagador:    { nombre: 'Quien paga', email: 'su@correo.es' },
+  atleta:     fichaDelAtleta,         // decide qué cuenta y qué contacto salen
+  alVolver:   function () { /* atrás y «Cancelar» */ }
+});
+```
+
+Es también la pantalla del pago que falla y la del que se deja a medias: la
+misma, con lo elegido intacto y un aviso ámbar arriba. En el texto del aviso,
+`**esto**` sale en negrita.
+
+```js
+APOLANA_PAGO.confirmar({
+  /* …lo de arriba… */
+  aviso: {
+    titulo: 'El pago no se ha completado',
+    texto:  'Tu banco no lo ha autorizado. **No se te ha cobrado nada** y ' +
+            'el bono sigue sin comprar.'
+  }
 });
 ```
 
