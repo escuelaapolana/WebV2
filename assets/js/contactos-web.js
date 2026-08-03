@@ -96,8 +96,17 @@
 
     /* Nada que enseñar: o esa persona no tiene ese dato, o el club ha
        decidido no publicarlo. En los dos casos se retira el trozo
-       entero en vez de dejar un rótulo huérfano. */
+       entero en vez de dejar un rótulo huérfano.
+
+       ⚠️ Y NO BASTA CON ESCONDERLO. Esconder el trozo lo quita de la
+       vista, pero el correo o el móvil escritos a mano en el HTML se
+       siguen leyendo en el código fuente de la página, que es donde
+       miran los robots que recogen direcciones. Así que se borra el
+       texto Y el destino del enlace: si el club apaga el interruptor,
+       el dato no queda en ningún sitio. */
     if (!texto) {
+      el.textContent = '';
+      if (el.hasAttribute('data-contacto-href')) el.removeAttribute('href');
       el.hidden = true;
       el.setAttribute('aria-hidden', 'true');
       return;
