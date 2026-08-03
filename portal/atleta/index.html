@@ -673,10 +673,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(r.tiempo)  out.push({ v: r.tiempo,  l: r.estimado ? 'tiempo estimado' : 'duración' });
     return out;
   }
+  /* Cómo se dicen los dos ejes en pantalla. Los nombres del papel del día son
+     los que el club ya usa en su planificación anual (ajuste, carga, impacto,
+     recuperación, activación, tapering); los tres últimos se añadieron porque
+     son días que existen y no encajaban en ninguno. */
+  var NOMBRE_DEPORTE={ atletismo:'Atletismo', natacion:'Natación', fuerza:'Fuerza', cubo:'El Cubo' };
+  var NOMBRE_PAPEL={ ajuste:'Ajuste', carga:'Carga', impacto:'Impacto', recuperacion:'Recuperación',
+                     activacion:'Activación', tapering:'Tapering', competicion:'Competición',
+                     descanso:'Descanso', rehabilitador:'Rehabilitador' };
+  function bonito(mapa, v){
+    if(!v) return '';
+    return mapa[v] || String(v).replace(/_/g,' ').replace(/^./,function(c){return c.toUpperCase();});
+  }
+  function etiquetasEntreno(s){
+    var out=[];
+    /* Los dos deportes van en etiquetas separadas a propósito: así se ve que
+       hacen falta las dos cosas, no una mezcla de las dos. */
+    if(s.deporte) out.push(bonito(NOMBRE_DEPORTE, s.deporte));
+    if(s.deporte_2) out.push(bonito(NOMBRE_DEPORTE, s.deporte_2));
+    if(!out.length && s.tipo) out.push(bonito(NOMBRE_DEPORTE, s.tipo));
+    var papel = s.papel_dia || s.rol;
+    if(papel) out.push(bonito(NOMBRE_PAPEL, papel));
+    return out;
+  }
+
   function renderEntreno(s, todayISO){
     var esHoy=s.fecha===todayISO; var fechaTxt=(esHoy?'Hoy · ':'')+formatFecha(s.fecha);
     var dis=disciplinaDe(s);
-    var chips=[s.tipo,(s.rol||'').replace(/_/g,' ')].filter(Boolean).map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('');
+    /* Dos etiquetas y no una: el DEPORTE (a qué voy hoy) y el PAPEL DEL DÍA
+       (qué pinta este entrenamiento en la temporada). Antes salían tal cual
+       venían de la base —«continuo», «calidad fuerte»—, en minúscula y sin
+       tildes, que parecía la pantalla a medio hacer. */
+    var chips=etiquetasEntreno(s).map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('');
     if(s.atletas_ids) chips='<span class="chip personal" title="Este entrenamiento lo ha preparado tu entrenador solo para ti">Solo para ti</span>'+chips;
     var bloques=Array.isArray(s.bloques)?s.bloques:[];
     var abierto=bloquesAbiertos(s, bloques);
@@ -1046,11 +1074,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var diaSel=todayISO;              // día elegido en la tira
 
   function rangoTxt(lunes){ return 'Semana del '+fechaCorta(lunes)+' – '+fechaCorta(addDias(lunes,6)); }
+  /* Chip diminuto de la tira de días: aquí no cabe «entrenamiento», así que se
+     dice el DEPORTE, que es lo que hace falta para saber qué meter en la bolsa.
+     Cuando el día son dos deportes se dicen los dos, porque si solo pusiera
+     «fuerza» uno se presenta sin las zapatillas de clavos. */
+  var DEPORTE_CORTO={ atletismo:'atletismo', natacion:'natación', fuerza:'fuerza', cubo:'El Cubo' };
+  var TIPO_CORTO_VIEJO={ pista:'pista', gym:'fuerza', continuo:'rodaje', activacion:'activ.', competicion:'compe.', descanso:'descanso' };
+  function deporteCorto(s){
+    if(!s) return 'entren.';
+    var a=DEPORTE_CORTO[s.deporte]||'', b=DEPORTE_CORTO[s.deporte_2]||'';
+    if(a&&b) return a+' + '+b;
+    if(a) return a;
+    return tipoCorto(s.tipo);
+  }
   function tipoCorto(t){
-    var m={pista:'pista', gym:'gym', continuo:'rodaje', activacion:'activ.', competicion:'compe.', descanso:'descanso'};
-    /* Chip diminuto de la tira de días: aquí «entrenamiento» no cabe, así que
-       se abrevia igual que «activ.» o «compe.». */
-    return m[t]||(t?String(t).slice(0,8):'entren.');
+    return TIPO_CORTO_VIEJO[t]||(t?String(t).slice(0,8):'entren.');
   }
   function sesionesDe(iso){ return (SEM[lunesVis]||[]).filter(function(s){ return s.fecha===iso; }); }
 
@@ -1066,7 +1104,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     delete SEM_FALLO[lunes];
     try {
       var se=await sb.from('sesiones')
-        .select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids')
+        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids')
         .eq('publicada',true).gte('fecha',lunes).lte('fecha',addDias(lunes,6))
         .order('fecha',{ascending:true});
       if(se.error) SEM_FALLO[lunes]=true; else lista=se.data||[];
@@ -1099,7 +1137,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var marca, titulo;
       if(ses.length){
         var personal=ses.some(function(s){ return s.atletas_ids!=null; });
-        var etiqueta=tipoCorto(ses[0].tipo)+(ses.length>1?' +'+(ses.length-1):'');
+        var etiqueta=deporteCorto(ses[0])+(ses.length>1?' +'+(ses.length-1):'');
         /* Mirar hacia atrás sirve de poco si todos los días se ven igual.
            El día en el que apuntaste cómo te fue lleva un visto en vez del
            punto: de un vistazo se ve lo que hiciste y lo que se quedó sin
@@ -1390,7 +1428,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var PAGOS=[];            // recibos del atleta (para avisar de lo vencido en «Hoy»)
   var hoyPintado=false;
   function sesSemanaHoy(){ return SEM[lunesHoy]||[]; }
-  function tituloSesion(s){ return s.titulo || (s.tipo==='descanso' ? 'Descanso' : 'Entrenamiento'); }
+  /* Un día libre se llama «Descanso», no «Entrenamiento». Se mira el papel del
+     día (migración 102) y, si no está, el tipo de siempre. */
+  function tituloSesion(s){ return s.titulo || ((s.papel_dia||s.tipo)==='descanso' ? 'Descanso' : 'Entrenamiento'); }
 
   // Resumen corto de la sesión, al estilo «4 × 60 m · ritmo 90-95% · rec. 4 min»
   function resumenSesion(s){
@@ -1500,7 +1540,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         return '<div class="hoy-card">'+
           '<div class="hc-top">'+
             '<span class="hc-grupo">Entrenamiento de hoy'+(s.atletas_ids?' · solo para ti':'')+'</span>'+
-            (hora?'<span class="hc-hora">'+esc(hora)+'</span>':'<span class="hc-hora">'+esc(tipoCorto(s.tipo))+'</span>')+
+            (hora?'<span class="hc-hora">'+esc(hora)+'</span>':'<span class="hc-hora">'+esc(deporteCorto(s))+'</span>')+
           '</div>'+
           '<div><h2 class="hc-tit">'+esc(tituloSesion(s))+'</h2>'+
             (sub?'<div class="hc-det">'+sub+'</div>':'')+'</div>'+
@@ -1517,7 +1557,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         html+='<div class="lista-caja">'+hoySes.slice(1).map(function(s){
           return '<button type="button" class="lista-fila" data-ir="'+todayISO+'">'+
             '<span class="lf-txt"><span class="lf-nom">'+esc(tituloSesion(s))+'</span>'+
-            '<span class="lf-sub">también hoy · '+esc(tipoCorto(s.tipo))+'</span></span>'+
+            '<span class="lf-sub">también hoy · '+esc(deporteCorto(s))+'</span></span>'+
             '<span class="lf-hora">&rsaquo;</span></button>';
         }).join('')+'</div>';
       }

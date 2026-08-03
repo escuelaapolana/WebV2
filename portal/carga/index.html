@@ -254,6 +254,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var m = (DUR_ESTIMADA[t] != null) ? DUR_ESTIMADA[t] : DUR_POR_DEFECTO;
     return { min: m, estimada:true };
   }
+  /* El deporte de la sesión, dicho en cristiano (migración 102). Antes en esta
+     lista salía el valor crudo de la base —«continuo», «gym»— y se leía como
+     si la pantalla estuviera a medio hacer. Los días de dos deportes se dicen
+     los dos. */
+  var ETIQUETA_DEPORTE = { atletismo:'Atletismo', natacion:'Natación', fuerza:'Fuerza', cubo:'El Cubo' };
+  var ETIQUETA_TIPO_VIEJO = { pista:'Pista', gym:'Fuerza', continuo:'Rodaje', natacion:'Natación',
+                              activacion:'Activación', competicion:'Competición', descanso:'Descanso' };
+  function etiquetaDeporte(s){
+    if (!s) return '';
+    var a = ETIQUETA_DEPORTE[s.deporte] || '', b = ETIQUETA_DEPORTE[s.deporte_2] || '';
+    if (a && b) return a + ' y ' + b.toLowerCase();
+    return a || b || ETIQUETA_TIPO_VIEJO[s.tipo] || '';
+  }
+
   function num(v){ var n = (v==null || v==='') ? null : Number(v); return (n==null || isNaN(n)) ? null : n; }
   function redon(v, d){ if(v==null) return null; var p=Math.pow(10,d||0); return Math.round(v*p)/p; }
   function mil(v){ if(v==null) return '—'; return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
@@ -331,7 +345,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var esperadas=[], pendientes=[], esperadas28=0, hechas28=0;
     for (i=0;i<sesiones.length;i++){
       var s = sesiones[i];
-      if (s.tipo === 'descanso') continue;
+      if ((s.papel_dia || s.tipo) === 'descanso') continue;   // un día libre no es un entrenamiento que falte por rellenar
       if (s.fecha > HOY) continue;
       esperadas.push(s);
       if (!hechas[s.id]) pendientes.push(s);
@@ -703,6 +717,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var rpe = num(r.rpe);
       out.push({
         sesion_id: r.sesion_id, fecha: s.fecha, tipo: s.tipo || '', titulo: s.titulo || '',
+        deporte: s.deporte || '', deporte_2: s.deporte_2 || '', papel_dia: s.papel_dia || '',
         rpe: rpe, sensacion: num(r.sensacion_general), sueno: num(r.horas_sueno), peso: num(r.peso_kg),
         molestias: r.molestias || '', notas: r.notas_atleta || '',
         dur: d.min, estimada: d.estimada, calculada: !!d.calculada,
@@ -714,7 +729,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   var CAMPOS_REG = 'sesion_id,rpe,sensacion_general,horas_sueno,peso_kg,molestias,notas_atleta,' +
-                   'sesiones!inner(id,fecha,tipo,titulo,duracion_min,grupo_id,bloques)';
+                   'sesiones!inner(id,fecha,tipo,deporte,deporte_2,papel_dia,titulo,duracion_min,grupo_id,bloques)';
 
   async function registrosDe(idsAtletas){
     var r = await sb.from('registros_sesion')
@@ -728,7 +743,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   async function sesionesPublicadas(gruposIds){
     var q = sb.from('sesiones')
-      .select('id,fecha,tipo,titulo,duracion_min,grupo_id,atletas_ids,bloques')
+      .select('id,fecha,tipo,deporte,deporte_2,papel_dia,titulo,duracion_min,grupo_id,atletas_ids,bloques')
       .eq('publicada', true)
       .gte('fecha', DESDE).lte('fecha', HOY);
     if (gruposIds && gruposIds.length) q = q.in('grupo_id', gruposIds);
@@ -821,7 +836,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         for (var k=0;k<Math.min(m.pendientes.length,12);k++){
           var p = m.pendientes[k];
           h += '<li><span class="f">' + esc(fechaCorta(p.fecha)) + '</span><span>' +
-               esc(p.titulo || 'Entrenamiento') + (p.tipo ? ' <small class="et">· ' + esc(p.tipo) + '</small>' : '') +
+               esc(p.titulo || 'Entrenamiento') + (etiquetaDeporte(p) ? ' <small class="et">· ' + esc(etiquetaDeporte(p)) + '</small>' : '') +
                '</span></li>';
         }
         h += '</ul>';

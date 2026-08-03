@@ -677,6 +677,49 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // ---------- constantes ----------
+  /* LOS DOS EJES DEL ENTRENAMIENTO (migración 102)
+     Hasta ahora una sola casilla, «tipo», mezclaba dos preguntas: dónde se
+     entrena (pista, gimnasio, natación) y qué papel juega el día (activación,
+     competición, descanso). Se notaba en que «activación» estaba en las dos
+     listas a la vez. Ahora son dos preguntas y dos desplegables. */
+
+  // 1 · A QUÉ VA HOY. «Fuerza» no se dice «gimnasio» a propósito: quien oye
+  //     gimnasio piensa «yo no tengo, ¿dónde lo hago?», y con unas mancuernas
+  //     en casa también es fuerza. El Cubo va aparte porque es una clase con
+  //     plaza a la que uno se apunta, no un entrenamiento que manda nadie.
+  var DEPORTES = [['atletismo','Atletismo'],['natacion','Natación'],['fuerza','Fuerza'],['cubo','El Cubo']];
+
+  // 2 · QUÉ PINTA ESE DÍA EN LA TEMPORADA. Los seis primeros nombres son los
+  //     que el club ya escribe en su planificación anual; los tres últimos los
+  //     añadimos porque son días que existen y no encajaban en ninguno.
+  var PAPELES = [
+    ['ajuste','Ajuste'], ['carga','Carga'], ['impacto','Impacto'],
+    ['recuperacion','Recuperación'], ['activacion','Activación'], ['tapering','Tapering'],
+    ['competicion','Competición'], ['descanso','Descanso'], ['rehabilitador','Rehabilitador']
+  ];
+
+  /* EL CONTENIDO NO ES UN CAMPO, Y ES A PROPÓSITO
+     Hubo una tercera lista, la del contenido de la sesión, y se decidió no
+     montarla: el papel del día es justo lo que NO se deduce leyendo los
+     ejercicios, y por eso tiene casilla; el contenido sí se deduce. Quien
+     escribe «sentadilla 4×5 al 85 %» ya está diciendo que es fuerza máxima.
+     Se dejan aquí escritas por si algún día se quiere etiquetar el contenido
+     para el análisis de final de temporada, y para no tener que buscarlas otra vez:
+
+       FUERZA:    fuerza máxima · potencia · pliometría y multisaltos ·
+                  hipertrofia · resistencia a la fuerza · movilidad ·
+                  core y preventivo
+       NATACIÓN:  técnica · velocidad · umbral · aeróbico o fondo ·
+                  recuperación · puesta a punto   (PROVISIONAL: sale de la
+                  literatura, no del club; está pendiente de repasarla con el
+                  responsable de la sección)
+       ATLETISMO: sin lista, el club no la ha dado y no se inventa.
+       EL CUBO:   sin lista. */
+
+  /* Las dos listas viejas siguen vivas SOLO para el importador de texto y la
+     planificación por semanas, que escriben `tipo` y `rol` a la antigua. La
+     base los traduce sola a los dos ejes nuevos (migración 102), así que no
+     hay que tocarlos. */
   var TIPOS = [['pista','Pista'],['gym','Gimnasio'],['continuo','Rodaje / continuo'],['activacion','Activación'],['competicion','Competición'],['descanso','Descanso']];
   var ROLES = [['calidad_fuerte','Calidad fuerte'],['secundaria','Secundaria'],['activacion','Activación'],['ultimo_toque_48h','Último toque (48h)'],['descarga','Descarga'],['competicion','Competición']];
 
@@ -769,6 +812,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function optsPares(pares, sel, vacio){
     var o = '<option value="">'+(vacio||'—')+'</option>';
+    pares.forEach(function(p){ o += '<option value="'+p[0]+'"'+(String(sel)===p[0]?' selected':'')+'>'+esc(p[1])+'</option>'; });
+    return o;
+  }
+  /* Igual, pero SIN la opción vacía de arriba: para los desplegables que
+     siempre tienen respuesta (el deporte y el papel del día vienen puestos con
+     lo que más se usa, y dejarlos en blanco no significa nada). */
+  function optsFijos(pares, sel){
+    var o = '';
     pares.forEach(function(p){ o += '<option value="'+p[0]+'"'+(String(sel)===p[0]?' selected':'')+'>'+esc(p[1])+'</option>'; });
     return o;
   }
@@ -1151,12 +1202,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function tipoNombre(t){ for(var i=0;i<TIPOS.length;i++) if(TIPOS[i][0]===t) return TIPOS[i][1]; return ''; }
 
+  function enPares(pares, v){ for(var i=0;i<pares.length;i++) if(pares[i][0]===v) return pares[i][1]; return ''; }
+  function nombreDeporte(d){ return enPares(DEPORTES, d); }
+  function nombrePapel(p){ return enPares(PAPELES, p); }
+  /* «Fuerza y atletismo», no «fuerza» a secas: si solo pone fuerza, el atleta
+     se presenta sin las zapatillas de clavos. Los dos deportes se dicen los dos. */
+  function textoDeportes(s){
+    if(!s) return '';
+    var a = nombreDeporte(s.deporte), b = nombreDeporte(s.deporte_2);
+    if(a && b) return a+' y '+b.toLowerCase();
+    return a || b || tipoNombre(s.tipo);
+  }
+
   async function cargarHoy(){
     HOY.sesiones = []; HOY.siguiente = null;
     if(!MIS_GRUPOS.length) return;
     var ids = MIS_GRUPOS.map(function(g){ return g.id; });
     var r = await sb.from('sesiones')
-      .select('id,fecha,hora,titulo,tipo,lugar,grupo_id,publicada,atletas_ids,abierta_inscripcion')
+      .select('id,fecha,hora,titulo,tipo,deporte,deporte_2,papel_dia,lugar,grupo_id,publicada,atletas_ids,abierta_inscripcion')
       .in('grupo_id', ids).eq('fecha', todayISO)
       .order('hora', { ascending:true }).limit(8);
     if(!r.error && r.data) HOY.sesiones = r.data;
@@ -1218,7 +1281,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         if(lugar) det.push('<span><i></i>'+esc(lugar)+'</span>');
         var soloAlgunos = Array.isArray(s.atletas_ids) && s.atletas_ids.length;
         if(soloAlgunos) det.push('<span><i></i>solo '+esc(nombresDeIds(s.atletas_ids, 2))+'</span>');
-        var tipo = tipoNombre(s.tipo);
+        /* La etiqueta de la tarjeta de hoy dice el deporte, no el «tipo» de
+           antes: es lo que el entrenador y el atleta necesitan saber de un
+           vistazo, y cuando el día son dos deportes se dicen los dos. */
+        var tipo = textoDeportes(s);
         return '<div class="hoy-e">'+
           '<div class="he-top">'+
             '<span class="he-et">Hoy · '+esc(nombreGrupo(s.grupo_id)||'tu grupo')+'</span>'+
@@ -2637,6 +2703,62 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   var Dsc = window.APOLANA_DESCANSOS || null;
 
+  /* EL TIPO DE SIEMPRE, DEDUCIDO DE LOS DOS EJES
+     El campo `tipo` mezclaba deporte y papel del día, y de él salen todavía
+     el formato del descanso, las columnas de las filas y lo que pintan el
+     calendario del club, la pantalla de calles y la de carga. Ya no se elige a
+     mano: se calcula aquí a partir del deporte, del papel del día y de la
+     sección del grupo (un continuo de montaña se escribe por desnivel, no por
+     series). La base hace esta misma cuenta por su cuenta (migración 102); se
+     repite aquí para que las columnas cambien mientras se rellena, sin esperar
+     a guardar. */
+  /* El camino de vuelta: del tipo y el rol de siempre a los dos ejes. Es la
+     misma traducción que hace la base en la migración 102, escrita aquí para
+     los entrenamientos guardados antes de aquello. */
+  function deporteDesdeTipo(tipo, grupoId){
+    if(tipo === 'natacion') return 'natacion';
+    if(tipo === 'gym') return 'fuerza';
+    if(tipo === 'pista' || tipo === 'continuo') return 'atletismo';
+    return deportePorGrupo(grupoId);
+  }
+  function papelDesdeRol(tipo, rol){
+    if(tipo === 'descanso' || tipo === 'competicion' || tipo === 'activacion') return tipo;
+    var m = { calidad_fuerte:'impacto', secundaria:'carga', descarga:'recuperacion',
+              ultimo_toque_48h:'tapering', activacion:'activacion', competicion:'competicion' };
+    if(m[rol]) return m[rol];
+    if(nombrePapel(rol)) return rol;   // ya venía con el vocabulario nuevo
+    return 'carga';
+  }
+  /* Qué deporte hace normalmente un grupo, para no preguntar lo obvio: quien
+     entrena a un grupo de natación no debería tener que cambiar el desplegable
+     cada vez que planifica. */
+  function deportePorGrupo(grupoId){
+    var sec = seccionDeGrupo(grupoId);
+    if(sec === 'natacion' || sec === 'escuela-natacion') return 'natacion';
+    if(sec === 'cubo') return 'cubo';
+    return 'atletismo';
+  }
+
+  function tipoDesdeEjes(deporte, papel, grupoId){
+    if(deporte === 'natacion') return 'natacion';
+    if(deporte === 'fuerza' || deporte === 'cubo') return 'gym';
+    if(papel === 'descanso' || papel === 'competicion' || papel === 'activacion') return papel;
+    var sec = seccionDeGrupo(grupoId);
+    if(sec === 'running' || sec === 'montana' || sec === 'triatlon') return 'continuo';
+    return 'pista';
+  }
+  /* El deporte que hay que mirar para las columnas es el PRINCIPAL. Si el día
+     es «fuerza y luego series», las filas se escriben como fuerza: es donde
+     está el grueso del trabajo y lo que el entrenador viene a teclear. */
+  function sincronizarTipo(){
+    var t = $('pl-tipo'); if(!t) return;
+    t.value = tipoDesdeEjes(
+      $('pl-deporte') ? $('pl-deporte').value : 'atletismo',
+      $('pl-papel')   ? $('pl-papel').value   : 'carga',
+      $('pl-grupo')   ? $('pl-grupo').value   : ''
+    );
+  }
+
   function disciplinaActual(){
     if(!Dsc) return 'pista';
     var tipo = $('pl-tipo') ? $('pl-tipo').value : '';
@@ -3010,8 +3132,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     DURACION_EDIT = null;
     if($('pl-fecha')) $('pl-fecha').value = todayISO;
     if($('pl-titulo')) $('pl-titulo').value = '';
-    if($('pl-tipo')) $('pl-tipo').value = '';
-    if($('pl-rol')) $('pl-rol').value = '';
+    /* Los dos ejes arrancan contestados: el deporte que hace ese grupo y
+       «carga», que es el día de trabajo corriente. Quien planifica un martes
+       normal no tiene que tocar ninguno de los dos. */
+    if($('pl-deporte')) $('pl-deporte').value = deportePorGrupo($('pl-grupo') ? $('pl-grupo').value : '');
+    if($('pl-deporte2')) $('pl-deporte2').value = '';
+    if($('pl-papel')) $('pl-papel').value = 'carga';
+    if($('pl-dep2-caja')) $('pl-dep2-caja').open = false;
+    sincronizarTipo();
     if($('pl-nota')) $('pl-nota').value = '';
     if($('pl-publicar')) $('pl-publicar').checked = false;
     if($('pl-material')) $('pl-material').checked = grupoEsDeAgua($('pl-grupo') ? $('pl-grupo').value : '');
@@ -3037,8 +3165,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('pl-grupo').value = s.grupo_id||'';
     $('pl-fecha').value = s.fecha||todayISO;
     $('pl-titulo').value = s.titulo||'';
+    /* Un entrenamiento de antes de la migración 102 puede no traer los ejes
+       nuevos si se pidió sin esas columnas: se deducen del tipo de siempre,
+       igual que lo hace la base, para que al abrirlo no aparezca vacío. */
+    $('pl-deporte').value = s.deporte || deporteDesdeTipo(s.tipo, s.grupo_id||$('pl-grupo').value);
+    $('pl-deporte2').value = s.deporte_2 || '';
+    $('pl-papel').value = s.papel_dia || papelDesdeRol(s.tipo, s.rol);
+    if($('pl-dep2-caja')) $('pl-dep2-caja').open = !!s.deporte_2;
     $('pl-tipo').value = s.tipo||'';
-    $('pl-rol').value = s.rol||'';
+    if(!$('pl-tipo').value) sincronizarTipo();
     $('pl-nota').value = s.nota_razonamiento||'';
     $('pl-publicar').checked = !!s.publicada;
     // ¿va a todo el grupo o solo a algunos? (null = todo el grupo)
@@ -3068,7 +3203,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!grupoId) return;
     /* 200 en vez de 60: este desplegable ya no es solo «el de la semana
        pasada», es por donde se llega a lo de hace meses. */
-    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(200);
+    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,deporte,deporte_2,papel_dia,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(200);
     if(r.error || !r.data){ return; }
     window.__SESIONES_GRUPO = {};
     /* Agrupados por mes: una lista de 200 fechas seguidas no se lee, y
@@ -3204,10 +3339,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><label>Fecha</label><input id="pl-fecha" type="date" value="'+todayISO+'"></div>'+
           '<div><label>Título</label><input id="pl-titulo" placeholder="p. ej. Series 6×150"></div>'+
         '</div>'+
+        /* Dos preguntas, dos desplegables, y los dos ya vienen contestados con
+           lo que más se usa: atletismo y carga. Planificar un martes corriente
+           no debería costar ni un clic. */
         '<div class="grid2">'+
-          '<div><label>Tipo</label><select id="pl-tipo">'+optsPares(TIPOS,'','— elige tipo —')+'</select></div>'+
-          '<div><label>Rol del entrenamiento</label><select id="pl-rol">'+optsPares(ROLES,'','— sin rol —')+'</select></div>'+
+          '<div><label for="pl-deporte">Deporte</label><select id="pl-deporte">'+optsFijos(DEPORTES,'atletismo')+'</select></div>'+
+          '<div><label for="pl-papel">Papel del día</label><select id="pl-papel">'+optsFijos(PAPELES,'carga')+'</select></div>'+
         '</div>'+
+        /* El segundo deporte es el caso raro (gimnasio y luego series, como
+           transferencia), así que va plegado: quien no lo necesita ni lo ve. */
+        '<details class="ayuda" id="pl-dep2-caja"><summary>¿Ese día hace dos deportes?</summary>'+
+          '<p class="pista">Solo si son <strong>dos de verdad y seguidos</strong>, sin irse a casa en medio. '+
+            'El atleta verá que necesita las dos cosas, y el día le contará en los dos deportes.</p>'+
+          '<label for="pl-deporte2">Y además</label>'+
+          '<select id="pl-deporte2">'+optsPares(DEPORTES,'','— solo uno —')+'</select>'+
+        '</details>'+
+        /* El tipo de siempre ya no se elige: lo deduce la propia página a
+           partir del deporte, y sirve para que las columnas de las filas y el
+           formato del descanso sigan saliendo bien. Se queda oculto, no se
+           borra: hay pantallas que lo leen. */
+        '<select id="pl-tipo" hidden aria-hidden="true" tabindex="-1">'+optsPares(TIPOS,'')+'</select>'+
         cajaDestHTML('pl', '¿Para quién es este entrenamiento?')+
         cajaAbrirHTML('pl', '¿Abierto para apuntarse?',
           'Si lo dejas <strong>sin marcar</strong>, el entrenamiento es solo para tu grupo: en el calendario del club se ve que existe, pero nadie de fuera se puede apuntar. '+
@@ -3328,6 +3479,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // El rótulo dice de qué entrenamiento se está hablando: se refresca al escribir.
     $('pl-fecha').addEventListener('change', pintarModo);
     $('pl-titulo').addEventListener('input', pintarModo);
+    /* Cambiar el deporte o el papel del día cambia el tipo de siempre, y de él
+       salen las columnas de las filas y el formato del descanso. Por eso se
+       recalcula antes de repintar. */
+    function ejeCambiado(){ sincronizarTipo(); aplicarModoFilas(); }
+    $('pl-deporte').addEventListener('change', ejeCambiado);
+    $('pl-papel').addEventListener('change', ejeCambiado);
+    $('pl-deporte2').addEventListener('change', pedirResumen);
     $('pl-tipo').addEventListener('change', aplicarModoFilas);
     $('pl-material').addEventListener('change', aplicarModoFilas);
     // el volumen y el tiempo se recalculan solos según se escribe
@@ -3377,8 +3535,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         fecha: fecha,
         dia_semana: diaSemana(fecha),
         titulo: $('pl-titulo').value.trim()||null,
+        /* Los dos ejes son lo que el entrenador ha elegido de verdad. El `tipo`
+           de siempre va también, deducido, porque hay pantallas que lo leen.
+           Y el `rol` se manda vacío a posta: así la base lo vuelve a calcular
+           desde el papel del día (migración 102) y no se queda colgado el
+           valor viejo cuando alguien cambia un impacto por una recuperación. */
+        deporte: $('pl-deporte').value||null,
+        deporte_2: $('pl-deporte2').value||null,
+        papel_dia: $('pl-papel').value||null,
         tipo: $('pl-tipo').value||null,
-        rol: $('pl-rol').value||null,
+        rol: null,
         nota_razonamiento: $('pl-nota').value.trim()||null,
         bloques: serializarBloques(),
         publicada: $('pl-publicar').checked,

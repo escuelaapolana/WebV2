@@ -30,6 +30,13 @@ Reglas:
 - Una línea por **día** (LUNES…DOMINGO). Detrás, separado por `·`: **tipo**, **rol** y **título**.
 - **tipo**: `pista`, `gym`, `continuo`, `activacion`, `competicion`, `descanso`.
 - **rol**: `calidad_fuerte`, `secundaria`, `activacion`, `ultimo_toque_48h`, `descarga`, `competicion`.
+
+> **Estos dos nombres son los de antes, y se siguen entendiendo.** Al planificar
+> de uno en uno ya no se elige «tipo» y «rol», sino **deporte** (atletismo,
+> natación, fuerza, El Cubo) y **papel del día** (ajuste, carga, impacto,
+> recuperación, activación, tapering, competición, descanso, rehabilitador).
+> Lo que se pega aquí en texto o se sube en CSV se traduce solo a los dos ejes
+> nuevos al guardarlo, así que las plantillas de siempre siguen valiendo.
 - `Nota:` (opcional) = razonamiento de la sesión.
 - `#` abre un **bloque** (Calentamiento / Parte principal / Vuelta a la calma…).
 - `-` es un **ejercicio**. Detrás, separados por `|`: series×distancia (`4x60 m`), ritmo (`90%`),

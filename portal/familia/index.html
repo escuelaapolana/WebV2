@@ -789,7 +789,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            sale de la vista `sesiones_agenda`, que solo expone eso y nunca
            los bloques ni la nota del entrenador. Es la misma que usa el
            calendario público del club. */
-        var pr = await sb.from('sesiones_agenda').select('id:sesion_id,fecha,hora,titulo,tipo,rol,lugar').eq('grupo_id',hijo.grupo_id).gte('fecha',todayISO).order('fecha',{ascending:true}).limit(6);
+        var pr = await sb.from('sesiones_agenda').select('id:sesion_id,fecha,hora,titulo,tipo,rol,deporte,deporte_2,papel_dia,lugar').eq('grupo_id',hijo.grupo_id).gte('fecha',todayISO).order('fecha',{ascending:true}).limit(6);
         dat.falloProximas = !!pr.error;
         if(!pr.error && pr.data) dat.proximas = pr.data;
       } catch(e){ dat.falloProximas = true; }
@@ -986,12 +986,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                       competicion:'Competición', descanso:'Descanso' };
   var ROL_SESION  = { calidad_fuerte:'Calidad fuerte', secundaria:'Secundaria', activacion:'Activación',
                       ultimo_toque_48h:'Último toque (48h)', descarga:'Descarga', competicion:'Competición' };
+  /* Los dos ejes nuevos (migración 102). El deporte es lo que un padre necesita
+     de verdad para preparar la bolsa: si el día es de fuerza y de atletismo,
+     hacen falta las dos cosas y por eso se dicen las dos. */
+  var DEPORTE_SESION = { atletismo:'Atletismo', natacion:'Natación', fuerza:'Fuerza', cubo:'El Cubo' };
+  var PAPEL_SESION   = { ajuste:'Ajuste', carga:'Carga', impacto:'Impacto', recuperacion:'Recuperación',
+                         activacion:'Activación', tapering:'Tapering', competicion:'Competición',
+                         descanso:'Descanso', rehabilitador:'Rehabilitador' };
   function enLimpio(mapa, v){
     if (!v) return '';
     return mapa[v] || String(v).replace(/_/g, ' ').replace(/^./, function(c){ return c.toUpperCase(); });
   }
   function nombreTipo(t){ return enLimpio(TIPO_SESION, t); }
   function nombreRol(r){ return enLimpio(ROL_SESION, r); }
+  function nombrePapel(p){ return enLimpio(PAPEL_SESION, p); }
+  /* «Fuerza y atletismo», con los dos dichos, o el tipo de siempre si el
+     entrenamiento es anterior a la separación de los dos ejes. */
+  function nombreDeportes(s){
+    var a = enLimpio(DEPORTE_SESION, s && s.deporte);
+    var b = enLimpio(DEPORTE_SESION, s && s.deporte_2);
+    if (a && b) return a+' y '+b.toLowerCase();
+    return a || b || nombreTipo(s && s.tipo);
+  }
 
   var MOTIVOS = ['Está malo', 'Cita médica', 'Asunto familiar', 'Estudios o exámenes', 'Viaje', 'Molestia o lesión', 'Otro'];
   // Solo se puede retirar un aviso que dio esta misma cuenta
@@ -1000,8 +1016,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      por su nombre: «Entrenamiento de descanso» se contradice a sí mismo. */
   function tituloSesion(s){
     if (s.titulo) return s.titulo;
-    if (s.tipo === 'descanso' || s.tipo === 'competicion') return nombreTipo(s.tipo);
-    return s.tipo ? ('Entrenamiento de '+nombreTipo(s.tipo).toLowerCase()) : 'Entrenamiento';
+    var papel = s.papel_dia || s.tipo;
+    if (papel === 'descanso' || papel === 'competicion') return nombrePapel(papel);
+    var dep = nombreDeportes(s);
+    return dep ? ('Entrenamiento de '+dep.toLowerCase()) : 'Entrenamiento';
   }
 
   /* Los tres datos de la tarjeta del entreno: series, ritmo y RECUPERACIÓN.
@@ -1059,7 +1077,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       html += '<div class="prox-card">'+
         '<div class="pc-top"><span class="pc-et">'+esc(esHoy ? 'Entrenamiento de hoy' : 'Próximo entrenamiento · '+diaCorto(prox.fecha))+
           (hijos.length>1 ? ' · '+esc(hijo.nombre||'') : '')+'</span>'+
-          (prox.tipo?'<span class="pc-tipo">'+esc(nombreTipo(prox.tipo))+'</span>':'')+'</div>'+
+          (nombreDeportes(prox)?'<span class="pc-tipo">'+esc(nombreDeportes(prox))+'</span>':'')+'</div>'+
         '<div><h2 class="pc-tit">'+esc(tituloSesion(prox))+'</h2>'+
           (sub?'<div class="pc-det">'+sub+'</div>':'')+'</div>'+
         '<div class="pc-btns">'+

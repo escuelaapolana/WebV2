@@ -1,5 +1,5 @@
 -- ============================================================
--- 101 · El deporte por un lado y el tipo de entrenamiento por otro
+-- 102 · El deporte por un lado y el papel del día por otro
 -- ------------------------------------------------------------
 -- EL PROBLEMA, EN UNA FRASE
 -- `sesiones.tipo` guarda hoy dos preguntas distintas en la misma
@@ -46,46 +46,64 @@
 --       responde este campo es «¿a qué vas hoy?», no «¿qué
 --       ejercicios haces?».
 --
---   2 · TIPO DE ENTRENAMIENTO — qué papel juega el día. Es uno
---       solo, el del trabajo principal, aunque haya dos deportes.
+--   2 · PAPEL DEL DÍA — qué pinta esa sesión en la temporada.
+--       ajuste · carga · impacto · recuperacion · activacion ·
+--       tapering · competicion · descanso · rehabilitador
 --
---       Comunes a todo:  normal · activacion · descarga ·
---                        rehabilitador · descanso · competicion
---       Solo atletismo:  calidad · ultimo_toque
---       Solo fuerza:     fuerza_maxima · potencia · pliometria ·
---                        hipertrofia · resistencia_fuerza ·
---                        movilidad · core_preventivo
---       Solo natación:   tecnica · velocidad · umbral · aerobico ·
---                        recuperacion · puesta_a_punto
+--       Estos nombres NO son nuestros: son los que el dueño del
+--       club ya escribe en su planificación anual. «Ajuste,
+--       carga, impacto, recuperación o activación —si es al
+--       principio del mesociclo o el microciclo— y tapering.» Se
+--       usan tal cual, porque una lista que el entrenador ya tiene
+--       en la cabeza no hay que enseñársela.
 --
---       «rehabilitador» lo pidió el club: quien vuelve de lesión
---       no está haciendo un entrenamiento normal flojito, está
+--       Los tres últimos los añadimos nosotros porque son días que
+--       existen y no encajaban en ninguno: la competición, el día
+--       libre y el de quien vuelve de una lesión. «Rehabilitador»
+--       lo pidió el club expresamente: quien vuelve de lesión no
+--       está haciendo un entrenamiento normal flojito, está
 --       haciendo otra cosa, y su historial tiene que decirlo.
 --
---       «puesta_a_punto» (natación) y «ultimo_toque» (atletismo)
---       NO son lo mismo y por eso son dos valores: el último toque
---       es el día de antes; la puesta a punto son una o dos
---       semanas bajando volumen.
+--       Es UNA sola lista para los cuatro deportes, y esa es su
+--       gracia: una sesión de pesas puede ser de carga o de
+--       recuperación igual que una de natación puede ser de
+--       impacto o de tapering. Aunque el día tenga dos deportes,
+--       el papel es uno: el del trabajo principal.
 --
--- POR QUÉ EL CHECK ADMITE TODA LA LISTA Y NO SOLO LA DEL DEPORTE
--- Ofrecerle «último toque» a una sesión de pesas no tiene sentido,
--- y por eso el desplegable de la pantalla se adapta al deporte.
--- Pero la base no puede ser tan estricta, por un motivo muy
--- concreto: hay 39 entrenamientos de NATACIÓN guardados con
--- `rol = calidad_fuerte`, o sea, días fuertes de agua. «Calidad»
--- es de atletismo en la lista nueva, y no hay forma de saber si
--- aquel día fue velocidad, umbral o técnica. Inventarlo sería
--- falsear el historial; tirarlo sería perder la única información
--- que hay (que fue un día duro). Así que se conserva tal cual y
--- es la pantalla, no la base, la que decide qué ofrecer.
+-- LO QUE NO SE MONTA, Y POR QUÉ (que no haya que volver a buscarlo)
+-- Hubo una lista más, de CONTENIDO por deporte, y se decidió no
+-- montarla como campo. El motivo, del club y compartido: el papel
+-- del día es justo lo que NO se deduce leyendo los ejercicios, y
+-- por eso merece casilla propia; el contenido sí se deduce. Quien
+-- escribe «sentadilla 4×5 al 85 %» ya está diciendo que es fuerza
+-- máxima, y marcarlo otra vez en un desplegable es trabajo
+-- repetido a las once de la noche de un martes.
+--
+-- Las listas quedan aquí escritas, SIN USAR A PROPÓSITO, por si
+-- más adelante se quiere etiquetar el contenido para el análisis
+-- de final de temporada:
+--
+--   FUERZA:   fuerza máxima · potencia · pliometría y multisaltos ·
+--             hipertrofia · resistencia a la fuerza · movilidad ·
+--             core y preventivo
+--             («explosivo» y «potencia» son lo mismo en la
+--             literatura y van juntos; «pliometría» va aparte
+--             porque en velocidad es trabajo con entidad propia)
+--   NATACIÓN: técnica · velocidad · umbral · aeróbico o fondo ·
+--             recuperación · puesta a punto
+--             (PROVISIONAL: sale de la literatura, no del club. El
+--             club la va a revisar con el responsable de la
+--             sección, así que dala por no confirmada)
+--   ATLETISMO: sin lista. El club no la ha dado y no se inventa.
+--   EL CUBO:   sin lista.
 --
 -- POR QUÉ NO SE BORRA `tipo` NI `rol`
--- Hay 361 entrenamientos guardados y ocho pantallas que leen esos
--- dos campos: las calles de la piscina, la carga y el bienestar,
--- el calendario del club, el portal del atleta, el de la familia,
--- el generador automático de entrenamientos y el importador de
--- texto del entrenador. Cambiarles el valor de debajo las rompe
--- todas a la vez.
+-- Hay 361 entrenamientos guardados y ocho sitios que leen esos dos
+-- campos: las calles de la piscina, la carga y el bienestar, el
+-- calendario del club, el portal del atleta, el de la familia, el
+-- generador automático de entrenamientos y el importador de texto
+-- del entrenador. Cambiarles el valor de debajo los rompe todos a
+-- la vez.
 --
 -- Así que los campos viejos se quedan, con su valor de siempre, y
 -- los nuevos se ponen al lado. Un disparador mantiene las dos
@@ -93,7 +111,7 @@
 --
 --   · quien escriba a la antigua (el generador automático, la
 --     pantalla de calles, el importador) rellena `tipo` y `rol`, y
---     el disparador deduce `deporte` y `tipo_entrenamiento`;
+--     el disparador deduce `deporte` y `papel_dia`;
 --   · quien escriba a la nueva (el planificador) rellena los ejes,
 --     y el disparador deduce `tipo` y `rol` para que las pantallas
 --     viejas sigan viendo lo que esperan.
@@ -109,11 +127,11 @@
 begin;
 
 -- ------------------------------------------------------------
--- 1 · Las dos columnas nuevas (más el segundo deporte)
+-- 1 · Las columnas nuevas
 -- ------------------------------------------------------------
-alter table public.sesiones add column if not exists deporte            text;
-alter table public.sesiones add column if not exists deporte_2          text;
-alter table public.sesiones add column if not exists tipo_entrenamiento text;
+alter table public.sesiones add column if not exists deporte   text;
+alter table public.sesiones add column if not exists deporte_2 text;
+alter table public.sesiones add column if not exists papel_dia text;
 
 comment on column public.sesiones.deporte is
   'A qué va el atleta ese día: atletismo (pista y carrera continua), natacion, '
@@ -123,10 +141,11 @@ comment on column public.sesiones.deporte_2 is
   'Segundo deporte del mismo día, opcional, para las sesiones que de verdad son '
   'dos (fuerza y después series, como transferencia). El atleta necesita ver los '
   'dos y en su historial el día cuenta para los dos.';
-comment on column public.sesiones.tipo_entrenamiento is
-  'Qué papel juega el día: normal, activacion, calidad, descarga, rehabilitador, '
-  'descanso, competicion… Uno solo, el del trabajo principal, aunque haya dos '
-  'deportes. La pantalla ofrece solo los que encajan con el deporte elegido.';
+comment on column public.sesiones.papel_dia is
+  'Qué pinta la sesión en la temporada, con los nombres que el club ya usa en su '
+  'planificación anual: ajuste, carga, impacto, recuperacion, activacion, '
+  'tapering, más competicion, descanso y rehabilitador. Uno solo por día, el del '
+  'trabajo principal, y el mismo para los cuatro deportes.';
 
 -- ------------------------------------------------------------
 -- 2 · Rellenar los 361 que ya están guardados
@@ -142,8 +161,8 @@ comment on column public.sesiones.tipo_entrenamiento is
 --   descanso) se deducen por la sección del grupo, que es el dato
 --   más fiable que hay: un grupo de la sección natación entrena en
 --   el agua. Si la sección tampoco lo aclara se deja en atletismo,
---   que es el caso corriente del club, y queda apuntado en el
---   inventario de abajo para poder repasarlo a ojo.
+--   que es el caso corriente del club, y queda apuntado en la
+--   consulta de repaso del final para poder mirarlo a ojo.
 update public.sesiones s
    set deporte = case
          when s.tipo in ('pista', 'continuo') then 'atletismo'
@@ -163,27 +182,43 @@ update public.sesiones s
 update public.sesiones set deporte = 'atletismo'
  where deporte is null;
 
--- 2.b · EL TIPO DE ENTRENAMIENTO
---   Cuando el `tipo` viejo ya decía el papel del día (activacion,
+-- 2.b · EL PAPEL DEL DÍA
+--   Cuando el `tipo` viejo ya decía el papel (activacion,
 --   competicion, descanso), ese manda: es lo que el entrenador
---   escribió. Si no, se traduce el `rol`, que es exactamente este
---   mismo eje con otros nombres. Y si no hay ni una cosa ni otra
---   (28 entrenamientos sin rol), queda «normal», que es lo que
---   significa no haber dicho nada.
+--   escribió. Si no, se traduce el `rol`, que era este mismo eje
+--   con otras palabras:
+--
+--     calidad_fuerte   → impacto      (la sesión clave de la semana)
+--     secundaria       → carga        (el día de trabajo corriente)
+--     descarga         → recuperacion (bajar para asimilar)
+--     ultimo_toque_48h → tapering     (el club dice que en atletismo
+--                                      a esto se le llama tapering)
+--     activacion       → activacion
+--     competicion      → competicion
+--
+--   Y si no hay ni `tipo` que lo diga ni `rol` (28 entrenamientos),
+--   queda «carga», que es lo que significa un día de entrenamiento
+--   sobre el que nadie dijo nada especial.
+--
+--   AVISO PARA EL CLUB: la pareja calidad_fuerte→impacto y
+--   secundaria→carga es la lectura más razonable de las palabras
+--   viejas, pero no la dictó nadie. Si el entrenador prefiere otra,
+--   se corrige con un solo update sobre esta columna; no hace falta
+--   volver a migrar nada.
 update public.sesiones s
-   set tipo_entrenamiento = case
+   set papel_dia = case
          when s.tipo = 'descanso'         then 'descanso'
          when s.tipo = 'competicion'      then 'competicion'
          when s.tipo = 'activacion'       then 'activacion'
-         when s.rol  = 'calidad_fuerte'   then 'calidad'
-         when s.rol  = 'secundaria'       then 'normal'
+         when s.rol  = 'calidad_fuerte'   then 'impacto'
+         when s.rol  = 'secundaria'       then 'carga'
+         when s.rol  = 'descarga'         then 'recuperacion'
+         when s.rol  = 'ultimo_toque_48h' then 'tapering'
          when s.rol  = 'activacion'       then 'activacion'
-         when s.rol  = 'ultimo_toque_48h' then 'ultimo_toque'
-         when s.rol  = 'descarga'         then 'descarga'
          when s.rol  = 'competicion'      then 'competicion'
-         else 'normal'
+         else 'carga'
        end
- where s.tipo_entrenamiento is null;
+ where s.papel_dia is null;
 
 -- ------------------------------------------------------------
 -- 3 · Las restricciones
@@ -202,33 +237,25 @@ alter table public.sesiones drop constraint if exists sesiones_dos_deportes_dist
 alter table public.sesiones add  constraint sesiones_dos_deportes_distintos
   check (deporte_2 is null or (deporte is not null and deporte_2 <> deporte));
 
-alter table public.sesiones drop constraint if exists sesiones_tipo_entrenamiento_check;
-alter table public.sesiones add  constraint sesiones_tipo_entrenamiento_check
-  check (tipo_entrenamiento is null or tipo_entrenamiento in (
-    -- comunes a todos los deportes
-    'normal', 'activacion', 'descarga', 'rehabilitador', 'descanso', 'competicion',
-    -- atletismo
-    'calidad', 'ultimo_toque',
-    -- fuerza
-    'fuerza_maxima', 'potencia', 'pliometria', 'hipertrofia',
-    'resistencia_fuerza', 'movilidad', 'core_preventivo',
-    -- natación
-    'tecnica', 'velocidad', 'umbral', 'aerobico', 'recuperacion', 'puesta_a_punto'
+alter table public.sesiones drop constraint if exists sesiones_papel_dia_check;
+alter table public.sesiones add  constraint sesiones_papel_dia_check
+  check (papel_dia is null or papel_dia in (
+    -- las seis del club, tal como las escribe en su planificación anual
+    'ajuste', 'carga', 'impacto', 'recuperacion', 'activacion', 'tapering',
+    -- las tres que faltaban: días que existen y no encajaban en ninguna
+    'competicion', 'descanso', 'rehabilitador'
   ));
 
 -- El `rol` viejo se queda con su lista de siempre, y además se le
--- deja sitio al vocabulario nuevo. No es que vayamos a escribirlo
--- ahí —el disparador traduce al vocabulario viejo—, es que si otra
--- pantalla lo hace por su cuenta, es mejor que se guarde a que
--- reviente al guardar un entrenamiento.
+-- deja sitio al vocabulario nuevo. Hace falta de verdad: hay
+-- papeles del día («ajuste», «rehabilitador») que no tienen
+-- equivalente viejo, y el disparador los copia tal cual antes que
+-- traducirlos a una mentira.
 alter table public.sesiones drop constraint if exists sesiones_rol_check;
 alter table public.sesiones add  constraint sesiones_rol_check
   check (rol is null or rol in (
     'calidad_fuerte', 'secundaria', 'activacion', 'ultimo_toque_48h', 'descarga', 'competicion',
-    'normal', 'rehabilitador', 'descanso', 'calidad', 'ultimo_toque',
-    'fuerza_maxima', 'potencia', 'pliometria', 'hipertrofia',
-    'resistencia_fuerza', 'movilidad', 'core_preventivo',
-    'tecnica', 'velocidad', 'umbral', 'aerobico', 'recuperacion', 'puesta_a_punto'
+    'ajuste', 'carga', 'impacto', 'recuperacion', 'tapering', 'descanso', 'rehabilitador'
   ));
 
 -- ------------------------------------------------------------
@@ -259,18 +286,21 @@ begin
     end;
   end if;
 
-  if new.tipo_entrenamiento is null then
-    new.tipo_entrenamiento := case
+  if new.papel_dia is null then
+    new.papel_dia := case
       when new.tipo = 'descanso'         then 'descanso'
       when new.tipo = 'competicion'      then 'competicion'
       when new.tipo = 'activacion'       then 'activacion'
-      when new.rol  = 'calidad_fuerte'   then 'calidad'
-      when new.rol  = 'secundaria'       then 'normal'
+      when new.rol  = 'calidad_fuerte'   then 'impacto'
+      when new.rol  = 'secundaria'       then 'carga'
+      when new.rol  = 'descarga'         then 'recuperacion'
+      when new.rol  = 'ultimo_toque_48h' then 'tapering'
       when new.rol  = 'activacion'       then 'activacion'
-      when new.rol  = 'ultimo_toque_48h' then 'ultimo_toque'
-      when new.rol  = 'descarga'         then 'descarga'
       when new.rol  = 'competicion'      then 'competicion'
-      when new.tipo is not null          then 'normal'
+      -- si el rol ya viene con vocabulario nuevo, se respeta
+      when new.rol in ('ajuste', 'carga', 'impacto', 'recuperacion',
+                       'tapering', 'descanso', 'rehabilitador') then new.rol
+      when new.tipo is not null          then 'carga'
       else null
     end;
   end if;
@@ -284,25 +314,26 @@ begin
   -- continuo de montaña se escribe por desnivel, no por series.
   if new.tipo is null and new.deporte is not null then
     new.tipo := case
-      when new.deporte = 'natacion' then 'natacion'
+      when new.deporte = 'natacion'          then 'natacion'
       when new.deporte in ('fuerza', 'cubo') then 'gym'
-      when new.tipo_entrenamiento in ('descanso', 'competicion', 'activacion')
-           then new.tipo_entrenamiento
+      when new.papel_dia in ('descanso', 'competicion', 'activacion')
+                                             then new.papel_dia
       when v_seccion in ('running', 'montana', 'triatlon') then 'continuo'
       else 'pista'
     end;
   end if;
 
-  if new.rol is null and new.tipo_entrenamiento is not null then
-    new.rol := case new.tipo_entrenamiento
-      when 'calidad'      then 'calidad_fuerte'
-      when 'normal'       then 'secundaria'
+  if new.rol is null and new.papel_dia is not null then
+    new.rol := case new.papel_dia
+      when 'impacto'      then 'calidad_fuerte'
+      when 'carga'        then 'secundaria'
+      when 'recuperacion' then 'descarga'
+      when 'tapering'     then 'ultimo_toque_48h'
       when 'activacion'   then 'activacion'
-      when 'ultimo_toque' then 'ultimo_toque_48h'
-      when 'descarga'     then 'descarga'
       when 'competicion'  then 'competicion'
-      else null      -- rehabilitador y los propios de cada deporte no tienen
-                     -- equivalente viejo: mejor vacío que traducido a mentira
+      -- «ajuste», «descanso» y «rehabilitador» no tenían equivalente
+      -- viejo: se copian tal cual, que es más honrado que forzarlos
+      else new.papel_dia
     end;
   end if;
 
@@ -311,9 +342,9 @@ end;
 $$;
 
 comment on function public.apo_sesiones_dos_ejes() is
-  'Mantiene de acuerdo el par viejo (tipo, rol) y el nuevo (deporte, '
-  'tipo_entrenamiento) mientras convivan pantallas que escriben de las dos '
-  'maneras. Solo rellena huecos: nunca pisa un valor que ya venga puesto.';
+  'Mantiene de acuerdo el par viejo (tipo, rol) y el nuevo (deporte, papel_dia) '
+  'mientras convivan pantallas que escriben de las dos maneras. Solo rellena '
+  'huecos: nunca pisa un valor que ya venga puesto.';
 
 drop trigger if exists trg_sesiones_dos_ejes on public.sesiones;
 create trigger trg_sesiones_dos_ejes
@@ -328,6 +359,41 @@ create trigger trg_sesiones_dos_ejes
 create index if not exists idx_sesiones_deporte_fecha
   on public.sesiones (deporte, fecha);
 
+-- ------------------------------------------------------------
+-- 6 · Que la familia y el calendario público también lo vean
+--     La familia no lee `sesiones` (migración 100): lee la vista
+--     `sesiones_agenda`, que enseña el cuándo y el dónde pero
+--     nunca el contenido. Si los ejes nuevos no salen por ahí, un
+--     padre seguiría leyendo «continuo» y «calidad_fuerte» cuando
+--     su hijo ya ve «Atletismo · Impacto». Las columnas nuevas se
+--     añaden al final, que es como se puede reemplazar una vista
+--     sin tirarla y sin romper a quien ya la usa.
+-- ------------------------------------------------------------
+create or replace view public.sesiones_agenda as
+  select s.id as sesion_id,
+         s.fecha,
+         s.hora,
+         s.titulo,
+         s.tipo,
+         s.rol,
+         s.lugar,
+         s.grupo_id,
+         g.nombre  as grupo,
+         g.seccion,
+         coalesce(s.abierta_inscripcion, false) as abierta_inscripcion,
+         s.abierta_a,
+         s.plazas,
+         public.sesion_num_apuntados(s.id) as apuntados,
+         case when s.plazas is null then null::integer
+              else greatest(0, s.plazas - public.sesion_num_apuntados(s.id)) end as libres,
+         s.deporte,
+         s.deporte_2,
+         s.papel_dia
+    from public.sesiones s
+    left join public.grupos g on g.id = s.grupo_id
+   where coalesce(s.publicada, false)
+     and (s.atletas_ids is null or coalesce(s.abierta_inscripcion, false));
+
 commit;
 
 -- ------------------------------------------------------------
@@ -336,11 +402,11 @@ commit;
 --   -- el reparto de los 361 por deporte
 --   select deporte, count(*) from sesiones group by 1 order by 2 desc;
 --
---   -- el reparto por tipo de entrenamiento
---   select tipo_entrenamiento, count(*) from sesiones group by 1 order by 2 desc;
+--   -- el reparto por papel del día
+--   select papel_dia, count(*) from sesiones group by 1 order by 2 desc;
 --
---   -- ninguno debe quedar sin deporte ni sin tipo
---   select count(*) from sesiones where deporte is null or tipo_entrenamiento is null;
+--   -- ninguno debe quedar sin deporte ni sin papel
+--   select count(*) from sesiones where deporte is null or papel_dia is null;
 --
 --   -- los que hubo que deducir por la sección del grupo, para
 --   -- repasarlos a ojo cuando el club quiera
