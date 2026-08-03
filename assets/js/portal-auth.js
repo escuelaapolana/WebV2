@@ -86,7 +86,12 @@
     '.pt-top a{color:#cdd6e0;text-decoration:none;white-space:nowrap}' +
     '.pt-top button{display:inline-flex;align-items:center;min-height:44px;background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:0 16px;cursor:pointer;font-family:inherit;font-size:15px;white-space:nowrap;flex:0 0 auto}' +
     '.pt-top button:hover{background:rgba(255,255,255,.12)}' +
-    '@media(max-width:560px){.pt-top{padding:6px 14px;gap:8px}.pt-top .marca{display:none}.pt-top .volver{font-size:15px}.pt-top .der span{max-width:34vw}.pt-top button{padding:0 13px}}' +
+    /* Un nombre cortado a «Andr…» no dice quién eres: parece que la barra
+       está rota. Cuando no cabe entero, se quita — igual que hace la barra
+       del panel (assets/js/admin-auth.js). Quién eres sigue estando en la
+       franja de debajo y en Mi perfil. */
+    '@media(max-width:900px){.pt-top .der span{display:none}}' +
+    '@media(max-width:560px){.pt-top{padding:6px 14px;gap:8px}.pt-top .marca{display:none}.pt-top .volver{font-size:15px}.pt-top button{padding:0 13px}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
     '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px}' +
@@ -559,6 +564,22 @@
         var g = await sb.from('grupos').select('id').eq('entrenador_id', id);
         if (g && !g.error && g.data && g.data.length) esEntrenador = true;
       } catch (e) { /* grupos es de lectura pública; si falla, da igual */ }
+
+      /* Quien lleva varios papeles actúa con UNO cada vez, y el activo manda
+         también aquí. Los datos de arriba dicen qué papeles PODRÍA usar esta
+         persona (tiene ficha, tiene hijos, lleva grupos); no dicen en cuál
+         está ahora. Sin este filtro, quien lleva grupos veía la zona del
+         entrenador —con «Pasar lista» y los borradores de sus sesiones—
+         mientras la franja de arriba decía «Estás como atleta».
+         La base ya lo hacía bien: `es_admin()` y `es_staff()` miran
+         `coalesce(rol_activo, rol)`. Esto es lo mismo, en la pantalla.
+         Con un solo papel concedido no hay nada que elegir: mandan los datos. */
+      var concedidos = (perfil.roles && perfil.roles.length) ? perfil.roles : [];
+      if (concedidos.length > 1) {
+        esAtleta     = esAtleta     && (rol === 'atleta');
+        esFamilia    = esFamilia    && (rol === 'padre');
+        esEntrenador = esEntrenador && (rol === 'entrenador');
+      }
 
       function anadir(clave, desc) {
         var z = ZONAS[clave];

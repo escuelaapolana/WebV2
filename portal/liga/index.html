@@ -132,9 +132,13 @@
       </div>
     </div>
 
-    <!-- ===== COMUNICAR UNA PRUEBA ===== -->
+    <!-- ===== COMUNICAR UNA PRUEBA =====
+         El formulario son once campos: abierto de par en par ocupaba dos
+         pantallas de móvil enteras y dejaba «Mis pruebas» fuera de la vista.
+         Plegado, se abre cuando se viene a lo que se viene: a contar una. -->
     <div class="tarjeta">
-      <h2>He hecho una prueba</h2>
+      <details class="desplegable">
+        <summary>He hecho una prueba</summary>
       <p class="sub">Cuéntanoslo y la sumamos a la liga. El club la comprueba y la da por buena;
         no hace falta que la apuntes en ningún sitio más.</p>
 
@@ -192,6 +196,7 @@
         <p class="sub" style="margin-top:12px;margin-bottom:0;">Sin esas dos casillas el reglamento no deja que la prueba puntúe.
           Y necesitamos poder comprobarla: el enlace a la clasificación o una captura, lo que tengas.</p>
       </form>
+      </details>
     </div>
 
     <!-- ===== MIS PRUEBAS ===== -->
@@ -266,6 +271,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   var EDICION = null, BAREMO = [], FICHAS = [], MIS = [], MIS_PROP = [], CLAS = [];
   var ATLETA = null, MI_UID = null;
+  /* Qué se ha podido leer y qué no. Una lista vacía por un fallo de conexión no
+     se puede contar como «todavía no has hecho ninguna prueba»: eso hace pensar
+     que se ha perdido lo que ya habías mandado. */
+  var falloMis = false, falloClas = false, falloProp = false, falloBaremo = false, falloFichas = false;
+
+  /* Reintentar solo lo que ha fallado, sin recargar la página: si se recarga,
+     se pierde la prueba que se esté escribiendo en el formulario. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn) {
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
 
   var u = await sb.auth.getUser();
   MI_UID = u && u.data && u.data.user ? u.data.user.id : null;
@@ -283,11 +308,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* ---------- carga ---------- */
   async function cargar() {
+    falloMis = falloClas = falloProp = falloBaremo = falloFichas = false;
     var re = await sb.from('liga_ediciones').select('*').eq('activa', true).maybeSingle();
     if (re.error) {
       $('lema').textContent = 'La Liga Apolana es la competición del club: cuentas las pruebas que haces y suman.';
-      estadoResumen(APOLANA_UI.error('No hemos podido cargar la liga',
-        'Puede ser tu conexión. Vuelve a intentarlo en un momento.'));
+      estadoResumen(htmlError('No hemos podido cargar la liga',
+        'Puede ser tu conexión. Vuelve a intentarlo en un momento.', cargar));
       return;
     }
     EDICION = re.data;
@@ -305,10 +331,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '. Aquí cuentas las pruebas que has hecho para que te sumen.';
 
     var rb = await sb.from('liga_baremo').select('*').eq('edicion_id', EDICION.id).eq('activa', true).order('orden');
+    falloBaremo = !!rb.error;
     BAREMO = rb.error ? [] : (rb.data || []);
 
     var rf = await sb.from('atletas').select('id,nombre,apellidos')
       .or('perfil_id.eq.' + perfil.id + ',perfil_padre_id.eq.' + perfil.id).order('nombre');
+    falloFichas = !!rf.error;
     FICHAS = rf.error ? [] : (rf.data || []);
     ATLETA = FICHAS[0] || null;
 
@@ -323,13 +351,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var ids = FICHAS.map(function (a) { return a.id; });
       var rm = await sb.from('liga_participaciones').select('*').eq('edicion_id', EDICION.id)
         .in('atleta_id', ids).order('fecha', { ascending: false });
+      falloMis = !!rm.error;
       MIS = rm.error ? [] : (rm.data || []);
     }
 
     var rp = await sb.from('liga_propuestas_prueba').select('*').order('created_at', { ascending: false });
+    falloProp = !!rp.error;
     MIS_PROP = rp.error ? [] : (rp.data || []);
 
     var rc = await sb.from('liga_clasificacion_general').select('*').order('posicion');
+    falloClas = !!rc.error;
     CLAS = rc.error ? [] : (rc.data || []);
 
     var comps = {};
@@ -356,12 +387,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function pintarResumen() {
+    if (falloFichas) {
+      /* Decirle a alguien que no tiene ficha en el club porque ha fallado una
+         consulta es de las cosas que más asustan: no se dice. */
+      estadoResumen(htmlError('No hemos podido cargar tu ficha',
+        'Puede ser tu conexión. No significa que no la tengas: vuelve a intentarlo en un momento.', cargar));
+      return;
+    }
     if (!ATLETA) {
       estadoResumen(APOLANA_UI.vacio(
         'Todavía no tienes ficha de atleta',
         'Tu cuenta no está unida a ninguna ficha del club, y la liga cuenta por atleta. Escríbenos y la creamos: ' +
         'a partir de ahí ya podrás comunicar tus pruebas.',
         APOLANA_UI.boton('Ver el reglamento de la liga', REGLAMENTO)));
+      return;
+    }
+    if (falloClas) {
+      estadoResumen(htmlError('No hemos podido cargar la clasificación',
+        'Puede ser tu conexión. Tus puntos siguen contados: no se ha perdido nada.', cargar));
       return;
     }
     var id = atletaActual();
@@ -397,15 +440,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function refrescarModalidades(elegir) {
     var d = $('f-disc').value;
     var lista = BAREMO.filter(function (b) { return b.disciplina === d; });
+    /* Si la tabla de puntos no se ha podido leer, el desplegable no dice «no
+       hay pruebas» —las hay—: dice que no hemos podido cargarlas. */
     $('f-mod').innerHTML = lista.map(function (b) {
       return '<option value="' + b.id + '">' + esc(b.modalidad) + '</option>';
-    }).join('') || '<option value="">— No hay pruebas —</option>';
+    }).join('') || '<option value="">' +
+      (falloBaremo ? '— no hemos podido cargar las pruebas —' : '— No hay pruebas —') + '</option>';
     if (elegir) $('f-mod').value = elegir;
     refrescarPuntos();
   }
   function refrescarPuntos() {
     var b = BAREMO.filter(function (x) { return x.id === $('f-mod').value; })[0];
-    if (!b) { $('f-puntos').textContent = ''; $('f-puntos-txt').textContent = 'Elige la disciplina y la prueba para ver los puntos.'; return; }
+    if (!b) {
+      $('f-puntos').textContent = '';
+      $('f-puntos-txt').textContent = falloBaremo
+        ? 'No hemos podido cargar la tabla de puntos: puede ser tu conexión. Vuelve a entrar en un momento.'
+        : 'Elige la disciplina y la prueba para ver los puntos.';
+      return;
+    }
     if (b.es_relevo) {
       $('f-puntos').textContent = '0';
       $('f-puntos-txt').textContent = 'Los relevos no puntúan en la liga, pero se apuntan igual para que quede constancia.';
@@ -541,12 +593,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* ---------- mis pruebas ---------- */
   function pintarMisPruebas() {
     var cont = $('mis-pruebas');
+    if (falloMis) {
+      cont.innerHTML = htmlError('No hemos podido cargar tus pruebas',
+        'Puede ser tu conexión. Las que ya mandaste siguen guardadas: no vuelvas a mandarlas hasta verlas aquí.',
+        cargar);
+      return;
+    }
     if (!MIS.length) {
+      /* El enlace al reglamento ya está en la tarjeta de arriba: ponerlo otra
+         vez aquí eran dos botones iguales, uno debajo del otro. */
       cont.innerHTML = APOLANA_UI.vacio(
         'Todavía no has comunicado ninguna prueba',
-        EDICION ? 'Cuando corras algo que puntúe, cuéntanoslo aquí arriba y aparecerá en esta lista con su estado.'
-                : 'Cuando arranque la edición podrás contarnos cada prueba que hagas y las verás aquí con su estado.',
-        APOLANA_UI.boton('Ver el reglamento de la liga', REGLAMENTO));
+        EDICION ? 'Cuando corras algo que puntúe, cuéntanoslo en «He hecho una prueba», aquí arriba, y aparecerá en esta lista con su estado.'
+                : 'Cuando arranque la edición podrás contarnos cada prueba que hagas y las verás aquí con su estado.');
       return;
     }
     cont.innerHTML = MIS.map(function (p) {
@@ -591,6 +650,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function pintarMisPropuestas() {
     var cont = $('mis-propuestas');
+    if (falloProp) {
+      cont.innerHTML = htmlError('No hemos podido cargar lo que has propuesto',
+        'Puede ser tu conexión. Lo que mandaste sigue ahí, aunque ahora no lo veas.', cargar);
+      return;
+    }
     if (!MIS_PROP.length) { cont.innerHTML = ''; return; }
     cont.innerHTML = '<p class="eti">lo que has propuesto</p>' +
       MIS_PROP.map(function (p) {

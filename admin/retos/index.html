@@ -603,12 +603,19 @@ APOLANA_ADMIN.listo(function (sb) {
       var a = porId[l.atleta_id];
       return a && nombreAt(a).toLowerCase().indexOf(texto) !== -1;
     });
-    $('c-logros').textContent = lista.length + (lista.length===1 ? ' conseguido' : ' conseguidos');
+    $('c-logros').textContent = lista.length === LOGROS.length
+      ? lista.length + (lista.length===1 ? ' conseguido' : ' conseguidos')
+      : lista.length + ' de ' + LOGROS.length;
 
-    var tb = $('tabla-logros').querySelector('tbody');
+    var tb = tbL;
+    if(!LOGROS.length){
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="6"><div class="vacio-caja">' +
+        '<b>Nada por aquí todavía</b>Pulsa «Actualizar progreso» arriba y el sistema repasa los retos activos.</div></td></tr>';
+      return;
+    }
     if(!lista.length){
       tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="6"><div class="vacio-caja">' +
-        'Nada por aquí todavía. Pulsa «Actualizar progreso» arriba y el sistema repasa los retos activos.</div></td></tr>';
+        '<b>Nadie encaja con esta búsqueda</b>Prueba con otro reto o borra el nombre que has escrito.</div></td></tr>';
       return;
     }
     tb.innerHTML = lista.slice(0, 400).map(function(l){
@@ -628,6 +635,8 @@ APOLANA_ADMIN.listo(function (sb) {
      PINTAR · PARTICIPACIÓN Y PERMISOS
      ============================================================ */
   function pintarGente(){
+    var tbG = $('tabla-gente').querySelector('tbody');
+    if(ERR.gente){ $('c-gente').textContent = ''; tbG.innerHTML = filaErr('gente', 7); return; }
     var f = $('f-gente').value;
     var texto = ($('f-gente-buscar').value || '').trim().toLowerCase();
     var lista = ATLETAS.filter(function(a){
@@ -638,11 +647,19 @@ APOLANA_ADMIN.listo(function (sb) {
       if(texto && nombreAt(a).toLowerCase().indexOf(texto) === -1) return false;
       return true;
     });
-    $('c-gente').textContent = lista.length + (lista.length===1 ? ' persona' : ' personas');
+    $('c-gente').textContent = lista.length === ATLETAS.length
+      ? lista.length + (lista.length===1 ? ' persona' : ' personas')
+      : lista.length + ' de ' + ATLETAS.length;
 
-    var tb = $('tabla-gente').querySelector('tbody');
+    var tb = tbG;
+    if(!ATLETAS.length){
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="7"><div class="vacio-caja">' +
+        '<b>No hay ningún atleta en alta</b>En cuanto haya fichas de atleta aparecerán aquí para dar o quitar permisos.</div></td></tr>';
+      return;
+    }
     if(!lista.length){
-      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="7"><div class="vacio-caja">Nadie encaja con ese filtro.</div></td></tr>';
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="7"><div class="vacio-caja">' +
+        '<b>Nadie encaja con esta búsqueda</b>Cambia el filtro de arriba o borra el nombre que has escrito.</div></td></tr>';
       return;
     }
     tb.innerHTML = lista.slice(0, 400).map(function(a){
@@ -692,8 +709,10 @@ APOLANA_ADMIN.listo(function (sb) {
      ============================================================ */
   function pintarMedallas(){
     var tb = $('tabla-medallas').querySelector('tbody');
+    if(ERR.medallas){ tb.innerHTML = filaErr('medallas', 5); return; }
     if(!MEDALLAS.length){
-      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="5"><div class="vacio-caja">No hay medallas en el catálogo.</div></td></tr>';
+      tb.innerHTML = '<tr><td class="sin-etiqueta" colspan="5"><div class="vacio-caja">' +
+        '<b>No hay medallas en el catálogo</b>Con «+ Nueva medalla» creas la primera: se reparten solas al actualizar el progreso.</div></td></tr>';
       return;
     }
     tb.innerHTML = MEDALLAS.map(function(m){
@@ -703,7 +722,7 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td data-etiqueta="Se gana con">' + esc(METRICAS[m.criterio] || m.criterio) +
           '<div style="font-size:13px;color:var(--texto-suave);">a partir de ' + nDe(m.umbral) + '</div></td>' +
         '<td data-etiqueta="Estado">' + (m.activa ? '<span class="pill si">activa</span>' : '<span class="pill">retirada</span>') + '</td>' +
-        '<td data-etiqueta="La tienen">' + (TIENEN[m.id] || 0) + '</td>' +
+        '<td data-etiqueta="La tienen">' + (ERR.tienen ? 'sin poder mirarlo' : (TIENEN[m.id] || 0)) + '</td>' +
         '<td class="sin-etiqueta"><div class="acciones-fila">' +
           '<button class="btn btn--fantasma btn--mini" data-editar-medalla="' + esc(m.id) + '">Editar</button>' +
           '<button class="btn btn--peligro" data-borrar-medalla="' + esc(m.id) + '">Borrar</button>' +
@@ -962,6 +981,7 @@ APOLANA_ADMIN.listo(function (sb) {
      apagado la vista de clasificación no devuelve ni una fila.
      ============================================================ */
   function pintarSwitch(on){
+    $('sw-ranking').disabled = false;
     $('sw-ranking').checked = !!on;
     $('sw-estado').textContent = on
       ? 'Encendida: la tabla se ve en el portal, con quien haya dicho que participa.'
@@ -970,7 +990,14 @@ APOLANA_ADMIN.listo(function (sb) {
 
   async function cargarAjustes(){
     var r = await sb.from('juego_ajustes').select('ranking_publico').eq('id', 1).maybeSingle();
-    pintarSwitch(!!(r && !r.error && r.data && r.data.ranking_publico));
+    if(r.error){
+      /* Enseñar el interruptor apagado sin haberlo podido leer diría que la
+         clasificación no se ve en el portal, y puede que sí se esté viendo. */
+      $('sw-ranking').disabled = true;
+      $('sw-estado').innerHTML = ADM.error('No se ha podido comprobar si la clasificación está encendida.', cargarAjustes);
+      return;
+    }
+    pintarSwitch(!!(r.data && r.data.ranking_publico));
   }
 
   $('sw-ranking').addEventListener('change', async function(){

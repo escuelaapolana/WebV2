@@ -186,7 +186,10 @@
      ============================================================ */
   .rotulo-hist { padding: 18px var(--pad) 8px; font-size:12px; font-weight:500; letter-spacing:.09em;
              text-transform:uppercase; color: var(--texto-suave); }
-  .marcar { background:none; border:0; padding:0 0 0 12px; font-family:inherit; font-size:15px;
+  /* Se toca con el pulgar y va justo encima de la lista de avisos: por debajo de
+     44 px se acaba abriendo el primer aviso sin querer (kit 30f). */
+  .marcar { display:inline-flex; align-items:center; min-height:44px; background:none; border:0;
+            padding:0 0 0 12px; margin:-11px 0; font-family:inherit; font-size:15px;
             color: var(--azul-oscuro); cursor:pointer; text-transform:none; letter-spacing:0; float:right; }
   .marcar:hover { color: var(--azul-hover); text-decoration:underline; }
 
@@ -219,7 +222,8 @@
                      text-decoration-color:#C6BEAE; text-decoration-thickness:1px; }
 
   .pie-hist { padding: 18px var(--pad) 6px; display:flex; flex-direction:column; gap:6px; }
-  .pie-hist button { align-self:flex-start; background:none; border:0; padding:0; font-family:inherit;
+  .pie-hist button { display:inline-flex; align-items:center; align-self:flex-start; min-height:44px;
+                     background:none; border:0; padding:0; font-family:inherit;
                      font-size:15px; line-height:1.4; color: var(--azul-oscuro); cursor:pointer; }
   .pie-hist button:hover { color: var(--azul-hover); text-decoration:underline; }
   .pie-hist small { font-size:13px; line-height:1.45; color: var(--texto-suave); }
@@ -396,12 +400,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   var MESES = 3;                 /* la ventana que se enseña de entrada */
 
+  /* Reintentar solo esta pantalla, sin recargar la página: lo que la persona
+     haya tocado en los interruptores ya está guardado, pero recargar la manda
+     al principio de la lista y hace perder el aviso que estaba leyendo. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn) {
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
+
+  /* Devuelve SIEMPRE si ha podido mirar o no. Antes, cuando la consulta
+     fallaba, esto devolvía una lista vacía y la pantalla se quedaba muda: la
+     persona veía la promesa de «te avisamos» y ni uno de sus avisos, sin saber
+     que había habido un fallo. */
   async function mis(opciones) {
     try {
       var r = await sb.rpc('mis_avisos', opciones || {});
-      if (r && !r.error && r.data) return r.data;
-    } catch (e) { /* sin avisos que enseñar */ }
-    return [];
+      if (r && r.error) return { fallo: true, filas: [] };
+      return { fallo: false, filas: (r && r.data) ? r.data : [] };
+    } catch (e) { return { fallo: true, filas: [] }; }
   }
 
   /* --------------------------------------------------------------
@@ -453,7 +478,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   async function historial(abierto, titulo) {
-    var filas = await mis({ p_limite: 40, p_meses: MESES });
+    var r = await mis({ p_limite: 40, p_meses: MESES });
+    if (r.fallo) {
+      var caja = htmlError('No hemos podido cargar tus avisos',
+        'Puede ser tu conexión. Tus avisos siguen guardados: no se ha borrado ninguno.', pintar);
+      return titulo
+        ? '<div class="anteriores ancho"><h3>' + esc(titulo) + '</h3><div style="padding:0 var(--pad) 16px">' + caja + '</div></div>'
+        : '<div style="margin-top:16px">' + caja + '</div>';
+    }
+    var filas = r.filas;
     /* «Anteriores» son los OTROS: el que se está leyendo ya está
        arriba, entero. Repetirlo debajo solo hace ruido. */
     if (abierto) filas = filas.filter(function (f) { return f.id !== abierto; });
@@ -553,7 +586,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cabecera() {
     var id = idPedido();
     if (!id) return '';
-    var filas = await mis({ p_id: id });
+    var r = await mis({ p_id: id });
+    /* Si no se ha podido preguntar, el aviso NO es que no exista: decir «ese
+       aviso ya no está» cuando lo que falla es la conexión hace pensar que el
+       club lo ha borrado. */
+    if (r.fallo) {
+      return '<div style="margin-top:16px">' + htmlError('No hemos podido abrir este aviso',
+        'Puede ser tu conexión. El aviso sigue ahí: vuelve a intentarlo en un momento.', pintar) + '</div>';
+    }
+    var filas = r.filas;
     if (!filas.length) return noEncontrado();
     /* Abrirlo es leerlo. Se marca sin preguntar y sin esperar: si
        fallara, lo único que pasa es que sigue en «sin leer». */

@@ -75,16 +75,6 @@
   .lista-fechas .que { flex: 1; min-width: 0; color: var(--navy); font-size:15px; }
   .lista-fechas .que small { display: block; color: var(--texto-suave); font-size:13px; margin-top:2px; }
 
-  /* Lista de descarga: fila entera pulsable con el icono de bajar a la derecha. */
-  .docs { list-style: none; margin: 0; padding: 0; }
-  .docs a { display:flex; align-items:center; gap:14px; min-height:48px; box-sizing:border-box; padding:11px 0;
-            border-bottom: 1px solid var(--linea); text-decoration:none; color: var(--navy); }
-  .docs li:last-child a { border-bottom: 0; }
-  .docs a:hover { color: var(--azul-oscuro); }
-  .docs .info { flex:1; min-width:0; }
-  .docs .tit { display:block; font-size:15px; font-weight:600; }
-  .docs .baja { flex:0 0 auto; display:flex; color:#6E6656; }
-
   .accesos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 10px; }
   .accesos a { background: var(--crema); border: 1px solid var(--linea); border-radius:10px; min-height:48px; box-sizing:border-box;
                padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; text-decoration: none; color: var(--navy); }
@@ -111,13 +101,22 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
   function icono(n, t) { return (window.APOLANA_UI && APOLANA_UI.icono) ? APOLANA_UI.icono(n, t || 24) : ''; }
   var CHEV = '<span class="chev">' + (icono('entrar', 20) || '&rsaquo;') + '</span>';
-  var BAJA = '<span class="baja">' + (icono('descargar', 22) || '↓') + '</span>';
   var MIGAS = '<a class="migas" href="../">← Volver al portal</a>';
 
-  /* Documentos reservados a socios: no guardan enlace, guardan la ruta dentro
-     del cubo cerrado. El enlace se pide al pulsar y dura un minuto. */
-  var CUBO_SOCIOS = 'documentos-socios';
-  function esReservado(v) { return !!v && !/^https?:\/\//i.test(v); }
+  /* Reintentar solo el bloque que ha fallado, sin recargar la página entera. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn) {
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
 
   var SECCIONES = {
     escuela: 'Escuela', competicion: 'Competición', running: 'Running',
@@ -172,7 +171,10 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     '<div class="tarjeta" id="co-grupos"><h2>Grupos</h2>' + APOLANA_UI.cargando('filas', 4) + '</div>' +
     '<div class="tarjeta" id="co-atletas"><h2>Atletas por grupo</h2>' + APOLANA_UI.cargando('filas', 3) + '</div>' +
     '<div class="tarjeta" id="co-fechas"><h2>Próximas fechas</h2>' + APOLANA_UI.cargando('filas', 4) + '</div>' +
-    '<div class="tarjeta" id="co-docs"><h2>Documentos del club</h2>' + APOLANA_UI.cargando('filas', 3) + '</div>' +
+    /* Los documentos del club NO se repiten aquí: se llega a ellos por el enlace
+       de «Del portal», que lleva a la pantalla de Documentos. Antes estaban las
+       dos cosas —la lista entera y, tres líneas más abajo, el enlace a la misma
+       lista— y no había forma de saber cuál era la buena. */
     '<div class="tarjeta">' +
       '<h2>Del portal</h2>' +
       '<p class="intro-tarjeta">Las pantallas del club a las que llegas desde aquí.</p>' +
@@ -222,21 +224,22 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
        Hoy las reglas de la base de datos solo dejan leer los atletas
        propios (los tuyos, los de tus hijos o los que entrenas). Se pide
        lo que haya y se cuenta lo que llega de verdad. */
-    var atletas = [];
+    var atletas = [], errAtletas = false;
     try {
       var idsGrupos = grupos.map(function (g) { return g.id; });
       if (idsGrupos.length) {
         var ra = await sb.from('atletas')
           .select('id,nombre,apellidos,grupo_id,estado,categoria')
           .in('grupo_id', idsGrupos);
-        if (!ra.error) atletas = ra.data || [];
+        /* Si la consulta falla no llega ningún atleta, y eso NO es «no hay
+           atletas»: es que no hemos podido mirar. Se dicen cosas distintas. */
+        if (ra.error) errAtletas = true; else atletas = ra.data || [];
       }
-    } catch (e) { /* sin permisos: la lista se queda vacía */ }
+    } catch (e) { errAtletas = true; }
 
-    pintarAtletas(grupos, atletas);
+    pintarAtletas(grupos, atletas, errAtletas);
     pintarResumen(grupos, atletas, errGrupos);
     pintarFechas();
-    pintarDocumentos();
   }
 
   /* ---------------- Resumen ---------------- */
@@ -244,8 +247,8 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     var caja = document.getElementById('co-resumen');
     if (err) {
       caja.innerHTML = '<h2>Resumen</h2>' +
-        APOLANA_UI.error('No hemos podido contar los grupos',
-          'Puede ser tu conexión. Vuelve a intentarlo y, si sigue igual, avisa al club.');
+        htmlError('No hemos podido contar los grupos',
+          'Puede ser tu conexión. Vuelve a intentarlo y, si sigue igual, avisa al club.', cargar);
       return;
     }
     if (!grupos.length) {
@@ -277,8 +280,8 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     var caja = document.getElementById('co-grupos');
     var html = '<h2>Grupos</h2>';
     if (err) {
-      html += APOLANA_UI.error('No hemos podido cargar los grupos',
-        'Puede ser tu conexión. Los grupos siguen ahí; vuelve a intentarlo en un momento.');
+      html += htmlError('No hemos podido cargar los grupos',
+        'Puede ser tu conexión. Los grupos siguen ahí; vuelve a intentarlo en un momento.', cargar);
       caja.innerHTML = html; return;
     }
     if (!grupos.length) {
@@ -313,9 +316,14 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   }
 
   /* ---------------- Atletas por grupo ---------------- */
-  function pintarAtletas(grupos, atletas) {
+  function pintarAtletas(grupos, atletas, err) {
     var caja = document.getElementById('co-atletas');
     var html = '<h2>Atletas por grupo</h2>';
+    if (err) {
+      html += htmlError('No hemos podido cargar los atletas',
+        'Puede ser tu conexión. No es que los grupos estén vacíos: es que no hemos podido preguntarlo.', cargar);
+      caja.innerHTML = html; return;
+    }
     if (!atletas.length) {
       html += (rol === 'admin')
         ? APOLANA_UI.vacio('Todavía no hay atletas en estos grupos',
@@ -379,9 +387,15 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     filas = filas.slice(0, 12);
 
     var html = '<h2>Próximas fechas</h2>';
-    if (!filas.length && falloEventos && falloComps) {
-      html += APOLANA_UI.error('No hemos podido cargar el calendario',
-        'Puede ser tu conexión. Vuelve a intentarlo en un momento.');
+    /* «No hay nada por delante» solo se dice cuando se ha podido mirar las dos
+       listas. Si falla una, lo que sale no es todo lo que hay, y decir que no
+       hay nada haría dejar de mirar el calendario. */
+    var queFalta = falloEventos && falloComps ? 'ni los eventos ni las competiciones'
+                 : (falloEventos ? 'los eventos del club' : 'las competiciones');
+    if (!filas.length && (falloEventos || falloComps)) {
+      html += htmlError('No hemos podido cargar el calendario',
+        'Puede ser tu conexión: no hemos podido leer ' + queFalta + '. Vuelve a intentarlo en un momento.',
+        pintarFechas);
     } else if (!filas.length) {
       html += APOLANA_UI.vacio('No hay nada apuntado por delante',
         'Cuando el club publique el próximo evento o la próxima competición, aparecerá aquí con su fecha.',
@@ -391,60 +405,14 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
         return '<li><span class="fecha">' + esc(fechaCorta(x.f)) + '</span>' +
                '<span class="que">' + esc(x.t) + (x.d ? '<small>' + esc(x.d) + '</small>' : '') + '</span></li>';
       }).join('') + '</ul>';
+      if (falloEventos || falloComps) {
+        html += htmlError('Falta parte del calendario',
+          'Esto no es todo: no hemos podido leer ' + queFalta + '. Puede ser tu conexión.', pintarFechas);
+      }
     }
     caja.innerHTML = html;
   }
 
-  /* ---------------- Documentos ---------------- */
-  async function pintarDocumentos() {
-    var caja = document.getElementById('co-docs');
-    var html = '<h2>Documentos del club</h2>';
-    var docs = [], fallo = false;
-    try {
-      var rd = await sb.from('documentos').select('id,titulo,descripcion,categoria,archivo_url,activo,orden').order('orden');
-      if (rd.error) fallo = true;
-      else if (rd.data) docs = rd.data.filter(function (d) { return d.activo !== false; });
-    } catch (e) { fallo = true; }
-
-    if (fallo) {
-      html += APOLANA_UI.error('No hemos podido cargar los documentos',
-        'Puede ser tu conexión. Vuelve a intentarlo en un momento.');
-    } else if (!docs.length) {
-      html += APOLANA_UI.vacio('Todavía no hay documentos publicados',
-        'Aquí irán la normativa, los impresos y las circulares del club, listos para descargar.',
-        APOLANA_UI.boton('Ir a Documentos', '../documentos/'));
-    } else {
-      html += '<ul class="docs">' + docs.map(function (d) {
-        var t = esc(d.titulo || 'Documento');
-        var dentro = '<span class="info"><span class="tit">' + t +
-          (d.categoria ? ' <span class="pill">' + esc(d.categoria) + '</span>' : '') + '</span>' +
-          (d.descripcion ? '<span class="sub-linea">' + esc(d.descripcion) + '</span>' : '') + '</span>';
-        /* Los reservados a socios no guardan enlace, sino la ruta dentro del cubo
-           cerrado: el enlace se pide al pulsar y dura un minuto. */
-        var abre = esReservado(d.archivo_url)
-          ? '<a href="#" data-reservado="' + esc(d.archivo_url) + '">' + dentro + BAJA + '</a>'
-          : (d.archivo_url
-              ? '<a href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download>' + dentro + BAJA + '</a>'
-              : '<a>' + dentro + '</a>');
-        return '<li>' + abre + '</li>';
-      }).join('') + '</ul>';
-    }
-    caja.innerHTML = html;
-  }
-
-  document.addEventListener('click', async function (ev) {
-    var a = ev.target && ev.target.closest ? ev.target.closest('a[data-reservado]') : null;
-    if (!a) return;
-    ev.preventDefault();
-    var v = window.open('', '_blank');
-    var s = await sb.storage.from(CUBO_SOCIOS).createSignedUrl(a.getAttribute('data-reservado'), 60);
-    if (!s || s.error || !s.data || !s.data.signedUrl) {
-      if (v) v.close();
-      if (window.APX) APX.toast('No hemos podido abrir el documento', 'error', { detalle: 'Prueba otra vez en un momento.' });
-      return;
-    }
-    if (v) v.location.href = s.data.signedUrl; else window.location.href = s.data.signedUrl;
-  });
 });
 </script>
 

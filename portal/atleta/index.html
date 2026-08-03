@@ -423,6 +423,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return;
   }
 
+  /* Reintentar SOLO el bloque que ha fallado. Aquí no se puede recargar la
+     página: en esta pantalla se escriben los tiempos y el feedback del entreno,
+     y una recarga se lo lleva por delante. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn){
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
+
   // ---------- helpers ----------
   function tiempoANum(s){ if(s==null) return null; s=String(s).trim().replace(',','.'); if(s.indexOf(':')>-1){ var p=s.split(':'); if(p.length>=3) return (parseInt(p[0],10)||0)*3600+(parseInt(p[1],10)||0)*60+(parseFloat(p[2])||0); return (parseInt(p[0],10)||0)*60+(parseFloat(p[1])||0); } var n=parseFloat(s); return isNaN(n)?null:n; }
   function formatFecha(iso){ if(!iso) return ''; var d=new Date(iso+'T00:00:00'); var di=['dom','lun','mar','mié','jue','vie','sáb'], me=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return di[d.getDay()]+' '+d.getDate()+' '+me[d.getMonth()]; }
@@ -664,10 +681,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // ---------- datos ----------
-  var at=null;
+  var at=null, falloFicha=false;
   // fecha_nacimiento y tipo_membresia hacen falta para saber si le toca la
   // cuenta de la escuela o la del club en el bloque «Cómo se paga».
-  try { var r=await sb.from('atletas').select('id,nombre,apellidos,categoria,grupo_id,estado,especialidades,fecha_nacimiento,tipo_membresia').eq('perfil_id',perfil.id).maybeSingle(); if(!r.error) at=r.data; } catch(e){}
+  try {
+    var r=await sb.from('atletas').select('id,nombre,apellidos,categoria,grupo_id,estado,especialidades,fecha_nacimiento,tipo_membresia').eq('perfil_id',perfil.id).maybeSingle();
+    if(r.error) falloFicha=true; else at=r.data;
+  } catch(e){ falloFicha=true; }
 
   var todayISO=isoDe(new Date());
   var nombre = at ? ((at.nombre||'')+' '+(at.apellidos||'')) : (perfil.nombre||'');
@@ -678,9 +698,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div class="at-ini" aria-hidden="true">'+esc(ini)+'</div></div>';
 
   if(!at){
-    wrap.innerHTML = cab + APOLANA_UI.vacio('Tu cuenta aún no tiene ficha de atleta',
-      'En cuanto el club enlace tu cuenta con tu ficha, verás aquí tus entrenos, tus marcas y tus recibos.',
-      APOLANA_UI.boton('Escribir al club', '../../contacto/'));
+    /* Si la consulta ha fallado no se dice que la ficha no existe: eso hace que
+       una persona escriba al club por un problema que no tiene. */
+    wrap.innerHTML = cab + (falloFicha
+      ? htmlError('No hemos podido cargar tu ficha',
+          'Puede ser tu conexión. Tu ficha sigue ahí, con tus entrenos y tus marcas: vuelve a intentarlo en un momento.',
+          function(){ location.reload(); })
+      : APOLANA_UI.vacio('Tu cuenta aún no tiene ficha de atleta',
+          'En cuanto el club enlace tu cuenta con tu ficha, verás aquí tus entrenos, tus marcas y tus recibos.',
+          APOLANA_UI.boton('Escribir al club', '../../contacto/')));
     return;
   }
 
@@ -933,16 +959,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // Trae las sesiones publicadas de la semana. Sin filtrar por grupo: el permiso del
   // servidor ya devuelve solo lo mío, incluidos los entrenos preparados solo para mí.
+  /* Semanas cuya consulta ha fallado. Sin esto, un fallo de conexión se veía
+     igual que una semana sin entrenos: «hoy no toca» a alguien que sí tiene
+     entreno, y a las siete de la tarde eso es quedarse en casa. */
+  var SEM_FALLO={};
   async function cargarSemana(lunes){
     if(SEM[lunes]) return SEM[lunes];
     var lista=[];
+    delete SEM_FALLO[lunes];
     try {
       var se=await sb.from('sesiones')
         .select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids')
         .eq('publicada',true).gte('fecha',lunes).lte('fecha',addDias(lunes,6))
         .order('fecha',{ascending:true});
-      if(!se.error && se.data) lista=se.data;
-    } catch(e){}
+      if(se.error) SEM_FALLO[lunes]=true; else lista=se.data||[];
+    } catch(e){ SEM_FALLO[lunes]=true; }
+    /* Una semana que ha fallado NO se guarda como cargada: así el reintento
+       vuelve a preguntar de verdad en vez de devolver la lista vacía. */
+    if(SEM_FALLO[lunes]) return lista;
     SEM[lunes]=lista;
     var ids=lista.map(function(s){ return s.id; });
     if(ids.length){ try {
@@ -1094,7 +1128,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function fijarTituloEntreno(lista, iso){
     tituloEntreno = (lista && lista.length===1) ? tituloSesion(lista[0])
       : (lista && lista.length>1 ? 'Entrenos del día'
-        : (iso===todayISO ? 'Hoy no toca' : 'Sin entreno'));
+        /* Si la semana no se ha podido leer, la cabecera no afirma nada. */
+        : (SEM_FALLO[lunesVis] ? 'Mi entreno'
+          : (iso===todayISO ? 'Hoy no toca' : 'Sin entreno')));
     if(SEC==='entreno') pintarCabecera();
   }
   function pintarDia(iso){
@@ -1103,15 +1139,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var lista=sesionesDe(iso), cont=$('entreno-cont');
     fijarTituloEntreno(lista, iso);
     if(!lista.length){
+      var cabDia='<div class="entreno-cab"><h2>Mi entreno</h2><span class="fecha-pill">'+
+        esc((iso===todayISO?'Hoy · ':'')+formatFecha(iso))+'</span></div>';
+      /* Si la semana no se ha podido leer, no se dice que no hay entreno: se
+         dice que no lo sabemos y se ofrece volver a mirar. */
+      if(SEM_FALLO[lunesVis]){
+        cont.innerHTML='<div class="tarjeta">'+cabDia+
+          htmlError('No hemos podido cargar tus entrenos',
+            'Puede ser tu conexión. No sabemos si hoy tienes entreno o no: vuelve a intentarlo, y si tienes dudas pregunta a tu entrenador.',
+            async function(){ await cargarSemana(lunesVis); pintarDia(diaSel); })+'</div>';
+        return;
+      }
       var haySemana=(SEM[lunesVis]||[]).length;
       var titulo = (iso===todayISO) ? 'Hoy no toca entreno' : 'Ese día no hay entreno';
       var aviso = haySemana ? 'Esta semana sí hay entrenos: toca otro día de la tira de arriba y lo verás.'
         : (at.grupo_id ? 'Tu entrenador todavía no ha publicado los entrenos de esta semana. Suelen aparecer unos días antes.'
                        : 'Todavía no estás en ningún grupo. En cuanto tu entrenador te asigne a uno, verás aquí tus entrenos.');
       var salida = haySemana ? '' : APOLANA_UI.boton('Ver el calendario del club', '../calendario/');
-      cont.innerHTML='<div class="tarjeta">'+
-        '<div class="entreno-cab"><h2>Mi entreno</h2><span class="fecha-pill">'+esc((iso===todayISO?'Hoy · ':'')+formatFecha(iso))+'</span></div>'+
-        APOLANA_UI.vacio(titulo, aviso, salida)+'</div>';
+      cont.innerHTML='<div class="tarjeta">'+cabDia+APOLANA_UI.vacio(titulo, aviso, salida)+'</div>';
       return;
     }
     cont.innerHTML=lista.map(function(s){
@@ -1358,6 +1403,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<span class="lf-hora">&rsaquo;</span></button>';
         }).join('')+'</div>';
       }
+    } else if(SEM_FALLO[lunesHoy]){
+      /* «Hoy toca descansar» cuando lo que ha fallado es la consulta es la
+         mentira más cara de todo el portal: te quedas en casa. Aquí se dice
+         que no lo sabemos y se ofrece volver a mirar. */
+      html+=htmlError('No hemos podido cargar tus entrenos',
+        'Puede ser tu conexión, así que no sabemos si hoy tienes entreno. No te fíes de esta pantalla hasta que cargue: si te queda duda, pregunta a tu entrenador.',
+        async function(){ await cargarSemana(lunesHoy); pintarHoy(); });
     } else {
       var sig=null;
       lista.forEach(function(s){ if(s.fecha>todayISO && (!sig||s.fecha<sig.fecha)) sig=s; });
@@ -1520,8 +1572,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cont=$('marcas-cont'); cont.innerHTML=APOLANA_UI.cargando('filas',5);
     var m=await sb.from('marcas_atleta').select('prueba,tiempo_display,fecha,sede,tipo,contexto').eq('atleta_id',at.id).order('fecha',{ascending:false}).limit(80);
     if(m.error){
-      cont.innerHTML=APOLANA_UI.error('No hemos podido cargar tus marcas',
-        'Puede ser tu conexión. Tus marcas siguen guardadas: solo hay que volver a pedirlas.');
+      cont.innerHTML=htmlError('No hemos podido cargar tus marcas',
+        'Puede ser tu conexión. Tus marcas siguen guardadas: solo hay que volver a pedirlas.', cargarMarcas);
       return;
     }
     MARCAS=m.data||[];
@@ -1710,8 +1762,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cont=$('pagos-cont');
     var p=await sb.from('pagos').select('concepto,importe,estado,fecha_vencimiento').eq('atleta_id',at.id).order('fecha_vencimiento',{ascending:false}).limit(40);
     if(p.error){
-      cont.innerHTML=APOLANA_UI.error('No hemos podido cargar tus recibos',
-        'Puede ser tu conexión. Nada se ha cobrado ni se ha perdido: solo hay que volver a pedir la lista.');
+      /* «Sin recibos por ahora» con un recibo devuelto de por medio es una
+         multa: aquí se dice que no se ha podido mirar, y se vuelve a mirar. */
+      cont.innerHTML=htmlError('No hemos podido cargar tus recibos',
+        'Puede ser tu conexión. Nada se ha cobrado ni se ha perdido: solo hay que volver a pedir la lista.', cargarPagos);
       return;
     }
     PAGOS = p.data || [];

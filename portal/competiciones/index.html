@@ -64,7 +64,11 @@
   @media (max-width:600px){ .apuntarme { grid-template-columns:1fr; } }
   .btn { cursor:pointer; }
   .btn--mini { padding:9px 16px; font-size:14px; }
-  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 7px 12px; border-radius: 999px; font-size:13px; cursor:pointer; }
+  /* «Quitarme» deshace algo que el club ya ha dado por hecho: 44 px como
+     cualquier otro botón, nunca la pastilla diminuta de antes (kit 30f). */
+  .btn--peligro { display:inline-flex; align-items:center; justify-content:center; min-height:44px;
+                  background: transparent; border: 1px solid #e0b4b0; color: #b3261e; padding: 0 18px;
+                  border-radius: 999px; font-family: var(--fuente-texto); font-size:15px; font-weight:600; cursor:pointer; }
   .btn--peligro:hover { background: #fbeceb; }
   /* Rojo solo para lo que se ha escrito mal; si falla el aviso, ámbar. */
   .msg { font-size:14px; margin-top:8px; display:block; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; } .msg.fallo { color:#B96F09; }
@@ -269,11 +273,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   var atleta = MIS_ATLETAS[0];
 
-  var CATALOGO = [];
+  var CATALOGO = [], falloCatalogo = false;
   var pc = await sb.from('pruebas').select('nombre,disciplina,ambito').eq('activa', true).order('orden');
-  if (!pc.error && pc.data) CATALOGO = pc.data;
+  if (pc.error) falloCatalogo = true; else CATALOGO = pc.data || [];
 
   var COMPS = [], INSCRIPCIONES = [];
+  /* Cada lista sabe si se ha podido leer. Sin esto, un fallo de conexión se
+     veía igual que un calendario vacío: «no hay competiciones» a alguien que
+     tiene una el sábado. */
+  var falloComps = false, falloInscr = false;
+
+  /* Reintentar solo lo que ha fallado, sin recargar la página. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn){
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
+  async function recargar(){ await cargarDatos(); pintar(); }
 
   async function cargarDatos(){
     var hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -285,9 +309,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta,notas')
       .or(filtro)
       .order('fecha_inicio', { ascending: true });
+    falloComps = !!c.error;
     COMPS = (c.error ? [] : (c.data || []));
 
     var i = await sb.from('competicion_atleta').select('id,competicion_id,prueba,estado').eq('atleta_id', atleta.id);
+    falloInscr = !!i.error;
     INSCRIPCIONES = (i.error ? [] : (i.data || []));
   }
 
@@ -357,7 +383,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     // Mis pruebas en esta competición
     html += '<h3>Mis pruebas aquí</h3>';
-    if (!mias.length) {
+    if (falloInscr) {
+      /* Decir «no te has apuntado a nada» cuando no se ha podido mirar es lo
+         que hace que alguien se apunte dos veces. */
+      html += htmlError('No hemos podido comprobar tus pruebas',
+        'Puede ser tu conexión. Si ya le habías dicho al club que vas, sigue apuntado: no vuelvas a hacerlo hasta verlo aquí.',
+        recargar);
+    } else if (!mias.length) {
       html += '<p class="letra-chica" style="margin:0 0 4px">Todavía no le has dicho al club a qué pruebas vas aquí.</p>';
     } else {
       html += '<ul class="mis-pruebas">' + mias.map(function(x){
@@ -371,7 +403,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
 
     // Decirle al club que voy (control interno: no es la inscripción oficial)
-    if (abierta) {
+    if (abierta && falloCatalogo) {
+      /* Sin catálogo de pruebas el desplegable saldría vacío y el botón no
+         haría nada: mejor decir que no se ha podido cargar y dar una salida. */
+      html += '<h3>Decirle al club que voy</h3>' +
+        htmlError('No hemos podido cargar la lista de pruebas',
+          'Puede ser tu conexión. La inscripción sigue abierta: vuelve a intentarlo, o díselo a tu entrenador por mensaje.',
+          recargar);
+    } else if (abierta) {
       html += '<h3>Decirle al club que voy</h3>' +
         '<p class="letra-chica" style="margin-top:0;">Así el club sabe con quién cuenta y en qué pruebas. ' +
           (c.circular_url ? 'La inscripción oficial se hace en el enlace de arriba.' : 'De la inscripción oficial se encarga el club.') + '</p>' +
@@ -407,11 +446,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (PEDIDA) {
       lista.sort(function(a,b){ return (b.id === PEDIDA ? 1 : 0) - (a.id === PEDIDA ? 1 : 0); });
     }
-    var comps = lista.length
-      ? lista.map(tarjetaComp).join('')
-      : '<div class="tarjeta">' + APOLANA_UI.vacio('Todavía no hay competiciones publicadas',
-          'Cuando el club abra la próxima, aparecerá aquí con su fecha, el plazo del club y el enlace para inscribirte.',
-          APOLANA_UI.boton('Ver el calendario del club', '../calendario/')) + '</div>';
+    var comps;
+    if (lista.length) {
+      comps = lista.map(tarjetaComp).join('');
+    } else if (falloComps) {
+      comps = '<div class="tarjeta">' + htmlError('No hemos podido cargar las competiciones',
+        'Puede ser tu conexión. No es que no haya ninguna: es que no hemos podido preguntarlo. ' +
+        'Si tienes una cerca, mira el calendario del club o pregunta a tu entrenador.',
+        recargar) + '</div>';
+    } else {
+      comps = '<div class="tarjeta">' + APOLANA_UI.vacio('Todavía no hay competiciones publicadas',
+        'Cuando el club abra la próxima, aparecerá aquí con su fecha, el plazo del club y el enlace para inscribirte.',
+        APOLANA_UI.boton('Ver el calendario del club', '../calendario/')) + '</div>';
+    }
 
     wrap.innerHTML = cab + selector + comps;
 

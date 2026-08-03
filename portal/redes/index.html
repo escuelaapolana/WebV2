@@ -40,7 +40,13 @@
   .minis { display:grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap:12px; margin-top:12px; }
   .mini { position:relative; border:1px solid var(--linea); border-radius:10px; overflow:hidden; background: var(--crema-media); }
   .mini img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; }
-  .mini .quitar { position:absolute; top:5px; right:5px; width:26px; height:26px; border-radius:999px; border:none; background:rgba(255,255,255,.92); box-shadow:0 1px 4px rgba(0,0,0,.25); font-size:15px; line-height:1; cursor:pointer; color:#b3261e; display:flex; align-items:center; justify-content:center; }
+  /* Quitar una foto es un botón de 44 px como cualquier otro: lo que se ve es
+     el aspa de 28, pero se toca en toda la esquina de la miniatura (kit 30f). */
+  .mini .quitar { position:absolute; top:0; right:0; width:44px; height:44px; border:0; padding:0; background:none;
+                  cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .mini .quitar i { display:flex; align-items:center; justify-content:center; width:28px; height:28px;
+                    border-radius:999px; background:rgba(255,255,255,.94); box-shadow:0 1px 4px rgba(0,0,0,.25);
+                    font-style:normal; font-size:16px; line-height:1; color:#b3261e; }
   .mini .peso { position:absolute; left:0; right:0; bottom:0; background:rgba(46,66,86,.78); color:#fff; font-size:13px; padding:2px 4px; text-align:center; }
   .mini .peso.alto { background:rgba(179,38,30,.85); }
 
@@ -139,15 +145,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var miId = perfil && perfil.id ? perfil.id : null;
 
   // Sus fichas de atleta: la suya y las de sus hijos (lo que puede leer)
-  var atletas = [];
+  var atletas = [], falloAtletas = false;
   if (miId) {
     try {
       var ra = await sb.from('atletas')
         .select('id,nombre,apellidos')
         .or('perfil_id.eq.' + miId + ',perfil_padre_id.eq.' + miId)
         .order('nombre');
-      if (!ra.error && ra.data) atletas = ra.data;
-    } catch (e) {}
+      /* Si la consulta falla no hay fichas que enseñar, pero eso no significa
+         que no tenga ninguna: la pista de abajo lo dice de otra manera. */
+      if (ra.error) falloAtletas = true; else atletas = ra.data || [];
+    } catch (e) { falloAtletas = true; }
   }
 
   wrap.innerHTML =
@@ -171,7 +179,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<select id="rd-atleta">' +
           atletas.map(function(a){ return '<option value="'+esc(a.id)+'">'+esc((a.nombre||'')+' '+(a.apellidos||'')).trim()+'</option>'; }).join('') +
         '</select>' +
-        (atletas.length ? '' : '<p class="pista">No tienes fichas de atleta asociadas; puedes describir de quién es en el texto.</p>') +
+        (atletas.length ? ''
+          : (falloAtletas
+              ? '<p class="pista">No hemos podido cargar tus fichas de atleta: puede ser tu conexión. Escribe en el texto de quién es y nos vale igual.</p>'
+              : '<p class="pista">No tienes fichas de atleta asociadas; puedes describir de quién es en el texto.</p>')) +
       '</div>' +
 
       '<div id="rd-campo-seccion" class="oculto">' +
@@ -223,7 +234,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var alto = e.file.size > 10 * 1048576;
       return '<div class="mini">' +
         '<img src="' + e.url + '" alt="">' +
-        '<button type="button" class="quitar" data-i="' + i + '" aria-label="Quitar foto" title="Quitar">×</button>' +
+        '<button type="button" class="quitar" data-i="' + i + '" aria-label="Quitar esta foto" title="Quitar"><i aria-hidden="true">×</i></button>' +
         '<span class="peso' + (alto ? ' alto' : '') + '">' + mb(e.file.size) + '</span>' +
       '</div>';
     }).join('');
@@ -327,11 +338,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .select('id,tipo,seccion,titulo,descripcion,fotos,estado,publicado_url,created_at')
       .order('created_at', { ascending: false });
     if (r.error) {
+      /* El botón de reintentar vuelve a pedir SOLO esta lista: recargar la
+         página entera borraría la propuesta que se esté escribiendo arriba.
+         Si es cuestión de permisos no se ofrece reintentar: no arregla nada. */
       cont.innerHTML = esDePermisos(r.error)
         ? APOLANA_UI.error('No hemos podido cargar tus propuestas',
-            'Tu cuenta no tiene permiso para verlas. No es tu conexión: escríbenos y lo dejamos listo.')
+            'Tu cuenta no tiene permiso para verlas. No es tu conexión: escríbenos y lo dejamos listo.', null)
         : APOLANA_UI.error('No hemos podido cargar tus propuestas',
-            'Puede ser tu conexión. Lo que has enviado sigue guardado; vuelve a intentarlo en un momento.');
+            'Puede ser tu conexión. Lo que has enviado sigue guardado; vuelve a intentarlo en un momento.',
+            '<button type="button" class="ap-btn" id="rd-reintentar">Volver a intentarlo</button>');
+      var rb = $('rd-reintentar');
+      if (rb) rb.addEventListener('click', cargarMias);
       return;
     }
     var data = r.data || [];

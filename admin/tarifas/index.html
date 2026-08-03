@@ -29,15 +29,17 @@
   }
   .tar-contexto { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 4px; }
   .tar-acciones { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btn--mini { padding: 9px 17px; font-size: 14px; }
+  .btn--mini { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    min-height: 44px; padding: 10px 17px; font-size: 14px; }
   .btn[disabled] { opacity: .45; cursor: default; box-shadow: none; }
   .btn[disabled]:hover { transform: none; }
 
   /* ---------- Pestañas ---------- */
   .tar-pestanas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
   .pest {
-    padding: 8px 15px; border-radius: var(--radio-pastilla); background: #fff;
-    border: 1px solid var(--linea-borde); color: var(--texto); font-size: 13px;
+    display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px;
+    padding: 10px 16px; border-radius: var(--radio-pastilla); background: #fff;
+    border: 1px solid var(--linea-borde); color: var(--texto); font-size: 14px;
     font-family: inherit; cursor: pointer;
   }
   .pest:hover { background: var(--azul-suave); }
@@ -65,7 +67,8 @@
 
   /* ---------- Tabla de tarifas ---------- */
   /* El nombre del grupo necesita sitio: si no, «Natación · bono 4 clases» parte en tres líneas. */
-  .cols { display: grid; grid-template-columns: minmax(190px, 2.4fr) .7fr 100px 100px 112px 168px; gap: 10px; align-items: center; }
+  /* La última columna aguanta los tres enlaces ya a 44 px sin partirlos */
+  .cols { display: grid; grid-template-columns: minmax(190px, 2.4fr) .7fr 100px 100px 112px 208px; gap: 10px; align-items: center; }
   .tab-cab {
     padding: 11px 20px; background: var(--crema); border-bottom: 1px solid var(--crema-banda); font-size: 13px; color: var(--texto-suave);
   }
@@ -88,14 +91,18 @@
   .fila .aviso-fecha { display: block; font-size: 13px; color: #B96F09; margin-top: 2px; }
   .fila .nota-fila { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 2px; }
 
+  /* Enlaces de la fila: siguen siendo enlaces (el único botón azul de la
+     pantalla es «Guardar cambios»), pero con 44 px de alto para poder darles
+     con el dedo sin fallar. */
   .enlace-accion {
-    background: none; border: 0; padding: 0 0 0 12px; font-family: inherit; font-size: 14px;
-    font-weight: 600; color: var(--azul-oscuro); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+    min-height: 44px; background: none; border: 0; padding: 10px 10px; font-family: inherit; font-size: 14px;
+    font-weight: 600; color: var(--azul-oscuro); cursor: pointer; border-radius: 999px;
   }
-  .enlace-accion:hover { text-decoration: underline; }
+  .enlace-accion:hover { text-decoration: underline; background: var(--crema); }
   .enlace-accion.guardar { color: #4C7A28; }
   .enlace-accion.suave { color: var(--texto-suave); font-weight: 400; }
-  .acciones-fila { display: flex; justify-content: flex-end; flex-wrap: wrap; }
+  .acciones-fila { display: flex; justify-content: flex-end; flex-wrap: wrap; align-items: center; gap: 2px; }
 
   .celda-edit { display: flex; justify-content: flex-end; }
   .celda-edit input {
@@ -119,8 +126,8 @@
     .fila .cifra { text-align: left; }
     .celda-edit { justify-content: flex-start; margin-top: 6px; }
     .celda-edit input { max-width: none; text-align: left; }
-    .acciones-fila { justify-content: flex-start; margin-top: 10px; }
-    .enlace-accion { padding: 0 16px 0 0; }
+    .acciones-fila { justify-content: flex-start; margin-top: 10px; gap: 4px; }
+    .enlace-accion { padding: 10px 12px; }
     .grupo-sec { padding: 14px 16px 6px; }
   }
 
@@ -211,6 +218,12 @@
     <div class="tar-cuerpo">
 
       <div>
+        <!-- Buscador: mismo patrón que el de Atletas -->
+        <div class="adm-buscador">
+          <input type="search" id="tar-buscar" placeholder="Buscar una tarifa por nombre…" aria-label="Buscar una tarifa">
+          <span class="adm-buscador-n" id="tar-cuenta" aria-live="polite"></span>
+        </div>
+
         <!-- Tabla de tarifas vigentes -->
         <div class="tarjeta" id="tar-tabla">
           <div class="cols tab-cab">
@@ -541,11 +554,34 @@ APOLANA_ADMIN.listo(function (sb) {
   /* ---------------------------------------------------------
      Tabla
      --------------------------------------------------------- */
+  /* Quita tildes y mayúsculas para que «natacion» encuentre «Natación». */
+  function llano(s) {
+    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
   function pintarTabla() {
-    var lista = tarifasDelAmbito(estado.ambito);
+    var todas = tarifasDelAmbito(estado.ambito);
+    var busca = llano(($('tar-buscar') && $('tar-buscar').value) || '').trim();
+    var lista = !busca ? todas : todas.filter(function (t) {
+      return llano(t.concepto + ' ' + (t.dias || '') + ' ' + nombreSeccion(t.seccion)).indexOf(busca) !== -1;
+    });
     var cont = $('tar-filas');
-    if (!lista.length) {
+
+    // El contador de resultados, al lado del buscador
+    $('tar-cuenta').textContent = !todas.length ? ''
+      : (lista.length === todas.length
+          ? todas.length + (todas.length === 1 ? ' tarifa' : ' tarifas')
+          : lista.length + ' de ' + todas.length);
+
+    /* Dos vacíos distintos: la pestaña sin tarifas no es lo mismo que una
+       búsqueda que no encuentra nada. */
+    if (!todas.length) {
       cont.innerHTML = '<div class="fila">Todavía no hay tarifas en esta pestaña. Usa «+ Nueva tarifa».</div>';
+      return;
+    }
+    if (!lista.length) {
+      cont.innerHTML = '<div class="fila">Ninguna tarifa de esta pestaña se llama así. ' +
+        '<button type="button" class="enlace-accion" id="tar-limpiar">Quitar la búsqueda</button></div>';
       return;
     }
     var html = '', seccionActual = '';

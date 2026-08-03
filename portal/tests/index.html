@@ -145,6 +145,16 @@
 
   .resumen-toma { padding: 4px clamp(14px,4vw,22px) 0; font-size:13px; color: var(--texto-suave); }
 
+  /* --- Buscador de la lista de atletas ---
+     Una batería sin grupo concreto trae hasta 200 fichas, y eso son varias
+     pantallas de scroll con el móvil en una mano y el cronómetro en la
+     otra. Es el mismo buscador del panel de atletas: campo redondo a la
+     izquierda y el recuento de lo que se está viendo a la derecha. */
+  .busca-at { display:flex; align-items:center; gap:10px; padding: 12px clamp(14px,4vw,22px) 0; }
+  .busca-at input[type="search"] { flex:1 1 auto; min-width:0; border-radius:999px; padding:10px 16px; font-size:16px; }
+  .busca-at .cuenta { flex:0 0 auto; font-family: var(--fuente-dato); font-size:13px;
+                      color: var(--texto-suave); white-space:nowrap; }
+
   /* --- Hoja de entrada --- */
   .hoja { position:fixed; inset:0; z-index:1200; background: var(--crema); display:flex; flex-direction:column; }
   .hoja[hidden] { display:none; }
@@ -361,6 +371,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return ((n?n[0]:'')+(ap?ap[0]:'')).toUpperCase() || '·';
   }
   function nombreAt(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }
+  /* Para buscar: todo en minúscula y sin tildes, porque a pie de pista se
+     escribe deprisa y nadie va a poner la tilde de «Núñez» ni la de «Jesús». */
+  function sinTildes(t){
+    t = String(t==null?'':t).toLowerCase();
+    return t.normalize ? t.normalize('NFD').replace(/[\u0300-\u036f]/g,'') : t;
+  }
   function aviso(m,t){ if(window.APX) APX.toast(m,t); }
 
   // ============================================================
@@ -431,6 +447,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // 2 · ESTADO DE LA PANTALLA
   // ============================================================
   var GRUPOS = [], BATERIA = null, ATLETAS = [], TEST = TESTS[0], FORMATO_RSI = 6;
+  var BUSCA = '';      // lo que se ha escrito en el buscador de la lista
+  /* Con un grupo pequeño el buscador estorba más de lo que ayuda: quita
+     sitio a una fila y no hay nada que buscar. A partir de aquí, aparece. */
+  var DESDE_CUANTOS_BUSCADOR = 12;
   var RES = {};        // 'atletaId|test' -> fila guardada
   var ANT = {};        // 'atletaId|test' o 'atletaId|rsi|6' -> marca anterior
   var ACTIVO = null;   // atleta abierto en la hoja
@@ -728,25 +748,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   async function pantallaInicio(){
-    var r = await sb.from('test_baterias')
-      .select('id,fecha,grupo_id,sede,temperatura,viento,notas')
-      .order('fecha',{ascending:false}).limit(12);
-    var recientes = (r.error ? [] : (r.data||[]));
-
     var opciones = '<option value="">(sin grupo concreto)</option>' + GRUPOS.map(function(g){
       return '<option value="'+g.id+'">'+esc(g.nombre)+'</option>';
     }).join('');
 
-    var listaHTML = recientes.length ? '<div class="caja-filas">' + recientes.map(function(b){
-      var g = GRUPOS.filter(function(x){ return x.id===b.grupo_id; })[0];
-      var f = String(b.fecha||'').slice(0,10).split('-');
-      return '<button type="button" class="bat" data-bat="'+b.id+'">'+
-        '<span class="dia"><b>'+(f[2]?parseInt(f[2],10):'?')+'</b><span>'+(f[1]?MESES[parseInt(f[1],10)-1]:'')+'</span></span>'+
-        '<span class="qué"><b>'+esc(g?g.nombre:'Sin grupo')+'</b>'+
-        '<span>'+esc([b.sede, (b.temperatura!=null? b.temperatura+' ºC':null)].filter(Boolean).join(' · ') || 'sin condiciones apuntadas')+'</span></span>'+
-        '<em>›</em></button>';
-    }).join('') + '</div>' : APOLANA_UI.vacio('Todavía no hay ninguna batería',
-      'La primera se crea aquí arriba: eliges grupo y día, apuntas las condiciones y ya puedes ir atleta por atleta.');
+    var listaHTML = '<div id="t-recientes">'+APOLANA_UI.cargando('filas', 3)+'</div>';
 
     wrap.innerHTML =
       '<div class="tt-pad">'+
@@ -783,7 +789,56 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div>';
 
     $('n-crear').addEventListener('click', crearBateria);
-    wrap.querySelectorAll('[data-bat]').forEach(function(b){
+    await cargarRecientes();
+  }
+
+  /* Las baterías ya guardadas se cargan aparte, y al reintentar se recarga
+     SOLO esta caja, nunca la pantalla entera: si el entrenador ya tenía
+     escritas la sede y la temperatura del día, recargar se las borraría.
+     (Es el mismo criterio que la pantalla de calles.)
+     Y sobre todo: si la consulta falla, aquí NO se dice «todavía no hay
+     ninguna batería». Lo creería y montaría una segunda encima de la que
+     ya existe, con los datos partidos en dos. */
+  async function cargarRecientes(){
+    var caja = $('t-recientes');
+    if(!caja) return;
+    caja.innerHTML = APOLANA_UI.cargando('filas', 3);
+
+    var r = await sb.from('test_baterias')
+      .select('id,fecha,grupo_id,sede,temperatura,viento,notas')
+      .order('fecha',{ascending:false}).limit(12);
+
+    if(r.error){
+      caja.innerHTML = esDePermisos(r.error)
+        ? APOLANA_UI.error('No podemos enseñarte las baterías con este papel',
+            'Con el papel que tienes puesto no se pueden leer las baterías guardadas. Cambia arriba a entrenador y vuelve a darle.',
+            APOLANA_UI.boton('Volver a intentarlo'))
+        : APOLANA_UI.error('No hemos podido cargar las baterías guardadas',
+            'Puede ser la cobertura de la pista. No se ha perdido ninguna, pero vuelve a intentarlo antes de crear una nueva: puede que la de hoy ya exista.',
+            APOLANA_UI.boton('Volver a intentarlo'));
+      var br = caja.querySelector('.ap-btn');
+      if(br) br.addEventListener('click', cargarRecientes);
+      return;
+    }
+
+    var recientes = r.data || [];
+    if(!recientes.length){
+      caja.innerHTML = APOLANA_UI.vacio('Todavía no hay ninguna batería',
+        'La primera se crea aquí arriba: eliges grupo y día, apuntas las condiciones y ya puedes ir atleta por atleta.');
+      return;
+    }
+
+    caja.innerHTML = '<div class="caja-filas">' + recientes.map(function(b){
+      var g = GRUPOS.filter(function(x){ return x.id===b.grupo_id; })[0];
+      var f = String(b.fecha||'').slice(0,10).split('-');
+      return '<button type="button" class="bat" data-bat="'+b.id+'">'+
+        '<span class="dia"><b>'+(f[2]?parseInt(f[2],10):'?')+'</b><span>'+(f[1]?MESES[parseInt(f[1],10)-1]:'')+'</span></span>'+
+        '<span class="qué"><b>'+esc(g?g.nombre:'Sin grupo')+'</b>'+
+        '<span>'+esc([b.sede, (b.temperatura!=null? b.temperatura+' ºC':null)].filter(Boolean).join(' · ') || 'sin condiciones apuntadas')+'</span></span>'+
+        '<em>›</em></button>';
+    }).join('') + '</div>';
+
+    caja.querySelectorAll('[data-bat]').forEach(function(b){
       b.addEventListener('click', function(){ abrirBateria(b.getAttribute('data-bat')); });
     });
   }
@@ -830,13 +885,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(a.error){ pantallaError(a.error); return; }
     ATLETAS = a.data || [];
 
-    RES = {}; ANT = {};
+    RES = {}; ANT = {}; BUSCA = '';   /* cada batería se abre con la lista entera */
     if(ATLETAS.length){
       var ids = ATLETAS.map(function(x){ return x.id; });
 
       var rr = await sb.from('test_resultados')
         .select('id,atleta_id,test,intentos,mejor,formato_rsi,no_asiste')
         .eq('bateria_id', BATERIA.id);
+      /* Esto NO se puede dar por vacío si falla: la lista saldría con todo
+         el mundo «sin dato» y se volvería a medir encima de lo ya medido,
+         que es la peor forma de perder una mañana de trabajo. */
+      if(rr.error){ pantallaError(rr.error); return; }
       (rr.data||[]).forEach(function(f){
         RES[claveRes(f.atleta_id, f.test)] = f;
         // Si esta batería ya lleva RSI empezado, se abre con ese formato.
@@ -891,6 +950,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<button type="button" data-f="10"><b>10</b><span>saltos</span></button>'+
       '</div>'+
       '<p class="resumen-toma" id="t-resumen"></p>'+
+      '<div class="busca-at oculto" id="t-busca-caja">'+
+        '<input type="search" id="t-busca" autocomplete="off" enterkeyhint="search" '+
+               'placeholder="Buscar por nombre o apellidos…" aria-label="Buscar un atleta de la lista">'+
+        '<span class="cuenta" id="t-busca-cuenta" aria-live="polite"></span>'+
+      '</div>'+
       '<div class="lista" id="t-lista"></div>'+
       '<div class="hoja" id="hoja" hidden></div>'+
       '<div class="tt-pad" id="t-cond-caja" hidden></div>';
@@ -917,6 +981,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
     });
 
+    /* El buscador solo sale cuando de verdad hace falta. */
+    if(ATLETAS.length >= DESDE_CUANTOS_BUSCADOR){
+      $('t-busca-caja').classList.remove('oculto');
+      $('t-busca').addEventListener('input', function(){ BUSCA = this.value; pintarLista(); });
+    }
+
     pintarLista();
   }
 
@@ -939,8 +1009,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return;
     }
 
-    var hechos = 0, faltan = 0;
-    lista.innerHTML = '<div class="caja-filas">' + ATLETAS.map(function(a){
+    /* El avance de la toma (con marca, no asisten, quedan) se cuenta SIEMPRE
+       sobre el grupo entero: si se contase solo lo que se está viendo,
+       buscar un nombre haría creer que ya casi está todo medido. Lo que
+       recorta la búsqueda son las filas de la lista, nada más. */
+    var busca = sinTildes(BUSCA).trim();
+    var hechos = 0, faltan = 0, vistos = 0, filas = [];
+    ATLETAS.forEach(function(a){
       var f = RES[claveRes(a.id, TEST.k)];
       var mismoFormato = !TEST.serie || !f || f.formato_rsi === FORMATO_RSI;
       var derecha;
@@ -955,17 +1030,43 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var ant2 = ANT[clave(a.id, TEST, FORMATO_RSI)];
         derecha = '<span class="sin">'+(ant2 ? 'antes '+textoConUnidad(ant2.valor,TEST) : 'sin dato')+'</span>';
       }
-      return '<button type="button" class="at'+((f&&f.no_asiste)?' falta':'')+'" data-at="'+a.id+'">'+
+      if(busca && sinTildes(nombreAt(a)).indexOf(busca) === -1) return;
+      vistos++;
+      filas.push('<button type="button" class="at'+((f&&f.no_asiste)?' falta':'')+'" data-at="'+a.id+'">'+
         '<span class="ini">'+esc(iniciales(a))+'</span>'+
         '<span class="quien"><b>'+esc(nombreAt(a))+'</b><span>'+esc(a.categoria||'sin categoría')+'</span></span>'+
         '<span class="marca">'+derecha+'</span>'+
-      '</button>';
-    }).join('') + '</div>';
+      '</button>');
+    });
+
+    if(busca && !vistos){
+      lista.innerHTML = APOLANA_UI.vacio('Nadie de esta batería se llama así',
+        'Con «'+BUSCA.trim()+'» no encaja ningún atleta. Prueba con el apellido solo, o vuelve a la lista entera.',
+        '<button type="button" class="ap-btn" data-limpiar-busca>Ver a los '+ATLETAS.length+' otra vez</button>');
+    } else {
+      lista.innerHTML = '<div class="caja-filas">' + filas.join('') + '</div>';
+    }
+
+    var cuentaBusca = $('t-busca-cuenta');
+    if(cuentaBusca){
+      cuentaBusca.textContent = busca
+        ? (vistos + ' de ' + ATLETAS.length)
+        : (ATLETAS.length + (ATLETAS.length===1 ? ' atleta' : ' atletas'));
+    }
 
     $('t-cuenta').textContent = hechos+' / '+ATLETAS.length;
     $('t-resumen').textContent = TEST.nombre + ' · ' + hechos + ' con marca' +
       (faltan ? ', '+faltan+(faltan===1?' que no asiste':' que no asisten') : '') +
       ' · quedan ' + Math.max(0, ATLETAS.length - hechos - faltan);
+
+    var limpiar = lista.querySelector('[data-limpiar-busca]');
+    if(limpiar) limpiar.addEventListener('click', function(){
+      BUSCA = '';
+      var c = $('t-busca');
+      if(c){ c.value = ''; }
+      pintarLista();
+      if(c) c.focus();
+    });
 
     lista.querySelectorAll('[data-at]').forEach(function(b){
       b.addEventListener('click', function(){ abrirHoja(b.getAttribute('data-at')); });

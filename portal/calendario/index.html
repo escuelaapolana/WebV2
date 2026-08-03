@@ -90,12 +90,6 @@
   .cal-cuerpo > * { min-width:0; }
   @media (max-width: 900px) { .cal-cuerpo { grid-template-columns: 1fr; } }
 
-  .filtro-aviso { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
-                  background: var(--azul-suave); border-radius:10px; padding:10px 14px; margin-bottom:14px;
-                  font-size:14px; color: var(--azul-oscuro); }
-  .filtro-aviso button { min-height:40px; padding:9px 15px; border-radius:999px; background:#fff;
-                         border:1px solid var(--azul-filete, #3B85C0); color: var(--azul-oscuro); font-family:inherit; font-size:14px; cursor:pointer; }
-
   /* ===========================================================
      VISTA AGENDA · lista continua, saltando los días vacíos
      =========================================================== */
@@ -528,10 +522,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   //  CARGA DE DATOS · un solo calendario, cinco fuentes
   // ============================================================
+  /* Qué fuentes no se han podido leer en la última carga. Un calendario vacío
+     porque ha fallado la consulta se veía exactamente igual que un calendario
+     sin nada apuntado, y eso hace que alguien no vaya a un entreno que sí hay. */
+  var FALLOS = [];
+
   async function cargar() {
     var v = ventana(), desde = v.desde, hasta = v.hasta;
     ventanaCargada = claveVentana();
     var acts = [];
+    FALLOS = [];
+    function falla(que) { if (FALLOS.indexOf(que) === -1) FALLOS.push(que); }
 
     // --- grupos (lectura pública): nombres y secciones para los filtros ---
     try {
@@ -551,14 +552,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var rm = await sb.from('sesiones')
         .select('id,fecha,hora,titulo,tipo,rol,lugar,grupo_id,atletas_ids')
         .eq('publicada', true).gte('fecha', desde).lte('fecha', hasta);
-      if (!rm.error && rm.data) {
-        rm.data.forEach(function (s) {
-          var deMiGrupo = atleta && s.grupo_id && s.grupo_id === atleta.grupo_id;
-          var paraMi = atleta && s.atletas_ids && s.atletas_ids.indexOf(atleta.id) >= 0;
-          if (deMiGrupo || paraMi) mias[s.id] = s;
-        });
-      }
-    } catch (e) { /* nada */ }
+      if (rm.error) falla('los entrenamientos');
+      else (rm.data || []).forEach(function (s) {
+        var deMiGrupo = atleta && s.grupo_id && s.grupo_id === atleta.grupo_id;
+        var paraMi = atleta && s.atletas_ids && s.atletas_ids.indexOf(atleta.id) >= 0;
+        if (deMiGrupo || paraMi) mias[s.id] = s;
+      });
+    } catch (e) { falla('los entrenamientos'); }
 
     // --- 2) LO QUE HACE TODO EL CLUB (vista `sesiones_agenda`) ---
     var vistas = {};
@@ -636,6 +636,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     try {
       var rc = await sb.from('cubo_clases_ocupacion').select('*')
         .eq('activa', true).gte('fecha', desde).lte('fecha', hasta);
+      if (rc.error) falla('las clases de El Cubo');
       if (!rc.error && rc.data) {
         HAY_CUBO = true;
         if (atleta) {
@@ -680,7 +681,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           });
         });
       }
-    } catch (e) { HAY_CUBO = false; }
+    } catch (e) { HAY_CUBO = false; falla('las clases de El Cubo'); }
 
     // --- 4) COMPETICIONES (se apunta en /portal/competiciones/) ---
     var misComps = {};
@@ -698,6 +699,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var rcp = await sb.from('competiciones')
         .select('id,nombre,sede,fecha_inicio,ambito,coste,fecha_limite_interna,inscripcion_abierta,circular_url')
         .order('fecha_inicio', { ascending: true });
+      if (rcp.error) falla('las competiciones');
       if (!rcp.error && rcp.data) {
         rcp.data.forEach(function (c) {
           var plazoFin = c.fecha_limite_interna ? new Date(c.fecha_limite_interna) : null;
@@ -769,7 +771,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           }
         });
       }
-    } catch (e) { /* nada */ }
+    } catch (e) { falla('las competiciones'); }
 
     // --- 5) EVENTOS DEL CLUB ---
     var misEventos = {};
@@ -782,6 +784,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     try {
       var re = await sb.from('eventos').select('id,titulo,descripcion,tipo,fecha_inicio,lugar,seccion,inscripcion_abierta')
         .gte('fecha_inicio', desde + 'T00:00:00').lte('fecha_inicio', hasta + 'T23:59:59');
+      if (re.error) falla('los eventos del club');
       if (!re.error && re.data) {
         re.data.forEach(function (v3) {
           var f = String(v3.fecha_inicio).slice(0, 10);
@@ -804,7 +807,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           });
         });
       }
-    } catch (e) { /* nada */ }
+    } catch (e) { falla('los eventos del club'); }
 
     ACTIVIDADES = acts;
     ACTIVIDADES.forEach(function (a, i) { a.i = i; a.clave = a.fuente + '|' + a.id + '|' + a.fecha; });
@@ -1038,10 +1041,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pintarAgenda(mapa) {
     var claves = Object.keys(mapa).filter(function (k) { return k >= HOY_ISO && mapa[k].length; }).sort();
     if (!claves.length) {
+      /* Con una consulta caída no se dice que no hay nada apuntado: eso ya lo
+         explica el aviso de arriba, y aquí sería contradecirlo. */
+      if (FALLOS.length && !numFiltros()) return '';
       return numFiltros()
         ? APOLANA_UI.vacio('Con estos filtros no queda nada por delante',
-            'Hay más cosas en el calendario, pero se quedan fuera de lo que has elegido ver.',
-            '<button type="button" class="ap-btn" id="quitar-filtros-vacio">Quitar filtros</button>')
+            'Hay más cosas en el calendario, pero se quedan fuera de lo que has elegido ver. ' +
+            'Los filtros que tienes puestos están aquí arriba: quítalos y vuelve a verlo todo.')
         : APOLANA_UI.vacio('Todavía no hay nada apuntado',
             'Aquí irán apareciendo los entrenos, las clases de El Cubo y las competiciones en cuanto el club las publique. Lo que se repite cada semana está en «El día en el club».',
             APOLANA_UI.boton('Ver el día en el club', '../../horarios/'));
@@ -1119,14 +1125,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="sep-dia' + (diaElegido === HOY_ISO ? ' hoy' : '') + '">' +
       '<span class="txt">' + esc(mayus(fechaLarga(diaElegido)) + (diaElegido === HOY_ISO ? ' · hoy' : '')) + '</span>' +
       '<span class="raya"></span></div>';
-    h += sel.length ? sel.map(tarjeta).join('')
-                    : (numFiltros()
-                        ? APOLANA_UI.vacio('Ese día no hay nada con estos filtros',
-                            'Puede que sí haya algo fuera de lo que has elegido ver.',
-                            '<button type="button" class="ap-btn" id="quitar-filtros-vacio">Quitar filtros</button>')
-                        : APOLANA_UI.vacio('Ese día no hay nada apuntado',
-                            'Toca otro día de la rejilla, o mira los entrenos que se repiten cada semana.',
-                            APOLANA_UI.boton('Ver el día en el club', '../../horarios/')));
+    if (sel.length) {
+      h += sel.map(tarjeta).join('');
+    } else if (numFiltros()) {
+      h += APOLANA_UI.vacio('Ese día no hay nada con estos filtros',
+        'Puede que sí haya algo fuera de lo que has elegido ver. Los filtros puestos están arriba, ' +
+        'sobre la rejilla: quítalos y mira otra vez.');
+    } else if (!FALLOS.length) {
+      /* Con una consulta caída no se dice que ese día no hay nada: eso ya lo
+         explica el aviso de arriba, y aquí sería contradecirlo. */
+      h += APOLANA_UI.vacio('Ese día no hay nada apuntado',
+        'Toca otro día de la rejilla, o mira los entrenos que se repiten cada semana.',
+        APOLANA_UI.boton('Ver el día en el club', '../../horarios/'));
+    }
     return h + '</div>';
   }
 
@@ -1282,16 +1293,41 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cont.innerHTML = h;
   }
 
+  /* Lo que no se ha podido leer se dice arriba del calendario, con un botón
+     que vuelve a pedir SOLO los datos: recargar la página entera devolvería a
+     la vista de agenda y al mes de hoy, perdiendo dónde estaba mirando. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn) {
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  async function recargar() {
+    document.getElementById('cal-vista').innerHTML = APOLANA_UI.cargando('filas', 5);
+    ventanaCargada = '';
+    await cargar();
+    pintar();
+  }
+  function htmlFallos() {
+    if (!FALLOS.length) return '';
+    var que = FALLOS.length === 1 ? FALLOS[0]
+      : FALLOS.slice(0, -1).join(', ') + ' ni ' + FALLOS[FALLOS.length - 1];
+    return htmlError('Falta parte del calendario',
+      'No hemos podido leer ' + que + ': puede ser tu conexión. Lo que ves aquí no está completo, ' +
+      'así que no des por hecho que un día está libre.', recargar);
+  }
+
   function pintar() {
     var mapa = porDia();
     document.getElementById('cal-periodo').textContent = rotulo();
     document.getElementById('mes-nav').hidden = (vista === 'agenda');
 
-    var aviso = numFiltros()
-      ? '<div class="filtro-aviso"><span>Estás viendo el calendario filtrado.</span>' +
-        '<button type="button" id="quitar-filtros-vista">Quitar filtros</button></div>'
-      : '';
-    document.getElementById('cal-vista').innerHTML = aviso +
+    /* Antes había TRES botones de «Quitar filtros» a la vez: esta franja, el
+       de la fila de chips y el del estado vacío. Queda uno solo, el de la fila
+       de chips, que es donde se ve qué filtros hay puestos y se quitan de uno
+       en uno con su aspa. */
+    document.getElementById('cal-vista').innerHTML = htmlFallos() +
       (vista === 'agenda' ? pintarAgenda(mapa) : (vista === 'semana' ? pintarSemana(mapa) : pintarMes(mapa)));
 
     Array.prototype.forEach.call(document.querySelectorAll('#cal-vistas button'), function (b) {
@@ -1580,7 +1616,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   wrap.addEventListener('click', async function (ev) {
     var t = ev.target.closest ? ev.target.closest(
       '[data-cerrar],[data-accion],[data-ics],[data-act],[data-elegir],[data-paso],[data-v],[data-foco],' +
-      '[data-quitar],[data-id],#abrir-filtros,#filtros-limpiar,#quitar-filtros-vista,#quitar-filtros-barra,#quitar-filtros-vacio') : null;
+      '[data-quitar],[data-id],[data-reintento],#abrir-filtros,#filtros-limpiar,#quitar-filtros-barra') : null;
 
     // cerrar pulsando el fondo de una ventana emergente
     if (ev.target.classList && ev.target.classList.contains('modal')) { cerrarModales(); return; }
@@ -1589,6 +1625,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (t.hasAttribute('data-ics')) {
       var aIcs = ACTIVIDADES[+t.getAttribute('data-ics')];
       if (aIcs) icsDescargar(icsDeActividad(aIcs));
+      return;
+    }
+
+    if (t.hasAttribute('data-reintento')) {
+      var fnRe = REINTENTOS[t.getAttribute('data-reintento')];
+      if (fnRe) await fnRe();
       return;
     }
 
@@ -1612,8 +1654,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     // filtros
     if (t.id === 'abrir-filtros') { pintarFiltros(); abrirModal('modal-filtros'); return; }
-    if (t.id === 'filtros-limpiar' || t.id === 'quitar-filtros-vista' ||
-        t.id === 'quitar-filtros-barra' || t.id === 'quitar-filtros-vacio') { limpiarFiltros(); return; }
+    if (t.id === 'filtros-limpiar' || t.id === 'quitar-filtros-barra') { limpiarFiltros(); return; }
     if (t.hasAttribute('data-quitar')) {
       var q = t.getAttribute('data-quitar');
       if (q === 'abierto') soloAbiertas = false;
@@ -1686,8 +1727,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   try {
     var raa = await sb.from('atletas').select('id,nombre,apellidos,grupo_id').order('nombre');
+    /* Si la consulta falla no se dice que la cuenta no tiene ficha: eso hace
+       escribir al club por un problema que no existe. */
+    falloFichas = !!raa.error;
     atletas = raa.error ? [] : (raa.data || []);
-  } catch (e) { atletas = []; }
+  } catch (e) { atletas = []; falloFichas = true; }
   atleta = atletas.length ? atletas[0] : null;
 
   wrap.innerHTML = armazon();

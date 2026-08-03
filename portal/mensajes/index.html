@@ -60,9 +60,15 @@
   .glob.suyo { align-self:flex-start; background: var(--crema); border:1px solid var(--linea); color: var(--texto); border-bottom-left-radius:4px; }
   .glob.mio  { align-self:flex-end; background: var(--navy); border:1px solid var(--navy); color:#fff; border-bottom-right-radius:4px; }
   .glob.mio .cuando { color: rgba(255,255,255,.7); }
-  .glob.mio .quitar { color:#F0B968; }
   .glob .cuando { display:block; font-size:13px; font-variant-numeric: tabular-nums; color: var(--texto-suave); margin-top:5px; }
-  .glob .quitar { background:none; border:0; color:#b3261e; font-size:13px; font-family:inherit; cursor:pointer; padding:0; margin-left:8px; }
+  /* Retirar borra el mensaje también para el otro, así que no puede ser una
+     palabra de 13 px pegada a la hora: va en su propia línea, separada por una
+     raya y con los 44 px de zona pulsable que pide el kit. */
+  .glob .pie-glob { display:flex; margin-top:9px; padding-top:7px; border-top:1px solid rgba(255,255,255,.22); }
+  .glob .quitar { display:inline-flex; align-items:center; justify-content:center; min-height:44px;
+                  padding:0 15px; background:none; border:1px solid rgba(255,255,255,.38); border-radius:999px;
+                  color:#F5C878; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; }
+  .glob .quitar:hover { border-color:#F5C878; }
   .dia { align-self:center; font-size:13px; font-variant-numeric: tabular-nums;
          color: var(--texto-suave); background: var(--crema-media); padding:2px 10px; border-radius:999px; }
 
@@ -181,12 +187,36 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   var CONVERS = [], CONTACTOS = [], GRUPOS = [], HILO = [];
   var abierta = null, nueva = false, borrador = '', avisoGlobal = '', falloCarga = false;
+  /* Cada lista sabe si ha fallado LA SUYA. Antes bastaba con que una de las dos
+     llegase para que la otra dijera «aquí no hay nada», que no es lo mismo que
+     «no hemos podido mirar». */
+  var falloConvers = false, falloContactos = false, falloHilo = false;
+
+  /* Reintentar solo lo que ha fallado, nunca recargar la página entera: si se
+     recarga, se pierde lo que la persona esté escribiendo. */
+  var REINTENTOS = {}, nRe = 0;
+  function htmlError(titulo, texto, fn){
+    var k = 'r' + (++nRe);
+    if (fn) REINTENTOS[k] = fn;
+    return APOLANA_UI.error(titulo, texto,
+      fn ? '<button type="button" class="ap-btn" data-reintento="' + k + '">Volver a intentarlo</button>' : null);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-reintento]') : null;
+    if (!b) return;
+    var fn = REINTENTOS[b.getAttribute('data-reintento')];
+    if (fn) fn();
+  });
+  async function reintentarBase(){ await cargarBase(); pintar(); }
+  async function reintentarHilo(){ if (abierta) await cargarHilo(abierta); pintar(); }
 
   async function cargarBase(){
     var rc = await sb.rpc('mis_conversaciones');
+    falloConvers = !!rc.error;
     CONVERS = (rc.error ? [] : (rc.data || []));
 
     var rk = await sb.rpc('mis_contactos_mensajes');
+    falloContactos = !!rk.error;
     /* Si fallan las dos consultas no se traga en silencio: la pantalla lo dice. */
     falloCarga = !!(rc.error && rk.error);
     var brutos = (rk.error ? [] : (rk.data || []));
@@ -211,6 +241,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .select('id,de_perfil,para_perfil,texto,leido,created_at,atleta_id')
       .or('de_perfil.eq.' + otro + ',para_perfil.eq.' + otro)
       .order('created_at', { ascending: true }).limit(300);
+    falloHilo = !!r.error;
     HILO = (r.error ? [] : (r.data || []));
     if (HILO.some(function(m){ return m.para_perfil === YO && !m.leido; })) {
       await sb.rpc('marcar_leidos', { p_otro: otro });
@@ -236,7 +267,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var h = '<div class="tarjeta col-lista"><h2>Conversaciones' +
       (sinLeer ? ' <span class="badge">' + sinLeer + '</span>' : '') + '</h2>';
 
-    if (!CONVERS.length) {
+    if (falloConvers) {
+      /* No es lo mismo «no tienes conversaciones» que «no hemos podido mirar»:
+         lo primero hace pensar que nadie te ha escrito. */
+      h += htmlError('No hemos podido cargar tus conversaciones',
+        'Puede ser tu conexión. Tus mensajes siguen guardados: solo hay que volver a pedirlos.', reintentarBase);
+    } else if (!CONVERS.length) {
       h += APOLANA_UI.vacio('Todavía no hay ninguna conversación',
         'En cuanto escribas a alguien —o alguien te escriba— la conversación se queda aquí.');
     } else {
@@ -255,6 +291,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function panelNuevo(){
+    if (falloContactos) {
+      return '<div class="tarjeta"><h2>Mensaje nuevo</h2>' +
+        htmlError('No hemos podido cargar a quién puedes escribir',
+          'Puede ser tu conexión. No es que no haya nadie: es que no hemos podido preguntarlo.',
+          reintentarBase) + '</div>';
+    }
     if (!CONTACTOS.length) {
       return '<div class="tarjeta"><h2>Mensaje nuevo</h2>' +
         APOLANA_UI.vacio('Todavía no hay nadie a quien escribir',
@@ -315,7 +357,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (det ? '<span class="apunte">' + esc(det) + '</span>' : '') + '</div>' +
       '<button class="btn btn--neutro btn--mini solo-movil" id="mz-volver-lista">← Conversaciones</button></div>';
 
-    if (!HILO.length) {
+    if (falloHilo) {
+      h += htmlError('No hemos podido cargar esta conversación',
+        'Puede ser tu conexión. Lo que os habéis escrito sigue ahí; lo que escribas ahora tampoco se pierde.',
+        reintentarHilo);
+    } else if (!HILO.length) {
       h += APOLANA_UI.vacio('Todavía no os habéis escrito nada',
         'Escribe abajo y se lo encontrará la próxima vez que entre en el portal.');
     } else {
@@ -326,8 +372,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var mio = (m.de_perfil === YO);
         return cab + '<div class="glob ' + (mio ? 'mio' : 'suyo') + '">' + esc(m.texto) +
           '<span class="cuando">' + esc(hora(m.created_at)) +
-          (mio ? (m.leido ? ' · leído' : ' · sin leer') + '<button class="quitar" data-quitar="' + esc(m.id) + '">retirar</button>' : '') +
-          '</span></div>';
+          (mio ? (m.leido ? ' · leído' : ' · sin leer') : '') + '</span>' +
+          (mio ? '<span class="pie-glob"><button type="button" class="quitar" data-quitar="' + esc(m.id) +
+                 '">Retirar el mensaje</button></span>' : '') +
+          '</div>';
       }).join('') + '</div>';
     }
 
@@ -350,8 +398,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if (!CONVERS.length && !CONTACTOS.length) {
       h += '<div class="tarjeta">' + (falloCarga
-        ? APOLANA_UI.error('No hemos podido cargar tus mensajes',
-            'Puede ser tu conexión. Lo que tengas escrito sigue guardado; vuelve a intentarlo en un momento.')
+        ? htmlError('No hemos podido cargar tus mensajes',
+            'Puede ser tu conexión. Lo que tengas escrito sigue guardado; vuelve a intentarlo en un momento.',
+            reintentarBase)
         : APOLANA_UI.vacio('Aquí no hay nada todavía',
             'Los mensajes son entre el entrenador y sus atletas o sus familias. Cuando alguien te escriba, lo verás en esta pantalla.',
             APOLANA_UI.boton('Volver al portal', '../'))) + '</div>';
@@ -404,7 +453,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var quitar = t.getAttribute && t.getAttribute('data-quitar');
     if (quitar) {
-      if (!await APX.confirm('¿Retirar este mensaje? Desaparecerá también para la otra persona.', { aceptar:'Retirar', peligro:true })) return;
+      if (!await APX.confirm('¿Retirar este mensaje? Desaparece también de la conversación de la otra persona, ' +
+          'incluso si ya lo ha leído, y no se puede deshacer.', { aceptar:'Retirar el mensaje', peligro:true })) return;
       var d = await sb.from('mensajes_directos').delete().eq('id', quitar);
       if (d.error) { APX.toast('No hemos podido retirar el mensaje', 'error', { detalle:'Puede ser tu conexión: inténtalo otra vez.' }); return; }
       await cargarHilo(abierta); await cargarBase(); pintar();
