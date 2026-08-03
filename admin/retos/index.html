@@ -508,16 +508,38 @@ APOLANA_ADMIN.listo(function (sb) {
     ERR.juego = j.error ? (j.error.message || 'Puede ser la conexión.') : null;
     if(!j.error) (j.data||[]).forEach(function(x){ JUEGO[x.atleta_id] = x; });
 
-    /* El nombre público y la foto viven en `perfiles` y se cambian en «Mi
-       perfil» del portal: aquí solo se leen. Si esas columnas todavía no
-       existen, la consulta falla y se pide lo de siempre, sin romper nada. */
+    /* El nombre elegido, la foto y la privacidad viven en `perfiles` y los
+       decide cada persona en «Mi perfil» del portal: aquí solo se leen.
+
+       Si esta lectura se cae, esta pantalla NO puede enseñar el nombre real en
+       su lugar. Quien eligió otro nombre lo eligió por algo, y aquí hay
+       menores: un fallo tiene que callar, nunca destapar.
+
+       Los dos casos se distinguen por el código que devuelve la base, no a
+       ojo. El 42703 es «esa columna todavía no existe», que es lo normal
+       mientras la base va por detrás del panel: si no existe la columna del
+       nombre elegido, nadie ha podido elegir ninguno y el nombre real es lo
+       único que hay, así que no se destapa nada. Cualquier otro código es una
+       avería de verdad y ahí sí hay que callar. */
     IDENT = {};
+    ERR.ident = null;
     var pid = ATLETAS.map(function(a){ return a.perfil_id; }).filter(Boolean);
     if(pid.length){
       var q = await sb.from('perfiles').select('id,nombre_publico,foto_ruta,perfil_visible').in('id', pid);
-      if(q.error) q = await sb.from('perfiles').select('id').in('id', pid);
-      if(!q.error) (q.data||[]).forEach(function(x){ IDENT[x.id] = x; });
-      await firmarFotos((q.data||[]).map(function(x){ return x.foto_ruta; }));
+      if(q.error && q.error.code === '42703'){
+        /* Falta alguna de las tres. Se vuelve a pedir solo el nombre elegido,
+           que es lo único cuya ausencia dejaría a alguien al descubierto:
+           perder la foto o el aviso de privacidad no destapa a nadie. */
+        q = await sb.from('perfiles').select('id,nombre_publico').in('id', pid);
+        /* Tampoco existe: no hay ningún nombre elegido que respetar. */
+        if(q.error && q.error.code === '42703') q = await sb.from('perfiles').select('id').in('id', pid);
+      }
+      if(q.error){
+        ERR.ident = q.error.message || 'Puede ser la conexión.';
+      } else {
+        (q.data||[]).forEach(function(x){ IDENT[x.id] = x; });
+        await firmarFotos((q.data||[]).map(function(x){ return x.foto_ruta; }));
+      }
     }
 
     var ids = {};
@@ -683,9 +705,12 @@ APOLANA_ADMIN.listo(function (sb) {
       var aut = !!(j && j.autoriza_parental_en);
       var edad = edadDe(a.fecha_nacimiento);
       var id = IDENT[a.perfil_id] || {};
-      var sale = id.nombre_publico ? id.nombre_publico : nombreAt(a);
-      var foto = fotoUrl(id.foto_ruta);
-      var privado = id.perfil_visible === false;
+      /* Sin haber podido leer los perfiles no se sabe si esta persona eligió
+         otro nombre, así que aquí no se enseña ninguno: enseñar el real sería
+         destapar justo a quien pidió no salir con él. Lo mismo con la foto. */
+      var sale = ERR.ident ? null : (id.nombre_publico ? id.nombre_publico : nombreAt(a));
+      var foto = ERR.ident ? '' : fotoUrl(id.foto_ruta);
+      var privado = !ERR.ident && id.perfil_visible === false;
       var cara = foto
         ? '<span class="cara"><img src="' + esc(foto) + '" alt=""></span>'
         : '<span class="cara">' + esc(iniciales(a)) + '</span>';
@@ -710,7 +735,8 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td data-etiqueta="Edad">' + (edad === null ? 'sin fecha' : (edad + ' años')) +
           (menor ? ' <span class="pill az">menor</span>' : '') + '</td>' +
         '<td data-etiqueta="Se deja ver">' + ((j && j.participa) ? '<span class="pill si">sí</span>' : '<span class="pill">no</span>') + '</td>' +
-        '<td data-etiqueta="Sale como">' + esc(sale) +
+        '<td data-etiqueta="Sale como">' +
+          (sale === null ? '<span class="pill">no se ha podido cargar</span>' : esc(sale)) +
           ((menor && !aut && j && j.participa) ? '<div style="font-size:13px;color:#B0563A;margin-top:3px;">no se ve: falta el permiso</div>' : '') +
           (privado ? '<div style="font-size:13px;color:#B0563A;margin-top:3px;">ha pedido privacidad en Mi perfil</div>' : '') + '</td>' +
         '<td data-etiqueta="Permiso familiar">' + permiso + '</td>' +
