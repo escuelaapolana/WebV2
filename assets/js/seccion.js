@@ -386,9 +386,13 @@
       db.from('grupos')
         .select('nombre,horario,descripcion')
         .eq('seccion', clave).eq('activo', true).order('nombre'),
-      db.from('tarifas')
+      /* «tarifas_vigentes» y no «tarifas»: esa vista deja fuera las
+         caducadas y las que todavía no han entrado en vigor. Con la tabla
+         en crudo, el día que el club prepare los precios de la temporada
+         que viene saldrían los dos a la vez. Es lo que ya hace /entrenar/. */
+      db.from('tarifas_vigentes')
         .select('clave,ambito,concepto,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
-        .eq('activo', true).or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden')
+        .or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden')
     ]).then(function (res) {
       var rf = res[0], rg = res[1], rt = res[2];
       if (rf.error || rg.error || rt.error) throw new Error('lectura');
