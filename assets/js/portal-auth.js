@@ -32,6 +32,49 @@
   function base() { return window.APOLANA_BASE || '../'; }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
+  /* --------------------------------------------------------------
+     LO QUE TRAE EL ENLACE DEL CORREO · se mira YA, aquí arriba
+     --------------------------------------------------------------
+     Cuando alguien pulsa el enlace que le ha llegado, vuelve al
+     portal con la respuesta colgada del final de la dirección
+     (después de la almohadilla). Si todo ha ido bien, ahí viene la
+     sesión; si el enlace ha caducado, viene el motivo.
+
+     Esto se lee AHORA, en cuanto se carga el archivo, porque
+     supabase-js coge esa parte de la dirección, la usa y la borra en
+     cuanto arranca. Si esperásemos a que la pantalla estuviera
+     pintada, ya no quedaría nada que leer y el que llega tarde solo
+     vería la pantalla de entrar otra vez, sin saber por qué.
+
+     Este archivo se carga SIN «defer» y db.js CON «defer», así que
+     esto pasa antes de que exista el cliente. Es a propósito.
+     -------------------------------------------------------------- */
+  var _delEnlace = null;   // el enlace ya no valía: por qué
+  var _acabaDeEntrar = false;  // ha entrado AHORA, pulsando el enlace
+  (function () {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h || h.indexOf('=') === -1) return;
+    var p = new URLSearchParams(h);
+    var err = p.get('error_code') || p.get('error');
+    if (err) { _delEnlace = { codigo: String(err) }; return; }
+    if (p.get('access_token')) _acabaDeEntrar = true;
+  })();
+
+  /* Lo que se le dice a alguien cuyo enlace ya no vale. En cristiano
+     y sin una palabra en inglés: el enlace caduca a la hora y solo
+     sirve una vez, así que el que lo abre el jueves un correo del
+     lunes acaba aquí, y lo único que necesita saber es que puede
+     pedir otro. */
+  function motivoDelEnlace(codigo) {
+    if (/expired/i.test(codigo)) {
+      return 'Ese enlace ya ha caducado. Escribe tu correo y te mandamos uno nuevo.';
+    }
+    if (/used|already/i.test(codigo)) {
+      return 'Ese enlace ya se había usado. Escribe tu correo y te mandamos uno nuevo.';
+    }
+    return 'Ese enlace ya no vale. Escribe tu correo y te mandamos uno nuevo.';
+  }
+
   /* ------------------------------------------------------------
      EL INTERRUPTOR DE PAPELES
      Una persona del club puede llevar varios papeles a la vez
@@ -68,7 +111,27 @@
     '.pt-login input{width:100%;box-sizing:border-box;padding:13px 14px;border:1px solid #E0D8C8;border-radius:10px;font-size:16px;font-family:inherit;color:#2E4256;background:#fff}' +
     '.pt-login .msg{margin-top:12px;font-size:14px;color:#b3261e;text-align:center}' +
     '.pt-login .msg.ok{color:#1e7a3d}' +
-    '.pt-olvido{display:flex;align-items:center;justify-content:center;min-height:44px;margin:6px auto 0;background:none;border:0;padding:0 8px;color:#2F6FA8;font-size:15px;font-family:inherit;cursor:pointer;text-decoration:none}' +
+    '.pt-olvido{display:flex;align-items:center;justify-content:center;min-height:44px;margin:6px auto 0;background:none;border:0;padding:0 8px;color:#2F6FA8;font-size:15px;font-family:inherit;cursor:pointer;text-decoration:none;text-align:center;line-height:1.35}' +
+    '.pt-olvido[hidden]{display:none}' +
+    '.pt-olvido:disabled{color:#8C8577;cursor:default}' +
+    /* --- entrar con un enlace ---------------------------------------
+       La frase de debajo del botón explica en una línea qué va a
+       pasar. Sin ella, «Enviarme un enlace para entrar» deja a medio
+       mundo esperando en esta pantalla a que ocurra algo. */
+    '.pt-nota{margin:8px 0 0;font-size:13.5px;line-height:1.45;color:#6E6656;text-align:center}' +
+    /* La espera ocupa el sitio del formulario, con el mismo ancho y
+       el mismo aire: no es otra pantalla, es la misma tarjeta
+       contando lo que acaba de hacer. */
+    '.pt-espera{text-align:center;padding:6px 0 2px}' +
+    '.pt-espera[hidden]{display:none}' +
+    '.pt-sobre{width:56px;height:56px;margin:2px auto 12px;border-radius:50%;background:#EAF2F9;color:#2F6FA8;display:flex;align-items:center;justify-content:center}' +
+    '.pt-espera-tit{margin:0 0 8px;font-size:16px;line-height:1.45;color:#2E4256}' +
+    /* El correo, partido si hace falta: hay direcciones largas y a
+       375 px una sola palabra sin cortes empuja la tarjeta afuera. */
+    '.pt-espera-tit b{font-weight:600;overflow-wrap:anywhere}' +
+    '.pt-espera-txt{margin:0 0 8px;font-size:14.5px;line-height:1.5;color:#5E5849}' +
+    '.pt-espera-fina{color:#6E6656;font-size:13.5px}' +
+    '.pt-espera .msg{margin-top:10px}' +
     '.pt-sep{display:flex;align-items:center;gap:12px;margin:18px 0 12px}' +
     '.pt-sep span{font-family:var(--fuente-texto);font-size:13px;color:#6E6656}' +
     '.pt-sep i{flex:1;height:1px;background:#E4DCCB;display:block}' +
@@ -503,16 +566,49 @@
     login.innerHTML =
       '<img class="pt-logo" src="' + b + 'assets/img/logo.png" alt="Club Apolana">' +
       '<h1>Club Apolana</h1>' +
-      '<p class="lema">Entra con tu cuenta o mira el club sin registrarte.</p>' +
-      '<form id="pt-form">' +
-        '<label for="pt-email">Email</label>' +
-        '<input type="email" id="pt-email" autocomplete="username" required>' +
-        '<label for="pt-pass">Contraseña</label>' +
-        '<input type="password" id="pt-pass" autocomplete="current-password" required>' +
-        '<div style="margin-top:16px"><button class="btn btn--primario" type="submit" style="width:100%">Entrar</button></div>' +
-        '<button type="button" class="pt-olvido" id="pt-olvido">He olvidado la contraseña</button>' +
-        '<div class="msg" id="pt-msg"></div>' +
+      '<p class="lema">Entra con tu correo o mira el club sin registrarte.</p>' +
+      /* --------------------------------------------------------
+         DOS CAMINOS, UNO A LA VISTA
+         El de siempre —correo y contraseña— sigue entero: hay
+         familias que comparten correo o que no tienen, y a esas
+         alguien del club les da acceso a mano. Pero el que se ve
+         nada más abrir es el del enlace, que es el que sirve para
+         las doscientas familias que entran en septiembre.
+         La contraseña se pide solo si la piden.
+         -------------------------------------------------------- */
+      '<form id="pt-form" novalidate>' +
+        '<label for="pt-email">Tu correo</label>' +
+        '<input type="email" id="pt-email" autocomplete="username" inputmode="email" ' +
+               'autocapitalize="none" autocorrect="off" spellcheck="false" required>' +
+        '<div id="pt-caja-pass" hidden>' +
+          '<label for="pt-pass">Contraseña</label>' +
+          '<input type="password" id="pt-pass" autocomplete="current-password">' +
+        '</div>' +
+        '<div style="margin-top:16px"><button class="btn btn--primario" type="submit" id="pt-enviar" style="width:100%">Enviarme un enlace para entrar</button></div>' +
+        '<p class="pt-nota" id="pt-nota">Sin contraseña: te llega un correo, lo pulsas y estás dentro.</p>' +
+        '<button type="button" class="pt-olvido" id="pt-modo">Prefiero entrar con contraseña</button>' +
+        '<button type="button" class="pt-olvido" id="pt-olvido" hidden>He olvidado la contraseña</button>' +
+        '<div class="msg" id="pt-msg" role="status" aria-live="polite"></div>' +
       '</form>' +
+      /* --------------------------------------------------------
+         LA ESPERA · lo que se ve mientras el correo va de camino
+         Ocupa el sitio del formulario, y no se pone debajo, para
+         que no queden a la vez «Entrar» y «te hemos enviado un
+         enlace»: eso hace que la gente vuelva a pulsar.
+         -------------------------------------------------------- */
+      '<div class="pt-espera" id="pt-espera" hidden role="status" aria-live="polite">' +
+        '<div class="pt-sobre" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+            '<rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M3 7l9 6 9-6"></path>' +
+          '</svg>' +
+        '</div>' +
+        '<p class="pt-espera-tit">Te hemos enviado un enlace a <b id="pt-espera-mail"></b></p>' +
+        '<p class="pt-espera-txt">Ábrelo en el móvil donde vayas a usar la app. Al pulsarlo entras directamente, sin contraseña.</p>' +
+        '<p class="pt-espera-txt pt-espera-fina">Tarda un minuto en llegar. Si no aparece, mira en la carpeta de correo no deseado.</p>' +
+        '<button type="button" class="pt-olvido" id="pt-reenviar">No me ha llegado, mándalo otra vez</button>' +
+        '<button type="button" class="pt-olvido" id="pt-otro">Usar otro correo</button>' +
+        '<div class="msg" id="pt-msg2"></div>' +
+      '</div>' +
       '<div class="pt-sep"><i></i><span>o sin cuenta</span><i></i></div>' +
       '<div class="pt-publico">' +
         '<a href="' + b + 'noticias/"><b>Noticias y calendario del club</b><i>&rsaquo;</i></a>' +
@@ -684,19 +780,196 @@
       pildoraPuesta = true;
     }
 
-    function mostrarLogin(m) { login.style.display = ''; if (m) { var e = document.getElementById('pt-msg'); if (e) e.textContent = m; } }
+    function mostrarLogin(m) {
+      login.style.display = '';
+      /* Si viene de un enlace que ya no vale, eso manda sobre
+         cualquier otro mensaje: es lo que ha pasado de verdad. */
+      if (_delEnlace) {
+        m = motivoDelEnlace(_delEnlace.codigo);
+        _delEnlace = null;
+        /* Y se limpia la dirección: si se queda el motivo colgado del
+           final, al recargar vuelve a salir «ese enlace ha caducado»
+           aunque ya esté pidiendo uno nuevo. */
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+      }
+      if (m) { var e = document.getElementById('pt-msg'); if (e) e.textContent = m; }
+    }
 
     if (!sb || !sb.auth) { mostrarLogin('No se pudo conectar con la base de datos.'); return; }
 
-    document.getElementById('pt-form').addEventListener('submit', async function (e) {
+    /* ==========================================================
+       ENTRAR · los dos caminos
+       ----------------------------------------------------------
+       `modo` dice cuál está a la vista. Empieza siempre en
+       'enlace', que es el que sirve para el que entra por primera
+       vez y no tiene ninguna contraseña que escribir.
+       ========================================================== */
+    var modo = 'enlace';
+    var correoEnviado = '';   // a dónde se mandó, para poder repetirlo
+    var vecesEnviado = 0;     // para no dejar pedirlo sin parar
+    var esperandoHasta = 0;   // hasta cuándo el botón de repetir está dormido
+
+    var elForm     = document.getElementById('pt-form');
+    var elEmail    = document.getElementById('pt-email');
+    var elCajaPass = document.getElementById('pt-caja-pass');
+    var elPass     = document.getElementById('pt-pass');
+    var elEnviar   = document.getElementById('pt-enviar');
+    var elNota     = document.getElementById('pt-nota');
+    var elModo     = document.getElementById('pt-modo');
+    var elOlvido   = document.getElementById('pt-olvido');
+    var elEspera   = document.getElementById('pt-espera');
+    var elReenviar = document.getElementById('pt-reenviar');
+
+    function ponerModo(cual) {
+      modo = cual;
+      var conClave = cual === 'clave';
+      elCajaPass.hidden = !conClave;
+      elPass.required   = conClave;
+      elOlvido.hidden   = !conClave;
+      elNota.hidden     = conClave;
+      elEnviar.textContent = conClave ? 'Entrar' : 'Enviarme un enlace para entrar';
+      elModo.textContent   = conClave
+        ? 'Entrar con un enlace, sin contraseña'
+        : 'Prefiero entrar con contraseña';
+      document.getElementById('pt-msg').textContent = '';
+      if (conClave) elPass.focus(); else elEmail.focus();
+    }
+    elModo.addEventListener('click', function () {
+      ponerModo(modo === 'clave' ? 'enlace' : 'clave');
+    });
+
+    /* Un correo con pinta de correo. No vale de nada afinar más: quien
+       decide de verdad si existe es la base, y a propósito no lo
+       cuenta. Esto solo evita el «no me llega» del que se ha dejado
+       la arroba. */
+    function pareceCorreo(v) { return /^[^\s@,;]+@[^\s@,;]+\.[a-zA-Z]{2,}$/.test(v); }
+
+    /* Pide el enlace. Conteste lo que conteste, se enseña LO MISMO:
+       que el correo va de camino. Da igual que el correo exista o no
+       exista, que tenga derecho a entrar o no lo tenga. Es la única
+       forma de que nadie pueda averiguar, probando correos, quién
+       está apuntado en el club.
+
+       Las únicas dos excepciones son cuando el fallo NO tiene nada
+       que ver con el correo que se ha escrito —le pasaría igual a
+       cualquiera—, y por eso se pueden contar sin chivar nada:
+
+         'apagado'  el club todavía no ha terminado de configurarlo
+                    (a la función le faltan las claves: contesta 503).
+         'sinllegar' no se ha podido ni hablar con ella: no hay
+                    conexión, o la función no está subida a Supabase.
+                    Desde el navegador esos dos casos se ven igual,
+                    porque una función que no existe ni llega a
+                    contestar con permiso para leer su respuesta.
+
+       Callarse en estos dos casos sería dejar a una familia mirando
+       el buzón para siempre. */
+    async function pedirEnlace(email) {
+      try {
+        var r = await sb.functions.invoke('acceso-enlace', { body: { email: email } });
+        if (!r || !r.error) return 'enviado';
+        var estado = r.error.context && r.error.context.status;
+        if (estado === 503) return 'apagado';
+        if (!estado) return 'sinllegar';
+      } catch (e) { return 'sinllegar'; }
+      return 'enviado';
+    }
+
+    function verEspera(email) {
+      document.getElementById('pt-espera-mail').textContent = email;
+      document.getElementById('pt-msg2').textContent = '';
+      elForm.hidden = true;
+      elEspera.hidden = false;
+      dormirRepetir(45);
+    }
+
+    /* El botón de repetir se duerme un rato: el correo tarda, y quien
+       lo pulsa tres veces en diez segundos acaba con tres enlaces, de
+       los que solo vale el último. Eso confunde más de lo que ayuda. */
+    function dormirRepetir(segundos) {
+      esperandoHasta = Date.now() + segundos * 1000;
+      (function tic() {
+        var quedan = Math.ceil((esperandoHasta - Date.now()) / 1000);
+        if (quedan > 0) {
+          elReenviar.disabled = true;
+          elReenviar.textContent = 'Puedes pedirlo otra vez en ' + quedan + ' s';
+          setTimeout(tic, 500);
+        } else {
+          elReenviar.disabled = false;
+          elReenviar.textContent = 'No me ha llegado, mándalo otra vez';
+        }
+      })();
+    }
+
+    elReenviar.addEventListener('click', async function () {
+      var msg = document.getElementById('pt-msg2');
+      msg.className = 'msg';
+      /* Tres y se acabó, que es lo mismo que aguanta la base. Al
+         cuarto, el problema no es el correo: es el correo. */
+      if (vecesEnviado >= 3) {
+        msg.textContent = 'Ya van tres. Si no ha llegado, seguramente ese no es el correo que tiene el club. '
+          + 'Escribe a escuelaapolana@gmail.com y te damos acceso.';
+        return;
+      }
+      elReenviar.disabled = true;
+      msg.textContent = 'Enviando…';
+      vecesEnviado++;
+      var como = await pedirEnlace(correoEnviado);
+      if (como === 'enviado') {
+        msg.className = 'msg ok';
+        msg.textContent = 'Enviado otra vez a ' + correoEnviado + '.';
+      } else {
+        msg.textContent = 'No hemos podido enviarlo ahora mismo. Vuelve a probar en un minuto.';
+      }
+      dormirRepetir(60);
+    });
+
+    document.getElementById('pt-otro').addEventListener('click', function () {
+      elEspera.hidden = true;
+      elForm.hidden = false;
+      vecesEnviado = 0;
+      elEmail.value = '';
+      elEmail.focus();
+    });
+
+    elForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       var msg = document.getElementById('pt-msg');
+      var email = elEmail.value.trim();
       msg.className = 'msg';
+
+      if (!pareceCorreo(email)) {
+        msg.textContent = 'Ese correo no está bien escrito. Míralo y vuelve a probar.';
+        elEmail.focus();
+        return;
+      }
+
+      // ---- Camino nuevo: le llega un enlace y entra ----
+      if (modo === 'enlace') {
+        elEnviar.disabled = true;
+        msg.textContent = 'Enviando…';
+        var como = await pedirEnlace(email);
+        elEnviar.disabled = false;
+        if (como === 'apagado') {
+          msg.textContent = 'Entrar con un enlace todavía no está activado. '
+            + 'Entra con tu contraseña o escribe a escuelaapolana@gmail.com.';
+          return;
+        }
+        if (como === 'sinllegar') {
+          msg.textContent = 'No hemos podido enviar el enlace. Mira si tienes conexión y vuelve a probar. '
+            + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
+          return;
+        }
+        correoEnviado = email;
+        vecesEnviado = 1;
+        verEspera(email);
+        return;
+      }
+
+      // ---- Camino de siempre: correo y contraseña ----
+      if (!elPass.value) { msg.textContent = 'Escribe tu contraseña.'; elPass.focus(); return; }
       msg.textContent = 'Entrando…';
-      var r = await sb.auth.signInWithPassword({
-        email: document.getElementById('pt-email').value.trim(),
-        password: document.getElementById('pt-pass').value
-      });
+      var r = await sb.auth.signInWithPassword({ email: email, password: elPass.value });
       if (r.error) { msg.textContent = 'No se pudo entrar: ' + r.error.message; return; }
       /* «Al entrar, abrir en»: si esa persona ha fijado un papel de
          arranque, se le pone ahora; si no, se queda con el último que
@@ -936,6 +1209,16 @@
       var s = await sb.auth.getSession();
       if (!s.data.session) { mostrarLogin(); return; }
       var email = s.data.session.user.email;
+
+      /* Quien acaba de entrar pulsando el enlace del correo no ha
+         pasado por el formulario, así que aquí es donde le toca el
+         «al entrar, abrir en»: si tiene un papel de arranque fijado,
+         se le pone antes de pintar nada. Solo la primera vez; al
+         recargar la página ya no. */
+      if (_acabaDeEntrar) {
+        _acabaDeEntrar = false;
+        try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
+      }
       var perfil = null;
       try {
         var r = await sb.from('perfiles')

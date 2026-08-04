@@ -166,6 +166,10 @@
   .fila .fparams { display:flex; flex-wrap:wrap; gap:6px; }
   .fchip { font-size:13px; color: var(--texto-suave); background: var(--crema-media); padding:2px 8px; border-radius:10px; white-space:nowrap; }
   .fchip.mio { background: var(--azul); color:#fff; font-weight:600; }
+  /* El RIR objetivo: es una instrucción, no un dato de la fila. En azul
+     suave, que es el color que esta app ya usa para lo que manda el
+     entrenador, y no en ámbar, que aquí significa «algo que mirar». */
+  .fchip.rir { background: var(--azul-suave); color: var(--azul-hover); font-weight:600; }
   .serie-cap { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:11px 0 7px; }
   .serie-cap b { font-size:14px; font-weight:600; color: var(--navy); }
   .serie-cap .serie-cnt { font-size:14px; color: var(--texto-suave); white-space:nowrap; }
@@ -268,6 +272,37 @@
      comería el «kg» y quedarían pisados el uno sobre el otro. */
   .s-campo { flex:0 0 auto; min-width:0; display:flex; align-items:baseline; gap:3px; }
   .s-campo + .s-campo::before { content:'×'; align-self:center; margin-right:2px; color: var(--texto-suave); font-size:15px; }
+
+  /* ------------------------------------------------------------
+     EL RIR, POR EJERCICIO
+     ------------------------------------------------------------
+     Se intentó meterlo en cada serie, junto a los kilos y las
+     repeticiones. NO CABE a 375 px: el hueco del peso y el de las
+     repeticiones son de ancho fijo (para que el «kg» quede pegado
+     al número), y con un tercer campo la fila se sale de la
+     tarjeta. Y como el body lleva `overflow-x:hidden`, no se ve
+     cortado: se ve DESAPARECIDO, sin barra ni aviso.
+
+     Así que va una vez por ejercicio, debajo de sus series, que
+     además es como se juzga de verdad: nadie piensa el RIR serie a
+     serie, piensa «este ejercicio lo dejé a 2».
+
+     Solo aparece si el entrenador puso objetivo. Quien no use RIR
+     no lo ve por ninguna parte.
+     ------------------------------------------------------------ */
+  .rir-caja { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:9px;
+    padding:7px 11px; border-radius:12px; background: var(--azul-suave); }
+  .rir-caja .rir-et { flex:1 1 auto; min-width:0; font-size:14px; line-height:1.35; color: var(--azul-hover); font-weight:600; }
+  .rir-caja .rir-obj { flex:none; font-size:13px; color: var(--azul-oscuro); }
+  /* 44 px de alto y de ancho: es un dígito, pero se pulsa de pie. */
+  .rir-caja .rir-in { flex:none; width:56px; min-height:44px; box-sizing:border-box; padding:6px 8px;
+    text-align:center; font-size:19px; font-weight:700; font-family: var(--fuente-dato);
+    color: var(--navy); background:#fff; border:2px solid var(--linea-borde); border-radius:10px; }
+  .rir-caja .rir-in:focus { outline:none; border-color: var(--azul-filete, #3B85C0); }
+  .rir-caja .rir-in::placeholder { font-family: var(--fuente-texto); font-size:14px; font-weight:400; color: var(--texto-suave); }
+  /* Ya cerrado: lo que apuntó, contado y no rellenado. */
+  .rir-leido { margin-top:9px; font-size:15px; line-height:1.45; color: var(--azul-hover); font-weight:600; }
+  .rir-leido span { font-weight:400; color: var(--texto-suave); }
   /* Los tiempos y los kilos se comparan en columna: van en monoespaciada.
      El número va alineado a la derecha y con ancho fijo para que la unidad
      quede PEGADA a él —«60 kg», no «60 ......... kg»—: si el hueco estirara,
@@ -1025,6 +1060,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      unidad tiene que ir dicha, porque el «kg» de al lado no se lee solo. */
   function etiquetaCampo(c, uni, i, n, nom){
     var que = c.k==='peso' ? 'Peso en kilos' : c.k==='reps' ? 'Repeticiones'
+            /* Dicho entero: «RIR» a secas no lo entiende un lector de
+               pantalla, y tampoco un atleta que empieza. */
+            : c.k==='rir' ? 'Repeticiones que te quedaban (RIR)'
             : c.k==='distancia' ? ('Distancia en '+(uni==='km'?'kilómetros':'metros')) : 'Tiempo';
     return que+' de la serie '+(i+1)+' de '+n+' de '+nom;
   }
@@ -1082,7 +1120,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(f.tiempo) parts.push(String(f.tiempo));
     if(f.detalle) parts.push(String(f.detalle));
     if(f.nota) parts.push(String(f.nota));
-    var chips=parts.map(function(p){return '<span class="fchip">'+esc(p)+'</span>';}).join('');
+    /* El RIR objetivo se distingue del resto de piezas: no es un parámetro
+       más como la distancia, es la instrucción que le dice al atleta si esa
+       serie va bien o se está pasando. Sale de `partesFila` con los demás
+       para que las cinco pantallas digan lo mismo, y aquí solo se le pone
+       otro color. */
+    var rirTxt='';
+    try { var D0=DESC(); if(D0 && D0.rirDeFila) rirTxt=D0.textoRir(D0.rirDeFila(f))||''; } catch(e){}
+    var chips=parts.map(function(p){
+      var esRir = rirTxt && p===rirTxt;
+      return '<span class="fchip'+(esRir?' rir':'')+'">'+esc(p)+'</span>';
+    }).join('');
     chips+=chipNatacion(f, dis);
     var tuyo=ritmoPersonal(f);
     var n=esSerie(f);
@@ -1128,6 +1176,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                 '<span class="sl-t">'+esc(sr.hecha ? (sr.txt?comaDecimal(sr.txt):'hecha') : 'no la hice')+'</span></div>';
       }
       html+='<div class="serie-leer">'+filasL+'</div>';
+      /* El RIR de aquel día, contado y no rellenado, con el objetivo al lado
+         para que se lea si se pasó o le sobró sin tener que recordarlo. */
+      if(rirTxt){
+        var rirHecho=(guardado && guardado.rir!=null && guardado.rir!=='') ? String(guardado.rir) : '';
+        html+='<div class="rir-leido">'+(rirHecho
+          ? 'Te sobraron '+esc(rirHecho)+' <span>· te pedían '+esc(rirTxt)+'</span>'
+          : '<span>No apuntaste el RIR · te pedían '+esc(rirTxt)+'</span>')+'</div>';
+      }
       return '<div class="ejer'+(sinHacer?' medias':'')+'">'+html+'</div>';
     }
     /* Una fila por repetición, cada una con su ✓. El ✓ es el gesto rápido a pie
@@ -1143,7 +1199,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var campos = med.campos.length
           ? med.campos.map(function(c){
               var uni = (c.k==='distancia') ? unidadRecordada() : c.unidad;
-              return '<label class="s-campo">'+
+              return '<label class="s-campo" data-c="'+c.k+'">'+
                 '<input class="serie-in" data-key="'+key+'" data-i="'+i+'" data-c="'+c.k+'" '+
                 'inputmode="'+(c.decimal?'decimal':'numeric')+'" '+
                 'aria-label="'+escA(etiquetaCampo(c, uni, i, n, nomEj))+'">'+
@@ -1183,7 +1239,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                marcan) y sin esto se quedarían sin guardar. */
             '<div class="serie-inputs" data-eje="'+escA(nomEj)+'" data-medida="'+escA(med.clave)+'" data-key="'+key+'"'+
             (f.id?' data-fid="'+escA(f.id)+'"':'')+
+            /* El RIR que se pidió viaja con lo apuntado: así el entrenador lo
+               compara sin otra consulta, y sobre todo queda la FOTO de lo que
+               se le pidió aquel día. Si mañana cambia el objetivo de esa fila,
+               lo que el atleta leyó el martes no se reescribe (migración 099). */
+            (rirTxt?' data-rir="'+escA(rirTxt)+'"':'')+
             (obj?' data-obj="'+escA(obj)+'"':'')+'>'+ins+'</div>';
+      /* Y el RIR del ejercicio, UNA vez y debajo de sus series: se apunta al
+         acabar el ejercicio, que es cuando se sabe. Solo si el entrenador
+         puso objetivo. */
+      if(rirTxt){
+        html+='<div class="rir-caja">'+
+          '<span class="rir-et">¿Cuántas repeticiones te sobraron?</span>'+
+          '<input type="text" class="rir-in" inputmode="numeric" placeholder="RIR" '+
+          'aria-label="Repeticiones que te sobraron (RIR) en '+escA(nomEj)+'">'+
+          '<span class="rir-obj">te piden '+esc(rirTxt)+'</span></div>';
+      }
     }
     return '<div class="ejer">'+html+'</div>';
   }
@@ -2159,6 +2230,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         inP.value=r.cambiado_por;
         var cajaP=inP.closest('.cambio-caja'); if(cajaP) cajaP.hidden=false;
       }
+      /* El RIR que ya había apuntado de este ejercicio */
+      var rirP=ejerP?ejerP.querySelector('.rir-in'):null;
+      if(rirP && r.rir!=null && r.rir!=='') rirP.value=r.rir;
     });
   }
 
@@ -2915,6 +2989,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         fila_id: g.getAttribute('data-fid')||null,
         ejercicio: g.getAttribute('data-eje'),
         cambiado_por: cambiado||null,
+        /* Lo que se le PIDIÓ de RIR, no lo que hizo (eso va serie a serie).
+           Es lo que deja al entrenador leer «objetivo 2-3, hizo 0». */
+        rir_objetivo: g.getAttribute('data-rir')||null,
+        /* Y el RIR que apuntó él, uno por ejercicio (no cabía por serie: ver
+           el aviso en `medidaDeFila`). Es lo que convierte el objetivo en un
+           dato: «te pedía 2-3 y lo dejaste a 0» se lee solo. */
+        rir: (function(){
+          var ej=g.closest('.ejer'); var i=ej?ej.querySelector('.rir-in'):null;
+          return (i && i.value.trim()) || null;
+        })(),
         medida: clave,
         unidad: unidad,
         series: series,

@@ -621,6 +621,14 @@
     if (fila.ritmo && disciplina !== 'cubo') p.push('ritmo ' + fila.ritmo);
     if (fila.carga && disciplina === 'cubo') p.push(String(fila.carga));
 
+    /* El RIR objetivo, en su propia pieza y SIEMPRE que el entrenador lo haya
+       escrito —no según la disciplina—: es él quien decide dónde aplica, y en
+       un mismo día conviven «RIR 2-3» en un ejercicio y «nada al fallo» en
+       otro. Va aquí, con la serie y el descanso, porque es de la misma
+       familia: define cómo se hace el ejercicio, no es un comentario. */
+    var rir = textoRir(rirDeFila(fila));
+    if (rir) p.push(rir);
+
     var rec = recDeFila(fila, disciplina);
     var t = textoRec(rec, disciplina);
     if (t) p.push(t);                                  // si no hay descanso, no hay pieza: nunca un «—»
@@ -909,6 +917,80 @@
   var CAMPO_TIEMPO = { k: 'tiempo', etiqueta: 'tiempo', unidad: null, decimal: true, ph: '' };
   var CAMPO_DIST = { k: 'distancia', etiqueta: 'distancia', unidad: 'm', decimal: true, ph: '' };
 
+  /* ==========================================================
+     RIR · REPETICIONES EN RESERVA
+     ----------------------------------------------------------
+     Es CÓMO ESTE CLUB REGULA LA FUERZA. Su programa de ocho
+     semanas lo lleva en todas partes y es el eje de la
+     progresión: «semana 1 a RIR 3-4», «semanas 2-6 la mayoría a
+     RIR 1-3», «semana 7 sin fallo en básicos», «semana 8 volver a
+     RIR 3-4».
+
+     NO ES EL RPE, y no se puede mezclar con él. El RPE dice lo
+     duro que se te hizo (del 1 al 10, y ya está en la app). El
+     RIR dice CUÁNTAS REPETICIONES TE QUEDABAN. Un entrenador de
+     fuerza manda con el segundo: si el objetivo era RIR 2 y el
+     atleta apunta RIR 0, se pasó; si apunta RIR 4, se quedó corto
+     y toca subir peso.
+
+     ⚠️ EL RIR VA AL REVÉS QUE EL ESFUERZO: más RIR es MÁS SUAVE
+     (te sobraban repeticiones) y RIR 0 es el fallo. Quien lea
+     estos números pensando que más es más duro los entenderá al
+     revés.
+
+     Se escribe como lo escriben ellos: «2», «RIR 2», «2-3»,
+     «RIR 3-4», «sin fallo», «nada al fallo». Se guarda el texto
+     tal cual en `fila.rir` y aquí se interpreta para pintarlo.
+     ========================================================== */
+  var RIR_SIN_FALLO = /\b(sin\s+fallo|nada\s+al\s+fallo|no\s+al\s+fallo|sin\s+llegar\s+al\s+fallo)\b/;
+
+  function rirDeFila(fila) {
+    if (!fila || fila.rir == null || String(fila.rir).trim() === '') return null;
+    var crudo = String(fila.rir).trim();
+    var t = quitarTildes(crudo.toLowerCase());
+    if (RIR_SIN_FALLO.test(t)) return { sinFallo: true, min: null, max: null, texto: crudo };
+    /* Un rango, que es como lo escriben la mitad de las veces. */
+    var rango = t.match(/(\d+)\s*(?:-|–|—|\s+a\s+)\s*(\d+)/);
+    if (rango) {
+      var a = parseInt(rango[1], 10), b = parseInt(rango[2], 10);
+      if (!isNaN(a) && !isNaN(b)) return { sinFallo: false, min: Math.min(a, b), max: Math.max(a, b), texto: crudo };
+    }
+    var uno = t.match(/(\d+)/);
+    if (uno) {
+      var n = parseInt(uno[1], 10);
+      /* Más de 10 repeticiones en reserva no es una serie de fuerza: es un
+         error de tecleo, y vale más no enseñar nada que enseñar «RIR 25». */
+      if (!isNaN(n) && n >= 0 && n <= 10) return { sinFallo: false, min: n, max: n, texto: crudo };
+    }
+    /* No se entiende: se respeta tal cual, como con los descansos. Lo que
+       escribe el entrenador se enseña, aunque el sistema no lo sepa leer. */
+    return { sinFallo: false, min: null, max: null, texto: crudo };
+  }
+
+  /* «RIR 2» · «RIR 2-3» · «sin llegar al fallo» */
+  function textoRir(rir) {
+    if (!rir) return '';
+    if (rir.sinFallo) return 'sin llegar al fallo';
+    if (rir.min == null) return String(rir.texto || '');
+    return 'RIR ' + (rir.min === rir.max ? rir.min : rir.min + '-' + rir.max);
+  }
+
+  /* ¿El RIR que apuntó el atleta cae dentro de lo que se le pidió?
+     Devuelve 'dentro' · 'paso' (se pasó, menos reserva de la pedida) ·
+     'corto' (le sobró) · null si no hay con qué comparar.
+     No lo usa la pantalla del atleta: sirve para que el ENTRENADOR lea de
+     un vistazo la semana y decida la siguiente. */
+  function rirComparado(rirObjetivo, valor) {
+    if (!rirObjetivo || valor == null || valor === '') return null;
+    var v = numero(valor);
+    if (isNaN(v)) return null;
+    if (rirObjetivo.sinFallo) return v <= 0 ? 'paso' : 'dentro';
+    if (rirObjetivo.min == null) return null;
+    if (v < rirObjetivo.min) return 'paso';
+    if (v > rirObjetivo.max) return 'corto';
+    return 'dentro';
+  }
+
   function esFuerza(dep) { return dep === 'fuerza' || dep === 'cubo'; }
 
   /* ¿La fila lleva carga escrita por el entrenador? «80% RM»,
@@ -955,7 +1037,13 @@
      esos no se apunta la distancia, se marca y ya. Estirar,
      rodar el foam, el masaje o el baño frío tampoco recorren
      metros. */
-  var DE_RODAJE = /\b(rodaje|rodajes|continuo|continua|carrera|correr|trote|tempo|fartlek|umbral|progresiv\w*|marcha|caminar|sendero)\b/;
+  /* «Trote» NO está aquí, y es a propósito. El entrenador lo dijo mirando su
+     entrenamiento: «Trote suave es por tiempo». Un trote es un calentamiento
+     o una vuelta a la calma —en el catálogo del club son justo eso—, y de
+     esos no se apuntan metros: el entrenador ya ha dicho los minutos y lo
+     único que aporta el atleta es que lo hizo. Un rodaje de verdad se llama
+     «Continuo», «Carrera», «Tempo», «Fartlek» o «Rodaje». */
+  var DE_RODAJE = /\b(rodaje|rodajes|continuo|continua|carrera|correr|tempo|fartlek|umbral|progresiv\w*|marcha|caminar|sendero)\b/;
   var RECUPERA  = /\b(calma|estiramiento|estiramientos|estirar|stretching|movilidad|foam|masaje|crioterapia|electro|recuperaci\w*|descarga|respiraci\w*|propiocep\w*)\b|ba(n|ñ)o\s+frio/;
 
   /* Qué se le pide al atleta en ESTA fila:
@@ -973,8 +1061,42 @@
      12 km», y adivinarlo por el tamaño del número acertaría casi
      siempre y fallaría justo en los casos raros, que son los que
      se notan. Mejor que lo diga quien escribe. En fuerza y en
-     natación no hay nada que elegir: kilos y metros, y punto. */
+     natación no hay nada que elegir: kilos y metros, y punto.
+
+     ------------------------------------------------------------
+     Y ENCIMA DE TODO ESO, EL RIR, que viaja en la medida pero NO
+     como un campo más de cada serie.
+
+     ⚠️ SE PROBÓ POR SERIE Y NO CABE. Con kilos, repeticiones y RIR,
+     la fila de una serie se sale de la tarjeta a 375 px: el «RIR»
+     desaparece y el número se queda colgando: `apolana.css` lleva
+     `overflow-x:hidden` y lo recorta sin que salte ninguna barra,
+     así que ni siquiera se ve que falta algo. Los huecos del peso
+     y de las repeticiones son de ancho fijo a propósito (para que
+     el «kg» quede pegado al número) y no hay de dónde sacar sitio.
+
+     Así que EL RIR ES POR EJERCICIO, que es además como se juzga:
+     no se piensa serie a serie, se piensa «este ejercicio lo dejé
+     a 2». Y sigue siendo por ejercicio y no por sesión, que es lo
+     que pidió el club: el RIR de la sentadilla no es el del press
+     banca.
+
+     No se pide en `tiempo` ni en `distancia`: unas repeticiones en
+     reserva en un 400 m no significan nada. Y en `hecho` tampoco,
+     porque ahí no hay repeticiones que reservar. */
   function medidaDeFila(fila, opts) {
+    var med = medidaBase(fila, opts);
+    var rir = rirDeFila(fila);
+    if (rir && (med.clave === 'peso_reps' || med.clave === 'peso' || med.clave === 'reps')) {
+      return {
+        clave: med.clave, campos: med.campos, unidades: med.unidades,
+        unidad: med.unidad, referencia: med.referencia, rir: rir
+      };
+    }
+    return med;
+  }
+
+  function medidaBase(fila, opts) {
     opts = opts || {};
     var dep = (opts.deporte || '').toLowerCase();
     var med = medidaDeDistancia(fila && fila.distancia);
@@ -1084,7 +1206,14 @@
     if (medida.clave === 'peso_reps' || medida.clave === 'peso' || medida.clave === 'reps') {
       if (serie.peso != null && serie.peso !== '') p.push(numTxt(serie.peso) + ' kg');
       if (serie.reps != null && serie.reps !== '') p.push(numTxt(serie.reps) + ' rep');
-      return p.join(' × ');
+      var linea = p.join(' × ');
+      /* «60 kg × 11 · RIR 2», que es como lo diría un entrenador en voz alta.
+         Con punto medio y no con «×»: el RIR no multiplica nada, es otra cosa
+         que se dice de la misma serie. */
+      if (serie.rir != null && serie.rir !== '') {
+        linea = (linea ? linea + ' · ' : '') + 'RIR ' + numTxt(serie.rir);
+      }
+      return linea;
     }
     if (medida.clave === 'distancia') {
       if (serie.distancia == null || serie.distancia === '') return '';
@@ -1353,6 +1482,11 @@
     /* Qué se apunta en cada ejercicio y con qué unidad */
     medidaDeFila: medidaDeFila,
     textoSerieHecha: textoSerieHecha,
+
+    /* RIR · repeticiones en reserva. OJO: más RIR es MÁS SUAVE */
+    rirDeFila: rirDeFila,
+    textoRir: textoRir,
+    rirComparado: rirComparado,
 
     /* El % de RM: EN PESAS SE MULTIPLICA (ver el aviso de arriba) */
     pctsRMdeFila: pctsRMdeFila,
