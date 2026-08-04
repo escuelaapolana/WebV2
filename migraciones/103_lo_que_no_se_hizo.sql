@@ -200,9 +200,17 @@ comment on function public.apo_bloques_con_id(jsonb) is
 -- El disparador: se pone escriba quien escriba, porque hay seis
 -- pantallas que guardan `bloques` y ninguna debería tener que
 -- acordarse de esto.
+-- ⚠️ `security definer` NO ES OPCIONAL, y esta migración se entregó sin
+-- ello: `apo_bloques_con_id` nace cerrada (migración 090), y sin esta
+-- línea el entrenador NO PODÍA GUARDAR UN ENTRENAMIENTO. Se corrigió en
+-- la migración 106, y se arregla también aquí para que volver a lanzar
+-- este fichero no vuelva a romperlo. El `search_path` clavado va con
+-- ello: un `security definer` sin él es un agujero.
 create or replace function public.apo_sesiones_ids_de_fila()
 returns trigger
 language plpgsql
+security definer
+set search_path to 'public'
 as $$
 begin
   new.bloques := public.apo_bloques_con_id(new.bloques);
@@ -355,9 +363,14 @@ comment on function public.apo_series_hechas(jsonb) is
 -- propósito: si lo calculara la pantalla, cada pantalla contaría a
 -- su manera y el mismo día saldría completo en una y a medias en
 -- otra.
+-- ⚠️ Lo mismo que arriba: sin `security definer`, `apo_series_previstas`
+-- y `apo_series_hechas` están cerradas para el atleta y NO SE PODÍA
+-- GUARDAR lo entrenado. Explicado entero en la migración 106.
 create or replace function public.apo_registros_estado()
 returns trigger
 language plpgsql
+security definer
+set search_path to 'public'
 as $$
 declare
   v_prev integer;

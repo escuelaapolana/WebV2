@@ -911,6 +911,53 @@
 
   function esFuerza(dep) { return dep === 'fuerza' || dep === 'cubo'; }
 
+  /* ¿La fila lleva carga escrita por el entrenador? «80% RM»,
+     «con 20 kg», «disco de 10»: cualquier cosa con un número. */
+  function llevaCarga(fila) {
+    return !!(fila && fila.carga && /\d/.test(String(fila.carga)));
+  }
+
+  /* SALTOS, VALLAS Y SPRINTS: LO QUE NO LLEVA KILOS
+     ----------------------------------------------------------
+     El club lo dijo con estas palabras cuando pidió que El Cubo
+     también apuntase kilos: «si hay alguno que no son kilos o que
+     es diferente, porque son sprints o saltos a vallas, pues nada,
+     ahí que no se ponga nada».
+
+     Un sprint ya se resuelve solo: «30 m» lleva metros y entonces
+     lo que se apunta es el tiempo. Pero «6 saltos» o «5 vallas» no
+     llevan ni metros ni segundos, y sin esto caían en la regla de
+     abajo del todo —«no lo aclara la fila, decide el deporte»— y
+     acababan pidiendo kilos en un salto al cajón. Pedir kilos
+     donde no hay kilos no es solo ruido: es un hueco vacío que
+     invita a escribir un número inventado.
+
+     Se mira lo que ESCRIBIÓ EL ENTRENADOR, no una lista de
+     ejercicios: si él puso «saltos con carga» y además escribió la
+     carga, entonces sí hay kilos que apuntar y esta regla se
+     aparta. */
+  var SIN_KILOS = /\b(salto|saltos|valla|vallas|minivalla|minivallas|sprint|sprints|multisalto|multisaltos|bounding|pliometr|escalera|escaleras|cajon|cuesta|cuestas|arrancada|arrancadas|salida|salidas)\b/;
+  /* …salvo que el propio nombre diga que lleva peso. «Saltos con carga» y
+     «Zancadas con lastre» son saltos, pero de esos SÍ se apuntan los kilos:
+     lo dice el entrenador en el nombre, y manda él. */
+  var CON_PESO = /\b(carga|cargas|lastre|lastres|lastrad\w*|con\s+peso|con\s+disco|con\s+barra|con\s+mancuerna\w*)\b/;
+
+  /* CUÁNDO UNOS MINUTOS SÍ SON UNA DISTANCIA
+     ----------------------------------------------------------
+     Solo en un rodaje: el entrenador da los minutos y lo que
+     aporta el atleta es cuánto recorrió. Los nombres salen del
+     catálogo del club (los de tipo «continuo» y categoría
+     «resistencia»): Continuo suave, Carrera en umbral, Carrera
+     progresiva, Fartlek, Tempo, Trote suave.
+
+     RECUPERA gana siempre, porque hay nombres que llevan las dos
+     señales: «Trote de vuelta a la calma» es un trote, pero de
+     esos no se apunta la distancia, se marca y ya. Estirar,
+     rodar el foam, el masaje o el baño frío tampoco recorren
+     metros. */
+  var DE_RODAJE = /\b(rodaje|rodajes|continuo|continua|carrera|correr|trote|tempo|fartlek|umbral|progresiv\w*|marcha|caminar|sendero)\b/;
+  var RECUPERA  = /\b(calma|estiramiento|estiramientos|estirar|stretching|movilidad|foam|masaje|crioterapia|electro|recuperaci\w*|descarga|respiraci\w*|propiocep\w*)\b|ba(n|ñ)o\s+frio/;
+
   /* Qué se le pide al atleta en ESTA fila:
 
        peso_reps  →  «60 kg × 11»       (sentadilla, dominadas…)
@@ -932,9 +979,37 @@
     var dep = (opts.deporte || '').toLowerCase();
     var med = medidaDeDistancia(fila && fila.distancia);
     var txt = quitarTildes(String((fila && fila.distancia) || '').toLowerCase());
+    /* El nombre del ejercicio cuenta tanto como la casilla de la
+       serie: en El Cubo la fila se llama «Saltos al cajón» y la
+       serie pone «3 × 8 rep», y lo que dice que ahí no hay kilos
+       es el nombre, no el «8 rep». */
+    var nom = quitarTildes(String((fila && (fila.ejercicio || fila.nombre)) || '').toLowerCase());
+    var hayReps = /\brep\b|\breps\b|\brepetici/.test(txt);
+    var deSalto = !llevaCarga(fila) && !CON_PESO.test(nom)
+                  && (SIN_KILOS.test(nom) || SIN_KILOS.test(txt));
+
+    /* 0 · SALTOS, VALLAS Y SPRINTS SIN CARGA: aquí no hay kilos que
+           apuntar y no se piden. Si la fila dice repeticiones, se
+           apuntan las repeticiones; si no dice nada que se pueda
+           contar, basta con el ✓ y se repite al lado lo que mandó
+           el entrenador. Va lo PRIMERO porque manda sobre todo lo
+           demás: un «8 rep» en unos saltos al cajón sigue sin
+           llevar kilos.
+           Ojo: un sprint escrito «30 m» ni siquiera llega hasta
+           aquí, lo coge la regla 2 y pide el tiempo, que es lo que
+           interesa de un sprint. */
+    if (esFuerza(dep) && deSalto && !(med.metros > 0)) {
+      if (hayReps || med.segundos <= 0) {
+        return hayReps
+          ? { clave: 'reps', campos: [CAMPO_REPS], unidades: null, unidad: 'rep',
+              referencia: String((fila && fila.distancia) || '') }
+          : { clave: 'hecho', campos: [], unidades: null, unidad: null,
+              referencia: String((fila && fila.distancia) || '') };
+      }
+    }
 
     /* 1 · «12 rep», «3 rep»: lo dice la propia fila y no hay más que hablar. */
-    if (/\brep\b|\breps\b|\brepetici/.test(txt)) {
+    if (hayReps) {
       return { clave: 'peso_reps', campos: [CAMPO_PESO, CAMPO_REPS], unidades: null, unidad: 'kg' };
     }
 
@@ -956,17 +1031,40 @@
            disco. Sin carga —movilidad, respiración, estiramientos—
            no hay nada que apuntar y pedir kilos sería pedir un dato
            que no existe: basta con decir si se hizo. */
-        if (fila && fila.carga && /\d/.test(String(fila.carga))) {
+        if (llevaCarga(fila)) {
           return { clave: 'peso', campos: [CAMPO_PESO], unidades: null, unidad: 'kg' };
         }
+        return { clave: 'hecho', campos: [], unidades: null, unidad: null,
+                 referencia: String((fila && fila.distancia) || '') };
+      }
+      /* FUERA DE LA SALA, «15 min» TAMPOCO ES UNA DISTANCIA POR DEFECTO.
+         ----------------------------------------------------------
+         Esto pedía metros SIEMPRE que la fila fuera en minutos, y así
+         «Vuelta a la calma post-competición · 15 min» y «Estiramientos
+         estáticos · 10 min» salían con el conmutador m / km. Nadie
+         recorre metros estirando: era pedir un dato que no existe, y
+         encima uno que el entrenador no había pedido.
+
+         La excepción de verdad es el RODAJE, y solo esa: ahí el
+         entrenador da los minutos y lo que aporta el atleta es cuánto
+         llegó a recorrer. Así que la distancia hay que GANÁRSELA con
+         una señal en el nombre del ejercicio; sin señal, basta el ✓,
+         igual que en la sala. Manda lo que escribió el entrenador.
+
+         Y la señal de recuperación PISA a la de rodaje, porque hay
+         nombres que llevan las dos: «Trote de vuelta a la calma» es un
+         trote, pero de esos no se apunta la distancia. */
+      var nomT = quitarTildes(String((fila && (fila.ejercicio || fila.nombre)) || '').toLowerCase());
+      if (RECUPERA.test(nomT) || !DE_RODAJE.test(nomT)) {
         return { clave: 'hecho', campos: [], unidades: null, unidad: null,
                  referencia: String((fila && fila.distancia) || '') };
       }
       return { clave: 'distancia', campos: [CAMPO_DIST], unidades: ['m', 'km'], unidad: 'm' };
     }
 
-    /* 4 · La fila no lo aclara («6 saltos», «5 vallas», o nada):
-           entonces sí decide el deporte del día. */
+    /* 4 · La fila no lo aclara: entonces sí decide el deporte del
+           día. Los saltos y las vallas ya se han quedado arriba, en
+           la regla 0. */
     if (esFuerza(dep)) return { clave: 'peso_reps', campos: [CAMPO_PESO, CAMPO_REPS], unidades: null, unidad: 'kg' };
     if (dep === 'natacion') return { clave: 'tiempo', campos: [CAMPO_TIEMPO], unidades: null, unidad: null };
     return { clave: 'tiempo', campos: [CAMPO_TIEMPO], unidades: null, unidad: null };
@@ -983,7 +1081,7 @@
        dato es el ✓, y decirlo con palabras es más claro que un hueco. */
     if (medida.clave === 'hecho') return serie.hecha ? 'hecha' : '';
     var p = [];
-    if (medida.clave === 'peso_reps' || medida.clave === 'peso') {
+    if (medida.clave === 'peso_reps' || medida.clave === 'peso' || medida.clave === 'reps') {
       if (serie.peso != null && serie.peso !== '') p.push(numTxt(serie.peso) + ' kg');
       if (serie.reps != null && serie.reps !== '') p.push(numTxt(serie.reps) + ' rep');
       return p.join(' × ');
@@ -993,6 +1091,99 @@
       return numTxt(serie.distancia) + ' ' + (serie.unidad || medida.unidad || 'm');
     }
     return serie.tiempo != null ? String(serie.tiempo) : '';
+  }
+
+  /* ==========================================================
+     7 bis · EL PORCENTAJE DE PESO, QUE NO SE CALCULA COMO EL DE PISTA
+     ----------------------------------------------------------
+     ⚠️ ESTO ES LO MÁS FÁCIL DE HACER AL REVÉS DE TODO EL MÓDULO,
+     y hacerlo al revés no da un error: da un número creíble.
+
+       · EN PISTA el porcentaje es de ESFUERZO. Correr «al 85 %»
+         es ir MÁS LENTO que tu mejor marca. Se DIVIDE:
+         38,1 s / 0,85 = 44,8 s.
+       · EN PESAS el porcentaje es de CARGA. Levantar «al 85 %» es
+         levantar MENOS peso que tu máximo. Se MULTIPLICA:
+         80 kg × 0,85 = 68 kg.
+
+     Si en pesas se dividiera, un RM de 80 kg daría 94 kg al 85 %.
+     Noventa y cuatro kilos es un peso de gimnasio perfectamente
+     normal: nadie sospecharía, y alguien se pondría un 118 % de su
+     máximo creyendo que hace una serie suave.
+
+     De dónde sale el porcentaje: de lo que el entrenador escribió
+     en la casilla de CARGA de la fila («80% RM», «70-80 % RM»).
+     Ahí es donde lo pone el planificador y donde lo deja el
+     importador de texto. Si no hay «RM» escrito, no se toca nada:
+     un «80 %» suelto en una fila de correr es otra cosa.
+     ========================================================== */
+
+  /* Los porcentajes de RM de una fila, de menor a mayor.
+     null si esa fila no habla de RM. */
+  function pctsRMdeFila(fila) {
+    if (!fila) return null;
+    var txt = quitarTildes(String(fila.carga || '').toLowerCase());
+    /* La casilla de ritmo también vale si allí escribieron el RM:
+       el club tiene entrenamientos importados de años distintos y
+       no todos usan la misma casilla. Lo que NO vale es un «85 %»
+       sin la palabra RM al lado, porque eso en pista es otra cosa
+       y calcularlo como carga sería inventarse un peso. */
+    if (!/%\s*rm\b|\brm\s*\d{2,3}\s*%|\brm\b/.test(txt)) {
+      txt = quitarTildes(String(fila.ritmo || '').toLowerCase());
+      if (!/%\s*rm\b|\brm\b/.test(txt)) return null;
+    }
+    /* Un rango se escribe «70-80 % RM» y el símbolo va UNA vez, al
+       final: buscando solo «número seguido de %» se perdería el 70
+       y saldría un peso fijo donde el entrenador dio margen. */
+    var crudos = [];
+    txt.replace(/(\d{2,3})\s*[-–—a]\s*(\d{2,3})\s*%/g, function (_, a, b) {
+      crudos.push(a); crudos.push(b); return '';
+    });
+    var sueltos = txt.match(/(\d{2,3})\s*%/g);
+    if (sueltos) crudos = crudos.concat(sueltos);
+    if (!crudos.length) return null;
+    var nums = [];
+    for (var i = 0; i < crudos.length; i++) {
+      var n = parseFloat(crudos[i]);
+      /* Por debajo del 30 % no se entrena la fuerza y por encima
+         del 110 % no se levanta: un número fuera de ahí es un
+         error de tecleo y vale más no enseñar nada. */
+      if (n >= 30 && n <= 110 && nums.indexOf(n) === -1) nums.push(n);
+    }
+    if (!nums.length) return null;
+    nums.sort(function (a, b) { return a - b; });
+    return nums;
+  }
+
+  /* El peso que le toca a ESTE atleta. SE MULTIPLICA. */
+  function pesoDesdeRM(rmKg, pct) {
+    var rm = numero(rmKg), p = numero(pct);
+    if (rm <= 0 || p <= 0) return null;
+    var kg = rm * p / 100;
+    /* Se redondea al medio kilo: en una barra no se pueden poner
+       70,125 kg, y un número con tres decimales hace pensar que la
+       cuenta es más fina de lo que es. */
+    return Math.round(kg * 2) / 2;
+  }
+
+  /* «68 kg» · «60–68 kg», ya escrito para la pantalla. */
+  function textoPesosRM(rmKg, pcts) {
+    if (!pcts || !pcts.length) return '';
+    var kgs = [], i;
+    for (i = 0; i < pcts.length; i++) {
+      var v = pesoDesdeRM(rmKg, pcts[i]);
+      if (v == null) return '';
+      kgs.push(v);
+    }
+    kgs.sort(function (a, b) { return a - b; });
+    if (kgs.length === 1) return numTxt(kgs[0]) + ' kg';
+    return numTxt(kgs[0]) + '–' + numTxt(kgs[kgs.length - 1]) + ' kg';
+  }
+
+  /* «85 %» · «70–80 %», los porcentajes tal como se leen. */
+  function textoPctRM(pcts) {
+    if (!pcts || !pcts.length) return '';
+    return (pcts.length === 1 ? String(pcts[0]) : pcts[0] + '–' + pcts[pcts.length - 1]) + ' %';
   }
 
   /* ==========================================================
@@ -1162,6 +1353,12 @@
     /* Qué se apunta en cada ejercicio y con qué unidad */
     medidaDeFila: medidaDeFila,
     textoSerieHecha: textoSerieHecha,
+
+    /* El % de RM: EN PESAS SE MULTIPLICA (ver el aviso de arriba) */
+    pctsRMdeFila: pctsRMdeFila,
+    pesoDesdeRM: pesoDesdeRM,
+    textoPesosRM: textoPesosRM,
+    textoPctRM: textoPctRM,
 
     /* El resumen honesto de la tarjeta */
     resumenCorto: resumenCorto,

@@ -1298,9 +1298,19 @@
      no como una tarjeta aparte. Solo para la lista principal de la página. */
   var TITULO = null, YA_TITULO = false;
   function cuentaEnElTitulo(tabla, n) {
+    var caja = document.getElementById('admin-contenido') || document.body;
+    /* Las pantallas con la cabecera nueva ya dicen la cifra en su línea de
+       contexto («14 tarifas»). Colgarla otra vez del título sería decir el
+       mismo número dos veces, que es justo lo que pide arreglar el club.
+       Se mira en cada pasada porque esa cabecera se pinta con los datos, o
+       sea después de que esto haya elegido un título. */
+    if (caja.querySelector('.pz-cab-tit')) {
+      if (TITULO && TITULO.__cuenta) { TITULO.__cuenta.remove(); TITULO.__cuenta = null; }
+      return;
+    }
     if (!YA_TITULO) {
       YA_TITULO = true;
-      var raiz = document.getElementById('admin-contenido') || document.body;
+      var raiz = caja;
       TITULO = raiz.querySelector('.cab h1') || raiz.querySelector('h1') ||
                raiz.querySelector('.panel h2, .card h2, h2');
       if (TITULO) {
@@ -1358,6 +1368,11 @@
 
   function vigilar(tabla) {
     if (tabla.__visto) return;
+    /* Las tablas de las piezas nuevas (`pz-tabla`) ya traen su propia ficha de
+       móvil, sus rótulos y su recuento. Si esta parte también las tocara,
+       pondría el nombre de la columna delante del dato principal y cortaría la
+       lista a veinte filas por su cuenta. Se dejan en paz. */
+    if (tabla.classList.contains('pz-tabla')) { tabla.__visto = true; return; }
     tabla.__visto = true;
     repasar(tabla);
     var tb = tabla.tBodies[0];

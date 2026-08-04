@@ -434,6 +434,36 @@
   .fb-medias b { font-weight:700; }
   .fb-medias em { display:block; margin-top:3px; font-style:normal; font-size:13px; color:#8A5307; }
   .sin-registro { color: var(--texto-suave); font-size:13px; font-style:italic; }
+  /* «Puse jalón al pecho y él hizo dominadas». Va arriba, con lo que se
+     quedó sin hacer, y por la misma razón: cambia lo que estás leyendo.
+     Si no se viera aquí, el atleta podría marcarlo y no serviría de nada. */
+  .fb-cambios { margin:6px 0 8px; padding:8px 11px; border-radius:10px; font-size:14px; line-height:1.5;
+    background:#EAF2F9; border:1px solid #C9DDEE; color: var(--navy); }
+  .fb-cambios .fbc-et { display:block; font-size:13px; font-weight:700; margin-bottom:3px; }
+  .fb-cambios .fbc-uno { display:block; overflow-wrap:anywhere; }
+  .fb-cambios .fbc-uno b { font-weight:700; }
+  .fb-cambios .fbc-uno span { color: var(--texto-suave); }
+  /* «Corregido el 3 de agosto»: un dato de hace un mes que cambia sin que
+     se note es peor que uno equivocado, así que se dice. */
+  .fb-corregido { font-size:13px; color:#8A5307; }
+
+  /* ------------------------------------------------------------
+     EL COMENTARIO PARA EL ATLETA
+     Aquí mismo, donde acabas de leer cómo le fue: es el momento
+     natural de contestar, y montarlo en otra pantalla sería
+     garantizar que no se escribe nunca.
+     ⚠️ LO LEE EL ATLETA. Va dicho en el propio formulario, en alto y
+     antes de escribir. Ya pasó una vez con la «nota / razonamiento»
+     del entrenamiento: la leían el atleta y su familia y no lo decía
+     en ninguna parte. Ese aviso no se quita de aquí.
+     ------------------------------------------------------------ */
+  .fb-resp { margin-top:10px; padding-top:10px; border-top:1px solid var(--linea); }
+  .fb-resp .fbr-et { display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    font-size:13px; font-weight:700; color: var(--navy); margin-bottom:2px; }
+  .fb-resp .fbr-lee { font-size:13px; font-weight:400; color:#8A5307; }
+  .fb-resp textarea { width:100%; box-sizing:border-box; min-height:70px; margin-top:6px; }
+  .fb-resp .fbr-acc { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px; }
+  .fb-resp .fbr-pie { font-size:13px; color: var(--texto-suave); }
 
   /* observaciones privadas (solo staff) */
   .aviso-privado { background:#fff8e6; border:1px solid #f0d98a; color:#7a5c00; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:14px; }
@@ -2158,7 +2188,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     document.getElementById('ficha-cerrar').addEventListener('click', cerrarFicha);
     document.addEventListener('keydown', function esc2(ev){ if(ev.key==='Escape'){ cerrarFicha(); document.removeEventListener('keydown', esc2); } });
 
-    FICHA = { atletaId: atletaId, asistencia: [], pagos: [], registros: [], notas: [], notasFamilia: [], ausencias: [], contacto: null, abierto: '' };
+    FICHA = { atletaId: atletaId, asistencia: [], pagos: [], registros: [], notas: [], notasFamilia: [], ausencias: [], contacto: null, abierto: '', rm: [] };
 
     var desde = addDias(todayISO, -30);
     var r1 = await sb.from('asistencia').select('fecha,presente').eq('atleta_id', atletaId).gte('fecha', desde).order('fecha', { ascending:false });
@@ -2173,12 +2203,79 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!r3.error && r3.data) FICHA.registros = r3.data;
     var r4 = await sb.from('notas_atleta').select('id,texto,created_at').eq('atleta_id', atletaId).order('created_at', { ascending:false }).limit(3);
     if(!r4.error && r4.data) FICHA.notas = r4.data;
+    /* Sus repeticiones máximas, de la más reciente a la más antigua: de aquí
+       salen los kilos que ve el atleta cuando el entrenamiento dice «80 % RM».
+       Se guardan todos los tests, no solo el último: la progresión de la
+       sentadilla a lo largo del año es justo lo que se quiere mirar. */
+    var r4b = await sb.from('rm_atleta').select('id,ejercicio,peso_kg,fecha_test,nota')
+                .eq('atleta_id', atletaId).order('fecha_test', { ascending:false, nullsFirst:false });
+    if(!r4b.error && r4b.data) FICHA.rm = r4b.data;
     try {
       var r5 = await sb.rpc('contacto_familia_atleta', { p_atleta: atletaId });
       if(!r5.error && r5.data && r5.data.length) FICHA.contacto = r5.data[0];
     } catch(e){}
 
     if(FICHA && FICHA.atletaId===atletaId) pintarFicha();
+  }
+
+  /* ------------------------------------------------------------
+     LAS REPETICIONES MÁXIMAS DE UN ATLETA
+     ------------------------------------------------------------
+     El club lo pidió así: «quiero que calcule el porcentaje de peso de
+     los RM. Añádelo». Para eso hace falta que alguien meta los RM, y
+     hasta hoy no había por dónde: la tabla existía y estaba vacía.
+
+     ⚠️ EL NOMBRE DEL EJERCICIO TIENE QUE SER EL MISMO que se escribe en
+     el entrenamiento. Por eso el campo trae la lista del club pegada
+     (un `datalist`): se escribe y se elige, y el nombre casa. Si se
+     teclea otra cosa, el atleta no verá el cálculo en esa fila y nadie
+     entenderá por qué. Se avisa debajo del campo, con esas palabras.
+
+     UNA FILA POR TEST, y el más reciente es el que manda. Los viejos no
+     se tocan: la progresión de la sentadilla a lo largo de la temporada
+     es de lo poco que de verdad dice si el trabajo está sirviendo.
+
+     Y SE PUEDE CORREGIR: cada fila lleva su «Borrar». Un RM mal tecleado
+     no es un dato incómodo, es un peso equivocado en una barra.
+     ------------------------------------------------------------ */
+  function rmHTML(at){
+    var lista = FICHA.rm || [];
+    /* Cuál es el que vale HOY de cada ejercicio: el del test más reciente.
+       Los anteriores se ven igual, pero en gris y dicho con palabras, para
+       que nadie confunda un RM de octubre con el de ahora. */
+    var vigente = {};
+    lista.forEach(function(x){
+      var k = norm(x.ejercicio||'');
+      if(!vigente[k]) vigente[k] = x.id;
+    });
+    var filas = lista.length
+      ? '<ul class="mini-lista">'+lista.map(function(x){
+          var esVigente = vigente[norm(x.ejercicio||'')] === x.id;
+          var kg = String(x.peso_kg).replace('.',',');
+          return '<li><b style="font-weight:400;color:var(--texto);flex:1;">'+esc(x.ejercicio)+
+            ' <span class="cifra" style="font-weight:700;color:var(--navy);">'+esc(kg)+' kg</span>'+
+            (esVigente?'':' <em style="font-style:normal;color:var(--texto-suave);">(test anterior)</em>')+
+            (x.nota?' <em style="font-style:normal;color:var(--texto-suave);">· '+esc(x.nota)+'</em>':'')+
+            '</b><span>'+esc(x.fecha_test?formatFecha(x.fecha_test):'sin fecha')+
+            ' <button type="button" class="nota-borrar" data-rm="'+esc(x.id)+'">Borrar</button></span></li>';
+        }).join('')+'</ul>'
+      : '<p class="vacio" style="margin:0;">Todavía no tiene ninguna repetición máxima apuntada. Sin ella, cuando el entrenamiento diga «80 % RM» el atleta verá el porcentaje pero no sus kilos: no se estima ninguno.</p>';
+    var opts = '<datalist id="fa-rm-lista">'+EJERCICIOS.map(function(ej){
+      return '<option value="'+escAttr(ej.nombre)+'">';
+    }).join('')+'</datalist>';
+    return filas + opts +
+      '<label style="margin-top:14px;">Apuntar una repetición máxima</label>'+
+      '<div class="grid2">'+
+        '<div><input id="fa-rm-ejercicio" list="fa-rm-lista" placeholder="Sentadilla completa" autocomplete="off"></div>'+
+        '<div><input id="fa-rm-peso" inputmode="decimal" placeholder="kilos (p. ej. 100)"></div>'+
+      '</div>'+
+      '<div class="grid2">'+
+        '<div><input id="fa-rm-fecha" type="date" value="'+esc(todayISO)+'"></div>'+
+        '<div><input id="fa-rm-nota" placeholder="opcional: con cinturón, test de octubre…"></div>'+
+      '</div>'+
+      '<p class="pista">Escribe el ejercicio <strong>tal como lo pones en el entrenamiento</strong> (la lista te lo completa). Si no coincide, el atleta no verá sus kilos en esa fila.</p>'+
+      '<p class="pista">Con esto, donde el entrenamiento diga <strong>«80 % RM»</strong> él leerá <em>«Para ti, 80 % son 80 kg — desde tu RM de 100 kg de marzo»</em>. Lo pones tú: el atleta no puede tocarlo.</p>'+
+      '<div class="acciones"><button class="btn btn--neutro btn--sm" id="fa-rm-ok">Guardar la repetición máxima</button></div>';
   }
 
   function pintarFicha(){
@@ -2319,6 +2416,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (at.licencia ? '<div class="dato"><span>Licencia</span><b class="cifra">'+esc(at.licencia)+'</b></div>' : '')+
       '</div>'+
       '<div class="ficha-bloque"><h4>Mejores marcas</h4>'+marcasHTML+'</div>'+
+      '<div class="ficha-bloque" id="fa-bloque-rm"><h4>Repeticiones máximas (RM)</h4>'+rmHTML(at)+'</div>'+
       '<div class="ficha-bloque"><h4>Asistencia reciente</h4>'+asisHTML+'</div>'+
       '<div class="ficha-bloque"><h4>Faltas avisadas por la familia</h4>'+ausHTML+'</div>'+
       '<div class="ficha-bloque"><h4>Feedback reciente</h4>'+fbHTML+'</div>'+
@@ -2426,6 +2524,51 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var br = document.getElementById('fa-reactivar-ok');
     if(br) br.addEventListener('click', function(){ guardarAtleta({ estado:'activo' }, 'Dado de alta otra vez ✓'); });
+
+    // ---- repeticiones máximas: apuntar una y borrar las que sobren ----
+    async function recargarRM(){
+      var rr = await sb.from('rm_atleta').select('id,ejercicio,peso_kg,fecha_test,nota')
+                 .eq('atleta_id', at.id).order('fecha_test', { ascending:false, nullsFirst:false });
+      if(!rr.error && rr.data && FICHA) FICHA.rm = rr.data;
+      pintarFicha();
+    }
+    var brm = document.getElementById('fa-rm-ok');
+    if(brm) brm.addEventListener('click', async function(){
+      var ej = (document.getElementById('fa-rm-ejercicio').value||'').trim();
+      var kgTxt = (document.getElementById('fa-rm-peso').value||'').trim().replace(',','.');
+      var fecha = document.getElementById('fa-rm-fecha').value || todayISO;
+      var nota = (document.getElementById('fa-rm-nota').value||'').trim();
+      if(!ej){ fmsg('Escribe qué ejercicio es.', 'error'); return; }
+      var kg = parseFloat(kgTxt);
+      /* Los límites no son burocracia: un 8 en vez de un 80 se cuela sin que
+         nadie lo note, y luego el atleta ve «el 80 % son 6,5 kg» y no entiende
+         nada. Y un 800 es un cero de más. */
+      if(isNaN(kg) || kg <= 0 || kg > 500){ fmsg('Pon los kilos que levantó una vez (entre 1 y 500).', 'error'); return; }
+      fmsg('Guardando…');
+      var ins = await sb.from('rm_atleta').insert({
+        atleta_id: at.id, ejercicio: ej, peso_kg: kg, fecha_test: fecha,
+        anotado_por: perfil.id, nota: nota||null });
+      if(ins.error){
+        /* Dos tests del mismo ejercicio el mismo día son un doble clic, no dos
+           tests: la base no los deja y aquí se dice en llano por qué. */
+        var dup = /duplicad|duplicate|unique/i.test(ins.error.message||'');
+        fmsg(dup ? 'Ya hay un RM de ese ejercicio con esa fecha. Bórralo o cambia la fecha.'
+                 : 'Error: '+ins.error.message, 'error');
+        return;
+      }
+      await recargarRM();
+      fmsg('Repetición máxima guardada ✓ ya le salen sus kilos', 'ok');
+    });
+    caja.querySelectorAll('[data-rm]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        if(!await APX.confirm('¿Borrar esta repetición máxima? Los kilos que calcula el atleta se recalcularán con la anterior, si la hay.', { aceptar:'Borrar', peligro:true })) return;
+        fmsg('Borrando…');
+        var del = await sb.from('rm_atleta').delete().eq('id', b.getAttribute('data-rm'));
+        if(del.error){ fmsg('Error: '+del.error.message, 'error'); return; }
+        await recargarRM();
+        fmsg('Borrada ✓', 'ok');
+      });
+    });
   }
 
   // ============================================================
@@ -4863,6 +5006,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if(!atls.length){ cont.innerHTML = vacioHTML(icVacGrupo, 'No hay atletas visibles en el grupo de este entrenamiento.'); return; }
 
+    /* Lo que ya se le contestó a cada uno. Se pide de una vez para todo el
+       entrenamiento: son los mismos atletas de la lista, no una consulta por
+       ficha. Si falla, no se rompe la pantalla: se dejan las cajas vacías y
+       lo que hay guardado sigue estando. */
+    var COM={};   // { registro_id: {id, comentario, created_at, editado_en, entrenador_id} }
+    var regIds=(reg.data||[]).map(function(r){ return r.id; });
+    if(regIds.length){ try {
+      var fq = await sb.from('feedback_entrenamientos')
+        .select('id,registro_id,entrenador_id,comentario,created_at,editado_en')
+        .in('registro_id', regIds).order('created_at', { ascending:true });
+      if(!fq.error && fq.data) fq.data.forEach(function(c){ COM[c.registro_id]=c; });
+    } catch(e){} }
+
     var html = atls.map(function(at){
       var r = porAtleta[at.id];
       var nom = esc((at.nombre||'')+' '+(at.apellidos||''));
@@ -4905,6 +5061,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           (cayeron.length?'<em>Se cayó: '+esc(cayeron.slice(0,5).join(', '))+(cayeron.length>5?'…':'')+'</em>':'')+
           (r.nota_no_hecho?'<em>«'+esc(r.nota_no_hecho)+'»</em>':'')+'</div>';
       }
+      /* ------------------------------------------------------------
+         LO QUE CAMBIÓ POR OTRA COSA
+         El entrenamiento decía press banca y él hizo flexiones, porque no
+         había banco. Va arriba, con lo que se quedó sin hacer, y por lo
+         mismo: cambia lo que estás leyendo. Si esto se quedara enterrado
+         al final, marcarlo no serviría de nada y se dejaría de marcar.
+
+         Y es información para planificar, no un descuido del atleta: si
+         todas las semanas el jalón sale convertido en dominadas, en esa
+         sala no hay polea y toca escribir otra cosa.
+         ------------------------------------------------------------ */
+      var cambios='';
+      if(r.tiempos_reales && typeof r.tiempos_reales==='object'){
+        var lin=[];
+        Object.keys(r.tiempos_reales).forEach(function(k){
+          var t=r.tiempos_reales[k]; if(!t || !t.cambiado_por) return;
+          lin.push('<span class="fbc-uno">Hizo <b>'+esc(t.cambiado_por)+'</b> '+
+                   '<span>en vez de '+esc(t.ejercicio||k)+'</span></span>');
+        });
+        if(lin.length) cambios='<div class="fb-cambios"><span class="fbc-et">Lo cambió por otra cosa</span>'+lin.join('')+'</div>';
+      }
       var tiempos='';
       if(r.tiempos_reales && typeof r.tiempos_reales==='object'){
         Object.keys(r.tiempos_reales).forEach(function(k){
@@ -4926,15 +5103,91 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             });
           }
           if(!trozos.length) return;
-          tiempos += '<div class="fb-ej">'+esc(t.ejercicio||k)+': '+trozos.join('')+'</div>';
+          /* El nombre que manda aquí es el del entrenamiento, y al lado lo que
+             hizo de verdad: el entrenador busca por lo que él puso. */
+          var comoSeLlama = esc(t.ejercicio||k) +
+            (t.cambiado_por ? ' <span class="fb-corregido">→ '+esc(t.cambiado_por)+'</span>' : '');
+          tiempos += '<div class="fb-ej">'+comoSeLlama+': '+trozos.join('')+'</div>';
         });
       }
-      return '<div class="fb-atleta"><div class="fb-nom"><strong>'+nom+'</strong>'+(at.categoria?'<span class="pill">'+esc(at.categoria)+'</span>':'')+'</div>'+
-        aviso +
+      /* «Corregido el 3 de agosto»: lo apuntado se puede corregir (migración
+         104) y aquí tiene que verse, porque igual ya habías leído el número
+         de antes y decidido algo con él. */
+      var corr = r.corregido_en
+        ? '<span class="fb-corregido">Corregido el '+esc(formatFecha(String(r.corregido_en).slice(0,10)))+
+          (r.corregido_veces>1?' ('+r.corregido_veces+' veces)':'')+'</span>' : '';
+      return '<div class="fb-atleta" data-reg="'+esc(r.id)+'" data-atleta="'+esc(at.id)+'">'+
+        '<div class="fb-nom"><strong>'+nom+'</strong>'+
+        (at.categoria?'<span class="pill">'+esc(at.categoria)+'</span>':'')+corr+'</div>'+
+        aviso + cambios +
         (metrics?'<div class="fb-metrics">'+metrics+'</div>':'')+ txt +
-        (tiempos?'<div class="fb-tiempos">'+tiempos+'</div>':'')+'</div>';
+        (tiempos?'<div class="fb-tiempos">'+tiempos+'</div>':'')+
+        respuestaHTML(r.id, COM[r.id])+'</div>';
     }).join('');
     cont.innerHTML = html;
+  }
+
+  /* ------------------------------------------------------------
+     CONTESTARLE AL ATLETA
+     ------------------------------------------------------------
+     Aquí mismo, debajo de lo que acabas de leer. Es el momento natural
+     de responder: acabas de ver que se quedó a medias y que le molestaba
+     el gemelo. Montarlo en otra pantalla sería asegurarse de que no se
+     escribe nunca.
+
+     ⚠️ EL AVISO DE QUIÉN LO LEE NO ES DECORATIVO. Ya pasó con la «nota /
+     razonamiento» del entrenamiento: la leían el atleta y su familia y no
+     lo decía en ninguna parte, y hubo que añadirlo después. Aquí va desde
+     el primer día y al lado del título, antes de escribir nada.
+
+     SE PUEDE CORREGIR, con el mismo criterio que lo demás: el mismo día
+     se retoca y no pasa nada; si se reescribe otro día, queda dicho
+     (migración 105). Eso lo lleva la base, no esta pantalla.
+     ------------------------------------------------------------ */
+  function respuestaHTML(regId, com){
+    var pie='';
+    if(com){
+      pie = 'Escrito el '+esc(formatFecha(String(com.created_at).slice(0,10)));
+      if(com.editado_en) pie += ' · corregido el '+esc(formatFecha(String(com.editado_en).slice(0,10)));
+      /* El comentario de otro entrenador se lee pero no se toca: si dos
+         personas llevan al mismo atleta, cada una firma lo suyo. */
+      if(com.entrenador_id && com.entrenador_id !== perfil.id) pie += ' · lo escribió otro entrenador';
+    }
+    var ajeno = !!(com && com.entrenador_id && com.entrenador_id !== perfil.id);
+    return '<div class="fb-resp">'+
+      '<div class="fbr-et">Tu comentario para el atleta'+
+        '<span class="fbr-lee">— lo lee él en su portal</span></div>'+
+      '<textarea class="fbr-txt" '+(ajeno?'readonly ':'')+
+        'placeholder="Lo que quieras decirle de este entrenamiento">'+esc(com&&com.comentario||'')+'</textarea>'+
+      '<div class="fbr-acc">'+
+        (ajeno ? '' : '<button type="button" class="btn btn--neutro btn--sm fbr-guardar" data-reg="'+esc(regId)+'">'+
+                      (com?'Guardar cambios':'Enviar comentario')+'</button>')+
+        '<span class="msg fbr-msg"></span>'+
+        (pie?'<span class="fbr-pie">'+pie+'</span>':'')+
+      '</div></div>';
+  }
+
+  /* Guardar el comentario. Se inserta la primera vez y se actualiza las
+     siguientes; el rastro de «corregido el…» lo pone la base. */
+  async function guardarComentario(btn){
+    var caja = btn.closest('.fb-atleta'); if(!caja) return;
+    var regId = btn.getAttribute('data-reg');
+    var ta = caja.querySelector('.fbr-txt');
+    var msg = caja.querySelector('.fbr-msg');
+    var texto = ta ? ta.value.trim() : '';
+    if(!texto){ msg.textContent = 'Escribe algo antes de enviarlo.'; msg.className='msg fbr-msg error'; return; }
+    msg.textContent = 'Guardando…'; msg.className='msg fbr-msg';
+    var ya = await sb.from('feedback_entrenamientos').select('id')
+               .eq('registro_id', regId).eq('entrenador_id', perfil.id).maybeSingle();
+    var res;
+    if(!ya.error && ya.data){
+      res = await sb.from('feedback_entrenamientos').update({ comentario: texto }).eq('id', ya.data.id);
+    } else {
+      res = await sb.from('feedback_entrenamientos')
+              .insert({ registro_id: regId, entrenador_id: perfil.id, comentario: texto });
+    }
+    if(res.error){ msg.textContent = 'Error: '+res.error.message; msg.className='msg fbr-msg error'; return; }
+    msg.textContent = 'Enviado ✓ ya lo puede leer'; msg.className='msg fbr-msg ok';
   }
 
   (function renderFeedback(){
@@ -4947,9 +5200,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<details class="ayuda"><summary>¿Cómo funciona?</summary>'+
           '<p class="pista">Cada atleta apunta desde su portal cómo fue el entrenamiento: el <strong>esfuerzo (RPE)</strong>, la <strong>sensación general</strong>, el sueño, las molestias y lo que hizo en cada serie —los tiempos en atletismo y natación, los <strong>kilos y las repeticiones</strong> en fuerza—. Aquí lo ves junto, atleta por atleta.</p>'+
           '<p class="pista">Marca cada serie según la va haciendo, así que <strong>la serie sin marcar es la que no hizo</strong>. Cuando un entrenamiento se queda a medias sale avisado arriba de su ficha, con cuántas series faltaron, qué ejercicios se cayeron y por qué: <em>no le dio tiempo</em> o <em>le molestaba algo</em>. El atleta no puede borrar nada, solo marcar, para que no se pierda la información de que ese ejercicio estaba puesto y no se hizo.</p>'+
+          '<p class="pista">Si hizo <strong>otro ejercicio en lugar del que pusiste</strong> —flexiones en vez de press banca porque no había banco—, lo dice él al marcarlo y lo verás aquí arriba, en azul. Su historial guarda lo que hizo de verdad, no lo que estaba escrito.</p>'+
+          '<p class="pista">Puede <strong>corregir</strong> lo que apuntó. Lo del mismo día se corrige sin más; si toca un día anterior, aquí sale <em>«corregido el…»</em> con la fecha.</p>'+
+          '<p class="pista">Y puedes contestarle: el <strong>comentario que escribas al final de su ficha lo lee él</strong> en su portal, con tu nombre. No es una nota interna —esas van en Observaciones, y esas no las ve nadie más que el equipo técnico—.</p>'+
         '</details>'+
       '</div>';
     $('fb-sesion').addEventListener('change', function(){ pintarFeedback($('fb-sesion').value); });
+    /* Un solo manejador para toda la sección: la lista se repinta entera cada
+       vez que se cambia de entrenamiento y así los clics no se duplican. */
+    cont.addEventListener('click', function(ev){
+      var b = ev.target && ev.target.closest ? ev.target.closest('.fbr-guardar') : null;
+      if(b) guardarComentario(b);
+    });
     cargarSesionesFeedback();
   })();
 

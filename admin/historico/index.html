@@ -8,12 +8,14 @@
 <link rel="icon" href="../../assets/img/logo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/admin-auth.js"></script>
 <script src="../../assets/js/admin-tabbar.js" defer></script>
 <script src="../../assets/js/admin-filtros.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
 <style>
   /* ============================================================
      Histórico de la escuela · panel  (maqueta 41b y 41c)
@@ -94,20 +96,22 @@
   .panel { background:#fff; border:1px solid var(--linea-marcada); border-radius:14px; padding: clamp(16px,3vw,24px); }
   .panel h2 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:21px; color: var(--navy); margin:0 0 4px; }
   .panel .sub { font-size:14px; line-height:1.5; color: var(--texto-suave); margin:0 0 12px; max-width:78ch; }
-  /* Trece columnas de números no caben en una tablet en vertical. La tabla se
-     arrastra de lado SIEMPRE: antes, por debajo de 760 px se le quitaba el
-     ancho mínimo y el scroll, y lo que hacía era desbordarse fuera de la
-     pantalla en vez de dejarse arrastrar. */
-  .tabla-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  table { width:100%; min-width:700px; border-collapse:collapse; }
-  th, td { text-align:right; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; white-space:nowrap; }
-  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left; }
-  th { font-size:13px; color: var(--texto-suave); font-weight:600; }
-  td.num { font-family: var(--fuente-dato); color: var(--navy); font-variant-numeric: tabular-nums; }
-  td.nada { color:#C4BCA9; }
+  /* Trece columnas de números no caben en una tablet en vertical. Ya no hace
+     falta arrastrar la tabla de lado: por debajo de 720 px cada temporada es
+     una ficha (pieza 4), con sus cifras una debajo de otra. */
+  .nada { color:#C4BCA9; }
   .etq { display:inline-block; font-size:13px; padding:3px 10px; border-radius:999px;
          background: var(--crema-banda); color: var(--texto-suave); }
   .etq.mun { background:#F6EBD6; color:#8A5307; }
+
+  /* En la ficha, las cifras son el dato: no se pliegan detrás de «Más
+     detalles», que aquí sobra porque ya está todo a la vista. */
+  @media (max-width: 720px) {
+    .panel table.pz-tabla.pz-tabla > tbody > tr > td.pz-num[data-rotulo] {
+      display: flex; gap: 10px; justify-content: space-between;
+    }
+    .panel table.pz-tabla.pz-tabla > tbody > tr > td.pz-td-pie { display: none; }
+  }
 
   /* Las columnas que no se miran cada día van plegadas: siguen todas ahí,
      pero no obligan a arrastrar la tabla para llegar a lo principal. */
@@ -180,12 +184,12 @@
       <h2>Todos los datos</h2>
       <p class="sub">Una fila por temporada y programa. El guión (—) significa que ese dato no se recogió
         esa temporada, no que fuera cero.</p>
-      <div class="tabla-scroll"><table id="tabla"><thead></thead><tbody></tbody></table></div>
+      <div id="tabla"></div>
 
       <details class="plegable">
-        <summary>El resto de columnas: nuevos, renovaciones, hermanos, turnos y chicos y chicas</summary>
+        <summary>Ver las 13 columnas: nuevos, renovaciones, hermanos, turnos y chicos y chicas</summary>
         <div class="dentro">
-          <div class="tabla-scroll"><table id="tabla-mas"><thead></thead><tbody></tbody></table></div>
+          <div id="tabla-mas"></div>
         </div>
       </details>
     </div>
@@ -315,10 +319,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!serie.length) {
       $('graficas').innerHTML = '<div class="vacio"><b>No hay datos de este programa</b>' +
         'Elige otro programa arriba, o carga las temporadas en la base de datos.</div>';
-      ['tabla', 'tabla-mas'].forEach(function (id) {
-        $(id).querySelector('thead').innerHTML = '';
-        $(id).querySelector('tbody').innerHTML = '';
-      });
+      ['tabla', 'tabla-mas'].forEach(function (id) { $(id).innerHTML = ''; });
       return;
     }
 
@@ -522,29 +523,35 @@ APOLANA_ADMIN.listo(function (sb) {
     volcar($('tabla-mas'), COLS_RESTO, filas);
   }
 
-  /* Las dos tablas repiten temporada y programa: sin esas dos columnas, las
-     filas de la plegada no se sabría a qué temporada pertenecen. */
+  /* Las dos tablas repiten la temporada y el programa: sin ellos, las filas de
+     la plegada no se sabría a qué temporada pertenecen. Con la pieza 3, la
+     temporada es el dato principal y el programa su línea de contexto. */
   function volcar(t, cols, filas) {
     if (!filas.length) {
-      t.querySelector('thead').innerHTML = '';
-      t.querySelector('tbody').innerHTML = '<tr><td class="sin-etiqueta">Sin datos de este programa.</td></tr>';
+      t.innerHTML = '<p class="sub" style="margin:0">Sin datos de este programa.</p>';
       return;
     }
-    t.querySelector('thead').innerHTML = '<tr><th>Temporada</th><th>Programa</th>' +
-      cols.map(function (c) { return '<th class="num">' + esc(c.n) + '</th>'; }).join('') + '</tr>';
-    t.querySelector('tbody').innerHTML = filas.map(function (f) {
-      var mun = f.programa === 'municipal';
-      return '<tr><td data-etiqueta="Temporada"><b>' + esc(f.temporada) + '</b></td>' +
-        '<td data-etiqueta="Programa"><span class="etq' + (mun ? ' mun' : '') + '">' +
-        (mun ? 'Municipal' : 'Escuela') + '</span></td>' +
-        cols.map(function (c) {
-          var v = f[c.c];
-          /* El guión solo aquí: significa «ese dato no se recogió», no cero. */
-          if (v == null) return '<td class="num nada" data-etiqueta="' + esc(c.n) + '">—</td>';
-          var txt = c.p ? (Math.round(Number(v) * 10) / 10).toFixed(1).replace('.', ',') + ' %' : num(v);
-          return '<td class="num" data-etiqueta="' + esc(c.n) + '">' + esc(txt) + '</td>';
-        }).join('') + '</tr>';
-    }).join('');
+    t.innerHTML = PZ.tabla({
+      columnas: [{ texto: 'Temporada' }].concat(cols.map(function (c) {
+        return { texto: c.n, ancho: '112px', num: true };
+      })),
+      etiqueta: 'La escuela por temporadas',
+      filas: filas.map(function (f) {
+        var mun = f.programa === 'municipal';
+        return {
+          id: f.temporada + '-' + f.programa,
+          principal: f.temporada,
+          contexto: mun ? 'Escuela municipal' : 'Escuela del club',
+          celdas: cols.map(function (c) {
+            var v = f[c.c];
+            /* El guión solo aquí: significa «ese dato no se recogió», no cero. */
+            if (v == null) return { html: '<span class="nada">—</span>', num: true };
+            var txt = c.p ? (Math.round(Number(v) * 10) / 10).toFixed(1).replace('.', ',') + ' %' : num(v);
+            return { texto: txt, num: true };
+          })
+        };
+      })
+    });
   }
 
   /* ---------- carga ---------- */
@@ -559,10 +566,7 @@ APOLANA_ADMIN.listo(function (sb) {
       $('graficas').innerHTML = ADM.error(r.error.message, cargar);
       $('cuenta-cab').textContent = '';
       $('txt-rango').textContent = '';
-      ['tabla', 'tabla-mas'].forEach(function (id) {
-        $(id).querySelector('thead').innerHTML = '';
-        $(id).querySelector('tbody').innerHTML = '';
-      });
+      ['tabla', 'tabla-mas'].forEach(function (id) { $(id).innerHTML = ''; });
       return;
     }
     datos = (r.data || []).map(function (f) {

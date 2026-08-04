@@ -162,7 +162,11 @@
 
     if (o.buscador !== false) {
       var b = o.buscador || {};
-      h += '<input type="search" class="pz-busca"' +
+      /* `data-chip-omitir` es para `admin-filtros.js`: lo que hay escrito en el
+         buscador ya se ve en el propio buscador, así que no hace falta que
+         salga otra vez como chip debajo. Los filtros del cajón «Filtrar» sí
+         salen, que son los que no se ven desde fuera. */
+      h += '<input type="search" class="pz-busca" data-chip-omitir' +
         attr('id', b.id) +
         attr('placeholder', b.placeholder || 'Buscar') +
         attr('aria-label', b.etiqueta || b.placeholder || 'Buscar') +
@@ -597,7 +601,11 @@
     caja.style.right = '';
     caja.style.left = '';
     var r = boton.getBoundingClientRect();
-    var cabe = (window.innerHeight - r.bottom) > 200;
+    /* Se mide el menú de verdad, no un número a ojo: uno de seis opciones
+       mide el doble que uno de dos, y con 200 fijos el último se salía por
+       debajo de la pantalla. */
+    var alto = caja.offsetHeight || 200;
+    var cabe = (window.innerHeight - r.bottom) > (alto + 16);
     caja.style.right = '0';
     if (cabe) caja.style.top = (boton.offsetTop + boton.offsetHeight + 4) + 'px';
     else caja.style.bottom = (boton.offsetHeight + 4) + 'px';

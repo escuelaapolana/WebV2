@@ -8,12 +8,14 @@
 <link rel="icon" href="../../assets/img/logo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/admin-auth.js"></script>
 <script src="../../assets/js/admin-tabbar.js" defer></script>
 <script src="../../assets/js/admin-filtros.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
 <style>
   body { background: var(--crema-media); }
   .admin-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
@@ -36,19 +38,16 @@
   .pista-plegable { flex: 1 1 240px; font-size: 14px; color: var(--texto-suave); line-height: 1.45; }
   .plegable[open] > summary { margin-bottom: 10px; border-bottom: 1px solid var(--linea); }
 
-  /* El recuento de la búsqueda, al lado de los filtros y en cifra de dato. */
-  .cuenta-resultados { font-family: var(--fuente-dato); font-size: 14px; color: var(--texto-suave); margin: 10px 0 0; }
+  /* El cajón de «Filtrar»: lo que no cabe en la única fila de mandos. */
+  .cajon { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:10px; background:#fff;
+    padding:14px 16px; margin:0 0 14px; max-width:420px; }
+  .cajon[hidden] { display:none; }
 
-  /* Cifras del resumen */
-  .cifras { display:grid; grid-template-columns: repeat(4,1fr); gap:14px; margin-bottom: 8px; }
-  .cifra { background: var(--crema); border:1px solid var(--linea); border-radius: var(--radio); padding:14px 16px; }
-  .cifra .et { display:block; font-size: 13px; text-transform:none; color: var(--texto-suave); }
-  .cifra .num { display:block; font-family: var(--fuente-dato); font-weight:700; font-size: 28px; color: var(--navy); line-height:1.15; margin-top:4px; }
-  .cifra .nota { display:block; font-size:13px; color: var(--texto-suave); margin-top:2px; }
-  .cifra.rojo .num { color:#B0563A; }
-  .cifra.ambar .num { color:#B96F09; }
-  .cifra.verde .num { color:#4C7A28; }
-  @media (max-width: 900px) { .cifras { grid-template-columns: repeat(2,1fr); } }
+  /* Los papeles dicen DE QUÉ: «Entrenador · Verde 1 y 2», no «Entrenador» a
+     secas. Es la misma etiqueta que en la píldora de la barra. */
+  .papel { display:inline-block; padding:4px 10px; border-radius:999px; background: var(--azul-suave,#EAF2F9);
+    color:#1E4E78; font-size:13px; line-height:1.4; margin:0 6px 5px 0; }
+  .papeles { display:flex; flex-wrap:wrap; gap:0; margin:-1px 0 -5px; }
 
   /* Caja de aviso */
   .aviso { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); border-radius: var(--radio); padding: 16px 18px; color: var(--aviso-texto); font-size: 15px; }
@@ -72,15 +71,14 @@
 
   /* Formularios */
   label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin: 10px 0 5px; }
-  input, select { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-family: var(--fuente-texto); font-size:15px; background:#fff; color: var(--navy); }
-  input:focus, select:focus { outline:2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
-  .filtros { display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; align-items:end; }
-  @media (max-width: 700px) { .filtros { grid-template-columns: 1fr; } }
-
+  .panel input:not(.pz-busca):not(.pz-editar), .panel select:not(.pz-editar), .cajon select {
+    width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-family: var(--fuente-texto); font-size:15px; background:#fff; color: var(--navy); }
+  .cajon label { font-size:15px; font-weight:500; color:var(--navy); margin:0 0 6px; }
+  .cajon select { min-height:44px; }
+  .panel input:focus, .panel select:focus { outline:2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
   table { width:100%; border-collapse: collapse; margin-top: 10px; }
   th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--linea); font-size:14px; vertical-align: middle; }
   th { font-size: 13px; text-transform:none; color: var(--texto-suave); }
-  td select { padding:7px 9px; font-size:14px; min-width: 130px; }
   .nom { font-weight:600; color: var(--navy); }
   .sub { display:block; font-size: 13px; color: var(--texto-suave); }
 
@@ -130,47 +128,30 @@
 <div id="admin-contenido">
   <div class="admin-wrap">
 
-    <!-- ===== LISTADO DE PERSONAS ===== -->
+    <!-- ===== LA LISTA DE PERSONAS, LO PRIMERO ===== -->
+    <!-- Cabecera (pieza 1): el total va aquí, en la línea de cifras. -->
+    <div id="cabecera"></div>
+
     <div class="panel">
-      <h2>Personas</h2>
-      <p class="intro">Cambia el rol, la sección y el estado. Cada cambio se guarda al momento.</p>
-
-      <div class="filtros" data-chips>
-        <div>
-          <label for="f-buscar">Buscar por nombre o correo</label>
-          <input type="search" id="f-buscar" placeholder="Escribe un nombre…">
-        </div>
-        <div>
-          <label for="f-rol">Rol</label>
-          <select id="f-rol">
-            <option value="">Todos</option>
-            <option value="admin">Administración</option>
-            <option value="coordinador">Coordinador</option>
-            <option value="entrenador">Entrenador</option>
-            <option value="atleta">Atleta</option>
-            <option value="padre">Familia</option>
-          </select>
-        </div>
-        <div>
-          <label for="f-cuenta">Cuenta de acceso</label>
-          <select id="f-cuenta">
-            <option value="">Todas</option>
-            <option value="si">Puede entrar</option>
-            <option value="no">No puede entrar</option>
-          </select>
-        </div>
+      <!-- Mandos (pieza 2): una fila. Las dos cifras que se usan viven dentro
+           de los chips; el papel, en el cajón de «Filtrar». -->
+      <div id="mandos"></div>
+      <div class="cajon" id="cajon" hidden data-chips>
+        <label for="f-rol">Papel</label>
+        <select id="f-rol">
+          <option value="">Todos</option>
+          <option value="admin">Administración</option>
+          <option value="coordinador">Coordinador</option>
+          <option value="entrenador">Entrenador</option>
+          <option value="atleta">Atleta</option>
+          <option value="padre">Familia</option>
+        </select>
       </div>
-      <p class="cuenta-resultados" id="cuenta-personas" aria-live="polite"></p>
 
-      <div style="overflow-x:auto;">
-        <table id="tabla-personas">
-          <thead><tr><th>Persona</th><th>Rol</th><th>Sección</th><th>Estado</th><th>Cuenta</th><th>Ficha</th></tr></thead>
-          <tbody><tr><td colspan="6" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr></tbody>
-        </table>
-      </div>
+      <div id="tabla-personas"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
       <p class="intro" style="margin-top:12px; font-size:14px;">
-        <b>Cuenta</b> dice si esa persona puede entrar de verdad: hay perfiles creados desde la base de datos que todavía no tienen
-        contraseña. <b>Ficha</b> dice si está enlazada con su ficha de atleta o con la de algún hijo.
+        <b>Estado</b> dice si esa persona puede entrar de verdad: hay perfiles creados desde la base de datos que todavía no tienen
+        contraseña. Los papeles dicen de qué grupo o de qué hijo, y se cambian desde el «⋯» de su fila.
       </p>
     </div>
 
@@ -226,27 +207,16 @@
       </div>
     </div>
 
-    <!-- ===== RESUMEN ===== -->
+    <!-- ===== GRUPOS SIN ENTRENADOR ===== -->
+    <!-- La rejilla de ocho cifras se ha ido: seis de ellas no las miraba
+         nadie y las dos que sí viven ahora dentro de los filtros de arriba.
+         Aquí se queda lo único sobre lo que se puede actuar. -->
     <div class="panel">
-      <h2>Quién entra al panel</h2>
-      <p class="intro">Quién tiene cuenta, con qué rol entra y a qué ficha está enlazada cada persona.</p>
+      <h2>Grupos que se han quedado sin entrenador</h2>
+      <p class="intro">Un grupo sin técnico no puede planificar ni pasar lista.</p>
 
-      <!-- Si la consulta se cae, el aviso ocupa el sitio de las cifras: ocho
-           ceros se leen como «no hay nadie», y eso no es lo que ha pasado. -->
       <div id="resumen-error"></div>
 
-      <div class="cifras" id="caja-cifras">
-        <div class="cifra"><span class="et">Personas con perfil</span><span class="num" id="c-perfiles"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota" id="n-perfiles"></span></div>
-        <div class="cifra verde"><span class="et">Atletas enlazados</span><span class="num" id="c-enlazados"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota" id="n-enlazados"></span></div>
-        <div class="cifra rojo"><span class="et">Atletas sin enlazar</span><span class="num" id="c-sinenlazar"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota">No pueden usar el portal</span></div>
-        <div class="cifra ambar"><span class="et">Familias</span><span class="num" id="c-familias"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota" id="n-familias"></span></div>
-        <div class="cifra"><span class="et">Entrenadores</span><span class="num" id="c-entrenadores"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota" id="n-entrenadores"></span></div>
-        <div class="cifra"><span class="et">Coordinadores</span><span class="num" id="c-coordinadores"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota">Por secciones</span></div>
-        <div class="cifra"><span class="et">Administración</span><span class="num" id="c-admins"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota">Acceso total</span></div>
-        <div class="cifra ambar"><span class="et">Grupos sin entrenador</span><span class="num" id="c-gruposse"><span class="adm-esq" style="width:52px;height:22px;margin:2px 0"></span></span><span class="nota" id="n-gruposse"></span></div>
-      </div>
-
-      <h3>Grupos que se han quedado sin entrenador</h3>
       <!-- El esqueleto va DENTRO, nunca en este mismo div: la piel del panel
            sustituye el nodo que lleva la clase «adm-cargando» cuando tarda, y
            si la llevara el contenedor se lo llevaría por delante con su id. -->
@@ -368,10 +338,9 @@ APOLANA_ADMIN.listo(function (sb) {
   function falloDeCarga(mensaje) {
     var m = mensaje || 'Puede ser la conexión.';
     $('resumen-error').innerHTML = ADM.error(m, cargarTodo);
-    $('caja-cifras').classList.add('oculto');
     $('lista-grupos-sin').innerHTML = '';
-    $('cuenta-personas').textContent = '';
-    $('tabla-personas').querySelector('tbody').innerHTML = ADM.filaError(6, m, cargarTodo);
+    pintarCabecera(null);
+    $('tabla-personas').innerHTML = ADM.error(m, cargarTodo);
     $('cuenta-atletas-sin').textContent = '';
     $('cuenta-perfiles-sin').textContent = '';
     $('lista-atletas-sin').innerHTML = ADM.error(m, cargarTodo);
@@ -381,7 +350,6 @@ APOLANA_ADMIN.listo(function (sb) {
 
   async function cargarTodo() {
     $('resumen-error').innerHTML = '';
-    $('caja-cifras').classList.remove('oculto');
     try {
       var rp = await sb.from('perfiles').select('id,nombre,apellidos,email,telefono,rol,seccion,activo').order('apellidos');
       if (rp.error) { falloDeCarga(rp.error.message); return; }
@@ -423,33 +391,12 @@ APOLANA_ADMIN.listo(function (sb) {
   // Resumen
   // ---------------------------------------------------------
   function pintarResumen() {
-    var activos = atletas.filter(function (a) { return a.estado !== 'baja'; });
-    var conAlgo = activos.filter(function (a) { return a.perfil_id || a.perfil_padre_id; });
-    var conPropia = activos.filter(function (a) { return !!a.perfil_id; });
-    var conFamilia = activos.filter(function (a) { return !!a.perfil_padre_id; });
-
-    var porRol = function (r) { return perfiles.filter(function (p) { return p.rol === r; }); };
-    var puedenEntrar = perfiles.filter(function (p) { return estadoCuenta(p.id).puede; }).length;
-
-    $('c-perfiles').textContent = perfiles.length;
-    $('n-perfiles').textContent = puedenEntrar + (puedenEntrar === 1 ? ' puede' : ' pueden') + ' entrar hoy';
-    $('c-enlazados').textContent = conAlgo.length;
-    $('n-enlazados').textContent = 'de ' + plural(activos.length, 'atleta', 'atletas') + ' · ' + conPropia.length + ' con cuenta propia';
-    $('c-sinenlazar').textContent = activos.length - conAlgo.length;
-    $('c-familias').textContent = porRol('padre').length;
-    $('n-familias').textContent = plural(conFamilia.length, 'ficha', 'fichas') + ' con familia enlazada';
-    $('c-entrenadores').textContent = porRol('entrenador').length;
-    $('c-coordinadores').textContent = porRol('coordinador').length;
-    $('c-admins').textContent = porRol('admin').length;
-
+    /* Las ocho cifras se han ido. Aquí solo queda lo que tiene arreglo: los
+       grupos activos que no tienen a nadie al frente. */
     var gruposActivos = grupos.filter(function (g) { return g.activo !== false; });
     var idsEntrenador = {};
     perfiles.forEach(function (p) { if (p.rol === 'entrenador' || p.rol === 'coordinador' || p.rol === 'admin') idsEntrenador[p.id] = true; });
     var huerfanos = gruposActivos.filter(function (g) { return !g.entrenador_id || !idsEntrenador[g.entrenador_id]; });
-
-    $('c-gruposse').textContent = huerfanos.length;
-    $('n-gruposse').textContent = 'de ' + plural(gruposActivos.length, 'grupo activo', 'grupos activos');
-    $('n-entrenadores').textContent = plural(gruposActivos.length - huerfanos.length, 'grupo', 'grupos') + ' con técnico';
 
     $('lista-grupos-sin').innerHTML = huerfanos.length
       ? huerfanos.map(function (g) {
@@ -471,81 +418,223 @@ APOLANA_ADMIN.listo(function (sb) {
     return '<span class="pill pill-neutro">—</span>';
   }
 
-  function pintarPersonas() {
-    var texto = ($('f-buscar').value || '').toLowerCase().trim();
-    var fr = $('f-rol').value, fc = $('f-cuenta').value;
-    var tb = $('tabla-personas').querySelector('tbody');
+  /* Los papeles dicen DE QUÉ: «Entrenador · Verde 1 y 2», «Familia · Lucía y
+     Pablo». Es la misma etiqueta que en la píldora de la barra y la que pide
+     la maqueta; «Entrenador» a secas no dice si lleva un grupo o cuatro. */
+  function nombresBonitos(lista) {
+    var n = lista.map(function (x) { return x.nombre || nombreCompleto(x); });
+    if (n.length <= 1) return n.join('');
+    if (n.length === 2) return n[0] + ' y ' + n[1];
+    return n.slice(0, 2).join(', ') + ' y ' + (n.length - 2) + ' más';
+  }
 
-    var lista = perfiles.filter(function (p) {
+  function papelesDe(p) {
+    var propia = atletas.filter(function (a) { return a.perfil_id === p.id; });
+    var hijos  = atletas.filter(function (a) { return a.perfil_padre_id === p.id; });
+    var mios   = grupos.filter(function (g) { return g.entrenador_id === p.id; });
+    var papeles = [];
+
+    if (p.rol === 'admin') papeles.push('Administración');
+    else if (p.rol === 'coordinador') papeles.push('Coordinador' + (p.seccion ? ' · ' + (SECCION_TXT[p.seccion] || p.seccion) : ''));
+    else if (p.rol === 'entrenador') papeles.push('Entrenador' + (mios.length ? ' · ' + nombresBonitos(mios) : ' · sin grupo'));
+    else if (p.rol === 'atleta') papeles.push('Atleta');
+    else if (p.rol === 'padre') papeles.push('Familia' + (hijos.length ? ' · ' + nombresBonitos(hijos) : ' · sin ficha enlazada'));
+
+    /* Una misma persona puede llevar varios papeles a la vez, y hay que
+       verlos todos: el entrenador que además es atleta, la madre que además
+       lleva la tesorería. */
+    if (propia.length && p.rol !== 'atleta') papeles.push('Atleta');
+    if (hijos.length && p.rol !== 'padre') papeles.push('Familia · ' + nombresBonitos(hijos));
+    if (mios.length && p.rol !== 'entrenador' && p.rol !== 'coordinador') papeles.push('Entrenador · ' + nombresBonitos(mios));
+    if (!papeles.length) papeles.push('Sin papel');
+
+    return '<span class="papeles">' + papeles.map(function (t) {
+      return '<span class="papel">' + esc(t) + '</span>';
+    }).join('') + '</span>';
+  }
+
+  /* Quién ve el panel: es lo que pregunta el club, y no es lo mismo que
+     «tiene cuenta». */
+  function conPanel(p) { return ['admin', 'coordinador', 'entrenador'].indexOf(p.rol) !== -1; }
+  function sinVerificar(p) { return !estadoCuenta(p.id).puede; }
+
+  var TONO_CUENTA = { 'pill-si': 'ok', 'pill-medio': 'aviso', 'pill-no': 'aviso', 'pill-neutro': '' };
+  var filtroChip = 'todas';
+  var editando = null;      // id de la fila que está en edición
+
+  var COLUMNAS = [
+    { texto: 'Persona' },
+    { texto: 'Papeles', ancho: '340px' },
+    { texto: 'Estado',  ancho: '160px' },
+    { texto: '',        ancho: '56px' }
+  ];
+
+  function listaFiltrada() {
+    var caja = $('f-buscar');
+    var texto = ((caja && caja.value) || '').toLowerCase().trim();
+    var fr = $('f-rol').value;
+    return perfiles.filter(function (p) {
       if (fr && p.rol !== fr) return false;
-      if (fc) {
-        var puede = estadoCuenta(p.id).puede;
-        if (fc === 'si' && !puede) return false;
-        if (fc === 'no' && puede) return false;
-      }
+      if (filtroChip === 'panel' && !conPanel(p)) return false;
+      if (filtroChip === 'sinver' && !sinVerificar(p)) return false;
       if (texto) {
         var t = (nombreCompleto(p) + ' ' + (p.email || '')).toLowerCase();
         if (t.indexOf(texto) === -1) return false;
       }
       return true;
     });
+  }
+
+  function pintarPersonas() {
+    var lista = listaFiltrada();
+    var cont = $('tabla-personas');
+
+    pintarCabecera(perfiles.length + (perfiles.length === 1 ? ' persona' : ' personas') +
+      ' · ' + perfiles.filter(conPanel).length + ' con acceso al panel');
+    pintarMandos(lista.length);
 
     /* «No hay nadie» y «el filtro no encuentra a nadie» no son lo mismo:
        el primero se arregla dando de alta, el segundo quitando el filtro. */
-    $('cuenta-personas').textContent = lista.length === perfiles.length
-      ? (perfiles.length === 1 ? '1 persona' : perfiles.length + ' personas')
-      : lista.length + ' de ' + perfiles.length;
-
     if (!perfiles.length) {
-      tb.innerHTML = ADM.filaVacia(6, 'Todavía no hay ninguna persona con perfil',
-        'En cuanto alguien se registre con su correo aparecerá aquí para ponerle su rol.', '',
+      cont.innerHTML = ADM.vacio('Todavía no hay ninguna persona con perfil',
+        'En cuanto alguien se registre con su correo aparecerá aquí para ponerle su papel.', '',
         '<circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.5c1.1-3.4 3.9-5.1 7.2-5.1s6.1 1.7 7.2 5.1"/>');
       return;
     }
     if (!lista.length) {
-      tb.innerHTML = ADM.filaVacia(6, 'Nadie encaja con esta búsqueda',
-        'Prueba a buscar solo por el apellido o a quitar alguno de los dos filtros.',
-        '<button type="button" class="btn btn--fantasma btn--mini" data-limpiar-personas>Quitar los filtros</button>',
+      cont.innerHTML = ADM.vacio('Nadie encaja con esta búsqueda',
+        'Prueba a buscar solo por el apellido o a quitar alguno de los filtros.',
+        '<button type="button" class="pz-btn pz-btn--borde" data-limpiar-personas>Quitar los filtros</button>',
         '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>');
       return;
     }
 
-    tb.innerHTML = lista.map(function (p) {
-      var c = estadoCuenta(p.id);
-      var selRol = '<select data-campo="rol" data-id="' + p.id + '">' + ROLES.map(function (r) {
-        return '<option value="' + r.v + '"' + (p.rol === r.v ? ' selected' : '') + '>' + r.t + '</option>';
-      }).join('') + '</select>';
-      var selSec = '<select data-campo="seccion" data-id="' + p.id + '"><option value="">— sin sección —</option>' +
-        SECCIONES.map(function (s) {
-          return '<option value="' + s + '"' + (p.seccion === s ? ' selected' : '') + '>' + SECCION_TXT[s] + '</option>';
-        }).join('') + '</select>';
-      var selAct = '<select data-campo="activo" data-id="' + p.id + '">' +
-        '<option value="si"' + (p.activo !== false ? ' selected' : '') + '>Activo</option>' +
-        '<option value="no"' + (p.activo === false ? ' selected' : '') + '>Desactivado</option></select>';
-
-      return '<tr>' +
-        '<td><span class="nom">' + esc(nombreCompleto(p) || '(sin nombre)') + '</span>' +
-          '<span class="sub">' + esc(p.email || '') + '</span>' +
-          '<span class="msg" data-msg="' + p.id + '"></span></td>' +
-        '<td>' + selRol + '</td>' +
-        '<td>' + selSec + '</td>' +
-        '<td>' + selAct + '</td>' +
-        '<td><span class="pill ' + c.clase + '">' + c.txt + '</span></td>' +
-        '<td>' + fichaDe(p) + '</td>' +
-      '</tr>';
-    }).join('');
+    cont.innerHTML = PZ.tabla({ columnas: COLUMNAS, etiqueta: 'Personas del club', filas: lista.map(fila) });
   }
 
-  $('f-buscar').addEventListener('input', pintarPersonas);
+  function fila(p) {
+    var c = estadoCuenta(p.id);
+    var enEdicion = editando === p.id;
+
+    /* En edición la fila se tiñe y los papeles se cambian ahí mismo, con
+       campos de 44 px. Fuera de edición son chips que solo se leen. */
+    var celdaPapeles;
+    if (enEdicion) {
+      celdaPapeles = '<select class="pz-editar" data-campo="rol" data-id="' + esc(p.id) + '" aria-label="Papel">' +
+          ROLES.map(function (r) {
+            return '<option value="' + r.v + '"' + (p.rol === r.v ? ' selected' : '') + '>' + esc(r.t) + '</option>';
+          }).join('') + '</select>' +
+        '<select class="pz-editar" style="margin-top:8px" data-campo="seccion" data-id="' + esc(p.id) + '" aria-label="Sección">' +
+          '<option value="">— sin sección —</option>' +
+          SECCIONES.map(function (sc) {
+            return '<option value="' + esc(sc) + '"' + (p.seccion === sc ? ' selected' : '') + '>' + esc(SECCION_TXT[sc]) + '</option>';
+          }).join('') + '</select>' +
+        '<span class="msg" data-msg="' + esc(p.id) + '"></span>' +
+        '<button type="button" class="pz-btn pz-btn--texto" data-pz-accion="hecho" data-pz-id="' + esc(p.id) + '" style="margin-top:4px">Hecho</button>';
+    } else {
+      celdaPapeles = papelesDe(p) + '<span class="msg" data-msg="' + esc(p.id) + '"></span>';
+    }
+
+    var menu = [{ texto: 'Cambiar el papel', accion: 'editar' }];
+    menu.push(p.activo === false
+      ? { texto: 'Volver a activarla', accion: 'activar' }
+      : { texto: 'Desactivar a esta persona', accion: 'desactivar', ojo: true });
+
+    return {
+      id: p.id,
+      clase: enEdicion ? 'pz-editando' : '',
+      principal: nombreCompleto(p) || '(sin nombre)',
+      contexto: (p.email || 'sin correo') + (p.activo === false ? ' · desactivada' : ''),
+      celdas: [ { html: celdaPapeles } ],
+      estado: { texto: c.txt, tono: TONO_CUENTA[c.clase] || '' },
+      menu: menu
+    };
+  }
+
+  function pintarCabecera(ctx) {
+    $('cabecera').innerHTML = PZ.cabecera({
+      titulo: 'Usuarios y permisos',
+      contexto: ctx == null ? 'No se han podido cargar las personas.' : ctx,
+      accion: { texto: 'Enlazar una ficha', accion: 'enlazar' }
+    });
+  }
+
+  /* Los mandos se repintan enteros salvo el buscador, que se deja como está
+     para no quitarle el foco a quien está escribiendo. */
+  function pintarMandos(vistas) {
+    var caja = $('mandos');
+    var antes = $('f-buscar');
+    var texto = antes ? antes.value : '';
+    var foco = antes && document.activeElement === antes;
+    var punto = foco ? antes.selectionStart : null;
+
+    var nPanel = perfiles.filter(conPanel).length;
+    var nSinVer = perfiles.filter(sinVerificar).length;
+
+    var chips = [{ texto: 'Todas', cuenta: perfiles.length, valor: 'todas', activo: filtroChip === 'todas' },
+                 { texto: 'Con panel', cuenta: nPanel, valor: 'panel', activo: filtroChip === 'panel' }];
+    if (nSinVer || filtroChip === 'sinver') {
+      chips.push({ texto: 'Sin verificar', cuenta: nSinVer, valor: 'sinver', tono: 'aviso', activo: filtroChip === 'sinver' });
+    }
+
+    caja.innerHTML = PZ.filtros({
+      buscador: { id: 'f-buscar', placeholder: 'Buscar por nombre, correo o grupo', valor: texto },
+      chips: chips,
+      filtrar: { cuenta: $('f-rol').value ? 1 : 0 }
+    });
+
+    if (foco) {
+      var ahora = $('f-buscar');
+      ahora.focus();
+      try { ahora.setSelectionRange(punto, punto); } catch (err) {}
+    }
+  }
+
+  PZ.alPulsar('#cabecera', function (accion) {
+    if (accion !== 'enlazar') return;
+    var caja = document.getElementById('lista-atletas-sin');
+    if (caja) caja.closest('.panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  PZ.alPulsar('#mandos', function (accion, id, boton) {
+    if (accion === 'filtrar') {
+      var abierto = $('cajon').hidden;
+      $('cajon').hidden = !abierto;
+      boton.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+      return;
+    }
+    if (accion === 'filtro') { filtroChip = boton.getAttribute('data-pz-filtro'); pintarPersonas(); }
+  });
+  $('mandos').addEventListener('input', function (e) {
+    if (e.target.id === 'f-buscar') pintarPersonas();
+  });
   $('f-rol').addEventListener('change', pintarPersonas);
-  $('f-cuenta').addEventListener('change', pintarPersonas);
+
+  PZ.alPulsar('#tabla-personas', function (accion, id) {
+    if (accion === 'editar') { editando = id; pintarPersonas(); return; }
+    if (accion === 'hecho')  { editando = null; pintarPersonas(); return; }
+    if (accion === 'desactivar' || accion === 'activar') cambiarActivo(id, accion === 'activar');
+  });
 
   $('tabla-personas').addEventListener('click', function (e) {
     if (!e.target.closest || !e.target.closest('[data-limpiar-personas]')) return;
-    $('f-buscar').value = ''; $('f-rol').value = ''; $('f-cuenta').value = '';
+    var b = $('f-buscar'); if (b) b.value = '';
+    $('f-rol').value = ''; filtroChip = 'todas';
     if (window.APOLANA_FILTROS) APOLANA_FILTROS.repasar();
     pintarPersonas();
   });
+
+  /* Activar o desactivar, que antes era un desplegable más en la fila. */
+  async function cambiarActivo(id, activo) {
+    var p = perfiles.filter(function (x) { return x.id === id; })[0];
+    if (!p) return;
+    if (!activo && !await apoConfirm({ titulo: 'Desactivar persona', texto: 'Al desactivar a ' + nombreCompleto(p) + ' dejará de aparecer en las listas del club.\n\nOjo: esto NO le impide entrar. Para cerrarle el acceso hay que quitarle el papel aquí o borrar su cuenta en Supabase.\n\n¿Seguimos?', confirmar: 'Desactivar', peligro: true })) return;
+    var r = await sb.from('perfiles').update({ activo: activo }).eq('id', id);
+    if (r.error) { apoToast('No se pudo guardar: ' + r.error.message, 'error'); return; }
+    p.activo = activo;
+    pintarPersonas();
+    pintarResumen();
+  }
 
   $('tabla-personas').addEventListener('change', async function (e) {
     var campo = e.target.getAttribute('data-campo');
@@ -564,20 +653,15 @@ APOLANA_ADMIN.listo(function (sb) {
         apoToast('No se puede: ' + nombreCompleto(p) + ' es la única persona con acceso de administración. Dale antes el rol de administración a otra persona.', 'error');
         e.target.value = p.rol; return;
       }
-      var texto = 'Vas a cambiar el rol de ' + nombreCompleto(p) + ' a "' +
+      var texto = 'Vas a cambiar el papel de ' + nombreCompleto(p) + ' a "' +
         (ROLES.filter(function (r) { return r.v === nuevo; })[0] || {}).t + '".\n\n' + AVISO_ROL[nuevo] + '\n\n¿Seguimos?';
-      if (!await apoConfirm({ titulo: 'Cambiar rol', texto: texto, confirmar: 'Cambiar rol' })) { e.target.value = p.rol; return; }
+      if (!await apoConfirm({ titulo: 'Cambiar el papel', texto: texto, confirmar: 'Cambiarlo' })) { e.target.value = p.rol; return; }
       datos.rol = nuevo;
       if (nuevo !== 'coordinador' && p.seccion && !await apoConfirm({ titulo: 'Sección', texto: '¿Le mantenemos la sección "' + (SECCION_TXT[p.seccion] || p.seccion) + '"?\n\nLa sección solo la usa el coordinador.', confirmar: 'Mantener', cancelar: 'Quitar' })) {
         datos.seccion = null;
       }
     } else if (campo === 'seccion') {
       datos.seccion = e.target.value || null;
-    } else if (campo === 'activo') {
-      datos.activo = (e.target.value === 'si');
-      if (!datos.activo && !await apoConfirm({ titulo: 'Desactivar persona', texto: 'Al desactivar a ' + nombreCompleto(p) + ' dejará de aparecer en las listas del club.\n\nOjo: esto NO le impide entrar. Para cerrarle el acceso hay que quitarle el rol aquí o borrar su cuenta en Supabase.\n\n¿Seguimos?', confirmar: 'Desactivar', peligro: true })) {
-        e.target.value = 'si'; return;
-      }
     }
 
     if (msg) { msg.textContent = 'Guardando…'; msg.className = 'msg'; }

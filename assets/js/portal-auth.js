@@ -43,17 +43,17 @@
      Si el archivo no llega (sin conexión, caché vieja), no pasa
      nada: la pantalla sigue funcionando exactamente igual que hoy.
      ------------------------------------------------------------ */
-  function montarPapeles() {
-    function hazlo() {
-      if (!window.APOLANA_PAPELES) return;
-      try { window.APOLANA_PAPELES.montar(); } catch (e) {}
-    }
-    if (window.APOLANA_PAPELES) { hazlo(); return; }
+  /* Carga `assets/js/papeles.js` una vez y avisa cuando está. Ya NO pinta
+     la franja de «Estás como…»: eso lo dice ahora la píldora de la barra,
+     y dos sitios diciendo lo mismo era justo el problema. En el panel la
+     franja sigue puesta hasta que su barra se cambie también. */
+  function conPapeles(cuando) {
+    if (window.APOLANA_PAPELES) { cuando(); return; }
     var s = document.createElement('script');
     s.src = base() + 'assets/js/papeles.js';
     s.async = true;
-    s.addEventListener('load', hazlo);
-    s.addEventListener('error', function () { /* sin interruptor, pero el portal sigue vivo */ });
+    s.addEventListener('load', cuando);
+    s.addEventListener('error', function () { /* sin píldora, pero el portal sigue vivo */ });
     document.head.appendChild(s);
   }
 
@@ -83,48 +83,83 @@
     '.pt-pie a:hover{background:#EAF2F9}' +
     /* Nada debe provocar scroll horizontal (era lo que dejaba la barra corta). */
     'html,body{max-width:100%;overflow-x:hidden}' +
-    /* --- barra superior --- */
-    '.pt-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
-    '.pt-top .izq{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden}' +
-    /* Escudo 26 px + APOLANA, según la barra única del maquetador. De momento
-       NO se pulsa: que el logo lleve a la web vendrá con esa barra entera.
-       Va aquí porque al quitar la flecha este lado se quedaba vacío. */
+    /* --- LA BARRA ÚNICA ---------------------------------------------
+       Antes había DOS barras pegadas: «Estás como atleta · Cambiar» y
+       debajo otra oscura con «Cambiar de perfil · nombre · Ir a la web ·
+       Salir». De ahí el «no sé dónde están las cosas»: cambiar de PAPEL
+       y cambiar de PERFIL son dos cosas distintas y competían en el
+       mismo sitio.
+
+       Ahora es una sola barra de 52 px con dos controles a la derecha y
+       ni uno más:
+         · la píldora del papel — lo que estás haciendo ahora;
+         · el avatar — lo tuyo: perfil, hijos, ir a la web y salir.
+
+       A la izquierda, escudo y APOLANA, y NO se pulsan. El club quitó de
+       esa esquina la flecha «← Ir a la web» porque es donde el móvil pone
+       el gesto de volver atrás y la gente la pulsaba sin mirar; el sitio
+       se queda ocupado por el escudo, que no hace nada al tocarlo.
+       ----------------------------------------------------------------- */
+    '.pt-top{position:relative;background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;' +
+      'gap:10px;min-height:52px;padding:4px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
+    '.pt-top .izq{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden}' +
     '.pt-top .escudo{width:26px;height:26px;flex:0 0 26px;object-fit:contain;display:block}' +
-    /* «Ir a la web» va a la DERECHA, junto a «Salir», y sin flecha. En la
-       esquina de arriba a la izquierda el móvil tiene el gesto de volver
-       atrás: una flecha ahí que además te saca del portal se pulsa sola.
-       Se distingue de «Salir» por el peso: esta es texto suelto, «Salir»
-       es un botón perfilado. Nunca dos botones iguales al lado, porque uno
-       de los dos cierra la sesión. */
-    '.pt-top .aweb{display:inline-flex;align-items:center;justify-content:center;min-height:44px;' +
-      'padding:0 10px;flex:0 0 auto;border-radius:999px;font-size:15px;color:#cdd6e0}' +
-    '.pt-top .aweb:hover{background:rgba(255,255,255,.12);color:#fff}' +
-    '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:18px;color:#fff;text-decoration:none;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}' +
-    '.pt-top .der{display:flex;align-items:center;gap:10px;font-size:14px;color:#cdd6e0;min-width:0}' +
-    '.pt-top .der span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}' +
-    '.pt-top a{color:#cdd6e0;text-decoration:none;white-space:nowrap}' +
-    '.pt-top button{display:inline-flex;align-items:center;min-height:44px;background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:0 16px;cursor:pointer;font-family:inherit;font-size:15px;white-space:nowrap;flex:0 0 auto}' +
-    '.pt-top button:hover{background:rgba(255,255,255,.12)}' +
-    /* Un nombre cortado a «Andr…» no dice quién eres: parece que la barra
-       está rota. Cuando no cabe entero, se quita — igual que hace la barra
-       del panel (assets/js/admin-auth.js). Quién eres sigue estando en la
-       franja de debajo y en Mi perfil. */
-    '@media(max-width:900px){.pt-top .der span{display:none}}' +
-    /* En un móvil estrecho, quien tiene varios papeles lleva tres mandos a la
-       derecha (Cambiar de perfil · Ir a la web · Salir). Se deja envolver
-       antes que recortar: la página tiene overflow-x oculto, así que sin
-       esto «Salir» se cortaría por el borde. */
-    /* El escudo y APOLANA se quedan también en el móvil: son justo lo que
-       llena ese lado. Lo que se aparta si no cabe es el nombre, nunca el
-       escudo, y solo en pantallas muy estrechas con varios papeles. */
-    '@media(max-width:560px){.pt-top{padding:6px 14px;gap:8px;flex-wrap:wrap;row-gap:2px}' +
-      '.pt-top .aweb{padding:0 8px}.pt-top button{padding:0 13px}' +
-      '.pt-top .der{flex:0 1 auto;justify-content:flex-end}' +
-      /* Con tres mandos a la derecha (quien tiene varios papeles) el nombre
-         no cabe en un móvil y la barra se partía en dos filas. En ese caso
-         se aparta el nombre y se queda el escudo, que es lo que llena la
-         esquina. El escudo no se quita nunca. */
-      '.pt-top.pt-mas-mandos .marca{display:none}}' +
+    '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;' +
+      'font-size:18px;letter-spacing:.03em;color:#fff;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}' +
+    '.pt-top .der{display:flex;align-items:center;gap:9px;flex:0 0 auto}' +
+
+    /* La píldora del papel. Dice DE QUÉ («Entrenador · Verde 1 y Verde 2»):
+       sin eso, alguien con cuatro papeles no sabe cuál abre qué. */
+    '.pt-papel{display:none;align-items:center;gap:7px;box-sizing:border-box;min-height:44px;' +
+      'padding:8px 14px;border:0;border-radius:999px;background:rgba(255,255,255,.14);' +
+      'font-family:inherit;font-size:14px;font-weight:500;line-height:1.2;color:#fff;cursor:pointer;' +
+      'max-width:min(52vw,420px);white-space:nowrap;overflow:hidden;-webkit-tap-highlight-color:transparent}' +
+    '.pt-papel.ver{display:inline-flex}' +
+    '.pt-papel:hover{background:rgba(255,255,255,.22)}' +
+    '.pt-papel .pt-txt{overflow:hidden;text-overflow:ellipsis}' +
+    '.pt-papel .pt-fl{flex:0 0 auto;opacity:.85}' +
+
+    /* El avatar. Se ve a 32 px y se pulsa en 44. */
+    '.pt-avatar{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;' +
+      'flex:0 0 44px;padding:0;border:0;border-radius:999px;background:none;cursor:pointer;' +
+      '-webkit-tap-highlight-color:transparent}' +
+    '.pt-avatar span{display:flex;align-items:center;justify-content:center;width:32px;height:32px;' +
+      'border-radius:999px;background:#8FC0E8;color:#1E4E78;font-family:inherit;font-size:13px;font-weight:600;line-height:1}' +
+    '.pt-avatar:hover span{background:#A9D0F0}' +
+    '.pt-papel:focus-visible,.pt-avatar:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
+
+    /* Lo tuyo, colgando del avatar. Va pegado a él, no en el centro de la
+       pantalla: lo que se pulsa y lo que aparece tienen que estar juntos. */
+    /* Va en `fixed`, no en `absolute`: el `overflow-x:hidden` que lleva el
+       body para que nada desborde a lo ancho recorta lo que se sale por
+       abajo, y en una pantalla corta el menú se quedaba sin «Salir». */
+    '.pt-menu{position:fixed;z-index:9100;right:clamp(14px,4vw,40px);min-width:236px;max-width:calc(100vw - 28px);' +
+      'padding:6px;border:1px solid #E4DCCB;border-radius:14px;background:#fff;' +
+      'box-shadow:0 18px 40px -22px rgba(46,66,86,.6)}' +
+    '.pt-menu[hidden]{display:none}' +
+    '.pt-menu .pt-quien{display:block;padding:9px 13px 10px;border-bottom:1px solid #EFE9DC;margin-bottom:5px}' +
+    '.pt-menu .pt-quien b{display:block;font-size:15px;font-weight:600;color:#2E4256;line-height:1.3}' +
+    '.pt-menu .pt-quien small{display:block;font-size:13px;color:#6E6656;line-height:1.4;word-break:break-all}' +
+    '.pt-menu a,.pt-menu button{display:flex;align-items:center;width:100%;box-sizing:border-box;min-height:44px;' +
+      'padding:10px 13px;border:0;border-radius:8px;background:none;color:#4A4437;font-family:inherit;' +
+      'font-size:15px;text-align:left;text-decoration:none;cursor:pointer;white-space:nowrap}' +
+    '.pt-menu a:hover,.pt-menu button:hover{background:#EFE9DC;color:#2E4256}' +
+    '.pt-menu .pt-salir{gap:10px;margin-top:6px;padding-top:12px;border-top:1px solid #EFE9DC;' +
+      'border-radius:0;color:#2F6FA8;font-weight:600}' +
+    '.pt-menu .pt-salir svg{flex:0 0 19px}' +
+    '.pt-menu .pt-salir:hover{background:#EAF2F9;color:#1E4E78}' +
+
+    /* En un móvil estrecho la píldora dice el papel y se calla de qué: el
+       detalle está a un toque, en el selector, y así la barra nunca se
+       parte en dos filas ni siquiera con cuatro papeles. */
+    '@media(max-width:560px){.pt-top{padding:4px 14px}' +
+      '.pt-papel{max-width:none;padding:8px 12px}' +
+      '.pt-papel .pt-dequé{display:none}}' +
+    /* Con solo dos mandos a la derecha, APOLANA cabe hasta en un móvil de
+       375 px aunque tengas cuatro papeles: antes eran tres o cuatro mandos
+       y la barra se partía en dos filas. Si aun así no cupiera —un móvil de
+       320 px—, lo que se aparta es el nombre; el escudo no se quita nunca. */
+    '@media(max-width:340px){.pt-top.pt-mas-mandos .marca{display:none}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
     '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px}' +
@@ -495,8 +530,9 @@
       /* Nunca dos barras: si ya hay una pintada, no se pinta otra. Esto
          evita el «barra, franja, barra» que salía al entrar en algunas
          pantallas (la función se llamaba más de una vez). */
-      if (document.querySelector('.pt-top')) { montarPapeles(); return; }
+      if (document.querySelector('.pt-top')) return;
       var nombre = (perfil && perfil.nombre) ? perfil.nombre : email;
+      var ini = iniciales(perfil, email);
       var top = document.createElement('div');
       top.className = 'pt-top';
       top.innerHTML =
@@ -505,17 +541,147 @@
           '<span class="marca">Apolana</span>' +
         '</div>' +
         '<div class="der">' +
-          '<button id="pt-cambiar" style="display:none">Cambiar de perfil</button>' +
-          '<span>' + esc(nombre) + '</span>' +
-          '<a class="aweb" href="' + b + '">Ir a la web</a>' +
-          '<button id="pt-salir">Salir</button>' +
+          /* La píldora nace escondida: si solo tienes un papel no aparece
+             nunca, y la mayoría del club está en ese caso. */
+          '<button type="button" class="pt-papel" id="pt-papel" aria-haspopup="dialog">' +
+            '<span class="pt-txt"></span>' +
+            '<span class="pt-fl" aria-hidden="true">&#9662;</span>' +
+          '</button>' +
+          '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="menu" ' +
+            'aria-expanded="false" aria-controls="pt-menu" aria-label="Lo tuyo: perfil y salir">' +
+            '<span aria-hidden="true">' + esc(ini) + '</span>' +
+          '</button>' +
+        '</div>' +
+        '<div class="pt-menu" id="pt-menu" hidden role="menu">' +
+          '<span class="pt-quien"><b>' + esc(nombre) + '</b><small>' + esc(email) + '</small></span>' +
+          '<a role="menuitem" href="' + b + 'portal/perfil/">Mi perfil</a>' +
+          '<a role="menuitem" class="pt-hijos" href="' + b + 'portal/familia/" hidden>Mis hijos</a>' +
+          '<a role="menuitem" href="' + b + '">Ir a la web</a>' +
+          /* Cerrar sesión se busca con prisa —un móvil prestado, la cuenta de
+             otro— así que va apartado del resto, con su raya y su icono, y
+             es lo único del menú que no es un sitio al que ir. «Cambiar la
+             contraseña» no está aquí: vive en Mi perfil, que es donde se
+             buscan los ajustes, y una entrada menos hace que esta se vea. */
+          '<button type="button" role="menuitem" class="pt-salir" id="pt-salir">' +
+            '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
+              'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+              '<path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2"/>' +
+              '<path d="M19 12H9m10 0-3.2-3.2M19 12l-3.2 3.2"/></svg>' +
+            'Salir</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
+
+      /* --- el menú del avatar --- */
+      var bAvatar = document.getElementById('pt-avatar');
+      var menu = document.getElementById('pt-menu');
+      function cerrarMenu() {
+        menu.hidden = true;
+        bAvatar.setAttribute('aria-expanded', 'false');
+      }
+      bAvatar.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var abrir = menu.hidden;
+        menu.hidden = !abrir;
+        bAvatar.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+        if (abrir) {
+          /* Colgado del avatar, no en el centro de la pantalla: lo que se
+             pulsa y lo que aparece tienen que estar juntos. */
+          menu.style.top = (bAvatar.getBoundingClientRect().bottom + 4) + 'px';
+          var primero = menu.querySelector('a,button');
+          if (primero) primero.focus();
+        }
+      });
+      /* La barra se va con el scroll; el menú, que es fijo, se quedaría
+         flotando solo. Se cierra. */
+      window.addEventListener('scroll', function () { if (!menu.hidden) cerrarMenu(); }, { passive: true });
+      window.addEventListener('resize', function () { if (!menu.hidden) cerrarMenu(); });
+      document.addEventListener('click', function (e) {
+        if (!menu.hidden && !menu.contains(e.target)) cerrarMenu();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !menu.hidden) { cerrarMenu(); bAvatar.focus(); }
+      });
+
       document.getElementById('pt-salir').addEventListener('click', async function () {
         await sb.auth.signOut(); location.reload();
       });
-      /* La franja «Estás como …», pegada arriba de todo y sin cerrar. */
-      montarPapeles();
+      /* «Mis hijos» solo si los hay: un menú con una puerta que no lleva a
+         ninguna parte es peor que un menú corto. */
+      if (perfil && perfil.id) {
+        misAtletas(perfil.id).then(function (r) {
+          var hijos = (r.data || []).filter(function (a) { return a.perfil_padre_id === perfil.id; });
+          var el = menu.querySelector('.pt-hijos');
+          if (el && hijos.length) el.hidden = false;
+        });
+      }
+
+      /* La píldora sale cuando se sabe en qué papel estás. Si solo tienes
+         uno, no sale nunca: la mayoría del club está en ese caso y para
+         ellos la barra es escudo y avatar. */
+      conPapeles(function () {
+        if (!window.APOLANA_PAPELES) return;
+        window.APOLANA_PAPELES.cargar().then(function (d) {
+          if (!d || (d.roles || []).length < 2) return;
+          ponerPildora(perfil, window.APOLANA_PAPELES.titulo(d.activo), d.activo, function () {
+            window.APOLANA_PAPELES.abrir();
+          });
+        });
+      });
+    }
+
+    /* ------------------------------------------------------------
+       LA PÍLDORA DEL PAPEL · «lo que estás haciendo ahora»
+       Dice de qué: «Entrenador · Verde 1 y Verde 2», «Familia · Lucía
+       y Pablo». Los nombres salen de lo que ya se ha pedido para la
+       página (las fichas y los grupos), así que no cuesta ni una
+       petición más.
+       ------------------------------------------------------------ */
+    var pildoraPuesta = false;
+
+    function unirNombres(lista) {
+      if (!lista.length) return '';
+      if (lista.length === 1) return lista[0];
+      if (lista.length === 2) return lista[0] + ' y ' + lista[1];
+      return lista.slice(0, 2).join(', ') + ' y ' + (lista.length - 2) + ' más';
+    }
+
+    async function deQue(rol, perfil) {
+      if (!perfil || !perfil.id) return '';
+      try {
+        if (rol === 'entrenador') {
+          var g = await grupos();
+          return unirNombres((g.data || [])
+            .filter(function (x) { return x.entrenador_id === perfil.id; })
+            .map(function (x) {
+              return (x.turno && window.APOLANA_GRUPO_NOMBRE) ? window.APOLANA_GRUPO_NOMBRE(x) : x.nombre;
+            }));
+        }
+        if (rol === 'padre') {
+          var a = await misAtletas(perfil.id);
+          return unirNombres((a.data || [])
+            .filter(function (x) { return x.perfil_padre_id === perfil.id; })
+            .map(function (x) { return x.nombre; }));
+        }
+        if (rol === 'coordinador') return perfil.seccion || '';
+      } catch (e) { /* sin detalle, la píldora dice solo el papel */ }
+      return '';
+    }
+
+    /* Pinta la píldora con el papel activo. `alPulsar` es lo que abre:
+       el selector de papeles si los hay, y si no la hoja de zonas. */
+    async function ponerPildora(perfil, titulo, rol, alPulsar) {
+      var b1 = document.getElementById('pt-papel');
+      if (!b1) return;
+      var detalle = await deQue(rol, perfil);
+      b1.querySelector('.pt-txt').innerHTML =
+        esc(titulo) + (detalle ? '<span class="pt-dequé"> · ' + esc(detalle) + '</span>' : '');
+      b1.classList.add('ver');
+      /* Con dos mandos a la derecha la barra ya no se parte, pero en un
+         móvil muy estrecho APOLANA todavía estorba: se avisa. */
+      var top = document.querySelector('.pt-top');
+      if (top) top.classList.add('pt-mas-mandos');
+      b1.onclick = alPulsar;
+      pildoraPuesta = true;
     }
 
     function mostrarLogin(m) { login.style.display = ''; if (m) { var e = document.getElementById('pt-msg'); if (e) e.textContent = m; } }
@@ -817,15 +983,17 @@
             }
           }
         }
-        if (lista.length < 2) return;
-        var bt = document.getElementById('pt-cambiar');
-        if (!bt) return;
-        bt.style.display = '';
-        /* Con este botón ya son tres mandos a la derecha: se avisa a la barra
-           para que en un móvil aparte el nombre y no se parta en dos filas. */
-        var top = document.querySelector('.pt-top');
-        if (top) top.classList.add('pt-mas-mandos');
-        bt.addEventListener('click', function () { abrirHoja(lista, perfil, email); });
+        /* Quien no tiene varios papeles concedidos pero SÍ varias zonas
+           deducidas de sus datos (ficha propia e hijos, por ejemplo) sigue
+           teniendo dónde cambiar: la misma píldora, abriendo la hoja de
+           zonas de siempre. Si ya la ha puesto el selector de papeles, que
+           es el que trae los pendientes, manda ese y este no la pisa. */
+        if (lista.length < 2 || pildoraPuesta) return;
+        var actual = papelActivo(lista);
+        var zona = lista.filter(function (z) { return z.clave === actual; })[0] || lista[0];
+        ponerPildora(perfil, zona.titulo, zona.clave, function () {
+          abrirHoja(lista, perfil, email);
+        });
       });
     }
 
