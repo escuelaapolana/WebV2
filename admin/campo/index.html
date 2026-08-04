@@ -387,8 +387,12 @@ window.APOLANA_ADMIN.listo(function (sb) {
      nombre entero. La ficha y el buscador siempre lo dicen completo. */
   function nombreCorto(a) {
     var uno = [a.nombre, (a.apellidos || '').split(' ')[0]].filter(Boolean).join(' ');
+    /* Los homónimos se buscan en la lista que se está pasando, no en «su
+       grupo»: ahora una persona está en varios y su grupo principal puede
+       no ser el que el entrenador tiene delante. */
+    var enLista = LST.grupo || a.grupo_id;
     var repes = ATLETAS.filter(function (x) {
-      return x.grupo_id === a.grupo_id && x.id !== a.id &&
+      return estaEn(x, enLista) && x.id !== a.id &&
         [x.nombre, (x.apellidos || '').split(' ')[0]].filter(Boolean).join(' ') === uno;
     });
     return repes.length ? nombreDe(a) : uno;
@@ -421,8 +425,15 @@ window.APOLANA_ADMIN.listo(function (sb) {
      1 · Lo que sabemos del club
      ============================================================ */
   var GRUPOS = [], GMAP = {}, HOR = {}, ATLETAS = [], AMAP = {}, PERSONAS = {}, YO = '';
+  /* MIEMBROS[atleta_id] = { grupo_id: true, … }. En qué grupos entrena cada
+     uno, que ya no es uno solo. Vacío mientras no se haya podido leer. */
+  var MIEMBROS = {};
   /* ASIS[atleta_id][fecha] = true/false. Es la copia de lo que hay GUARDADO. */
   var ASIS = {};
+  /* HOY_POR_GRUPO[grupo_id][atleta_id] = true/false. Lo marcado HOY en cada
+     grupo, para el recuento de los grupos plegados. Va aparte de ASIS porque
+     ASIS es de una persona y un día, y hoy eso ya no basta. */
+  var HOY_POR_GRUPO = {};
   var AUSENCIAS = {};                        /* AUSENCIAS[atleta_id] = aviso de la familia de ESE día */
   var NOTAS_HOY = {};                        /* notas del día de la lista, por atleta */
   var NOTAS_AT = [];                         /* notas del atleta abierto en la ficha */
@@ -442,8 +453,32 @@ window.APOLANA_ADMIN.listo(function (sb) {
   var LST = { grupo: '', fecha: '', marcas: {}, guardadas: {}, sucio: false,
               guardando: false, guardadoEn: '', error: '', version: 0, cargando: false };
 
+  /* ¿Esta persona entrena en este grupo?
+     Desde este curso puede estar en varios —running en La Tribu y El Cubo,
+     la escuela a primera hora y fuerza a segunda—, así que la respuesta ya
+     no es «mira su casilla de grupo» sino «mira sus grupos».
+     Si la tabla de grupos no se ha podido leer, se cae a la casilla de la
+     ficha: enseñar el grupo a medias es mejor que enseñarlo vacío. */
+  function estaEn(a, gid) {
+    var m = MIEMBROS[a.id];
+    return m ? !!m[gid] : a.grupo_id === gid;
+  }
+  /* Todos sus grupos, el principal delante. */
+  function gruposDe(a) {
+    var m = MIEMBROS[a.id];
+    if (!m) return a.grupo_id ? [a.grupo_id] : [];
+    return Object.keys(m).sort(function (x, y) {
+      if (x === a.grupo_id) return -1;
+      if (y === a.grupo_id) return 1;
+      return 0;
+    });
+  }
+  function nombresDeSusGrupos(a) {
+    var n = gruposDe(a).map(function (id) { return GMAP[id] ? GMAP[id].nombre : ''; }).filter(Boolean);
+    return n.length ? n.join(' · ') : '';
+  }
   function atletasDeGrupo(gid) {
-    return ATLETAS.filter(function (a) { return a.grupo_id === gid && a.estado !== 'baja'; });
+    return ATLETAS.filter(function (a) { return estaEn(a, gid) && a.estado !== 'baja'; });
   }
   function horariosDe(gid) { return HOR[gid] || []; }
   /* ¿Este grupo entrena el día de la semana X? (1 lunes … 7 domingo) */
@@ -511,6 +546,15 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (a.error) { CARGA_ERROR = 'No se han podido leer los atletas (' + (a.error.message || 'sin conexión') + ').'; }
     else if (a.data) { ATLETAS = a.data; ATLETAS.forEach(function (x) { AMAP[x.id] = x; }); }
 
+    /* En qué grupos entrena cada uno. Tiene que estar cargado ANTES de
+       armar ninguna lista: es lo que decide quién sale en cada una. */
+    try {
+      var m = await sb.from('atleta_grupos').select('atleta_id,grupo_id');
+      if (!m.error && m.data) {
+        m.data.forEach(function (x) { (MIEMBROS[x.atleta_id] = MIEMBROS[x.atleta_id] || {})[x.grupo_id] = true; });
+      }
+    } catch (e) {}
+
     /* Quién está usando el panel: se guarda como autor de las notas. */
     try {
       var s = await sb.auth.getSession();
@@ -528,14 +572,24 @@ window.APOLANA_ADMIN.listo(function (sb) {
     try {
       var ids = [], gids = [];
       gruposDeHoy().forEach(function (g) { gids.push(g.id); atletasDeGrupo(g.id).forEach(function (a) { ids.push(a.id); }); });
+      /* El cajón de cada grupo se abre aunque venga vacío: así «vacío» quiere
+         decir «hoy no hay nada marcado» y no «esto no se ha llegado a leer». */
+      gids.forEach(function (g) { HOY_POR_GRUPO[g] = {}; });
       if (ids.length) {
         /* Se pide solo la asistencia DE ESTOS GRUPOS. Hay quien entrena dos
            veces el mismo día con dos grupos distintos, y desde el curso pasado
            esas son dos marcas separadas: sin nombrar el grupo aquí se leería la
            del otro entrenador y esta pantalla diría que ya está pasada. */
-        var r = await sb.from('asistencia').select('atleta_id,fecha,presente')
+        var r = await sb.from('asistencia').select('atleta_id,fecha,presente,grupo_id')
           .in('atleta_id', ids).in('grupo_id', gids).eq('fecha', fechaHoy());
-        if (!r.error && r.data) r.data.forEach(function (x) { (ASIS[x.atleta_id] = ASIS[x.atleta_id] || {})[x.fecha] = !!x.presente; });
+        /* Se guarda POR GRUPO, no solo por persona. Quien hace la escuela a
+           primera hora y fuerza a segunda tiene hoy dos marcas distintas: si
+           se metieran las dos en el mismo cajón, la última pisaría a la otra
+           y uno de los dos grupos plegados diría un recuento que no es. */
+        if (!r.error && r.data) r.data.forEach(function (x) {
+          (ASIS[x.atleta_id] = ASIS[x.atleta_id] || {})[x.fecha] = !!x.presente;
+          (HOY_POR_GRUPO[x.grupo_id] = HOY_POR_GRUPO[x.grupo_id] || {})[x.atleta_id] = !!x.presente;
+        });
       }
     } catch (e) {}
   }
@@ -719,6 +773,12 @@ window.APOLANA_ADMIN.listo(function (sb) {
         LST.guardadas[id] = true;
         (ASIS[id] = ASIS[id] || {})[fecha] = !!guardado[id];
       });
+      /* Y el recuento de este grupo para cuando se pliegue: si no, al pasar
+         al siguiente grupo el que se acaba de cerrar diría lo de antes. */
+      if (fecha === fechaHoy()) {
+        var caja = HOY_POR_GRUPO[LST.grupo] = {};
+        Object.keys(guardado).forEach(function (id) { caja[id] = !!guardado[id]; });
+      }
       LST.sucio = (LST.version !== version0);   /* si tocó algo mientras tanto, sigue pendiente */
       LST.guardadoEn = LST.sucio ? '' : new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
       LST.guardando = false;
@@ -802,7 +862,14 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var atls = atletasDeGrupo(gid);
     var marcados = 0, presentes = 0;
     atls.forEach(function (a) {
-      var v = (gid === LST.grupo) ? LST.marcas[a.id] : (ASIS[a.id] ? ASIS[a.id][LST.fecha || fechaHoy()] : undefined);
+      /* Del grupo abierto manda lo que hay en pantalla. De los plegados, lo
+         de HOY de ESE grupo, que es lo único que se ha cargado de ellos y lo
+         único que no confunde a quien entrena dos veces el mismo día. */
+      var dia = LST.fecha || fechaHoy();
+      var hoy = (dia === fechaHoy()) ? HOY_POR_GRUPO[gid] : null;
+      var v = (gid === LST.grupo) ? LST.marcas[a.id]
+            : hoy ? hoy[a.id]
+            : (ASIS[a.id] ? ASIS[a.id][dia] : undefined);
       if (v !== undefined) { marcados++; if (v) presentes++; }
     });
     return { total: atls.length, marcados: marcados, presentes: presentes, sinMarcar: atls.length - marcados };
@@ -936,12 +1003,15 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var lista = ATLETAS.filter(function (a) { return norm(nombreDe(a)).indexOf(f) > -1; }).slice(0, 30);
     if (!lista.length) return '<p class="p-vacio">Nadie con ese nombre. Si es de prueba, quizá aún no está dado de alta.</p>';
     return '<div class="at-lista">' + lista.map(function (a) {
-      var g = GMAP[a.grupo_id];
+      /* Se dicen TODOS sus grupos: quien entrena dos veces al día sale una
+         sola vez en el buscador, y hay que ver de cuál de las dos listas
+         se le está sacando. */
+      var suyos = nombresDeSusGrupos(a);
       return '<div class="at at--sin">' +
         '<button type="button" class="at-tog" data-ficha="' + esc(a.id) + '">' +
-          '<span class="at-cir">' + (a.grupo_id === LST.grupo ? OJO('var(--f-sub)') : '') + '</span>' +
+          '<span class="at-cir">' + (estaEn(a, LST.grupo) ? OJO('var(--f-sub)') : '') + '</span>' +
           '<span class="at-txt"><span class="at-nom">' + esc(nombreDe(a)) + '</span>' +
-          '<span class="at-sub" style="color:var(--f-sub)">' + esc(g ? g.nombre : 'sin grupo') + '</span></span>' +
+          '<span class="at-sub" style="color:var(--f-sub)">' + esc(suyos || 'sin grupo') + '</span></span>' +
         '</button>' +
         '<button type="button" class="at-ficha" data-ficha="' + esc(a.id) + '" aria-label="' + esc('Abrir la ficha de ' + nombreDe(a)) + '">' + IC_ENTRAR + '</button>' +
       '</div>';
@@ -1089,11 +1159,16 @@ window.APOLANA_ADMIN.listo(function (sb) {
   async function abrirFicha(id) {
     var a = AMAP[id];
     if (!a) return;
-    /* Si es de otro grupo, primero se abre su grupo (con su aviso de guardar):
-       así marcarle desde la ficha guarda donde tiene que guardar. */
-    if (a.grupo_id && a.grupo_id !== LST.grupo) {
-      await abrirGrupo(a.grupo_id, LST.fecha || fechaHoy());
-      if (LST.grupo !== a.grupo_id) return;   /* se quedó en la lista */
+    /* Si no está en la lista abierta, primero se abre una de las suyas (con
+       su aviso de guardar): así marcarle desde la ficha guarda donde tiene
+       que guardar. Si entrena en varios, se abre el principal, que es el
+       que la ficha enseña primero. */
+    if (!estaEn(a, LST.grupo)) {
+      var suyo = gruposDe(a)[0];
+      if (suyo) {
+        await abrirGrupo(suyo, LST.fecha || fechaHoy());
+        if (LST.grupo !== suyo) return;   /* se quedó en la lista */
+      }
     }
     FICHA = a; PANTALLA = 'ficha'; NOTAS_AT = [];
     BUSCA = '';
@@ -1164,7 +1239,9 @@ window.APOLANA_ADMIN.listo(function (sb) {
   function pintarFichaMovil() {
     var a = FICHA;
     var sub = subLinea(a);
-    var g = GMAP[a.grupo_id];
+    /* El botón de volver dice la lista ABIERTA, no «su grupo»: quien entrena
+       en dos tiene dos, y volver al que no era descoloca. */
+    var g = GMAP[LST.grupo] || GMAP[a.grupo_id];
     var h = '<div class="p-movil"><div class="f-cab">' +
       /* El botón dice adónde vuelve: al grupo del que salió la ficha. En el
          móvil ponía «Volver» a secas y había que pulsarlo para saberlo. */
@@ -1211,7 +1288,10 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (v === true) return { c: 'pt--vino', t: 'ha venido' };
     if (v === false) return { c: 'pt--falta', t: 'no ha venido' };
     if (a.estado === 'lesionado') return { c: 'pt--nada', t: 'no contaba · lesión' };
-    if (!entrenaDia(a.grupo_id, dowDe(fecha))) return { c: 'pt--nada', t: 'no contaba · ese día no le toca' };
+    /* «Ese día no le toca» se mira en el grupo de ESTA rejilla, que es de un
+       grupo y de una semana. Con su grupo principal se decía que no tocaba
+       en la lista del segundo grupo, donde sí tocaba. */
+    if (!entrenaDia(LST.grupo || a.grupo_id, dowDe(fecha))) return { c: 'pt--nada', t: 'no contaba · ese día no le toca' };
     return { c: 'pt--sin', t: 'aún sin dato · no se pasó lista' };
   }
 
@@ -1352,7 +1432,8 @@ window.APOLANA_ADMIN.listo(function (sb) {
   }
 
   function pintarFichaEscritorio() {
-    var a = FICHA, g = GMAP[a.grupo_id], sub = subLinea(a);
+    /* Igual que en el móvil: la miga y el botón dicen la lista abierta. */
+    var a = FICHA, g = GMAP[LST.grupo] || GMAP[a.grupo_id], sub = subLinea(a);
     var h = '<div class="p-escritorio"><div class="e-cab"><div><span class="e-migas">' +
       esc(g ? g.nombre : 'En la pista') + '</span><br><h1>' + esc(nombreDe(a)) + '</h1>' +
       '<span class="e-rango">' + esc(sub || anoNac(a)) + '</span></div>' +

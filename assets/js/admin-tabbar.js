@@ -237,6 +237,11 @@
         { txt: 'Quién va a ir',           url: r + 'confirmaciones/', desc: 'confirmaciones para una carrera' }
       ] },
       { t: 'Dinero', enlaces: [
+        /* Las altas van en Dinero y no en Personas por quién las trabaja:
+           en septiembre las revisa el tesorero, y el tesorero solo ve este
+           bloque. Además un alta trae la forma de pago y el número de
+           cuenta, que es por donde empieza el recibo. */
+        { txt: 'Altas que entran',  url: r + 'altas/',        desc: 'lo que rellenan las familias en la web' },
         { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
         { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
         { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' },
@@ -398,6 +403,8 @@
     'franja informativa':     'avisos de portada banner franja barra aviso web arriba',
     'noticias':               'blog articulos web publicar',
     'tienda':                 'ropa productos venta equipacion',
+    'altas que entran':       'altas inscripciones apuntarse matricula formulario socios escuela ' +
+                              'familias nuevas revisar pendientes solicitudes renovar domiciliacion sepa',
     'cobros y recibos':       'dinero pagos recibos domiciliacion remesas banco impagados devueltos',
     'tarifas':                'precios cuotas dinero',
     'pagos con tarjeta':      'stripe tarjeta online dinero',

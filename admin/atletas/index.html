@@ -195,6 +195,22 @@
      dedo. El cuadradito desaparece de la vista, pero la casilla sigue ahí
      debajo: se puede recorrer con el teclado y se marca con la barra
      espaciadora, igual que antes. */
+  /* Las dos cajas de marcar de la ficha —especialidades y los demás
+     grupos— se dibujan igual: mismo recuadro, mismo alto máximo y la
+     misma barra de desplazamiento. Son la misma pregunta hecha dos
+     veces («marca las que sean») y tienen que parecerlo. */
+  .caja-marcar { border: 1px solid var(--linea-borde); border-radius: 10px; padding: 10px 12px;
+                 max-height: 340px; overflow: auto; font-size: 14px; }
+  .caja-marcar .grupo-tit { font-size: 13px; color: var(--texto-suave); margin-bottom: 4px; }
+  .caja-marcar .fila-p { display: flex; flex-wrap: wrap; gap: 8px; }
+  .caja-marcar .bloque { margin-bottom: 8px; }
+  .caja-marcar .aviso { font-size: 14px; color: var(--texto-suave); line-height: 1.5; margin: 2px 0; }
+
+  /* En la lista, el grupo principal manda y los demás se dicen debajo,
+     en pequeño: el que lleva las fichas busca por el de siempre, pero
+     tiene que ver de un vistazo quién va a dos sitios. */
+  .mas-grupos { display: block; margin-top: 2px; font-size: 13px; color: var(--texto-suave); }
+
   .esp-p { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box;
            padding: 8px 15px; margin: 0; border: 1px solid var(--linea-borde); border-radius: 999px;
            font-size: 14px; font-weight: 400; line-height: 1.2; color: var(--texto); background: #fff;
@@ -320,8 +336,14 @@
               <option value="baja">Baja</option>
             </select>
           </div>
-          <div><label for="a-grupo">Grupo</label><select id="a-grupo"><option value="">(sin grupo)</option></select></div>
+          <div><label for="a-grupo">Grupo principal</label><select id="a-grupo"><option value="">(sin grupo)</option></select></div>
         </div>
+        <!-- Los demás grupos. Una persona puede estar en varios a la vez:
+             running en La Tribu y El Cubo, o la escuela a primera hora y
+             fuerza a segunda. Hasta ahora solo cabía uno y el club tenía
+             que elegir cuál escribir. -->
+        <label id="a-otros-lab">También entrena en <span style="font-weight:400;color:var(--texto-suave);">— marca los demás grupos, si va a más de uno</span></label>
+        <div id="a-otros-grupos" class="caja-marcar" role="group" aria-labelledby="a-otros-lab"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
         <label for="a-tipo">Escuela o socio <span style="font-weight:400;color:var(--texto-suave);">(por defecto se calcula por la edad; cámbialo solo en las excepciones)</span></label>
         <select id="a-tipo">
           <option value="">Automático por edad</option>
@@ -329,7 +351,7 @@
           <option value="socio">Socio (fijado a mano)</option>
         </select>
         <label>Especialidades <span style="font-weight:400;color:var(--texto-suave);">— marca las pruebas de competición que hace (puede ser varias)</span></label>
-        <div id="a-especialidades" style="border:1px solid var(--linea-borde);border-radius:10px;padding:10px 12px;max-height:340px;overflow:auto;font-size:14px;"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+        <div id="a-especialidades" class="caja-marcar"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
         <div class="pie-form">
           <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
           <button class="b2" type="button" id="cancelar">Cancelar</button>
@@ -367,8 +389,17 @@ APOLANA_ADMIN.listo(function (sb) {
   var ICONO_LUPA    = '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>';
   var ICONO_PERSONA = '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>';
 
-  var gruposById = {};
-  var CATS = ['Escuela iniciación','Sub-12','Sub-14','Sub-16','Sub-18','Sub-20','Sub-23','Absoluto','Máster'];
+  var gruposById = {};   /* id → nombre con su turno, para enseñarlo */
+  var GRUPOS = [];       /* la lista entera, en el orden en que se enseña */
+  /* MIEMBROS[atleta_id] = [{ grupo_id, principal }], el principal primero.
+     Es lo que dice en qué grupos entrena cada uno desde que se puede estar
+     en varios. */
+  var MIEMBROS = {};
+  /* Si la tabla de grupos no contesta, la ficha no puede decir «solo va a
+     uno»: eso sería inventarse la respuesta. Se cae al grupo de la ficha,
+     que es lo que se sabe seguro, y se avisa. */
+  var SIN_MIEMBROS = false;
+  var CATS =['Escuela iniciación','Sub-12','Sub-14','Sub-16','Sub-18','Sub-20','Sub-23','Absoluto','Máster'];
 
   /* Escuela / Socios por año de nacimiento: nacidos en 2009 o después = Escuela. */
   var ANIO_CORTE_ESCUELA = 2009;
@@ -432,17 +463,80 @@ APOLANA_ADMIN.listo(function (sb) {
        esto, la lista enseñaba «Azul 2» dos veces seguidas y elegir uno u
        otro era echarlo a suertes: media escuela acabaría en el turno
        equivocado y en la lista de asistencia del día que no es. */
-    var r = await sb.from('grupos').select('id,nombre,turno')
+    var r = await sb.from('grupos').select('id,nombre,turno,seccion')
       .order('nombre').order('turno', { nullsFirst: true });
     var sel = $('a-grupo'), filtro = $('f-grupo');
     if (!r.error && r.data) {
-      r.data.forEach(function (g) {
+      GRUPOS = r.data;
+      GRUPOS.forEach(function (g) {
         var etiqueta = window.APOLANA_GRUPO_NOMBRE ? window.APOLANA_GRUPO_NOMBRE(g) : g.nombre;
         gruposById[g.id] = etiqueta;
+        g.etiqueta = etiqueta;
         var o = document.createElement('option'); o.value = g.id; o.textContent = etiqueta; sel.appendChild(o);
         var o2 = document.createElement('option'); o2.value = g.id; o2.textContent = etiqueta; filtro.appendChild(o2);
       });
     }
+  }
+
+  /* Nombre bonito de la sección, para agrupar la lista de grupos igual
+     que las especialidades se agrupan por disciplina. */
+  var SECCIONES = {
+    'pista': 'Atletismo en pista', 'competicion': 'Competición', 'running': 'Running',
+    'natacion': 'Natación', 'escuela-natacion': 'Escuela de natación', 'triatlon': 'Triatlón',
+    'montana': 'Montaña', 'cubo': 'El Cubo', 'escuela': 'Escuela de atletismo'
+  };
+  function nombreSeccion(s) { return s ? (SECCIONES[s] || s) : 'Sin sección'; }
+
+  /* Los grupos de un atleta, el principal primero. Si la tabla de grupos
+     no se ha podido leer, se dice lo único que se sabe: el de su ficha. */
+  function gruposDe(a) {
+    var m = MIEMBROS[a.id];
+    if (m && m.length) return m.map(function (x) { return x.grupo_id; });
+    return a.grupo_id ? [a.grupo_id] : [];
+  }
+
+  /* Los demás grupos: los pintan como pastillas que se marcan, igual que
+     las especialidades. Fuera queda el principal, que ya está elegido
+     arriba: enseñarlo dos veces solo invita a marcarlo dos veces. */
+  function pintarOtrosGrupos(marcados) {
+    var box = $('a-otros-grupos');
+    var principal = $('a-grupo').value;
+    var set = {}; (marcados || []).forEach(function (id) { set[id] = true; });
+
+    if (!GRUPOS.length) {
+      box.innerHTML = '<p class="aviso">No se han podido leer los grupos, así que aquí no se puede marcar ninguno.</p>';
+      return;
+    }
+    if (!principal) {
+      box.innerHTML = '<p class="aviso">Elige antes su grupo principal. Los demás se marcan aquí debajo.</p>';
+      return;
+    }
+    /* Sin poder leer la tabla, «sin marcar» no querría decir «no va a ese
+       grupo» sino «no lo sabemos». Callarlo sería enseñar como cierto algo
+       que no se ha podido mirar. */
+    var aviso = SIN_MIEMBROS
+      ? '<p class="aviso">No se han podido leer los demás grupos de este atleta, así que aquí no sale ninguno marcado aunque los tenga. Al guardar no se tocarán.</p>'
+      : '';
+
+    var porSeccion = {}, orden = [];
+    GRUPOS.forEach(function (g) {
+      if (g.id === principal) return;
+      var s = nombreSeccion(g.seccion);
+      if (!porSeccion[s]) { porSeccion[s] = []; orden.push(s); }
+      porSeccion[s].push(g);
+    });
+    box.innerHTML = aviso + orden.map(function (s) {
+      return '<div class="bloque"><div class="grupo-tit">' + esc(s) + '</div><div class="fila-p">' +
+        porSeccion[s].map(function (g) {
+          return '<label class="esp-p"><input type="checkbox" class="grp-chk" value="' + esc(g.id) + '"' +
+                 (set[g.id] ? ' checked' : '') + '><span>' + esc(g.etiqueta) + '</span></label>';
+        }).join('') + '</div></div>';
+    }).join('');
+  }
+  function otrosGruposMarcados() {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll('.grp-chk'), function (chk) { if (chk.checked) out.push(chk.value); });
+    return out;
   }
 
   /* Especialidades: casillas agrupadas por disciplina, desde el catálogo. */
@@ -457,8 +551,8 @@ APOLANA_ADMIN.listo(function (sb) {
       groups[g].push(p.nombre);
     });
     box.innerHTML = order.map(function (g) {
-      return '<div style="margin-bottom:8px;"><div style="font-size:13px;color:var(--texto-suave);margin-bottom:4px;">' + esc(g) + '</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + groups[g].map(function (n) {
+      return '<div class="bloque"><div class="grupo-tit">' + esc(g) + '</div>' +
+        '<div class="fila-p">' + groups[g].map(function (n) {
           return '<label class="esp-p"><input type="checkbox" class="esp-chk" value="' + esc(n) + '"><span>' + esc(n) + '</span></label>';
         }).join('') + '</div></div>';
     }).join('');
@@ -490,11 +584,23 @@ APOLANA_ADMIN.listo(function (sb) {
     var estado = $('f-estado').value, grupo = $('f-grupo').value, tipo = $('f-tipo').value;
     return TODOS.filter(function (a) {
       if (estado && (a.estado || '') !== estado) return false;
-      if (grupo && (a.grupo_id || '') !== grupo) return false;
+      /* Filtrar por un grupo saca a TODO el que entrene ahí, sea o no su
+         grupo principal: quien busca «los del Cubo» los quiere a todos. */
+      if (grupo && gruposDe(a).indexOf(grupo) === -1) return false;
       if (tipo && tipoDe(a) !== tipo) return false;
       if (texto && nombreCompleto(a).toLowerCase().indexOf(texto) === -1) return false;
       return true;
     });
+  }
+
+  /* La columna «Grupo»: el principal en grande y los demás debajo, en
+     pequeño. Con uno solo se lee igual que siempre; con dos, se ve. */
+  function celdaGrupos(a) {
+    var ids = gruposDe(a);
+    if (!ids.length) return 'Sin grupo';
+    var mas = ids.slice(1).map(function (id) { return gruposById[id] || 'otro grupo'; });
+    return esc(gruposById[ids[0]] || 'Sin grupo') +
+      (mas.length ? '<span class="mas-grupos">y ' + esc(mas.join(', ')) + '</span>' : '');
   }
 
   function pintar() {
@@ -540,7 +646,7 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td data-etiqueta="Atleta"><span class="persona"><span class="ini">' + esc(iniciales(a)) + '</span>' +
           '<span><span class="nom">' + esc(nombreCompleto(a)) + '</span>' +
           (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + '</span></span></td>' +
-        '<td data-etiqueta="Grupo">' + esc(gruposById[a.grupo_id] || 'Sin grupo') + '</td>' +
+        '<td data-etiqueta="Grupo">' + celdaGrupos(a) + '</td>' +
         '<td data-etiqueta="Estado">' + estadoHtml(a.estado) + '</td>' +
         '<td class="num" data-etiqueta="Último recibo">' + recibo + '</td>' +
       '</tr>';
@@ -574,6 +680,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if (nSin) h += fila('#A79F8E', 'Sin estado puesto', nSin);
     h += '<div class="par raya"><span class="k">Escuela</span><span class="v">' + nEsc + '</span></div>';
     h += '<div class="par"><span class="k">Socios</span><span class="v">' + nSoc + '</span></div>';
+    /* Cuánta gente va a más de un grupo. Sale solo cuando hay alguien:
+       una fila que pone «0» un curso entero es una fila de más. */
+    var nDos = n(function (a) { return gruposDe(a).length > 1; });
+    if (nDos) h += '<div class="par"><span class="k">En dos grupos o más</span><span class="v">' + nDos + '</span></div>';
     $('resumen').innerHTML = h;
 
     /* Avisos: solo si hay trabajo de verdad, y siempre con su acción. */
@@ -617,6 +727,20 @@ APOLANA_ADMIN.listo(function (sb) {
       .order('apellidos');
     if (r.error) { tb.innerHTML = ADM.filaError(COLS, r.error.message, cargar); return; }
     TODOS = r.data || [];
+
+    /* En qué grupos entrena cada uno. Va aparte de la ficha porque desde
+       este curso se puede estar en varios y eso ya no cabe en una casilla. */
+    MIEMBROS = {};
+    var rg = await sb.from('atleta_grupos').select('atleta_id,grupo_id,principal');
+    SIN_MIEMBROS = !!rg.error;
+    if (!rg.error && rg.data) {
+      rg.data.forEach(function (m) { (MIEMBROS[m.atleta_id] = MIEMBROS[m.atleta_id] || []).push(m); });
+      /* El principal siempre delante: es el que se lee primero en todas
+         las pantallas y el que sale en los recibos. */
+      Object.keys(MIEMBROS).forEach(function (id) {
+        MIEMBROS[id].sort(function (x, y) { return (y.principal ? 1 : 0) - (x.principal ? 1 : 0); });
+      });
+    }
 
     /* Último recibo de cada atleta. Es el único dato de dinero que sale
        aquí, y su acción está en Cobros (aviso del lateral y ficha). */
@@ -665,7 +789,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('form-titulo').textContent = a.id ? nombreCompleto(a) || 'Ficha del atleta' : 'Nuevo atleta';
     var u = a.id ? ULTIMO[a.id] : null;
     $('form-sub').innerHTML = a.id
-      ? [ esc(gruposById[a.grupo_id] || 'Sin grupo'),
+      ? [ esc(gruposDe(a).map(function (id) { return gruposById[id] || 'otro grupo'; }).join(' + ') || 'Sin grupo'),
           esc((ESTADOS[a.estado] || { txt: 'Sin estado' }).txt),
           (u ? (u.sinCobrar ? '<a href="../cobros/?atleta=' + esc(a.id) + '">último recibo sin cobrar</a>'
                             : '<a href="../cobros/?atleta=' + esc(a.id) + '">ver sus recibos</a>')
@@ -680,6 +804,8 @@ APOLANA_ADMIN.listo(function (sb) {
     ponerCategoria(a.categoria || '');
     $('a-estado').value = a.estado || '';
     $('a-grupo').value = a.grupo_id || '';
+    /* Los demás grupos: los que ya tenía, menos el principal. */
+    pintarOtrosGrupos(gruposDe(a).filter(function (id) { return id !== a.grupo_id; }));
     $('a-tipo').value = a.tipo_membresia || '';
     setEspecialidades(a.especialidades);
     $('a-email').value = a.perfil_id ? (CORREOS[a.perfil_id] || '') : '';
@@ -707,6 +833,12 @@ APOLANA_ADMIN.listo(function (sb) {
   $('a-nacimiento').addEventListener('change', function () {
     var c = categoriaPorNacimiento(this.value);
     if (c) ponerCategoria(c);
+  });
+  /* Al cambiar el principal, el de abajo desaparece de las pastillas y el
+     que estaba puesto vuelve a la lista. Lo marcado se conserva: cambiar
+     de grupo principal no es motivo para perder lo demás. */
+  $('a-grupo').addEventListener('change', function () {
+    pintarOtrosGrupos(otrosGruposMarcados());
   });
 
   /* La fila entera abre la ficha: no hay columna de acciones. */
@@ -794,7 +926,10 @@ APOLANA_ADMIN.listo(function (sb) {
     };
     async function guardar(d) {
       var id = $('a-id').value;
-      return id ? await sb.from('atletas').update(d).eq('id', id) : await sb.from('atletas').insert(d);
+      /* La ficha nueva devuelve su id: hace falta enseguida para guardar
+         los demás grupos, que van en otra tabla. */
+      return id ? await sb.from('atletas').update(d).eq('id', id).select('id').maybeSingle()
+                : await sb.from('atletas').insert(d).select('id').single();
     }
     var r = await guardar(datos);
     if (r.error && /fecha_nacimiento/.test(r.error.message)) {
@@ -802,6 +937,38 @@ APOLANA_ADMIN.listo(function (sb) {
       r = await guardar(d2);
     }
     if (r.error) { $('msg').textContent = 'Error: ' + r.error.message; $('msg').className = 'msg error'; return; }
+
+    /* ---------- los grupos, después de la ficha ----------
+       Se manda la lista ENTERA de una vez (la base se encarga de meter
+       los que faltan y sacar los que sobran) en lugar de ir apuntando y
+       borrando desde aquí: si se corta la conexión a mitad, o se hace
+       todo o no se hace nada, y nadie se queda fuera de su grupo sin
+       que se note.
+
+       Si la tabla de grupos no se pudo leer al abrir la pantalla, no se
+       manda nada: las pastillas sin marcar no querrían decir «no va a
+       esos grupos», sino «no lo sabemos», y guardarlas los borraría. */
+    var atletaId = $('a-id').value || (r.data && r.data.id);
+    if (SIN_MIEMBROS) {
+      cerrarForm();
+      apoToast('Ficha guardada. Los demás grupos no se han tocado: no se han podido leer.', 'error');
+      cargar();
+      return;
+    }
+    if (atletaId) {
+      var principal = $('a-grupo').value || null;
+      var todos = (principal ? [principal] : []).concat(otrosGruposMarcados());
+      var rg = await sb.rpc('apo_grupos_de_atleta', {
+        p_atleta: atletaId, p_grupos: todos, p_principal: principal
+      });
+      if (rg.error) {
+        $('msg').textContent = 'La ficha se ha guardado, pero los grupos no: ' + rg.error.message;
+        $('msg').className = 'msg error';
+        cargar();
+        return;
+      }
+    }
+
     cerrarForm();
     apoToast('Ficha guardada', 'ok');
     cargar();
@@ -811,14 +978,15 @@ APOLANA_ADMIN.listo(function (sb) {
      Solo lo que sale en la lista: ni correos ni teléfonos de las familias. */
   $('exportar').addEventListener('click', function () {
     if (!VISTA.length) { apoToast('No hay nada que exportar con estos filtros.', 'error'); return; }
-    var cab = ['Nombre', 'Apellidos', 'Nacimiento', 'Categoría', 'Grupo', 'Estado', 'Último recibo'];
+    var cab = ['Nombre', 'Apellidos', 'Nacimiento', 'Categoría', 'Grupos', 'Estado', 'Último recibo'];
     function celda(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
     var lineas = [cab.map(celda).join(';')];
     VISTA.forEach(function (a) {
       var u = ULTIMO[a.id];
       lineas.push([
         a.nombre || '', a.apellidos || '', a.fecha_nacimiento || '', a.categoria || '',
-        gruposById[a.grupo_id] || '', (ESTADOS[a.estado] || { txt: '' }).txt,
+        gruposDe(a).map(function (id) { return gruposById[id] || ''; }).join(' + '),
+        (ESTADOS[a.estado] || { txt: '' }).txt,
         u ? fmtEur.format(u.importe) + (u.sinCobrar ? ' (sin cobrar)' : '') : ''
       ].map(celda).join(';'));
     });

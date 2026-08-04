@@ -119,7 +119,7 @@
 
       <div style="overflow-x:auto;">
         <table id="tabla-grupos">
-          <thead><tr><th>Nombre</th><th>Sección</th><th>Nacidos</th><th>Horario</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Sección</th><th>Nacidos</th><th>Atletas</th><th>Horario</th><th>Activo</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -237,11 +237,26 @@ APOLANA_ADMIN.listo(function (sb) {
 
   // --- Listar ---
   var GRUPOS = [];
+  /* CUANTOS[grupo_id] = cuánta gente entrena ahí. Se cuenta desde la tabla
+     de pertenencias y no desde la casilla de la ficha: una persona puede
+     estar en dos grupos, y en los dos hay que contarla. */
+  var CUANTOS = {};
+  var SIN_CUENTA = false;
+
+  async function contarAtletas() {
+    CUANTOS = {};
+    var r = await sb.from('atleta_grupos').select('grupo_id');
+    /* Si no contesta, la columna dice «—» y no «0»: cero es un dato y
+       significaría que el grupo está vacío. */
+    SIN_CUENTA = !!r.error;
+    if (!r.error && r.data) r.data.forEach(function (x) { CUANTOS[x.grupo_id] = (CUANTOS[x.grupo_id] || 0) + 1; });
+  }
 
   async function cargarGrupos() {
     var tb = $('tabla-grupos').querySelector('tbody');
-    tb.innerHTML = ADM.filaCargando(6);
+    tb.innerHTML = ADM.filaCargando(7);
     $('f-cuenta').textContent = '';
+    await contarAtletas();
     /* Se pide también el turno: sin él, los dieciocho grupos de la
        escuela salen como nueve nombres repetidos y no hay manera de
        saber cuál es cuál. */
@@ -249,7 +264,7 @@ APOLANA_ADMIN.listo(function (sb) {
       .order('nombre').order('turno', { nullsFirst: true });
     /* Con la consulta caída `data` viene vacío: decir «no hay grupos todavía»
        sería dar por mirado lo que no se ha podido mirar. */
-    if (r.error) { GRUPOS = []; tb.innerHTML = ADM.filaError(6, r.error.message, cargarGrupos); return; }
+    if (r.error) { GRUPOS = []; tb.innerHTML = ADM.filaError(7, r.error.message, cargarGrupos); return; }
     GRUPOS = r.data || [];
     pintarGrupos();
   }
@@ -277,14 +292,14 @@ APOLANA_ADMIN.listo(function (sb) {
     /* «No hay grupos» y «la búsqueda no encuentra ninguno» piden cosas
        distintas: crear uno, o quitar el filtro. */
     if (!GRUPOS.length) {
-      tb.innerHTML = ADM.filaVacia(6, 'Todavía no hay ningún grupo',
+      tb.innerHTML = ADM.filaVacia(7, 'Todavía no hay ningún grupo',
         'Los grupos son la base de los horarios, las listas de asistencia y la web pública. Crea el primero.',
         '<button type="button" class="btn btn--primario btn--mini" data-primero>+ Nuevo grupo</button>',
         '<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5c.9-3 3.1-4.5 5.5-4.5s4.6 1.5 5.5 4.5"/><path d="M16 6.2a3.2 3.2 0 0 1 0 6"/><path d="M17.5 15.4c1.6.7 2.7 2 3.2 4.1"/>');
       return;
     }
     if (!lista.length) {
-      tb.innerHTML = ADM.filaVacia(6, 'Ningún grupo encaja con la búsqueda',
+      tb.innerHTML = ADM.filaVacia(7, 'Ningún grupo encaja con la búsqueda',
         'Prueba con una palabra suelta del nombre o vuelve a «Activos y apagados».',
         '<button type="button" class="btn btn--fantasma btn--mini" data-limpiar>Quitar el filtro</button>',
         '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>');
@@ -298,6 +313,7 @@ APOLANA_ADMIN.listo(function (sb) {
           (dias ? '<span class="celda-turno">' + esc(dias) + '</span>' : '') + '</td>' +
         '<td>' + esc(nombreSeccion(g.seccion)) + '</td>' +
         '<td class="anio-celda">' + esc(textoNacidos(g)) + '</td>' +
+        '<td class="anio-celda">' + (SIN_CUENTA ? '—' : (CUANTOS[g.id] || 0)) + '</td>' +
         '<td>' + esc(g.horario || '—') + '</td>' +
         '<td>' + (g.activo ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
         '<td><div class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-editar="' + g.id + '">Editar</button>' +
@@ -347,9 +363,23 @@ APOLANA_ADMIN.listo(function (sb) {
       abrirForm(r.data);
     }
     if (bo) {
+      var cuantos = SIN_CUENTA ? null : (CUANTOS[bo] || 0);
+      /* Si el grupo tiene gente dentro no se pregunta: la base lo va a
+         rechazar igual, y el aviso que devuelve es de programador. Se dice
+         antes lo que pasa de verdad y qué hay que hacer. */
+      if (cuantos) {
+        apoToast('En ese grupo entrenan ' + cuantos + (cuantos === 1 ? ' atleta' : ' atletas') +
+                 '. Cámbialos de grupo en Personas → Atletas y después bórralo.', 'error');
+        return;
+      }
       if (!await apoConfirm({ texto: '¿Borrar el grupo "' + e.target.getAttribute('data-nom') + '"? No se puede deshacer.', peligro: true })) return;
       var d = await sb.from('grupos').delete().eq('id', bo);
-      if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
+      if (d.error) {
+        var txt = /viola|violates|foreign key/i.test(d.error.message || '')
+          ? 'No se puede borrar: todavía cuelga algo de este grupo (atletas, horarios, sesiones o una tarifa). Quítalo de ahí primero.'
+          : 'No se pudo borrar: ' + d.error.message;
+        apoToast(txt, 'error'); return;
+      }
       cargarGrupos();
     }
   });
