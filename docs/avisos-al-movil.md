@@ -181,12 +181,38 @@ Y estas dos, opcionales pero recomendables:
 Es un comando. Se escribe en el Terminal, en la carpeta de la web:
 
 ```
-supabase functions deploy aviso-enviar
+supabase functions deploy aviso-enviar --no-verify-jwt
 ```
 
 Si es la primera vez que usas `supabase` en este ordenador te pedirá entrar
 (`supabase login`) y enlazar el proyecto (`supabase link`). Es lo mismo que ya
 se hizo para los pagos con tarjeta.
+
+### Ese `--no-verify-jwt` hay que ponerlo
+
+Antes no hacía falta. Ahora sí, desde que esta misma función manda también los
+avisos de las altas y los pedidos.
+
+El motivo: quien avisa de que ha entrado un alta es la web pública, con una
+familia rellenando el formulario y **sin ninguna cuenta abierta**. Con ese
+filtro puesto, Supabase rechazaría la llamada antes de que llegara a la función
+y el aviso no saldría nunca.
+
+**No abre la puerta a nadie.** Ese filtro no era lo que protegía la función: los
+avisos que escribe una persona se comprueban dentro, y de forma más estricta
+—se pregunta a Supabase si la sesión es de verdad, y a la base si esa persona
+puede mandar avisos—. Eso no cambia. Y por el camino nuevo no se acepta ni el
+texto del aviso, ni a quién va: solo la palabra que dice qué bandeja ha
+recibido algo, y el resto lo decide la base.
+
+Es el mismo caso que `acceso-enlace`, que ya se despliega así por lo mismo
+(SETUP-SUPABASE.md): quien pide el enlace para entrar tampoco ha entrado aún.
+
+### Si esto se despliega sin el `--no-verify-jwt`
+
+No se rompe nada y no se pierde ningún alta: siguen llegando y siguen saliendo
+en el panel al entrar, en «Necesita tu atención». Lo único que pasa es que no
+suena el móvil. Se arregla volviendo a lanzar el comando con el añadido.
 
 ---
 

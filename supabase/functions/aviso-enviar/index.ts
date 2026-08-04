@@ -39,7 +39,30 @@
 // Si falta cualquier clave, la función contesta «todavía no está
 // activado» con buenos modales. No revienta ni deja botones muertos.
 //
-// Cómo se despliega:  supabase functions deploy aviso-enviar
+// ------------------------------------------------------------
+// CÓMO SE DESPLIEGA · Y OJO CON EL «--no-verify-jwt»
+// ------------------------------------------------------------
+//     supabase functions deploy aviso-enviar --no-verify-jwt
+//
+// Ese añadido HAY QUE PONERLO desde que esta función también manda
+// los avisos de las altas. La razón: quien avisa de que ha entrado un
+// alta es la web pública, con una familia rellenando el formulario y
+// sin ninguna cuenta abierta. Con el candado del portero puesto,
+// Supabase rechazaría esa llamada antes de que llegara aquí y el
+// aviso no saldría nunca.
+//
+// Y NO, ESTO NO ABRE LA PUERTA A NADIE. El candado del portero no era
+// lo que protegía esta función: los avisos que escribe una persona se
+// comprueban AQUÍ DENTRO, y de una forma más estricta que la del
+// portero. El paso 1 pregunta a Supabase si el JWT es de verdad, y el
+// paso 1.b le pregunta a la base si esa persona puede mandar avisos.
+// Nada de eso cambia. Lo único que se quita es un filtro de la puerta
+// que impedía entrar a quien viene a decir «ha entrado un alta», que
+// es justo a quien hay que dejar pasar.
+//
+// Es el mismo camino que ya llevaba `acceso-enlace`, por lo mismo:
+// quien pide el enlace para entrar tampoco ha entrado todavía
+// (SETUP-SUPABASE.md).
 // ============================================================
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -319,6 +342,82 @@ function uuidsSueltos(v: unknown): string[] {
   return [...new Set(v.map((x) => String(x ?? "").trim()).filter((x) => bueno.test(x)))].slice(0, 60);
 }
 
+// ------------------------------------------------------------
+// REPARTIR · el único sitio del club donde sale un aviso al móvil
+// ------------------------------------------------------------
+// Lo usan las dos clases de aviso que manda esta función: los que
+// escribe una persona en el panel y los que saltan solos cuando entra
+// un alta. Está aquí, junto y una sola vez, a propósito: el día que
+// haya que cambiar cómo se reparte —o cómo se limpian los buzones que
+// ya no existen— se cambia en un sitio y vale para los dos.
+async function repartir(destinos: Destino[], carga: string) {
+  let enviados = 0, fallidos = 0;
+  const muertos: string[] = [];
+  const vivos: string[] = [];
+
+  // De veinte en veinte: ni se atasca la función ni se le manda a
+  // Google mil peticiones a la vez.
+  const TANDA = 20;
+  for (let i = 0; i < destinos.length; i += TANDA) {
+    const tanda = destinos.slice(i, i + TANDA);
+    const resultados = await Promise.all(tanda.map((d) => mandarA(d, carga)));
+    resultados.forEach((r, j) => {
+      if (r === "ok") { enviados++; vivos.push(tanda[j].id); }
+      else if (r === "muerto") { fallidos++; muertos.push(tanda[j].endpoint); }
+      else fallidos++;
+    });
+  }
+
+  // Limpieza: los buzones que ya no existen se quitan, o el número de
+  // «fallidos» crecería para siempre.
+  for (const endpoint of muertos) {
+    await consulta("rpc/avisos_baja_endpoint", {
+      method: "POST", body: JSON.stringify({ p_endpoint: endpoint }),
+    });
+  }
+  if (vivos.length) {
+    await consulta("rpc/avisos_marcar_uso", {
+      method: "POST", body: JSON.stringify({ p_ids: vivos }),
+    });
+  }
+
+  return { enviados, fallidos };
+}
+
+// ============================================================
+// LOS AVISOS QUE SALTAN SOLOS · un alta o un pedido que entra
+// ------------------------------------------------------------
+// QUÉ TEXTO LLEVAN, Y POR QUÉ TAN POCO
+// Está escrito aquí y no lo elige quien llama. Quien avisa de que ha
+// entrado un alta es la web pública, sin nadie con la cuenta abierta
+// detrás: si el texto viniera de fuera, cualquiera podría hacer que
+// el móvil del club dijera lo que le diera la gana.
+//
+// Y no lleva ni un dato: ni el nombre del niño, ni el del tutor, ni
+// cuántas hay. «Un alta nueva de la escuela» ya sirve para ir a
+// mirar, y así el nombre de un menor no viaja hasta Google ni se
+// queda escrito en la pantalla de bloqueo de un móvil que está encima
+// de una mesa. El número de verdad lo dice el panel al entrar, y ese
+// sí está al día.
+// ============================================================
+const NOVEDADES: Record<string, { titulo: string; cuerpo: string; url: string }> = {
+  alta_escuela: {
+    titulo: "Un alta nueva de la escuela",
+    cuerpo: "Está en el panel, esperando a que alguien la revise.",
+    url: "admin/altas/?tipo=escuela",
+  },
+  alta_socio: {
+    titulo: "Un alta nueva de socio",
+    cuerpo: "Está en el panel, esperando a que alguien la revise.",
+    url: "admin/altas/?tipo=socio",
+  },
+  pedido: {
+    titulo: "Un pedido de ropa nuevo",
+    cuerpo: "Está en el panel, esperando a que alguien lo confirme.",
+    url: "admin/pedidos/",
+  },
+};
+
 // ============================================================
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
@@ -337,6 +436,102 @@ Deno.serve(async (req: Request): Promise<Response> => {
       error: "no_activado",
       mensaje: "Los avisos al móvil todavía no están activados. Faltan las claves en Supabase.",
     }, 503, origen);
+  }
+
+  // ---------------------------------------------------------------
+  // 0.b · ¿ES UN AVISO QUE SALTA SOLO? · un alta o un pedido que entra
+  // ---------------------------------------------------------------
+  // Este camino se separa del de abajo ANTES de preguntar quién eres,
+  // y tiene que ser así: quien avisa de que ha entrado un alta es la
+  // web pública, con una familia rellenando el formulario y sin
+  // ninguna cuenta abierta. Si aquí se exigiera sesión, el aviso no
+  // saldría nunca, que es justo el problema que se viene a arreglar.
+  //
+  // ENTONCES, ¿PUEDE CUALQUIERA HACER SONAR EL MÓVIL DEL CLUB?
+  // No. De aquí no se acepta ni el texto, ni el enlace, ni a quién va:
+  // lo único que llega de fuera es la palabra «alta_escuela»,
+  // «alta_socio» o «pedido», y cualquier otra cosa se tira. Todo lo
+  // demás lo decide la base:
+  //   · Si hay algo de lo que avisar de verdad. Si la bandeja está
+  //     vacía, no suena nada: llamar a esto sin que haya entrado un
+  //     alta no despierta a nadie.
+  //   · Si toca o sería ruido. La regla de «un aviso por bandeja»
+  //     manda igual, así que llamar mil veces seguidas es exactamente
+  //     lo mismo que llamar una: un aviso, o ninguno.
+  //   · A qué móviles va, sacado del papel de cada uno.
+  // O sea, que insistir desde fuera no consigue nada que no fuera a
+  // pasar solo. Y lo que sí conseguiría un fallo aquí —que el alta no
+  // se guardara— no puede pasar, porque para cuando se llega a esta
+  // función el alta ya está guardada y la familia ya tiene su
+  // «recibido».
+  // Se lee sobre una COPIA de la petición: así el cuerpo original
+  // sigue entero para el camino de abajo, que lo vuelve a leer.
+  let asomo: Record<string, unknown> = {};
+  try { asomo = await req.clone().json(); } catch { /* cuerpo vacío o roto */ }
+  const novedadPedida = String(asomo.novedad ?? "").trim();
+  if (novedadPedida) {
+    // Se comprueba que la palabra sea UNA DE LAS TRES de verdad, y no
+    // cualquier cosa que una lista en JavaScript conteste por su
+    // cuenta: pedir la bandeja «constructor» devolvería algo con
+    // pinta de válido sin serlo. Aquí solo valen las tres escritas
+    // arriba.
+    const novedad = Object.hasOwn(NOVEDADES, novedadPedida) ? NOVEDADES[novedadPedida] : null;
+    if (!novedad) {
+      return responder({ error: "novedad", mensaje: "Eso no es una bandeja del club." }, 400, origen);
+    }
+
+    // El interruptor general del club manda también aquí. Si los
+    // avisos están apagados, no suena nada.
+    const rCfgN = await consulta("avisos_config?select=activo&id=eq.1&limit=1");
+    const cfgN = Array.isArray(rCfgN.datos) ? rCfgN.datos[0] : null;
+    if (!cfgN?.activo) return responder({ ok: true, avisado: false, motivo: "apagado" }, 200, origen);
+
+    // ¿Toca, o sería ruido? Lo decide la base de una sola vez, y al
+    // decir que sí deja ya apuntado que se avisó: si dos familias
+    // envían el formulario en el mismo segundo, solo sale un aviso.
+    const rToca = await consulta("rpc/novedades_toca_avisar", {
+      method: "POST", body: JSON.stringify({ p_tipo: novedadPedida }),
+    });
+    if (!rToca.ok) {
+      console.error("no se ha podido decidir si tocaba avisar:", rToca.datos);
+      // Se contesta que sí ha ido bien A PROPÓSITO. Quien llama es la
+      // pantalla que acaba de guardar un alta, y el alta está guardada:
+      // devolver un error aquí solo serviría para que esa pantalla
+      // pareciera rota. Queda anotado arriba, en los registros.
+      return responder({ ok: true, avisado: false, motivo: "error" }, 200, origen);
+    }
+    if (rToca.datos !== true) {
+      return responder({ ok: true, avisado: false, motivo: "no_toca" }, 200, origen);
+    }
+
+    const rQuien = await consulta("rpc/novedades_destinatarios", {
+      method: "POST", body: JSON.stringify({ p_tipo: novedadPedida }),
+    });
+    const aQuien = (Array.isArray(rQuien.datos) ? rQuien.datos : []) as Destino[];
+
+    const { enviados, fallidos } = await repartir(aQuien, JSON.stringify({
+      titulo: novedad.titulo,
+      cuerpo: novedad.cuerpo,
+      url: new URL(novedad.url, URL_BASE).toString(),
+      categoria: "gestion",
+      nivel: "informativo",
+      // Una etiqueta por bandeja: si por lo que fuera llegaran dos
+      // seguidos, el móvil enseña uno y no dos iguales apilados.
+      etiqueta: `apolana-novedad-${novedadPedida}`,
+    }));
+
+    await consulta("rpc/novedades_apuntar_envio", {
+      method: "POST",
+      body: JSON.stringify({ p_tipo: novedadPedida, p_enviados: enviados, p_fallidos: fallidos }),
+    });
+
+    // Estos avisos NO se apuntan en el historial de avisos del club.
+    // No son un aviso que haya escrito nadie, y en el panel ya está la
+    // bandeja de «Necesita tu atención», que además dice el número de
+    // verdad en el momento en que se mira. Guardarlos también aquí
+    // sería la misma cosa contada dos veces, y una de las dos siempre
+    // con el número viejo.
+    return responder({ ok: true, avisado: true, enviados, fallidos }, 200, origen);
   }
 
   // ---------------------------------------------------------------
@@ -562,35 +757,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     etiqueta: `apolana-${categoria}`,
   });
 
-  let enviados = 0, fallidos = 0;
-  const muertos: string[] = [];
-  const vivos: string[] = [];
-
-  // De veinte en veinte: ni se atasca la función ni se le manda a
-  // Google mil peticiones a la vez.
-  const TANDA = 20;
-  for (let i = 0; i < destinos.length; i += TANDA) {
-    const tanda = destinos.slice(i, i + TANDA);
-    const resultados = await Promise.all(tanda.map((d) => mandarA(d, carga)));
-    resultados.forEach((r, j) => {
-      if (r === "ok") { enviados++; vivos.push(tanda[j].id); }
-      else if (r === "muerto") { fallidos++; muertos.push(tanda[j].endpoint); }
-      else fallidos++;
-    });
-  }
-
-  // Limpieza: los buzones que ya no existen se quitan, o el número de
-  // «fallidos» crecería para siempre.
-  for (const endpoint of muertos) {
-    await consulta("rpc/avisos_baja_endpoint", {
-      method: "POST", body: JSON.stringify({ p_endpoint: endpoint }),
-    });
-  }
-  if (vivos.length) {
-    await consulta("rpc/avisos_marcar_uso", {
-      method: "POST", body: JSON.stringify({ p_ids: vivos }),
-    });
-  }
+  const { enviados, fallidos } = await repartir(destinos, carga);
 
   // ---------------------------------------------------------------
   // 8 · Al historial

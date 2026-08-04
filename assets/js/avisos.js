@@ -39,9 +39,17 @@
   'use strict';
 
   /* ---------------------------------------------------------------
-     Los cinco interruptores, en cristiano.
+     Los interruptores, en cristiano.
      Deben coincidir con las columnas de `avisos_preferencias`
-     (migración 054). Todos encendidos de fábrica menos las noticias.
+     (migraciones 054 y 120). Todos encendidos de fábrica menos las
+     noticias y los retos.
+
+     EL ÚLTIMO NO ES PARA TODO EL MUNDO
+     «Altas y pedidos» solo lo reciben quienes llevan esa tarea, así
+     que lleva `papeles`: la lista de papeles del club a los que se
+     les enseña. Los demás no tienen por qué ver un interruptor de
+     algo que no les va a llegar nunca. Los que no llevan `papeles`
+     son de todos.
      --------------------------------------------------------------- */
   var TIPOS = [
     /* Cada uno dice SU FRECUENCIA, no lo que es (maqueta 44b). Lo que da
@@ -50,8 +58,24 @@
     { clave: 'competiciones', titulo: 'Competiciones',         texto: 'Cuando cierra una inscripción.',          defecto: true },
     { clave: 'pagos',         titulo: 'Pagos',                 texto: 'Solo si algo sale mal.',                  defecto: true },
     { clave: 'noticias',      titulo: 'Noticias del club',     texto: 'Como mucho una a la semana.',             defecto: false },
-    { clave: 'retos',         titulo: 'Mis retos',             texto: 'Cuando consigues uno.',                   defecto: false }
+    { clave: 'retos',         titulo: 'Mis retos',             texto: 'Cuando consigues uno.',                   defecto: false },
+    { clave: 'gestion',       titulo: 'Altas y pedidos',       texto: 'Como mucho uno por bandeja hasta que la revises.', defecto: true,
+      papeles: ['admin', 'contabilidad'] }
   ];
+
+  /* Los interruptores que le tocan a esta persona. Se mira el papel que
+     TIENE, no el que lleva puesto ahora mismo: quien está en el portal
+     como entrenador sigue siendo de administración, y las altas le van
+     a llegar igual, así que tiene que poder apagarlas desde aquí. */
+  function tiposDe(perfil) {
+    var mios = (perfil && perfil.roles && perfil.roles.length)
+      ? perfil.roles
+      : (perfil && perfil.rol ? [perfil.rol] : []);
+    return TIPOS.filter(function (t) {
+      if (!t.papeles) return true;
+      return t.papeles.some(function (p) { return mios.indexOf(p) !== -1; });
+    });
+  }
 
   var sb = null;
   var cacheClave = undefined;   /* undefined = sin preguntar; null = apagado */
@@ -478,6 +502,7 @@
 
   window.APOLANA_AVISOS = {
     TIPOS: TIPOS,
+    tiposDe: tiposDe,               /* los que le tocan a esa persona */
     estado: estado,
     activar: activar,                   /* SOLO desde un clic */
     desactivar: desactivar,

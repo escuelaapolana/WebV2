@@ -133,6 +133,44 @@
 
   window.APOLANA_DB = window.supabase.createClient(URL, KEY, { auth: { storage: ALMACEN } });
 
+  /* ============================================================
+     AVISAR AL CLUB DE QUE HA ENTRADO ALGO
+     ------------------------------------------------------------
+     Antes, un alta o un pedido llegaba a la base y ahí se quedaba
+     hasta que alguien se acordaba de entrar a mirar. Esto le da un
+     toque al móvil de quien lo tiene que revisar.
+
+     VA EN UN PASO APARTE Y ENVUELTO, Y ESO ES LO IMPORTANTE
+     Lo que no puede fallar es que la familia quede apuntada. El
+     aviso es un extra, así que se llama DESPUÉS de que esté todo
+     guardado, no se espera a que conteste, y si se rompe se rompe
+     en silencio: quien está delante no ve ningún error, porque no
+     ha pasado nada malo. Un fallo de los avisos no puede parecer un
+     fallo del formulario.
+
+     Y si el aviso no sale, no se pierde nada: sigue saliendo en el
+     panel al entrar, en «Necesita tu atención».
+
+     DE AQUÍ NO SALE NI UN DATO DE NADIE. Se manda una palabra
+     —cuál de las tres bandejas: «alta_escuela», «alta_socio» o
+     «pedido»— y ya. Ni nombres, ni correos, ni cuántas hay. El
+     resto lo decide la base: si toca avisar o sería ruido, y a qué
+     móviles va. Ver la migración 120.
+
+     Vive aquí, y no en cada pantalla, porque lo usan tres sitios
+     distintos —las dos altas y la tienda— y son de tres sitios del
+     código que no se parecen en nada. Si estuviera copiado tres
+     veces, el día que cambie algo cambiaría en dos.
+     ============================================================ */
+  window.APOLANA_DB.avisarAlClub = function (bandeja) {
+    try {
+      var db = window.APOLANA_DB;
+      if (!db || !db.functions) return;
+      db.functions.invoke("aviso-enviar", { body: { novedad: bandeja } })
+        .catch(function () { /* en silencio: lo de la familia ya está guardado */ });
+    } catch (e) { /* en silencio, por lo mismo */ }
+  };
+
   /* Devuelve la URL de una imagen: si ya es una URL (subida a Supabase)
      la usa tal cual; si es solo un nombre, la busca en /assets/img/. */
   window.APOLANA_IMG = function (v) {

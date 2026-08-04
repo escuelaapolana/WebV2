@@ -420,6 +420,41 @@
     });
   };
 
+  /* ============================================================
+     7 · AVISAR AL CLUB DE QUE HA ENTRADO ALGO
+     ------------------------------------------------------------
+     Antes, un alta llegaba a la base y ahí se quedaba hasta que
+     alguien se acordaba de entrar a mirar. Esto le da un toque al
+     móvil de quien la tiene que revisar.
+
+     VA EN UN PASO APARTE Y ENVUELTO, Y ESO ES LO IMPORTANTE
+     Lo que no puede fallar es que la familia quede apuntada. El
+     aviso es un extra, así que:
+       · se llama DESPUÉS de que el alta esté guardada y de haberle
+         dicho «recibido» a la familia;
+       · no se espera a que conteste para nada;
+       · si se rompe, se rompe en silencio. Quien está delante no ve
+         un error, porque no ha pasado nada malo: su alta está
+         guardada. Un fallo de los avisos no puede parecer un fallo
+         del formulario.
+     Y si el aviso no sale, el alta no se pierde: sigue saliendo en
+     el panel al entrar, en «Necesita tu atención».
+
+     DE AQUÍ NO SALE NI UN DATO DE NADIE. Se manda una palabra
+     —cuál de las tres bandejas— y ya. Ni nombres, ni correos, ni
+     cuántas hay. El resto lo decide la base: si toca avisar o sería
+     ruido, y a quién. Ver la migración 120.
+
+     Lo de verdad está en `db.js`, porque esto lo usan también los
+     pedidos de la tienda, que no cargan este archivo. Aquí solo se
+     le da el nombre con el que se llama desde los formularios, para
+     que quien lea esta página lo encuentre donde lo busca.
+     ============================================================ */
+  F.avisarAlClub = function (bandeja) {
+    var db = window.APOLANA_DB;
+    if (db && typeof db.avisarAlClub === 'function') db.avisarAlClub(bandeja);
+  };
+
   /* Cuánto lleva la persona en la página. Se manda con el formulario
      porque nadie apunta a un hijo en seis segundos: eso es un
      programa, y la base lo descarta. */
