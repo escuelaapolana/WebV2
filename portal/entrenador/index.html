@@ -2931,8 +2931,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   //
   // El original NO se toca: el martes sigue en pie para el resto
   // del grupo, y eso se dice con todas las letras antes y después.
+  //
+  // Y se le apunta la FALTA del día original (tabla `ausencias`,
+  // la misma de «avisar falta»), con el motivo diciendo la verdad:
+  // que lo hace otro día. Sin eso, el chaval abría el móvil y veía
+  // DOS entrenamientos —el del martes de su grupo y el suyo del
+  // miércoles— sin nada que le dijera cuál le toca. La falta va
+  // atada al entrenamiento del martes, así que en Pasar lista de
+  // ese día sale como avisada y el entrenador no lo busca por la
+  // pista.
   // ============================================================
-  var PASAR = { sesion: null, creadaId: null };
+  //   faltasIds = las ausencias que hemos apuntado NOSOTROS. Solo
+  //   esas se borran al deshacer: las que ya estaban son de otro.
+  var PASAR = { sesion: null, creadaId: null, faltasIds: [] };
 
   function cajaPasarHTML(){
     return '<div class="dest" id="pl-pasar-caja" hidden style="margin-top:16px;">'+
@@ -2963,6 +2974,67 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return out;
   }
 
+  /* ------------------------------------------------------------
+     APUNTAR LA FALTA DEL DÍA ORIGINAL
+     ------------------------------------------------------------
+     LO QUE DIJO LA FAMILIA MANDA. Si ese atleta ya tiene una falta
+     avisada ese día, NO se toca: se deja como está y se dice en
+     pantalla. Tres razones para dejarla en vez de completarla:
+
+       · Lo que buscábamos ya está conseguido. La falta existe, y
+         en Pasar lista de ese día ya sale avisada. No hay nada
+         roto que arreglar, así que escribir encima no gana nada.
+       · La línea lleva UNA sola firma (`avisado_por`). Pegar
+         nuestro motivo detrás del suyo dejaría un texto de dos
+         voces firmado por una: «malo del estómago · lo hace el
+         miércoles», sin saber quién dijo qué. Eso es el mismo
+         borrado silencioso, solo que más despacio.
+       · Y si se contradicen —la madre dice que está malo y el
+         entrenador que lo hace el miércoles— eso lo tiene que VER
+         una persona y decidir, no juntarlo la máquina. Por eso se
+         enseña quién avisó y con qué motivo.
+
+     Nunca tira el pase: si esto falla, el entrenamiento del
+     miércoles ya está creado, que es lo importante. Se avisa y ya.
+     Devuelve {puestas, creadas:[ids], yaHabia:[textos], error}.
+     ------------------------------------------------------------ */
+  async function apuntarFaltas(ids, fecha, sesionId, fechaNueva){
+    var salida = { puestas: 0, creadas: [], yaHabia: [], error: '' };
+    try {
+      // Primero se mira qué hay: así se sabe a quién NO hay que tocar.
+      var ya = {};
+      var r0 = await sb.from('ausencias').select('atleta_id,motivo,avisado_por_nombre')
+        .eq('fecha', fecha).in('atleta_id', ids);
+      if(r0.error){ salida.error = r0.error.message; return salida; }
+      (r0.data || []).forEach(function(a){ ya[a.atleta_id] = a; });
+
+      ids.forEach(function(id){
+        var a = ya[id]; if(!a) return;
+        var at = atletaPorId(id);
+        var quien = limpioTxt(a.avisado_por_nombre);
+        salida.yaHabia.push((at ? nombreAtleta(at) : 'un atleta')+
+          (limpioTxt(a.motivo) ? ' («'+limpioTxt(a.motivo)+'»)' : '')+
+          (quien ? ', que avisó '+quien : ''));
+      });
+
+      var faltan = ids.filter(function(id){ return !ya[id]; });
+      if(!faltan.length) return salida;
+
+      /* El motivo dice lo que es: ni plantón ni lesión. En el historial
+         del atleta se lee tal cual y se entiende meses después. */
+      var motivo = 'Lo hace el '+formatFecha(fechaNueva);
+      var filas = faltan.map(function(id){
+        return { atleta_id: id, fecha: fecha, motivo: motivo, sesion_id: sesionId || null };
+      });
+      var r = await sb.from('ausencias').insert(filas).select('id');
+      if(r.error){ salida.error = r.error.message; return salida; }
+      salida.creadas = (r.data || []).map(function(x){ return x.id; });
+      salida.puestas = salida.creadas.length || faltan.length;
+    } catch(e){ salida.error = (e && e.message) ? e.message : 'no se ha podido apuntar la falta'; }
+    return salida;
+  }
+  function limpioTxt(s){ return (s == null ? '' : String(s)).trim(); }
+
   /* El resumen se escribe entero antes de tocar nada: quién, qué día, y
      —lo que más se pregunta— qué pasa con el día original. */
   function refrescarPasar(){
@@ -2975,13 +3047,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!nueva){ p.textContent = 'Elige el día en el que lo hace.'; return; }
     if(nueva === s.fecha){ p.textContent = 'Ese es el mismo día que ya tiene. Elige otro.'; return; }
     p.textContent = 'El '+formatFecha(nueva)+' se creará «'+como+'» solo para '+nombresDeIds(ids, 4)+'. '+
-      'El '+formatFecha(s.fecha)+' no se toca: sigue en pie para el resto del grupo.';
+      'El '+formatFecha(s.fecha)+' no se toca: sigue en pie para el resto del grupo, '+
+      'y a quien se lo pases se le apunta la falta ese día para que no le salgan dos entrenamientos.';
   }
 
   function abrirPasar(){
     var s = window.__SESIONES_GRUPO && window.__SESIONES_GRUPO[editandoId];
     if(!s) return;
-    PASAR.sesion = s; PASAR.creadaId = null;
+    PASAR.sesion = s; PASAR.creadaId = null; PASAR.faltasIds = [];
     var atls = atletasDeGrupo(s.grupo_id);
     var cont = $('pl-pasar-lista');
     cont.innerHTML = atls.length
@@ -3039,10 +3112,32 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       $('pl-pasar-ok').disabled = false; return;
     }
     PASAR.creadaId = res.data ? res.data.id : null;
-    msg.textContent = 'Hecho ✓ El '+formatFecha(nueva)+' lo tiene '+nombresDeIds(ids, 4)+
+
+    /* El entrenamiento del miércoles YA ESTÁ, que es lo importante. Lo de la
+       falta del martes viene después y va aparte a posta: si fallara —el
+       permiso de ausencias mira el entrenador del atleta, no el del grupo—
+       se avisa y ya, pero no se tira lo principal. */
+    var f = await apuntarFaltas(ids, s.fecha, s.id, nueva);
+    PASAR.faltasIds = f.creadas;
+
+    var texto = 'Hecho ✓ El '+formatFecha(nueva)+' lo tiene '+nombresDeIds(ids, 4)+
       (payload.publicada ? '' : ' (en borrador: todavía no lo ve)')+
-      '. El '+formatFecha(s.fecha)+' sigue igual para el resto del grupo.';
-    msg.className = 'msg ok';
+      '. El '+formatFecha(s.fecha)+' sigue igual para el resto del grupo';
+    texto += f.puestas
+      ? ', y esa falta queda avisada: en la lista de ese día sale que lo hace otro día.'
+      : '.';
+    if(f.yaHabia.length){
+      /* Lo que dijo la familia manda: esa línea no se toca ni se completa.
+         Se enseña quién avisó y con qué motivo, y decide una persona. */
+      texto += ' Ojo: ya había falta avisada de '+f.yaHabia.join('; ')+
+        '. No se ha tocado, se deja como estaba.';
+    }
+    if(f.error){
+      texto += ' No se ha podido apuntar la falta del '+formatFecha(s.fecha)+
+        ' ('+f.error+'): el entrenamiento sí está puesto, apúntala tú en Pasar lista.';
+    }
+    msg.textContent = texto;
+    msg.className = (f.error || f.yaHabia.length) ? 'msg' : 'msg ok';
     $('pl-pasar-hecho').hidden = !PASAR.creadaId;
     await cargarSesionesGrupo(s.grupo_id);
     if(editandoId) $('pl-editar').value = editandoId;
@@ -3050,17 +3145,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   /* Deshacer de verdad: la copia se acaba de crear y no tiene nada colgando,
-     así que se borra entera y no queda rastro. */
+     así que se borra entera y no queda rastro. Y con ella se retira la falta
+     que hayamos apuntado nosotros — SOLO esa: las que ya estaban puestas son
+     de otro y se quedan donde están. */
   async function deshacerPasar(){
     if(!PASAR.creadaId) return;
     var msg = $('pl-pasar-msg'); msg.className = 'msg'; msg.textContent = 'Deshaciendo…';
     var r = await sb.from('sesiones').delete().eq('id', PASAR.creadaId);
     if(r.error){ msg.textContent = 'No se ha podido deshacer: '+r.error.message; msg.className = 'msg error'; return; }
+    var aviso = '';
+    if(PASAR.faltasIds && PASAR.faltasIds.length){
+      try {
+        var rf = await sb.from('ausencias').delete().in('id', PASAR.faltasIds);
+        if(rf.error) aviso = ' La falta que se apuntó sigue puesta ('+rf.error.message+'): quítala en Pasar lista.';
+      } catch(e){ aviso = ' La falta que se apuntó sigue puesta: quítala en Pasar lista.'; }
+    }
     var g = PASAR.sesion ? PASAR.sesion.grupo_id : null;
-    PASAR.creadaId = null;
+    PASAR.creadaId = null; PASAR.faltasIds = [];
     $('pl-pasar-hecho').hidden = true;
     $('pl-pasar-ok').disabled = false;
-    msg.textContent = 'Deshecho ✓ Ha quedado todo como estaba.'; msg.className = 'msg ok';
+    msg.textContent = 'Deshecho ✓ Ha quedado todo como estaba.'+aviso;
+    msg.className = aviso ? 'msg' : 'msg ok';
     if(g){ await cargarSesionesGrupo(g); if(editandoId) $('pl-editar').value = editandoId; }
     refrescarDia();
   }
@@ -3976,7 +4081,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function cerrarPasar(){
     var caja = $('pl-pasar-caja');
     if(caja) caja.hidden = true;
-    PASAR.sesion = null; PASAR.creadaId = null;
+    PASAR.sesion = null; PASAR.creadaId = null; PASAR.faltasIds = [];
   }
 
   function limpiarFormulario(){
