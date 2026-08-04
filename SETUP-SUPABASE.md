@@ -185,3 +185,116 @@ on conflict (id) do nothing;
 -- NOTA: `perfiles.nombre` y `perfiles.apellidos` son obligatorias, por eso se
 -- rellenan (nombre = parte del correo antes de la @; apellidos = '' vacío).
 ```
+
+---
+
+## §7 · Entrar con un enlace, sin contraseña (lo de septiembre)
+
+**Qué es.** La familia escribe su correo en el portal, le llega un correo con un
+enlace, lo pulsa y está dentro. La cuenta se crea sola la primera vez. Nadie
+tiene que dar de alta a nadie a mano, y no hay contraseñas que olvidar.
+
+**Quién puede entrar.** Solo quien ya esté en la base del club: su correo tiene
+que estar en su ficha de atleta (`atletas.email`), en la ficha de alguno de sus
+hijos (`atletas.email_tutor`) o en su perfil de siempre (`perfiles.email`). Al
+que no esté no se le manda nada, y ve exactamente el mismo mensaje que el que sí
+está: si viera otro, cualquiera podría averiguar probando qué correos están
+dados de alta en el club.
+
+**El camino de siempre sigue entero.** Correo y contraseña siguen funcionando,
+igual que «He olvidado la contraseña». Esto se añade, no sustituye: hay familias
+que comparten correo o que no tienen, y a esas se les da acceso a mano como
+hasta ahora.
+
+### ⚠️ Lo primero, y sin esto no funciona nada: los correos
+
+Hoy, de los **207 atletas de la base, CERO tienen correo apuntado** (ni el suyo
+ni el de su padre o madre). El mecanismo puede estar perfecto, que si el correo
+no está en la ficha, esa familia no entra.
+
+Se cargan con **Panel → Importar**, que ya entiende columnas llamadas «email»,
+«correo», «email tutor», «correo del padre» y unas cuantas más. Es el paso más
+importante de todos y hay que hacerlo antes de septiembre.
+
+### Paso 1 · La parte de la base de datos
+
+Ya está aplicada (`migraciones/108_entrar_con_un_enlace.sql`). Si hubiera que
+volver a montar la base desde cero, se ejecuta ese archivo entero y ya está.
+
+### Paso 2 · Un remitente de correo de verdad
+
+Supabase trae un servicio de correo de regalo **que solo sirve para probar**:
+manda dos o tres correos por hora y a veces solo a los correos del equipo. Con
+doscientas familias entrando el mismo día, eso no vale.
+
+En **Supabase → Project Settings → Authentication → SMTP Settings**, encender
+«Enable Custom SMTP» y poner los datos del servicio de correo que use el club.
+Si el club no tiene ninguno, valen Resend, Brevo o Mailgun: los tres tienen
+plan gratuito de sobra para esto. Hace falta:
+
+- Servidor, puerto, usuario y contraseña que dé ese servicio.
+- **Sender email**: un correo del club, por ejemplo `escuelaapolana@gmail.com`.
+- **Sender name**: `Club Atletismo Apolana`.
+
+Y justo debajo, en **Rate Limits**, subir «Rate limit for sending emails» hasta
+que aguante el día de la avalancha (300 por hora va sobrado).
+
+### Paso 3 · A dónde vuelve el enlace
+
+En **Supabase → Authentication → URL Configuration**:
+
+- **Site URL**: `https://escuelaapolana.github.io/WebV2/`
+- **Redirect URLs**: añadir `https://escuelaapolana.github.io/WebV2/portal/`
+  (y `http://localhost:8137/portal/` si se quiere probar en casa).
+
+Si esa dirección no está en la lista, el enlace del correo lleva a una página de
+error y nadie entra.
+
+### Paso 4 · Cerrar la puerta de atrás
+
+En **Supabase → Authentication → Sign In / Providers → Email**:
+
+- **Confirm email**: encendido.
+- **Allow new users to sign up**: **APAGADO**.
+
+Esto último es importante. Con eso apagado, la única forma de que nazca una
+cuenta es pasando por la comprobación del club. Con eso encendido, cualquiera
+puede crearse una cuenta con la clave pública que viaja en la web. La web del
+club no usa el registro directo en ningún sitio, así que apagarlo no rompe nada.
+
+### Paso 5 · Subir la función que manda el enlace
+
+Desde el ordenador, en la carpeta del proyecto:
+
+```
+supabase functions deploy acceso-enlace --no-verify-jwt
+```
+
+Ese `--no-verify-jwt` **hay que ponerlo**: quien llama a esta función todavía no
+ha entrado —ese es justo el sentido de todo esto—, así que no puede traer
+ninguna sesión. Lo que protege esa puerta es lo de dentro: el límite de tres
+peticiones por correo a la hora, la lista de webs permitidas y que la respuesta
+sea siempre exactamente la misma.
+
+Y en **Supabase → Edge Functions → acceso-enlace → Settings → Secrets**, poner:
+
+| Nombre | Qué se pone |
+|---|---|
+| `ACCESO_URL_BASE` | `https://escuelaapolana.github.io/WebV2/` |
+| `ACCESO_ORIGENES` | `https://escuelaapolana.github.io` |
+| `ACCESO_SAL` | Un texto largo cualquiera, inventado. Sirve para contar peticiones sin guardar la dirección de internet de nadie. |
+
+Las claves de Supabase (`SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`) las pone
+Supabase sola: **no hay que escribirlas en ningún sitio, y jamás en el
+repositorio, que es público.**
+
+### Cómo se comprueba que funciona
+
+1. Poner el correo de alguien del club en la ficha de un atleta de prueba.
+2. Abrir el portal, escribir ese correo y pulsar «Enviarme un enlace para entrar».
+3. Tiene que llegar el correo en menos de un minuto y, al pulsarlo, entrar
+   directamente y **ver sus datos** (su ficha o la de sus hijos). Si entra pero
+   ve el portal vacío, el enganche no ha funcionado: mirar el registro de la
+   base, que deja escrito el motivo.
+4. Escribir un correo inventado: tiene que decir exactamente lo mismo y **no**
+   llegar ningún correo.

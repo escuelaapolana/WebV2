@@ -14,9 +14,13 @@
    El número de cuenta, el titular y el resto NO están escritos en
    este archivo ni en ningún otro del repositorio: el repositorio
    de la web es PÚBLICO. Viven en la tabla `info_pagos` de la base
-   de datos (migración 052), que solo pueden leer los usuarios con
-   sesión iniciada. Un visitante sin cuenta no ve nada de esto,
-   porque la propia base de datos se lo niega.
+   de datos (migración 052).
+   Esa tabla ya NO se lee desde aquí: desde la migración 110 la leen
+   solo administración y tesorería. Lo que lee esta página es la
+   vista `como_se_paga`, que a cada quien le da la cuenta en la que
+   ingresa ÉL, y solo esa. O sea que si esta consulta devuelve una
+   sola fila no es que falte nada: es que a esa persona le toca una
+   sola cuenta. Un visitante sin sesión no recibe ni una.
    Si alguna vez hay que cambiar un dato bancario: se cambia en el
    panel (Cobros → «Cómo se paga»), nunca aquí.
 
@@ -92,12 +96,15 @@
     if (CARGANDO) return CARGANDO;
     CARGANDO = (async function () {
       try {
-        var r = await sb.from('info_pagos')
+        /* La vista `como_se_paga` ya trae solo las cuentas activas y
+           solo las que le tocan a quien está mirando, así que aquí no
+           hay ningún filtro: filtrar en el navegador nunca ha
+           protegido nada. `activo` ni siquiera es una columna suya. */
+        var r = await sb.from('como_se_paga')
           .select('clave,titulo,titular,iban,banco,metodo,cuando,otros_pagos,' +
                   'concepto_transferencia,ejemplos_concepto,texto_devuelto,' +
                   'contacto_nombre,contacto_tel,contacto_email,' +
                   'contacto_alt_nombre,contacto_alt_tel,contacto_alt_email,nota,orden')
-          .eq('activo', true)
           .order('orden', { ascending: true });
         FILAS = (r && !r.error && r.data) ? r.data : [];
       } catch (e) { FILAS = []; }

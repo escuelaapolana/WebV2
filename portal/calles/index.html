@@ -620,7 +620,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (n > 30) n = 30;
     var pos = 'b'+bi+'f'+fi;
     var key = f.id || pos;
-    var guardado = (reg && (reg[key] || reg[pos])) || null;
+    /* Si lo apuntado estaba guardado con la llave vieja de posición y ahora la
+       fila ya tiene id, se va a volver a guardar bajo el id. La llave vieja
+       viaja en la etiqueta para poder retirarla al guardar: si se quedara, el
+       mismo ejercicio contaría dos veces y el día saldría más completo de lo
+       que fue. Solo se retira la que de verdad se ha rellenado desde aquí. */
+    var guardado = (reg && reg[key]) || null;
+    var vieja = '';
+    if (!guardado && reg && key !== pos && reg[pos]) { guardado = reg[pos]; vieja = pos; }
     var ya = (guardado && guardado.tiempos) ? guardado.tiempos : [];
     var puestos = 0, h = '';
     for (var i=0;i<n;i++){
@@ -633,9 +640,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     return '<div class="tcap"><b>Tus tiempos</b><span>'+puestos+' de '+n+'</span></div>'+
            '<div class="thuecos" data-eje="'+escAt(f.ejercicio || C.cifra(f))+'"'+
-           (f.id ? ' data-fid="'+escAt(f.id)+'"' : '')+'>'+h+'</div>';
+           (f.id ? ' data-fid="'+escAt(f.id)+'"' : '')+
+           (vieja ? ' data-vieja="'+escAt(vieja)+'"' : '')+'>'+h+'</div>';
   }
 
+  /* GUARDAR SIN BORRAR LO DE AL LADO
+     ---------------------------------
+     Esta pantalla enseña SOLO los largos de la calle del nadador, pero lo que
+     un atleta apunta de un día vive todo junto en la misma casilla: los largos
+     de aquí y las pesas que apuntó por la tarde desde su portal, con sus kilos,
+     su «lo cambié por» y su RIR.
+
+     Antes se mandaba esa casilla entera montada con lo poco que se ve aquí, y
+     una casilla entera mandada de una pieza no añade: SUSTITUYE. Así que al
+     guardar los tiempos en el borde de la piscina se borraban las pesas del
+     mismo día, sin error y sin que nadie se enterara hasta mirar el historial.
+
+     Ahora se manda SOLO la lista de ejercicios que esta pantalla pinta, y la
+     base los mete entre lo que ya había (migración 111). De los ejercicios que
+     no salen aquí no se dice nada, y por eso no les pasa nada. */
   async function guardarTiempos(s, at){
     var msg = document.getElementById('n-msg');
     var btn = document.getElementById('n-guardar');
@@ -650,15 +673,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       /* Se escribe también `series` con su ✓ para que el recuento de lo hecho
          y lo no hecho salga igual desde aquí que desde el portal del atleta:
          en natación un tiempo escrito es una serie nadada. */
-      if (hay) tiempos[key] = { fila_id: g.getAttribute('data-fid') || null,
-                                ejercicio: g.getAttribute('data-eje'),
-                                medida: 'tiempo',
-                                series: vals.map(function(v){ return { hecha: !!v.trim(), tiempo: v }; }),
-                                tiempos: vals };
+      /* Y el ejercicio que se deja en blanco se manda en blanco, no se calla:
+         es el nadador borrando lo que había apuntado, y tiene que poder. Lo que
+         no se manda es lo que esta pantalla no enseña. */
+      tiempos[key] = hay
+        ? { fila_id: g.getAttribute('data-fid') || null,
+            ejercicio: g.getAttribute('data-eje'),
+            medida: 'tiempo',
+            series: vals.map(function(v){ return { hecha: !!v.trim(), tiempo: v }; }),
+            tiempos: vals }
+        : null;
+      /* La llave vieja de posición del mismo ejercicio, si lo apuntado venía de
+         ahí: se retira para que no cuente dos veces. */
+      var vieja = g.getAttribute('data-vieja');
+      if (vieja && vieja !== key) tiempos[vieja] = null;
     });
-    var r = await sb.from('registros_sesion').upsert(
-      { sesion_id: s.id, atleta_id: at.id, tiempos_reales: Object.keys(tiempos).length ? tiempos : null },
-      { onConflict: 'sesion_id,atleta_id' });
+    /* Si el entrenamiento de esta calle no tiene ni un hueco donde apuntar, no
+       hay nada que decirle a la base. Antes se le mandaba un registro vacío, y
+       eso dejaba el día marcado como «no hecho» sin que el nadador hubiera
+       dicho tal cosa. */
+    if (!Object.keys(tiempos).length) {
+      btn.disabled = false;
+      msg.className = 'msg';
+      msg.textContent = 'En este entrenamiento no hay tiempos que apuntar.';
+      return;
+    }
+    var r = await sb.rpc('apo_apuntar_ejercicios', {
+      p_sesion: s.id, p_atleta: at.id, p_ejercicios: tiempos });
     btn.disabled = false;
     if (r.error) {
       msg.className = 'msg';
@@ -1380,30 +1421,49 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (p) s.publicada = p.checked;
     }
 
-    var asignados = [];
-    EST.calles.forEach(function(c){ c.atletas.forEach(function(id){ if (asignados.indexOf(id) < 0) asignados.push(id); }); });
+    /* ⚠️ AQUÍ SOLO SE MANDA LO QUE ESTA PANTALLA ENSEÑA.
+       Es la misma regla que en el resto de la app: cada pantalla escribe lo
+       suyo y de lo demás no dice nada, porque lo que no se enseña no se puede
+       comprobar y se pisa sin que nadie se entere.
+
+       Dos cosas se caían por saltársela:
+
+       · A QUIÉN VA LA SESIÓN (`atletas_ids`). Esta pantalla reparte nadadores
+         POR CALLES, que es otra cosa distinta: sale de los bloques, no de ahí.
+         Mandaba «a nadie» cuando no había nadie repartido, y una sesión que el
+         entrenador había limitado a tres atletas concretos se convertía en
+         sesión de todo el grupo. No se toca: quien decide eso es la pantalla
+         del entrenador, que sí lo enseña.
+
+       · QUÉ DEPORTE ES. Se daba por hecho que todo lo que se abre aquí es
+         agua, y un entrenamiento de gimnasio abierto por error se guardaba
+         convertido en natación —perdiendo el tipo, el deporte y, si además
+         llevaba segundo deporte, dando error y tirando el trabajo—. Ahora solo
+         se dice al CREAR una sesión desde aquí, que entonces sí nace de agua. */
+    var esNueva = !s.id;
 
     var payload = {
       grupo_id: EST.grupo,
       fecha: EST.fecha,
       dia_semana: diaSemana(EST.fecha),
-      tipo: 'natacion',
-      /* El deporte va escrito aparte del tipo de siempre (migración 102). Si
-         más abajo hay que guardar como «continua» porque la base no admita el
-         tipo natación, el deporte sigue diciendo la verdad: esto es agua. */
-      deporte: 'natacion',
       titulo: s.titulo || null,
       nota_razonamiento: s.nota_razonamiento || null,
       bloques: bloquesParaGuardar(),
       calles: EST.calles.length,
-      publicada: !!s.publicada,
-      atletas_ids: asignados.length ? asignados : null
+      publicada: !!s.publicada
     };
+    if (esNueva) {
+      payload.tipo = 'natacion';
+      /* El deporte va escrito aparte del tipo de siempre (migración 102). Si
+         más abajo hay que guardar como «continua» porque la base no admita el
+         tipo natación, el deporte sigue diciendo la verdad: esto es agua. */
+      payload.deporte = 'natacion';
+    }
 
     var res = await mandar(payload, s.id);
     /* Si la base aún no admite el tipo «natación», se guarda como continua
        para no perder el trabajo del entrenador. */
-    if (res.error && /sesiones_tipo_check/.test(res.error.message||'')) {
+    if (esNueva && res.error && /sesiones_tipo_check/.test(res.error.message||'')) {
       payload.tipo = 'continuo';
       res = await mandar(payload, s.id);
     }
@@ -1424,7 +1484,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     s.calles = EST.calles.length;
     /* Se refresca la lista del día para que la sesión recién creada aparezca */
     var enLista = EST.sesionesDia.some(function(x){ return x.id === s.id; });
-    if (!enLista) EST.sesionesDia.push({ id:s.id, titulo:s.titulo, tipo:payload.tipo, bloques:payload.bloques, calles:payload.calles });
+    if (!enLista) EST.sesionesDia.push({ id:s.id, titulo:s.titulo, tipo:(payload.tipo || s.tipo || null), bloques:payload.bloques, calles:payload.calles });
     return { ok:true };
   }
 

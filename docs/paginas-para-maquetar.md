@@ -99,7 +99,7 @@ Running · Trail · Triatlón · Natación · Bonus · Total · Pruebas).
 Necesita: cómo se lee una clasificación de 31 personas en un móvil, y cómo se
 destaca el podio sin que parezca una hoja de cálculo.
 
-### El día en el club — `/horarios/`
+### Horarios — `/horarios/`
 Sí tiene especificación (PAGINAS-NUEVAS.md). Parrilla semanal de los 27 grupos
 con filtro por sección; en móvil, acordeón por día. **Funciona bien**, pero es
 la página más útil del sitio y merece un repaso fino.

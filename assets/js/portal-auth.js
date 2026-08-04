@@ -7,6 +7,15 @@
    APOLANA_PORTAL.listo(function(sb, perfil){ ... }).
    Requiere supabase-js + db.js cargados antes. Cárgalo SIN defer.
 
+   CÓMO SE ENTRA (decidido por el club, verano de 2026)
+   - Por delante, correo y contraseña. Como en cualquier otro sitio,
+     y con la casilla de «mantener la sesión abierta».
+   - El enlace al correo ya no es la forma de entrar: es la forma de
+     darse de alta la primera vez, y la salida del que no se acuerda
+     de su contraseña. Va debajo, con su explicación.
+   - Quien llega del correo sin tener contraseña se pone una ANTES de
+     ver el portal. A quien ya la tiene no se le pregunta nunca.
+
    Además:
    - La pantalla de entrada sigue la maqueta 19b: titular del club,
      accesos públicos «sin cuenta» y llamada a inscripción.
@@ -51,13 +60,17 @@
      -------------------------------------------------------------- */
   var _delEnlace = null;   // el enlace ya no valía: por qué
   var _acabaDeEntrar = false;  // ha entrado AHORA, pulsando el enlace
+  var _tipoEnlace = '';    // qué enlace era: 'recovery' si venía de «cambiar la contraseña»
   (function () {
     var h = (location.hash || '').replace(/^#/, '');
     if (!h || h.indexOf('=') === -1) return;
     var p = new URLSearchParams(h);
     var err = p.get('error_code') || p.get('error');
     if (err) { _delEnlace = { codigo: String(err) }; return; }
-    if (p.get('access_token')) _acabaDeEntrar = true;
+    if (p.get('access_token')) {
+      _acabaDeEntrar = true;
+      _tipoEnlace = p.get('type') || '';
+    }
   })();
 
   /* Lo que se le dice a alguien cuyo enlace ya no vale. En cristiano
@@ -114,6 +127,52 @@
     '.pt-olvido{display:flex;align-items:center;justify-content:center;min-height:44px;margin:6px auto 0;background:none;border:0;padding:0 8px;color:#2F6FA8;font-size:15px;font-family:inherit;cursor:pointer;text-decoration:none;text-align:center;line-height:1.35}' +
     '.pt-olvido[hidden]{display:none}' +
     '.pt-olvido:disabled{color:#8C8577;cursor:default}' +
+    /* --- la contraseña, con «Ver» dentro del propio recuadro -----------
+       Un solo campo y un botón para leer lo que se ha escrito. Dos campos
+       («repítela») obligan a teclear a ciegas dos veces lo mismo en un
+       móvil pequeño, y no demuestran que esté bien: solo que se ha
+       tecleado igual dos veces. Leerla sí lo demuestra. */
+    '.pt-login .pt-campo{position:relative;display:block}' +
+    '.pt-login .pt-campo input{padding-right:96px}' +
+    '.pt-ojo{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:inline-flex;' +
+      'align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 12px;' +
+      'border:0;border-radius:8px;background:none;color:#2F6FA8;font-family:inherit;font-size:14px;' +
+      'font-weight:600;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+    '.pt-ojo:hover{background:#EAF2F9}' +
+    /* --- «mantener la sesión abierta» ---------------------------------
+       La fila entera se pulsa, no solo el cuadradito: a 375 px un cuadro
+       de 22 px es imposible de acertar con el pulgar. */
+    '.pt-login label.pt-check{display:flex;align-items:center;gap:11px;min-height:44px;' +
+      'margin:12px 0 0;font-size:15px;line-height:1.35;color:#4A4437;cursor:pointer}' +
+    /* La casilla vuelve a ser la casilla del móvil: el recuadro blanco con
+       borde de los campos de texto se la comía. */
+    '.pt-login .pt-check input{-webkit-appearance:auto;appearance:auto;width:22px;height:22px;' +
+      'flex:0 0 22px;margin:0;padding:0;border:0;border-radius:0;background:none;accent-color:#2F6FA8}' +
+    '.pt-login .pt-check span{min-width:0}' +
+    /* --- la otra puerta: pedir un enlace ------------------------------
+       Deja de ser la forma de entrar y pasa a ser la forma de darse de
+       alta (y la salida para quien no se acuerda de la contraseña). */
+    '.pt-otra{margin-top:16px;padding-top:14px;border-top:1px solid #EAE3D5;text-align:center}' +
+    '.pt-otra[hidden]{display:none}' +
+    '.pt-otra .pt-nota{margin:0}' +
+    '.pt-btn2{display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;' +
+      'min-height:44px;margin-top:9px;padding:11px 14px;border:1px solid #C9D9E7;border-radius:999px;' +
+      'background:#fff;color:#2F6FA8;font-family:inherit;font-size:15px;font-weight:600;line-height:1.25;' +
+      'cursor:pointer}' +
+    '.pt-btn2:hover{background:#EAF2F9}' +
+    '.pt-btn2:disabled{color:#8C8577;border-color:#E0D8C8;background:#fff;cursor:default}' +
+    /* --- ponerse una contraseña la primera vez ------------------------
+       Va en la MISMA tarjeta que el acceso, con el mismo ancho, la misma
+       letra y los mismos botones: es la misma casa, no otra pantalla. */
+    '.pt-clave[hidden]{display:none}' +
+    /* Ocupa el sitio del titular «Club Apolana», que se aparta: dos rótulos
+       en mayúsculas y condensada, uno encima de otro, compiten y no se lee
+       ninguno. El escudo ya dice de quién es esta pantalla. */
+    '.pt-clave h2{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;' +
+      'font-size:34px;line-height:1;color:#2E4256;margin:0 0 8px;text-align:center}' +
+    '.pt-clave-txt{margin:0;font-size:15px;line-height:1.5;color:#5E5849;text-align:center}' +
+    '.pt-clave-txt b{font-weight:600;overflow-wrap:anywhere}' +
+    '.pt-pista{margin:9px 0 0;font-size:13.5px;line-height:1.45;color:#6E6656}' +
     /* --- entrar con un enlace ---------------------------------------
        La frase de debajo del botón explica en una línea qué va a
        pasar. Sin ella, «Enviarme un enlace para entrar» deja a medio
@@ -566,30 +625,41 @@
     login.innerHTML =
       '<img class="pt-logo" src="' + b + 'assets/img/logo.png" alt="Club Apolana">' +
       '<h1>Club Apolana</h1>' +
-      '<p class="lema">Entra con tu correo o mira el club sin registrarte.</p>' +
+      '<p class="lema" id="pt-lema">Entra con tu correo y tu contraseña.</p>' +
       /* --------------------------------------------------------
-         DOS CAMINOS, UNO A LA VISTA
-         El de siempre —correo y contraseña— sigue entero: hay
-         familias que comparten correo o que no tienen, y a esas
-         alguien del club les da acceso a mano. Pero el que se ve
-         nada más abrir es el del enlace, que es el que sirve para
-         las doscientas familias que entran en septiembre.
-         La contraseña se pide solo si la piden.
+         LA PUERTA DE SIEMPRE, A LA VISTA
+         Correo y contraseña, como en cualquier otro sitio: es lo
+         primero que se ve, sin nada escondido detrás de un botón.
+         El enlace al correo no ha desaparecido, pero ya no es la
+         forma de entrar: es la forma de darse de alta la primera
+         vez y la salida para quien no se acuerda. Por eso está
+         debajo, con su raya y con su explicación.
          -------------------------------------------------------- */
       '<form id="pt-form" novalidate>' +
         '<label for="pt-email">Tu correo</label>' +
         '<input type="email" id="pt-email" autocomplete="username" inputmode="email" ' +
                'autocapitalize="none" autocorrect="off" spellcheck="false" required>' +
-        '<div id="pt-caja-pass" hidden>' +
-          '<label for="pt-pass">Contraseña</label>' +
-          '<input type="password" id="pt-pass" autocomplete="current-password">' +
+        '<label for="pt-pass">Tu contraseña</label>' +
+        '<div class="pt-campo">' +
+          '<input type="password" id="pt-pass" autocomplete="current-password" ' +
+                 'autocapitalize="none" autocorrect="off" spellcheck="false">' +
+          '<button type="button" class="pt-ojo" id="pt-ver" aria-pressed="false" ' +
+                  'aria-controls="pt-pass" aria-label="Ver la contraseña">Ver</button>' +
         '</div>' +
-        '<div style="margin-top:16px"><button class="btn btn--primario" type="submit" id="pt-enviar" style="width:100%">Enviarme un enlace para entrar</button></div>' +
-        '<p class="pt-nota" id="pt-nota">Sin contraseña: te llega un correo, lo pulsas y estás dentro.</p>' +
-        '<button type="button" class="pt-olvido" id="pt-modo">Prefiero entrar con contraseña</button>' +
-        '<button type="button" class="pt-olvido" id="pt-olvido" hidden>He olvidado la contraseña</button>' +
+        /* Marcada de salida: es lo que hacía la web hasta hoy, y es lo que
+           quiere casi todo el mundo en su propio móvil. Quien entre desde
+           un móvil prestado la desmarca. */
+        '<label class="pt-check" for="pt-mantener">' +
+          '<input type="checkbox" id="pt-mantener" checked>' +
+          '<span>Mantener la sesión abierta</span>' +
+        '</label>' +
+        '<div style="margin-top:16px"><button class="btn btn--primario" type="submit" id="pt-enviar" style="width:100%">Entrar</button></div>' +
         '<div class="msg" id="pt-msg" role="status" aria-live="polite"></div>' +
       '</form>' +
+      '<div class="pt-otra" id="pt-otra">' +
+        '<p class="pt-nota">¿Primera vez, o no te acuerdas de la contraseña?</p>' +
+        '<button type="button" class="pt-btn2" id="pt-pedir">Enviarme un enlace al correo</button>' +
+      '</div>' +
       /* --------------------------------------------------------
          LA ESPERA · lo que se ve mientras el correo va de camino
          Ocupa el sitio del formulario, y no se pone debajo, para
@@ -603,11 +673,35 @@
           '</svg>' +
         '</div>' +
         '<p class="pt-espera-tit">Te hemos enviado un enlace a <b id="pt-espera-mail"></b></p>' +
-        '<p class="pt-espera-txt">Ábrelo en el móvil donde vayas a usar la app. Al pulsarlo entras directamente, sin contraseña.</p>' +
+        '<p class="pt-espera-txt">Ábrelo en el móvil donde vayas a usar la app. Al pulsarlo entras y lo primero que harás es ponerte una contraseña.</p>' +
         '<p class="pt-espera-txt pt-espera-fina">Tarda un minuto en llegar. Si no aparece, mira en la carpeta de correo no deseado.</p>' +
         '<button type="button" class="pt-olvido" id="pt-reenviar">No me ha llegado, mándalo otra vez</button>' +
-        '<button type="button" class="pt-olvido" id="pt-otro">Usar otro correo</button>' +
+        '<button type="button" class="pt-olvido" id="pt-otro">Volver</button>' +
         '<div class="msg" id="pt-msg2"></div>' +
+      '</div>' +
+      /* --------------------------------------------------------
+         PONTE UNA CONTRASEÑA · lo primero al entrar por el enlace
+         Ocupa el sitio del formulario, en la misma tarjeta. Aquí no
+         se enseñan los accesos públicos ni «Inscribirme»: esta
+         persona ya está dentro, y lo único que tiene que hacer
+         ahora es esto.
+         -------------------------------------------------------- */
+      '<div class="pt-clave" id="pt-clave" hidden>' +
+        '<h2>Ponte una contraseña</h2>' +
+        '<p class="pt-clave-txt">Será la que uses de ahora en adelante para entrar, junto con tu correo <b id="pt-clave-mail"></b>.</p>' +
+        '<form id="pt-clave-form" novalidate>' +
+          '<label for="pt-clave-1">Tu contraseña</label>' +
+          '<div class="pt-campo">' +
+            '<input type="password" id="pt-clave-1" autocomplete="new-password" ' +
+                   'autocapitalize="none" autocorrect="off" spellcheck="false">' +
+            '<button type="button" class="pt-ojo" id="pt-clave-ver" aria-pressed="false" ' +
+                    'aria-controls="pt-clave-1" aria-label="Ver la contraseña">Ver</button>' +
+          '</div>' +
+          '<p class="pt-pista">Al menos 6 letras o números. Elige algo que puedas recordar; pulsa «Ver» para leer lo que escribes.</p>' +
+          '<div style="margin-top:16px"><button class="btn btn--primario" type="submit" id="pt-clave-ok" style="width:100%">Guardar y entrar</button></div>' +
+          '<div class="msg" id="pt-clave-msg" role="status" aria-live="polite"></div>' +
+        '</form>' +
+        '<button type="button" class="pt-olvido" id="pt-clave-salir">Salir y hacerlo en otro momento</button>' +
       '</div>' +
       '<div class="pt-sep"><i></i><span>o sin cuenta</span><i></i></div>' +
       '<div class="pt-publico">' +
@@ -780,8 +874,34 @@
       pildoraPuesta = true;
     }
 
+    /* Lo de «o sin cuenta»: el separador, los cuatro accesos públicos y
+       «Inscribirme». Se apartan mientras alguien está poniéndose la
+       contraseña, porque esa persona YA está dentro y ofrecerle a la vez
+       «Inscribirme» solo la hace dudar. */
+    function extras(ver) {
+      ['.pt-sep', '.pt-publico', '.pt-pie'].forEach(function (s) {
+        var e = login.querySelector(s);
+        if (e) e.style.display = ver ? '' : 'none';
+      });
+    }
+
+    /* La dirección completa del portal, calculada desde donde estamos.
+       Sirve para que los correos de «contraseña nueva» vuelvan aquí y no
+       a la portada de la web, que no sabe qué hacer con ellos. */
+    function alPortal() {
+      try { return new URL(b + 'portal/', location.href).href; }
+      catch (e) { return location.href; }
+    }
+
     function mostrarLogin(m) {
       login.style.display = '';
+      var elC = document.getElementById('pt-clave');
+      if (elC) elC.hidden = true;
+      var elL = document.getElementById('pt-lema');
+      if (elL) elL.hidden = false;
+      var elT = login.querySelector('h1');
+      if (elT) elT.hidden = false;
+      extras(true);
       /* Si viene de un enlace que ya no vale, eso manda sobre
          cualquier otro mensaje: es lo que ha pasado de verdad. */
       if (_delEnlace) {
@@ -798,45 +918,83 @@
     if (!sb || !sb.auth) { mostrarLogin('No se pudo conectar con la base de datos.'); return; }
 
     /* ==========================================================
-       ENTRAR · los dos caminos
+       ENTRAR
        ----------------------------------------------------------
-       `modo` dice cuál está a la vista. Empieza siempre en
-       'enlace', que es el que sirve para el que entra por primera
-       vez y no tiene ninguna contraseña que escribir.
+       A la vista, correo y contraseña. Debajo, la otra puerta: que
+       te manden un enlace al correo. Esa segunda es la de la
+       primera vez —cuando todavía no hay ninguna contraseña que
+       escribir— y la de quien no se acuerda de la suya.
        ========================================================== */
-    var modo = 'enlace';
     var correoEnviado = '';   // a dónde se mandó, para poder repetirlo
     var vecesEnviado = 0;     // para no dejar pedirlo sin parar
     var esperandoHasta = 0;   // hasta cuándo el botón de repetir está dormido
 
     var elForm     = document.getElementById('pt-form');
     var elEmail    = document.getElementById('pt-email');
-    var elCajaPass = document.getElementById('pt-caja-pass');
     var elPass     = document.getElementById('pt-pass');
     var elEnviar   = document.getElementById('pt-enviar');
-    var elNota     = document.getElementById('pt-nota');
-    var elModo     = document.getElementById('pt-modo');
-    var elOlvido   = document.getElementById('pt-olvido');
+    var elMantener = document.getElementById('pt-mantener');
+    var elOtra     = document.getElementById('pt-otra');
+    var elPedir    = document.getElementById('pt-pedir');
     var elEspera   = document.getElementById('pt-espera');
     var elReenviar = document.getElementById('pt-reenviar');
+    var elClave    = document.getElementById('pt-clave');
+    var elClave1   = document.getElementById('pt-clave-1');
+    var elClaveOk  = document.getElementById('pt-clave-ok');
 
-    function ponerModo(cual) {
-      modo = cual;
-      var conClave = cual === 'clave';
-      elCajaPass.hidden = !conClave;
-      elPass.required   = conClave;
-      elOlvido.hidden   = !conClave;
-      elNota.hidden     = conClave;
-      elEnviar.textContent = conClave ? 'Entrar' : 'Enviarme un enlace para entrar';
-      elModo.textContent   = conClave
-        ? 'Entrar con un enlace, sin contraseña'
-        : 'Prefiero entrar con contraseña';
-      document.getElementById('pt-msg').textContent = '';
-      if (conClave) elPass.focus(); else elEmail.focus();
+    /* El botón «Ver» de un campo de contraseña. Escribir a ciegas en un
+       móvil pequeño es donde se pierde media hora del club por teléfono. */
+    function ojo(campo, boton) {
+      if (!campo || !boton) return;
+      boton.addEventListener('click', function () {
+        var aVerla = campo.type === 'password';
+        campo.type = aVerla ? 'text' : 'password';
+        boton.textContent = aVerla ? 'Ocultar' : 'Ver';
+        boton.setAttribute('aria-pressed', aVerla ? 'true' : 'false');
+        boton.setAttribute('aria-label', aVerla ? 'Ocultar la contraseña' : 'Ver la contraseña');
+        try { campo.focus(); } catch (e) {}
+      });
     }
-    elModo.addEventListener('click', function () {
-      ponerModo(modo === 'clave' ? 'enlace' : 'clave');
-    });
+    ojo(elPass,   document.getElementById('pt-ver'));
+    ojo(elClave1, document.getElementById('pt-clave-ver'));
+
+    /* Antes de entrar hay que decir DÓNDE se guarda la sesión, porque
+       después ya está guardada. Marcada, sigue viva al cerrar el
+       navegador; sin marcar, se va con él. Lo de verdad lo hace db.js. */
+    function apuntarMantener() {
+      try {
+        if (window.APOLANA_SESION) window.APOLANA_SESION.mantener(!!(elMantener && elMantener.checked));
+      } catch (e) {}
+    }
+
+    /* Se apunta en la cuenta que esta persona YA tiene contraseña, para
+       no volver a pedírsela nunca más. No se guarda la contraseña, claro:
+       solo un sí. Si falla, no pasa nada grave: como mucho se le volverá
+       a ofrecer ponerla la próxima vez que entre por el enlace. */
+    function apuntarQueTieneClave(usuario) {
+      /* Si ya está apuntado, no se vuelve a escribir: son doscientas
+         familias entrando cada día y esto sería una petición de más por
+         cada una y cada vez. */
+      var d = (usuario && usuario.user_metadata) || null;
+      if (d && d.clave_puesta === true) return;
+      try { sb.auth.updateUser({ data: { clave_puesta: true } }); } catch (e) {}
+    }
+
+    /* Por qué no ha podido entrar, en cristiano. El mensaje que devuelve
+       la base viene en inglés y no lo puede leer nadie del club. */
+    function porQueNoEntra(err) {
+      var m = (err && err.message) || '';
+      if (/invalid login credentials|invalid_credentials/i.test(m)) {
+        return 'El correo o la contraseña no son correctos. Si es tu primera vez, pídenos un enlace aquí abajo.';
+      }
+      if (/email not confirmed|not_confirmed/i.test(m)) {
+        return 'Todavía no has confirmado el correo. Pídenos un enlace aquí abajo y entrarás.';
+      }
+      if (/too many|rate limit/i.test(m)) {
+        return 'Demasiados intentos seguidos. Espera un minuto y vuelve a probar.';
+      }
+      return 'No hemos podido entrar. Puede ser tu conexión: vuelve a intentarlo en un momento.';
+    }
 
     /* Un correo con pinta de correo. No vale de nada afinar más: quien
        decide de verdad si existe es la base, y a propósito no lo
@@ -879,7 +1037,12 @@
       document.getElementById('pt-espera-mail').textContent = email;
       document.getElementById('pt-msg2').textContent = '';
       elForm.hidden = true;
+      elOtra.hidden = true;
       elEspera.hidden = false;
+      /* «Entra con tu correo y tu contraseña» sobra aquí: lo que toca
+         ahora es mirar el buzón, no escribir nada. */
+      var elL = document.getElementById('pt-lema');
+      if (elL) elL.hidden = true;
       dormirRepetir(45);
     }
 
@@ -927,11 +1090,14 @@
     document.getElementById('pt-otro').addEventListener('click', function () {
       elEspera.hidden = true;
       elForm.hidden = false;
+      elOtra.hidden = false;
+      var elL = document.getElementById('pt-lema');
+      if (elL) elL.hidden = false;
       vecesEnviado = 0;
-      elEmail.value = '';
       elEmail.focus();
     });
 
+    /* ---- La puerta principal: correo y contraseña ---- */
     elForm.addEventListener('submit', async function (e) {
       e.preventDefault();
       var msg = document.getElementById('pt-msg');
@@ -943,34 +1109,19 @@
         elEmail.focus();
         return;
       }
-
-      // ---- Camino nuevo: le llega un enlace y entra ----
-      if (modo === 'enlace') {
-        elEnviar.disabled = true;
-        msg.textContent = 'Enviando…';
-        var como = await pedirEnlace(email);
-        elEnviar.disabled = false;
-        if (como === 'apagado') {
-          msg.textContent = 'Entrar con un enlace todavía no está activado. '
-            + 'Entra con tu contraseña o escribe a escuelaapolana@gmail.com.';
-          return;
-        }
-        if (como === 'sinllegar') {
-          msg.textContent = 'No hemos podido enviar el enlace. Mira si tienes conexión y vuelve a probar. '
-            + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
-          return;
-        }
-        correoEnviado = email;
-        vecesEnviado = 1;
-        verEspera(email);
-        return;
-      }
-
-      // ---- Camino de siempre: correo y contraseña ----
       if (!elPass.value) { msg.textContent = 'Escribe tu contraseña.'; elPass.focus(); return; }
+
+      apuntarMantener();
+      elEnviar.disabled = true;
       msg.textContent = 'Entrando…';
-      var r = await sb.auth.signInWithPassword({ email: email, password: elPass.value });
-      if (r.error) { msg.textContent = 'No se pudo entrar: ' + r.error.message; return; }
+      var r;
+      try { r = await sb.auth.signInWithPassword({ email: email, password: elPass.value }); }
+      catch (err) { r = { error: err }; }
+      elEnviar.disabled = false;      /* pase lo que pase, se puede volver a probar */
+      if (!r || r.error) { msg.textContent = porQueNoEntra(r && r.error); elPass.focus(); return; }
+      /* Si ha entrado con contraseña es que la tiene: queda apuntado para
+         que la pantalla de «ponte una contraseña» no le salga nunca. */
+      apuntarQueTieneClave(r.data && r.data.user);
       /* «Al entrar, abrir en»: si esa persona ha fijado un papel de
          arranque, se le pone ahora; si no, se queda con el último que
          usó. Si falla, se entra con el último y ya está. */
@@ -978,20 +1129,146 @@
       arranque();
     });
 
-    document.getElementById('pt-olvido').addEventListener('click', async function () {
+    /* ---- La otra puerta: que te manden un enlace al correo ----
+       Es la de la primera vez y la del que no se acuerda. Por debajo es
+       exactamente lo mismo que había antes: la función `acceso-enlace`,
+       que comprueba en el servidor que ese correo esté en la base del
+       club y que contesta siempre lo mismo, exista o no exista. */
+    elPedir.addEventListener('click', async function () {
       var msg = document.getElementById('pt-msg');
-      var em = document.getElementById('pt-email').value.trim();
+      var email = elEmail.value.trim();
       msg.className = 'msg';
-      if (!em) { msg.textContent = 'Escribe tu correo arriba y vuelve a pulsar.'; return; }
-      msg.textContent = 'Enviando…';
-      try {
-        var r = await sb.auth.resetPasswordForEmail(em);
-        if (r && r.error) { msg.textContent = 'No se pudo enviar: ' + r.error.message; return; }
-        msg.className = 'msg ok';
-        msg.textContent = 'Te hemos enviado un correo para poner una contraseña nueva.';
-      } catch (err) {
-        msg.textContent = 'No se pudo enviar el correo. Inténtalo más tarde.';
+      if (!pareceCorreo(email)) {
+        msg.textContent = 'Escribe tu correo aquí arriba y vuelve a pulsar.';
+        elEmail.focus();
+        return;
       }
+      apuntarMantener();
+      elPedir.disabled = true;
+      msg.textContent = 'Enviando…';
+      var como = await pedirEnlace(email);
+      elPedir.disabled = false;
+      if (como === 'apagado') {
+        msg.textContent = 'Enviar el enlace todavía no está activado. '
+          + 'Escribe a escuelaapolana@gmail.com y te damos acceso.';
+        return;
+      }
+      if (como === 'sinllegar') {
+        msg.textContent = 'No hemos podido enviar el enlace. Mira si tienes conexión y vuelve a probar. '
+          + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
+        return;
+      }
+      msg.textContent = '';
+      correoEnviado = email;
+      vecesEnviado = 1;
+      verEspera(email);
+    });
+
+    /* ==========================================================
+       PONTE UNA CONTRASEÑA · lo primero al llegar del correo
+       ----------------------------------------------------------
+       Solo la ve quien acaba de pulsar el enlace y todavía no
+       tiene ninguna contraseña, y quien ha pedido cambiarla. A
+       quien ya la tiene no se le pregunta nunca.
+       ========================================================== */
+    async function tocaPonerClave(usuario, recienLlegado) {
+      if (!recienLlegado) return false;            /* solo al llegar del correo */
+      if (_tipoEnlace === 'recovery') return true; /* la ha pedido cambiar: siempre */
+      /* Se lo preguntamos a la base, que es donde está el dato de verdad.
+         Antes se adivinaba por una marca que se guarda al ponerla desde la
+         web: sirve para quien la puso aquí, pero no para las cuentas a las
+         que el club les puso contraseña a mano, que no llevan marca y se
+         encontraban pidiéndoles una que ya tenían. */
+      try {
+        var r = await sb.rpc('tengo_contrasena');
+        if (!r.error && typeof r.data === 'boolean') return !r.data;
+      } catch (e) { /* sin respuesta, se usa lo de siempre */ }
+      var d = (usuario && usuario.user_metadata) || {};
+      return d.clave_puesta !== true;
+    }
+
+    function pedirClave(email) {
+      login.style.display = '';
+      elForm.hidden = true;
+      elEspera.hidden = true;
+      elOtra.hidden = true;
+      elClave.hidden = false;
+      var elL = document.getElementById('pt-lema');
+      if (elL) elL.hidden = true;
+      var elT = login.querySelector('h1');
+      if (elT) elT.hidden = true;
+      extras(false);
+      document.getElementById('pt-clave-mail').textContent = email;
+      document.getElementById('pt-clave-msg').textContent = '';
+      try { elClave1.focus(); } catch (e) {}
+    }
+
+    /* Guardada (o ya la tenía): se recoge esta pantalla y sigue el portal
+       como si nada. */
+    function seguirAlPortal() {
+      elClave.hidden = true;
+      elClave1.value = '';
+      elClave1.type = 'password';
+      elForm.hidden = false;
+      elOtra.hidden = false;
+      var elL = document.getElementById('pt-lema');
+      if (elL) elL.hidden = false;
+      var elT = login.querySelector('h1');
+      if (elT) elT.hidden = false;
+      extras(true);
+      arranque();
+    }
+
+    document.getElementById('pt-clave-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var msg = document.getElementById('pt-clave-msg');
+      var clave = elClave1.value;
+      msg.className = 'msg';
+
+      if (clave.length < 6) {
+        msg.textContent = 'Un poco más larga: al menos 6 letras o números.';
+        elClave1.focus();
+        return;
+      }
+
+      elClaveOk.disabled = true;
+      msg.textContent = 'Guardando…';
+      var r;
+      try { r = await sb.auth.updateUser({ password: clave, data: { clave_puesta: true } }); }
+      catch (err) { r = { error: err }; }
+      /* El botón se suelta SIEMPRE, salga bien o salga mal: una pantalla
+         que se queda muerta con la contraseña a medias es lo peor que
+         puede pasarle aquí a una familia. */
+      elClaveOk.disabled = false;
+
+      if (r && r.error) {
+        var m = (r.error && r.error.message) || '';
+        /* Ya tenía puesta esta misma: no hay nada que cambiar, adentro. */
+        if (/same.{0,4}password|should be different/i.test(m)) {
+          apuntarQueTieneClave();
+          seguirAlPortal();
+          return;
+        }
+        if (/least|short|characters|length|weak/i.test(m)) {
+          msg.textContent = 'Hazla un poco más larga y vuelve a pulsar «Guardar y entrar».';
+        } else if (/session|jwt|expired|token|not authenticated/i.test(m)) {
+          msg.textContent = 'El enlace ha caducado mientras lo hacías. Pídenos otro y lo dejamos hecho.';
+        } else {
+          msg.textContent = 'No hemos podido guardarla. Puede ser tu conexión: vuelve a pulsar «Guardar y entrar».';
+        }
+        try { elClave1.focus(); } catch (e) {}
+        return;
+      }
+
+      seguirAlPortal();
+      try { window.APX.toast('Contraseña guardada', null, { detalle: 'La próxima vez entra con tu correo y esta contraseña.' }); } catch (e) {}
+    });
+
+    /* Nunca un callejón sin salida: si en ese momento no puede o no
+       quiere, se sale y se vuelve a entrar por el enlace otro día. */
+    document.getElementById('pt-clave-salir').addEventListener('click', async function () {
+      try { await sb.auth.signOut(); } catch (e) {}
+      location.reload();
     });
 
     /* --------------------------------------------------------
@@ -1197,7 +1474,11 @@
         var m = document.getElementById('pt-hoja-msg');
         m.textContent = 'Enviando…';
         try {
-          var r = await sb.auth.resetPasswordForEmail(email);
+          /* El correo tiene que traer de vuelta AL PORTAL: es la única
+             pantalla que sabe pedir la contraseña nueva. Si se deja que
+             Supabase elija, el enlace acaba en la portada de la web y
+             allí no pasa nada, que es lo que pasaba hasta hoy. */
+          var r = await sb.auth.resetPasswordForEmail(email, { redirectTo: alPortal() });
           m.textContent = (r && r.error)
             ? 'No se pudo enviar: ' + r.error.message
             : 'Te hemos enviado un correo a ' + email + ' para poner una contraseña nueva.';
@@ -1208,17 +1489,25 @@
     async function arranque() {
       var s = await sb.auth.getSession();
       if (!s.data.session) { mostrarLogin(); return; }
-      var email = s.data.session.user.email;
+      var usuario = s.data.session.user;
+      var email = usuario.email;
 
       /* Quien acaba de entrar pulsando el enlace del correo no ha
          pasado por el formulario, así que aquí es donde le toca el
          «al entrar, abrir en»: si tiene un papel de arranque fijado,
          se le pone antes de pintar nada. Solo la primera vez; al
          recargar la página ya no. */
+      var recienLlegado = _acabaDeEntrar;
       if (_acabaDeEntrar) {
         _acabaDeEntrar = false;
         try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       }
+
+      /* Y aquí, antes que nada: quien llega del correo y todavía no
+         tiene contraseña se pone una. Es lo primero que hace en su vida
+         dentro de la app, y no ve el portal hasta que está hecho. Al
+         guardarla se vuelve por aquí y esta vez sí se sigue. */
+      if (await tocaPonerClave(usuario, recienLlegado)) { pedirClave(email); return; }
       var perfil = null;
       try {
         var r = await sb.from('perfiles')

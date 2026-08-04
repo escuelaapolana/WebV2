@@ -526,10 +526,15 @@ window.APOLANA_ADMIN.listo(function (sb) {
        lleva marcado, y sobre todo saber DÓNDE QUEDA TRABAJO para abrir ese y
        no otro. */
     try {
-      var ids = [];
-      gruposDeHoy().forEach(function (g) { atletasDeGrupo(g.id).forEach(function (a) { ids.push(a.id); }); });
+      var ids = [], gids = [];
+      gruposDeHoy().forEach(function (g) { gids.push(g.id); atletasDeGrupo(g.id).forEach(function (a) { ids.push(a.id); }); });
       if (ids.length) {
-        var r = await sb.from('asistencia').select('atleta_id,fecha,presente').in('atleta_id', ids).eq('fecha', fechaHoy());
+        /* Se pide solo la asistencia DE ESTOS GRUPOS. Hay quien entrena dos
+           veces el mismo día con dos grupos distintos, y desde el curso pasado
+           esas son dos marcas separadas: sin nombrar el grupo aquí se leería la
+           del otro entrenador y esta pantalla diría que ya está pasada. */
+        var r = await sb.from('asistencia').select('atleta_id,fecha,presente')
+          .in('atleta_id', ids).in('grupo_id', gids).eq('fecha', fechaHoy());
         if (!r.error && r.data) r.data.forEach(function (x) { (ASIS[x.atleta_id] = ASIS[x.atleta_id] || {})[x.fecha] = !!x.presente; });
       }
     } catch (e) {}
@@ -579,8 +584,10 @@ window.APOLANA_ADMIN.listo(function (sb) {
   async function cargarAsistencia(gid, desde, hasta) {
     var ids = atletasDeGrupo(gid).map(function (a) { return a.id; });
     if (!ids.length) return true;
+    /* Del grupo que se está mirando y de ningún otro: la misma persona puede
+       tener otra marca ese día con otro grupo, y no es esta. */
     var r = await sb.from('asistencia').select('atleta_id,fecha,presente')
-      .in('atleta_id', ids).gte('fecha', desde).lte('fecha', hasta);
+      .in('atleta_id', ids).eq('grupo_id', gid).gte('fecha', desde).lte('fecha', hasta);
     if (r.error) return false;
     ids.forEach(function (id) { ASIS[id] = ASIS[id] || {}; });
     /* se limpia el tramo pedido antes de rellenarlo, para no dejar restos */
@@ -667,19 +674,32 @@ window.APOLANA_ADMIN.listo(function (sb) {
     marcar(id, v === undefined ? true : v === true ? false : undefined);
   }
 
-  /* Devuelve true solo si TODO ha quedado escrito en la base. */
+  /* Devuelve true solo si TODO ha quedado escrito en la base.
+
+     ⚠️ LA LISTA SE MANDA ENTERA A `apo_pasar_lista` Y NO SE ESCRIBE A MANO.
+     Antes esta pantalla guardaba y borraba diciendo «esta persona, este día»,
+     sin nombrar el grupo. El chaval que hace la escuela a primera hora y fuerza
+     a segunda solo cabía en una lista: el segundo entrenador que guardaba se
+     llevaba por delante la marca del primero, y desmarcarlo borraba las dos.
+     La función de la base solo sabe tocar las marcas DE SU GRUPO, así que
+     desde aquí ya no se puede pisar la lista de otro (migración 113). */
   async function guardarLista() {
     if (LST.guardando) return false;                 /* dos toques seguidos = un solo guardado */
     if (LST.cargando || !LST.grupo) return true;
     var atls = atletasDeGrupo(LST.grupo);
     var fecha = LST.fecha || fechaHoy();
-    var filas = [], borrar = [];
+    /* `true`/`false` = vino / no vino · `null` = quítale la marca.
+       De quien no venga aquí no se dice nada, y no se le toca. */
+    var marcas = {}, nMarcadas = 0, nQuitadas = 0;
     atls.forEach(function (a) {
       var v = LST.marcas[a.id];
-      if (v === undefined) { if (LST.guardadas[a.id]) borrar.push(a.id); }
-      else filas.push({ atleta_id: a.id, fecha: fecha, grupo_id: LST.grupo, presente: v });
+      if (v === undefined) {
+        if (LST.guardadas[a.id]) { marcas[a.id] = null; nQuitadas++; }
+      } else {
+        marcas[a.id] = v; nMarcadas++;
+      }
     });
-    if (!filas.length && !borrar.length) {
+    if (!nMarcadas && !nQuitadas) {
       if (window.apoToast) window.apoToast('Todavía no has marcado a nadie.', 'info');
       return false;
     }
@@ -687,28 +707,26 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var version0 = LST.version;   /* por si se marca a alguien más mientras se guarda */
     pintar();
     try {
-      if (filas.length) {
-        var r = await sb.from('asistencia').upsert(filas, { onConflict: 'atleta_id,fecha' });
-        if (r.error) throw r.error;
-      }
-      /* El borrado también puede fallar: si no se mira, se diría «guardada»
-         habiendo quedado marcas viejas que el entrenador acaba de quitar. */
-      if (borrar.length) {
-        var d = await sb.from('asistencia').delete().eq('fecha', fecha).in('atleta_id', borrar);
-        if (d.error) throw d.error;
-      }
+      var r = await sb.rpc('apo_pasar_lista', { p_grupo: LST.grupo, p_fecha: fecha, p_marcas: marcas });
+      if (r.error) throw r.error;
+      /* Lo que devuelve es la lista de ese grupo y ese día TAL COMO HA QUEDADO
+         guardada. Se cree eso y no lo que había en pantalla: si otro entrenador
+         tocó algo a la vez, aquí se ve al momento en vez de dentro de un mes. */
+      var guardado = r.data || {};
       LST.guardadas = {};
-      filas.forEach(function (f) {
-        LST.guardadas[f.atleta_id] = true;
-        (ASIS[f.atleta_id] = ASIS[f.atleta_id] || {})[fecha] = f.presente;
+      Object.keys(marcas).forEach(function (id) { if (ASIS[id]) delete ASIS[id][fecha]; });
+      Object.keys(guardado).forEach(function (id) {
+        LST.guardadas[id] = true;
+        (ASIS[id] = ASIS[id] || {})[fecha] = !!guardado[id];
       });
-      borrar.forEach(function (id) { if (ASIS[id]) delete ASIS[id][fecha]; });
       LST.sucio = (LST.version !== version0);   /* si tocó algo mientras tanto, sigue pendiente */
       LST.guardadoEn = LST.sucio ? '' : new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
       LST.guardando = false;
       if (LST.sucio) guardarBorrador(); else borrarBorrador();
       pintar();
-      var pres = filas.filter(function (f) { return f.presente; }).length;
+      /* Se cuenta sobre lo guardado, no sobre lo que se acaba de mandar: el
+         recuento tiene que ser el del día entero de ese grupo. */
+      var pres = Object.keys(guardado).filter(function (id) { return guardado[id]; }).length;
       if (window.apoToast) window.apoToast('Lista guardada · ' + pres + ' de ' + atls.length + ' han venido', 'ok');
       return !LST.sucio;
     } catch (e) {

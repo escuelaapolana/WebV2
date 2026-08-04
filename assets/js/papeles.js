@@ -117,11 +117,10 @@
     '.pap-nota span{font-size:14px;line-height:1.45;color:var(--texto,#4A4437)}' +
     '.pap-abrir{display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--linea-marcada,#E4DCCB);padding-top:10px}' +
     '.pap-abrir .pap-et{font-size:14px;color:var(--texto-suave,#6E6656);padding-left:2px}' +
-    '.pap-abrir .pap-chips{display:flex;gap:7px;flex-wrap:wrap}' +
-    '.pap-abrir button{border:1px solid var(--linea-borde,#D4CBB9);background:transparent;border-radius:999px;' +
-      'padding:9px 14px;font-family:inherit;font-size:14px;color:var(--texto,#4A4437);cursor:pointer}' +
-    '.pap-abrir button[aria-pressed="true"]{background:var(--navy,#2E4256);border-color:var(--navy,#2E4256);' +
-      'color:#fff;font-weight:600}' +
+    '.pap-abrir select{width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--linea-borde,#D4CBB9);' +
+      'background:#fff;border-radius:10px;padding:10px 13px;font-family:inherit;font-size:15px;' +
+      'color:var(--navy,#2E4256);cursor:pointer}' +
+    '.pap-abrir select:disabled{opacity:.6;cursor:default}' +
     /* La fila en la que ya estás no se pulsa, pero se lee igual de bien:
        apagarla sería apagar justo la que contesta a la pregunta. */
     '.pap-op[disabled]:not([aria-current="true"]){opacity:.55}' +
@@ -246,15 +245,22 @@
           '<b>Son tus papeles, no otras cuentas</b>' +
           '<span>Cambias lo que ves, no quién eres. Todo se sigue guardando a tu nombre.</span>' +
         '</div>' +
+        /* Esto de aquí abajo NO cambia de papel: elige por dónde se abre
+           la próxima vez. Antes era otra fila de botones con los mismos
+           nombres que los de arriba, y pasaba lo que tenía que pasar:
+           se pulsaba «Administrador» aquí esperando entrar como
+           administrador, y la ventana hacía justo lo que se le pedía,
+           o sea nada visible. Parecía que el cambio de papel estaba
+           roto. Un desplegable no se confunde con un botón. */
         '<div class="pap-abrir">' +
-          '<span class="pap-et">Al entrar, abrir en</span>' +
-          '<div class="pap-chips">' +
-            '<button type="button" data-abrir="" aria-pressed="' + (!d.al_entrar) + '">El último que usé</button>' +
+          '<label class="pap-et" for="pap-al-entrar">Al entrar, abrir en</label>' +
+          '<select id="pap-al-entrar">' +
+            '<option value=""' + (!d.al_entrar ? ' selected' : '') + '>El último que usé</option>' +
             roles.map(function (r) {
-              return '<button type="button" data-abrir="' + esc(r) + '" aria-pressed="' +
-                (d.al_entrar === r) + '">' + esc(titulo(r)) + '</button>';
+              return '<option value="' + esc(r) + '"' +
+                (d.al_entrar === r ? ' selected' : '') + '>' + esc(titulo(r)) + '</option>';
             }).join('') +
-          '</div>' +
+          '</select>' +
         '</div>' +
       '</div>';
 
@@ -303,27 +309,29 @@
         });
         return;
       }
-      var a = e.target.closest('[data-abrir]');
-      if (a) {
-        var rol = a.getAttribute('data-abrir') || null;
-        var chips = Array.prototype.slice.call(fondo.querySelectorAll('[data-abrir]'));
-        /* Se marca el elegido antes de guardar, para que responda al momento.
-           Pero se apunta cuál estaba marcado: si el guardado falla hay que
-           devolverlo, o queda un botón encendido que no corresponde a nada. */
-        var antes = chips.map(function (x) { return x.getAttribute('aria-pressed'); });
-        function volverAtras() {
-          chips.forEach(function (x, i) { x.setAttribute('aria-pressed', antes[i]); });
-        }
-        chips.forEach(function (x) {
-          x.setAttribute('aria-pressed', x === a ? 'true' : 'false');
-        });
+    });
+
+    /* El desplegable guarda solo al soltarlo. Se apunta lo que había: si
+       la base dice que no, se devuelve a su sitio, que si no queda
+       enseñando una opción que no es la guardada. */
+    var sel = fondo.querySelector('#pap-al-entrar');
+    if (sel) {
+      var antes = sel.value;
+      sel.addEventListener('change', function () {
+        var rol = sel.value || null;
+        sel.disabled = true;
         sb().rpc('rol_al_entrar_poner', { p_rol: rol }).then(function (r) {
-          if (r.error) { volverAtras(); decir('No se ha podido guardar: ' + r.error.message, 'error'); return; }
+          sel.disabled = false;
+          if (r.error) { sel.value = antes; decir('No se ha podido guardar: ' + r.error.message, 'error'); return; }
+          antes = sel.value;
           if (DATOS) DATOS.al_entrar = rol;
           decir(rol ? 'Al entrar se abrirá en ' + titulo(rol) : 'Al entrar se abrirá en el último que uses', 'ok');
+        }, function () {
+          sel.disabled = false; sel.value = antes;
+          decir('No se ha podido guardar. Vuelve a intentarlo.', 'error');
         });
-      }
-    });
+      });
+    }
 
     var primero = fondo.querySelector('.pap-op:not([disabled])');
     if (primero) primero.focus();

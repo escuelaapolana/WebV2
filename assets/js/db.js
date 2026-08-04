@@ -51,7 +51,87 @@
     console.warn("[Apolana] supabase-js no está cargado; la web usará los datos de ejemplo.");
     return;
   }
-  window.APOLANA_DB = window.supabase.createClient(URL, KEY);
+  /* ------------------------------------------------------------
+     DÓNDE SE GUARDA LA SESIÓN · la casilla «mantener la sesión abierta»
+     ------------------------------------------------------------
+     El navegador tiene dos cajones donde dejar la sesión:
+       · uno que sobrevive a cerrar el navegador (localStorage)
+       · otro que se vacía en cuanto se cierra   (sessionStorage)
+
+     Hasta ahora se usaba SIEMPRE el primero, así que la casilla de
+     la pantalla de acceso no habría significado nada: marcada o sin
+     marcar, la sesión seguía viva al día siguiente.
+
+     Esto se decide AQUÍ y no en la pantalla de acceso porque hay que
+     elegir el cajón antes de crear la conexión, y la conexión se crea
+     una sola vez para toda la web.
+
+     Dos cosas que no cambian, a propósito:
+       · Este archivo lo usan TODAS las páginas, también las públicas,
+         donde no hay ninguna sesión. Para ellas esto no hace nada:
+         nadie lee ni escribe nada.
+       · Por defecto se sigue usando el cajón de siempre y con los
+         mismos nombres, así que a quien ya estaba dentro no se le
+         cierra la sesión por este cambio.
+     ------------------------------------------------------------ */
+  var PREF_SESION = 'apolana-mantener-sesion';   // vale 'no' solo si la persona lo pidió
+
+  /* En navegación privada de algunos móviles, tocar estos cajones da
+     error. Se pregunta con cuidado y, si no hay, se sigue sin ellos. */
+  function cajon(nombre) {
+    try { return window[nombre] || null; } catch (e) { return null; }
+  }
+  function cajonElegido() {
+    var largo = cajon('localStorage');
+    var corto = cajon('sessionStorage');
+    var quiere = null;
+    try { quiere = largo && largo.getItem(PREF_SESION); } catch (e) {}
+    if (quiere === 'no' && corto) return corto;
+    return largo || corto;
+  }
+
+  var ALMACEN = {
+    getItem: function (k) {
+      /* Se mira primero el cajón corto: quien pidió NO mantener la sesión
+         la tiene ahí y solo ahí, y si mirásemos antes el largo podríamos
+         resucitar una sesión vieja que ya no debería valer. */
+      try { var c = cajon('sessionStorage'); var v = c && c.getItem(k); if (v != null) return v; } catch (e) {}
+      try { var l = cajon('localStorage'); var w = l && l.getItem(k); return (w == null ? null : w); } catch (e) {}
+      return null;
+    },
+    setItem: function (k, v) {
+      var donde = cajonElegido();
+      try { if (donde) donde.setItem(k, v); } catch (e) {}
+      /* Y se borra del otro cajón: si quedaran las dos, mandaría la que
+         no toca y la casilla volvería a no servir de nada. */
+      try {
+        var otro = (donde === cajon('sessionStorage')) ? cajon('localStorage') : cajon('sessionStorage');
+        if (otro) otro.removeItem(k);
+      } catch (e) {}
+    },
+    removeItem: function (k) {
+      /* Al salir se limpian los dos, sin preguntar. */
+      try { var l = cajon('localStorage'); if (l) l.removeItem(k); } catch (e) {}
+      try { var c = cajon('sessionStorage'); if (c) c.removeItem(k); } catch (e) {}
+    }
+  };
+
+  /* Lo que la pantalla de acceso apunta aquí justo antes de entrar. */
+  window.APOLANA_SESION = {
+    mantener: function (si) {
+      try {
+        var l = cajon('localStorage');
+        if (!l) return;
+        if (si) l.removeItem(PREF_SESION); else l.setItem(PREF_SESION, 'no');
+      } catch (e) {}
+    },
+    seMantiene: function () {
+      try { var l = cajon('localStorage'); return !(l && l.getItem(PREF_SESION) === 'no'); }
+      catch (e) { return true; }
+    }
+  };
+
+  window.APOLANA_DB = window.supabase.createClient(URL, KEY, { auth: { storage: ALMACEN } });
 
   /* Devuelve la URL de una imagen: si ya es una URL (subida a Supabase)
      la usa tal cual; si es solo un nombre, la busca en /assets/img/. */

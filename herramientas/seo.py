@@ -93,6 +93,11 @@ PAGINAS = [
     ("galeria/index.html",                        "galeria/",                       "0.5",  True),
     ("tienda/index.html",                         "tienda/",                        "0.5",  True),
     ("app/index.html",                            "app/",                           "0.4",  True),
+    ("legal/index.html",                          "legal/",                         "0.3",  True),
+    ("legal/aviso-legal/index.html",              "legal/aviso-legal/",             "0.3",  True),
+    ("legal/privacidad/index.html",               "legal/privacidad/",              "0.4",  True),
+    ("legal/condiciones/index.html",              "legal/condiciones/",             "0.3",  True),
+    ("legal/cookies/index.html",                  "legal/cookies/",                 "0.2",  True),
     # Plantilla de noticia: se comparte por WhatsApp, pero no va al sitemap
     # porque no es una pagina, es el molde de todas (?id=...).
     ("noticias/articulo/index.html",              "noticias/articulo/",             "0.3",  False),

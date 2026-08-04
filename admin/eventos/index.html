@@ -24,9 +24,45 @@
   }
   input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
   textarea { min-height: 100px; resize: vertical; }
-  .fila-check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-  .fila-check input { width: auto; }
-  .fila-check label { margin: 0; }
+  /* El cuadradito de marcar mide trece píxeles: con el dedo se falla más de lo
+     que se acierta. Por eso la fila entera responde al toque, con la altura de
+     un dedo, y también vale pulsar el texto, que es lo que la gente hace sin
+     pensar. La casilla se ve igual que siempre; lo que crece es la zona
+     sensible, que no se ve. */
+  .fila-check { display: flex; align-items: center; gap: 8px; margin: 14px 0 0;
+    min-height: 44px; cursor: pointer; }
+  .fila-check input { width: auto; flex: 0 0 auto; }
+
+  /* Rótulo de un grupo de botones: se ve igual que un <label>, pero no
+     apunta a un solo campo porque debajo van varios. */
+  .etiqueta { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
+
+  /* --- Las secciones, a golpe de dedo --- */
+  /* Mismo aspecto que los chips del resto del panel: el elegido relleno
+     en navy, el resto perfilado sobre blanco. 44 px de alto, que esto se
+     usa desde el móvil. */
+  .sec-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sec-chips button {
+    display: inline-flex; align-items: center; box-sizing: border-box;
+    min-height: 44px; padding: 9px 16px; border: 1px solid var(--linea-borde, #C6BEAE);
+    border-radius: 999px; background: #fff; color: var(--texto, #4A4437);
+    font-family: var(--fuente-texto); font-size: 15px; font-weight: 500; line-height: 1.2;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .sec-chips button:hover { border-color: var(--navy); }
+  .sec-chips button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+  .sec-chips .cargando { color: var(--texto-suave); font-size: 14px; padding: 10px 0; }
+  /* La salida de emergencia: se ofrece lo que hay, pero si el club abre algo
+     que aún no está en la base, que nadie se quede encerrado. Va discreta:
+     el camino normal es elegir, no escribir. */
+  .sec-otra { margin-top: 8px; }
+  .sec-otra .abrir {
+    background: none; border: 0; padding: 10px 2px; min-height: 44px;
+    font-family: var(--fuente-texto); font-size: 14px; color: var(--azul-oscuro, #2F6FA8);
+    text-decoration: underline; cursor: pointer;
+  }
+  .sec-otra .caja { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .sec-otra .caja input { flex: 1 1 auto; min-width: 0; }
 
   .msg { margin-top: 12px; font-size: 14px; }
   .msg.error { color: #B0563A; }
@@ -94,12 +130,10 @@
         <div class="grid2">
           <div>
             <label for="e-tipo">Tipo</label>
-            <input type="text" id="e-tipo" list="lista-tipos" placeholder="competicion, control, entrenamiento_especial…">
-            <datalist id="lista-tipos">
-              <option value="competicion"></option><option value="control"></option>
-              <option value="entrenamiento_especial"></option><option value="evento_club"></option>
-              <option value="actividad_padres"></option><option value="otro"></option>
-            </datalist>
+            <!-- Los tipos los fija la propia base (eventos_tipo_check): fuera de
+                 esta lista no deja guardar. Por eso aquí se elige, no se escribe:
+                 escribir cualquier otra cosa solo daría un error al guardar. -->
+            <select id="e-tipo"></select>
           </div>
           <div>
             <label for="e-lugar">Lugar</label>
@@ -116,14 +150,21 @@
             <input type="datetime-local" id="e-fin">
           </div>
         </div>
-        <label for="e-seccion">Secciones (separadas por comas)</label>
-        <input type="text" id="e-seccion" placeholder="pista, running">
+        <span class="etiqueta" id="lbl-seccion">Secciones</span>
+        <div class="sec-chips" id="e-seccion" role="group" aria-labelledby="lbl-seccion"></div>
+        <div class="sec-otra">
+          <button type="button" class="abrir" id="sec-otra-abrir">¿Falta alguna? Escríbela</button>
+          <div class="caja oculto" id="sec-otra-caja">
+            <input type="text" id="sec-otra-txt" placeholder="Nombre de la sección" aria-label="Otra sección">
+            <button type="button" class="btn btn--fantasma btn--mini" id="sec-otra-add">Añadir</button>
+          </div>
+        </div>
         <label for="e-descripcion">Descripción</label>
         <textarea id="e-descripcion"></textarea>
-        <div class="fila-check">
+        <label class="fila-check" for="e-inscripcion">
           <input type="checkbox" id="e-inscripcion">
-          <label for="e-inscripcion">Inscripción abierta</label>
-        </div>
+          <span>Inscripción abierta</span>
+        </label>
         <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
           <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
           <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
@@ -160,12 +201,144 @@ APOLANA_ADMIN.listo(function (sb) {
     return y + '-' + mo + '-' + da + 'T' + h + ':' + mi;
   }
 
-  // Nombre bonito del tipo (en la base se guarda el identificador, sin acentos ni espacios)
-  var TIPOS = {
-    'competicion': 'Competición', 'control': 'Control', 'entrenamiento_especial': 'Entrenamiento especial',
-    'evento_club': 'Evento del club', 'actividad_padres': 'Actividad de familias', 'otro': 'Otro'
-  };
-  function nombreTipo(t) { return t ? (TIPOS[t] || t.replace(/_/g, ' ')) : '—'; }
+  /* Los tipos que la base admite, en el orden en que se usan, y cómo se
+     dicen delante de una persona: en la base se guarda el identificador
+     (sin tildes ni espacios), pero eso no se enseña nunca. */
+  var TIPOS = [
+    { v: 'competicion',            t: 'Competición' },
+    { v: 'control',                t: 'Control' },
+    { v: 'entrenamiento_especial', t: 'Entrenamiento especial' },
+    { v: 'evento_club',            t: 'Evento del club' },
+    { v: 'actividad_padres',       t: 'Actividad de familias' },
+    { v: 'otro',                   t: 'Otro' }
+  ];
+  function nombreTipo(t) {
+    if (!t) return '—';
+    for (var i = 0; i < TIPOS.length; i++) if (TIPOS[i].v === t) return TIPOS[i].t;
+    /* Un tipo que ya no está en la lista se sigue leyendo bien: mejor
+       «Marcha popular» que el identificador crudo. */
+    return t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ');
+  }
+
+  /* El desplegable de tipos. Se pinta con `elegido` puesto, y si un evento
+     guardado trae un tipo que ya no está en la lista, se le añade su propia
+     opción: al abrir su ficha no se le puede cambiar el tipo por la espalda. */
+  function pintarTipos(elegido) {
+    var lista = TIPOS.slice();
+    if (elegido && !lista.some(function (x) { return x.v === elegido; })) {
+      lista.push({ v: elegido, t: nombreTipo(elegido) });
+    }
+    $('e-tipo').innerHTML = '<option value="">Sin tipo</option>' +
+      lista.map(function (x) {
+        return '<option value="' + esc(x.v) + '"' + (x.v === elegido ? ' selected' : '') + '>' + esc(x.t) + '</option>';
+      }).join('');
+  }
+
+  /* ------------------------------------------------------------
+     LAS SECCIONES DEL CLUB
+     No se escriben a mano ni se copian aquí: se preguntan a la base.
+     Se dan por buenas las que tienen grupo, tarifa o algún evento ya
+     guardado —esas son las secciones de verdad, las que existen— y el
+     nombre con el que se enseñan sale de la página de cada sección.
+     Así, el día que el club abra una sección nueva, aparece aquí sola.
+     ------------------------------------------------------------ */
+  var SECS = null;          /* [{v,t}] ya ordenadas */
+  var NOMBRES = {};         /* identificador -> nombre bonito */
+  function nombreSeccion(v) {
+    if (NOMBRES[v]) return NOMBRES[v];
+    var s = String(v || '').replace(/[-_]/g, ' ');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function cargarSecciones() {
+    if (SECS) return Promise.resolve(SECS);
+    return Promise.all([
+      sb.from('contenido_secciones').select('seccion,titulo'),
+      sb.from('grupos').select('seccion'),
+      sb.from('tarifas').select('seccion'),
+      sb.from('eventos').select('seccion')
+    ]).then(function (r) {
+      (r[0].data || []).forEach(function (x) { if (x.seccion && x.titulo) NOMBRES[x.seccion] = x.titulo; });
+      var usadas = {};
+      (r[1].data || []).forEach(function (x) { if (x.seccion) usadas[x.seccion] = true; });
+      (r[2].data || []).forEach(function (x) { if (x.seccion) usadas[x.seccion] = true; });
+      (r[3].data || []).forEach(function (x) {
+        (x.seccion || []).forEach(function (s) { if (s) usadas[s] = true; });
+      });
+      var lista = Object.keys(usadas).map(function (v) { return { v: v, t: nombreSeccion(v) }; });
+      lista.sort(function (a, b) { return a.t.localeCompare(b.t, 'es'); });
+      /* Si las consultas fallan la lista sale vacía. No se inventa nada:
+         quedan los botones de lo que ya tuviera el evento y el «escríbela». */
+      SECS = lista;
+      return SECS;
+    }, function () { SECS = []; return SECS; });
+  }
+
+  /* Qué secciones hay marcadas ahora mismo. Se lee de los propios botones
+     para que al repintar (cuando llega la lista de la base) no se pierda lo
+     que la persona acabara de tocar. */
+  function seccionesMarcadas() {
+    return Array.prototype.slice.call($('e-seccion').querySelectorAll('button[aria-pressed="true"]'))
+      .map(function (b) { return b.getAttribute('data-sec'); });
+  }
+
+  function pintarSecciones(marcadas) {
+    marcadas = marcadas || [];
+    var lista = (SECS || []).slice();
+    /* Una sección que ya tenía el evento y no está en la lista no se pierde:
+       se le pone su botón, marcado. Nada desaparece por abrir la ficha. */
+    marcadas.forEach(function (v) {
+      if (!lista.some(function (x) { return x.v === v; })) lista.push({ v: v, t: nombreSeccion(v) });
+    });
+    var caja = $('e-seccion');
+    if (!lista.length) {
+      caja.innerHTML = SECS ? '<span class="cargando">No hemos podido traer las secciones. Puedes escribirlas abajo.</span>'
+                            : '<span class="cargando">Cargando las secciones…</span>';
+      return;
+    }
+    caja.innerHTML = lista.map(function (x) {
+      var on = marcadas.indexOf(x.v) !== -1;
+      return '<button type="button" data-sec="' + esc(x.v) + '" aria-pressed="' + on + '">' + esc(x.t) + '</button>';
+    }).join('');
+  }
+
+  $('e-seccion').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-sec]');
+    if (!b) return;
+    b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+  });
+
+  /* «¿Falta alguna? Escríbela»: el mismo criterio que en los ejercicios.
+     Se ofrece lo que hay, pero no se encierra a nadie. Lo escrito se guarda
+     con la misma forma que usa la base (minúsculas, sin tildes, con guiones)
+     para que no salgan dos secciones que en realidad son la misma. */
+  $('sec-otra-abrir').addEventListener('click', function () {
+    $('sec-otra-caja').classList.remove('oculto');
+    this.classList.add('oculto');
+    $('sec-otra-txt').focus();
+  });
+  function anadirOtra() {
+    var txt = $('sec-otra-txt').value.trim();
+    if (!txt) return;
+    var v = txt.toLowerCase()
+      .replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!v) return;
+    if (!NOMBRES[v]) NOMBRES[v] = txt.charAt(0).toUpperCase() + txt.slice(1);
+    var marcadas = seccionesMarcadas();
+    if (marcadas.indexOf(v) === -1) marcadas.push(v);
+    pintarSecciones(marcadas);
+    $('sec-otra-txt').value = '';
+  }
+  $('sec-otra-add').addEventListener('click', anadirOtra);
+  /* Enter dentro del hueco añade la sección; no manda el formulario, que
+     sería guardar el evento a medias sin querer. */
+  $('sec-otra-txt').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); anadirOtra(); }
+  });
+
+  cargarSecciones();   /* se pide al abrir la pantalla, así el formulario ya la tiene */
 
   // --- Listar ---
   async function cargarEventos() {
@@ -205,11 +378,19 @@ APOLANA_ADMIN.listo(function (sb) {
     $('form-titulo').textContent = n.id ? 'Editar evento' : 'Nuevo evento';
     $('e-id').value = n.id || '';
     $('e-titulo').value = n.titulo || '';
-    $('e-tipo').value = n.tipo || '';
+    pintarTipos(n.tipo || '');
     $('e-lugar').value = n.lugar || '';
     $('e-inicio').value = paraInput(n.fecha_inicio);
     $('e-fin').value = paraInput(n.fecha_fin);
-    $('e-seccion').value = Array.isArray(n.seccion) ? n.seccion.join(', ') : (n.seccion || '');
+    /* La ficha se abre al momento con lo que el evento ya tiene, y cuando
+       llega la lista de la base se repinta sin perder lo tocado mientras. */
+    var suyas = Array.isArray(n.seccion) ? n.seccion.slice()
+              : (n.seccion ? String(n.seccion).split(',').map(function (s) { return s.trim(); }).filter(Boolean) : []);
+    pintarSecciones(suyas);
+    cargarSecciones().then(function () { pintarSecciones(seccionesMarcadas()); });
+    $('sec-otra-caja').classList.add('oculto');
+    $('sec-otra-abrir').classList.remove('oculto');
+    $('sec-otra-txt').value = '';
     $('e-descripcion').value = n.descripcion || '';
     $('e-inscripcion').checked = n.id ? !!n.inscripcion_abierta : false;
     $('msg-form').textContent = '';
@@ -240,10 +421,10 @@ APOLANA_ADMIN.listo(function (sb) {
 
   $('form-evento').addEventListener('submit', async function (e) {
     e.preventDefault();
-    var seccionArr = $('e-seccion').value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+    var seccionArr = seccionesMarcadas();
     var datos = {
       titulo: $('e-titulo').value.trim(),
-      tipo: $('e-tipo').value.trim() || null,
+      tipo: $('e-tipo').value || null,
       lugar: $('e-lugar').value.trim() || null,
       fecha_inicio: $('e-inicio').value || null,
       fecha_fin: $('e-fin').value || null,

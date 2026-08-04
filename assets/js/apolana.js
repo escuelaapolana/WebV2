@@ -46,8 +46,11 @@ const MENU = [
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
     { texto: 'Campus de verano',     url: '/campus/' },
   ] },
-  { clave: 'horarios',   texto: 'Horarios',   url: '/horarios/' },
+  /* Calendario primero: es la pantalla que manda («qué hay ese día»).
+     Horarios va detrás y contesta la otra pregunta, la de la semana fija
+     («¿a qué hora entreno los martes?»). */
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
+  { clave: 'horarios',   texto: 'Horarios',   url: '/horarios/' },
   /* «Liga» va en ámbar: es un nombre propio del club, no una categoría. */
   { clave: 'liga', texto: 'Liga', url: '/liga/', marca: true },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
@@ -346,7 +349,20 @@ function pintarColaboradores(lista) {
     'a.colab-pie-item:hover img{opacity:1}',
     '.colab-pie-item--ambos{flex-direction:column;align-items:flex-start;gap:4px}',
 
-    '.pie-credito{border-top:1px solid rgba(255,255,255,0.14);color:rgba(255,255,255,0.6);letter-spacing:0}',
+    /* --- Fila legal: aviso, privacidad, condiciones y cookies ---
+       Van juntas y en su propia fila, encima del crédito. Es donde
+       las busca todo el mundo, y son las únicas cuatro páginas de
+       la web que la ley obliga a tener a mano desde cualquier sitio.
+       44 px de alto: aquí se pulsa con el pulgar y con prisa. */
+    '.pie-legal{border-top:1px solid rgba(255,255,255,0.14);display:flex;flex-wrap:wrap;' +
+      'justify-content:center;gap:0 26px;padding:4px 20px}',
+    '.pie-legal a{color:rgba(255,255,255,0.72);font-size:13px;' +
+      'min-height:44px;display:flex;align-items:center}',
+    '.pie-legal a:hover{color:#fff}',
+
+    /* El crédito ya no lleva línea propia: la de arriba la pone la
+       fila legal, y dos filetes seguidos se ven como un error. */
+    '.pie-credito{border-top:0;color:rgba(255,255,255,0.6);letter-spacing:0;padding-top:0}',
     '.pie-credito strong{color:rgba(255,255,255,0.85)}',
 
     /* --- Las redes dentro del menú de móvil (ahí sí, sobre crema) --- */
@@ -457,6 +473,14 @@ class ApolanaPie extends HTMLElement {
         <div class="contenedor pie-colab-fila">
           <span class="pie-rotulo">Con la colaboración de</span>
           <div class="pie-colab" data-colab-pie>${colab}</div>
+        </div>
+        <!-- Las páginas legales, en todas las páginas: es el sitio donde
+             se buscan y donde la ley pide que estén siempre a mano. -->
+        <div class="pie-legal">
+          <a href="${ruta('/legal/aviso-legal/')}">Aviso legal</a>
+          <a href="${ruta('/legal/privacidad/')}">Privacidad</a>
+          <a href="${ruta('/legal/condiciones/')}">Condiciones de uso</a>
+          <a href="${ruta('/legal/cookies/')}">Cookies</a>
         </div>
         <div class="pie-credito">© ${anio} Club Atletismo Apolana · Creada por <strong>Andrés Clavero Giménez</strong></div>
       </footer>`;
