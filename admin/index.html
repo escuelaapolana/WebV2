@@ -455,6 +455,13 @@
 
       <details class="bloque" data-bloque="dinero">
         <summary>Dinero<span class="cuenta-lat" data-cuenta="dinero"></span></summary>
+        <!-- Las altas van aquí y no en Personas por quién las trabaja: en
+             septiembre las revisa el tesorero, y el tesorero solo ve este
+             bloque. `data-solo` dice quién puede leerlas de verdad: la
+             contabilidad también entra por Dinero, pero las reglas de la
+             base no le dan ni una fila, así que el enlace se le esconde
+             en vez de llevarla a una pantalla que le va a decir que no. -->
+        <a href="altas/" data-solo="admin tesoreria">Altas que entran</a>
         <a href="cobros/">Cobros y recibos</a>
         <a href="tarifas/">Tarifas</a>
         <a href="pedidos/">Pedidos de ropa</a>
@@ -998,6 +1005,21 @@ document.addEventListener('DOMContentLoaded', function () {
                               : (cual === 'dinero' && !DINERO.ve_dinero);
         if (fuera) b.style.display = 'none';
       });
+      /* Y dentro de un bloque que sí se ve, hay enlaces que no son de
+         todos los que entran por ahí. «Altas que entran» es el caso: vive
+         en Dinero, pero las reglas de la base solo se las enseñan a
+         administración y a tesorería. La contabilidad entra en Dinero y
+         ahí no vería ni una fila, así que el enlace se le esconde en vez
+         de mandarla a una pantalla que le dice que no.
+         El enlace dice de quién es (`data-solo`); aquí no hay ninguna
+         lista de pantallas escrita a mano. */
+      var MIOS = [DINERO.papel, DINERO.es_admin ? 'admin' : null].filter(Boolean);
+      document.querySelectorAll('.admin-side a[data-solo]').forEach(function (a) {
+        var suyos = a.getAttribute('data-solo').split(/\s+/);
+        var mio = MIOS.some(function (p) { return suyos.indexOf(p) !== -1; });
+        if (!mio) a.style.display = 'none';
+      });
+
       /* «En la pista» es herramienta de campo: no pinta nada en el menú
          de quien viene solo a mover dinero. */
       if (soloEstos) {
@@ -1234,6 +1256,9 @@ document.addEventListener('DOMContentLoaded', function () {
     'LIGA':        { orden: 2,  papel: 'liga',     marca: 'club',   ico: 'estrella' },
     /* Un cambio de cuota va antes que un impago: al otro lado hay alguien
        esperando para poder girar la remesa. */
+    /* Un alta sin revisar va de las primeras: al otro lado hay una familia
+       que ya ha rellenado todo y que en septiembre espera que la llamen. */
+    'ALTA':        { orden: 2,  papel: 'dinero',   marca: 'aviso',  ico: 'persona' },
     'CUOTA':       { orden: 3,  papel: 'dinero',   marca: 'aviso',  ico: 'tarjeta' },
     'PRUEBA':      { orden: 3,  papel: 'personas', marca: 'aviso',  ico: 'reloj' },
     'IMPAGO':      { orden: 4,  papel: 'dinero',   marca: 'aviso',  ico: 'tarjeta' },
@@ -1495,6 +1520,39 @@ document.addEventListener('DOMContentLoaded', function () {
         accion: 'Ver', href: 'buzon/'
       });
     }
+    /* --- Altas de la web sin revisar -----------------------------
+       Las rellenan las familias en /escuelas/apuntar/ y /socio/alta/.
+       Hasta ahora entraban y no salían por ningún sitio: en septiembre
+       son cuatrocientas y nadie las vería.
+
+       Quien no puede leerlas recibe cero —las reglas de la base no dan
+       error, dan cero filas— y entonces esta fila no aparece, que es lo
+       que tiene que pasar: un entrenador no pinta nada aquí.
+
+       Escuela y socio van por separado a propósito: no las lleva la
+       misma persona, y con «Solo lo mío» puesto cada una cae del lado
+       que le toca. */
+    var altasEsc = await cuentaFilas('altas_escuela_panel', function (q) { return q.eq('estado', 'pendiente'); }, 'las altas de la escuela');
+    if (altasEsc) {
+      alertas.push({
+        tipo: 'ALTA', color: 'ambar', seccion: 'escuela',
+        texto: altasEsc === 1 ? 'Un alta de la escuela sin revisar'
+                              : altasEsc + ' altas de la escuela sin revisar',
+        sub: 'Las han rellenado las familias en la web',
+        accion: 'Revisar', href: 'altas/?tipo=escuela', azul: true
+      });
+    }
+    var altasSoc = await cuentaFilas('altas_socio_panel', function (q) { return q.eq('estado', 'pendiente'); }, 'las altas de socio');
+    if (altasSoc) {
+      alertas.push({
+        tipo: 'ALTA', color: 'ambar', seccion: 'club',
+        texto: altasSoc === 1 ? 'Un alta de socio sin revisar'
+                              : altasSoc + ' altas de socio sin revisar',
+        sub: 'Las han rellenado en la web, en «Hacerse socio»',
+        accion: 'Revisar', href: 'altas/?tipo=socio', azul: true
+      });
+    }
+
     var solic = await cuentaFilas('solicitudes_inscripcion', function (q) { return q.or('atendida.eq.false,atendida.is.null'); }, 'las solicitudes de inscripción');
     if (solic) {
       alertas.push({
