@@ -115,19 +115,75 @@
     return null;
   };
 
-  /* El DNI español: 8 números y una letra que sale de los números.
-     Vale también el NIE, que empieza por X, Y o Z. */
-  var LETRAS_DNI = 'TRWAGMYFPDXBNJZSQVHLCKE';
-  F.dni = function (valor) {
-    var v = String(valor || '').toUpperCase().replace(/[\s-]/g, '');
-    if (!v) return 'Falta el DNI.';
-    var m = /^([XYZ]?)(\d{7,8})([A-Z])$/.exec(v);
-    if (!m) return 'Escribe el DNI con sus 8 números y la letra, sin espacios ni guiones.';
-    var numero = ({ '': '', 'X': '0', 'Y': '1', 'Z': '2' })[m[1]] + m[2];
-    if (LETRAS_DNI[parseInt(numero, 10) % 23] !== m[3]) {
-      return 'La letra del DNI no cuadra con los números. Míralo otra vez.';
+  /* ---- EL DOCUMENTO: DNI O NIE ----
+     Un DNI son 8 números y una letra que sale de esos números. Un NIE
+     empieza por X, Y o Z, luego 7 números y la letra, que se saca
+     igual cambiando esa primera letra por 0, 1 o 2.
+
+     Se comprueban LOS DOS, y hay que insistir en el porqué: el club
+     tiene niños con NIE, y un formulario que solo entiende el DNI les
+     dice que su documento está mal. Eso no es un aviso: es una puerta
+     cerrada.
+
+     Y hay una tercera clase de gente: la que trae un pasaporte o un
+     documento de fuera que no se parece a ninguno de los dos. Esa
+     comprobación NO puede dejar a un padre sin apuntar a su hijo, así
+     que lo que sale de aquí abajo es un AVISO, no un cierre. */
+  var LETRAS_DOCUMENTO = 'TRWAGMYFPDXBNJZSQVHLCKE';
+
+  /* Como se guarda: en mayúsculas y sin puntos, espacios ni guiones.
+     El mismo documento escrito de dos maneras no puede parecer dos
+     personas distintas. */
+  F.documentoLimpio = function (valor) {
+    return String(valor || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  };
+
+  /* Devuelve el aviso, o nada si cuadra... o si está vacío: de un
+     documento que no se ha escrito no hay nada que avisar. Quien tiene
+     que exigirlo es el formulario, campo por campo, porque en unos
+     sitios es obligatorio y en otros no. */
+  F.avisoDocumento = function (valor) {
+    var v = F.documentoLimpio(valor);
+    if (!v) return null;
+
+    var esDni = /^\d{8}[A-Z]$/.test(v);
+    var esNie = /^[XYZ]\d{7}[A-Z]$/.test(v);
+    if (!esDni && !esNie) {
+      return 'Un DNI son 8 números y una letra, y un NIE empieza por X, Y o Z. ' +
+             'Míralo, por favor. Si es otro documento, déjalo así y sigue.';
+    }
+
+    var numero = esDni ? v.slice(0, 8)
+                       : ({ X: '0', Y: '1', Z: '2' })[v[0]] + v.slice(1, 8);
+    if (LETRAS_DOCUMENTO[parseInt(numero, 10) % 23] !== v.slice(-1)) {
+      return 'La letra no cuadra con los números. Míralo, por favor; ' +
+             'si aun así es el correcto, sigue.';
     }
     return null;
+  };
+
+  /* Que no esté vacío, y nada más. Se usa donde el documento es
+     obligatorio —el de quien apunta— junto con el aviso de arriba:
+     falta → se frena; está escrito y no cuadra → se avisa y se sigue. */
+  F.faltaDocumento = function (valor) {
+    if (!F.documentoLimpio(valor)) return 'Falta el DNI o el NIE.';
+    return null;
+  };
+
+  /* La de siempre, que frena también cuando el documento no cuadra.
+     La sigue usando el alta de socio. Aquí solo se le han arreglado
+     dos cosas: que un DNI son 8 números y un NIE 7 —antes se colaban
+     los dos con siete y con ocho—, y que los mensajes nombren el NIE,
+     porque a quien tiene uno «escribe el DNI» no le dice nada. */
+  F.dni = function (valor) {
+    var v = F.documentoLimpio(valor);
+    var falta = F.faltaDocumento(v);
+    if (falta) return falta;
+    if (!/^\d{8}[A-Z]$/.test(v) && !/^[XYZ]\d{7}[A-Z]$/.test(v)) {
+      return 'Un DNI son 8 números y una letra, y un NIE empieza por X, Y o Z. ' +
+             'Escríbelo sin espacios ni guiones.';
+    }
+    return F.avisoDocumento(v);
   };
 
   /* La fecha de nacimiento de un niño de la escuela. */

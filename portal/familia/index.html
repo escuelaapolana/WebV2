@@ -197,6 +197,27 @@
   .enlace-accion { background:none; border:0; padding:0 2px; font:inherit; font-weight:600; font-size:14px; color: var(--azul-oscuro); cursor:pointer; min-height:44px; display:inline-flex; align-items:center; white-space:nowrap; }
   .enlace-accion:hover { color: var(--azul-hover); }
 
+  /* ---------- SU GRUPO Y SUS COMPAÑEROS ----------
+     Un bloque por grupo, porque un atleta puede estar en varios y los
+     compañeros de uno no son los del otro. Entre bloque y bloque, una
+     línea: sin ella, dos grupos seguidos parecen una sola lista larga. */
+  .gr-bloque + .gr-bloque { margin-top:18px; padding-top:18px; border-top:1px solid var(--linea); }
+  .gr-nom { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:17px; margin:0; line-height:1.15; }
+  .gr-sub { font-size:13px; color: var(--texto-suave); margin:3px 0 12px; line-height:1.5; }
+  .compas { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:8px; }
+  /* No se pulsan: son nombres, no botones. Por eso no miden 44 px ni
+     llevan sombra; así caben veinte en una pantalla de móvil sin que
+     haya que bajar tres veces. */
+  .compa { font-size:15px; line-height:1.2; color: var(--navy); background: var(--crema-media);
+           border-radius:999px; padding:8px 13px; overflow-wrap:anywhere; }
+  /* El de casa, en ámbar y con el nombre entero: es lo que dice «este es
+     el tuyo» sin necesidad de una leyenda debajo. */
+  .compa--mio { background:#FDF3E3; color:#8A5307; font-weight:600; }
+  /* Los asteriscos, más flojos y en tipo de máquina: se lee «tapado a
+     propósito» en vez de «esto ha salido mal». */
+  .cp-tapa { font-family: var(--fuente-mono); font-size:.88em; letter-spacing:.06em; color: var(--texto-suave); opacity:.75; }
+  .compas-nota { font-size:13px; color: var(--texto-suave); line-height:1.55; margin:14px 0 0; }
+
   /* Estado vacío con cuerpo: icono de línea, frase corta y salida */
   .vacio-caja { text-align:center; padding: clamp(18px,4vw,26px) 12px; }
   .vacio-caja .vc-ic { width:46px; height:46px; border-radius:50%; background: var(--crema-media); color: var(--texto-suave); display:flex; align-items:center; justify-content:center; margin:0 auto 12px; }
@@ -763,6 +784,43 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      que no se ha podido cargar. */
   function sinGrupo(){ return falloGrupos ? 'Grupo sin cargar' : 'Sin grupo asignado'; }
 
+  /* ---------- LOS GRUPOS DE CADA HIJO Y QUIÉN MÁS HAY EN ELLOS ----------
+     Una sola consulta para toda la casa: `mis_companeros` ya devuelve solo
+     los grupos donde entrena alguno de nuestros hijos, y de cada persona
+     únicamente el nombre A MEDIO TAPAR. Los nombres enteros de los demás
+     niños NO llegan hasta aquí: los corta la base antes de mandarlos
+     (migración 124). Así que no hay nada que esconder al pintar, porque
+     no hay nada que esconder.
+
+     De paso, esto es lo que sabe de los grupos de un hijo: un atleta puede
+     estar en varios (la ficha solo guarda el principal), y aquí salen
+     todos. Dos turnos con el mismo nombre son dos grupos distintos y se
+     tratan como tales. */
+  var compasDeGrupo = {};   // grupo_id -> las personas de ese grupo
+  var gruposDeHijo = {};    // atleta_id -> los grupos donde entrena
+  var infoGrupo = {};       // grupo_id -> nombre, turno y horario
+  var falloCompas = false;
+  async function cargarCompaneros(){
+    compasDeGrupo = {}; gruposDeHijo = {}; infoGrupo = {}; falloCompas = false;
+    try {
+      var r = await sb.from('mis_companeros').select('grupo_id,grupo,turno,horario,clave,nombre,es_mio,atleta_id');
+      falloCompas = !!r.error;
+      if (r.error || !r.data) return;
+      r.data.forEach(function(x){
+        (compasDeGrupo[x.grupo_id] = compasDeGrupo[x.grupo_id] || []).push(x);
+        if (!infoGrupo[x.grupo_id]) infoGrupo[x.grupo_id] = { nombre:x.grupo, turno:x.turno, horario:x.horario };
+        /* El identificador solo viene en las filas de nuestros propios
+           hijos; es lo que dice a qué hijo pertenece cada grupo. */
+        if (x.atleta_id) {
+          var g = gruposDeHijo[x.atleta_id] = gruposDeHijo[x.atleta_id] || [];
+          if (g.indexOf(x.grupo_id) === -1) g.push(x.grupo_id);
+        }
+      });
+    } catch(e){ falloCompas = true; }
+  }
+  await cargarCompaneros();
+  async function reintentarCompaneros(){ await cargarCompaneros(); pintar(); }
+
   // Pagos de todos los hijos
   var pagosPorHijo = {}; var pagosTodos = []; var falloPagos = false;
   async function cargarPagos(){
@@ -1200,6 +1258,85 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return html;
   }
 
+  /* ---------- SU GRUPO Y SUS COMPAÑEROS ----------
+     Para qué está esto: un padre quiere saber si su hija entrena con su
+     amiga. Le basta con RECONOCER un nombre que ya se sabe. Por eso los
+     nombres salen a medias: sirven para confirmar a quien ya conoces, no
+     para enterarte de quién hay. Y salen ya tapados de la base: aquí no
+     se tapa nada, aquí solo se pinta.
+
+     Las letras que se ven van en el tipo normal y en navy, y los
+     asteriscos en el tipo de máquina de escribir y más flojos. Es a
+     propósito: así se lee «esto está tapado queriendo» en vez de «esto
+     se ha cargado mal». */
+  function tapadoHTML(txt){
+    /* Se parte el nombre por los asteriscos para poder darles otro aire.
+       Los asteriscos se le esconden a quien escucha la pantalla en voz
+       alta: leer «a-ese-te-e...» seis veces por nombre no ayuda a nadie. */
+    return String(txt == null ? '' : txt).split(/(\*+)/).filter(Boolean).map(function(t){
+      return t.charAt(0) === '*'
+        ? '<span class="cp-tapa" aria-hidden="true">'+esc(t)+'</span>'
+        : esc(t);
+    }).join('');
+  }
+
+  function companerosHTML(hijo){
+    var suyos = gruposDeHijo[hijo.id] || [];
+    var cuerpo;
+
+    if (falloCompas) {
+      cuerpo = htmlError('No hemos podido cargar su grupo',
+        'Puede ser la conexión. Su grupo y sus compañeros siguen siendo los mismos; volved a intentarlo en un momento.',
+        reintentarCompaneros);
+    } else if (!suyos.length) {
+      /* Sin grupo no es un fallo: en septiembre hay días en que la ficha
+         ya está y el grupo todavía se está cerrando. Se dice eso. */
+      cuerpo = APOLANA_UI.vacio('Todavía no está en ningún grupo',
+        (hijo.nombre||'Vuestro hijo')+' aún no tiene grupo asignado. Lo decide el club al empezar la temporada, según la edad y los días que puede entrenar. En cuanto esté, aparecerá aquí con sus compañeros.');
+    } else {
+      cuerpo = suyos.map(function(gid){
+        var g = infoGrupo[gid] || {};
+        var gente = (compasDeGrupo[gid] || []).slice();
+        /* El hijo de la casa, el primero; el resto por orden alfabético del
+           nombre ya tapado (que es el único que hay por aquí). */
+        gente.sort(function(a,b){
+          if (a.es_mio !== b.es_mio) return a.es_mio ? -1 : 1;
+          return (a.nombre||'').localeCompare(b.nombre||'', 'es');
+        });
+        var otros = gente.length - 1;
+        var titulo = (window.APOLANA_GRUPO_NOMBRE ? APOLANA_GRUPO_NOMBRE(g) : (g.nombre||''));
+
+        var fichas = gente.map(function(p){
+          if (p.atleta_id) {
+            /* De los nuestros sí se enseña el nombre entero: la familia ya
+               lo sabe, y verlo ahí es lo que dice cuál de las fichas es la
+               suya sin tener que explicarlo con una leyenda. */
+            return '<li class="compa compa--mio">'+esc(nombreHijo[p.atleta_id] || p.nombre)+'</li>';
+          }
+          return '<li class="compa">'+tapadoHTML(p.nombre)+'</li>';
+        }).join('');
+
+        return '<div class="gr-bloque">'+
+          '<h3 class="gr-nom nom-grupo">'+esc(titulo)+'</h3>'+
+          '<p class="gr-sub">'+
+            (otros > 0
+              ? esc(hijo.nombre||'Entrena')+' entrena aquí con '+otros+(otros===1?' compañero más':' compañeros más')
+              : esc(hijo.nombre||'Entrena')+' es de momento quien está apuntado en este grupo')+
+            (g.horario ? ' · '+esc(g.horario) : '')+
+          '</p>'+
+          '<ul class="compas">'+fichas+'</ul>'+
+        '</div>';
+      }).join('');
+
+      cuerpo += '<p class="compas-nota">Los nombres de los demás salen a medias a propósito. Así podéis reconocer a quien ya conocéis sin que la pantalla reparta la lista de los niños del club.</p>';
+    }
+
+    return '<div class="tarjeta">'+
+      '<div class="tarjeta-cab"><h2>Su grupo</h2></div>'+
+      cuerpo+
+    '</div>';
+  }
+
   function entrenosHTML(hijo, dat){
     var gr = hijo.grupo_id ? grupos[hijo.grupo_id] : null;
     var avisoDe = {}; dat.ausencias.forEach(function(a){ avisoDe[a.fecha] = a; });
@@ -1231,7 +1368,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</span></div>';
     }).join('');
 
-    var html = '<div class="tarjeta">'+
+    /* El grupo va primero porque es el marco de todo lo demás: los días
+       que toca ir y las faltas son de ese grupo. */
+    var html = companerosHTML(hijo);
+
+    html += '<div class="tarjeta">'+
       '<div class="tarjeta-cab"><h2>Próximos entrenamientos</h2><a class="enlace-mini" href="../calendario/">Ver calendario</a></div>'+
       (filas ? '<div class="agenda">'+filas+'</div>'
              : dat.falloProximas
@@ -1416,10 +1557,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      de esta misma página. */
   var SECCIONES = [
     ['inicio','Inicio'],
-    /* Ya no lleva a ningún entrenamiento: lo que hay dentro son los días
-       que toca ir, avisar de una falta y las competiciones. Se llama por
-       lo que hace. */
-    ['entrenos','Cuándo entrena y faltas'],
+    /* Ya no lleva a ningún entrenamiento: lo que hay dentro es su grupo y
+       sus compañeros, los días que toca ir, avisar de una falta y las
+       competiciones. Se llama por lo que hace. */
+    ['entrenos','Su grupo, días y faltas'],
     ['calendario','Calendario','../calendario/'],
     ['marcas','Marcas'],
     ['pagos','Pagos y recibos'],
