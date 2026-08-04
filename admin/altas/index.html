@@ -190,8 +190,8 @@
       <p class="nota-pie">
         Las rellenan las familias en la web, en <strong>Apuntarse a la escuela</strong> y en
         <strong>Hacerse socio</strong>. Un alta es una <strong>solicitud</strong>: aquí se revisa, se llama
-        si falta algo y se marca como revisada. Dar de alta al atleta de verdad sigue siendo un paso
-        aparte, en <strong>Atletas</strong>.
+        si falta algo y, cuando está bien, se pulsa <strong>Crear las fichas</strong>. Ahí se ve lo que se
+        va a crear, se corrige si hace falta y se acepta; hasta que alguien acepta no se crea ninguna ficha.
       </p>
       <p class="nota-pie">
         El DNI, el número de cuenta y la tarjeta sanitaria salen tapados y solo se ven los cuatro últimos.
@@ -299,6 +299,22 @@ APOLANA_ADMIN.listo(function (sb) {
   function correoDe(a)   { return a.que === 'escuela' ? a.tutor_email : a.email; }
   function telefonoDe(a) { return a.que === 'escuela' ? a.tutor_telefono : a.telefono; }
   function hijosDe(a)    { return (a.que === 'escuela' && NINOS[a.id]) ? NINOS[a.id] : []; }
+
+  /* De cuántos de sus hijos ha salido ya una ficha. Es lo que separa
+     «revisada» de «hecha»: un alta puede estar revisada y no haber
+     creado a nadie todavía, y con cuatrocientas en septiembre esa
+     diferencia es la lista de lo que queda por hacer.
+     En socio no hay forma de saberlo desde aquí —el alta no guarda a
+     qué ficha dio lugar— y por eso devuelve null en vez de cero: null
+     es «no se sabe» y cero sería mentir. */
+  function fichasDe(a) {
+    if (a.que !== 'escuela') return null;
+    var hijos = hijosDe(a);
+    if (!hijos.length) return null;
+    var hechas = hijos.filter(function (n) { return !!n.atleta_id; }).length;
+    return { hechas: hechas, total: hijos.length };
+  }
+  function enlaceConvertir(a) { return 'convertir/?alta=' + encodeURIComponent(a.que + ':' + a.id); }
 
   async function cargar() {
     $('aviso-carga').innerHTML = '';
@@ -528,8 +544,14 @@ APOLANA_ADMIN.listo(function (sb) {
     if (a.estado !== 'pendiente' && a.revisada_por_nombre) {
       ctx.push('la vio ' + a.revisada_por_nombre + ' el ' + fechaCorta(a.revisada_en));
     }
+    /* Si de esta alta ya han salido fichas se dice aquí. Es lo primero
+       que se pregunta al volver a abrirla al día siguiente. */
+    var f = fichasDe(a);
+    if (f && f.hechas === f.total)  ctx.push(f.total === 1 ? 'ficha creada' : 'sus ' + f.total + ' fichas creadas');
+    else if (f && f.hechas > 0)     ctx.push(f.hechas + ' de ' + f.total + ' fichas creadas');
 
     var menu = [{ texto: 'Ver el alta entera', accion: 'abrir' }];
+    if (!f || f.hechas < f.total)  menu.push({ texto: 'Crear las fichas', accion: 'convertir' });
     if (a.estado !== 'revisada')  menu.push({ texto: 'Marcar como revisada', accion: 'revisada' });
     if (a.estado !== 'pendiente') menu.push({ texto: 'Volver a sin revisar',  accion: 'pendiente' });
     if (a.estado !== 'rechazada') menu.push({ texto: 'Rechazar el alta',      accion: 'rechazada', ojo: true });
@@ -698,9 +720,21 @@ APOLANA_ADMIN.listo(function (sb) {
       esc(a.nota_club || '') + '</textarea>' +
       '<p class="nota-pie">La ve todo el que entre aquí. No es para la familia.</p></div>';
 
-    /* --- El pie --- */
+    /* --- El pie ---
+       «Crear las fichas» es la acción principal de esta pantalla desde
+       que existe la 121: revisar un alta y no crear nada deja el trabajo
+       a medias. Marcar como revisada pasa a ser lo de al lado, y además
+       se marca sola cuando ya han salido todas las fichas. */
     h += '<div class="ficha-pie">';
-    if (a.estado !== 'revisada') h += '<button type="button" class="pz-btn" data-marcar="revisada">Marcar como revisada</button>';
+    var f = fichasDe(a);
+    if (f && f.hechas === f.total) {
+      h += '<span class="msg bien">' +
+           (f.total === 1 ? 'Su ficha ya está creada' : 'Sus ' + f.total + ' fichas ya están creadas') + '</span>';
+    } else {
+      h += '<a class="pz-btn" href="' + esc(enlaceConvertir(a)) + '">' +
+           (f && f.hechas > 0 ? 'Seguir creando las fichas' : 'Crear las fichas') + '</a>';
+    }
+    if (a.estado !== 'revisada') h += '<button type="button" class="pz-btn pz-btn--borde" data-marcar="revisada">Marcar como revisada</button>';
     else h += '<button type="button" class="pz-btn pz-btn--borde" data-marcar="pendiente">Volver a sin revisar</button>';
     h += '<button type="button" class="pz-btn pz-btn--texto" data-nota>Guardar la nota</button>';
     if (a.estado !== 'rechazada') h += '<button type="button" class="pz-btn pz-btn--texto" data-marcar="rechazada">Rechazar</button>';
@@ -859,6 +893,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var a = porId(id);
     if (!a) return;
     if (accion === 'abrir') { abrir(a); return; }
+    if (accion === 'convertir') { location.href = enlaceConvertir(a); return; }
     /* Marcar desde la lista, sin abrir la ficha: en la semana de
        septiembre se repasan veinte seguidas y abrir y cerrar veinte veces
        es el trabajo que sobra. Rechazar sí pregunta antes. */

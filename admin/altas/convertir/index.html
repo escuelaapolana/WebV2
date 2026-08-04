@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crear las fichas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../../assets/img/logo.png">
+<link rel="apple-touch-icon" href="../../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../../";</script>
+<script src="../../../assets/js/supabase.js" defer></script>
+<script src="../../../assets/js/db.js" defer></script>
+<script src="../../../assets/js/admin-auth.js"></script>
+<script src="../../../assets/js/admin-tabbar.js" defer></script>
+<script src="../../../assets/js/panel-piezas.js" defer></script>
+<style>
+  /* ============================================================
+     CREAR LAS FICHAS DE UN ALTA
+     ------------------------------------------------------------
+     Esta pantalla es la que decide si un niño acaba en el grupo que
+     le toca. Por eso no enseña una lista: enseña UNA TARJETA POR
+     PERSONA, con lo que se va a escribir en su ficha ya escrito en
+     casillas que se pueden corregir, y encima de todo lo que huele
+     mal.
+
+     La forma sale entera de las piezas del panel (panel-piezas.css)
+     y de apolana.css. Lo de aquí abajo es solo la tarjeta de cada
+     persona y la caja de avisos: dos cosas que las piezas no traen y
+     que no existen en ninguna otra pantalla.
+     ============================================================ */
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 900px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+
+  .panel { background:#fff; border:1px solid var(--linea); border-radius: var(--radio-grande);
+    padding: clamp(18px,3vw,28px); box-shadow: var(--sombra-suave); margin-bottom: 22px; }
+
+  details.explica { margin: 0 0 16px; }
+  details.explica > summary { display:inline-flex; align-items:center; min-height:44px; cursor:pointer;
+    font-size:14px; font-weight:600; color: var(--azul-oscuro); }
+  details.explica > summary::marker { color: var(--texto-suave); }
+  .nota-pie { font-size:13px; line-height:1.5; color: var(--texto-suave); margin:6px 0 0; }
+
+  /* ---------- UN AVISO ----------
+     Tres tonos y tres dibujos distintos, porque quieren decir tres
+     cosas distintas y si todos fueran ámbar nadie leería ninguno:
+       · «para» → esto no se puede crear tal cual.
+       · «ojo»  → probablemente esté mal. Léelo antes de aceptar.
+       · «nota» → un dato que falta y que no impide nada.
+     El color nunca va solo: cada uno lleva su palabra delante, que es
+     lo que lee quien no distingue el ámbar del rojo. */
+  .avisos { display:grid; gap:8px; margin:0 0 14px; }
+  .aviso { display:flex; gap:10px; align-items:flex-start; padding:11px 13px;
+    border:1px solid var(--linea-marcada,#E4DCCB); border-radius:10px;
+    font-size:14px; line-height:1.45; overflow-wrap:anywhere; }
+  .aviso b { font-weight:600; }
+  .aviso .marca { flex:0 0 auto; font-weight:700; }
+  .aviso--para { border-color:#E2B4A4; background:#FCF1ED; color:#8A3A1F; }
+  .aviso--ojo  { border-color: var(--pz-aviso-borde,#EBD9B8); background: var(--pz-aviso-fondo,#FDF6EA);
+                 color: var(--pz-aviso-texto,#8A5207); }
+  .aviso--nota { border-color: var(--pz-separador,#EFE9DC); background: var(--crema-media,#F7F3EA);
+                 color: var(--texto-suave); }
+
+  /* ---------- LA TARJETA DE UNA PERSONA ---------- */
+  .persona { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; background:#fff;
+    padding: clamp(16px,3vw,22px); margin:0 0 18px; box-sizing:border-box; }
+  .persona.apagada { background: var(--crema-media,#F7F3EA); }
+  /* Los campos de una tarjeta apagada siguen ahí para poder leerlos,
+     pero no se pueden tocar: la casilla de arriba manda. */
+  .persona.apagada .cuerpo { opacity:.5; pointer-events:none; }
+
+  .persona-cab { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;
+    margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--pz-separador,#EFE9DC); }
+  .persona-cab .txt { flex:1 1 220px; min-width:0; }
+  .persona-cab h2 { font-family:var(--fuente-titulo); text-transform:uppercase; font-weight:700;
+    font-size:21px; line-height:1.1; color:var(--navy); margin:0; overflow-wrap:anywhere; }
+  .persona-cab .anos { display:block; font-size:14px; color:var(--texto-suave); margin-top:3px; }
+
+  /* «No crear esta ahora» tiene que medir 44 px de alto: es la casilla
+     que salva a un hermano cuando el otro no se puede crear. */
+  .saltar { display:inline-flex; align-items:center; gap:9px; min-height:44px; padding:0 2px;
+    flex:0 0 auto; font-size:14px; color:var(--texto-suave); cursor:pointer; }
+  .saltar input { width:20px; height:20px; accent-color: var(--pz-azul,#2F6FA8); }
+
+  /* ---------- ELEGIR ENTRE CREAR O ENGANCHAR ---------- */
+  .parecidos { border:1px solid var(--pz-aviso-borde,#EBD9B8); border-radius:12px;
+    background:var(--pz-aviso-fondo,#FDF6EA); padding:12px 14px; margin:0 0 16px; }
+  .parecidos > p { margin:0 0 8px; font-size:14px; line-height:1.45; color:var(--pz-aviso-texto,#8A5207); }
+  .elige { display:flex; gap:10px; align-items:flex-start; min-height:44px; padding:7px 0; cursor:pointer;
+    border-top:1px solid rgba(138,82,7,.16); }
+  .elige:first-of-type { border-top:0; }
+  .elige input { flex:0 0 auto; width:20px; height:20px; margin-top:11px; accent-color: var(--pz-azul,#2F6FA8); }
+  .elige .que { flex:1 1 auto; min-width:0; padding:9px 0; font-size:15px; color:var(--navy); overflow-wrap:anywhere; }
+  .elige .que small { display:block; font-size:13px; color:var(--texto-suave); margin-top:2px; }
+
+  /* ---------- LAS CASILLAS ---------- */
+  .rejilla { display:grid; grid-template-columns:1fr 1fr; gap:0 16px; }
+  @media (max-width: 560px) { .rejilla { grid-template-columns:1fr; } }
+  .rejilla > .ancho { grid-column:1 / -1; }
+
+  .campo { margin:0 0 14px; }
+  .campo > label { display:block; font-size:14px; font-weight:500; color:var(--navy); margin:0 0 6px; }
+  .campo > label .suave { font-weight:400; color:var(--texto-suave); }
+  /* 16 px de letra no es estética: por debajo de 16, Safari en el iPhone
+     hace zoom al entrar en el campo y la pantalla se descoloca. */
+  .campo input, .campo select, .campo textarea {
+    box-sizing:border-box; width:100%; min-height:44px; padding:11px 13px;
+    border:1px solid var(--pz-borde,#C6BEAE); border-radius:10px; background:#fff;
+    font-family:var(--fuente-texto); font-size:16px; line-height:1.35; color:var(--navy); }
+  .campo textarea { min-height:76px; resize:vertical; }
+  .campo input:focus, .campo select:focus, .campo textarea:focus {
+    outline:2px solid var(--pz-azul,#2F6FA8); outline-offset:1px; border-color:var(--pz-azul,#2F6FA8); }
+  .campo .pista { font-size:13px; line-height:1.45; color:var(--texto-suave); margin:6px 0 0; }
+  .campo.mal input, .campo.mal select { border-color:#B0563A; }
+
+  /* Los grupos de más: una lista de casillas, cada una de 44 px. */
+  .mas-grupos { display:grid; gap:2px; }
+  .mas-grupos label { display:flex; gap:10px; align-items:center; min-height:44px; padding:0 2px;
+    font-size:15px; color:var(--navy); cursor:pointer; }
+  .mas-grupos input { width:20px; height:20px; accent-color: var(--pz-azul,#2F6FA8); }
+  .mas-grupos .cuenta { margin-left:auto; font-size:13px; color:var(--texto-suave); }
+
+  /* ---------- EL PIE ---------- */
+  .pie { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pie .msg { font-size:14px; color:var(--texto-suave); }
+  .pie .msg.mal { color:#B0563A; }
+  @media (max-width: 560px) {
+    .pie > .pz-btn { flex:1 1 100%; }
+    .persona-cab h2 { font-size:19px; }
+  }
+
+  /* El parte de lo que ha pasado, una línea por persona. */
+  .parte { margin:14px 0 0; display:grid; gap:6px; }
+  .parte div { font-size:14px; line-height:1.45; color:var(--navy); overflow-wrap:anywhere; }
+  .parte .bien::before { content:'✓ '; color:#3D6220; font-weight:700; }
+  .parte .mal { color:#B0563A; }
+  .parte .mal::before { content:'· '; font-weight:700; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div id="cabecera"></div>
+
+    <details class="explica">
+      <summary>Qué hace esta pantalla</summary>
+      <p class="nota-pie">
+        Coge un alta que rellenó una familia y <strong>propone</strong> la ficha de cada persona que trae.
+        Nada se crea hasta que se pulsa el botón de abajo: lo de arriba se puede corregir entero.
+      </p>
+      <p class="nota-pie">
+        En un alta de la escuela pueden venir varios hermanos. Cada uno se crea por su cuenta:
+        si uno no se puede crear, el otro sí.
+      </p>
+      <p class="nota-pie">
+        El DNI y el número de cuenta <strong>no se copian a la ficha</strong>. Se quedan en el alta, tapados,
+        donde solo se ven de uno en uno y queda apuntado quién los miró.
+      </p>
+    </details>
+
+    <div id="avisos-alta"></div>
+    <div id="personas"><div class="panel"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div></div>
+
+    <div class="panel" id="pie-caja" hidden>
+      <div class="pie">
+        <button type="button" class="pz-btn" id="b-crear">Crear las fichas</button>
+        <a class="pz-btn pz-btn--texto" href="../">Volver a las altas</a>
+        <span class="msg" id="pie-msg"></span>
+      </div>
+      <div class="parte" id="parte"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  /* Las mismas palabras que ve la familia en el formulario y las mismas
+     que usa la bandeja de altas. Si allí pone «Lunes y miércoles», aquí
+     no puede poner «lunes-miercoles». */
+  var DIAS = { 'lunes-miercoles': 'lunes y miércoles', 'martes-jueves': 'martes y jueves' };
+  var CATS = ['Escuela iniciación','Sub-12','Sub-14','Sub-16','Sub-18','Sub-20','Sub-23','Absoluto','Máster'];
+  var SEXOS = [{ v:'', t:'(no lo sabemos)' }, { v:'mujer', t:'Mujer' }, { v:'hombre', t:'Hombre' }, { v:'otro', t:'Otro' }];
+  var MARCA = { para: 'No se puede', ojo: 'Ojo', nota: 'Falta' };
+  /* En la base las secciones se guardan sin tildes y en una palabra. Aquí
+     se escriben como se dicen: quien elige un grupo lee esto. */
+  var SECCION = { escuela:'Escuela', competicion:'Competición', running:'Running',
+                  natacion:'Natación', 'escuela-natacion':'Escuela de natación',
+                  triatlon:'Triatlón', montana:'Montaña', cubo:'El Cubo', gimnasio:'Gimnasio' };
+  function seccionT(s) { return SECCION[s] || s || 'Sin sección'; }
+
+  function fechaCorta(f) {
+    if (!f) return '—';
+    var t = String(f).slice(0, 10).split('-');
+    return t.length === 3 ? t[2] + '/' + t[1] + '/' + t[0] : String(f);
+  }
+  function anos(fnac) {
+    if (!fnac) return null;
+    var n = new Date(fnac), h = new Date();
+    var a = h.getFullYear() - n.getFullYear(), m = h.getMonth() - n.getMonth();
+    if (m < 0 || (m === 0 && h.getDate() < n.getDate())) a--;
+    return (a >= 0 && a < 120) ? a : null;
+  }
+  function nombreGrupo(g) {
+    return (g.nombre || '(sin nombre)') + (g.turno ? ' · ' + (DIAS[g.turno] || g.turno) : '');
+  }
+
+  /* ============================================================
+     DE DÓNDE VIENE
+     Se llega desde la bandeja con /admin/altas/convertir/?alta=escuela:UUID
+     ============================================================ */
+  var q = new URLSearchParams(location.search);
+  var trozos = String(q.get('alta') || '').split(':');
+  var QUE = trozos[0], ALTA_ID = trozos.slice(1).join(':');
+
+  var EXAMEN = null;     /* lo que ha contestado la base */
+  var GRUPOS = [];       /* todos los grupos, para poder elegir */
+  var ESTADO = [];       /* una entrada por persona: qué se ha decidido de ella */
+
+  function cabecera(ctx, quien) {
+    $('cabecera').innerHTML = PZ.cabecera({
+      titulo: 'Crear las fichas',
+      contexto: ctx,
+      secundaria: { texto: 'Volver a las altas', href: '../' }
+    });
+    if (quien) document.title = 'Crear las fichas · ' + quien + ' · Panel Apolana';
+  }
+
+  async function cargar() {
+    if (QUE !== 'escuela' && QUE !== 'socio' || !ALTA_ID) {
+      cabecera('No se ha dicho qué alta hay que convertir.');
+      $('personas').innerHTML = ADM.vacio('No sé de qué alta se trata',
+        'A esta pantalla se llega desde una alta concreta, con el botón «Crear las fichas».',
+        '<a class="pz-btn pz-btn--borde" href="../">Ir a las altas</a>',
+        '<path d="M4.5 6.5h15v13h-15z"/><path d="M8 3.5v6M16 3.5v6M4.5 12h15"/>');
+      return;
+    }
+
+    /* Los grupos hacen falta para poder corregir el que eligió la
+       familia. Se piden a la vez que el examen: son dos viajes que no
+       dependen uno del otro. */
+    var pExamen = sb.rpc('alta_examen', { p_que: QUE, p_id: ALTA_ID });
+    var pGrupos = sb.from('grupos').select('id,nombre,turno,seccion,activo,nacidos_desde,nacidos_hasta')
+                    .order('seccion').order('nombre').order('turno', { nullsFirst: true });
+    var re = await pExamen, rg = await pGrupos;
+
+    if (re.error) {
+      cabecera('No se ha podido leer el alta.');
+      /* «Permiso denegado» aquí quiere decir una cosa concreta y hay que
+         decirla, no dejar una pantalla vacía: las altas las llevan
+         administración y tesorería. */
+      if (/permis|denied|administraci/i.test(re.error.message || '')) {
+        $('personas').innerHTML = ADM.vacio('Esta pantalla no es de tu papel',
+          'Crear fichas desde un alta lo hacen administración y tesorería, porque dentro hay datos de ' +
+          'menores. Si te toca, cambia de papel en la banda de arriba.',
+          '', '<path d="M7 11V8a5 5 0 0 1 10 0v3"/><rect x="4.5" y="11" width="15" height="9.5" rx="2.5"/>');
+        return;
+      }
+      $('personas').innerHTML = ADM.error(re.error.message, cargar);
+      return;
+    }
+    if (!re.data || !re.data.ok) {
+      cabecera('Esa alta ya no está.');
+      $('personas').innerHTML = ADM.vacio('Esa alta ya no está',
+        'Puede que la hayan borrado mientras tenías la pantalla abierta.',
+        '<a class="pz-btn pz-btn--borde" href="../">Ir a las altas</a>',
+        '<path d="M4.5 6.5h15v13h-15z"/>');
+      return;
+    }
+
+    EXAMEN = re.data;
+    GRUPOS = (rg.data || []).filter(function (g) { return g.activo !== false; });
+
+    var a = EXAMEN.alta;
+    var n = EXAMEN.personas.length;
+    cabecera(esc(a.referencia) + ' · ' + esc(a.quien) + ' · ' +
+             (n === 1 ? '1 ficha por crear' : n + ' fichas por crear'), a.quien);
+
+    ESTADO = EXAMEN.personas.map(function (p) {
+      var g = p.grupo;
+      return {
+        saltar: !!(p.ya_creada),                 /* la que ya tiene ficha nace apagada */
+        enlazar: null,                           /* uuid de la ficha con la que engancharla */
+        principal: (g && g.activo !== false) ? g.id : '',
+        extra: {}                                /* uuid → true para los grupos de más */
+      };
+    });
+
+    pintar();
+  }
+
+  /* ============================================================
+     PINTAR
+     ============================================================ */
+  function avisosHTML(lista) {
+    if (!lista || !lista.length) return '';
+    return '<div class="avisos">' + lista.map(function (v) {
+      return '<div class="aviso aviso--' + esc(v.tono) + '">' +
+             '<span class="marca">' + esc(MARCA[v.tono] || '') + '</span>' +
+             '<span>' + esc(v.texto) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  /* El desplegable de grupos. Arriba, los que le tocan por año (o por la
+     sección que marcó); debajo, todos los demás por secciones. Los dos
+     turnos de la escuela se llaman igual, así que el turno va SIEMPRE en
+     el texto: elegir a ciegas entre dos «Azul 2» es mandar a media
+     escuela al día que no viene. */
+  function selectGrupo(p, valor, id) {
+    var sug = p.grupos_sugeridos || [];
+    var yaPuestos = {};
+    var h = '<select id="' + esc(id) + '"><option value="">(elige el grupo)</option>';
+
+    if (sug.length) {
+      h += '<optgroup label="' + (QUE === 'escuela' ? 'Le toca por año' : 'De las secciones que marcó') + '">';
+      sug.forEach(function (g) {
+        yaPuestos[g.id] = true;
+        h += '<option value="' + esc(g.id) + '"' + (g.id === valor ? ' selected' : '') + '>' +
+             esc(nombreGrupo(g)) + ' · ' + g.apuntados + (g.plazas ? ' de ' + g.plazas : '') + '</option>';
+      });
+      h += '</optgroup>';
+    }
+
+    var porSeccion = {};
+    GRUPOS.forEach(function (g) {
+      if (yaPuestos[g.id]) return;
+      var s = g.seccion || 'Sin sección';
+      (porSeccion[s] = porSeccion[s] || []).push(g);
+    });
+    Object.keys(porSeccion).sort().forEach(function (s) {
+      h += '<optgroup label="' + esc(seccionT(s)) + '">';
+      porSeccion[s].forEach(function (g) {
+        h += '<option value="' + esc(g.id) + '"' + (g.id === valor ? ' selected' : '') + '>' +
+             esc(nombreGrupo(g)) + '</option>';
+      });
+      h += '</optgroup>';
+    });
+    return h + '</select>';
+  }
+
+  function personaHTML(p, i) {
+    var e = ESTADO[i], d = p.propuesta || {};
+    var ed = anos(d.fecha_nacimiento);
+    var h = '';
+
+    h += '<article class="persona' + (e.saltar ? ' apagada' : '') + '" data-i="' + i + '">';
+
+    h += '<div class="persona-cab"><div class="txt">' +
+         '<h2>' + esc(p.nombre_tal_cual || 'Sin nombre') + '</h2>' +
+         '<span class="anos">' + esc(fechaCorta(d.fecha_nacimiento)) +
+           (ed != null ? ' · ' + ed + ' años' : '') +
+           (p.turno_pedido ? ' · pidieron ' + esc(DIAS[p.turno_pedido] || p.turno_pedido) : '') +
+         '</span></div>' +
+         '<label class="saltar"><input type="checkbox" data-saltar' + (e.saltar ? ' checked' : '') + '>' +
+         '<span>No crear esta ahora</span></label></div>';
+
+    h += '<div class="cuerpo">';
+    h += avisosHTML(p.avisos);
+
+    /* Ya se le hizo la ficha desde esta misma alta: no hay nada que
+       crear y lo único útil es poder abrirla. */
+    if (p.ya_creada) {
+      h += '<p class="nota-pie">Su ficha es <a href="../../atletas/?ficha=' + esc(p.ya_creada.id) + '">' +
+           esc(p.ya_creada.nombre) + '</a>.</p></div></article>';
+      return h;
+    }
+
+    /* Ya está en el club: hay que decir si es la misma persona. */
+    if (p.parecidos && p.parecidos.length) {
+      h += '<div class="parecidos"><p>¿Es alguna de estas personas?</p>';
+      h += '<label class="elige"><input type="radio" name="quien-' + i + '" value=""' +
+           (e.enlazar ? '' : ' checked') + '>' +
+           '<span class="que">No, es alguien nuevo<small>Se crea una ficha nueva.</small></span></label>';
+      p.parecidos.forEach(function (x) {
+        h += '<label class="elige"><input type="radio" name="quien-' + i + '" value="' + esc(x.id) + '"' +
+             (e.enlazar === x.id ? ' checked' : '') + '>' +
+             '<span class="que">Sí, es ' + esc(x.nombre) +
+             '<small>' + esc(fechaCorta(x.fecha_nacimiento)) +
+             (x.grupo ? ' · ' + esc(x.grupo) : ' · sin grupo') +
+             (x.estado ? ' · ' + esc(x.estado) : '') +
+             ' — no se crea otra ficha: se le añade el grupo y se rellena lo que tenga vacío.</small>' +
+             '</span></label>';
+      });
+      h += '</div>';
+    }
+
+    /* --- Las casillas de la ficha --- */
+    h += '<div class="rejilla">';
+    h += '<div class="campo"><label for="p' + i + '-nombre">Nombre</label>' +
+         '<input type="text" id="p' + i + '-nombre" value="' + esc(d.nombre || '') + '" maxlength="80"></div>';
+    h += '<div class="campo"><label for="p' + i + '-apellidos">Apellidos</label>' +
+         '<input type="text" id="p' + i + '-apellidos" value="' + esc(d.apellidos || '') + '" maxlength="120"></div>';
+    h += '<div class="campo"><label for="p' + i + '-nac">Fecha de nacimiento</label>' +
+         '<input type="date" id="p' + i + '-nac" value="' + esc((d.fecha_nacimiento || '').slice(0,10)) + '"></div>';
+    h += '<div class="campo"><label for="p' + i + '-cat">Categoría <span class="suave">(sale del año)</span></label>' +
+         '<select id="p' + i + '-cat">' + CATS.map(function (c) {
+           return '<option' + (c === d.categoria ? ' selected' : '') + '>' + esc(c) + '</option>';
+         }).join('') + '</select></div>';
+    h += '<div class="campo"><label for="p' + i + '-sexo">Sexo <span class="suave">(lo pide la licencia)</span></label>' +
+         '<select id="p' + i + '-sexo">' + SEXOS.map(function (s) {
+           return '<option value="' + esc(s.v) + '"' + (s.v === (d.sexo || '') ? ' selected' : '') + '>' + esc(s.t) + '</option>';
+         }).join('') + '</select></div>';
+    h += '<div class="campo"><label for="p' + i + '-estado">Estado de la ficha</label>' +
+         '<select id="p' + i + '-estado"><option value="activo">Activo</option>' +
+         '<option value="prueba">En prueba</option></select></div>';
+
+    h += '<div class="campo ancho"><label for="p' + i + '-grupo">Grupo</label>' +
+         selectGrupo(p, e.principal, 'p' + i + '-grupo') +
+         '<p class="pista">' +
+           (p.grupo ? 'La familia eligió <b>' + esc(nombreGrupo(p.grupo)) + '</b>, que hoy tiene ' +
+                      p.grupo.apuntados + (p.grupo.plazas ? ' de ' + p.grupo.plazas + ' plazas' : ' apuntados') + '.'
+                    : 'La familia no eligió ninguno.') +
+         '</p></div>';
+
+    /* Entrenar en dos sitios dejó de ser raro: running y El Cubo, o la
+       escuela y el grupo de competición. Va plegado porque la mayoría
+       entrena en uno solo y no tiene por qué ver una lista de 21. */
+    var cuantosExtra = Object.keys(e.extra).filter(function (k) { return e.extra[k]; }).length;
+    h += '<div class="ancho">' + PZ.plegable({
+      titulo: '¿Entrena en algún grupo más?',
+      cuenta: cuantosExtra || null,
+      abierto: cuantosExtra > 0,
+      cuerpo: '<div class="mas-grupos">' + GRUPOS.map(function (g) {
+        return '<label><input type="checkbox" data-extra="' + esc(g.id) + '"' +
+               (e.extra[g.id] ? ' checked' : '') + '><span>' + esc(nombreGrupo(g)) + '</span>' +
+               '<span class="cuenta">' + esc(seccionT(g.seccion)) + '</span></label>';
+      }).join('') + '</div>' +
+      '<p class="nota-pie">El de arriba es el principal, el que sale en su ficha. Estos son los demás.</p>'
+    }) + '</div>';
+
+    h += '<div class="campo ancho"><label for="p' + i + '-obs">Observaciones</label>' +
+         '<textarea id="p' + i + '-obs" maxlength="1000">' + esc(d.observaciones || '') + '</textarea>' +
+         '<p class="pista">Las alergias van aquí porque es lo único que ve su entrenador: el alta solo la ' +
+         'leen administración y tesorería, y quien está en la pista es él. La tarjeta sanitaria y las tallas ' +
+         'se quedan en el alta.</p></div>';
+
+    h += '</div></div></article>';
+    return h;
+  }
+
+  function pintar() {
+    var gen = EXAMEN.avisos || [];
+    $('avisos-alta').innerHTML = gen.length ? '<div class="panel">' + avisosHTML(gen) + '</div>' : '';
+
+    /* Un alta rechazada o vacía no se convierte, y no se enseña ninguna
+       casilla: enseñarlas invita a rellenarlas para nada. */
+    var frena = gen.filter(function (v) { return v.tono === 'para'; });
+    if (frena.length) {
+      $('personas').innerHTML = '';
+      $('pie-caja').hidden = true;
+      return;
+    }
+
+    $('personas').innerHTML = EXAMEN.personas.map(personaHTML).join('');
+    $('pie-caja').hidden = false;
+    repasarBoton();
+  }
+
+  /* ============================================================
+     LO QUE SE TOCA
+     ============================================================ */
+  $('personas').addEventListener('change', function (ev) {
+    var art = ev.target.closest ? ev.target.closest('.persona') : null;
+    if (!art) return;
+    var i = parseInt(art.getAttribute('data-i'), 10);
+    var e = ESTADO[i];
+
+    if (ev.target.hasAttribute('data-saltar')) {
+      e.saltar = ev.target.checked;
+      art.classList.toggle('apagada', e.saltar);
+      repasarBoton();
+      return;
+    }
+    if (ev.target.type === 'radio' && ev.target.name === 'quien-' + i) {
+      e.enlazar = ev.target.value || null;
+      repasarBoton();
+      return;
+    }
+    if (ev.target.hasAttribute('data-extra')) {
+      e.extra[ev.target.getAttribute('data-extra')] = ev.target.checked;
+      return;
+    }
+    if (ev.target.id === 'p' + i + '-grupo') {
+      e.principal = ev.target.value;
+      art.querySelector('#p' + i + '-grupo').closest('.campo').classList.remove('mal');
+      repasarBoton();
+      return;
+    }
+    /* La categoría se recalcula sola al cambiar la fecha, igual que en la
+       ficha del atleta: si se cambia el año y la categoría se queda como
+       estaba, la ficha nace mintiendo. */
+    if (ev.target.id === 'p' + i + '-nac') {
+      var f = ev.target.value;
+      if (f) {
+        var edad = new Date().getFullYear() - parseInt(f.slice(0, 4), 10);
+        var c = edad <= 8 ? 'Escuela iniciación' : edad <= 10 ? 'Sub-12' : edad <= 12 ? 'Sub-14'
+              : edad <= 14 ? 'Sub-16' : edad <= 16 ? 'Sub-18' : edad <= 18 ? 'Sub-20'
+              : edad <= 21 ? 'Sub-23' : edad <= 34 ? 'Absoluto' : 'Máster';
+        var sel = art.querySelector('#p' + i + '-cat');
+        if (sel) sel.value = c;
+      }
+    }
+  });
+
+  function porCrear() {
+    var n = 0;
+    ESTADO.forEach(function (e, i) {
+      if (!e.saltar && !EXAMEN.personas[i].ya_creada) n++;
+    });
+    return n;
+  }
+  function repasarBoton() {
+    var n = porCrear();
+    var b = $('b-crear');
+    b.disabled = n === 0;
+    b.textContent = n === 0 ? 'No hay nada que crear'
+                  : (n === 1 ? 'Crear la ficha' : 'Crear las ' + n + ' fichas');
+  }
+
+  /* ============================================================
+     CREARLAS · UNA A UNA
+     Se van de una en una a propósito: si la segunda falla, la primera
+     ya está hecha y no se pierde. El parte de abajo dice, línea por
+     línea, qué ha pasado con cada una.
+     ============================================================ */
+  $('b-crear').addEventListener('click', async function () {
+    var b = this;
+    var pendientes = [];
+    var falta = false;
+
+    ESTADO.forEach(function (e, i) {
+      if (e.saltar || EXAMEN.personas[i].ya_creada) return;
+      var art = $('personas').querySelector('.persona[data-i="' + i + '"]');
+      var nombre = art.querySelector('#p' + i + '-nombre');
+      var grupo  = art.querySelector('#p' + i + '-grupo');
+      var mal = false;
+      if (!nombre.value.trim()) { nombre.closest('.campo').classList.add('mal'); mal = true; }
+      if (!grupo.value)         { grupo.closest('.campo').classList.add('mal');  mal = true; }
+      if (mal) { falta = true; return; }
+      pendientes.push({ i: i, art: art });
+    });
+
+    if (falta) {
+      $('pie-msg').textContent = 'Falta el nombre o el grupo de alguien. Está marcado arriba.';
+      $('pie-msg').className = 'msg mal';
+      var primero = $('personas').querySelector('.campo.mal');
+      if (primero) primero.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    if (!pendientes.length) return;
+
+    var texto = pendientes.length === 1
+      ? '¿Crear la ficha? A partir de ahora esa persona sale en las listas del club.'
+      : '¿Crear las ' + pendientes.length + ' fichas? A partir de ahora salen en las listas del club.';
+    var ok = await apoConfirm({ texto: texto, aceptar: 'Sí, crearlas' });
+    if (!ok) return;
+
+    b.disabled = true;
+    $('pie-msg').textContent = 'Creando…';
+    $('pie-msg').className = 'msg';
+    $('parte').innerHTML = '';
+
+    var hechas = 0, fallos = 0;
+    for (var k = 0; k < pendientes.length; k++) {
+      var i = pendientes[k].i, art = pendientes[k].art, e = ESTADO[i];
+      var p = EXAMEN.personas[i], d = p.propuesta || {};
+
+      var extra = Object.keys(e.extra).filter(function (g) { return e.extra[g]; });
+      var grupos = [art.querySelector('#p' + i + '-grupo').value].concat(extra);
+
+      var datos = {
+        nombre:           art.querySelector('#p' + i + '-nombre').value,
+        apellidos:        art.querySelector('#p' + i + '-apellidos').value,
+        fecha_nacimiento: art.querySelector('#p' + i + '-nac').value || null,
+        categoria:        art.querySelector('#p' + i + '-cat').value,
+        sexo:             art.querySelector('#p' + i + '-sexo').value,
+        estado:           art.querySelector('#p' + i + '-estado').value,
+        observaciones:    art.querySelector('#p' + i + '-obs').value,
+        nombre_tutor:     d.nombre_tutor,
+        email_tutor:      d.email_tutor,
+        telefono_tutor:   d.telefono_tutor,
+        email:            d.email,
+        telefono:         d.telefono,
+        grupos:           grupos,
+        grupo_principal:  art.querySelector('#p' + i + '-grupo').value,
+        enlazar_con:      e.enlazar
+      };
+
+      var r = await sb.rpc('alta_crear_ficha', { p_que: QUE, p_persona_id: p.id, p_datos: datos });
+      var quien = (datos.nombre + ' ' + datos.apellidos).trim() || p.nombre_tal_cual;
+
+      if (r.error || !r.data || !r.data.ok) {
+        fallos++;
+        $('parte').innerHTML += '<div class="mal">' + esc(quien) + ': ' +
+          esc(motivo(r)) + '</div>';
+        continue;
+      }
+      hechas++;
+      e.saltar = true;
+      art.classList.add('apagada');
+      var chk = art.querySelector('[data-saltar]'); if (chk) chk.checked = true;
+      $('parte').innerHTML += '<div class="bien">' + esc(quien) + ' — ' +
+        (r.data.creada ? 'ficha creada' : 'enganchada a la que ya tenía') +
+        ' · <a href="../../atletas/?ficha=' + esc(r.data.atleta_id) + '">verla</a></div>';
+    }
+
+    repasarBoton();
+    b.disabled = porCrear() === 0;
+
+    if (fallos === 0) {
+      $('pie-msg').textContent = '';
+      apoToast(hechas === 1 ? 'Ficha creada' : hechas + ' fichas creadas');
+      /* Si ya no queda nadie por crear, el trabajo de esta alta se ha
+         acabado y lo siguiente es volver a la bandeja. No se salta sola:
+         el parte de arriba hay que poder leerlo. */
+      if (porCrear() === 0) {
+        $('pie-msg').textContent = 'Ya está. El alta queda marcada como revisada.';
+      }
+    } else {
+      $('pie-msg').textContent = hechas
+        ? 'Se han creado ' + hechas + ' y ' + fallos + ' no. Mira abajo.'
+        : 'No se ha podido crear ninguna. Mira abajo.';
+      $('pie-msg').className = 'msg mal';
+    }
+  });
+
+  /* Los motivos que devuelve la base, dichos en castellano. Si sale uno
+     que no está en esta lista se enseña tal cual: peor que un mensaje
+     raro es un «ha fallado algo» que no dice nada. */
+  function motivo(r) {
+    if (r.error) return r.error.message;
+    var m = (r.data && r.data.motivo) || 'no se sabe';
+    if (m === 'ya-tiene-ficha')  return 'ya tenía ficha; recarga la pantalla para verla.';
+    if (m === 'alta-rechazada')  return 'el alta está rechazada.';
+    if (m === 'grupo-cerrado')   return 'el grupo «' + (r.data.grupo || '') + '» está cerrado. Elígele otro.';
+    if (m === 'grupo-no-existe') return 'ese grupo ya no existe. Elígele otro.';
+    if (m === 'sin-grupo')       return 'falta decir el grupo.';
+    if (m === 'sin-nombre')      return 'falta el nombre.';
+    if (m === 'no-esta')         return 'ya no está en la base.';
+    if (m === 'la-ficha-a-enlazar-no-esta') return 'la ficha con la que se iba a enganchar ya no está.';
+    return m;
+  }
+
+  cabecera('Leyendo el alta…');
+  cargar();
+});
+</script>
+
+</body>
+</html>
