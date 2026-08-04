@@ -81,8 +81,11 @@
         <span class="error"></span>
       </div>
 
-      <!-- La fecha y el SIP son cortos y van juntos: en escritorio
-           se emparejan, en móvil se apilan. Los largos, nunca. -->
+      <!-- La fecha y el sexo son cortos y van juntos: en escritorio se
+           emparejan, en móvil se apilan. Los largos, nunca. Van en este
+           orden y con estas palabras porque es el mismo par que el
+           formulario de socio, para que quien rellene los dos no tenga
+           que aprenderlos dos veces. -->
       <div class="campo-par">
         <div class="campo">
           <label for="n1-fecha">Fecha de nacimiento</label>
@@ -90,12 +93,28 @@
           <span class="ayuda">De aquí sale su grupo y su horario.</span>
           <span class="error"></span>
         </div>
+        <!-- Se pregunta aquí, a quien lo sabe y tarda dos segundos, y no
+             después a quien revisa cien altas y acabaría deduciéndolo del
+             nombre. Hay nombres que no lo dicen y nombres de fuera:
+             acertar el 95 % de las veces es equivocarse con cinco críos
+             de cada cien. -->
         <div class="campo">
-          <label for="n1-sip">Tarjeta sanitaria (SIP)</label>
-          <input type="text" id="n1-sip" inputmode="numeric" autocomplete="off">
-          <span class="ayuda">Para la licencia y por si hay que llamar a una ambulancia desde la pista.</span>
-          <span class="error"></span>
+          <label for="n1-sexo">Sexo</label>
+          <select id="n1-sexo">
+            <option value="">—</option>
+            <option value="mujer">Mujer</option>
+            <option value="hombre">Hombre</option>
+            <option value="otro">Otro</option>
+          </select>
+          <span class="ayuda">Lo pide la federación para las categorías.</span>
         </div>
+      </div>
+
+      <div class="campo">
+        <label for="n1-sip">Tarjeta sanitaria (SIP)</label>
+        <input type="text" id="n1-sip" inputmode="numeric" autocomplete="off">
+        <span class="ayuda">Para la licencia y por si hay que llamar a una ambulancia desde la pista.</span>
+        <span class="error"></span>
       </div>
 
       <!-- La franja y el grupo salen solos al poner la fecha. En
@@ -353,7 +372,7 @@ document.addEventListener('DOMContentLoaded', function () {
     acepta_normas: false
   };
   function nuevoHijo() {
-    return { nombre: '', fecha: '', sip: '', turno: '', alergias: '',
+    return { nombre: '', fecha: '', sexo: '', sip: '', turno: '', alergias: '',
              permiso_imagen: null, talla_camiseta: '', talla_sudadera: '' };
   }
 
@@ -366,6 +385,10 @@ document.addEventListener('DOMContentLoaded', function () {
   /* Las del club, dichas por el tesorero: de la 4 a la 14 en niños y de la S a
      la XXXL en adultos. La 16 no la tenemos, aunque parezca que falta. */
   var TALLAS = ['4', '6', '8', '10', '12', '14', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+  /* Cómo se lee en el repaso lo que se guarda en la base. Las palabras
+     son las mismas que en el formulario de socio y las mismas que la
+     ficha del atleta, para que el dato no se traduzca por el camino. */
+  var SEXO_DICHO = { mujer: 'Mujer', hombre: 'Hombre', otro: 'Otro' };
 
 
   /* ============================================================
@@ -538,6 +561,7 @@ document.addEventListener('DOMContentLoaded', function () {
   F.engancharIban($('iban'), true);   /* true = puede ir en blanco */
 
   $('n1-nombre').addEventListener('input', function () { alta.hijos[0].nombre = this.value; });
+  $('n1-sexo').addEventListener('change', function () { alta.hijos[0].sexo = this.value; });
   $('n1-sip').addEventListener('input', function () { alta.hijos[0].sip = this.value; });
   $('n1-alergias').addEventListener('input', function () { alta.hijos[0].alergias = this.value; });
   $('n1-fecha').addEventListener('change', function () {
@@ -611,9 +635,21 @@ document.addEventListener('DOMContentLoaded', function () {
         h += '<div class="campo"><label for="h' + i + '-nombre">Nombre y apellidos</label>' +
              '<input type="text" id="h' + i + '-nombre" data-campo="nombre" value="' + F.escapar(hijo.nombre) + '">' +
              '<span class="error"></span></div>';
-        h += '<div class="campo"><label for="h' + i + '-fecha">Fecha de nacimiento</label>' +
+        h += '<div class="campo-par">' +
+             '<div class="campo"><label for="h' + i + '-fecha">Fecha de nacimiento</label>' +
              '<input type="date" id="h' + i + '-fecha" data-campo="fecha" value="' + F.escapar(hijo.fecha) + '">' +
-             '<span class="error"></span></div>';
+             '<span class="error"></span></div>' +
+             /* El mismo par que en el paso 1 y que en el formulario de
+                socio: la fecha y el sexo juntos, con las mismas palabras. */
+             '<div class="campo"><label for="h' + i + '-sexo">Sexo</label>' +
+             '<select id="h' + i + '-sexo" data-campo="sexo">' +
+               ['', 'mujer', 'hombre', 'otro'].map(function (v) {
+                 var t = v === '' ? '—' : v === 'mujer' ? 'Mujer' : v === 'hombre' ? 'Hombre' : 'Otro';
+                 return '<option value="' + v + '"' + (hijo.sexo === v ? ' selected' : '') + '>' + t + '</option>';
+               }).join('') +
+             '</select>' +
+             '<span class="ayuda">Lo pide la federación para las categorías.</span></div>' +
+             '</div>';
         h += '<div class="js-grupo"></div>';
       }
 
@@ -643,11 +679,17 @@ document.addEventListener('DOMContentLoaded', function () {
       var hijo = alta.hijos[i];
 
       ficha.querySelectorAll('[data-campo]').forEach(function (campo) {
-        campo.addEventListener('input', function () {
-          hijo[campo.dataset.campo] = campo.value;
-          if (campo.dataset.campo === 'nombre') {
-            ficha.querySelector('h3').textContent = campo.value || ('Hijo ' + (i + 1));
-          }
+        /* Se escucha «input» y «change»: los desplegables de algunos
+           navegadores viejos solo avisan con el segundo, y un sexo que no
+           se guarda al elegirlo es peor que no preguntarlo. Que salte dos
+           veces no hace nada: escribe el mismo valor. */
+        ['input', 'change'].forEach(function (cuando) {
+          campo.addEventListener(cuando, function () {
+            hijo[campo.dataset.campo] = campo.value;
+            if (campo.dataset.campo === 'nombre') {
+              ficha.querySelector('h3').textContent = campo.value || ('Hijo ' + (i + 1));
+            }
+          });
         });
         if (campo.dataset.campo === 'fecha') {
           campo.addEventListener('change', function () {
@@ -885,6 +927,9 @@ document.addEventListener('DOMContentLoaded', function () {
       var f = g ? franjaDe(g) : { horas: '', sede: '' };
       h += '<div class="repaso" style="margin-bottom:14px"><h3>' + F.escapar(hijo.nombre) + '</h3><dl>' +
         fila('Nacido el', formatoFecha(hijo.fecha)) +
+        /* Solo si lo contestaron: una fila que dijera «Sexo: —» no le
+           dice nada a nadie y alarga el repaso. */
+        (hijo.sexo ? fila('Sexo', SEXO_DICHO[hijo.sexo] || hijo.sexo) : '') +
         (hijo.sip ? fila('Tarjeta sanitaria', hijo.sip) : '') +
         fila('Días', mayuscula(F.dias(hijo.turno)) + (f.horas ? ', de ' + f.horas : '')) +
         (g ? fila('Grupo previsto', g.nombre + ' · provisional') : '') +
@@ -966,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return {
           nombre: hijo.nombre,
           fecha_nacimiento: hijo.fecha,
+          sexo: hijo.sexo || null,
           sip: hijo.sip,
           turno: hijo.turno,
           alergias: hijo.alergias,
@@ -1077,6 +1123,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var h = alta.hijos[0];
     $('n1-nombre').value = h.nombre || '';
     $('n1-fecha').value = h.fecha || '';
+    /* Los formularios a medias de antes de agosto de 2026 no llevan esta
+       casilla: se queda en «—» y no pasa nada. */
+    $('n1-sexo').value = h.sexo || '';
     $('n1-sip').value = h.sip || '';
     $('n1-alergias').value = h.alergias || '';
     $('iban').value = alta.iban ? F.ibanBonito(alta.iban) : '';
