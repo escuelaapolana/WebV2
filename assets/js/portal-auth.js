@@ -240,9 +240,17 @@
     '.pt-papel:hover{background:rgba(255,255,255,.22)}' +
     '.pt-papel .pt-txt{overflow:hidden;text-overflow:ellipsis}' +
     '.pt-papel .pt-fl{flex:0 0 auto;opacity:.85}' +
+    /* La del avatar va más pequeña y pegada abajo a la derecha del círculo:
+       tiene que decir «esto se abre» sin competir con las iniciales. */
+    /* Se anulan a mano el ancho, el alto y el fondo porque justo debajo hay
+       una regla para «el span del avatar» que es la de las iniciales, y sin
+       esto la flecha saldría dentro de su propio círculo de 32 px. */
+    '.pt-fl-av{position:absolute;right:1px;bottom:4px;width:auto;height:auto;background:none;' +
+      'border-radius:0;font-size:9px;line-height:1;opacity:.9;color:#fff;' +
+      'text-shadow:0 0 2px rgba(46,66,86,.9);pointer-events:none}' +
 
     /* El avatar. Se ve a 32 px y se pulsa en 44. */
-    '.pt-avatar{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;' +
+    '.pt-avatar{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;' +
       'flex:0 0 44px;padding:0;border:0;border-radius:999px;background:none;cursor:pointer;' +
       '-webkit-tap-highlight-color:transparent}' +
     '.pt-avatar span{display:flex;align-items:center;justify-content:center;width:32px;height:32px;' +
@@ -740,6 +748,12 @@
           '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="menu" ' +
             'aria-expanded="false" aria-controls="pt-menu" aria-label="Lo tuyo: perfil y salir">' +
             '<span aria-hidden="true">' + esc(ini) + '</span>' +
+            /* La misma flechita que lleva el papel de al lado. Sin ella, el
+               círculo con las iniciales parece una foto de perfil y no algo
+               que se pulse: hay que descubrir por casualidad que abre un
+               menú. Y justo al lado hay otro botón que sí la lleva, así que
+               la diferencia se nota. */
+            '<span class="pt-fl pt-fl-av" aria-hidden="true">&#9662;</span>' +
           '</button>' +
         '</div>' +
         '<div class="pt-menu" id="pt-menu" hidden role="menu">' +
