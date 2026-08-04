@@ -1143,7 +1143,41 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   MIS_GRUPOS.forEach(function (gr) {
     if (gr.turno && window.APOLANA_GRUPO_NOMBRE) gr.nombre = window.APOLANA_GRUPO_NOMBRE(gr);
   });
-  try { var a = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id').eq('entrenador_id', perfil.id).order('apellidos'); if(a.error) FALLO_BASE = true; else MIS_ATLETAS = a.data || []; } catch(e){ FALLO_BASE = true; }
+  /* ------------------------------------------------------------
+     QUIÉNES SON «MIS ATLETAS»
+     Dos cosas distintas, y hacen falta las dos:
+       · los que están A MI NOMBRE en su ficha — de esos lo llevo
+         todo: observaciones, lesiones, el contacto de la familia;
+       · los que ENTRENAN EN MIS GRUPOS aunque en su ficha figure
+         otro entrenador — de esos llevo la lista y poco más.
+     Antes solo se pedían los primeros, y el resultado era que el
+     crío de La Tribu que además viene a El Cubo no le salía en la
+     lista al entrenador de El Cubo. La pantalla llegaba a decirle
+     que el club no se lo había asignado, cuando lo que pasaba es
+     que no se le había preguntado a la base por él.
+     ------------------------------------------------------------ */
+  var CAMPOS_ATLETA = 'id,nombre,apellidos,categoria,estado,grupo_id,entrenador_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id';
+  try { var a = await sb.from('atletas').select(CAMPOS_ATLETA).eq('entrenador_id', perfil.id).order('apellidos'); if(a.error) FALLO_BASE = true; else MIS_ATLETAS = a.data || []; } catch(e){ FALLO_BASE = true; }
+  /* Y ahora los de mis grupos. Se piden aparte y con su propio `try`: si
+     esta se cae, la pantalla sigue enseñando a los de siempre en vez de
+     quedarse en blanco. Los repetidos se descartan por su id. */
+  try {
+    var idsG = MIS_GRUPOS.map(function(gr){ return gr.id; });
+    if(idsG.length){
+      var pert = await sb.from('atleta_grupos').select('atleta_id').in('grupo_id', idsG);
+      if(pert.error) FALLO_BASE = true;
+      else {
+        var ya = {}; MIS_ATLETAS.forEach(function(x){ ya[x.id] = true; });
+        var faltan = [];
+        (pert.data || []).forEach(function(m){ if(!ya[m.atleta_id]){ ya[m.atleta_id] = true; faltan.push(m.atleta_id); } });
+        if(faltan.length){
+          var a2 = await sb.from('atletas').select(CAMPOS_ATLETA).in('id', faltan).order('apellidos');
+          if(a2.error) FALLO_BASE = true;
+          else if(a2.data) MIS_ATLETAS = MIS_ATLETAS.concat(a2.data);
+        }
+      }
+    }
+  } catch(e){ FALLO_BASE = true; }
   /* En qué grupos entrena cada uno. Va aparte y sin hacer ruido si falla: si
      esta consulta se cae, las listas siguen saliendo por la casilla de la
      ficha, que es lo que se hacía hasta ahora. */
@@ -1555,11 +1589,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
     if(!MIS_ATLETAS.length) return;
     var ids = MIS_ATLETAS.map(function(x){ return x.id; });
-    // Faltas avisadas hoy por las familias (misma tabla que en Pasar lista).
+    /* Faltas avisadas hoy por las familias, por lo mismo que en Pasar lista:
+       preguntadas por grupo y no a la tabla, que está cerrada. Quien entrena
+       en dos de mis grupos vendría dos veces —una por lista—, y en la portada
+       eso serían dos avisos de la misma falta: se deja uno por persona. */
     try {
-      var au = await sb.from('ausencias').select('atleta_id,motivo,avisado_por_nombre')
-        .eq('fecha', todayISO).in('atleta_id', ids);
-      if(!au.error && au.data) AVISOS.ausencias = au.data;
+      var au = await sb.rpc('apo_faltas_avisadas', {
+        p_grupos: MIS_GRUPOS.map(function(gr){ return gr.id; }), p_fecha: todayISO });
+      if(!au.error && au.data){
+        var vistos = {};
+        AVISOS.ausencias = au.data.filter(function(r){
+          if(vistos[r.atleta_id]) return false;
+          vistos[r.atleta_id] = true; return true;
+        });
+      }
     } catch(e){}
     // Feedback nuevo desde la última visita (o de los últimos 3 días la primera vez).
     try {
@@ -1902,10 +1945,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* `sucio`  = hay marcas puestas a mano que todavía no están en la base.
      `aviso`  = el mensaje del pie (guardado, error, etc.), guardado en el
                 estado para que no se borre al repintar la lista.
-     `sobrantes` = atletas del grupo que NO están asignados a este entrenador:
-                se ven en el grupo pero el club no le deja pasarles lista. */
+     `sinEntrenador` = atletas de este grupo a los que no les consta ningún
+                entrenador en su ficha. Sí salen en la lista y sí se les puede
+                pasar; lo que falta es quién los lleva, y eso hay que decirlo
+                porque nadie más se va a enterar.
+                (Aquí antes se avisaba de otra cosa: de los del grupo que no
+                estaban a tu nombre, porque no salían en la lista. Desde que
+                la lista es del grupo sí salen, así que ese aviso decía algo
+                que ya no era verdad. Lo que sí seguía siendo verdad —que a
+                alguno no le consta entrenador— es lo que se dice ahora.) */
   var LST = { grupo:'', fecha: todayISO, marcas:{}, guardadas:{}, ausencias:{}, sesion:null, filtro:'', buscando:false, cargando:false,
-              sucio:false, guardando:false, aviso:null, sobrantes:[], version:0 };
+              sucio:false, guardando:false, aviso:null, sinEntrenador:[], version:0 };
 
   /* BORRADOR EN EL PROPIO MÓVIL
      Aunque al cambiar de grupo o de día ya se pregunta, la pestaña de un móvil
@@ -1939,23 +1989,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargarLista(){
     var atls = atletasParaLista(LST.grupo);
     LST.marcas = {}; LST.guardadas = {}; LST.ausencias = {}; LST.sesion = null;
-    LST.sucio = false; LST.aviso = null; LST.sobrantes = []; NOTAS = {};
+    LST.sucio = false; LST.aviso = null; LST.sinEntrenador = []; NOTAS = {};
 
-    /* Aviso de huecos: si en el grupo hay atletas que el club no le ha
-       asignado, no salen en la lista y nadie se entera. Mejor decirlo. */
-    try {
-      /* Quién entrena en este grupo ya no lo dice la casilla de la ficha:
-         hay que preguntárselo a la tabla de pertenencias. */
-      var mem = await sb.from('atleta_grupos').select('atleta_id').eq('grupo_id', LST.grupo);
-      var idsG = (!mem.error && mem.data) ? mem.data.map(function(m){ return m.atleta_id; }) : [];
-      var todos = idsG.length
-        ? await sb.from('atletas').select('id,nombre,apellidos').in('id', idsG).neq('estado','baja')
-        : { data: [] };
-      if(!todos.error && todos.data){
-        var mios = {}; atls.forEach(function(x){ mios[x.id] = true; });
-        LST.sobrantes = todos.data.filter(function(x){ return !mios[x.id]; });
-      }
-    } catch(e){}
+    /* A quién no le consta entrenador. Ya no hace falta preguntárselo a la
+       base: los atletas del grupo están todos cargados, así que se mira lo
+       que ya tenemos y se ahorran dos consultas en cada lista. */
+    LST.sinEntrenador = atls.filter(function(x){ return !x.entrenador_id; });
 
     if(!atls.length || !LST.fecha) return;
     var ids = atls.map(function(x){ return x.id; });
@@ -1978,8 +2017,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // familias). Si el atleta tiene falta avisada y todavía no se le ha
     // pasado lista ese día, se deja PRERRELLENADO como ausente: el
     // entrenador lo ve y puede cambiarlo si al final sí vino.
+    /* Se pregunta POR EL GRUPO, no por la tabla. La tabla de ausencias solo la
+       lee administración, la familia y el entrenador que figure en la ficha:
+       preguntándole a ella, el entrenador del grupo no veía ni una y ponía
+       faltas a quien había avisado por la mañana. La función devuelve las de
+       su grupo; el motivo solo si además es quien lo lleva, porque un motivo
+       suele ser salud y eso no es del grupo. */
     try {
-      var au = await sb.from('ausencias').select('atleta_id,motivo,avisado_por_nombre').eq('fecha', LST.fecha).in('atleta_id', ids);
+      var au = await sb.rpc('apo_faltas_avisadas', { p_grupos: [LST.grupo], p_fecha: LST.fecha });
       if(!au.error && au.data) au.data.forEach(function(r){
         LST.ausencias[r.atleta_id] = r;
         if(LST.marcas[r.atleta_id]===undefined) LST.marcas[r.atleta_id] = false;
@@ -2019,12 +2064,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cab = '<div class="lst-cab"><div><span class="lst-ctx">'+marcarNombres(esc(ctx))+'</span><span class="lst-tit">Pasar lista</span></div>'+
       '<span class="lst-contador'+(c.presentes?'':' cero')+'">'+c.presentes+'/'+c.total+'</span></div>';
 
-    /* Atletas del grupo que el club no te ha asignado: no se les puede pasar
-       lista (el permiso va por entrenador asignado, no por grupo). */
-    var sobra = LST.sobrantes.length
-      ? '<div class="lst-avisos"><strong>'+LST.sobrantes.length+' atleta'+(LST.sobrantes.length>1?'s de este grupo no están':' de este grupo no está')+' a tu nombre</strong><ul>'+
-          LST.sobrantes.map(function(x){ return '<li><b>'+esc(nombreAtleta(x))+'</b></li>'; }).join('')+
-        '</ul><p>No salen en la lista y no puedes marcarles. Pídele al club que te los asigne.</p></div>'
+    /* A estos les falta el entrenador en su ficha. La lista se les pasa con
+       normalidad —eso ya no depende de la ficha, sino del grupo—, pero todo
+       lo demás sí: las observaciones, las lesiones y el contacto de su
+       familia los lleva quien figure ahí, y si no figura nadie, nadie. */
+    var sobra = LST.sinEntrenador.length
+      ? '<div class="lst-avisos"><strong>'+LST.sinEntrenador.length+' atleta'+(LST.sinEntrenador.length>1?'s de este grupo no tienen':' de este grupo no tiene')+' entrenador en su ficha</strong><ul>'+
+          LST.sinEntrenador.map(function(x){ return '<li><b>'+esc(nombreAtleta(x))+'</b></li>'; }).join('')+
+        '</ul><p>La lista se les pasa igual. Lo que no se puede es escribirles observaciones ni ver el contacto de su familia: eso lo hace quien los lleva. Pídele al club que se lo asigne.</p></div>'
       : '';
 
     if(!atls.length){
@@ -2462,6 +2509,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     FICHA = null;
   }
 
+  /* ¿Este atleta está a MI nombre en su ficha? No es lo mismo que entrenar en
+     mi grupo: la lista va por grupo, pero las observaciones, las lesiones, el
+     contacto de la familia y el motivo de sus faltas van por la ficha. */
+  function esMioDeFicha(x){ return !!(x && x.entrenador_id === perfil.id); }
   function atletaPorId(id){ for(var i=0;i<MIS_ATLETAS.length;i++) if(MIS_ATLETAS[i].id===id) return MIS_ATLETAS[i]; return null; }
 
   async function abrirFicha(atletaId){
@@ -2484,8 +2535,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var desde = addDias(todayISO, -30);
     var r1 = await sb.from('asistencia').select('fecha,presente').eq('atleta_id', atletaId).gte('fecha', desde).order('fecha', { ascending:false });
     if(!r1.error && r1.data) FICHA.asistencia = r1.data;
+    /* El historial de faltas avisadas, con su motivo, solo lo lee quien lleva
+       a ese atleta: el motivo suele ser salud. Si entrena en tu grupo pero en
+       su ficha figura otro entrenador, esta consulta devuelve cero filas —y
+       eso NO quiere decir que no haya avisado ninguna vez—. Se guarda si el
+       apartado se puede enseñar o no, para no dar por mirado lo que no se ha
+       podido mirar. */
+    FICHA.veAusencias = false;
     var r1b = await sb.from('ausencias').select('fecha,motivo,avisado_por_nombre').eq('atleta_id', atletaId).gte('fecha', addDias(todayISO,-60)).order('fecha', { ascending:false }).limit(8);
-    if(!r1b.error && r1b.data) FICHA.ausencias = r1b.data;
+    if(!r1b.error){ FICHA.veAusencias = true; if(r1b.data) FICHA.ausencias = r1b.data; }
     var r1c = await sb.from('notas_familia').select('id,texto,fecha,autor_nombre,visible').eq('atleta_id', atletaId).order('fecha', { ascending:false }).limit(5);
     if(!r1c.error && r1c.data) FICHA.notasFamilia = r1c.data;
     var r2 = await sb.from('pagos').select('estado,concepto,importe,fecha_vencimiento').eq('atleta_id', atletaId);
@@ -2636,7 +2694,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       ? '<ul class="mini-lista">'+FICHA.ausencias.map(function(a){
           return '<li><b style="font-weight:400;color:var(--texto);flex:1;">'+esc(a.motivo||'No viene')+(a.avisado_por_nombre?' <em style="color:var(--texto-suave);font-style:normal;">· avisó '+esc(a.avisado_por_nombre)+'</em>':'')+'</b><span>'+esc(formatFecha(a.fecha))+'</span></li>';
         }).join('')+'</ul>'
-      : '<p class="vacio" style="margin:0;">La familia no ha avisado ninguna falta en los últimos dos meses.</p>';
+      : (FICHA.veAusencias && esMioDeFicha(at)
+          ? '<p class="vacio" style="margin:0;">La familia no ha avisado ninguna falta en los últimos dos meses.</p>'
+          : '<p class="vacio" style="margin:0;">Esto no lo puedes ver: las faltas que avisa la familia, y el motivo que dan, los lee quien tiene a este atleta a su nombre. En tu lista sí te sale si no viene un día.</p>');
 
     // --- observaciones privadas (notas_atleta) · la familia NO las ve ---
     var ntHTML = FICHA.notas.length
