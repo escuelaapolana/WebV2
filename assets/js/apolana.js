@@ -106,10 +106,25 @@ class ApolanaCabecera extends HTMLElement {
       }
       return `<a href="${ruta(m.url)}"${act}>${m.texto}</a>`;
     }).join('');
+    /* En el móvil, los grupos van PLEGADOS. Antes se abría el menú y salían
+       los treinta enlaces de golpe: para llegar a «Historia», que está en el
+       último grupo, había que pasar por delante de todo lo demás. Ahora se
+       pincha «Club» y se abre lo suyo.
+
+       El nombre del grupo deja de ser un enlace y pasa a abrir el grupo, y no
+       se pierde nada: cada uno lleva dentro su propia puerta —«Todas las
+       secciones», «Todas las escuelas», «El club»— que va al mismo sitio al
+       que iba el título.
+
+       Y el grupo de la página en la que estás sale abierto: si vienes de
+       Natación y abres el menú, lo lógico es ver a sus hermanas al lado. */
     const enlacesMovil = MENU.map(m => {
-      let h = `<a href="${ruta(m.url)}">${m.texto}</a>`;
-      if (m.sub) h += `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>`;
-      return h;
+      if (!m.sub) return `<a href="${ruta(m.url)}">${m.texto}</a>`;
+      const abierto = (m.clave && m.clave === activo) ? ' open' : '';
+      return `<details class="men-gr"${abierto}>` +
+        `<summary>${m.texto}<span class="men-fl" aria-hidden="true">&#9662;</span></summary>` +
+        `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>` +
+      `</details>`;
     }).join('') +
       `<a href="${ruta('/portal/')}">Acceso</a>` +
       `<a href="${ruta('/inscripcion/')}">Inscribirse</a>` +
