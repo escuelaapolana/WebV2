@@ -398,6 +398,23 @@
   .modal-datos .cual { flex: 0 0 92px; font-size: 13px; color: var(--texto-tenue); }
   .modal-datos .valor { font-size: 15px; color: var(--navy); min-width: 0; overflow-wrap: anywhere; }
 
+  /* ---- Qué grupos hay detrás de «Entrenamiento · Escuela» ----
+     Una lista sencilla: el grupo en negrita y, debajo, lo que hace.
+     Sin bordes ni cajas: es el detalle de algo que ya se está mirando. */
+  .juntos { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--crema-banda); }
+  .juntos h3 {
+    margin: 0 0 10px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--texto-tenue);
+  }
+  .juntos ul { list-style: none; margin: 0; padding: 0; }
+  .juntos li {
+    padding: 9px 0; border-bottom: 1px solid var(--crema-banda);
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  }
+  .juntos li:last-child { border-bottom: 0; }
+  .juntos li b { font-size: 15px; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+  .juntos li span { font-size: 14px; color: var(--texto-suave); overflow-wrap: anywhere; }
+
   .modal-pie { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--crema-banda); }
   .modal-pie p { margin: 0 0 12px; font-size: 15px; color: var(--texto); }
   .modal-pie .botones { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -651,6 +668,7 @@
   var vista = 'mes';         // 'mes' | 'semana' — la vista de día vive en la ventana emergente
   var mostrarEntrenos = false;   // los entrenos van plegados como recuento
   var TODAS = [];            // todas las actividades, con índice
+  var GRUPOS = {};           // id de grupo -> { nombre, turno, descripcion, pruebas… }
   var porDia = {};           // clave de día -> lista de actividades
   var COMPES = [];           // competiciones futuras, para el bloque del final
   var seccionesConDatos = {};
@@ -786,6 +804,12 @@
   function limpio(s) { return (s == null ? '' : String(s)).trim(); }
   function lunesDe(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
   function seccionNombre(s) { return s ? (ETIQUETA_SECCION[s] || conMayuscula(s)) : ''; }
+  /* «Azul 2 · martes y jueves». Los dos turnos de la escuela son grupos
+     distintos, no repetidos, y el horario es lo único que los separa. */
+  function nombreDeGrupo(g) {
+    if (!g) return '';
+    return window.APOLANA_GRUPO_NOMBRE ? window.APOLANA_GRUPO_NOMBRE(g) : limpio(g.nombre);
+  }
 
   /* ---------- guardar una actividad en su día ---------- */
   function apuntar(clave, act) {
@@ -837,6 +861,9 @@
     if (a.clase === 'cierre') return 'Último día para apuntarse';
     if (a.clase === 'evento') return 'Evento del club';
     if (a.clase === 'cubo') return 'Clase de El Cubo';
+    /* El juntado sí la lleva: hay que decir que detrás hay varios grupos,
+       o parece que la escuela entrena una sola vez y en un solo sitio. */
+    if (a.juntos) return a.juntos.length + ' grupos, todos a la vez';
     return '';
   }
 
@@ -895,22 +922,37 @@
     if (!sb) return false;
     var ok = false;
 
+    /* Los grupos, de lectura pública. Hacen falta por dos cosas: el turno
+       (la escuela tiene un «Azul 2» de lunes y miércoles y otro de martes y
+       jueves, y sin los días son indistinguibles) y lo que hace cada grupo
+       —su descripción y sus pruebas—, que es lo que se despliega al abrir
+       el entrenamiento de la escuela. */
+    try {
+      var rg = await sb.from('grupos').select('id,nombre,turno,seccion,descripcion,pruebas,horario');
+      if (!rg.error && rg.data) {
+        rg.data.forEach(function (g) { GRUPOS[g.id] = g; });
+      }
+    } catch (e) { /* sin grupos el calendario sigue funcionando, solo con menos detalle */ }
+
     /* Entrenamientos publicados: la vista pública sesiones_agenda.
        (La tabla `sesiones` no es legible sin cuenta; la vista sí.) */
     try {
       var rs = await sb.from('sesiones_agenda')
-        .select('sesion_id,fecha,hora,titulo,tipo,deporte,deporte_2,papel_dia,lugar,grupo,seccion,abierta_inscripcion,abierta_a,plazas,apuntados,libres')
+        .select('sesion_id,fecha,hora,titulo,tipo,deporte,deporte_2,papel_dia,lugar,grupo_id,grupo,seccion,abierta_inscripcion,abierta_a,plazas,apuntados,libres')
         .order('fecha', { ascending: true }).limit(2000);
       if (rs.error) { console.warn('[Apolana] agenda:', rs.error.message); }
       else if (rs.data) {
         ok = true;
         rs.data.forEach(function (s) {
           if ((s.papel_dia || s.tipo) === 'descanso') return; // día de descanso, no es una actividad
+          var g = GRUPOS[s.grupo_id];
+          var nombreGrupo = g ? nombreDeGrupo(g) : limpio(s.grupo);
           apuntar(s.fecha, {
             clase: 'entreno', hora: horaCorta(s.hora),
-            titulo: limpio(s.titulo) || limpio(s.grupo) || etiquetaDeporte(s) || 'Entrenamiento',
+            titulo: limpio(s.titulo) || nombreGrupo || etiquetaDeporte(s) || 'Entrenamiento',
             tipoBruto: s.tipo, tipoTexto: etiquetaDeporte(s),
-            lugar: limpio(s.lugar), grupo: limpio(s.grupo), seccion: s.seccion || null,
+            lugar: limpio(s.lugar), grupoId: s.grupo_id || null, grupo: nombreGrupo,
+            seccion: s.seccion || null,
             abierta: !!s.abierta_inscripcion, abiertaA: s.abierta_a || null,
             plazas: s.plazas, apuntados: s.apuntados, libres: s.libres
           });
@@ -1000,9 +1042,87 @@
       }
     } catch (e) { console.warn('[Apolana] El Cubo (excepción):', e); }
 
+    juntarEntrenos();
     fundirCompeticiones();
     COMPES.sort(function (a, b) { return a.c.fecha_inicio < b.c.fecha_inicio ? -1 : (a.c.fecha_inicio > b.c.fecha_inicio ? 1 : 0); });
     return ok;
+  }
+
+  /* ===========================================================
+     UN ENTRENAMIENTO, NO DOCE
+     -----------------------------------------------------------
+     La escuela entera entrena a la vez: seis grupos de color el
+     lunes a las 17:30 y otros seis el martes. Doce entradas
+     iguales en el calendario no dicen nada y tapan lo que sí
+     pasa una vez —una carrera, un control—, así que se juntan en
+     una sola: «Entrenamiento · Escuela», con su hora. Los grupos
+     siguen ahí: al abrirla se despliega cuáles son y qué hace
+     cada uno.
+
+     Se juntan solo los que comparten SECCIÓN y HORA el mismo día,
+     y a partir de TRES. Con dos no hace falta: un martes con el
+     grupo A y el grupo B son dos cosas distintas y se dicen por
+     su nombre, que es justo lo que se pide de segunda hora.
+     =========================================================== */
+  var JUNTAR_DESDE = 3;
+
+  function juntarEntrenos() {
+    Object.keys(porDia).forEach(function (clave) {
+      var lotes = {}, orden = [];
+      porDia[clave].forEach(function (a) {
+        if (a.clase !== 'entreno' || !a.seccion || a.oculto) return;
+        /* Un entrenamiento abierto para apuntarse no se junta con nadie: es
+           una invitación al club entero y tiene que verse por su cuenta. */
+        if (a.abierta) return;
+        var k = a.seccion + '|' + (a.hora || '');
+        if (!lotes[k]) { lotes[k] = []; orden.push(k); }
+        lotes[k].push(a);
+      });
+      orden.forEach(function (k) {
+        var lote = lotes[k];
+        if (lote.length < JUNTAR_DESDE) return;
+        lote.forEach(function (a) { a.oculto = true; });
+        var uno = lote[0];
+        /* El sitio solo se dice si es el mismo para todos. Si no, callarse:
+           mejor sin dato que mandar a media escuela al sitio equivocado. */
+        var mismoLugar = lote.every(function (x) { return x.lugar === uno.lugar; });
+        apuntar(clave, {
+          clase: 'entreno', hora: uno.hora,
+          /* Sin nombre de grupo a posta: la etiqueta se arma sola con la
+             sección y sale «Entrenamiento · Escuela». */
+          titulo: 'Entrenamiento · ' + seccionNombre(uno.seccion),
+          tipoBruto: uno.tipoBruto, tipoTexto: 'Entrenamiento',
+          lugar: mismoLugar ? uno.lugar : '', grupo: '', seccion: uno.seccion,
+          abierta: false, juntos: lote
+        });
+      });
+    });
+  }
+
+  /* Qué grupos entrenan y, si lo tienen puesto, qué hacen. Es lo que se
+     despliega al abrir un entrenamiento juntado. */
+  function htmlGruposJuntos(a) {
+    if (!a.juntos || !a.juntos.length) return '';
+    /* Por nombre: «Azul 1, Azul 2, Azul 3, Rojo 1…». Como llegan de la base
+       vienen en cualquier orden, y una lista de diez grupos desordenada
+       obliga a leerla entera para encontrar el tuyo. */
+    var lista = a.juntos.slice().sort(function (x, y) {
+      return String(x.grupo || '').localeCompare(String(y.grupo || ''), 'es', { numeric: true });
+    });
+    var filas = lista.map(function (x) {
+      var g = GRUPOS[x.grupoId] || null;
+      var nombre = limpio(x.grupo) || (g ? nombreDeGrupo(g) : '') || 'Grupo del club';
+      /* Lo que hace ese grupo: primero el título que le haya puesto el
+         entrenador ese día; si no, sus pruebas («velocidad, vallas…»); y si
+         tampoco, su descripción. Solo se enseña lo que existe de verdad. */
+      var pruebas = g && limpio(g.pruebas)
+        ? limpio(g.pruebas).split('\n').map(limpio).filter(Boolean).join(' · ') : '';
+      var que = limpio(x.titulo) || pruebas || (g ? limpio(g.descripcion) : '');
+      if (claveTitulo(que) === claveTitulo(nombre)) que = pruebas || (g ? limpio(g.descripcion) : '');
+      return '<li><b>' + esc(nombre) + '</b>' + (que ? '<span>' + esc(que) + '</span>' : '') + '</li>';
+    }).join('');
+    return '<div class="juntos"><h3>' + a.juntos.length + ' grupos, todos a la vez</h3>' +
+      '<ul>' + filas + '</ul></div>';
   }
 
   /* Una misma competición puede llegar por dos vías (la tabla de competiciones
@@ -1045,6 +1165,9 @@
   }
 
   function pasa(a) {
+    /* Los entrenamientos que se han juntado en uno solo ya no salen por su
+       cuenta: viven dentro del juntado y se ven al abrirlo. */
+    if (a.oculto) return false;
     /* El cajón «Filtrar» sí manda sobre todo: si alguien pide ver solo
        competiciones, es que quiere ver solo competiciones. */
     var t = algunoDe(fTipos);
@@ -1069,7 +1192,10 @@
   function sinRepetidos(lista) {
     var vistos = {}, salida = [];
     lista.forEach(function (a) {
-      var k = a.clase + '|' + claveTitulo(a.titulo);
+      /* El juntado no se compara con nadie por el título: «Entrenamiento ·
+         Escuela» se parece demasiado a un entrenamiento sin nombre y se
+         comerían el uno al otro. */
+      var k = a.juntos ? ('juntos|' + a.i) : (a.clase + '|' + claveTitulo(a.titulo));
       var ya = vistos[k];
       if (ya === undefined) { vistos[k] = salida.length; salida.push(a); return; }
       var previo = salida[ya];
@@ -1419,6 +1545,8 @@
       fila('Plazo del club', a.limite ? esc(plazoLargo(a.limite)) : '') +
       fila('Nota', esc(a.descripcion || '')) +
       '</div>';
+
+    h += htmlGruposJuntos(a);
 
     var esComp = (a.clase === 'competicion' || a.clase === 'cierre');
 

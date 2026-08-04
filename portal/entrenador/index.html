@@ -2917,6 +2917,155 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // ============================================================
+  // PASÁRSELO A OTRO DÍA (a un atleta suelto)
+  // ------------------------------------------------------------
+  // «El atleta venía el martes y no viene: pues el miércoles hace
+  // el entrenamiento del martes.» Pasa todas las semanas —un viaje,
+  // un examen— y hasta ahora había que duplicar a mano el entreno,
+  // cambiarle la fecha y marcar «Solo estos atletas». Seis o siete
+  // toques. Esto es ese mismo camino en un botón.
+  //
+  // No es un editor nuevo: usa las dos cosas que ya existían, la
+  // COPIA (un entrenamiento nuevo con lo mismo dentro) y los
+  // DESTINATARIOS (`sesiones.atletas_ids` = solo esa gente).
+  //
+  // El original NO se toca: el martes sigue en pie para el resto
+  // del grupo, y eso se dice con todas las letras antes y después.
+  // ============================================================
+  var PASAR = { sesion: null, creadaId: null };
+
+  function cajaPasarHTML(){
+    return '<div class="dest" id="pl-pasar-caja" hidden style="margin-top:16px;">'+
+      '<label>Pasárselo a otro día</label>'+
+      '<p class="pista" id="pl-pasar-de"></p>'+
+      '<div class="dest-barra">'+
+        '<button type="button" class="btn-mini" id="pl-pasar-ninguno">Desmarcar todos</button>'+
+      '</div>'+
+      '<div class="dest-lista" id="pl-pasar-lista"></div>'+
+      '<label for="pl-pasar-fecha" style="margin-top:12px;">¿Qué día lo hace?</label>'+
+      '<input id="pl-pasar-fecha" type="date">'+
+      '<p class="pista" id="pl-pasar-resumen"></p>'+
+      '<div class="dest-barra" style="margin-top:12px;">'+
+        '<button type="button" class="btn btn--primario" id="pl-pasar-ok">Pasarlo a ese día</button>'+
+        '<button type="button" class="btn btn--neutro" id="pl-pasar-no">Cancelar</button>'+
+      '</div>'+
+      '<p class="msg" id="pl-pasar-msg"></p>'+
+      '<div class="dest-barra" id="pl-pasar-hecho" hidden>'+
+        '<button type="button" class="btn-mini" id="pl-pasar-abrir">Abrir el entrenamiento nuevo</button>'+
+        '<button type="button" class="btn-mini" id="pl-pasar-deshacer">Deshacer</button>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function idsPasar(){
+    var out = [], c = $('pl-pasar-lista'); if(!c) return out;
+    c.querySelectorAll('.pasar-chk').forEach(function(i){ if(i.checked) out.push(i.value); });
+    return out;
+  }
+
+  /* El resumen se escribe entero antes de tocar nada: quién, qué día, y
+     —lo que más se pregunta— qué pasa con el día original. */
+  function refrescarPasar(){
+    var s = PASAR.sesion; if(!s) return;
+    var ids = idsPasar();
+    var nueva = $('pl-pasar-fecha').value;
+    var como = s.titulo || 'el entrenamiento del '+formatFecha(s.fecha);
+    var p = $('pl-pasar-resumen');
+    if(!ids.length){ p.textContent = 'Marca a quién se lo pasas.'; return; }
+    if(!nueva){ p.textContent = 'Elige el día en el que lo hace.'; return; }
+    if(nueva === s.fecha){ p.textContent = 'Ese es el mismo día que ya tiene. Elige otro.'; return; }
+    p.textContent = 'El '+formatFecha(nueva)+' se creará «'+como+'» solo para '+nombresDeIds(ids, 4)+'. '+
+      'El '+formatFecha(s.fecha)+' no se toca: sigue en pie para el resto del grupo.';
+  }
+
+  function abrirPasar(){
+    var s = window.__SESIONES_GRUPO && window.__SESIONES_GRUPO[editandoId];
+    if(!s) return;
+    PASAR.sesion = s; PASAR.creadaId = null;
+    var atls = atletasDeGrupo(s.grupo_id);
+    var cont = $('pl-pasar-lista');
+    cont.innerHTML = atls.length
+      ? atls.map(function(x){ return '<label><input type="checkbox" class="pasar-chk" value="'+escAttr(x.id)+'">'+esc(nombreAtleta(x))+'</label>'; }).join('')
+      : '<p class="vacio">Este grupo no tiene atletas visibles todavía.</p>';
+    $('pl-pasar-de').innerHTML = 'Se copia <strong>'+esc(s.titulo || formatFecha(s.fecha))+'</strong> ('+esc(formatFecha(s.fecha))+') tal cual está guardado, y la copia la verán <strong>solo</strong> los atletas que marques.';
+    /* Por defecto, el día siguiente: es lo que más se dice («mañana lo haces»). */
+    $('pl-pasar-fecha').value = addDias(s.fecha, 1);
+    $('pl-pasar-msg').textContent = ''; $('pl-pasar-msg').className = 'msg';
+    $('pl-pasar-hecho').hidden = true;
+    $('pl-pasar-ok').disabled = false;
+    $('pl-pasar-caja').hidden = false;
+    refrescarPasar();
+    $('pl-pasar-caja').scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+
+  async function hacerPasar(){
+    var s = PASAR.sesion; if(!s) return;
+    var ids = idsPasar(), nueva = $('pl-pasar-fecha').value;
+    var msg = $('pl-pasar-msg'); msg.className = 'msg';
+    if(!ids.length){ msg.textContent = 'Marca al menos un atleta.'; msg.className = 'msg error'; return; }
+    if(!nueva){ msg.textContent = 'Pon el día en el que lo hace.'; msg.className = 'msg error'; return; }
+    if(nueva === s.fecha){ msg.textContent = 'Ese es el mismo día que ya tiene.'; msg.className = 'msg error'; return; }
+    msg.textContent = 'Pasándolo…';
+    $('pl-pasar-ok').disabled = true;
+    var payload = {
+      grupo_id: s.grupo_id,
+      fecha: nueva,
+      dia_semana: diaSemana(nueva),
+      titulo: s.titulo || null,
+      deporte: s.deporte || null,
+      deporte_2: s.deporte_2 || null,
+      papel_dia: s.papel_dia || null,
+      tipo: s.tipo || null,
+      /* El `rol` va vacío a posta: lo vuelve a calcular la base desde el
+         papel del día, igual que al guardar desde el formulario. */
+      rol: null,
+      nota_razonamiento: s.nota_razonamiento || null,
+      bloques: Array.isArray(s.bloques) ? s.bloques : [],
+      /* Si el original ya lo veían los atletas, la copia también: si no, el
+         chaval abriría su día y no vería nada. Y si era borrador, borrador. */
+      publicada: !!s.publicada,
+      atletas_ids: ids,
+      /* Un entrenamiento que se le pasa a una persona no se abre al club
+         entero para que se apunte nadie: eso es otra cosa. */
+      abierta_inscripcion: false, plazas: null, abierta_a: null,
+      hora: s.hora || null,
+      lugar: s.lugar || null,
+      duracion_min: s.duracion_min || null,
+      creado_por: perfil.id
+    };
+    var res = await sb.from('sesiones').insert(payload).select('id').maybeSingle();
+    if(res.error){
+      msg.textContent = 'No se ha podido: '+res.error.message; msg.className = 'msg error';
+      $('pl-pasar-ok').disabled = false; return;
+    }
+    PASAR.creadaId = res.data ? res.data.id : null;
+    msg.textContent = 'Hecho ✓ El '+formatFecha(nueva)+' lo tiene '+nombresDeIds(ids, 4)+
+      (payload.publicada ? '' : ' (en borrador: todavía no lo ve)')+
+      '. El '+formatFecha(s.fecha)+' sigue igual para el resto del grupo.';
+    msg.className = 'msg ok';
+    $('pl-pasar-hecho').hidden = !PASAR.creadaId;
+    await cargarSesionesGrupo(s.grupo_id);
+    if(editandoId) $('pl-editar').value = editandoId;
+    refrescarDia();   // por si el día que toca es hoy
+  }
+
+  /* Deshacer de verdad: la copia se acaba de crear y no tiene nada colgando,
+     así que se borra entera y no queda rastro. */
+  async function deshacerPasar(){
+    if(!PASAR.creadaId) return;
+    var msg = $('pl-pasar-msg'); msg.className = 'msg'; msg.textContent = 'Deshaciendo…';
+    var r = await sb.from('sesiones').delete().eq('id', PASAR.creadaId);
+    if(r.error){ msg.textContent = 'No se ha podido deshacer: '+r.error.message; msg.className = 'msg error'; return; }
+    var g = PASAR.sesion ? PASAR.sesion.grupo_id : null;
+    PASAR.creadaId = null;
+    $('pl-pasar-hecho').hidden = true;
+    $('pl-pasar-ok').disabled = false;
+    msg.textContent = 'Deshecho ✓ Ha quedado todo como estaba.'; msg.className = 'msg ok';
+    if(g){ await cargarSesionesGrupo(g); if(editandoId) $('pl-editar').value = editandoId; }
+    refrescarDia();
+  }
+
+  // ============================================================
   // ¿ABIERTO PARA APUNTARSE? (columnas de la tabla sesiones)
   // ------------------------------------------------------------
   //   abierta_inscripcion = false -> es el entreno de tu grupo y punto
@@ -3781,6 +3930,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ------------------------------------------------------------
   function pintarModo(){
     var pill = $('pl-estado'), aviso = $('pl-aviso-modo'), dup = $('pl-duplicar');
+    /* «Pasárselo a otro día» va y viene con «Duplicar»: los dos necesitan un
+       entrenamiento ya guardado, porque los dos parten de una copia suya. */
+    var pas = $('pl-pasar');
     if(!pill) return;
     var fecha = $('pl-fecha') ? $('pl-fecha').value : '';
     var titulo = $('pl-titulo') ? $('pl-titulo').value.trim() : '';
@@ -3794,6 +3946,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         aviso.hidden = false;
       }
       if(dup) dup.hidden = true;
+      if(pas) pas.hidden = true;
+      cerrarPasar();
       return;
     }
     if(editandoId){
@@ -3805,12 +3959,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         aviso.hidden = false;
       }
       if(dup) dup.hidden = false;
+      if(pas) pas.hidden = false;
       return;
     }
     pill.textContent = 'Nuevo entrenamiento';
     pill.className = 'pill';
     if(aviso){ aviso.innerHTML = ''; aviso.hidden = true; }
     if(dup) dup.hidden = true;
+    if(pas) pas.hidden = true;
+    cerrarPasar();
+  }
+
+  /* El panel se cierra solo en cuanto se cambia de entrenamiento: si se
+     quedara abierto, estaría preguntando por uno que ya no es el de la
+     pantalla. */
+  function cerrarPasar(){
+    var caja = $('pl-pasar-caja');
+    if(caja) caja.hidden = true;
+    PASAR.sesion = null; PASAR.creadaId = null;
   }
 
   function limpiarFormulario(){
@@ -3848,6 +4014,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function cargarSesionEnForm(s){
     editandoId = s.id;
     COPIA_DE = null;
+    cerrarPasar();   // el panel preguntaba por el entrenamiento anterior
     // si el entrenador ya escribió la duración, esa manda: es un dato, no una estimación
     DURACION_EDIT = (s.duracion_min > 0) ? s.duracion_min : null;
     $('pl-grupo').value = s.grupo_id||'';
@@ -4101,10 +4268,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           /* «Duplicar» solo aparece cuando hay un entrenamiento abierto:
              sobre uno nuevo no hay nada que copiar. */
           '<button class="btn btn--neutro" id="pl-duplicar" hidden>Duplicar</button>'+
+          /* «Pasárselo a otro día» vive aquí, al lado de Duplicar, porque es
+             lo mismo con otro nombre: una copia para otro día, pero dirigida
+             a una persona. Y aparece justo donde el entrenador ya está
+             mirando ese entrenamiento. */
+          '<button class="btn btn--neutro" id="pl-pasar" hidden>Pasárselo a otro día</button>'+
           '<button class="btn btn--neutro" id="pl-nueva">Nuevo / limpiar</button>'+
           '<span class="pill" id="pl-estado">Nuevo entrenamiento</span>'+
           '<span class="msg" id="pl-msg"></span>'+
         '</div>'+
+        cajaPasarHTML()+
       '</div>';
 
     /* El buscador único que vivía aquí se ha quitado entero: cada fila
@@ -4160,6 +4333,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       m.textContent = 'Copia preparada. Cambia lo que quieras y pulsa «Guardar entrenamiento»: el original no se toca.';
       pintarModo();
       $('pl-titulo').focus();
+    });
+
+    /* PASÁRSELO A OTRO DÍA · el panel de arriba, conectado. */
+    $('pl-pasar').addEventListener('click', function(){
+      var caja = $('pl-pasar-caja');
+      if(caja.hidden) abrirPasar(); else cerrarPasar();
+    });
+    $('pl-pasar-no').addEventListener('click', cerrarPasar);
+    $('pl-pasar-lista').addEventListener('change', refrescarPasar);
+    $('pl-pasar-fecha').addEventListener('change', refrescarPasar);
+    $('pl-pasar-ninguno').addEventListener('click', function(){
+      $('pl-pasar-lista').querySelectorAll('.pasar-chk').forEach(function(i){ i.checked = false; });
+      refrescarPasar();
+    });
+    $('pl-pasar-ok').addEventListener('click', hacerPasar);
+    $('pl-pasar-deshacer').addEventListener('click', deshacerPasar);
+    $('pl-pasar-abrir').addEventListener('click', function(){
+      var id = PASAR.creadaId, g = PASAR.sesion ? PASAR.sesion.grupo_id : null;
+      if(!id) return;
+      cerrarPasar();
+      verEntreno(g, id);
     });
 
     // El rótulo dice de qué entrenamiento se está hablando: se refresca al escribir.

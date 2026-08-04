@@ -284,6 +284,16 @@
   .gente .av + .av { margin-left:-8px; }
   .gente .av.resto { background:#fff; color: var(--texto); font-family: var(--fuente-texto); font-weight:500; font-size:13px; }
 
+  /* Qué grupos hay detrás de «Entrenamiento · Escuela»: el grupo y, debajo,
+     lo que hace. Sin cajas: es el detalle de algo que ya se está mirando. */
+  .juntos { margin-top:18px; padding-top:16px; border-top:1px solid var(--crema-banda); }
+  .juntos h3 { margin:0 0 10px; font-size:13px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:var(--texto-tenue); }
+  .juntos ul { list-style:none; margin:0; padding:0; }
+  .juntos li { padding:9px 0; border-bottom:1px solid var(--crema-banda); display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .juntos li:last-child { border-bottom:0; }
+  .juntos li b { font-size:15px; font-weight:600; color:var(--navy); overflow-wrap:anywhere; }
+  .juntos li span { font-size:14px; color:var(--texto-suave); overflow-wrap:anywhere; }
+
   .modal-pie { margin-top:18px; padding-top:16px; border-top:1px solid var(--crema-banda); }
   .modal-pie p { margin:0 0 12px; font-size:15px; color: var(--texto); }
   .modal-pie p.error { color:#b3261e; }
@@ -536,7 +546,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     // --- grupos (lectura pública): nombres y secciones para los filtros ---
     try {
-      var rg = await sb.from('grupos').select('id,nombre,turno,seccion');
+      /* La descripción y las pruebas se piden aquí para poder desplegar, al
+         abrir el entrenamiento de la escuela, qué hace cada grupo. */
+      var rg = await sb.from('grupos').select('id,nombre,turno,seccion,descripcion,pruebas');
       if (!rg.error && rg.data) {
         GRUPOS = {}; var secs = {};
         /* En el calendario cada entrenamiento dice de qué grupo es. La escuela
@@ -630,6 +642,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         fuente: 'entreno', id: id, fecha: f, hora: hhmm(v2.hora || m.hora),
         titulo: v2.titulo || m.titulo || 'Entrenamiento',
         tipoTexto: 'Entrenamiento',
+        grupoId: v2.grupo_id || m.grupo_id || null,
         grupo: grupo ? grupo.nombre : '', lugar: v2.lugar || m.lugar || '',
         seccion: grupo ? grupo.seccion : null,
         plazas: v2.plazas, apuntados: v2.apuntados, libres: v2.libres,
@@ -819,7 +832,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { falla('los eventos del club'); }
 
-    ACTIVIDADES = acts;
+    ACTIVIDADES = juntarEntrenos(acts);
     ACTIVIDADES.forEach(function (a, i) { a.i = i; a.clave = a.fuente + '|' + a.id + '|' + a.fecha; });
     fundirCompeticiones();
 
@@ -837,6 +850,84 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         });
       } catch (e) { FALLO_BONO = true; }
     }
+  }
+
+  // ============================================================
+  //  UN ENTRENAMIENTO, NO DOCE
+  //  ----------------------------------------------------------
+  //  La escuela entera entrena a la vez: seis grupos de color el
+  //  lunes a las 17:30 y otros seis el martes. Doce entradas
+  //  iguales tapan lo que sí pasa una vez, así que se juntan en
+  //  una: «Entrenamiento · Escuela», con su hora, y al abrirla se
+  //  despliega qué grupos son y qué hace cada uno.
+  //
+  //  Se juntan solo los que comparten SECCIÓN y HORA el mismo
+  //  día, y a partir de TRES: con dos —el grupo A y el grupo B un
+  //  martes— son cosas distintas y se dicen por su nombre.
+  //
+  //  Lo TUYO nunca se junta. Si tu grupo entrena ese día, tu
+  //  entrenamiento sigue apareciendo con su nombre y su ficha: el
+  //  calendario del portal está para saber a qué vas tú, y lo
+  //  demás es el contexto. Igual con lo que puedes reservar.
+  // ============================================================
+  var JUNTAR_DESDE = 3;
+
+  function juntarEntrenos(acts) {
+    var lotes = {}, orden = [];
+    acts.forEach(function (a) {
+      if (a.fuente !== 'entreno' || !a.seccion) return;
+      if (a.mio || a.accion) return;   // lo tuyo y lo que puedes reservar, aparte
+      var k = a.fecha + '|' + a.seccion + '|' + (a.hora || '');
+      if (!lotes[k]) { lotes[k] = []; orden.push(k); }
+      lotes[k].push(a);
+    });
+
+    var fuera = {};
+    var juntados = [];
+    orden.forEach(function (k) {
+      var lote = lotes[k];
+      if (lote.length < JUNTAR_DESDE) return;
+      lote.forEach(function (a) { fuera[a.fuente + '|' + a.id] = true; });
+      var uno = lote[0];
+      /* El sitio solo se dice si es el mismo para todos: mejor sin dato que
+         mandar a media escuela al sitio equivocado. */
+      var mismoLugar = lote.every(function (x) { return x.lugar === uno.lugar; });
+      juntados.push({
+        fuente: 'entreno', id: 'juntos-' + k, fecha: uno.fecha, hora: uno.hora,
+        titulo: 'Entrenamiento · ' + seccionNombre(uno.seccion),
+        tipoTexto: 'Entrenamiento',
+        grupoId: null, grupo: '', lugar: mismoLugar ? uno.lugar : '', seccion: uno.seccion,
+        plazas: null, apuntados: null, libres: null, abiertaA: null,
+        mio: false, puedo: false, juntos: lote,
+        estado: 'Toda la ' + seccionNombre(uno.seccion).toLowerCase() + ' a la vez',
+        pillClase: '', nota: '', accion: null,
+        contacto: { href: '../mensajes/', texto: 'Escribir a tu entrenador' }
+      });
+    });
+
+    return acts.filter(function (a) { return !fuera[a.fuente + '|' + a.id]; }).concat(juntados);
+  }
+
+  /* Qué grupos entrenan y, si lo tienen puesto, qué hacen. Solo se enseña
+     lo que existe de verdad en la base: nada inventado. */
+  function htmlGruposJuntos(a) {
+    if (!a.juntos || !a.juntos.length) return '';
+    /* Por nombre: una lista de diez grupos desordenada obliga a leerla
+       entera para encontrar el tuyo. */
+    var lista = a.juntos.slice().sort(function (x, y) {
+      return String(x.grupo || '').localeCompare(String(y.grupo || ''), 'es', { numeric: true });
+    });
+    var filas = lista.map(function (x) {
+      var g = GRUPOS[x.grupoId] || null;
+      var nombre = x.grupo || (g ? g.nombre : '') || 'Grupo del club';
+      var pruebas = (g && g.pruebas)
+        ? String(g.pruebas).split('\n').map(function (t) { return t.trim(); }).filter(Boolean).join(' · ') : '';
+      var que = x.titulo || pruebas || (g ? (g.descripcion || '') : '');
+      if (claveTitulo(que) === claveTitulo(nombre)) que = pruebas || (g ? (g.descripcion || '') : '');
+      return '<li><b>' + esc(nombre) + '</b>' + (que ? '<span>' + esc(que) + '</span>' : '') + '</li>';
+    }).join('');
+    return '<div class="juntos"><h3>' + a.juntos.length + ' grupos, todos a la vez</h3>' +
+      '<ul>' + filas + '</ul></div>';
   }
 
   // ============================================================
@@ -962,7 +1053,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function sinRepetidos(lista) {
     var vistos = {}, salida = [];
     lista.forEach(function (a) {
-      var k = a.fuente + '|' + claveTitulo(a.titulo);
+      /* El juntado no se compara con nadie por el título: «Entrenamiento ·
+         Escuela» se parece demasiado a un entrenamiento sin nombre y se
+         comerían el uno al otro. */
+      var k = a.juntos ? ('juntos|' + a.i) : (a.fuente + '|' + claveTitulo(a.titulo));
       var ya = vistos[k];
       if (ya === undefined) { vistos[k] = salida.length; salida.push(a); return; }
       var previo = salida[ya];
@@ -992,6 +1086,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   /* Primera línea: quién y qué ("La Tribu · series"). */
   function etiquetaCorta(a) {
+    if (a.juntos) return a.titulo;   // ya viene armada: «Entrenamiento · Escuela»
     if (a.fuente === 'cubo') return a.titulo || 'El Cubo';
     if (a.fuente === 'competicion') return a.titulo || 'Competición';
     if (a.fuente === 'cierre') return a.titulo || 'Cierra la inscripción';
@@ -1005,6 +1100,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* Segunda línea: dónde, o qué clase de cita es. */
   function subtitulo(a) {
+    /* Hay que decir que detrás hay varios grupos, o parece que la escuela
+       entrena una sola vez y en un solo sitio. */
+    if (a.juntos) return [a.juntos.length + ' grupos a la vez', a.lugar].filter(Boolean).join(' · ');
     if (a.fuente === 'competicion') {
       return [a.tipoTexto, NOMBRE_AMBITO[a.ambito] || '', a.lugar].filter(Boolean).join(' · ');
     }
@@ -1471,6 +1569,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       fila('Estado', '<span class="pill ' + (a.pillClase || '') + '">' + esc(a.estado || '') + '</span>') +
       fila('Nota', esc(a.nota || a.descripcion || (f && f.comp ? (f.comp.notas || '') : ''))) +
       '</div>';
+
+    h += htmlGruposJuntos(a);
 
     /* Enlace a la ficha de esa competición concreta (solo si sabemos cuál es) */
     var verFicha = (esComp && a.compId)
