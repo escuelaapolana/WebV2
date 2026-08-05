@@ -14,6 +14,7 @@
 <script src="../../assets/js/admin-auth.js"></script>
 <script src="../../assets/js/admin-tabbar.js" defer></script>
 <script src="../../assets/js/admin-filtros.js" defer></script>
+<script src="../../assets/js/biblioteca.js" defer></script>
 <style>
   body { background: var(--crema-media); }
   .admin-wrap { max-width: 1040px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
@@ -78,7 +79,9 @@
   .filtros label { margin: 0 0 5px; }
   .filtros .crece { flex: 1 1 200px; }
   .filtros .crece input { width: 100%; }
-  .btn-fav { border: 1px solid var(--linea-borde); background: #fff; color: var(--navy); padding: 10px 14px; border-radius: 999px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  /* Se tocan con el dedo: 44 px como todo lo demás de la casa. */
+  .btn-fav { border: 1px solid var(--linea-borde); background: #fff; color: var(--navy); padding: 10px 14px; border-radius: 999px; font-size: 14px; cursor: pointer; white-space: nowrap; min-height: 44px; }
+  input[type=file] { min-height: 44px; }
   .btn-fav.activo { border-color: #e0a800; background: #fff8e1; color: #7a5b00; }
   .cuenta-vista { font-size: 13px; color: var(--texto-suave); margin: 4px 0 14px; }
 
@@ -97,6 +100,18 @@
   .foto .cat-sel { width: 100%; }
   .foto .nombre { font-size: 13px; color: var(--texto-suave); word-break: break-all; line-height: 1.3; }
   .foto .fecha { font-size: 13px; color: var(--texto-suave); }
+
+  /* El estado de cada foto se ve de un vistazo, sin abrir nada: estar
+     guardada y estar publicada son dos cosas distintas y hay que
+     poder distinguirlas desde la rejilla. */
+  .sello { position: absolute; left: 8px; bottom: 8px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    background: rgba(255,255,255,.94); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  .sello::before { content: ''; width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
+  .sello--publicada { color: #1e7a3d; }
+  .sello--guardada   { color: var(--texto-suave); }
+  .foto .grupo { font-size: 13px; color: var(--navy); font-weight: 600; line-height: 1.3; }
   .foto .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
   /* «Borrar» se separa de «Copiar enlace»: borra la foto de verdad. */
   .foto .acciones .btn--peligro { margin-left: auto; }
@@ -160,6 +175,22 @@
         </div>
       </details>
 
+      <!-- Es la regla de la casa desde ahora, y conviene que se lea la
+           primera vez que alguien entra aquí: guardar y publicar dejaron
+           de ser lo mismo. -->
+      <details class="plegable">
+        <summary>Qué se ve fuera y qué no</summary>
+        <div class="dentro">
+          <p>Esta biblioteca es interna. Lo que subes aquí <strong>no se publica</strong>: solo lo ve
+            quien entra al panel como administración, y desde fuera no se llega ni sabiendo la dirección.</p>
+          <p style="margin-top:8px;">Una foto se publica cuando la eliges para un hueco de la web
+            —la portada, la cabecera de una sección, la galería— desde
+            <a href="../imagenes/">Fotos de la web</a> o <a href="../paginas/">Páginas</a>.
+            Si la quitas de ahí y no está en ningún otro sitio, deja de estar publicada
+            y vuelve a verse solo aquí.</p>
+        </div>
+      </details>
+
       <div class="subida-fila">
         <div>
           <label for="file-subir">Fotos (puedes elegir muchas a la vez)</label>
@@ -197,17 +228,28 @@
           <label for="f-categoria">Sección</label>
           <select id="f-categoria"></select>
         </div>
+        <!-- Con cientos de fotos, la pregunta de verdad no es «¿de qué
+             sección es?» sino «¿de qué día es?». El acontecimiento sale
+             del nombre del archivo, así que agrupa solo. -->
+        <div>
+          <label for="f-grupo">Acontecimiento</label>
+          <select id="f-grupo"></select>
+        </div>
         <div>
           <label for="f-orden">Ordenar por</label>
           <select id="f-orden"></select>
         </div>
         <div class="crece">
-          <label for="f-busca">Buscar por nombre o título</label>
+          <label for="f-busca">Buscar por nombre, título o fecha</label>
           <input type="text" id="f-busca" placeholder="Escribe para buscar…">
         </div>
         <div>
           <label>&nbsp;</label>
           <button type="button" class="btn-fav" id="f-favoritas">☆ Solo favoritas</button>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button type="button" class="btn-fav" id="f-publicadas">Solo las publicadas</button>
         </div>
       </div>
       <div class="cuenta-vista" id="cuenta-vista"></div>
@@ -259,50 +301,21 @@
 <script>
 APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
-  var CARPETA = 'biblioteca';
+  var BIB = window.APOLANA_BIBLIO;
+  var CARPETA = BIB.CARPETA_BIBLIO;
 
-  // Secciones del club. El valor '' es «Sin categoría».
-  var CATS = [
-    { v: 'escuela',          t: 'Escuela' },
-    { v: 'escuela-natacion', t: 'Escuela de natación' },
-    { v: 'escuela-municipal',t: 'Escuela municipal' },
-    { v: 'competicion',      t: 'Competición' },
-    { v: 'running',          t: 'Running' },
-    { v: 'natacion',         t: 'Natación' },
-    { v: 'triatlon',         t: 'Triatlón' },
-    { v: 'montana',          t: 'Montaña' },
-    { v: 'cubo',             t: 'El Cubo' },
-    { v: 'campus',           t: 'Campus' },
-    { v: 'instalaciones',    t: 'Instalaciones' },
-    { v: 'club',             t: 'Club / general' },
-    { v: 'eventos',          t: 'Eventos' },
-    { v: 'equipacion',       t: 'Equipación' },
-    { v: 'otras',            t: 'Otras' }
-  ];
-  var SIN = 'Sin categoría';
-  function etiquetaCat(v) {
-    if (!v) return SIN;
-    for (var i = 0; i < CATS.length; i++) if (CATS[i].v === v) return CATS[i].t;
-    return v;
-  }
+  // Las secciones y la forma de enseñar cada foto viven en
+  // assets/js/biblioteca.js, que es lo que comparten las cuatro
+  // pantallas del panel que tocan fotos.
+  var CATS = BIB.CATS;
+  var SIN = BIB.SIN;
+  var etiquetaCat = BIB.etiquetaCat;
+  var esc = BIB.esc;
 
-  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
-  // La dirección de una foto según de dónde venga:
-  //  · dirección completa (http…, //… o data:) -> se usa tal cual
-  //  · ruta que empieza por «assets/» -> es una foto del propio sitio, no del almacén;
-  //    se resuelve contra la raíz (esta página cuelga de /admin/biblioteca/)
-  //  · el resto -> almacén «imagenes» de Supabase, como siempre
-  function urlPublica(ruta){
-    var r = String(ruta == null ? '' : ruta);
-    if (/^(https?:)?\/\//i.test(r) || /^data:/i.test(r)) return r;
-    var limpia = r.replace(/^\.?\//, '');
-    if (limpia.indexOf('assets/') === 0) {
-      var b = window.APOLANA_BASE || '../../';
-      try { return new URL(b + limpia, location.href).href; }
-      catch (e) { return b + limpia; }
-    }
-    return sb.storage.from('imagenes').getPublicUrl(r).data.publicUrl;
-  }
+  // La dirección con la que se enseña la miniatura. Las de la biblioteca
+  // están en un almacén privado, así que no es una dirección fija: es un
+  // enlace temporal que se pide y se renueva solo.
+  function urlPublica(foto){ return BIB.miniatura(sb, foto); }
   function fecha(ts){
     if (!ts) return '';
     try { return new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }); }
@@ -374,6 +387,8 @@ APOLANA_ADMIN.listo(function (sb) {
   var FOTOS = [];        // todas las fichas cargadas
   var fCat = '';         // '' = todas · '__sin' = sin categoría · valor = una sección
   var fFav = false;      // solo favoritas
+  var fPub = false;      // solo las que están puestas en algún sitio de la web
+  var fGrupo = '';       // '' = todos los acontecimientos
   var fBusca = '';
   var fOrden = 'recientes';
   var SEL = {};          // ids marcados con la casilla { id: true }
@@ -414,19 +429,27 @@ APOLANA_ADMIN.listo(function (sb) {
     if (prev) { $('f-categoria').value = prev; if ($('f-categoria').value !== prev) { fCat = ''; } }
   }
 
+  /* Desplegable de acontecimientos. Se ordena por fecha, de lo más
+     nuevo a lo más viejo: quien busca una foto casi siempre busca la
+     del último acto, no la de 2019. */
+  function pintarFiltroGrupo() {
+    var grupos = BIB.agrupar(FOTOS).filter(function (g) { return g.clave.indexOf('__') !== 0; });
+    var h = '<option value="">Todos (' + FOTOS.length + ')</option>';
+    for (var i = 0; i < grupos.length; i++) {
+      var g = grupos[i];
+      var f = g.fecha ? ' · ' + String(g.fecha).slice(0, 4) : '';
+      h += '<option value="' + esc(g.clave) + '">' + esc(g.titulo) + f + ' (' + g.fotos.length + ')</option>';
+    }
+    var prev = fGrupo;
+    $('f-grupo').innerHTML = h;
+    if (prev) { $('f-grupo').value = prev; if ($('f-grupo').value !== prev) fGrupo = ''; }
+  }
+
   // --- Filtrar según los controles de arriba ---
   function filtradas() {
-    var q = fBusca.trim().toLowerCase();
-    return FOTOS.filter(function (f) {
-      if (fFav && !f.favorita) return false;
-      if (fCat === '__sin') { if (f.categoria) return false; }
-      else if (fCat && f.categoria !== fCat) return false;
-      if (q) {
-        var texto = ((f.titulo || '') + ' ' + (f.nombre || '')).toLowerCase();
-        if (texto.indexOf(q) === -1) return false;
-      }
-      return true;
-    });
+    var l = BIB.filtrar(FOTOS, { categoria: fCat, favoritas: fFav, publicadas: fPub, busca: fBusca });
+    if (fGrupo) l = l.filter(function (f) { return (f.grupo || '') === fGrupo; });
+    return l;
   }
 
   // --- Ordenar lo que se ve ---
@@ -482,12 +505,23 @@ APOLANA_ADMIN.listo(function (sb) {
   // --- Pintar la rejilla ---
   function render() {
     var lista = ordenadas(filtradas());
-    var favTotal = 0;
-    for (var k = 0; k < FOTOS.length; k++) if (FOTOS[k].favorita) favTotal++;
+    var favTotal = 0, pubTotal = 0;
+    for (var k = 0; k < FOTOS.length; k++) {
+      if (FOTOS[k].favorita) favTotal++;
+      if (FOTOS[k].publicada_ruta) pubTotal++;
+    }
     $('f-favoritas').innerHTML = (fFav ? '★ Solo favoritas' : '☆ Solo favoritas') + ' (' + favTotal + ')';
     $('f-favoritas').classList.toggle('activo', fFav);
+    $('f-publicadas').innerHTML = 'Solo las publicadas (' + pubTotal + ')';
+    $('f-publicadas').classList.toggle('activo', fPub);
 
-    $('cuenta-vista').textContent = 'Mostrando ' + lista.length + ' de ' + FOTOS.length + ' foto' + (FOTOS.length === 1 ? '' : 's') + '.';
+    /* Se dice cuántas se ven y cuántas están publicadas, porque es la
+       diferencia que trae todo esto: tener 272 fotos guardadas y 12
+       publicadas no es lo mismo que tener 272 publicadas. */
+    $('cuenta-vista').textContent = 'Mostrando ' + lista.length + ' de ' + FOTOS.length +
+      ' foto' + (FOTOS.length === 1 ? '' : 's') + '. ' +
+      (pubTotal === 0 ? 'Ninguna está publicada en la web.'
+                      : (pubTotal === 1 ? '1 está publicada en la web.' : pubTotal + ' están publicadas en la web.'));
     limpiarSeleccionFantasma();
     pintarBarraSel();
 
@@ -511,21 +545,31 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     rej.innerHTML = lista.map(function (f) {
-      var url = urlPublica(f.ruta);
+      var url = urlPublica(f);
       var m = !!SEL[f.id];
+      var pub = !!f.publicada_ruta;
+      /* Del día de la foto interesa el del acontecimiento, no el de la
+         subida: todas estas se subieron el mismo día y eso no dice nada. */
+      var cuando = f.fecha_foto ? BIB.fechaLarga(f.fecha_foto) : ('Subida el ' + fecha(f.created_at));
       return '<div class="foto' + (m ? ' marcada' : '') + '" data-id="' + esc(f.id) + '">' +
         '<div class="thumb">' +
-          '<img src="' + esc(url) + '" alt="" loading="lazy">' +
+          '<img src="' + esc(url) + '" alt="" loading="lazy" data-ruta="' + esc(f.ruta) + '" data-cubo="' + esc(f.cubo || '') + '">' +
           '<label class="marca" title="Marcar esta foto"><span><input type="checkbox" data-marca' + (m ? ' checked' : '') + ' aria-label="Marcar esta foto"></span></label>' +
           '<button type="button" class="estrella' + (f.favorita ? ' activa' : '') + '" data-fav aria-label="Marcar como favorita" title="Favorita">' + (f.favorita ? '★' : '☆') + '</button>' +
+          '<span class="sello ' + (pub ? 'sello--publicada' : 'sello--guardada') + '">' + (pub ? 'Publicada' : 'Solo aquí') + '</span>' +
         '</div>' +
         '<div class="pie">' +
+          (f.grupo ? '<div class="grupo">' + esc(f.grupo) + '</div>' : '') +
           '<input type="text" class="titulo-in" data-titulo value="' + esc(f.titulo || '') + '" placeholder="Título (opcional)">' +
           '<select class="cat-sel" data-cat>' + opcionesCatTarjeta(f.categoria || '') + '</select>' +
-          '<div class="fecha">Subida el ' + esc(fecha(f.created_at)) + '</div>' +
+          '<div class="fecha">' + esc(cuando) + '</div>' +
           '<div class="nombre">' + esc(f.nombre || f.ruta) + '</div>' +
           '<div class="acciones">' +
-            '<button type="button" class="btn btn--fantasma btn--mini" data-copiar>Copiar enlace</button>' +
+            /* «Copiar enlace» solo aparece si la foto está publicada, que
+               es cuando hay una dirección de verdad que pegar. En una que
+               no lo está, el enlace caducaría en una hora y quien lo
+               pegara en un correo mandaría un enlace roto sin saberlo. */
+            (pub ? '<button type="button" class="btn btn--fantasma btn--mini" data-copiar>Copiar enlace</button>' : '') +
             '<button type="button" class="btn btn--peligro" data-borrar>Borrar</button>' +
           '</div>' +
         '</div>' +
@@ -538,9 +582,9 @@ APOLANA_ADMIN.listo(function (sb) {
   // --- Cargar todas las fichas ---
   async function cargar() {
     $('msg-lista').innerHTML = ADM.esqueleto(2); $('msg-lista').className = 'msg';
-    var r = await sb.from('biblioteca_fotos')
-      .select('id,ruta,nombre,titulo,categoria,favorita,created_at')
-      .order('created_at', { ascending: false });
+    // Trae las fichas y, de paso, pide los enlaces temporales de las que
+    // están en el almacén privado. Todos de golpe, no de uno en uno.
+    var r = await BIB.cargar(sb);
     /* En ámbar y con botón de reintentar: no es que la biblioteca esté vacía,
        es que no se ha podido leer, y eso se arregla volviendo a intentarlo. */
     if (r.error) {
@@ -549,10 +593,26 @@ APOLANA_ADMIN.listo(function (sb) {
       $('rejilla').innerHTML = '';
       return;
     }
-    FOTOS = r.data || [];
+    FOTOS = r.fotos || [];
     pintarFiltroCategoria();
+    pintarFiltroGrupo();
     render();
+    /* Si alguna miniatura se ha quedado sin enlace, se dice. Un hueco gris
+       sin explicación se lee como «esa foto se ha perdido», y no es eso. */
+    if (r.sinFirmar) {
+      $('msg-lista').className = 'msg';
+      $('msg-lista').innerHTML = ADM.error('No hemos podido preparar ' + r.sinFirmar +
+        ' miniatura' + (r.sinFirmar === 1 ? '' : 's') + '. Las fotos están bien; es la vista la que se ha quedado a medias.', cargar);
+    }
   }
+
+  /* Los enlaces de la biblioteca caducan a la hora. Esto los renueva
+     solo, así que dejar la pantalla abierta toda la mañana no llena la
+     rejilla de fotos rotas. */
+  BIB.vigilarCaducidad(sb, function () {
+    return FOTOS.filter(function (f) { return f.cubo === BIB.CUBO_PRIVADO; })
+                .map(function (f) { return f.ruta; });
+  }, document.getElementById('rejilla'));
 
   // --- Subida múltiple ---
   var subiendo = false;
@@ -580,15 +640,16 @@ APOLANA_ADMIN.listo(function (sb) {
 
       var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
       var ruta = CARPETA + '/' + Date.now() + '-' + i + '-' + limpio;
-      var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+      // Al almacén privado: subir una foto ya no la publica.
+      var up = await sb.storage.from(BIB.CUBO_PRIVADO).upload(ruta, file, { cacheControl: '3600', upsert: false });
       if (up.error) { fallos.push(file.name + ': ' + up.error.message); continue; }
 
       var ins = await sb.from('biblioteca_fotos').insert({
-        ruta: ruta, nombre: file.name, categoria: categoria, subida_por: pid
+        ruta: ruta, cubo: BIB.CUBO_PRIVADO, nombre: file.name, categoria: categoria, subida_por: pid
       });
       if (ins.error) {
-        // La foto ya está en el bucket pero no se guardó su ficha: la retiramos para no dejar huérfanos.
-        await sb.storage.from('imagenes').remove([ruta]);
+        // La foto ya está en el almacén pero no se guardó su ficha: la retiramos para no dejar huérfanos.
+        await sb.storage.from(BIB.CUBO_PRIVADO).remove([ruta]);
         fallos.push(file.name + ': ' + ins.error.message);
         continue;
       }
@@ -614,8 +675,10 @@ APOLANA_ADMIN.listo(function (sb) {
 
   // --- Filtros y orden ---
   $('f-categoria').addEventListener('change', function () { fCat = this.value; render(); });
+  $('f-grupo').addEventListener('change', function () { fGrupo = this.value; render(); });
   $('f-busca').addEventListener('input', function () { fBusca = this.value; render(); });
   $('f-favoritas').addEventListener('click', function () { fFav = !fFav; render(); });
+  $('f-publicadas').addEventListener('click', function () { fPub = !fPub; render(); });
   $('f-orden').addEventListener('change', function () {
     fOrden = this.value;
     try { localStorage.setItem(CLAVE_ORDEN, fOrden); } catch (e) {}
@@ -638,6 +701,28 @@ APOLANA_ADMIN.listo(function (sb) {
     var mapa = {}; for (var i = 0; i < ids.length; i++) mapa[ids[i]] = true;
     for (var j = 0; j < FOTOS.length; j++) if (mapa[FOTOS[j].id]) for (var c in cambios) FOTOS[j][c] = cambios[c];
   }
+  /* Borrar los archivos de un montón de fotos. Cada una puede vivir en
+     un almacén distinto, y además puede tener una copia publicada que
+     hay que retirar también: si se borrara solo el original, la copia se
+     quedaría en el almacén público para siempre, que es justo lo que
+     veníamos a evitar. Las que son archivos del propio sitio no se
+     tocan: esas no las gestiona el panel. */
+  async function borrarArchivos(fotos) {
+    var porCubo = {}, error = null;
+    fotos.forEach(function (f) {
+      if (f.cubo === 'sitio') return;
+      (porCubo[f.cubo] = porCubo[f.cubo] || []).push(f.ruta);
+      if (f.publicada_ruta && f.publicada_ruta !== f.ruta) {
+        (porCubo[BIB.CUBO_PUBLICO] = porCubo[BIB.CUBO_PUBLICO] || []).push(f.publicada_ruta);
+      }
+    });
+    for (var cubo in porCubo) {
+      var r = await sb.storage.from(cubo).remove(porCubo[cubo]);
+      if (r.error && !error) error = r.error;
+    }
+    return { error: error };
+  }
+
   function bloquearBotones(si) {
     var b = ['btn-sel-cat', 'btn-sel-fav', 'btn-sel-nofav', 'btn-sel-borrar', 'sel-todas', 'sel-ninguna', 'btn-sugerir'];
     for (var i = 0; i < b.length; i++) $(b[i]).disabled = si;
@@ -693,10 +778,16 @@ APOLANA_ADMIN.listo(function (sb) {
   $('btn-sel-borrar').addEventListener('click', async function () {
     var sel = seleccionadas();
     if (!sel.length) return;
-    if (!await apoConfirm({ titulo: 'Borrar ' + sel.length + ' foto' + (sel.length === 1 ? '' : 's'), texto: 'Se borra la ficha y también el archivo. Si alguna está en uso en alguna página, dejará de verse.\n\nNo se puede deshacer.', peligro: true })) return;
+    /* Si alguna está publicada se dice cuántas y con nombre y apellidos:
+       borrarla deja un hueco en una página de la web, y eso no se puede
+       enterar uno después. */
+    var pubs = sel.filter(function (f) { return f.publicada_ruta; }).length;
+    var aviso = 'Se borra la ficha y también el archivo. No se puede deshacer.';
+    if (pubs) aviso = (pubs === 1 ? 'Una de ellas está publicada' : pubs + ' de ellas están publicadas') +
+      ' en la web ahora mismo: al borrarla, esa página se quedará con un hueco.\n\n' + aviso;
+    if (!await apoConfirm({ titulo: 'Borrar ' + sel.length + ' foto' + (sel.length === 1 ? '' : 's'), texto: aviso, peligro: true })) return;
 
     var ids = sel.map(function (f) { return f.id; });
-    var rutas = sel.map(function (f) { return f.ruta; });
     bloquearBotones(true); avisoBloque('Borrando…');
     var tandas = trozos(ids, 100), fallo = null;
     for (var i = 0; i < tandas.length && !fallo; i++) {
@@ -704,7 +795,7 @@ APOLANA_ADMIN.listo(function (sb) {
       if (r.error) fallo = r.error;
     }
     if (fallo) { bloquearBotones(false); avisoBloque('No se pudieron borrar las fichas: ' + fallo.message, 'error'); cargar(); return; }
-    var ds = await sb.storage.from('imagenes').remove(rutas);
+    var ds = await borrarArchivos(sel);
     bloquearBotones(false);
 
     var mapa = {}; for (var j = 0; j < ids.length; j++) mapa[ids[j]] = true;
@@ -745,7 +836,7 @@ APOLANA_ADMIN.listo(function (sb) {
       $('sug-lista').innerHTML = props.map(function (p) {
         return '<div class="sug-fila" data-id="' + esc(p.f.id) + '">' +
           '<label class="sug-check"><input type="checkbox" data-sug-check checked aria-label="Aplicar esta sugerencia"></label>' +
-          '<div class="sug-thumb"><img src="' + esc(urlPublica(p.f.ruta)) + '" alt="" loading="lazy"></div>' +
+          '<div class="sug-thumb"><img src="' + esc(urlPublica(p.f)) + '" alt="" loading="lazy" data-ruta="' + esc(p.f.ruta) + '" data-cubo="' + esc(p.f.cubo || '') + '"></div>' +
           '<div class="sug-datos"><div class="sug-nombre">' + esc(p.f.nombre || p.f.ruta) + '</div></div>' +
           '<select data-sug-cat aria-label="Sección sugerida">' + opcionesCatTarjeta(p.cat) + '</select>' +
         '</div>';
@@ -815,9 +906,11 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
 
-    // Copiar enlace
+    // Copiar enlace · solo sale en las publicadas, y da la dirección
+    // pública de verdad, la que sirve para pegarla en cualquier sitio.
     if (e.target.closest('[data-copiar]')) {
-      var url = urlPublica(f.ruta);
+      if (!f.publicada_ruta) return;
+      var url = BIB.urlPublicaDe(sb, f.publicada_ruta);
       var t = e.target.closest('[data-copiar]');
       try {
         await navigator.clipboard.writeText(url);
@@ -829,13 +922,17 @@ APOLANA_ADMIN.listo(function (sb) {
 
     // Borrar (ficha + archivo del bucket)
     if (e.target.closest('[data-borrar]')) {
-      if (!await apoConfirm({ titulo: 'Borrar la foto', texto: 'Si está en uso en alguna página, dejará de verse. No se puede deshacer.', peligro: true })) return;
+      var texto = f.publicada_ruta
+        ? 'Esta foto está publicada en la web ahora mismo: al borrarla, esa página se quedará con un hueco.\n\nNo se puede deshacer.'
+        : 'Se borra la ficha y también el archivo. No se puede deshacer.';
+      if (!await apoConfirm({ titulo: 'Borrar la foto', texto: texto, peligro: true })) return;
       var db = await sb.from('biblioteca_fotos').delete().eq('id', id);
       if (db.error) { apoToast('No se pudo borrar la ficha: ' + db.error.message, 'error'); return; }
-      var ds = await sb.storage.from('imagenes').remove([f.ruta]);
+      var ds = await borrarArchivos([f]);
       if (ds.error) { apoToast('Se borró la ficha, pero el archivo no: ' + ds.error.message, 'error'); }
       FOTOS = FOTOS.filter(function (x) { return String(x.id) !== String(id); });
       pintarFiltroCategoria();
+      pintarFiltroGrupo();
       render();
       return;
     }

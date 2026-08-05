@@ -13,6 +13,7 @@
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/admin-auth.js"></script>
 <script src="../../assets/js/admin-tabbar.js" defer></script>
+<script src="../../assets/js/biblioteca.js" defer></script>
 <style>
   body { background: var(--crema-media); }
   .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
@@ -303,15 +304,17 @@ APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
-  var CARPETA_LOGOS = 'colaboradores';  // dentro del bucket «imagenes»
-  var CARPETA_BIBLIO = 'biblioteca';
+  var CARPETA_LOGOS = 'colaboradores';  // dentro del almacén público «imagenes»
+  var BIB = window.APOLANA_BIBLIO;
 
   var TEXTO_MOSTRAR = { logo: 'Solo el logo', nombre: 'Solo el nombre', ambos: 'Logo y nombre' };
 
   var COLABS = [];        // lo que hay ahora mismo en pantalla
   var guardando = false;
 
-  function urlDeRuta(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
+  // Los logos propios sí viven en el almacén público: son de patrocinadores
+  // y están para verse. Lo que no se publica sin más es la biblioteca del club.
+  function urlDeRuta(ruta){ return BIB.urlPublicaDe(sb, ruta); }
 
   /* ---------------------------------------------------------------
      LISTA
@@ -469,7 +472,11 @@ APOLANA_ADMIN.listo(function (sb) {
       // Si su logo era un archivo propio (carpeta «colaboradores/»), se retira
       // también del almacén. Los de la biblioteca NO se tocan: son de todos.
       if (f.logo_ruta && f.logo_ruta.indexOf(CARPETA_LOGOS + '/') === 0) {
-        try { await sb.storage.from('imagenes').remove([f.logo_ruta]); } catch (err) {}
+        try { await sb.storage.from(BIB.CUBO_PUBLICO).remove([f.logo_ruta]); } catch (err) {}
+      } else if (f.logo_url) {
+        /* Venía de la biblioteca: el original no se toca nunca, pero su
+           copia pública se retira si ya no la usa nadie más. */
+        try { await BIB.despublicarSiSobra(sb, f.logo_url); } catch (err) {}
       }
       cargar();
     }
@@ -489,6 +496,8 @@ APOLANA_ADMIN.listo(function (sb) {
      FORMULARIO
      --------------------------------------------------------------- */
   var rutaAnterior = null;  // logo propio que habrá que retirar si se cambia
+  var urlAnteriorLogo = '';  // el que estaba puesto al abrir la ficha
+  var fotoElegida = null;    // foto de la biblioteca elegida y aún sin publicar
 
   function pintarLogo(url) {
     var marco = $('c-marco');
@@ -533,6 +542,11 @@ APOLANA_ADMIN.listo(function (sb) {
     $('c-logo-url').value = c.logo_url || '';
     $('c-logo-ruta').value = c.logo_ruta || '';
     rutaAnterior = c.logo_ruta || null;
+    /* El logo que estaba puesto antes de tocar nada. Si se cambia por
+       otro y este venía de la biblioteca, hay que retirar su copia
+       pública (salvo que la esté usando algún otro sitio de la web). */
+    urlAnteriorLogo = c.logo_url || '';
+    fotoElegida = null;
     var m = c.mostrar || 'ambos';
     var radio = document.querySelector('input[name="c-mostrar"][value="' + m + '"]');
     if (radio) radio.checked = true;
@@ -611,7 +625,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (file) {
       var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
       var ruta = CARPETA_LOGOS + '/' + Date.now() + '-' + limpio;
-      var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+      var up = await sb.storage.from(BIB.CUBO_PUBLICO).upload(ruta, file, { cacheControl: '3600', upsert: false });
       if (up.error) {
         $('msg-form').textContent = 'No se pudo subir el logo: ' + up.error.message;
         $('msg-form').className = 'msg error';
@@ -619,7 +633,24 @@ APOLANA_ADMIN.listo(function (sb) {
         return;
       }
       logoRuta = ruta;
-      logoUrl = urlDeRuta(ruta);
+      logoUrl = BIB.urlPublicaDe(sb, ruta);
+    }
+
+    /* AQUÍ SE PUBLICA. Si el logo viene de la biblioteca, hasta ahora
+       solo se estaba viendo en esta pantalla con un enlace temporal. Al
+       guardar se hace la copia en el almacén público, y es esa copia la
+       que queda en Internet. Si falla no se guarda nada: guardar la
+       dirección de una foto que no se ha copiado dejaría la web con un
+       hueco. */
+    if (fotoElegida && !file) {
+      var pub = await BIB.publicar(sb, fotoElegida);
+      if (pub.error) {
+        $('msg-form').textContent = 'No se ha podido publicar la foto: ' + pub.error.message;
+        $('msg-form').className = 'msg error';
+        guardando = false; $('btn-guardar').disabled = false;
+        return;
+      }
+      logoUrl = pub.url;
     }
 
     var orden = parseInt($('c-orden').value, 10);
@@ -646,7 +677,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if (r.error) {
       // Si la fila no se guardó pero el archivo sí subió, se retira el archivo.
-      if (file && logoRuta) { try { await sb.storage.from('imagenes').remove([logoRuta]); } catch (err) {} }
+      if (file && logoRuta) { try { await sb.storage.from(BIB.CUBO_PUBLICO).remove([logoRuta]); } catch (err) {} }
       $('msg-form').textContent = 'Error: ' + r.error.message;
       $('msg-form').className = 'msg error';
       guardando = false; $('btn-guardar').disabled = false;
@@ -655,8 +686,16 @@ APOLANA_ADMIN.listo(function (sb) {
 
     // El logo propio que ha quedado sin usar se retira del almacén.
     if (rutaAnterior && rutaAnterior !== logoRuta && rutaAnterior.indexOf(CARPETA_LOGOS + '/') === 0) {
-      try { await sb.storage.from('imagenes').remove([rutaAnterior]); } catch (err) {}
+      try { await sb.storage.from(BIB.CUBO_PUBLICO).remove([rutaAnterior]); } catch (err) {}
     }
+    /* Y si el de antes venía de la biblioteca, se despublica: solo si no
+       lo está usando ningún otro sitio de la web, que eso lo contesta la
+       base. Va después de guardar y sin cortar nada si falla. */
+    if (urlAnteriorLogo && urlAnteriorLogo !== logoUrl) {
+      try { await BIB.despublicarSiSobra(sb, urlAnteriorLogo); } catch (err) {}
+    }
+    urlAnteriorLogo = logoUrl || '';
+    fotoElegida = null;
 
     guardando = false;
     $('btn-guardar').disabled = false;
@@ -671,6 +710,11 @@ APOLANA_ADMIN.listo(function (sb) {
      --------------------------------------------------------------- */
   var BIBLIO = [], bBusca = '';
 
+  function fotoPorId(id) {
+    for (var i = 0; i < BIBLIO.length; i++) if (String(BIBLIO[i].id) === String(id)) return BIBLIO[i];
+    return null;
+  }
+
   function renderBiblio() {
     var rej = $('rejilla-biblio');
     if (!BIBLIO.length) {
@@ -679,16 +723,13 @@ APOLANA_ADMIN.listo(function (sb) {
       $('msg-biblio').className = 'msg';
       return;
     }
-    var q = bBusca.trim().toLowerCase();
-    var lista = BIBLIO.filter(function (f) {
-      if (!q) return true;
-      return ((f.titulo || '') + ' ' + (f.nombre || '')).toLowerCase().indexOf(q) !== -1;
-    });
+    var lista = BIB.filtrar(BIBLIO, { busca: bBusca });
     if (!lista.length) { $('msg-biblio').textContent = 'No hay fotos con ese nombre.'; $('msg-biblio').className = 'msg'; rej.innerHTML = ''; return; }
     $('msg-biblio').textContent = '';
     rej.innerHTML = lista.map(function (f) {
-      return '<button type="button" class="foto-op" data-url="' + esc(f.url) + '" data-ruta="' + esc(f.ruta) + '">' +
-        '<div class="thumb"><img src="' + esc(f.url) + '" alt="" loading="lazy"></div>' +
+      var url = BIB.miniatura(sb, f);
+      return '<button type="button" class="foto-op" data-id="' + esc(f.id) + '">' +
+        '<div class="thumb"><img src="' + esc(url) + '" alt="" loading="lazy" data-ruta="' + esc(f.ruta) + '" data-cubo="' + esc(f.cubo || '') + '"></div>' +
         '<div class="nom">' + esc(f.titulo || f.nombre || '') + '</div>' +
       '</button>';
     }).join('');
@@ -700,21 +741,14 @@ APOLANA_ADMIN.listo(function (sb) {
     $('rejilla-biblio').innerHTML = '';
     $('msg-biblio').innerHTML = ADM.esqueleto(2); $('msg-biblio').className = 'msg';
 
-    var r = await sb.from('biblioteca_fotos')
-      .select('ruta,nombre,titulo,created_at')
-      .order('created_at', { ascending: false });
-    if (!r.error && r.data && r.data.length) {
-      BIBLIO = r.data.map(function (f) {
-        return { ruta: f.ruta, nombre: f.nombre || f.ruta, titulo: f.titulo || '', url: urlDeRuta(f.ruta) };
-      });
-      renderBiblio();
+    /* Ya no hay recambio «listar el almacén a pelo»: la biblioteca es
+       privada y lo que hay dentro no está publicado. */
+    var r = await BIB.cargar(sb);
+    if (r.error) {
+      $('msg-biblio').innerHTML = ADM.error('No hemos podido cargar la biblioteca. ' + r.error.message, abrirBiblioteca);
       return;
     }
-    // Recambio: si la tabla de fichas falla o está vacía, se lista el almacén.
-    var rb = await sb.storage.from('imagenes').list(CARPETA_BIBLIO, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-    if (rb.error) { $('msg-biblio').textContent = 'No se pudo cargar la biblioteca: ' + rb.error.message; $('msg-biblio').className = 'msg error'; return; }
-    BIBLIO = (rb.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; })
-      .map(function (f) { return { ruta: CARPETA_BIBLIO + '/' + f.name, nombre: f.name, titulo: '', url: urlDeRuta(CARPETA_BIBLIO + '/' + f.name) }; });
+    BIBLIO = r.fotos || [];
     renderBiblio();
   }
   function cerrarBiblioteca() { $('modal').classList.add('oculto'); }
@@ -726,15 +760,28 @@ APOLANA_ADMIN.listo(function (sb) {
   $('rejilla-biblio').addEventListener('click', function (e) {
     var op = e.target.closest ? e.target.closest('.foto-op') : null;
     if (!op) return;
-    $('c-logo-url').value = op.getAttribute('data-url');
+    var f = fotoPorId(op.getAttribute('data-id'));
+    if (!f) return;
+    /* Se apunta la ficha, no una dirección: la dirección pública se crea
+       al guardar, que es cuando la foto se publica de verdad. Elegir y
+       cerrar sin guardar no publica nada. */
+    fotoElegida = f;
+    var vistaPrevia = BIB.miniatura(sb, f);
+    $('c-logo-url').value = vistaPrevia;
     // Foto de la biblioteca: NO se guarda su ruta como «propia», para que al
     // cambiar o borrar el colaborador no se borre una foto que es de todos.
     $('c-logo-ruta').value = '';
     $('c-archivo').value = '';
     $('c-archivo-nombre').textContent = '';
-    pintarLogo(op.getAttribute('data-url'));
+    pintarLogo(vistaPrevia);
     cerrarBiblioteca();
   });
+
+  /* Los enlaces de las miniaturas caducan a la hora: se renuevan solos. */
+  BIB.vigilarCaducidad(sb, function () {
+    return BIBLIO.filter(function (f) { return f.cubo === BIB.CUBO_PRIVADO; })
+                 .map(function (f) { return f.ruta; });
+  }, document.getElementById('modal'));
 
   cargar();
 });

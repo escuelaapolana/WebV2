@@ -13,6 +13,7 @@
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/admin-auth.js"></script>
 <script src="../../assets/js/admin-tabbar.js" defer></script>
+<script src="../../assets/js/biblioteca.js" defer></script>
 <style>
   body { background: var(--crema-media); }
   .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
@@ -163,13 +164,35 @@
   .biblio-filtros > div { display: flex; flex-direction: column; }
   .biblio-filtros label { margin: 0 0 5px; }
   .biblio-filtros .crece { flex: 1 1 180px; }
-  .biblio-filtros select, .biblio-filtros input { padding: 9px 12px; font-size: 14px; }
+  /* Se tocan con el dedo: 44 px como todo lo demás. Con el relleno de
+     antes se quedaban en 39-41 y en un móvil costaba acertar. */
+  .biblio-filtros select, .biblio-filtros input { padding: 9px 12px; font-size: 14px; min-height: 44px; }
   .btn-fav { border: 1px solid var(--linea-borde); background: #fff; color: var(--navy);
     padding: 10px 14px; border-radius: 999px; font-size: 14px; cursor: pointer; white-space: nowrap; min-height: 44px; }
   .btn-fav.activo { border-color: #e0a800; background: #fff8e1; color: #7a5b00; }
 
   .subir-zona { border-top: 1px solid var(--linea); margin-top: 14px; padding-top: 14px; }
-  .subir-zona input[type="file"] { padding: 9px; font-size: 14px; }
+  .subir-zona input[type="file"] { padding: 9px; font-size: 14px; min-height: 44px; }
+
+  /* Con cientos de fotos, la rejilla plana no se puede usar en un móvil.
+     Van por acontecimientos, y cada uno se abre y se cierra: se busca
+     «la gala del año pasado», no «la foto número 112». */
+  .grupo-b { border: 1px solid var(--linea); border-radius: 14px; margin-bottom: 12px; background: #fff; }
+  .grupo-b > summary { list-style: none; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 10px 14px;
+    border-radius: 14px; font-size: 15px; font-weight: 600; color: var(--navy); }
+  .grupo-b > summary::-webkit-details-marker { display: none; }
+  .grupo-b > summary::before { content: ''; flex: 0 0 auto; width: 7px; height: 7px;
+    border-right: 2px solid var(--texto-suave); border-bottom: 2px solid var(--texto-suave);
+    transform: rotate(-45deg); transition: transform .15s ease; }
+  .grupo-b[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
+  .grupo-b > summary:hover { background: var(--crema-media); }
+  .grupo-b .cuando { font-weight: 400; color: var(--texto-suave); font-size: 13px; }
+  .grupo-b .cuantas { margin-left: auto; font-weight: 400; color: var(--texto-suave); font-size: 13px; }
+  .grupo-b .dentro { padding: 0 14px 14px; }
+  /* Se ve de un vistazo cuál de estas ya está puesta en algún sitio de la web. */
+  .foto-op .ya { position: absolute; left: 6px; bottom: 34px; font-size: 11px; font-weight: 700;
+    color: #1e7a3d; background: rgba(255,255,255,.94); border-radius: 999px; padding: 2px 8px; }
 </style>
 </head>
 <body>
@@ -246,8 +269,12 @@
           <label for="b-categoria">Sección</label>
           <select id="b-categoria"></select>
         </div>
+        <div>
+          <label for="b-grupo">Acontecimiento</label>
+          <select id="b-grupo"></select>
+        </div>
         <div class="crece">
-          <label for="b-busca">Buscar por nombre o título</label>
+          <label for="b-busca">Buscar por nombre, título o fecha</label>
           <input type="text" id="b-busca" placeholder="Escribe para buscar…">
         </div>
         <div>
@@ -255,8 +282,11 @@
           <button type="button" class="btn-fav" id="b-favoritas">☆ Solo favoritas</button>
         </div>
       </div>
+      <!-- Se dice aquí, en el momento de elegir, porque es aquí donde una
+           foto pasa de estar guardada a verse en Internet. -->
+      <p class="encuadre-pie" id="b-aviso">La foto que elijas aquí pasará a verse en la web al guardar. El resto de la biblioteca sigue siendo interna.</p>
       <div class="msg" id="msg-biblio"></div>
-      <div class="rejilla" id="rejilla-biblio"></div>
+      <div id="rejilla-biblio"></div>
 
       <div class="subir-zona">
         <label for="b-archivo">…o sube una foto nueva desde este aparato</label>
@@ -272,7 +302,7 @@ APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
-  var CARPETA = 'biblioteca';         // misma carpeta que la Biblioteca de fotos
+  var CARPETA = 'biblioteca';         // carpeta dentro del almacén privado de la biblioteca
   var RAIZ_WEB = '../../';            // desde /admin/imagenes/ hasta la raíz de la web
 
   // Nombres legibles de las secciones (para las fotos de cabecera).
@@ -598,6 +628,7 @@ APOLANA_ADMIN.listo(function (sb) {
   function abrirEditor(h) {
     ACTUAL = h;
     urlElegida = h.url || '';
+    fotoElegida = null;   // se abre sin nada elegido: lo que hay es lo que ya estaba
     $('ed-titulo').textContent = h.titulo;
     $('ed-donde').textContent = h.pagina + (h.origen === 'web' ? ' · ' + h.clave : '');
     $('ed-pista').textContent = PISTAS[h.clave] || '';
@@ -628,6 +659,7 @@ APOLANA_ADMIN.listo(function (sb) {
   // Volver a la foto que trae la página de serie.
   $('ed-restaurar').addEventListener('click', function () {
     urlElegida = '';
+    fotoElegida = null;
     ENC.x = 50; ENC.y = 50; ENC.zoom = 1;
     pintarMarco(ACTUAL && ACTUAL.respaldo ? RAIZ_WEB + ACTUAL.respaldo : '', '', 1);
     $('ed-restaurar').classList.add('oculto');
@@ -643,17 +675,38 @@ APOLANA_ADMIN.listo(function (sb) {
     var hay = !!urlElegida;
     $('ed-msg').textContent = 'Guardando…'; $('ed-msg').className = 'msg';
 
+    /* AQUÍ SE PUBLICA. Hasta este momento la foto elegida solo se estaba
+       viendo en esta ventana con un enlace temporal. Al guardar se hace
+       la copia en el almacén público y es esa copia —y solo esa— la que
+       queda en Internet. Si la copia falla no se guarda nada: guardar
+       una dirección de una foto que no se ha copiado dejaría la página
+       con un hueco. */
+    var urlFinal = urlElegida;
+    if (hay && fotoElegida) {
+      $('ed-msg').textContent = 'Publicando la foto…';
+      var pub = await BIB.publicar(sb, fotoElegida);
+      if (pub.error) {
+        $('ed-msg').textContent = '';
+        apoToast('No se ha podido publicar la foto: ' + pub.error.message, 'error',
+          { reintentar: function () { $('ed-guardar').click(); } });
+        return;
+      }
+      urlFinal = pub.url;
+      $('ed-msg').textContent = 'Guardando…';
+    }
+    var urlAnterior = ACTUAL.url || '';
+
     var r;
     if (ACTUAL.origen === 'web') {
       r = await sb.from('imagenes_web').update({
-        url: hay ? urlElegida : null,
+        url: hay ? urlFinal : null,
         encuadre: hay ? textoEncuadre() : null,
         zoom: hay ? redondea1(ENC.zoom * 100) / 100 : null,
         updated_at: new Date().toISOString()
       }).eq('clave', ACTUAL.id);
     } else {
       r = await sb.from('contenido_secciones').update({
-        imagen_url: hay ? urlElegida : null,
+        imagen_url: hay ? urlFinal : null,
         imagen_encuadre: hay ? textoEncuadre() : null,
         imagen_zoom: hay ? redondea1(ENC.zoom * 100) / 100 : null,
         updated_at: new Date().toISOString()
@@ -669,9 +722,20 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     // Se refresca la ficha en memoria para no recargar toda la pantalla.
-    ACTUAL.url = hay ? urlElegida : '';
+    ACTUAL.url = hay ? urlFinal : '';
     ACTUAL.encuadre = hay ? textoEncuadre() : '';
     ACTUAL.zoom = hay ? redondea1(ENC.zoom * 100) / 100 : null;
+
+    /* Y AQUÍ SE DESPUBLICA LA DE ANTES, si es que ya no la usa nadie.
+       Se pregunta a la base en cuántos huecos sigue puesta: la misma foto
+       puede estar en la portada y en la galería, y quitarla de una no
+       puede dejar la otra con un hueco. Va después de guardar y sin
+       cortar nada si falla: lo importante ya está hecho, y como mucho se
+       queda una copia de más en el almacén público. */
+    if (urlAnterior && urlAnterior !== ACTUAL.url) {
+      try { await BIB.despublicarSiSobra(sb, urlAnterior); } catch (e) {}
+    }
+    fotoElegida = null;
     pintar();
     cerrarEditor();
   });
@@ -679,23 +743,21 @@ APOLANA_ADMIN.listo(function (sb) {
   // ------------------------------------------------------------
   // SELECTOR DE BIBLIOTECA (y subida de una foto nueva)
   // ------------------------------------------------------------
-  var CATS = [
-    { v: 'escuela', t: 'Escuela' }, { v: 'escuela-natacion', t: 'Escuela de natación' },
-    { v: 'escuela-municipal', t: 'Escuela municipal' }, { v: 'competicion', t: 'Competición' },
-    { v: 'running', t: 'Running' }, { v: 'natacion', t: 'Natación' }, { v: 'triatlon', t: 'Triatlón' },
-    { v: 'montana', t: 'Montaña' }, { v: 'cubo', t: 'El Cubo' }, { v: 'campus', t: 'Campus' },
-    { v: 'instalaciones', t: 'Instalaciones' }, { v: 'club', t: 'Club / general' },
-    { v: 'eventos', t: 'Eventos' }, { v: 'equipacion', t: 'Equipación' }, { v: 'otras', t: 'Otras' }
-  ];
-  var SIN = 'Sin categoría';
+  // Las secciones, los enlaces temporales y el publicar/despublicar viven
+  // en assets/js/biblioteca.js, compartido con las otras pantallas.
+  var BIB = window.APOLANA_BIBLIO;
+  var CATS = BIB.CATS;
+  var SIN = BIB.SIN;
 
-  function urlDeRuta(ruta){ return sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl; }
-  function urlPublica(nombre){ return sb.storage.from('imagenes').getPublicUrl(CARPETA + '/' + nombre).data.publicUrl; }
-
-  var BIBLIO = [], bCat = '', bFav = false, bBusca = '';
+  var BIBLIO = [], bCat = '', bFav = false, bBusca = '', bGrupo = '';
   // Guarda el motivo si la biblioteca no se ha podido leer: sin esto, una lista
   // vacía por un fallo se contaba como «no hay fotos».
   var FALLO_BIBLIO = '';
+
+  function fotoPorId(id) {
+    for (var i = 0; i < BIBLIO.length; i++) if (String(BIBLIO[i].id) === String(id)) return BIBLIO[i];
+    return null;
+  }
 
   function pintarFiltroBiblio() {
     var cuenta = {}, sinCat = 0;
@@ -705,17 +767,21 @@ APOLANA_ADMIN.listo(function (sb) {
     if (sinCat > 0) h += '<option value="__sin">' + esc(SIN) + ' (' + sinCat + ')</option>';
     $('b-categoria').innerHTML = h;
     $('b-categoria').value = bCat;
+
+    var grupos = BIB.agrupar(BIBLIO).filter(function (g) { return g.clave.indexOf('__') !== 0; });
+    var hg = '<option value="">Todos (' + BIBLIO.length + ')</option>';
+    grupos.forEach(function (g) {
+      hg += '<option value="' + esc(g.clave) + '">' + esc(g.titulo) +
+            (g.fecha ? ' · ' + String(g.fecha).slice(0, 4) : '') + ' (' + g.fotos.length + ')</option>';
+    });
+    $('b-grupo').innerHTML = hg;
+    $('b-grupo').value = bGrupo;
   }
 
   function filtradasBiblio() {
-    var q = bBusca.trim().toLowerCase();
-    return BIBLIO.filter(function (f) {
-      if (bFav && !f.favorita) return false;
-      if (bCat === '__sin') { if (f.categoria) return false; }
-      else if (bCat && f.categoria !== bCat) return false;
-      if (q && (((f.titulo || '') + ' ' + (f.nombre || '')).toLowerCase().indexOf(q) === -1)) return false;
-      return true;
-    });
+    var l = BIB.filtrar(BIBLIO, { categoria: bCat, favoritas: bFav, busca: bBusca });
+    if (bGrupo) l = l.filter(function (f) { return (f.grupo || '') === bGrupo; });
+    return l;
   }
 
   function renderBiblio() {
@@ -755,55 +821,60 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
     $('msg-biblio').textContent = '';
-    rej.innerHTML = lista.map(function (f) {
-      return '<button type="button" class="foto-op" data-url="' + esc(f.url) + '">' +
-        (f.favorita ? '<span class="fav-marca">★</span>' : '') +
-        '<div class="thumb"><img src="' + esc(f.url) + '" alt="" loading="lazy"></div>' +
-        '<div class="nom">' + esc(f.titulo || f.nombre || '') + '</div>' +
-      '</button>';
+
+    /* Por acontecimientos, y solo el primero abierto. Con 155 fotos, todo
+       desplegado a la vez es una pared de miniaturas por la que hay que
+       bajar sin parar, y en un móvil no hay quien la use. */
+    var grupos = BIB.agrupar(lista);
+    rej.innerHTML = grupos.map(function (g, i) {
+      // Si el filtro ya ha dejado poca cosa, no tiene sentido esconderla.
+      var abierto = (i === 0 || lista.length <= 24) ? ' open' : '';
+      return '<details class="grupo-b"' + abierto + '>' +
+        '<summary>' + esc(g.titulo) +
+          (g.fecha ? ' <span class="cuando">· ' + esc(BIB.fechaLarga(g.fecha)) + '</span>' : '') +
+          '<span class="cuantas">' + g.fotos.length + '</span>' +
+        '</summary>' +
+        '<div class="dentro"><div class="rejilla">' + g.fotos.map(fichaHtml).join('') + '</div></div>' +
+      '</details>';
     }).join('');
+  }
+
+  function fichaHtml(f) {
+    var url = BIB.miniatura(sb, f);
+    return '<button type="button" class="foto-op" data-id="' + esc(f.id) + '">' +
+      (f.favorita ? '<span class="fav-marca">★</span>' : '') +
+      (f.publicada_ruta ? '<span class="ya">Ya en la web</span>' : '') +
+      '<div class="thumb"><img src="' + esc(url) + '" alt="" loading="lazy" data-ruta="' + esc(f.ruta) + '" data-cubo="' + esc(f.cubo || '') + '"></div>' +
+      '<div class="nom">' + esc(f.titulo || f.nombre || '') + '</div>' +
+    '</button>';
   }
 
   async function abrirBiblioteca() {
     $('modal').classList.remove('oculto');
-    bCat = ''; bFav = false; bBusca = '';
+    bCat = ''; bFav = false; bBusca = ''; bGrupo = '';
     $('b-busca').value = '';
     $('msg-subida').textContent = '';
     $('rejilla-biblio').innerHTML = '';
     $('msg-biblio').innerHTML = ADM.esqueleto(2); $('msg-biblio').className = 'msg';
 
-    // 1º: las fichas de la biblioteca (con categoría y favoritas).
-    var r = await sb.from('biblioteca_fotos')
-      .select('id,ruta,nombre,titulo,categoria,favorita,created_at')
-      .order('created_at', { ascending: false });
-
-    if (!r.error && r.data && r.data.length) {
-      FALLO_BIBLIO = '';
-      BIBLIO = r.data.map(function (f) {
-        return { ruta: f.ruta, nombre: f.nombre || f.ruta, titulo: f.titulo || '',
-                 categoria: f.categoria || '', favorita: !!f.favorita, url: urlDeRuta(f.ruta) };
-      });
-      $('b-categoria').parentNode.style.display = '';
-      $('b-favoritas').parentNode.style.display = '';
-      pintarFiltroBiblio();
+    /* Las fichas y, de paso, los enlaces temporales de las que están en
+       el almacén privado. Ya no hay recambio «listar el almacén a pelo»:
+       el almacén privado no se puede listar sin las fichas y, sobre todo,
+       lo que hay en él no está publicado, así que enseñarlo sin más
+       llevaría a publicar sin querer. Si las fichas no se pueden leer, se
+       dice y se ofrece reintentar. */
+    var r = await BIB.cargar(sb);
+    if (r.error) {
+      FALLO_BIBLIO = r.error.message || 'Puede ser la conexión.';
+      BIBLIO = [];
       renderBiblio();
       return;
     }
-
-    // Recambio: listar el bucket directamente (sin categorías ni favoritas).
-    // Nos guardamos si la lectura de fichas falló, porque entonces una lista
-    // vacía no significa «no hay fotos», sino «no hemos podido mirar».
-    FALLO_BIBLIO = r.error ? (r.error.message || 'Puede ser la conexión.') : '';
-    var rb = await sb.storage.from('imagenes').list(CARPETA, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-    if (rb.error) {
-      $('msg-biblio').className = 'msg';
-      $('msg-biblio').innerHTML = ADM.error('No hemos podido cargar la biblioteca. ' + rb.error.message, abrirBiblioteca);
-      return;
-    }
-    BIBLIO = (rb.data || []).filter(function (f) { return f.name && f.name !== '.emptyFolderPlaceholder'; })
-      .map(function (f) { return { ruta: CARPETA + '/' + f.name, nombre: f.name, titulo: '', categoria: '', favorita: false, url: urlPublica(f.name) }; });
-    $('b-categoria').parentNode.style.display = 'none';
-    $('b-favoritas').parentNode.style.display = 'none';
+    FALLO_BIBLIO = '';
+    BIBLIO = r.fotos || [];
+    $('b-categoria').parentNode.style.display = '';
+    $('b-favoritas').parentNode.style.display = '';
+    pintarFiltroBiblio();
     renderBiblio();
   }
   function cerrarBiblioteca() { $('modal').classList.add('oculto'); }
@@ -812,11 +883,27 @@ APOLANA_ADMIN.listo(function (sb) {
   $('modal-cerrar').addEventListener('click', cerrarBiblioteca);
   $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) cerrarBiblioteca(); });
   $('b-categoria').addEventListener('change', function () { bCat = this.value; renderBiblio(); });
+  $('b-grupo').addEventListener('change', function () { bGrupo = this.value; renderBiblio(); });
   $('b-busca').addEventListener('input', function () { bBusca = this.value; renderBiblio(); });
   $('b-favoritas').addEventListener('click', function () { bFav = !bFav; renderBiblio(); });
 
-  function usarFoto(url) {
+  /* Los enlaces de las miniaturas caducan a la hora. Quien deja esta
+     pantalla abierta toda la mañana no tiene por qué encontrarse el
+     selector lleno de huecos grises. */
+  BIB.vigilarCaducidad(sb, function () {
+    return BIBLIO.filter(function (f) { return f.cubo === BIB.CUBO_PRIVADO; })
+                 .map(function (f) { return f.ruta; });
+  }, document.getElementById('modal'));
+
+  /* La foto elegida de la biblioteca, mientras la ventana esté abierta.
+     Se guarda la ficha entera y no una dirección, porque la dirección
+     pública todavía no existe: se crea al guardar, que es cuando la foto
+     se publica de verdad. Elegir y cerrar sin guardar no publica nada. */
+  var fotoElegida = null;
+
+  function usarFoto(url, foto) {
     urlElegida = url;
+    fotoElegida = foto || null;
     ENC.x = 50; ENC.y = 50; ENC.zoom = 1;
     pintarMarco(url, '50% 50%', 1);
     $('ed-pie').textContent = 'Arrastra la foto para elegir qué parte se ve.';
@@ -828,7 +915,9 @@ APOLANA_ADMIN.listo(function (sb) {
   $('rejilla-biblio').addEventListener('click', function (e) {
     var op = e.target.closest ? e.target.closest('.foto-op') : null;
     if (!op) return;
-    usarFoto(op.getAttribute('data-url'));
+    var f = fotoPorId(op.getAttribute('data-id'));
+    if (!f) return;
+    usarFoto(BIB.miniatura(sb, f), f);
   });
 
   // Subir una foto nueva: va a la biblioteca y se usa aquí de golpe.
@@ -842,13 +931,18 @@ APOLANA_ADMIN.listo(function (sb) {
 
     var limpio = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
     var ruta = CARPETA + '/' + Date.now() + '-' + limpio;
-    var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+    // Va a la biblioteca, que es privada. Se publicará al guardar este hueco,
+    // no por el hecho de haberla subido.
+    var up = await sb.storage.from(BIB.CUBO_PRIVADO).upload(ruta, file, { cacheControl: '3600', upsert: false });
     if (up.error) { $('msg-subida').textContent = 'No se pudo subir: ' + up.error.message; $('msg-subida').className = 'msg error'; return; }
 
-    var ins = await sb.from('biblioteca_fotos').insert({ ruta: ruta, nombre: file.name, subida_por: pid });
+    var ins = await sb.from('biblioteca_fotos')
+      .insert({ ruta: ruta, cubo: BIB.CUBO_PRIVADO, nombre: file.name, subida_por: pid })
+      .select('id,ruta,cubo,nombre,titulo,categoria,favorita,grupo,fecha_foto,publicada_ruta,publicada_en,created_at')
+      .single();
     if (ins.error) {
-      // Queda en el bucket pero sin ficha: se retira para no dejar huérfanos.
-      await sb.storage.from('imagenes').remove([ruta]);
+      // Queda en el almacén pero sin ficha: se retira para no dejar huérfanos.
+      await sb.storage.from(BIB.CUBO_PRIVADO).remove([ruta]);
       $('msg-subida').textContent = 'No se pudo guardar en la biblioteca: ' + ins.error.message;
       $('msg-subida').className = 'msg error';
       return;
@@ -856,7 +950,10 @@ APOLANA_ADMIN.listo(function (sb) {
     this.value = '';
     $('msg-subida').textContent = 'Subida ✓';
     $('msg-subida').className = 'msg ok';
-    usarFoto(urlDeRuta(ruta));
+    // Enlace temporal para verla aquí mismo mientras se decide el encuadre.
+    await BIB.firmar(sb, [ruta]);
+    BIBLIO.unshift(ins.data);
+    usarFoto(BIB.miniatura(sb, ins.data), ins.data);
   });
 
   cargar();
