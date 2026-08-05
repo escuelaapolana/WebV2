@@ -296,7 +296,11 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await Promise.all([
       sb.from('atletas').select('id,nombre,apellidos,fecha_nacimiento,categoria,sexo,estado,tipo_membresia,grupo_id,entrenador_id,created_at').order('apellidos').order('nombre'),
       sb.from('grupos').select('id,nombre,turno,seccion,entrenador_id,activo').order('seccion').order('nombre').order('turno', { nullsFirst: true }),
-      sb.from('perfiles').select('id,nombre,apellidos,rol'),
+      /* `roles` y `activo` hacen falta para contar bien a los entrenadores:
+         en este club casi nadie tiene un papel solo, y quien entrena puede
+         figurar como administración o como tesorería en su ficha. Se ve en
+         infResumen(). */
+      sb.from('perfiles').select('id,nombre,apellidos,rol,roles,activo'),
       sb.from('pagos').select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,fecha_pago,periodo,cuenta,metodo,numero_recibo,notas,created_at,anulado'),
       sb.from('cubo_bonos').select('id,atleta_id,usos_totales,precio,fecha_compra,caducidad,activo'),
       sb.from('cubo_movimientos').select('id,bono_id,atleta_id,tipo,usos,concepto,fecha'),
@@ -494,7 +498,29 @@ APOLANA_ADMIN.listo(function (sb) {
     // Cifras
     var nEscuela = vivos.filter(function (a) { return membresia(a) === 'escuela'; }).length;
     var nSocios = vivos.filter(function (a) { return membresia(a) === 'socio'; }).length;
-    var nEntrenadores = D.perfiles.filter(function (p) { return p.rol === 'entrenador'; }).length;
+    /* ENTRENADORES · por qué hay dos números y no uno
+       Este informe acaba en una junta o en una solicitud de subvención, así
+       que la cifra tiene que cuadrar con lo que pasa en la pista. Y antes no
+       cuadraba: se contaba solo a quien tiene «entrenador» como papel
+       principal, o sea, la respuesta a «¿qué eres tú en el club?». Ahí no
+       entran el presidente ni el tesorero, que entrenan un grupo cada uno
+       además de lo suyo. El informe decía diez cuando en la pista había doce.
+       Ninguno de los dos números sobra: la cifra grande es la gente que
+       entrena de verdad, y debajo se dice cuántos lo son de oficio, que es lo
+       que interesa cuando se habla de organigrama en vez de horas de pista.
+       Se cuenta a quien tiene el papel, no a quien lo lleva puesto hoy: se
+       entrena igual, mires el club desde donde lo mires (mismo criterio que
+       el reparto de avisos). Las fichas de baja no cuentan: ya no entrenan. */
+    var perfilesActivos = D.perfiles.filter(function (p) { return p.activo !== false; });
+    function papelesDe(p) { return (p.roles && p.roles.length) ? p.roles : (p.rol ? [p.rol] : []); }
+    var nEntrenadores = perfilesActivos.filter(function (p) { return papelesDe(p).indexOf('entrenador') !== -1; }).length;
+    var nEntrenadoresPrincipal = perfilesActivos.filter(function (p) { return p.rol === 'entrenador'; }).length;
+    /* La frase de debajo solo tiene sentido si los dos números se separan.
+       Cuando coinciden se dice, en vez de callarse: un hueco donde el resto
+       de cifras tienen una explicación se lee como un descuido. */
+    var notaEntrenadores = nEntrenadores === nEntrenadoresPrincipal
+      ? 'todos lo son de oficio'
+      : num(nEntrenadoresPrincipal) + ' de oficio · ' + num(nEntrenadores - nEntrenadoresPrincipal) + ' entrenan además de otra cosa';
     var nGrupos = D.grupos.length;
 
     var html = '';
@@ -509,7 +535,7 @@ APOLANA_ADMIN.listo(function (sb) {
       '<div class="cifra verde"><span class="et">Escuela</span><span class="num">' + num(nEscuela) + '</span><span class="nota">nacidos en 2009 o después</span></div>' +
       '<div class="cifra"><span class="et">Socios</span><span class="num">' + num(nSocios) + '</span><span class="nota">nacidos en 2008 o antes</span></div>' +
       '<div class="cifra"><span class="et">Grupos</span><span class="num">' + num(nGrupos) + '</span></div>' +
-      '<div class="cifra"><span class="et">Entrenadores</span><span class="num">' + num(nEntrenadores) + '</span></div>' +
+      '<div class="cifra"><span class="et">Entrenadores</span><span class="num">' + num(nEntrenadores) + '</span><span class="nota">' + esc(notaEntrenadores) + '</span></div>' +
       '</div>';
 
     // --- Por estado ---
@@ -580,7 +606,7 @@ APOLANA_ADMIN.listo(function (sb) {
       '<div><b>' + num(nEscuela) + '</b>Escuela</div>' +
       '<div><b>' + num(nSocios) + '</b>Socios</div>' +
       '<div><b>' + num(nGrupos) + '</b>Grupos</div>' +
-      '<div><b>' + num(nEntrenadores) + '</b>Entrenadores</div>' +
+      '<div><b>' + num(nEntrenadores) + '</b>Entrenadores<small>' + esc(notaEntrenadores) + '</small></div>' +
       '</div>';
 
     $('b-print').onclick = function () {
