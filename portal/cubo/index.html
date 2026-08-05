@@ -912,7 +912,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* `tipo_membresia` y `fecha_nacimiento` no se pintan: sirven para saber
        qué cuenta y qué contacto le tocan si hay que pagar por transferencia
        (escuela → Adrián o Andrés; socios y adultos → Isabel). */
-    var ra = await sb.from('atletas').select('id,nombre,apellidos,tipo_membresia,fecha_nacimiento').order('nombre');
+    /* Aquí solo van los del bolsillo: uno mismo y sus hijos. La pantalla
+       pedía la lista sin filtrar y se fiaba de que la base recortara, pero
+       la base entiende «mis atletas» de forma más ancha —incluye a los que
+       uno entrena—, así que a un entrenador le salía en el desplegable su
+       grupo entero, con sus bonos, y podía gastarlos. Eso son usos que ha
+       pagado otra familia. Ahora se pide por identificador, y la base
+       además lo cierra por su cuenta (migración 125). */
+    var rMios = await sb.rpc('mis_atletas_bolsillo');
+    var idsMios = (!rMios.error && rMios.data)
+      ? rMios.data.map(function (x) { return (x && x.mis_atletas_bolsillo) || x; })
+      : null;
+    var ra = idsMios && idsMios.length
+      ? await sb.from('atletas').select('id,nombre,apellidos,tipo_membresia,fecha_nacimiento').in('id', idsMios).order('nombre')
+      : (idsMios ? { data: [] } : await sb.from('atletas').select('id,nombre,apellidos,tipo_membresia,fecha_nacimiento').order('nombre'));
 
     /* Si la consulta se cae, `data` viene vacío. Decir «no vemos tu ficha»
        sería mentir y mandar a la gente a llamar al club para nada. */
