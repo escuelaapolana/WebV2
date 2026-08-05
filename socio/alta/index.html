@@ -88,9 +88,17 @@
       </div>
 
       <div class="campo">
+        <!-- Se frena si falta, pero NO si lo escrito no tiene pinta de
+             DNI ni de NIE: entonces sale un aviso en ámbar y se puede
+             seguir. El club tiene socios extranjeros y gente con
+             documentos que no se parecen a ninguno de los nuestros, y
+             quedarse sin poder hacerse socio por eso no tiene ningún
+             sentido. Es la misma regla que en el alta de la escuela. -->
         <label for="dni">DNI o NIE</label>
-        <input type="text" id="dni" autocomplete="off" maxlength="12">
+        <input type="text" id="dni" autocomplete="off" maxlength="12"
+               placeholder="········" spellcheck="false">
         <span class="ayuda">Hace falta para el seguro y para el registro de socios.</span>
+        <span class="ojo"></span>
         <span class="error"></span>
       </div>
 
@@ -210,7 +218,10 @@
 
       <div class="campo">
         <span class="etiqueta" id="et-imagen">¿Podemos publicar fotos tuyas?</span>
-        <span class="ayuda">En la web, en Instagram y en el grupo de tu sección. Puedes cambiarlo cuando quieras.</span>
+        <!-- «Puedes cambiarlo cuando quieras» no dice por dónde, y por
+             dónde es lo único que necesita saber quien quiere retirarlo.
+             Se dice, y es lo mismo que pone el alta de la escuela. -->
+        <span class="ayuda">En la web, en Instagram y en el grupo de tu sección. Si cambias de idea, dínoslo por teléfono o por correo y lo cambiamos.</span>
         <div class="sino" role="radiogroup" aria-labelledby="et-imagen">
           <label><input type="radio" name="imagen" value="si">Sí, podéis</label>
           <label><input type="radio" name="imagen" value="no">No, mejor no</label>
@@ -316,7 +327,16 @@ document.addEventListener('DOMContentLoaded', function () {
   /* ---- Los campos ---- */
   F.vigilar($('nombre'), function (v) { return F.hayAlgo(v, 'tu nombre'); });
   F.vigilar($('apellidos'), function (v) { return F.hayAlgo(v, 'tus apellidos'); });
-  F.vigilar($('dni'), F.dni);
+  /* Del documento solo se frena si falta. Que no cuadre se dice en
+     ámbar aquí abajo y deja seguir. */
+  F.vigilar($('dni'), F.faltaDocumento);
+  (function vigilarDocumento(campo) {
+    campo.addEventListener('input', function () { F.sinOjo(campo); });
+    campo.addEventListener('blur', function () {
+      var aviso = F.avisoDocumento(campo.value);
+      if (aviso) F.ojo(campo, aviso); else F.sinOjo(campo);
+    });
+  })($('dni'));
   F.vigilar($('fecha'), F.fechaNacimiento);
   F.vigilar($('direccion'), function (v) { return F.hayAlgo(v, 'la dirección'); });
   F.vigilar($('cp'), function (v) { return /^\d{5}$/.test(String(v || '').trim()) ? null : 'El código postal son 5 números.'; });
@@ -356,12 +376,23 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function paso1Bien() {
-    return comprueba([
+    var ok = comprueba([
       ['nombre', function (v) { return F.hayAlgo(v, 'tu nombre'); }],
       ['apellidos', function (v) { return F.hayAlgo(v, 'tus apellidos'); }],
-      ['dni', F.dni],
+      /* Solo se frena si el documento falta: un pasaporte no puede
+         dejar a nadie fuera del club. */
+      ['dni', F.faltaDocumento],
       ['fecha', F.fechaNacimiento]
     ]);
+    /* El aviso ámbar se vuelve a poner si toca: dar el campo por bueno
+       ahí arriba lo ha borrado, y quien vuelva atrás tiene que seguir
+       viéndolo. */
+    var doc = $('dni');
+    if (!F.faltaDocumento(doc.value)) {
+      var avisoDoc = F.avisoDocumento(doc.value);
+      if (avisoDoc) F.ojo(doc, avisoDoc);
+    }
+    return ok;
   }
   function paso2Bien() {
     return comprueba([
@@ -427,7 +458,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('repaso').innerHTML =
       '<div class="repaso"><h3>Tus datos</h3><dl>' +
         fila('Nombre', $('nombre').value.trim() + ' ' + $('apellidos').value.trim()) +
-        fila('DNI', $('dni').value.trim().toUpperCase()) +
+        fila('DNI o NIE', F.documentoLimpio($('dni').value)) +
         fila('Nacimiento', formatoFecha($('fecha').value)) +
         fila('Dirección', [$('direccion').value.trim(), $('cp').value.trim(),
                            $('localidad').value.trim(), $('provincia').value.trim()].filter(Boolean).join(' · ')) +
@@ -490,7 +521,11 @@ document.addEventListener('DOMContentLoaded', function () {
       p: {
         nombre: $('nombre').value.trim(),
         apellidos: $('apellidos').value.trim(),
-        dni: $('dni').value.trim().toUpperCase(),
+        /* En mayúsculas y sin puntos ni guiones, igual que en el alta
+           de la escuela: el mismo documento escrito de dos maneras no
+           puede parecer dos personas distintas cuando alguien lo
+           busque. */
+        dni: F.documentoLimpio($('dni').value),
         fecha_nacimiento: $('fecha').value,
         sexo: $('sexo').value || null,
         direccion: $('direccion').value.trim(),

@@ -197,21 +197,13 @@
     return null;
   };
 
-  /* La de siempre, que frena también cuando el documento no cuadra.
-     La sigue usando el alta de socio. Aquí solo se le han arreglado
-     dos cosas: que un DNI son 8 números y un NIE 7 —antes se colaban
-     los dos con siete y con ocho—, y que los mensajes nombren el NIE,
-     porque a quien tiene uno «escribe el DNI» no le dice nada. */
-  F.dni = function (valor) {
-    var v = F.documentoLimpio(valor);
-    var falta = F.faltaDocumento(v);
-    if (falta) return falta;
-    if (!/^\d{8}[A-Z]$/.test(v) && !/^[XYZ]\d{7}[A-Z]$/.test(v)) {
-      return 'Un DNI son 8 números y una letra, y un NIE empieza por X, Y o Z. ' +
-             'Escríbelo sin espacios ni guiones.';
-    }
-    return F.avisoDocumento(v);
-  };
+  /* AQUÍ HABÍA UN `F.dni` que frenaba también cuando el documento no
+     cuadraba, y se ha quitado a propósito: era la regla vieja, y
+     mientras existiera alguien la iba a volver a enganchar sin darse
+     cuenta y a dejar fuera a la mitad de las familias extranjeras.
+     Las dos de arriba dicen lo mismo mejor repartido: `faltaDocumento`
+     frena y `avisoDocumento` avisa, y cada formulario decide cuál
+     necesita. */
 
   /* La fecha de nacimiento de un niño de la escuela. */
   F.fechaNacimiento = function (valor) {
