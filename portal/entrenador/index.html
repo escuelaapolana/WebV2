@@ -159,8 +159,42 @@
   .avatar { width:34px; height:34px; flex:0 0 34px; border-radius:50%; background: var(--crema-media); color: var(--navy); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600;  }
   .lst-fila.es-ausente .avatar { background:#fff; color:#A8453F; }
   .lst-nom { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  /* La etiqueta se queda del ancho de su texto (`align-self`, sin tocar la
+     columna: el botón del nombre tiene que seguir ocupando todo el ancho,
+     que es su zona de toque) y, si el canal fuera largo, se recorta antes
+     que sacar la lista por el borde derecho de un móvil. */
+  .lst-nom .et-foto { align-self:flex-start; max-width:100%; overflow:hidden; margin-bottom:2px; }
   .lst-nom > button { background:none; border:none; padding:0; margin:0; text-align:left; font-family: var(--fuente-texto); font-size:15px; color: var(--navy); cursor:pointer; text-decoration:underline; text-decoration-color: var(--linea-borde); text-underline-offset:3px; min-height:44px; display:flex; align-items:center; }
   .lst-nom > button:hover { color: var(--azul-oscuro); }
+  /* ------------------------------------------------------------
+     LO DE LAS FOTOS
+     En gris tinta y NO en rojo, a propósito. Que una familia no quiera
+     que su hijo salga en Instagram es una decisión suya, no una
+     incidencia: con colores de alarma el crío quedaría señalado en la
+     lista delante de cualquiera que mire la pantalla. Se tiene que ver
+     a la primera y no tiene que gritar.
+     El «no consta» va aún más apagado y con el borde discontinuo:
+     es lo único que se puede arreglar preguntando, y se distingue de
+     un no de verdad sin tener que leer.
+     ------------------------------------------------------------ */
+  .et-foto { display:inline-flex; align-items:center; gap:5px; font-family: var(--fuente-mono); font-size:12px;
+             padding:3px 9px; border-radius:999px; background:#EAEDF2; color:#4A5568; white-space:nowrap; vertical-align:middle; }
+  .et-foto svg { width:13px; height:13px; flex:none; }
+  .et-foto.nose { background:transparent; color:#6B7280; border:1px dashed #C4CBD6; padding:2px 8px; }
+  .avi-foto { background:#F2F4F8; border:1px solid #DCE1E9; color:#3B4557; border-radius:10px;
+              padding:11px 14px; margin-bottom:12px; font-size:13px; }
+  .avi-foto strong { display:block; color: var(--navy); margin-bottom:5px; }
+  .avi-foto ul { margin:0 0 0 18px; padding:0; }
+  .avi-foto li { margin:2px 0; }
+  .avi-foto li b { color: var(--navy); }
+  .avi-foto p { margin:7px 0 0; opacity:.85; line-height:1.5; }
+  /* En la tarjeta de hoy no cabe una caja: cabe una línea. Y esa tarjeta
+     es azul marino con letra blanca, así que la línea va en el mismo azul
+     claro que el resto de sus detalles, no en el gris de las listas. */
+  .hoy-e .he-foto { display:flex; align-items:flex-start; gap:8px; margin:0; font-size:13px; color:#D6E4F0; line-height:1.5; }
+  .hoy-e .he-foto strong { color:#fff; font-weight:600; }
+  .hoy-e .he-foto svg { width:15px; height:15px; flex:none; margin-top:2px; color:#7FB6E0; }
+
   .lst-sub { font-size:13px; color: var(--texto-suave); }
   .lst-sub.avisada { color:#A8453F; }
   .lst-sub.prueba { color: var(--azul-oscuro); }
@@ -1193,7 +1227,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      que el club no se lo había asignado, cuando lo que pasaba es
      que no se le había preguntado a la base por él.
      ------------------------------------------------------------ */
-  var CAMPOS_ATLETA = 'id,nombre,apellidos,categoria,estado,grupo_id,entrenador_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id';
+  /* `permiso_imagen` y sus ámbitos entran aquí desde la 135. No es un dato
+     de papeleo: es lo único que le dice al entrenador, antes de sacar el
+     móvil, de qué críos no se publican fotos. Si no se pide en esta línea,
+     no se puede enseñar en ninguna pantalla. */
+  var CAMPOS_ATLETA = 'id,nombre,apellidos,categoria,estado,grupo_id,entrenador_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id,permiso_imagen,permiso_imagen_ambitos';
   try { var a = await sb.from('atletas').select(CAMPOS_ATLETA).eq('entrenador_id', perfil.id).order('apellidos'); if(a.error) FALLO_BASE = true; else MIS_ATLETAS = a.data || []; } catch(e){ FALLO_BASE = true; }
   /* Y ahora los de mis grupos. Se piden aparte y con su propio `try`: si
      esta se cae, la pantalla sigue enseñando a los de siempre en vez de
@@ -1482,6 +1520,129 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   wrap.querySelectorAll('#masheet [data-cerrar]').forEach(function(x){ x.addEventListener('click', cerrarMas); });
 
   // ============================================================
+  // LO DE LAS FOTOS · un solo sitio del que salen todas las pantallas
+  // ------------------------------------------------------------
+  // Al apuntar a un hijo, la familia contesta si podemos publicar sus
+  // fotos. Hasta la 135 esa respuesta se quedaba en el alta, que solo
+  // leen administración y tesorería, y quien está en la pista con el
+  // móvil es el entrenador. Aquí se traduce el dato a lo único que le
+  // hace falta saber: si de este crío se pueden publicar fotos o no.
+  //
+  // TRES RESPUESTAS Y UNA MÁS QUE NO ES RESPUESTA:
+  //   · sí       — la familia lo autorizó. No se marca nada: si se
+  //                marcara, la lista se llenaría de etiquetas y la que
+  //                importa dejaría de verse.
+  //   · no       — la familia dijo que no. Se marca.
+  //   · a medias — dijo que sí para unos canales y no para otros. Se
+  //                marca diciendo cuáles, porque publicarlo en el sitio
+  //                equivocado es igual de malo que publicarlo sin más.
+  //   · no consta — nadie se lo preguntó, o no contestó. NO ES UN SÍ.
+  //                Se marca aparte, con esas palabras.
+  //
+  // Y una cosa que no es de programación: esto NO se pinta de rojo. Que
+  // una familia no quiera que su hijo salga en Instagram no es una
+  // incidencia ni una falta; es una decisión suya, tan normal como
+  // elegir turno. Pintarlo de alarma dejaría al crío señalado en la
+  // lista delante de cualquiera que mire la pantalla, que es justo lo
+  // contrario de lo que se pretende.
+  // ============================================================
+  var icSinFoto = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 17.5V9a1.5 1.5 0 0 0-1.5-1.5H16l-1-2H9.8"/><path d="M6.7 7.5H5.5A1.5 1.5 0 0 0 4 9v9a1.5 1.5 0 0 0 1.5 1.5h12"/><path d="M14.1 14.3a3 3 0 0 1-4.2-4.2"/><path d="M3 3l18 18"/></svg>';
+
+  // Cómo se llaman los canales del impreso del club cuando hay que
+  // decirlos en voz alta, sin la palabra suelta de la base de datos.
+  var CANALES_FOTO  = { web:'la web', redes:'redes sociales', mensajeria:'el grupo de la familia', medios:'prensa y carteles' };
+  // Y los mismos, en corto, para que quepan en la etiqueta de una fila a
+  // 375 px sin sacar la lista por el borde derecho.
+  var CANALES_CORTO = { web:'web', redes:'redes', mensajeria:'grupo', medios:'prensa' };
+  // Los canales que un entrenador usa a diario. Si falta alguno de estos
+  // dos, se avisa; lo de prensa y carteles no lo hace él.
+  var CANALES_DEL_DIA = ['redes', 'mensajeria'];
+
+  function fotosDe(at){
+    if(!at || at.permiso_imagen === undefined) return { nivel:'si' };
+    if(at.permiso_imagen === null) {
+      return { nivel:'nose', etiq:'no consta',
+               dice:'no consta que se le preguntara' };
+    }
+    if(at.permiso_imagen === false) {
+      return { nivel:'no', etiq:'sin fotos', dice:'su familia dijo que no' };
+    }
+    var amb = at.permiso_imagen_ambitos;
+    // Sin lista de canales, el sí vale para todo: así se guardaron los
+    // permisos antes de que el impreso separara los canales.
+    if(!Array.isArray(amb) || !amb.length) return { nivel:'si' };
+    var faltan = CANALES_DEL_DIA.filter(function(c){ return amb.indexOf(c) === -1; });
+    if(!faltan.length) return { nivel:'si' };
+    var corto = amb.map(function(c){ return CANALES_CORTO[c] || c; }).join('+');
+    var largo = amb.map(function(c){ return CANALES_FOTO[c]  || c; }).join(' y ');
+    return { nivel:'parcial', etiq:'solo '+(corto||'nada'),
+             dice:'su familia autorizó solo '+(largo||'ningún canal') };
+  }
+
+  // La etiqueta de una fila. Devuelve cadena vacía cuando no hay nada que
+  // decir, para poder pegarla sin preguntar.
+  function etiqFoto(at, incluirSinDato){
+    var f = fotosDe(at);
+    if(f.nivel === 'si') return '';
+    if(f.nivel === 'nose' && incluirSinDato === false) return '';
+    return '<span class="et-foto'+(f.nivel==='nose'?' nose':'')+'" title="'+escAttr('Fotos: '+f.dice)+'">'+icSinFoto+esc(f.etiq)+'</span>';
+  }
+
+  // Reparte un grupo de atletas por lo que se puede hacer con sus fotos.
+  function repartoFotos(atls){
+    var r = { no:[], parcial:[], nose:[], total:atls.length };
+    atls.forEach(function(x){
+      var n = fotosDe(x).nivel;
+      if(n !== 'si') r[n].push(x);
+    });
+    // Cuando de NADIE del grupo consta el permiso —que es lo que pasa hoy
+    // con casi todos, porque entraron antes de que se preguntara—, marcar
+    // las veinticinco filas no informa de nada: se vuelve papel pintado y
+    // se deja de mirar. En ese caso se dice una vez arriba y las filas se
+    // quedan limpias.
+    r.ninguno = atls.length > 0 && r.nose.length === atls.length;
+    r.hayAlgo = !!(r.no.length || r.parcial.length || r.nose.length);
+    return r;
+  }
+
+  // La frase de la ficha, dicha entera: aquí sí hay sitio y aquí se viene
+  // cuando ya ha surgido la duda sobre un crío en concreto.
+  function fotoFicha(at){
+    var f = fotosDe(at);
+    if(f.nivel === 'no')      return 'No se publican: su familia dijo que no';
+    if(f.nivel === 'nose')    return 'No consta que se le preguntara, así que no se publican';
+    if(f.nivel === 'parcial') return 'Solo '+f.dice.replace('su familia autorizó solo ', '');
+    return 'Su familia autorizó publicarlas';
+  }
+
+  function nombresCortos(lista, tope){
+    var n = lista.slice(0, tope).map(nombreAtleta);
+    var resto = lista.length - n.length;
+    return n.join(', ') + (resto > 0 ? ' y '+resto+' más' : '');
+  }
+
+  // El aviso de arriba, el que de verdad sirve: a la hora de publicar no
+  // se repasan veinticinco filas, se necesitan los nombres juntos.
+  function avisoFotosHTML(atls){
+    var r = repartoFotos(atls);
+    if(!r.hayAlgo) return '';
+    if(r.ninguno){
+      return '<div class="avi-foto"><strong>De este grupo no consta el permiso de fotos de nadie</strong>'+
+        '<p>Todavía no se les ha preguntado. Hasta que conste, no se publica ninguna foto suya: '+
+        'ni en la web, ni en redes, ni en el grupo de las familias. Lo pide administración a las familias.</p></div>';
+    }
+    var lineas = [];
+    r.no.forEach(function(x){ lineas.push('<li><b>'+esc(nombreAtleta(x))+'</b> — su familia dijo que no</li>'); });
+    r.parcial.forEach(function(x){ lineas.push('<li><b>'+esc(nombreAtleta(x))+'</b> — '+esc(fotosDe(x).dice)+'</li>'); });
+    r.nose.forEach(function(x){ lineas.push('<li><b>'+esc(nombreAtleta(x))+'</b> — no consta, así que no</li>'); });
+    var cuantos = r.no.length + r.parcial.length + r.nose.length;
+    return '<div class="avi-foto"><strong>'+cuantos+(cuantos===1?' atleta no sale':' atletas no salen')+' en las fotos que se publican</strong>'+
+      '<ul>'+lineas.join('')+'</ul>'+
+      '<p>Entrenan y compiten igual que los demás: esto solo es lo que su familia decidió sobre publicar sus fotos, '+
+      'y no tiene ninguna otra consecuencia. Si haces una foto del grupo para subirla, que no salgan.</p></div>';
+  }
+
+  // ============================================================
   // SECCIÓN 1 · MI GRUPO
   // ============================================================
   function renderMiGrupo(){
@@ -1495,6 +1656,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     MIS_GRUPOS.forEach(function(gr){
       var atls = MIS_ATLETAS.filter(function(x){ return estaEn(x, gr.id); });
       var sub = [gr.seccion, gr.horario].filter(Boolean).map(function(s){ return esc(s); }).join(' · ');
+      /* Si de nadie del grupo consta el permiso, las filas se quedan sin
+         etiqueta y lo dice el aviso de arriba una sola vez. Marcarlas
+         todas sería tapar la lista con algo que no distingue a nadie. */
+      var repFotos = repartoFotos(atls);
       var tabla;
       if(atls.length){
         /* Con pocos atletas el buscador estorba; a partir de una docena, la
@@ -1508,7 +1673,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '</div>'+
             '<p class="sin-busca" data-sinbusca hidden>Ningún atleta de este grupo se llama así. Prueba con el apellido solo, o borra la búsqueda.</p>'
           : '';
-        tabla = buscador +
+        tabla = avisoFotosHTML(atls) + buscador +
           '<div class="atletas-lista">'+
           atls.map(function(x){
             var est = x.estado||''; var cls = (est==='activo'?'activo':est==='lesionado'?'lesionado':est==='prueba'?'prueba':'');
@@ -1523,7 +1688,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             return '<div class="atleta-row fila-atleta" data-atleta="'+x.id+'" data-nombre="'+escAttr(norm(nom))+'" tabindex="0" role="button">'+
               '<div class="ar-av">'+esc(ini)+'</div>'+
               '<div class="ar-main">'+
-                '<div class="ar-nom">'+esc(nom)+' <span class="pill '+cls+'">'+esc(est||'—')+'</span></div>'+
+                '<div class="ar-nom">'+esc(nom)+' <span class="pill '+cls+'">'+esc(est||'—')+'</span> '+etiqFoto(x, !repFotos.ninguno)+'</div>'+
                 (x.categoria?'<div class="ar-cat">'+esc(x.categoria)+'</div>':'')+
                 celdaMarcas+
               '</div>'+
@@ -1691,6 +1856,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            antes: es lo que el entrenador y el atleta necesitan saber de un
            vistazo, y cuando el día son dos deportes se dicen los dos. */
         var tipo = textoDeportes(s);
+        /* Una línea sobre las fotos, en la tarjeta del día.
+           No repite el aviso entero —ese está en Pasar lista, con los
+           nombres—, pero esta es la pantalla en la que se entra, y las
+           fotos no se hacen solo al principio del entrenamiento: se hacen
+           a mitad, cuando ya nadie va a volver a abrir la lista. Una línea
+           basta para que la pregunta te pase por la cabeza a tiempo. */
+        var deHoy = MIS_ATLETAS.filter(function(x){ return estaEn(x, s.grupo_id) && x.estado !== 'baja'; });
+        var rf = repartoFotos(deHoy);
+        var lineaFoto = '';
+        if(rf.ninguno){
+          lineaFoto = '<p class="he-foto">'+icSinFoto+'<span>De este grupo no consta el permiso de fotos de nadie: hasta que conste, no se publica ninguna.</span></p>';
+        } else if(rf.hayAlgo){
+          var fuera = rf.no.concat(rf.parcial, rf.nose);
+          lineaFoto = '<p class="he-foto">'+icSinFoto+'<span>No salen en fotos publicadas: <strong>'+esc(nombresCortos(fuera, 3))+'</strong>.</span></p>';
+        }
         return '<div class="hoy-e">'+
           '<div class="he-top">'+
             '<span class="he-et">Hoy · '+esc(nombreGrupo(s.grupo_id)||'tu grupo')+'</span>'+
@@ -1701,6 +1881,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             (det.length ? '<div class="he-det">'+det.join('')+'</div>' : '')+
           '</div>'+
           (!s.publicada ? '<p class="he-aviso">Está en borrador: todavía no lo ven tus atletas.</p>' : '')+
+          lineaFoto+
           '<div class="he-btns">'+
             '<button type="button" class="he-lista" data-lista="'+escAttr(s.grupo_id)+'">Pasar lista</button>'+
             '<button type="button" class="he-ver" data-ver="'+escAttr(s.id)+'" data-grupo="'+escAttr(s.grupo_id)+'">Ver entrenamiento</button>'+
@@ -2129,6 +2310,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var filtro = norm(LST.filtro);
     var visibles = filtro ? atls.filter(function(x){ return norm(nombreAtleta(x)).indexOf(filtro)>-1; }) : atls;
+    var repFotos = repartoFotos(atls);
 
     // Aviso arriba del todo con las faltas que ha avisado la familia.
     var conAviso = atls.filter(function(x){ return LST.ausencias[x.id]; });
@@ -2141,7 +2323,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</ul><p>Ya están marcados como ausentes. Si al final vinieron, cámbialo con el ✓.</p></div>'
       : '';
 
-    var acciones = sobra + avisos + '<div class="lst-acciones">'+
+    /* EL AVISO DE LAS FOTOS VA AQUÍ, y no solo en la ficha del atleta.
+       Nadie abre una ficha antes de sacar el móvil. Pasar lista es la
+       única pantalla que un entrenador tiene abierta a pie de pista con
+       todos los nombres delante, y es de donde arranca la sesión: si el
+       aviso no se ve aquí, no se ve el día que hace falta.
+       Va debajo de las faltas avisadas —eso es de ahora mismo, esto es
+       de todo el curso— y encima de la lista, para que no haya que
+       bajar a buscarlo. */
+    var acciones = sobra + avisos + avisoFotosHTML(atls) + '<div class="lst-acciones">'+
       '<button type="button" id="lst-todos">Marcar todos</button>'+
       '<button type="button" id="lst-buscar">Buscar</button>'+
     '</div>'+
@@ -2159,7 +2349,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var etiqNota = nn ? nn+(nn>1?' observaciones de este día · ':' observación de este día · ')+nombreAtleta(x) : 'Añadir una observación de este día · '+nombreAtleta(x);
       return '<div class="lst-fila'+clase+'" data-atleta="'+x.id+'">'+
         '<span class="avatar">'+esc(iniciales(x))+'</span>'+
-        '<span class="lst-nom"><button type="button" class="lst-ficha" data-atleta="'+x.id+'">'+esc(nombreAtleta(x))+'</button>'+sub+'</span>'+
+        '<span class="lst-nom"><button type="button" class="lst-ficha" data-atleta="'+x.id+'">'+esc(nombreAtleta(x))+'</button>'+sub+etiqFoto(x, !repFotos.ninguno)+'</span>'+
         '<button type="button" class="nd-btn'+(nn?' tiene':'')+'" data-nota="'+x.id+'" title="'+escAttr(etiqNota)+'" aria-label="'+escAttr(etiqNota)+'">'+icNotaDia+'</button>'+
         '<span class="seg">'+
           '<button type="button" class="si'+(m===true?' on':'')+'" data-atleta="'+x.id+'" data-val="si" aria-label="Presente" title="Presente">✓</button>'+
@@ -2963,6 +3153,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="dato"><span>Asistencia últimos 30 días</span><b'+(total30?' class="cifra"':'')+'>'+esc(asisTxt)+'</b></div>'+
         '<div class="dato"><span>Estado</span><b class="'+estCls+'">'+esc(estTxt)+'</b></div>'+
         (at.licencia ? '<div class="dato"><span>Licencia</span><b class="cifra">'+esc(at.licencia)+'</b></div>' : '')+
+        // Lo de las fotos también aquí, aunque la ficha no sea donde hace
+        // falta: es donde se viene a mirar cuando ya ha surgido la duda.
+        '<div class="dato"><span>Fotos</span><b>'+esc(fotoFicha(at))+'</b></div>'+
       '</div>'+
       '<div class="ficha-bloque" id="fa-bloque-marcas"><h4>Mejores marcas</h4>'+marcasHTML(at)+'</div>'+
       '<div class="ficha-bloque" id="fa-bloque-rm"><h4>Repeticiones máximas (RM)</h4>'+rmHTML(at)+'</div>'+

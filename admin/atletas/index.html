@@ -353,6 +353,30 @@
           <option value="escuela">Escuela (fijado a mano)</option>
           <option value="socio">Socio (fijado a mano)</option>
         </select>
+        <!-- ==== PERMISO DE IMAGEN ====
+             Esto no es papeleo: es lo que decide si el entrenador puede
+             subir a Instagram la foto de un crío. Vive aquí porque un
+             consentimiento lo recoge el club, no se decide en la pista:
+             el entrenador lo LEE en su pantalla y no lo cambia.
+             La opción de arriba es «no consta» y se queda puesta por
+             defecto en las fichas que no lo traen. No es un fallo de la
+             pantalla: es lo que hay, y en pantalla se dice tal cual. -->
+        <label for="a-foto">Fotos <span style="font-weight:400;color:var(--texto-suave);">— qué contestó la familia a lo de publicar sus fotos</span></label>
+        <select id="a-foto">
+          <option value="">No consta (no se publica ninguna foto suya)</option>
+          <option value="si">Sí, la familia lo autorizó</option>
+          <option value="no">No, la familia dijo que no</option>
+        </select>
+        <div id="a-foto-canales" class="oculto">
+          <label id="a-foto-lab">¿Para qué canales? <span style="font-weight:400;color:var(--texto-suave);">— los del impreso del club; marca solo los que autorizó</span></label>
+          <div class="caja-marcar" role="group" aria-labelledby="a-foto-lab"><div class="fila-p">
+            <label class="esp-p"><input type="checkbox" class="foto-chk" value="web"><span>La web</span></label>
+            <label class="esp-p"><input type="checkbox" class="foto-chk" value="redes"><span>Redes sociales</span></label>
+            <label class="esp-p"><input type="checkbox" class="foto-chk" value="mensajeria"><span>Grupos de mensajería</span></label>
+            <label class="esp-p"><input type="checkbox" class="foto-chk" value="medios"><span>Prensa y material del club</span></label>
+          </div></div>
+          <p class="sub-ficha" style="margin:6px 0 0;">El formulario de la web pregunta uno solo que vale por los tres primeros y nunca por prensa. Si la autorización llegó en papel, marca lo que firmaron.</p>
+        </div>
         <label>Especialidades <span style="font-weight:400;color:var(--texto-suave);">— marca las pruebas de competición que hace (puede ser varias)</span></label>
         <div id="a-especialidades" class="caja-marcar"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
         <div class="pie-form">
@@ -567,6 +591,60 @@ APOLANA_ADMIN.listo(function (sb) {
     return out;
   }
 
+  /* ---------- el permiso de las fotos ----------
+     Tres respuestas posibles y ninguna por defecto: sí, no, y «no consta»,
+     que es lo que hay en las fichas de quien entró antes de que se
+     preguntara. «No consta» NO se guarda como un no: se guarda vacío,
+     porque no es lo mismo que una familia haya dicho que no a que nadie
+     se lo haya preguntado. En lo que se puede hacer valen igual —no se
+     publica—, pero uno se arregla preguntando y el otro ya está
+     contestado, y decirle a una familia que dijo que no cuando no dijo
+     nada es ponerle en la boca algo que no ha dicho.
+
+     La fecha y el origen solo se tocan si la respuesta CAMBIA. Si no,
+     cada vez que alguien guardara la ficha por otra cosa, el permiso
+     pasaría a parecer de hoy, y el día que una familia diga «yo eso lo
+     retiré en octubre» no habría manera de saber qué había apuntado. */
+  var FOTO_ANTES = { valor: '', canales: '' };
+
+  function canalesMarcados() {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll('.foto-chk'), function (chk) { if (chk.checked) out.push(chk.value); });
+    return out;
+  }
+  function verCanales() {
+    $('a-foto-canales').classList.toggle('oculto', $('a-foto').value !== 'si');
+  }
+  function ponerFoto(a) {
+    var v = a.permiso_imagen === true ? 'si' : a.permiso_imagen === false ? 'no' : '';
+    $('a-foto').value = v;
+    var amb = Array.isArray(a.permiso_imagen_ambitos) ? a.permiso_imagen_ambitos : [];
+    Array.prototype.forEach.call(document.querySelectorAll('.foto-chk'), function (chk) {
+      chk.checked = amb.indexOf(chk.value) !== -1;
+    });
+    verCanales();
+    FOTO_ANTES = { valor: v, canales: amb.slice().sort().join(',') };
+  }
+  /* Lo que hay que mandar a la base. Devuelve un objeto vacío si nadie ha
+     tocado nada: así una ficha que se guarda por otra cosa no reescribe un
+     consentimiento que estaba bien. */
+  function cambiosFoto() {
+    var v = $('a-foto').value;
+    var canales = v === 'si' ? canalesMarcados() : [];
+    var firma = canales.slice().sort().join(',');
+    if (v === FOTO_ANTES.valor && firma === FOTO_ANTES.canales) return {};
+    if (!v) {
+      return { permiso_imagen: null, permiso_imagen_ambitos: null,
+               permiso_imagen_en: null, permiso_imagen_origen: null };
+    }
+    return {
+      permiso_imagen: v === 'si',
+      permiso_imagen_ambitos: (v === 'si' && canales.length) ? canales : null,
+      permiso_imagen_en: new Date().toISOString(),
+      permiso_imagen_origen: 'mano'
+    };
+  }
+
   var TODOS = [];      // fichas cargadas
   var CORREOS = {};    // perfil_id → correo (solo para la ficha, nunca en la lista)
   var ULTIMO = {};     // atleta_id → último recibo { importe, sinCobrar }
@@ -700,6 +778,18 @@ APOLANA_ADMIN.listo(function (sb) {
         '<button type="button" class="b2" data-ver-prueba>Ver los ' + pru.length + '</button>' +
         '</div>';
     }
+    /* Los que no tienen contestado lo de las fotos.
+       Sale con número y sin dramatismo, pero sale: mientras no conste, su
+       entrenador ve «no consta» en la lista y no puede publicar nada de
+       ellos, y eso solo se arregla preguntándoselo a la familia. Se cuenta
+       sobre los que están en el club, no sobre las bajas. */
+    var sinFoto = TODOS.filter(function (a) { return a.permiso_imagen == null && a.estado !== 'baja'; });
+    if (sinFoto.length) {
+      av += '<div class="avis">' +
+        '<span class="t">' + sinFoto.length + (sinFoto.length === 1 ? ' ficha sin el permiso de fotos' : ' fichas sin el permiso de fotos') + '</span>' +
+        '<span class="d">De ' + (sinFoto.length === 1 ? 'esta persona' : 'estas personas') + ' no consta si su familia autorizó publicar sus fotos, así que sus entrenadores no pueden publicar ninguna. Se pregunta a la familia y se apunta en su ficha, en «Fotos».</span>' +
+        '</div>';
+    }
     var deben = TODOS.filter(function (a) { return ULTIMO[a.id] && ULTIMO[a.id].sinCobrar; });
     if (SIN_RECIBOS) {
       /* Callarse el aviso de impagados equivaldría a decir que no hay ninguno. */
@@ -723,7 +813,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var tb = $('tabla').querySelector('tbody');
     tb.innerHTML = ADM.filaCargando(COLS);
     var r = await sb.from('atletas')
-      .select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id,fecha_nacimiento,tipo_membresia,fecha_prueba_fin')
+      .select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id,fecha_nacimiento,tipo_membresia,fecha_prueba_fin,permiso_imagen')
       .order('apellidos');
     if (r.error) { tb.innerHTML = ADM.filaError(COLS, r.error.message, cargar); return; }
     TODOS = r.data || [];
@@ -807,6 +897,7 @@ APOLANA_ADMIN.listo(function (sb) {
     /* Los demás grupos: los que ya tenía, menos el principal. */
     pintarOtrosGrupos(gruposDe(a).filter(function (id) { return id !== a.grupo_id; }));
     $('a-tipo').value = a.tipo_membresia || '';
+    ponerFoto(a);
     setEspecialidades(a.especialidades);
     $('a-email').value = a.perfil_id ? (CORREOS[a.perfil_id] || '') : '';
     if (a.perfil_id && !CORREOS[a.perfil_id]) {
@@ -839,6 +930,19 @@ APOLANA_ADMIN.listo(function (sb) {
      de grupo principal no es motivo para perder lo demás. */
   $('a-grupo').addEventListener('change', function () {
     pintarOtrosGrupos(otrosGruposMarcados());
+  });
+  /* Los canales solo se enseñan cuando hay un sí que repartir: preguntar
+     «¿para qué canales?» debajo de un NO no tiene ningún sentido. */
+  $('a-foto').addEventListener('change', function () {
+    verCanales();
+    /* Un sí sin canales marcados no dice nada, así que al pasar a «sí» se
+       marcan los tres que pregunta el formulario de la web. Prensa no: eso
+       nunca se le ha preguntado a nadie y no se da por supuesto. */
+    if (this.value === 'si' && !canalesMarcados().length) {
+      Array.prototype.forEach.call(document.querySelectorAll('.foto-chk'), function (chk) {
+        chk.checked = ['web', 'redes', 'mensajeria'].indexOf(chk.value) !== -1;
+      });
+    }
   });
 
   /* La fila entera abre la ficha: no hay columna de acciones. */
@@ -924,6 +1028,7 @@ APOLANA_ADMIN.listo(function (sb) {
       especialidades: (function () { var e2 = getEspecialidades(); return e2.length ? e2 : null; })(),
       perfil_id: perfilId
     };
+    Object.assign(datos, cambiosFoto());
     async function guardar(d) {
       var id = $('a-id').value;
       /* La ficha nueva devuelve su id: hace falta enseguida para guardar

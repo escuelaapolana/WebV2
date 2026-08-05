@@ -166,6 +166,25 @@ body.pista-viva #admin-contenido { min-height: 100vh; }
 .at-lista { display: flex; flex-direction: column; gap: 8px; }
 .at-pie { font-size: 15px; color: var(--f-sub); padding: 4px 2px 0; }
 
+/* ---------- lo de las fotos ----------
+   Gris tinta y NUNCA rojo ni ámbar: los colores de alarma de esta
+   pantalla ya quieren decir otra cosa (falta avisada, lesión), y además
+   dejarían al crío señalado en la lista delante de cualquiera que mire.
+   Que su familia no quiera que salga en Instagram no es una incidencia.
+   El «no consta» va aún más apagado y con el borde discontinuo: es lo
+   único que se arregla preguntando, y se distingue sin tener que leer. */
+.p-foto { background: #F2F4F8; border: 1px solid #DCE1E9; border-radius: 12px;
+  padding: 12px 15px; margin-bottom: 10px; font-size: 15px; color: #3B4557; }
+.p-foto b { display: block; color: var(--navy); font-size: 16px; margin-bottom: 4px; }
+.p-foto ul { margin: 6px 0 0 18px; padding: 0; }
+.p-foto li { margin: 2px 0; }
+.p-foto span { display: block; margin-top: 7px; font-size: 14px; line-height: 1.45; opacity: .9; }
+.at-foto { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+  max-width: 100%; overflow: hidden; margin-top: 3px; padding: 2px 9px; border-radius: 999px;
+  background: #EAEDF2; color: #4A5568; font-size: 13px; white-space: nowrap; }
+.at-foto svg { flex: 0 0 13px; width: 13px; height: 13px; }
+.at-foto.es-nose { background: transparent; border: 1px dashed #C4CBD6; color: #5A6272; }
+
 /* ---------- barra de abajo (móvil) · sobre crema, no es barra de
    pestañas: es la acción de guardar, que se queda a mano. ---------- */
 .p-barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 500; box-sizing: border-box;
@@ -417,6 +436,8 @@ window.APOLANA_ADMIN.listo(function (sb) {
   var IC_ATRAS = ic('<path d="M19.5 12h-15M11 5.5L4.5 12l6.5 6.5"/>');
   var IC_ENTRAR = ic('<path d="M9.5 6l6 6-6 6"/>');
   var IC_CANDADO = ic('<rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8.5 11V8.5a3.5 3.5 0 017 0V11"/>');
+  /* Cámara tachada: lo de las fotos se tiene que reconocer sin leer. */
+  var IC_SIN_FOTO = ic('<path d="M20 17.5V9a1.5 1.5 0 00-1.5-1.5H16l-1-2H9.8"/><path d="M6.7 7.5H5.5A1.5 1.5 0 004 9v9a1.5 1.5 0 001.5 1.5h12"/><path d="M14.1 14.3a3 3 0 01-4.2-4.2"/><path d="M3 3l18 18"/>');
   var VISTO = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   function CRUZ(c) { return '<svg viewBox="0 0 24 24" fill="none" stroke="' + c + '" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>'; }
   function OJO(c) { return '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v4.5" stroke="' + c + '" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16" r="1.2" fill="' + c + '"/></svg>'; }
@@ -541,7 +562,10 @@ window.APOLANA_ADMIN.listo(function (sb) {
     } catch (e) {}
 
     var a = await sb.from('atletas')
-      .select('id,nombre,apellidos,fecha_nacimiento,categoria,grupo_id,estado,fecha_prueba_fin,sexo,email,email_tutor,telefono_tutor,nombre_tutor')
+      /* El permiso de imagen entra aquí desde la 135: esta pantalla se usa
+         de pie en la pista y con el móvil en la mano, que es exactamente
+         el momento en el que hay que saber de quién no se publican fotos. */
+      .select('id,nombre,apellidos,fecha_nacimiento,categoria,grupo_id,estado,fecha_prueba_fin,sexo,email,email_tutor,telefono_tutor,nombre_tutor,permiso_imagen,permiso_imagen_ambitos')
       .neq('estado', 'baja').order('apellidos');
     if (a.error) { CARGA_ERROR = 'No se han podido leer los atletas (' + (a.error.message || 'sin conexión') + ').'; }
     else if (a.data) { ATLETAS = a.data; ATLETAS.forEach(function (x) { AMAP[x.id] = x; }); }
@@ -928,6 +952,93 @@ window.APOLANA_ADMIN.listo(function (sb) {
     return Math.round((b - a) / 86400000);
   }
 
+  /* ------------------------------------------------------------
+     LO DE LAS FOTOS · aquí, porque aquí es donde está el móvil
+     ------------------------------------------------------------
+     La familia contesta en el alta si podemos publicar fotos de su hijo.
+     Hasta la 135 esa respuesta se quedaba en el alta, que solo ven
+     administración y tesorería, y quien hace las fotos está en la pista
+     con esta pantalla abierta. Aquí se traduce a lo único que hace falta
+     saber antes de subir nada.
+
+     Vacío NO es que sí: vacío es que no consta, y mientras no conste no
+     se publica. Y va en gris, no en rojo: que una familia no quiera que
+     su hijo salga en Instagram es una decisión suya, no una incidencia.
+     ------------------------------------------------------------ */
+  var CANALES_CORTO_F = { web: 'web', redes: 'redes', mensajeria: 'grupo', medios: 'prensa' };
+  var CANALES_LARGO_F = { web: 'la web', redes: 'redes sociales', mensajeria: 'el grupo de la familia', medios: 'prensa y carteles' };
+  var CANALES_DEL_DIA_F = ['redes', 'mensajeria'];
+
+  function fotosDe(a) {
+    if (!a || a.permiso_imagen === undefined) return { nivel: 'si' };
+    if (a.permiso_imagen === null) return { nivel: 'nose', etiq: 'no consta', dice: 'no consta que se le preguntara' };
+    if (a.permiso_imagen === false) return { nivel: 'no', etiq: 'sin fotos', dice: 'su familia dijo que no' };
+    var amb = a.permiso_imagen_ambitos;
+    if (!Array.isArray(amb) || !amb.length) return { nivel: 'si' };
+    var faltan = CANALES_DEL_DIA_F.filter(function (c) { return amb.indexOf(c) === -1; });
+    if (!faltan.length) return { nivel: 'si' };
+    return { nivel: 'parcial',
+             etiq: 'solo ' + amb.map(function (c) { return CANALES_CORTO_F[c] || c; }).join('+'),
+             dice: 'su familia autorizó solo ' + amb.map(function (c) { return CANALES_LARGO_F[c] || c; }).join(' y ') };
+  }
+
+  function repartoFotos(atls) {
+    var r = { no: [], parcial: [], nose: [] };
+    atls.forEach(function (a) { var n = fotosDe(a).nivel; if (n !== 'si') r[n].push(a); });
+    /* Si de NADIE del grupo consta el permiso —lo que pasa hoy con casi
+       todos, porque entraron antes de que se preguntara—, marcar las
+       veinticinco filas no distingue a nadie: se vuelve papel pintado y se
+       deja de mirar. Se dice una vez arriba y las filas se quedan limpias. */
+    r.ninguno = atls.length > 0 && r.nose.length === atls.length;
+    r.hayAlgo = !!(r.no.length || r.parcial.length || r.nose.length);
+    return r;
+  }
+
+  function etiqFoto(a, incluirSinDato) {
+    var f = fotosDe(a);
+    if (f.nivel === 'si') return '';
+    if (f.nivel === 'nose' && incluirSinDato === false) return '';
+    return '<span class="at-foto' + (f.nivel === 'nose' ? ' es-nose' : '') + '">' + IC_SIN_FOTO + esc(f.etiq) + '</span>';
+  }
+
+  /* La frase entera, para la ficha de un atleta. */
+  function fotoDicho(a) {
+    var f = fotosDe(a);
+    if (f.nivel === 'no')      return 'No se publican: su familia dijo que no.';
+    if (f.nivel === 'nose')    return 'No consta que se le preguntara, así que no se publican. Lo pide administración a la familia.';
+    if (f.nivel === 'parcial') return 'Solo ' + f.dice.replace('su familia autorizó solo ', '') + '. En lo demás, no.';
+    return 'Su familia autorizó publicarlas.';
+  }
+
+  /* El aviso de arriba: a la hora de publicar no se repasan veinticinco
+     filas, hacen falta los nombres juntos. */
+  function avisoFotosHTML(atls) {
+    var r = repartoFotos(atls);
+    if (!r.hayAlgo) return '';
+    if (r.ninguno) {
+      return '<div class="p-foto"><b>De este grupo no consta el permiso de fotos de nadie</b>' +
+        '<span>Todavía no se les ha preguntado. Hasta que conste, no se publica ninguna foto suya: ni en la web, ni en redes, ni en el grupo de las familias.</span></div>';
+    }
+    var fuera = r.no.concat(r.parcial, r.nose);
+    return '<div class="p-foto"><b>' + fuera.length + (fuera.length === 1 ? ' atleta no sale' : ' atletas no salen') + ' en las fotos que se publican</b>' +
+      '<ul>' + fuera.map(function (a) {
+        return '<li>' + esc(nombreDe(a)) + ' — ' + esc(fotosDe(a).dice) + '</li>';
+      }).join('') + '</ul>' +
+      '<span>Entrenan y compiten igual que los demás: esto solo es lo que su familia decidió sobre publicar sus fotos. Si haces una foto del grupo para subirla, que no salgan.</span></div>';
+  }
+
+  /* La lista y su aviso salen juntos de aquí, y no cada uno por su lado, por
+     una razón: si el grupo entero está sin dato, el aviso lo dice una vez y
+     las filas NO llevan etiqueta. Esas dos decisiones son la misma, así que
+     se toman en el mismo sitio; separadas, un día se cambiaría una y no la
+     otra y la pantalla se contradiría a sí misma. */
+  var FOTOS_SIN_ETIQUETA = false;
+  function listaAtletasHTML(atls) {
+    var r = repartoFotos(atls);
+    FOTOS_SIN_ETIQUETA = r.ninguno;
+    return avisoFotosHTML(atls) + '<div class="at-lista">' + atls.map(filaAtleta).join('') + '</div>';
+  }
+
   function filaAtleta(a) {
     var v = LST.marcas[a.id];
     var sub = subLinea(a);
@@ -942,7 +1053,8 @@ window.APOLANA_ADMIN.listo(function (sb) {
       '<button type="button" class="at-tog" data-girar="' + esc(a.id) + '" aria-label="' + esc(nombreDe(a) + ': ' + dice + '. Tocar para cambiar') + '">' +
         '<span class="at-cir">' + cir + '</span>' +
         '<span class="at-txt"><span class="at-nom">' + esc(nombreCorto(a)) + '</span>' +
-          (sub ? '<span class="at-sub">' + esc(sub) + '</span>' : '') + '</span>' +
+          (sub ? '<span class="at-sub">' + esc(sub) + '</span>' : '') +
+          etiqFoto(a, !FOTOS_SIN_ETIQUETA) + '</span>' +
         '<span class="at-meta">' + esc(meta) + '</span>' +
       '</button>' +
       '<button type="button" class="at-ficha" data-ficha="' + esc(a.id) + '" aria-label="' + esc('Abrir la ficha de ' + nombreDe(a)) + '">' + IC_ENTRAR + '</button>' +
@@ -1041,7 +1153,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
       } else if (!atls.length) {
         h += '<p class="p-vacio">Este grupo no tiene atletas en activo. Se dan de alta en Personas → Atletas.</p>';
       } else {
-        h += '<div class="at-lista">' + atls.map(filaAtleta).join('') + '</div>' +
+        h += listaAtletasHTML(atls) +
              '<span class="at-pie">' + atletasTxt(atls.length) + ' · ' +
              (c.sinMarcar ? c.sinMarcar + ' sin marcar' : 'todos marcados') + '</span>';
       }
@@ -1221,6 +1333,12 @@ window.APOLANA_ADMIN.listo(function (sb) {
         '<div class="a"><button type="button" class="b-ambar" id="f-queda">Se queda</button>' +
         botonFamiliaHTML(a, 'b-fino') + '</div></div>';
     }
+
+    /* Lo de las fotos también en la ficha, aunque la ficha no sea donde
+       hace falta: es donde se viene a mirar cuando la duda ya ha surgido
+       con un crío en concreto, y aquí sí cabe la frase entera. */
+    h += '<div class="f-bloque"><span class="f-et">Fotos</span>' +
+      '<p class="f-nota">' + esc(fotoDicho(a)) + '</p></div>';
 
     var n = NOTAS_AT[0];
     h += '<div class="f-bloque"><span class="f-et">Observaciones</span>' +
@@ -1429,7 +1547,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     h += '<div class="e-lista">';
     if (LST.cargando) h += esqueleto(Math.min(atls.length || 3, 6));
     else if (!atls.length) h += '<p class="p-vacio">Este grupo no tiene atletas en activo.</p>';
-    else h += '<div class="at-lista">' + atls.map(filaAtleta).join('') + '</div>' +
+    else h += listaAtletasHTML(atls) +
       '<span class="at-pie">' + atletasTxt(atls.length) + ' · ' + (c.sinMarcar ? c.sinMarcar + ' sin marcar' : 'todos marcados') +
       (LST.guardadoEn ? ' · guardado a las ' + esc(LST.guardadoEn) : LST.sucio ? ' · cambios sin guardar' : '') + '</span>';
     h += '</div></div>';
