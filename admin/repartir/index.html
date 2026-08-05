@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repartir la escuela · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<style>
+  /* ============================================================
+     REPARTIR A LOS NIÑOS ENTRE LOS GRUPOS
+     ------------------------------------------------------------
+     Maqueta: maquetas/v3/entrega-12/…/8-repartir-grupos/
+              1a escritorio (arrastrando) · 1b móvil (eligiendo)
+
+     La cabecera y los chips los ponen las piezas del panel
+     (panel-piezas.css). Aquí abajo solo está el tablero, que no
+     se parece a ninguna otra pantalla: columnas de grupos con
+     tarjetas de niños que se arrastran.
+
+     Ningún color se inventa: o sale de apolana.css, o es uno de
+     los cinco que trae la maqueta y que están apuntados abajo.
+
+     SON NIÑOS DE SEIS AÑOS. Por eso la tarjeta lleva su nombre
+     entero y no un código, el aviso dice «su hermana está en el
+     otro turno» y no «conflicto», y en ningún sitio hay una
+     cuadrícula de casillas de colores. Esto es una lista de
+     críos, no un panel de control.
+     ============================================================ */
+  :root {
+    /* Los dos turnos, cada uno con su color de fondo. Es lo que
+       hace que arrastrar al turno vecino resulte visualmente
+       incómodo cuando se ven los dos a la vez. */
+    --rep-lx-fondo:  #EAF2F9;  --rep-lx-borde: #CBDEEF;  --rep-lx-texto: #1E4E78;
+    --rep-mj-fondo:  #F1EADC;  --rep-mj-borde: #E0D7C4;  --rep-mj-texto: #6E5A34;
+    /* El aviso rojo de la tarjeta: hermano en el turno equivocado
+       o niño que no es del año del grupo. */
+    --rep-mal-borde: #B3261E;  --rep-mal-fondo: #FDECEA; --rep-mal-texto: #8F1F19;
+    --rep-mal-ini:   #F6D7D4;
+    /* Los amigos que pidió la familia, en ámbar legible. */
+    --rep-ojo: #8A5207;
+    /* El verde de «su hermano está aquí». */
+    --rep-bien-fondo: #EDF5EE; --rep-bien-texto: #2F5C39;
+  }
+
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1280px; margin: 0 auto; padding: clamp(18px,3vw,34px) clamp(14px,3vw,34px) 40px; }
+
+  /* ---------- La cabecera y su botón de deshacer ----------
+     «Deshacer» se queda arriba toda la sesión de reparto. No es un
+     aviso que se va solo a los tres segundos: si se va, el miedo a
+     equivocarse hace que el reparto acabe en un papel. */
+  .rep-deshacer {
+    display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box;
+    min-height: 44px; padding: 10px 18px; border: 1px solid transparent; border-radius: 999px;
+    background: var(--azul-suave); color: var(--azul-hover);
+    font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .rep-deshacer:hover { background: #DCEAF7; }
+  .rep-deshacer[disabled] { background: var(--crema-media); color: var(--texto-suave); cursor: default; }
+
+  /* ---------- Las dos filas de filtros: turno arriba, nivel debajo ----------
+     El turno manda porque son dos mundos que no se mezclan nunca, y
+     es donde se confundían los dos grupos que se llaman igual. */
+  .rep-fila { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: 0 0 12px; }
+  .rep-rotulo {
+    font-size: 13px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--texto-suave); flex: 0 0 auto;
+  }
+  .rep-anio { margin-left: auto; font-size: 14px; color: var(--texto-suave); }
+  .rep-anio b { color: var(--navy); }
+
+  /* En el móvil los nueve niveles no caben apilados sin comerse media
+     pantalla, así que esa fila —y solo esa— rueda a lo ancho. Las
+     cifras que hay que comparar de un vistazo (las plazas) no están
+     aquí, están en la cabecera de cada columna. */
+  @media (max-width: 899px) {
+    .rep-fila { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 10px;
+      margin-left: -14px; margin-right: -14px; padding: 2px 14px; }
+    .rep-fila::-webkit-scrollbar { display: none; }
+    .rep-fila .rep-rotulo { display: none; }
+    .rep-anio { display: none; }   /* el año ya lo dice la cabecera de la columna */
+  }
+
+  /* ---------- El tablero ----------
+     Su propio marco con desplazamiento lateral: la página nunca se
+     va de ancho, se va el tablero, que es lo que se puede empujar. */
+  .rep-tablero { display: flex; gap: 20px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
+  .rep-columnas { display: flex; gap: 20px; align-items: flex-start; flex: 1 1 auto; min-width: 0; }
+  /* Con un solo turno a la vista la columna se ensancha; con los dos,
+     se reparten. Lo que no hace nunca es estirarse a toda la pantalla:
+     una lista de nombres de dos palabras a mil píxeles de ancho no se
+     lee, se recorre. */
+  .rep-columnas > * { flex: 1 1 0; min-width: 260px; max-width: 520px; }
+
+  /* La columna de los que aún no tienen grupo. Siempre a la
+     izquierda y siempre a la vista: es el montón del que se saca. */
+  .rep-sueltos { flex: 0 0 210px; width: 210px; display: flex; flex-direction: column; gap: 9px; }
+  .rep-sueltos-tit { font-size: 13px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-suave); }
+  .rep-sueltos-caja {
+    border: 1.5px dashed var(--linea-borde); border-radius: 12px; padding: 10px;
+    display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow-y: auto;
+  }
+  .rep-pista { font-size: 13px; line-height: 1.45; color: var(--texto-suave); }
+
+  /* La columna de un grupo. */
+  .rep-grupo { border: 1px solid var(--linea-marcada); border-radius: 14px; background: #fff; overflow: hidden; }
+  .rep-grupo-cab {
+    padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--rep-lx-fondo); border-bottom: 1px solid var(--rep-lx-borde);
+  }
+  .rep-grupo-cab h2 {
+    margin: 0; font-family: var(--fuente-titulo); font-weight: 700; font-size: 22px; line-height: 1;
+    text-transform: uppercase; color: var(--rep-lx-texto);
+  }
+  .rep-grupo-cab .rep-sub { display: block; margin-top: 4px; font-size: 13px; line-height: 1.3; color: #4A7CA8; }
+  .rep-grupo--mj .rep-grupo-cab { background: var(--rep-mj-fondo); border-bottom-color: var(--rep-mj-borde); }
+  .rep-grupo--mj .rep-grupo-cab h2 { color: var(--rep-mj-texto); }
+  .rep-grupo--mj .rep-grupo-cab .rep-sub { color: #8A7550; }
+
+  /* El contador de plazas. Se pone rojo al pasarse y no impide nada:
+     el club decidió que se pueda meter al diecinueve a mano. */
+  .rep-plazas {
+    flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; background: #fff;
+    font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--rep-lx-texto);
+  }
+  .rep-grupo--mj .rep-plazas { color: var(--rep-mj-texto); }
+  .rep-plazas--pasa, .rep-grupo--mj .rep-plazas--pasa { background: var(--rep-mal-borde); color: #fff; }
+  .rep-grupo-lista { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-height: 90px; max-height: 62vh; overflow-y: auto; }
+  .rep-grupo-pie {
+    padding: 10px 16px; background: var(--rep-mal-fondo); border-top: 1px solid var(--rep-mal-ini);
+    font-size: 13px; line-height: 1.5; color: var(--rep-mal-texto);
+  }
+
+  /* El hueco: ni un grupo vacío ni una columna filtrada se quedan en
+     blanco sin decir qué pasa. */
+  .rep-hueco {
+    border: 1.5px dashed var(--rep-lx-borde); border-radius: 9px; padding: 12px; text-align: center;
+    font-size: 13px; line-height: 1.4; color: #4A7CA8;
+  }
+  .rep-grupo--mj .rep-hueco { border-color: var(--rep-mj-borde); color: #8A7550; }
+  .rep-sueltos-caja .rep-hueco { border-color: var(--linea-borde); color: var(--texto-suave); }
+
+  /* Cuando se arrastra por encima, la columna lo dice. */
+  .rep-encima .rep-grupo-lista, .rep-sueltos.rep-encima .rep-sueltos-caja {
+    background: var(--azul-suave); outline: 2px solid var(--azul-filete); outline-offset: -2px; border-radius: 9px;
+  }
+
+  /* ---------- La tarjeta de un niño ---------- */
+  .rep-nino {
+    display: flex; align-items: center; gap: 9px; box-sizing: border-box;
+    width: 100%; min-height: 48px; padding: 8px 10px; text-align: left;
+    border: 1px solid var(--linea-marcada); border-radius: 10px; background: var(--crema);
+    font-family: inherit; cursor: grab; -webkit-tap-highlight-color: transparent;
+  }
+  .rep-sueltos-caja .rep-nino { background: #fff; }
+  .rep-nino:hover { border-color: var(--linea-borde); }
+  .rep-nino:focus-visible { outline: 2px solid var(--azul-filete); outline-offset: 2px; }
+  .rep-nino.arrastrando { opacity: .45; }
+
+  /* Elegido. En el móvil se ve además la casilla marcada, que es lo
+     que dice «esto se puede tocar» sin tener que arrastrar nada. */
+  .rep-nino.rep-elegido { border: 2px solid #2F72AB; background: var(--azul-suave); padding: 7px 9px; }
+
+  .rep-marca {
+    flex: 0 0 24px; width: 24px; height: 24px; border-radius: 6px; border: 1.5px solid var(--linea-borde);
+    background: #fff; display: none; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff; line-height: 1;
+  }
+  .rep-nino.rep-elegido .rep-marca { background: #2F72AB; border-color: #2F72AB; }
+  .rep-nino.rep-elegido .rep-marca::after { content: '✓'; }
+
+  /* Las iniciales, en un círculo del color de SU nivel (no del de la
+     columna): así un niño que no es de este grupo se ve distinto
+     antes de leer nada. */
+  .rep-ini {
+    flex: 0 0 30px; width: 30px; height: 30px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; line-height: 1;
+    background: var(--crema-media); color: var(--texto);
+  }
+  .rep-ini--rojo  { background: var(--rep-mj-fondo);   color: var(--rep-mj-texto); }
+  .rep-ini--azul  { background: var(--rep-lx-fondo);   color: var(--rep-lx-texto); }
+  .rep-ini--verde { background: var(--rep-bien-fondo); color: var(--rep-bien-texto); }
+
+  .rep-txt { flex: 1 1 auto; min-width: 0; }
+  .rep-nom { display: block; font-size: 14px; font-weight: 500; line-height: 1.3; color: var(--navy);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rep-ctx { display: block; margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--texto-suave); }
+  .rep-mal  { color: var(--rep-mal-texto); }
+  .rep-bien { color: var(--rep-bien-texto); }
+  .rep-ojo  { color: var(--rep-ojo); }
+
+  /* El aviso fuerte: el niño no es del año de esta columna. Va en la
+     propia tarjeta, nunca solo en un contador aparte. */
+  .rep-nino.rep-avisa { border: 1.5px solid var(--rep-mal-borde); background: var(--rep-mal-fondo); }
+  .rep-nino.rep-avisa .rep-ini { background: var(--rep-mal-ini); color: var(--rep-mal-texto); }
+  .rep-nino.rep-avisa.rep-elegido { border: 2px solid #2F72AB; }
+
+  /* ---------- La barra de abajo cuando hay niños elegidos ----------
+     En el móvil no se arrastra nada: se toca, se elige y se mueve
+     desde aquí. En el escritorio también está, porque arrastrar con
+     el teclado no se puede. */
+  .rep-barra {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 500;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 12px clamp(14px,4vw,34px) calc(12px + env(safe-area-inset-bottom));
+    background: var(--navy); color: #fff; box-sizing: border-box;
+  }
+  .rep-barra[hidden] { display: none; }
+  /* Mientras la barra está puesta, el final de la página se aparta:
+     lo último de la lista no puede quedarse debajo del botón. */
+  body.rep-con-barra .admin-wrap { padding-bottom: 110px; }
+  .rep-barra .rep-cuantos { font-size: 15px; font-weight: 500; }
+  .rep-barra .rep-quitar { background: none; border: 0; color: rgba(255,255,255,.8);
+    font-family: inherit; font-size: 14px; min-height: 44px; padding: 0 10px; cursor: pointer; }
+  .rep-barra .rep-mover {
+    display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; padding: 0 22px;
+    border: 0; border-radius: 999px; background: #2F72AB; color: #fff;
+    font-family: inherit; font-size: 15px; font-weight: 500; cursor: pointer;
+  }
+  /* Por debajo de 900 px el panel pone su propia barra de cinco abajo
+     del todo; esta se coloca justo encima y no la tapa. */
+  @media (max-width: 899px) {
+    .rep-barra { bottom: calc(78px + env(safe-area-inset-bottom)); padding-bottom: 12px; }
+  }
+
+  /* ---------- La hoja de «Mover a…» ----------
+     Los grupos candidatos, el mismo nivel primero y ordenados por
+     plazas libres. Confirma antes de mover aunque el destino esté
+     completo: avisa, no bloquea. */
+  .rep-fondo { position: fixed; inset: 0; z-index: 900; background: rgba(20,28,36,.45);
+    display: flex; align-items: flex-end; justify-content: center; }
+  .rep-fondo[hidden] { display: none; }
+  .rep-hoja {
+    background: var(--crema); border-radius: 24px 24px 0 0; padding: 18px 18px 22px;
+    width: min(460px, 100%); max-height: 88vh; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px; box-sizing: border-box;
+  }
+  .rep-asa { width: 40px; height: 4px; border-radius: 999px; background: var(--linea-borde); align-self: center; }
+  .rep-hoja h2 { margin: 0; font-family: var(--fuente-titulo); font-weight: 700; font-size: 24px;
+    line-height: 1.1; text-transform: uppercase; color: var(--navy); }
+  .rep-hoja .rep-quien { font-size: 14px; line-height: 1.45; color: var(--texto-suave); }
+  .rep-destino {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+    box-sizing: border-box; min-height: 52px; padding: 12px 14px; text-align: left;
+    border: 1.5px solid var(--linea-borde); border-radius: 12px; background: #fff;
+    font-family: inherit; font-size: 16px; font-weight: 500; color: var(--navy); cursor: pointer;
+  }
+  .rep-destino[aria-pressed="true"] { border: 2px solid #2F72AB; background: var(--azul-suave); padding: 11px 13px; }
+  .rep-destino .n { font-size: 14px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--texto-suave); }
+  .rep-destino .n.rep-mal { font-weight: 600; color: var(--rep-mal-borde); }
+  .rep-lleno { padding: 10px 12px; background: var(--rep-mal-fondo); border-radius: 8px;
+    font-size: 13px; line-height: 1.45; color: var(--rep-mal-texto); }
+  /* Los dieciocho grupos no caben en una pantalla de móvil, así que el
+     botón de confirmar se queda pegado abajo: si hubiera que bajar
+     hasta el final de la lista para pulsarlo, la mitad de las veces se
+     elegiría el grupo equivocado por el camino. */
+  .rep-pie-hoja {
+    position: sticky; bottom: -22px; margin: 0 -18px -22px; padding: 12px 18px 22px;
+    display: flex; flex-direction: column; gap: 6px;
+    background: var(--crema); border-top: 1px solid var(--linea-marcada);
+  }
+  .rep-hoja .rep-confirmar {
+    min-height: 52px; border: 0; border-radius: 999px; background: #2F72AB; color: #fff;
+    font-family: inherit; font-size: 16px; font-weight: 500; cursor: pointer;
+  }
+  .rep-hoja .rep-confirmar[disabled] { background: var(--crema-media); color: var(--texto-suave); cursor: default; }
+  .rep-hoja .rep-cancelar { background: none; border: 0; min-height: 44px;
+    font-family: inherit; font-size: 15px; color: var(--azul-oscuro); cursor: pointer; }
+  .rep-corte { border: 0; border-top: 1px solid var(--linea-marcada); margin: 2px 0; }
+
+  @media (min-width: 700px) {
+    .rep-fondo { align-items: flex-start; padding: 6vh 16px; }
+    .rep-hoja { border-radius: 16px; }
+    .rep-asa { display: none; }
+  }
+
+  /* ---------- El móvil: una columna cada vez ----------
+     No caben dos columnas legibles, así que se ve un grupo, se
+     cambia de turno con las pastillas y de nivel con la fila que
+     rueda. Nada se arrastra. */
+  @media (max-width: 899px) {
+    .rep-tablero { display: block; overflow: visible; }
+    .rep-sueltos, .rep-columnas > * { width: auto; max-width: none; min-width: 0; }
+    .rep-sueltos { flex: none; }
+    .rep-nino { min-height: 52px; padding: 10px 11px; cursor: pointer; }
+    .rep-nino .rep-marca { display: flex; }
+    .rep-nino .rep-ini { flex-basis: 34px; width: 34px; height: 34px; font-size: 13px; }
+    .rep-nom { font-size: 15px; }
+    .rep-ctx { font-size: 13px; }
+    .rep-sueltos-caja, .rep-grupo-lista { max-height: none; }
+    /* El rótulo «SIN GRUPO · 26» ya lo dice la pastilla de arriba;
+       repetirlo aquí solo empuja la lista hacia abajo. */
+    .rep-sueltos-tit { display: none; }
+    .rep-sueltos-caja { border: 0; padding: 0; }
+    .rep-pista { margin-top: 4px; }
+  }
+
+  .oculto { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="admin-contenido">
+  <div class="admin-wrap">
+
+    <div id="cabecera"></div>
+
+    <div id="mandos"></div>
+
+    <div id="tablero" aria-live="polite"></div>
+
+  </div>
+</div>
+
+<!-- La barra de abajo, con lo elegido. Vive fuera del contenido
+     porque está pegada a la pantalla, no al final de la página. -->
+<div class="rep-barra" id="barra" hidden>
+  <span class="rep-cuantos" id="barra-cuantos"></span>
+  <span>
+    <button type="button" class="rep-quitar" id="barra-quitar">Quitar la selección</button>
+    <button type="button" class="rep-mover" id="barra-mover">Mover a…</button>
+  </span>
+</div>
+
+<div class="rep-fondo" id="hoja-fondo" hidden>
+  <div class="rep-hoja" id="hoja" role="dialog" aria-modal="true" aria-labelledby="hoja-tit"></div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  'use strict';
+
+  /* ============================================================
+     LO QUE HAY EN MEMORIA
+     ============================================================ */
+  var GRUPOS = [];          /* los dieciocho del tablero */
+  var NINOS  = [];          /* los niños que hay que repartir */
+  var PORID  = {};          /* niño por su identificador */
+  var NIVELES = [];         /* Rojo 1 … Verde 3, del más pequeño al mayor */
+
+  var turno    = 'lunes-miercoles';
+  var nivel    = null;      /* el nombre: «Azul 1» */
+  var dosTurnos = false;
+  var soloSueltos = false;
+  var busca = '';
+  var verSueltos = true;    /* en el móvil: si se mira la columna de los sueltos */
+
+  var elegidos = [];        /* identificadores de niños */
+  var elegidosDe = null;    /* de qué columna salen (null = «Sin grupo») */
+  var pila = [];            /* los movimientos hechos, para deshacer */
+
+  var TURNOS = [
+    { id: 'lunes-miercoles', txt: 'Lunes y miércoles' },
+    { id: 'martes-jueves',   txt: 'Martes y jueves' }
+  ];
+
+  function esMovil() { return window.matchMedia('(max-width: 899px)').matches; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  /* Sin acentos y en minúsculas: es la única manera de que «Lucía» y
+     «lucia» se reconozcan al buscar y al cruzar los amigos. */
+  function limpio(s) {
+    return (s == null ? '' : String(s)).toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function nombreEntero(n) { return (n.nombre + ' ' + (n.apellidos || '')).trim(); }
+
+  function iniciales(n) {
+    var a = (n.nombre || '').trim().charAt(0);
+    var b = (n.apellidos || '').trim().charAt(0);
+    return (a + b).toUpperCase() || a.toUpperCase();
+  }
+
+  /* La temporada del club empieza en septiembre. */
+  function temporada() {
+    var h = new Date(), a = h.getFullYear();
+    if (h.getMonth() < 7) a = a - 1;           /* enero a julio, aún es la de septiembre pasado */
+    return a + '-' + String((a + 1) % 100).padStart(2, '0');
+  }
+
+  function turnoTexto(t) { return t === 'martes-jueves' ? 'martes y jueves' : 'lunes y miércoles'; }
+
+  /* De qué familia de color es un nivel. Rojo va en arena porque el
+     rojo de verdad ya significa «esto está mal» en toda la web y no
+     puede significar además «grupo de los pequeños». */
+  function familia(nombre) {
+    var n = limpio(nombre);
+    if (n.indexOf('rojo') === 0) return 'rojo';
+    if (n.indexOf('azul') === 0) return 'azul';
+    if (n.indexOf('verde') === 0) return 'verde';
+    return '';
+  }
+
+  /* ============================================================
+     PREGUNTAS SOBRE UN NIÑO
+     ============================================================ */
+
+  /* En qué columnas del tablero está. Casi siempre es una; son dos
+     cuando alguien hace las dos horas o los dos turnos. */
+  function susColumnas(n) {
+    return GRUPOS.filter(function (g) { return n.grupos.indexOf(g.id) !== -1; });
+  }
+  function estaColocado(n) { return susColumnas(n).length > 0; }
+
+  /* El nivel que le tocaría por su año de nacimiento. */
+  function suNivel(n) {
+    for (var i = 0; i < NIVELES.length; i++) {
+      if (NIVELES[i].anio === n.anio) return NIVELES[i].nombre;
+    }
+    return null;
+  }
+
+  /* Cuántos de los amigos que pidió la familia están en esa columna.
+     Se compara el texto tal cual lo escribieron —«Sofía Ruiz», «sofia»—
+     contra el nombre entero de los demás niños de la columna. Es una
+     pista para decidir, no una regla: por eso basta con que uno
+     contenga al otro. */
+  function amigosEn(n, grupo) {
+    if (!n.amigos || !n.amigos.length || !grupo) return 0;
+    var dentro = enGrupo(grupo.id).filter(function (o) { return o.id !== n.id; })
+      .map(function (o) { return limpio(nombreEntero(o)); });
+    var cuenta = 0;
+    n.amigos.forEach(function (texto) {
+      var t = limpio(texto);
+      if (t.length < 4) return;
+      var hay = dentro.some(function (nom) { return nom === t || nom.indexOf(t) !== -1 || t.indexOf(nom) !== -1; });
+      if (hay) cuenta++;
+    });
+    return cuenta;
+  }
+
+  /* Lo que se lee debajo del nombre: el año y, como mucho, los dos
+     avisos que más importan. El rojo va siempre delante. */
+  function avisos(n, grupo) {
+    var lista = [];
+
+    /* 1 · No es del año de esta columna. */
+    var g = grupo;
+    if (g && n.anio && g.desde && g.hasta) {
+      if (n.anio < g.desde || n.anio > g.hasta) {
+        var d = (n.anio < g.desde) ? (g.desde - n.anio) : (n.anio - g.hasta);
+        var mayor = n.anio < g.desde;   /* nacido antes = más mayor */
+        lista.push({ tono: 'mal', txt: d === 1 ? ('un año ' + (mayor ? 'mayor' : 'menor'))
+                                               : (d + ' años ' + (mayor ? 'mayor' : 'menor')) });
+      }
+    } else if (!g && nivelActual() && n.anio && Math.abs(n.anio - nivelActual().anio) === 1) {
+      /* En «Sin grupo» la referencia es el nivel que se está mirando, y
+         el aviso sale SOLO cuando el niño es de un año pegado al de la
+         columna: son los que se cuelan por error. Pintar de rojo a los
+         de 2015 mientras se reparte a los de 2023 sería un muro rojo
+         que no avisa de nada; esos ya se distinguen por su año y por el
+         color de sus iniciales, y van al final de la lista. */
+      var na = nivelActual().anio, may = n.anio < na;
+      lista.push({ tono: 'mal', txt: 'un año ' + (may ? 'mayor' : 'menor') });
+    }
+
+    /* 2 · Hermanos. Si están en turnos distintos es un aviso rojo:
+       es el motivo número uno de que haya que rehacer el reparto. */
+    var miTurno = g ? g.turno : null;
+    (n.hermanos || []).forEach(function (idH) {
+      var h = PORID[idH];
+      if (!h) return;
+      var suyo = susColumnas(h)[0];
+      if (!suyo) return;
+      if (miTurno && suyo.turno !== miTurno) {
+        lista.push({ tono: 'mal', txt: 'su ' + (h.sexo === 'mujer' ? 'hermana' : 'hermano') + ' está en el otro turno' });
+      } else {
+        lista.push({ tono: 'bien', txt: (h.sexo === 'mujer' ? 'hermana' : 'hermano') + ': ' + h.nombre });
+      }
+    });
+
+    /* 3 · Los amigos que pidió la familia al apuntarse. «Aquí» quiere
+       decir «en la columna que estás mirando»: en la tarjeta de un niño
+       colocado, su propio grupo; en la de uno sin grupo, el grupo que
+       hay en pantalla, que es adonde lo vas a soltar. Es lo que
+       convierte una lista de peticiones en una decisión visual. */
+    var am = amigosEn(n, g || columnas()[0]);
+    if (am) lista.push({ tono: 'ojo', txt: am === 1 ? '1 amigo aquí' : (am + ' amigos aquí') });
+
+    /* 4 · Y si además entrena en otro sitio, que se sepa antes de
+       moverlo: mover le quita ESTE grupo y nada más, pero quien lo
+       arrastra tiene derecho a saber que hay otro. */
+    var otros = susColumnas(n).filter(function (x) { return !g || x.id !== g.id; });
+    if (otros.length) {
+      lista.push({ tono: 'gris', txt: 'también en ' + otros[0].nombre + ' de ' + turnoTexto(otros[0].turno) });
+    }
+
+    /* El rojo primero; de lo demás, lo que quepa. */
+    lista.sort(function (a, b) { return (a.tono === 'mal' ? 0 : 1) - (b.tono === 'mal' ? 0 : 1); });
+    return lista.slice(0, 2);
+  }
+
+  function tieneAvisoRojo(n, grupo) {
+    return avisos(n, grupo).some(function (a) { return a.tono === 'mal'; });
+  }
+
+  /* ============================================================
+     LISTAS
+     ============================================================ */
+  function nivelActual() {
+    for (var i = 0; i < NIVELES.length; i++) if (NIVELES[i].nombre === nivel) return NIVELES[i];
+    return null;
+  }
+
+  function enGrupo(id) {
+    return NINOS.filter(function (n) { return n.grupos.indexOf(id) !== -1; });
+  }
+
+  function sueltos() {
+    return NINOS.filter(function (n) { return !estaColocado(n); });
+  }
+
+  function pasaBusca(n) {
+    if (!busca) return true;
+    return limpio(nombreEntero(n)).indexOf(busca) !== -1;
+  }
+
+  /* Los que se pintan en una columna: los que hay, filtrados por el
+     buscador y ordenados por nombre. */
+  function paraPintar(grupo) {
+    var l = (grupo ? enGrupo(grupo.id) : sueltos()).filter(pasaBusca);
+    if (grupo) {
+      l.sort(function (a, b) { return nombreEntero(a).localeCompare(nombreEntero(b), 'es'); });
+      return l;
+    }
+    /* En «Sin grupo» van primero los del nivel que se está mirando:
+       con cuatrocientos esperando, los que valen para esta columna
+       tienen que estar arriba y no a mitad de una lista larga. */
+    var na = nivelActual() ? nivelActual().anio : null;
+    l.sort(function (a, b) {
+      /* Primero los del año que toca y, detrás, los que más se le
+         acercan: son los que se pueden colar por error y los que
+         llevan el aviso rojo. Los de un nivel lejano caen al final,
+         que es donde estorban menos. */
+      var da = (na && a.anio) ? Math.abs(a.anio - na) : 99;
+      var db = (na && b.anio) ? Math.abs(b.anio - na) : 99;
+      if (da !== db) return da - db;
+      if (a.anio !== b.anio) return (b.anio || 0) - (a.anio || 0);
+      return nombreEntero(a).localeCompare(nombreEntero(b), 'es');
+    });
+    return l;
+  }
+
+  /* Las columnas que toca enseñar ahora mismo. */
+  function columnas() {
+    var suyos = GRUPOS.filter(function (g) { return g.nombre === nivel; });
+    if (dosTurnos && !esMovil()) {
+      return suyos.sort(function (a, b) { return a.turno < b.turno ? -1 : 1; });
+    }
+    return suyos.filter(function (g) { return g.turno === turno; });
+  }
+
+  /* ============================================================
+     PINTAR
+     ============================================================ */
+  function pintarCabecera() {
+    var total = NINOS.length, puestos = NINOS.filter(estaColocado).length;
+    document.getElementById('cabecera').innerHTML = PZ.cabecera({
+      titulo: 'Repartir la escuela',
+      contexto: 'Temporada ' + temporada() + ' · ' + puestos + ' de ' + total + ' niños repartidos'
+    }) ;
+    /* «Deshacer» se mete a mano en la fila de acciones de la cabecera
+       porque no es una acción azul llena: no crea nada, devuelve. */
+    var cab = document.querySelector('#cabecera .pz-cab');
+    if (cab && !cab.querySelector('.pz-cab-acciones')) {
+      var caja = document.createElement('div');
+      caja.className = 'pz-cab-acciones';
+      cab.appendChild(caja);
+    }
+    var acciones = document.querySelector('#cabecera .pz-cab-acciones');
+    var ultimo = pila[pila.length - 1];
+    acciones.innerHTML = '<button type="button" class="rep-deshacer" id="deshacer"' +
+      (pila.length ? '' : ' disabled') + '>↺ Deshacer' + (pila.length > 1 ? ' (' + pila.length + ')' : '') + '</button>';
+    var b = document.getElementById('deshacer');
+    if (ultimo) {
+      var gd = ultimo.destino ? porId(ultimo.destino) : null;
+      b.title = 'Deshacer: ' + ultimo.cuenta + (ultimo.cuenta === 1 ? ' niño' : ' niños') +
+        ' a ' + (gd ? gd.nombre + ' de ' + turnoTexto(gd.turno) : 'sin grupo');
+    }
+    b.addEventListener('click', deshacer);
+  }
+
+  function pintarMandos() {
+    var nSueltos = sueltos().length;
+    var h = '';
+
+    /* Una sola fila de mandos, la de las piezas: buscador y chips. */
+    h += '<div class="pz-filtros">' +
+      '<input type="search" class="pz-busca" id="busca" placeholder="Buscar un niño" ' +
+        'aria-label="Buscar un niño" value="' + esc(busca) + '">' +
+      PZ.chip({ texto: 'Solo sin grupo', cuenta: nSueltos, activo: soloSueltos, accion: 'solo-sueltos' }) +
+      (esMovil() ? '' : PZ.chip({ texto: 'Ver los dos turnos', activo: dosTurnos, accion: 'dos-turnos' })) +
+    '</div>';
+
+    /* El turno es el filtro grande: son dos mundos que no se mezclan. */
+    h += '<div class="rep-fila"><span class="rep-rotulo">Turno</span>';
+    TURNOS.forEach(function (t) {
+      var g = GRUPOS.filter(function (x) { return x.nombre === nivel && x.turno === t.id; })[0];
+      h += PZ.chip({
+        texto: t.txt + (g ? ' · ' + enGrupo(g.id).length + '/' + (g.plazas || 18) : ''),
+        activo: !dosTurnos && turno === t.id, accion: 'turno', valor: t.id
+      });
+    });
+    h += '</div>';
+
+    /* Y el nivel, debajo y más fino. */
+    h += '<div class="rep-fila rep-fila--nivel"><span class="rep-rotulo">Nivel</span>';
+    if (esMovil()) {
+      h += PZ.chip({ texto: 'Sin grupo', cuenta: nSueltos, activo: verSueltos, accion: 'ver-sueltos' });
+    }
+    NIVELES.forEach(function (nv) {
+      h += PZ.chip({ texto: nv.nombre, activo: !( esMovil() && verSueltos ) && nivel === nv.nombre,
+                     accion: 'nivel', valor: nv.nombre });
+    });
+    var na = nivelActual();
+    h += (na && na.anio ? '<span class="rep-anio">Nacidos en <b>' + na.anio + '</b></span>' : '') + '</div>';
+
+    document.getElementById('mandos').innerHTML = h;
+
+    var caja = document.getElementById('busca');
+    caja.addEventListener('input', function () { busca = limpio(caja.value); pintarTablero(); });
+  }
+
+  function tarjeta(n, grupo) {
+    var av = avisos(n, grupo);
+    var rojo = av.some(function (a) { return a.tono === 'mal'; });
+    var fam = familia(suNivel(n));
+    var elegido = elegidos.indexOf(n.id) !== -1;
+    var linea = av.map(function (a) {
+      var c = a.tono === 'mal' ? 'rep-mal' : (a.tono === 'bien' ? 'rep-bien' : (a.tono === 'ojo' ? 'rep-ojo' : ''));
+      return c ? '<span class="' + c + '">' + esc(a.txt) + '</span>' : esc(a.txt);
+    }).join(' · ');
+
+    return '<div class="rep-nino' + (rojo ? ' rep-avisa' : '') + (elegido ? ' rep-elegido' : '') + '"' +
+      ' draggable="true" tabindex="0" role="button" aria-pressed="' + (elegido ? 'true' : 'false') + '"' +
+      ' data-nino="' + esc(n.id) + '" data-de="' + esc(grupo ? grupo.id : '') + '">' +
+      '<span class="rep-marca" aria-hidden="true"></span>' +
+      '<span class="rep-ini' + (fam ? ' rep-ini--' + fam : '') + '" aria-hidden="true">' + esc(iniciales(n)) + '</span>' +
+      '<span class="rep-txt">' +
+        '<span class="rep-nom">' + esc(nombreEntero(n)) + '</span>' +
+        '<span class="rep-ctx">' + esc(n.anio || '') + (linea ? ' · ' + linea : '') + '</span>' +
+      '</span>' +
+    '</div>';
+  }
+
+  function columnaGrupo(g) {
+    var dentro = enGrupo(g.id);
+    var plazas = g.plazas || 18;
+    var pasa = dentro.length > plazas;
+    var lista = paraPintar(g);
+    var cuerpo;
+
+    if (soloSueltos) {
+      /* Con «Solo sin grupo» puesto, las columnas se quedan como
+         destino: dicen cuántos llevan y esperan a que sueltes. */
+      cuerpo = '<div class="rep-hueco">' + dentro.length + (dentro.length === 1 ? ' niño ya colocado' : ' niños ya colocados') + '</div>';
+    } else if (!lista.length) {
+      cuerpo = '<div class="rep-hueco">' + (busca ? 'Ninguno con ese nombre' : 'Todavía no hay nadie aquí') + '</div>';
+    } else {
+      cuerpo = lista.map(function (n) { return tarjeta(n, g); }).join('');
+    }
+
+    return '<div class="rep-grupo' + (g.turno === 'martes-jueves' ? ' rep-grupo--mj' : '') + '" data-columna="' + esc(g.id) + '">' +
+      '<div class="rep-grupo-cab">' +
+        '<div><h2>' + esc(g.nombre) + ' · ' + esc(turnoTexto(g.turno)) + '</h2>' +
+        (g.horario || g.entrenador ? '<span class="rep-sub">' + esc(horarioCorto(g)) + '</span>' : '') + '</div>' +
+        '<span class="rep-plazas' + (pasa ? ' rep-plazas--pasa' : '') + '">' + dentro.length + ' / ' + plazas + '</span>' +
+      '</div>' +
+      '<div class="rep-grupo-lista">' + cuerpo + '</div>' +
+      (pasa ? '<div class="rep-grupo-pie">' + (dentro.length - plazas === 1 ? 'Un niño de más que plazas.' :
+              (dentro.length - plazas) + ' niños de más que plazas.') + ' Se avisa, no se bloquea.</div>' : '') +
+    '</div>';
+  }
+
+  /* «Lunes y miércoles 17:30-18:30 · Estadio Joaquín Villar» ya lo
+     dice el título; debajo basta con la hora y quién entrena. */
+  function horarioCorto(g) {
+    var partes = [];
+    var m = (g.horario || '').match(/(\d{1,2}[:.]\d{2})\s*[-–a]+\s*(\d{1,2}[:.]\d{2})/);
+    if (m) partes.push(m[1] + ' a ' + m[2]);
+    if (g.entrenador) partes.push(g.entrenador);
+    return partes.join(' · ');
+  }
+
+  function columnaSueltos() {
+    var todos = sueltos(), lista = paraPintar(null);
+    var cuerpo = lista.length
+      ? lista.map(function (n) { return tarjeta(n, null); }).join('')
+      : '<div class="rep-hueco">' + (busca ? 'Ninguno con ese nombre' : 'No queda nadie por colocar') + '</div>';
+    return '<div class="rep-sueltos" data-columna="">' +
+      '<div class="rep-sueltos-tit">Sin grupo · ' + todos.length + '</div>' +
+      '<div class="rep-sueltos-caja">' + cuerpo + '</div>' +
+      '<p class="rep-pista">' + (esMovil()
+        ? 'Toca a los niños que quieras mover y pulsa «Mover a…».'
+        : 'Arrastra una tarjeta a una columna, o elige varias con clic y mayúscula.') + '</p>' +
+    '</div>';
+  }
+
+  function pintarTablero() {
+    var caja = document.getElementById('tablero');
+
+    if (esMovil()) {
+      /* Un grupo cada vez: o los sueltos, o la columna del nivel y el
+         turno elegidos. */
+      caja.innerHTML = '<div class="rep-tablero">' +
+        (verSueltos ? columnaSueltos()
+                    : '<div class="rep-columnas">' + columnas().map(columnaGrupo).join('') + '</div>') +
+      '</div>';
+    } else {
+      caja.innerHTML = '<div class="rep-tablero">' +
+        columnaSueltos() +
+        '<div class="rep-columnas">' + columnas().map(columnaGrupo).join('') + '</div>' +
+      '</div>';
+    }
+    pintarBarra();
+  }
+
+  function pintarTodo() { pintarCabecera(); pintarMandos(); pintarTablero(); }
+
+  function pintarBarra() {
+    var b = document.getElementById('barra');
+    b.hidden = !elegidos.length;
+    document.body.classList.toggle('rep-con-barra', !!elegidos.length);
+    document.getElementById('barra-cuantos').textContent =
+      elegidos.length + (elegidos.length === 1 ? ' seleccionado' : ' seleccionados');
+  }
+
+  /* ============================================================
+     ELEGIR
+     ------------------------------------------------------------
+     La selección es siempre de UNA columna. Si se pudieran elegir
+     niños de dos columnas a la vez, «moverlos» dejaría de tener un
+     origen y ya no se sabría qué grupo hay que quitarles.
+     ============================================================ */
+  function elegir(id, de, sumar) {
+    if (elegidosDe !== de) { elegidos = []; elegidosDe = de; }
+    var i = elegidos.indexOf(id);
+    if (esMovil() || sumar) {
+      if (i === -1) elegidos.push(id); else elegidos.splice(i, 1);
+    } else {
+      elegidos = (elegidos.length === 1 && i === 0) ? [] : [id];
+    }
+    if (!elegidos.length) elegidosDe = null;
+    pintarTablero();
+  }
+
+  function limpiarEleccion() { elegidos = []; elegidosDe = null; pintarTablero(); }
+
+  /* ============================================================
+     MOVER
+     ============================================================ */
+  async function mover(ids, origen, destino, esDeshacer) {
+    if (!ids.length) return;
+    if (origen === destino) return;
+    try {
+      await sb.rpc('apo_repartir_escuela', {
+        p_atletas: ids, p_origen: origen || null, p_destino: destino || null
+      }).then(function (r) { if (r.error) throw r.error; });
+    } catch (e) {
+      apoToast('No se ha podido mover: ' + (e.message || e), 'error');
+      return;
+    }
+
+    /* La memoria se corrige aquí y no recargando la página entera:
+       con cuatrocientos niños, recargar por cada arrastre haría el
+       reparto insoportable. */
+    ids.forEach(function (id) {
+      var n = PORID[id];
+      if (!n) return;
+      if (origen) { var i = n.grupos.indexOf(origen); if (i !== -1) n.grupos.splice(i, 1); }
+      if (destino && n.grupos.indexOf(destino) === -1) n.grupos.push(destino);
+    });
+
+    /* Cada movimiento se apunta con su origen y su destino, que es
+       todo lo que hace falta para deshacerlo: es el mismo movimiento
+       al revés. */
+    if (!esDeshacer) {
+      pila.push({ ids: ids.slice(), origen: origen || null, destino: destino || null, cuenta: ids.length });
+    }
+
+    limpiarEleccion();
+    pintarTodo();
+
+    var d = destino ? porId(destino) : null;
+    apoToast(ids.length + (ids.length === 1 ? ' niño' : ' niños') +
+      (d ? ' a ' + d.nombre + ' de ' + turnoTexto(d.turno) : ' sin grupo'), 'ok');
+  }
+
+  function porId(id) {
+    for (var i = 0; i < GRUPOS.length; i++) if (GRUPOS[i].id === id) return GRUPOS[i];
+    return null;
+  }
+
+  async function deshacer() {
+    var m = pila.pop();
+    if (!m) return;
+    /* Deshacer es el mismo movimiento con el origen y el destino
+       cambiados de sitio. Ni historial ni nada que guardar. */
+    await mover(m.ids, m.destino, m.origen, true);
+    pintarTodo();
+  }
+
+  /* ============================================================
+     LA HOJA DE «MOVER A…»
+     ============================================================ */
+  var hojaDestino = null;
+
+  function abrirHoja() {
+    if (!elegidos.length) return;
+    hojaDestino = null;
+
+    var quienes = elegidos.map(function (id) { return nombreEntero(PORID[id]); });
+    var titulo = quienes.length === 1 ? ('Mover a ' + quienes[0])
+      : quienes.length <= 3 ? ('Mover a ' + quienes.slice(0, -1).join(', ') + ' y ' + quienes[quienes.length - 1])
+      : ('Mover a ' + quienes.length + ' niños');
+
+    var anios = {};
+    elegidos.forEach(function (id) { anios[PORID[id].anio] = 1; });
+    var listaAnios = Object.keys(anios);
+    var quien = quienes.length === 1
+      ? ('Nacido en ' + listaAnios[0] + '.')
+      : (listaAnios.length === 1 ? ('Los ' + quienes.length + ' son de ' + listaAnios[0] + '. Se moverán juntos.')
+                                 : ('Son de ' + listaAnios.sort().join(', ') + '. Se moverán juntos.'));
+
+    /* Los candidatos: el mismo nivel primero y, dentro, por plazas
+       libres. Es el orden en el que se decide de verdad. */
+    var suNiv = suNivel(PORID[elegidos[0]]);
+    var cands = GRUPOS.filter(function (g) { return g.id !== elegidosDe; }).map(function (g) {
+      var dentro = enGrupo(g.id).length, plazas = g.plazas || 18;
+      return { g: g, dentro: dentro, plazas: plazas, libres: plazas - dentro,
+               mismo: (g.nombre === (suNiv || nivel)) ? 0 : 1 };
+    });
+    cands.sort(function (a, b) {
+      if (a.mismo !== b.mismo) return a.mismo - b.mismo;
+      if (a.libres !== b.libres) return b.libres - a.libres;
+      return a.g.nombre.localeCompare(b.g.nombre, 'es');
+    });
+
+    var h = '<div class="rep-asa"></div>' +
+      '<h2 id="hoja-tit">' + esc(titulo) + '</h2>' +
+      '<p class="rep-quien">' + esc(quien) + '</p>';
+
+    cands.forEach(function (c) {
+      h += '<button type="button" class="rep-destino" aria-pressed="false" data-destino="' + esc(c.g.id) + '">' +
+        '<span>' + esc(c.g.nombre) + ' · ' + esc(turnoTexto(c.g.turno)) + '</span>' +
+        '<span class="n' + (c.dentro >= c.plazas ? ' rep-mal' : '') + '">' + c.dentro + '/' + c.plazas + '</span>' +
+      '</button>';
+    });
+
+    /* Sacar del grupo también se hace desde aquí: en el móvil no hay
+       columna «Sin grupo» a la que arrastrar. */
+    if (elegidosDe) {
+      h += '<hr class="rep-corte">' +
+        '<button type="button" class="rep-destino" aria-pressed="false" data-destino="">' +
+        '<span>Dejar sin grupo</span></button>';
+    }
+
+    h += '<div class="rep-pie-hoja">' +
+      '<div class="rep-lleno" id="hoja-lleno" hidden></div>' +
+      '<button type="button" class="rep-confirmar" id="hoja-ok" disabled>Mover a este grupo</button>' +
+      '<button type="button" class="rep-cancelar" id="hoja-no">Cancelar</button>' +
+    '</div>';
+
+    document.getElementById('hoja').innerHTML = h;
+    document.getElementById('hoja-fondo').hidden = false;
+
+    document.getElementById('hoja-no').addEventListener('click', cerrarHoja);
+    document.getElementById('hoja-ok').addEventListener('click', function () {
+      var d = hojaDestino;
+      cerrarHoja();
+      mover(elegidos.slice(), elegidosDe, d);
+    });
+  }
+
+  function cerrarHoja() { document.getElementById('hoja-fondo').hidden = true; hojaDestino = null; }
+
+  document.getElementById('hoja').addEventListener('click', function (e) {
+    var b = e.target.closest('.rep-destino');
+    if (!b) return;
+    document.querySelectorAll('#hoja .rep-destino').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+    b.setAttribute('aria-pressed', 'true');
+    hojaDestino = b.getAttribute('data-destino') || null;
+
+    /* Se confirma igual aunque el grupo esté completo: el aviso sale,
+       el botón sigue funcionando. */
+    var g = hojaDestino ? porId(hojaDestino) : null;
+    var lleno = g && enGrupo(g.id).length >= (g.plazas || 18);
+    var av = document.getElementById('hoja-lleno');
+    av.hidden = !lleno;
+    if (lleno) av.textContent = 'Este grupo ya está completo. Se puede mover igual.';
+    document.getElementById('hoja-ok').disabled = false;
+  });
+
+  document.getElementById('hoja-fondo').addEventListener('click', function (e) {
+    if (e.target === this) cerrarHoja();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { if (!document.getElementById('hoja-fondo').hidden) cerrarHoja(); else limpiarEleccion(); }
+  });
+
+  /* ============================================================
+     LO QUE SE PULSA Y LO QUE SE ARRASTRA
+     ============================================================ */
+  var tablero = document.getElementById('tablero');
+
+  tablero.addEventListener('click', function (e) {
+    var chip = e.target.closest('[data-pz-accion]');
+    var tar  = e.target.closest('.rep-nino');
+    if (tar) {
+      elegir(tar.getAttribute('data-nino'), tar.getAttribute('data-de') || null, e.shiftKey || e.metaKey || e.ctrlKey);
+      return;
+    }
+    if (chip) return;
+  });
+
+  tablero.addEventListener('keydown', function (e) {
+    var tar = e.target.closest ? e.target.closest('.rep-nino') : null;
+    if (!tar) return;
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      elegir(tar.getAttribute('data-nino'), tar.getAttribute('data-de') || null, e.shiftKey);
+    }
+  });
+
+  document.getElementById('mandos').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pz-accion]');
+    if (!b) return;
+    var accion = b.getAttribute('data-pz-accion');
+    var valor = b.getAttribute('data-pz-filtro');
+    if (accion === 'turno')        { turno = valor; dosTurnos = false; verSueltos = false; }
+    else if (accion === 'nivel')   { nivel = valor; verSueltos = false; }
+    else if (accion === 'dos-turnos')  { dosTurnos = !dosTurnos; }
+    else if (accion === 'solo-sueltos'){ soloSueltos = !soloSueltos; }
+    else if (accion === 'ver-sueltos') { verSueltos = true; }
+    else return;
+    limpiarEleccion();
+    pintarMandos(); pintarTablero();
+  });
+
+  document.getElementById('barra-mover').addEventListener('click', abrirHoja);
+  document.getElementById('barra-quitar').addEventListener('click', limpiarEleccion);
+
+  /* --- Arrastrar (solo en el escritorio; en el móvil no se arrastra nada) --- */
+  var arrastrando = null;
+
+  tablero.addEventListener('dragstart', function (e) {
+    var tar = e.target.closest('.rep-nino');
+    if (!tar || esMovil()) { e.preventDefault(); return; }
+    var id = tar.getAttribute('data-nino'), de = tar.getAttribute('data-de') || null;
+    /* Si se arrastra una tarjeta que no estaba elegida, se arrastra
+       ella sola: lo contrario —llevarse de paso una selección vieja
+       de otra columna— es la sorpresa que nadie quiere. */
+    if (elegidos.indexOf(id) === -1 || elegidosDe !== de) { elegidos = [id]; elegidosDe = de; pintarBarra(); }
+    arrastrando = { ids: elegidos.slice(), de: de };
+    tar.classList.add('arrastrando');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', id); } catch (err) {}
+  });
+
+  tablero.addEventListener('dragend', function () {
+    arrastrando = null;
+    document.querySelectorAll('.rep-nino.arrastrando').forEach(function (x) { x.classList.remove('arrastrando'); });
+    document.querySelectorAll('.rep-encima').forEach(function (x) { x.classList.remove('rep-encima'); });
+  });
+
+  tablero.addEventListener('dragover', function (e) {
+    if (!arrastrando) return;
+    var col = e.target.closest('[data-columna]');
+    if (!col) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.rep-encima').forEach(function (x) { if (x !== col) x.classList.remove('rep-encima'); });
+    col.classList.add('rep-encima');
+  });
+
+  tablero.addEventListener('drop', function (e) {
+    if (!arrastrando) return;
+    var col = e.target.closest('[data-columna]');
+    if (!col) return;
+    e.preventDefault();
+    var destino = col.getAttribute('data-columna') || null;
+    var m = arrastrando;
+    arrastrando = null;
+    document.querySelectorAll('.rep-encima').forEach(function (x) { x.classList.remove('rep-encima'); });
+    mover(m.ids, m.de, destino);
+  });
+
+  /* Al cambiar de tamaño el tablero cambia de forma: en el móvil una
+     columna, en el escritorio todas. */
+  var anchoAntes = esMovil();
+  function siCambiaElAncho() {
+    if (esMovil() === anchoAntes) return;
+    anchoAntes = esMovil();
+    limpiarEleccion();
+    pintarMandos(); pintarTablero();
+  }
+  window.addEventListener('resize', siCambiaElAncho);
+  /* Y además por el corte de 899 px, que es lo que avisa cuando el
+     móvil se gira: hay navegadores que al girar no dan «resize». */
+  var corte = window.matchMedia('(max-width: 899px)');
+  if (corte.addEventListener) corte.addEventListener('change', siCambiaElAncho);
+  else if (corte.addListener) corte.addListener(siCambiaElAncho);
+
+  /* ============================================================
+     ARRANQUE
+     ============================================================ */
+  (async function () {
+    document.getElementById('tablero').innerHTML = ADM.esqueleto(6);
+    var r = await sb.rpc('apo_reparto_escuela');
+    if (r.error) {
+      document.getElementById('tablero').innerHTML =
+        ADM.error('No se ha podido abrir el reparto. ' + r.error.message);
+      return;
+    }
+    GRUPOS = (r.data && r.data.grupos) || [];
+    NINOS  = (r.data && r.data.ninos)  || [];
+    NINOS.forEach(function (n) {
+      n.grupos = n.grupos || [];
+      n.hermanos = n.hermanos || [];
+      n.amigos = n.amigos || [];
+      PORID[n.id] = n;
+    });
+
+    /* Los niveles salen de los propios grupos, del más pequeño al
+       mayor. Si mañana el club añade «Verde 4», sale solo. */
+    var vistos = {};
+    GRUPOS.forEach(function (g) {
+      if (vistos[g.nombre]) return;
+      vistos[g.nombre] = 1;
+      NIVELES.push({ nombre: g.nombre, anio: g.desde });
+    });
+    NIVELES.sort(function (a, b) { return (b.anio || 0) - (a.anio || 0); });
+    if (NIVELES.length) nivel = NIVELES[0].nombre;
+
+    if (!GRUPOS.length) {
+      document.getElementById('tablero').innerHTML = ADM.vacio(
+        'Todavía no hay grupos de escuela con turno',
+        'El reparto necesita los grupos con su turno y sus plazas. Se crean en «Grupos de entrenamiento».');
+      pintarCabecera();
+      return;
+    }
+
+    /* En el móvil se empieza por los que faltan por colocar, que es a
+       lo que se entra; en el escritorio se ven ya las dos cosas. */
+    verSueltos = esMovil() && sueltos().length > 0;
+    pintarTodo();
+  })();
+});
+</script>
+
+</body>
+</html>
