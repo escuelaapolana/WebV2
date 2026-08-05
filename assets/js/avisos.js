@@ -3,8 +3,9 @@
    ------------------------------------------------------------
    Este módulo es lo que hace que a la gente le llegue un aviso al
    móvil cuando mañana no hay entreno, cuando sale una convocatoria
-   o cuando le vuelve un recibo. No pinta pantallas por su cuenta:
-   ofrece las piezas para que cualquier página las use.
+   o cuando le vuelve un recibo. Ofrece las piezas para que cualquier
+   página las use: la caja de activar/desactivar (`montar`) y la hoja
+   de saludo que se ofrece una vez al abrir la app (`saludar`).
 
    CÓMO SE USA (desde cualquier página del portal o de la app):
 
@@ -20,11 +21,14 @@
 
    TRES REGLAS QUE NO SE SALTAN
    ---------------------------------------------------------------
-   1) EL PERMISO NO SE PIDE AL ENTRAR. Nunca. El navegador solo
+   1) EL PERMISO DEL MÓVIL NO SE PIDE NUNCA SOLO. El navegador solo
       deja pedirlo una vez: si sale de golpe nada más abrir, la
       gente le da a «Bloquear» por reflejo y ya no hay vuelta atrás
-      (hay que ir a los ajustes del móvil a mano). Por eso siempre
-      hay que pulsar un botón «Avisarme» primero.
+      (hay que ir a los ajustes del móvil a mano). Siempre hay que
+      pulsar un botón antes.
+      Lo que SÍ sale al abrir la app es una hoja NUESTRA que explica
+      para qué sirve (`saludar()`, abajo del todo). Esa se puede
+      rechazar sin perder nada, y se ofrece una sola vez.
    2) AQUÍ NO HAY NINGUNA CLAVE. La clave pública la da la base de
       datos (`avisos_clave_publica()`), donde la pega el club una
       sola vez. Este archivo no la lleva escrita y no puede llevarla.
@@ -54,7 +58,9 @@
   var TIPOS = [
     /* Cada uno dice SU FRECUENCIA, no lo que es (maqueta 44b). Lo que da
        miedo no es el aviso: es no saber cuántos van a llegar. */
-    { clave: 'entrenos',      titulo: 'Cambios en mi entrenamiento', texto: 'Cancelaciones y cambios de hora.',  defecto: true },
+    /* Aquí va también la respuesta a una plaza pedida, que es lo que
+       le cambia el día a quien la pidió (migración 136). */
+    { clave: 'entrenos',      titulo: 'Cambios en mi entrenamiento', texto: 'Cancelaciones, cambios de hora y respuestas a una plaza.', defecto: true },
     { clave: 'competiciones', titulo: 'Competiciones',         texto: 'Cuando cierra una inscripción.',          defecto: true },
     { clave: 'pagos',         titulo: 'Pagos',                 texto: 'Solo si algo sale mal.',                  defecto: true },
     { clave: 'noticias',      titulo: 'Noticias del club',     texto: 'Como mucho una a la semana.',             defecto: false },
@@ -500,8 +506,260 @@
     return true;
   }
 
+  /* ===============================================================
+     EL SALUDO · ofrecerlo al abrir la app, una sola vez
+     ---------------------------------------------------------------
+     EL PROBLEMA QUE VIENE A RESOLVER
+     Los avisos estaban montados enteros y no los tenía nadie: en toda
+     la base había UN móvil dado de alta. El motivo es sencillo: el
+     botón «Avisarme» solo está en `portal/avisos/`, y a esa pantalla
+     no llega nadie por su cuenta. Da igual lo bien que funcione el
+     resto si a la gente no se lo ofreces.
+
+     POR QUÉ DOS PASOS Y NO UNO
+     Esto NO pide el permiso del móvil. Pide permiso para pedirlo:
+
+       1 · esta hoja, que es NUESTRA y explica para qué sirve
+       2 · y solo si pulsan «Activar los avisos», la ventana del
+           sistema
+
+     El orden es lo importante, y no es un capricho. La ventana del
+     sistema se pregunta UNA VEZ EN LA VIDA: quien le da a «Bloquear»
+     por reflejo, sin leer, ya no puede volver atrás desde la web —hay
+     que ir a los ajustes del móvil a mano, y eso no lo hace nadie—.
+     En cambio, quien le dice que no a esta hoja no ha perdido nada:
+     puede decir que sí la semana que viene desde «Avisos al móvil».
+
+     Por eso la hoja habla de LO QUE LE PASA A ESA PERSONA —que
+     mañana llueve y no hay entreno, que la pista está cerrada, que
+     alguien lleva dos días esperando su respuesta— y no de
+     «notificaciones». Nadie quiere notificaciones; todo el mundo
+     quiere enterarse de que no hay entreno.
+
+     SE OFRECE UNA VEZ Y NO SE INSISTE
+     Se apunta en este aparato el día que se enseñó, y no vuelve a
+     salir: un cartel que reaparece cada vez es la mejor forma de que
+     alguien se vaya de la app. Se apunta AL ENSEÑARLA, no al
+     contestar, porque ignorarla también es una respuesta.
+
+     Se guarda la FECHA y no un simple sí, a propósito: si algún día
+     se decide volver a ofrecerlo —pasada una temporada, o la primera
+     vez que alguien pide plaza de verdad— el dato ya está ahí y no
+     hay que empezar de cero.
+
+     A QUIÉN NO SE LE ENSEÑA
+       · a quien ya los tiene activados en este aparato
+       · a quien los bloqueó en el navegador: ahí ya no hay nada que
+         hacer desde la web, y ofrecérselo sería engañarle
+       · a quien está en un iPhone sin la app instalada: primero
+         tendría que instalarla, y eso es otra conversación
+       · en la propia pantalla de «Avisos al móvil», donde ya está
+         todo explicado y con su botón
+     =============================================================== */
+  var SALUDO_CLAVE = 'apolana_saludo_avisos';
+
+  function saludoYaVisto(perfil) {
+    try {
+      var l = window.localStorage;
+      if (!l) return false;
+      return !!l.getItem(SALUDO_CLAVE + (perfil && perfil.id ? '_' + perfil.id : ''));
+    } catch (e) { return false; }
+  }
+
+  function saludoApuntar(perfil) {
+    try {
+      var l = window.localStorage;
+      if (l) l.setItem(SALUDO_CLAVE + (perfil && perfil.id ? '_' + perfil.id : ''),
+                       new Date().toISOString());
+    } catch (e) { /* navegador sin cajón: como mucho se volverá a ver */ }
+  }
+
+  /* Los tres ejemplos. Son cosas que le pasan a esa persona, no
+     funciones de una aplicación, y cambian según lo que haga en el
+     club: a una familia le importa la lluvia y la pista cerrada; a
+     quien lleva un grupo, que le estén esperando una respuesta. */
+  function motivosDe(perfil) {
+    var papeles = (perfil && perfil.roles && perfil.roles.length)
+      ? perfil.roles
+      : (perfil && perfil.rol ? [perfil.rol] : []);
+    function tiene(p) { return papeles.indexOf(p) !== -1; }
+
+    if (tiene('admin') || tiene('contabilidad')) {
+      return [
+        'Si alguien pide plaza en una actividad y se queda esperando respuesta.',
+        'Si hay que suspender un entrenamiento o se cierra la pista.',
+        'Si entra un alta nueva o un pedido de ropa que hay que revisar.'
+      ];
+    }
+    if (tiene('entrenador') || tiene('coordinador')) {
+      return [
+        'Si alguien te pide plaza en una de tus actividades y espera tu respuesta.',
+        'Si se suspende un entrenamiento por la lluvia.',
+        'Si se cierra la pista por una emergencia.'
+      ];
+    }
+    if (tiene('padre')) {
+      return [
+        'Si se suspende un entrenamiento por la lluvia.',
+        'Si se cierra la pista por una emergencia y hay que ir a recogerles.',
+        'Si pedís plaza en un entrenamiento y os contestan.'
+      ];
+    }
+    return [
+      'Si se suspende un entrenamiento por la lluvia.',
+      'Si se cierra la pista por una emergencia.',
+      'Si pides plaza en un entrenamiento y te contestan.'
+    ];
+  }
+
+  var CSS_SALUDO = false;
+  function ponerEstilosSaludo() {
+    if (CSS_SALUDO) return;
+    CSS_SALUDO = true;
+    var s = document.createElement('style');
+    s.setAttribute('data-avisos-saludo', 'apolana');
+    s.textContent = [
+      /* Abajo del todo y por encima de la barra de pestañas, que es
+         donde el pulgar ya está. No tapa la pantalla: se puede seguir
+         usando la app con la hoja puesta. */
+      '.avsal{position:fixed;left:0;right:0;bottom:0;z-index:1200;',
+        'padding:0 12px calc(12px + env(safe-area-inset-bottom,0px));',
+        'display:flex;justify-content:center;pointer-events:none}',
+      /* Donde hay barra de pestañas, la hoja se sube por encima: tapar
+         los botones con los que se mueve la gente por la app es la
+         forma más rápida de que la cierren sin leerla. */
+      '.avsal--tabbar{padding-bottom:calc(90px + env(safe-area-inset-bottom,0px))}',
+      '.avsal-caja{pointer-events:auto;width:100%;max-width:520px;background:#fff;',
+        'border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;',
+        'box-shadow:var(--sombra-tarjeta,0 26px 50px -32px rgba(46,66,86,.5));',
+        'padding:18px 18px 16px;transform:translateY(14px);opacity:0;',
+        'transition:transform .28s ease,opacity .28s ease}',
+      '.avsal-caja.puesta{transform:none;opacity:1}',
+      '@media (prefers-reduced-motion:reduce){.avsal-caja{transition:none}}',
+      '.avsal h2{font-family:var(--fuente-titulo,inherit);text-transform:uppercase;',
+        'font-size:24px;line-height:1.05;color:var(--navy,#2E4256);margin:0 0 6px}',
+      '.avsal p{font-size:15px;line-height:1.5;color:var(--texto,#4A4437);margin:0 0 12px}',
+      /* Los tres ejemplos son lo único que importa de esta hoja, así
+         que llevan lo único que la decora: una línea ámbar que los
+         agrupa y dice «esto es lo que te vas a perder». */
+      '.avsal ul{list-style:none;margin:0 0 16px;padding:2px 0 2px 14px;',
+        'border-left:2px solid var(--ambar,#B96F09)}',
+      '.avsal li{font-size:15px;line-height:1.45;color:var(--texto,#4A4437);margin:0 0 8px}',
+      '.avsal li:last-child{margin-bottom:0}',
+      '.avsal-pies{display:flex;gap:10px;align-items:center;flex-wrap:wrap}',
+      '.avsal-si{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;',
+        'min-height:44px;padding:12px 20px;border:0;border-radius:999px;cursor:pointer;',
+        'font-family:inherit;font-size:15px;font-weight:600;background:var(--azul,#2F6FA8);color:#fff}',
+      '.avsal-si:hover{background:var(--azul-hover,#1E4E78)}',
+      '.avsal-si[disabled]{opacity:.6;cursor:default}',
+      '.avsal-no{min-height:44px;padding:12px 14px;border:0;background:none;cursor:pointer;',
+        'font-family:inherit;font-size:15px;color:var(--texto-suave,#6E6656);text-decoration:underline}',
+      /* Con el nombre de la caja delante a propósito: si no, la regla
+         de arriba para los párrafos pesa más y la letra pequeña sale
+         del mismo tamaño que el texto. */
+      '.avsal p.avsal-nota{font-size:13px;line-height:1.45;color:var(--texto-suave,#6E6656);margin:12px 0 0}',
+      /* Vacío no ocupa nada: hasta que hay algo que decir, no se ve. */
+      '.avsal p.avsal-msg{font-size:14px;line-height:1.45;margin:0}',
+      '.avsal p.avsal-msg:empty{display:none}',
+      '.avsal p.avsal-msg--bien{color:var(--verde,#3F7A4C);margin:12px 0 0}',
+      '.avsal p.avsal-msg--mal{color:var(--rojo,#B0563A);margin:12px 0 0}',
+      '.avsal :focus-visible{outline:2px solid var(--azul-filete,#3B85C0);outline-offset:2px}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+
+  async function saludar(opciones) {
+    opciones = opciones || {};
+    var perfil = opciones.perfil || null;
+
+    /* En la pantalla de Avisos no: ahí ya está el botón de verdad. */
+    if (!opciones.forzar && /\/portal\/avisos\//.test(location.pathname)) return false;
+    if (!opciones.forzar && saludoYaVisto(perfil)) return false;
+    if (document.querySelector('.avsal')) return false;
+
+    /* Solo a quien puede decir que sí AHORA MISMO. El resto de casos
+       —bloqueado, sin app en el iPhone, apagado— se explican en la
+       pantalla de Avisos, que para eso está. */
+    var e = await estado();
+    if (e.motivo !== 'listo') return false;
+
+    ponerEstilosSaludo();
+    saludoApuntar(perfil);
+
+    var nombre = (perfil && perfil.nombre) ? String(perfil.nombre).split(' ')[0] : '';
+    var motivos = motivosDe(perfil);
+
+    var hoja = document.createElement('div');
+    hoja.className = 'avsal' +
+      (document.body.classList.contains('pt-con-tabbar') ? ' avsal--tabbar' : '');
+    hoja.setAttribute('role', 'region');
+    hoja.setAttribute('aria-label', 'Avisos al móvil');
+    /* El «hola» va en el texto y no en el titular: la pantalla de
+       debajo ya suele saludar por su nombre, y dos «Hola, Marta»
+       seguidos hacen que el de arriba parezca un error. El titular
+       dice para qué es. */
+    hoja.innerHTML =
+      '<div class="avsal-caja">' +
+        '<h2>Que te enteres a tiempo</h2>' +
+        '<p>' + (nombre ? 'Hola, ' + esc(nombre) + '. ' : 'Hola. ') +
+          'Te pedimos que actives los avisos en este móvil. Es la forma de enterarte el mismo día:</p>' +
+        '<ul>' + motivos.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>' +
+        '<div class="avsal-pies">' +
+          '<button type="button" class="avsal-si">Activar los avisos</button>' +
+          '<button type="button" class="avsal-no">Ahora no</button>' +
+        '</div>' +
+        '<p class="avsal-msg" role="status"></p>' +
+        '<p class="avsal-nota">Al pulsar, te lo preguntará el móvil. Puedes quitarlo cuando quieras desde «Avisos al móvil».</p>' +
+      '</div>';
+    document.body.appendChild(hoja);
+
+    var caja = hoja.querySelector('.avsal-caja');
+    requestAnimationFrame(function () { caja.classList.add('puesta'); });
+
+    function cerrar() {
+      caja.classList.remove('puesta');
+      document.removeEventListener('keydown', porTeclado);
+      setTimeout(function () { if (hoja.parentNode) hoja.parentNode.removeChild(hoja); }, 300);
+    }
+    function porTeclado(ev) { if (ev.key === 'Escape') cerrar(); }
+    document.addEventListener('keydown', porTeclado);
+
+    hoja.querySelector('.avsal-no').addEventListener('click', cerrar);
+
+    var si = hoja.querySelector('.avsal-si');
+    si.addEventListener('click', async function () {
+      si.disabled = true;
+      var antes = si.textContent;
+      si.textContent = 'Un momento…';
+
+      /* AQUÍ es donde sale la ventana del sistema, y sale porque esta
+         persona acaba de pulsar el botón. Nunca antes. */
+      var r = await activar();
+
+      /* La respuesta se dice DENTRO de la hoja, no con un aviso
+         flotante: esta hoja sale en pantallas muy distintas y no todas
+         tienen dónde enseñarlo. Si algo falla, se lee aquí mismo y se
+         puede volver a intentar sin haber perdido la hoja. */
+      var msg = hoja.querySelector('.avsal-msg');
+      msg.textContent = r.mensaje || (r.ok ? 'Listo.' : 'No ha podido ser.');
+      msg.className = 'avsal-msg' + (r.ok ? ' avsal-msg--bien' : ' avsal-msg--mal');
+
+      if (r.ok) {
+        si.textContent = 'Activado';
+        hoja.querySelector('.avsal-no').textContent = 'Cerrar';
+        setTimeout(cerrar, 2600);
+      } else {
+        si.disabled = false;
+        si.textContent = antes;
+      }
+    });
+
+    return true;
+  }
+
   window.APOLANA_AVISOS = {
     TIPOS: TIPOS,
+    saludar: saludar,               /* la hoja de «hola» al abrir la app */
     tiposDe: tiposDe,               /* los que le tocan a esa persona */
     estado: estado,
     activar: activar,                   /* SOLO desde un clic */

@@ -188,6 +188,12 @@ Si es la primera vez que usas `supabase` en este ordenador te pedirá entrar
 (`supabase login`) y enlazar el proyecto (`supabase link`). Es lo mismo que ya
 se hizo para los pagos con tarjeta.
 
+**Este comando hay que volver a lanzarlo cada vez que se toque la función**, y
+se ha tocado: ahora también manda los avisos de las peticiones de plaza. Va
+junto con la migración `136`; el orden es **primero la migración, después el
+despliegue**. Si se hace al revés no se rompe nada, simplemente no sale ningún
+aviso hasta que pase la migración.
+
 ### Ese `--no-verify-jwt` hay que ponerlo
 
 Antes no hacía falta. Ahora sí, desde que esta misma función manda también los
@@ -321,6 +327,64 @@ Si suena, está todo bien. Si no:
 
 ---
 
+## Los avisos que salen solos
+
+No todos los avisos los escribe alguien. Hay cuatro que saltan por su cuenta,
+sin que nadie toque nada:
+
+| Cuándo salta | Qué dice | A quién |
+|---|---|---|
+| Entra un alta de la escuela o de socio | «Un alta nueva…» | Administración (y contabilidad, en las de socio) |
+| Entra un pedido de ropa | «Un pedido de ropa nuevo» | Administración |
+| Alguien pide plaza en una actividad | «Te han pedido plaza» | Quien lleva esa actividad |
+| Se contesta a una petición de plaza | «Tienes plaza» / «No ha podido ser» | Quien la pidió **y su familia**, si es menor |
+
+Tres cosas que valen para los cuatro:
+
+- **No llevan ni un dato de nadie.** Ni nombres, ni el de la actividad, ni el
+  motivo. Ese texto se queda escrito en la pantalla de bloqueo de un móvil que
+  igual está encima de una mesa. El detalle entero está en la app.
+- **Uno por bandeja.** Treinta peticiones en una tarde son **un** aviso, no
+  treinta. No vuelve a sonar hasta que se conteste lo que hay (o hasta que
+  pasen doce horas sin mirarlo).
+- **De diez de la noche a ocho de la mañana no suena nada.** Lo que se decida
+  de noche espera y sale por la mañana.
+
+Cada uno los puede apagar desde **Avisos al móvil** en la app, y apagar uno no
+apaga los demás.
+
+---
+
+## Cómo se le ofrece a la gente
+
+Los avisos no sirven de nada si no los tiene nadie. Por eso, **la primera vez
+que alguien entra al portal**, le sale abajo una hoja del club:
+
+> **Que te enteres a tiempo**
+> Hola, Marta. Te pedimos que actives los avisos en este móvil. Es la forma de
+> enterarte el mismo día:
+> · Si se suspende un entrenamiento por la lluvia.
+> · Si se cierra la pista por una emergencia.
+> · Si pides plaza en un entrenamiento y te contestan.
+>
+> **[Activar los avisos]**  ·  Ahora no
+
+Los tres ejemplos cambian según lo que haga esa persona en el club: a un
+entrenador lo primero que le sale es que alguien está esperando su respuesta.
+
+**Esa hoja NO pide el permiso del móvil.** La ventana del sistema —la de
+«¿Apolana quiere enviarte notificaciones?»— solo sale si pulsan **Activar los
+avisos**. Es a propósito y es lo importante: la del sistema se pregunta una
+vez en la vida, y quien le da a «Bloquear» por reflejo ya no puede volver
+atrás desde la web. A la nuestra se le puede decir que no sin perder nada.
+
+Se enseña **una sola vez**. Si dicen que no, o si la cierran sin contestar, no
+vuelve a salir. Quien cambie de idea la tiene siempre en **Avisos al móvil**.
+Y no se le enseña a quien ya los tiene, a quien los bloqueó en el navegador ni
+a quien está en un iPhone sin la app instalada.
+
+---
+
 ## Cómo se usa el día a día
 
 En **Panel → Avisos al móvil**:
@@ -378,9 +442,14 @@ privada se filtrara.
 | Qué | Dónde |
 |---|---|
 | Las tablas, los permisos y las preferencias | `migraciones/054_avisos.sql` |
-| El botón «Avisarme» y las preferencias en la app | `assets/js/avisos.js` |
+| Los avisos de las altas y los pedidos, y la regla del ruido | `migraciones/120_que_alguien_se_entere_de_las_altas.sql` |
+| Los avisos de las peticiones de plaza | `migraciones/136_que_el_movil_suene_al_pedir_plaza.sql` |
+| El botón «Avisarme», la hoja de saludo y las preferencias | `assets/js/avisos.js` |
+| Quién enseña la hoja de saludo al entrar | `assets/js/portal-auth.js` |
+| Quién lleva los recados que apunta la base | `assets/js/db.js` (`empujarAvisos`) |
 | La función que manda los avisos | `supabase/functions/aviso-enviar/index.ts` |
 | La pantalla del panel | `admin/avisos-push/index.html` |
+| La pantalla de cada uno | `portal/avisos/index.html` |
 | Pintar el aviso en el móvil | `sw.js` (el trozo del paso 4) |
 
 **En ninguno de esos archivos hay ni una clave.** La privada vive solo en

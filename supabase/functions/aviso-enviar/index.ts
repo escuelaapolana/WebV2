@@ -8,6 +8,17 @@
 //   se lo entrega a Google (Android y Chrome) o a Apple (iPhone con
 //   la app instalada), que son quienes lo hacen sonar.
 //
+// LAS TRES CLASES DE AVISO QUE SALEN DE AQUÍ
+//   1 · Los que escribe una persona en el panel («mañana no hay
+//       entreno»). Se comprueba quién es y si puede mandarlos.
+//   2 · Los que saltan solos cuando entra un alta o un pedido: de
+//       fuera solo llega la palabra de la bandeja, y la base decide
+//       si toca avisar o sería ruido (migración 120).
+//   3 · Los toques que la base ha dejado apuntados en una cola: que
+//       te han pedido plaza en una actividad, o que te han contestado
+//       (migraciones 131 y 136). De fuera no llega ni una palabra:
+//       solo «mira a ver si hay algo».
+//
 // LOS TRES NIVELES (maqueta «4 · Avisos y pagos», apartado A)
 //   informativo · importante · grave. El nivel decide el color y la
 //   palabra de la pantalla, y aquí decide dos cosas más:
@@ -400,7 +411,9 @@ async function repartir(destinos: Destino[], carga: string) {
 // de una mesa. El número de verdad lo dice el panel al entrar, y ese
 // sí está al día.
 // ============================================================
-const NOVEDADES: Record<string, { titulo: string; cuerpo: string; url: string }> = {
+type Texto = { titulo: string; cuerpo: string; url: string };
+
+const NOVEDADES: Record<string, Texto> = {
   alta_escuela: {
     titulo: "Un alta nueva de la escuela",
     cuerpo: "Está en el panel, esperando a que alguien la revise.",
@@ -417,6 +430,109 @@ const NOVEDADES: Record<string, { titulo: string; cuerpo: string; url: string }>
     url: "admin/pedidos/",
   },
 };
+
+// ============================================================
+// LA COLA · los toques que ha apuntado la base (migración 136)
+// ------------------------------------------------------------
+// QUÉ ES ESTO Y POR QUÉ NO SE PARECE A LO DE ARRIBA
+// Los avisos de las altas los pide el navegador en el momento: «ha
+// entrado un alta, mira a ver si toca avisar». Los de las plazas no
+// pueden funcionar así, porque la decisión de si toca o sería ruido
+// YA LA TOMÓ LA BASE en el mismo instante en que se guardó la
+// petición (es lo que garantiza que treinta peticiones en una tarde
+// sean un aviso y no treinta). Volver a preguntarlo aquí daría que
+// no, y el móvil no sonaría nunca.
+//
+// Así que la base deja el recado apuntado en una cola y esta función
+// solo lo lleva: pregunta qué hay pendiente, a qué buzones va cada
+// cosa, lo manda y apunta cómo fue.
+//
+// EL TEXTO ESTÁ AQUÍ, COMO EL DE LAS ALTAS, Y POR LO MISMO
+// De la base solo viene la CLASE del toque; el texto lo pone esta
+// tabla. Y no lleva ni un dato: ni quién ha pedido la plaza, ni de
+// qué actividad se trata, ni el motivo del «no». Eso viaja a Google
+// o a Apple y se queda escrito en la pantalla de bloqueo de un móvil
+// que igual está boca arriba encima de una mesa. «Te han pedido
+// plaza» ya sirve para ir a mirar; el detalle entero está en el
+// portal, y además está al día.
+// ============================================================
+const CLASES: Record<string, Texto> = {
+  solicitud_plaza: {
+    titulo: "Te han pedido plaza",
+    cuerpo: "Tienes peticiones sin contestar en tus actividades.",
+    url: "portal/solicitudes/",
+  },
+  plaza_si: {
+    titulo: "Tienes plaza",
+    cuerpo: "Ya te han contestado. Míralo en tu calendario.",
+    url: "portal/calendario/",
+  },
+  plaza_no: {
+    titulo: "No ha podido ser",
+    cuerpo: "Ya te han contestado. Míralo en tu calendario.",
+    url: "portal/calendario/",
+  },
+};
+
+/** Vacía la cola: coge lo pendiente, lo reparte y apunta cómo fue. */
+async function vaciarCola(): Promise<{ toques: number; enviados: number; fallidos: number }> {
+  let toques = 0, enviados = 0, fallidos = 0;
+
+  // La base decide qué sale y qué no: de noche devuelve la lista
+  // vacía y los recados se quedan esperando a la mañana. Aquí no se
+  // mira el reloj, que si no habría dos relojes que discutir.
+  const rCola = await consulta("rpc/avisos_cola_movil_tomar", {
+    method: "POST", body: JSON.stringify({ p_tope: 40 }),
+  });
+  if (!rCola.ok) {
+    console.error("no se ha podido leer la cola de avisos:", rCola.datos);
+    return { toques, enviados, fallidos };
+  }
+
+  const pendientes = (Array.isArray(rCola.datos) ? rCola.datos : []) as
+    { id: string; clase: string }[];
+
+  for (const toque of pendientes) {
+    // Otra vez la lista escrita a mano, no lo que conteste un objeto
+    // de JavaScript por su cuenta: una clase inventada no despierta
+    // a nadie.
+    const texto = Object.hasOwn(CLASES, toque.clase) ? CLASES[toque.clase] : null;
+    if (!texto) continue;
+
+    const rQuien = await consulta("rpc/avisos_cola_movil_destinatarios", {
+      method: "POST", body: JSON.stringify({ p_id: toque.id }),
+    });
+    const aQuien = (Array.isArray(rQuien.datos) ? rQuien.datos : []) as Destino[];
+
+    const r = await repartir(aQuien, JSON.stringify({
+      titulo: texto.titulo,
+      cuerpo: texto.cuerpo,
+      url: new URL(texto.url, URL_BASE).toString(),
+      // El mismo tema con el que la base ha mirado si esa persona
+      // quiere recibirlo, para que las dos mitades digan lo mismo.
+      categoria: toque.clase === "solicitud_plaza" ? "gestion" : "entrenos",
+      nivel: "informativo",
+      // Una etiqueta por clase: si llegaran dos seguidos, el móvil
+      // enseña uno y no dos apilados diciendo lo mismo.
+      etiqueta: `apolana-${toque.clase}`,
+    }));
+
+    // Se apunta aunque no haya salido a nadie: si no, ese recado se
+    // volvería a intentar cada vez y no llegaría nunca a nadie, porque
+    // el motivo de que no salga suele ser que esa persona no tiene
+    // ningún móvil dado de alta.
+    await consulta("rpc/avisos_cola_movil_hecho", {
+      method: "POST",
+      body: JSON.stringify({ p_id: toque.id, p_enviados: r.enviados, p_fallidos: r.fallidos }),
+    });
+
+    toques++;
+    enviados += r.enviados;
+    fallidos += r.fallidos;
+  }
+
+  return { toques, enviados, fallidos };
+}
 
 // ============================================================
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -468,6 +584,42 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // sigue entero para el camino de abajo, que lo vuelve a leer.
   let asomo: Record<string, unknown> = {};
   try { asomo = await req.clone().json(); } catch { /* cuerpo vacío o roto */ }
+
+  // ---------------------------------------------------------------
+  // 0.b.1 · ¿VIENEN A VACIAR LA COLA? · las peticiones de plaza
+  // ---------------------------------------------------------------
+  // Sale por el mismo sitio y por la misma razón que el de las altas:
+  // quien da el toque puede ser el navegador de un chaval que acaba de
+  // pedir plaza, y aquí no se le va a pedir nada más.
+  //
+  // ¿Y NO PUEDE CUALQUIERA HACER SONAR LOS MÓVILES DEL CLUB LLAMANDO A
+  // ESTO? No, y esta vez menos todavía que en el camino de las altas.
+  // De fuera no llega NADA: ni texto, ni enlace, ni a quién va, ni
+  // siquiera una palabra que elegir. Lo único que hace esta llamada es
+  // decir «mira a ver si hay algo apuntado». Si no hay nada, no pasa
+  // nada. Si hay algo, es porque alguien pidió una plaza o alguien la
+  // contestó, y eso iba a salir igual. Insistir mil veces desde fuera
+  // es exactamente lo mismo que no llamar: los recados ya están
+  // decididos y se mandan una sola vez.
+  if (asomo.cola === true) {
+    const rCfgC = await consulta("avisos_config?select=activo&id=eq.1&limit=1");
+    const cfgC = Array.isArray(rCfgC.datos) ? rCfgC.datos[0] : null;
+    if (!cfgC?.activo) return responder({ ok: true, toques: 0, motivo: "apagado" }, 200, origen);
+
+    try {
+      const r = await vaciarCola();
+      return responder({ ok: true, ...r }, 200, origen);
+    } catch (e) {
+      // Como con las altas: se contesta que bien A PROPÓSITO. Quien
+      // llama es una pantalla que ya ha guardado lo suyo, y lo que
+      // haya quedado sin mandar sigue en la cola para el siguiente
+      // movimiento. Un fallo aquí no puede parecer un fallo de lo que
+      // esa persona acaba de hacer.
+      console.error("no se ha podido vaciar la cola:", e instanceof Error ? e.message : e);
+      return responder({ ok: true, toques: 0, motivo: "error" }, 200, origen);
+    }
+  }
+
   const novedadPedida = String(asomo.novedad ?? "").trim();
   if (novedadPedida) {
     // Se comprueba que la palabra sea UNA DE LAS TRES de verdad, y no

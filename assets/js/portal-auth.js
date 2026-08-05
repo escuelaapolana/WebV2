@@ -1584,6 +1584,63 @@
 
       if (_cb) _cb(sb, perfil);
 
+      /* ------------------------------------------------------------
+         LLEVAR LOS RECADOS QUE HAYAN QUEDADO SIN MANDAR
+         ------------------------------------------------------------
+         La base apunta los toques al móvil —«te han pedido plaza»,
+         «tienes plaza»— pero no puede mandarlos ella sola. Los manda
+         quien pasa por delante. Las dos pantallas que provocan el
+         recado ya lo llevan en el momento; esto es la red de abajo,
+         para los que se hayan quedado colgados: los que se decidieron
+         de noche y esperan a la mañana, o los de un móvil que se
+         quedó sin cobertura en ese segundo.
+
+         Como mucho una vez cada diez minutos por navegador: abrir seis
+         pantallas del portal seguidas es una llamada, no seis. Y en
+         silencio: si falla, el recado sigue en la cola.
+         ------------------------------------------------------------ */
+      try { if (sb.functions) window.APOLANA_DB.empujarAvisos(600); } catch (e) { /* nada */ }
+
+      /* ------------------------------------------------------------
+         OFRECER LOS AVISOS AL MÓVIL, UNA VEZ
+         ------------------------------------------------------------
+         Estaban montados enteros y no los tenía nadie: había UN móvil
+         dado de alta en toda la base. El botón para activarlos solo
+         vive en `portal/avisos/`, y a esa pantalla no llega nadie por
+         su cuenta.
+
+         Se ofrece desde AQUÍ y no desde cada pantalla porque este es
+         el único sitio por el que pasa todo el mundo, entre a la zona
+         que entre. Así también le llega a quien abre directamente su
+         zona sin pasar por el vestíbulo.
+
+         No pide el permiso del móvil: pinta una hoja del club que
+         explica para qué sirve, y la ventana del sistema solo sale si
+         la persona pulsa «Activar los avisos». La hoja se enseña una
+         sola vez y ella misma decide si toca (`saludar`, en
+         avisos.js).
+
+         El archivo se carga aparte y solo aquí: son unos kilobytes que
+         no tienen por qué viajar en cada pantalla del portal.
+
+         El respiro de dos segundos es para que la hoja no compita con
+         el primer pintado de la pantalla —y para que, si esta página
+         va a mandar a otra zona, salga allí y no aquí—.
+         ------------------------------------------------------------ */
+      if (perfil) {
+        setTimeout(function () {
+          function saluda() {
+            try { window.APOLANA_AVISOS.saludar({ perfil: perfil }); } catch (e) { /* nada */ }
+          }
+          if (window.APOLANA_AVISOS && window.APOLANA_AVISOS.saludar) { saluda(); return; }
+          var s = document.createElement('script');
+          s.src = b + 'assets/js/avisos.js';
+          s.onload = saluda;
+          s.onerror = function () { /* sin avisos: la pantalla sigue igual */ };
+          document.head.appendChild(s);
+        }, 2000);
+      }
+
       _papeles.then(function (lista) {
         lista = lista || [];
         /* Guardia de zona: si has acabado en la zona de un rol que no es tuyo

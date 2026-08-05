@@ -171,6 +171,58 @@
     } catch (e) { /* en silencio, por lo mismo */ }
   };
 
+  /* ============================================================
+     LLEVAR LOS RECADOS QUE HA APUNTADO LA BASE
+     ------------------------------------------------------------
+     Hermano del de arriba, y hace falta por una razón muy concreta.
+
+     Cuando alguien pide plaza en una actividad, o cuando quien la
+     lleva contesta, la BASE es la que sabe si toca avisar o sería
+     ruido, y lo decide en ese mismo instante. Lo que no puede hacer
+     la base es llamar ella sola a quien hace sonar los móviles. Así
+     que deja el recado apuntado en una cola y alguien de fuera tiene
+     que darle el toque: eso es esto.
+
+     De aquí NO SALE ABSOLUTAMENTE NADA. Ni una palabra, ni un
+     nombre, ni a quién va. Solo «mira a ver si hay algo apuntado».
+     Lo que haya, ya estaba decidido, y se manda una sola vez aunque
+     esto se llame mil.
+
+     VA EN SILENCIO, COMO EL DE ARRIBA. Lo importante —la plaza
+     pedida, la respuesta dada— ya está guardado antes de llegar
+     aquí. Si esto falla, no se le dice nada a quien está delante: el
+     recado se queda en la cola y sale con el siguiente movimiento.
+
+     EL FRENO DE LOS SEGUNDOS
+     Se puede llamar desde una pantalla que se abre mucho. Con
+     `cadaTantosSegundos` se pide no repetir la llamada si ya se hizo
+     hace nada en este navegador: así abrir el portal seis veces
+     seguidas es una llamada y no seis. Cuando el toque es la
+     consecuencia de algo que acaba de hacer la persona —acaba de
+     pedir la plaza, acaba de contestar— se llama sin freno, que es
+     justo el momento en el que tiene que sonar.
+     ============================================================ */
+  window.APOLANA_DB.empujarAvisos = function (cadaTantosSegundos) {
+    try {
+      var db = window.APOLANA_DB;
+      if (!db || !db.functions) return;
+
+      if (cadaTantosSegundos > 0) {
+        var l = cajon('localStorage');
+        var CLAVE = 'apolana_cola_avisos';
+        var ahora = Date.now();
+        if (l) {
+          var ultima = parseInt(l.getItem(CLAVE) || '0', 10) || 0;
+          if (ahora - ultima < cadaTantosSegundos * 1000) return;
+          l.setItem(CLAVE, String(ahora));
+        }
+      }
+
+      db.functions.invoke("aviso-enviar", { body: { cola: true } })
+        .catch(function () { /* en silencio: el recado sigue en la cola */ });
+    } catch (e) { /* en silencio, por lo mismo */ }
+  };
+
   /* Devuelve la URL de una imagen: si ya es una URL (subida a Supabase)
      la usa tal cual; si es solo un nombre, la busca en /assets/img/. */
   window.APOLANA_IMG = function (v) {

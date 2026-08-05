@@ -521,7 +521,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 o ninguno; tres huecos parecerían tres preguntas. */
              amigos: [''],
              turno: '', peticion_grupo: '', alergias: '',
-             permiso_imagen: null, talla_camiseta: '', talla_sudadera: '' };
+             /* Lo de las fotos son DOS respuestas, no una: los canales
+                que lleva el club por un lado y la prensa por otro. Las
+                dos empiezan vacías porque las dos hay que contestarlas. */
+             permiso_club: null, permiso_medios: null,
+             talla_camiseta: '', talla_sudadera: '' };
   }
 
   /* El nombre entero, para enseñarlo. Por dentro va en tres trozos
@@ -545,7 +549,25 @@ document.addEventListener('DOMContentLoaded', function () {
   var enviando = false;
 
   var TEXTO_NORMAS = 'He leído y acepto las normas del club y las bases de los premios.';
-  var AMBITOS_IMAGEN = ['web', 'redes', 'mensajeria'];
+  /* Los canales, escritos igual que los guarda la base desde la 114.
+     ESTOS NOMBRES NO SE TOCAN: la ficha del atleta y la pantalla del
+     entrenador leen justo estas cuatro palabras, así que inventarse una
+     nueva aquí dejaría el aviso de la pista mudo.
+     La primera pregunta vale por los tres del club; la segunda, por
+     «medios» y por nada más. */
+  var AMBITOS_CLUB  = ['web', 'redes', 'mensajeria'];
+  var AMBITO_MEDIOS = 'medios';
+
+  /* La pregunta literal que se le hizo a la familia, guardada tal cual
+     con el alta. Hace falta el día que alguien discuta qué consintió:
+     lo que vale no es lo que la web pregunte hoy, sino lo que ponía en
+     la pantalla cuando esa familia contestó. */
+  function textoImagen(hijo) {
+    var pila = String(hijo.nombre || '').trim() || 'tu hijo o hija';
+    return '¿Podemos publicar fotos de ' + pila + ' en los canales del club? ' +
+           '(la web, el Instagram del club y el grupo de WhatsApp de su equipo) · ' +
+           '¿Y en prensa, televisión o revistas?';
+  }
   /* Las del club, dichas por el tesorero: de la 4 a la 14 en niños y de la S a
      la XXXL en adultos. La 16 no la tenemos, aunque parezca que falta. */
   var TALLAS = ['4', '6', '8', '10', '12', '14', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
@@ -931,14 +953,28 @@ document.addEventListener('DOMContentLoaded', function () {
   /* ============================================================
      PASO 3 · un bloque por hijo
      ------------------------------------------------------------
-     LA PREGUNTA DE LA IMAGEN VA CON DOS BOTONES, no con una
-     casilla, y lleva el nombre del niño dentro. Es a propósito: una
-     casilla sin marcar se lee como un descuido, y dos botones dicen
-     que negarse es una respuesta normal. Y tiene que serlo: si
-     autorizar la foto fuera condición para apuntarse, el permiso no
-     sería libre y no valdría.
+     LO DE LAS FOTOS SON DOS PREGUNTAS, no una, y cada una va con
+     dos botones en vez de con una casilla.
 
-     Puede ser distinta para cada hijo, y por eso se pregunta una
+     Dos y no una, porque no son la misma decisión. La web, el
+     Instagram del club y el grupo de WhatsApp los lleva el club: si
+     una familia se arrepiente, se descuelga la foto y ya está. Un
+     periódico o una televisión no: la foto sale del club, nadie de
+     aquí controla dónde acaba y no se puede retirar. Metidas en la
+     misma casilla, la familia no elegía: se tragaba el paquete
+     entero, y eso con menores se mira con lupa.
+
+     Y dos, no cuatro: web, redes y mensajería son lo mismo en la
+     práctica. Partirlas más sería hacerle rellenar a un padre un
+     cuestionario para no decidir nada distinto.
+
+     Con dos botones y no con una casilla porque una casilla sin
+     marcar se lee como un descuido, y dos botones dicen que negarse
+     es una respuesta normal. Y tiene que serlo: si autorizar la foto
+     fuera condición para apuntarse, el permiso no sería libre y no
+     valdría.
+
+     Pueden ser distintas para cada hijo, y por eso se preguntan una
      vez por cada uno.
      ============================================================ */
   /* Un bloque de tallas: el rótulo y los botones.
@@ -1083,26 +1119,46 @@ document.addEventListener('DOMContentLoaded', function () {
              F.escapar(hijo.alergias || '') + '</textarea></div>';
       }
 
+      /* La primera: lo que lleva el club. La ayuda dice CUÁLES son y
+         por qué van juntos —se pueden quitar— sin obligar a leer un
+         párrafo. */
       h += '<div class="campo">' +
-             '<span class="etiqueta">¿Podemos publicar fotos de ' + F.escapar(pila) + '?</span>' +
-             /* Decía «puedes cambiarlo cuando quieras desde tu portal»
-                y ESO NO EXISTE: en el portal de familias no hay ningún
-                sitio donde tocar esto. Y no es una promesa cualquiera:
-                es la de poder retirar un permiso, así que mandar a una
-                madre a un sitio donde no puede hacerlo es lo peor de
-                todo. Se dice por dónde se cambia de verdad. */
-             '<span class="ayuda">En la web, en Instagram y en el grupo de su equipo. Si cambias de idea, dínoslo por teléfono o por correo y lo cambiamos.</span>' +
-             '<div class="sino">' +
-               '<label><input type="radio" name="img-' + i + '" value="si"' + (hijo.permiso_imagen === true ? ' checked' : '') + '>Sí, podéis</label>' +
-               '<label><input type="radio" name="img-' + i + '" value="no"' + (hijo.permiso_imagen === false ? ' checked' : '') + '>No, mejor no</label>' +
+             '<span class="etiqueta" id="et-img-' + i + '">¿Podemos publicar fotos de ' + F.escapar(pila) + ' en los canales del club?</span>' +
+             '<span class="ayuda">La web, el Instagram del club y el grupo de WhatsApp de su equipo. Los llevamos nosotros, así que una foto se puede quitar.</span>' +
+             '<div class="sino" role="radiogroup" aria-labelledby="et-img-' + i + '">' +
+               '<label><input type="radio" name="img-' + i + '" value="si"' + (hijo.permiso_club === true ? ' checked' : '') + '>Sí, podéis</label>' +
+               '<label><input type="radio" name="img-' + i + '" value="no"' + (hijo.permiso_club === false ? ' checked' : '') + '>No, mejor no</label>' +
              '</div>' +
-             /* «Su entrenador lo verá en la lista» tampoco es verdad
-                hoy: el permiso vive en el alta y la ficha del atleta
-                no tiene ni casilla para él, así que quien está en la
-                pista con el móvil no lo ve por ninguna parte. Es un
-                agujero de verdad y está avisado; mientras no se tape,
-                aquí no se promete. */
-             '<span class="ayuda">Decir que no no impide apuntarse. Queda apuntado con tu alta.</span>' +
+             '<span class="error"></span>' +
+           '</div>';
+
+      /* La segunda: lo que se va del club. Se dice lo único que de
+         verdad la distingue de la de arriba, que es que no hay vuelta
+         atrás. Sin esa frase, las dos preguntas parecerían la misma
+         hecha dos veces. */
+      h += '<div class="campo">' +
+             '<span class="etiqueta" id="et-med-' + i + '">¿Y en prensa, televisión o revistas?</span>' +
+             '<span class="ayuda">Aquí la foto sale del club y ya no la controlamos: una vez publicada, no se puede retirar.</span>' +
+             '<div class="sino" role="radiogroup" aria-labelledby="et-med-' + i + '">' +
+               '<label><input type="radio" name="med-' + i + '" value="si"' + (hijo.permiso_medios === true ? ' checked' : '') + '>Sí, podéis</label>' +
+               '<label><input type="radio" name="med-' + i + '" value="no"' + (hijo.permiso_medios === false ? ' checked' : '') + '>No, mejor no</label>' +
+             '</div>' +
+             /* Tres cosas en una línea, y las tres hacen falta.
+                Que se puede contestar distinto a cada una: si no, media
+                familia marcará lo mismo en las dos por inercia.
+                Que decir que no no cuesta nada, que es lo que hace que
+                el permiso sea libre de verdad.
+                Y que el entrenador lo ve. Esto ANTES NO ERA VERDAD y
+                aquí ponía lo contrario: el permiso se quedaba en el
+                alta, que solo miran administración y tesorería, y quien
+                está en la pista con el móvil no se enteraba. Desde la
+                135 el permiso viaja a la ficha del atleta y sale en
+                Pasar lista, así que ya se puede prometer. Es justo lo
+                que tranquiliza a quien contesta que no.
+                Y por dónde se cambia, que es lo único que necesita
+                saber quien quiere retirarlo: el portal de familias no
+                tiene sitio para esto, así que se dice el de verdad. */
+             '<span class="ayuda">Puedes contestar distinto a cada una. Decir que no a las dos no impide apuntarse, y su entrenador lo ve al pasar lista. Si cambias de idea, dínoslo por teléfono o por correo.</span>' +
              '<span class="error"></span>' +
            '</div>';
 
@@ -1161,7 +1217,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
       ficha.querySelectorAll('input[name^="img-"]').forEach(function (r) {
         r.addEventListener('change', function () {
-          hijo.permiso_imagen = (r.value === 'si');
+          hijo.permiso_club = (r.value === 'si');
+          F.bien(r);
+        });
+      });
+      ficha.querySelectorAll('input[name^="med-"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+          hijo.permiso_medios = (r.value === 'si');
           F.bien(r);
         });
       });
@@ -1328,12 +1390,20 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
 
-      /* El permiso de imagen no se da por hecho ni en un sentido ni
-         en el otro: hay que contestar. */
-      if (hijo.permiso_imagen === null) {
+      /* Las dos preguntas de las fotos se contestan por separado y
+         ninguna se da por hecha en ningún sentido: dejar una en blanco
+         no es «que sí» ni «que no», es que no se ha contestado. */
+      if (hijo.permiso_club === null) {
         var radioImg = ficha.querySelector('input[name="img-' + i + '"]');
         if (radioImg) {
-          F.mal(radioImg, 'Dinos si podemos publicar sus fotos. Cualquiera de las dos respuestas vale.');
+          F.mal(radioImg, 'Dinos si podemos publicar sus fotos en los canales del club. Cualquiera de las dos respuestas vale.');
+          ok = false;
+        }
+      }
+      if (hijo.permiso_medios === null) {
+        var radioMed = ficha.querySelector('input[name="med-' + i + '"]');
+        if (radioMed) {
+          F.mal(radioMed, 'Dinos si podemos darlas a la prensa o a la televisión. Cualquiera de las dos respuestas vale.');
           ok = false;
         }
       }
@@ -1446,7 +1516,11 @@ document.addEventListener('DOMContentLoaded', function () {
         (String(hijo.peticion_grupo || '').trim()
           ? fila('Habéis pedido', hijo.peticion_grupo.trim() + ' · lo mira el club') : '') +
         (hijo.alergias ? fila('Hay que saber', hijo.alergias) : '') +
-        fila('Fotos', hijo.permiso_imagen ? 'Sí podemos publicarlas' : 'No, mejor no') +
+        /* Las dos respuestas se repasan por separado, igual que se
+           preguntaron. Juntarlas en una línea aquí escondería justo lo
+           que se acaba de partir en dos. */
+        fila('Fotos en web y redes', hijo.permiso_club ? 'Sí podemos publicarlas' : 'No, mejor no') +
+        fila('Fotos en prensa y tele', hijo.permiso_medios ? 'Sí podemos darlas' : 'No, mejor no') +
         (hijo.talla_camiseta ? fila('Camiseta', 'Talla ' + hijo.talla_camiseta) : '') +
         (hijo.talla_sudadera ? fila('Sudadera', 'Talla ' + hijo.talla_sudadera) : '') +
       '</dl></div>';
@@ -1542,10 +1616,17 @@ document.addEventListener('DOMContentLoaded', function () {
              Esto es una frase que lee una persona. */
           peticion_grupo: String(hijo.peticion_grupo || '').trim(),
           alergias: hijo.alergias,
-          permiso_imagen: hijo.permiso_imagen,
-          permiso_imagen_ambitos: hijo.permiso_imagen ? AMBITOS_IMAGEN : [],
-          texto_imagen: '¿Podemos publicar fotos de ' + String(hijo.nombre || '').trim() +
-                        '? En la web, en Instagram y en el grupo de su equipo.',
+          /* Las dos respuestas se guardan en la misma lista de canales,
+             que es como la base los distingue desde la 114. Lo que
+             cambia es cómo se pregunta, no cómo se guarda: la de arriba
+             marca los tres del club y la de abajo marca «medios».
+             `permiso_imagen` es «hay algo autorizado», así que basta con
+             que una de las dos sea que sí. Quién exactamente, lo dice la
+             lista de canales, que es lo que mira el entrenador. */
+          permiso_imagen: (hijo.permiso_club === true || hijo.permiso_medios === true),
+          permiso_imagen_ambitos: (hijo.permiso_club ? AMBITOS_CLUB : [])
+                                    .concat(hijo.permiso_medios ? [AMBITO_MEDIOS] : []),
+          texto_imagen: textoImagen(hijo),
           talla_camiseta: hijo.talla_camiseta,
           talla_sudadera: hijo.talla_sudadera
         };
@@ -1709,6 +1790,19 @@ document.addEventListener('DOMContentLoaded', function () {
     if (p.peticion_grupo === undefined) p.peticion_grupo = '';
   }
 
+  /* Hasta agosto de 2026 lo de las fotos se preguntaba en UNA casilla, y
+     un formulario a medias guardado en el móvil de entonces solo trae
+     esa respuesta. Se aprovecha para la primera pregunta, que es
+     exactamente la que se le hizo —la web, Instagram y el grupo—, y la
+     de la prensa se queda sin contestar hasta que la contesten.
+     Darla por dicha sería ponerle a la familia en la boca un sí que
+     nadie le pidió, y encima el sí que no tiene marcha atrás. */
+  function repararPermisoViejo(p) {
+    if (!p || p.permiso_club !== undefined) return;
+    p.permiso_club = (p.permiso_imagen === undefined) ? null : p.permiso_imagen;
+    p.permiso_medios = null;
+  }
+
   (function recuperarLoGuardado() {
     var guardado = F.recuperar('escuela');
     if (!guardado || !guardado.hijos || !guardado.hijos.length) return;
@@ -1718,6 +1812,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     alta = guardado;
     alta.hijos.forEach(repararNombreViejo);
+    alta.hijos.forEach(repararPermisoViejo);
     if (alta.familia) repararNombreViejo(alta.familia);
 
     var h = alta.hijos[0];
