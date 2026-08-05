@@ -660,6 +660,35 @@ APOLANA_ADMIN.listo(function (sb) {
         h += d('Grupo', n.grupo_nombre ? esc(n.grupo_nombre) : null, 'Sin grupo · hay que asignarlo');
         h += d('Días', DIAS[n.turno] ? esc(DIAS[n.turno]) : null, 'No los eligió');
         h += tapado('Tarjeta sanitaria', n.sip_tapado, n.tiene_sip, 'escuela-sip', n.id, 'No la puso');
+        /* El documento del niño, que se pregunta desde agosto de 2026 y
+           lo pide la licencia federativa. Se distinguen tres finales, y
+           la diferencia importa: «todavía no tiene» no hay que
+           reclamarlo, y «no lo puso» sí. En las altas de antes no se
+           preguntaba y no hay a quién echarle la culpa. */
+        h += n.sin_dni
+               ? d('DNI o NIE', 'Todavía no lo tiene')
+               : tapado('DNI o NIE', n.dni_tapado, n.tiene_dni, 'escuela-nino-dni', n.id,
+                        n.sin_dni === null ? 'No se preguntaba entonces' : 'No lo puso · lo pide la licencia');
+        /* Con quién le gustaría entrenar. Se enseña aquí porque es lo
+           que hay que tener delante al decidir su grupo. */
+        if (n.amigos && n.amigos.length) {
+          h += d('Le gustaría entrenar con', esc(n.amigos.join(', ')));
+        }
+        /* Lo que la familia pidió sobre el grupo. El formulario no les
+           deja elegir el de competición ni los de segunda hora —eso lo
+           decide el club viendo al chaval—, pero sí pedirlo, y aquí es
+           donde hay que contestarles. */
+        if (n.peticion_grupo) {
+          h += d('Piden otro grupo', '<b>' + esc(n.peticion_grupo) + '</b>');
+        }
+        /* El enlace al chat de las familias, para pegarlo en el correo
+           del resumen. NO se pinta aquí: se pide a la base al pulsar, y
+           la base decide si toca —y si no toca, dice por qué—. Quien
+           tiene ese enlace entra al grupo sin que nadie le pregunte
+           quién es, así que no viaja a ninguna pantalla antes de hora. */
+        h += '<div class="dato"><span class="r">Chat de familias</span><span class="v">' +
+             '<button type="button" class="destapar" data-wa="' + esc(n.id) + '">Ver el enlace</button>' +
+             '<span data-wa-caja="' + esc(n.id) + '"></span></span></div>';
         h += d('Tallas', [n.talla_camiseta ? 'camiseta ' + n.talla_camiseta : null,
                           n.talla_sudadera ? 'sudadera ' + n.talla_sudadera : null]
                          .filter(Boolean).join(' · ') || null, 'Sin talla');
@@ -801,6 +830,46 @@ APOLANA_ADMIN.listo(function (sb) {
       }
       var caja = $('ficha-caja').querySelector('[data-tapa="' + b.getAttribute('data-ver') + '"]');
       if (caja) caja.textContent = r.data.valor;
+      b.remove();
+      return;
+    }
+
+    /* El enlace al grupo de WhatsApp de las familias.
+       ------------------------------------------------------------
+       Solo sale cuando el grupo del niño ya es DEFINITIVO —alta
+       revisada y ficha creada—, y eso lo decide la base, no esta
+       pantalla. El motivo es que el grupo que el formulario le enseña
+       a la familia es provisional: mandar el enlace antes de tiempo
+       mete a una madre en el chat de veinte familias que no son las
+       suyas, y sacarla de ahí luego es a mano y ya ha visto sus
+       teléfonos y sus fotos. Ver la migración 130. */
+    if (b.hasAttribute('data-wa')) {
+      var nid = b.getAttribute('data-wa');
+      b.disabled = true; b.textContent = 'Un momento…';
+      var rw = await sb.rpc('alta_enlace_familias', { p_nino_id: nid });
+      var cw = $('ficha-caja').querySelector('[data-wa-caja="' + nid + '"]');
+      if (rw.error) {
+        b.disabled = false; b.textContent = 'Ver el enlace';
+        apoToast('No se ha podido consultar: ' + rw.error.message, 'error');
+        return;
+      }
+      var w = rw.data || {};
+      if (w.ok) {
+        /* Se enseña el enlace entero para poder copiarlo al correo, y
+           se dice a qué grupo lleva: pegar el del chat que no es sería
+           el mismo problema por otro camino. */
+        cw.innerHTML = '<a href="' + esc(w.enlace) + '" target="_blank" rel="noopener">' + esc(w.enlace) + '</a>' +
+                       '<br><span class="falta" style="color:var(--texto-suave)">Es el chat de ' + esc(w.grupo || '') + '.</span>';
+      } else {
+        var PORQUE = {
+          'sin-revisar': 'Todavía no: marca antes el alta como revisada, que es cuando alguien ha mirado quién es esta familia.',
+          'sin-ficha': 'Todavía no: su grupo es el provisional hasta que le crees la ficha con su grupo definitivo. Mandarlo ahora podría meterles en el chat que no es.',
+          'sin-grupo': 'Su ficha no tiene grupo puesto. Ponle uno y vuelve aquí.',
+          'grupo-sin-enlace': 'El grupo ' + (w.grupo || '') + ' todavía no tiene chat puesto. Se pega en Deportivo → Grupos.',
+          'no-esta': 'No se encuentra este niño en el alta.'
+        };
+        cw.innerHTML = '<span class="falta">' + esc(PORQUE[w.motivo] || 'Ahora mismo no se puede dar.') + '</span>';
+      }
       b.remove();
       return;
     }

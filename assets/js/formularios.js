@@ -45,6 +45,7 @@
     var caja = elemento.closest('.campo') || elemento.closest('.casilla');
     if (!caja) return;
     caja.classList.add('mal');
+    caja.classList.remove('hay-ojo');   /* el rojo manda sobre el ámbar */
     var hueco = caja.querySelector('.error');
     if (hueco) hueco.textContent = mensaje;
     elemento.setAttribute('aria-invalid', 'true');
@@ -55,7 +56,33 @@
     var caja = elemento.closest('.campo') || elemento.closest('.casilla');
     if (!caja) return;
     caja.classList.remove('mal');
+    caja.classList.remove('hay-ojo');
     elemento.removeAttribute('aria-invalid');
+  };
+
+  /* ---- EL AVISO QUE NO FRENA ----
+     En ámbar y debajo del campo, como el error, pero sin cerrarle la
+     puerta a nadie: se usa cuando lo escrito no tiene la pinta que se
+     espera y aun así puede ser correcto. El caso claro es el DNI: hay
+     documentos de fuera que no se parecen a ninguno de los nuestros, y
+     quien trae uno no puede quedarse sin apuntar a su hijo.
+
+     NO se pone `aria-invalid`: para quien navega con lector de
+     pantalla, «campo no válido» diría justo lo contrario de lo que
+     esto quiere decir. */
+  F.ojo = function (elemento, mensaje) {
+    var caja = elemento.closest('.campo');
+    if (!caja) return;
+    caja.classList.remove('mal');
+    caja.classList.add('hay-ojo');
+    var hueco = caja.querySelector('.ojo');
+    if (hueco) hueco.textContent = mensaje;
+    elemento.removeAttribute('aria-invalid');
+  };
+
+  F.sinOjo = function (elemento) {
+    var caja = elemento.closest('.campo');
+    if (caja) caja.classList.remove('hay-ojo');
   };
 
   /* Lleva la vista al primer campo mal rellenado y pone el cursor

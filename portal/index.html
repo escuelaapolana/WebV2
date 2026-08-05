@@ -96,6 +96,7 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     documentos:   { titulo: 'Documentos',            desc: 'Normativa, autorizaciones y circulares del club.',           url: base + 'portal/documentos/' },
     tienda:       { titulo: 'Tienda del club',       desc: 'Equipación oficial y pedidos de ropa.',                      url: base + 'tienda/' },
     calles:       { titulo: 'Calles de la piscina',  desc: 'Reparto de calles y trabajo de cada grupo.',                 url: base + 'portal/calles/' },
+    solicitudes:  { titulo: 'Solicitudes de plaza',  desc: 'Quién ha pedido sitio en tus actividades, para decir sí o no.', url: base + 'portal/solicitudes/' },
     lesiones:     { titulo: 'Lesiones y disponibilidad', desc: 'Molestias, bajas y quién está disponible para entrenar.', url: base + 'portal/lesiones/' },
     carga:        { titulo: 'Carga y bienestar',     desc: 'Cómo llevas la carga de entrenamiento y cómo te encuentras.', url: base + 'portal/carga/' },
     redes:        { titulo: 'Proponer un post',      desc: 'Sugiere una foto o idea para el Instagram del club.',        url: base + 'portal/redes/' },
@@ -105,10 +106,16 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   var ACCESOS_ROL = {
     atleta:      ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'cubo', 'competiciones', 'tests', 'lesiones', 'carga', 'redes', 'documentos', 'tienda'],
     familia:     ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'cubo', 'competiciones', 'tests', 'redes', 'documentos', 'tienda'],
-    entrenador:  ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'cubo', 'competiciones', 'tests', 'calles', 'lesiones', 'carga', 'documentos', 'tienda'],
-    coordinador: ['perfil', 'avisos', 'calendario', 'competiciones', 'documentos'],
-    admin:       ['perfil', 'avisos', 'calendario', 'competiciones', 'calles', 'documentos', 'tienda']
+    entrenador:  ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'solicitudes', 'cubo', 'competiciones', 'tests', 'calles', 'lesiones', 'carga', 'documentos', 'tienda'],
+    coordinador: ['perfil', 'avisos', 'calendario', 'solicitudes', 'competiciones', 'documentos'],
+    admin:       ['perfil', 'avisos', 'calendario', 'solicitudes', 'competiciones', 'calles', 'documentos', 'tienda']
   };
+
+  /* Cuántas peticiones de plaza esperan respuesta de esta persona. Llega
+     después del primer pintado, así que la fila se escribe primero sin la
+     cifra y se vuelve a pintar cuando la sabemos: la pantalla no se queda
+     esperando a una consulta para enseñar el menú. */
+  var PENDIENTES = 0;
 
   function accesos(claves) {
     var vistos = [];
@@ -118,7 +125,12 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     if (!vistos.length) return '';
     return bloque('En el portal', vistos.map(function (a) {
       var z = ACCESOS[a];
-      return fila(z.url, z.titulo, z.desc);
+      var desc = z.desc;
+      if (a === 'solicitudes' && PENDIENTES) {
+        desc = (PENDIENTES === 1 ? '1 persona espera' : PENDIENTES + ' personas esperan') +
+               ' tu respuesta.';
+      }
+      return fila(z.url, z.titulo, desc);
     }).join(''));
   }
 
@@ -182,6 +194,7 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
 
   /* Segundo pintado: papeles deducidos de los datos (ficha propia de atleta,
      hijos a cargo, grupos que entrena…). portal-auth.js los calcula. */
+  var ULTIMAS = { claves: BASICO[rol] || [], descs: null };
   if (typeof APOLANA_PORTAL.papeles === 'function') {
     APOLANA_PORTAL.papeles().then(function (lista) {
       if (!lista || !lista.length) return;
@@ -189,9 +202,19 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
       if (lista.length === 1 && lista[0].url) { location.replace(lista[0].url); return; }
       var claves = [], descs = {};
       lista.forEach(function (p) { claves.push(p.clave); descs[p.clave] = p.desc; });
+      ULTIMAS = { claves: claves, descs: descs };
       pintar(claves, descs);
     }).catch(function () { /* se queda el pintado básico */ });
   }
+
+  /* Y la cifra de peticiones sin contestar, en su propio viaje. Si falla no
+     se dice nada: el menú ya está pintado y entrar a la pantalla enseña el
+     número de verdad. */
+  sb.rpc('mis_solicitudes_sin_contestar').then(function (r) {
+    if (r.error || !r.data) return;
+    PENDIENTES = r.data;
+    pintar(ULTIMAS.claves, ULTIMAS.descs);
+  }).catch(function () { /* nada */ });
 });
 </script>
 

@@ -590,8 +590,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var misEntrenos = {};
     if (atleta) {
       try {
-        var ri = await sb.from('sesion_inscripciones').select('sesion_id').eq('atleta_id', atleta.id);
-        if (!ri.error && ri.data) ri.data.forEach(function (x) { misEntrenos[x.sesion_id] = true; });
+        /* Ahora cada apunte tiene estado: pedido y sin contestar, con plaza
+           o rechazado. Se guarda el estado, no un sí/no, porque «pedido» y
+           «tengo plaza» no se pueden pintar igual: alguien se presentaría
+           un sábado creyendo que iba. */
+        var ri = await sb.from('sesion_inscripciones').select('sesion_id,estado,motivo').eq('atleta_id', atleta.id);
+        if (!ri.error && ri.data) ri.data.forEach(function (x) { misEntrenos[x.sesion_id] = x; });
       } catch (e) { /* nada */ }
     }
 
@@ -610,17 +614,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if ((v2.papel_dia || m.papel_dia || v2.tipo || m.tipo) === 'descanso') return;
       var grupo = GRUPOS[v2.grupo_id || m.grupo_id] || null;
       var mio = !!mias[id];
-      var abierta = !!v2.abierta_inscripcion;
-      var apuntado = !!misEntrenos[id];
+      /* Tres posturas, no dos: cerrada, abierta y «hay que pedir plaza».
+         La columna vieja sigue diciendo solo si sale en el calendario, así
+         que si la sesión no trae la nueva se le da el significado de
+         siempre y no cambia nada. */
+      var comoSeEntra = v2.inscripcion || (v2.abierta_inscripcion ? 'abierta' : 'cerrada');
+      var abierta = (comoSeEntra !== 'cerrada');
+      var hayQuePedir = (comoSeEntra === 'con_permiso');
+      var miApunte = misEntrenos[id] || null;
+      var miEstado = miApunte ? miApunte.estado : null;
       var f = v2.fecha || m.fecha;
       var pasado = f < HOY_ISO;
       var seccionOk = !v2.abierta_a || v2.abierta_a.indexOf(miSeccion) >= 0;
       var completa = (v2.plazas != null && v2.libres != null && v2.libres <= 0);
 
       var estado, clase, accion = null, nota = '';
-      if (apuntado) {
-        estado = 'Ya apuntado'; clase = 'ok';
+      if (miEstado === 'aceptada') {
+        /* En una de pedir plaza no basta con «ya apuntado»: lo que hay que
+           leer de un vistazo es que te la han dado. */
+        estado = hayQuePedir ? 'Tienes plaza' : 'Ya apuntado'; clase = 'ok';
         if (!pasado) accion = { tipo: 'quitar-sesion', id: id, texto: 'Quitarme', estilo: 'fantasma' };
+      } else if (miEstado === 'pendiente') {
+        estado = 'Plaza pedida'; clase = 'espera';
+        nota = 'La has pedido y todavía no te han contestado. No cuentes con ir hasta que te digan que sí.';
+        if (!pasado) accion = { tipo: 'quitar-sesion', id: id, texto: 'Retirar la petición', estilo: 'fantasma' };
+      } else if (miEstado === 'rechazada') {
+        estado = 'No hay plaza para ti'; clase = 'no';
+        nota = miApunte.motivo || 'Esta vez no ha salido. Si quieres, pregunta a quien la lleva.';
       } else if (mio) {
         estado = 'Tu entrenamiento'; clase = 'mia';
       } else if (!abierta) {
@@ -630,9 +650,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       } else if (!seccionOk) {
         estado = 'Solo para tu grupo'; clase = '';
         nota = 'Abierto solo a: ' + (v2.abierta_a || []).map(seccionNombre).filter(Boolean).join(', ') + '.';
-      } else if (completa) {
+      } else if (completa && !hayQuePedir) {
         estado = 'Completa'; clase = 'no';
         nota = 'Ya no quedan plazas.';
+      } else if (hayQuePedir) {
+        /* Aunque esté completa se puede pedir: las plazas las reparte quien
+           la lleva, y a lo mejor se cae alguien. Lo que no se puede es
+           dejar creer que la plaza está hecha. */
+        estado = 'Hay que pedir plaza'; clase = 'espera';
+        nota = completa
+          ? 'Están todas las plazas dadas, pero puedes pedirla igual por si se cae alguien.'
+          : 'Aquí no basta con apuntarse: lo pides y te contesta quien la lleva.';
+        accion = { tipo: 'pedir-sesion', id: id, texto: 'Pedir plaza', estilo: 'primario' };
       } else {
         estado = 'Abierta'; clase = 'ok';
         accion = { tipo: 'apuntar-sesion', id: id, texto: 'Me apunto', estilo: 'primario' };
@@ -646,8 +675,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         grupo: grupo ? grupo.nombre : '', lugar: v2.lugar || m.lugar || '',
         seccion: grupo ? grupo.seccion : null,
         plazas: v2.plazas, apuntados: v2.apuntados, libres: v2.libres,
+        pendientes: v2.pendientes, hayQuePedir: hayQuePedir,
         abiertaA: v2.abierta_a || null,
-        mio: mio || apuntado, puedo: !!accion && accion.tipo === 'apuntar-sesion',
+        miEstado: miEstado,
+        /* Un «no» no es tuyo: la tarjeta oscura es la de a lo que vas, y a
+           esto no vas. Se sigue viendo, pero con su color. */
+        mio: mio || miEstado === 'pendiente' || miEstado === 'aceptada',
+        puedo: !!accion && (accion.tipo === 'apuntar-sesion' || accion.tipo === 'pedir-sesion'),
         estado: estado, pillClase: clase, nota: nota, accion: accion,
         contacto: { href: '../mensajes/', texto: 'Escribir a tu entrenador' }
       });
@@ -876,7 +910,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var lotes = {}, orden = [];
     acts.forEach(function (a) {
       if (a.fuente !== 'entreno' || !a.seccion) return;
-      if (a.mio || a.accion) return;   // lo tuyo y lo que puedes reservar, aparte
+      /* Lo tuyo y lo que puedes reservar, aparte. Y también aquello a lo
+         que pediste plaza aunque te dijeran que no: si se juntara con las
+         demás, el «no hay plaza para ti» desaparecería del calendario y
+         nadie se enteraría de que le han contestado. */
+      if (a.mio || a.accion || a.miEstado) return;
       var k = a.fecha + '|' + a.seccion + '|' + (a.hora || '');
       if (!lotes[k]) { lotes[k] = []; orden.push(k); }
       lotes[k].push(a);
@@ -1548,6 +1586,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         ? esc(libres + (libres === 1 ? ' plaza libre' : ' plazas libres') + ' de ' + a.plazas)
         : esc('Completo (' + a.plazas + ' plazas)');
     }
+    /* En una de pedir plaza hacen falta las DOS cifras. Con una sola,
+       quien lee «4 plazas libres» se cree que una es suya, y a lo mejor
+       hay quince peticiones por delante esperando respuesta. */
+    if (a.hayQuePedir && a.pendientes) {
+      plazas = (plazas ? plazas + ' · ' : '') +
+        esc(a.pendientes + (a.pendientes === 1 ? ' esperando respuesta' : ' esperando respuesta'));
+    }
     var abiertaA = (a.abiertaA && a.abiertaA.length) ? esc(a.abiertaA.map(seccionNombre).filter(Boolean).join(', ')) : '';
 
     var h = '<div class="modal-cab"><div>' +
@@ -1610,7 +1655,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         ? 'Ya no quedan plazas. Si te interesa, escribe a quien la lleva por si se libera alguna.'
         : (a.estado === 'Cerrada'
             ? 'Esta actividad ya está cerrada. Si tienes una duda, escribe a quien la lleva.'
-            : 'Aquí no puedes apuntarte tú. Si quieres ir o tienes una duda, escribe a quien la lleva.');
+            : (a.estado === 'No hay plaza para ti'
+                ? 'Esta vez no ha salido. Si crees que es un error, escribe a quien la lleva.'
+                : 'Aquí no puedes apuntarte tú. Si quieres ir o tienes una duda, escribe a quien la lleva.'));
       h += '<p>' + esc(porQue) + '</p>' +
            '<div class="botones"><a class="btn btn--fantasma btn--sm" href="' + esc(a.contacto.href) + '">' +
            esc(a.contacto.texto) + '</a></div>';
@@ -1808,9 +1855,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     t.disabled = true; t.textContent = 'Un momento…';
 
     var r;
-    if (acc === 'apuntar-sesion') {
+    if (acc === 'apuntar-sesion' || acc === 'pedir-sesion') {
+      /* Se apunta igual en los dos casos. El estado —con plaza o pedida y
+         sin contestar— lo pone la base según sea la actividad, no esta
+         pantalla: así nadie se da su propia plaza desde el navegador. */
       r = await sb.from('sesion_inscripciones').insert({ sesion_id: idAcc, atleta_id: atleta.id });
-      modalAviso = r.error ? '!' + mensajeError(r.error) : 'Apuntado. Ya estás en la lista.';
+      modalAviso = r.error ? '!' + mensajeError(r.error)
+        : (acc === 'pedir-sesion'
+            ? 'Plaza pedida. Te avisamos en cuanto te contesten: hasta entonces no cuentes con ir.'
+            : 'Apuntado. Ya estás en la lista.');
     } else if (acc === 'quitar-sesion') {
       r = await sb.from('sesion_inscripciones').delete().eq('sesion_id', idAcc).eq('atleta_id', atleta.id);
       modalAviso = r.error ? '!' + mensajeError(r.error) : 'Te has quitado.';

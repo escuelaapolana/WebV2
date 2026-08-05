@@ -1,78 +1,61 @@
 -- ============================================================
--- 124 · El DNI del niño, con quién quiere entrenar, y el nombre en
---       tres casillas
+-- 129 · El grupo que le toca por su año, y lo que la familia pida
 -- ------------------------------------------------------------
--- TRES COSAS QUE PIDIÓ TESORERÍA DESPUÉS DE COMPARAR EL FORMULARIO
--- DE LA WEB CON EL DE PAPEL QUE SE USA EN LA MESA.
+-- LO QUE VIO EL DUEÑO SIGUIENDO EL FORMULARIO COMO UN PADRE
+--   «Mi hijo puede tener 5 años y llevarle a un grupo que no puede
+--    ir.»
+-- Y lo que matizó después, que es lo que manda:
+--   «Hay requisitos internos para subir. No lo añadas. Los de
+--    primera hora están claros. Van a pagar lo mismo, así que nada.
+--    Los de 2ª hora sí que hay más decisión.»
 --
--- 1 · EL DNI DEL NIÑO, ADEMÁS DEL DE SUS PADRES
--- Hasta hoy solo se pedía el de quien apunta. El del niño hace falta
--- para la licencia federativa, y perseguirlo en septiembre por
--- WhatsApp cuesta muchísimo más que preguntarlo una vez mientras la
--- familia rellena el formulario con el documento delante.
+-- ------------------------------------------------------------
+-- LO QUE ESTE ARCHIVO NO HACE, Y ES LA MITAD DE LA DECISIÓN
 --
--- Es OPCIONAL y tiene que serlo: muchos niños pequeños todavía no
--- tienen documento. Por eso va con una casilla de «todavía no tiene»
--- (`sin_dni`), que es lo que separa «no lo tiene» de «no lo pusieron»
--- —dos llamadas de teléfono distintas—. Si fuera obligatorio, media
--- escuela escribiría ocho ceros, que pasan por buenos hasta el día
--- que hace falta de verdad.
+-- NO ESCRIBE NINGUNA REGLA DE QUIÉN PUEDE SUBIR DE GRUPO. Ni aquí
+-- ni en el formulario. Quién pasa al grupo de competición lo decide
+-- el club mirando al chaval —hay requisitos internos que no están en
+-- ninguna base de datos—, y cualquier regla que escribiéramos aquí
+-- sería mentira el primer día y habría que pelearse con ella cada
+-- septiembre.
 --
--- Y vale el NIE. Hay niños con NIE en el club, y la columna es un
--- texto sin ninguna regla de formato: aquí no se rechaza a nadie por
--- traer un pasaporte o un documento raro. La comprobación del
--- formato se hace en el formulario y AVISA, no frena.
+-- NO CIERRA NINGUNA PUERTA. En la escuela de primera hora los grupos
+-- van por año de nacimiento y TODOS PAGAN LO MISMO, así que
+-- equivocarse de color no tiene consecuencia ni de dinero ni de
+-- plaza. El formulario propone el que le toca por su año, que es lo
+-- cómodo, y si una familia quiere otra cosa lo dice y ya está: quien
+-- revisa el alta lo ve, y además sigue saltando el aviso de «nació
+-- en tal año y ese grupo es de los de tal otro» de la migración 121.
 --
--- 🔒 SALE TAPADO, COMO TODO LO DEMÁS
--- Es un número de documento de un menor, así que se trata igual que
--- el DNI del tutor y que la tarjeta sanitaria: en el panel se ve
--- «···· 1234» y quien lo necesita entero lo pide de uno en uno, y esa
--- petición queda apuntada con su nombre (migración 115). No se abre
--- ninguna puerta que allí estuviera cerrada.
+-- ------------------------------------------------------------
+-- LO QUE SÍ HACE: UNA CASILLA PARA PEDIR
 --
--- 2 · CON QUIÉN LE GUSTARÍA ENTRENAR
--- Es la mitad de la razón por la que en septiembre hay que mover
--- niños de grupo, y hasta hoy llegaba por correo o de palabra en la
--- puerta de la pista, y se perdía. Ahora se pregunta al apuntarse y
--- se guarda con el alta.
+-- El formulario solo ofrece los grupos de PRIMERA HORA, los de por
+-- año de nacimiento. Los de segunda hora y el de competición no
+-- salen, y no salen a propósito: ahí entra el nivel del chaval y el
+-- criterio del entrenador, y enseñarlos en una lista los convertiría
+-- en «una opción más» que se marca sin saber lo que se marca.
 --
--- Texto libre y varios, a propósito: la familia escribe el nombre del
--- amigo, que puede no estar apuntado todavía o apuntarse la semana
--- que viene. NO se intenta emparejar con ninguna ficha aquí dentro;
--- se guarda lo que escribieron tal cual y quien reparte los grupos lo
--- lee y decide. Emparejar a ciegas con un «Pablo García» de otro año
--- sería peor que no tener el dato.
+-- Pero una familia puede tener un motivo de verdad —dos hermanos que
+-- quieren coincidir, un crío que ya entrena fuera, la sospecha de que
+-- su hija se aburre con los de su edad—. Antes eso se perdía: llegaba
+-- por WhatsApp en septiembre o no llegaba. Ahora se escribe con el
+-- alta, en `peticion_grupo`, y aparece en la pantalla de convertir
+-- como algo que hay que decidir ANTES de crear la ficha.
 --
--- 3 · EL NOMBRE EN TRES CASILLAS
--- El formulario pedía «Nombre y apellidos» en una sola casilla y la
--- 121 lo partía después con la regla española —las dos últimas
--- palabras son los apellidos—, avisando cuando no estaba claro. Con
--- «María del Carmen Ruiz de la Fuente» esa regla se equivoca, y una
--- licencia federativa con el apellido mal es un problema de verdad.
+-- Es la diferencia entre «no puedes» y «pídelo y te contestamos», y
+-- es toda la diferencia para quien está rellenando el formulario a
+-- las once de la noche con el niño ya dormido.
 --
--- Se pregunta partido, como en el papel: nombre, primer apellido y
--- segundo apellido. El segundo es opcional: hay quien no tiene.
---
+-- ------------------------------------------------------------
 -- ⚠️ LAS ALTAS QUE YA ESTÁN ENTRADAS NO SE ROMPEN
--- Las columnas nuevas nacen VACÍAS y se quedan vacías en todo lo que
--- entró antes de hoy, porque a esas familias no se les preguntó. Es
--- lo mismo que se hizo con el sexo en la 122: un valor por defecto
--- llenaría la base de datos que nadie contestó.
+-- La columna nace VACÍA y se queda vacía en todo lo anterior, porque
+-- a esas familias no se les preguntó. Igual que el sexo en la 122 y
+-- que el documento del niño en la 128.
 --
--- La columna `nombre` de siempre SIGUE ESTANDO Y SIGUE LLENA: la
--- rellena esta misma función juntando las tres casillas. Así todo lo
--- que ya leía el nombre entero —el panel, las búsquedas, la pantalla
--- de convertir— sigue funcionando sin tocar nada.
---
--- Y al revés: un alta vieja, con el nombre entero y las tres casillas
--- vacías, se convierte en ficha exactamente igual que ayer. El examen
--- mira si vienen partidas; si no vienen, parte el nombre como hacía
--- la 121 y saca el mismo aviso de siempre.
---
--- ------------------------------------------------------------
 -- NADA PERSONAL AQUÍ DENTRO
--- Ni un nombre, ni un DNI, ni un NIE. Este archivo queda en el
--- histórico para siempre y el repositorio es público.
+-- Este archivo queda en el histórico para siempre y el repositorio es
+-- público.
 --
 -- IDEMPOTENTE
 -- Se puede lanzar las veces que haga falta. No borra ni una ficha.
@@ -81,179 +64,29 @@
 begin;
 
 -- ============================================================
--- 1 · JUNTAR UN NOMBRE PARTIDO
+-- 1 · LO QUE LA FAMILIA PIDE
 -- ------------------------------------------------------------
--- Lo contrario de `partir_nombre` (migración 121). Existe para que la
--- columna `nombre` de toda la vida siga llena sin que nadie tenga que
--- acordarse de rellenarla a mano en cada sitio: se le dan las tres
--- casillas y devuelve «Lucía Pérez Gómez».
---
--- Aguanta que falte cualquiera de las tres —el segundo apellido falta
--- muchas veces— sin dejar dobles espacios por el camino.
+-- Texto libre y no una lista de grupos, y esto es a propósito: si
+-- fuera una lista, elegir «Grupo de competición» sería un clic, y un
+-- clic no es una conversación. Escrito con sus palabras se lee el
+-- MOTIVO —«queremos que coincida con su hermana», «lleva dos años en
+-- otro club»—, que es justo lo que el club necesita para decidir.
 -- ============================================================
-create or replace function public.nombre_junto(p_nombre text, p_ap1 text, p_ap2 text)
-returns text
-language sql
-immutable
-set search_path to 'public'
-as $$
-  select nullif(
-           btrim(regexp_replace(
-             concat_ws(' ',
-               nullif(btrim(coalesce(p_nombre, '')), ''),
-               nullif(btrim(coalesce(p_ap1,    '')), ''),
-               nullif(btrim(coalesce(p_ap2,    '')), '')),
-             '\s+', ' ', 'g')),
-           '');
-$$;
-
-comment on function public.nombre_junto(text, text, text) is
-  'Junta nombre, primer apellido y segundo apellido en el nombre entero. Lo '
-  'contrario de partir_nombre: existe para que la columna «nombre» de siempre '
-  'siga llena aunque el formulario pregunte en tres casillas.';
-
-revoke all on function public.nombre_junto(text, text, text) from public;
-grant execute on function public.nombre_junto(text, text, text) to anon, authenticated;
-
-
--- ============================================================
--- 2 · LAS CASILLAS NUEVAS
--- ------------------------------------------------------------
--- Todas nacen vacías y ninguna lleva valor por defecto. Vacío quiere
--- decir «no se preguntó», y eso es exactamente lo que pasó con las
--- altas de antes de hoy.
--- ============================================================
-
--- ---- Quien apunta: su nombre, ahora también partido ----
-alter table public.altas_escuela
-  add column if not exists tutor_nombre_pila text,
-  add column if not exists tutor_apellido1   text,
-  add column if not exists tutor_apellido2   text;
-
-comment on column public.altas_escuela.tutor_nombre_pila is
-  'El nombre de pila de quien apunta, tal y como lo escribió. Vacío en las '
-  'altas anteriores a agosto de 2026, que se pedían en una sola casilla; el '
-  'nombre entero de esas está en «tutor_nombre».';
-comment on column public.altas_escuela.tutor_apellido1 is
-  'Primer apellido de quien apunta. Vacío en las altas anteriores a agosto de 2026.';
-comment on column public.altas_escuela.tutor_apellido2 is
-  'Segundo apellido de quien apunta. Puede estar vacío también en las altas '
-  'nuevas: hay quien no tiene.';
-
-
--- ---- El niño: nombre partido, su documento y sus amigos ----
 alter table public.altas_escuela_ninos
-  add column if not exists nombre_pila text,
-  add column if not exists apellido1   text,
-  add column if not exists apellido2   text,
-  add column if not exists dni         text,
-  add column if not exists sin_dni     boolean,
-  add column if not exists amigos      text[];
+  add column if not exists peticion_grupo text;
 
-comment on column public.altas_escuela_ninos.nombre_pila is
-  'El nombre de pila del niño, tal y como lo escribió la familia. Vacío en las '
-  'altas anteriores a agosto de 2026: en esas hay que partir «nombre», que es '
-  'lo que hace el examen cuando esta casilla está vacía.';
-comment on column public.altas_escuela_ninos.apellido1 is
-  'Primer apellido del niño. Se pregunta aparte desde agosto de 2026 porque '
-  'partir «María del Carmen Ruiz de la Fuente» a ojo sale mal y acaba en una '
-  'licencia federativa con el apellido cambiado.';
-comment on column public.altas_escuela_ninos.apellido2 is
-  'Segundo apellido del niño. Opcional de verdad: hay quien no tiene.';
-
-comment on column public.altas_escuela_ninos.dni is
-  'El DNI o el NIE del niño, que pide la licencia federativa. SIN REGLA DE '
-  'FORMATO a propósito: hay niños con NIE y puede haber quien traiga un '
-  'pasaporte, y ninguno de los dos puede quedarse sin apuntar por no parecer un '
-  'DNI. El formulario avisa si no cuadra, pero no frena. Se guarda en '
-  'mayúsculas y sin puntos ni guiones para que dos escrituras del mismo '
-  'documento no parezcan dos personas. Sale TAPADO en el panel: es un número '
-  'de documento de un menor y se destapa de uno en uno dejando rastro '
-  '(migración 115).';
-
-comment on column public.altas_escuela_ninos.sin_dni is
-  'La familia marcó «todavía no tiene DNI ni NIE». Separa «no lo tiene» de «no '
-  'lo pusieron», que son dos llamadas de teléfono distintas. Vacío en las altas '
-  'anteriores a agosto de 2026, cuando ni se preguntaba.';
-
-comment on column public.altas_escuela_ninos.amigos is
-  'Con quién le gustaría a la familia que entrenara, con nombre y apellidos y '
-  'tal y como lo escribieron. Texto libre y a propósito: el amigo puede no '
-  'estar apuntado todavía, así que aquí NO se engancha con ninguna ficha. Es '
-  'una preferencia para repartir los grupos, no una promesa: los grupos van '
-  'por año de nacimiento. Vacío en las altas anteriores a agosto de 2026.';
+comment on column public.altas_escuela_ninos.peticion_grupo is
+  'Lo que la familia pide sobre el grupo, con sus palabras: otro color, otro '
+  'turno, coincidir con un hermano, o que creen que le corresponde el grupo de '
+  'competición. El formulario NO les deja elegir esos grupos —eso lo decide el '
+  'club mirando al chaval, y hay requisitos internos que no caben en una base '
+  'de datos—, pero sí pedirlo. Vacío en las altas anteriores a agosto de 2026 '
+  'y en las de quien no pidió nada, que son casi todas.';
 
 
--- ============================================================
--- 3 · LAS VISTAS DEL PANEL
 -- ------------------------------------------------------------
--- Se vuelven a crear enteras porque una vista no se puede ampliar por
--- un lado. Son las mismas de las migraciones 115 y 122 con las
--- casillas nuevas añadidas, y con `security_invoker = true` como
--- siempre: la vista no tiene permisos propios, las reglas se aplican
--- con los papeles de quien mira.
--- ============================================================
-
-drop view if exists public.altas_escuela_panel;
-create view public.altas_escuela_panel
-with (security_invoker = true) as
-select
-  a.id,
-  a.referencia,
-  a.temporada,
-
-  -- Quien apunta. El nombre, el correo y el teléfono van enteros a
-  -- propósito: son exactamente lo que se usa para llamar a la familia
-  -- cuando falta algo, que es el trabajo de esta pantalla.
-  a.tutor_nombre,
-  -- Y desde agosto de 2026, además, partido. El entero de arriba sigue
-  -- estando y sigue siendo el que se enseña: esto es para cuando hace
-  -- falta el apellido exacto, por ejemplo para una licencia.
-  a.tutor_nombre_pila,
-  a.tutor_apellido1,
-  a.tutor_apellido2,
-  a.tutor_email,
-  a.tutor_telefono,
-
-  public.tapado(a.tutor_dni)      as tutor_dni_tapado,
-  (a.tutor_dni is not null)       as tiene_dni,
-
-  a.direccion,
-  a.cp,
-  a.localidad,
-  a.quien_recoge,
-  a.como_nos_conocio,
-
-  public.iban_tapado(a.iban)      as iban_tapado,
-  -- Que la familia NO haya dejado cuenta es un dato que hay que ver
-  -- en la lista: es una llamada pendiente, no un hueco cualquiera.
-  (a.iban is not null)            as tiene_iban,
-  a.forma_pago,
-
-  a.acepta_normas,
-  a.texto_normas,
-
-  a.estado,
-  a.revisada_por,
-  a.revisada_en,
-  -- Quién la revisó, por su nombre. Va como subconsulta y no como
-  -- `join` a propósito: si quien mira no puede leer esa ficha, aquí
-  -- sale vacío y el alta se sigue viendo. Con un `join` desaparecería
-  -- el alta entera, que es la clase de fallo que nadie encuentra.
-  (select trim(coalesce(p.nombre, '') || ' ' || coalesce(p.apellidos, ''))
-     from public.perfiles p where p.id = a.revisada_por) as revisada_por_nombre,
-  a.nota_club,
-
-  a.created_at
-from public.altas_escuela a;
-
-comment on view public.altas_escuela_panel is
-  'Las altas de escuela como las ve el panel: con el DNI y el IBAN tapados.';
-
-grant select on public.altas_escuela_panel to authenticated;
-grant all    on public.altas_escuela_panel to service_role;
-
-
+-- La vista del panel lo enseña. Es la de la 128 con una línea más.
+-- ------------------------------------------------------------
 drop view if exists public.altas_escuela_ninos_panel;
 create view public.altas_escuela_ninos_panel
 with (security_invoker = true) as
@@ -288,6 +121,9 @@ select
   n.turno,
   n.grupo_id,
   n.grupo_nombre,
+  -- Lo que la familia pidió sobre el grupo. Va entero: es una frase
+  -- escrita para que alguien la lea y conteste.
+  n.peticion_grupo,
   -- Con quién le gustaría entrenar. Va entero y sin tapar: son
   -- nombres que escribió la familia para que el club los lea al
   -- repartir los grupos, que es justo para lo que existe el dato.
@@ -314,19 +150,18 @@ grant all    on public.altas_escuela_ninos_panel to service_role;
 
 
 -- ============================================================
--- 4 · LA PUERTA DE ENTRADA
+-- 2 · LA PUERTA DE ENTRADA GUARDA LA PETICIÓN
 -- ------------------------------------------------------------
--- Es la función de la 122 con las casillas nuevas. Todo lo demás está
--- igual y se copia tal cual —el cepo para robots, el corte por correo
--- mal escrito, el «esto ya lo hemos recibido hace un momento» y la
--- búsqueda del grupo por año y días, que sigue sin creerse lo que diga
--- el navegador—. Se copia entera porque en SQL una función se cambia
--- entera o no se cambia.
+-- Es la función de la 128 con DOS LÍNEAS MÁS: la columna en el
+-- `insert` y el valor sacado del paquete. Se copia entera porque en
+-- SQL una función se cambia entera o no se cambia.
 --
--- SIGUE ADMITIENDO EL FORMULARIO DE ANTES. Si llegan las tres
--- casillas, se juntan y de ahí sale el nombre entero. Si no llegan
--- —un navegador con la página vieja en la caché, que pasa el primer
--- día—, se usa `nombre` de toda la vida y el alta entra igual.
+-- El grupo se sigue buscando en la base por el año de nacimiento y
+-- los días, y sigue SIN CREERSE lo que diga el navegador. Eso no
+-- cambia y es lo que de verdad cierra el agujero: aunque alguien
+-- manipulara el formulario para mandar otro turno, de aquí no puede
+-- salir un grupo que no sea el de su año. Lo que la familia pide se
+-- guarda APARTE, como lo que es: una petición, no una decisión.
 -- ============================================================
 create or replace function public.enviar_alta_escuela(p jsonb)
 returns jsonb
@@ -478,7 +313,7 @@ begin
     insert into public.altas_escuela_ninos (
       alta_id, orden, nombre, nombre_pila, apellido1, apellido2,
       fecha_nacimiento, sexo, sip, dni, sin_dni, amigos, turno,
-      grupo_id, grupo_nombre, alergias,
+      grupo_id, grupo_nombre, peticion_grupo, alergias,
       permiso_imagen, permiso_imagen_ambitos, texto_imagen,
       talla_camiseta, talla_sudadera
     ) values (
@@ -519,6 +354,10 @@ begin
       -- El grupo NO se cree lo que diga el navegador: se busca en la
       -- base por el año de nacimiento y los días, que es de donde
       -- sale de verdad. Si el navegador mandara otro, se ignora.
+      --
+      -- AQUÍ ESTÁ EL CIERRE DE VERDAD del agujero que vio el dueño: de
+      -- estas dos consultas no puede salir un grupo que no sea el de su
+      -- año, se manipule el formulario como se manipule.
       (select g.id from public.grupos g
         where g.seccion = 'escuela' and g.activo
           and g.turno = public.texto_de_fuera(v_nino ->> 'turno', 20)
@@ -531,6 +370,9 @@ begin
           and extract(year from (v_nino ->> 'fecha_nacimiento')::date)::int
               between coalesce(g.nacidos_desde, 0) and coalesce(g.nacidos_hasta, 9999)
         limit 1),
+      -- Y lo que la familia pida, aparte y en sus palabras. No mueve
+      -- ni un grupo: lo lee una persona.
+      public.texto_de_fuera(v_nino ->> 'peticion_grupo', 600),
       public.texto_de_fuera(v_nino ->> 'alergias', 600),
       (v_nino ->> 'permiso_imagen')::boolean,
       case when v_nino ? 'permiso_imagen_ambitos'
@@ -546,91 +388,21 @@ begin
 end;
 $function$;
 
--- Los permisos se vuelven a poner: `create or replace` no los pierde,
--- pero dejarlo escrito evita que el día que alguien haga un `drop` y
--- vuelva a crearla el formulario deje de funcionar sin que se sepa.
 revoke all on function public.enviar_alta_escuela(jsonb) from public;
 grant execute on function public.enviar_alta_escuela(jsonb) to anon, authenticated;
 
 
 -- ============================================================
--- 5 · DESTAPAR EL DOCUMENTO DEL NIÑO
+-- 3 · EL EXAMEN ENSEÑA LO QUE PIDIERON
 -- ------------------------------------------------------------
--- La función de la 115 con UNA puerta más: 'escuela-nino-dni'. Se
--- copia entera por lo de siempre.
+-- Es el de la 128 con UN aviso más, y va en tono «ojo» —de los que
+-- obligan a mirar pero no frenan— porque es una decisión del club que
+-- hay que tomar ANTES de crear la ficha: después, mover a un crío de
+-- grupo ya es rehacer listas.
 --
--- Lo importante es lo que NO cambia: sigue devolviendo UN dato de UNA
--- fila, sigue sin haber forma de pedir «todos los DNI», y cada
--- petición sigue quedando apuntada con el nombre de quien la hizo. El
--- documento de un menor entra por la misma puerta estrecha que el del
--- tutor, no por una nueva.
--- ============================================================
-create or replace function public.alta_numero_entero(p_que text, p_id uuid)
-returns jsonb
-language plpgsql
-security definer
-set search_path to 'public'
-as $$
-declare
-  v_valor  text;
-  v_email  text := auth.jwt() ->> 'email';
-  v_perfil uuid;
-begin
-  if not (public.es_admin() or public.es_tesoreria()) then
-    raise exception 'Solo administración y tesorería pueden ver estos datos';
-  end if;
-
-  select id into v_perfil from public.perfiles where email = v_email;
-
-  if p_que = 'escuela-iban' then
-    select iban      into v_valor from public.altas_escuela       where id = p_id;
-  elsif p_que = 'escuela-dni' then
-    select tutor_dni into v_valor from public.altas_escuela       where id = p_id;
-  elsif p_que = 'escuela-sip' then
-    select sip       into v_valor from public.altas_escuela_ninos where id = p_id;
-  elsif p_que = 'escuela-nino-dni' then
-    select dni       into v_valor from public.altas_escuela_ninos where id = p_id;
-  elsif p_que = 'socio-dni' then
-    select dni       into v_valor from public.altas_socio         where id = p_id;
-  elsif p_que = 'sepa-iban' then
-    select iban      into v_valor from public.mandatos_sepa       where id = p_id;
-  else
-    raise exception 'No sé qué dato es «%»', p_que;
-  end if;
-
-  if v_valor is null then
-    return jsonb_build_object('ok', false, 'motivo', 'vacio');
-  end if;
-
-  insert into public.altas_datos_vistos (quien, quien_email, que, fila_id)
-  values (v_perfil, v_email, p_que, p_id);
-
-  return jsonb_build_object('ok', true, 'valor', v_valor);
-end;
-$$;
-
-revoke all on function public.alta_numero_entero(text, uuid) from public;
-grant execute on function public.alta_numero_entero(text, uuid) to authenticated;
-
-
--- ============================================================
--- 6 · EL EXAMEN, AL DÍA
--- ------------------------------------------------------------
--- Es el de la 122 y cambia en tres sitios:
---
---   · EL NOMBRE. Si el alta trae las tres casillas, se usan tal cual y
---     NO se parte nada. El aviso de «lo de arriba es cómo se ha
---     partido, córrigelo si es compuesto» sobra en esas altas, y sale
---     solo en las viejas, que siguen teniendo el nombre entero y
---     siguen convirtiéndose exactamente igual que ayer.
---   · EL DOCUMENTO DEL NIÑO, con tres finales distintos: que lo
---     pusieron, que dijeron que todavía no tiene, o que no contestaron.
---     Los tres son notas de las que no frenan.
---   · LOS AMIGOS, que se enseñan a quien está decidiendo el grupo, que
---     es justo para lo que se preguntaron.
---
--- Todo lo demás —los duplicados, el año que no cuadra, el turno, el
--- grupo lleno o cerrado— está igual.
+-- El aviso de «nació en tal año y ese grupo es de los de tal otro» de
+-- la 121 se queda donde estaba y no se toca: es la red de abajo para
+-- las altas viejas y para cuando alguien mueva un grupo a mano.
 -- ============================================================
 create or replace function public.alta_examen(p_que text, p_id uuid)
 returns jsonb
@@ -739,7 +511,8 @@ begin
              n.grupo_id, n.grupo_nombre, n.turno, n.alergias, n.atleta_id,
              n.permiso_imagen, (n.sip is not null) as tiene_sip,
              null::text as dni, n.sexo, null::text[] as secciones,
-             (n.dni is not null) as tiene_dni_propio, n.sin_dni, n.amigos
+             (n.dni is not null) as tiene_dni_propio, n.sin_dni, n.amigos,
+             n.peticion_grupo
         from public.altas_escuela_ninos n
        where p_que = 'escuela' and n.alta_id = p_id
       union all
@@ -753,7 +526,8 @@ begin
              s.atleta_id,
              s.permiso_imagen, false as tiene_sip,
              s.dni, s.sexo, s.secciones,
-             false as tiene_dni_propio, null::boolean as sin_dni, null::text[] as amigos
+             false as tiene_dni_propio, null::boolean as sin_dni, null::text[] as amigos,
+             null::text as peticion_grupo
         from public.altas_socio s
        where p_que = 'socio' and s.id = p_id
     ) q
@@ -924,6 +698,22 @@ begin
         'texto', 'El formulario de socio pregunta la sección, no el grupo. Hay que decir en cuál entrena.');
     end if;
 
+    -- --- Lo que la familia pidió sobre el grupo ---
+    -- Va en «ojo» y no en «nota»: es una decisión del club que hay que
+    -- tomar ANTES de crear la ficha, porque mover a un crío de grupo
+    -- después ya es rehacer listas y avisar a dos entrenadores.
+    --
+    -- El formulario NO les deja elegir el grupo de segunda hora ni el
+    -- de competición, a propósito: para esos hay requisitos internos y
+    -- hay que ver al chaval. Lo único que pueden hacer es pedirlo, y
+    -- eso es lo que se lee aquí.
+    if v_p.peticion_grupo is not null then
+      v_avisos := v_avisos || jsonb_build_object(
+        'clave', 'pide-otro-grupo', 'tono', 'ojo',
+        'texto', 'La familia pide otro grupo: «' || v_p.peticion_grupo ||
+                 '». Decídelo antes de crear la ficha, y contéstales: el formulario les dice que lo mira el club.');
+    end if;
+
     -- --- Con quién le gustaría entrenar ---
     -- Se dice AQUÍ, en la pantalla donde se le está eligiendo el grupo,
     -- que es el único momento en que este dato sirve para algo. No
@@ -1060,6 +850,7 @@ begin
       'secciones',       v_p.secciones,
       'alergias',        v_p.alergias,
       'amigos',          to_jsonb(coalesce(v_p.amigos, '{}'::text[])),
+      'peticion_grupo',  v_p.peticion_grupo,
       'propuesta',       v_prop,
       'ya_creada',       v_ya,
       'parecidos',       v_parecidos,
@@ -1089,13 +880,14 @@ $$;
 comment on function public.alta_examen(text, uuid) is
   'Mira un alta y propone una ficha por cada persona que trae, con la lista de '
   'lo que huele mal: que ya está en el club, que el año no cuadra con el grupo, '
-  'que el grupo está lleno o cerrado, o que falta un dato. NO escribe nada.';
+  'que el grupo está lleno o cerrado, que la familia pide otro, o que falta un '
+  'dato. NO escribe nada.';
 
 revoke all on function public.alta_examen(text, uuid)    from public;
 grant execute on function public.alta_examen(text, uuid) to authenticated;
 
 commit;
 
--- Que la API se entere de las columnas y las vistas nuevas sin esperar
--- a que se le ocurra sola.
+-- Que la API se entere de la columna nueva sin esperar a que se le
+-- ocurra sola.
 notify pgrst, 'reload schema';

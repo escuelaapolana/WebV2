@@ -45,7 +45,7 @@
      noticias y los retos.
 
      EL ÚLTIMO NO ES PARA TODO EL MUNDO
-     «Altas y pedidos» solo lo reciben quienes llevan esa tarea, así
+     «Lo que tienes que revisar» solo lo reciben quienes llevan esa tarea, así
      que lleva `papeles`: la lista de papeles del club a los que se
      les enseña. Los demás no tienen por qué ver un interruptor de
      algo que no les va a llegar nunca. Los que no llevan `papeles`
@@ -59,8 +59,8 @@
     { clave: 'pagos',         titulo: 'Pagos',                 texto: 'Solo si algo sale mal.',                  defecto: true },
     { clave: 'noticias',      titulo: 'Noticias del club',     texto: 'Como mucho una a la semana.',             defecto: false },
     { clave: 'retos',         titulo: 'Mis retos',             texto: 'Cuando consigues uno.',                   defecto: false },
-    { clave: 'gestion',       titulo: 'Altas y pedidos',       texto: 'Como mucho uno por bandeja hasta que la revises.', defecto: true,
-      papeles: ['admin', 'contabilidad'] }
+    { clave: 'gestion',       titulo: 'Lo que tienes que revisar', texto: 'Altas, pedidos y peticiones de plaza. Como mucho uno por bandeja hasta que la mires.', defecto: true,
+      papeles: ['admin', 'contabilidad', 'entrenador', 'coordinador'] }
   ];
 
   /* Los interruptores que le tocan a esta persona. Se mira el papel que

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solicitudes de plaza · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../../assets/img/logo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .sp-wrap { max-width: 960px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
+  .volver { display:inline-flex; align-items:center; min-height:44px; margin-bottom:6px;
+            color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; }
+
+  /* Una tarjeta por actividad. Se decide actividad a actividad —«¿a quién
+     me llevo el sábado?»—, no persona a persona en una lista revuelta. */
+  .act { background:#fff; border:1px solid var(--linea); border-radius:14px;
+         padding: clamp(14px,3vw,22px); box-shadow: var(--sombra-suave); margin-top:16px; }
+  .act-cab { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:2px; }
+  .act-cab h2 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:20px;
+                color: var(--navy); margin:0; }
+  .act-cuando { font-size:13px; color: var(--texto-suave); }
+  /* Las dos cifras juntas y siempre: «6 de 10 · 9 esperando». Con una sola,
+     quien decide no sabe si va sobrado o si tiene una cola detrás. */
+  .act-cifras { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 12px; }
+  .act-cifras span { font-size:13px; line-height:1.4; padding:4px 11px; border-radius:999px;
+                     background: var(--crema-media); color: var(--texto-suave); white-space:nowrap; }
+  .act-cifras span.espera { background: var(--aviso-fondo); color: var(--aviso-titulo); }
+  .act-cifras span.lleno  { background:#fbeceb; color:#b3261e; }
+
+  /* UNA PERSONA, UNA FILA
+     ---------------------------------------------------------------
+     Aquí no vale la lista que se pliega en móvil: lo que se viene a
+     hacer a esta pantalla es decir que sí o que no, y los dos botones
+     tienen que estar a la vista y a un dedo, no detrás de «Más
+     detalles». Por eso la fila se escribe a mano en vez de con la
+     tabla del panel. */
+  .quien { display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap;
+           padding:12px 0; border-top:1px solid var(--linea); }
+  .quien:first-of-type { border-top:0; }
+  .quien-txt { flex:1 1 190px; min-width:0; }
+  .quien-txt b { display:block; font-size:16px; font-weight:600; color: var(--navy); line-height:1.35; }
+  .quien-txt small { display:block; font-size:13px; line-height:1.45; color: var(--texto-suave); margin-top:2px; }
+  .quien-acc { flex:0 0 auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  /* La pastilla de estado no se pulsa, así que nunca va en azul (31a) */
+  .est { font-size:13px; line-height:1.4; padding:4px 11px; border-radius:999px; white-space:nowrap; }
+  .est.pendiente { background: var(--aviso-fondo); color: var(--aviso-titulo); }
+  .est.aceptada  { background:#EDF5EE; color:#3F7A4C; }
+  .est.rechazada { background:#fbeceb; color:#b3261e; }
+  .dicho { flex:1 1 100%; font-size:13px; line-height:1.5; color: var(--texto-suave); margin:2px 0 0; }
+
+  .b-si { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 16px;
+          border-radius:999px; border:1px solid var(--azul,#2F6FA8); background: var(--azul,#2F6FA8);
+          color:#fff; font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; }
+  .b-si:hover { background: var(--azul-hover,#1E4E78); border-color: var(--azul-hover,#1E4E78); }
+  .b-si[disabled] { opacity:.45; cursor:not-allowed; }
+  .b-no { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 16px;
+          border-radius:999px; border:1px solid #e0b4b0; background:transparent; color:#b3261e;
+          font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; }
+  .b-no:hover { background:#fbeceb; }
+  .b-cambiar { display:inline-flex; align-items:center; min-height:44px; background:none; border:0;
+               color: var(--azul-oscuro); font-family:inherit; font-size:15px; font-weight:600;
+               cursor:pointer; padding:0 4px; }
+
+  /* El aviso de que ya no caben más. No esconde el botón de rechazar:
+     con el cupo lleno sigue habiendo peticiones que contestar. */
+  .act-lleno { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); color: var(--aviso-texto);
+               border-radius:12px; padding:10px 13px; margin:0 0 12px; font-size:14px; line-height:1.5; }
+
+  /* La ventana de decir que no */
+  .modal { position:fixed; inset:0; z-index:9000; background:rgba(30,42,56,.5); display:flex;
+           align-items:flex-end; justify-content:center; padding:0; }
+  .modal[hidden] { display:none; }
+  .modal-caja { background: var(--crema,#FBF9F4); border:1px solid var(--linea); border-radius:16px 16px 0 0;
+                width:100%; max-width:480px; padding:20px 18px calc(18px + env(safe-area-inset-bottom));
+                box-sizing:border-box; max-height:88vh; overflow:auto; }
+  @media (min-width:600px) {
+    .modal { align-items:center; padding:18px; }
+    .modal-caja { border-radius:16px; }
+  }
+  .modal-caja h2 { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:20px;
+                   color: var(--navy); margin:0 0 4px; }
+  .modal-caja p.pista { font-size:14px; line-height:1.55; color: var(--texto-suave); margin:0 0 12px; }
+  .modal-caja label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:0 0 5px; }
+  .modal-caja textarea { width:100%; box-sizing:border-box; min-height:96px; padding:10px 12px;
+    border:1px solid var(--linea-borde); border-radius:10px; font-size:16px;
+    font-family: var(--fuente-texto); background:#fff; color: var(--navy); resize:vertical; }
+  .modal-botones { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:14px; }
+  @media (max-width:420px) { .modal-botones { flex-direction:column-reverse; } .modal-botones button { width:100%; } }
+  .b-gris { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 20px;
+            border-radius:999px; border:1px solid #C9C0AE; background:#fff; color: var(--navy);
+            font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; }
+
+  /* La cabecera de PZ trae su propio hueco; aquí sobra el de arriba. */
+  .pz-cab { margin-top: 0; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="sp-wrap">
+    <a class="volver" href="../">← Volver al portal</a>
+    <div id="sp-cab"></div>
+    <div id="sp-mandos"></div>
+    <div id="sp-lista">
+      <div class="ap-esq" data-esq="filas:4"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="m-no" hidden>
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="m-no-tit">
+    <h2 id="m-no-tit">Decirle que no</h2>
+    <p class="pista" id="m-no-quien"></p>
+    <label for="m-no-txt">Qué le llega escrito</label>
+    <textarea id="m-no-txt" maxlength="300"></textarea>
+    <p class="pista" style="margin:6px 0 0;">Esto lo lee la persona que pidió la plaza, y muchas veces es un crío.
+      Puedes cambiarlo por lo que quieras.</p>
+    <div class="modal-botones">
+      <button type="button" class="b-gris" data-cerrar>Mejor no</button>
+      <button type="button" class="b-no" id="m-no-enviar">Enviar la respuesta</button>
+    </div>
+  </div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+  };
+
+  var FILAS = [];          // lo que devuelve la base, tal cual
+  var filtro = 'pendiente';// se entra por lo que falta por contestar
+  var busca = '';
+  var fallo = '';
+  var abierta = null;      // la petición que se está rechazando
+
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio',
+               'agosto','septiembre','octubre','noviembre','diciembre'];
+  var DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+
+  function fechaLarga(iso) {
+    if (!iso) return '';
+    var p = String(iso).slice(0, 10).split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()];
+  }
+  function hhmm(h) { return h ? String(h).slice(0, 5) : ''; }
+  /* «hace dos días» dice más que una fecha cuando lo que se mira es
+     cuánto lleva alguien esperando una respuesta. */
+  function cuantoHace(iso) {
+    if (!iso) return '';
+    var dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (dias <= 0) return 'hoy';
+    if (dias === 1) return 'ayer';
+    if (dias < 30) return 'hace ' + dias + ' días';
+    var p = String(iso).slice(0, 10).split('-');
+    return p[2] + '/' + p[1];
+  }
+
+  var ESTADOS = {
+    pendiente: { t: 'Sin contestar', tono: 'aviso' },
+    aceptada:  { t: 'Con plaza',     tono: 'ok' },
+    rechazada: { t: 'Sin plaza',     tono: 'mal' }
+  };
+
+  // ============================================================
+  //  TRAER LAS PETICIONES
+  // ============================================================
+  async function cargar() {
+    fallo = '';
+    var r = await sb.rpc('sesion_solicitudes', {});
+    if (r.error) { fallo = r.error.message; FILAS = []; return; }
+    FILAS = r.data || [];
+  }
+
+  function visibles() {
+    var t = busca.trim().toLowerCase();
+    return FILAS.filter(function (f) {
+      if (filtro !== 'todas' && f.estado !== filtro) return false;
+      if (!t) return true;
+      return (String(f.atleta || '') + ' ' + String(f.titulo || '') + ' ' +
+              String(f.atleta_grupo || '')).toLowerCase().indexOf(t) >= 0;
+    });
+  }
+
+  /* Se agrupan por actividad conservando el orden que ya trae la base:
+     primero lo que está sin contestar, y dentro por fecha. */
+  function porActividad(filas) {
+    var mapa = {}, orden = [];
+    filas.forEach(function (f) {
+      if (!mapa[f.sesion_id]) { mapa[f.sesion_id] = { ses: f, gente: [] }; orden.push(f.sesion_id); }
+      mapa[f.sesion_id].gente.push(f);
+    });
+    return orden.map(function (id) { return mapa[id]; });
+  }
+
+  // ============================================================
+  //  PINTAR
+  // ============================================================
+  function pintarCabecera() {
+    var sinContestar = FILAS.filter(function (f) { return f.estado === 'pendiente'; }).length;
+    var actividades = {};
+    FILAS.forEach(function (f) { actividades[f.sesion_id] = true; });
+    var n = Object.keys(actividades).length;
+
+    var ctx = sinContestar
+      ? (sinContestar === 1 ? '1 sin contestar' : sinContestar + ' sin contestar')
+      : 'Nada esperando respuesta';
+    if (n) ctx += ' · ' + (n === 1 ? '1 actividad' : n + ' actividades');
+
+    $('sp-cab').innerHTML = PZ.cabecera({
+      titulo: 'Solicitudes de plaza',
+      contexto: ctx
+    });
+  }
+
+  function pintarMandos() {
+    var cuenta = function (k) {
+      return FILAS.filter(function (f) { return f.estado === k; }).length;
+    };
+    var chips = [
+      { texto: 'Sin contestar', valor: 'pendiente', cuenta: cuenta('pendiente'), tono: cuenta('pendiente') ? 'aviso' : null },
+      { texto: 'Con plaza',     valor: 'aceptada',  cuenta: cuenta('aceptada') },
+      { texto: 'Sin plaza',     valor: 'rechazada', cuenta: cuenta('rechazada') },
+      { texto: 'Todas',         valor: 'todas',     cuenta: FILAS.length }
+    ].filter(function (c) { return c.cuenta > 0 || c.valor === filtro || c.valor === 'todas'; })
+     .map(function (c) { c.activo = (filtro === c.valor); return c; });
+
+    var caja = $('sp-mandos');
+    /* Se repinta la fila entera, así que hay que devolver el cursor a su
+       sitio o escribir en el buscador se vuelve imposible. */
+    var foco = document.activeElement && document.activeElement.id === 'sp-busca';
+    var pos = foco ? document.activeElement.selectionStart : 0;
+    caja.innerHTML = PZ.filtros({
+      buscador: { id: 'sp-busca', placeholder: 'Nombre, actividad o grupo', valor: busca,
+                  etiqueta: 'Buscar entre las solicitudes' },
+      chips: chips
+    });
+    if (foco) {
+      var b = $('sp-busca');
+      if (b) { b.focus(); try { b.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+  }
+
+  /* Una persona. Con la petición sin contestar salen los dos botones; con
+     la respuesta ya dada sale lo que se contestó y una salida para
+     cambiarla, que un «no» de ayer se convierte en un «sí» en cuanto se
+     cae alguien. */
+  function filaPersona(f, lleno) {
+    var e = ESTADOS[f.estado] || { t: f.estado };
+    var contexto = [];
+    if (f.atleta_grupo) contexto.push(f.atleta_grupo);
+    contexto.push(f.estado === 'pendiente'
+      ? 'lo pidió ' + cuantoHace(f.pedida_en)
+      : 'contestado ' + cuantoHace(f.decidida_en) + (f.decidida_por ? ' por ' + f.decidida_por : ''));
+
+    var acc;
+    if (f.estado === 'pendiente') {
+      /* Cuando ya no caben más, «Dar plaza» se apaga en vez de
+         desaparecer: si desaparece, parece que esa petición no se puede
+         tocar, y sí se puede — se puede contestar que no. */
+      acc = '<button type="button" class="b-si" data-pz-accion="aceptar" data-pz-id="' + esc(f.id) + '"' +
+              (lleno ? ' disabled title="Ya has dado todas las plazas"' : '') + '>Dar plaza</button>' +
+            '<button type="button" class="b-no" data-pz-accion="rechazar" data-pz-id="' + esc(f.id) + '">No puedo</button>';
+    } else if (f.estado === 'aceptada') {
+      acc = '<button type="button" class="b-cambiar" data-pz-accion="rechazar" data-pz-id="' + esc(f.id) + '">Quitarle la plaza</button>';
+    } else {
+      acc = '<button type="button" class="b-cambiar" data-pz-accion="aceptar" data-pz-id="' + esc(f.id) + '"' +
+              (lleno ? ' disabled' : '') + '>Darle plaza</button>';
+    }
+
+    return '<div class="quien">' +
+      '<span class="quien-txt"><b>' + esc(f.atleta || 'Sin nombre') + '</b>' +
+        '<small>' + esc(contexto.join(' · ')) + '</small></span>' +
+      '<span class="quien-acc"><span class="est ' + esc(f.estado) + '">' + esc(e.t) + '</span>' + acc + '</span>' +
+      (f.estado === 'rechazada' && f.motivo
+        ? '<p class="dicho">Le dijiste: «' + esc(f.motivo) + '»</p>' : '') +
+    '</div>';
+  }
+
+  function tarjetaActividad(g) {
+    var s = g.ses;
+    var lleno = (s.plazas != null && s.aceptadas >= s.plazas);
+
+    var cuando = fechaLarga(s.fecha) + (s.hora ? ' · ' + hhmm(s.hora) : '') +
+                 (s.lugar ? ' · ' + s.lugar : '');
+
+    var cifras = '';
+    if (s.plazas != null) {
+      cifras += '<span class="' + (lleno ? 'lleno' : '') + '">' +
+        esc(s.aceptadas + ' de ' + s.plazas + (s.plazas === 1 ? ' plaza dada' : ' plazas dadas')) + '</span>';
+    } else {
+      cifras += '<span>' + esc(s.aceptadas + (s.aceptadas === 1 ? ' con plaza' : ' con plaza')) + '</span>';
+    }
+    if (s.pendientes) {
+      cifras += '<span class="espera">' + esc(s.pendientes + (s.pendientes === 1
+        ? ' esperando respuesta' : ' esperando respuesta')) + '</span>';
+    }
+    if (s.grupo) cifras += '<span>' + esc(s.grupo) + '</span>';
+
+    return '<section class="act">' +
+      '<div class="act-cab"><h2>' + esc(s.titulo) + '</h2></div>' +
+      '<p class="act-cuando">' + esc(cuando) + '</p>' +
+      '<div class="act-cifras">' + cifras + '</div>' +
+      (lleno && s.pendientes
+        ? '<p class="act-lleno">Ya has dado las ' + s.plazas + ' plazas. Puedes contestar que no a quien queda, ' +
+          'o esperar por si alguien se cae y entonces darle la suya.</p>'
+        : '') +
+      g.gente.map(function (f) { return filaPersona(f, lleno); }).join('') +
+    '</section>';
+  }
+
+  function pintar() {
+    pintarCabecera();
+    pintarMandos();
+    var caja = $('sp-lista');
+
+    if (fallo) {
+      caja.innerHTML = APOLANA_UI.error('No hemos podido traer las solicitudes',
+        'Puede ser tu conexión. Nadie ha perdido su petición: siguen guardadas.',
+        APOLANA_UI.boton('Volver a intentarlo'));
+      var b = caja.querySelector('.ap-btn');
+      if (b) b.addEventListener('click', refrescar);
+      return;
+    }
+
+    /* Tres vacíos distintos, porque son tres situaciones distintas y el
+       siguiente paso de cada una no es el mismo. */
+    if (!FILAS.length) {
+      caja.innerHTML = APOLANA_UI.vacio('Todavía no te ha pedido plaza nadie',
+        'Aquí aparecerán las peticiones de las actividades que lleves tú y que estén puestas en ' +
+        '«hay que pedir plaza». Las abiertas no pasan por aquí: en esas se apunta quien quiera.',
+        APOLANA_UI.boton('Ver el calendario', '../calendario/'));
+      return;
+    }
+
+    var lista = visibles();
+    if (!lista.length && filtro === 'pendiente' && !busca) {
+      caja.innerHTML = APOLANA_UI.vacio('No te queda ninguna sin contestar',
+        'Están todas resueltas. Si alguien pide plaza, te avisamos.',
+        APOLANA_UI.boton('Ver todas'));
+      var v = caja.querySelector('.ap-btn');
+      if (v) v.addEventListener('click', function () { filtro = 'todas'; pintar(); });
+      return;
+    }
+    if (!lista.length) {
+      caja.innerHTML = APOLANA_UI.vacio('Ninguna encaja con esto',
+        'Prueba a quitar el filtro o a buscar otra cosa.',
+        APOLANA_UI.boton('Quitar los filtros'));
+      var q = caja.querySelector('.ap-btn');
+      if (q) q.addEventListener('click', function () { filtro = 'todas'; busca = ''; pintar(); });
+      return;
+    }
+
+    caja.innerHTML = porActividad(lista).map(tarjetaActividad).join('');
+  }
+
+  async function refrescar() {
+    $('sp-lista').innerHTML = APOLANA_UI.cargando('filas', 4);
+    await cargar();
+    pintar();
+  }
+
+  // ============================================================
+  //  DECIDIR
+  // ============================================================
+  function porId(id) {
+    return FILAS.filter(function (f) { return f.id === id; })[0] || null;
+  }
+
+  async function decidir(id, estado, motivo) {
+    var r = await sb.rpc('sesion_solicitud_decidir',
+      { p_id: id, p_estado: estado, p_motivo: motivo || null });
+    if (r.error) { APX.toast(r.error.message, 'error'); return false; }
+    if (r.data && r.data.ok === false) { APX.toast(r.data.motivo || 'Esa petición ya no está.', 'error'); return false; }
+    await refrescar();
+    APX.toast(estado === 'aceptada' ? 'Plaza dada'
+            : estado === 'rechazada' ? 'Respuesta enviada'
+            : 'Vuelve a estar sin contestar',
+      null, { detalle: estado === 'pendiente' ? null : 'Le llega un aviso al portal.' });
+    return true;
+  }
+
+  /* La ventana de decir que no. El texto viene puesto y se puede cambiar:
+     escribir de cero un «no» a un crío cuesta, y cuando cuesta se acaba
+     mandando sin nada, que es lo que suena a portazo. */
+  function abrirNo(f) {
+    abierta = f;
+    var teniaPlaza = (f.estado === 'aceptada');
+    $('m-no-tit').textContent = teniaPlaza ? 'Quitarle la plaza' : 'Decirle que no';
+    $('m-no-quien').textContent = teniaPlaza
+      ? f.atleta + ' tenía plaza en «' + f.titulo + '». Se la vas a quitar.'
+      : f.atleta + ' pidió plaza en «' + f.titulo + '».';
+    /* Quitar una plaza dada duele más que no darla: el texto de por defecto
+       no es el mismo, porque la persona ya contaba con ir. */
+    $('m-no-txt').value = teniaPlaza
+      ? 'Se me ha complicado y al final no puedo llevarte. Lo siento de verdad: hablamos y buscamos otro día.'
+      : 'Esta vez no ha salido, pero cuento contigo para la próxima. Si quieres, hablamos.';
+    var env = $('m-no-enviar');
+    env.textContent = teniaPlaza ? 'Quitarle la plaza' : 'Enviar la respuesta';
+    env.setAttribute('data-txt', env.textContent);
+    $('m-no').hidden = false;
+    setTimeout(function () { $('m-no-txt').focus(); }, 40);
+  }
+  function cerrarNo() { $('m-no').hidden = true; abierta = null; }
+
+  document.getElementById('m-no').addEventListener('click', function (ev) {
+    if (ev.target === this || (ev.target.closest && ev.target.closest('[data-cerrar]'))) cerrarNo();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && !$('m-no').hidden) cerrarNo();
+  });
+  $('m-no-enviar').addEventListener('click', async function () {
+    if (!abierta) return;
+    var b = this;
+    b.disabled = true; b.textContent = 'Un momento…';
+    var texto = b.getAttribute('data-txt') || 'Enviar la respuesta';
+    var ok = await decidir(abierta.id, 'rechazada', $('m-no-txt').value.trim());
+    b.disabled = false; b.textContent = texto;
+    if (ok) cerrarNo();
+  });
+
+  // ============================================================
+  //  LO QUE SE PULSA
+  // ============================================================
+  document.getElementById('portal-contenido').addEventListener('click', async function (ev) {
+    var b = ev.target.closest ? ev.target.closest('[data-pz-accion]') : null;
+    if (!b) return;
+    var accion = b.getAttribute('data-pz-accion');
+    var id = b.getAttribute('data-pz-id');
+
+    if (accion === 'filtro') { filtro = b.getAttribute('data-pz-filtro'); pintar(); return; }
+    if (!id) return;
+
+    var f = porId(id);
+    if (!f) return;
+
+    if (accion === 'rechazar') { abrirNo(f); return; }
+    if (accion === 'aceptar') {
+      b.disabled = true;
+      await decidir(id, 'aceptada', null);
+    }
+  });
+
+  document.getElementById('portal-contenido').addEventListener('input', function (ev) {
+    if (!ev.target || ev.target.id !== 'sp-busca') return;
+    busca = ev.target.value;
+    pintar();
+  });
+
+  // ============================================================
+  //  ARRANQUE
+  // ============================================================
+  await cargar();
+  pintar();
+});
+</script>
+
+</body>
+</html>
