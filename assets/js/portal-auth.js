@@ -225,7 +225,11 @@
     '.pt-top{position:relative;background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;' +
       'gap:10px;min-height:52px;padding:4px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
     '.pt-top .izq{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden}' +
-    '.pt-top .escudo{width:26px;height:26px;flex:0 0 26px;object-fit:contain;display:block}' +
+    /* El escudo es azul oscuro con el detalle fino, y sobre la banda navy se
+       perdía: se veía una mancha. Va sobre un disco blanco, que es como está
+       impreso en las camisetas y en el papel del club. */
+    '.pt-top .escudo{width:30px;height:30px;flex:0 0 30px;object-fit:contain;display:block;' +
+      'background:#fff;border-radius:999px;padding:3px;box-sizing:border-box}' +
     '.pt-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;' +
       'font-size:18px;letter-spacing:.03em;color:#fff;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}' +
     '.pt-top .der{display:flex;align-items:center;gap:9px;flex:0 0 auto}' +
@@ -242,16 +246,19 @@
     '.pt-papel .pt-fl{flex:0 0 auto;opacity:.85}' +
     /* La del avatar va más pequeña y pegada abajo a la derecha del círculo:
        tiene que decir «esto se abre» sin competir con las iniciales. */
-    /* Se anulan a mano el ancho, el alto y el fondo porque justo debajo hay
-       una regla para «el span del avatar» que es la de las iniciales, y sin
-       esto la flecha saldría dentro de su propio círculo de 32 px. */
-    '.pt-fl-av{position:absolute;right:1px;bottom:4px;width:auto;height:auto;background:none;' +
-      'border-radius:0;font-size:9px;line-height:1;opacity:.9;color:#fff;' +
-      'text-shadow:0 0 2px rgba(46,66,86,.9);pointer-events:none}' +
+    /* La flecha va FUERA del círculo, a su derecha, igual que la del papel de
+       al lado. El primer intento la puso encima de las iniciales y quedaba un
+       triángulo tapando las letras. Se anulan a mano el ancho y el fondo
+       porque justo debajo hay una regla para «el span del avatar» que es la
+       de las iniciales. */
+    '.pt-fl-av{width:auto;height:auto;background:none;border-radius:0;' +
+      'font-size:10px;line-height:1;opacity:.75;color:#fff;flex:0 0 auto;margin-left:1px}' +
 
     /* El avatar. Se ve a 32 px y se pulsa en 44. */
-    '.pt-avatar{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;' +
-      'flex:0 0 44px;padding:0;border:0;border-radius:999px;background:none;cursor:pointer;' +
+    /* Un poco más ancho que alto: el círculo mide lo de siempre y lo que crece
+       es el hueco de la flecha, que va al lado y no encima. */
+    '.pt-avatar{display:inline-flex;align-items:center;justify-content:center;gap:1px;width:auto;min-width:52px;height:44px;' +
+      'flex:0 0 auto;padding:0 3px 0 0;border:0;border-radius:999px;background:none;cursor:pointer;' +
       '-webkit-tap-highlight-color:transparent}' +
     '.pt-avatar span{display:flex;align-items:center;justify-content:center;width:32px;height:32px;' +
       'border-radius:999px;background:#8FC0E8;color:#1E4E78;font-family:inherit;font-size:13px;font-weight:600;line-height:1}' +
@@ -747,6 +754,10 @@
           '</button>' +
           '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="menu" ' +
             'aria-expanded="false" aria-controls="pt-menu" aria-label="Lo tuyo: perfil y salir">' +
+            /* Las iniciales son el respaldo. Si la persona ha puesto foto en
+               su perfil, se pinta encima en cuanto llega: se subía, se
+               guardaba, se veía en el perfil y en los retos, y aquí seguían
+               saliendo las letras como si no existiera. */
             '<span aria-hidden="true">' + esc(ini) + '</span>' +
             /* La misma flechita que lleva el papel de al lado. Sin ella, el
                círculo con las iniciales parece una foto de perfil y no algo
@@ -777,6 +788,30 @@
 
       /* --- el menú del avatar --- */
       var bAvatar = document.getElementById('pt-avatar');
+
+      /* La foto del perfil, si la hay. Va aparte y sin hacer ruido: el almacén
+         es privado y hay que pedir un enlace firmado, así que tarda un poco.
+         Mientras llega -o si no llega- se quedan las iniciales, que es lo que
+         se veía hasta ahora. */
+      (function () {
+        var ruta = perfil && perfil.foto_ruta;
+        if (!ruta || !bAvatar) return;
+        var pintar = function (url) {
+          if (!url) return;
+          var hueco = bAvatar.querySelector('span');
+          if (!hueco) return;
+          hueco.style.backgroundImage = 'url("' + url.replace(/"/g, '\\"') + '")';
+          hueco.style.backgroundSize = 'cover';
+          hueco.style.backgroundPosition = 'center';
+          hueco.textContent = '';            /* la foto sustituye a las letras */
+        };
+        if (/^(https?:|data:)/.test(ruta)) { pintar(ruta); return; }
+        try {
+          sb.storage.from('fotos-perfil').createSignedUrl(ruta, 3600).then(function (r) {
+            if (r && !r.error && r.data && r.data.signedUrl) pintar(r.data.signedUrl);
+          }, function () { /* sin foto, las iniciales */ });
+        } catch (e) { /* igual */ }
+      })();
       var menu = document.getElementById('pt-menu');
       function cerrarMenu() {
         menu.hidden = true;
@@ -1525,7 +1560,7 @@
       var perfil = null;
       try {
         var r = await sb.from('perfiles')
-          .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion')
+          .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta')
           .eq('email', email).maybeSingle();
         if (!r.error) perfil = r.data;
       } catch (e) { /* si aún no hay permisos de lectura, perfil queda null */ }
