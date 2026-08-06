@@ -155,6 +155,10 @@
     '.pt-otra{margin-top:16px;padding-top:14px;border-top:1px solid #EAE3D5;text-align:center}' +
     '.pt-otra[hidden]{display:none}' +
     '.pt-otra .pt-nota{margin:0}' +
+    /* La casilla que hay que rellenar se enciende un momento. Decir «escribe tu
+       correo arriba» y no señalar dónde es lo que dejó a la primera persona que
+       lo probó dando vueltas por la pantalla. */
+    '.pt-hay-que-mirar{border-color:#B96F09!important;box-shadow:0 0 0 3px #FDF3E3!important}' +
     '.pt-btn2{display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;' +
       'min-height:44px;margin-top:9px;padding:11px 14px;border:1px solid #C9D9E7;border-radius:999px;' +
       'background:#fff;color:#2F6FA8;font-family:inherit;font-size:15px;font-weight:600;line-height:1.25;' +
@@ -672,7 +676,15 @@
         '<div class="msg" id="pt-msg" role="status" aria-live="polite"></div>' +
       '</form>' +
       '<div class="pt-otra" id="pt-otra">' +
-        '<p class="pt-nota">¿Primera vez, o no te acuerdas de la contraseña?</p>' +
+        /* ⚠️ ESTE TEXTO LO ESCRIBIÓ UNA PRIMERA VEZ DE VERDAD. Ponía «¿Primera
+           vez, o no te acuerdas de la contraseña?», y quien entra por primera
+           vez NO TIENE contraseña: ve el formulario de arriba, no sabe qué
+           poner, y no relaciona ese botón con lo que le pasa. Ahora se dice lo
+           que hay que hacer y en qué orden —tu correo arriba, este botón, te
+           llega un enlace— porque el paso que se saltaba era escribir el correo
+           en una casilla que parecía parte de «entrar con contraseña». */
+        '<p class="pt-nota"><b>¿Es tu primera vez?</b> Todavía no tienes contraseña. ' +
+          'Escribe tu correo en la casilla de arriba y pulsa aquí: te llega un enlace y entras con él.</p>' +
         '<button type="button" class="pt-btn2" id="pt-pedir">Enviarme un enlace al correo</button>' +
       '</div>' +
       /* --------------------------------------------------------
@@ -1188,8 +1200,18 @@
       var email = elEmail.value.trim();
       msg.className = 'msg';
       if (!pareceCorreo(email)) {
-        msg.textContent = 'Escribe tu correo aquí arriba y vuelve a pulsar.';
+        /* ⚠️ La primera vez, aquí es donde se atasca la gente. Llega alguien
+           que NO tiene contraseña, ve un formulario de contraseña, encuentra
+           este botón, lo pulsa… y le contestaban «escribe tu correo aquí
+           arriba» sin decirle dónde es «aquí arriba». Ahora el campo se lleva
+           el foco, se rueda hasta él y se marca en ámbar, que es lo que
+           convierte una frase en una instrucción. */
+        msg.textContent = 'Primero escribe tu correo en la casilla de arriba: el enlace te llega ahí.';
+        msg.className = 'msg error';
+        try { elEmail.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* da igual */ }
         elEmail.focus();
+        elEmail.classList.add('pt-hay-que-mirar');
+        setTimeout(function () { elEmail.classList.remove('pt-hay-que-mirar'); }, 2600);
         return;
       }
       apuntarMantener();
