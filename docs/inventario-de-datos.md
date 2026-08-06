@@ -574,6 +574,58 @@ abogado.
 
 ---
 
+# Parte 7 · Lo que el club ya ha decidido
+
+Fecha: **6 de agosto de 2026**. Lo decidió Andrés Clavero.
+
+Esto **no sustituye a la asesoría**: es la postura del club, para que el abogado
+confirme, corrija o recorte en vez de empezar con la hoja en blanco. Hasta que él no
+diga que sí, los huecos amarillos de `/legal/privacidad/` siguen puestos.
+
+## 7.1 · Plazos de conservación
+
+| Qué | Cuánto | De dónde sale el plazo |
+|---|---|---|
+| Ficha e identificación | 5 años tras la baja | Prescripción general de acciones personales, art. 1964 CC |
+| Contabilidad: recibos, facturas | 6 años | Código de Comercio, art. 30 |
+| Mandatos SEPA | 13 meses tras el último adeudo, luego lo que pida contabilidad | Plazo de reclamación de un cargo no autorizado |
+| Datos deportivos: marcas, asistencia, tests | Indefinido, **separando la identidad** | El histórico del club vale; que siga pegado a un DNI y un teléfono, no |
+| Datos de salud: lesiones, peso, estatura | 1 temporada tras la baja | Lo más sensible y lo que menos justifica guardarse |
+| Tarjeta sanitaria de menores | Se borra al acabar cada temporada | Sirve para una urgencia de ESTA temporada; la del año pasado es solo riesgo |
+| Notas privadas del entrenador | Temporada en curso + 1 | Son opiniones de trabajo, no un registro |
+| Fotos | Mientras dure el consentimiento, revisable cada temporada | Borrado inmediato al pedirlo |
+| Quien rellenó un formulario y no se inscribió | 1 año | Hoy se quedan para siempre y no son ni socios |
+| Cuentas del portal sin usar | Se cierran a los 2 años sin entrar | |
+
+⚠️ **Un plazo sin borrado no es un plazo, es una frase.** Hoy no se borra nada, nunca.
+Decidir estos números es el trabajo de una tarde; construir el borrado que los cumpla es
+el trabajo más largo que queda en todo el proyecto. Ver el punto 1 de la Parte 6.
+
+## 7.2 · La foto del DNI se sigue pidiendo, y solo a algunos
+
+Se planteó dejar de guardar la imagen escaneada (anotar el número y no quedarse la
+foto). **El club decide seguir pidiéndola, por las dos caras**, y acota a quién:
+
+> **Solo a quien está en edad de competir.** A los niños de la escuela que no compiten,
+> no se les pide.
+
+Qué falta por concretar, y hay que concretarlo antes de tocar los formularios:
+
+- **Dónde empieza «edad de competir»**: una edad, o una categoría federada. Hoy el club
+  ya calcula la categoría (migración 123), así que el corte puede ser automático en vez
+  de a ojo.
+- **Para qué es exactamente.** Si es para tramitar la licencia federativa, eso es lo que
+  hay que escribir en la política de privacidad como finalidad y como base legal. Sin
+  esa frase, guardar un DNI escaneado no se sostiene.
+- **Dónde vive.** Hoy está en formularios y carpetas de Google, que es el punto más
+  débil del club (Parte 6, punto 4). Tiene que bajar al almacén privado, el mismo que ya
+  protege bien los justificantes y las fotos de perfil.
+- **Cuánto dura.** No está en la tabla de arriba a propósito: si es para la licencia,
+  lo lógico es que caduque con la licencia —una temporada— y no que acompañe a la ficha
+  cinco años.
+
+---
+
 ## Qué llevarle al abogado
 
 Este documento, más:
@@ -583,10 +635,19 @@ Este documento, más:
 - Copia de los cuatro formularios de Google, tal como los ve una familia.
 - La tabla de la Parte 4, que es media política de privacidad ya escrita.
 
+Y la **Parte 7**, que es la postura del club sobre dos de las tres preguntas de abajo.
+Llevarla ya escrita cambia la consulta: en vez de «¿qué hacemos?», es «esto es lo que
+pensamos hacer, ¿lo firma usted?».
+
 Y estas tres preguntas por delante:
 
 1. **¿Cuánto tiempo se guarda cada cosa?** Sin esa respuesta no se puede construir el
-   borrado, que es el trabajo más largo que queda.
+   borrado, que es el trabajo más largo que queda. → *El club ya propone plazos: 7.1.
+   Falta que asesoría los valide o los corrija.*
 2. **¿Desde qué edad hace falta autorización de los padres**, y para qué exactamente?
+   → *Sin respuesta todavía. Es también el hueco amarillo de `/legal/condiciones/`.*
 3. **¿Qué datos de los que se piden hoy hay que dejar de pedir?** Lo que no se recoge no
-   hay que protegerlo, ni borrarlo, ni explicarlo.
+   hay que protegerlo, ni borrarlo, ni explicarlo. → *El club mantiene la foto del DNI
+   por las dos caras, acotada a quien está en edad de competir (7.2). El resto de la
+   lista del punto 7 de la Parte 6 —peso y estatura, nacionalidad, domicilio completo—
+   sigue sin decidir.*
