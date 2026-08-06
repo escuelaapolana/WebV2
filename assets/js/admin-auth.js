@@ -99,7 +99,16 @@
       'margin:12px 0 0;font-size:15px;font-weight:400;line-height:1.35;color:#4A4437;cursor:pointer}' +
     '.adm-login .adm-check input{-webkit-appearance:auto;appearance:auto;width:22px;height:22px;' +
       'flex:0 0 22px;margin:0;padding:0;border:0;border-radius:0;background:none;accent-color:#2F6FA8}' +
-    '.adm-login .msg{margin-top:12px;font-size:14px;color:#b3261e;text-align:center}';
+    '.adm-login .msg{margin-top:12px;font-size:14px;color:#b3261e;text-align:center}' +
+    /* El aviso de papel equivocado usa la misma caja que el login, pero NO es
+       un error: nada en rojo. Se deja sitio arriba para la franja de papeles,
+       que es donde está el interruptor al que manda el texto. */
+    '.adm-papel{padding-top:28px}' +
+    '.adm-papel .lema{max-width:34em;margin-left:auto;margin-right:auto}' +
+    '.adm-papel-btns{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:20px}' +
+    '.adm-papel-btns .btn{min-width:220px}' +
+    '.adm-papel-salida{font-size:15px;color:#2F6FA8;text-decoration:none;min-height:44px;display:inline-flex;align-items:center}' +
+    '.adm-papel-salida:hover{text-decoration:underline}';
   document.head.appendChild(css);
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -142,6 +151,31 @@
     function mostrarLogin(mensaje) {
       login.style.display = '';
       if (mensaje) { var m = document.getElementById('adm-msg'); if (m) m.textContent = mensaje; }
+    }
+
+    /* «Estás dentro, pero con el papel que no es.» No es un error ni un
+       rechazo: es un cambio de sombrero, y por eso no se parece a la pantalla
+       de entrar. Dos salidas, y la primera es la que casi siempre quiere:
+       cambiarse de papel y quedarse donde estaba. */
+    function avisoDePapel() {
+      var caja = document.createElement('div');
+      caja.className = 'adm-login adm-papel';
+      caja.innerHTML =
+        '<img class="adm-logo" src="' + base() + 'assets/img/logo.png" alt="Club Apolana">' +
+        '<h1>Esto es del panel del club</h1>' +
+        '<p class="lema">Tu sesión está abierta, pero el papel que llevas puesto ahora mismo no entra aquí. ' +
+        'Cámbiate arriba —donde pone «Estás como…»— y vuelve a abrir esta página.</p>' +
+        '<div class="adm-papel-btns">' +
+          '<button type="button" class="btn btn--primario" id="adm-cambiar-papel">Cambiar de papel</button>' +
+          '<a class="adm-papel-salida" href="' + base() + 'portal/">Ir a mi zona</a>' +
+        '</div>';
+      document.body.insertBefore(caja, document.body.firstChild);
+      document.getElementById('adm-cambiar-papel').addEventListener('click', function () {
+        /* El interruptor lo pinta papeles.js arriba del todo; si aún no ha
+           cargado, esto al menos lleva la vista hasta donde va a salir. */
+        try { if (window.APOLANA_PAPELES && window.APOLANA_PAPELES.abrir) { window.APOLANA_PAPELES.abrir(); return; } } catch (e) {}
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     }
 
     if (!sb || !sb.auth) { mostrarLogin('No se pudo conectar con la base de datos.'); return; }
@@ -203,12 +237,23 @@
             suya = !delCubo.error && !!delCubo.data;
           }
           if (!suya) {
-            /* Ni administración, ni papel del club, ni equipo técnico en
-               una pantalla suya (p. ej. alguien que está mirando el club
-               como atleta y llega a una página de /admin/ que se quedó
-               guardada en la app): al portal, que es su zona. Allí le
-               espera la franja de arriba para volver a cambiarse. */
-            location.replace(base() + 'portal/');
+            /* Ni administración, ni papel del club, ni equipo técnico en una
+               pantalla suya. El caso más común, con diferencia, NO es un
+               intruso: es alguien del club que tiene varios papeles, lleva
+               puesto el de atleta y abre un enlace del panel.
+
+               ⚠️ ANTES ESTO HACÍA `location.replace(portal/)` Y NADA MÁS. Te
+               plantaba en el portal sin una palabra, así que lo que parecía es
+               que la página del panel estaba rota: pulsas «Estadísticas» y
+               apareces en «Mi zona». Pasó de verdad y costó un rato entender
+               que no fallaba nada, que era el papel puesto.
+
+               Ahora se dice. No se abre ni un dato de más —el contenido sigue
+               oculto y las reglas de la base mandan igual—; lo único que cambia
+               es que la puerta explica por qué está cerrada y deja el
+               interruptor de papeles a mano, que es justo lo que hacía falta. */
+            montarPapeles();
+            avisoDePapel();
             return;
           }
         }
