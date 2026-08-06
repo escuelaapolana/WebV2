@@ -1356,8 +1356,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      Para añadir un deporte, una línea aquí y ya sale el botón. Nada más.
      ------------------------------------------------------------ */
   var PLANTILLA_IA = {
-    'natacion':         { archivo: 'plantilla-semana-natacion.xlsx', que: 'natación' },
-    'escuela-natacion': { archivo: 'plantilla-semana-natacion.xlsx', que: 'natación' }
+    'natacion':         { archivo: 'plantilla-semana-natacion.xlsx',  que: 'natación' },
+    'escuela-natacion': { archivo: 'plantilla-semana-natacion.xlsx',  que: 'natación' },
+    'competicion':      { archivo: 'plantilla-semana-atletismo.xlsx', que: 'atletismo' },
+    'escuela':          { archivo: 'plantilla-semana-atletismo.xlsx', que: 'atletismo' }
   };
   function plantillaIA(grupoId){ return PLANTILLA_IA[seccionDeGrupo(grupoId)] || null; }
   // Sitio habitual del grupo, sacado de su horario ('… · Pista municipal')
@@ -5292,7 +5294,114 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return f;
   }
 
+  /* ============================================================
+     EL TRADUCTOR · de cómo escribe el club a cómo lee el portal
+     ------------------------------------------------------------
+     La planificación de natación del club lleva años escribiéndose así, en un
+     documento de Drive:
+
+       MASTER Lunes 27 de julio – 50 m (≈3.300 m)
+       Calentamiento (900 m)
+       ● 100 (50) crol suave
+       ● 300 X PARES: C/ALETAS (a 50 CAMBIO) crol / br [pies mar] / esp
+       PAUSA DE HIDRATACIÓN
+       Principal (1.600 m)
+       Calle 1 (cinturón/churro)
+
+     Y el portal esperaba almohadillas y guiones. Se intentó al revés —enseñarle
+     el formato del portal al entrenador, y a ChatGPT— y falló tres veces: se
+     comían las almohadillas, no ponían las distancias de iniciación y se
+     inventaban los totales. Adaptar el programa es más barato que adiestrar a
+     cada persona que pase por el club.
+
+     Esto NO reinterpreta nada: traduce el texto al formato que el intérprete de
+     siempre ya sabe leer, y a partir de ahí todo sigue igual —previsualización,
+     avisos, y nada se guarda sin revisar—. Si el texto ya viene en el formato
+     del portal, no se toca.
+
+     ⚠️ El color no sobrevive al copiar y pegar, pero da igual: en el documento
+     del club los metros de iniciación van ENTRE PARÉNTESIS —«100 (50)»— y el
+     paréntesis sí llega. El color era el adorno; el dato estaba en el paréntesis.
+     ============================================================ */
+  var DIA_SUELTO = /(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i;
+  /* Los nombres de bloque que usa el club. Se reconocen aunque lleven detrás sus
+     metros entre paréntesis: «Calentamiento (900 m)». */
+  var BLOQUE_CLUB = new RegExp('^\\s*(calentamiento|parte inicial|parte principal|serie principal|principal|' +
+    't[eé]cnica|velocidad|juego|juegos|relevos|circuito|circuito t[eé]cnico|mini campeonato|' +
+    'vuelta a la calma|final|soltar|estiramientos)\\b', 'i');
+  var CALLE_CLUB = /^\s*calle\s*\d/i;
+  var PAUSA_CLUB = /^\s*pausa\s+de\s+hidrataci[oó]n\s*$/i;
+  var VINETA = /^\s*(?:[●•·◦▪–—-]|\*|\d{1,2}[.)])\s+/;
+
+  function pareceFormatoPortal(txt){
+    return /^\s*#/m.test(txt) || /^\s*[-*]\s+\S/m.test(txt);
+  }
+
+  /* ¿Es una hoja de cálculo o es la planificación escrita a mano? Manda la
+     primera línea: una cabecera de la plantilla trae varias columnas conocidas
+     separadas por ; o por ,. Un documento de Drive empieza por el título o por
+     el primer día, y ahí no hay cabecera que valga. */
+  function pareceCSV(txt){
+    var primera = String(txt||'').split(/\r?\n/)[0] || '';
+    if(!/[;,\t]/.test(primera)) return false;
+    var reconocidas = primera.split(/[;,\t]/).filter(function(c){ return claveDeCabecera(c); }).length;
+    return reconocidas >= 2;
+  }
+
+  function traducirDelClub(txt){
+    var fuera = [], enDia = false, tocado = false, vistos = {}, repetido = null;
+    String(txt||'').split(/\r?\n/).forEach(function(cruda){
+      var t = cruda.replace(/ /g,' ').replace(/^\s+|\s+$/g,'');
+      if(!t){ fuera.push(''); return; }
+
+      if(PAUSA_CLUB.test(t)){ fuera.push('- Pausa de hidratación'); tocado = true; return; }
+
+      /* Una línea con día es una sesión nueva. Se queda con lo que la acompaña
+         —el grupo, la piscina, los metros— como título, que es información que
+         el entrenador ha escrito a propósito y no se tira. */
+      var md = t.match(DIA_SUELTO);
+      if(md && !VINETA.test(t) && t.length < 120){
+        var resto = t.replace(md[0], ' ').replace(/\s{2,}/g,' ').replace(/^[\s·|,–—-]+|[\s·|,–—-]+$/g,'');
+        /* ⚠️ EL DOCUMENTO DEL CLUB TRAE VARIOS GRUPOS: máster, escuela 6-9 y
+           escuela 10-15, cada uno con su lunes. Dos «LUNES» en el mismo texto
+           acabarían fundidos en una sola sesión con los bloques de los dos
+           grupos mezclados, y encima sin avisar. Se cuenta y se avisa. */
+        var clave = md[1].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        if(vistos[clave] && !repetido) repetido = md[1];
+        vistos[clave] = true;
+        fuera.push(md[1].toUpperCase() + (resto ? ' · ' + resto : ''));
+        enDia = true; tocado = true; return;
+      }
+      if(!enDia){ fuera.push(t); return; }
+
+      /* «Calle 1 (cinturón/churro)» es un bloque: dentro va lo que hace ESA
+         calle, que en la escuela pequeña es distinto de lo de la de al lado. */
+      if(CALLE_CLUB.test(t)){
+        var mc = t.match(/^\s*calle\s*(\d)\s*(?:[（(]([^)）]*)[)）])?/i);
+        var NIVEL = { '1':'Iniciación', '2':'Desarrollo', '3':'Perfeccionamiento' };
+        var mat = mc && mc[2] ? mc[2].trim() : '';
+        fuera.push('# Calle ' + mc[1] + ' — ' + (NIVEL[mc[1]] || '') + (mat ? ' · ' + mat : ''));
+        tocado = true; return;
+      }
+
+      if(BLOQUE_CLUB.test(t) && !VINETA.test(t)){ fuera.push('# ' + t); tocado = true; return; }
+
+      if(VINETA.test(t)){ fuera.push('- ' + t.replace(VINETA,'')); tocado = true; return; }
+
+      /* Una línea suelta dentro de un día que no es bloque ni viñeta suele ser
+         un ejercicio escrito de corrido —«4 x (200 crol A2/20" + 2×50…)»—, así
+         que entra como ejercicio. Perderla sería peor. */
+      fuera.push('- ' + t); tocado = true;
+    });
+    return { texto: fuera.join('\n'), tocado: tocado, repetido: repetido };
+  }
+
   function interpretarTexto(txt, lunes){
+    var traduccion = null;
+    if(txt && !pareceFormatoPortal(txt)){
+      traduccion = traducirDelClub(txt);
+      if(traduccion.tocado) txt = traduccion.texto;
+    }
     var lineas = String(txt||'').split(/\r?\n/);
     var mapa = {}, orden = [], avisos = [], ses = null, bloque = null, sueltas = 0;
 
@@ -5359,6 +5468,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     orden.sort(function(a,b){ return a-b; });
     var sesiones = orden.map(function(k){ return mapa[k]; });
     sesiones.forEach(function(s){ s.bloques = (s.bloques||[]).filter(function(b){ return (b.filas && b.filas.length) || b.etiqueta; }); });
+    /* Se dice que se ha traducido, y se dice PRIMERO: quien pega su documento de
+       siempre tiene que saber que la pantalla ha interpretado su escritura, para
+       que mire la previsualización con ojo en vez de darle a crear a ciegas. */
+    if(traduccion && traduccion.tocado){
+      if(traduccion.repetido){
+        avisos.unshift('⚠️ En este texto el ' + traduccion.repetido.toLowerCase() + ' aparece más de una vez: parece que has pegado varios grupos de golpe (máster, escuela…). Se han juntado todos en la misma sesión. Pega solo la parte del grupo que estás planificando y hazlos de uno en uno.');
+      }
+      avisos.unshift('He leído tu documento tal como lo escribes y lo he ordenado en días, bloques y ejercicios. Repasa la previsualización antes de crear nada.');
+    }
     return { sesiones: sesiones, avisos: avisos };
   }
 
@@ -5384,10 +5502,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     'material':'material','material natacion':'material',
     'observaciones':'observaciones','observacion':'observaciones','obs':'observaciones',
     'detalle':'detalle',
-    'nota':'nota','notas':'nota','nota razonamiento':'nota',
+    'nota':'nota','notas':'nota','nota razonamiento':'nota','nota del dia':'nota',
     'hora':'hora','hora de inicio':'hora','a las':'hora',
-    'lugar':'lugar','sitio':'lugar','instalacion':'lugar','donde':'lugar'
+    'lugar':'lugar','sitio':'lugar','instalacion':'lugar','donde':'lugar',
+    /* Las cabeceras tal como están escritas en los Excel que se descargan. En la
+       hoja se lee «Título de la sesión», no «titulo»: si no están aquí, la columna
+       entera se cae sin decir nada. */
+    'titulo de la sesion':'titulo','tipo de sesion':'tipo',
+    'papel del dia':'rol','papel':'rol',
+    /* «Para quién» = el subgrupo o la persona a la que va ese bloque, como en las
+       planificaciones de papel del club («VALLISTAS — Rafa y Adri»). Viaja como
+       matiz del bloque, que es donde ya se ve hoy en el portal y en la ficha. */
+    'para quien':'matiz','atleta':'matiz','atletas':'matiz','subgrupo':'matiz'
   });
+
+  /* La cabecera se reconoce con tolerancia, porque nadie escribe «distancia» a
+     secas en una hoja de cálculo: escribe «Distancia (m)» y explica entre
+     paréntesis para qué es. Si el paréntesis tumba la columna, el entrenador
+     rellena su Excel entero y sube una semana sin distancias, sin un solo aviso.
+     Por eso, si no hay coincidencia exacta, se prueba otra vez sin paréntesis. */
+  function claveDeCabecera(h){
+    var t = norm(h);
+    if(ALIAS_CSV[t]) return ALIAS_CSV[t];
+    t = t.replace(/\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
+    return ALIAS_CSV[t] || '';
+  }
 
   function p2(n){ n = String(parseInt(n,10)); return (n.length<2?'0':'')+n; }
   function fechaDeCSV(v){
@@ -5430,7 +5569,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function interpretarCSV(texto, lunes){
     var filas = parseCSV(texto), avisos = [];
     if(!filas.length) return { sesiones:[], avisos:['El archivo está vacío.'] };
-    var cab = filas.shift().map(function(h){ return ALIAS_CSV[norm(h)] || ''; });
+    var cab = filas.shift().map(function(h){ return claveDeCabecera(h); });
     if(cab.indexOf('ejercicio')===-1 && cab.indexOf('dia')===-1 && cab.indexOf('fecha')===-1){
       return { sesiones:[], avisos:['No reconozco la cabecera del archivo. Descarga la plantilla y usa sus columnas: dia, fecha, tipo, rol, titulo, bloque, matiz, ejercicio, series, distancia, ritmo, rec, calzado, carga, material, observaciones, detalle.'] };
     }
@@ -5461,10 +5600,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(r.nota) ses.nota_razonamiento = (ses.nota_razonamiento ? ses.nota_razonamiento+' ' : '') + r.nota;
       if(!r.ejercicio && !r.series && !r.distancia && !r.ritmo && !r.descanso && !r.detalle &&
          !r.calzado && !r.carga && !r.material && !r.observaciones && !r.desnivel_m) return;
-      var etq = r.bloque || 'Parte principal', bl = null;
-      for(var b=0;b<ses.bloques.length;b++){ if(ses.bloques[b].etiqueta===etq) bl = ses.bloques[b]; }
-      if(!bl){ bl = { etiqueta: etq, filas: [] }; ses.bloques.push(bl); }
-      if(r.matiz && !bl.matiz) bl.matiz = r.matiz;
+      /* Un bloque es su etiqueta Y su matiz, no solo la etiqueta. Si solo se
+         mirase la etiqueta, dos «Parte principal» dirigidas a gente distinta
+         —«Juan» y «Ander»— se fundirían en una sola con el nombre del primero, y
+         cada uno acabaría viendo el trabajo del otro. Eso pasa de verdad: es
+         como están escritas las hojas del club, una columna por persona.
+         El matiz en blanco no abre bloque nuevo: se pega al último de esa misma
+         parte, que es lo que hace quien solo escribe el nombre en la primera
+         línea de la tanda. */
+      var etq = r.bloque || 'Parte principal', mtz = r.matiz || '', bl = null;
+      for(var b=0;b<ses.bloques.length;b++){
+        var cand = ses.bloques[b];
+        if(cand.etiqueta === etq && (!mtz || (cand.matiz||'') === mtz)) bl = cand;
+      }
+      if(!bl){ bl = { etiqueta: etq, filas: [] }; if(mtz) bl.matiz = mtz; ses.bloques.push(bl); }
       var celda = {};
       celda.ejercicio = r.ejercicio || '(sin nombre)';
       // ⚠️ 'rec' y 'desnivel_m' tienen que seguir en esta lista: si se caen, el
@@ -6368,9 +6517,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<button type="button" class="pz-btn pz-btn--texto" data-pz-accion="plantilla-csv">Descargar plantilla CSV</button>'+
       /* La plantilla para la IA es POR DEPORTE, así que solo sale la del deporte
          del grupo que estás mirando. Una lista de plantillas de deportes que no
-         entrenas es ruido, y encima invita a bajarse la que no toca. De momento
-         existe la de natación; el día que haya la de atletismo se añade a
-         PLANTILLA_IA y aparece sola, sin tocar nada más. */
+         entrenas es ruido, y encima invita a bajarse la que no toca. Hoy hay dos,
+         natación y atletismo; para añadir un deporte basta una línea en
+         PLANTILLA_IA y el botón aparece solo, sin tocar nada más. */
       (plantillaIA(SV_GRUPO)
         ? '<button type="button" class="pz-btn pz-btn--texto" data-pz-accion="plantilla-ia">Plantilla de la semana (Excel)</button>'
         : '')+
@@ -6583,12 +6732,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
       '<div class="tarjeta">'+
         '<h2>2 · Importar un archivo</h2>'+
-        '<p class="vacio" style="margin-top:-6px;margin-bottom:12px;">Descarga la plantilla, rellénala en Excel, guarda como CSV y súbela aquí. Cada línea del archivo es un ejercicio; se agrupan solas por día y por bloque.</p>'+
+        '<p class="vacio" style="margin-top:-6px;margin-bottom:12px;">Valen dos cosas. <b>Tu planificación de siempre</b>: en Drive, <i>Archivo → Descargar → Texto sin formato (.txt)</i>, y la subes aquí tal cual — no hace falta reescribir nada, la pantalla la entiende. O <b>la plantilla</b> de abajo rellenada y guardada como CSV, si prefieres trabajar por columnas.</p>'+
         '<div class="sw-barra" style="margin-top:0;">'+
           '<button type="button" class="btn-mini" id="sw-descargar-plantilla">Descargar plantilla CSV</button>'+
         '</div>'+
         '<label style="margin-top:14px;">Archivo CSV</label>'+
-        '<input type="file" id="sw-archivo" accept=".csv,text/csv,text/plain" class="sw-file">'+
+        '<input type="file" id="sw-archivo" accept=".csv,.txt,text/csv,text/plain" class="sw-file">'+
         '<div class="sw-barra">'+
           '<button class="btn btn--neutro btn--sm" id="sw-interpretar-csv">Interpretar archivo</button>'+
         '</div>'+
@@ -6700,12 +6849,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('sw-descargar-plantilla').addEventListener('click', descargarPlantillaCSV);
     $('sw-interpretar-csv').addEventListener('click', function(){
       var f = $('sw-archivo').files && $('sw-archivo').files[0];
-      if(!f){ swMsg('Elige antes un archivo .csv', 'error'); return; }
+      if(!f){ swMsg('Elige antes un archivo: tu planificación en .txt o la plantilla en .csv', 'error'); return; }
       var lunes = $('sw-lunes').value;
       if(!lunes){ swMsg('Pon la fecha de inicio de la semana.', 'error'); return; }
       var lector = new FileReader();
       lector.onload = async function(){
-        await ponerSemana(interpretarCSV(String(lector.result||''), lunes), $('sw-grupo').value);
+        var contenido = String(lector.result||'');
+        /* Vale un CSV de la plantilla Y vale el documento de siempre bajado de
+           Drive como texto. Se decide por el contenido y no por la extensión,
+           que miente en cuanto alguien renombra un archivo: si la primera línea
+           tiene cabeceras conocidas es una hoja de cálculo; si no, es la
+           planificación escrita a mano y la lee el intérprete de texto, que ya
+           sabe traducir el formato del club. */
+        await ponerSemana(pareceCSV(contenido)
+          ? interpretarCSV(contenido, lunes)
+          : interpretarTexto(contenido, lunes), $('sw-grupo').value);
         $('sw-prev-card').scrollIntoView({ behavior:'smooth', block:'start' });
       };
       lector.onerror = function(){ swMsg('No he podido leer el archivo.', 'error'); };
