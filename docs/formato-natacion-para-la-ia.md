@@ -67,6 +67,12 @@ Pausa de hidratación
 
 MARTES · descanso
 
+CÓMO ME LO DEVUELVES
+Texto plano y nada más, dentro de un bloque de código para que pueda copiarlo de una vez.
+NADA de markdown: sin negritas (**), sin tablas, sin títulos con almohadilla salvo los
+bloques del entrenamiento, sin numerar los días. Si me devuelves una tabla, no me sirve:
+el portal no la sabe leer y hay que reescribirla entera a mano.
+
 ANTES DE ESCRIBIR
 Si te falta un dato (grupo, días, piscina, calles, metros), pídemelo. No lo supongas.
 Y cuadra los metros: si un bloque dice 900 m, que las líneas sumen 900.
