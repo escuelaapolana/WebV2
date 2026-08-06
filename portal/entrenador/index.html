@@ -5348,6 +5348,82 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return reconocidas >= 2;
   }
 
+  /* ------------------------------------------------------------
+     UN ARCHIVO, TRES GRUPOS
+     ------------------------------------------------------------
+     El documento del club no es la semana de un grupo: es la semana del CLUB
+     entero. Diez sesiones, tres grupos y cuatro días en el mismo archivo:
+
+       MASTER Lunes 27 de julio – 50 m (≈3.300 m)
+       ESCUELA 6-9 AÑOS Lunes 27/07–
+       ESCUELA 10-15 Lunes 27/07–
+       MÁSTER Martes 28 de julio – …
+
+     Y el portal importa a UN grupo. Antes esto acababa con el máster y las dos
+     escuelas fundidos en el mismo lunes, sin decir nada.
+
+     Se resuelve leyendo lo que hay ANTES del día en cada cabecera —eso es el
+     grupo— y quedándose solo con el que se está planificando. El entrenador
+     sube su archivo entero, tal cual, y elige el grupo en el desplegable de
+     siempre. Sin partir archivos a mano.
+
+     Si no se puede decidir cuál es, NO se adivina: entra todo y se avisa.
+     ------------------------------------------------------------ */
+  function clave(s){
+    return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  }
+  /* Palabras que no distinguen a un grupo de otro: están en casi todos. */
+  var VACIAS = { 'de':1,'del':1,'la':1,'el':1,'los':1,'las':1,'y':1,'anos':1,'grupo':1,'natacion':1 };
+  function parecido(a, b){
+    var A = clave(a).split(' ').filter(function(p){ return p && !VACIAS[p]; });
+    var B = clave(b).split(' ').filter(function(p){ return p && !VACIAS[p]; });
+    if(!A.length || !B.length) return 0;
+    var n = 0;
+    A.forEach(function(p){ if(B.indexOf(p) !== -1) n++; });
+    return n;
+  }
+
+  function separarPorGrupo(txt, nombreGrupo){
+    var lineas = String(txt||'').split(/\r?\n/);
+    var trozos = [], actual = null, sinGrupo = [];
+    lineas.forEach(function(l){
+      var t = l.replace(/ /g,' ').trim();
+      var md = t.match(DIA_SUELTO);
+      if(md && !VINETA.test(t) && t.length < 120){
+        var g = t.slice(0, md.index).replace(/[\s·|,–—-]+$/,'').trim();
+        if(g){ actual = { grupo: g, lineas: [] }; trozos.push(actual); }
+        else if(!actual){ sinGrupo.push(l); return; }
+      }
+      (actual ? actual.lineas : sinGrupo).push(l);
+    });
+
+    /* ⚠️ SE AGRUPA POR EL NOMBRE NORMALIZADO, no por el literal. En el documento
+       de verdad el máster está escrito de las dos maneras —«MASTER» el lunes y
+       «MÁSTER» el martes—, y contándolos como dos grupos distintos empataban
+       entre ellos y no se podía elegir ninguno. Un acento no hace un grupo. */
+    var porClave = {}, nombres = [];
+    trozos.forEach(function(tr){
+      var k = clave(tr.grupo);
+      if(!porClave[k]){ porClave[k] = tr.grupo; nombres.push(tr.grupo); }
+      tr.k = k;
+    });
+    var claves = Object.keys(porClave);
+    if(claves.length < 2) return { texto: txt, grupos: nombres, elegido: null };
+
+    var mejor = null, tope = 0, empate = false;
+    claves.forEach(function(k){
+      var p = parecido(porClave[k], nombreGrupo);
+      if(p > tope){ tope = p; mejor = k; empate = false; }
+      else if(p === tope && p > 0 && k !== mejor){ empate = true; }
+    });
+    if(!mejor || empate) return { texto: txt, grupos: nombres, elegido: null };
+
+    var quedan = sinGrupo.concat();
+    trozos.forEach(function(tr){ if(tr.k === mejor) quedan = quedan.concat(tr.lineas); });
+    return { texto: quedan.join('\n'), grupos: nombres, elegido: porClave[mejor] };
+  }
+
   function traducirDelClub(txt){
     var fuera = [], enDia = false, tocado = false, vistos = {}, repetido = null;
     String(txt||'').split(/\r?\n/).forEach(function(cruda){
@@ -5384,7 +5460,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         tocado = true; return;
       }
 
-      if(BLOQUE_CLUB.test(t) && !VINETA.test(t)){ fuera.push('# ' + t); tocado = true; return; }
+      /* Las rayas de separación del documento («________») no son nada. */
+      if(/^[_\-–—=·.\s]{4,}$/.test(t)){ fuera.push(''); return; }
+
+      /* «Objetivo: mantener la técnica aunque aumente el cansancio» es la nota
+         del día y el intérprete de siempre ya la reconoce, así que pasa entera
+         y sin guion. Con guion se convertía en un ejercicio más, y esa frase la
+         leen el atleta y su familia: su sitio es la cabecera del día. */
+      if(/^(nota|objetivo|hora|lugar)\s*:/i.test(t)){ fuera.push(t); tocado = true; return; }
+
+      /* ⚠️ EL BLOQUE SE MIRA SIN EL NÚMERO DE DELANTE. El club numera sus
+         bloques —«1. Calentamiento (400 m) (200)», «4. vUELTA A LA CALMA»— y
+         eso tiene la misma pinta que una lista de ejercicios numerada. Si se
+         mira la línea entera, «1. Calentamiento» no casa con ningún nombre de
+         bloque, se lo lleva la regla de la viñeta y el calentamiento acaba
+         siendo un ejercicio dentro del bloque anterior. */
+      var sinNumero = t.replace(/^\s*\d{1,2}[.)]\s+/, '');
+      if(BLOQUE_CLUB.test(sinNumero)){ fuera.push('# ' + sinNumero); tocado = true; return; }
 
       if(VINETA.test(t)){ fuera.push('- ' + t.replace(VINETA,'')); tocado = true; return; }
 
@@ -5396,10 +5488,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return { texto: fuera.join('\n'), tocado: tocado, repetido: repetido };
   }
 
-  function interpretarTexto(txt, lunes){
-    var traduccion = null;
+  function interpretarTexto(txt, lunes, nombreGrupo){
+    var traduccion = null, corte = null;
     if(txt && !pareceFormatoPortal(txt)){
-      traduccion = traducirDelClub(txt);
+      corte = separarPorGrupo(txt, nombreGrupo || '');
+      traduccion = traducirDelClub(corte.texto);
       if(traduccion.tocado) txt = traduccion.texto;
     }
     var lineas = String(txt||'').split(/\r?\n/);
@@ -5473,7 +5566,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        que mire la previsualización con ojo en vez de darle a crear a ciegas. */
     if(traduccion && traduccion.tocado){
       if(traduccion.repetido){
-        avisos.unshift('⚠️ En este texto el ' + traduccion.repetido.toLowerCase() + ' aparece más de una vez: parece que has pegado varios grupos de golpe (máster, escuela…). Se han juntado todos en la misma sesión. Pega solo la parte del grupo que estás planificando y hazlos de uno en uno.');
+        avisos.unshift('⚠️ El ' + traduccion.repetido.toLowerCase() + ' aparece más de una vez y todo ha ido a la misma sesión. Si el archivo trae varios grupos, quédate solo con la parte de uno.');
+      }
+      if(corte && corte.grupos && corte.grupos.length > 1){
+        avisos.unshift(corte.elegido
+          ? 'Este archivo trae ' + corte.grupos.length + ' grupos (' + corte.grupos.join(', ') + '). Me he quedado solo con «' + corte.elegido + '», que es el que se parece al grupo que has elegido arriba. Para los demás, vuelve a subir el mismo archivo cambiando el grupo.'
+          : '⚠️ Este archivo trae ' + corte.grupos.length + ' grupos (' + corte.grupos.join(', ') + ') y no sé cuál de ellos es el grupo que has elegido arriba, así que los he metido todos y se han mezclado. Cambia el grupo del desplegable por uno que se llame parecido, o borra del texto los grupos que no toquen.');
       }
       avisos.unshift('He leído tu documento tal como lo escribes y lo he ordenado en días, bloques y ejercicios. Repasa la previsualización antes de crear nada.');
     }
@@ -6838,7 +6936,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!lunes){ swMsg('Pon la fecha de inicio de la semana.', 'error'); return; }
       var txt = $('sw-texto').value;
       if(!txt.trim()){ swMsg('Pega antes el texto de la semana.', 'error'); return; }
-      await ponerSemana(interpretarTexto(txt, lunes), $('sw-grupo').value);
+      await ponerSemana(interpretarTexto(txt, lunes, nombreGrupo($('sw-grupo').value)), $('sw-grupo').value);
       $('sw-prev-card').scrollIntoView({ behavior:'smooth', block:'start' });
     });
     $('sw-ejemplo').addEventListener('click', function(){ $('sw-texto').value = EJEMPLO_SEMANA; });
@@ -6863,7 +6961,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            sabe traducir el formato del club. */
         await ponerSemana(pareceCSV(contenido)
           ? interpretarCSV(contenido, lunes)
-          : interpretarTexto(contenido, lunes), $('sw-grupo').value);
+          : interpretarTexto(contenido, lunes, nombreGrupo($('sw-grupo').value)), $('sw-grupo').value);
         $('sw-prev-card').scrollIntoView({ behavior:'smooth', block:'start' });
       };
       lector.onerror = function(){ swMsg('No he podido leer el archivo.', 'error'); };
