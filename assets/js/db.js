@@ -237,7 +237,7 @@
     try {
       var q = window.APOLANA_DB
         .from("noticias")
-        .select("id, titulo, excerpt, categoria, foto_portada, fecha_publicacion")
+        .select("id, titulo, excerpt, categoria, secciones, foto_portada, fecha_publicacion")
         .eq("publicada", true)
         .order("fecha_publicacion", { ascending: false });
       if (limite) q = q.limit(limite);

@@ -144,6 +144,26 @@
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
 
+  /* Las secciones de una noticia: se marcan varias, así que van en casillas y
+     no en un desplegable. En rejilla y no en lista, porque nueve opciones en
+     una columna obligan a rodar la ventana justo cuando estás decidiendo. */
+  .n-secciones { border: 1px solid var(--linea-borde, #E2DED4); border-radius: 12px;
+    padding: 14px 16px 16px; margin: 16px 0 0; }
+  .n-secciones legend { padding: 0 6px; font-size: 14px; font-weight: 600; color: var(--navy); }
+  .n-secciones .pista { font-size: 13px; line-height: 1.45; color: var(--texto-suave); margin: 0 0 12px; }
+  .n-secciones-lista { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 14px; }
+  .n-secciones-lista label { display: flex; align-items: center; gap: 8px;
+    min-height: 32px; font-size: 15px; cursor: pointer; margin: 0; font-weight: 400; }
+  .n-secciones-lista input { width: auto; flex: 0 0 auto; margin: 0; }
+  @media (max-width: 620px) { .n-secciones-lista { grid-template-columns: 1fr 1fr; } }
+
+  /* En la tabla, «Sin sección» en ámbar: son las que hay que repasar, y
+     conviene que canten a la vista mientras queden. */
+  .sec-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .sec-chip { padding: 2px 8px; border-radius: 999px; background: var(--azul-suave, #EAF2F9);
+    font-size: 12px; line-height: 1.6; color: var(--azul-hover, #1F5C8F); white-space: nowrap; }
+  .sec-chip.vacia { background: var(--ambar-fondo, #FDF3E0); color: #8A5307; }
+
   /* Objetivo táctil cómodo (44px) en los botones de uso frecuente */
   .btn { cursor: pointer; }
   .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 16px; border-radius: 999px; font-size: 14px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
@@ -643,7 +663,7 @@
       <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nueva-noticia">+ Nueva noticia</button></div>
       <div style="overflow-x:auto;">
         <table id="tabla-noticias">
-          <thead><tr><th>Fecha</th><th>Título</th><th>Categoría</th><th>Publicada</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Título</th><th>Categoría</th><th>Secciones</th><th>Publicada</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -675,6 +695,26 @@
             <input type="date" id="n-fecha">
           </div>
         </div>
+        <!-- SECCIONES · se marcan varias a propósito. Media crónica de fin de
+             semana habla de running, natación y triatlón a la vez, y obligar a
+             elegir una la escondería de los otros dos filtros de la web.
+             Ninguna marcada = sin clasificar: sale en «Todo el club» y en
+             ningún filtro. Es preferible a colocarla donde no toca. -->
+        <fieldset class="n-secciones" id="n-secciones">
+          <legend>¿De qué secciones habla?</legend>
+          <p class="pista">Marca todas las que salgan en la noticia. Si no marcas ninguna, la noticia se publica igual, pero no aparecerá al filtrar por sección.</p>
+          <div class="n-secciones-lista">
+            <label><input type="checkbox" value="escuela"><span>Escuela</span></label>
+            <label><input type="checkbox" value="escuela-natacion"><span>Escuela de natación</span></label>
+            <label><input type="checkbox" value="competicion"><span>Pista</span></label>
+            <label><input type="checkbox" value="running"><span>Running</span></label>
+            <label><input type="checkbox" value="natacion"><span>Natación</span></label>
+            <label><input type="checkbox" value="montana"><span>Montaña</span></label>
+            <label><input type="checkbox" value="triatlon"><span>Triatlón</span></label>
+            <label><input type="checkbox" value="cubo"><span>El Cubo</span></label>
+            <label><input type="checkbox" value="campus"><span>Campus</span></label>
+          </div>
+        </fieldset>
         <label for="n-excerpt">Resumen (una o dos frases)</label>
         <textarea id="n-excerpt" style="min-height:70px;"></textarea>
         <label for="n-contenido">Texto de la noticia</label>
@@ -1940,21 +1980,33 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   // --- Noticias: listar ---
+  /* La base guarda las secciones como las carpetas de la web, sin acentos y
+     con guiones; aquí se enseñan escritas como en el menú. */
+  var SEC_TXT = { 'escuela': 'Escuela', 'escuela-natacion': 'Escuela de natación',
+    'campus': 'Campus', 'competicion': 'Pista', 'running': 'Running',
+    'natacion': 'Natación', 'montana': 'Montaña', 'triatlon': 'Triatlón', 'cubo': 'El Cubo' };
   async function cargarNoticias() {
     var tb = $('tabla-noticias').querySelector('tbody');
-    tb.innerHTML = ADM.filaCargando(5);
-    var r = await sb.from('noticias').select('id,titulo,categoria,fecha_publicacion,publicada').order('fecha_publicacion', { ascending: false });
-    if (r.error) { tb.innerHTML = ADM.filaError(5, r.error.message); return; }
+    tb.innerHTML = ADM.filaCargando(6);
+    var r = await sb.from('noticias').select('id,titulo,categoria,secciones,fecha_publicacion,publicada').order('fecha_publicacion', { ascending: false });
+    if (r.error) { tb.innerHTML = ADM.filaError(6, r.error.message); return; }
     if (!r.data.length) {
-      tb.innerHTML = filaVacia(5, ICONO_NOTA, 'Todavía no hay noticias', 'Cuenta lo que pasa en el club: una carrera, un récord, una convocatoria.',
+      tb.innerHTML = filaVacia(6, ICONO_NOTA, 'Todavía no hay noticias', 'Cuenta lo que pasa en el club: una carrera, un récord, una convocatoria.',
         '<button type="button" class="btn btn--primario btn--mini" data-nueva-noticia>+ Escribir la primera</button>');
       return;
     }
     tb.innerHTML = r.data.map(function (n) {
+      /* «Sin sección» en ámbar y no en gris: no es un dato que falte y da
+         igual, es una noticia que no va a salir en ningún filtro de la web. */
+      var secs = Array.isArray(n.secciones) ? n.secciones : [];
+      var chips = secs.length
+        ? '<span class="sec-chips">' + secs.map(function (s) { return '<span class="sec-chip">' + esc(SEC_TXT[s] || s) + '</span>'; }).join('') + '</span>'
+        : '<span class="sec-chip vacia">Sin sección</span>';
       return '<tr>' +
         '<td>' + (n.fecha_publicacion || '') + '</td>' +
         '<td>' + esc(n.titulo) + '</td>' +
         '<td>' + esc(n.categoria || '—') + '</td>' +
+        '<td>' + chips + '</td>' +
         '<td>' + (n.publicada ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
         '<td class="acciones-fila"><button class="btn btn--fantasma btn--mini" data-editar="' + n.id + '">Editar</button>' +
         '<button class="btn btn--peligro" data-borrar="' + n.id + '" data-tit="' + esc(n.titulo) + '">Borrar</button></td>' +
@@ -2028,6 +2080,10 @@ document.addEventListener('DOMContentLoaded', function () {
     $('n-id').value = n.id || '';
     $('n-titulo').value = n.titulo || '';
     $('n-categoria').value = n.categoria || '';
+    var secs = Array.isArray(n.secciones) ? n.secciones : [];
+    $('n-secciones').querySelectorAll('input[type=checkbox]').forEach(function (c) {
+      c.checked = secs.indexOf(c.value) !== -1;
+    });
     $('n-fecha').value = n.fecha_publicacion || '';
     $('n-excerpt').value = n.excerpt || '';
     $('n-contenido').value = n.contenido || '';
@@ -2064,6 +2120,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var datos = {
       titulo: $('n-titulo').value.trim(),
       categoria: $('n-categoria').value || null,
+      /* Lista vacía, no null: la columna es `not null default '{}'` y así una
+         noticia a la que se le quitan todas las secciones se queda sin
+         secciones de verdad, en vez de fallar al guardar. */
+      secciones: [].map.call($('n-secciones').querySelectorAll('input[type=checkbox]:checked'), function (c) { return c.value; }),
       fecha_publicacion: $('n-fecha').value || null,
       excerpt: $('n-excerpt').value.trim() || null,
       contenido: $('n-contenido').value.trim() || null,

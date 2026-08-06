@@ -43,8 +43,20 @@
   .not-cab .titulo-bloque { display: flex; flex-direction: column; gap: 8px; }
   .not-cab .display { font-size: clamp(44px, 8vw, 60px); }
 
-  /* Filtros por categoría (marcadores estáticos, tipo pastilla) */
-  .filtros { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  /* Las dos filas de filtros: rótulo a la izquierda, pastillas a la derecha.
+     Alineadas a la IZQUIERDA, no a la derecha como estaban: con diez pastillas
+     en una fila y cinco en la otra, alinearlas a la derecha deja los dos
+     bloques descuadrados y el ojo no encuentra dónde empieza cada uno. */
+  .not-filtros { display: flex; flex-direction: column; gap: 10px; }
+  .not-fila { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .not-rot {
+    flex: 0 0 auto; min-width: 66px;
+    font-size: 12px; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--texto-suave);
+  }
+
+  /* Filtros (marcadores estáticos, tipo pastilla) */
+  .filtros { display: flex; gap: 8px; flex-wrap: wrap; }
   .filtro {
     padding: 9px 15px; border-radius: var(--radio-pastilla);
     background: #fff; border: 1px solid var(--linea-borde);
@@ -107,7 +119,9 @@
      =========================================================== */
   @media (max-width: 900px) {
     .not-cab { align-items: flex-start; }
-    .filtros { justify-content: flex-start; }
+    /* El rótulo pasa a su propio renglón: al lado de diez pastillas que se
+       parten en tres líneas, se queda colgando y descuadra la fila entera. */
+    .not-fila { flex-direction: column; align-items: flex-start; gap: 6px; }
     .destacada { grid-template-columns: 1fr; }
     .destacada .marco { min-height: 240px; }
     .rejilla { grid-template-columns: 1fr 1fr; }
@@ -133,13 +147,44 @@
   <!-- ================= CABECERA DE PÁGINA + FILTROS ================= -->
   <section class="seccion" style="padding-bottom:0;">
     <div class="contenedor">
-      <div class="not-cab">
-        <div class="filtros" id="filtros">
-          <span class="filtro activo" data-cat="">Todas</span>
-          <span class="filtro" data-cat="competicion">Competición</span>
-          <span class="filtro" data-cat="club">Club</span>
-          <span class="filtro" data-cat="temporada">Temporada</span>
-          <span class="filtro" data-cat="resultado">Resultados</span>
+      <!-- DOS FILAS, DOS PREGUNTAS DISTINTAS, y por eso cada una lleva su
+           rótulo: sin él, dos hileras de pastillas iguales se leen como una
+           sola lista partida en dos y nadie entiende que se cruzan.
+
+           «DE QUÉ» va primero porque es como busca la gente de verdad: quien
+           tiene un hijo en la escuela quiere lo de la escuela, no «lo de tipo
+           temporada». Y porque el filtro de tipo, él solo, apenas separa nada:
+           78 de las 102 noticias son «competicion».
+
+           Ojo con «Competición», que sale en las dos filas queriendo decir
+           cosas distintas: arriba es la sección de atletismo en pista y por eso
+           se rotula «Pista»; abajo es el tipo de noticia. Los rótulos de la
+           izquierda son lo que evita que se confundan. -->
+      <div class="not-filtros">
+        <div class="not-fila">
+          <span class="not-rot" id="rot-seccion">De qué</span>
+          <div class="filtros" id="filtros-seccion" role="group" aria-labelledby="rot-seccion">
+            <span class="filtro activo" data-sec="">Todo el club</span>
+            <span class="filtro" data-sec="escuela">Escuela</span>
+            <span class="filtro" data-sec="escuela-natacion">Escuela de natación</span>
+            <span class="filtro" data-sec="competicion">Pista</span>
+            <span class="filtro" data-sec="running">Running</span>
+            <span class="filtro" data-sec="natacion">Natación</span>
+            <span class="filtro" data-sec="montana">Montaña</span>
+            <span class="filtro" data-sec="triatlon">Triatlón</span>
+            <span class="filtro" data-sec="cubo">El Cubo</span>
+            <span class="filtro" data-sec="campus">Campus</span>
+          </div>
+        </div>
+        <div class="not-fila">
+          <span class="not-rot" id="rot-tipo">Qué tipo</span>
+          <div class="filtros" id="filtros" role="group" aria-labelledby="rot-tipo">
+            <span class="filtro activo" data-cat="">Todas</span>
+            <span class="filtro" data-cat="competicion">Competición</span>
+            <span class="filtro" data-cat="club">Club</span>
+            <span class="filtro" data-cat="temporada">Temporada</span>
+            <span class="filtro" data-cat="resultado">Resultados</span>
+          </div>
         </div>
       </div>
 
@@ -163,7 +208,21 @@ document.addEventListener('DOMContentLoaded', async function () {
   var rejilla = document.getElementById('rejilla-noticias');
   var estado = document.getElementById('estado-noticias');
   var filtros = document.getElementById('filtros');
+  var filtrosSec = document.getElementById('filtros-seccion');
+  var cat = '', sec = '';   /* lo elegido en cada fila; '' es «sin filtrar» */
   var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  /* El nombre bonito de cada sección. La base las guarda sin acentos y con
+     guiones ("escuela-natacion"), que es como se llaman las carpetas de la web. */
+  var SECCIONES = { 'escuela':'la escuela', 'escuela-natacion':'la escuela de natación',
+    'campus':'el campus', 'competicion':'pista', 'running':'running', 'natacion':'natación',
+    'montana':'montaña', 'triatlon':'triatlón', 'cubo':'El Cubo' };
+  function nombreSeccion(s){ return SECCIONES[s] || esc(s); }
+  /* «de» + «el» es «del», y en un aviso que lee un socio eso se nota.
+     Comparando en minúsculas porque El Cubo lleva mayúscula, que es su nombre. */
+  function deSeccion(s){
+    var t = nombreSeccion(s);
+    return t.slice(0, 3).toLowerCase() === 'el ' ? 'del ' + t.slice(3) : 'de ' + t;
+  }
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   function fechaCorta(f){ if(!f) return ''; var p=String(f).split('-'); return p.length===3 ? (+p[2])+' '+MESES[(+p[1])-1] : esc(f); }
   /* La base guarda la categoría sin acentos ("competicion"); aquí se muestra bien escrita. */
@@ -182,11 +241,23 @@ document.addEventListener('DOMContentLoaded', async function () {
   }
   estado.style.display = 'none';
 
-  function pinta(cat) {
-    var lista = cat ? todas.filter(function(n){ return n.categoria === cat; }) : todas;
+  /* Los dos filtros se cruzan: sección Y tipo. Una noticia sin secciones
+     no aparece en ningún filtro de sección —no se supone a qué deporte
+     pertenece— pero sigue saliendo en «Todo el club». */
+  function pinta() {
+    var lista = todas.filter(function(n){
+      if (cat && n.categoria !== cat) return false;
+      if (sec && (!Array.isArray(n.secciones) || n.secciones.indexOf(sec) === -1)) return false;
+      return true;
+    });
     if (!lista.length) {
       destCont.innerHTML = ''; rejilla.innerHTML = '';
-      estado.style.display = ''; estado.textContent = 'No hay noticias en esta categoría todavía.';
+      estado.style.display = '';
+      /* Decir CUÁL de los dos filtros deja la lista vacía, porque con dos
+         a la vez «no hay noticias» no dice dónde tocar para arreglarlo. */
+      estado.textContent = (sec && cat) ? 'No hay noticias ' + deSeccion(sec) + ' de ese tipo. Prueba a quitar uno de los dos filtros.'
+                         : sec          ? 'Todavía no hay noticias ' + deSeccion(sec) + '.'
+                         :                'No hay noticias de ese tipo todavía.';
       return;
     }
     estado.style.display = 'none';
@@ -209,12 +280,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     }).join('');
   }
 
-  pinta('');
+  pinta();
   filtros.addEventListener('click', function (e) {
     var f = e.target.closest('.filtro'); if (!f) return;
     [].forEach.call(filtros.children, function(c){ c.classList.remove('activo'); });
     f.classList.add('activo');
-    pinta(f.getAttribute('data-cat'));
+    cat = f.getAttribute('data-cat');
+    pinta();
+  });
+  filtrosSec.addEventListener('click', function (e) {
+    var f = e.target.closest('.filtro'); if (!f) return;
+    [].forEach.call(filtrosSec.children, function(c){ c.classList.remove('activo'); });
+    f.classList.add('activo');
+    sec = f.getAttribute('data-sec');
+    pinta();
   });
 });
 </script>
