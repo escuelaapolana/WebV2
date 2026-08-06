@@ -21,6 +21,16 @@
   .pf-wrap .sub { font-size:14px; color: var(--texto-suave); display:block; margin-bottom: 4px; }
   .migas { display:inline-flex; align-items:center; min-height:44px; margin-bottom:4px; color: var(--azul-oscuro); font-weight:600; text-decoration:none; font-size:14px; padding:0 2px 0 0; }
 
+  /* Contraseña: casillas normales, no un botón que manda un correo. */
+  .pf-ver { display:flex; align-items:center; gap:9px; margin-top:12px; font-size:15px; color: var(--texto); cursor:pointer; min-height:44px; }
+  .pf-ver input { width:20px; height:20px; flex:0 0 20px; margin:0; accent-color:#2F6FA8; }
+  .pf-olvido { margin:14px 0 0; font-size:14px; color: var(--texto-suave); line-height:1.5; }
+  .pf-olvido[hidden] { display:none; }
+  .pf-enlace { background:none; border:0; padding:0; font:inherit; font-size:14px; color: var(--azul-oscuro);
+               font-weight:600; cursor:pointer; text-decoration:underline; }
+  .pf-enlace:hover { color: var(--azul-hover); }
+  #pf-pass-form[hidden], #pf-vieja-caja[hidden] { display:none; }
+
   .tarjeta { background:#fff; border:1px solid var(--linea); border-radius:14px; padding: clamp(18px,3vw,26px); margin-top:18px; }
   .tarjeta h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size:21px; color: var(--navy); margin: 0 0 6px; }
   .intro { color: var(--texto-suave); font-size:15px; line-height:1.55; margin:0 0 8px; }
@@ -252,12 +262,58 @@
         papel más hay que pedírselo a administración: elegir no concede nada.</p>
     </section>
 
-    <!-- ---------- CONTRASEÑA ---------- -->
+    <!-- ---------- CONTRASEÑA ----------
+         ⚠️ AQUÍ SE PONE Y SE CAMBIA, SIN CORREO DE POR MEDIO.
+
+         Antes esto decía «por seguridad, la contraseña no se escribe aquí» y
+         mandaba un correo con un enlace. No hay tal seguridad: quien está
+         leyendo esta página YA HA DEMOSTRADO QUE ES ÉL —tiene la sesión
+         abierta— y mandarle un correo para que vuelva no comprueba nada que no
+         esté comprobado. Lo que sí hace es meter tres cosas que pueden fallar:
+         que el correo llegue, que no choque con el tope de envíos por hora, y
+         que el enlace no caduque.
+
+         Y falló de verdad. Alguien entró por primera vez con un enlace, quiso
+         ponerse contraseña, se topó con el tope de correos del servidor, y se
+         quedó sin poder volver a entrar: sin contraseña y sin correos que
+         gastar. Dando vueltas para poner una contraseña que podía haber escrito
+         aquí mismo en diez segundos.
+
+         Quien no tiene ninguna, la pone. Quien ya tiene, escribe la de antes
+         —que se comprueba de verdad, volviendo a entrar con ella— y la nueva. -->
     <section class="tarjeta">
-      <h2>Contraseña</h2>
-      <p class="intro">Por seguridad, la contraseña no se escribe aquí. Te mandamos un correo con un enlace y la cambias tú desde ahí.</p>
-      <button type="button" class="btn btn--fantasma" id="pf-pass">Enviarme el correo para cambiarla</button>
+      <h2 id="pf-pass-tit">Contraseña</h2>
+      <p class="intro" id="pf-pass-intro">Comprobando…</p>
+
+      <div id="pf-pass-form" hidden>
+        <div id="pf-vieja-caja" hidden>
+          <label for="pf-vieja">Tu contraseña de ahora</label>
+          <input type="password" id="pf-vieja" autocomplete="current-password"
+                 autocapitalize="none" autocorrect="off" spellcheck="false">
+        </div>
+        <label for="pf-nueva">Contraseña nueva</label>
+        <input type="password" id="pf-nueva" autocomplete="new-password"
+               autocapitalize="none" autocorrect="off" spellcheck="false">
+        <label for="pf-nueva2">Repítela</label>
+        <input type="password" id="pf-nueva2" autocomplete="new-password"
+               autocapitalize="none" autocorrect="off" spellcheck="false">
+        <label class="pf-ver" for="pf-ver-clave">
+          <input type="checkbox" id="pf-ver-clave">
+          <span>Ver lo que escribo</span>
+        </label>
+        <div style="margin-top:14px;">
+          <button type="button" class="btn btn--primario" id="pf-guardar-clave">Guardar la contraseña</button>
+        </div>
+      </div>
+
       <p class="msg" id="pf-msg-pass"></p>
+
+      <!-- La salida de siempre, para quien SÍ la ha olvidado y no puede
+           escribir la de antes. Deja de ser el camino principal. -->
+      <p class="pf-olvido" id="pf-olvido-caja" hidden>
+        ¿No te acuerdas de la que tienes?
+        <button type="button" class="pf-enlace" id="pf-pass">Que me llegue un correo para cambiarla</button>
+      </p>
     </section>
 
   </div>
@@ -728,6 +784,72 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      5 · CONTRASEÑA
      Nunca se escribe aquí: se manda un correo con enlace.
      ------------------------------------------------------------ */
+  /* ============================================================
+     PONER O CAMBIAR LA CONTRASEÑA, AQUÍ MISMO
+     ------------------------------------------------------------
+     Sin correo. Quien lee esta página tiene la sesión abierta, así que ya está
+     identificado: mandarle un enlace no comprueba nada y sí añade tres cosas
+     que pueden fallar (que llegue, el tope por hora, y que no caduque).
+
+     La única comprobación que SÍ hace falta es la de quien ya tiene contraseña:
+     que sepa la de antes. Y se comprueba de verdad, volviendo a entrar con ella,
+     porque `updateUser` no la pide y sin esto cualquiera que pillara un móvil
+     desbloqueado podría cambiarla.
+     ============================================================ */
+  (async function montarClave(){
+    var tit = $('pf-pass-tit'), intro = $('pf-pass-intro'), form = $('pf-pass-form');
+    var cajaVieja = $('pf-vieja-caja'), olvido = $('pf-olvido-caja');
+    var yaTiene = false;
+    try {
+      var u = await sb.auth.getUser();
+      var meta = u && u.data && u.data.user && u.data.user.user_metadata;
+      yaTiene = !!(meta && meta.clave_puesta === true);
+    } catch (e) { /* si no se sabe, se trata como que no tiene: pedirla de más molesta menos que no dejar ponerla */ }
+
+    tit.textContent = yaTiene ? 'Cambiar la contraseña' : 'Ponte una contraseña';
+    intro.textContent = yaTiene
+      ? 'Escribe la que tienes ahora y la nueva. Se cambia al momento.'
+      : 'Todavía no tienes ninguna. Ponte una y entrarás con tu correo y ella, sin depender de que te llegue un enlace.';
+    cajaVieja.hidden = !yaTiene;
+    olvido.hidden = !yaTiene;      /* sin contraseña no hay nada que olvidar */
+    form.hidden = false;
+
+    $('pf-ver-clave').addEventListener('change', function(){
+      var t = this.checked ? 'text' : 'password';
+      ['pf-vieja','pf-nueva','pf-nueva2'].forEach(function(id){ if($(id)) $(id).type = t; });
+    });
+
+    $('pf-guardar-clave').addEventListener('click', async function(){
+      var mp = $('pf-msg-pass'), boton = this;
+      var vieja = $('pf-vieja').value, nueva = $('pf-nueva').value, otra = $('pf-nueva2').value;
+      if (nueva.length < 8) { aviso(mp, 'La contraseña tiene que tener al menos 8 caracteres.', 'error'); $('pf-nueva').focus(); return; }
+      if (nueva !== otra)   { aviso(mp, 'Las dos contraseñas no son iguales. Míralas y vuelve a probar.', 'error'); $('pf-nueva2').focus(); return; }
+      if (yaTiene && !vieja){ aviso(mp, 'Escribe primero la contraseña que tienes ahora.', 'error'); $('pf-vieja').focus(); return; }
+
+      boton.disabled = true;
+      aviso(mp, 'Guardando…');
+      try {
+        if (yaTiene) {
+          var correoYo = (await sb.auth.getUser()).data.user.email;
+          var comp = await sb.auth.signInWithPassword({ email: correoYo, password: vieja });
+          if (comp.error) { aviso(mp, 'La contraseña de ahora no es esa. Si no te acuerdas, pide el correo de abajo.', 'error'); $('pf-vieja').focus(); return; }
+        }
+        var r = await sb.auth.updateUser({ password: nueva, data: { clave_puesta: true } });
+        if (r && r.error) throw r.error;
+        ['pf-vieja','pf-nueva','pf-nueva2'].forEach(function(id){ if($(id)) $(id).value = ''; });
+        yaTiene = true; cajaVieja.hidden = false; olvido.hidden = false;
+        tit.textContent = 'Cambiar la contraseña';
+        intro.textContent = 'Escribe la que tienes ahora y la nueva. Se cambia al momento.';
+        aviso(mp, 'Listo. A partir de ahora entras con tu correo y esta contraseña.', 'ok');
+      } catch (e) {
+        var t = String((e && e.message) || '').toLowerCase();
+        aviso(mp, /weak|short|least/.test(t)
+          ? 'Esa contraseña es demasiado floja. Prueba con una más larga.'
+          : 'No se ha podido guardar' + (e && e.message ? ' (' + e.message + ')' : '') + '. Vuelve a probar.', 'fallo');
+      } finally { boton.disabled = false; }
+    });
+  })();
+
   $('pf-pass').addEventListener('click', async function () {
     var boton = this;
     var mp = $('pf-msg-pass');
