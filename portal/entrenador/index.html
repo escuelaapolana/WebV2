@@ -19,6 +19,7 @@
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/descansos.js"></script>
+<script src="../../assets/js/estadisticas.js" defer></script>
 <style>
   body { background: var(--crema-media); }
   .en-wrap { max-width: 1060px; margin: 0 auto; padding: clamp(20px,4vw,36px) clamp(14px,4vw,32px); }
@@ -2964,6 +2965,45 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var r3b = await sb.from('sesiones').select('id,fecha,titulo,grupo_id,publicada').in('id', sesIds);
       if(!r3b.error && r3b.data) r3b.data.forEach(function(s){ FICHA.sesiones[s.id] = s; });
     }
+    /* ------------------------------------------------------------
+       CUÁNTO LLEVA HECHO · lo mismo que ve él en su portal
+       ------------------------------------------------------------
+       La ficha contaba las últimas cinco cosas que dijo el atleta y su
+       asistencia de treinta días, y con eso no se contesta la pregunta
+       que se hace un entrenador al abrirla: «¿este chaval está haciendo
+       el volumen que le he puesto?». Los metros estaban apuntados desde
+       el primer día; solo que no había dónde verlos sumados.
+
+       Es EL MISMO cálculo que ve el atleta (`assets/js/estadisticas.js`),
+       a propósito: si el entrenador mira una cifra y el atleta otra, la
+       conversación empieza discutiendo cuál de las dos es la buena.
+
+       Los cinco registros de arriba no sirven para esto —son cinco y sin
+       las series dentro—, así que se pide otra vez con lo que hace falta.
+       Va al final de la carga porque es lo más pesado de la ficha y lo
+       último que se mira: si falla o tarda, lo demás ya está pintado.
+       ------------------------------------------------------------ */
+    FICHA.volumen = null;
+    try {
+      var rv = await sb.from('registros_sesion')
+        .select('sesion_id,created_at,tiempos_reales,rpe,sensacion_general')
+        .eq('atleta_id', atletaId).gte('created_at', addDias(todayISO, -7*13))
+        .order('created_at', { ascending:false }).limit(250);
+      if(!rv.error && rv.data && rv.data.length){
+        var idsV = rv.data.map(function(r){ return r.sesion_id; })
+                     .filter(function(x,i,a){ return x && a.indexOf(x)===i; });
+        var sesV = [];
+        if(idsV.length){
+          var qv = await sb.from('sesiones').select('id,fecha,deporte,deporte_2').in('id', idsV);
+          if(!qv.error && qv.data) sesV = qv.data;
+        }
+        /* Si mientras se pedía esto el entrenador cerró la ficha y abrió la
+           de otro atleta, lo que llega aquí son los metros del PRIMERO: no
+           se escriben, o el segundo mostraría el volumen del otro. */
+        if(window.APOLANA_ESTADISTICAS && FICHA && FICHA.atletaId===atletaId)
+          FICHA.volumen = window.APOLANA_ESTADISTICAS.resumir(sesV, rv.data, 12);
+      }
+    } catch(e){}
     var r4 = await sb.from('notas_atleta').select('id,texto,created_at').eq('atleta_id', atletaId).order('created_at', { ascending:false }).limit(3);
     if(!r4.error && r4.data) FICHA.notas = r4.data;
     /* Sus repeticiones máximas, de la más reciente a la más antigua: de aquí
@@ -3171,6 +3211,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="acciones"><button class="btn btn--neutro btn--sm" id="fa-rm-ok">Guardar la repetición máxima</button></div>';
   }
 
+  /* El bloque de volumen, o nada. Si no hay nada apuntado en trece semanas
+     no se pinta un apartado vacío: en una ficha que ya es larga, un título
+     con «todavía no hay datos» debajo es una línea que hay que leer para
+     descubrir que no dice nada. */
+  function volumenFichaHTML(){
+    if(!FICHA || !FICHA.volumen || !window.APOLANA_ESTADISTICAS) return '';
+    var h = window.APOLANA_ESTADISTICAS.html(FICHA.volumen, {});
+    if(!h) return '';
+    return '<div class="ficha-bloque" id="fa-bloque-volumen"><h4>Cuánto lleva hecho</h4>'+h+
+      '<p class="pista" style="margin-bottom:0;">Lo mismo que ve él en su portal, de sus últimas doce semanas.</p></div>';
+  }
+
   function pintarFicha(){
     if(!FICHA) return;
     var caja = document.querySelector('#ficha-fondo .ficha');
@@ -3324,6 +3376,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div>'+
       '<div class="ficha-bloque" id="fa-bloque-marcas"><h4>Mejores marcas</h4>'+marcasHTML(at)+'</div>'+
       '<div class="ficha-bloque" id="fa-bloque-rm"><h4>Repeticiones máximas (RM)</h4>'+rmHTML(at)+'</div>'+
+      volumenFichaHTML()+
       '<div class="ficha-bloque"><h4>Asistencia reciente</h4>'+asisHTML+'</div>'+
       '<div class="ficha-bloque"><h4>Faltas avisadas por la familia</h4>'+ausHTML+'</div>'+
       '<div class="ficha-bloque"><h4>Feedback reciente</h4>'+fbHTML+'</div>'+

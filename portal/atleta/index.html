@@ -14,6 +14,7 @@
 <script src="../../assets/js/datos.js" defer></script>
 <script src="../../assets/js/info-pagos.js" defer></script>
 <script src="../../assets/js/descansos.js" defer></script>
+<script src="../../assets/js/estadisticas.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <style>
   /* Cabecera de pantalla: sobre crema y sin barra de color. El navy se reserva
@@ -973,6 +974,66 @@
     .tabbar a.activo { color:#2F6FA8; }
     .tabbar a.activo span { font-weight:600; }
     .tabbar a.activo .ic { stroke-width:1.9; }
+  }
+
+  /* ============================================================
+     LA HOJA DE IMPRIMIR
+     ------------------------------------------------------------
+     En pantalla no existe: se construye al pulsar «Imprimir la semana»,
+     se pega al final del documento y se borra al terminar. Aquí está
+     escondida a propósito, para que ni siquiera parpadee mientras el
+     navegador prepara el papel.
+
+     En papel se invierte todo: desaparece la web —cabecera, barras,
+     menús, botones— y solo queda la hoja. Nada de colores de marca,
+     que en una impresora de tinta se comen un cartucho para nada y en
+     una láser salen grises indistinguibles: negro sobre blanco, que es
+     como se lee un informe.
+     ============================================================ */
+  .hoja { display:none; }
+  @media print {
+    /* Nada de la aplicación llega al papel. */
+    body > *:not(.hoja) { display:none !important; }
+    body { background:#fff; padding:0; margin:0; }
+    .hoja { display:block; color:#000; font-size:10.5pt; line-height:1.4; }
+    .hj-cab { display:flex; justify-content:space-between; align-items:baseline;
+      border-bottom:1.5pt solid #000; padding-bottom:6pt; margin-bottom:10pt; }
+    .hj-cab b { font-size:14pt; display:block; }
+    .hj-cab span { font-size:9pt; }
+    .hj-rango { font-size:10pt; white-space:nowrap; }
+    /* Un día no se parte entre dos hojas: leer el miércoles a caballo del
+       salto de página es justo lo que hace que un informe no se lea. */
+    .hj-dia { break-inside:avoid; page-break-inside:avoid; margin-bottom:9pt; }
+    /* Solo la primera letra en alta. Con `capitalize` salía «Lunes 3 Agosto»,
+       y en español el mes va en minúscula. */
+    .hj-dia > h2 { font-size:11pt; margin:0 0 4pt;
+      border-bottom:0.5pt solid #999; padding-bottom:2pt; }
+    .hj-dia > h2::first-letter { text-transform:uppercase; }
+    .hj-dia > h2 span { font-weight:400; font-size:9.5pt; }
+    .hj-dia.vacio > h2 { color:#666; border-bottom-style:dotted; }
+    .hj-dia.vacio p { margin:0 0 6pt; font-size:9.5pt; color:#666; }
+    .hj-ses { margin:0 0 7pt; }
+    .hj-ses h3 { font-size:10.5pt; margin:0 0 3pt; }
+    .hj-ses h3 span { font-weight:400; font-size:9pt; color:#444; margin-left:6pt; }
+    .hj-tabla { width:100%; border-collapse:collapse; font-size:9.5pt; }
+    .hj-tabla th, .hj-tabla td { text-align:left; padding:1.5pt 4pt; vertical-align:top; }
+    .hj-tabla thead th { font-size:8pt; text-transform:uppercase; letter-spacing:.05em;
+      border-bottom:0.5pt solid #000; }
+    .hj-tabla tbody tr { border-bottom:0.25pt solid #ddd; }
+    .hj-bl th { font-size:8.5pt; text-transform:uppercase; letter-spacing:.05em;
+      padding-top:5pt; border-bottom:0 !important; }
+    .hj-ej { width:34%; }
+    .hj-plan { width:33%; color:#444; }
+    /* Lo HECHO es lo que se viene a leer, así que es lo único en negrita. */
+    .hj-hecho { width:33%; font-weight:700; }
+    .hj-hecho i { font-weight:400; color:#999; font-style:normal; }
+    .hj-extra { font-size:8pt; color:#666; }
+    .hj-sensa, .hj-notas, .hj-sinreg, .hj-ent { margin:3pt 0 0; font-size:9.5pt; }
+    .hj-sinreg { color:#666; }
+    .hj-ent { border-left:1.5pt solid #000; padding-left:5pt; }
+    .hj-pie { margin-top:10pt; padding-top:5pt; border-top:0.5pt solid #999;
+      font-size:8.5pt; color:#444; }
+    @page { margin:14mm 12mm; }
   }
 </style>
 </head>
@@ -2228,7 +2289,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<button type="button" class="sem-btn ahora" id="sem-hoy">Hoy</button>'+
           '<button type="button" class="sem-btn" id="sem-next" aria-label="Semana siguiente">Siguiente ›</button>'+
           '<button type="button" class="sem-btn salto" id="sem-mes-next" aria-label="Cuatro semanas después">Mes »</button>'+
-        '</div></div>'+
+        '</div>'+
+        /* Aparte de los de moverse, y al otro extremo: no se navega con él.
+           Dice «Imprimir» y no «Descargar PDF» porque lo que hace es abrir
+           el diálogo de impresión del navegador —donde «Guardar como PDF»
+           es una de las opciones—. Prometer un PDF y abrir una impresora
+           sería mentir sobre lo que va a pasar al tocarlo. */
+        '<button type="button" class="sem-btn" id="sem-print">Imprimir la semana</button>'+
+        '</div>'+
         '<div class="sem-rango" id="sem-rango"><span class="ap-esq" data-esq="texto:1"></span></div>'+
         '<div class="dias cargando" id="sem-dias"></div>'+
       '</div>'+
@@ -3220,6 +3288,160 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      tira sigue empezando en lunes y no se salta ni se repite ninguna. */
   $('sem-mes-prev').addEventListener('click', function(){ irSemana(addDias(lunesVis,-28), null); });
   $('sem-mes-next').addEventListener('click', function(){ irSemana(addDias(lunesVis,28), null); });
+
+  /* ============================================================
+     IMPRIMIR LA SEMANA
+     ------------------------------------------------------------
+     Pedido para llevarle al fisio, al médico o al entrenador de fuera lo
+     que se ha hecho de verdad: tiempos, series, pesos y sensaciones de
+     los siete días, en un papel.
+
+     ⚠️ SIN LIBRERÍA DE PDF, Y ES UNA DECISIÓN, NO UNA CARENCIA.
+     Una librería de PDF en el navegador son casi dos megas que se
+     descargarían SIEMPRE, también las cuatrocientas veces al año que
+     nadie va a imprimir nada, y en el móvil de un chaval en la pista eso
+     se paga en datos y en espera. `window.print()` no pesa nada, sale
+     mejor compuesto —lo maqueta el navegador, con su tipografía y su
+     partición de páginas— y en el diálogo de imprimir hay «Guardar como
+     PDF» en todos los sistemas. El resultado es el mismo y el coste es
+     cero.
+
+     La hoja NO es la pantalla con otro CSS: se construye aparte. La
+     pantalla está llena de recuadros para escribir, botones de ✓ y
+     desplegables plegados, y todo eso en papel o sale en blanco o sale
+     estorbando. Aquí se escribe lo que se hizo, en texto.
+     ============================================================ */
+  function planLinea(f, dis){
+    var D=DESC();
+    var t='';
+    if(D && D.textoFila){ try { t=D.textoFila(f, dis)||''; } catch(e){} }
+    return t;
+  }
+  /* Lo que apuntó, serie a serie. Se lee del registro guardado —no de los
+     recuadros de la pantalla— para que imprimir un lunes de hace dos meses
+     salga igual de completo que imprimir hoy. */
+  function hechoLinea(reg, fid, key, f, s){
+    if(!reg || !reg.tiempos_reales) return '';
+    var tr=reg.tiempos_reales;
+    var e=(fid && tr[fid]) || (key && tr[key]) || null;
+    if(!e || !Array.isArray(e.series)) return '';
+    var D=DESC();
+    /* La misma medida que usó la pantalla al escribirlo —`medidaDe`, con el
+       deporte de la sesión—, no una inventada aquí: si no, los kilos del
+       gimnasio saldrían en el papel como si fueran tiempos. Y si el registro
+       guardó la suya, esa manda: es de cuando se apuntó. */
+    var medida = e.medida ? { clave: e.medida } : medidaDe(f, s);
+    var partes=[];
+    e.series.forEach(function(s){
+      if(!s || !s.hecha) return;
+      var t='';
+      if(D && D.textoSerieHecha){ try { t=D.textoSerieHecha(s, medida)||''; } catch(y){} }
+      if(t) partes.push(t);
+    });
+    return partes.join(' · ');
+  }
+  function hojaSemanaHTML(){
+    var lista=(SEM[lunesVis]||[]).slice().sort(function(a,b){ return a.fecha<b.fecha?-1:1; });
+    var NOM=['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
+    var dias='';
+    for(var i=0;i<7;i++){
+      var iso=addDias(lunesVis,i);
+      var ses=lista.filter(function(s){ return s.fecha===iso; });
+      var d=new Date(iso+'T00:00:00');
+      var cab='<h2>'+esc(NOM[i]+' '+d.getDate())+' <span>'+esc(mesLargo(iso))+'</span></h2>';
+      if(!ses.length){ dias+='<section class="hj-dia vacio">'+cab+'<p>Sin entrenamiento.</p></section>'; continue; }
+      var cuerpo=ses.map(function(s){
+        var dis=disciplinaDe(s);
+        var reg=REG[s.id]||null;
+        var bloques=Array.isArray(s.bloques)?s.bloques:[];
+        var filas='';
+        bloques.forEach(function(b,bi){
+          filas+='<tr class="hj-bl"><th colspan="3">'+esc(b.etiqueta||'Bloque')+'</th></tr>';
+          (b.filas||[]).forEach(function(f,fi){
+            var hecho=hechoLinea(reg, f.id, 'b'+bi+'f'+fi, f, s);
+            filas+='<tr>'+
+              '<td class="hj-ej">'+esc(f.ejercicio||'—')+'</td>'+
+              '<td class="hj-plan">'+esc(planLinea(f,dis))+'</td>'+
+              '<td class="hj-hecho">'+(hecho?esc(hecho):'<i>—</i>')+'</td></tr>';
+          });
+        });
+        /* Los ejercicios que añadió él y que no estaban en el plan. Salen
+           al final y marcados: en papel, sin la marca, parecería que el
+           entrenador los puso y no los puso nadie. */
+        if(reg && reg.tiempos_reales){
+          var puestos={};
+          bloques.forEach(function(b,bi){ (b.filas||[]).forEach(function(f,fi){
+            if(f.id) puestos[f.id]=true; puestos['b'+bi+'f'+fi]=true; }); });
+          Object.keys(reg.tiempos_reales).forEach(function(k){
+            if(puestos[k]) return;
+            var e=reg.tiempos_reales[k]; if(!e || !e.ejercicio) return;
+            var h=hechoLinea(reg, k, null, {}, s);
+            filas+='<tr><td class="hj-ej">'+esc(e.ejercicio)+' <span class="hj-extra">añadido</span></td>'+
+              '<td class="hj-plan"></td><td class="hj-hecho">'+(h?esc(h):'<i>—</i>')+'</td></tr>';
+          });
+        }
+        var sensa=[];
+        if(reg){
+          if(reg.estado==='no_hecho') sensa.push('No lo hizo');
+          else if(reg.estado==='a_medias') sensa.push('A medias'+(reg.series_previstas>0?' ('+reg.series_hechas+' de '+reg.series_previstas+' series)':''));
+          if(reg.rpe!=null) sensa.push('Esfuerzo '+reg.rpe+'/10 · '+palabraDe(PALABRA_RPE, reg.rpe));
+          if(reg.sensacion_general!=null) sensa.push('Sensación '+reg.sensacion_general+'/10 · '+palabraDe(PALABRA_SENSA, reg.sensacion_general));
+          if(reg.horas_sueno!=null) sensa.push(String(reg.horas_sueno).replace('.',',')+' h de sueño');
+          if(reg.peso_kg!=null) sensa.push(String(reg.peso_kg).replace('.',',')+' kg');
+        }
+        var notas=[];
+        if(reg){
+          if(reg.como_me_siento) notas.push(reg.como_me_siento);
+          /* Las molestias van etiquetadas: es lo único de la hoja sobre lo
+             que un fisio puede tener que hacer algo, y en blanco y negro no
+             hay ámbar que lo destaque. */
+          if(reg.molestias) notas.push('Molestias: '+reg.molestias);
+          if(reg.notas_atleta) notas.push('«'+reg.notas_atleta+'»');
+          if(reg.nota_no_hecho) notas.push('«'+reg.nota_no_hecho+'»');
+        }
+        var c=COMENT[s.id];
+        return '<article class="hj-ses">'+
+          '<h3>'+esc(s.titulo||'Entrenamiento')+'<span>'+esc(deporteCorto(s))+'</span></h3>'+
+          (filas?'<table class="hj-tabla"><thead><tr><th>Ejercicio</th><th>Previsto</th><th>Hecho</th></tr></thead><tbody>'+filas+'</tbody></table>':'')+
+          (sensa.length?'<p class="hj-sensa">'+esc(sensa.join(' · '))+'</p>':'')+
+          (notas.length?'<p class="hj-notas">'+esc(notas.join(' · '))+'</p>':'')+
+          (!reg?'<p class="hj-sinreg">Sin apuntar cómo fue.</p>':'')+
+          (c&&c.texto?'<p class="hj-ent"><b>Entrenador:</b> '+esc(c.texto)+'</p>':'')+
+        '</article>';
+      }).join('');
+      dias+='<section class="hj-dia">'+cab+cuerpo+'</section>';
+    }
+    var quien=[at.nombre, at.apellidos].filter(Boolean).join(' ');
+    return '<div class="hoja" id="hoja">'+
+      '<header class="hj-cab">'+
+        '<div><b>'+esc(quien||'Atleta')+'</b><span>Club Atletismo Apolana</span></div>'+
+        '<div class="hj-rango">'+esc(rangoTxt(lunesVis))+'</div>'+
+      '</header>'+dias+
+      /* De cuándo es el papel. Una hoja sin fecha de impresión, dentro de
+         un mes, no se sabe si está al día o si le faltan dos entrenos que
+         se apuntaron después. */
+      '<footer class="hj-pie">Impreso el '+esc(fechaDiaMes(todayISO))+' desde el portal del club.</footer>'+
+    '</div>';
+  }
+  $('sem-print').addEventListener('click', function(){
+    var vieja=document.getElementById('hoja');
+    if(vieja) vieja.remove();
+    var caja=document.createElement('div');
+    caja.innerHTML=hojaSemanaHTML();
+    document.body.appendChild(caja.firstChild);
+    /* Se limpia SIEMPRE, se imprima o se cancele: `afterprint` salta en los
+       dos casos. Si no se limpiara, la hoja se quedaría escondida en el
+       documento y la siguiente impresión sacaría dos. El `setTimeout` es
+       para Safari, que dispara `afterprint` antes de tener el papel hecho. */
+    function limpiar(){
+      window.removeEventListener('afterprint', limpiar);
+      setTimeout(function(){
+        var h=document.getElementById('hoja'); if(h) h.remove();
+      }, 300);
+    }
+    window.addEventListener('afterprint', limpiar);
+    window.print();
+  });
 
   /* ============================================================
      EL HISTORIAL (entrega 9, 3a)
@@ -4673,6 +4895,53 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }).join('')+'</div>';
   }
 
+  /* ------------------------------------------------------------
+     LO QUE LLEVAS HECHO · metros, kilómetros y esfuerzo por semana
+     ------------------------------------------------------------
+     Se pide APARTE de «la última vez», aunque las dos consultas miren la
+     misma tabla, porque no piden lo mismo: aquella quiere los CUARENTA
+     registros más recientes de cualquier fecha —para proponerte el peso
+     que pusiste la última vez, sea de cuando sea—, y esta quiere DOCE
+     SEMANAS enteras, aunque sean doscientos registros. Estirar la de
+     arriba a doscientas filas para ahorrarse esta haría que cada vez que
+     abres el entreno del día viajaran doscientos registros con sus
+     series dentro, y eso se paga en el móvil, en la pista, con datos.
+
+     Y hace falta la SESIÓN además del registro: el registro dice qué
+     hiciste, pero de qué deporte era y de qué día lo dice la sesión.
+     ------------------------------------------------------------ */
+  var VOLUMEN=null;        // el resumen ya calculado, o null si no se pudo
+  var VOLUMEN_FALLO=false;
+  async function cargarVolumen(){
+    if(VOLUMEN) return VOLUMEN;
+    VOLUMEN_FALLO=false;
+    try {
+      var desde=addDias(todayISO,-7*13);   // trece semanas para que las doce salgan enteras
+      var rg=await sb.from('registros_sesion')
+        .select('sesion_id,created_at,tiempos_reales,rpe,sensacion_general')
+        .eq('atleta_id',at.id).gte('created_at',desde)
+        .order('created_at',{ascending:false}).limit(250);
+      if(rg.error||!rg.data||!rg.data.length){ if(rg.error) VOLUMEN_FALLO=true; return null; }
+      var ids=rg.data.map(function(r){ return r.sesion_id; })
+               .filter(function(x,i,a){ return x && a.indexOf(x)===i; });
+      var ses=[];
+      if(ids.length){
+        var q=await sb.from('sesiones').select('id,fecha,deporte,deporte_2').in('id',ids);
+        if(q.error){ VOLUMEN_FALLO=true; return null; }
+        ses=q.data||[];
+      }
+      VOLUMEN=window.APOLANA_ESTADISTICAS
+        ? window.APOLANA_ESTADISTICAS.resumir(ses,rg.data,12) : null;
+      return VOLUMEN;
+    } catch(e){ VOLUMEN_FALLO=true; return null; }
+  }
+  /* Si la consulta falló NO se dice «todavía no hay nada»: eso sería dar por
+     mirado lo que no se ha podido mirar. Se calla, que es lo honesto. */
+  function volumenHTML(){
+    if(VOLUMEN_FALLO || !VOLUMEN || !window.APOLANA_ESTADISTICAS) return '';
+    return window.APOLANA_ESTADISTICAS.html(VOLUMEN,{ titulo:'Lo que llevas hecho · últimas semanas' });
+  }
+
   async function cargarMarcas(){
     var cont=$('marcas-cont'); cont.innerHTML=APOLANA_UI.cargando('filas',5);
     var m=await pedirMarcas();
@@ -4685,6 +4954,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return;
     }
     MARCAS=m.data||[];
+    await cargarVolumen();
     if(!mkEscucha){
       mkEscucha=true;
       cont.addEventListener('click', function(ev){
@@ -4750,7 +5020,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       cont.innerHTML='<div class="vacio-caja"><div class="vc-ic" aria-hidden="true">'+icMarcas+'</div>'+
         '<h3>Todavía no hay marcas</h3>'+
         '<p>Apunta tus tiempos y distancias y verás aquí tus récords y cómo vas mejorando.</p>'+
-        '<button type="button" class="btn btn--primario" id="mk-ir">Añadir tu primera marca</button></div>';
+        '<button type="button" class="btn btn--primario" id="mk-ir">Añadir tu primera marca</button></div>'+
+        /* Sin marcas de competición, pero con entrenamientos apuntados, ya hay
+           mucho que enseñar. Si esto no estuviera, quien no compite abriría
+           esta pantalla y la encontraría vacía para siempre. */
+        volumenHTML()+fuerzaHTML();
       var irMk=$('mk-ir');
       if(irMk) irMk.addEventListener('click', function(){
         var f=$('mk-form'), b=$('mk-abrir');
@@ -4765,7 +5039,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       cont.innerHTML=filtro+APOLANA_UI.vacio(
         mkFiltro==='competicion' ? 'Todavía no hay marcas de competición' : 'Todavía no hay marcas de entrenamiento',
         'Tus otras marcas siguen guardadas. Cuando apuntes una y digas dónde la hiciste, aparecerá en este apartado.',
-        '<button type="button" class="ap-btn" data-mk-f="todas">Ver todas mis marcas</button>');
+        '<button type="button" class="ap-btn" data-mk-f="todas">Ver todas mis marcas</button>')+
+        volumenHTML()+fuerzaHTML();
       return;
     }
 
@@ -4842,7 +5117,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       ? '<div class="lista-tit"><span class="et">Progresión</span></div><div class="graficos">'+graficos+'</div>'
       : '<p class="vacio" style="margin-bottom:14px;">Con dos marcas o más de una misma prueba verás aquí tu evolución.</p>';
 
-    cont.innerHTML=filtro+mejorHtml+porPruebaHtml+ultimas+progHtml+fuerzaHTML();
+    cont.innerHTML=filtro+mejorHtml+porPruebaHtml+ultimas+progHtml+volumenHTML()+fuerzaHTML();
   }
 
   /* ------------------------------------------------------------
