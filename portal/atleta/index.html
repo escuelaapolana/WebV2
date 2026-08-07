@@ -186,6 +186,11 @@
   .ej-nom { font-size:17px; font-weight:500; line-height:1.3; color: var(--navy); overflow-wrap:anywhere; }
   .ej-plan { font-size:14px; line-height:1.35; color: var(--texto-suave); overflow-wrap:anywhere; }
   .ej-plan b { font-weight:600; color: var(--texto); }
+  /* La referencia del otro día: mismo cuerpo que el plan pero en azul, para que
+     se distinga de un vistazo de lo que te MANDAN hacer hoy. Una cosa es la
+     orden y otra el recuerdo. */
+  .ej-plan.ej-ultima { color: var(--azul-oscuro); }
+  .ej-plan.ej-ultima b { color: var(--azul-oscuro); font-weight:600; }
   /* ------------------------------------------------------------
      TU TOPE · pieza 6 de la maqueta
      Es una ETIQUETA, no un bloque: se mira de reojo al empezar la
@@ -1464,6 +1469,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cab='<div class="ej-cab"><span class="ej-txt">'+
       '<span class="ej-nom">'+esc(titulo)+'</span>'+
       linea+
+      ultimaVezHTML(titulo, med)+
       (motivo?'<span class="ej-plan ej-motivo">'+esc(motivo)+'</span>':'')+
       materialHTML(f, dis, s, guardado&&guardado.material, leer)+
       '</span>'+(tope?'<span class="ej-tope">'+esc(tope)+'</span>':'')+'</div>';
@@ -1603,6 +1609,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      por uno de 200 si la pista está ocupada—, y si en pista no hubiera por
      dónde decirlo, el historial volvería a guardar lo que no se hizo. Si no
      caben en una línea, bajan a la siguiente. */
+  /* ------------------------------------------------------------
+     LA ÚLTIMA VEZ QUE HICISTE ESTE EJERCICIO
+     ------------------------------------------------------------
+     Se recogía desde siempre y NO SE ENSEÑABA EN NINGÚN SITIO: el dato se
+     guardaba en memoria y solo se usaba para sugerir nombres de ejercicios.
+     Ahora sale debajo del plan, que es donde miras antes de cargar la barra.
+
+     Van TODAS las series, no la última: «15 kg × 10» puede venir de 11-10-10
+     —irse cayendo— o de 5-8-10, que es subir, y para decidir si hoy toca más
+     peso hace falta ver la serie entera.
+     ------------------------------------------------------------ */
+  function haceCuanto(iso){
+    if(!iso) return '';
+    var d=Math.round((Date.now()-new Date(iso).getTime())/86400000);
+    if(d<=0) return 'hoy';
+    if(d===1) return 'ayer';
+    if(d<7)  return 'hace '+d+' días';
+    if(d<14) return 'hace una semana';
+    if(d<31) return 'hace '+Math.round(d/7)+' semanas';
+    return 'hace más de un mes';
+  }
+  function ultimaVezHTML(nombre, med){
+    if(med && med.clave==='hecho') return '';      /* ahí no hay número que comparar */
+    var u=ULTIMA_EJ[claveEjercicio(nombre)];
+    if(!u) return '';
+    var lista=(u.todas && u.todas.length) ? u.todas : (u.txt?[u.txt]:[]);
+    if(!lista.length) return '';
+    var cuando=haceCuanto(u.fecha);
+    return '<span class="ej-plan ej-ultima">La última vez'+(cuando?' ('+esc(cuando)+')':'')+': '+
+           '<b>'+lista.map(esc).join(' · ')+'</b></span>';
+  }
+
   function pieHTML(med, cols, esExtra){
     var uni=unidadRecordada();
     var hayUni=cols.some(function(c){ return c.uni; });
@@ -2490,9 +2528,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           var txt='';
           if(D && D.textoSerieHecha){ try { txt=D.textoSerieHecha(buena,{clave:e.medida||'tiempo'})||''; } catch(x){} }
           if(!txt) return;
+          /* ⚠️ SE GUARDAN TODAS LAS SERIES, NO SOLO LA ÚLTIMA.
+             Con una sola no se decide nada: «15 kg × 10» puede venir de
+             11-10-10 —que es irse cayendo— o de 5-8-10, que es subir. Para
+             saber si hoy toca subir peso hace falta ver la serie entera. */
+          var todas=[];
+          if(Array.isArray(e.series)) e.series.forEach(function(x){
+            if(!x || !x.hecha) return;
+            if(!(x.peso||x.reps||x.tiempo||x.distancia)) return;
+            var t2='';
+            if(D && D.textoSerieHecha){ try { t2=D.textoSerieHecha(x,{clave:e.medida||'tiempo'})||''; } catch(y){} }
+            if(t2) todas.push(t2);
+          });
           /* El nombre tal y como se escribe, además de la llave sin tildes: es
              lo que se enseña en las sugerencias de «los que ya haces». */
-          ULTIMA_EJ[clave]={ txt: txt, campos: buena, nom: String(e.ejercicio) };
+          ULTIMA_EJ[clave]={ txt: txt, todas: todas, fecha: (reg.created_at||''), campos: buena, nom: String(e.ejercicio) };
         });
       });
     } catch(e){}
