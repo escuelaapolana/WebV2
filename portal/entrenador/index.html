@@ -4637,6 +4637,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* «Pasárselo a otro día» va y viene con «Duplicar»: los dos necesitan un
        entrenamiento ya guardado, porque los dos parten de una copia suya. */
     var pas = $('pl-pasar');
+    var bor = $('pl-borrar');
     if(!pill) return;
     var fecha = $('pl-fecha') ? $('pl-fecha').value : '';
     var titulo = $('pl-titulo') ? $('pl-titulo').value.trim() : '';
@@ -4651,6 +4652,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
       if(dup) dup.hidden = true;
       if(pas) pas.hidden = true;
+      if(bor) bor.hidden = true;
       cerrarPasar();
       return;
     }
@@ -4664,6 +4666,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
       if(dup) dup.hidden = false;
       if(pas) pas.hidden = false;
+      if(bor) bor.hidden = false;
       return;
     }
     pill.textContent = 'Nuevo entrenamiento';
@@ -4671,6 +4674,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(aviso){ aviso.innerHTML = ''; aviso.hidden = true; }
     if(dup) dup.hidden = true;
     if(pas) pas.hidden = true;
+    if(bor) bor.hidden = true;
     cerrarPasar();
   }
 
@@ -4978,6 +4982,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
              mirando ese entrenamiento. */
           '<button class="btn btn--neutro" id="pl-pasar" hidden>Pasárselo a otro día</button>'+
           '<button class="btn btn--neutro" id="pl-nueva">Nuevo / limpiar</button>'+
+          /* Borrar existía en ninguna parte: el único borrado de sesión de toda
+             la web era el «Deshacer» de «Pasárselo a otro día», y solo valía
+             para la copia recién hecha. Quien se equivocaba de día se quedaba
+             con el entrenamiento de más para siempre. */
+          '<button class="btn btn--peligro" id="pl-borrar" hidden>Borrar</button>'+
           '<span class="pill" id="pl-estado">Nuevo entrenamiento</span>'+
           '<span class="msg" id="pl-msg"></span>'+
         '</div>'+
@@ -5013,6 +5022,49 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
 
     $('pl-add-bloque').addEventListener('click', function(){ nuevoBloque({}); });
+    /* ------------------------------------------------------------
+       BORRAR UN ENTRENAMIENTO
+       ------------------------------------------------------------
+       No existía en toda la web: el único borrado de sesión era el «Deshacer»
+       de «Pasárselo a otro día», y solo valía para la copia recién creada. Si
+       te equivocabas de día, el entrenamiento de más se quedaba ahí.
+
+       ⚠️ SE AVISA DE LO QUE SE LLEVA POR DELANTE. Si algún atleta ya apuntó
+       sus series en esa sesión, borrarla borra su trabajo —`registros_sesion`
+       cuelga de `sesiones` con borrado en cascada—. Así que primero se mira si
+       hay algo apuntado, se dice cuántos y de quién, y se pregunta otra vez.
+       ------------------------------------------------------------ */
+    $('pl-borrar').addEventListener('click', async function(){
+      if(!editandoId) return;
+      var s = window.__SESIONES_GRUPO && window.__SESIONES_GRUPO[editandoId];
+      var comoSeLlama = (s && (s.titulo || formatFecha(s.fecha))) || 'este entrenamiento';
+      var cuando = s ? formatFecha(s.fecha) : '';
+
+      var apuntados = [];
+      try {
+        var rg = await sb.from('registros_sesion').select('atleta_id').eq('sesion_id', editandoId);
+        if(!rg.error && rg.data) apuntados = rg.data;
+      } catch(e){ /* si no se puede mirar, se avisa igual abajo */ }
+
+      var texto = 'Vas a borrar «'+comoSeLlama+'»'+(cuando?' del '+cuando:'')+'. Desaparece para todo el grupo y no se puede deshacer.';
+      if(apuntados.length){
+        var quien = nombresDeIds(apuntados.map(function(x){ return x.atleta_id; }), 3);
+        texto += '\n\n⚠️ OJO: ya hay '+apuntados.length+' registro'+(apuntados.length===1?'':'s')+
+                 ' apuntado'+(apuntados.length===1?'':'s')+' en este entrenamiento'+(quien?' ('+quien+')':'')+
+                 '. Si lo borras, se pierden sus series, sus tiempos y lo que escribieran. Eso no se recupera.';
+      }
+      if(!await APX.confirm(texto, { aceptar:'Borrar', peligro:true })) return;
+
+      var r = await sb.from('sesiones').delete().eq('id', editandoId);
+      var m = $('pl-msg');
+      if(r.error){ if(m){ m.textContent='No se ha podido borrar: '+r.error.message; m.className='msg error'; } return; }
+      var g = $('pl-grupo').value;
+      limpiarFormulario();
+      await cargarSesionesGrupo(g);
+      refrescarDia();
+      if(m){ m.textContent='Borrado ✓ «'+comoSeLlama+'» ya no existe.'; m.className='msg ok'; }
+    });
+
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
 
     /* DUPLICAR
