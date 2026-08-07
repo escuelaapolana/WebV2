@@ -224,6 +224,16 @@
            papeles distintos a propósito, así que uno no vale por el otro. */
         var q = await sb.rpc('dinero_quien_soy');
         var delClub = !q.error && q.data && !!q.data.papel;
+        /* Y quien lleva la escuela (migración 144). Entra al panel entero,
+           igual que el tesorero: el menú del panel no se filtra por papel
+           para nadie, y lo que ve DENTRO de cada pantalla lo deciden las
+           reglas de acceso de la base. Esto no abre ni un dato: abre la
+           puerta. Una pantalla que no sea suya le sale vacía, que es lo
+           mismo que le pasa hoy al tesorero con «Retos y medallas». */
+        if (!delClub) {
+          var escu = await sb.rpc('es_escuela');
+          delClub = !escu.error && !!escu.data;
+        }
         if (!delClub) {
           /* Y aún hay pantallas del panel que son herramienta de campo y
              las tiene que usar el equipo técnico: pasar lista es la

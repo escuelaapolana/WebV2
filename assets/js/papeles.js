@@ -46,9 +46,14 @@
     junta:        { titulo: 'Junta',         que: 'El club, sin la parte del dinero.',             va: 'admin/',              mando: false },
     entrenador:   { titulo: 'Entrenador',    que: 'Tus grupos: planificar y pasar lista.',         va: 'portal/entrenador/',  mando: false },
     atleta:       { titulo: 'Atleta',        que: 'Tus entrenamientos, tus marcas y tus recibos.', va: 'portal/atleta/',      mando: false },
-    padre:        { titulo: 'Familia',       que: 'La ficha de tus hijos, faltas y pagos.',        va: 'portal/familia/',     mando: false }
+    padre:        { titulo: 'Familia',       que: 'La ficha de tus hijos, faltas y pagos.',        va: 'portal/familia/',     mando: false },
+    /* Estos dos existen en la base desde las migraciones 109 y 144 y no
+       estaban aquí: quien los llevaba veía «cubo» y «escuela» en crudo en
+       la franja de arriba, en minúscula y sin explicar qué abren. */
+    escuela:      { titulo: 'Escuela',       que: 'Altas, niños y grupos de la escuela, y la ropa.', va: 'admin/',           mando: true },
+    cubo:         { titulo: 'El Cubo',       que: 'Clases, reservas y bonos de El Cubo.',          va: 'admin/cubo/',         mando: true }
   };
-  var ORDEN = ['atleta', 'padre', 'entrenador', 'coordinador', 'tesoreria', 'contabilidad', 'admin', 'junta'];
+  var ORDEN = ['atleta', 'padre', 'entrenador', 'coordinador', 'escuela', 'cubo', 'tesoreria', 'contabilidad', 'admin', 'junta'];
 
   function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
   function base() { return window.APOLANA_BASE || '../'; }
