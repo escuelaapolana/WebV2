@@ -1233,6 +1233,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* «La última vez: 60 kg × 11», la propuesta de lo que hiciste el otro día en
      ESTE mismo ejercicio. Se guarda por nombre de ejercicio, normalizado. */
   var ULTIMA_EJ={};
+  /* El histórico de kilos por ejercicio, para la gráfica del gimnasio. Se
+     llena en la misma pasada que «la última vez», así que no cuesta ninguna
+     consulta aparte: son los mismos registros. */
+  var HIST_FUERZA={};
   function claveEjercicio(nom){
     var t=String(nom||'').toLowerCase();
     if(t.normalize) t=t.normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -2545,6 +2549,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             var rp=parseInt(x.reps,10);
             if(rp>0 && (!TOPE_REPS[clave] || rp>TOPE_REPS[clave])) TOPE_REPS[clave]=rp;
           });
+          /* ⚠️ ESTO VA ANTES DEL CORTE. Debajo hay un `return` que salta los
+             días más viejos de un ejercicio que ya tenemos: si el histórico se
+             recogiera después, cada ejercicio tendría UN solo punto y no habría
+             gráfica que dibujar. Mismo motivo que el tope de repeticiones. */
+          if(Array.isArray(e.series)){
+            var mejor=0;
+            e.series.forEach(function(x){
+              if(!x || !x.hecha) return;
+              var kg=parseFloat(String(x.peso||'').replace(',','.'));
+              if(kg>0 && kg>mejor) mejor=kg;
+            });
+            if(mejor>0){
+              var dia=String(reg.created_at||'').slice(0,10);
+              var lista=(HIST_FUERZA[clave]=HIST_FUERZA[clave]||[]);
+              /* Un día, un punto: si se apuntó dos veces el mismo día se queda
+                 el peso más alto. */
+              var ya=null;
+              for(var q=0;q<lista.length;q++) if(lista[q].fecha===dia){ ya=lista[q]; break; }
+              if(ya){ if(mejor>ya.kg) ya.kg=mejor; }
+              else lista.push({ fecha:dia, kg:mejor, nom:String(e.ejercicio) });
+            }
+          }
           if(ULTIMA_EJ[clave]) return;              // ya tenemos una más reciente
           /* La última serie que de verdad se hizo: si la última quedó sin hacer,
              proponerla en blanco no ayudaría a nadie. */
@@ -4617,6 +4643,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     await Promise.all([ irSemana(lunesHoy, todayISO), cargarUltimaVez() ]);
     pintarDia(diaSel);                  /* ahora sí, con «la última vez» puesta */
     pintarHoy();
+    /* Y se repintan las marcas: el histórico de kilos se ha llenado en
+       `cargarUltimaVez`, que termina DESPUÉS de la primera pintada, así que
+       sin esto la gráfica del gimnasio saldría vacía hasta recargar. Las
+       marcas están cacheadas (`MARCAS_PROM`), o sea que no es otra consulta:
+       solo se vuelve a dibujar. */
+    if(typeof cargarMarcas==='function') cargarMarcas();
   })();
 
   // ---------- MARCAS: cargar/refrescar ----------
@@ -4810,7 +4842,42 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       ? '<div class="lista-tit"><span class="et">Progresión</span></div><div class="graficos">'+graficos+'</div>'
       : '<p class="vacio" style="margin-bottom:14px;">Con dos marcas o más de una misma prueba verás aquí tu evolución.</p>';
 
-    cont.innerHTML=filtro+mejorHtml+porPruebaHtml+ultimas+progHtml;
+    cont.innerHTML=filtro+mejorHtml+porPruebaHtml+ultimas+progHtml+fuerzaHTML();
+  }
+
+  /* ------------------------------------------------------------
+     LA PROGRESIÓN EN EL GIMNASIO
+     ------------------------------------------------------------
+     Las gráficas de esta pantalla eran solo de MARCAS de competición. Los
+     kilos, que es lo que se apunta tres días por semana, no se dibujaban en
+     ningún sitio: solo existían dentro de cada sesión, uno a uno.
+
+     Se dibuja el peso de la mejor serie de cada día. No la media —una serie
+     floja de calentamiento hundiría la línea— y no el volumen total, que sube
+     al hacer más series aunque no levantes más.
+
+     Sale de lo que ya está cargado (`HIST_FUERZA`), así que no cuesta ninguna
+     consulta más: son los mismos registros de los que sale «la última vez».
+     ------------------------------------------------------------ */
+  function fuerzaHTML(){
+    var ejercicios = Object.keys(HIST_FUERZA||{});
+    if(!ejercicios.length) return '';
+    /* Los que más se repiten primero: son los básicos, y son los que dicen si
+       estás progresando. Uno que hiciste dos veces en marzo no. */
+    ejercicios.sort(function(a,b){ return HIST_FUERZA[b].length - HIST_FUERZA[a].length; });
+    var g='', i=0;
+    ejercicios.forEach(function(k){
+      var pts = HIST_FUERZA[k]
+        .filter(function(x){ return x.kg>0 && x.fecha; })
+        .sort(function(a,b){ return a.fecha<b.fecha?-1:1; })
+        .map(function(x){ return { fecha:x.fecha, y:x.kg, disp: comaDecimal(String(x.kg))+' kg' }; });
+      if(pts.length>=2 && i<6) g += graficoPrueba(HIST_FUERZA[k][0].nom || k, pts, true, 100+(i++));
+    });
+    if(!g) return '<div class="lista-tit"><span class="et">Gimnasio</span></div>'+
+      '<p class="vacio">Cuando apuntes los kilos de un mismo ejercicio dos días distintos, verás aquí cómo va subiendo.</p>';
+    return '<div class="lista-tit"><span class="et">Gimnasio · cómo van los kilos</span></div>'+
+           '<div class="graficos">'+g+'</div>'+
+           '<p class="vacio" style="margin-top:-6px;">El peso de tu mejor serie de cada día.</p>';
   }
   cargarMarcas();
 
