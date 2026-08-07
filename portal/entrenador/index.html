@@ -26,6 +26,32 @@
   .en-cab .sub { font-size:13px; color: var(--texto-suave); }
 
   .layout { display:flex; gap:22px; align-items:flex-start; margin-top:18px; }
+.pl-semana { margin: 0 0 18px; }
+  .pls-cab { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .pls-rango { font-size:14px; color: var(--texto-suave); flex:1 1 auto; }
+  .pls-fl, .pls-hoy { min-height:36px; padding:0 12px; border:1px solid var(--linea-borde); border-radius:999px;
+                      background:#fff; color: var(--texto); font:inherit; font-size:14px; cursor:pointer; }
+  .pls-fl:hover, .pls-hoy:hover { border-color: var(--azul-filete); color: var(--navy); }
+  /* Siete columnas fijas: la semana se lee de un vistazo, como la del atleta. */
+  .pls-dias { display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; }
+  .pls-d { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px;
+           min-height:72px; border:1px solid var(--linea); border-radius:12px; background:#fff;
+           font:inherit; cursor:pointer; text-align:center; }
+  .pls-d:hover { border-color: var(--azul-filete); }
+  .pls-d .pls-n   { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color: var(--texto-suave); }
+  .pls-d .pls-num { font-size:17px; font-weight:600; color: var(--navy); line-height:1; }
+  .pls-d .pls-et  { font-size:11px; color: var(--texto-suave); line-height:1.25;
+                    overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  /* Un día libre se ve libre: sin él, todos los días parecen tener algo. */
+  .pls-d.libre { background: var(--crema); border-style:dashed; }
+  .pls-d.hoy   { border-color: var(--azul-filete); }
+  .pls-d.sel   { background: var(--navy); border-color: var(--navy); }
+  .pls-d.sel .pls-n, .pls-d.sel .pls-num, .pls-d.sel .pls-et { color:#fff; }
+  @media (max-width: 620px) {
+    .pls-dias { grid-template-columns: repeat(4, 1fr); }
+    .pls-d { min-height:64px; }
+  }
+
   .side { flex:0 0 210px; position:sticky; top:16px; }
   .side nav { display:flex; flex-direction:column; gap:4px; background:#fff; border:1px solid var(--linea); border-radius:14px; padding:8px; box-shadow: var(--sombra-suave); }
   /* Cada enlace de la barra lateral se pulsa: 44 px de alto (28g) */
@@ -4727,6 +4753,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     DURACION_EDIT = (s.duracion_min > 0) ? s.duracion_min : null;
     $('pl-grupo').value = s.grupo_id||'';
     $('pl-fecha').value = s.fecha||todayISO;
+    PL_LUNES = lunesDeFecha($('pl-fecha').value); pintarSemanaPlan();
     $('pl-titulo').value = s.titulo||'';
     /* Un entrenamiento de antes de la migración 102 puede no traer los ejes
        nuevos si se pidió sin esas columnas: se deducen del tipo de siempre,
@@ -4762,6 +4789,63 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     pintarModo();
   }
 
+  /* ------------------------------------------------------------
+     LA TIRA DE DÍAS DEL PLANIFICADOR
+     ------------------------------------------------------------
+     Se pinta con lo que ya está cargado en `window.__SESIONES_GRUPO`, así que
+     no pide nada a la base: es la misma lista del desplegable, puesta como
+     semana. Un día con entrenamiento lo abre; un día libre empieza uno nuevo
+     con esa fecha ya puesta.
+     ------------------------------------------------------------ */
+  var PL_LUNES = null;   // lunes de la semana que se está viendo
+  function lunesDeFecha(iso){
+    var d = new Date(iso+'T00:00:00');
+    if(isNaN(d.getTime())) d = new Date();
+    var n = (d.getDay()+6)%7;               /* 0 = lunes */
+    d.setDate(d.getDate()-n);
+    return d.toISOString().slice(0,10);
+  }
+  function sesionesDelDia(iso){
+    var todas = window.__SESIONES_GRUPO || {};
+    var g = $('pl-grupo') ? $('pl-grupo').value : '';
+    return Object.keys(todas).map(function(k){ return todas[k]; })
+      .filter(function(s){ return s.fecha===iso && (!g || s.grupo_id===g); });
+  }
+  function pintarSemanaPlan(){
+    var cont = $('pl-semana'); if(!cont) return;
+    if(!PL_LUNES) PL_LUNES = lunesDeFecha(($('pl-fecha') && $('pl-fecha').value) || todayISO);
+    var nom = ['lun','mar','mié','jue','vie','sáb','dom'];
+    var sel = $('pl-fecha') ? $('pl-fecha').value : '';
+    var h = '<div class="pls-cab">'+
+      '<button type="button" class="pls-fl" data-pls="atras" aria-label="Semana anterior">&#8592;</button>'+
+      '<span class="pls-rango">'+esc(rangoSemana(PL_LUNES))+'</span>'+
+      '<button type="button" class="pls-fl" data-pls="alante" aria-label="Semana siguiente">&#8594;</button>'+
+      '<button type="button" class="pls-hoy" data-pls="hoy">Hoy</button>'+
+      '</div><div class="pls-dias">';
+    for(var i=0;i<7;i++){
+      var iso = addDias(PL_LUNES, i);
+      var ses = sesionesDelDia(iso);
+      var d = new Date(iso+'T00:00:00');
+      var cls = 'pls-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'')+(iso===sel?' sel':'');
+      var et = ses.length
+        ? esc((ses[0].titulo||'entrenamiento').slice(0,18))+(ses.length>1?' +'+(ses.length-1):'')
+        : 'libre';
+      var tit = ses.length
+        ? formatFecha(iso)+': '+(ses[0].titulo||'entrenamiento')+(ses[0].publicada?'':' (borrador)')
+        : formatFecha(iso)+': sin entrenamiento · se abre uno nuevo';
+      h += '<button type="button" class="'+cls+'" data-pls-dia="'+iso+'" title="'+esc(tit)+'">'+
+             '<span class="pls-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
+             '<span class="pls-num">'+d.getDate()+'</span>'+
+             '<span class="pls-et">'+et+'</span></button>';
+    }
+    cont.innerHTML = h+'</div>';
+  }
+  function rangoSemana(lunes){
+    var a = new Date(lunes+'T00:00:00'), b = new Date(addDias(lunes,6)+'T00:00:00');
+    var m = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return a.getDate()+' '+m[a.getMonth()]+' – '+b.getDate()+' '+m[b.getMonth()];
+  }
+
   async function cargarSesionesGrupo(grupoId){
     var selEditar = $('pl-editar');
     if(!selEditar) return;
@@ -4788,7 +4872,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       html += '<option value="'+s.id+'">'+esc(formatFecha(s.fecha))+(s.publicada?'':' (borrador)')+' · '+esc(s.titulo||'sin título')+(soloAlgunos?' · solo '+esc(nombresDeIds(s.atletas_ids, 2)):'')+(s.abierta_inscripcion?' · abierta':'')+'</option>';
     });
     if(mesActual) html += '</optgroup>';
+    PL_LUNES = null;              /* la semana se recoloca en la fecha del formulario */
     selEditar.innerHTML += html;
+    pintarSemanaPlan();
   }
 
   function serializarBloques(){
@@ -4910,6 +4996,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cont.innerHTML =
       '<div class="tarjeta">'+
         '<h2>Planificar entrenamiento</h2>'+
+        /* ------------------------------------------------------------
+           LA TIRA DE DÍAS, IGUAL QUE LA DEL ATLETA
+           ------------------------------------------------------------
+           El atleta puede saltar de un día a otro sin salir de la pantalla; el
+           entrenador tenía que volver a la rejilla de «Planificar semana» y
+           entrar otra vez. Ahora la semana está aquí arriba: se toca un día y
+           se abre su entrenamiento, o se empieza uno nuevo si está libre.
+           Cambiar de grupo también estaba enterrado abajo, así que el
+           desplegable sube a la misma línea.
+           ------------------------------------------------------------ */
+        '<div class="pl-semana" id="pl-semana"></div>'+
         '<div class="grid2">'+
           '<div><label>Grupo</label><select id="pl-grupo">'+MIS_GRUPOS.map(function(gr){return '<option value="'+gr.id+'">'+esc(gr.nombre)+'</option>';}).join('')+'</select></div>'+
           '<div><label>Abrir un entrenamiento del grupo</label><select id="pl-editar"><option value="">— nuevo entrenamiento —</option></select>'+
@@ -5063,6 +5160,40 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       await cargarSesionesGrupo(g);
       refrescarDia();
       if(m){ m.textContent='Borrado ✓ «'+comoSeLlama+'» ya no existe.'; m.className='msg ok'; }
+    });
+
+    /* Los clics de la tira: flechas, «Hoy» y cada día. */
+    $('pl-semana').addEventListener('click', function(ev){
+      var t = ev.target.closest ? ev.target.closest('[data-pls],[data-pls-dia]') : null;
+      if(!t) return;
+      var mov = t.getAttribute('data-pls');
+      if(mov){
+        if(mov==='atras')  PL_LUNES = addDias(PL_LUNES, -7);
+        if(mov==='alante') PL_LUNES = addDias(PL_LUNES,  7);
+        if(mov==='hoy')    PL_LUNES = lunesDeFecha(todayISO);
+        pintarSemanaPlan();
+        return;
+      }
+      var iso = t.getAttribute('data-pls-dia'); if(!iso) return;
+      var ses = sesionesDelDia(iso);
+      if(ses.length){
+        /* Si el día tiene entrenamiento, se abre. Con más de uno se abre el
+           primero: para elegir entre varios está el desplegable de arriba. */
+        $('pl-editar').value = ses[0].id;
+        cargarSesionEnForm(ses[0]);
+      } else {
+        /* Día libre: formulario en blanco con esa fecha ya puesta, que es lo
+           que se venía a hacer al pulsar un hueco. */
+        limpiarFormulario();
+        $('pl-fecha').value = iso;
+      }
+      PL_LUNES = lunesDeFecha(iso);
+      pintarSemanaPlan();
+      pintarModo();
+    });
+    $('pl-fecha').addEventListener('change', function(){
+      PL_LUNES = lunesDeFecha(this.value || todayISO);
+      pintarSemanaPlan();
     });
 
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
