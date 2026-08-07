@@ -257,6 +257,10 @@
      de sitio, y como nada se enciende parece que no ha pasado nada. Pasó de
      verdad. El selector de antes era `button.uni-act`, y la clase `uni-act` no
      vive en el botón sino en el `span` de dentro, así que no pintaba nunca. */
+  /* «− Serie» va apagado: quitar no es una acción que haya que invitar a hacer. */
+  .ej-pie button.ej-menos-serie { color: var(--texto-suave); flex:0 1 auto; }
+  .ej-pie button.ej-menos-serie:hover { border-color:#B0563A; color:#B0563A; }
+  .ej-pie button.ej-menos-serie[hidden] { display:none; }
   .ej-pie button.ej-uni { color: var(--texto-suave); }
   .ej-pie button.ej-uni .uni-act { display:inline-block; padding:3px 8px; border-radius:6px;
     background: var(--azul-suave); color: var(--azul-hover); font-weight:700; }
@@ -1543,6 +1547,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                hay ejercicios que no tienen ninguna (los que solo se marcan) y
                sin esto se quedarían sin guardar. */
             '<div class="serie-inputs" data-eje="'+escA(nomMandado)+'" data-medida="'+escA(med.clave)+'" data-key="'+key+'"'+
+            /* Cuántas series mandó el entrenador. Se guarda para saber cuáles
+               ha añadido el atleta con «+ Serie», que son las únicas que puede
+               quitar: lo que mandó el entrenador no se toca, igual que no se
+               puede borrar un ejercicio suyo. */
+            ' data-mandadas="'+n+'"'+
             (f.id?' data-fid="'+escA(f.id)+'"':'')+
             /* El RIR que se pidió viaja con lo apuntado: así el entrenador lo
                compara sin otra consulta, y sobre todo queda la FOTO de lo que
@@ -1599,6 +1608,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var hayUni=cols.some(function(c){ return c.uni; });
     return '<div class="ej-pie">'+
       '<button type="button" class="ej-mas-serie">+ Serie</button>'+
+      /* «− Serie» solo aparece cuando hay alguna añadida por el atleta, y solo
+         quita esas. Antes se podía añadir y no había forma de quitar: una
+         pulsación de más y te quedabas con una fila vacía para siempre, que
+         encima contaba en el «3 de 19 hechas». */
+      '<button type="button" class="ej-menos-serie" hidden>− Serie</button>'+
       /* En uno añadido no se «cambia» nada: se corrige el nombre. Y se puede
          quitar, que es lo justo con algo que has puesto tú — lo que mandó el
          entrenador sigue sin poder borrarse. */
@@ -2772,6 +2786,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
+  /* «− Serie» solo se ve si hay alguna añadida por el atleta. Si no la hay, el
+     botón no existe: enseñar un botón que no puede hacer nada es peor que no
+     tenerlo, porque invita a pulsarlo y no pasa nada. */
+  function verMenosSerie(g){
+    if(!g) return;
+    var ejer=g.closest('.ejer'); if(!ejer) return;
+    var boton=ejer.querySelector('.ej-menos-serie'); if(!boton) return;
+    var mandadas=parseInt(g.getAttribute('data-mandadas'),10)||0;
+    boton.hidden = g.querySelectorAll('.ej-fila').length <= mandadas;
+  }
+
   /* Cambia la unidad de un ejercicio de distancia. `recordar` es false cuando se
      está volcando lo ya guardado: entonces se enseña la unidad de aquel día sin
      cambiar la preferencia de hoy. */
@@ -2934,6 +2959,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     (raiz.querySelectorAll ? raiz.querySelectorAll('.entreno-uno') : []).forEach(pintarMetros);
     var propiaM=raiz.closest?raiz.closest('.entreno-uno'):null;
     if(propiaM) pintarMetros(propiaM);
+    /* Y se decide si «− Serie» tiene que verse. Va aquí y no solo al pulsar
+       «+ Serie», porque una sesión guardada con series de más se vuelve a
+       pintar al abrirla y ahí también hay que poder quitarlas. */
+    if(raiz.querySelectorAll) raiz.querySelectorAll('.serie-inputs').forEach(verMenosSerie);
     avisoNoHecho(raiz);
   }
 
@@ -3385,7 +3414,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // Un único manejador para toda la sección: al repintar no se duplican los clics
-  $('sec-entreno').addEventListener('click', function(ev){
+  $('sec-entreno').addEventListener('click', async function(ev){
     var t=ev.target; if(!t||!t.closest) return;
     var cm=t.closest('.conm .cm');
     if(cm){ activarModo(cm.getAttribute('data-modo')); return; }
@@ -3509,9 +3538,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         nueva.setAttribute('data-i', cuantas);
         var num=nueva.querySelector('.s-n'); if(num) num.textContent=cuantas+1;
         gM.appendChild(nueva);
+        verMenosSerie(gM);
         var cajaM=t.closest('.entreno-uno');
         progresoBloques(cajaM); marcarSucio(cajaM);
       }
+      return;
+    }
+    /* «− Serie»: quita la última, y SOLO si la añadió el atleta. Si tenía algo
+       escrito se pregunta antes: es trabajo suyo y no se tira sin avisar. */
+    var menosS=t.closest('.ej-menos-serie');
+    if(menosS){
+      var gQ=menosS.closest('.ejer').querySelector('.serie-inputs');
+      if(!gQ) return;
+      var filasQ=gQ.querySelectorAll('.ej-fila');
+      var mandadas=parseInt(gQ.getAttribute('data-mandadas'),10)||0;
+      if(filasQ.length<=mandadas) return;         /* no se toca lo del entrenador */
+      var ultima=filasQ[filasQ.length-1];
+      var escrito=[].some.call(ultima.querySelectorAll('input.s-cel'), function(i){ return String(i.value||'').trim(); });
+      if(escrito && !await apoConfirm({
+            titulo:'Quitar la serie '+filasQ.length,
+            texto:'Esta serie tiene algo apuntado. Si la quitas, se pierde lo que hayas escrito en ella.',
+            confirmar:'Quitarla', peligro:true })) return;
+      ultima.remove();
+      verMenosSerie(gQ);
+      var cajaQ=t.closest('.entreno-uno');
+      progresoBloques(cajaQ); marcarSucio(cajaQ);
       return;
     }
     /* «Apuntar solo el total»: ocho de 50 son ocho filas y nadie sale del agua
