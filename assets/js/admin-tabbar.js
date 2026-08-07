@@ -708,7 +708,15 @@
     /* Lo que se abre desde aquí también cuenta para «las que más usas». */
     hoja.addEventListener('click', function (e) {
       var a = e.target.closest ? e.target.closest('a[data-clave]') : null;
-      if (a) anotar(a.getAttribute('data-clave'));
+      if (!a) return;
+      anotar(a.getAttribute('data-clave'));
+      /* ⚠️ Y SE CIERRA EL MENÚ. Las entradas que llevan a otra pantalla lo
+         cerraban solas —al cargar la página nueva, el menú desaparecía con
+         ella—, pero las que solo cambian el «#» de la dirección no recargan
+         nada: la sección se abría DEBAJO y el menú se quedaba encima,
+         tapándola. Desde fuera parecía que pulsar no hacía nada. Pasó de
+         verdad con «Franja informativa». */
+      cerrar();
     });
   }
 

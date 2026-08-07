@@ -73,14 +73,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var CUBO_SOCIOS = 'documentos-socios';
   function esReservado(v) { return !!v && !/^https?:\/\//i.test(v); }
 
-  var r = await sb.from('documentos').select('titulo,descripcion,categoria,archivo_url,nombre_archivo,tipo_mime,tamano_bytes,visibilidad,orden')
+  /* Los recursos de grupo se piden igual que todo lo demás: las reglas de la
+     base ya deciden cuáles llegan —solo los de TUS grupos— y aquí no hay que
+     volver a comprobar quién eres. Pedir el `grupo_id` sirve para agruparlos
+     aparte al pintarlos, no para filtrarlos. */
+  var r = await sb.from('documentos').select('titulo,descripcion,categoria,archivo_url,nombre_archivo,tipo_mime,tamano_bytes,visibilidad,orden,grupo_id')
     .eq('activo', true).order('categoria').order('orden');
+  /* El nombre del grupo, para poder titular su bloque: «Recursos de Grupo A»
+     dice mucho más que «Recursos de tu grupo» cuando llevas dos. */
+  var NOMBRE_GRUPO = {};
+  try {
+    var gs = await sb.from('grupos').select('id,nombre');
+    if (gs.data) gs.data.forEach(function (g) { NOMBRE_GRUPO[g.id] = g.nombre; });
+  } catch (e) { /* sin nombres, el bloque se titula en genérico */ }
 
   /* Sin sesión no se enseña ni el nombre de un documento reservado.
      (A esta pantalla no se llega sin entrar, pero el filtro va igual.) */
   var sesion = null;
   try { var s0 = await sb.auth.getSession(); sesion = s0 && s0.data && s0.data.session; } catch (e) {}
-  if (r.data) r.data = r.data.filter(function (d) { return d.visibilidad !== 'socios' || !!sesion; });
+  if (r.data) r.data = r.data.filter(function (d) { return d.visibilidad === 'publico' || !!sesion; });
 
   if (r.error) {
     html += caja(APOLANA_UI.error('No hemos podido cargar los documentos',
@@ -92,8 +103,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   } else {
     var orden = ['Estatutos','Normativa interna','Reglamento','Protocolos','Autorizaciones','Circulares','Otros'];
     var grupos = {};
-    r.data.forEach(function (d) { var c = d.categoria || 'Otros'; (grupos[c] = grupos[c] || []).push(d); });
+    /* Un recurso de grupo no se mezcla con la normativa del club: es de otra
+       naturaleza y es lo que el atleta viene a buscar, así que va en su propio
+       bloque y el primero. */
+    r.data.forEach(function (d) {
+      var c = (d.visibilidad === 'grupo')
+        ? ('Recursos de ' + (NOMBRE_GRUPO[d.grupo_id] || 'tu grupo'))
+        : (d.categoria || 'Otros');
+      (grupos[c] = grupos[c] || []).push(d);
+    });
     var claves = Object.keys(grupos).sort(function (a, b) {
+      /* Los bloques de grupo, siempre delante: lo tuyo antes que lo del club. */
+      var ga = a.indexOf('Recursos de ') === 0, gb = b.indexOf('Recursos de ') === 0;
+      if (ga !== gb) return ga ? -1 : 1;
+      if (ga && gb) return a.localeCompare(b);
       var ia = orden.indexOf(a), ib = orden.indexOf(b);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });

@@ -155,7 +155,15 @@
             <select id="d-visibilidad">
               <option value="publico" selected>Público (cualquiera)</option>
               <option value="socios">Solo socios (con cuenta)</option>
+              <option value="grupo">Solo un grupo</option>
             </select>
+          </div>
+          <!-- Solo aparece con «Solo un grupo»: un selector de grupos colgando
+               siempre invita a rellenarlo cuando no pinta nada. -->
+          <div id="d-grupo-caja" hidden>
+            <label for="d-grupo">¿Qué grupo?</label>
+            <select id="d-grupo"></select>
+            <div class="pista">Lo verán sus atletas, sus familias y su entrenador. Nadie más del club.</div>
           </div>
           <div>
             <label for="d-orden">Orden</label>
@@ -212,7 +220,26 @@ APOLANA_ADMIN.listo(function (sb) {
     return (Math.round(bytes / (1024 * 1024) * 10) / 10).toString().replace('.', ',') + ' MB';
   }
 
-  function cuboDe(visibilidad) { return visibilidad === 'socios' ? BUCKET_SOCIOS : BUCKET_PUBLICO; }
+  /* Los de grupo van al MISMO cubo cerrado que los de socios: no tienen enlace
+     público y se abren con enlaces que caducan al minuto. Un recurso de un grupo
+     es más privado que uno de socios, así que el cubo abierto no vale. */
+  /* El selector de grupo solo se ve con «Solo un grupo». Un desplegable de
+     grupos colgando siempre invita a rellenarlo cuando no pinta nada, y la
+     base rechazaría el documento por incoherente. */
+  function verCajaGrupo(){
+    var caja = $('d-grupo-caja'); if(!caja) return;
+    caja.hidden = $('d-visibilidad').value !== 'grupo';
+  }
+  async function cargarGruposDoc(){
+    var sel = $('d-grupo'); if(!sel) return;
+    var r = await sb.from('grupos').select('id,nombre,seccion').eq('activo', true).order('nombre');
+    if(r.error || !r.data){ sel.innerHTML = '<option value="">— no se han podido cargar —</option>'; return; }
+    sel.innerHTML = r.data.map(function(g){
+      return '<option value="'+g.id+'">'+esc(g.nombre)+(g.seccion?' · '+esc(g.seccion):'')+'</option>';
+    }).join('');
+  }
+
+  function cuboDe(visibilidad) { return (visibilidad === 'socios' || visibilidad === 'grupo') ? BUCKET_SOCIOS : BUCKET_PUBLICO; }
 
   function nombreLimpio(n) { return String(n || 'archivo').toLowerCase().replace(/[^a-z0-9.]+/g, '-'); }
 
@@ -357,6 +384,8 @@ APOLANA_ADMIN.listo(function (sb) {
     $('d-categoria').value = d.categoria || 'Otros';
     if (!$('d-categoria').value) $('d-categoria').value = 'Otros';
     $('d-visibilidad').value = d.visibilidad || 'publico';
+    if($('d-grupo')) $('d-grupo').value = d.grupo_id || '';
+    verCajaGrupo();
     $('d-orden').value = (d.orden == null ? 0 : d.orden);
     $('d-activo').checked = d.id ? !!d.activo : true;
     $('d-archivo').value = '';
@@ -376,6 +405,8 @@ APOLANA_ADMIN.listo(function (sb) {
     var id = e.target.getAttribute && e.target.getAttribute('data-ver-actual');
     if (id) abrirDocumento(id);
   });
+  $('d-visibilidad').addEventListener('change', verCajaGrupo);
+  cargarGruposDoc();
   $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
   $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
@@ -445,6 +476,9 @@ APOLANA_ADMIN.listo(function (sb) {
       descripcion: $('d-descripcion').value.trim() || null,
       categoria: $('d-categoria').value || null,
       visibilidad: visibilidad,
+      /* La base exige que vayan de la mano: «grupo» sin grupo no lo vería
+         nadie, y un público con grupo mentiría sobre para quién es. */
+      grupo_id: visibilidad === 'grupo' ? ($('d-grupo').value || null) : null,
       orden: parseInt($('d-orden').value, 10) || 0,
       activo: $('d-activo').checked
     };
