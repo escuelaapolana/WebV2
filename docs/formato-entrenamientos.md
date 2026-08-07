@@ -82,20 +82,35 @@ Conclusiones para el diseño:
 Equivalente al calzado: **material** — tabla, pull-buoy, palas, aletas.
 Se tratará como otra columna del mismo tipo, con sus valores propios.
 
-## Resumen de campos que faltan hoy en la web
+## Resumen de campos, y cuáles faltan todavía
+
+⚠️ Esta tabla se quedó desfasada una vez y llevó a decir que la web no leía
+medio atletismo cuando sí lo lee. **Antes de darla por buena, mírala contra
+`ALIAS_CSV` en `portal/entrenador/index.html`**, que es lo que manda.
 
 | Campo | Dónde | Estado |
 |---|---|---|
-| Calzado (Z/C) | fila de pista | falta |
-| Carga (% RM) | fila de gimnasio | falta |
-| Observaciones por fila | fila | falta (hoy es "detalle") |
-| Matiz del bloque | bloque | falta |
-| Bloque dirigido a subgrupo | bloque | falta |
-| Objetivos por atleta y serie | fila | falta |
+| Calzado (Z/C) | fila de pista | hecho |
+| Carga (% RM) | fila de gimnasio | hecho |
+| Observaciones por fila | fila | hecho |
+| Matiz del bloque | bloque | hecho |
+| Bloque dirigido a subgrupo | bloque | hecho — es la columna «Para quién», que viaja como matiz |
+| Material de natación | fila | hecho |
+| Objetivos por atleta y serie | fila | a medias: se escriben en Observaciones, no hay campo propio |
 | Bloque/fase de la semana | semana | falta |
 | Objetivo de la semana | semana | falta |
 | Competición de referencia + horarios | semana | falta |
-| Material de natación | fila | falta |
+
+Lo de «bloque dirigido a subgrupo» merece una nota, porque es lo que más se usa:
+el bloque se identifica por **etiqueta + matiz**, así que dos «Parte principal»
+con nombres distintos («Juan» y «Ander») son dos bloques y no uno. Si algún día
+se agrupa solo por etiqueta otra vez, cada atleta acabará viendo el trabajo del
+otro.
+
+Lo que sigue faltando de verdad es la **cabecera de la semana** —bloque de la
+temporada, objetivo, competición de referencia—. Se escribe en el papel de todas
+las planificaciones del club y al subirlas no se guarda en ninguna parte: no hay
+dónde. Es lo primero que habría que añadir el día que se retome esto.
 
 ## Natación por calles (pendiente de concretar con el club)
 
