@@ -600,6 +600,11 @@
   .ti-d .ti-ok  { font-size:10px; color:#3F7A4C; line-height:1; }
   .ti-d.libre { background:var(--crema); border-style:dashed; }
   .ti-d.hoy   { border-color:var(--azul-filete); border-width:2px; }
+  /* El día que se está mirando, en navy: sin esto no se sabe cuál de los siete
+     corresponde a la tarjeta de debajo. */
+  .ti-d.sel   { background:var(--navy); border-color:var(--navy); }
+  .ti-d.sel .ti-n, .ti-d.sel .ti-num, .ti-d.sel .ti-et { color:#fff; }
+  .ti-d.sel .ti-ok { color:#9BD3A8; }
 
   .hoy-card { background: var(--navy); border-radius:14px; padding:18px 20px; color:#fff; display:flex; flex-direction:column; gap:13px; margin-bottom:11px; }
   .hoy-card .hc-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
@@ -4374,7 +4379,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* 2 · el entreno de hoy: la ÚNICA tarjeta navy de la pantalla. Si hoy hay
        dos sesiones (pista y gimnasio, por ejemplo) solo la primera va en navy;
        la otra baja a una fila. Con dos bloques navy ninguno ancla nada. */
-    var hoySes=lista.filter(function(s){ return s.fecha===todayISO; });
+    /* La tarjeta enseña EL DÍA QUE SE ESTÁ MIRANDO. Antes era siempre hoy y
+       tocar otro día te sacaba de la pantalla; ahora te mueves por la semana
+       viendo qué hay, y entras solo cuando vas a hacerlo. */
+    var diaVer = DIA_OJEO || todayISO;
+    var hoySes=lista.filter(function(s){ return s.fecha===diaVer; });
     if(hoySes.length){
       html+=hoySes.slice(0,1).map(function(s){
         var hecho=!!REG[s.id];
@@ -4384,7 +4393,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var hora=horaGrupo();
         return '<div class="hoy-card">'+
           '<div class="hc-top">'+
-            '<span class="hc-grupo">Entrenamiento de hoy'+(s.atletas_ids?' · solo para ti':'')+'</span>'+
+            '<span class="hc-grupo">'+(diaVer===todayISO?'Entrenamiento de hoy':esc(formatFecha(diaVer)))+(s.atletas_ids?' · solo para ti':'')+'</span>'+
             (hora?'<span class="hc-hora">'+esc(hora)+'</span>':'<span class="hc-hora">'+esc(deporteCorto(s))+'</span>')+
           '</div>'+
           '<div><h2 class="hc-tit">'+esc(tituloSesion(s))+'</h2>'+
@@ -4392,8 +4401,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           (cifras.length?'<div class="hc-cifras">'+cifras.map(function(c){
             return '<span class="hc-cifra"><b>'+esc(c.v)+'</b><span>'+esc(c.l)+'</span></span>';
           }).join('')+'</div>':'')+
-          '<button type="button" class="hc-cta" data-ir="'+todayISO+'">Empezar el entrenamiento</button>'+
-          '<button type="button" class="hc-ok'+(hecho?' hecho':'')+'" data-ir="'+todayISO+'" data-fb="'+esc(s.id)+'">'+
+          '<button type="button" class="hc-cta" data-ir="'+diaVer+'">'+(diaVer===todayISO?'Empezar el entrenamiento':'Abrir este entrenamiento')+'</button>'+
+          '<button type="button" class="hc-ok'+(hecho?' hecho':'')+'" data-ir="'+diaVer+'" data-fb="'+esc(s.id)+'">'+
             (hecho?'Ya has contado cómo fue':'¿Cómo fue?')+'</button>'+
           '</div>';
       }).join('');
@@ -4419,9 +4428,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var texto = sig ? 'La próxima, el '+formatFecha(sig.fecha)+': '+tituloSesion(sig)+'.'
                       : (at.grupo_id ? 'No hay ningún entrenamiento programado para hoy.'
                                      : 'Aún no estás asignado a un grupo. En cuanto tu entrenador te asigne, verás aquí tus entrenamientos.');
-      html+='<div class="hoy-vacio"><div class="luna" aria-hidden="true">'+icLuna+'</div><h2>Hoy toca descansar</h2>'+
-        '<p>'+esc(texto)+'</p>'+
-        '<button type="button" class="btn btn--neutro" data-ir="'+(sig?sig.fecha:todayISO)+'">Ver mi entrenamiento</button></div>';
+      /* Si se está ojeando OTRO día, no se dice «hoy toca descansar»: se dice
+         qué pasa ESE día. Decirle a alguien que descanse hoy cuando está
+         mirando el domingo es de las cosas que hacen que no te fíes de una
+         pantalla. */
+      if(diaVer !== todayISO){
+        html+='<div class="hoy-vacio"><div class="luna" aria-hidden="true">'+icLuna+'</div>'+
+          '<h2>'+esc(formatFecha(diaVer))+'</h2><p>Ese día no hay entrenamiento.</p>'+
+          '<button type="button" class="btn btn--neutro" data-ojear="'+todayISO+'">Volver a hoy</button></div>';
+      } else {
+        html+='<div class="hoy-vacio"><div class="luna" aria-hidden="true">'+icLuna+'</div><h2>Hoy toca descansar</h2>'+
+          '<p>'+esc(texto)+'</p>'+
+          '<button type="button" class="btn btn--neutro" data-ir="'+(sig?sig.fecha:todayISO)+'">Ver mi entrenamiento</button></div>';
+      }
     }
 
     /* 3 · el rango, como fila con la medalla en ámbar y qué falta para el
@@ -4480,6 +4499,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      que no cuesta ninguna consulta: son las mismas sesiones que ya se usan
      para la tarjeta de hoy. Un día con entrenamiento se toca y se abre; el ✓
      dice que ya apuntaste cómo te fue, igual que en la tira de dentro. */
+  /* El día que se está mirando en el inicio. No es el mismo que `diaSel`, que
+     es el del apartado de entrenamiento: aquí se OJEA, allí se TRABAJA. */
+  var DIA_OJEO = null;
   function tiraSemanaHTML(){
     var nom=['lun','mar','mié','jue','vie','sáb','dom'];
     var l=lunesHoy, h='', deLaSemana=sesSemanaHoy();
@@ -4487,14 +4509,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var iso=addDias(l,i);
       var ses=deLaSemana.filter(function(x){ return x.fecha===iso; });
       var d=new Date(iso+'T00:00:00');
-      var cls='ti-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'');
+      var cls='ti-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'')+(iso===(DIA_OJEO||todayISO)?' sel':'');
       var dentro;
       if(ses.length){
         var apuntado=ses.every(function(x){ return !!REG[x.id]; });
         dentro='<span class="ti-et">'+esc(deporteCorto(ses[0]))+'</span>'+
                (apuntado?'<span class="ti-ok">✓</span>':'');
       } else dentro='<span class="ti-et">libre</span>';
-      h+='<button type="button" class="'+cls+'" data-ir="'+iso+'" '+
+      h+='<button type="button" class="'+cls+'" data-ojear="'+iso+'" '+
          'title="'+esc(formatFecha(iso)+(ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento'))+'">'+
          '<span class="ti-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
          '<span class="ti-num">'+d.getDate()+'</span>'+dentro+'</button>';
@@ -4508,6 +4530,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(u){ location.href=u.getAttribute('data-url'); return; }
     var s=t.closest('[data-sec-ir]');
     if(s){ activarSeccion(s.getAttribute('data-sec-ir')); window.scrollTo(0,0); return; }
+    /* Ojear: cambia lo que se ve sin salir de la pantalla. */
+    var o=t.closest('[data-ojear]');
+    if(o){ DIA_OJEO=o.getAttribute('data-ojear'); pintarHoy(); return; }
     var b=t.closest('[data-ir]'); if(!b) return;
     verDia(b.getAttribute('data-ir'), b.getAttribute('data-fb'));
   });

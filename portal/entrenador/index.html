@@ -27,6 +27,20 @@
 
   .layout { display:flex; gap:22px; align-items:flex-start; margin-top:18px; }
 .pl-semana { margin: 0 0 18px; }
+  /* Los ajustes del día, plegados. La línea de resumen es lo que evita que
+     plegar signifique esconder: se lee sin abrir nada. */
+  .pl-ajustes { border:1px solid var(--linea); border-radius:12px; margin:0 0 16px; background:#fff; }
+  .pl-ajustes > summary { list-style:none; cursor:pointer; padding:12px 14px; min-height:44px;
+                          display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .pl-ajustes > summary::-webkit-details-marker { display:none; }
+  .pl-ajustes > summary::after { content:'▾'; margin-left:auto; color:var(--texto-suave); font-size:12px; }
+  .pl-ajustes[open] > summary::after { content:'▴'; }
+  .pl-ajustes[open] > summary { border-bottom:1px solid var(--linea); }
+  .pl-ajustes .pa-et { font-size:14px; font-weight:600; color:var(--navy); }
+  .pl-ajustes .pa-res { font-size:13px; color:var(--texto-suave); flex:1 1 auto; min-width:0;
+                        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pl-ajustes > *:not(summary) { margin-left:14px; margin-right:14px; }
+  .pl-ajustes > *:last-child { margin-bottom:14px; }
   /* La semana en el inicio del entrenador: baja, para que la tarjeta de hoy
      siga viéndose sin rodar. El número de la esquina son los que ya han
      apuntado cómo les fue. */
@@ -43,6 +57,8 @@
                   line-height:15px; text-align:center; }
   .te-d.libre { background:var(--crema); border-style:dashed; }
   .te-d.hoy   { border-color:var(--azul-filete); border-width:2px; }
+  .te-d.sel   { background:var(--navy); border-color:var(--navy); }
+  .te-d.sel .te-n, .te-d.sel .te-num, .te-d.sel .te-et { color:#fff; }
   .pls-cab { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .pls-rango { font-size:14px; color: var(--texto-suave); flex:1 1 auto; }
   .pls-fl, .pls-hoy { min-height:36px; padding:0 12px; border:1px solid var(--linea-borde); border-radius:999px;
@@ -1943,6 +1959,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* La semana en el inicio del entrenador. Cada día dice el deporte y, si hay
      algo apuntado, cuántos: «2» al lado del martes significa que dos ya han
      escrito cómo les fue. Se toca un día y se abre el planificador ahí. */
+  /* El día que el entrenador está OJEANDO en su inicio. Se mira aquí y se
+     entra al planificador solo cuando hay algo que tocar. */
+  var ENT_OJEO = null;
   function tiraSemanaEnt(){
     if(!HOY.semana || !HOY.semana.length) return '';
     var nom = ['lun','mar','mié','jue','vie','sáb','dom'];
@@ -1952,8 +1971,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var ses = HOY.semana.filter(function(x){ return x.fecha===iso; });
       var d = new Date(iso+'T00:00:00');
       var ap = ses.reduce(function(a,x){ return a+(HOY.apuntados[x.id]||0); }, 0);
-      var cls = 'te-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'');
-      h += '<button type="button" class="'+cls+'" data-ir-plan="'+iso+'" '+
+      var cls = 'te-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'')+(iso===(ENT_OJEO||todayISO)?' sel':'');
+      h += '<button type="button" class="'+cls+'" data-ojear-ent="'+iso+'" '+
            'title="'+esc(formatFecha(iso)+(ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento'))+'">'+
            '<span class="te-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
            '<span class="te-num">'+d.getDate()+'</span>'+
@@ -1972,18 +1991,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return;
     }
     var TIRA = tiraSemanaEnt();
+    /* Lo de debajo sigue al día que se está mirando. Antes era siempre hoy y
+       tocar otro día te metía en el planificador; ahora ojeas la semana y
+       entras solo para editar o para mirar el feedback. */
+    var diaVer = ENT_OJEO || todayISO;
+    var delDia = (diaVer===todayISO) ? HOY.sesiones
+               : (HOY.semana||[]).filter(function(x){ return x.fecha===diaVer; });
 
-    if(!HOY.sesiones.length){
-      var txt = HOY.siguiente
-        ? 'La siguiente es el '+formatFecha(HOY.siguiente.fecha)+(HOY.siguiente.titulo ? ' · '+HOY.siguiente.titulo : '')+'.'
-        : 'No hay nada en el calendario de tus grupos.';
+    if(!delDia.length){
+      var txt = (diaVer !== todayISO)
+        ? 'Ese día no hay entrenamiento puesto. Tócalo otra vez para planificar uno.'
+        : (HOY.siguiente
+            ? 'La siguiente es el '+formatFecha(HOY.siguiente.fecha)+(HOY.siguiente.titulo ? ' · '+HOY.siguiente.titulo : '')+'.'
+            : 'No hay nada en el calendario de tus grupos.');
       cont.innerHTML = TIRA + '<div class="hoy-e-no">'+
         '<div class="hn-ic">'+icVacCal+'</div>'+
         '<div class="hn-txt"><b>Hoy no hay entrenamiento programado</b><span>'+esc(txt)+'</span></div>'+
         '<button type="button" data-planificar>Planificar</button>'+
       '</div>';
     } else {
-      cont.innerHTML = TIRA + HOY.sesiones.map(function(s){
+      cont.innerHTML = TIRA + delDia.map(function(s){
         var det = [];
         if(s.hora) det.push('<span class="he-hora"><i></i>'+esc(horaCorta(s.hora))+'</span>');
         var lugar = s.lugar || lugarDeGrupo(s.grupo_id);
@@ -3536,6 +3563,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<button type="button" class="btn-mini" id="'+pref+'-dest-ninguno">Desmarcar todos</button>'+
         '</div>'+
         '<div class="dest-lista" id="'+pref+'-dest-lista"></div>'+
+        /* El aviso, UNA vez. Debajo había otra frase que decía exactamente lo
+           mismo con otras palabras («Dirigido solo a … el resto del grupo no lo
+           verá»), y en un móvil eso son tres renglones de más en cada carga. */
         '<p class="dest-aviso">Marca solo a quien va dirigido. <strong>El resto del grupo NO lo verá</strong> en su zona de atleta.</p>'+
       '</div>'+
       '<p class="pista" id="'+pref+'-dest-resumen"></p>'+
@@ -3585,6 +3615,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     function refrescar(){
       $(pref+'-dest-caja').hidden = (modoDest(pref) !== 'algunos');
       $(pref+'-dest-resumen').textContent = textoDest(pref, singular);
+      /* La línea de los ajustes plegados se refresca con cualquier cambio de
+         destino: si no, diría «solo Andrés» después de haber marcado a los dos. */
+      if(pref==='pl' && typeof pintarResumenAjustes==='function') pintarResumenAjustes();
       if(alCambiar) alCambiar();
     }
     document.querySelectorAll('input[name="'+pref+'-dest-modo"]').forEach(function(r){ r.addEventListener('change', refrescar); });
@@ -4725,6 +4758,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   //               Por eso aquí se dice, y por eso existe «Duplicar».
   //   · copia   → crea uno NUEVO y el original no se toca.
   // ------------------------------------------------------------
+  /* Lo que dice la línea de los ajustes plegados. Sin esto, plegar sería
+     esconder: hay que poder saber a quién va y dónde es sin abrir nada. */
+  function pintarResumenAjustes(){
+    var res = $('pl-ajustes-res'); if(!res) return;
+    var p = [];
+    var dep = $('pl-deporte') ? $('pl-deporte').value : '';
+    if(dep) p.push(nombreDeporte(dep) || dep);
+    var dep2 = $('pl-deporte2') ? $('pl-deporte2').value : '';
+    if(dep2) p.push('y '+String(nombreDeporte(dep2) || dep2).toLowerCase());
+    var pap = $('pl-papel');
+    if(pap && pap.value && pap.selectedIndex >= 0) p.push(pap.options[pap.selectedIndex].textContent);
+    /* Para quién: es lo que más se equivoca, así que se dice con nombres. */
+    var soloAlg = document.querySelector('input[name="pl-dest-modo"]:checked');
+    if(soloAlg && soloAlg.value === 'algunos'){
+      var ids = [];
+      document.querySelectorAll('#pl-dest-lista input[type="checkbox"]:checked').forEach(function(c){ ids.push(c.value); });
+      p.push(ids.length ? 'solo '+nombresDeIds(ids, 2) : '⚠️ sin nadie marcado');
+    }
+    var ab = $('pl-abierta');
+    if(ab && ab.checked) p.push('abierto para apuntarse');
+    var hora = $('pl-hora') ? $('pl-hora').value : '';
+    var lugar = $('pl-lugar') ? $('pl-lugar').value : '';
+    if(hora)  p.push(hora);
+    if(lugar) p.push(lugar);
+    res.textContent = p.length ? p.join(' · ') : 'sin tocar';
+  }
+
   function pintarModo(){
     var pill = $('pl-estado'), aviso = $('pl-aviso-modo'), dup = $('pl-duplicar');
     /* «Pasárselo a otro día» va y viene con «Duplicar»: los dos necesitan un
@@ -4792,6 +4852,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if($('pl-deporte')) $('pl-deporte').value = deportePorGrupo($('pl-grupo') ? $('pl-grupo').value : '');
     if($('pl-deporte2')) $('pl-deporte2').value = '';
     if($('pl-papel')) $('pl-papel').value = 'carga';
+    if(typeof pintarResumenAjustes==='function') pintarResumenAjustes();
     if($('pl-dep2-caja')) $('pl-dep2-caja').open = false;
     sincronizarTipo();
     if($('pl-nota')) $('pl-nota').value = '';
@@ -4828,6 +4889,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('pl-deporte').value = s.deporte || deporteDesdeTipo(s.tipo, s.grupo_id||$('pl-grupo').value);
     $('pl-deporte2').value = s.deporte_2 || '';
     $('pl-papel').value = s.papel_dia || papelDesdeRol(s.tipo, s.rol);
+    if(typeof pintarResumenAjustes==='function') pintarResumenAjustes();
     if($('pl-dep2-caja')) $('pl-dep2-caja').open = !!s.deporte_2;
     $('pl-tipo').value = s.tipo||'';
     if(!$('pl-tipo').value) sincronizarTipo();
@@ -5083,9 +5145,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<div><label>Fecha</label><input id="pl-fecha" type="date" value="'+todayISO+'"></div>'+
           '<div><label>Título</label><input id="pl-titulo" placeholder="p. ej. Series 6×150"></div>'+
         '</div>'+
-        /* Dos preguntas, dos desplegables, y los dos ya vienen contestados con
-           lo que más se usa: atletismo y carga. Planificar un martes corriente
-           no debería costar ni un clic. */
+        /* ------------------------------------------------------------
+           LOS AJUSTES, PLEGADOS
+           ------------------------------------------------------------
+           Antes de llegar al primer ejercicio había que pasar por trece
+           bloques: deporte, papel del día, «¿dos deportes?», para quién —con
+           marcar todos, una casilla por atleta y dos avisos que decían lo
+           mismo—, abierto para apuntarse, hora, lugar y dos ayudas más.
+
+           Y de todo eso, lo que se cambia de verdad cada vez son la fecha, el
+           título y los ejercicios. Lo demás se pone una vez y no se vuelve a
+           mirar: el grupo entrena donde entrena y a la hora que entrena.
+
+           Así que se pliega, y la línea de arriba dice lo que hay puesto
+           —«Natación · Ajuste · solo Andrés e Irene · Mar»— para que plegado
+           no signifique escondido. Mismo patrón que el «Filtrar» de noticias.
+           ------------------------------------------------------------ */
+        '<details class="pl-ajustes" id="pl-ajustes">'+
+          '<summary><span class="pa-et">Ajustes del día</span><span class="pa-res" id="pl-ajustes-res"></span></summary>'+
         '<div class="grid2">'+
           '<div><label for="pl-deporte">Deporte</label><select id="pl-deporte">'+optsFijos(DEPORTES,'atletismo')+'</select></div>'+
           '<div><label for="pl-papel">Papel del día</label><select id="pl-papel">'+optsFijos(PAPELES,'carga')+'</select></div>'+
@@ -5110,6 +5187,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         /* Este campo NO es un cuaderno interno: sale tal cual en la zona del
            atleta y en la de la familia. Lo interno va en «Observaciones»,
            que tiene su propio permiso y no lo ve nadie más. */
+        '</details>'+
+        /* La nota se queda FUERA del plegado: la leen el atleta y su familia,
+           y cambia todos los días. No es un ajuste, es contenido. */
         '<label>Nota / razonamiento</label><textarea id="pl-nota" placeholder="Objetivo del día, sensaciones a buscar, avisos…"></textarea>'+
         '<p class="ej-ayuda"><strong>Esto lo leen el atleta y su familia</strong>, debajo del entrenamiento. Lo que sea solo para el equipo técnico va en <strong>Observaciones</strong>.</p>'+
         '<h3>Bloques del entrenamiento</h3>'+
@@ -5231,10 +5311,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     /* Los clics de la tira: flechas, «Hoy» y cada día. */
     /* Desde la tira del inicio al planificador, en ese día. */
-    document.addEventListener('click', function(ev){
-      var b = ev.target.closest ? ev.target.closest('[data-ir-plan]') : null;
-      if(!b) return;
-      var iso = b.getAttribute('data-ir-plan');
+    /* Ir al planificador en un día concreto. Vale para la tarjeta del inicio y
+       para el segundo toque en la tira. */
+    function irAlPlan(iso){
       irASeccion('planificar');
       PL_LUNES = lunesDeFecha(iso);
       var ses = sesionesDelDia ? sesionesDelDia(iso) : [];
@@ -5242,6 +5321,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       else { limpiarFormulario(); $('pl-fecha').value = iso; }
       pintarSemanaPlan(); pintarModo();
       window.scrollTo(0,0);
+    }
+
+    document.addEventListener('click', function(ev){
+      var o = ev.target.closest ? ev.target.closest('[data-ojear-ent]') : null;
+      if(o){
+        var isoO = o.getAttribute('data-ojear-ent');
+        /* Un toque OJEA. El segundo toque en el mismo día ENTRA: así se navega
+           por la semana sin salir, y se entra a propósito y no de rebote. */
+        if(ENT_OJEO === isoO){ ENT_OJEO = null; irAlPlan(isoO); return; }
+        ENT_OJEO = isoO; pintarHoy(); return;
+      }
+      var b = ev.target.closest ? ev.target.closest('[data-ir-plan]') : null;
+      if(!b) return;
+      irAlPlan(b.getAttribute('data-ir-plan'));
     });
 
     $('pl-semana').addEventListener('click', function(ev){
@@ -5276,6 +5369,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       PL_LUNES = lunesDeFecha(this.value || todayISO);
       pintarSemanaPlan();
     });
+    /* Cualquier cambio dentro de los ajustes se refleja en la línea de fuera. */
+    ['pl-deporte','pl-deporte2','pl-papel','pl-abierta','pl-hora','pl-lugar'].forEach(function(id){
+      var el = $(id); if(el) el.addEventListener('change', pintarResumenAjustes);
+    });
+    pintarResumenAjustes();
 
     $('pl-nueva').addEventListener('click', function(){ limpiarFormulario(); });
 

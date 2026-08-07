@@ -1433,7 +1433,14 @@
     var f = filaClave(bloques);
     if (!f) return [];
     var serie = textoSerie(f, dis);
-    if (serie) out.push({ v: serie, l: 'series' });
+    /* ⚠️ «SERIES» SOLO SI LAS HAY. Un nado continuo de 1.200 m es UNA serie de
+       1.200, y la tarjeta lo cantaba como «1200 · series», que se lee como mil
+       doscientas series. Con una sola repetición lo que hay es una distancia,
+       y así se dice. */
+    if (serie) {
+      var reps = parseInt(f.series, 10);
+      out.push({ v: serie, l: (reps > 1 ? 'series' : (dis === 'natacion' ? 'metros' : 'distancia')) });
+    }
     if (f.ritmo) out.push({ v: String(f.ritmo), l: 'ritmo' });
     var rec = textoRecPlano(recDeFila(f, dis), dis);
     if (rec) out.push({ v: rec, l: 'recuperación' });
