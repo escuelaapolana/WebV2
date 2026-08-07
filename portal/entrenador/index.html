@@ -27,6 +27,22 @@
 
   .layout { display:flex; gap:22px; align-items:flex-start; margin-top:18px; }
 .pl-semana { margin: 0 0 18px; }
+  /* La semana en el inicio del entrenador: baja, para que la tarjeta de hoy
+     siga viéndose sin rodar. El número de la esquina son los que ya han
+     apuntado cómo les fue. */
+  .te-semana { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin:0 0 14px; }
+  .te-d { position:relative; display:flex; flex-direction:column; align-items:center; gap:1px;
+          padding:6px 2px; min-height:58px; border:1px solid var(--linea); border-radius:11px;
+          background:#fff; font:inherit; cursor:pointer; }
+  .te-d .te-n   { font-size:10px; text-transform:uppercase; letter-spacing:.03em; color:var(--texto-suave); }
+  .te-d .te-num { font-size:16px; font-weight:600; color:var(--navy); line-height:1; }
+  .te-d .te-et  { font-size:9px; color:var(--texto-suave); line-height:1.2; max-width:100%;
+                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .te-d .te-ap  { position:absolute; top:3px; right:4px; min-width:15px; height:15px; padding:0 3px;
+                  border-radius:999px; background:#3F7A4C; color:#fff; font-size:9px; font-weight:700;
+                  line-height:15px; text-align:center; }
+  .te-d.libre { background:var(--crema); border-style:dashed; }
+  .te-d.hoy   { border-color:var(--azul-filete); border-width:2px; }
   .pls-cab { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .pls-rango { font-size:14px; color: var(--texto-suave); flex:1 1 auto; }
   .pls-fl, .pls-hoy { min-height:36px; padding:0 12px; border:1px solid var(--linea-borde); border-radius:999px;
@@ -1824,7 +1840,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // usa el resto de la página (sesiones, ausencias, atletas,
   // registros_sesion).
   // ============================================================
-  var HOY = { sesiones: [], siguiente: null, cargando: true };
+  var HOY = { sesiones: [], siguiente: null, semana: [], apuntados: {}, cargando: true };
   var AVISOS = { ausencias: [], prueba: [], feedbackNuevos: 0, cargando: true };
 
   // «Feedback sin leer» = registros de los atletas posteriores a la última vez
@@ -1853,9 +1869,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   async function cargarHoy(){
-    HOY.sesiones = []; HOY.siguiente = null;
+    HOY.sesiones = []; HOY.siguiente = null; HOY.semana = []; HOY.apuntados = {};
     if(!MIS_GRUPOS.length) return;
     var ids = MIS_GRUPOS.map(function(g){ return g.id; });
+    /* La semana entera, para la tira del inicio. Es UNA consulta más y evita
+       que el entrenador tenga que entrar en el planificador solo para ver qué
+       hay mañana. */
+    try {
+      var lun = lunesDeFecha(todayISO);
+      var rs = await sb.from('sesiones').select('id,fecha,titulo,deporte,tipo,papel_dia,grupo_id')
+        .in('grupo_id', ids).gte('fecha', lun).lte('fecha', addDias(lun,6))
+        .order('fecha', { ascending:true }).limit(60);
+      if(!rs.error && rs.data){
+        HOY.semana = rs.data;
+        /* Y cuántos han apuntado ya en cada una: a un entrenador no le sirve
+           saber que el martes hay «Carrera A», le sirve saber si alguien la ha
+           apuntado. Ese es el dato que le hace entrar o no. */
+        var sids = HOY.semana.map(function(x){ return x.id; });
+        if(sids.length){
+          var rr = await sb.from('registros_sesion').select('sesion_id').in('sesion_id', sids);
+          if(!rr.error && rr.data) rr.data.forEach(function(x){
+            HOY.apuntados[x.sesion_id] = (HOY.apuntados[x.sesion_id]||0)+1;
+          });
+        }
+      }
+    } catch(e){ /* sin la semana, el inicio sigue enseñando lo de hoy */ }
     var r = await sb.from('sesiones')
       .select('id,fecha,hora,titulo,tipo,deporte,deporte_2,papel_dia,lugar,grupo_id,publicada,atletas_ids,abierta_inscripcion')
       .in('grupo_id', ids).eq('fecha', todayISO)
@@ -1902,6 +1940,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } catch(e){}
   }
 
+  /* La semana en el inicio del entrenador. Cada día dice el deporte y, si hay
+     algo apuntado, cuántos: «2» al lado del martes significa que dos ya han
+     escrito cómo les fue. Se toca un día y se abre el planificador ahí. */
+  function tiraSemanaEnt(){
+    if(!HOY.semana || !HOY.semana.length) return '';
+    var nom = ['lun','mar','mié','jue','vie','sáb','dom'];
+    var lun = lunesDeFecha(todayISO), h = '';
+    for(var i=0;i<7;i++){
+      var iso = addDias(lun,i);
+      var ses = HOY.semana.filter(function(x){ return x.fecha===iso; });
+      var d = new Date(iso+'T00:00:00');
+      var ap = ses.reduce(function(a,x){ return a+(HOY.apuntados[x.id]||0); }, 0);
+      var cls = 'te-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'');
+      h += '<button type="button" class="'+cls+'" data-ir-plan="'+iso+'" '+
+           'title="'+esc(formatFecha(iso)+(ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento'))+'">'+
+           '<span class="te-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
+           '<span class="te-num">'+d.getDate()+'</span>'+
+           '<span class="te-et">'+esc(ses.length?(nombreDeporte(ses[0].deporte)||tipoNombre(ses[0].tipo)||'entreno'):'libre')+'</span>'+
+           (ap?'<span class="te-ap">'+ap+'</span>':'')+'</button>';
+    }
+    return '<div class="te-semana">'+h+'</div>';
+  }
+
   function pintarHoy(){
     var cont = $('hoy-cont'); if(!cont) return;
     if(!MIS_GRUPOS.length){ cont.innerHTML = ''; return; }
@@ -1910,18 +1971,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       cont.innerHTML = '<div class="hoy-e-no"><div class="hn-txt">'+APOLANA_UI.cargando('tarjeta')+'</div></div>';
       return;
     }
+    var TIRA = tiraSemanaEnt();
 
     if(!HOY.sesiones.length){
       var txt = HOY.siguiente
         ? 'La siguiente es el '+formatFecha(HOY.siguiente.fecha)+(HOY.siguiente.titulo ? ' · '+HOY.siguiente.titulo : '')+'.'
         : 'No hay nada en el calendario de tus grupos.';
-      cont.innerHTML = '<div class="hoy-e-no">'+
+      cont.innerHTML = TIRA + '<div class="hoy-e-no">'+
         '<div class="hn-ic">'+icVacCal+'</div>'+
         '<div class="hn-txt"><b>Hoy no hay entrenamiento programado</b><span>'+esc(txt)+'</span></div>'+
         '<button type="button" data-planificar>Planificar</button>'+
       '</div>';
     } else {
-      cont.innerHTML = HOY.sesiones.map(function(s){
+      cont.innerHTML = TIRA + HOY.sesiones.map(function(s){
         var det = [];
         if(s.hora) det.push('<span class="he-hora"><i></i>'+esc(horaCorta(s.hora))+'</span>');
         var lugar = s.lugar || lugarDeGrupo(s.grupo_id);
@@ -5168,6 +5230,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
 
     /* Los clics de la tira: flechas, «Hoy» y cada día. */
+    /* Desde la tira del inicio al planificador, en ese día. */
+    document.addEventListener('click', function(ev){
+      var b = ev.target.closest ? ev.target.closest('[data-ir-plan]') : null;
+      if(!b) return;
+      var iso = b.getAttribute('data-ir-plan');
+      irASeccion('planificar');
+      PL_LUNES = lunesDeFecha(iso);
+      var ses = sesionesDelDia ? sesionesDelDia(iso) : [];
+      if(ses.length){ $('pl-editar').value = ses[0].id; cargarSesionEnForm(ses[0]); }
+      else { limpiarFormulario(); $('pl-fecha').value = iso; }
+      pintarSemanaPlan(); pintarModo();
+      window.scrollTo(0,0);
+    });
+
     $('pl-semana').addEventListener('click', function(ev){
       var t = ev.target.closest ? ev.target.closest('[data-pls],[data-pls-dia]') : null;
       if(!t) return;
