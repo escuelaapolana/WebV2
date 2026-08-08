@@ -590,7 +590,30 @@
   /* La semana en el inicio: baja a propósito. Siete días y el entrenamiento de
      hoy tienen que caber en un móvil sin rodar la pantalla, así que aquí no
      cabe el título de la sesión — solo el deporte y si ya lo apuntaste. */
-  .ti-semana { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin:0 0 14px; }
+  .ti-semana-caja { margin:0 0 14px; }
+  /* Los mandos de la semana, en una línea baja encima de los siete días. Las
+     flechas son de 44 px de alto para poder darles con el pulgar, pero
+     estrechas: lo que tiene que mandar en la pantalla son los días, no los
+     botones de moverse entre semanas. */
+  .ti-cab { display:flex; align-items:center; gap:6px; margin:0 0 6px; }
+  .ti-cab .ti-rango { flex:1; font-family: var(--fuente-mono); font-size:12px;
+                      color: var(--texto-suave); text-align:center; white-space:nowrap;
+                      overflow:hidden; text-overflow:ellipsis; }
+  .ti-nav { flex:none; width:34px; min-height:44px; display:inline-flex; align-items:center;
+            justify-content:center; border:1px solid var(--linea); border-radius:10px;
+            background:#fff; color: var(--texto-suave); font:inherit; font-size:17px;
+            line-height:1; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .ti-nav:hover { border-color: var(--azul-filete); color: var(--navy); }
+  .ti-hoy { flex:none; min-height:44px; padding:0 12px; border:1px solid var(--azul-filete);
+            border-radius:999px; background:#fff; color: var(--azul-oscuro); font:inherit;
+            font-size:13px; font-weight:600; cursor:pointer; }
+  .ti-fallo { margin:0; padding:10px 2px 4px; font-size:14px; color: var(--texto-suave); line-height:1.45; }
+  .ti-fallo .enl { background:none; border:0; padding:0; font:inherit; font-weight:600;
+                   color: var(--azul-oscuro); cursor:pointer; text-decoration:underline; }
+  .ti-semana { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+  /* Mientras llega la semana nueva, los días se apagan: si no, se quedan los
+     de la semana anterior con toda su pinta de buenos. */
+  .ti-semana.cargando { opacity:.45; pointer-events:none; }
   .ti-d { display:flex; flex-direction:column; align-items:center; gap:1px; padding:6px 2px;
           min-height:58px; border:1px solid var(--linea); border-radius:11px; background:#fff;
           font:inherit; cursor:pointer; }
@@ -3711,22 +3734,42 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* El conmutador. «Sesión de hoy» y «Mi semana» comparten la tira de días;
      en el historial la tira desaparece porque allí se navega por meses. */
-  function pintarModo(){
+  function pintarModo(diaEntrando){
     var conm=$('ent-conm');
     if(conm) conm.querySelectorAll('.cm').forEach(function(b){
       b.setAttribute('aria-selected', b.getAttribute('data-modo')===MODO ? 'true' : 'false');
     });
-    $('ent-semana').hidden   = (MODO==='historial');
+    /* La primera pestaña dice QUÉ DÍA estás haciendo, no siempre «hoy».
+       Desde que se entra directo desde el inicio, aquí se puede estar en el
+       jueves que viene, y llamarlo «Sesión de hoy» era mentir en la única
+       palabra de la pantalla que dice dónde estás. */
+    var pest = conm && conm.querySelector('.cm[data-modo="hoy"]');
+    if(pest){
+      /* Fuera de este modo la pestaña vuelve a decir «Sesión de hoy», que es
+         a donde lleva: pulsarla te devuelve a hoy, así que tiene que
+         prometer hoy. */
+      var d = (MODO==='hoy') ? (diaEntrando || diaSel || todayISO) : todayISO;
+      /* «7 ago» y no «7 de agosto»: son tres pestañas en un móvil de 375 px
+         y la larga las parte en dos líneas. */
+      pest.textContent = (d===todayISO) ? 'Sesión de hoy' : fechaCorta(d);
+    }
+    /* ⚠️ EN «Sesión de hoy» NO HAY CALENDARIO. Es todo el cambio: el
+       calendario vive en el inicio, con sus flechas de semana, y aquí se
+       viene a hacer el entrenamiento que ya elegiste. Quien quiera la
+       rejilla la tiene en «Mi semana», que es su sitio. */
+    $('ent-semana').hidden   = (MODO!=='semana');
     $('entreno-cont').hidden = (MODO==='historial');
     $('hist-cont').hidden    = (MODO!=='historial');
-    // Los mandos de semana solo en «Mi semana»: en «Sesión de hoy» no se navega
     var cab=$('sem-cab'); if(cab) cab.hidden = (MODO!=='semana');
     var rango=$('sem-rango'); if(rango) rango.hidden = (MODO!=='semana');
     var flechas=$('tb-flechas'); if(flechas && MODO==='historial') flechas.innerHTML='';
   }
   function activarModo(modo){
     MODO=modo;
-    pintarModo();
+    /* Pulsar la pestaña te lleva a HOY, así que la etiqueta se pone en hoy
+       antes de que `pintarDia` mueva el día: si se dejara a `diaSel`, la
+       pestaña se quedaría un instante con la fecha de la que vienes. */
+    pintarModo(todayISO);
     if(modo==='historial'){ pintarHistorial(); return; }
     if(modo==='hoy' && diaSel!==todayISO){
       if(lunesVis===lunesHoy) pintarDia(todayISO); else irSemana(lunesHoy, todayISO);
@@ -4554,10 +4597,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // Abrir un día concreto en «Mi semana» (y, si se pide, ir al formulario de sensaciones)
   async function verDia(iso, foco){
     activarSeccion('entreno');
-    /* Si lo que se abre es lo de hoy, el conmutador se queda en «Sesión de
-       hoy»; si es otro día, en «Mi semana», que es de donde viene. */
-    MODO = (iso===todayISO) ? 'hoy' : 'semana';
-    pintarModo();
+    /* ⚠️ SIEMPRE EN «Sesión de hoy», sea el día que sea, y ESO ES LO QUE
+       QUITA EL CALENDARIO REPETIDO.
+       Antes, abrir un día que no fuera hoy te dejaba en «Mi semana», o sea
+       con la tira de días otra vez arriba: elegías el día en el inicio y al
+       entrar te volvían a preguntar qué día. Ahora el inicio es donde se
+       ojea —con sus flechas de semana— y aquí solo se hace el entrenamiento.
+       La tira de dentro sigue existiendo en «Mi semana» para quien la
+       quiera; lo que ya no hace es salir sola. */
+    MODO = 'hoy';
+    pintarModo(iso);
     if(lunesDe(iso)===lunesVis) pintarDia(iso); else await irSemana(lunesDe(iso), iso);
     if(foco){ var c=wrap.querySelector('.entreno-uno[data-sid="'+foco+'"] .fb-card'); if(c){ c.scrollIntoView({block:'center'}); return; } }
     wrap.scrollIntoView({block:'start'});
@@ -4593,7 +4642,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      4 próxima carrera y última marca · 5 resto de la semana.
      Una sola tarjeta navy: si hubiera dos, ninguna ancla. */
   function pintarHoy(){
-    var sec=$('sec-hoy'), lista=sesSemanaHoy(), html='';
+    /* La lista es la de la semana que se está OJEANDO, no la de hoy: si no,
+       al pasar de semana la tira cambiaba y la tarjeta de debajo se quedaba
+       enseñando el lunes pasado. */
+    var sec=$('sec-hoy'), lista=sesOjeo(), html='';
 
     // 1 · aviso de recibo pendiente arriba (desaparece si está al día)
     var deb=PAGOS.filter(function(x){ var e=(x.estado||'').toLowerCase(); return e!=='pagado' && e!=='cobrado'; });
@@ -4663,7 +4715,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<span class="lf-hora">&rsaquo;</span></button>';
         }).join('')+'</div>';
       }
-    } else if(SEM_FALLO[lunesHoy]){
+    } else if(SEM_FALLO[OJEO_LUNES]){
       /* «Hoy toca descansar» cuando lo que ha fallado es la consulta es la
          mentira más cara de todo el portal: te quedas en casa. Aquí se dice
          que no lo sabemos y se ofrece volver a mirar. */
@@ -4723,11 +4775,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(tj) html+='<div class="minis">'+tj+'</div>';
 
     // 5 · resto de la semana: dos filas, en un solo contenedor
-    var futuras=lista.filter(function(s){ return s.fecha>todayISO; }).sort(function(a,b){ return a.fecha<b.fecha?-1:1; });
+    /* «Lo que queda» de la semana que se está mirando, contado desde el día
+       que se está mirando. Si fuera siempre desde hoy, al ojear la semana que
+       viene esta lista repetiría lo de esta. */
+    var futuras=lista.filter(function(s){ return s.fecha>diaVer; }).sort(function(a,b){ return a.fecha<b.fecha?-1:1; });
     if(futuras.length){
       var nom=['dom','lun','mar','mié','jue','vie','sáb'];
       var hora=horaGrupo();
-      html+='<div class="lista-tit"><span class="et">Resto de la semana</span>'+
+      html+='<div class="lista-tit"><span class="et">'+(OJEO_LUNES===lunesHoy?'Resto de la semana':'Lo que queda de esa semana')+'</span>'+
         '<a class="enl" href="../calendario/">Calendario</a></div>';
       html+='<div class="lista-caja">'+futuras.slice(0,2).map(function(s){
         var d=new Date(s.fecha+'T00:00:00');
@@ -4750,9 +4805,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* El día que se está mirando en el inicio. No es el mismo que `diaSel`, que
      es el del apartado de entrenamiento: aquí se OJEA, allí se TRABAJA. */
   var DIA_OJEO = null;
+  /* Y la SEMANA que se está ojeando. Antes la tira era siempre la de hoy y
+     para ver la que viene había que entrar en «Entrenamiento», que es
+     justamente el viaje que esta tira venía a quitar: se ojea aquí, se entra
+     solo para hacerlo. */
+  var OJEO_LUNES = lunesHoy;
+  function sesOjeo(){ return SEM[OJEO_LUNES]||[]; }
   function tiraSemanaHTML(){
     var nom=['lun','mar','mié','jue','vie','sáb','dom'];
-    var l=lunesHoy, h='', deLaSemana=sesSemanaHoy();
+    var l=OJEO_LUNES, h='', deLaSemana=sesOjeo();
+    /* Los mandos de la semana. «Hoy» solo sale cuando NO estás en la de hoy:
+       un botón que no hace nada enseña a no fiarse de los botones. */
+    var mandos='<div class="ti-cab">'+
+      '<button type="button" class="ti-nav" data-sem-ojeo="-7" aria-label="Semana anterior">‹</button>'+
+      '<span class="ti-rango">'+esc(l===lunesHoy ? 'Esta semana' : rangoTxt(l))+'</span>'+
+      (l===lunesHoy ? '' : '<button type="button" class="ti-hoy" data-sem-ojeo="hoy">Hoy</button>')+
+      '<button type="button" class="ti-nav" data-sem-ojeo="7" aria-label="Semana siguiente">›</button>'+
+    '</div>';
+    /* Una semana que no se ha podido cargar NO se pinta como siete días
+       libres: eso es decirle a alguien que no tiene entrenamiento cuando no
+       lo sabemos. Mismo criterio que la tarjeta de hoy. */
+    if(SEM_FALLO[l]){
+      return '<div class="ti-semana-caja">'+mandos+
+        '<p class="ti-fallo">No hemos podido cargar esta semana. '+
+        '<button type="button" class="enl" data-sem-ojeo="reintentar">Volver a intentarlo</button></p></div>';
+    }
     for(var i=0;i<7;i++){
       var iso=addDias(l,i);
       var ses=deLaSemana.filter(function(x){ return x.fecha===iso; });
@@ -4769,7 +4846,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          '<span class="ti-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
          '<span class="ti-num">'+d.getDate()+'</span>'+dentro+'</button>';
     }
-    return '<div class="ti-semana">'+h+'</div>';
+    return '<div class="ti-semana-caja">'+mandos+'<div class="ti-semana">'+h+'</div></div>';
+  }
+
+  /* Cambiar de semana en el inicio. Se pide la semana nueva si no está ya
+     cargada —una consulta, la misma que usa «Entrenamiento», y se queda
+     guardada— y se elige qué día enseñar al llegar.
+
+     ⚠️ AL SALTAR DE SEMANA HAY QUE MOVER EL DÍA OJEADO. Si se quedara en el
+     de antes, la tarjeta de abajo seguiría enseñando un día de OTRA semana
+     que la tira ya no señala: la tira dice una cosa y la tarjeta otra.
+     Se cae en el PRIMER día con entrenamiento, que es lo que se viene a ver;
+     si la semana está vacía, en el lunes. Y al volver a la de hoy, en hoy. */
+  async function ojearSemana(lunes){
+    OJEO_LUNES = lunes;
+    var caja = document.querySelector('#sec-hoy .ti-semana');
+    if(caja) caja.classList.add('cargando');
+    await cargarSemana(lunes);
+    if(lunes === lunesHoy){
+      DIA_OJEO = todayISO;
+    } else {
+      var lista = sesOjeo().slice().sort(function(a,b){ return a.fecha<b.fecha?-1:1; });
+      DIA_OJEO = lista.length ? lista[0].fecha : lunes;
+    }
+    pintarHoy();
+    window.scrollTo(0,0);
   }
 
   $('sec-hoy').addEventListener('click', function(ev){
@@ -4778,6 +4879,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(u){ location.href=u.getAttribute('data-url'); return; }
     var s=t.closest('[data-sec-ir]');
     if(s){ activarSeccion(s.getAttribute('data-sec-ir')); window.scrollTo(0,0); return; }
+    /* Cambiar de semana sin salir del inicio. */
+    var w=t.closest('[data-sem-ojeo]');
+    if(w){
+      var v=w.getAttribute('data-sem-ojeo');
+      if(v==='hoy') ojearSemana(lunesHoy);
+      else if(v==='reintentar'){ delete SEM[OJEO_LUNES]; ojearSemana(OJEO_LUNES); }
+      else ojearSemana(addDias(OJEO_LUNES, parseInt(v,10)));
+      return;
+    }
     /* Ojear: cambia lo que se ve sin salir de la pantalla. */
     var o=t.closest('[data-ojear]');
     if(o){ DIA_OJEO=o.getAttribute('data-ojear'); pintarHoy(); return; }
