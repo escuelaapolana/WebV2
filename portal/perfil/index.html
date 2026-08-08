@@ -316,6 +316,23 @@
       </p>
     </section>
 
+    <!-- ============================================================
+         STRAVA
+         ------------------------------------------------------------
+         Va al final y no arriba: es lo último que le importa a quien
+         entra aquí, que viene a cambiar su foto o su contraseña.
+
+         La caja entera está oculta hasta saber si el club tiene esto
+         encendido. Enseñar «Conectar con Strava» y que al pulsarlo
+         diga «esto no está configurado» es peor que no enseñarlo.
+         ============================================================ -->
+    <section class="tarjeta oculto" id="pf-caja-strava">
+      <h2>Strava</h2>
+      <p class="intro" id="pf-strava-intro">Comprobando…</p>
+      <div id="pf-strava-acc"></div>
+      <p class="msg" id="pf-msg-strava"></p>
+    </section>
+
   </div>
 
   <div id="pf-sin-ficha" class="oculto"></div>
@@ -895,6 +912,123 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       boton.disabled = false;
     }
   });
+
+  /* ============================================================
+     STRAVA · conectar y desconectar
+     ------------------------------------------------------------
+     Lo que hace la integración es ENRIQUECER la actividad que el reloj
+     ya subió: le pone el título del entrenamiento y, en la
+     descripción, lo que se apuntó aquí. No crea nada, porque el Garmin
+     ya sube la suya y dos actividades el mismo día no las quiere nadie.
+
+     Aquí solo se conecta y se desconecta. El envío se hace desde el
+     entrenamiento, que es donde está lo que hay que mandar.
+     ============================================================ */
+  (function () {
+    var caja = $('pf-caja-strava');
+    var intro = $('pf-strava-intro');
+    var acc = $('pf-strava-acc');
+    var ms = $('pf-msg-strava');
+    if (!caja) return;
+
+    /* `functions.invoke` y no un `fetch` a mano: ya sabe la dirección del
+       proyecto y ya manda la sesión. Montarla a pelo aquí sería repetir
+       en esta pantalla algo que la librería hace bien en las otras
+       cuatro que llaman a funciones. */
+    async function llamar(accion, extra) {
+      var cuerpo = Object.assign({ accion: accion }, extra || {});
+      var r = await sb.functions.invoke('strava', { body: cuerpo });
+      /* Cuando la función contesta 4xx, `invoke` da error y el detalle se
+         queda dentro de la respuesta. Se saca, porque ese detalle es
+         justo lo que hay que enseñar («todavía no hay actividad»). */
+      if (r.error) {
+        var d = null;
+        try { d = await r.error.context.json(); } catch (e) {}
+        var err = new Error((d && d.mensaje) || r.error.message || 'ha fallado');
+        err.codigo = d && d.error;
+        throw err;
+      }
+      return r.data;
+    }
+
+    /* Lo que cuenta Strava al volver. Va en la dirección porque la
+       vuelta la hace el navegador entero, no una llamada: es la única
+       forma de traer el resultado hasta aquí. Se limpia de la barra en
+       cuanto se lee, para que recargar no repita el mensaje. */
+    function loQueTraeLaVuelta() {
+      var p = new URLSearchParams(location.search).get('strava');
+      if (!p) return null;
+      try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+      if (p === 'si') return { txt: 'Strava conectado. Ya puedes mandar tus entrenamientos desde la pantalla del entrenamiento.', cls: 'ok' };
+      if (p === 'no') return { txt: 'No has autorizado a Apolana en Strava, así que no se ha conectado nada.', cls: '' };
+      if (p === 'faltan-permisos') return { txt: 'Faltan permisos: hay que dejar marcadas las dos casillas de Strava (ver tus actividades y modificarlas). Vuelve a conectarlo.', cls: 'fallo' };
+      return { txt: 'Algo ha fallado al conectar con Strava. Vuelve a intentarlo.', cls: 'fallo' };
+    }
+
+    function pintar(estado) {
+      if (estado && estado.conectado) {
+        var cuando = estado.ultimo_envio
+          ? 'El último entrenamiento que mandaste fue el ' + new Date(estado.ultimo_envio).toLocaleDateString('es-ES') + '.'
+          : 'Todavía no has mandado ninguno.';
+        intro.innerHTML = 'Conectado' + (estado.atleta_nombre ? ' como <b>' + esc(estado.atleta_nombre) + '</b>' : '') + '. ' + esc(cuando);
+        acc.innerHTML = '<button type="button" class="btn btn--fantasma" id="pf-strava-off">Desconectar Strava</button>' +
+          '<p class="pista">Al desconectar se borran tus llaves de aquí, pero <b>el permiso sigue dado en Strava</b>: '
+          + 'para retirarlo del todo, entra en Strava → Ajustes → Mis aplicaciones.</p>';
+      } else {
+        intro.textContent = 'Conecta tu Strava y, cuando apuntes cómo te ha ido un entrenamiento, Apolana le pondrá el título '
+          + 'y lo que hiciste —series, kilos, sensaciones— a la actividad que ya subió tu reloj. No crea actividades nuevas: '
+          + 'no te va a duplicar nada.';
+        acc.innerHTML = '<button type="button" class="btn btn--primario" id="pf-strava-on">Conectar con Strava</button>';
+      }
+      caja.classList.remove('oculto');
+    }
+
+    (async function arranca() {
+      var vuelta = loQueTraeLaVuelta();
+      if (vuelta) aviso(ms, vuelta.txt, vuelta.cls);
+      var r;
+      try { r = await sb.rpc('strava_estoy_conectado'); } catch (e) { return; }
+      /* Si la función no existe todavía (base sin la migración 145), la
+         caja no se enseña: mejor nada que un botón que no lleva a
+         ningún sitio. */
+      if (r.error) return;
+      var e0 = Array.isArray(r.data) ? r.data[0] : r.data;
+      pintar(e0);
+    })();
+
+    acc.addEventListener('click', async function (ev) {
+      var on = ev.target.closest('#pf-strava-on');
+      var off = ev.target.closest('#pf-strava-off');
+      if (on) {
+        on.disabled = true;
+        aviso(ms, 'Abriendo Strava…');
+        try {
+          var d = await llamar('conectar');
+          if (!d || !d.url) throw new Error('no se ha podido');
+          location.href = d.url;
+        } catch (e) {
+          aviso(ms, 'No hemos podido abrir Strava (' + (e.message || '') + '). Vuelve a probar.', 'fallo');
+          on.disabled = false;
+        }
+        return;
+      }
+      if (off) {
+        /* Desconectar no pregunta dos veces: no se pierde nada. Lo que ya
+           está escrito en Strava se queda escrito, y volver a conectar es
+           un botón. */
+        off.disabled = true;
+        try {
+          var r2 = await sb.rpc('strava_desconectar');
+          if (r2.error) throw r2.error;
+          aviso(ms, 'Desconectado. Acuérdate de retirar el permiso también en Strava si no vas a volver.', 'ok');
+          pintar({ conectado: false });
+        } catch (e2) {
+          aviso(ms, 'No se ha podido desconectar. Vuelve a probar.', 'fallo');
+          off.disabled = false;
+        }
+      }
+    });
+  })();
 
 });
 </script>

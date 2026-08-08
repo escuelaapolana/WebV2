@@ -944,6 +944,19 @@
     background:none; border:0; cursor:pointer; font:inherit; font-size:14px; font-weight:600;
     color: var(--azul-oscuro); -webkit-tap-highlight-color:transparent; }
   .fb-corregir:hover { color: var(--azul-hover); }
+  /* Mandarlo a Strava: un botón discreto y su recado al lado. No es una
+     acción principal —lo principal ya está hecho, que es apuntarlo— así
+     que ni azul ni ancho. */
+  .fbl-strava { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px;
+                padding-top:10px; border-top:1px solid var(--linea); }
+  .fb-strava { min-height:44px; padding:0 14px; border:1px solid var(--linea-borde); border-radius:999px;
+               background:#fff; color: var(--navy); font:inherit; font-size:14px; font-weight:600;
+               cursor:pointer; display:inline-flex; align-items:center; }
+  .fb-strava:hover:not(:disabled) { border-color: var(--azul-filete); color: var(--azul-oscuro); }
+  .fb-strava:disabled { opacity:.55; cursor:default; }
+  .fbs-msg { flex:1; min-width:140px; font-size:13px; line-height:1.45; color: var(--texto-suave); }
+  .fbs-msg.ok { color:#1e7a3d; }
+  .fbs-msg.fallo { color:#B96F09; }
   /* Mientras se corrige un día viejo se dice, y se dice antes de tocar
      nada: no es lo mismo apuntar hoy que reescribir lo de hace un mes. */
   .aviso-corrigiendo { margin:0 0 14px; padding:11px 14px; border-radius:12px;
@@ -2932,7 +2945,86 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     partes+='<div class="fbl-pie">'+rastro+
       '<button type="button" class="fb-corregir">Corregir lo apuntado</button></div>';
+    /* Y, si tiene Strava conectado, el botón para llevárselo allí. Va AQUÍ
+       —debajo de lo apuntado y no arriba del formulario— porque solo tiene
+       sentido cuando ya hay algo que mandar. */
+    partes+=stravaBotonHTML(s);
     return '<div class="fb-leer"><div class="fbl-et">Cómo te fue</div>'+partes+'</div>';
+  }
+
+  /* ============================================================
+     LLEVARLO A STRAVA
+     ------------------------------------------------------------
+     El reloj ya subió la actividad con su GPS y sus vueltas; lo que no
+     sabe es qué había puesto el entrenador, qué series salieron y cómo
+     te sentiste. Eso es lo que se le añade: título y descripción.
+
+     ⚠️ NO SE CREA NADA EN STRAVA. Si se creara, los días que llevas el
+     Garmin tendrías dos actividades y habría que borrar una a mano cada
+     día. Ver `supabase/functions/strava/index.ts`.
+
+     El texto se monta AQUÍ y no en el servidor a propósito: cómo se lee
+     una serie de este club ya está escrito y probado en la pantalla
+     (`assets/js/descansos.js`). Que el servidor lo volviera a montar a
+     su manera es garantizar que dentro de un mes digan cosas distintas.
+     ============================================================ */
+  var STRAVA_HAY = null;      // null = todavía no se sabe
+  async function mirarStrava(){
+    try {
+      var r=await sb.rpc('strava_estoy_conectado');
+      if(r.error){ STRAVA_HAY=false; return; }
+      var e=Array.isArray(r.data)?r.data[0]:r.data;
+      STRAVA_HAY = !!(e && e.conectado);
+    } catch(e){ STRAVA_HAY=false; }
+  }
+  function stravaBotonHTML(s){
+    if(!STRAVA_HAY) return '';
+    return '<div class="fbl-strava">'+
+      '<button type="button" class="fb-strava" data-sid="'+esc(s.id)+'" data-dia="'+esc(s.fecha)+'">Mandarlo a Strava</button>'+
+      '<span class="fbs-msg"></span></div>';
+  }
+  /* Lo que se le escribe a la actividad. Se lee del registro guardado, no
+     de los recuadros de la pantalla: así mandar un día de la semana pasada
+     sale igual de completo que mandar el de hoy. */
+  function stravaTextoDe(s){
+    var reg=REG[s.id]; if(!reg) return '';
+    var dis=disciplinaDe(s), lineas=[];
+    (Array.isArray(s.bloques)?s.bloques:[]).forEach(function(b,bi){
+      var filas=[];
+      (b.filas||[]).forEach(function(f,fi){
+        var hecho=hechoLinea(reg, f.id, 'b'+bi+'f'+fi, f, s);
+        if(!hecho) return;                       // lo que no se hizo no se cuenta
+        filas.push('· '+(f.ejercicio||'—')+': '+hecho);
+      });
+      if(filas.length) lineas.push((b.etiqueta||'Bloque')+'\n'+filas.join('\n'));
+    });
+    /* Y lo que añadió por su cuenta, marcado: en Strava, sin la marca,
+       parecería que se lo puso el entrenador. */
+    if(reg.tiempos_reales){
+      var puestos={};
+      (Array.isArray(s.bloques)?s.bloques:[]).forEach(function(b,bi){ (b.filas||[]).forEach(function(f,fi){
+        if(f.id) puestos[f.id]=true; puestos['b'+bi+'f'+fi]=true; }); });
+      var extras=[];
+      Object.keys(reg.tiempos_reales).forEach(function(k){
+        if(puestos[k]) return;
+        var e=reg.tiempos_reales[k]; if(!e||!e.ejercicio) return;
+        var h=hechoLinea(reg, k, null, {}, s);
+        if(h) extras.push('· '+e.ejercicio+': '+h);
+      });
+      if(extras.length) lineas.push('Añadido por mí\n'+extras.join('\n'));
+    }
+    var cierre=[];
+    if(reg.rpe!=null) cierre.push('Esfuerzo '+reg.rpe+'/10 ('+palabraDe(PALABRA_RPE, reg.rpe)+')');
+    if(reg.sensacion_general!=null) cierre.push('Sensación '+reg.sensacion_general+'/10');
+    if(reg.como_me_siento) cierre.push(reg.como_me_siento);
+    /* Las molestias NO van a Strava. Es un dato de salud y Strava es una
+       red social: una actividad puede estar a la vista de cualquiera, y
+       nadie ha pedido publicar que le duele el hombro. Se quedan en el
+       club, que es donde sirven para algo. */
+    if(cierre.length) lineas.push(cierre.join(' · '));
+    if(reg.notas_atleta) lineas.push('«'+reg.notas_atleta+'»');
+    void dis;
+    return lineas.join('\n\n');
   }
 
   /* Vuelca en los recuadros lo que ya está guardado de esa sesión: los valores,
@@ -3826,6 +3918,37 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var cajaCo=corr.closest('.entreno-uno');
       var sidCo=cajaCo&&cajaCo.getAttribute('data-sid');
       if(sidCo){ CORRIGIENDO[sidCo]=true; pintarDia(diaSel); }
+      return;
+    }
+    /* «Mandarlo a Strava»: enriquece la actividad que ya subió el reloj.
+       Se hace a mano y no solo al guardar, a propósito: cuando acabas de
+       entrenar el reloj todavía no ha sincronizado, así que un envío
+       automático fallaría casi siempre y en silencio. */
+    var stv=t.closest('.fb-strava');
+    if(stv){
+      var msgSt=stv.parentNode.querySelector('.fbs-msg');
+      var sidSt=stv.getAttribute('data-sid'), diaSt=stv.getAttribute('data-dia');
+      var sSt=(SEM[lunesVis]||[]).filter(function(x){ return x.id===sidSt; })[0];
+      if(!sSt) return;
+      stv.disabled=true; msgSt.textContent='Buscando tu actividad…'; msgSt.className='fbs-msg';
+      try {
+        var envio=await sb.functions.invoke('strava', { body:{
+          accion:'enviar', dia:diaSt,
+          titulo: tituloSesion(sSt),
+          descripcion: stravaTextoDe(sSt)
+        }});
+        if(envio.error){
+          var det=null; try { det=await envio.error.context.json(); } catch(e){}
+          throw new Error((det&&det.mensaje)||envio.error.message||'no ha salido');
+        }
+        var nom=(envio.data&&envio.data.actividad&&envio.data.actividad.nombre)||'';
+        msgSt.textContent='Hecho'+(nom?' · «'+nom+'»':'')+'. Ya está en tu Strava.';
+        msgSt.className='fbs-msg ok';
+      } catch(e){
+        msgSt.textContent=e.message||'No se ha podido mandar.';
+        msgSt.className='fbs-msg fallo';
+        stv.disabled=false;
+      }
       return;
     }
     /* «Lo cambié»: abre el campo de texto libre y lleva el foco dentro, que si
@@ -5265,6 +5388,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            '<p class="vacio" style="margin-top:-6px;">El peso de tu mejor serie de cada día.</p>';
   }
   cargarMarcas();
+  /* ¿Tiene Strava conectado? Una pregunta al entrar, y si dice que no, el
+     botón no se pinta en ningún sitio. Enseñarlo a todo el mundo y que al
+     pulsarlo diga «no lo tienes conectado» es enseñar una puerta pintada. */
+  mirarStrava().then(function(){ if(STRAVA_HAY && diaSel) pintarDia(diaSel); });
 
   // Al elegir prueba, adaptar la etiqueta de la marca (tiempo / metros / puntos)
   $('mk-prueba').addEventListener('change', function(){ var p=catMap[this.value]; var lbl=$('mk-tiempo-lbl'), inp=$('mk-tiempo');
