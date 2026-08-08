@@ -40,12 +40,20 @@
 //   ACCESO_URL_BASE      · la web del club (a dónde vuelve Strava)
 //
 // Cómo se despliega:
-//     supabase functions deploy strava
+//     supabase functions deploy strava --no-verify-jwt
 //
-// Aquí SÍ se verifica la sesión —al revés que `acceso-enlace`—: todo
-// lo que hace es en nombre de alguien que ya ha entrado. La única
-// excepción es `volver`, que llega desde Strava sin cabeceras; por eso
-// no lleva nada dentro más que un código de un solo uso y el `state`.
+// ⚠️ EL `--no-verify-jwt` ES IMPRESCINDIBLE Y NO ABRE NADA.
+// Hace falta porque `volver` lo llama STRAVA, no el portal: es una
+// redirección del navegador y no lleva ni puede llevar la sesión. Sin
+// el `--no-verify-jwt`, Supabase la rechaza con un 401 antes de que
+// este archivo se ejecute, y conectar la cuenta no funciona nunca.
+//
+// La sesión se sigue exigiendo, pero AQUÍ DENTRO: todas las acciones
+// menos `volver` pasan por `quienLlama()`, que valida el token contra
+// Supabase y saca de ahí de quién es la cuenta. Nada sale del cuerpo
+// de la petición, así que nadie puede escribir en el Strava de otro.
+// Y `volver` no lleva dentro más que un código de un solo uso que
+// caduca, y un `state` que se comprueba contra la tabla de perfiles.
 // ============================================================
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
