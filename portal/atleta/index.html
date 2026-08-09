@@ -668,8 +668,14 @@
                border-radius:10px; font-family: var(--fuente-texto); font-size:16px; min-height:44px;
                background:#fff; color: var(--navy); }
   .apu input:focus { outline:2px solid var(--azul); border-color: var(--azul); }
-  .apu-dos { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
-  @media (max-width:420px){ .apu-dos { grid-template-columns:1fr; } }
+  /* Horas, minutos y segundos en una fila, con su letra al lado para que
+     no haya que adivinar qué casilla es cuál. Las casillas son estrechas
+     a propósito: un recuadro ancho para dos cifras invita a escribir
+     dentro el tiempo entero, que es justo lo que no funciona. */
+  .apu-hms { display:flex; align-items:center; gap:6px; }
+  .apu-hms input { width:100%; min-width:0; text-align:center;
+                   font-family: var(--fuente-dato); font-variant-numeric:tabular-nums; }
+  .apu-hms span { flex:none; font-size:14px; color: var(--texto-suave); }
   .apu-pista { margin:8px 0 0; font-family: var(--fuente-dato); font-size:13px; color: var(--azul-oscuro); min-height:18px; }
   .apu-pie { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
   .apu-msg { flex:1; min-width:120px; font-size:13px; color: var(--texto-suave); }
@@ -5078,12 +5084,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }).join('')+'</div>'+
       '<label for="apu-tit">Qué hiciste</label>'+
       '<input id="apu-tit" type="text" maxlength="60" value="'+esc(APU_VAL.tit)+'" placeholder="'+esc(apuPlaceholder())+'">'+
-      (d.unidad ? '<div class="apu-dos">'+
-        '<div><label for="apu-dist">Distancia ('+esc(d.unidad)+')</label>'+
-          '<input id="apu-dist" type="text" inputmode="decimal" value="'+esc(APU_VAL.dist)+'" placeholder="'+(d.unidad==='km'?'42,5':'1200')+'"></div>'+
-        '<div><label for="apu-tiempo">Tiempo</label>'+
-          '<input id="apu-tiempo" type="text" inputmode="numeric" value="'+esc(APU_VAL.tiempo)+'" placeholder="1:25:30"></div>'+
-      '</div>' : '')+
+      (d.unidad ? '<label for="apu-dist">Distancia ('+esc(d.unidad)+')</label>'+
+        '<input id="apu-dist" type="text" inputmode="decimal" value="'+esc(APU_VAL.dist)+'" placeholder="'+(d.unidad==='km'?'42,5':'1200')+'">'+
+        /* ⚠️ TRES CASILLAS Y NO UNA, Y NO ES CAPRICHO.
+           Estaba en un solo recuadro con `inputmode="numeric"`, o sea que
+           el iPhone abre el teclado de números —EL QUE NO TIENE DOS
+           PUNTOS—. Escribir «1:56:39» era literalmente imposible: se
+           tecleaba «15639» y se guardaba una hora y media de bici como
+           un número sin sentido. Pasó el primer día.
+           Se podría haber puesto `inputmode="text"` para que salieran los
+           dos puntos, pero entonces se teclean números en un teclado de
+           letras. O adivinar desde la derecha —«15639» son 1:56:39—, y
+           entonces «45» no se sabe si son segundos o minutos.
+           Tres casillas no tienen ninguna de las dos dudas. */
+        '<label>Tiempo</label><div class="apu-hms">'+
+          '<input id="apu-h" type="text" inputmode="numeric" maxlength="2" value="'+esc(APU_VAL.h)+'" placeholder="0" aria-label="Horas"><span>h</span>'+
+          '<input id="apu-min" type="text" inputmode="numeric" maxlength="3" value="'+esc(APU_VAL.min)+'" placeholder="45" aria-label="Minutos"><span>min</span>'+
+          '<input id="apu-seg" type="text" inputmode="numeric" maxlength="2" value="'+esc(APU_VAL.seg)+'" placeholder="00" aria-label="Segundos"><span>s</span>'+
+        '</div>' : '')+
       (d.desnivel ? '<label for="apu-desn">Desnivel (m) <span class="apu-op">si lo sabes</span></label>'+
         '<input id="apu-desn" type="text" inputmode="numeric" value="'+esc(APU_VAL.desn)+'" placeholder="520">' : '')+
       (apuSel==='fuerza' ? '<label>Qué trabajaste</label><div class="apu-deps chico">'+
@@ -5110,7 +5128,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      entero al tocar un deporte —es lo que cambia la unidad y hace aparecer
      o desaparecer el desnivel—, así que sin esto perdías el título recién
      tecleado por pulsar «Carrera». */
-  var APU_VAL={ tit:'', dist:'', tiempo:'', desn:'' };
+  var APU_VAL={ tit:'', dist:'', h:'', min:'', seg:'', desn:'' };
   /* QUÉ SE TRABAJÓ, solo en fuerza. No es un adorno: es la etiqueta del
      bloque, y de ahí sale el resumen de la tarjeta —«3 ejercicios · Tren
      superior»— por el mismo camino que los entrenamientos del entrenador
@@ -5124,7 +5142,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      justo lo que se pierde si hay que buscarlo. */
   var apuRpe=null;
   function apuRecordar(){
-    ['tit','dist','tiempo','desn'].forEach(function(k){
+    ['tit','dist','h','min','seg','desn'].forEach(function(k){
       var el=$('apu-'+k); if(el) APU_VAL[k]=el.value;
     });
   }
@@ -5148,7 +5166,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function apuPintarRitmo(){
     var caja=$('apu-ritmo'); if(!caja) return;
     var d=APU_DEP[apuSel]||APU_DEP.bici;
-    var dist=numDe(($('apu-dist')||{}).value), t=segDe(($('apu-tiempo')||{}).value);
+    var dist=numDe(($('apu-dist')||{}).value), t=segApu();
     if(!dist || !t || !d.unidad){ caja.textContent=''; return; }
     var metros = d.unidad==='km' ? dist*1000 : dist;
     if(metros<=0){ caja.textContent=''; return; }
@@ -5162,15 +5180,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var n=parseFloat(String(v).replace(',','.').replace(/[^\d.]/g,''));
     return isNaN(n)?0:n;
   }
-  /* «1:25:30», «45:20», «45» (minutos). Lo que no se entienda vale 0 y
-     entonces no se calcula ritmo: mejor sin ritmo que con uno inventado. */
-  function segDe(v){
-    var t=String(v||'').trim(); if(!t) return 0;
-    if(!/^\d{1,3}(:\d{1,2}){0,2}$/.test(t)) return 0;
-    var p=t.split(':').map(Number);
-    if(p.length===1) return p[0]*60;
-    if(p.length===2) return p[0]*60+p[1];
-    return p[0]*3600+p[1]*60+p[2];
+  /* Los segundos que salen de las tres casillas. Se admite «90» en los
+     minutos —hora y media— sin corregirlo por el camino: al guardarlo se
+     escribe 1:30:00 y ya está. Corregir mientras alguien teclea es la
+     forma más rápida de pelearse con un formulario. */
+  function segApu(){
+    function n(id){ var e=$(id); return e ? (parseInt(String(e.value).replace(/\D/g,''),10)||0) : 0; }
+    return n('apu-h')*3600 + n('apu-min')*60 + n('apu-seg');
   }
   function minSegTxt(seg){
     var m=Math.floor(seg/60), s=Math.round(seg-m*60);
@@ -5195,7 +5211,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var d=APU_DEP[apuSel]||APU_DEP.bici;
     var tit=(($('apu-tit')||{}).value||'').trim()||apuPlaceholder();
     var dist=numDe(($('apu-dist')||{}).value);
-    var seg=segDe(($('apu-tiempo')||{}).value);
+    var seg=segApu();
     var desn=numDe(($('apu-desn')||{}).value);
     if(d.unidad && !dist && !seg){
       msg.textContent='Pon al menos la distancia o el tiempo.'; msg.className='apu-msg mal'; return;
@@ -5301,7 +5317,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* Apuntar algo que hiciste por tu cuenta. */
     var ab=t.closest('[data-apuntar]');
     if(ab){ APU_DIA=ab.getAttribute('data-apuntar'); DIA_OJEO=APU_DIA;
-            APU_VAL={ tit:'', dist:'', tiempo:'', desn:'' }; apuRpe=null;
+            APU_VAL={ tit:'', dist:'', h:'', min:'', seg:'', desn:'' }; apuRpe=null;
             pintarHoy();
             var ti=$('apu-tit'); if(ti) ti.focus(); return; }
     if(t.closest('#apu-cerrar')){ APU_DIA=null; pintarHoy(); return; }
@@ -5342,7 +5358,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!ev.target.closest) return;
     if(String(ev.target.id||'').indexOf('apu-')!==0) return;
     apuRecordar();
-    if(ev.target.id==='apu-dist' || ev.target.id==='apu-tiempo') apuPintarRitmo();
+    apuPintarRitmo();
   });
 
   // ---------- MÁS (maqueta 22b): tres bloques, nunca lista plana ----------
