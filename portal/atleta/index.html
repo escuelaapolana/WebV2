@@ -648,6 +648,20 @@
   .apu-dep { min-height:40px; padding:0 13px; border:1px solid var(--linea-borde); border-radius:999px;
              background:#fff; color: var(--texto-suave); font:inherit; font-size:14px; cursor:pointer; }
   .apu-dep.sel { background: var(--navy); border-color: var(--navy); color:#fff; font-weight:600; }
+  .apu-deps.chico { margin-bottom:0; }
+  .apu-deps.chico .apu-dep { min-height:38px; font-size:13px; padding:0 11px; }
+  /* La escala del esfuerzo: diez botones que caben en una fila de 375 px.
+     Cuadrados y no píldoras, para que se distingan de los chips de deporte
+     —que eligen otra cosa— sin tener que leerlos. */
+  /* `minmax(0,1fr)` y no `1fr`: en una rejilla, `1fr` deja que el contenido
+     empuje la columna, así que a 320 px los diez botones desbordaban la
+     tarjeta en vez de encogerse. */
+  .apu-esc { display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:4px; margin-top:2px; }
+  .apu-n { min-height:40px; padding:0; border:1px solid var(--linea-borde); border-radius:8px;
+           background:#fff; color: var(--texto-suave); font:inherit; font-size:14px;
+           font-variant-numeric:tabular-nums; cursor:pointer; }
+  .apu-n.sel { background: var(--navy); border-color: var(--navy); color:#fff; font-weight:700; }
+  @media (max-width:400px){ .apu-n { font-size:13px; } }
   .apu label { display:block; font-size:14px; font-weight:600; color: var(--navy); margin:12px 0 5px; }
   .apu label .apu-op { font-weight:400; color: var(--texto-suave); }
   .apu input { box-sizing:border-box; width:100%; padding:11px 12px; border:1px solid var(--linea-borde);
@@ -5072,7 +5086,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div>' : '')+
       (d.desnivel ? '<label for="apu-desn">Desnivel (m) <span class="apu-op">si lo sabes</span></label>'+
         '<input id="apu-desn" type="text" inputmode="numeric" value="'+esc(APU_VAL.desn)+'" placeholder="520">' : '')+
-      '<p class="apu-pista" id="apu-ritmo"></p>'+
+      (apuSel==='fuerza' ? '<label>Qué trabajaste</label><div class="apu-deps chico">'+
+        APU_TRABAJO.map(function(k){
+          return '<button type="button" class="apu-dep'+(k===apuTrabajo?' sel':'')+'" data-apu-trab="'+esc(k)+'">'+esc(k)+'</button>';
+        }).join('')+'</div>' : '')+
+      /* En fuerza no hay distancia, así que no hay ritmo: sin esto, esa
+         línea vacía dejaba un hueco de aire en medio del formulario. */
+      (d.unidad ? '<p class="apu-pista" id="apu-ritmo"></p>' : '')+
+      '<label>Esfuerzo <span class="apu-op">si quieres · 1 muy suave · 10 al límite</span></label>'+
+      '<div class="apu-esc">'+(function(){ var e='';
+        for(var i=1;i<=10;i++) e+='<button type="button" class="apu-n'+(apuRpe===i?' sel':'')+'" data-apu-rpe="'+i+'">'+i+'</button>';
+        return e; })()+'</div>'+
+      '<p class="apu-pista">'+esc(apuRpe!=null ? palabraDe(PALABRA_RPE, apuRpe) : '')+'</p>'+
       '<div class="apu-pie">'+
         '<button type="button" class="btn btn--primario" id="apu-ok">Apuntarlo</button>'+
         '<span class="apu-msg" id="apu-msg"></span>'+
@@ -5086,6 +5111,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      o desaparecer el desnivel—, así que sin esto perdías el título recién
      tecleado por pulsar «Carrera». */
   var APU_VAL={ tit:'', dist:'', tiempo:'', desn:'' };
+  /* QUÉ SE TRABAJÓ, solo en fuerza. No es un adorno: es la etiqueta del
+     bloque, y de ahí sale el resumen de la tarjeta —«3 ejercicios · Tren
+     superior»— por el mismo camino que los entrenamientos del entrenador
+     (`etiquetasDeTrabajo` en descansos.js). Un día de gimnasio sin decir
+     qué tocaste no se distingue de otro dentro de un mes. */
+  var APU_TRABAJO=['Tren superior','Tren inferior','Full body','Core'];
+  var apuTrabajo='Tren superior';
+  /* Y el esfuerzo, aquí mismo. Se podía poner desde el principio, pero
+     había que entrar al entrenamiento y darle a «Corregir lo apuntado»:
+     eso no es ponerlo, es encontrarlo. Lo que se apunta en caliente es
+     justo lo que se pierde si hay que buscarlo. */
+  var apuRpe=null;
   function apuRecordar(){
     ['tit','dist','tiempo','desn'].forEach(function(k){
       var el=$('apu-'+k); if(el) APU_VAL[k]=el.value;
@@ -5098,8 +5135,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<button type="button" class="apu-abrir" data-apuntar="'+esc(iso)+'">+ Apuntar algo que hice</button>';
   }
   function apuPlaceholder(){
+    /* En fuerza el nombre por defecto lo dice lo que trabajaste: «Gimnasio
+       por mi cuenta» repetido doce veces en el historial no distingue un
+       día de otro. */
+    if(apuSel==='fuerza') return 'Gimnasio · '+apuTrabajo.toLowerCase();
     return ({ bici:'Salida en bici', carrera:'Rodaje suave', natacion:'Piscina',
-              fuerza:'Gimnasio por mi cuenta', otro:'Lo que hice' })[apuSel]||'Lo que hice';
+              otro:'Lo que hice' })[apuSel]||'Lo que hice';
   }
   /* El ritmo NO se pide: se calcula y se enseña mientras escribes, que es
      lo que te dice si has tecleado bien la distancia. En natación va por
@@ -5188,7 +5229,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       creado_por: perfil.id,
       atletas_ids: [at.id],
       grupo_id: at.grupo_id || null,
-      bloques: [{ etiqueta:'Lo que hice', filas:[fila] }]
+      /* La etiqueta del bloque es la que hace que la tarjeta diga «3
+         ejercicios · Tren superior» en vez de un genérico. En el resto de
+         deportes no hay nada que elegir, así que se queda «Lo que hice». */
+      bloques: [{ etiqueta: (apuSel==='fuerza' ? apuTrabajo : 'Lo que hice'), filas:[fila] }]
     };
     try {
       var ins=await sb.from('sesiones').insert(ses).select().single();
@@ -5203,6 +5247,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(seg) serie.tiempo=duracionTxt(seg);
       var reg={
         sesion_id: ins.data.id, atleta_id: at.id, estado: 'completo',
+        rpe: apuRpe,
         tiempos_reales: { libre: { fila_id:'libre', ejercicio:tit,
                                    medida: d.unidad?'distancia':'hecho', unidad: d.unidad||null,
                                    series:[serie] } }
@@ -5256,12 +5301,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* Apuntar algo que hiciste por tu cuenta. */
     var ab=t.closest('[data-apuntar]');
     if(ab){ APU_DIA=ab.getAttribute('data-apuntar'); DIA_OJEO=APU_DIA;
-            APU_VAL={ tit:'', dist:'', tiempo:'', desn:'' };
+            APU_VAL={ tit:'', dist:'', tiempo:'', desn:'' }; apuRpe=null;
             pintarHoy();
             var ti=$('apu-tit'); if(ti) ti.focus(); return; }
     if(t.closest('#apu-cerrar')){ APU_DIA=null; pintarHoy(); return; }
     var dep=t.closest('[data-apu-dep]');
     if(dep){ apuRecordar(); apuSel=dep.getAttribute('data-apu-dep'); pintarHoy(); apuPintarRitmo(); return; }
+    var trab=t.closest('[data-apu-trab]');
+    if(trab){ apuRecordar(); apuTrabajo=trab.getAttribute('data-apu-trab'); pintarHoy(); return; }
+    var rp=t.closest('[data-apu-rpe]');
+    if(rp){
+      apuRecordar();
+      var v=parseInt(rp.getAttribute('data-apu-rpe'),10);
+      /* Volver a tocar el mismo número lo quita: el esfuerzo es opcional y
+         hay que poder deshacer un toque sin recargar la pantalla. */
+      apuRpe = (apuRpe===v) ? null : v;
+      pintarHoy(); apuPintarRitmo(); return;
+    }
     if(t.closest('#apu-ok')){ apuGuardar(APU_DIA); return; }
     /* Cambiar de semana sin salir del inicio. */
     var w=t.closest('[data-sem-ojeo]');
