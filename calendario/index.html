@@ -997,7 +997,12 @@
           var a = apuntarRango(c.fecha_inicio, c.fecha_fin, {
             clase: 'competicion', hora: null, titulo: limpio(c.nombre) || 'Competición',
             tipoTexto: 'Competición', lugar: limpio(c.sede), grupo: '',
+            /* ⚠️ Esta `seccion` NO la ha elegido nadie: se deduce del ámbito
+               para poder pintar el rótulo. No es «de quién es la carrera»,
+               así que no puede servir para esconderla. `delCalendario` lo
+               dice, y el filtro la deja pasar siempre. */
             seccion: c.ambito === 'natacion' ? 'natacion' : 'competicion',
+            delCalendario: true,
             abierta: !!c.inscripcion_abierta && !plazoPasado, coste: c.coste,
             compId: c.id, circular: limpio(c.circular_url), ambito: limpio(c.ambito),
             limite: c.fecha_limite_interna || null, plazoPasado: plazoPasado
@@ -1008,6 +1013,12 @@
               clase: 'cierre', hora: horaDeMarca(c.fecha_limite_interna),
               titulo: 'Cierra la inscripción · ' + (limpio(c.nombre) || 'Competición'),
               tipoTexto: 'Último día para apuntarse', lugar: limpio(c.sede), grupo: '', seccion: null,
+              /* El cierre hereda el ámbito de su competición para poder
+                 filtrarse igual que ella. Sin esto pasaba lo raro: la
+                 travesía de Tabarca desaparecía del filtro de escuela y su
+                 «cierra la inscripción» se quedaba en el calendario, sin
+                 nada a lo que referirse. */
+              delCalendario: true, ambito: limpio(c.ambito),
               abierta: !plazoPasado, competicion: limpio(c.nombre), competicionDia: c.fecha_inicio,
               coste: c.coste, compId: c.id, circular: limpio(c.circular_url),
               limite: c.fecha_limite_interna, plazoPasado: plazoPasado
@@ -1203,9 +1214,45 @@
      Ahora un evento pasa siempre solo si NO dice de quién es —los que de
      verdad son del club entero, como la comida de fin de temporada—; y
      si lo dice, se filtra como todo lo demás. */
+  /* Qué secciones caben en cada ámbito del calendario de competiciones.
+     Una carrera de atletismo vale para quien corre en pista, en ruta y para
+     la escuela —los críos compiten—; una prueba de natación, para quien
+     nada, incluida la escuela de natación y el triatlón. */
+  var SECCIONES_DEL_AMBITO = {
+    atletismo: ['competicion', 'running', 'escuela', 'montana'],
+    natacion:  ['natacion', 'escuela-natacion', 'triatlon']
+  };
+
   function esDeTodoElClub(a) {
-    if (a.clase === 'competicion' || a.clase === 'cierre') return true;
-    return a.clase === 'evento' && !(a.secciones && a.secciones.length);
+
+    /* Y la regla, ya para todo: es del club entero lo que NO dice de quién
+       es. Lo que lo dice, se respeta.
+
+       Andrés preguntó qué haría yo con las competiciones, que hasta ahora
+       pasaban siempre. Mirando los datos, quien mete los eventos ya los
+       marca bien: el «Control de marcas de pretemporada» dice
+       {competicion, escuela} y la travesía de Tabarca dice
+       {natacion, triatlon}. O sea que la información ya estaba ahí y era
+       la regla la que no la miraba.
+
+       El riesgo de respetarla es olvidarse de marcar «escuela» en un
+       campeonato al que van los críos. Pero ese riesgo se quita abajo: lo
+       escondido se CUENTA en el aviso, así que deja de desaparecer en
+       silencio, que era lo único de verdad peligroso. Las que no dicen
+       nada —el Campeonato de España, los controles del club— siguen
+       viéndose siempre, sin tocar nada. */
+    /* Solo las citas señaladas pueden ser «de todo el club». Los
+       entrenamientos y las clases de El Cubo son de un grupo por
+       definición, y esconderlos es exactamente lo que se ha pedido al
+       filtrar. (Casi me cuela: al generalizar la regla, El Cubo se quedó
+       sin sección y empezó a salir en TODOS los filtros.) */
+    if (a.clase !== 'competicion' && a.clase !== 'evento' && a.clase !== 'cierre') return false;
+    /* Las del calendario de competiciones no llevan secciones elegidas a
+       mano, pero sí un ámbito: atletismo o natación. Con eso basta para no
+       enseñarle una travesía a nado a una familia de la escuela de
+       atletismo, y para que el campeonato de pista le siga saliendo. */
+    if (a.delCalendario) return false;
+    return !(a.secciones && a.secciones.length) && !a.seccion;
   }
 
   function pasa(a) {
@@ -1227,7 +1274,9 @@
          charla, una travesía). Basta con que comparta UNA con lo que se
          está mirando: quien filtra por natación quiere ver la travesía
          aunque el triatlón también vaya. */
-      var suyas = (a.secciones && a.secciones.length) ? a.secciones : (a.seccion ? [a.seccion] : []);
+      var suyas = (a.secciones && a.secciones.length) ? a.secciones
+                : a.delCalendario ? SECCIONES_DEL_AMBITO[a.ambito || 'atletismo'] || []
+                : (a.seccion ? [a.seccion] : []);
       if (!suyas.some(function (x) { return s.indexOf(x) >= 0; })) return false;
     }
     return true;
@@ -1740,11 +1789,37 @@
        algo del club a la vista. */
     var hayDeGrupo = !t.length || t.indexOf('entreno') >= 0 || t.indexOf('cubo') >= 0;
     var hayDelClub = !t.length || t.indexOf('competicion') >= 0 || t.indexOf('evento') >= 0;
-    var coletilla = hayDelClub ? ' Las competiciones se ven siempre.' : '';
+    /* Ya no es «las competiciones se ven siempre»: se ven las que van con
+       lo que estás mirando. Decir lo otro era prometer que no falta nada, y
+       justo debajo va el recuento de lo que sí falta. */
+    var coletilla = hayDelClub ? ' Las competiciones de tu deporte se ven siempre.' : '';
 
-    if (nomT.length && (!nomS.length || !hayDeGrupo)) return 'Estás viendo solo ' + enLista(nomT) + '.';
-    if (!nomT.length) return 'Estás viendo los entrenamientos de ' + enLista(nomS) + '.' + coletilla;
-    return 'Estás viendo solo ' + enLista(nomT) + ', y de los entrenamientos, los de ' + enLista(nomS) + '.' + coletilla;
+    if (nomT.length && (!nomS.length || !hayDeGrupo)) return 'Estás viendo solo ' + enLista(nomT) + '.' + escondido();
+    if (!nomT.length) return 'Estás viendo los entrenamientos de ' + enLista(nomS) + '.' + coletilla + escondido();
+    return 'Estás viendo solo ' + enLista(nomT) + ', y de los entrenamientos, los de ' + enLista(nomS) + '.' + coletilla + escondido();
+  }
+
+  /* Cuántas competiciones y eventos se está dejando fuera el filtro.
+
+     Esto es lo que permite respetar las secciones marcadas sin miedo. Un
+     filtro que esconde cosas sin decirlo hace que la pantalla parezca
+     completa cuando no lo está: si a alguien se le olvidó marcar «escuela»
+     en un campeonato, la familia no vería ni el campeonato ni la señal de
+     que falta algo. Contándolo, el peor caso pasa de «no me enteré» a
+     «pone que hay tres, voy a mirar».
+
+     Se cuentan solo las citas señaladas —competiciones y eventos—, no los
+     entrenamientos: esconder los entrenamientos de las otras secciones es
+     justo lo que se ha pedido al filtrar, y decirlo sería ruido. */
+  function escondido() {
+    var fuera = TODAS.filter(function (a) {
+      return !a.oculto && !pasa(a) && (a.clase === 'competicion' || a.clase === 'evento');   // el cierre no cuenta aparte: va con su carrera
+    });
+    var n = sinRepetidos(fuera).length;
+    if (!n) return '';
+    return n === 1
+      ? ' Se está quedando fuera 1 cita de otra sección.'
+      : ' Se están quedando fuera ' + n + ' citas de otras secciones.';
   }
 
   /* ---------- sin datos: estado vacío digno ---------- */
