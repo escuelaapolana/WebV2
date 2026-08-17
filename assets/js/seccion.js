@@ -711,9 +711,71 @@
     });
   }
 
+  /* ============================================================
+     LO ÚLTIMO EN LA SECCIÓN
+     ------------------------------------------------------------
+     Una página de sección se leía entera de una pasada y se acababa en
+     «ven a probarlo»: nada de lo que pasa en el club llegaba hasta
+     ahí, aunque la base tenga cien crónicas publicadas. Este bloque
+     trae las tres últimas de ESA sección.
+
+     Se activa poniendo `data-ultimas="running"` en un <section> que
+     lleve dentro un `.ult-grid`. La página que no lo lleve no cambia
+     en nada, así que se puede ir sección por sección.
+
+     ⚠️ EL BLOQUE NACE `hidden` Y SOLO SE ENSEÑA SI HAY NOTICIAS.
+     Si la consulta falla, o esa sección todavía no tiene ninguna, se
+     queda escondido. Un apartado que dice «aún no hay nada» pinta un
+     club parado, que es justo lo contrario de para lo que está.
+     ============================================================ */
+  function fechaCorta(iso) {
+    var d = new Date(String(iso || '').slice(0, 10) + 'T00:00:00');
+    if (isNaN(d.getTime())) return '';
+    var M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return d.getDate() + ' ' + M[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  function ultimasDeLaSeccion() {
+    var caja = document.querySelector('[data-ultimas]');
+    if (!caja) return;
+    var rejilla = caja.querySelector('.ult-grid');
+    var seccion = caja.getAttribute('data-ultimas');
+    var db = window.APOLANA_DB;
+    if (!rejilla || !seccion || !db || typeof db.from !== 'function') return;
+
+    db.from('noticias')
+      .select('id,titulo,excerpt,foto_portada,fecha_publicacion,secciones')
+      .eq('publicada', true)
+      .contains('secciones', [seccion])
+      .order('fecha_publicacion', { ascending: false })
+      .limit(3)
+      .then(function (r) {
+        if (!r || r.error || !r.data || !r.data.length) return;   // se queda oculto
+        var base = window.APOLANA_BASE || '../';
+        rejilla.innerHTML = r.data.map(function (n) {
+          var foto = n.foto_portada && window.APOLANA_IMG ? window.APOLANA_IMG(n.foto_portada) : '';
+          return '<a class="ult-card" href="' + base + 'noticias/articulo/?id=' + encodeURIComponent(n.id) + '">' +
+                   (foto ? '<div class="marco"><img src="' + escAttr(foto) + '" alt="" loading="lazy" decoding="async"></div>' : '') +
+                   '<div class="cuerpo">' +
+                     '<span class="fecha">' + escHtml(fechaCorta(n.fecha_publicacion)) + '</span>' +
+                     '<span class="tit">' + escHtml(n.titulo || '') + '</span>' +
+                   '</div>' +
+                 '</a>';
+        }).join('');
+        caja.hidden = false;
+      })
+      .catch(function () { /* se queda oculto */ });
+  }
+
+  function escHtml(t) {
+    return String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escAttr(t) { return escHtml(t).replace(/"/g, '&quot;'); }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', arranca);
+    document.addEventListener('DOMContentLoaded', function () { arranca(); ultimasDeLaSeccion(); });
   } else {
-    arranca();
+    arranca(); ultimasDeLaSeccion();
   }
 })();
