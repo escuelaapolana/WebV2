@@ -355,16 +355,22 @@
   /* ---------- Secciones: etiqueta del chip y color del borde ----------
      El color es el del sistema visual: sutil, solo en el borde izquierdo,
      para poder escanear la semana de un vistazo. */
+  /* `juntos` es el nombre que se pone cuando varios grupos de la misma
+     sección coinciden en día, hora y sitio y se pintan en una sola
+     tarjeta (ver `juntarIguales`). Se escribe entero y a mano en vez de
+     fabricarlo con la etiqueta en minúsculas, porque cada uno lleva su
+     artículo: sale «de LA escuela» y «de EL Cubo», no «de escuela» ni
+     «de el cubo». */
   var SECCIONES = [
-    { clave: 'escuela',     etiqueta: 'Escuela',         color: '#7A9450', incluye: ['escuela', 'escuela-natacion', 'escuela_natacion'] },
-    { clave: 'competicion', etiqueta: 'Atletismo pista', color: '#2F6FA8', incluye: ['competicion', 'pista'] },
-    { clave: 'running',     etiqueta: 'Running',         color: '#B96F09', incluye: ['running'] },
-    { clave: 'natacion',    etiqueta: 'Natación',        color: '#4A8FA8', incluye: ['natacion'] },
-    { clave: 'triatlon',    etiqueta: 'Triatlón',        color: '#9A5F7E', incluye: ['triatlon'] },
-    { clave: 'montana',     etiqueta: 'Montaña',         color: '#8A6A4A', incluye: ['montana', 'montaña'] },
-    { clave: 'cubo',        etiqueta: 'El Cubo',         color: '#6B5B8A', incluye: ['cubo'] }
+    { clave: 'escuela',     etiqueta: 'Escuela',         juntos: 'Entrenamientos de la escuela', color: '#7A9450', incluye: ['escuela', 'escuela-natacion', 'escuela_natacion'] },
+    { clave: 'competicion', etiqueta: 'Atletismo pista', juntos: 'Entrenamientos de pista',      color: '#2F6FA8', incluye: ['competicion', 'pista'] },
+    { clave: 'running',     etiqueta: 'Running',         juntos: 'Entrenamientos de running',    color: '#B96F09', incluye: ['running'] },
+    { clave: 'natacion',    etiqueta: 'Natación',        juntos: 'Entrenamientos de natación',   color: '#4A8FA8', incluye: ['natacion'] },
+    { clave: 'triatlon',    etiqueta: 'Triatlón',        juntos: 'Entrenamientos de triatlón',   color: '#9A5F7E', incluye: ['triatlon'] },
+    { clave: 'montana',     etiqueta: 'Montaña',         juntos: 'Salidas de montaña',           color: '#8A6A4A', incluye: ['montana', 'montaña'] },
+    { clave: 'cubo',        etiqueta: 'El Cubo',         juntos: 'Clases de El Cubo',            color: '#6B5B8A', incluye: ['cubo'] }
   ];
-  var OTRA = { clave: 'otras', etiqueta: 'Otros', color: '#A79F8E' };
+  var OTRA = { clave: 'otras', etiqueta: 'Otros', juntos: 'Varios entrenamientos', color: '#A79F8E' };
 
   function familiaDe(seccion) {
     var s = sinTildes(String(seccion || '').toLowerCase().trim());
@@ -538,13 +544,64 @@
     });
   }
 
+  /* ⚠️ NUEVE TARJETAS IDÉNTICAS NO SON NUEVE DATOS, SON UNO.
+     La escuela tiene nueve grupos —Azul 1 a 3, Rojo 1 a 3, Verde 1 a 3—
+     y los nueve entrenan a la MISMA hora, el MISMO día y en el MISMO
+     sitio. La página los pintaba uno debajo de otro: una columna de
+     nueve tarjetas que dicen exactamente lo mismo, cuatro veces por
+     semana. Para una familia que busca su horario, eso no es más
+     información: es tener que leer nueve veces «17:30 – 18:30 · Estadio
+     Joaquín Villar» para acabar sabiendo lo que ponía en la primera.
+
+     Así que lo que coincide en día, hora, sitio y sección se junta en
+     una tarjeta.
+
+     A PARTIR DE TRES, y no de dos, a propósito: con dos grupos los
+     nombres caben y saber cuál es el tuyo importa. Con nueve, el nombre
+     deja de ayudar y lo que hace falta es la hora.
+
+     Y se dice CUÁNTOS grupos son, porque esa sí es información que no
+     estaba: «la escuela entrena a esta hora, y son nueve grupos». */
+  var MINIMO_PARA_JUNTAR = 3;
+
+  function juntarIguales(lista) {
+    var cajas = {}, orden = [];
+    lista.forEach(function (e) {
+      var k = e.familia.clave + '|' + e.inicio + '|' + (e.fin || '') + '|' + (e.lugar || '');
+      if (!cajas[k]) { cajas[k] = []; orden.push(k); }
+      cajas[k].push(e);
+    });
+    var out = [];
+    orden.forEach(function (k) {
+      var g = cajas[k];
+      if (g.length < MINIMO_PARA_JUNTAR) { out = out.concat(g); return; }
+      var uno = g[0];
+      out.push({
+        dia: uno.dia, inicio: uno.inicio, fin: uno.fin,
+        nombre: uno.familia.juntos || ('Entrenamientos de ' + uno.familia.etiqueta.toLowerCase()),
+        lugar: uno.lugar,
+        /* El entrenador NO se hereda: son nueve grupos con entrenadores
+           distintos, y poner el del primero sería decir una mentira
+           pequeña que alguien va a creerse. */
+        entrenador: '',
+        nota: g.length + ' grupos, todos a esta hora',
+        familia: uno.familia,
+        /* El `title` del ratón sí lleva los nombres: quien quiera saber
+           si el suyo está, lo tiene ahí sin ensuciar la tarjeta. */
+        crudo: g.map(function (x) { return x.nombre; }).join(' · ')
+      });
+    });
+    return out;
+  }
+
   function entrenosDelDia(d) {
-    return entrenos.filter(function (e) {
+    var lista = entrenos.filter(function (e) {
       return e.dia === d && (filtro === 'todos' || e.familia.clave === filtro);
     }).sort(function (a, b) {
       var x = minutos(a.inicio) - minutos(b.inicio);
       return x !== 0 ? x : a.nombre.localeCompare(b.nombre, 'es');
     });
+    return juntarIguales(lista);
   }
 
   /* ---------- Pintado ---------- */
