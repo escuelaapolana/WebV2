@@ -320,7 +320,20 @@ function pintarColaboradores(lista) {
        Navy a sangre y sin radio, pegado al cierre de arriba. Nada de
        tarjeta interior flotando dentro del crema: el pie entero es la
        masa oscura que cierra la página. */
-    '.pie{background:var(--navy,#2E4256);color:rgba(255,255,255,0.85);' +
+    /* ⚠️ `footer.pie`, NO `.pie` A SECAS, Y ESTO FUE UN FALLO DE VERDAD.
+       «pie» se usa en la web con dos sentidos: el PIE DE PÁGINA (esta
+       banda navy) y el PIE DE UN DATO —el renglón pequeño debajo de una
+       cifra o de una foto—. Como esta regla decía `.pie` sin más, pintaba
+       de navy los pies de dato: en «Familias · Las reglas» salían cuatro
+       rectángulos azul oscuro detrás de un texto gris, ilegibles y
+       partidos en dos líneas. Andrés: «este subrayado no se ve bien, está
+       mal destacado». Y no era un subrayado: era el pie de página
+       pisándole el fondo a otra cosa.
+       Con `footer.pie` solo entra el pie de página de verdad, que es
+       siempre un `<footer>`. Los otros trece sitios que usan la clase
+       —galería, tests, biblioteca, buzón, los documentos del portal— se
+       quedan como estaban. */
+    'footer.pie{background:var(--navy,#2E4256);color:rgba(255,255,255,0.85);' +
       'margin-top:0;border-top:0;border-radius:0}',
     /* Cuatro columnas en una sola rejilla: identidad · Club · Contacto · Síguenos. */
     '.pie .contenedor{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.1fr;' +
