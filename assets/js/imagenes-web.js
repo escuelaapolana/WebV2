@@ -107,6 +107,11 @@
       /* No es una imagen: se usa de fondo. */
       el.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
       el.style.backgroundSize = 'cover';
+      /* Aviso para el CSS de quien lo use: este hueco YA tiene foto. Lo
+         usan los retratos de la junta, que enseñan las iniciales mientras
+         no hay retrato y las esconden en cuanto lo hay. Sin esto, las
+         letras se quedarían encima de la cara. */
+      el.classList.add('tiene-foto');
       if (pos) el.style.backgroundPosition = pos;
       else if (propia) el.style.backgroundPosition = 'center';
     }

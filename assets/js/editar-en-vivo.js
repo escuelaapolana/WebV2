@@ -213,13 +213,25 @@
       marcarSucio(hero);
     });
 
-    document.querySelectorAll('[data-img]').forEach(function (img) {
-      if (img.tagName !== 'IMG') return;
-      var clave = img.getAttribute('data-img');
-      ponerBotonFoto(img, function (url) {
+    /* Un hueco de foto no siempre es una <img>. Los retratos de la junta
+       que todavía no tienen foto son un recuadro con las iniciales, y ahí
+       la foto va de fondo. Andrés lo pilló mirando la página: «no puedo
+       cambiar la foto de los que no la tienen puesta, debería poder». Y
+       es justo al revés de lo que uno esperaría: los que MENOS foto
+       tienen son los que más falta hace poder cambiar. */
+    document.querySelectorAll('[data-img]').forEach(function (hueco) {
+      var clave = hueco.getAttribute('data-img');
+      var esImagen = hueco.tagName === 'IMG';
+      ponerBotonFoto(hueco, function (url) {
         cambiosFoto[clave] = url;
-        img.src = url;
-        marcarSucio(img);
+        if (esImagen) {
+          hueco.src = url;
+        } else {
+          hueco.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
+          hueco.style.backgroundSize = 'cover';
+          hueco.classList.add('tiene-foto');
+        }
+        marcarSucio(hueco);
       });
     });
   }
@@ -229,7 +241,10 @@
      en `imagenes_web`. */
   function ponerBotonFoto(img, alElegir) {
     img.classList.add('edv-foto');
-    var envoltorio = img.parentElement;
+    /* En una <img> el botón va sobre el marco que la contiene. En un hueco
+       que lleva la foto de fondo, ese marco ES el hueco: colgarlo del padre
+       lo dejaría flotando encima del nombre de la persona. */
+    var envoltorio = (img.tagName === 'IMG') ? img.parentElement : img;
     if (!envoltorio || envoltorio.querySelector('.edv-cambiar')) return;
     if (getComputedStyle(envoltorio).position === 'static') envoltorio.style.position = 'relative';
     var b = document.createElement('button');

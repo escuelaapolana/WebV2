@@ -83,6 +83,73 @@ def pedir(tabla, campos):
         return json.loads(r.read().decode('utf-8'))
 
 
+def encuadre_estilo(fila, es_imagen=True):
+    """El recorte que el club eligió en el panel, escrito para el HTML.
+
+    ⚠️ ESTO NO ES UN ADORNO, ARREGLA UN SALTO QUE SE VE. La foto podía ser
+    ya la buena y aun así la página daba un respingo al abrirse: el
+    encuadre —«mira al 6,6% de la altura, no al centro»— lo ponía el
+    JavaScript cuando contestaba la base, así que la foto se pintaba con
+    el encuadre del CSS y medio segundo después se recolocaba. Andrés:
+    «las fotos siguen cambiando al entrar; no las fotos, sino que se
+    mueven, se reajustan a lo alto». Escrito aquí, nace ya colocada.
+    """
+    partes = []
+    pos = (fila.get('encuadre') or fila.get('imagen_encuadre') or '').strip()
+    zoom = fila.get('zoom') if fila.get('zoom') is not None else fila.get('imagen_zoom')
+    try:
+        zoom = float(zoom) if zoom is not None else 1.0
+    except (TypeError, ValueError):
+        zoom = 1.0
+    if pos:
+        partes.append(('object-position' if es_imagen else 'background-position') + ':' + pos)
+        if es_imagen:
+            partes.append('transform-origin:' + pos)
+    if zoom > 1 and es_imagen:
+        partes.append('transform:scale(%s)' % zoom)
+    return ';'.join(partes)
+
+
+def con_estilo(etiqueta, estilo):
+    """Mete el encuadre en el `style` de una etiqueta, MEZCLANDO.
+
+    ⚠️ Mezclar y no sustituir. La primera versión escribía el atributo
+    entero, y eso habría borrado sin avisar cualquier estilo que ya
+    hubiera escrito a mano en esa etiqueta —un alto, un margen—. Un
+    script que corre solo cada noche NO puede permitirse borrar cosas
+    que no ha escrito él: aquí solo se tocan las propiedades del
+    encuadre y el resto se deja donde estaba, en su orden.
+    """
+    if not estilo:
+        return etiqueta
+    nuevas = dict(d.split(':', 1) for d in estilo.split(';') if ':' in d)
+    m = re.search(r'style="([^"]*)"', etiqueta)
+    if not m:
+        return re.sub(r'^<(\w+)', r'<\1 style="%s"' % estilo, etiqueta, count=1)
+
+    salida, puestas = [], set()
+    for trozo in m.group(1).split(';'):
+        if ':' not in trozo:
+            if trozo.strip():
+                salida.append(trozo.strip())
+            continue
+        prop, valor = trozo.split(':', 1)
+        clave = prop.strip()
+        if clave in nuevas:
+            salida.append(clave + ':' + nuevas[clave])
+            puestas.add(clave)
+        else:
+            salida.append(clave + ':' + valor.strip())
+    for clave, valor in nuevas.items():
+        if clave not in puestas:
+            salida.append(clave + ':' + valor)
+
+    final = ';'.join(salida)
+    if final == m.group(1).strip().rstrip(';'):
+        return etiqueta
+    return etiqueta[:m.start(1)] + final + etiqueta[m.end(1):]
+
+
 def relativa(url, archivo):
     """La URL tal y como debe quedar escrita en ESE archivo."""
     if url.startswith(SITIO):
@@ -105,10 +172,13 @@ def archivos_html():
 def main():
     solo_ver = '--ver' in sys.argv
 
-    biblioteca = {f['clave']: (f.get('url') or '').strip()
-                  for f in pedir('imagenes_web', 'clave,url')}
-    cabeceras = {f['seccion']: (f.get('imagen_url') or '').strip()
-                 for f in pedir('contenido_secciones', 'seccion,imagen_url')}
+    filas_bib = pedir('imagenes_web', 'clave,url,encuadre,zoom')
+    biblioteca = {f['clave']: (f.get('url') or '').strip() for f in filas_bib}
+    biblioteca_completa = {f['clave']: f for f in filas_bib}
+
+    filas_cab = pedir('contenido_secciones', 'seccion,imagen_url,imagen_encuadre,imagen_zoom')
+    cabeceras = {f['seccion']: (f.get('imagen_url') or '').strip() for f in filas_cab}
+    cab_completa = {f['seccion']: f for f in filas_cab}
 
     cambios = []
 
@@ -128,11 +198,17 @@ def main():
                 # eso está. Vaciar el hueco sería peor que dejarlo viejo.
                 return etiqueta
             nueva = relativa(url, archivo)
+            fila = biblioteca_completa.get(clave.group(1), {})
             src = re.search(r'src="([^"]*)"', etiqueta)
-            if not src or src.group(1) == nueva:
-                return etiqueta
-            cambios.append((archivo, clave.group(1), src.group(1), nueva))
-            return etiqueta[:src.start(1)] + nueva + etiqueta[src.end(1):]
+            antes = etiqueta
+            if src and src.group(1) != nueva:
+                cambios.append((archivo, clave.group(1), src.group(1), nueva))
+                etiqueta = etiqueta[:src.start(1)] + nueva + etiqueta[src.end(1):]
+            estilo = encuadre_estilo(fila, etiqueta.lower().startswith('<img'))
+            etiqueta = con_estilo(etiqueta, estilo)
+            if etiqueta != antes and (not src or src.group(1) == nueva):
+                cambios.append((archivo, clave.group(1) + ' (encuadre)', '—', estilo))
+            return etiqueta
 
         texto = re.sub(r'<img[^>]*>', igualar, texto)
 
@@ -147,12 +223,17 @@ def main():
         if url:
             def cabecera(m):
                 etiqueta = m.group(0)
+                antes = etiqueta
                 nueva = relativa(url, archivo)
                 src = re.search(r'src="([^"]*)"', etiqueta)
-                if not src or src.group(1) == nueva:
-                    return etiqueta
-                cambios.append((archivo, 'cabecera:' + ficha, src.group(1), nueva))
-                return etiqueta[:src.start(1)] + nueva + etiqueta[src.end(1):]
+                if src and src.group(1) != nueva:
+                    cambios.append((archivo, 'cabecera:' + ficha, src.group(1), nueva))
+                    etiqueta = etiqueta[:src.start(1)] + nueva + etiqueta[src.end(1):]
+                estilo = encuadre_estilo(cab_completa.get(ficha, {}))
+                etiqueta = con_estilo(etiqueta, estilo)
+                if etiqueta != antes and (not src or src.group(1) == nueva):
+                    cambios.append((archivo, 'cabecera:' + ficha + ' (encuadre)', '—', estilo))
+                return etiqueta
             texto = re.sub(r'<img id="cs-hero-img"[^>]*>|<img[^>]*class="pag-hero-foto"[^>]*>',
                            cabecera, texto)
 
