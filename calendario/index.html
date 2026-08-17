@@ -23,12 +23,14 @@
 <link rel="icon" href="../assets/img/logo.png">
 <link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../assets/css/apolana.css">
+<link rel="stylesheet" href="../assets/css/horarios.css">
 <script>window.APOLANA_BASE="../";</script>
 <script src="../assets/js/datos.js" defer></script>
 <script src="../assets/js/apolana.js" defer></script>
 <script src="../assets/js/supabase.js" defer></script>
 <script src="../assets/js/db.js" defer></script>
 <script src="../assets/js/editar-en-vivo.js" defer></script>
+<script src="../assets/js/horarios.js" defer></script>
 <style>
   /* ===========================================================
      LAYOUT PROPIO DE LA PÁGINA /calendario
@@ -186,20 +188,18 @@
   .p-entreno { background: var(--c-entreno); }
 
   /* ---- Rejilla: calendario y lateral ---- */
+  /* ⚠️ `display:grid` GANA AL ATRIBUTO `hidden`, y por eso hay que decirlo.
+     Poner hidden en un elemento con display propio no lo esconde: el
+     navegador aplica `display:none` desde su hoja de estilos y la regla de
+     aquí, que es más fuerte, se la come. Sin esto la pestaña de horarios
+     seguía enseñando la columna del calendario vacía con la barra lateral
+     al lado, como una página rota a medio cargar. */
+  .cal-reja[hidden] { display: none; }
   .cal-reja { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
   .cal-columna { min-width: 0; }
 
   /* Puerta a la página de horarios, igual que la puerta al calendario que
      hay allí: mismas dos líneas y misma caja. */
-  .cal-ir-hor {
-    margin-top: 16px; text-decoration: none; background: #fff;
-    border: 1px solid var(--linea-borde); border-radius: 14px;
-    padding: 13px 18px; min-height: 44px;
-    display: flex; flex-direction: column; justify-content: center; gap: 2px;
-  }
-  .cal-ir-hor:hover { border-color: var(--azul-filete, #3B85C0); }
-  .cal-ir-hor .q { font-size: 13px; color: var(--texto-suave); line-height: 1.35; }
-  .cal-ir-hor .a { font-size: 15px; font-weight: 600; color: var(--azul-oscuro); line-height: 1.3; }
   .cal-lateral { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   .cal-suscribir {
     background: var(--crema-banda); border-radius: 14px; padding: 16px 18px;
@@ -541,6 +541,7 @@
       <div class="seg" id="cal-vistas" role="group" aria-label="Cómo ver el calendario">
         <button type="button" data-v="mes" aria-pressed="true">Mes</button>
         <button type="button" data-v="semana" aria-pressed="false">Semana</button>
+        <button type="button" data-v="horarios" aria-pressed="false">Horarios</button>
       </div>
       <span class="separa-v" aria-hidden="true"></span>
       <button type="button" class="flecha" id="nav-prev" aria-label="Periodo anterior">←</button>
@@ -574,16 +575,13 @@
     <div class="contenedor">
 
       <!-- ================= CALENDARIO + LATERAL ================= -->
-      <div class="cal-reja">
+      <div class="cal-reja" id="cal-reja">
         <div class="cal-columna">
           <div class="cal-vista" id="cal-vista"><p class="vacio">Cargando el calendario…</p></div>
 
-          <!-- La otra pregunta, la que aquí no se contesta bien: «¿a qué hora
-               entreno los martes?». Para eso está la página de horarios. -->
-          <a class="cal-ir-hor" href="../horarios/">
-            <span class="q">¿Solo quieres los horarios de tu grupo, sin fechas?</span>
-            <span class="a">Ver los horarios de la semana →</span>
-          </a>
+          <!-- Aquí había un enlace a la página de horarios. Ya no hace falta:
+               los horarios son la pestaña de al lado, y un cartel que manda a
+               un sitio donde ya estás es ruido. -->
         </div>
 
         <aside class="cal-lateral">
@@ -613,6 +611,88 @@
 
     </div>
   </section>
+  <!-- ================= LA SEMANA FIJA (antes /horarios/) =================
+       Aquí vivía otra página. Andrés: «horarios y calendario, ¿no íbamos a
+       unificarlo en calendario?». Y tenía razón: eran dos sitios que
+       contestan «¿cuándo entreno?» y obligaban a acertar cuál antes de
+       saber cuál te servía. El calendario dice qué pasa un día concreto;
+       esta pestaña, la semana que se repite.
+
+       Nace escondida y no se calcula hasta que alguien pulsa su pestaña:
+       montar la semana de cada grupo es trabajo, y no se hace por si acaso.
+       ============================================================ -->
+  <section class="seccion" id="cal-horarios" hidden style="padding-top:clamp(18px,3vw,24px);">
+    <div class="contenedor">
+      <p class="intro" style="max-width:640px;margin:0 0 16px;">La semana fija, la que se repite. A qué hora entrena cada grupo y en qué sede.</p>
+<div class="hor-filtro-caja">
+        <span class="hor-filtro-rotulo">Elige tu grupo</span>
+        <div class="hor-filtro" id="hor-filtro" role="group" aria-label="Filtrar por grupo o sección"></div>
+      
+    </div>
+<!-- ================= PARRILLA DE LA SEMANA ================= -->
+  <section class="seccion" style="padding-top:clamp(20px,3vw,26px);">
+    <div class="contenedor">
+
+      <p class="hor-aviso" id="hor-estado">Cargando los horarios del club…</p>
+
+      <div class="hor-parrilla" id="hor-parrilla" hidden></div>
+      <div class="hor-acordeon" id="hor-acordeon" hidden></div>
+
+      <div class="hor-leyenda" id="hor-leyenda" hidden></div>
+
+      <div class="hor-otros" id="hor-otros" hidden>
+        <h2 class="titulo">Otros grupos y horarios</h2>
+        <p class="intro" style="margin:6px 0 0;max-width:640px;">Grupos cuyo horario no cabe en una casilla de la semana: aquí va tal cual está en la ficha del grupo.</p>
+        <div class="lista" id="hor-otros-lista"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= DÓNDE ENTRENAMOS ================= -->
+  <section class="seccion hor-sedes">
+    <div class="contenedor">
+      <div class="cab">
+        <h2 class="titulo titulo--grande">Dónde entrenamos</h2>
+        <span class="intro" style="color:var(--texto-suave);">Cuatro sedes en Alicante</span>
+      </div>
+      <div class="rejilla">
+
+        <article class="sede">
+          <span class="nombre">Estadio Joaquín Villar</span>
+          <span class="dir">Av. de Elche, 3 · Alicante</span>
+          <span class="dir" style="color:var(--texto-tenue);">Pista, escuela de atletismo y running</span>
+          <a class="enlace-flecha" href="https://www.google.com/maps/search/?api=1&amp;query=Estadio+Joaqu%C3%ADn+Villar+Alicante">Cómo llegar →</a>
+        </article>
+
+        <article class="sede">
+          <span class="nombre">Piscina Monte Tossal</span>
+          <span class="dir">C/ Foguerer José Romeu Zarandieta · Alicante</span>
+          <span class="dir" style="color:var(--texto-tenue);">Escuela de natación y natación de adultos</span>
+          <a class="enlace-flecha" href="https://www.google.com/maps/search/?api=1&amp;query=Piscina+Monte+Tossal+Alicante">Cómo llegar →</a>
+        </article>
+
+        <article class="sede">
+          <span class="nombre nombre-propio">El Cubo</span>
+          <span class="dir">Junto al estadio · Alicante</span>
+          <span class="dir" style="color:var(--texto-tenue);">Sala de fuerza del club, con reserva</span>
+          <a class="enlace-flecha" href="../cubo/">Ver El Cubo →</a>
+        </article>
+
+        <article class="sede">
+          <span class="nombre">Montaña</span>
+          <span class="dir">Punto de quedada según la salida</span>
+          <span class="dir" style="color:var(--texto-tenue);">Se avisa del sitio y la hora antes de cada salida</span>
+          <a class="enlace-flecha" href="#">Ver calendario →</a>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  
+  </section>
+
 
 </main>
 
@@ -1461,8 +1541,41 @@
 
   /* ---------- pintar todo ---------- */
   function pintar() {
+    /* La pestaña de horarios no es un periodo: es la semana fija, la que se
+       repite siempre. Así que las flechas, el «Hoy» y el rótulo del mes no
+       pintan nada ahí — dejarlos puestos invitaría a moverse por unas fechas
+       que no cambian nada. */
+    var esHorarios = (vista === 'horarios');
+    var caja = document.getElementById('cal-horarios');
+    if (caja) caja.hidden = !esHorarios;
+    /* Se esconde la REJILLA ENTERA, no solo el calendario: si solo se
+       escondiera el calendario, la barra lateral de «Próximas del club» se
+       quedaba sola a la derecha con media pantalla vacía al lado, como si
+       la página se hubiera roto a medio cargar. */
+    var reja = document.getElementById('cal-reja');
+    if (reja) reja.hidden = esHorarios;
+    /* Y su fila de grupos. La parrilla trae la suya, que filtra otra cosa:
+       la del calendario esconde citas de un día concreto y la de la parrilla
+       elige qué grupo se ve en la semana. Dos filas de pastillas iguales,
+       una encima de otra, haciendo cosas distintas, es la mejor manera de
+       que nadie se fíe de ninguna. */
+    var grupos = document.getElementById('cal-grupos-caja');
+    if (grupos) grupos.hidden = esHorarios || !grupos.getAttribute('data-hay');
+    ['nav-prev', 'nav-hoy', 'nav-sig'].forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b) b.hidden = esHorarios;
+    });
+
     var rot = document.getElementById('cal-periodo');
-    if (rot) rot.textContent = rotulo();
+    if (rot) rot.textContent = esHorarios ? 'La semana fija' : rotulo();
+
+    if (esHorarios) {
+      Array.prototype.forEach.call(document.querySelectorAll('#cal-vistas button'), function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-v') === vista ? 'true' : 'false');
+      });
+      if (window.APOLANA_HORARIOS) window.APOLANA_HORARIOS.pintar();
+      return;
+    }
 
     var cont = document.getElementById('cal-vista');
     if (cont) {
@@ -1681,7 +1794,7 @@
         '</div>';
       if (a.clase === 'entreno') {
         h += '<p class="letra-chica">Este entrenamiento se repite cada semana: la semana entera está en ' +
-          '<a href="../horarios/">los horarios</a>.</p>';
+          '<a href="../calendario/?vista=horarios">los horarios</a>.</p>';
       }
     }
     /* Copia fija del evento para el calendario del móvil */
@@ -1730,8 +1843,16 @@
     var cont = document.getElementById('cal-grupos');
     if (!caja || !cont) return;
     var secs = listaSecciones();
-    if (!secs.length) { caja.hidden = true; return; }
-    caja.hidden = false;
+    if (!secs.length) { caja.hidden = true; caja.removeAttribute('data-hay'); return; }
+    /* `data-hay` recuerda que esta fila SÍ tiene grupos que enseñar. Hace
+       falta porque quien la esconde ya no es solo esta función: la pestaña de
+       horarios también la apaga, y al volver hay que saber si se enciende
+       porque hay grupos o se deja apagada porque no los hay. */
+    caja.setAttribute('data-hay', '1');
+    /* Y respeta la pestaña. Esta función se llama después de pintar, así que
+       si encendiera la fila a ciegas desharía lo que acaba de decidir la
+       vista de horarios — que fue exactamente lo que pasó. */
+    caja.hidden = (vista === 'horarios');
     var hayAlguno = algunoDe(fSecs).length > 0;
     cont.innerHTML =
       '<button type="button" data-sec="" aria-pressed="' + (hayAlguno ? 'false' : 'true') + '">Todos</button>' +
@@ -1855,9 +1976,18 @@
 
     try {
       var g = localStorage.getItem('apolana-cal-vista');
-      if (g === 'mes' || g === 'semana') vista = g;   // la vista "día" ya no existe
+      if (g === 'mes' || g === 'semana' || g === 'horarios') vista = g;   // la vista "día" ya no existe
       mostrarEntrenos = localStorage.getItem('apolana-cal-entrenos') === 'si';
     } catch (e) { /* modo privado */ }
+
+    /* `?vista=horarios` manda sobre lo guardado, y va DESPUÉS a propósito: si
+       alguien llega desde el menú buscando los horarios, quiere los horarios
+       ahora, no lo que miró el martes pasado. Puesto antes, lo guardado ganaba
+       y el enlace del menú no hacía nada. */
+    try {
+      var pedida = new URL(window.location.href).searchParams.get('vista');
+      if (pedida === 'horarios' || pedida === 'semana' || pedida === 'mes') vista = pedida;
+    } catch (e) { /* navegador sin URL(): manda lo guardado */ }
 
     document.getElementById('nav-prev').addEventListener('click', function () { mover(-1); });
     document.getElementById('nav-sig').addEventListener('click', function () { mover(1); });
