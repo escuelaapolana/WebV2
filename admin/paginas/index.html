@@ -154,7 +154,7 @@
     <!-- ===== LISTA DE PÁGINAS ===== -->
     <div class="panel">
       <h2>Páginas de la web</h2>
-      <p class="intro">Cada fila es una página editable. Pulsa "Editar" para cambiar sus textos y su imagen.</p>
+      <p class="intro">Cada fila es una página editable. Con «Editar en la página» se abre la web y se escribe encima, viendo cómo queda. Con «Formulario» se cambian aquí los textos, la foto de cabecera y su encuadre.</p>
       <div style="overflow-x:auto;">
         <table id="tabla-paginas">
           <thead><tr><th>Página</th><th>Título actual</th><th>Imagen</th><th></th></tr></thead>
@@ -335,6 +335,23 @@ APOLANA_ADMIN.listo(function (sb) {
   };
   function nombreLegible(sec){ return NOMBRES[sec] || sec; }
 
+  /* Dónde vive cada ficha en la web pública. Casi todas están en /<seccion>/,
+     así que aquí solo hacen falta las que no. Las tres municipales comparten
+     una sola página: no tienen una cada una. Si una ficha no tiene página
+     —hoy ninguna— se queda sin el botón y se edita solo por formulario. */
+  var EN_LA_WEB = {
+    home: '',
+    'escuela-municipal': 'escuela-municipal-atletismo/',
+    'mun-atletismo':     'escuela-municipal-atletismo/',
+    'mun-triatlon':      'escuela-municipal-atletismo/',
+    'deporte-adaptado':  'escuela-municipal-atletismo/'
+  };
+  function rutaPublica(sec) {
+    var r = EN_LA_WEB[sec];
+    if (r === undefined) r = sec + '/';
+    return '../../' + r + '?editar=1';
+  }
+
   // La PORTADA aprovecha las mismas columnas que el resto de secciones, pero
   // en ella cada una significa otra cosa. Aquí se le ponen sus nombres de
   // verdad y se esconden los campos que la portada no usa (null = no sale).
@@ -406,7 +423,15 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td><strong>' + esc(nombreLegible(c.seccion)) + '</strong><br><span class="cod">' + esc(c.seccion) + '</span></td>' +
         '<td>' + esc(c.titulo || '—') + '</td>' +
         '<td>' + img + '</td>' +
-        '<td class="acciones-fila"><button class="btn btn--primario btn--mini" data-editar="' + c.id + '">Editar</button></td>' +
+        /* «Editar en la página» va primero y es el botón principal: Andrés lo
+           pidió así —«entro en una a editar, que te lleve al modo fantasma»—.
+           El formulario se queda al lado, en gris, porque tiene campos que en
+           la página no se pueden tocar (la foto de cabecera, el encuadre) y
+           porque en un móvil pequeño escribir encima de la web es incómodo. */
+        '<td class="acciones-fila">' +
+          '<a class="btn btn--primario btn--mini" href="' + esc(rutaPublica(c.seccion)) + '">Editar en la página</a> ' +
+          '<button class="btn btn--mini" data-editar="' + c.id + '">Formulario</button>' +
+        '</td>' +
       '</tr>';
     }).join('');
   }
@@ -785,8 +810,16 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
-    var r = await sb.from('contenido_secciones').update(datos).eq('id', id);
+    /* ⚠️ `.select()` Y CONTAR LAS FILAS, NO SOLO MIRAR EL ERROR. Un UPDATE
+       que las políticas de la base no permiten no falla: devuelve CERO filas
+       y ningún error. Sin esto la pantalla decía «Guardado ✓» y no se había
+       guardado nada — pasó con el editor de la página y se arregló igual. */
+    var r = await sb.from('contenido_secciones').update(datos).eq('id', id).select('id');
     if (r.error) { $('msg-form').textContent = 'Error: ' + r.error.message; $('msg-form').className = 'msg error'; return; }
+    if (!r.data || !r.data.length) {
+      $('msg-form').textContent = 'No se ha guardado: tu usuario no tiene permiso para cambiar esta página.';
+      $('msg-form').className = 'msg error'; return;
+    }
     $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
 
     /* Y aqui se despublica la de antes, si es que ya no la usa nadie. La

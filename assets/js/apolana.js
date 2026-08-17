@@ -22,6 +22,25 @@ function ruta(u) { return base() + String(u).replace(/^\//, ''); }
    niños, y «Club» con todo lo que no es «cómo me apunto». Liga va
    suelta, junto a Calendario y Noticias: es lo que está pasando. */
 const MENU = [
+  /* «Club» abre la barra, y es un cambio de orden pedido: quien entra sin
+     conocer Apolana pregunta primero QUIÉN es esto, no dónde entrenar. El
+     resto del orden no se toca: la lanzadera de secciones sigue siendo lo
+     segundo, que es lo que se busca cuando ya sabes quiénes son. */
+  { clave: 'club', texto: 'Club', url: '/club/', sub: [
+    { texto: 'El club',          url: '/club/' },
+    { texto: 'Historia',         url: '/club/historia/' },
+    { texto: 'Junta directiva',  url: '/club/#junta' },
+    /* Récords y Ranking van juntos a propósito: uno es lo mejor de la
+       historia y el otro quién va mejor esta temporada. */
+    { texto: 'Récords',          url: '/club/records/' },
+    { texto: 'Ranking',          url: '/club/ranking/' },
+    { texto: 'Instalaciones',    url: '/instalaciones/' },
+    { texto: 'Familias',         url: '/familias/' },
+    { texto: 'Galería',          url: '/galeria/' },
+    { texto: 'Tienda',           url: '/tienda/' },
+    { texto: 'Patrocinadores',   url: '/#colaboradores' },
+    { texto: 'Contacto',         url: '/contacto/' },
+  ] },
   /* «Entrenar», el nombre corto: cuatro sílabas menos y no pierde nada.
      Quien busca dónde entrenar lo entiende igual, y deja holgura en la barra. */
   /* El nombre del menú lleva a la lanzadera, no a una de sus hijas:
@@ -54,21 +73,6 @@ const MENU = [
   /* «Liga» va en ámbar: es un nombre propio del club, no una categoría. */
   { clave: 'liga', texto: 'Liga', url: '/liga/', marca: true },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
-  { clave: 'club', texto: 'Club', url: '/club/', sub: [
-    { texto: 'El club',          url: '/club/' },
-    { texto: 'Historia',         url: '/club/historia/' },
-    { texto: 'Junta directiva',  url: '/club/#junta' },
-    /* Récords y Ranking van juntos a propósito: uno es lo mejor de la
-       historia y el otro quién va mejor esta temporada. */
-    { texto: 'Récords',          url: '/club/records/' },
-    { texto: 'Ranking',          url: '/club/ranking/' },
-    { texto: 'Instalaciones',    url: '/instalaciones/' },
-    { texto: 'Familias',         url: '/familias/' },
-    { texto: 'Galería',          url: '/galeria/' },
-    { texto: 'Tienda',           url: '/tienda/' },
-    { texto: 'Patrocinadores',   url: '/#colaboradores' },
-    { texto: 'Contacto',         url: '/contacto/' },
-  ] },
 ];
 
 /* --- Iconos de las redes (un solo grosor, 24 px de caja) --- */

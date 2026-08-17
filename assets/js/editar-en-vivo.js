@@ -55,7 +55,24 @@
     { sel: '#cs-intro',   campo: 'descripcion',       tipo: 'parrafo', nombre: 'Entradilla' },
     { sel: '#cs-servicios',  campo: 'servicios',      tipo: 'lista',   nombre: 'Servicios' },
     { sel: '#cs-compromiso', campo: 'compromisos',    tipo: 'lista',   nombre: '¿A qué te comprometes?' },
-    { sel: '#cs-incluye',    campo: 'puntos_destacados', tipo: 'lista', nombre: 'Qué incluye' }
+    { sel: '#cs-incluye',    campo: 'puntos_destacados', tipo: 'lista', nombre: 'Qué incluye' },
+
+    /* --- LA PORTADA ---
+       Usa la misma fila de `contenido_secciones` (seccion = 'home') y las
+       mismas columnas, pero con otros nombres en pantalla y otros huecos:
+       lo que en una sección es «entradilla», en la portada es el lema bajo
+       el titular. Como cada hueco se busca por su selector y el que no está
+       se salta, las dos listas pueden convivir en la misma tabla. */
+    { sel: '#cs-lema',   campo: 'descripcion', tipo: 'parrafo', nombre: 'Frase bajo el titular' },
+    { sel: '#cs-boton',  campo: 'horarios',    tipo: 'linea',   nombre: 'Texto del botón' },
+    /* El enlace se pinta con una flecha detrás que NO está en la base. Si se
+       editara tal cual, la flecha se guardaría dentro del texto y a la vuelta
+       saldrían dos. Se quita al leer y se vuelve a poner al pintar. */
+    { sel: '#cs-enlace', campo: 'grupos',      tipo: 'linea',   nombre: 'Enlace de al lado', sufijo: ' →' },
+    /* Las tres cifras grandes (420 atletas, 175 socios, 38 años). En la base
+       son una línea por cifra, «420 · Atletas»; en pantalla no son una lista
+       sino tres bloques con el número y su rótulo aparte. */
+    { sel: '#cs-cifras', campo: 'puntos_destacados', tipo: 'lista', nombre: 'Las tres cifras', forma: 'cifras' }
   ];
 
   var sb = null;
@@ -76,7 +93,15 @@
   /* El texto que ve el usuario dentro de una lista ya pintada, para
      poder rellenar el recuadro con lo que hay ahora mismo en pantalla
      sin volver a pedirlo a la base. */
-  function lineasDe(caja) {
+  function lineasDe(caja, conf) {
+    /* Las cifras de la portada no son una lista: son bloques con el número
+       en <b> y el rótulo en <span>. Se rehace la línea como está guardada. */
+    if (conf && conf.forma === 'cifras') {
+      return Array.prototype.map.call(caja.querySelectorAll('.stat'), function (st) {
+        var b = st.querySelector('b'), s = st.querySelector('span');
+        return limpio((b ? b.textContent : '') + ' · ' + (s ? s.textContent : ''));
+      }).filter(Boolean).join('\n');
+    }
     var items = caja.querySelectorAll('li');
     if (!items.length) return '';
     return Array.prototype.map.call(items, function (li) {
@@ -127,6 +152,10 @@
       if (t.tipo === 'lista') {
         el.addEventListener('click', abrirLista);
       } else {
+        if (t.sufijo) {
+          var sin = limpio(el.textContent);
+          if (sin.slice(-t.sufijo.length) === t.sufijo) el.textContent = limpio(sin.slice(0, -t.sufijo.length));
+        }
         el.setAttribute('contenteditable', 'plaintext-only');
         el.addEventListener('input', function () { cambios[t.campo] = limpio(el.textContent); marcarSucio(el); });
       }
@@ -226,7 +255,7 @@
     var cuerpo = document.createElement('div');
     var ta = document.createElement('textarea');
     ta.className = 'edv-area';
-    ta.value = (cambios[conf.campo] != null) ? cambios[conf.campo] : lineasDe(caja);
+    ta.value = (cambios[conf.campo] != null) ? cambios[conf.campo] : lineasDe(caja, conf);
     var pista = document.createElement('p');
     pista.className = 'edv-pista';
     pista.textContent = 'Un punto por línea. Se guarda tal cual lo escribas.';
@@ -235,7 +264,7 @@
 
     panel(conf.nombre, cuerpo, function () {
       cambios[conf.campo] = limpio(ta.value);
-      repintarLista(caja, limpio(ta.value));
+      repintarLista(caja, limpio(ta.value), conf);
       marcarSucio(caja);
     });
     ta.focus();
@@ -255,7 +284,24 @@
      traiga puesto ese molde se mantiene, sea lo que sea.
 
      Es una vista previa: lo que se guarda de verdad es `cambios`. */
-  function repintarLista(caja, texto) {
+  function repintarLista(caja, texto, conf) {
+    if (conf && conf.forma === 'cifras') {
+      var molde0 = caja.querySelector('.stat');
+      if (!molde0) return;
+      molde0 = molde0.cloneNode(true);
+      caja.textContent = '';
+      texto.split('\n').map(limpio).filter(Boolean).forEach(function (l) {
+        var st = molde0.cloneNode(true);
+        var par = l.split('·');
+        var b = st.querySelector('b'), s = st.querySelector('span');
+        if (b) { b.textContent = limpio(par[0]); b.removeAttribute('data-desde'); }
+        /* El rótulo se enseña en minúscula aunque en el panel se escriba con
+           mayúscula: es una etiqueta, no un título. Igual que al cargar. */
+        if (s) s.textContent = limpio(par.slice(1).join('·')).toLowerCase();
+        caja.appendChild(st);
+      });
+      return;
+    }
     var ul = caja.querySelector('ul') || caja;
     var molde = ul.querySelector('li');
     var lineas = texto.split('\n').map(limpio).filter(Boolean);
@@ -440,6 +486,20 @@
     ponerEstilos();
     barra();
     $('#edv-toggle').addEventListener('click', function () { editando ? apagar(false) : encender(); });
+
+    /* Se llega aquí desde «Páginas» del panel, que abre la página con
+       ?editar=1. Sin esto habría que darle a «Editar» otra vez nada más
+       llegar, que es justo el paso que se quería quitar. La marca se borra
+       de la barra de direcciones para que al recargar o al compartir el
+       enlace no arranque en modo edición sin querer. */
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.get('editar') === '1') {
+        encender();
+        url.searchParams.delete('editar');
+        history.replaceState(null, '', url.pathname + (url.search || '') + url.hash);
+      }
+    } catch (e) { /* navegador sin URL(): se entra a mano y ya está */ }
     $('#edv-guardar').addEventListener('click', guardar);
     $('#edv-cancelar').addEventListener('click', function () {
       if (Object.keys(cambios).length || Object.keys(cambiosFoto).length) apagar(true);
