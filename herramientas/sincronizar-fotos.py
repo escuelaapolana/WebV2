@@ -41,6 +41,9 @@
 # A MANO
 #   python3 herramientas/sincronizar-fotos.py           (cambia los archivos)
 #   python3 herramientas/sincronizar-fotos.py --ver     (solo dice qué haría)
+#   python3 herramientas/sincronizar-fotos.py --ver --comprobar
+#                                        (falla si hay algo descuadrado; para
+#                                         usarlo como control antes de subir)
 # ============================================================
 
 import json
@@ -169,8 +172,51 @@ def archivos_html():
             yield ruta
 
 
+def sin_cubrir(archivos):
+    """Fotos que NADIE iguala, o marcadas dos veces.
+
+    ⚠️ ESTO EXISTE PORQUE EL ARREGLO SE QUEDÓ CORTO DOS VECES SEGUIDAS.
+    Primero se igualaron los huecos con `data-img` y las cabeceras de
+    sección, y /entrenar/ siguió cambiando las fotos al abrirse: sus
+    tarjetas no llevan `data-img`, dicen de qué sección son con `data-sec`,
+    y nadie las miraba. Al añadirlas, las de /escuelas/ —que llevan LAS DOS
+    marcas— se quedaron con dos ayudantes escribiendo el mismo `src`, o sea
+    el parpadeo otra vez y peor.
+
+    Andrés: «revisa y que no vuelva a pasar». Un arreglo no se sostiene
+    solo; una comprobación que corre cada noche, sí. Esto lista lo que
+    ninguna vía cubre y lo que dos vías se disputan, para que la siguiente
+    forma de pintar una foto se note el primer día y no cuando alguien la
+    vea moverse.
+    """
+    huerfanas, dobles = [], []
+    for archivo in archivos:
+        with open(archivo, encoding='utf-8') as f:
+            texto = f.read()
+        # dentro de una tarjeta de lanzadera
+        for bloque in re.findall(r'<a[^>]*data-sec="[^"]+"[^>]*>.*?</a>', texto, flags=re.S):
+            sec = re.search(r'data-sec="([^"]+)"', bloque).group(1)
+            for etiqueta in re.findall(r'<img[^>]*>', bloque):
+                if 'data-img=' in etiqueta:
+                    dobles.append((archivo, sec, re.search(r'data-img="([^"]+)"', etiqueta).group(1)))
+        # Fotos de tarjeta que no cubre NINGUNA vía: ni son hueco de
+        # biblioteca, ni están dentro de una tarjeta con `data-sec`, ni son la
+        # cabecera de una sección. Ésas nadie las mantiene al día.
+        dentro_de_tarjeta = set()
+        for bloque in re.findall(r'<a[^>]*data-sec="[^"]+"[^>]*>.*?</a>', texto, flags=re.S):
+            dentro_de_tarjeta.update(re.findall(r'<img[^>]*>', bloque))
+        for etiqueta in re.findall(r'<img[^>]*>', texto):
+            if ('data-img=' in etiqueta or 'cs-hero-img' in etiqueta
+                    or 'pag-hero-foto' in etiqueta or etiqueta in dentro_de_tarjeta):
+                continue
+            if 'lanz-foto' in etiqueta:
+                huerfanas.append((archivo, etiqueta[:90]))
+    return huerfanas, dobles
+
+
 def main():
     solo_ver = '--ver' in sys.argv
+    comprobar = '--comprobar' in sys.argv
 
     filas_bib = pedir('imagenes_web', 'clave,url,encuadre,zoom')
     biblioteca = {f['clave']: (f.get('url') or '').strip() for f in filas_bib}
@@ -212,7 +258,40 @@ def main():
 
         texto = re.sub(r'<img[^>]*>', igualar, texto)
 
-        # --- 2 · la foto grande de la cabecera de sección ---
+        # --- 2 · las tarjetas de las lanzaderas (/entrenar/, /escuelas/) ---
+        # No llevan `data-img`: dicen de qué sección son con `data-sec`, y su
+        # foto sale de la ficha de esa sección. Se quedaron fuera del primer
+        # arreglo y por eso /entrenar/ seguía cambiando las fotos al abrirse.
+        def tarjeta(m):
+            bloque = m.group(0)
+            sec = re.search(r'data-sec="([^"]+)"', bloque).group(1)
+            u = cabeceras.get(sec, '')
+            if not u:
+                return bloque
+            def dentro(mi):
+                etiqueta, antes = mi.group(0), mi.group(0)
+                # ⚠️ Si la foto ya es un hueco de biblioteca (`data-img`), manda
+                # ésa y aquí no se toca. Las tarjetas de /escuelas/ llevan las
+                # DOS marcas, y escribir la de la sección encima dejaba a dos
+                # ayudantes peleándose por la misma <img> al cargar la página:
+                # el parpadeo volvía, y peor, porque cambiaba de foto de verdad.
+                if 'data-img=' in etiqueta:
+                    return etiqueta
+                nueva = relativa(u, archivo)
+                s = re.search(r'src="([^"]*)"', etiqueta)
+                if s and s.group(1) != nueva:
+                    cambios.append((archivo, 'tarjeta:' + sec, s.group(1), nueva))
+                    etiqueta = etiqueta[:s.start(1)] + nueva + etiqueta[s.end(1):]
+                estilo = encuadre_estilo(cab_completa.get(sec, {}))
+                etiqueta = con_estilo(etiqueta, estilo)
+                if etiqueta != antes and (not s or s.group(1) == nueva):
+                    cambios.append((archivo, 'tarjeta:' + sec + ' (encuadre)', '—', estilo))
+                return etiqueta
+            return re.sub(r'<img[^>]*>', dentro, bloque, count=1)
+
+        texto = re.sub(r'<a[^>]*data-sec="[^"]+"[^>]*>.*?</a>', tarjeta, texto, flags=re.S)
+
+        # --- 3 · la foto grande de la cabecera de sección ---
         slug = archivo.split('/')[0] if '/' in archivo else 'home'
         ficha = next((s for s, p in PAGINA_DE.items() if p == archivo), None)
         if ficha is None and archivo.endswith('/index.html'):
@@ -241,14 +320,25 @@ def main():
             with open(archivo, 'w', encoding='utf-8') as f:
                 f.write(texto)
 
+    huerfanas, dobles = sin_cubrir(list(archivos_html()))
+    # Las dobles NO son un error: se sabe quién manda (la biblioteca) y las
+    # dos vías lo respetan. Se dicen para que nadie se sorprenda al ver que
+    # cambiar la foto de la sección no cambia la de la tarjeta.
+    for archivo, sec, clave in dobles:
+        print('·  %s · la tarjeta de «%s» usa la foto de biblioteca "%s", '
+              'no la de la ficha de la sección.' % (archivo, sec, clave))
+    for archivo, etiqueta in huerfanas:
+        print('⚠️  %s · foto de tarjeta que nadie iguala: %s' % (archivo, etiqueta))
+
     if not cambios:
         print('Las fotos del HTML ya son las de la biblioteca. Nada que igualar.')
-        return 0
+        return 1 if (comprobar and huerfanas) else 0
 
     print('%d foto(s) %s:' % (len(cambios), 'por igualar' if solo_ver else 'igualadas'))
     for archivo, clave, antes, ahora in cambios:
         print('  · %-38s %-26s %s → %s' % (archivo, clave, antes, ahora))
-    return 0
+    # `--comprobar` es para usarlo como control: falla si algo NO cuadraba.
+    return 1 if comprobar else 0
 
 
 if __name__ == '__main__':

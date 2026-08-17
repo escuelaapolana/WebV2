@@ -96,7 +96,22 @@
 
         var img = caja.querySelector('img');
         if (!img) return;
-        if (limpio(f.imagen_url)) img.src = limpio(f.imagen_url);
+        /* Se descarga por detrás y solo se cambia cuando está entera, como
+           en el resto de la web. Cambiar `src` a pelo vacía el hueco y deja
+           fuera la del respaldo: se veía la vieja, un hueco y la buena.
+           Andrés: «cuando pincho en entrenar las fotos cambian de nuevo». */
+        /* Si la foto es un hueco de biblioteca, la pone imagenes-web.js y
+           aquí no se toca: dos ayudantes escribiendo el mismo `src` es una
+           carrera, y quien gana depende de cuál conteste antes. */
+        if (limpio(f.imagen_url) && !img.hasAttribute('data-img')) {
+          (function (url, destino) {
+            var previa = new Image();
+            previa.onload = function () { destino.src = url; };
+            previa.onerror = function () { /* se queda la del respaldo */ };
+            previa.src = url;
+            if (previa.complete && previa.naturalWidth) destino.src = url;
+          }(limpio(f.imagen_url), img));
+        }
         /* El encuadre lo elige el club en el panel; aquí no se decide nada. */
         if (limpio(f.imagen_encuadre)) {
           img.style.objectPosition = limpio(f.imagen_encuadre);

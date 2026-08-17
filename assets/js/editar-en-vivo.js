@@ -55,7 +55,11 @@
     { sel: '#cs-intro',   campo: 'descripcion',       tipo: 'parrafo', nombre: 'Entradilla' },
     { sel: '#cs-servicios',  campo: 'servicios',      tipo: 'lista',   nombre: 'Servicios' },
     { sel: '#cs-compromiso', campo: 'compromisos',    tipo: 'lista',   nombre: '¿A qué te comprometes?' },
-    { sel: '#cs-incluye',    campo: 'puntos_destacados', tipo: 'lista', nombre: 'Qué incluye' },
+    /* «Qué incluye» y «Qué traer» viven DENTRO del mismo recuadro
+       (#cs-incluye), así que apuntar al recuadro cogía las dos mezcladas.
+       Cada columna dice de qué campo sale (lo pone seccion.js). */
+    { sel: '[data-campo="puntos_destacados"]', campo: 'puntos_destacados', tipo: 'lista', nombre: 'Qué incluye' },
+    { sel: '[data-campo="que_traer"]',         campo: 'que_traer',         tipo: 'lista', nombre: 'Qué traer' },
 
     /* --- LA PORTADA ---
        Usa la misma fila de `contenido_secciones` (seccion = 'home') y las
@@ -84,6 +88,17 @@
      `cambios` porque no son columnas de una fila: son filas de
      `textos_web`, una por hueco, y se guardan de otra manera. */
   var cambiosSueltos = {};  // { clave: texto }
+  /* Lo que hay escrito en la base ahora mismo. Se pide una vez al empezar
+     a editar y de ahí salen los recuadros.
+
+     ⚠️ ANTES SE LEÍA DE LA PANTALLA, Y ESO PERDÍA DATOS. `lineasDe()`
+     buscaba <li>, pero «Qué incluye» no se pinta con <li>: son <div> con
+     una marca y un texto. Resultado: el recuadro salía VACÍO con seis
+     puntos delante, y darle a «Usar esto» borraba el campo entero. Andrés
+     lo vio en triatlón y avisó de que «eso pasa mucho».
+     Leer de la base es correcto por construcción: da igual cómo esté
+     pintada la página. */
+  var valores = {};
   var biblioteca = null;   // se pide una sola vez, y solo si hace falta
 
   // ---------- utilidades ----------
@@ -152,8 +167,9 @@
   }
 
   // ---------- encender y apagar el modo edición ----------
-  function encender() {
+  async function encender() {
     editando = true;
+    await traerValores();
     document.body.classList.add('edv-editando');
     $('#edv-toggle').textContent = 'Dejar de editar';
     $('#edv-guardar').hidden = false;
@@ -306,7 +322,11 @@
     var cuerpo = document.createElement('div');
     var ta = document.createElement('textarea');
     ta.className = 'edv-area';
-    ta.value = (cambios[conf.campo] != null) ? cambios[conf.campo] : lineasDe(caja, conf);
+    /* Orden: lo que estés escribiendo ahora > lo que hay en la base > lo
+       que se lee de la pantalla. El último es el último por algo. */
+    ta.value = (cambios[conf.campo] != null) ? cambios[conf.campo]
+             : (valores[conf.campo] != null && limpio(valores[conf.campo])) ? limpio(valores[conf.campo])
+             : lineasDe(caja, conf);
     var pista = document.createElement('p');
     pista.className = 'edv-pista';
     pista.textContent = 'Un punto por línea. Se guarda tal cual lo escribas.';
@@ -314,6 +334,12 @@
     cuerpo.appendChild(pista);
 
     panel(conf.nombre, cuerpo, function () {
+      /* Último cortafuegos: vaciar del todo algo que tenía contenido casi
+         nunca es lo que se quería hacer, y es justo lo que pasaba solo
+         cuando el recuadro salía vacío por error. Se pregunta. */
+      var habia = limpio(valores[conf.campo] || '') || lineasDe(caja, conf);
+      if (habia && !limpio(ta.value) &&
+          !window.confirm('Vas a dejar «' + conf.nombre + '» vacío y desaparecerá de la página. ¿Seguro?')) return;
       cambios[conf.campo] = limpio(ta.value);
       repintarLista(caja, limpio(ta.value), conf);
       marcarSucio(caja);
@@ -532,6 +558,17 @@
   }
 
   // ---------- arranque ----------
+  /* Trae la fila de la sección tal y como está guardada. Si falla, se
+     sigue: los recuadros caerán en leer la pantalla, que es peor pero no
+     deja a nadie sin poder editar. */
+  async function traerValores() {
+    if (!seccion) return;
+    try {
+      var r = await sb.from('contenido_secciones').select('*').eq('seccion', seccion).limit(1);
+      if (!r.error && r.data && r.data[0]) valores = r.data[0];
+    } catch (e) { /* se sigue sin ellos */ }
+  }
+
   async function arranca() {
     var pagina = document.querySelector('[data-seccion]');
     seccion = pagina ? limpio(pagina.getAttribute('data-seccion')) : '';

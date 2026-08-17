@@ -543,8 +543,12 @@
   /* ---------------------------------------------------------
      8 · Qué incluye
      --------------------------------------------------------- */
-  function listaDePuntos(titulo, puntos, marca) {
+  function listaDePuntos(titulo, puntos, marca, campo) {
     var col = nodo('div', 'sec-banda__col');
+    /* De qué columna de la base sale esta columna de la pantalla. Lo usa el
+       editor de la página: las dos listas viven dentro del mismo recuadro
+       (#cs-incluye) y sin esto no hay forma de saber cuál es cuál. */
+    if (campo) col.setAttribute('data-campo', campo);
     col.appendChild(nodo('h2', 'titulo titulo--grande', titulo));
     var lista = nodo('div', 'sec-banda__lista');
     puntos.forEach(function (p) {
@@ -571,8 +575,8 @@
 
     caja.textContent = '';
     caja.classList.toggle('sec-banda__dos', incluye.length > 0 && traer.length > 0);
-    if (incluye.length) caja.appendChild(listaDePuntos('Qué incluye', incluye, '✓'));
-    if (traer.length)   caja.appendChild(listaDePuntos('Qué traer', traer, '·'));
+    if (incluye.length) caja.appendChild(listaDePuntos('Qué incluye', incluye, '✓', 'puntos_destacados'));
+    if (traer.length)   caja.appendChild(listaDePuntos('Qué traer', traer, '·', 'que_traer'));
   }
 
   /* ---------------------------------------------------------
