@@ -129,6 +129,19 @@
 
   function vacio(texto) { return nodo('p', 'sec-vacio', texto); }
 
+  /* Pone `url` en la imagen, pero solo cuando ya está descargada entera.
+     Si nunca llega, la imagen se queda con la foto que trae el HTML. Es la
+     misma idea que en imagenes-web.js; no se comparte porque cada archivo
+     vive en su propio ámbito y una función de siete líneas no justifica
+     inventar un sitio común. */
+  function cuandoCargue(url, img) {
+    var previa = new Image();
+    previa.onload = function () { img.src = url; };
+    previa.onerror = function () { /* se queda la del respaldo */ };
+    previa.src = url;
+    if (previa.complete && previa.naturalWidth) img.src = url;
+  }
+
   /* ---------------------------------------------------------
      1 y 2 · Foto, antetítulo, título y frase
      --------------------------------------------------------- */
@@ -146,7 +159,14 @@
        así vale para las dos formas sin tocar nada más. */
     var img = document.getElementById('cs-hero-img') || document.querySelector('.pag-hero-foto');
     if (!img) return;
-    if (limpio(ficha.imagen_url)) img.src = limpio(ficha.imagen_url);
+    /* ⚠️ Se descarga por detrás antes de ponerla. Cambiar `src` a pelo vacía
+       el hueco al instante y deja fuera la del respaldo, así que se veía la
+       foto del HTML, luego un hueco, y luego la buena: tres estados para una
+       sola foto. Andrés: «no me gusta eso de que entres a una página y esté
+       cambiando fotos». Si la nueva no llega, no se toca nada y se queda la
+       del HTML — que ahora es la misma, así que casi nunca hay nada que
+       cambiar. Ver la nota de `cuandoCargue`. */
+    if (limpio(ficha.imagen_url)) cuandoCargue(limpio(ficha.imagen_url), img);
     /* El encuadre lo elige el club en el panel; aquí no se decide nada. */
     if (limpio(ficha.imagen_encuadre)) {
       img.style.objectPosition = limpio(ficha.imagen_encuadre);

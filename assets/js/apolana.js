@@ -337,10 +337,10 @@ function pintarColaboradores(lista) {
       'margin-top:0;border-top:0;border-radius:0}',
     /* Cuatro columnas en una sola rejilla: identidad · Club · Contacto · Síguenos. */
     '.pie .contenedor{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.1fr;' +
-      'gap:30px;padding-block:34px 26px;align-items:start}',
-    '.pie-col{display:flex;flex-direction:column;gap:8px;min-width:0}',
+      'gap:30px;padding-block:26px 18px;align-items:start}',
+    '.pie-col{display:flex;flex-direction:column;gap:3px;min-width:0}',
     '.pie-rotulo{font-size:14px;color:rgba(255,255,255,0.55);margin-bottom:2px}',
-    '.pie-col a{color:rgba(255,255,255,0.85);min-height:28px;display:flex;align-items:center;overflow-wrap:anywhere}',
+    '.pie-col a{color:rgba(255,255,255,0.85);min-height:32px;display:flex;align-items:center;overflow-wrap:anywhere}',
     '.pie-col a:hover{color:#fff}',
     /* La identidad va dentro del navy y ocupa la primera columna. */
     '.pie-col--marca{gap:10px}',
@@ -365,8 +365,14 @@ function pintarColaboradores(lista) {
     '.pie .red-nombre{display:none}',
 
     /* --- Colaboradores: una fila final, separada con una línea --- */
-    '.pie-colab-fila{border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;' +
-      'padding-bottom:20px;display:flex;flex-direction:column;gap:10px}',
+    '.pie-colab-fila{border-top:1px solid rgba(255,255,255,0.14);padding-top:12px;' +
+      'padding-bottom:14px;display:flex;flex-direction:column;gap:8px}',
+    /* En la portada los colaboradores YA salen en su propia banda
+       («Con la colaboración de», #colaboradores). Repetirlos treinta
+       píxeles más abajo no añade nada y alarga el pie: si la página
+       ya los enseña, esta fila no se pinta. Andrés: «y los
+       colaboradores duplicados». */
+    'body:has(#colaboradores) .pie-colab-fila{display:none}',
     '.pie-colab{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}',
     '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;min-height:26px;' +
       'color:rgba(255,255,255,0.82);text-decoration:none;font-size:13px;line-height:1.35}',
@@ -383,14 +389,14 @@ function pintarColaboradores(lista) {
        la web que la ley obliga a tener a mano desde cualquier sitio.
        44 px de alto: aquí se pulsa con el pulgar y con prisa. */
     '.pie-legal{border-top:1px solid rgba(255,255,255,0.14);display:flex;flex-wrap:wrap;' +
-      'justify-content:center;gap:0 26px;padding:4px 20px}',
+      'justify-content:center;gap:0 26px;padding:0 20px}',
     '.pie-legal a{color:rgba(255,255,255,0.72);font-size:13px;' +
       'min-height:44px;display:flex;align-items:center}',
     '.pie-legal a:hover{color:#fff}',
 
     /* El crédito ya no lleva línea propia: la de arriba la pone la
        fila legal, y dos filetes seguidos se ven como un error. */
-    '.pie-credito{border-top:0;color:rgba(255,255,255,0.6);letter-spacing:0;padding-top:0}',
+    '.pie-credito{border-top:0;color:rgba(255,255,255,0.6);letter-spacing:0;padding-top:0;padding-bottom:14px}',
     '.pie-credito strong{color:rgba(255,255,255,0.85)}',
 
     /* --- Las redes dentro del menú de móvil (ahí sí, sobre crema) --- */
