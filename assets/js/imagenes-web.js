@@ -58,6 +58,18 @@
      `propia` = la foto está hecha para esta pantalla (es la del hueco de
      móvil), así que manda ella y se anula el recorte que el CSS hacía
      para aproximar con la de escritorio. */
+  /* Descarga una foto y avisa cuando está lista. Si no llega, no avisa:
+     quien llama se queda con lo que tenía. */
+  function cuandoCargue(url, listo) {
+    var previa = new Image();
+    previa.onload = listo;
+    previa.onerror = function () { /* se queda la del respaldo */ };
+    previa.src = url;
+    /* Si el navegador ya la tenía, `complete` es true de inmediato y
+       `onload` puede no dispararse en algunos navegadores: se comprueba. */
+    if (previa.complete && previa.naturalWidth) listo();
+  }
+
   function aplicar(el, fila, propia) {
     if (!el || !fila) return;
     var url = fila.url && String(fila.url).trim();
@@ -67,7 +79,25 @@
     var zoom = parseFloat(fila.zoom);
 
     if (el.tagName === 'IMG') {
-      el.src = url;
+      /* ⚠️ LA FOTO SE CARGA POR DETRÁS ANTES DE PONERLA, Y NO ES UN LUJO.
+         Antes se hacía `el.src = url` a pelo. Eso vacía el hueco al
+         instante y deja la foto del respaldo fuera, así que durante lo
+         que tarda la nueva en llegar —que en un móvil con datos es medio
+         segundo largo— se ve un salto: la foto del HTML, un hueco, y
+         luego la buena. Andrés lo dijo así: «cargo una página y en los
+         huecos se carga una y rápidamente pasa a otra. Pasa en casi
+         todas.»
+
+         Ahora se descarga en un `Image()` aparte y solo se cambia cuando
+         ya está entera. Si falla —sin conexión, URL rota— NO se toca
+         nada y el hueco se queda con la foto del HTML, que es justo lo
+         que tiene que pasar y antes no pasaba: antes se quedaba roto.
+
+         Las fotos que ya están en la caché del navegador se resuelven en
+         el mismo tick, así que ahí no se nota ningún retraso. */
+      cuandoCargue(url, function () {
+        el.src = url;
+      });
       if (fila.alt != null && String(fila.alt).trim()) el.alt = String(fila.alt).trim();
       if (pos) { el.style.objectPosition = pos; el.style.transformOrigin = pos; }
       else if (propia) { el.style.objectPosition = 'center'; el.style.transformOrigin = 'center'; }
