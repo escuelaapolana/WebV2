@@ -1,0 +1,91 @@
+# ============================================================
+# IGUALAR CADA NOCHE LAS FOTOS DEL HTML CON LAS DE LA BIBLIOTECA
+# ------------------------------------------------------------
+# POR QUÉ EXISTE
+#
+# Cada foto que el club puede cambiar tiene dos orígenes: la escrita en
+# el HTML (el respaldo, que el navegador pinta al instante) y la que el
+# club eligió en el panel (que llega cuando contesta la base). Si son
+# distintas, se ve el cambio en directo: entras a una página y la foto se
+# cambia sola delante de ti.
+#
+# Y no le pasa solo a quien la cambió. El HTML lleva la foto vieja para
+# TODO el que entre, siempre, hasta que alguien vuelva a igualarlas. Sin
+# esta tarea habría que acordarse a mano cada vez, y eso no se sostiene.
+#
+# LO QUE HACE
+#   Una vez al día lanza herramientas/sincronizar-fotos.py, que lee las
+#   dos tablas y reescribe el `src` de las fotos marcadas. Si no hay nada
+#   que cambiar no sube nada: la mayoría de los días no hará nada, y así
+#   debe ser.
+#
+# O SEA QUE, DESPUÉS DE CAMBIAR UNA FOTO:
+#   Esa noche se iguala sola y no hay que hacer nada. Si hay prisa por
+#   que deje de cambiar ya, se lanza a mano desde la pestaña «Actions»
+#   con el botón «Run workflow».
+#
+# LA CLAVE QUE USA
+#   La «publishable», la misma que va en assets/js/db.js y que viaja en
+#   el navegador de cualquiera. Es pública por diseño. AQUÍ NO SE PONE
+#   NUNCA UNA CLAVE SECRETA: este repositorio es público.
+#
+# LO QUE ESTA TAREA NO ARREGLA, Y CONVIENE SABERLO
+#   Las horas que van desde que se cambia una foto hasta que corre esta
+#   tarea. En esa ventana el cambio se sigue viendo. Quitarlo del todo
+#   pedía no pintar ninguna foto hasta que contestara la base, y eso
+#   cambia un problema pequeño y raro (una foto que se cambia) por otro
+#   grande y diario (todas las páginas empiezan sin foto).
+# ============================================================
+
+name: Igualar las fotos de la web
+
+on:
+  schedule:
+    # Todas las noches a las 03:17 UTC (05:17 en España en verano). De
+    # madrugada porque toca el repositorio, y el minuto es raro a
+    # propósito: a las horas en punto GitHub tiene cola.
+    - cron: '17 3 * * *'
+  # Y a mano, para no esperar a mañana después de cambiar una foto.
+  workflow_dispatch:
+
+permissions:
+  contents: write        # hace falta para poder subir el cambio
+
+concurrency:
+  group: igualar-fotos
+  cancel-in-progress: false
+
+jobs:
+  igualar:
+    name: Igualar las fotos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Igualar el HTML con la biblioteca
+        env:
+          # Los mismos dos valores que hay en assets/js/db.js.
+          SUPABASE_URL: 'https://icaxokjsvhlreuwpyxeb.supabase.co'
+          SUPABASE_KEY: 'sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH'
+        run: python3 herramientas/sincronizar-fotos.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir el cambio, si lo hay
+        run: |
+          set -uo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Nada que subir: el HTML ya iba con las fotos buenas."
+            exit 0
+          fi
+
+          git config user.name  'Tarea de la web'
+          git config user.email 'actions@github.com'
+          git add -A
+          git commit -m 'Las fotos del HTML vuelven a ser las de la biblioteca
+
+          Lo hace sola la tarea nocturna: alguien cambió una foto desde el
+          panel y el respaldo escrito en el HTML se había quedado con la
+          anterior. Mientras no coincidan, quien entra ve cómo la foto se
+          cambia delante de él.
+
+          Ver .github/workflows/igualar-fotos.yml'
+          git push
