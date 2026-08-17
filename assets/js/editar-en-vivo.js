@@ -385,9 +385,18 @@
       'border-radius:999px;border:0;background:rgba(46,66,86,.92);color:#fff;font:inherit;font-size:13px;',
       'font-weight:600;cursor:pointer}',
     '.edv-cambiar:hover{background:#2E4256}',
+    /* El panel entra DESLIZÁNDOSE desde el borde derecho, que es de donde
+       viene. Antes aparecía de golpe y no se entendía de dónde salía: la
+       curva y el lado son toda la explicación que hace falta.
+       `@starting-style` para que anime al entrar sin necesitar JS, y la
+       curva es la de cajones de la casa. */
     '.edv-panel{position:fixed;right:0;top:0;bottom:0;width:min(420px,92vw);z-index:9100;background:#fff;',
       'display:flex;flex-direction:column;box-shadow:-10px 0 30px -18px rgba(0,0,0,.5);',
-      'font-family:var(--fuente-texto,system-ui)}',
+      'font-family:var(--fuente-texto,system-ui);',
+      'transform:translateX(0);opacity:1;',
+      'transition:transform 280ms var(--ease-panel,cubic-bezier(.32,.72,0,1)),opacity 200ms ease}',
+    '@starting-style{.edv-panel{transform:translateX(100%);opacity:0}}',
+    '@media (prefers-reduced-motion:reduce){.edv-panel{transition-duration:80ms}}',
     '.edv-panel-cab{display:flex;align-items:center;justify-content:space-between;gap:12px;',
       'padding:14px 16px;border-bottom:1px solid #E4DCCB;font-size:16px;color:#2E4256}',
     '.edv-x{border:0;background:none;font-size:16px;cursor:pointer;color:#6B6558;min-height:40px;min-width:40px}',
