@@ -80,6 +80,10 @@
   var editando = false;
   var cambios = {};        // { campo: valorNuevo }
   var cambiosFoto = {};    // { clave: url }
+  /* Los huecos sueltos, los que llevan data-texto. Van aparte de
+     `cambios` porque no son columnas de una fila: son filas de
+     `textos_web`, una por hueco, y se guardan de otra manera. */
+  var cambiosSueltos = {};  // { clave: texto }
   var biblioteca = null;   // se pide una sola vez, y solo si hace falta
 
   // ---------- utilidades ----------
@@ -89,6 +93,18 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   function limpio(t) { return String(t == null ? '' : t).trim(); }
+
+  /* «club.enlace.historia.titulo» → «Enlace · historia · titulo». Es lo
+     que sale en el rótulo flotante mientras se edita. No es perfecto,
+     pero es infinitamente mejor que enseñar la clave en crudo, y no
+     obliga a mantener una lista de nombres a mano que se quedaría vieja
+     en cuanto alguien añadiera un hueco. */
+  function nombreDeClave(clave) {
+    var p = clave.split('.');
+    if (p.length > 1) p.shift();          // la primera parte es la página
+    var txt = p.join(' · ').replace(/[-_]/g, ' ');
+    return txt.charAt(0).toUpperCase() + txt.slice(1);
+  }
 
   /* El texto que ve el usuario dentro de una lista ya pintada, para
      poder rellenar el recuadro con lo que hay ahora mismo en pantalla
@@ -161,6 +177,26 @@
       }
     });
 
+    /* Los huecos sueltos de las páginas que no son de sección: las
+       tarjetas de /club/, las cifras, los rótulos… Cada uno es una fila
+       de `textos_web` con su clave, así que aquí no hay que saber nada
+       de la página: se editan todos igual.
+
+       Los saltos de línea se guardan como saltos de verdad. Un titular
+       partido a mano en el HTML («Un club de<br>socios») se lee aquí
+       como dos líneas y se vuelve a partir al pintarlo. */
+    document.querySelectorAll('[data-texto]').forEach(function (el) {
+      var clave = limpio(el.getAttribute('data-texto'));
+      if (!clave) return;
+      el.classList.add('edv-campo');
+      el.setAttribute('data-edv-nombre', nombreDeClave(clave));
+      el.setAttribute('contenteditable', 'plaintext-only');
+      el.addEventListener('input', function () {
+        cambiosSueltos[clave] = limpio(el.innerText);
+        marcarSucio(el);
+      });
+    });
+
     /* ⚠️ LA FOTO GRANDE DE ARRIBA NO ES COMO LAS DEMÁS, Y POR ESO NO SE
        PODÍA CAMBIAR. Las fotos normales de la web viven en `imagenes_web`
        y se marcan con `data-img="clave"`. La cabecera de una sección no:
@@ -205,7 +241,7 @@
   function apagar(recargar) {
     if (recargar) { location.reload(); return; }
     editando = false;
-    cambios = {}; cambiosFoto = {};
+    cambios = {}; cambiosFoto = {}; cambiosSueltos = {};
     document.body.classList.remove('edv-editando');
     $('#edv-toggle').textContent = 'Editar esta página';
     $('#edv-guardar').hidden = true;
@@ -369,7 +405,8 @@
   // ---------- guardar ----------
   async function guardar() {
     var nTex = Object.keys(cambios).length, nFot = Object.keys(cambiosFoto).length;
-    if (!nTex && !nFot) { aviso('No has cambiado nada.'); return; }
+    var nSue = Object.keys(cambiosSueltos).length;
+    if (!nTex && !nFot && !nSue) { aviso('No has cambiado nada.'); return; }
     var boton = $('#edv-guardar');
     boton.disabled = true;
     aviso('Guardando…');
@@ -396,6 +433,19 @@
           .update({ url: cambiosFoto[clave] }).eq('clave', clave).select('clave');
         if (r2.error) throw r2.error;
         if (!r2.data || !r2.data.length) throw new Error(SIN_PERMISO);
+      }
+      /* `upsert` y no `update`: la fila puede no existir todavía. El
+         hueco vive en el HTML desde el primer día y la fila solo nace
+         cuando alguien escribe ahí por primera vez — así la tabla no se
+         llena de claves vacías esperando a que alguien las use. */
+      if (nSue) {
+        var filas = Object.keys(cambiosSueltos).map(function (clave) {
+          return { clave: clave, texto: cambiosSueltos[clave], pagina: clave.split('.')[0] };
+        });
+        var r3 = await sb.from('textos_web')
+          .upsert(filas, { onConflict: 'clave' }).select('clave');
+        if (r3.error) throw r3.error;
+        if (!r3.data || r3.data.length !== filas.length) throw new Error(SIN_PERMISO);
       }
       aviso('Guardado. Recargando para verlo como queda…', 'ok');
       setTimeout(function () { location.reload(); }, 900);
@@ -471,7 +521,11 @@
     var pagina = document.querySelector('[data-seccion]');
     seccion = pagina ? limpio(pagina.getAttribute('data-seccion')) : '';
     /* Sin sección y sin fotos gestionables, aquí no hay nada que editar. */
-    if (!seccion && !document.querySelector('img[data-img]')) return;
+    /* Una página entra en el editor si tiene ficha de sección, fotos
+       cambiables o huecos sueltos. Antes solo valían las dos primeras, y
+       por eso /club/ o /familias/ no tenían ni el botón. */
+    if (!seccion && !document.querySelector('img[data-img]')
+        && !document.querySelector('[data-texto]')) return;
 
     sb = window.APOLANA_DB;
     if (!sb || typeof sb.from !== 'function' || !sb.auth) return;
@@ -502,7 +556,8 @@
     } catch (e) { /* navegador sin URL(): se entra a mano y ya está */ }
     $('#edv-guardar').addEventListener('click', guardar);
     $('#edv-cancelar').addEventListener('click', function () {
-      if (Object.keys(cambios).length || Object.keys(cambiosFoto).length) apagar(true);
+      if (Object.keys(cambios).length || Object.keys(cambiosFoto).length
+          || Object.keys(cambiosSueltos).length) apagar(true);
       else apagar(false);
     });
   }
