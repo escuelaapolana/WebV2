@@ -208,15 +208,45 @@
 
     panel(conf.nombre, cuerpo, function () {
       cambios[conf.campo] = limpio(ta.value);
-      /* Se repinta a ojo para que se vea el cambio sin recargar: es una
-         vista previa, y lo que manda al guardar es `cambios`. */
-      var ul = caja.querySelector('ul') || caja;
-      ul.innerHTML = limpio(ta.value).split('\n').filter(Boolean).map(function (l) {
-        return '<li>' + esc(l) + '</li>';
-      }).join('');
+      repintarLista(caja, limpio(ta.value));
       marcarSucio(caja);
     });
     ta.focus();
+  }
+
+  /* ⚠️ LA VISTA PREVIA CLONA LO QUE HAY; NO MONTA <li> A MANO.
+     La primera versión repintaba con `'<li>'+texto+'</li>'`, y eso se
+     cargaba el «✓» de Servicios y las clases de cada punto: escribías
+     una línea nueva y el resto perdía la marca. Lo vio Andrés a la
+     primera, escribiendo «hola» para probar.
+
+     El motivo de fondo es que cada bloque tiene su propia forma —
+     Servicios lleva `<span class="marca">✓</span>` y `<span
+     class="texto">`, Compromisos es un punto pelado— y esto no puede
+     saberlas todas. Así que no las adivina: coge el primer <li> como
+     molde, lo clona por cada línea y solo le cambia el texto. Lo que
+     traiga puesto ese molde se mantiene, sea lo que sea.
+
+     Es una vista previa: lo que se guarda de verdad es `cambios`. */
+  function repintarLista(caja, texto) {
+    var ul = caja.querySelector('ul') || caja;
+    var molde = ul.querySelector('li');
+    var lineas = texto.split('\n').map(limpio).filter(Boolean);
+    if (!molde) {
+      ul.innerHTML = lineas.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('');
+      return;
+    }
+    molde = molde.cloneNode(true);
+    ul.textContent = '';
+    lineas.forEach(function (l) {
+      var li = molde.cloneNode(true);
+      /* El texto vive en `.texto` si el bloque lo separa de la marca; si
+         no, es el propio <li>. Se cambia SOLO eso. */
+      var donde = li.querySelector('.texto');
+      if (donde) donde.textContent = l;
+      else li.textContent = l;
+      ul.appendChild(li);
+    });
   }
 
   // ---------- cambiar una foto ----------
@@ -265,6 +295,9 @@
     });
   }
 
+  var SIN_PERMISO = 'la base no ha dejado guardar. Suele ser que la sesión ha caducado: ' +
+                    'entra otra vez en el panel y vuelve a probar.';
+
   // ---------- guardar ----------
   async function guardar() {
     var nTex = Object.keys(cambios).length, nFot = Object.keys(cambiosFoto).length;
@@ -273,14 +306,28 @@
     boton.disabled = true;
     aviso('Guardando…');
     try {
+      /* ⚠️ NO BASTA CON QUE NO HAYA ERROR: HAY QUE MIRAR CUÁNTAS FILAS
+         CAMBIARON. Esta es la trampa de las reglas de acceso de Postgres,
+         y me pilló de lleno: un UPDATE que la regla NO permite no da
+         error —da cero filas y éxito—. La primera versión decía
+         «Guardado» y recargaba la página, y como al recargar volvía a
+         salir el texto de antes, parecía que se había perdido.
+         Pasó de verdad: Andrés guardó, la base seguía con el texto del 2
+         de agosto y la pantalla le había dicho que sí.
+         Con `.select()` la respuesta trae las filas tocadas, y si vienen
+         cero se dice lo que pasa de verdad. */
       if (nTex) {
         if (!seccion) throw new Error('esta página no tiene sección');
-        var r = await sb.from('contenido_secciones').update(cambios).eq('seccion', seccion);
+        var r = await sb.from('contenido_secciones')
+          .update(cambios).eq('seccion', seccion).select('seccion');
         if (r.error) throw r.error;
+        if (!r.data || !r.data.length) throw new Error(SIN_PERMISO);
       }
       for (var clave in cambiosFoto) {
-        var r2 = await sb.from('imagenes_web').update({ url: cambiosFoto[clave] }).eq('clave', clave);
+        var r2 = await sb.from('imagenes_web')
+          .update({ url: cambiosFoto[clave] }).eq('clave', clave).select('clave');
         if (r2.error) throw r2.error;
+        if (!r2.data || !r2.data.length) throw new Error(SIN_PERMISO);
       }
       aviso('Guardado. Recargando para verlo como queda…', 'ok');
       setTimeout(function () { location.reload(); }, 900);
