@@ -132,18 +132,45 @@
       }
     });
 
+    /* ⚠️ LA FOTO GRANDE DE ARRIBA NO ES COMO LAS DEMÁS, Y POR ESO NO SE
+       PODÍA CAMBIAR. Las fotos normales de la web viven en `imagenes_web`
+       y se marcan con `data-img="clave"`. La cabecera de una sección no:
+       sale de `contenido_secciones.imagen_url`, la misma fila que su
+       texto. Como no lleva `data-img`, el editor pasaba de largo — y es
+       justo la que uno quiere cambiar. Andrés: «fotos no puedo cambiar
+       desde fantasma».
+       Se le pone el botón igual, pero lo que elija va al campo de la
+       sección, no a `imagenes_web`. */
+    var hero = $('#cs-hero-img') || $('.pag-hero-foto');
+    if (hero && hero.tagName === 'IMG') ponerBotonFoto(hero, function (url) {
+      cambios.imagen_url = url;
+      hero.src = url;
+      marcarSucio(hero);
+    });
+
     document.querySelectorAll('[data-img]').forEach(function (img) {
       if (img.tagName !== 'IMG') return;
-      img.classList.add('edv-foto');
-      var envoltorio = img.parentElement;
-      if (envoltorio && !envoltorio.querySelector('.edv-cambiar')) {
-        envoltorio.style.position = envoltorio.style.position || 'relative';
-        var b = document.createElement('button');
-        b.type = 'button'; b.className = 'edv-cambiar'; b.textContent = 'Cambiar foto';
-        b.addEventListener('click', function (ev) { ev.preventDefault(); abrirFotos(img); });
-        envoltorio.appendChild(b);
-      }
+      var clave = img.getAttribute('data-img');
+      ponerBotonFoto(img, function (url) {
+        cambiosFoto[clave] = url;
+        img.src = url;
+        marcarSucio(img);
+      });
     });
+  }
+
+  /* El botón «Cambiar foto» sobre una imagen. `alElegir` decide dónde va
+     lo elegido: la cabecera guarda en la ficha de la sección y las demás
+     en `imagenes_web`. */
+  function ponerBotonFoto(img, alElegir) {
+    img.classList.add('edv-foto');
+    var envoltorio = img.parentElement;
+    if (!envoltorio || envoltorio.querySelector('.edv-cambiar')) return;
+    if (getComputedStyle(envoltorio).position === 'static') envoltorio.style.position = 'relative';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'edv-cambiar'; b.textContent = 'Cambiar foto';
+    b.addEventListener('click', function (ev) { ev.preventDefault(); abrirFotos(alElegir); });
+    envoltorio.appendChild(b);
   }
 
   function apagar(recargar) {
@@ -250,18 +277,13 @@
   }
 
   // ---------- cambiar una foto ----------
-  async function abrirFotos(img) {
-    var clave = img.getAttribute('data-img');
+  async function abrirFotos(alElegir) {
     var cuerpo = document.createElement('div');
     cuerpo.innerHTML = '<p class="edv-pista">Cargando la biblioteca…</p>';
     var elegida = { url: '' };
 
-    panel('Foto · ' + clave, cuerpo, function () {
-      if (!elegida.url) return;
-      cambiosFoto[clave] = elegida.url;
-      img.src = elegida.url;
-      img.classList.add('edv-sucio');
-      marcarSucio(img);
+    panel('Elegir foto', cuerpo, function () {
+      if (elegida.url) alElegir(elegida.url);
     });
 
     if (!biblioteca) {
