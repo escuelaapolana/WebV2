@@ -126,7 +126,7 @@ class ApolanaCabecera extends HTMLElement {
         `<div class="sub">${m.sub.map(s => `<a href="${ruta(s.url)}">${s.texto}</a>`).join('')}</div>` +
       `</details>`;
     }).join('') +
-      `<a href="${ruta('/portal/')}">Acceso</a>` +
+      `<a id="men-acceso" href="${ruta('/portal/')}">Acceso</a>` +
       `<a href="${ruta('/inscripcion/')}">Inscribirse</a>` +
       /* En móvil WhatsApp va aquí dentro y en la página de contacto: flotando
          encima del contenido molesta. */
@@ -145,7 +145,7 @@ class ApolanaCabecera extends HTMLElement {
           <nav class="menu">${enlaces}</nav>
           <div class="cabecera-acciones">
             ${whatsappCabeceraHTML()}
-            <a class="btn btn--neutro" href="${ruta('/portal/')}">Acceso</a>
+            <a class="btn btn--neutro" id="cab-acceso" href="${ruta('/portal/')}">Acceso</a>
             <details class="menu-movil">
               <summary aria-label="Abrir menú">☰</summary>
               <div class="menu-movil-panel">${enlacesMovil}</div>
@@ -576,6 +576,44 @@ customElements.define('apolana-pie', ApolanaPie);
    falla, si no hay conexión o si todavía no hay ninguno guardado, se
    quedan los de datos.js que ya están puestos. --- */
 document.addEventListener('DOMContentLoaded', async function () {
+  /* ============================================================
+     SI YA HAS ENTRADO, LA CABECERA NO TE PUEDE PEDIR QUE ENTRES
+     ------------------------------------------------------------
+     El botón de arriba a la derecha decía «Acceso» SIEMPRE, escrito a
+     fuego: la cabecera nunca miraba si había sesión. Andrés, entrando
+     desde su cuenta: «sigo viendo lo de acceso y no mi perfil».
+     No estaba roto —nunca supo que puedes estar dentro—, pero el efecto
+     es el mismo: te invita a hacer algo que ya has hecho.
+
+     Si hay sesión, el botón pasa a decir tu nombre y lleva a tu zona.
+     Sin sesión no se pide nada: una visita normal no gasta ni una
+     llamada en esto.
+     ============================================================ */
+  async function cabeceraSegunSesion() {
+    var db = window.APOLANA_DB;
+    if (!db || !db.auth) return;
+    var enlaces = [document.getElementById('cab-acceso'), document.getElementById('men-acceso')].filter(Boolean);
+    if (!enlaces.length) return;
+    try {
+      var ses = await db.auth.getSession();
+      var s = ses && ses.data && ses.data.session;
+      if (!s) return;                                   // visita normal: se queda «Acceso»
+      var correo = (s.user && s.user.email) || '';
+      var nombre = '';
+      if (correo) {
+        var r = await db.from('perfiles').select('nombre').eq('email', correo.toLowerCase()).limit(1);
+        if (!r.error && r.data && r.data.length) nombre = String(r.data[0].nombre || '').trim();
+      }
+      /* El nombre de pila si se sabe, y «Mi zona» si no. Nunca el correo:
+         en una cabecera no cabe y además se lee por encima del hombro. */
+      var texto = nombre ? nombre.split(' ')[0] : 'Mi zona';
+      enlaces.forEach(function (a) { a.textContent = texto; a.setAttribute('title', 'Ir a tu zona'); });
+    } catch (e) { /* si algo falla, se queda «Acceso», que nunca estorba */ }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(cabeceraSegunSesion, 300); });
+  } else { setTimeout(cabeceraSegunSesion, 300); }
+
   if (!window.APOLANA_DB) return;
   try {
     const res = await window.APOLANA_DB
