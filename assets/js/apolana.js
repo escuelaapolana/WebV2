@@ -306,10 +306,23 @@ function pintarColaboradores(lista) {
 
     /* ============ CIERRE OSCURO ============
        A sangre y sin radio: es una banda, no una tarjeta gigante. Va pegado
-       al pie, que también es navy, para que no quede crema entre los dos. */
-    '.cierre{background:var(--navy,#2E4256);color:#fff}',
+       al pie, que también es navy, para que no quede crema entre los dos.
+
+       ⚠️ PERO PEGADO NO ES FUNDIDO, Y AHÍ SE ME FUE. La idea de dos masas
+       oscuras seguidas era buena; lo que faltaba era la costura. Sin ella,
+       «Ven a probar cuatro días» y el pie se leen como un solo bloque azul
+       de novecientos píxeles, y la invitación —que es lo único de esta web
+       que pide algo -- se disuelve dentro del pie, que es lo que nadie lee.
+       Andrés: «se une el ven a probar con el pie de página».
+
+       Se arregla con dos gestos pequeños: el cierre va un punto más claro
+       que el pie, y entre los dos queda un filete del mismo tono que ya usa
+       el pie por dentro. Siguen siendo dos masas oscuras seguidas; ahora se
+       ve dónde acaba una y empieza la otra. */
+    'main > .seccion:last-child{padding-bottom:clamp(34px,6vw,56px)}',
+    '.cierre{background:#33495F;color:#fff;border-bottom:1px solid rgba(255,255,255,0.14)}',
     '.cierre .contenedor{display:flex;align-items:center;justify-content:space-between;' +
-      'gap:24px;flex-wrap:wrap;padding-block:34px}',
+      'gap:24px;flex-wrap:wrap;padding-block:40px}',
     '.cierre-txt{display:flex;flex-direction:column;gap:6px;min-width:260px}',
     '.cierre-tit{font-family:var(--fuente-titulo);font-weight:700;font-size:36px;' +
       'line-height:1;text-transform:uppercase;color:#fff}',
