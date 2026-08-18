@@ -323,6 +323,62 @@
     return salida;
   }
 
+  /* ============================================================
+     NUEVE TARJETAS QUE ERAN UNA TABLA
+     ------------------------------------------------------------
+     La escuela tiene un grupo por año de nacimiento: Rojo 1 (2023),
+     Rojo 2 (2022)… hasta Verde 3 (2015). Nueve tarjetas con la misma
+     hora, la misma sede y los mismos turnos, donde lo único que cambia
+     es el año. Andrés: «no quiero ver todos los grupos de rojo 1,
+     rojo 2, rojo 3… veo demasiada info que dice lo mismo. A la gente
+     le da igual el nombre de los grupos: le importa al que irá su
+     hijo». Eso no son nueve tarjetas, es UNA tabla de año → grupo.
+
+     Solo se pliegan los que son de un único año y comparten días, hora,
+     sitio, descripción y pruebas — y solo si salen tres o más, para que
+     ninguna otra sección cambie por accidente. Si a un grupo se le pone
+     una descripción propia, se descuelga solo de la tabla y vuelve a
+     ser tarjeta: no se pierde nada en silencio. */
+  function juntaAniosEnTabla(grupos) {
+    var montones = {}, salida = [], puestos = {};
+    grupos.forEach(function (g) {
+      var d = parseInt(g.nacidos_desde, 10), h = parseInt(g.nacidos_hasta, 10);
+      if (isNaN(d) || d !== h) return;
+      var clave = [diasDeTurnos(g), horaYSitio(g.horario) || limpio(g.horario),
+                   limpio(g.descripcion), limpio(g.pruebas)].join('|');
+      (montones[clave] = montones[clave] || []).push(g);
+    });
+    var tablas = {};
+    for (var k in montones) {
+      if (montones[k].length < 3) continue;
+      montones[k].forEach(function (g) { tablas[g.id] = k; });
+    }
+    var pintadas = {};
+    grupos.forEach(function (g) {
+      var k = tablas[g.id];
+      if (!k) { salida.push(g); return; }
+      /* La cabecera nace ya con la lista COMPLETA de su montón: los demás
+         del mismo montón solo se saltan. (Aquí hubo un push de más y cada
+         año salía dos veces en la tabla: una vez por venir en la lista y
+         otra por añadirse al pasar. Se vio contando filas en pantalla.) */
+      if (pintadas[k]) return;
+      var lista = montones[k].slice().sort(function (a, b) {
+        /* Del año más reciente al más antiguo: el padre del pequeño es el
+           que llega nuevo y busca; el del mayor ya sabe cómo va esto. */
+        return parseInt(b.nacidos_desde, 10) - parseInt(a.nacidos_desde, 10);
+      });
+      var cabeza = {};
+      for (var c in g) { if (Object.prototype.hasOwnProperty.call(g, c)) cabeza[c] = g[c]; }
+      cabeza.nombre = 'Un grupo por cada año';
+      cabeza.nacidos_desde = lista[lista.length - 1].nacidos_desde;
+      cabeza.nacidos_hasta = lista[0].nacidos_hasta;
+      cabeza.tabla = lista;
+      pintadas[k] = cabeza;
+      salida.push(cabeza);
+    });
+    return salida;
+  }
+
   /* Los días de un grupo: «Lunes y miércoles o martes y jueves». Vacío
      en las secciones de mayores, donde no hay turnos.
 
@@ -399,6 +455,21 @@
       else t.appendChild(nodo('span', 'cuando sec-vacio', 'Días y sede, todavía sin publicar'));
 
       if (limpio(g.descripcion)) t.appendChild(nodo('p', 'que', limpio(g.descripcion)));
+
+      /* La tabla de año → grupo, cuando la tarjeta resume varios. El año va
+         primero y en firme; el nombre del grupo, detrás y en suave: es lo
+         que se dice en la pista («los Rojo 1, a la recta»), pero no es el
+         dato con el que un padre decide. */
+      if (g.tabla) {
+        var filasT = nodo('div', 'sec-anios');
+        g.tabla.forEach(function (x) {
+          var fila = nodo('span', 'sec-anio');
+          fila.appendChild(nodo('b', null, String(x.nacidos_desde)));
+          fila.appendChild(nodo('span', null, limpio(x.nombre)));
+          filasT.appendChild(fila);
+        });
+        t.appendChild(filasT);
+      }
 
       /* Las pruebas que entrena el grupo, en pastillas. Es lo que hace que
          «Velocidad A» signifique algo para quien no es del mundillo. Lo
@@ -716,7 +787,7 @@
 
       var datos = {
         ficha:   (rf.data || [])[0] || null,
-        grupos:  juntaTurnos(rg.data || []),
+        grupos:  juntaAniosEnTabla(juntaTurnos(rg.data || [])),
         tarifas: propias,
         socio:   deEscuela ? null : (todas.filter(function (t) { return t.clave === 'cuota-socio'; })[0] || null)
       };
