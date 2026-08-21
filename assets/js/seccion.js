@@ -423,6 +423,10 @@
     var lista = nodo('div', 'sec-grupos__lista');
     datos.grupos.forEach(function (g) {
       var t = nodo('article', 'sec-grupo');
+      /* Para el editor de la página: qué fila de `grupos` es esta tarjeta.
+         La tarjeta-resumen de la escuela (g.tabla) no es un registro suelto,
+         así que esa no se marca. El editor lee `_apoGrupo` al encenderse. */
+      if (g.id && !g.tabla) { t.setAttribute('data-editable-grupo', g.id); t._apoGrupo = g; }
       var cab = nodo('div', 'cab');
       cab.appendChild(nodo('span', 'nombre' + (esNombrePropio(g.nombre) ? ' nombre-propio' : ''), limpio(g.nombre)));
       /* Solo se pone el precio si es un número. Cuando la sección no tiene
@@ -519,6 +523,7 @@
       var lista = nodo('div', 'sec-tarifas');
       datos.tarifas.forEach(function (t) {
         var f = nodo('div', 'sec-tarifa');
+        if (t.id) { f.setAttribute('data-editable-tarifa', t.id); f._apoTarifa = t; }
         var imp = importeDe(t);
         var que = nodo('div', 'que');
         que.appendChild(nodo('span', 'concepto', conceptoCorto(t.concepto, titulo)));
@@ -764,7 +769,7 @@
          en crudo, el día que el club prepare los precios de la temporada
          que viene saldrían los dos a la vez. Es lo que ya hace /entrenar/. */
       db.from('tarifas_vigentes')
-        .select('clave,ambito,concepto,grupo_id,dias,importe_socio,importe_socio_hasta,importe_no_socio,texto_importe,periodicidad,notas,orden')
+        .select('id,clave,ambito,concepto,grupo_id,dias,importe_socio,importe_socio_hasta,importe_no_socio,importe_no_socio_hasta,texto_importe,periodicidad,notas,orden,vigente_desde')
         .or('seccion.eq.' + clave + ',clave.eq.cuota-socio').order('orden'),
       /* SIEMPRE la vista, nunca la tabla `contactos`: la vista devuelve
          vacíos el teléfono y el correo que el club ha decidido NO

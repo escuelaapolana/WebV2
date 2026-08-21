@@ -250,6 +250,140 @@
         marcarSucio(hueco);
       });
     });
+
+    /* Los grupos y los precios. No se escriben «encima» como un párrafo: un
+       precio es un número con su periodicidad y un grupo tiene años de
+       nacimiento y horario. Cada tarjeta abre un panel con SUS campos. Y como
+       tocan lo que se COBRA, se guardan por la vía de siempre —la base decide
+       con sus reglas y se comprueba que la fila cambió— y llevan aviso. */
+    document.querySelectorAll('[data-editable-grupo]').forEach(function (el) {
+      marcarRegistro(el, 'Editar grupo', function () { editarGrupo(el); });
+    });
+    document.querySelectorAll('[data-editable-tarifa]').forEach(function (el) {
+      marcarRegistro(el, 'Editar precio', function () { editarTarifa(el); });
+    });
+  }
+
+  /* Marca una tarjeta de grupo o de precio como editable y le pone un botón
+     pequeño en la esquina. No se escribe encima porque son datos con forma
+     (números, fechas), no texto libre. */
+  function marcarRegistro(el, rotulo, alTocar) {
+    if (el.querySelector('.edv-editar-reg')) return;
+    el.classList.add('edv-campo');
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'edv-editar-reg'; b.textContent = rotulo;
+    b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); alTocar(); });
+    el.appendChild(b);
+  }
+
+  /* --- piezas de formulario para los paneles de registro --- */
+  function campo(etiqueta, tipo, valor, opciones) {
+    var cont = document.createElement('label');
+    cont.className = 'edv-campo-form';
+    cont.appendChild(nodoTxt('span', 'edv-etq', etiqueta));
+    var input;
+    if (tipo === 'lista') {
+      input = document.createElement('select');
+      (opciones || []).forEach(function (o) {
+        var op = document.createElement('option');
+        op.value = o; op.textContent = o || '—';
+        if (String(valor || '') === o) op.selected = true;
+        input.appendChild(op);
+      });
+    } else if (tipo === 'parrafo') {
+      input = document.createElement('textarea'); input.rows = 3; input.value = valor == null ? '' : String(valor);
+    } else {
+      input = document.createElement('input');
+      input.type = (tipo === 'num') ? 'text' : 'text';
+      input.inputMode = (tipo === 'num') ? 'decimal' : 'text';
+      input.value = valor == null ? '' : String(valor);
+    }
+    input.className = 'edv-input';
+    cont.appendChild(input);
+    return { nodo: cont, leer: function () { return input.value; } };
+  }
+  function nodoTxt(et, cl, txt) { var n = document.createElement(et); n.className = cl; n.textContent = txt; return n; }
+
+  /* «40» → 40 · «40,5» → 40.5 · vacío → null (para borrar el dato). */
+  function aNumero(v) {
+    var s = limpio(v).replace(',', '.');
+    if (s === '') return null;
+    var n = Number(s);
+    return isNaN(n) ? undefined : n;   // undefined = escrito mal, no se guarda
+  }
+
+  async function guardarRegistro(tabla, id, cambios) {
+    aviso('Guardando…');
+    try {
+      var r = await sb.from(tabla).update(cambios).eq('id', id).select('id');
+      if (r.error) throw r.error;
+      if (!r.data || !r.data.length) throw new Error(SIN_PERMISO);
+      aviso('Guardado. Recargando para verlo como queda…', 'ok');
+      setTimeout(function () { location.reload(); }, 800);
+    } catch (e) {
+      aviso('No se ha podido guardar: ' + (e.message || e), 'mal');
+      return false;
+    }
+  }
+
+  function editarGrupo(el) {
+    var g = el._apoGrupo; if (!g) return;
+    var cuerpo = document.createElement('div');
+    var fNombre  = campo('Nombre del grupo', 'linea', g.nombre);
+    var fDesc    = campo('Descripción', 'parrafo', g.descripcion);
+    var fHorario = campo('Días y sede (una línea)', 'linea', g.horario);
+    var fDesde   = campo('Nacidos desde (año, en blanco si no aplica)', 'num', g.nacidos_desde);
+    var fHasta   = campo('Nacidos hasta (año)', 'num', g.nacidos_hasta);
+    var fPruebas = campo('Pruebas (una por línea)', 'parrafo', lineas(g.pruebas).join('\n'));
+    [fNombre, fDesc, fHorario, fDesde, fHasta, fPruebas].forEach(function (c) { cuerpo.appendChild(c.nodo); });
+
+    panel('Editar grupo', cuerpo, function () {
+      var d = aNumero(fDesde.leer()), h = aNumero(fHasta.leer());
+      if (d === undefined || h === undefined) { aviso('Los años deben ser números.', 'mal'); return false; }
+      return guardarRegistro('grupos', g.id, {
+        nombre: limpio(fNombre.leer()),
+        descripcion: limpio(fDesc.leer()) || null,
+        horario: limpio(fHorario.leer()) || null,
+        nacidos_desde: d, nacidos_hasta: h,
+        pruebas: lineasCrudas(fPruebas.leer())
+      });
+    });
+  }
+
+  function editarTarifa(el) {
+    var t = el._apoTarifa; if (!t) return;
+    var cuerpo = document.createElement('div');
+    var aviso1 = document.createElement('p');
+    aviso1.className = 'edv-pista edv-pista--ojo';
+    aviso1.textContent = '⚠️ Esto cambia lo que se cobra. Comprueba el número antes de guardar.';
+    cuerpo.appendChild(aviso1);
+    var fConcepto = campo('Concepto', 'linea', t.concepto);
+    var fSocio    = campo('Precio socio (€)', 'num', t.importe_socio);
+    var fHasta    = campo('…hasta (€, solo si es un rango)', 'num', t.importe_socio_hasta);
+    var fNoSocio  = campo('Precio no socio (€, en blanco si no hay)', 'num', t.importe_no_socio);
+    var fPeriodo  = campo('Cada', 'lista', t.periodicidad, ['mensual','trimestral','anual','temporada','semanal','pago único','por sesión','bono','']);
+    var fDias     = campo('Días (texto suelto)', 'linea', t.dias);
+    var fNotas    = campo('Nota (letra pequeña)', 'parrafo', t.notas);
+    [fConcepto, fSocio, fHasta, fNoSocio, fPeriodo, fDias, fNotas].forEach(function (c) { cuerpo.appendChild(c.nodo); });
+
+    panel('Editar precio', cuerpo, function () {
+      var s = aNumero(fSocio.leer()), h = aNumero(fHasta.leer()), ns = aNumero(fNoSocio.leer());
+      if (s === undefined || h === undefined || ns === undefined) { aviso('Los precios deben ser números.', 'mal'); return false; }
+      return guardarRegistro('tarifas', t.id, {
+        concepto: limpio(fConcepto.leer()),
+        importe_socio: s, importe_socio_hasta: h, importe_no_socio: ns,
+        periodicidad: limpio(fPeriodo.leer()) || null,
+        dias: limpio(fDias.leer()) || null,
+        notas: limpio(fNotas.leer()) || null
+      });
+    });
+  }
+
+  /* Como `lineas` pero conservando el texto entero para guardar (una por
+     línea, sin las vacías). */
+  function lineasCrudas(txt) {
+    return String(txt == null ? '' : txt).split('\n').map(limpio).filter(Boolean).join('\n');
   }
 
   /* El botón «Cambiar foto» sobre una imagen. `alElegir` decide dónde va
@@ -588,7 +722,20 @@
     '.edv-mini{padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#F1EADC;',
       'cursor:pointer;aspect-ratio:1;display:block}',
     '.edv-mini img{width:100%;height:100%;object-fit:cover;display:block}',
-    '.edv-mini.sel{border-color:#3B85C0}'
+    '.edv-mini.sel{border-color:#3B85C0}',
+    /* El botón pequeño «Editar grupo / precio» en la esquina de una tarjeta */
+    '.edv-editar-reg{position:absolute;top:8px;right:8px;z-index:5;border:0;cursor:pointer;',
+      'background:#2E4256;color:#fff;font:600 12px/1 inherit;padding:7px 11px;border-radius:999px;',
+      'box-shadow:0 1px 4px rgba(0,0,0,.18)}',
+    '.edv-editar-reg:hover{background:#3B85C0}',
+    /* Los campos de los paneles de grupo y precio */
+    '.edv-campo-form{display:block;margin:0 0 13px}',
+    '.edv-etq{display:block;font-size:13px;color:#6B6558;margin:0 0 5px}',
+    '.edv-input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #E0D8C8;',
+      'border-radius:9px;font:inherit;font-size:15px;color:#2E4256;background:#fff}',
+    'textarea.edv-input{line-height:1.5;resize:vertical}',
+    '.edv-pista--ojo{background:#FBF3DF;border:1px solid #E9D9A8;color:#7A6A2B;',
+      'border-radius:9px;padding:9px 12px;margin:0 0 14px;font-weight:500}'
   ].join('');
 
   function ponerEstilos() {
