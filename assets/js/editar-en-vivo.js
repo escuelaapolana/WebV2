@@ -302,7 +302,17 @@
       '</div>';
     $('.edv-panel-cuerpo', p).appendChild(cuerpo);
     $('.edv-x', p).addEventListener('click', cerrarPanel);
-    $('.edv-ok', p).addEventListener('click', function () { alGuardar(); cerrarPanel(); });
+    /* «Usar esto» puede tener trabajo por detrás (publicar una foto al
+       almacén público tarda). Se espera a que termine antes de cerrar, y si
+       devuelve `false` —algo falló— el panel se queda abierto para reintentar. */
+    $('.edv-ok', p).addEventListener('click', async function () {
+      var btn = this; btn.disabled = true;
+      var ok = true;
+      try { ok = (await alGuardar()) !== false; }
+      catch (e) { ok = false; }
+      btn.disabled = false;
+      if (ok) cerrarPanel();
+    });
     document.body.appendChild(p);
     return p;
   }
@@ -400,20 +410,51 @@
   }
 
   // ---------- cambiar una foto ----------
+  /* biblioteca.js sabe firmar las miniaturas del almacén privado y publicar
+     una foto al público. No se carga en toda la web: se trae solo cuando un
+     administrador abre el selector, así una visita normal no paga ese peso. */
+  function cargarBiblioteca() {
+    return new Promise(function (resolve) {
+      if (window.APOLANA_BIBLIO) return resolve(window.APOLANA_BIBLIO);
+      var s = document.createElement('script');
+      s.src = (window.APOLANA_BASE || '../') + 'assets/js/biblioteca.js';
+      s.onload = function () { resolve(window.APOLANA_BIBLIO || null); };
+      s.onerror = function () { resolve(null); };
+      document.head.appendChild(s);
+    });
+  }
+
   async function abrirFotos(alElegir) {
     var cuerpo = document.createElement('div');
     cuerpo.innerHTML = '<p class="edv-pista">Cargando la biblioteca…</p>';
-    var elegida = { url: '' };
+    /* Se guarda la FOTO entera, no su miniatura. La miniatura de una foto del
+       almacén privado es un enlace firmado que caduca: guardarlo como foto de
+       la web la dejaría rota en unos minutos. Al elegir, se PUBLICA (se copia
+       al almacén público) y se usa esa dirección, que es permanente. Éste era
+       el fallo: antes se construía «assets/img/biblioteca/…», que no existe, y
+       por eso no se veía ninguna miniatura. */
+    var elegida = { foto: null };
 
-    panel('Elegir foto', cuerpo, function () {
-      if (elegida.url) alElegir(elegida.url);
+    panel('Elegir foto', cuerpo, async function () {
+      if (!elegida.foto) return;
+      aviso('Publicando la foto…');
+      var pub = await BIB.publicar(sb, elegida.foto);
+      if (!pub || pub.error || !pub.url) {
+        aviso('No se ha podido usar la foto: ' + ((pub && pub.error && pub.error.message) || 'inténtalo otra vez'), 'mal');
+        return false;                       // el panel se queda abierto
+      }
+      aviso('');
+      alElegir(pub.url);
     });
 
+    var BIB = await cargarBiblioteca();
+    if (!BIB) {
+      cuerpo.innerHTML = '<p class="edv-pista">No se ha podido cargar la biblioteca. Recarga la página e inténtalo otra vez.</p>';
+      return;
+    }
     if (!biblioteca) {
-      var r = await sb.from('biblioteca_fotos')
-        .select('id,ruta,titulo,nombre,publicada_ruta')
-        .order('created_at', { ascending: false }).limit(60);
-      biblioteca = (r && !r.error && r.data) ? r.data : [];
+      var r = await BIB.cargar(sb);          // trae las fotos y firma las privadas
+      biblioteca = (r && !r.error && r.fotos) ? r.fotos.slice(0, 60) : [];
     }
     if (!biblioteca.length) {
       cuerpo.innerHTML = '<p class="edv-pista">No hay fotos en la biblioteca todavía. ' +
@@ -425,7 +466,7 @@
       '<a href="' + (window.APOLANA_BASE || '../') + 'admin/biblioteca/">ve a Biblioteca</a>.</p>';
     var rej = $('.edv-fotos', cuerpo);
     biblioteca.forEach(function (f) {
-      var url = window.APOLANA_IMG ? window.APOLANA_IMG(f.publicada_ruta || f.ruta) : '';
+      var url = BIB.miniatura(sb, f);        // pública o firmada, según dónde viva
       if (!url) return;
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'edv-mini';
@@ -434,7 +475,7 @@
       b.addEventListener('click', function () {
         rej.querySelectorAll('.edv-mini').forEach(function (x) { x.classList.remove('sel'); });
         b.classList.add('sel');
-        elegida.url = url;
+        elegida.foto = f;
       });
       rej.appendChild(b);
     });
