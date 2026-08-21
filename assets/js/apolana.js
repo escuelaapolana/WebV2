@@ -37,7 +37,6 @@ const MENU = [
     { texto: 'Instalaciones',    url: '/instalaciones/' },
     { texto: 'Familias',         url: '/familias/' },
     { texto: 'Galería',          url: '/galeria/' },
-    { texto: 'Tienda',           url: '/tienda/' },
     { texto: 'Patrocinadores',   url: '/#colaboradores' },
     { texto: 'Contacto',         url: '/contacto/' },
   ] },
@@ -76,6 +75,10 @@ const MENU = [
   /* «Liga» va en ámbar: es un nombre propio del club, no una categoría. */
   { clave: 'liga', texto: 'Liga', url: '/liga/', marca: true },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
+  /* Tienda a la derecha de Noticias, no escondida dentro de «Club». Andrés:
+     «la pondría a la derecha de noticias». Es una acción, no una página de
+     consulta: vender ropa no es contar quién es el club. */
+  { clave: 'tienda',     texto: 'Tienda',     url: '/tienda/' },
 ];
 
 /* --- Iconos de las redes (un solo grosor, 24 px de caja) --- */
