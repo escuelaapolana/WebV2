@@ -283,12 +283,15 @@ function pintarColaboradores(lista) {
        la hay. Siempre con el dato duro a la derecha. */
     '.pag-hero{position:relative;background:var(--navy,#2E4256);color:#fff;overflow:hidden}',
     '.pag-hero .contenedor{position:relative;display:flex;align-items:flex-end;' +
-      'justify-content:space-between;gap:24px;flex-wrap:wrap;padding-block:30px}',
+      'justify-content:space-between;gap:24px;flex-wrap:wrap;padding-block:30px 34px}',
     '.pag-hero-txt{display:flex;flex-direction:column;gap:9px;max-width:620px;min-width:0}',
     '.pag-hero-txt .encima{font-size:14px;color:rgba(255,255,255,0.6)}',
-    /* 46 px y a dos líneas: es un titular de interior, no el de portada. */
-    '.pag-hero h1{font-family:var(--fuente-titulo);font-weight:700;font-size:46px;' +
-      'line-height:0.96;text-transform:uppercase;color:#fff;margin:0;overflow-wrap:anywhere}',
+    /* Titular de interior: más fino y más pequeño que el de la portada, a
+       propósito. Andrés lo pidió mirando /entrenar/: «lo haría bastante más
+       fino el título». Peso 600 en vez de 700 y 40 px en vez de 46 — se lee
+       como una cabecera de sección, no compite con el de la home. */
+    '.pag-hero h1{font-family:var(--fuente-titulo);font-weight:600;font-size:40px;' +
+      'line-height:1;text-transform:uppercase;color:#fff;margin:0;overflow-wrap:anywhere}',
     '.pag-hero p{margin:0;font-size:17px;line-height:1.45;color:rgba(255,255,255,0.82);max-width:560px}',
     '.pag-hero-dato{display:flex;align-items:baseline;gap:8px;flex:none}',
     '.pag-hero-dato b{font-family:var(--fuente-dato);font-size:34px;font-weight:700;line-height:1;color:#fff}',
