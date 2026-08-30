@@ -95,7 +95,7 @@ window.APOLANA = {
     { fecha: '27 JUL', cat: 'Competición', titulo: 'Tres podios en el Cross de Xixona', slug: 'cross-xixona',
       resumen: 'Marta Ripoll, Jorge Castell y el equipo cadete suben al cajón en una mañana redonda para el club.', foto: '/assets/img/noticia.jpg' },
     { fecha: '24 JUL', cat: 'Escuela', titulo: 'Abierta la inscripción de la escuela 2026-27', slug: 'inscripcion-escuela-2627' },
-    { fecha: '19 JUL', cat: 'Club', titulo: 'Nueva equipación disponible en el container', slug: 'equipacion-container' },
+    { fecha: '19 JUL', cat: 'Club', titulo: 'Nueva equipación disponible en la oficina del club', slug: 'equipacion-oficina' },
     { fecha: '11 JUL', cat: 'Club', titulo: 'El club cierra la temporada con 420 atletas', slug: 'cierre-temporada' },
   ],
 
