@@ -116,6 +116,7 @@ Deno.serve(async (peticion) => {
   let c: {
     nombre?: string; apellidos?: string; email?: string;
     anio?: number | string; password?: string; codigo?: string;
+    telefono?: string; sexo?: string; pruebas?: string; nota?: string;
   };
   try { c = await peticion.json(); } catch { c = {}; }
 
@@ -125,6 +126,14 @@ Deno.serve(async (peticion) => {
   const password = String(c.password ?? "");
   const codigo = String(c.codigo ?? "").trim();
   const anio = parseInt(String(c.anio ?? ""), 10);
+  const telefono = String(c.telefono ?? "").trim();
+  // El sexo solo si es uno de los tres que admite la base; si no, nada.
+  const sexoBruto = String(c.sexo ?? "").trim().toLowerCase();
+  const sexo = ["hombre", "mujer", "otro"].includes(sexoBruto) ? sexoBruto : null;
+  // «100, 400, vallas» → ["100","400","vallas"]. La columna es una lista.
+  const pruebas = String(c.pruebas ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12);
+  const nota = String(c.nota ?? "").trim().slice(0, 600);
 
   // Validaciones amables: cada una con su mensaje, que aquí SÍ conviene
   // decir qué falta (es un formulario, no una puerta anónima).
@@ -166,6 +175,12 @@ Deno.serve(async (peticion) => {
     const ficha = {
       nombre, apellidos,
       email,
+      telefono: telefono || null,
+      sexo,
+      pruebas_principales: pruebas.length ? pruebas : null,
+      // Lo que el atleta le cuenta al entrenador al entrar (lesiones, de
+      // dónde viene, objetivos). Va en «contexto del atleta», que es su sitio.
+      contexto_atleta: nota || null,
       fecha_nacimiento: anioOk ? `${anio}-01-01` : null,
       grupo_id: grupoId,
       entrenador_id: entrenadorId,
