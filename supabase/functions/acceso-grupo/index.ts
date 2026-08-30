@@ -164,6 +164,43 @@ Deno.serve(async (peticion) => {
       return responder({ ok: true, ya_existe: true }, 200, origen);
     }
 
+    // 3b · ¿ES UN ENTRENADOR INVITADO? Entonces NO es un atleta: se le crea la
+    //      cuenta de técnico y se le pone como entrenador del grupo del código.
+    //      La INVITACIÓN (`invitaciones_equipo`) es la que le da ese derecho:
+    //      sin ella, aunque tenga el código, entra como un atleta más. Así el
+    //      formulario vale para los dos —Cristian y sus atletas usan el mismo—
+    //      sin que nadie pueda hacerse entrenador por su cuenta.
+    let esStaff = false;
+    const inv = await api(
+      `/rest/v1/invitaciones_equipo?email=eq.${encodeURIComponent(email)}&usado_en=is.null&select=rol`,
+    );
+    if (inv.ok) {
+      const filas = await inv.json();
+      esStaff = Array.isArray(filas) &&
+        filas.some((x: { rol?: string }) => x.rol === "entrenador" || x.rol === "coordinador");
+    }
+    if (esStaff) {
+      const crearT = await api(`/auth/v1/admin/users`, {
+        method: "POST",
+        body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
+      });
+      if (!crearT.ok) {
+        console.error("[acceso-grupo] cuenta staff:", crearT.status, await crearT.text());
+        return responder({ ok: false, error: "No se pudo crear la cuenta. Inténtalo otra vez." }, 500, origen);
+      }
+      const uid = (await crearT.json())?.id;
+      // Se le pone como entrenador del grupo cuyo código ha usado. `entrenador_id`
+      // apunta a `perfiles`, y el perfil del nuevo usuario tiene su mismo id.
+      if (uid) {
+        await api(`/rest/v1/grupos?id=eq.${grupoId}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ entrenador_id: uid }),
+        });
+      }
+      return responder({ ok: true, entrenador: true }, 200, origen);
+    }
+
     // 4 · El entrenador del grupo, para dejarlo puesto en la ficha.
     let entrenadorId: string | null = null;
     const g = await api(`/rest/v1/grupos?id=eq.${grupoId}&select=entrenador_id`);
