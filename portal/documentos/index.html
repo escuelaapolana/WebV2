@@ -40,6 +40,28 @@
          padding:2px 8px; border-radius:999px; margin-left:6px; font-weight:400; white-space:nowrap; }
   /* El azul se reserva a lo que se pulsa: una etiqueta va en navy (carácter 31a). */
   .etq.socios { background:#fff; border:1px solid var(--linea-borde); color: var(--navy); }
+
+  /* --- Recursos del grupo: visual y con filtros --- */
+  .rec-grupo { border-color: var(--azul-filete, #3B85C0); box-shadow: 0 1px 0 rgba(59,133,192,.08); }
+  .rec-grupo h2 { color: var(--azul-oscuro); }
+  .rec-filtros { display:flex; flex-wrap:wrap; gap:8px; padding: 4px clamp(16px,3vw,20px) 10px; }
+  .rec-chip {
+    border:1px solid var(--linea-borde); background:#fff; color: var(--navy);
+    border-radius:999px; padding:8px 14px; min-height:38px; font: inherit; font-size:14px; cursor:pointer;
+  }
+  .rec-chip:hover { border-color: var(--azul-filete, #3B85C0); }
+  .rec-chip.activo { background: var(--navy); border-color: var(--navy); color:#fff; font-weight:600; }
+  .rec-cat[hidden] { display:none; }
+  .rec-cat-tit {
+    font-size:13px; text-transform:uppercase; letter-spacing:.02em; color: var(--texto-tenue);
+    margin: 10px clamp(16px,3vw,20px) 2px; font-weight:600;
+  }
+  /* La fila de un recurso, con su emoji grande a la izquierda. */
+  .doc--rec { align-items:center; }
+  .doc-ico {
+    flex:0 0 auto; width:44px; height:44px; border-radius:12px; background: var(--crema-media);
+    display:flex; align-items:center; justify-content:center; font-size:22px;
+  }
 </style>
 </head>
 <body>
@@ -101,45 +123,91 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       'Aquí irán los impresos, la normativa y las circulares del club. En cuanto el club suba el primero, aparecerá en esta pantalla.',
       APOLANA_UI.volver()));
   } else {
-    var orden = ['Estatutos','Normativa interna','Reglamento','Protocolos','Autorizaciones','Circulares','Otros'];
-    var grupos = {};
-    /* Un recurso de grupo no se mezcla con la normativa del club: es de otra
-       naturaleza y es lo que el atleta viene a buscar, así que va en su propio
-       bloque y el primero. */
-    r.data.forEach(function (d) {
-      var c = (d.visibilidad === 'grupo')
-        ? ('Recursos de ' + (NOMBRE_GRUPO[d.grupo_id] || 'tu grupo'))
-        : (d.categoria || 'Otros');
-      (grupos[c] = grupos[c] || []).push(d);
-    });
-    var claves = Object.keys(grupos).sort(function (a, b) {
-      /* Los bloques de grupo, siempre delante: lo tuyo antes que lo del club. */
-      var ga = a.indexOf('Recursos de ') === 0, gb = b.indexOf('Recursos de ') === 0;
-      if (ga !== gb) return ga ? -1 : 1;
-      if (ga && gb) return a.localeCompare(b);
-      var ia = orden.indexOf(a), ib = orden.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-    claves.forEach(function (c) {
-      html += '<div class="tarjeta"><h2>' + esc(c) + '</h2>' + grupos[c].map(function (d) {
-        var ext = (d.nombre_archivo || '').split('.').pop().toUpperCase();
-        var meta = [ext && ext.length <= 5 ? ext : '', tam(d.tamano_bytes)].filter(Boolean).join(' · ');
-        var abre = esReservado(d.archivo_url)
-          ? 'href="#" data-reservado="' + esc(d.archivo_url) + '"'
-          : 'href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download';
-        return '<a class="doc" ' + abre + '>' +
-          '<span class="info">' +
-            '<span class="tit">' + esc(d.titulo) + (d.visibilidad === 'socios' ? '<span class="etq socios">solo socios</span>' : '') + '</span>' +
-            (d.descripcion ? '<span class="desc">' + esc(d.descripcion) + '</span>' : '') +
-            (meta ? '<span class="meta">' + esc(meta) + '</span>' : '') +
-          '</span>' + BAJA + '</a>';
-      }).join('') + '</div>';
-    });
+    /* Un emoji por tipo de recurso: lo hace VISUAL de un vistazo, que es lo
+       que pidió Andrés. Solo se usa en los recursos de grupo; la normativa
+       del club se queda con su icono de archivo de siempre. */
+    var ICONO_CAT = {
+      'fuerza': '💪', 'gomas': '🎀', 'movilidad': '🧘', 'core': '🌀',
+      'técnica': '🎯', 'tecnica': '🎯', 'calentamiento': '🔥', 'vídeo': '▶️',
+      'video': '▶️', 'rutina': '📋', 'otros': '📄'
+    };
+    function iconoCat(cat) { return ICONO_CAT[String(cat || '').toLowerCase()] || '📄'; }
+
+    /* Un documento, en HTML. Reutilizado por los recursos de grupo y por la
+       normativa del club. Con `icono`, sale grande a la izquierda. */
+    function docHTML(d, conIcono) {
+      var ext = (d.nombre_archivo || '').split('.').pop().toUpperCase();
+      var meta = [ext && ext.length <= 5 ? ext : '', tam(d.tamano_bytes)].filter(Boolean).join(' · ');
+      var abre = esReservado(d.archivo_url)
+        ? 'href="#" data-reservado="' + esc(d.archivo_url) + '"'
+        : 'href="' + esc(d.archivo_url) + '" target="_blank" rel="noopener" download';
+      return '<a class="doc' + (conIcono ? ' doc--rec' : '') + '" ' + abre + '>' +
+        (conIcono ? '<span class="doc-ico" aria-hidden="true">' + iconoCat(d.categoria) + '</span>' : '') +
+        '<span class="info">' +
+          '<span class="tit">' + esc(d.titulo) + (d.visibilidad === 'socios' ? '<span class="etq socios">solo socios</span>' : '') + '</span>' +
+          (d.descripcion ? '<span class="desc">' + esc(d.descripcion) + '</span>' : '') +
+          (meta ? '<span class="meta">' + esc(meta) + '</span>' : '') +
+        '</span>' + BAJA + '</a>';
+    }
+
+    /* Los recursos del grupo van SEPARADOS y primero: es lo que el atleta
+       viene a buscar (su rutina de fuerza, sus gomas), no la normativa del
+       club. Y dentro, agrupados por su categoría —Fuerza, Gomas, Movilidad—
+       con unos filtros arriba para quedarse solo con un tipo. */
+    var deGrupo = r.data.filter(function (d) { return d.visibilidad === 'grupo'; });
+    var delClub = r.data.filter(function (d) { return d.visibilidad !== 'grupo'; });
+
+    if (deGrupo.length) {
+      var porCat = {};
+      deGrupo.forEach(function (d) { var c = d.categoria || 'Otros'; (porCat[c] = porCat[c] || []).push(d); });
+      var cats = Object.keys(porCat).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+
+      var nombreG = NOMBRE_GRUPO[deGrupo[0].grupo_id] || 'tu grupo';
+      var chips = '';
+      /* Los filtros solo salen si hay más de un tipo: con uno solo, filtrar
+         no filtra nada y estorba. */
+      if (cats.length > 1) {
+        chips = '<div class="rec-filtros"><button type="button" class="rec-chip activo" data-cat="">Todo</button>' +
+          cats.map(function (c) { return '<button type="button" class="rec-chip" data-cat="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') +
+          '</div>';
+      }
+      html += '<div class="tarjeta rec-grupo"><h2>Recursos de ' + esc(nombreG) + '</h2>' + chips +
+        cats.map(function (c) {
+          return '<div class="rec-cat" data-cat="' + esc(c) + '">' +
+            (cats.length > 1 ? '<h3 class="rec-cat-tit">' + esc(c) + '</h3>' : '') +
+            porCat[c].map(function(d){ return docHTML(d, true); }).join('') + '</div>';
+        }).join('') + '</div>';
+    }
+
+    if (delClub.length) {
+      var orden = ['Estatutos','Normativa interna','Reglamento','Protocolos','Autorizaciones','Circulares','Otros'];
+      var grupos = {};
+      delClub.forEach(function (d) { var c = d.categoria || 'Otros'; (grupos[c] = grupos[c] || []).push(d); });
+      Object.keys(grupos).sort(function (a, b) {
+        var ia = orden.indexOf(a), ib = orden.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      }).forEach(function (c) {
+        html += '<div class="tarjeta"><h2>' + esc(c) + '</h2>' + grupos[c].map(docHTML).join('') + '</div>';
+      });
+    }
   }
   wrap.innerHTML = html;
 
   /* Al pulsar un documento reservado se pide su enlace temporal. La pestaña se
      abre dentro de la pulsación, si no el navegador la toma por un anuncio. */
+  /* Los filtros de los recursos de grupo: al pulsar un tipo, se esconden las
+     demás categorías. Es solo mostrar y ocultar; no vuelve a pedir nada. */
+  wrap.addEventListener('click', function (ev) {
+    var chip = ev.target && ev.target.closest ? ev.target.closest('.rec-chip') : null;
+    if (!chip) return;
+    var tarjeta = chip.closest('.rec-grupo'); if (!tarjeta) return;
+    var cat = chip.getAttribute('data-cat');
+    tarjeta.querySelectorAll('.rec-chip').forEach(function (b) { b.classList.toggle('activo', b === chip); });
+    tarjeta.querySelectorAll('.rec-cat').forEach(function (bloque) {
+      bloque.hidden = !!cat && bloque.getAttribute('data-cat') !== cat;
+    });
+  });
+
   wrap.addEventListener('click', async function (ev) {
     var a = ev.target && ev.target.closest ? ev.target.closest('a[data-reservado]') : null;
     if (!a) return;
