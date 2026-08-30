@@ -638,6 +638,18 @@
   .sw-file { padding:8px; background:#fff; }
   .sw-sep { border:none; border-top:1px solid var(--linea); margin:22px 0 18px; }
 
+  /* descargar una semana de feedback */
+  .fbd-fechas { display:flex; gap:12px; flex-wrap:wrap; margin:4px 0 14px; }
+  .fbd-fechas label { display:flex; flex-direction:column; gap:5px; font-size:14px; color: var(--texto); }
+  .fbd-fechas input { min-height:44px; }
+  .fbd-quien { margin-bottom:14px; }
+  .fbd-todos { display:inline-flex; align-items:center; gap:8px; font-size:15px; color: var(--navy); cursor:pointer; margin-bottom:8px; }
+  .fbd-lista { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:6px 14px; max-height:210px; overflow:auto;
+    border:1px solid var(--linea); border-radius:10px; padding:10px 12px; background: var(--crema); }
+  .fbd-at-fila { display:flex; align-items:center; gap:8px; font-size:14px; color: var(--texto); cursor:pointer; min-height:30px; }
+  .fbd-acc { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .fbd-acc .msg { font-size:14px; color: var(--texto-suave); }
+
   /* feedback */
   .fb-atleta { border:1px solid var(--linea); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fff; }
   .fb-atleta .fb-nom { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
@@ -5153,7 +5165,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(isNaN(d.getTime())) d = new Date();
     var n = (d.getDay()+6)%7;               /* 0 = lunes */
     d.setDate(d.getDate()-n);
-    return d.toISOString().slice(0,10);
+    /* isoDe y no toISOString(): el cálculo va en hora local, así que hay que
+       leer la fecha en local. `toISOString` la pasa a UTC y en España
+       (UTC+1/+2) devolvía el día de antes —el lunes salía domingo— y desde ahí
+       la tira numeraba todos los días de la semana corridos uno. */
+    return isoDe(d);
   }
   function sesionesDelDia(iso){
     var todas = window.__SESIONES_GRUPO || {};
@@ -8281,6 +8297,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   (function renderFeedback(){
     var cont = $('sec-feedback');
     cont.innerHTML =
+      /* Descargar una semana entera de golpe. Andrés lo pidió claro: «bajar
+         toda una semana de feedback de todos mis atletas o, mejor, elegir de
+         quiénes». Es lo primero de la pantalla porque es lo que se hace el
+         lunes; ver un entrenamiento suelto viene debajo. */
+      '<div class="tarjeta">'+
+        '<h2>Descargar una semana</h2>'+
+        '<p class="pista">Saca en una hoja el feedback de tus atletas entre dos fechas —RPE, sensación, molestias, lo que se quedó sin hacer y tu comentario—. Se abre en Excel o en Numbers.</p>'+
+        '<div class="fbd-fechas">'+
+          '<label>Desde<input type="date" id="fbd-desde"></label>'+
+          '<label>Hasta<input type="date" id="fbd-hasta"></label>'+
+        '</div>'+
+        '<div class="fbd-quien"><label class="fbd-todos"><input type="checkbox" id="fbd-todos" checked> <b>Todos mis atletas</b></label>'+
+          '<div class="fbd-lista" id="fbd-lista"></div></div>'+
+        '<div class="fbd-acc"><button type="button" class="btn btn--primario" id="fbd-bajar">Descargar CSV</button><span class="msg" id="fbd-msg"></span></div>'+
+      '</div>'+
       '<div class="tarjeta">'+
         '<h2>Feedback de los atletas</h2>'+
         '<label>Entrenamiento</label><select id="fb-sesion"><option value="">— elige un entrenamiento —</option></select>'+
@@ -8302,7 +8333,142 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(b) guardarComentario(b);
     });
     cargarSesionesFeedback();
+    prepararDescargaFeedback();
   })();
+
+  // ---------- descargar una semana de feedback ----------
+  /* El lunes por defecto trae la semana que acaba de pasar (lunes a domingo):
+     es lo que se revisa. Se puede cambiar el rango a mano. */
+  function isoDia(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+  function lunesDeEstaSemana(){
+    var h=new Date(); var dow=(h.getDay()+6)%7; /* 0 = lunes */
+    var l=new Date(h); l.setDate(h.getDate()-dow); return l;
+  }
+  function prepararDescargaFeedback(){
+    var lun=lunesDeEstaSemana(); var dom=new Date(lun); dom.setDate(lun.getDate()+6);
+    var iDesde=$('fbd-desde'), iHasta=$('fbd-hasta');
+    if(iDesde) iDesde.value=isoDia(lun);
+    if(iHasta) iHasta.value=isoDia(dom);
+
+    /* La lista de a quién bajar. Ordenada por apellido, como el resto del
+       portal. Con «Todos» marcado no hace falta tocar nada. */
+    var lista=$('fbd-lista');
+    if(lista){
+      lista.innerHTML = (MIS_ATLETAS||[]).map(function(a){
+        return '<label class="fbd-at-fila"><input type="checkbox" class="fbd-at" value="'+esc(a.id)+'" checked> '+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</label>';
+      }).join('') || '<p class="pista">Todavía no tienes atletas en tus grupos.</p>';
+    }
+
+    var todos=$('fbd-todos');
+    if(todos) todos.addEventListener('change', function(){
+      document.querySelectorAll('.fbd-at').forEach(function(c){ c.checked=todos.checked; });
+    });
+    /* Si el entrenador destilda uno a mano, «Todos» deja de estar marcado; y
+       vuelve a marcarse solo si acaban marcados todos. */
+    if(lista) lista.addEventListener('change', function(){
+      var cs=Array.prototype.slice.call(document.querySelectorAll('.fbd-at'));
+      if(todos) todos.checked = cs.length>0 && cs.every(function(c){ return c.checked; });
+    });
+
+    var bajar=$('fbd-bajar');
+    if(bajar) bajar.addEventListener('click', descargarFeedbackSemana);
+  }
+
+  function fbdMsg(t, mal){ var m=$('fbd-msg'); if(m){ m.textContent=t||''; m.style.color = mal?'var(--rojo, #B0403A)':'var(--texto-suave)'; } }
+
+  /* Una celda de CSV: comillas siempre, comillas internas dobladas, y los
+     saltos de línea a « · » para que una nota larga no parta la fila. */
+  function celdaCSV(v){
+    var s=(v==null?'':String(v)).replace(/\r?\n+/g,' · ').replace(/"/g,'""');
+    return '"'+s+'"';
+  }
+  var FBD_ESTADO={ hecho:'Hecho', a_medias:'A medias', no_hecho:'No hecho' };
+  var FBD_MOTIVO={ tiempo:'No le dio tiempo', molestia:'Le molestaba algo', otro:'Otro motivo' };
+
+  async function descargarFeedbackSemana(){
+    var desde=$('fbd-desde').value, hasta=$('fbd-hasta').value;
+    if(!desde || !hasta){ fbdMsg('Elige las dos fechas.', true); return; }
+    if(desde>hasta){ var t=desde; desde=hasta; hasta=t; $('fbd-desde').value=desde; $('fbd-hasta').value=hasta; }
+    var ids=Array.prototype.slice.call(document.querySelectorAll('.fbd-at:checked')).map(function(c){ return c.value; });
+    if(!ids.length){ fbdMsg('Elige al menos un atleta.', true); return; }
+
+    var gids=(MIS_GRUPOS||[]).map(function(g){ return g.id; });
+    if(!gids.length){ fbdMsg('No tienes ningún grupo asignado.', true); return; }
+
+    fbdMsg('Preparando la hoja…');
+    var bajar=$('fbd-bajar'); if(bajar) bajar.disabled=true;
+
+    try {
+      /* Los entrenamientos de la semana, de tus grupos. La fecha que cuenta es
+         la del entrenamiento, no la de cuándo lo apuntó el atleta. */
+      var ss=await sb.from('sesiones').select('id,fecha,titulo,grupo_id')
+        .gte('fecha',desde).lte('fecha',hasta).in('grupo_id',gids).order('fecha');
+      if(ss.error) throw ss.error;
+      var SES={}; (ss.data||[]).forEach(function(s){ SES[s.id]=s; });
+      var sids=Object.keys(SES);
+      if(!sids.length){ fbdMsg('No hay entrenamientos en esas fechas.', true); if(bajar) bajar.disabled=false; return; }
+
+      /* El feedback de esos entrenamientos, solo de los atletas elegidos. */
+      var reg=await sb.from('registros_sesion').select('*').in('sesion_id',sids).in('atleta_id',ids);
+      if(reg.error) throw reg.error;
+      var regs=reg.data||[];
+      if(!regs.length){ fbdMsg('No hay feedback de esos atletas en esas fechas.', true); if(bajar) bajar.disabled=false; return; }
+
+      /* Tu comentario a cada registro, para que baje en la misma fila. */
+      var COM={};
+      try {
+        var fq=await sb.from('feedback_entrenamientos').select('registro_id,comentario')
+          .in('registro_id', regs.map(function(r){ return r.id; }));
+        if(!fq.error && fq.data) fq.data.forEach(function(c){ COM[c.registro_id]=c.comentario; });
+      } catch(e){}
+
+      var cols=['Fecha','Atleta','Grupo','Entrenamiento','Estado','RPE','Sensación','Sueño (h)','Peso (kg)','Series hechas','Series previstas','Motivo no hecho','Cómo se siente','Molestias','Notas del atleta','Tu comentario'];
+      regs.sort(function(a,b){
+        var sa=SES[a.sesion_id]||{}, sb2=SES[b.sesion_id]||{};
+        if((sa.fecha||'')!==(sb2.fecha||'')) return (sa.fecha||'')<(sb2.fecha||'')?-1:1;
+        var na=atletaPorId(a.atleta_id)||{}, nb=atletaPorId(b.atleta_id)||{};
+        return ((na.apellidos||'')+(na.nombre||'')).localeCompare(((nb.apellidos||'')+(nb.nombre||'')),'es');
+      });
+
+      var filas=[cols.map(celdaCSV).join(';')];
+      regs.forEach(function(r){
+        var s=SES[r.sesion_id]||{}; var at=atletaPorId(r.atleta_id)||{};
+        filas.push([
+          s.fecha||'',
+          ((at.nombre||'')+' '+(at.apellidos||'')).trim(),
+          nombreGrupo(s.grupo_id)||'',
+          s.titulo||'',
+          FBD_ESTADO[r.estado]||'',
+          r.rpe==null?'':r.rpe,
+          r.sensacion_general==null?'':r.sensacion_general,
+          r.horas_sueno==null?'':r.horas_sueno,
+          r.peso_kg==null?'':r.peso_kg,
+          r.series_hechas==null?'':r.series_hechas,
+          r.series_previstas==null?'':r.series_previstas,
+          r.motivo_no_hecho?(FBD_MOTIVO[r.motivo_no_hecho]||r.motivo_no_hecho):'',
+          r.como_me_siento||'',
+          r.molestias||'',
+          r.notas_atleta||'',
+          COM[r.id]||''
+        ].map(celdaCSV).join(';'));
+      });
+
+      /* BOM delante para que Excel lea bien las tildes; separador «;» que es
+         lo que espera el Excel en español. */
+      var csv='﻿'+filas.join('\r\n');
+      var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='feedback_'+desde+'_'+hasta+'.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+
+      fbdMsg(regs.length+(regs.length===1?' registro descargado.':' registros descargados.'));
+    } catch(e){
+      fbdMsg('No hemos podido preparar la hoja. Prueba otra vez en un momento.', true);
+    }
+    if(bajar) bajar.disabled=false;
+  }
 
   // ============================================================
   // SECCIÓN 4 · OBSERVACIONES PRIVADAS (solo el equipo técnico)
