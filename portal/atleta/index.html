@@ -738,6 +738,31 @@
   .rec-acceso .ra-sub { font-size:13.5px; color: var(--texto-suave); line-height:1.35; }
   .rec-acceso .ra-chev { flex:none; color: var(--azul-oscuro); font-size:20px; line-height:1; }
 
+  /* ---- Sección RECURSOS DEL GRUPO ---- */
+  #sec-recursos .rec-filtros { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
+  #sec-recursos .rec-chip {
+    border:1px solid var(--linea-borde); background:#fff; color: var(--navy);
+    border-radius:999px; padding:8px 14px; min-height:38px; font: inherit; font-size:14px; cursor:pointer; }
+  #sec-recursos .rec-chip:hover { border-color: var(--azul-filete, #3B85C0); }
+  #sec-recursos .rec-chip.activo { background: var(--navy); border-color: var(--navy); color:#fff; font-weight:600; }
+  #sec-recursos .rec-cat[hidden] { display:none; }
+  #sec-recursos .rec-cat-tit {
+    font-size:13px; text-transform:uppercase; letter-spacing:.02em; color: var(--texto-tenue);
+    margin: 4px 0 8px; font-weight:600; }
+  #sec-recursos .rec-doc {
+    display:flex; align-items:center; gap:13px; text-decoration:none; background:#fff;
+    border:1px solid var(--linea); border-radius:14px; padding:12px 15px; min-height:56px;
+    margin-bottom:10px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  #sec-recursos .rec-doc:hover { border-color: var(--azul-filete, #3B85C0); background: var(--crema); }
+  #sec-recursos .rec-doc-ico {
+    flex:0 0 auto; width:46px; height:46px; border-radius:12px; background: var(--crema-media);
+    border:1px solid var(--linea-borde); display:flex; align-items:center; justify-content:center; font-size:23px; }
+  #sec-recursos .rec-doc-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  #sec-recursos .rec-doc-tit { font-family: var(--fuente-titulo); font-size:18px; text-transform:uppercase; color: var(--navy); line-height:1.05; overflow-wrap:anywhere; }
+  #sec-recursos .rec-doc-desc { font-size:14px; color: var(--texto-suave); line-height:1.35; }
+  #sec-recursos .rec-doc-meta { font-size:12.5px; color: var(--texto-tenue); }
+  #sec-recursos .rec-doc-baja { flex:none; color: var(--azul-oscuro); display:flex; align-items:center; }
+
   /* Dos tarjetas: próxima carrera y última marca */
   .minis { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
   .mini { background:#fff; border:1px solid var(--linea); border-radius:14px; padding:13px 15px; display:flex; flex-direction:column; gap:3px; text-decoration:none; cursor:pointer; min-height:48px; }
@@ -2457,6 +2482,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<aside class="side"><nav>'+
         '<a data-sec="hoy" class="activo">Inicio</a>'+
         '<a data-sec="entreno">Entrenamiento</a>'+
+        (RECURSOS_GRUPO>0 ? '<a data-sec="recursos">Recursos del grupo</a>' : '')+
         '<a href="../calendario/">Calendario</a>'+
         '<a data-sec="marcas">Marcas</a>'+
         '<a data-sec="pagos">Pagos y recibos</a>'+
@@ -2465,6 +2491,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<main class="cont">'+
         '<section id="sec-hoy">'+APOLANA_UI.cargando('tarjeta')+'</section>'+
         '<section id="sec-entreno" hidden>'+entrenoSec+'</section>'+
+        (RECURSOS_GRUPO>0 ? '<section id="sec-recursos" hidden><div id="recursos-cont">'+APOLANA_UI.cargando('filas',4)+'</div></section>' : '')+
         '<section id="sec-marcas" hidden>'+
           /* El formulario no abre la pantalla: se despliega desde «Añadir», que
              está en la cabecera. Lo primero que se ve son las marcas. */
@@ -2522,6 +2549,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<button type="button" class="at-acc" id="mk-abrir" aria-expanded="false" aria-controls="mk-form">Añadir</button></div>';
     if(sec==='pagos')
       return '<div class="at-cab"><div><span class="sub">Lo que el club te gira</span><h1>Pagos</h1></div></div>';
+    if(sec==='recursos')
+      return '<div class="at-cab"><div><span class="sub">Fuerza, gomas y movilidad de '+esc((GRUPO&&GRUPO.nombre)||'tu grupo')+'</span><h1>Recursos</h1></div></div>';
     if(sec==='mas') return '<div class="at-cab"><h1>Más</h1></div>';
     return '<div class="at-cab"><div><span class="sub">'+esc(fechaLarga(todayISO))+'</span>'+
       '<h1>Hola, '+esc(perfil.nombre||nombre)+'</h1></div>'+
@@ -2529,8 +2558,107 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function pintarCabecera(){ $('cab-cont').innerHTML = cabeceraDe(SEC); }
 
+  // ---------- RECURSOS DEL GRUPO ----------
+  /* Su propia pantalla, no un cajón enterrado en «Más → Documentos». Trae solo
+     el material del grupo del atleta (fuerza, gomas, movilidad…), agrupado por
+     tipo y con un emoji grande para que se vea de un vistazo. La RLS ya deja
+     llegar únicamente lo de SUS grupos, así que aquí no se vuelve a filtrar por
+     quién eres. Se carga una sola vez, al entrar. */
+  var RECURSOS_LISTOS=false;
+  var REC_ICONO={ 'fuerza':'💪','gomas':'➰','movilidad':'🧘','core':'🌀',
+    'técnica':'🎯','tecnica':'🎯','calentamiento':'🔥','vídeo':'▶️','video':'▶️',
+    'rutina':'📋','otros':'📄' };
+  function recIcono(c){ return REC_ICONO[String(c||'').toLowerCase()] || '📄'; }
+  function recTam(b){ if(!b) return ''; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(0)+' KB'; return (b/1048576).toFixed(1).replace('.',',')+' MB'; }
+  function recReservado(v){ return !!v && !/^https?:\/\//i.test(v); }
+
+  async function entrarRecursos(){
+    if(RECURSOS_LISTOS) return;
+    RECURSOS_LISTOS=true;
+    var cont=$('recursos-cont'); if(!cont) return;
+
+    var r=await sb.from('documentos')
+      .select('titulo,descripcion,categoria,archivo_url,nombre_archivo,tamano_bytes,visibilidad,orden,grupo_id')
+      .eq('visibilidad','grupo').eq('activo',true).order('categoria').order('orden');
+
+    if(r.error){
+      RECURSOS_LISTOS=false;
+      cont.innerHTML = APOLANA_UI.error('No hemos podido cargar los recursos',
+        'Puede ser tu conexión. Vuelve a intentarlo en un momento.');
+      return;
+    }
+    var docs=r.data||[];
+    if(!docs.length){
+      cont.innerHTML = APOLANA_UI.vacio('Todavía no hay recursos',
+        'Aquí irá el material que cuelgue tu entrenador: fuerza, gomas, movilidad… En cuanto suba el primero, aparecerá aquí.');
+      return;
+    }
+
+    function recDocHTML(d){
+      var ext=(d.nombre_archivo||'').split('.').pop().toUpperCase();
+      var meta=[ext && ext.length<=5 ? ext : '', recTam(d.tamano_bytes)].filter(Boolean).join(' · ');
+      var abre=recReservado(d.archivo_url)
+        ? 'href="#" data-reservado="'+escA(d.archivo_url)+'"'
+        : 'href="'+escA(d.archivo_url)+'" target="_blank" rel="noopener" download';
+      return '<a class="rec-doc" '+abre+'>'+
+        '<span class="rec-doc-ico" aria-hidden="true">'+recIcono(d.categoria)+'</span>'+
+        '<span class="rec-doc-info">'+
+          '<span class="rec-doc-tit">'+esc(d.titulo)+'</span>'+
+          (d.descripcion?'<span class="rec-doc-desc">'+esc(d.descripcion)+'</span>':'')+
+          (meta?'<span class="rec-doc-meta">'+esc(meta)+'</span>':'')+
+        '</span>'+
+        '<span class="rec-doc-baja" aria-hidden="true">'+((window.APOLANA_UI&&APOLANA_UI.icono)?APOLANA_UI.icono('descargar',22):'↓')+'</span>'+
+      '</a>';
+    }
+
+    var porCat={};
+    docs.forEach(function(d){ var c=d.categoria||'Otros'; (porCat[c]=porCat[c]||[]).push(d); });
+    var cats=Object.keys(porCat).sort(function(a,b){ return a.localeCompare(b,'es'); });
+
+    var chips='';
+    if(cats.length>1){
+      chips='<div class="rec-filtros"><button type="button" class="rec-chip activo" data-cat="">Todo</button>'+
+        cats.map(function(c){ return '<button type="button" class="rec-chip" data-cat="'+escA(c)+'">'+esc(c)+'</button>'; }).join('')+
+        '</div>';
+    }
+    cont.innerHTML = chips + cats.map(function(c){
+      return '<div class="rec-cat" data-cat="'+escA(c)+'">'+
+        (cats.length>1?'<h3 class="rec-cat-tit">'+esc(c)+'</h3>':'')+
+        porCat[c].map(recDocHTML).join('')+'</div>';
+    }).join('');
+
+    // Filtros: mostrar/ocultar categorías. No vuelve a pedir nada.
+    cont.addEventListener('click', function(ev){
+      var chip=ev.target && ev.target.closest ? ev.target.closest('.rec-chip') : null;
+      if(!chip) return;
+      var cat=chip.getAttribute('data-cat');
+      cont.querySelectorAll('.rec-chip').forEach(function(b){ b.classList.toggle('activo', b===chip); });
+      cont.querySelectorAll('.rec-cat').forEach(function(bl){ bl.hidden = !!cat && bl.getAttribute('data-cat')!==cat; });
+    });
+
+    // Recurso reservado: enlace temporal de un minuto, pedido en la pulsación.
+    cont.addEventListener('click', async function(ev){
+      var a=ev.target && ev.target.closest ? ev.target.closest('a[data-reservado]') : null;
+      if(!a) return;
+      ev.preventDefault();
+      var v=window.open('','_blank');
+      var s=await sb.storage.from('documentos-socios').createSignedUrl(a.getAttribute('data-reservado'),60);
+      if(!s || s.error || !s.data || !s.data.signedUrl){
+        if(v) v.close();
+        if(window.APX) APX.toast('No hemos podido abrir el recurso','error',{detalle:'Prueba otra vez en un momento.'});
+        return;
+      }
+      if(v) v.location.href=s.data.signedUrl; else window.location.href=s.data.signedUrl;
+    });
+  }
+
   // ---------- navegación por secciones ----------
-  var SECCIONES=['hoy','entreno','marcas','pagos','mas'];
+  /* «Recursos del grupo» solo es una sección de verdad cuando el grupo tiene
+     material colgado: si no hay nada, no se pinta ni el apartado ni su enlace,
+     para no llevar a una pantalla vacía. */
+  var SECCIONES = RECURSOS_GRUPO>0
+    ? ['hoy','entreno','recursos','marcas','pagos','mas']
+    : ['hoy','entreno','marcas','pagos','mas'];
   var SEC='hoy';
   /* La barra de abajo va SIEMPRE, en todas las secciones. Antes se quitaba al
      entrar en «entreno», para dejar la pantalla despejada, y el efecto era que
@@ -2557,6 +2685,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        han ido con ella: se devuelven en cuanto se vuelve al entrenamiento. */
     if(sec==='entreno' && diaSel) vecinosDe(diaSel).then(function(v){ pintarFlechas(diaSel, v); });
     if(sec==='mas') pintarMas();
+    if(sec==='recursos') entrarRecursos();
     pintarTabbar();
   }
   pintarCabecera();
@@ -4983,7 +5112,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* 3b · ACCESO RÁPIDO A LOS RECURSOS DEL GRUPO. Grande y visual, y solo si
        hay recursos: es lo que Andrés quería a un toque desde Inicio. */
     if(RECURSOS_GRUPO>0){
-      html+='<a class="rec-acceso" href="../documentos/">'+
+      html+='<a class="rec-acceso" data-sec-ir="recursos">'+
         '<span class="ra-ico" aria-hidden="true">💪</span>'+
         '<span class="ra-txt"><span class="ra-tit">Recursos de tu grupo</span>'+
         '<span class="ra-sub">'+RECURSOS_GRUPO+(RECURSOS_GRUPO===1?' ficha para hacer':' fichas para hacer')+' · fuerza, gomas, movilidad…</span></span>'+
@@ -5428,6 +5557,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var html='<div class="ml-perfil"><span class="ml-avatar">'+esc(ini)+'</span>'+
       '<span class="ml-quien"><b>'+esc(nombre||perfil.nombre||'')+'</b>'+
       '<span>'+esc([at.categoria||'', grupoTxt].filter(Boolean).join(' · '))+'</span></span></div>';
+
+    /* En el móvil no está el menú lateral, así que «Recursos del grupo» tiene
+       que tener su puerta también aquí, y arriba del todo: es lo que el atleta
+       viene a buscar. Solo si su grupo tiene material colgado. */
+    if(RECURSOS_GRUPO>0){
+      html+=bloqueMas('Tu grupo', [
+        filaMas('Recursos del grupo', '<span class="ml-num">'+RECURSOS_GRUPO+'</span>', '#recursos')
+      ]);
+    }
 
     html+=bloqueMas('El club', [
       filaMas('Noticias', NOTIS?'<span class="ml-num">'+NOTIS+'</span>':'', '../../noticias/'),
