@@ -894,6 +894,22 @@
      queremos que el atleta mire, y las cinco pestañas de abajo
      no se tocan.
      ============================================================ */
+  /* Selector del entrenador: «ver la semana de cada atleta». En una banda
+     azul suave para que se distinga de lo del atleta, y con el nombre a la
+     vista de quién se está mirando. */
+  .ver-como { display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+    background: var(--azul-suave, #EAF2F9); border:1px solid var(--azul-filete, #3B85C0);
+    border-radius:12px; padding:9px 13px; margin:0 0 14px; }
+  .ver-como[hidden] { display:none; }
+  .ver-como .vc-ico { flex:none; display:flex; color: var(--azul-oscuro); }
+  .ver-como .vc-lab { font-size:14px; color: var(--azul-oscuro); }
+  .ver-como .vc-sel { flex:1 1 160px; min-width:0; min-height:40px; padding:8px 10px;
+    border:1px solid var(--linea-borde); border-radius:10px; font: inherit; font-size:15px;
+    color: var(--navy); background:#fff; font-weight:600; }
+  .ver-como .vc-badge { flex:none; font-size:12px; font-weight:600; letter-spacing:.02em;
+    text-transform:uppercase; color:#8A5307; background: var(--ambar-fondo, #FBF3E2);
+    border:1px solid var(--ambar-borde, #E7D3A8); border-radius:999px; padding:4px 10px; }
+
   .conm { display:flex; gap:0; border-bottom:1px solid var(--linea-marcada); margin-bottom:14px; }
   .conm .cm { flex:none; min-height:44px; box-sizing:border-box; padding:0 3px 11px 0; margin-right:20px;
     border:0; border-bottom:3px solid transparent; background:none; font:inherit; font-size:16px; line-height:1;
@@ -2268,6 +2284,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   } catch(e){} }
   if(GRUPO && GRUPO.turno && window.APOLANA_GRUPO_NOMBRE) GRUPO.nombre = window.APOLANA_GRUPO_NOMBRE(GRUPO);
+
+  /* ¿Entreno a alguien? Si es así, se le ofrece el selector de «ver la semana
+     de cada atleta». Son los atletas cuya ficha me tiene como entrenador. A un
+     atleta normal esto vuelve vacío y no cambia nada. */
+  if(perfil && perfil.id){ try {
+    var caq = await sb.from('atletas').select('id,nombre,apellidos').eq('entrenador_id', perfil.id).order('apellidos');
+    if(!caq.error && caq.data) COACH_ATLETAS = caq.data.filter(function(a){ return a.id !== at.id; });
+  } catch(e){} }
   // El nombre de quien lleva el grupo sale de la vista pública: solo el nombre,
   // ni correos ni teléfonos ni el resto de la ficha del personal.
   if(GRUPO && GRUPO.entrenador_id){
@@ -2419,6 +2443,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      tira `L M X J V S D` sale en los dos primeros y NO en el historial,
      porque allí se navega por meses y estorbaría. */
   var entrenoSec =
+    /* Selector del entrenador: «ver la semana de cada atleta». Oculto hasta
+       que se sepa si entreno a alguien (lo rellena pintarVerComo). */
+    '<div class="ver-como" id="ver-como" hidden></div>'+
     '<div class="conm" id="ent-conm" role="tablist" aria-label="Entrenamiento">'+
       '<button type="button" class="cm" role="tab" data-modo="hoy" aria-selected="true">Sesión de hoy</button>'+
       '<button type="button" class="cm" role="tab" data-modo="semana" aria-selected="false">Mi semana</button>'+
@@ -2684,6 +2711,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* La cabecera se vuelve a pintar entera, así que las flechas de día se
        han ido con ella: se devuelven en cuanto se vuelve al entrenamiento. */
     if(sec==='entreno' && diaSel) vecinosDe(diaSel).then(function(v){ pintarFlechas(diaSel, v); });
+    if(sec==='entreno') pintarVerComo();
     if(sec==='mas') pintarMas();
     if(sec==='recursos') entrarRecursos();
     pintarTabbar();
@@ -2720,6 +2748,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var diaSel=todayISO;              // día elegido en la tira
   var MODO='hoy';                   // conmutador: hoy · semana · historial
 
+  /* ------------------------------------------------------------
+     VER LA SEMANA DE CADA ATLETA (solo para el entrenador)
+     El entrenador es también atleta, y el permiso del servidor le deja
+     ver TODAS las sesiones de sus atletas. Aquí eso se ordena: por
+     defecto se ve lo de UNO MISMO (`VIENDO = at.id`), que además arregla
+     que antes se le colaban las sesiones de los demás. Y si entrena a
+     alguien, un selector le deja mirar la semana de cada atleta como la
+     ve él —en SOLO LECTURA, que no le va a apuntar el feedback en su
+     nombre—. A un atleta normal `COACH_ATLETAS` viene vacío: ni ve el
+     selector ni cambia nada, porque el servidor ya solo le manda lo suyo.
+     ------------------------------------------------------------ */
+  var VIENDO = at.id;               // de quién se está viendo la semana (en Entreno)
+  var COACH_ATLETAS = [];           // [{id,nombre,apellidos}] atletas que entreno
+  function esOtro(){ return VIENDO !== at.id; }
+  function esDe(s, id){ return !s.atletas_ids || (s.atletas_ids.indexOf(id) !== -1); }
+  function sesDe(lista, id){ return (lista||[]).filter(function(s){ return esDe(s, id); }); }
+
   function rangoTxt(lunes){ return 'Semana del '+fechaCorta(lunes)+' – '+fechaCorta(addDias(lunes,6)); }
   /* Chip diminuto de la tira de días: aquí no cabe «entrenamiento», así que se
      dice el DEPORTE, que es lo que hace falta para saber qué meter en la bolsa.
@@ -2741,7 +2786,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function tipoCorto(t){
     return TIPO_CORTO_VIEJO[t]||(t?String(t).slice(0,8):'entren.');
   }
-  function sesionesDe(iso){ return (SEM[lunesVis]||[]).filter(function(s){ return s.fecha===iso; }); }
+  function sesionesDe(iso){ return (SEM[lunesVis]||[]).filter(function(s){ return s.fecha===iso && esDe(s, VIENDO); }); }
 
   // Trae las sesiones publicadas de la semana. Sin filtrar por grupo: el permiso del
   // servidor ya devuelve solo lo mío, incluidos los entrenos preparados solo para mí.
@@ -3560,7 +3605,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             async function(){ await cargarSemana(lunesVis); pintarDia(diaSel); })+'</div>';
         return;
       }
-      var haySemana=(SEM[lunesVis]||[]).length;
+      var haySemana=sesDe(SEM[lunesVis], VIENDO).length;
       var titulo = (iso===todayISO) ? 'Hoy no toca entrenamiento' : 'Ese día no hay entrenamiento';
       var aviso = haySemana ? 'Esta semana sí hay entrenamientos: toca otro día de la tira de arriba y lo verás.'
         : (at.grupo_id ? 'Tu entrenador todavía no ha publicado los entrenamientos de esta semana. Suelen aparecer unos días antes.'
@@ -3577,24 +3622,53 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          abiertos, porque apuntarlos tarde es lo que hace que esto sirva.
          Y si ha pedido corregirlo, se abre: hasta hoy un peso mal tecleado se
          quedaba mal para siempre, que es peor que cualquier otra cosa. */
-      var leer = esLeer(s);
+      /* Al ver la semana de OTRO atleta (el entrenador) todo va en solo
+         lectura: se muestra el plan, pero sin casillas ni formulario de
+         feedback, para no apuntarle nada en su nombre. */
+      var otro = esOtro();
+      var leer = esLeer(s) || otro;
       /* El aviso de que se está corrigiendo va ARRIBA DEL TODO, antes que los
          ejercicios: si fuera abajo, para cuando se lee ya se han tocado los
          kilos. */
       return '<div class="entreno-uno" data-sid="'+esc(s.id)+'">'+
              (leer?'':avisoCorrigiendoHTML(s))+renderEntreno(s,todayISO,leer)+
-             (leer ? fichaFeedbackLeer(s) : fichaFeedback(s))+
-             comentarioHTML(s)+'</div>';
+             (otro ? '' : (leer ? fichaFeedbackLeer(s) : fichaFeedback(s)))+
+             (otro ? '' : comentarioHTML(s))+'</div>';
     }).join('');
     cont.innerHTML += '<div class="ent-pies" id="ent-pies" hidden></div>';
-    lista.forEach(function(s){ if(!esLeer(s)) prefillTiempos(s); });
+    lista.forEach(function(s){ if(!esLeer(s) && !esOtro()) prefillTiempos(s); });
     progresoBloques(cont);
     vecinosDe(iso).then(function(v){ pintarFlechas(iso, v); });
   }
 
+  /* El selector de «ver la semana de cada atleta». Solo se pinta si entreno a
+     alguien; si no, queda oculto y no estorba a un atleta normal. Al cambiar de
+     atleta se salta a un día con entreno suyo y se repinta todo en su nombre. */
+  function pintarVerComo(){
+    var cont=$('ver-como'); if(!cont) return;
+    if(!COACH_ATLETAS.length){ cont.hidden=true; return; }
+    cont.hidden=false;
+    var ops='<option value="'+escA(at.id)+'"'+(VIENDO===at.id?' selected':'')+'>Tú</option>';
+    COACH_ATLETAS.forEach(function(a){
+      var nom=((a.nombre||'')+' '+(a.apellidos||'')).trim();
+      ops+='<option value="'+escA(a.id)+'"'+(VIENDO===a.id?' selected':'')+'>'+esc(nom)+'</option>';
+    });
+    cont.innerHTML=
+      '<span class="vc-ico" aria-hidden="true">👥</span>'+
+      '<label class="vc-lab" for="vc-sel">Viendo la semana de</label>'+
+      '<select id="vc-sel" class="vc-sel" aria-label="Elige de qué atleta ves la semana">'+ops+'</select>'+
+      (esOtro()?'<span class="vc-badge">Solo lectura</span>':'');
+    var sel=$('vc-sel');
+    if(sel) sel.onchange=function(){
+      VIENDO=sel.value;
+      pintarVerComo();
+      pintarDia(elegirDia(lunesVis, diaSel));
+    };
+  }
+
   // Día que se muestra al abrir una semana: el preferido si tiene entreno; si no, el más cercano
   function elegirDia(lunes, pref){
-    var lista=SEM[lunes]||[];
+    var lista=sesDe(SEM[lunes], VIENDO);
     var base=(pref && difDias(pref,lunes)>=0 && difDias(pref,lunes)<=6) ? pref : lunes;
     if(lista.some(function(s){ return s.fecha===base; })) return base;
     var mejor=null;
@@ -3675,7 +3749,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return partes.join(' · ');
   }
   function hojaSemanaHTML(){
-    var lista=(SEM[lunesVis]||[]).slice().sort(function(a,b){ return a.fecha<b.fecha?-1:1; });
+    var lista=sesDe(SEM[lunesVis], VIENDO).slice().sort(function(a,b){ return a.fecha<b.fecha?-1:1; });
     var NOM=['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
     var dias='';
     for(var i=0;i<7;i++){
@@ -4907,7 +4981,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var lunesHoy=lunesDe(todayISO);
   var PAGOS=[];            // recibos del atleta (para avisar de lo vencido en «Hoy»)
   var hoyPintado=false;
-  function sesSemanaHoy(){ return SEM[lunesHoy]||[]; }
+  function sesSemanaHoy(){ return sesDe(SEM[lunesHoy], at.id); }
   /* Un día libre se llama «Descanso», no «Entrenamiento». Se mira el papel del
      día (migración 102) y, si no está, el tipo de siempre. */
   function tituloSesion(s){ return s.titulo || ((s.papel_dia||s.tipo)==='descanso' ? 'Descanso' : 'Entrenamiento'); }
@@ -5171,7 +5245,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      justamente el viaje que esta tira venía a quitar: se ojea aquí, se entra
      solo para hacerlo. */
   var OJEO_LUNES = lunesHoy;
-  function sesOjeo(){ return SEM[OJEO_LUNES]||[]; }
+  function sesOjeo(){ return sesDe(SEM[OJEO_LUNES], at.id); }
   function tiraSemanaHTML(){
     var nom=['lun','mar','mié','jue','vie','sáb','dom'];
     var l=OJEO_LUNES, h='', deLaSemana=sesOjeo();
