@@ -3,7 +3,7 @@
    (por eso los cambios se ven al momento); si no hay conexión, sirve lo último
    que se vio. No toca las peticiones a Supabase ni a los CDN (siempre a la red,
    para que los datos y el acceso vayan en vivo). */
-const CACHE = 'apolana-v3';
+const CACHE = 'apolana-v4';
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 
@@ -22,7 +22,12 @@ self.addEventListener('fetch', function (e) {
   if (url.origin !== self.location.origin) return;          // Supabase / CDN: siempre a la red
   e.respondWith((async function () {
     try {
-      const fresh = await fetch(req);
+      /* En las navegaciones (el HTML de una página) se pide con `cache: 'reload'`
+         para SALTARSE la caché del navegador: GitHub Pages manda el HTML con
+         `max-age=600`, y sin esto un cambio recién publicado tardaba hasta diez
+         minutos en verse aunque el service worker fuera «red primero». Los demás
+         recursos (JS, CSS, imágenes) siguen con la caché normal, que ahí sí ayuda. */
+      const fresh = await fetch(req, req.mode === 'navigate' ? { cache: 'reload' } : undefined);
       // Solo se guarda lo que ha venido bien: si un día la web contesta con un
       // error, no queremos que se quede pegado y se sirva sin conexión.
       if (fresh && fresh.ok && fresh.type === 'basic') {
