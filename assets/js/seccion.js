@@ -537,7 +537,15 @@
 
         if (t.importe_no_socio != null && t.importe_no_socio !== '') {
           var extra = nodo('span', 'detalle');
-          extra.textContent = 'No socios: ' + euros(t.importe_no_socio) + (PERIODO[limpio(t.periodicidad)] || '');
+          /* Si hay un segundo importe (p. ej. 5 días frente a 3), se pinta el
+             rango «50-70 €/mes», igual que ya hace la línea de socios. Sin esto
+             solo salía el primero y no se veía que el precio depende de los días. */
+          var cifraNS = euros(t.importe_no_socio);
+          if (t.importe_no_socio_hasta != null && t.importe_no_socio_hasta !== ''
+              && Number(t.importe_no_socio_hasta) > Number(t.importe_no_socio)) {
+            cifraNS = euros(t.importe_no_socio).replace(' €', '') + '-' + euros(t.importe_no_socio_hasta);
+          }
+          extra.textContent = 'No socios: ' + cifraNS + (PERIODO[limpio(t.periodicidad)] || '');
           que.appendChild(extra);
         }
         lista.appendChild(f);
