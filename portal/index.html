@@ -57,6 +57,20 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   var base = window.APOLANA_BASE || '../';
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
+  /* SALTO DIRECTO A TU ZONA — para no pasar por este hub intermedio al abrir.
+     La primera vez, cuando abajo se resuelve que solo tienes un papel, se
+     guarda tu zona; desde entonces, al abrir la app se salta aquí mismo,
+     ANTES de pintar nada, y se ahorra el pantallazo del hub. Va por correo
+     para que en un aparato compartido no lleve a la zona de otra persona; y
+     si algún día pasas a tener varios papeles, abajo se borra este recuerdo
+     y vuelves a ver el hub para elegir. La barra de arriba siempre deja
+     cambiar de zona, así que esto nunca deja a nadie encerrado. */
+  var ZONA_MEM = 'apolana.zona.' + ((perfil && perfil.email) || '');
+  try {
+    var zonaGuardada = ((perfil && perfil.email) && localStorage.getItem(ZONA_MEM)) || '';
+    if (zonaGuardada) { location.replace(zonaGuardada); return; }
+  } catch (e) { /* sin localStorage: se sigue con el hub de siempre */ }
+
   /* Chevron del kit (30a): el único icono que va a la derecha de una fila. */
   var CHEV = '<span class="chev">' +
              ((window.APOLANA_UI && APOLANA_UI.icono) ? APOLANA_UI.icono('entrar', 20) : '&rsaquo;') +
@@ -198,8 +212,15 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   if (typeof APOLANA_PORTAL.papeles === 'function') {
     APOLANA_PORTAL.papeles().then(function (lista) {
       if (!lista || !lista.length) return;
-      /* Login único: si solo tienes un papel, al portal no: directo a tu zona. */
-      if (lista.length === 1 && lista[0].url) { location.replace(lista[0].url); return; }
+      /* Login único: si solo tienes un papel, al portal no: directo a tu zona.
+         Y se recuerda, para que la próxima vez se salte aquí antes de pintar. */
+      if (lista.length === 1 && lista[0].url) {
+        try { if (perfil && perfil.email) localStorage.setItem(ZONA_MEM, lista[0].url); } catch (e) {}
+        location.replace(lista[0].url); return;
+      }
+      /* Varios papeles: este hub es tu sitio. Se borra el recuerdo de «zona
+         única» por si antes tenías uno solo, para que siempre puedas elegir. */
+      try { localStorage.removeItem(ZONA_MEM); } catch (e) {}
       var claves = [], descs = {};
       lista.forEach(function (p) { claves.push(p.clave); descs[p.clave] = p.desc; });
       ULTIMAS = { claves: claves, descs: descs };

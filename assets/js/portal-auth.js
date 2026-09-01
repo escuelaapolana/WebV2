@@ -1604,6 +1604,17 @@
       _papeles = calcularPapeles(perfil);
       window.APOLANA_PORTAL.papeles = function () { return _papeles; };
 
+      /* Auto-arreglo del «salto directo a tu zona» (portal/index.html): si
+         resulta que tienes VARIOS papeles, se borra el recuerdo de zona
+         única —lo mira cualquier pantalla del portal, no solo el hub—, para
+         que la próxima vez que abras la app vuelvas al hub a elegir. Si solo
+         tienes uno, no se toca y el salto directo se mantiene. */
+      _papeles.then(function (lista) {
+        try {
+          if (lista && lista.length > 1 && email) localStorage.removeItem('apolana.zona.' + email);
+        } catch (e) {}
+      }).catch(function () {});
+
       if (_cb) _cb(sb, perfil);
 
       /* ------------------------------------------------------------
