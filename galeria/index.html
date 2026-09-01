@@ -183,100 +183,122 @@
      se cuenta en el «+N» y solo sale a pantalla completa, pero se cambia
      igual. Si añades una foto a un bloque, dale su fila en la base
      (migraciones/084_huecos_de_foto.sql) o no saldrá en el panel. */
+  /* Los cuatro bloques y cuántos huecos tiene cada uno en el panel
+     (Panel → Fotos de la web). Cada hueco es «galeria.<bloque>.<n>».
+     La galería NO trae fotos por defecto: enseña solo los huecos que el
+     club haya rellenado. Los vacíos no salen; un bloque sin ninguna foto
+     tampoco. Para poner una, se asigna su hueco desde el panel o en modo
+     fantasma. Si añades más huecos a un bloque, sube su «n» y dale su fila
+     en migraciones/084_huecos_de_foto.sql. */
   var BLOQUES = [
-    { titulo: 'Pista y competición', hueco: 'pista', fotos: [
-      { f: 'galeria-3.jpg', alt: 'Competición de atletismo en pista al aire libre' },
-      { f: 'competicion-andres.jpg', alt: 'Atleta del club en plena competición' },
-      { f: 'galeria-1.jpg', alt: 'Salida de una carrera en pista' },
-      { f: 'running-nicolas.jpg', alt: 'Entrenamiento de rendimiento en pista' },
-      { f: 'ig-3.jpg', alt: 'Equipo del club en una competición' }
-    ] },
-    { titulo: 'Running y montaña', hueco: 'running', fotos: [
-      { f: 'running-claudia.jpg', alt: 'Grupo de running del club entrenando' },
-      { f: 'galeria-4.jpg', alt: 'Carrera de montaña por la sierra' },
-      { f: 'instalaciones-monte-tossal.jpg', alt: 'Entrenamiento en el Monte Tossal' },
-      { f: 'ig-1.jpg', alt: 'Salida del grupo de running' }
-    ] },
-    { titulo: 'Agua y triatlón', hueco: 'agua', fotos: [
-      { f: 'natacion-hero.jpg', alt: 'Nadadores del club en la piscina' },
-      { f: 'triatlon-hero.jpg', alt: 'Triatletas del club durante una prueba' },
-      { f: 'escuela-natacion-hero.jpg', alt: 'Escuela de natación del club' },
-      { f: 'ig-4.jpg', alt: 'Travesía a nado del club' }
-    ] },
-    { titulo: 'Las escuelas y el campus', hueco: 'escuelas', fotos: [
-      { f: 'escuela-galeria-1.jpg', alt: 'Entrenamiento de la escuela de atletismo' },
-      { f: 'escuela-galeria-2.jpg', alt: 'Atletas de la escuela en competición' },
-      { f: 'campus-itaka.jpg', alt: 'Campus de verano del club' },
-      { f: 'ig-2.jpg', alt: 'Grupo de la escuela municipal de atletismo' },
-      { f: 'cubo-hero.jpg', alt: 'Sesión de fuerza en El Cubo' }
-    ] }
+    { titulo: 'Pista y competición', hueco: 'pista', n: 5, alt: 'Atletismo en pista y competición del club' },
+    { titulo: 'Running y montaña', hueco: 'running', n: 4, alt: 'Running y carreras de montaña del club' },
+    { titulo: 'Agua y triatlón', hueco: 'agua', n: 4, alt: 'Natación y triatlón del club' },
+    { titulo: 'Las escuelas y el campus', hueco: 'escuelas', n: 5, alt: 'Las escuelas y el campus del club' }
   ];
 
   var caja = document.getElementById('gal-bloques');
   var TODAS = [];
 
-  function url(nombre) {
-    return window.APOLANA_IMG ? window.APOLANA_IMG(nombre) : base + 'assets/img/' + nombre;
+  function vacio() {
+    caja.innerHTML = '<div class="gal-vacio">' +
+      '<b>Estamos preparando la galería</b>' +
+      '<p>Muy pronto, un año del club en fotos. Si has hecho alguna en una carrera del club, mándanosla por WhatsApp y la subimos.</p>' +
+      '<a href="' + base + 'contacto/">Escribirnos</a></div>';
   }
 
-  function pintar() {
-    if (!BLOQUES.length) {
-      caja.innerHTML = '<div class="gal-vacio">' +
-        '<b>Aún no hay fotos de esta temporada</b>' +
-        '<p>Si has hecho alguna en una carrera del club, mándanosla por WhatsApp y la subimos.</p>' +
-        '<a href="' + base + 'contacto/">Escribirnos</a></div>';
-      return;
-    }
+  /* La foto de un hueco ya puesto: su marca «galeria.<bloque>.<n>» para el
+     panel y el modo fantasma, su foto de verdad y el encuadre elegido. */
+  function imgHueco(x, indice) {
+    var st = x.encuadre ? ' style="object-position:' + esc(x.encuadre) + '"' : '';
+    return '<img src="' + esc(x.url) + '"' +
+      ' data-img="' + esc(x.clave) + '"' +
+      ' data-i="' + indice + '"' + st + ' alt="" loading="lazy">';
+  }
+
+  /* Pinta con lo que el club ha rellenado. `porClave` es {clave: fila}. */
+  function pinta(porClave) {
     TODAS = [];
-    caja.innerHTML = BLOQUES.map(function (b, ib) {
-      /* Cuatro huecos por bloque: una grande y tres pequeñas. El resto se
-         cuenta en la última con un «+N», no se apila abajo. */
-      var visibles = b.fotos.slice(0, 4);
-      var resto = b.fotos.length - visibles.length;
+    var html = '';
+    BLOQUES.forEach(function (b) {
+      /* Huecos de este bloque que tienen foto, en orden. */
+      var fotos = [];
+      for (var i = 1; i <= b.n; i++) {
+        var k = 'galeria.' + b.hueco + '.' + i;
+        var f = porClave[k];
+        var u = f && f.url && String(f.url).trim();
+        if (u) fotos.push({
+          clave: k, url: u,
+          encuadre: f.encuadre && String(f.encuadre).trim(),
+          alt: (f.alt && String(f.alt).trim()) || b.alt
+        });
+      }
+      if (!fotos.length) return;   // bloque sin fotos: no se enseña
+
+      /* Una grande y hasta tres pequeñas; el resto se cuenta en un «+N». */
+      var visibles = fotos.slice(0, 4);
+      var resto = fotos.length - visibles.length;
       var desde = TODAS.length;
-      b.fotos.forEach(function (x) { TODAS.push({ src: url(x.f), alt: x.alt, bloque: b.titulo }); });
-      return '<section class="gal-bloque">' +
+      fotos.forEach(function (x) { TODAS.push({ src: x.url, alt: x.alt, bloque: b.titulo }); });
+
+      html += '<section class="gal-bloque">' +
         '<div class="gal-bloque-cab">' +
           '<h2 class="titulo">' + esc(b.titulo) + '</h2>' +
-          '<span class="cuenta">' + b.fotos.length + (b.fotos.length === 1 ? ' foto' : ' fotos') + '</span>' +
+          '<span class="cuenta">' + fotos.length + (fotos.length === 1 ? ' foto' : ' fotos') + '</span>' +
         '</div>' +
         '<div class="gal-tira">' + visibles.map(function (x, i) {
           var indice = desde + i;
           var ultima = (i === visibles.length - 1) && resto > 0;
           return '<button type="button" class="gal-foto' + (i === 0 ? ' gal-foto--grande' : '') + '"' +
             ' data-i="' + indice + '" aria-label="' + esc(x.alt) + '">' +
-            hueco(b, x, i, indice) +
+            imgHueco(x, indice) +
             (ultima ? '<span class="mas">+' + resto + '</span>' : '') +
           '</button>';
         }).join('') + '</div>' +
-        /* Las que no caben en la tira siguen siendo del club: van aquí,
-           sin ocupar sitio, para que también tengan su hueco en el panel
-           y para que a pantalla completa salga la que se haya elegido. */
         (resto > 0
-          ? '<div class="gal-guardadas">' + b.fotos.slice(4).map(function (x, i) {
-              return hueco(b, x, i + 4, desde + 4 + i);
+          ? '<div class="gal-guardadas">' + fotos.slice(4).map(function (x, i) {
+              return imgHueco(x, desde + 4 + i);
             }).join('') + '</div>'
           : '') +
       '</section>';
-    }).join('');
+    });
 
-    /* Cada foto se queda apuntada en su ficha. Así, cuando el club cambia
-       una desde el panel, a pantalla completa se abre LA MISMA que se ve
-       en la rejilla y no la que traía el HTML. */
+    if (!html) { vacio(); return; }
+    caja.innerHTML = html;
+
+    /* Cada foto se queda apuntada en su ficha, para que a pantalla completa
+       se abra LA MISMA que se ve en la rejilla. */
     Array.prototype.forEach.call(caja.querySelectorAll('img[data-i]'), function (im) {
       var i = parseInt(im.getAttribute('data-i'), 10);
       if (TODAS[i]) TODAS[i].nodo = im;
     });
   }
 
-  /* La foto de un hueco: su marca «galeria.<bloque>.<n>» para el panel y
-     su número de orden para el visor a pantalla completa. */
-  function hueco(b, x, i, indice) {
-    return '<img src="' + esc(url(x.f)) + '"' +
-      ' data-img="galeria.' + esc(b.hueco) + '.' + (i + 1) + '"' +
-      ' data-i="' + indice + '" alt="" loading="lazy">';
+  /* Le pregunta a la base qué fotos hay puestas y pinta. Si no responde o
+     no hay ninguna, se queda el estado «estamos preparando la galería».
+     Va en DOMContentLoaded a propósito: este script es inline y corre
+     durante el parseo, ANTES que db.js (que es `defer`); en ese instante
+     window.APOLANA_DB aún no existe. Al soltar DOMContentLoaded ya están
+     ejecutados todos los `defer`, así que la base está lista. */
+  function iniciar() {
+    var db = window.APOLANA_DB;
+    if (!db || typeof db.from !== 'function') { vacio(); return; }
+    var claves = [];
+    BLOQUES.forEach(function (b) {
+      for (var i = 1; i <= b.n; i++) claves.push('galeria.' + b.hueco + '.' + i);
+    });
+    try {
+      db.from('imagenes_web').select('clave,url,encuadre,zoom,alt').in('clave', claves)
+        .then(function (r) {
+          var porClave = {};
+          if (r && !r.error && r.data) r.data.forEach(function (f) { porClave[f.clave] = f; });
+          pinta(porClave);
+        })
+        .catch(function () { vacio(); });
+    } catch (e) { vacio(); }
   }
-  pintar();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
+  else iniciar();
 
   /* ---- Pantalla completa, con flechas y teclado ---- */
   var visor = document.getElementById('gal-visor');
