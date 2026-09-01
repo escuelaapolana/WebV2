@@ -565,6 +565,12 @@ APOLANA_ADMIN.listo(function (sb) {
           '<div class="fecha">' + esc(cuando) + '</div>' +
           '<div class="nombre">' + esc(f.nombre || f.ruta) + '</div>' +
           '<div class="acciones">' +
+            /* Interruptor «Mostrar en la galería web»: al encenderlo la foto
+               se publica (copia al almacén público) y sale en /galeria; al
+               apagarlo deja de verse. El resto de la biblioteca sigue siendo
+               interna. */
+            '<button type="button" class="btn btn--mini' + (f.en_galeria ? ' btn--primario' : ' btn--fantasma') + '" data-galeria aria-pressed="' + (f.en_galeria ? 'true' : 'false') + '">' +
+              (f.en_galeria ? '✓ En la galería' : '+ Añadir a la galería') + '</button>' +
             /* «Copiar enlace» solo aparece si la foto está publicada, que
                es cuando hay una dirección de verdad que pegar. En una que
                no lo está, el enlace caducaría en una hora y quien lo
@@ -903,6 +909,37 @@ APOLANA_ADMIN.listo(function (sb) {
       var favTotal = 0; for (var k = 0; k < FOTOS.length; k++) if (FOTOS[k].favorita) favTotal++;
       $('f-favoritas').innerHTML = (fFav ? '★ Solo favoritas' : '☆ Solo favoritas') + ' (' + favTotal + ')';
       if (fFav && !nuevo) render();
+      return;
+    }
+
+    // Interruptor «Mostrar en la galería web»
+    if (e.target.closest('[data-galeria]')) {
+      var btnG = e.target.closest('[data-galeria]');
+      var poner = !f.en_galeria;
+      var textoPrev = btnG.textContent;
+      btnG.disabled = true;
+      /* Para verse en la galería tiene que estar publicada (tener copia en el
+         almacén público). Si aún no lo está, se publica al vuelo. */
+      if (poner && !f.publicada_ruta) {
+        btnG.textContent = 'Publicando…';
+        var pubG = await BIB.publicar(sb, f);
+        if (pubG.error) { btnG.disabled = false; btnG.textContent = textoPrev; apoToast('No se pudo publicar la foto: ' + pubG.error.message, 'error'); return; }
+      }
+      var rg = await sb.from('biblioteca_fotos').update({ en_galeria: poner }).eq('id', id).select('id');
+      btnG.disabled = false;
+      if (rg.error || !rg.data || !rg.data.length) {
+        btnG.textContent = textoPrev;
+        apoToast('No se pudo cambiar la galería: ' + ((rg.error && rg.error.message) || 'la base no dejó guardar'), 'error');
+        return;
+      }
+      f.en_galeria = poner;
+      btnG.classList.toggle('btn--primario', poner);
+      btnG.classList.toggle('btn--fantasma', !poner);
+      btnG.setAttribute('aria-pressed', poner ? 'true' : 'false');
+      btnG.textContent = poner ? '✓ En la galería' : '+ Añadir a la galería';
+      /* Si al publicar cambió el sello «Solo aquí» → «Publicada», se repinta
+         la tarjeta para que se vea al día. */
+      if (poner && !tarjeta.querySelector('.sello--publicada')) render();
       return;
     }
 

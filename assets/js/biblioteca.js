@@ -163,7 +163,7 @@
   /* ------------------------------------------------------------
      LEER LA BIBLIOTECA
      ------------------------------------------------------------ */
-  var COLUMNAS = 'id,ruta,cubo,nombre,titulo,categoria,favorita,grupo,fecha_foto,publicada_ruta,publicada_en,created_at';
+  var COLUMNAS = 'id,ruta,cubo,nombre,titulo,categoria,favorita,grupo,fecha_foto,publicada_ruta,publicada_en,en_galeria,created_at';
 
   async function cargar(sb) {
     var r = await sb.from('biblioteca_fotos').select(COLUMNAS)
