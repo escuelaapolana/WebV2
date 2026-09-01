@@ -52,16 +52,20 @@ const MENU = [
     { texto: 'Natación adultos',    url: '/natacion/' },
     { texto: 'Montaña',             url: '/montana/' },
     { texto: 'Triatlón',            url: '/triatlon/' },
-    { texto: 'Deporte adaptado',    url: '/escuela-municipal-atletismo/#otros' },
-    { texto: 'Programas municipales', url: '/escuela-municipal-atletismo/' },
     /* El Cubo, el último: es el único que va por bonos de uso y no por
        cuota mensual, así que se separa del resto a propósito. */
     { texto: 'El Cubo · por bonos de uso', url: '/cubo/' },
   ] },
+  /* Los programas municipales (atletismo, triatlón y deporte adaptado) van
+     DENTRO de Escuelas, no en «Entrenar»: son formación para peques, no hay
+     versión de adultos. La página /escuela-municipal-atletismo/ ya agrupa los
+     tres, así que en el menú basta una entrada; el deporte adaptado y el
+     atletismo adaptado se cuentan dentro de ella. */
   { clave: 'escuelas', texto: 'Escuelas', url: '/escuelas/', sub: [
     { texto: 'Todas las escuelas',   url: '/escuelas/' },
     { texto: 'Escuela de atletismo', url: '/escuela/' },
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
+    { texto: 'Escuelas municipales', url: '/escuela-municipal-atletismo/' },
     { texto: 'Campus de verano',     url: '/campus/' },
   ] },
   /* Calendario primero: es la pantalla que manda («qué hay ese día»).
