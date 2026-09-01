@@ -83,9 +83,23 @@
   .gal-visor {
     position: fixed; inset: 0; z-index: 9990; background: rgba(16,22,28,0.94);
     display: none; align-items: center; justify-content: center; padding: 20px;
+    /* Entra con fundido en vez de un corte seco a negro. */
+    opacity: 0; transition: opacity var(--dur-entrada, 200ms) ease;
   }
   .gal-visor[open], .gal-visor.abierto { display: flex; }
-  .gal-visor img { max-width: min(1100px, 92vw); max-height: 82vh; width: auto; border-radius: 14px; }
+  .gal-visor.visible { opacity: 1; }
+  .gal-visor img {
+    max-width: min(1100px, 92vw); max-height: 82vh; width: auto; border-radius: 14px;
+    /* Al abrir crece un pelín (escala); al pasar de foto solo cambia la
+       opacidad (la maneja el JS), que se re-dirige suave si aporreas las
+       flechas. */
+    transform: scale(0.96);
+    transition: transform var(--dur-entrada, 200ms) var(--ease-salida, cubic-bezier(.23,1,.32,1)), opacity 150ms ease;
+  }
+  .gal-visor.visible img { transform: scale(1); }
+  @media (prefers-reduced-motion: reduce) {
+    .gal-visor img, .gal-visor.visible img { transform: none; transition: opacity 120ms ease; }
+  }
   .gal-visor .pie {
     position: absolute; left: 0; right: 0; bottom: 18px; text-align: center;
     font-size: 14px; color: rgba(255,255,255,0.78); padding: 0 70px;
@@ -310,20 +324,41 @@
     if (!TODAS.length) return;
     actual = (i + TODAS.length) % TODAS.length;
     var f = TODAS[actual];
+    /* Fundido corto al cambiar de foto: se apaga, se cambia la fuente y se
+       vuelve a encender. Como es solo opacidad, aporrear las flechas se
+       re-dirige suave en vez de saltar. */
+    img.style.opacity = '0';
     img.src = (f.nodo && f.nodo.getAttribute('src')) || f.src;
     img.alt = (f.nodo && f.nodo.getAttribute('alt')) || f.alt;
     pie.textContent = f.bloque + ' · ' + (actual + 1) + ' de ' + TODAS.length;
+    void img.offsetWidth;              // reflujo: fija la opacidad 0 antes de encender
+    img.style.opacity = '1';
   }
   function abrir(i) {
     previo = document.activeElement;
     mostrar(i);
     visor.classList.add('abierto');
+    /* Un reflujo forzado entre poner el display y encender la opacidad, para
+       que la transición arranque. Se usa reflujo y no requestAnimationFrame
+       porque el rAF se pausa si la pestaña no está componiendo, y entonces
+       el visor se quedaría invisible. */
+    void visor.offsetWidth;
+    visor.classList.add('visible');
     document.body.style.overflow = 'hidden';
     document.getElementById('gal-cerrar').focus();
   }
   function cerrar() {
-    visor.classList.remove('abierto');
+    /* Se apaga (fundido de salida) y, cuando termina, se quita el display.
+       Un respaldo por tiempo por si `transitionend` no llega. */
+    visor.classList.remove('visible');
     document.body.style.overflow = '';
+    var quitar = function () { visor.classList.remove('abierto'); };
+    var hecho = false;
+    visor.addEventListener('transitionend', function te(ev) {
+      if (ev.target !== visor || hecho) return;
+      hecho = true; visor.removeEventListener('transitionend', te); quitar();
+    });
+    setTimeout(function () { if (!hecho) { hecho = true; quitar(); } }, 260);
     if (previo && previo.focus) previo.focus();
   }
 
