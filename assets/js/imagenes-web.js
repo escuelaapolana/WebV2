@@ -73,10 +73,16 @@
   function aplicar(el, fila, propia) {
     if (!el || !fila) return;
     var url = fila.url && String(fila.url).trim();
-    if (!url) return;                     // sin foto elegida → se queda la del HTML
-
     var pos = fila.encuadre && String(fila.encuadre).trim();
     var zoom = parseFloat(fila.zoom);
+
+    /* ANTES aquí se salía en seco si no había url. Pero un hueco puede tener
+       la foto del HTML (sin url propia) y AUN ASÍ un encuadre guardado:
+       alguien ajustó el recorte en modo fantasma sin cambiar la foto. Con
+       aquel `return` ese ajuste se guardaba pero no se pintaba y, al
+       recargar, la foto «se volvía a mover». Ahora solo se sale cuando no
+       hay literalmente nada que hacer: ni foto, ni encuadre, ni zoom. */
+    if (!url && !pos && (isNaN(zoom) || zoom <= 1) && !propia) return;
 
     if (el.tagName === 'IMG') {
       /* ⚠️ LA FOTO SE CARGA POR DETRÁS ANTES DE PONERLA, Y NO ES UN LUJO.
@@ -94,24 +100,30 @@
          que tiene que pasar y antes no pasaba: antes se quedaba roto.
 
          Las fotos que ya están en la caché del navegador se resuelven en
-         el mismo tick, así que ahí no se nota ningún retraso. */
-      cuandoCargue(url, function () {
-        el.src = url;
-      });
-      if (fila.alt != null && String(fila.alt).trim()) el.alt = String(fila.alt).trim();
+         el mismo tick, así que ahí no se nota ningún retraso. Solo se hace
+         si hay url; el encuadre de abajo se aplica igual sobre la del HTML. */
+      if (url) {
+        cuandoCargue(url, function () {
+          el.src = url;
+        });
+        if (fila.alt != null && String(fila.alt).trim()) el.alt = String(fila.alt).trim();
+      }
       if (pos) { el.style.objectPosition = pos; el.style.transformOrigin = pos; }
       else if (propia) { el.style.objectPosition = 'center'; el.style.transformOrigin = 'center'; }
       if (!isNaN(zoom) && zoom > 1 && recorta(el)) el.style.transform = 'scale(' + zoom + ')';
       else if (propia) el.style.transform = 'none';
     } else {
-      /* No es una imagen: se usa de fondo. */
-      el.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
-      el.style.backgroundSize = 'cover';
-      /* Aviso para el CSS de quien lo use: este hueco YA tiene foto. Lo
-         usan los retratos de la junta, que enseñan las iniciales mientras
-         no hay retrato y las esconden en cuanto lo hay. Sin esto, las
-         letras se quedarían encima de la cara. */
-      el.classList.add('tiene-foto');
+      /* No es una imagen: se usa de fondo. Solo se cambia el fondo si hay
+         url; el encuadre (posición) se aplica igual sobre lo que haya. */
+      if (url) {
+        el.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
+        el.style.backgroundSize = 'cover';
+        /* Aviso para el CSS de quien lo use: este hueco YA tiene foto. Lo
+           usan los retratos de la junta, que enseñan las iniciales mientras
+           no hay retrato y las esconden en cuanto lo hay. Sin esto, las
+           letras se quedarían encima de la cara. */
+        el.classList.add('tiene-foto');
+      }
       if (pos) el.style.backgroundPosition = pos;
       else if (propia) el.style.backgroundPosition = 'center';
     }

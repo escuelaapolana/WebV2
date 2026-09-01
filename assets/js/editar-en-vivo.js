@@ -834,7 +834,20 @@
         if (cambiosEncuadre[clave]) { upd.encuadre = cambiosEncuadre[clave].encuadre; upd.zoom = cambiosEncuadre[clave].zoom; }
         var r2 = await sb.from('imagenes_web').update(upd).eq('clave', clave).select('clave');
         if (r2.error) throw r2.error;
-        if (!r2.data || !r2.data.length) throw new Error(SIN_PERMISO);
+        if (!r2.data || !r2.data.length) {
+          /* La fila aún no existe (hueco nuevo, igual que con los textos): se
+             crea al vuelo. La página y el título se sacan de la clave; el
+             club los afina luego en Panel → Fotos de la web. Antes esto daba
+             el falso «la base no ha dejado guardar» al cambiar una foto de un
+             hueco recién añadido. */
+          var alta = { clave: clave, pagina: clave.split('.')[0], titulo: clave };
+          if (upd.url != null) alta.url = upd.url;
+          if (upd.encuadre != null) alta.encuadre = upd.encuadre;
+          if (upd.zoom != null) alta.zoom = upd.zoom;
+          var r2b = await sb.from('imagenes_web').insert(alta).select('clave');
+          if (r2b.error) throw r2b.error;
+          if (!r2b.data || !r2b.data.length) throw new Error(SIN_PERMISO);
+        }
       }
       /* `upsert` y no `update`: la fila puede no existir todavía. El
          hueco vive en el HTML desde el primer día y la fila solo nace
