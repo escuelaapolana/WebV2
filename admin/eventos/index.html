@@ -156,6 +156,13 @@
         </div>
         <label for="e-enlace">Enlace (web de la carrera, opcional)</label>
         <input type="url" id="e-enlace" placeholder="https://…" inputmode="url" autocomplete="off">
+        <label for="e-cartel-file">Cartel de la carrera (opcional)</label>
+        <input type="file" id="e-cartel-file" accept="image/*">
+        <input type="hidden" id="e-cartel-url">
+        <div id="e-cartel-prev" class="cartel-prev oculto" style="margin-top:8px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;">
+          <img id="e-cartel-img" alt="Cartel del evento" style="max-width:220px;max-height:280px;border-radius:10px;border:1px solid var(--linea,#E4DCCB);display:block;">
+          <button type="button" class="btn btn--fantasma btn--mini" id="e-cartel-quitar">Quitar cartel</button>
+        </div>
         <span class="etiqueta" id="lbl-seccion">Secciones</span>
         <div class="sec-chips" id="e-seccion" role="group" aria-labelledby="lbl-seccion"></div>
         <div class="sec-otra">
@@ -390,6 +397,8 @@ APOLANA_ADMIN.listo(function (sb) {
     $('e-fin').value = paraInput(n.fecha_fin);
     $('e-dia-entero').checked = n.id ? !!n.dia_entero : false;
     $('e-enlace').value = n.url || '';
+    $('e-cartel-url').value = n.cartel_url || '';
+    pintarCartelPrev(n.cartel_url || '');
     modoDiaEntero($('e-dia-entero').checked);
     /* La ficha se abre al momento con lo que el evento ya tiene, y cuando
        llega la lista de la base se repinta sin perder lo tocado mientras. */
@@ -417,6 +426,28 @@ APOLANA_ADMIN.listo(function (sb) {
     });
   }
   $('e-dia-entero').addEventListener('change', function () { modoDiaEntero(this.checked); });
+
+  /* Cartel del evento: se sube al bucket público `imagenes` (carpeta carteles)
+     nada más elegir el archivo, y su dirección pública se guarda en
+     `eventos.cartel_url`. El calendario la muestra en la ficha del evento. */
+  function pintarCartelPrev(url) {
+    var box = $('e-cartel-prev'), img = $('e-cartel-img');
+    if (url) { img.src = url; box.classList.remove('oculto'); }
+    else { img.removeAttribute('src'); box.classList.add('oculto'); }
+  }
+  $('e-cartel-file').addEventListener('change', async function () {
+    var file = this.files && this.files[0]; if (!file) return;
+    $('msg-form').textContent = 'Subiendo el cartel…'; $('msg-form').className = 'msg';
+    var clean = file.name.toLowerCase().replace(/[^\w.\-]+/g, '-').replace(/-+/g, '-');
+    var ruta = 'carteles/' + Date.now() + '-' + clean;
+    var up = await sb.storage.from('imagenes').upload(ruta, file, { cacheControl: '3600', upsert: false });
+    if (up.error) { $('msg-form').textContent = 'No se pudo subir el cartel: ' + up.error.message; $('msg-form').className = 'msg error'; this.value = ''; return; }
+    var url = sb.storage.from('imagenes').getPublicUrl(ruta).data.publicUrl;
+    $('e-cartel-url').value = url; pintarCartelPrev(url);
+    $('msg-form').textContent = 'Cartel subido ✓'; $('msg-form').className = 'msg ok';
+    this.value = '';
+  });
+  $('e-cartel-quitar').addEventListener('click', function () { $('e-cartel-url').value = ''; pintarCartelPrev(''); });
 
   $('nuevo-evento').addEventListener('click', function () { abrirForm(); });
   $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
@@ -461,6 +492,7 @@ APOLANA_ADMIN.listo(function (sb) {
       fecha_fin: fin,
       dia_entero: diaEntero,
       url: $('e-enlace').value.trim() || null,
+      cartel_url: $('e-cartel-url').value || null,
       seccion: seccionArr.length ? seccionArr : null,
       descripcion: $('e-descripcion').value.trim() || null,
       inscripcion_abierta: $('e-inscripcion').checked
