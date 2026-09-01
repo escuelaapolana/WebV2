@@ -1579,6 +1579,22 @@
          dentro de la app, y no ve el portal hasta que está hecho. Al
          guardarla se vuelve por aquí y esta vez sí se sigue. */
       if (await tocaPonerClave(usuario, recienLlegado)) { pedirClave(email); return; }
+
+      /* SALTO RÁPIDO A TU ZONA — lo que hacía lento abrir la app. La página
+         del hub (portal/index.html) solo existe para reenviarte, pero pedía
+         perfil, atletas y grupos ANTES de hacerlo, y la pantalla destino
+         volvía a pedirlo todo. Si ya sabemos tu zona (la guardó el hub la
+         primera vez, por correo), se salta aquí mismo, en cuanto hay sesión
+         y sin pedir nada más. Solo en el hub y solo si no acabas de entrar
+         por el enlace del correo. Si tienes varios papeles, el recuerdo se
+         borra solo y vuelves a ver el hub. */
+      if (!recienLlegado && /\/portal\/(index\.html)?$/.test(location.pathname)) {
+        try {
+          var zonaRapida = localStorage.getItem('apolana.zona.' + email);
+          if (zonaRapida) { location.replace(zonaRapida); return; }
+        } catch (e) { /* sin localStorage: sigue el camino normal */ }
+      }
+
       var perfil = null;
       try {
         var r = await sb.from('perfiles')
