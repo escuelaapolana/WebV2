@@ -160,6 +160,32 @@
     return b;
   }
 
+  /* La app instalada monta OTRA barra fija abajo («Volver a mi perfil»,
+     z-index 9500, en apolana.js). En modo edición se solapa con la barra
+     del editor y —peor— tapa el pie «Usar esto» de los paneles, que va más
+     abajo. Mientras se edita se esconde y se devuelve al salir; así abajo
+     queda solo la barra del editor, con su hueco de 64px bien reservado.
+     Con recarga (al guardar) no hace falta: la página se vuelve a montar. */
+  function barraVolver() {
+    var b = document.querySelector('[aria-label="Volver a mi perfil"]');
+    return b ? b.parentElement : null;
+  }
+  function ocultarVolver() {
+    var bv = barraVolver();
+    if (!bv) return;
+    bv.style.display = 'none';
+    /* Esa barra fijaba el padding-bottom del body a su medida (inline, que
+       gana a la clase). Se quita para que valga el hueco de 64px del editor. */
+    document.body.style.paddingBottom = '';
+  }
+  function mostrarVolver() {
+    var bv = barraVolver();
+    if (!bv) return;
+    bv.style.display = '';
+    /* Que vuelva a reservar su hueco: su propio listener recalcula al 'resize'. */
+    try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+  }
+
   function aviso(txt, clase) {
     var m = $('#edv-msg');
     if (!m) return;
@@ -172,6 +198,7 @@
     editando = true;
     await traerValores();
     document.body.classList.add('edv-editando');
+    ocultarVolver();
     $('#edv-toggle').textContent = 'Dejar de editar';
     $('#edv-guardar').hidden = false;
     $('#edv-cancelar').hidden = false;
@@ -532,6 +559,7 @@
     editando = false;
     cambios = {}; cambiosFoto = {}; cambiosSueltos = {}; cambiosEncuadre = {};
     document.body.classList.remove('edv-editando');
+    mostrarVolver();
     $('#edv-toggle').textContent = 'Editar esta página';
     $('#edv-guardar').hidden = true;
     $('#edv-cancelar').hidden = true;
@@ -860,7 +888,7 @@
        curva y el lado son toda la explicación que hace falta.
        `@starting-style` para que anime al entrar sin necesitar JS, y la
        curva es la de cajones de la casa. */
-    '.edv-panel{position:fixed;right:0;top:0;bottom:0;width:min(420px,92vw);z-index:9100;background:#fff;',
+    '.edv-panel{position:fixed;right:0;top:0;bottom:0;width:min(420px,92vw);z-index:9600;background:#fff;',
       'display:flex;flex-direction:column;box-shadow:-10px 0 30px -18px rgba(0,0,0,.5);',
       'font-family:var(--fuente-texto,system-ui);',
       'transform:translateX(0);opacity:1;',
