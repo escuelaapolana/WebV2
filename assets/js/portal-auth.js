@@ -1559,7 +1559,20 @@
 
     async function arranque() {
       var s = await sb.auth.getSession();
-      if (!s.data.session) { mostrarLogin(); return; }
+      if (!s.data || !s.data.session) {
+        /* Sin sesión a la primera NO es sinónimo de «no has entrado». Al abrir
+           la app, si el token de acceso ha caducado, getSession puede devolver
+           null un instante antes de refrescarse; enseñar el login ahí provoca
+           el pantallazo de «iniciar sesión» al arrancar. Así que antes de
+           rendirse se intenta refrescar una vez con el token guardado. Solo si
+           eso tampoco da sesión (de verdad no has entrado) se muestra el login.
+           Para quien está fuera, refreshSession falla rápido y sin red. */
+        try {
+          var rs = await sb.auth.refreshSession();
+          if (rs && rs.data && rs.data.session) { s = rs; }
+        } catch (e) { /* sin token válido: no hay nada que recuperar */ }
+        if (!s.data || !s.data.session) { mostrarLogin(); return; }
+      }
       var usuario = s.data.session.user;
       var email = usuario.email;
 
