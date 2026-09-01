@@ -84,6 +84,7 @@
   var editando = false;
   var cambios = {};        // { campo: valorNuevo }
   var cambiosFoto = {};    // { clave: url }
+  var cambiosEncuadre = {}; // { clave: {encuadre:'x% y%', zoom:num} } · ajuste sin cambiar la foto
   /* Los huecos sueltos, los que llevan data-texto. Van aparte de
      `cambios` porque no son columnas de una fila: son filas de
      `textos_web`, una por hueco, y se guardan de otra manera. */
@@ -249,6 +250,9 @@
         }
         marcarSucio(hueco);
       });
+      /* «Ajustar»: mover y acercar la MISMA foto, sin cambiarla. Solo en las
+         <img> con object-fit (las de fondo se recolocan distinto y aún no van). */
+      if (esImagen) ponerBotonAjuste(hueco, clave);
     });
 
     /* Los grupos y los precios. No se escriben «encima» como un párrafo: un
@@ -403,10 +407,130 @@
     envoltorio.appendChild(b);
   }
 
+  /* ---------- AJUSTAR EL ENCUADRE (mover + acercar), sin cambiar la foto ----------
+     Mismo comportamiento que /admin/imagenes/, pero sobre la propia foto de la
+     página: se arrastra la imagen para elegir qué parte se ve y una barra abajo
+     trae el zoom y los atajos. Al guardar, el encuadre y el zoom se apuntan en
+     `cambiosEncuadre[clave]` y se escriben en `imagenes_web` con el botón de
+     guardar de siempre. */
+  var ajusteActivo = null;
+  function encLim(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function encLeerPos(txt) {
+    var r = { x: 50, y: 50 };
+    if (!txt) return r;
+    var p = String(txt).trim().split(/\s+/);
+    if (p.length < 2) return r;
+    var a = parseFloat(p[0]), b = parseFloat(p[1]);
+    if (!isNaN(a)) r.x = encLim(a, 0, 100);
+    if (!isNaN(b)) r.y = encLim(b, 0, 100);
+    return r;
+  }
+  function cerrarAjuste(guardar) { if (ajusteActivo) ajusteActivo.cerrar(guardar); }
+
+  function ponerBotonAjuste(img, clave) {
+    var env = img.parentElement;
+    if (!env || env.querySelector('.edv-ajustar')) return;
+    if (getComputedStyle(env).position === 'static') env.style.position = 'relative';
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'edv-ajustar'; b.textContent = 'Ajustar';
+    b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); abrirAjuste(img, clave); });
+    env.appendChild(b);
+  }
+
+  function abrirAjuste(img, clave) {
+    if (ajusteActivo) cerrarAjuste(false);
+
+    var ENC = { x: 50, y: 50, zoom: 1 };
+    var prev = cambiosEncuadre[clave];
+    if (prev) {
+      var e0 = encLeerPos(prev.encuadre); ENC.x = e0.x; ENC.y = e0.y;
+      var z0 = parseFloat(prev.zoom); if (!isNaN(z0)) ENC.zoom = z0;
+    } else {
+      var e1 = encLeerPos(img.style.objectPosition); ENC.x = e1.x; ENC.y = e1.y;
+      var mt = String(img.style.transform || '').match(/scale\(([\d.]+)\)/); if (mt) ENC.zoom = parseFloat(mt[1]) || 1;
+    }
+    var orig = { op: img.style.objectPosition, to: img.style.transformOrigin, tr: img.style.transform, cur: img.style.cursor, touch: img.style.touchAction };
+
+    var zoomVal = null;
+    function txt() { return (Math.round(ENC.x * 10) / 10) + '% ' + (Math.round(ENC.y * 10) / 10) + '%'; }
+    function aplicar() {
+      var pos = txt();
+      img.style.objectPosition = pos; img.style.transformOrigin = pos;
+      img.style.transform = ENC.zoom > 1 ? 'scale(' + ENC.zoom + ')' : 'none';
+      if (zoomVal) zoomVal.textContent = Math.round(ENC.zoom * 100) + ' %';
+    }
+    function recorrido() {
+      var W = img.clientWidth, H = img.clientHeight, nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
+      if (!W || !H || !nw || !nh) return { x: 0, y: 0 };
+      var esc = Math.max(W / nw, H / nh);
+      return { x: Math.max(0, ENC.zoom * nw * esc - W), y: Math.max(0, ENC.zoom * nh * esc - H) };
+    }
+
+    img.style.cursor = 'grab'; img.style.touchAction = 'none';
+    img.classList.add('edv-ajustando');
+
+    var activo = false, ultX = 0, ultY = 0, pid = null;
+    function down(ev) { activo = true; pid = ev.pointerId; ultX = ev.clientX; ultY = ev.clientY; img.style.cursor = 'grabbing'; if (img.setPointerCapture) { try { img.setPointerCapture(ev.pointerId); } catch (e) {} } ev.preventDefault(); }
+    function move(ev) { if (!activo || ev.pointerId !== pid) return; var dx = ev.clientX - ultX, dy = ev.clientY - ultY; ultX = ev.clientX; ultY = ev.clientY; var r = recorrido(); if (r.x > 0) ENC.x = encLim(ENC.x - (dx * 100 / r.x), 0, 100); if (r.y > 0) ENC.y = encLim(ENC.y - (dy * 100 / r.y), 0, 100); aplicar(); ev.preventDefault(); }
+    function up(ev) { if (!activo) return; activo = false; pid = null; img.style.cursor = 'grab'; if (img.releasePointerCapture && ev && ev.pointerId != null) { try { img.releasePointerCapture(ev.pointerId); } catch (e) {} } }
+    function noNav(ev) { ev.preventDefault(); ev.stopPropagation(); }
+    img.addEventListener('pointerdown', down);
+    img.addEventListener('pointermove', move);
+    img.addEventListener('pointerup', up);
+    img.addEventListener('pointercancel', up);
+    img.addEventListener('click', noNav, true);
+
+    var barra = document.createElement('div');
+    barra.className = 'edv-ajuste-barra';
+    barra.innerHTML =
+      '<span class="edv-ajuste-tit">Arrastra la foto para encuadrarla</span>' +
+      '<label class="edv-ajuste-zoom">Zoom <input type="range" min="100" max="250" step="1"><span class="edv-ajuste-zval">100 %</span></label>' +
+      '<span class="edv-ajuste-atajos">' +
+        '<button type="button" data-enc="centrar">Centrar</button>' +
+        '<button type="button" data-enc="arriba">Arriba</button>' +
+        '<button type="button" data-enc="centro">Centro</button>' +
+        '<button type="button" data-enc="abajo">Abajo</button>' +
+      '</span>' +
+      '<button type="button" class="edv-btn edv-btn--guardar edv-ajuste-ok">Guardar ajuste</button>' +
+      '<button type="button" class="edv-btn edv-ajuste-cancel">Cancelar</button>';
+    document.body.appendChild(barra);
+    var zoomInput = barra.querySelector('input[type=range]');
+    zoomVal = barra.querySelector('.edv-ajuste-zval');
+    zoomInput.value = String(Math.round(ENC.zoom * 100));
+    zoomInput.addEventListener('input', function () { var v = parseInt(this.value, 10); if (isNaN(v)) v = 100; ENC.zoom = encLim(v, 100, 250) / 100; aplicar(); });
+    barra.querySelector('.edv-ajuste-atajos').addEventListener('click', function (ev) {
+      var bt = ev.target.closest ? ev.target.closest('[data-enc]') : null; if (!bt) return;
+      var q = bt.getAttribute('data-enc');
+      if (q === 'centrar') { ENC.x = 50; ENC.y = 50; ENC.zoom = 1; zoomInput.value = '100'; }
+      else if (q === 'arriba') ENC.y = 0;
+      else if (q === 'centro') ENC.y = 50;
+      else if (q === 'abajo') ENC.y = 100;
+      aplicar();
+    });
+
+    function cerrar(guardar) {
+      img.removeEventListener('pointerdown', down); img.removeEventListener('pointermove', move);
+      img.removeEventListener('pointerup', up); img.removeEventListener('pointercancel', up);
+      img.removeEventListener('click', noNav, true);
+      img.classList.remove('edv-ajustando'); img.style.cursor = orig.cur; img.style.touchAction = orig.touch;
+      if (barra.parentNode) barra.parentNode.removeChild(barra);
+      ajusteActivo = null;
+      if (guardar) { cambiosEncuadre[clave] = { encuadre: txt(), zoom: ENC.zoom }; marcarSucio(img); }
+      else { img.style.objectPosition = orig.op; img.style.transformOrigin = orig.to; img.style.transform = orig.tr; }
+    }
+    barra.querySelector('.edv-ajuste-ok').addEventListener('click', function () { cerrar(true); });
+    barra.querySelector('.edv-ajuste-cancel').addEventListener('click', function () { cerrar(false); });
+    ajusteActivo = { cerrar: cerrar };
+
+    aplicar();
+    try { img.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+  }
+
   function apagar(recargar) {
     if (recargar) { location.reload(); return; }
+    if (ajusteActivo) cerrarAjuste(false);
     editando = false;
-    cambios = {}; cambiosFoto = {}; cambiosSueltos = {};
+    cambios = {}; cambiosFoto = {}; cambiosSueltos = {}; cambiosEncuadre = {};
     document.body.classList.remove('edv-editando');
     $('#edv-toggle').textContent = 'Editar esta página';
     $('#edv-guardar').hidden = true;
@@ -587,32 +711,58 @@
       return;
     }
     if (!biblioteca) {
-      var r = await BIB.cargar(sb);          // trae las fotos y firma las privadas
-      biblioteca = (r && !r.error && r.fotos) ? r.fotos.slice(0, 60) : [];
+      var r = await BIB.cargar(sb);          // trae TODAS las fotos y firma las privadas
+      biblioteca = (r && !r.error && r.fotos) ? r.fotos : [];
     }
     if (!biblioteca.length) {
       cuerpo.innerHTML = '<p class="edv-pista">No hay fotos en la biblioteca todavía. ' +
         'Súbelas desde <a href="' + (window.APOLANA_BASE || '../') + 'admin/biblioteca/">Biblioteca</a>.</p>';
       return;
     }
-    cuerpo.innerHTML = '<div class="edv-fotos"></div>' +
-      '<p class="edv-pista">Las 60 últimas de la biblioteca. Para subir una nueva, ' +
+    /* Ya no se cortan a 60: se puede buscar por nombre, grupo o fecha, igual que
+       en el panel de Biblioteca. Se pintan hasta 300 de una vez (con carga
+       perezosa); si hay más, el buscador afina. */
+    cuerpo.innerHTML =
+      '<input type="search" class="edv-buscar" placeholder="Buscar por nombre, grupo o fecha…" autocomplete="off">' +
+      '<div class="edv-fotos"></div>' +
+      '<p class="edv-pista"><span class="edv-cuenta"></span> · para subir una nueva, ' +
       '<a href="' + (window.APOLANA_BASE || '../') + 'admin/biblioteca/">ve a Biblioteca</a>.</p>';
     var rej = $('.edv-fotos', cuerpo);
-    biblioteca.forEach(function (f) {
-      var url = BIB.miniatura(sb, f);        // pública o firmada, según dónde viva
-      if (!url) return;
-      var b = document.createElement('button');
-      b.type = 'button'; b.className = 'edv-mini';
-      b.title = f.titulo || f.nombre || '';
-      b.innerHTML = '<img src="' + esc(url) + '" alt="" loading="lazy">';
-      b.addEventListener('click', function () {
-        rej.querySelectorAll('.edv-mini').forEach(function (x) { x.classList.remove('sel'); });
-        b.classList.add('sel');
-        elegida.foto = f;
-      });
-      rej.appendChild(b);
-    });
+    var cuenta = $('.edv-cuenta', cuerpo);
+    function sinTildes(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    function pinta(filtro) {
+      var q = sinTildes(filtro).trim();
+      rej.textContent = '';
+      var n = 0, MAX = 300;
+      for (var i = 0; i < biblioteca.length && n < MAX; i++) {
+        var f = biblioteca[i];
+        if (q) {
+          var t = sinTildes((f.titulo || '') + ' ' + (f.nombre || '') + ' ' + (f.grupo || '') + ' ' + (f.categoria || '') + ' ' + (f.fecha_foto || ''));
+          if (t.indexOf(q) === -1) continue;
+        }
+        var url = BIB.miniatura(sb, f);
+        if (!url) continue;
+        n++;
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'edv-mini';
+        b.title = f.titulo || f.nombre || '';
+        var im = document.createElement('img'); im.src = url; im.alt = ''; im.loading = 'lazy';
+        b.appendChild(im);
+        (function (f2, b2) {
+          b2.addEventListener('click', function () {
+            rej.querySelectorAll('.edv-mini').forEach(function (x) { x.classList.remove('sel'); });
+            b2.classList.add('sel');
+            elegida.foto = f2;
+          });
+        })(f, b);
+        rej.appendChild(b);
+      }
+      cuenta.textContent = q
+        ? (n + ' resultado' + (n === 1 ? '' : 's'))
+        : (biblioteca.length + ' fotos' + (biblioteca.length > 300 ? ' · busca para verlas todas' : ''));
+    }
+    $('.edv-buscar', cuerpo).addEventListener('input', function () { pinta(this.value); });
+    pinta('');
   }
 
   var SIN_PERMISO = 'la base no ha dejado guardar. Suele ser que la sesión ha caducado: ' +
@@ -621,8 +771,8 @@
   // ---------- guardar ----------
   async function guardar() {
     var nTex = Object.keys(cambios).length, nFot = Object.keys(cambiosFoto).length;
-    var nSue = Object.keys(cambiosSueltos).length;
-    if (!nTex && !nFot && !nSue) { aviso('No has cambiado nada.'); return; }
+    var nSue = Object.keys(cambiosSueltos).length, nEnc = Object.keys(cambiosEncuadre).length;
+    if (!nTex && !nFot && !nSue && !nEnc) { aviso('No has cambiado nada.'); return; }
     var boton = $('#edv-guardar');
     boton.disabled = true;
     aviso('Guardando…');
@@ -644,9 +794,17 @@
         if (r.error) throw r.error;
         if (!r.data || !r.data.length) throw new Error(SIN_PERMISO);
       }
-      for (var clave in cambiosFoto) {
-        var r2 = await sb.from('imagenes_web')
-          .update({ url: cambiosFoto[clave] }).eq('clave', clave).select('clave');
+      /* Foto y encuadre viven en la misma fila de `imagenes_web`, así que se
+         juntan por clave: quien solo ajusta el encuadre no reescribe la url, y
+         quien cambia la foto no pierde el encuadre. */
+      var clavesImg = {};
+      for (var cf in cambiosFoto) clavesImg[cf] = true;
+      for (var ce in cambiosEncuadre) clavesImg[ce] = true;
+      for (var clave in clavesImg) {
+        var upd = {};
+        if (cambiosFoto[clave] != null) upd.url = cambiosFoto[clave];
+        if (cambiosEncuadre[clave]) { upd.encuadre = cambiosEncuadre[clave].encuadre; upd.zoom = cambiosEncuadre[clave].zoom; }
+        var r2 = await sb.from('imagenes_web').update(upd).eq('clave', clave).select('clave');
         if (r2.error) throw r2.error;
         if (!r2.data || !r2.data.length) throw new Error(SIN_PERMISO);
       }
@@ -735,7 +893,29 @@
       'border-radius:9px;font:inherit;font-size:15px;color:#2E4256;background:#fff}',
     'textarea.edv-input{line-height:1.5;resize:vertical}',
     '.edv-pista--ojo{background:#FBF3DF;border:1px solid #E9D9A8;color:#7A6A2B;',
-      'border-radius:9px;padding:9px 12px;margin:0 0 14px;font-weight:500}'
+      'border-radius:9px;padding:9px 12px;margin:0 0 14px;font-weight:500}',
+    /* Buscador del selector de fotos */
+    '.edv-buscar{width:100%;box-sizing:border-box;padding:10px 12px;margin:0 0 10px;',
+      'border:1px solid #E0D8C8;border-radius:9px;font:inherit;font-size:15px;color:#2E4256;background:#fff}',
+    /* Botón «Ajustar» (encuadre) en la esquina de la foto, opuesto a «Cambiar foto» */
+    '.edv-ajustar{position:absolute;right:8px;bottom:8px;z-index:20;min-height:34px;padding:0 12px;',
+      'border-radius:999px;border:0;background:rgba(46,66,86,.92);color:#fff;font:inherit;font-size:13px;',
+      'font-weight:600;cursor:pointer}',
+    '.edv-ajustar:hover{background:#3B85C0}',
+    '.edv-ajustando{box-shadow:inset 0 0 0 3px #3B85C0;cursor:grab}',
+    /* Barra flotante mientras se ajusta el encuadre */
+    '.edv-ajuste-barra{position:fixed;left:0;right:0;bottom:0;z-index:9500;display:flex;align-items:center;',
+      'gap:12px;flex-wrap:wrap;padding:10px clamp(12px,3vw,24px);background:#2E4256;color:#fff;',
+      'font-family:var(--fuente-texto,system-ui);font-size:14px;box-shadow:0 -6px 20px -12px rgba(0,0,0,.5)}',
+    '.edv-ajuste-tit{opacity:.8;flex:1;min-width:140px}',
+    '.edv-ajuste-zoom{display:flex;align-items:center;gap:8px;font-size:13px}',
+    '.edv-ajuste-zoom input[type=range]{width:120px}',
+    '.edv-ajuste-zval{font-family:var(--fuente-dato,monospace);min-width:44px;text-align:right}',
+    '.edv-ajuste-atajos{display:flex;gap:6px;flex-wrap:wrap}',
+    '.edv-ajuste-atajos button{min-height:36px;padding:0 12px;border-radius:999px;',
+      'border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font:inherit;font-size:13px;cursor:pointer}',
+    '.edv-ajuste-atajos button:hover{background:rgba(255,255,255,.14)}',
+    '.edv-ajuste-cancel{border-color:transparent;opacity:.85}'
   ].join('');
 
   function ponerEstilos() {
