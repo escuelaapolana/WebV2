@@ -140,6 +140,10 @@
             <input type="text" id="e-lugar" placeholder="Ciudad / instalación">
           </div>
         </div>
+        <label class="fila-check" for="e-dia-entero">
+          <input type="checkbox" id="e-dia-entero">
+          <span>Todo el día (sin hora) — p. ej. «sábado 20 · carrera»</span>
+        </label>
         <div class="grid2">
           <div>
             <label for="e-inicio">Fecha inicio</label>
@@ -150,6 +154,8 @@
             <input type="datetime-local" id="e-fin">
           </div>
         </div>
+        <label for="e-enlace">Enlace (web de la carrera, opcional)</label>
+        <input type="url" id="e-enlace" placeholder="https://…" inputmode="url" autocomplete="off">
         <span class="etiqueta" id="lbl-seccion">Secciones</span>
         <div class="sec-chips" id="e-seccion" role="group" aria-labelledby="lbl-seccion"></div>
         <div class="sec-otra">
@@ -382,6 +388,9 @@ APOLANA_ADMIN.listo(function (sb) {
     $('e-lugar').value = n.lugar || '';
     $('e-inicio').value = paraInput(n.fecha_inicio);
     $('e-fin').value = paraInput(n.fecha_fin);
+    $('e-dia-entero').checked = n.id ? !!n.dia_entero : false;
+    $('e-enlace').value = n.url || '';
+    modoDiaEntero($('e-dia-entero').checked);
     /* La ficha se abre al momento con lo que el evento ya tiene, y cuando
        llega la lista de la base se repinta sin perder lo tocado mientras. */
     var suyas = Array.isArray(n.seccion) ? n.seccion.slice()
@@ -397,6 +406,18 @@ APOLANA_ADMIN.listo(function (sb) {
     $('panel-form').classList.remove('oculto');
     $('panel-form').scrollTop = 0;
   }
+  /* «Todo el día»: cambia los dos campos de fecha entre datetime-local (con
+     hora) y date (solo día), conservando la parte de fecha al alternar. */
+  function modoDiaEntero(on) {
+    ['e-inicio', 'e-fin'].forEach(function (idd) {
+      var inp = $(idd); if (!inp) return;
+      var v = inp.value;
+      inp.type = on ? 'date' : 'datetime-local';
+      if (v) inp.value = on ? v.slice(0, 10) : (v.length === 10 ? v + 'T00:00' : v);
+    });
+  }
+  $('e-dia-entero').addEventListener('change', function () { modoDiaEntero(this.checked); });
+
   $('nuevo-evento').addEventListener('click', function () { abrirForm(); });
   $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
   $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
@@ -422,12 +443,24 @@ APOLANA_ADMIN.listo(function (sb) {
   $('form-evento').addEventListener('submit', async function (e) {
     e.preventDefault();
     var seccionArr = seccionesMarcadas();
+    /* Día entero: los inputs son de tipo `date` (sin hora), así que su valor
+       viene «2026-09-20». Se le pega la medianoche para que sea una fecha-hora
+       válida, y `dia_entero` avisa a la vista de que no pinte hora. */
+    var diaEntero = $('e-dia-entero').checked;
+    var ini = $('e-inicio').value || null;
+    var fin = $('e-fin').value || null;
+    if (diaEntero) {
+      if (ini && ini.length === 10) ini = ini + 'T00:00';
+      if (fin && fin.length === 10) fin = fin + 'T00:00';
+    }
     var datos = {
       titulo: $('e-titulo').value.trim(),
       tipo: $('e-tipo').value || null,
       lugar: $('e-lugar').value.trim() || null,
-      fecha_inicio: $('e-inicio').value || null,
-      fecha_fin: $('e-fin').value || null,
+      fecha_inicio: ini,
+      fecha_fin: fin,
+      dia_entero: diaEntero,
+      url: $('e-enlace').value.trim() || null,
       seccion: seccionArr.length ? seccionArr : null,
       descripcion: $('e-descripcion').value.trim() || null,
       inscripcion_abierta: $('e-inscripcion').checked

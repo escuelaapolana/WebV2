@@ -72,10 +72,9 @@ const MENU = [
      Horarios va detrás y contesta la otra pregunta, la de la semana fija
      («¿a qué hora entreno los martes?»). */
   { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
-  /* «Horarios» ya no es una página aparte: es una pestaña del calendario.
-     Se queda en el menú porque es lo que la gente busca por su nombre, pero
-     lleva directo a su vista, sin pasar por el redireccionamiento. */
-  { clave: 'horarios',   texto: 'Horarios',   url: '/calendario/?vista=horarios' },
+  /* «Horarios» ya no está en el menú: era una entrada que llevaba a la pestaña
+     de horarios del calendario, así que duplicaba «Calendario». Los horarios
+     se ven desde ahí (Calendario → Horarios). */
   /* «Liga» va en ámbar: es un nombre propio del club, no una categoría. */
   { clave: 'liga', texto: 'Liga', url: '/liga/', marca: true },
   { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
