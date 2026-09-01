@@ -1085,6 +1085,14 @@
      reserva en un 400 m no significan nada. Y en `hecho` tampoco,
      porque ahí no hay repeticiones que reservar. */
   function medidaDeFila(fila, opts) {
+    /* «Solo marcar»: el entrenador ha dicho que en este ejercicio no se apunta
+       nada —calentamiento, pliometría, core, movilidad—, solo se marca que se
+       ha hecho. Así el atleta ve un ✓ y no una casilla pidiendo un tiempo que
+       no existe. En la parte principal, donde sí hay series, no se pone y se
+       apuntan los tiempos como siempre. */
+    if (fila && fila.solo_marcar) {
+      return { clave: 'hecho', campos: [], unidades: null, unidad: null, referencia: '' };
+    }
     var med = medidaBase(fila, opts);
     var rir = rirDeFila(fila);
     if (rir && (med.clave === 'peso_reps' || med.clave === 'peso' || med.clave === 'reps')) {
