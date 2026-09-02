@@ -213,9 +213,43 @@
       arranque();
     });
 
+    /* Igual que en el portal: si hay un token guardado en el aparato, la
+       sesión existe aunque getSession tarde en darla al abrir en frío. Sin
+       token, de verdad no has entrado. Evita el pantallazo de login al abrir. */
+    function hayTokenGuardado() {
+      function busca(st) {
+        try {
+          if (!st) return false;
+          for (var i = 0; i < st.length; i++) {
+            var k = st.key(i);
+            if (k && /-auth-token$/.test(k) && st.getItem(k)) return true;
+          }
+        } catch (e) {}
+        return false;
+      }
+      return busca(window.localStorage) || busca(window.sessionStorage);
+    }
+
     async function arranque() {
       var s = await sb.auth.getSession();
-      if (!s.data.session) { mostrarLogin(); return; }
+      if (!s.data || !s.data.session) {
+        /* Sin sesión a la primera no es «no has entrado»: al abrir en frío
+           puede tardar. Si hay token, se espera en silencio (login oculto)
+           refrescando y reintentando hasta ~2,5s; si no hay token, login ya. */
+        if (!hayTokenGuardado()) { mostrarLogin(); return; }
+        var recuperada = null;
+        try {
+          var rs = await sb.auth.refreshSession();
+          if (rs && rs.data && rs.data.session) recuperada = rs.data.session;
+        } catch (e) {}
+        for (var intento = 0; !recuperada && intento < 12; intento++) {
+          await new Promise(function (r) { setTimeout(r, 200); });
+          var g = await sb.auth.getSession();
+          if (g.data && g.data.session) recuperada = g.data.session;
+        }
+        if (!recuperada) { mostrarLogin(); return; }
+        s = { data: { session: recuperada } };
+      }
       var admin = await sb.rpc('es_admin');
       if (admin.error) { mostrarLogin('No se pudo comprobar tu acceso. Inténtalo de nuevo.'); return; }
       if (!admin.data) {
