@@ -69,22 +69,25 @@
                       background:#fff; color: var(--texto); font:inherit; font-size:14px; cursor:pointer; }
   .pls-fl:hover, .pls-hoy:hover { border-color: var(--azul-filete); color: var(--navy); }
   /* Siete columnas fijas: la semana se lee de un vistazo, como la del atleta. */
-  .pls-dias { display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; }
+  /* minmax(0,1fr) y no 1fr: sin el 0, cada columna se niega a encoger por
+     debajo de su rótulo («Reintroducción gen») y las siete se salían a la
+     derecha en el móvil. Con el 0, encogen y el rótulo se recorta abajo. */
+  .pls-dias { display:grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap:6px; }
   .pls-d { display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px;
-           min-height:72px; border:1px solid var(--linea); border-radius:12px; background:#fff;
+           min-width:0; min-height:72px; border:1px solid var(--linea); border-radius:12px; background:#fff;
            font:inherit; cursor:pointer; text-align:center; }
   .pls-d:hover { border-color: var(--azul-filete); }
   .pls-d .pls-n   { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color: var(--texto-suave); }
   .pls-d .pls-num { font-size:17px; font-weight:600; color: var(--navy); line-height:1; }
-  .pls-d .pls-et  { font-size:11px; color: var(--texto-suave); line-height:1.25;
-                    overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  .pls-d .pls-et  { font-size:11px; color: var(--texto-suave); line-height:1.25; max-width:100%;
+                    overflow:hidden; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
   /* Un día libre se ve libre: sin él, todos los días parecen tener algo. */
   .pls-d.libre { background: var(--crema); border-style:dashed; }
   .pls-d.hoy   { border-color: var(--azul-filete); }
   .pls-d.sel   { background: var(--navy); border-color: var(--navy); }
   .pls-d.sel .pls-n, .pls-d.sel .pls-num, .pls-d.sel .pls-et { color:#fff; }
   @media (max-width: 620px) {
-    .pls-dias { grid-template-columns: repeat(4, 1fr); }
+    .pls-dias { grid-template-columns: repeat(4, minmax(0,1fr)); }
     .pls-d { min-height:64px; }
   }
 
@@ -2169,6 +2172,37 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<div class="te-semana">'+h+'</div>';
   }
 
+  /* Une las sesiones del mismo grupo en un mismo día en una sola tarjeta: el
+     mismo entreno partido por volúmenes para distintos atletas no debe salir
+     como tres tarjetas con tres «Pasar lista». Devuelve copias (no toca los
+     datos originales). Si el grupo tiene una sola sesión, la deja igual. */
+  function colapsaPorGrupo(lista){
+    var out = [], idx = {};
+    (lista||[]).forEach(function(s){
+      var g = s.grupo_id || '';
+      if(idx[g] == null){
+        idx[g] = out.length;
+        var c = {}; for(var k in s){ c[k] = s[k]; }
+        c.__titulos = [s.titulo || 'Entrenamiento de hoy'];
+        c.__n = 1;
+        out.push(c);
+      } else {
+        var c2 = out[idx[g]];
+        c2.__n++;
+        var t = s.titulo || 'Entrenamiento de hoy';
+        if(c2.__titulos.indexOf(t) < 0) c2.__titulos.push(t);
+        if(!s.publicada) c2.publicada = false;   // si alguna parte está en borrador, se avisa
+      }
+    });
+    out.forEach(function(c){
+      c.titulo = c.__titulos.join(' · ');
+      /* Varias sesiones = el grupo entero (entre todas cubren a todos): sin
+         «solo X», que se leería como que solo entrenan unos pocos. */
+      if(c.__n > 1) c.atletas_ids = null;
+    });
+    return out;
+  }
+
   function pintarHoy(){
     var cont = $('hoy-cont'); if(!cont) return;
     if(!MIS_GRUPOS.length){ cont.innerHTML = ''; return; }
@@ -2184,6 +2218,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var diaVer = ENT_OJEO || todayISO;
     var delDia = (diaVer===todayISO) ? HOY.sesiones
                : (HOY.semana||[]).filter(function(x){ return x.fecha===diaVer; });
+    /* Pasar lista es por GRUPO y día, no por sesión. Si un grupo tiene varias
+       sesiones el mismo día (el mismo entreno partido por volúmenes para
+       distintos atletas), antes salían varias tarjetas iguales con varios
+       «Pasar lista». Se colapsan en una por grupo. */
+    delDia = colapsaPorGrupo(delDia);
 
     if(!delDia.length){
       var txt = (diaVer !== todayISO)
