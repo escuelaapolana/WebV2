@@ -211,7 +211,9 @@ function colaboradorHTML(c, caja) {
   let dentro = '';
   if (modo !== 'nombre') {
     /* Con el nombre a la vista el alt sobra (sería leerlo dos veces). */
-    dentro += `<img src="${escaparHTML(c.logo_url)}" alt="${modo === 'logo' ? escaparHTML(c.nombre) : ''}" loading="lazy" decoding="async">`;
+    /* Si el logo NO carga (imagen borrada, enlace roto…), el colaborador
+       entero desaparece en vez de dejar una caja vacía. */
+    dentro += `<img src="${escaparHTML(c.logo_url)}" alt="${modo === 'logo' ? escaparHTML(c.nombre) : ''}" loading="lazy" decoding="async" onerror="var i=this.closest('.colab-pie-item,.colab-logo'); if(i){i.remove();}">`;
   }
   if (modo !== 'logo') dentro += `<span class="colab-nombre">${escaparHTML(c.nombre)}</span>`;
 
@@ -406,10 +408,15 @@ function pintarColaboradores(lista) {
     '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;min-height:26px;' +
       'color:rgba(255,255,255,0.82);text-decoration:none;font-size:13px;line-height:1.35}',
     'a.colab-pie-item:hover{color:#fff}',
-    /* Todos a 26 px y en un solo tono: se leen como un conjunto. */
+    /* Cada logo en su pastilla blanca. Antes se blanqueaban con
+       «brightness(0) invert(1)» para verlos de un solo tono sobre el navy,
+       pero eso solo vale para logos transparentes de una tinta: los de aquí
+       son JPG con fondo opaco, así que el filtro los convertía en un
+       rectángulo blanco (las «cajas» sin logo que se veían). Sobre blanco se
+       ven tal cual, con su color, sea cual sea el formato. */
     '.colab-pie-item img{height:26px;width:auto;max-width:120px;object-fit:contain;display:block;' +
-      'filter:brightness(0) invert(1);opacity:.85;transition:opacity .2s ease}',
-    'a.colab-pie-item:hover img{opacity:1}',
+      'background:#fff;border-radius:7px;padding:4px 7px;box-sizing:content-box;transition:transform .2s ease}',
+    'a.colab-pie-item:hover img{transform:translateY(-1px)}',
     '.colab-pie-item--ambos{flex-direction:column;align-items:flex-start;gap:4px}',
 
     /* --- Fila legal: aviso, privacidad, condiciones y cookies ---
