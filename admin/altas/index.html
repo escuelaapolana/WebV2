@@ -214,6 +214,10 @@
         <select id="f-temporada"><option value="">Todas</option></select>
       </div>
 
+      <div id="alt-copia" hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 12px">
+        <button type="button" class="b2" id="exportar-altas">Exportar copia (CSV)</button>
+        <span style="font-size:13px;color:var(--tenue,#71717a)">Descarga todas las altas como respaldo, con el DNI y la cuenta <b>enteros</b>. Guárdala en sitio seguro: lleva datos personales.</span>
+      </div>
       <div id="aviso-carga"></div>
       <div id="tabla"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
     </div>
@@ -400,6 +404,84 @@ APOLANA_ADMIN.listo(function (sb) {
 
     pintarTemporadas();
     pintar();
+    /* Ya hay datos y quien mira puede verlos: se enseña el botón de copia. */
+    var bc = $('alt-copia'); if (bc) bc.hidden = false;
+  }
+
+  /* ============================================================
+     COPIA DE SEGURIDAD · exportar todas las altas a CSV
+     ------------------------------------------------------------
+     Un CSV por tipo (socios, escuela y niños de la escuela), con
+     TODAS las columnas tal cual las trae la base: si mañana se
+     añade un campo al formulario, sale solo, sin tocar aquí nada.
+     Los datos van ENTEROS (DNI, IBAN, tarjeta sanitaria), porque
+     esto es un respaldo para no tener que volver a pedírselos a las
+     familias si algún día hay que recuperar. La pantalla nunca carga
+     esos datos enteros, así que los trae una función de servidor que
+     solo responde a administración o tesorería (`altas-export`).
+     Formato de Excel en español: separador «;», acentos con BOM,
+     y la fecha en el nombre para poder guardar una copia cada pocos
+     días. Es lo mismo que ya se hace en Atletas y en Cobros.
+     ============================================================ */
+  function csvCampo(v) {
+    if (v == null) return '';
+    if (Array.isArray(v)) v = v.join(' | ');
+    else if (typeof v === 'object') v = JSON.stringify(v);
+    v = String(v);
+    return /[";\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function descargarCsv(nombre, filas) {
+    var texto = filas.map(function (fila) { return fila.map(csvCampo).join(';'); }).join('\r\n');
+    var blob = new Blob(['﻿' + texto], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = nombre + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  }
+  /* Vuelca una lista de objetos a [cabecera, ...filas] usando la UNIÓN de
+     todas las claves, para no perder ninguna columna aunque unas filas
+     tengan campos que otras no. */
+  function objetosACsv(lista) {
+    var claves = [];
+    lista.forEach(function (o) {
+      Object.keys(o).forEach(function (k) { if (claves.indexOf(k) === -1) claves.push(k); });
+    });
+    var filas = [claves];
+    lista.forEach(function (o) { filas.push(claves.map(function (k) { return o[k]; })); });
+    return filas;
+  }
+  async function exportarAltas() {
+    var btn = $('exportar-altas');
+    var antes = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Preparando…';
+    try {
+      var r = await sb.functions.invoke('altas-export', { body: {} });
+      /* functions.invoke mete el error del servidor en r.error; una
+         respuesta con ok:false viene en r.data. Se miran los dos. */
+      if (r.error || !r.data || !r.data.ok) {
+        var pq = (r.data && r.data.motivo) || (r.error && r.error.message) || '';
+        apoToast('No se ha podido preparar la copia. ' + pq, 'error');
+        return;
+      }
+      var socios  = r.data.socios  || [];
+      var escuela = r.data.escuela || [];
+      var ninos   = r.data.ninos   || [];
+      if (!socios.length && !escuela.length && !ninos.length) {
+        apoToast('No hay altas que exportar todavía.', 'error');
+        return;
+      }
+      if (socios.length)  descargarCsv('altas-socio',         objetosACsv(socios));
+      if (escuela.length) descargarCsv('altas-escuela',       objetosACsv(escuela));
+      if (ninos.length)   descargarCsv('altas-escuela-ninos', objetosACsv(ninos));
+      apoToast('Copia descargada. Guárdala con su fecha, en sitio seguro.');
+    } catch (e) {
+      apoToast('No se ha podido preparar la copia.', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = antes;
+    }
   }
 
   /* Las temporadas que existen de verdad, no una lista escrita a mano que
@@ -969,6 +1051,7 @@ APOLANA_ADMIN.listo(function (sb) {
   $('mandos').addEventListener('input', function (e) { if (e.target.id === 'f-buscar') pintar(); });
   $('f-tipo').addEventListener('change', pintar);
   $('f-temporada').addEventListener('change', pintar);
+  $('exportar-altas').addEventListener('click', exportarAltas);
 
   /* El «⋯» de cada fila. */
   PZ.alPulsar('#tabla', function (accion, id) {
