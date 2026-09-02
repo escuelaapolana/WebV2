@@ -2548,6 +2548,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
               '<div><label>Prueba</label><select id="mk-prueba">'+opcionesPruebas()+'</select></div>'+
               '<div><label id="mk-tiempo-lbl">Marca</label><input id="mk-tiempo" placeholder="7.85 · 1:02.3 · 6.85"></div>'+
             '</div>'+
+            /* Altura de la valla: solo aparece cuando la prueba es de vallas.
+               Se guarda dentro del nombre, «400 m vallas (0,84)», igual que en
+               Récords, para que cada altura sea su propia marca. */
+            '<div id="mk-altura-fila" hidden><label>Altura de la valla</label><select id="mk-altura"></select></div>'+
             '<div class="grid2">'+
               '<div><label>Fecha</label><input id="mk-fecha" type="date" value="'+todayISO+'"></div>'+
               '<div><label>Dónde</label><input id="mk-sede" placeholder="Estadio, pista cubierta…"></div>'+
@@ -6035,10 +6039,34 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   mirarStrava().then(function(){ if(STRAVA_HAY && diaSel) pintarDia(diaSel); });
 
   // Al elegir prueba, adaptar la etiqueta de la marca (tiempo / metros / puntos)
+  /* Alturas estándar de valla por prueba. Al elegir una prueba de vallas se
+     enseña este desplegable; la altura se guarda dentro del nombre, «400 m
+     vallas (0,84)», que es como ya se distinguen en Récords. */
+  var ALTURAS_VALLAS = {
+    '60 m vallas':  ['1,067','0,991','0,914','0,838','0,762','0,700'],
+    '100 m vallas': ['0,838','0,762','0,700'],
+    '110 m vallas': ['1,067','0,991','0,914','0,838'],
+    '400 m vallas': ['0,914','0,838','0,762']
+  };
+  /* «400 m vallas (0,84)» → { base:'400 m vallas', altura:'0,84' }. */
+  function pruebaBase(nombre){
+    var m = /^(.*?)\s*\(([\d.,]+)\)\s*$/.exec(nombre || '');
+    return m ? { base: m[1].trim(), altura: m[2] } : { base: (nombre||'').trim(), altura: '' };
+  }
+  function pintarAlturas(base, sel){
+    var fila = $('mk-altura-fila'), s = $('mk-altura');
+    var lista = ALTURAS_VALLAS[base];
+    if(!lista){ if(fila) fila.hidden = true; if(s) s.innerHTML=''; return; }
+    if(s) s.innerHTML = '<option value="">— sin especificar —</option>' +
+      lista.map(function(a){ return '<option'+(a===sel?' selected':'')+'>'+a+'</option>'; }).join('');
+    if(fila) fila.hidden = false;
+  }
+
   $('mk-prueba').addEventListener('change', function(){ var p=catMap[this.value]; var lbl=$('mk-tiempo-lbl'), inp=$('mk-tiempo');
     if(p&&p.unidad==='distancia'){ lbl.textContent='Marca (metros)'; inp.placeholder='6.85'; }
     else if(p&&p.unidad==='puntos'){ lbl.textContent='Marca (puntos)'; inp.placeholder='5820'; }
     else { lbl.textContent='Marca (tiempo)'; inp.placeholder='7.85 · 1:02.3'; }
+    pintarAlturas(this.value);
   });
 
   /* Si NO es null, se está EDITANDO esa marca en vez de crear una nueva. */
@@ -6047,6 +6075,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function resetMkForm(){
     $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value=''; $('mk-contexto').value='';
     if($('mk-fecha')) $('mk-fecha').value = todayISO;
+    if($('mk-altura-fila')) $('mk-altura-fila').hidden = true;
+    if($('mk-altura')) $('mk-altura').innerHTML = '';
     MK_EDIT_ID = null;
     var g=$('mk-guardar'); if(g) g.textContent='Guardar marca';
   }
@@ -6058,8 +6088,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!x) return;
     var f=$('mk-form'), b=$('mk-abrir');
     if(f){ f.hidden=false; if(b) b.setAttribute('aria-expanded','true'); }
-    $('mk-prueba').value = x.prueba||'';
-    try { $('mk-prueba').dispatchEvent(new Event('change')); } catch(e){}
+    var pb = pruebaBase(x.prueba||'');
+    $('mk-prueba').value = pb.base;
+    try { $('mk-prueba').dispatchEvent(new Event('change')); } catch(e){}   // rellena las alturas si es de vallas
+    if(pb.altura && $('mk-altura')) $('mk-altura').value = pb.altura;
     $('mk-tiempo').value = x.tiempo_display||'';
     if($('mk-fecha')) $('mk-fecha').value = x.fecha||todayISO;
     $('mk-sede').value = x.sede||'';
@@ -6090,6 +6122,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   $('mk-guardar').addEventListener('click', async function(){
     var msg=$('mk-msg'); var prueba=$('mk-prueba').value.trim(), disp=$('mk-tiempo').value.trim();
     if(!prueba){ msg.textContent='Elige la prueba.'; msg.className='msg error'; return; }
+    /* Si es de vallas y se ha elegido altura, se mete en el nombre. */
+    var alt = ($('mk-altura') && $('mk-altura-fila') && !$('mk-altura-fila').hidden) ? $('mk-altura').value : '';
+    if(alt && ALTURAS_VALLAS[prueba]) prueba = prueba + ' (' + alt + ')';
     msg.textContent='Guardando…'; msg.className='msg';
     var campos={ prueba:prueba, tiempo_display:disp||null, tiempo_segundos:tiempoANum(disp), fecha:$('mk-fecha').value||null, sede:$('mk-sede').value.trim()||null, tipo:$('mk-tipo').value||null, contexto:$('mk-contexto').value||null };
     var r;
