@@ -258,10 +258,11 @@
             <option value="baja">Baja</option>
           </select>
           <select id="f-grupo" aria-label="Grupo"><option value="">Todos los grupos</option></select>
-          <select id="f-tipo" aria-label="Escuela o socios">
-            <option value="">Escuela y socios</option>
+          <select id="f-tipo" aria-label="Escuela, socios o municipal">
+            <option value="">Escuela, socios y municipal</option>
             <option value="escuela">Solo escuela</option>
             <option value="socio">Solo socios</option>
+            <option value="municipal">Solo municipales</option>
           </select>
           <span class="cuenta" id="f-cuenta" aria-live="polite"></span>
         </div>
@@ -273,6 +274,24 @@
       <div class="cuerpo">
 
         <main>
+          <style>
+            #lote-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 12px;
+              padding:11px 15px;border-radius:12px;background:#FBF1DD;border:1px solid #EAD8AE;}
+            #lote-bar .lote-todos{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--navy);cursor:pointer;}
+            #lote-bar #lote-cuenta{font-size:13.5px;color:var(--texto-suave);}
+            #lote-bar .lote-acciones{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;}
+            #lote-bar .lote-si{background:#E7F3EA;border-color:#BFE0C7;color:#1e7a3d;}
+            #lote-bar .lote-no{background:#FBE9E7;border-color:#EBC4BE;color:#B23B2E;}
+            #tabla td .lote-chk{margin-right:11px;width:18px;height:18px;vertical-align:middle;accent-color:var(--pz-azul,#2F6FA8);cursor:pointer;}
+          </style>
+          <div id="lote-bar" hidden>
+            <label class="lote-todos"><input type="checkbox" id="lote-all"> Marcar todos</label>
+            <span id="lote-cuenta">0 seleccionados</span>
+            <div class="lote-acciones">
+              <button type="button" class="b2 lote-si" id="lote-activo">Se quedan → Activo</button>
+              <button type="button" class="b2 lote-no" id="lote-baja">No se quedan → Baja</button>
+            </div>
+          </div>
           <div class="envol">
             <table id="tabla">
               <thead>
@@ -352,6 +371,7 @@
           <option value="">Automático por edad</option>
           <option value="escuela">Escuela (fijado a mano)</option>
           <option value="socio">Socio (fijado a mano)</option>
+          <option value="municipal">Escuela municipal (fijado a mano)</option>
         </select>
         <!-- ==== PERMISO DE IMAGEN ====
              Esto no es papeleo: es lo que decide si el entrenador puede
@@ -404,6 +424,7 @@ APOLANA_ADMIN.listo(function (sb) {
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
   var COLS = 4;
+  var SELECT_LOTE = new Set();   /* ids marcados en el modo «En prueba» */
   var hoyIso = new Date().toISOString().slice(0, 10);
   /* En una columna de importes el punto de los miles tiene que salir siempre. */
   var fmtEur = (function () {
@@ -442,7 +463,7 @@ APOLANA_ADMIN.listo(function (sb) {
   /* Escuela / Socios por año de nacimiento: nacidos en 2009 o después = Escuela. */
   var ANIO_CORTE_ESCUELA = 2009;
   function tipoDe(a) {
-    if (a.tipo_membresia === 'escuela' || a.tipo_membresia === 'socio') return a.tipo_membresia;
+    if (a.tipo_membresia === 'escuela' || a.tipo_membresia === 'socio' || a.tipo_membresia === 'municipal') return a.tipo_membresia;
     var y = parseInt(String(a.fecha_nacimiento || '').slice(0, 4), 10);
     if (!y) return null;
     return y >= ANIO_CORTE_ESCUELA ? 'escuela' : 'socio';
@@ -716,6 +737,15 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
 
+    /* Modo lote: solo cuando se está mirando «En prueba». Ahí aparece la
+       casilla en cada fila y la barra de arriba para confirmar de golpe. */
+    var lote = $('f-estado').value === 'prueba';
+    $('lote-bar').hidden = !lote;
+    if (lote) {
+      var visiblesLote = {}; lista.forEach(function (x) { visiblesLote[x.id] = true; });
+      SELECT_LOTE.forEach(function (id) { if (!visiblesLote[id]) SELECT_LOTE.delete(id); });
+    } else { SELECT_LOTE.clear(); }
+
     tb.innerHTML = lista.map(function (a) {
       var u = ULTIMO[a.id];
       var recibo = SIN_RECIBOS ? '<span class="nada">sin poder mirarlo</span>'
@@ -727,7 +757,7 @@ APOLANA_ADMIN.listo(function (sb) {
       var sub = [anio, a.categoria].filter(Boolean).join(' · ');
       return '<tr class="fila' + (pideAlgo(a) ? ' pide' : '') + '" tabindex="0" role="button" data-ed="' + esc(a.id) + '" ' +
              'aria-label="Abrir la ficha de ' + esc(nombreCompleto(a)) + '">' +
-        '<td data-etiqueta="Atleta"><span class="persona"><span class="ini">' + esc(iniciales(a)) + '</span>' +
+        '<td data-etiqueta="Atleta">' + (lote ? '<input type="checkbox" class="lote-chk" data-chk="' + esc(a.id) + '"' + (SELECT_LOTE.has(a.id) ? ' checked' : '') + ' aria-label="Marcar para el lote">' : '') + '<span class="persona"><span class="ini">' + esc(iniciales(a)) + '</span>' +
           '<span><span class="nom">' + esc(nombreCompleto(a)) + '</span>' +
           (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + '</span></span></td>' +
         '<td data-etiqueta="Grupo">' + celdaGrupos(a) + '</td>' +
@@ -739,6 +769,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('pie-lista').textContent = lista.length === TODOS.length
       ? lista.length + ' atletas en total'
       : lista.length + ' atletas con estos filtros, de ' + TODOS.length;
+    refrescarLote();
   }
 
   /* ---------- lateral: el contexto de lo que se está viendo ---------- */
@@ -751,6 +782,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var nSin = n(function (a) { return !a.estado; });
     var nEsc = n(function (a) { return tipoDe(a) === 'escuela'; });
     var nSoc = n(function (a) { return tipoDe(a) === 'socio'; });
+    var nMuni = n(function (a) { return tipoDe(a) === 'municipal'; });
 
     function fila(clase, txt, valor) {
       return '<div class="par"><span class="k"><span class="pt" style="background:' + clase + '"></span>' +
@@ -764,6 +796,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (nSin) h += fila('#A79F8E', 'Sin estado puesto', nSin);
     h += '<div class="par raya"><span class="k">Escuela</span><span class="v">' + nEsc + '</span></div>';
     h += '<div class="par"><span class="k">Socios</span><span class="v">' + nSoc + '</span></div>';
+    h += '<div class="par"><span class="k">Escuela municipal</span><span class="v">' + nMuni + '</span></div>';
     /* Cuánta gente va a más de un grupo. Sale solo cuando hay alguien:
        una fila que pone «0» un curso entero es una fila de más. */
     var nDos = n(function (a) { return gruposDe(a).length > 1; });
@@ -952,7 +985,47 @@ APOLANA_ADMIN.listo(function (sb) {
   });
 
   /* La fila entera abre la ficha: no hay columna de acciones. */
+  /* ---------- confirmar en lote (modo «En prueba») ---------- */
+  function refrescarLote() {
+    var c = $('lote-cuenta'); if (!c) return;
+    c.textContent = SELECT_LOTE.size + ' seleccionado' + (SELECT_LOTE.size === 1 ? '' : 's');
+    var todos = $('lote-all');
+    var visibles = document.querySelectorAll('#tabla .lote-chk').length;
+    if (todos) todos.checked = visibles > 0 && SELECT_LOTE.size >= visibles;
+  }
+  async function aplicarLote(nuevoEstado, palabra) {
+    var ids = Array.from(SELECT_LOTE);
+    if (!ids.length) { apoToast('No has marcado a nadie.', 'error'); return; }
+    var q = ids.length === 1 ? 'Vas a marcar 1 atleta como ' + palabra + '.'
+                             : 'Vas a marcar ' + ids.length + ' atletas como ' + palabra + '.';
+    if (!await apoConfirm({ titulo: 'Confirmar en lote', texto: q + ' ¿Seguimos?', confirmar: palabra })) return;
+    var r = await sb.from('atletas').update({ estado: nuevoEstado }).in('id', ids).select('id');
+    if (r.error) { apoToast('No se ha podido: ' + r.error.message, 'error'); return; }
+    var hechos = r.data ? r.data.length : ids.length;
+    SELECT_LOTE.clear();
+    apoToast(hechos + (hechos === 1 ? ' ficha' : ' fichas') + ' → ' + palabra + '.');
+    cargar();
+  }
+  if ($('lote-all')) $('lote-all').addEventListener('change', function () {
+    var on = this.checked;
+    document.querySelectorAll('#tabla .lote-chk').forEach(function (c) {
+      c.checked = on;
+      if (on) SELECT_LOTE.add(c.getAttribute('data-chk')); else SELECT_LOTE.delete(c.getAttribute('data-chk'));
+    });
+    refrescarLote();
+  });
+  if ($('lote-activo')) $('lote-activo').addEventListener('click', function () { aplicarLote('activo', 'Activo'); });
+  if ($('lote-baja'))   $('lote-baja').addEventListener('click', function () { aplicarLote('baja', 'Baja'); });
+
   $('tabla').addEventListener('click', async function (e) {
+    /* La casilla del lote NO abre la ficha: solo marca o desmarca. */
+    var chk = e.target.closest('.lote-chk');
+    if (chk) {
+      if (chk.checked) SELECT_LOTE.add(chk.getAttribute('data-chk'));
+      else SELECT_LOTE.delete(chk.getAttribute('data-chk'));
+      refrescarLote();
+      return;
+    }
     if (e.target.closest('[data-primer-atleta]')) { abrir(); return; }
     if (e.target.closest('[data-limpiar]')) {
       $('f-buscar').value = ''; $('f-estado').value = ''; $('f-grupo').value = ''; $('f-tipo').value = '';
@@ -967,6 +1040,7 @@ APOLANA_ADMIN.listo(function (sb) {
   });
   $('tabla').addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest && e.target.closest('.lote-chk')) return; /* la casilla se maneja sola */
     var fila = e.target.closest && e.target.closest('tr[data-ed]');
     if (!fila) return;
     e.preventDefault();
