@@ -1557,21 +1557,46 @@
       });
     }
 
+    /* ¿Queda algún token de sesión guardado en el aparato? Supabase lo guarda
+       bajo una clave «sb-…-auth-token». Si NO hay ninguno, de verdad no has
+       entrado y el login sale ya, sin esperas. Si SÍ lo hay, aunque getSession
+       aún no lo dé, es que está tardando en cargar: se espera. */
+    function hayTokenGuardado() {
+      function busca(st) {
+        try {
+          if (!st) return false;
+          for (var i = 0; i < st.length; i++) {
+            var k = st.key(i);
+            if (k && /-auth-token$/.test(k) && st.getItem(k)) return true;
+          }
+        } catch (e) {}
+        return false;
+      }
+      return busca(window.localStorage) || busca(window.sessionStorage);
+    }
+
     async function arranque() {
       var s = await sb.auth.getSession();
       if (!s.data || !s.data.session) {
-        /* Sin sesión a la primera NO es sinónimo de «no has entrado». Al abrir
-           la app, si el token de acceso ha caducado, getSession puede devolver
-           null un instante antes de refrescarse; enseñar el login ahí provoca
-           el pantallazo de «iniciar sesión» al arrancar. Así que antes de
-           rendirse se intenta refrescar una vez con el token guardado. Solo si
-           eso tampoco da sesión (de verdad no has entrado) se muestra el login.
-           Para quien está fuera, refreshSession falla rápido y sin red. */
+        /* Sin sesión a la primera NO es «no has entrado». Al abrir la app en
+           frío, getSession puede tardar en devolver la sesión guardada, y
+           enseñar el login ahí provoca el pantallazo de «iniciar sesión» que
+           aparece un segundo y luego entra. Así que: si NO hay ni rastro de
+           token, login ya; si SÍ lo hay, se espera (refrescando y reintentando
+           en silencio, con el login oculto) hasta ~2,5 s antes de rendirse. */
+        if (!hayTokenGuardado()) { mostrarLogin(); return; }
+        var recuperada = null;
         try {
           var rs = await sb.auth.refreshSession();
-          if (rs && rs.data && rs.data.session) { s = rs; }
-        } catch (e) { /* sin token válido: no hay nada que recuperar */ }
-        if (!s.data || !s.data.session) { mostrarLogin(); return; }
+          if (rs && rs.data && rs.data.session) recuperada = rs.data.session;
+        } catch (e) { /* seguimos reintentando con getSession */ }
+        for (var intento = 0; !recuperada && intento < 12; intento++) {
+          await new Promise(function (r) { setTimeout(r, 200); });
+          var g = await sb.auth.getSession();
+          if (g.data && g.data.session) recuperada = g.data.session;
+        }
+        if (!recuperada) { mostrarLogin(); return; }
+        s = { data: { session: recuperada } };
       }
       var usuario = s.data.session.user;
       var email = usuario.email;
