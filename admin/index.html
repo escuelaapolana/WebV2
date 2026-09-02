@@ -410,8 +410,13 @@
   <div class="sesion"><span id="quien"></span><a class="ir-web" href="../">Ir a la web</a><button class="btn btn--neutro btn--mini" id="salir" style="color:#fff;border-color:rgba(255,255,255,.4)">Salir</button></div>
 </div>
 
-<!-- ===== LOGIN ===== -->
-<div id="vista-login">
+<!-- ===== LOGIN =====
+     Arranca OCULTO a propósito: antes se veía por defecto y, mientras
+     arranque() comprobaba la sesión y los permisos (~1s de llamadas), el
+     formulario de login parpadeaba aunque ya estuvieras dentro. Ahora no se
+     ve nada hasta que se decide qué mostrar; el login solo sale si de verdad
+     no hay sesión (ver('login')). -->
+<div id="vista-login" class="oculto">
   <div class="login-caja">
     <img class="login-logo" src="../assets/img/logo.png" alt="Club Apolana">
     <h1>Panel Apolana</h1>
@@ -952,9 +957,43 @@ document.addEventListener('DOMContentLoaded', function () {
     return;
   }
 
+  /* ¿Queda algún token de sesión guardado? Supabase lo guarda como
+     «sb-…-auth-token» (a veces partido en «.0», «.1»). Si NO hay ninguno, de
+     verdad no has entrado. Si lo hay pero getSession tarda, es que está
+     cargando: se espera, no se enseña el login. */
+  function hayTokenGuardado() {
+    function busca(st) {
+      try {
+        if (!st) return false;
+        for (var i = 0; i < st.length; i++) {
+          var k = st.key(i);
+          if (k && /-auth-token(\.\d+)?$/.test(k) && st.getItem(k)) return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+    return busca(window.localStorage) || busca(window.sessionStorage);
+  }
+
   async function arranque() {
     var s = await sb.auth.getSession();
-    if (!s.data.session) { ver('login'); return; }
+    if (!s.data || !s.data.session) {
+      /* Sin sesión a la primera no es «no has entrado»: al abrir en frío puede
+         tardar. Si hay token, se espera en silencio; si no, login. */
+      if (!hayTokenGuardado()) { ver('login'); return; }
+      var recuperada = null;
+      try {
+        var rs = await sb.auth.refreshSession();
+        if (rs && rs.data && rs.data.session) recuperada = rs.data.session;
+      } catch (e) {}
+      for (var intento = 0; !recuperada && intento < 12; intento++) {
+        await new Promise(function (r) { setTimeout(r, 200); });
+        var g = await sb.auth.getSession();
+        if (g.data && g.data.session) recuperada = g.data.session;
+      }
+      if (!recuperada) { ver('login'); return; }
+      s = { data: { session: recuperada } };
+    }
 
     /* La franja «Estás como …» se monta ANTES de mirar el permiso, y a
        propósito: si alguien está mirando el club como atleta, el panel
@@ -982,7 +1021,11 @@ document.addEventListener('DOMContentLoaded', function () {
       SOY_DEL_CUBO = !c.error && !!c.data;
       puede = SOY_DEL_CUBO;
     }
-    if (!puede) { await pintarSinPermiso(); ver('no'); return; }
+    /* Estás dentro pero con un papel que no entra al panel (lo más común:
+       llevas puesto «atleta»). En vez de plantarte una tarjeta intermedia,
+       te llevo DIRECTO a tu portal —que es lo tuyo—. El interruptor de
+       papeles sigue arriba («Estás como… · Cambiar») por si querías el panel. */
+    if (!puede) { location.replace((window.APOLANA_BASE || '../') + 'portal/'); return; }
     $('quien').textContent = s.data.session.user.email;
     ver('panel');
     var _h = (location.hash || '').replace('#', '');

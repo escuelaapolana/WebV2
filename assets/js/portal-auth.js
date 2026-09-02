@@ -1567,7 +1567,7 @@
           if (!st) return false;
           for (var i = 0; i < st.length; i++) {
             var k = st.key(i);
-            if (k && /-auth-token$/.test(k) && st.getItem(k)) return true;
+            if (k && /-auth-token(\.\d+)?$/.test(k) && st.getItem(k)) return true;
           }
         } catch (e) {}
         return false;
