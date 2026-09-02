@@ -94,6 +94,14 @@
   /* Máximo dos líneas por fila: si hiciera falta una tercera, sería una tarjeta */
   .lista-fila .lf-sub { font-size:14px; color: var(--texto-suave); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .lista-fila .lf-dato { flex:none; font-family: var(--fuente-dato); font-size:16px; color: var(--navy); }
+  /* Editar/Borrar de una marca propia: discretos, a la derecha del dato. */
+  .lista-fila .lf-acc { flex:none; display:flex; gap:4px; margin-left:2px; }
+  .lf-acc-b { min-height:36px; padding:4px 10px; border:1px solid var(--linea); border-radius:999px;
+              background:#fff; color: var(--azul-oscuro); font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .lf-acc-b:hover { border-color: var(--azul-filete, #3B85C0); }
+  .lf-acc-b--del { color:#b3261e; }
+  .lf-acc-b--del:hover { border-color:#b3261e; background:#fdeceb; }
+  @media (max-width: 560px) { .lf-acc-b { padding:4px 8px; font-size:12.5px; } }
   .lista-fila .lf-dia { flex:none; width:52px; font-size:15px; font-weight:600; color: var(--navy); font-variant-numeric: tabular-nums; }
   .lista-fila .lf-hora { flex:none; font-size:14px; color: var(--texto-suave); font-variant-numeric: tabular-nums; }
   .lista-fila .lf-dif { flex:none; width:56px; text-align:right; font-size:14px; color: var(--texto-suave); }
@@ -2347,7 +2355,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pedirMarcas(){
     if(!MARCAS_PROM){
       MARCAS_PROM = sb.from('marcas_atleta')
-        .select('prueba,tiempo_display,tiempo_segundos,fecha,sede,tipo,contexto')
+        .select('id,prueba,tiempo_display,tiempo_segundos,fecha,sede,tipo,contexto')
         .eq('atleta_id',at.id).order('fecha',{ascending:false}).limit(200);
     }
     return MARCAS_PROM;
@@ -5818,6 +5826,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         if(!ev.target.closest) return;
         var t=ev.target.closest('#mk-todas');
         if(t){ mkVerTodas=!mkVerTodas; pintarMarcas(); return; }
+        var be=ev.target.closest('[data-mk-edit]'); if(be){ editarMarca(be.getAttribute('data-mk-edit')); return; }
+        var bd=ev.target.closest('[data-mk-del]'); if(bd){ borrarMarca(bd.getAttribute('data-mk-del')); return; }
         var b=ev.target.closest('[data-mk-f]'); if(!b) return;
         mkFiltro=b.getAttribute('data-mk-f'); mkVerTodas=false;
         try { window.localStorage.setItem('apolana.marcas.filtro', mkFiltro); } catch(e){}
@@ -5957,11 +5967,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var etq=[fechaCorta(x.fecha), x.sede,
                  x.contexto==='competicion'?'competición':(x.contexto==='entreno'?'entrenamiento':''),
                  x.tipo?(tipoLabel[x.tipo]||x.tipo):''].filter(Boolean).join(' · ');
-        return '<div class="lista-fila">'+
+        return '<div class="lista-fila lista-fila--mk">'+
           '<span class="lf-txt"><span class="lf-nom">'+esc(x.prueba||'Prueba sin nombre')+'</span>'+
           (etq?'<span class="lf-sub">'+esc(etq)+'</span>':'')+'</span>'+
           (x.tiempo_display ? '<span class="lf-dato">'+esc(x.tiempo_display)+'</span>'
-                            : '<span class="lf-sin">sin marca</span>')+'</div>';
+                            : '<span class="lf-sin">sin marca</span>')+
+          /* Editar/Borrar tu propia marca: si te equivocaste al subirla, aquí
+             la arreglas o la quitas. */
+          (x.id ? '<span class="lf-acc">'+
+            '<button type="button" class="lf-acc-b" data-mk-edit="'+esc(x.id)+'">Editar</button>'+
+            '<button type="button" class="lf-acc-b lf-acc-b--del" data-mk-del="'+esc(x.id)+'">Borrar</button>'+
+          '</span>' : '')+
+        '</div>';
       }).join('')+'</div>';
 
     /* 4 · Progresión: las gráficas de las pruebas con dos marcas o más */
@@ -6024,16 +6041,68 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     else { lbl.textContent='Marca (tiempo)'; inp.placeholder='7.85 · 1:02.3'; }
   });
 
+  /* Si NO es null, se está EDITANDO esa marca en vez de crear una nueva. */
+  var MK_EDIT_ID = null;
+
+  function resetMkForm(){
+    $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value=''; $('mk-contexto').value='';
+    if($('mk-fecha')) $('mk-fecha').value = todayISO;
+    MK_EDIT_ID = null;
+    var g=$('mk-guardar'); if(g) g.textContent='Guardar marca';
+  }
+
+  /* Editar una marca: se rellena el MISMO formulario con sus datos y, al
+     guardar, se actualiza esa marca en vez de crear otra. */
+  function editarMarca(id){
+    var x=(MARCAS||[]).filter(function(m){ return String(m.id)===String(id); })[0];
+    if(!x) return;
+    var f=$('mk-form'), b=$('mk-abrir');
+    if(f){ f.hidden=false; if(b) b.setAttribute('aria-expanded','true'); }
+    $('mk-prueba').value = x.prueba||'';
+    try { $('mk-prueba').dispatchEvent(new Event('change')); } catch(e){}
+    $('mk-tiempo').value = x.tiempo_display||'';
+    if($('mk-fecha')) $('mk-fecha').value = x.fecha||todayISO;
+    $('mk-sede').value = x.sede||'';
+    $('mk-tipo').value = x.tipo||'';
+    $('mk-contexto').value = x.contexto||'';
+    MK_EDIT_ID = x.id;
+    var g=$('mk-guardar'); if(g) g.textContent='Guardar cambios';
+    var msg=$('mk-msg'); if(msg){ msg.textContent='Estás editando una marca que ya tenías. Al guardar, se actualiza.'; msg.className='msg'; }
+    $('mk-prueba').scrollIntoView({block:'center'});
+  }
+
+  /* Borrar una marca (con confirmación): para cuando te equivocaste al subirla. */
+  async function borrarMarca(id){
+    var x=(MARCAS||[]).filter(function(m){ return String(m.id)===String(id); })[0];
+    var quePrueba = x ? (x.prueba||'esta marca') : 'esta marca';
+    var queDato = x && x.tiempo_display ? ' ('+x.tiempo_display+')' : '';
+    if(!window.confirm('¿Borrar '+quePrueba+queDato+'? No se puede deshacer.')) return;
+    var r=await sb.from('marcas_atleta').delete().eq('id', id).select('id');
+    if(r.error || !r.data || !r.data.length){
+      var mm=$('mk-msg'); if(mm){ mm.textContent='No se pudo borrar: '+((r.error&&r.error.message)||'sin permiso'); mm.className='msg error'; }
+      return;
+    }
+    if(MK_EDIT_ID && String(MK_EDIT_ID)===String(id)) resetMkForm();
+    olvidarMarcas();
+    cargarMarcas();
+  }
+
   $('mk-guardar').addEventListener('click', async function(){
     var msg=$('mk-msg'); var prueba=$('mk-prueba').value.trim(), disp=$('mk-tiempo').value.trim();
     if(!prueba){ msg.textContent='Elige la prueba.'; msg.className='msg error'; return; }
     msg.textContent='Guardando…'; msg.className='msg';
-    var payload={ atleta_id:at.id, prueba:prueba, tiempo_display:disp||null, tiempo_segundos:tiempoANum(disp), fecha:$('mk-fecha').value||null, sede:$('mk-sede').value.trim()||null, tipo:$('mk-tipo').value||null, contexto:$('mk-contexto').value||null };
-    var ins=await sb.from('marcas_atleta').insert(payload);
-    if(ins.error){ msg.textContent='Error: '+ins.error.message; msg.className='msg error'; return; }
-    msg.textContent='Marca guardada ✓'; msg.className='msg ok';
-    $('mk-prueba').value=''; $('mk-tiempo').value=''; $('mk-sede').value=''; $('mk-tipo').value=''; $('mk-contexto').value='';
-    // Acaba de haber una marca nueva: aquí SÍ hay que volver a preguntar.
+    var campos={ prueba:prueba, tiempo_display:disp||null, tiempo_segundos:tiempoANum(disp), fecha:$('mk-fecha').value||null, sede:$('mk-sede').value.trim()||null, tipo:$('mk-tipo').value||null, contexto:$('mk-contexto').value||null };
+    var r;
+    if(MK_EDIT_ID){
+      r=await sb.from('marcas_atleta').update(campos).eq('id', MK_EDIT_ID).select('id');
+      if(!r.error && (!r.data || !r.data.length)) r={ error:{ message:'la base no dejó guardar (permiso)' } };
+    } else {
+      campos.atleta_id=at.id;
+      r=await sb.from('marcas_atleta').insert(campos);
+    }
+    if(r.error){ msg.textContent='Error: '+r.error.message; msg.className='msg error'; return; }
+    msg.textContent = MK_EDIT_ID ? 'Marca actualizada ✓' : 'Marca guardada ✓'; msg.className='msg ok';
+    resetMkForm();
     olvidarMarcas();
     cargarMarcas();
   });
