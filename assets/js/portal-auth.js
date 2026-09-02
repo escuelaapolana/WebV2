@@ -1629,7 +1629,10 @@
       if (!recienLlegado && /\/portal\/(index\.html)?$/.test(location.pathname)) {
         try {
           var zonaRapida = localStorage.getItem('apolana.zona.' + email);
-          if (zonaRapida) { location.replace(zonaRapida); return; }
+          /* Nunca saltar a una zona del PANEL desde aquí: el panel, si el papel
+             no entra, devuelve al portal → bucle. La zona guardada solo vale si
+             es del portal. */
+          if (zonaRapida && zonaRapida.indexOf('/admin/') === -1) { location.replace(zonaRapida); return; }
         } catch (e) { /* sin localStorage: sigue el camino normal */ }
       }
 
