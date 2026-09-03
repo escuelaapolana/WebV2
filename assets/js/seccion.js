@@ -500,25 +500,9 @@
       horariosUnicos(b1).forEach(function (p) { h1.appendChild(tarjetaHorario(p)); });
       p1.appendChild(h1);
     }
-    p1.appendChild(nodo('p', 'eg-rot', 'Tu grupo según el año'));
-    var grid = nodo('div', 'eg-anios');
-    var vistos = {}, anios = [];
-    b1.forEach(function (g) {
-      var k = limpio(g.nombre);
-      if (vistos[k]) return; vistos[k] = 1;
-      anios.push({ anio: g.nacidos_desde, nombre: k, color: colorEscuela(k) });
-    });
-    anios.sort(function (a, b) { return b.anio - a.anio; });
-    anios.forEach(function (x) {
-      var c = nodo('div', 'eg-anio eg-' + x.color);
-      c.appendChild(nodo('div', 'yy', String(x.anio)));
-      var gr = nodo('div', 'gr');
-      gr.appendChild(nodo('span', 'pt'));
-      gr.appendChild(document.createTextNode(x.nombre));
-      c.appendChild(gr);
-      grid.appendChild(c);
-    });
-    p1.appendChild(grid);
+    /* "Tu grupo según el año" se quitó a propósito (Andrés, sep 2026): el
+       grupo se lo dice el club a cada familia al inscribirse, no hace falta
+       la tabla año→grupo en la web. La banda de pequeños deja solo el horario. */
     wrap.appendChild(p1);
 
     // Panel 2 · mayores
