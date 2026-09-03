@@ -782,13 +782,16 @@
           '</button>' +
           '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="menu" ' +
             'aria-expanded="false" aria-controls="pt-menu" aria-label="Lo tuyo: perfil y salir">' +
-            /* El nombre, como en la maqueta, a la izquierda del círculo. */
-            '<span class="pt-nom">' + esc(primerNom) + '</span>' +
             /* Las iniciales son el respaldo. Si la persona ha puesto foto en
                su perfil, se pinta encima en cuanto llega: se subía, se
                guardaba, se veía en el perfil y en los retos, y aquí seguían
                saliendo las letras como si no existiera. */
             '<span aria-hidden="true">' + esc(ini) + '</span>' +
+            /* El nombre, DESPUÉS del círculo (como la maqueta) y después del
+               span de las iniciales, porque la foto de perfil se pinta sobre
+               el PRIMER span del avatar: si el nombre fuera el primero, la
+               foto le borraría el texto. */
+            '<span class="pt-nom">' + esc(primerNom) + '</span>' +
             /* La misma flechita que lleva el papel de al lado. Sin ella, el
                círculo con las iniciales parece una foto de perfil y no algo
                que se pulse: hay que descubrir por casualidad que abre un
