@@ -414,7 +414,208 @@
     })[0] || null;
   }
 
+  /* ============================================================
+     ESCUELA · vista específica (NO toca el resto de secciones)
+     ------------------------------------------------------------
+     Andrés (sep 2026): en la escuela la familia no quiere ver todos
+     los grupos, quiere el de SU hijo. Filtro por banda de edad
+     (primera hora / segunda hora) → horario + grupo. Y las cuotas,
+     en tarjetas. Solo se usa cuando datos.esEscuela es true.
+     ============================================================ */
+  function colorEscuela(nombre) {
+    var n = limpio(nombre).toLowerCase();
+    if (/\brojo\b/.test(n)) return 'rojo';
+    if (/\bazul\b/.test(n)) return 'azul';
+    if (/\bverde\b/.test(n)) return 'verde';
+    return 'azul';
+  }
+  function partesHorario(h) {
+    h = limpio(h);
+    if (!h) return null;
+    var trozos = h.split(' · ');
+    var sede = '';
+    if (trozos.length > 1 && /estadio|sede|pista|pabell|piscina|polideport/i.test(trozos[trozos.length - 1])) {
+      sede = trozos.pop();
+    }
+    var cuerpo = trozos.join(' · ');
+    var m = cuerpo.match(/^([^\d]*?)([\d].*)$/);
+    var dias = m ? limpio(m[1]).replace(/[·\-–\s]+$/, '') : cuerpo;
+    var hora = m ? limpio(m[2]) : '';
+    return { dias: dias || cuerpo, hora: hora, sede: sede };
+  }
+  function tarjetaHorario(p, clase) {
+    var c = nodo('div', clase || 'eg-hor');
+    c.appendChild(nodo('b', null, p.dias));
+    if (p.hora) c.appendChild(nodo('span', 'hh', p.hora));
+    if (p.sede) c.appendChild(nodo('small', null, p.sede));
+    return c;
+  }
+  function horariosUnicos(grupos) {
+    var vistos = {}, out = [];
+    grupos.forEach(function (g) {
+      var p = partesHorario(g.horario);
+      if (!p) return;
+      var k = (p.dias + '|' + p.hora).toLowerCase();
+      if (vistos[k]) return; vistos[k] = 1; out.push(p);
+    });
+    return out;
+  }
+  function pintaGruposEscuela(caja, datos) {
+    caja.textContent = '';
+    var raw = datos.gruposRaw || [];
+    if (!raw.length) { caja.appendChild(vacio('Todavía no hay grupos publicados.')); return; }
+
+    var esB1 = function (g) { return g.nacidos_desde && g.nacidos_desde >= 2015; };
+    var b1 = raw.filter(esB1);
+    var b2 = raw.filter(function (g) { return !esB1(g); });
+
+    function rango(gr) {
+      var a = [];
+      gr.forEach(function (g) {
+        if (g.nacidos_desde) a.push(g.nacidos_desde);
+        if (g.nacidos_hasta) a.push(g.nacidos_hasta);
+      });
+      if (!a.length) return '';
+      return Math.max.apply(null, a) + ' – ' + Math.min.apply(null, a);
+    }
+
+    var wrap = nodo('div', 'eg');
+    var sel = nodo('div', 'eg-bandas');
+    var btn1 = nodo('button', 'eg-banda on'); btn1.type = 'button';
+    btn1.appendChild(nodo('span', 'et', 'Primera hora'));
+    btn1.appendChild(nodo('span', 'an', rango(b1) || '2023 – 2015'));
+    btn1.appendChild(nodo('span', 'ed', 'Los pequeños'));
+    var btn2 = nodo('button', 'eg-banda'); btn2.type = 'button';
+    btn2.appendChild(nodo('span', 'et', 'Segunda hora'));
+    btn2.appendChild(nodo('span', 'an', rango(b2) || '2014 – 2009'));
+    btn2.appendChild(nodo('span', 'ed', 'Los mayores'));
+    sel.appendChild(btn1); sel.appendChild(btn2);
+    wrap.appendChild(sel);
+
+    // Panel 1 · pequeños
+    var p1 = nodo('div', 'eg-panel');
+    if (horariosUnicos(b1).length) {
+      p1.appendChild(nodo('p', 'eg-rot', 'Cuándo entrenan'));
+      var h1 = nodo('div', 'eg-horarios');
+      horariosUnicos(b1).forEach(function (p) { h1.appendChild(tarjetaHorario(p)); });
+      p1.appendChild(h1);
+    }
+    p1.appendChild(nodo('p', 'eg-rot', 'Tu grupo según el año'));
+    var grid = nodo('div', 'eg-anios');
+    var vistos = {}, anios = [];
+    b1.forEach(function (g) {
+      var k = limpio(g.nombre);
+      if (vistos[k]) return; vistos[k] = 1;
+      anios.push({ anio: g.nacidos_desde, nombre: k, color: colorEscuela(k) });
+    });
+    anios.sort(function (a, b) { return b.anio - a.anio; });
+    anios.forEach(function (x) {
+      var c = nodo('div', 'eg-anio eg-' + x.color);
+      c.appendChild(nodo('div', 'yy', String(x.anio)));
+      var gr = nodo('div', 'gr');
+      gr.appendChild(nodo('span', 'pt'));
+      gr.appendChild(document.createTextNode(x.nombre));
+      c.appendChild(gr);
+      grid.appendChild(c);
+    });
+    p1.appendChild(grid);
+    wrap.appendChild(p1);
+
+    // Panel 2 · mayores
+    var p2 = nodo('div', 'eg-panel'); p2.hidden = true;
+    var hor2 = horariosUnicos(b2);
+    if (hor2.length) {
+      p2.appendChild(nodo('p', 'eg-rot', 'Cuándo entrenan'));
+      var h2 = nodo('div', 'eg-horarios');
+      hor2.forEach(function (p) { h2.appendChild(tarjetaHorario(p, 'eg-hor eg-hor--verde')); });
+      p2.appendChild(h2);
+    }
+    var hayRecre = b2.some(function (g) { return /recreac/i.test(g.nombre); });
+    var hayCompe = b2.some(function (g) { return /competic/i.test(g.nombre); });
+    if (hayRecre || hayCompe) {
+      p2.appendChild(nodo('p', 'eg-rot', 'Elige tu grupo'));
+      var gs = nodo('div', 'eg-grupos');
+      if (hayRecre) {
+        var r = nodo('div', 'eg-gru eg-azul');
+        r.appendChild(nodo('h4', null, 'Recreación'));
+        r.appendChild(nodo('p', null, 'Para disfrutar del atletismo y mejorar, sin la exigencia de competir.'));
+        gs.appendChild(r);
+      }
+      if (hayCompe) {
+        var cc = nodo('div', 'eg-gru eg-rojo');
+        cc.appendChild(nodo('h4', null, 'Competición'));
+        cc.appendChild(nodo('p', null, 'Para quien quiere competir federado, con planificación por pruebas.'));
+        gs.appendChild(cc);
+      }
+      p2.appendChild(gs);
+    }
+    wrap.appendChild(p2);
+
+    var acceso = limpio(datos.ficha && datos.ficha.acceso);
+    if (acceso) wrap.appendChild(nodo('p', 'sec-nota sec-acceso', acceso));
+    caja.appendChild(wrap);
+
+    function ver(n) {
+      btn1.classList.toggle('on', n === 1);
+      btn2.classList.toggle('on', n === 2);
+      p1.hidden = n !== 1; p2.hidden = n !== 2;
+    }
+    btn1.addEventListener('click', function () { ver(1); });
+    btn2.addEventListener('click', function () { ver(2); });
+  }
+
+  function pintaCuotasEscuela(caja, datos) {
+    caja.textContent = '';
+    var tarifas = (datos.tarifas || []).slice();
+    if (!tarifas.length) { caja.appendChild(vacio('El precio todavía no está publicado. Escríbenos y te lo decimos.')); return; }
+
+    var grid = nodo('div', 'ec-bandas');
+    var condiciones = '';
+    var colores = ['rojo', 'azul', 'verde', 'azul', 'rojo'];
+    tarifas.forEach(function (t, i) {
+      var card = nodo('div', 'ec-bc ec-' + (colores[i] || 'azul'));
+      if (t.id) { card.setAttribute('data-editable-tarifa', t.id); card._apoTarifa = t; }
+      var et = conceptoCorto(t.concepto, datos.ficha && datos.ficha.titulo).replace(/^escuela\s*·?\s*/i, '');
+      card.appendChild(nodo('span', 'et', et));
+      var pr = nodo('div', 'precio');
+      pr.appendChild(nodo('span', 'n', euros(t.importe_socio)));
+      pr.appendChild(nodo('span', 'u', '/ temporada'));
+      card.appendChild(pr);
+      var m = limpio(t.notas).match(/dos pagos:\s*([\d.,]+)\s*€\s*al inscribirse\s*y\s*([\d.,]+)\s*€\s*en diciembre\.?\s*(.*)$/i);
+      if (m) {
+        var pagos = nodo('div', 'pagos');
+        pagos.appendChild(nodo('span', 'lb', 'Dos pagos'));
+        var l1 = nodo('div', null); l1.appendChild(nodo('b', null, m[1] + ' €')); l1.appendChild(document.createTextNode(' al inscribirse'));
+        var l2 = nodo('div', null); l2.appendChild(nodo('b', null, m[2] + ' €')); l2.appendChild(document.createTextNode(' en diciembre'));
+        pagos.appendChild(l1); pagos.appendChild(l2);
+        card.appendChild(pagos);
+        if (!condiciones && m[3]) condiciones = limpio(m[3]);
+      }
+      grid.appendChild(card);
+    });
+    caja.appendChild(grid);
+
+    if (condiciones) {
+      caja.appendChild(nodo('p', 'eg-rot', 'Lo que hay que saber'));
+      var cond = nodo('div', 'ec-cond');
+      condiciones.split(/\.\s+/).map(limpio).filter(Boolean).forEach(function (frase) {
+        var cd = nodo('div', 'ec-cd');
+        cd.appendChild(nodo('p', null, frase.replace(/\.$/, '')));
+        cond.appendChild(cd);
+      });
+      caja.appendChild(cond);
+    }
+
+    var nota = limpio(datos.ficha && datos.ficha.precio);
+    if (nota) {
+      var av = nodo('div', 'ec-avisos');
+      lineas(nota).forEach(function (linea) { av.appendChild(nodo('div', 'ec-av', linea)); });
+      caja.appendChild(av);
+    }
+  }
+
   function pintaGrupos(caja, datos) {
+    if (datos.esEscuela) { pintaGruposEscuela(caja, datos); return; }
     caja.textContent = '';
     if (!datos.grupos.length) {
       caja.appendChild(vacio('Todavía no hay grupos publicados en esta sección.'));
@@ -502,6 +703,7 @@
      5 · Precio · cada tarifa y la cuota de socio, sumada aparte
      --------------------------------------------------------- */
   function pintaPrecio(caja, datos) {
+    if (datos.esEscuela) { pintaCuotasEscuela(caja, datos); return; }
     caja.textContent = '';
     var titulo = datos.ficha && datos.ficha.titulo;
 
@@ -822,6 +1024,8 @@
       var datos = {
         ficha:   (rf.data || [])[0] || null,
         grupos:  juntaAniosEnTabla(juntaTurnos(rg.data || [])),
+        gruposRaw: rg.data || [],
+        esEscuela: clave === 'escuela',
         tarifas: propias,
         socio:   deEscuela ? null : (todas.filter(function (t) { return t.clave === 'cuota-socio'; })[0] || null)
       };
