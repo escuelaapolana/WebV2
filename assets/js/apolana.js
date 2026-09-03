@@ -26,18 +26,17 @@ const MENU = [
      conocer Apolana pregunta primero QUIÉN es esto, no dónde entrenar. El
      resto del orden no se toca: la lanzadera de secciones sigue siendo lo
      segundo, que es lo que se busca cuando ya sabes quiénes son. */
+  /* «Hazte socio» va la primera, y con todo el peso: es lo que el club quiere
+     que haga quien entra. Historia y Junta ya no cuelgan aquí: viven DENTRO de
+     la página «El club» (sus pestañas), no en el desplegable. Instalaciones,
+     Familias, Galería y Patrocinadores se han quitado de la web pública. */
   { clave: 'club', texto: 'Club', url: '/club/', sub: [
+    { texto: 'Hazte socio',      url: '/socio/' },
     { texto: 'El club',          url: '/club/' },
-    { texto: 'Historia',         url: '/club/historia/' },
-    { texto: 'Junta directiva',  url: '/club/#junta' },
     /* Récords y Ranking van juntos a propósito: uno es lo mejor de la
        historia y el otro quién va mejor esta temporada. */
     { texto: 'Récords',          url: '/club/records/' },
     { texto: 'Ranking',          url: '/club/ranking/' },
-    { texto: 'Instalaciones',    url: '/instalaciones/' },
-    { texto: 'Familias',         url: '/familias/' },
-    { texto: 'Galería',          url: '/galeria/' },
-    { texto: 'Patrocinadores',   url: '/#colaboradores' },
     { texto: 'Contacto',         url: '/contacto/' },
   ] },
   /* «Entrenar», el nombre corto: cuatro sílabas menos y no pierde nada.
@@ -45,8 +44,7 @@ const MENU = [
   /* El nombre del menú lleva a la lanzadera, no a una de sus hijas:
      antes «Entrenar» caía en atletismo en pista y parecía que el club
      solo hacía eso. Igual que «Escuelas» abre en «Todas las escuelas». */
-  { clave: 'entrena', texto: 'Entrenar', url: '/entrenar/', sub: [
-    { texto: 'Todas las secciones', url: '/entrenar/' },
+  { clave: 'entrena', texto: 'Entrena', url: '/entrenar/', sub: [
     { texto: 'Atletismo en pista',  url: '/competicion/' },
     { texto: 'Running',             url: '/running/' },
     { texto: 'Natación adultos',    url: '/natacion/' },
@@ -62,22 +60,28 @@ const MENU = [
      tres, así que en el menú basta una entrada; el deporte adaptado y el
      atletismo adaptado se cuentan dentro de ella. */
   { clave: 'escuelas', texto: 'Escuelas', url: '/escuelas/', sub: [
-    { texto: 'Todas las escuelas',   url: '/escuelas/' },
     { texto: 'Escuela de atletismo', url: '/escuela/' },
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
     { texto: 'Escuelas municipales', url: '/escuela-municipal-atletismo/' },
     { texto: 'Campus de verano',     url: '/campus/' },
+    /* Para los padres mientras el peque entrena o está en el cole: el
+       entrenamiento funcional vive en El Cubo, y el running de padres, en Running. */
+    { texto: 'Entrenamiento de padres', url: '/cubo/' },
+    { texto: 'Running para padres',     url: '/running/' },
   ] },
-  /* Calendario primero: es la pantalla que manda («qué hay ese día»).
-     Horarios va detrás y contesta la otra pregunta, la de la semana fija
-     («¿a qué hora entreno los martes?»). */
-  { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
-  /* «Horarios» ya no está en el menú: era una entrada que llevaba a la pestaña
+  /* Academia AC98: el grupo de alto rendimiento, entre Escuelas y Noticias.
+     En ámbar (marca) porque es un nombre propio del club, no una categoría, y
+     porque es el grupo «pro»: interesa que destaque en la barra. */
+  { clave: 'academia', texto: 'Academia', url: '/academia/', marca: true },
+  /* Noticias y Calendario intercambiados a petición del club: Noticias pasa
+     delante y Calendario, detrás de la Liga.
+     «Horarios» ya no está en el menú: era una entrada que llevaba a la pestaña
      de horarios del calendario, así que duplicaba «Calendario». Los horarios
      se ven desde ahí (Calendario → Horarios). */
+  { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
   /* «Liga» va en ámbar: es un nombre propio del club, no una categoría. */
   { clave: 'liga', texto: 'Liga', url: '/liga/', marca: true },
-  { clave: 'noticias',   texto: 'Noticias',   url: '/noticias/' },
+  { clave: 'calendario', texto: 'Calendario', url: '/calendario/' },
   /* Tienda a la derecha de Noticias, no escondida dentro de «Club». Andrés:
      «la pondría a la derecha de noticias». Es una acción, no una página de
      consulta: vender ropa no es contar quién es el club. */
@@ -91,6 +95,32 @@ const ICONO = {
   facebook:  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 21v-8h2.8l.4-3.2h-3.2V7.9c0-.9.3-1.5 1.6-1.5h1.7V3.5c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.4-4 4.1v2.3H8.6V13h2.8v8h3.1z" fill="currentColor"/></svg>',
   whatsapp:  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1120 12a8 8 0 01-12.1 6.9L4 20z" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
+
+/* ============================================================
+   TRANSICIONES AL BAJAR (compartidas) · enciende .reveal-on y revela cada
+   elemento .reveal cuando asoma por primera vez. Respeta reduce-motion y, si no
+   hay IntersectionObserver, lo enseña todo. El CSS vive en apolana.css.
+   ============================================================ */
+(function transicionesAlBajar() {
+  document.documentElement.classList.add('reveal-on');
+  function init() {
+    var els = [].slice.call(document.querySelectorAll('.reveal'));
+    if (!els.length) return;
+    els.forEach(function (el) {
+      var i = 0, s = el;
+      while ((s = s.previousElementSibling)) { if (s.classList && s.classList.contains('reveal')) i++; }
+      el.style.setProperty('--i', i);
+    });
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) { els.forEach(function (el) { el.classList.add('visto'); }); return; }
+    var io = new IntersectionObserver(function (ent) {
+      ent.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('visto'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    els.forEach(function (el) { io.observe(el); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
 
 /* --- Enlace de WhatsApp de la cabecera ---
    Sale dos veces a propósito (aquí y en el pie): arriba no es una red
@@ -265,23 +295,71 @@ function pintarColaboradores(lista) {
     /* El botón de acceso no se esconde nunca: es la única puerta al portal. */
     '.cabecera-acciones .btn--neutro{display:inline-flex}',
 
+    /* ====== TRES ISLAS FLOTANTES (rediseño) ======
+       La barra deja de ser una banda: son tres cápsulas que flotan —el logo a
+       la izquierda, el menú centrado, y «Pregúntanos + Acceso» a la derecha—,
+       cada una con su propio desenfoque. El contenedor es una rejilla
+       1fr auto 1fr para que la del CENTRO quede centrada de verdad, pase lo que
+       pase con el ancho de las de los lados. */
+    '.cabecera .contenedor{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding-block:12px}',
+    /* Islas: la PRIMERA versión, que era la bonita. Cristal crema translúcido
+       (deja ver un poco el crema por detrás) con desenfoque, canto suave y una
+       sombra marina larga que las hace flotar. Sobre el fondo crema. */
+    '.cabecera .marca,.cabecera .menu,.cabecera-acciones{' +
+      'background:var(--crema);' +
+      'background:color-mix(in srgb,var(--crema) 82%,transparent);' +
+      '-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);' +
+      'border:1px solid color-mix(in srgb,var(--linea) 66%,transparent);' +
+      'border-radius:999px;box-shadow:0 12px 30px -18px rgba(30,45,65,.5)}',
+    '.cabecera .marca{justify-self:start;flex:0 0 auto;padding:7px 16px 7px 11px;gap:9px}',
+    '.cabecera .marca img{height:36px}',
+    '.cabecera .menu{justify-self:center;flex:0 1 auto;padding:8px 20px}',
+    '.cabecera-acciones{justify-self:end;padding:6px 7px 6px 16px;gap:10px}',
+    '.cabecera-acciones .btn--neutro{border-radius:999px}',
+    /* Accesibilidad (criterio de la skill Apple): si el usuario pide MENOS
+       transparencia o MÁS contraste, las islas dejan el cristal y se vuelven
+       crema sólido (y borde definido con más contraste). */
+    '@media (prefers-reduced-transparency: reduce){.cabecera .marca,.cabecera .menu,.cabecera-acciones{' +
+      'background:var(--crema);-webkit-backdrop-filter:none;backdrop-filter:none}}',
+    '@media (prefers-contrast: more){.cabecera .marca,.cabecera .menu,.cabecera-acciones{' +
+      'background:var(--crema);border-color:var(--navy)}}',
+
+    /* ⚠️ FIX DEL STICKY, A PRUEBA DE CACHÉ. Estas reglas son las que hacen que
+       la cabecera se quede fija al bajar, y van AQUÍ (además de en apolana.css)
+       a propósito: este <style> lo inyecta el JS y llega SIEMPRE fresco, así que
+       aunque el navegador sirva el apolana.css viejo de la caché, el sticky
+       funciona igual. El culpable original era `overflow-x:hidden` en el body,
+       que lo convertía en contenedor de scroll; `clip` recorta sin romperlo. */
+    /* La cabecera va al PRINCIPIO de la página y NO se pega: al bajar se va hacia
+       arriba y desaparece (como la web original publicada). Lo forzamos aquí, en
+       el <style> fresco del JS, para deshacer cualquier `position:sticky` viejo
+       que tengas en caché y que la hacía «bajar» siguiéndote. */
+    'apolana-cabecera{display:block;position:static}',
+    '.cabecera{position:relative;z-index:20;background:transparent}',
+
     /* Aprietes progresivos antes de rendirse al menú de hamburguesa. */
     '@media (max-width:1300px){.cabecera .menu{gap:15px;font-size:14.5px}.cabecera .marca .sub{display:none}}',
     '@media (max-width:1120px){.cabecera .menu{gap:11px;font-size:14px}.cab-whatsapp span{display:none}.cab-whatsapp{padding:0 4px}}',
     /* En móvil WhatsApp se queda dentro del menú, no flotando arriba.
        Y las acciones se van a la derecha del todo: sin el menú horizontal
        en medio se quedaban pegadas al logotipo, con un hueco a la derecha. */
+    /* En móvil, la isla derecha NO puede llevar desenfoque: `backdrop-filter`
+       crea un bloque contenedor y el panel del menú (absoluto, a lo ancho) se
+       anclaba a la isla y salía estrecho a la derecha. Sin él, el panel vuelve
+       a colgar de toda la cabecera y baja a ancho completo. */
     '@media (max-width:950px){.cabecera-acciones .cab-whatsapp{display:none}' +
-      '.cabecera-acciones{margin-left:auto}}',
+      '.cabecera-acciones{-webkit-backdrop-filter:none;backdrop-filter:none}' +
+      /* En móvil no hay isla central: marca pegada a la izquierda y las
+         acciones (Acceso + ☰) pegadas a la DERECHA, con flex. */
+      '.cabecera .contenedor{display:flex;justify-content:space-between;align-items:center}}',
     /* En el móvil la cabecera va compacta: escudo a 28 px y «Apolana». Cuanto
        menos ocupe aquí arriba, más pantalla queda para lo que importa. */
     '@media (max-width:700px){.cabecera .contenedor{gap:10px;padding-block:10px}' +
       '.cabecera .marca img{height:28px}.cabecera .marca{gap:9px}' +
       '.cabecera .marca .nombre{font-size:19px}.cabecera-acciones{gap:8px}}',
 
-    /* El menú activo se marca con un subrayado de 2 px, no solo con color:
-       un cambio de tono sobre crema no se ve a pie de pista. */
-    '.menu a.activo{box-shadow:inset 0 -2px 0 currentColor}',
+    /* El subrayado del menú (hover animado + activo fijo) vive ahora en
+       apolana.css, con una línea que crece de izquierda a derecha. */
 
     /* ============ CABECERA DE PÁGINA INTERIOR ============
        Franja a sangre y sin radio: navy si no hay foto, foto con velo si
@@ -368,10 +446,11 @@ function pintarColaboradores(lista) {
       'margin-top:0;border-top:0;border-radius:0}',
     /* Cuatro columnas en una sola rejilla: identidad · Club · Contacto · Síguenos. */
     '.pie .contenedor{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.1fr;' +
-      'gap:30px;padding-block:26px 18px;align-items:start}',
+      'gap:28px 40px;padding-block:clamp(28px,3.5vw,40px) 18px;align-items:start}',
     '.pie-col{display:flex;flex-direction:column;gap:3px;min-width:0}',
-    '.pie-rotulo{font-size:14px;color:rgba(255,255,255,0.55);margin-bottom:2px}',
-    '.pie-col a{color:rgba(255,255,255,0.85);min-height:32px;display:flex;align-items:center;overflow-wrap:anywhere}',
+    '.pie-rotulo{font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;' +
+      'color:rgba(255,255,255,0.5);margin-bottom:9px}',
+    '.pie-col a{color:rgba(255,255,255,0.85);min-height:30px;display:flex;align-items:center;overflow-wrap:anywhere}',
     '.pie-col a:hover{color:#fff}',
     /* La identidad va dentro del navy y ocupa la primera columna. */
     '.pie-col--marca{gap:10px}',
@@ -385,7 +464,7 @@ function pintarColaboradores(lista) {
        Sobre el navy el icono ya contrasta; un cuadrado de fondo solo
        añadía ruido. */
     '.redes-filas{display:flex;flex-direction:column;gap:2px}',
-    '.red-fila{display:flex;align-items:center;gap:10px;min-height:44px;' +
+    '.red-fila{display:flex;align-items:center;gap:10px;min-height:38px;' +
       'text-decoration:none;color:rgba(255,255,255,0.85)}',
     '.red-fila:hover{color:#fff}',
     '.red-icono{width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center}',
@@ -396,7 +475,13 @@ function pintarColaboradores(lista) {
     '.pie .red-nombre{display:none}',
 
     /* --- Colaboradores: una fila final, separada con una línea --- */
-    '.pie-colab-fila{border-top:1px solid rgba(255,255,255,0.14);padding-top:12px;' +
+    /* Especificidad `.pie .pie-colab-fila` (no solo `.pie-colab-fila`) a
+       propósito: esta fila también lleva la clase `contenedor`, y la regla
+       `.pie .contenedor{display:grid}` la ganaba y metía «Con la colaboración
+       de» y los logos en columnas de la rejilla, dejando los logos apretados
+       en un burruño a la izquierda. Aquí manda: rótulo arriba, logos debajo a
+       todo lo ancho. */
+    '.pie .pie-colab-fila{border-top:1px solid rgba(255,255,255,0.14);padding-top:12px;' +
       'padding-bottom:14px;display:flex;flex-direction:column;gap:8px}',
     /* En la portada los colaboradores YA salen en su propia banda
        («Con la colaboración de», #colaboradores). Repetirlos treinta
@@ -404,7 +489,8 @@ function pintarColaboradores(lista) {
        ya los enseña, esta fila no se pinta. Andrés: «y los
        colaboradores duplicados». */
     'body:has(#colaboradores) .pie-colab-fila{display:none}',
-    '.pie-colab{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}',
+    '.pie-colab{width:100%;display:flex;flex-wrap:wrap;align-items:center;' +
+      'justify-content:space-between;gap:12px 22px}',
     '.colab-pie-item{display:inline-flex;align-items:center;gap:8px;min-height:26px;' +
       'color:rgba(255,255,255,0.82);text-decoration:none;font-size:13px;line-height:1.35}',
     'a.colab-pie-item:hover{color:#fff}',
@@ -442,9 +528,16 @@ function pintarColaboradores(lista) {
     '.menu-movil-panel .red-nombre{font-size:14px;color:var(--texto-suave,#6E6656)}',
 
     /* En móvil, dos columnas: es lo que ya funcionaba y se respeta. */
-    '@media (max-width:700px){.pie .contenedor{grid-template-columns:minmax(0,1fr) minmax(0,1fr);' +
-      'gap:22px 18px;padding-block:26px 20px}',
-      '.pie-col--marca{grid-column:1 / -1}',
+    /* En estrecho, Contacto y Síguenos se apilan en la 2ª columna al lado de
+       Club (que es la más alta), en vez de caer en filas nuevas dejando un
+       hueco vacío. El pie queda bastante más corto. */
+    '@media (max-width:700px){.pie .contenedor{grid-template-columns:1fr 1fr;' +
+      'grid-template-areas:"marca marca" "club contacto" "club siguenos";' +
+      'gap:20px 18px;padding-block:26px 18px}',
+      '.pie-col--marca{grid-area:marca}',
+      '.pie .pie-col:nth-child(2){grid-area:club}',
+      '.pie .pie-col:nth-child(3){grid-area:contacto}',
+      '.pie .pie-col:nth-child(4){grid-area:siguenos}',
       '.pie-col a,.pie-col .red-cuenta{font-size:13.5px;line-height:1.35}',
       '.pie-colab-fila{padding-bottom:16px}}'
     /* El bloque de la portada («Con la colaboración de») lleva sus propios

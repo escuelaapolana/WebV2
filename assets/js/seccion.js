@@ -564,6 +564,14 @@
         : 'Aquí solo se paga la cuota de socio'));
       suma.appendChild(nodo('span', 'v', importeDe(datos.socio).texto));
       caja.appendChild(suma);
+      /* El importe de arriba es el del PRIMER año; a partir del segundo baja a
+         110 €. Se dice en todas las secciones para que quede claro desde ya. */
+      caja.appendChild(nodo('p', 'sec-nota', 'A partir del segundo año, la cuota de socio es 110 €.'));
+      /* Solo en atletismo en pista: la franja de edad de la sección. */
+      var elSec = document.querySelector('[data-seccion]');
+      if (elSec && elSec.getAttribute('data-seccion') === 'competicion') {
+        caja.appendChild(nodo('p', 'sec-nota', 'Desde 2008 en adelante (año de nacimiento).'));
+      }
       if (limpio(datos.socio.notas)) caja.appendChild(nodo('p', 'sec-nota', limpio(datos.socio.notas)));
     }
 
@@ -770,6 +778,11 @@
       db.from('grupos')
         .select('id,nombre,horario,descripcion,pruebas,nacidos_desde,nacidos_hasta,turno')
         .eq('seccion', clave).eq('activo', true)
+        /* La Academia AC98 (antes «Grupo A») sigue siendo un grupo por dentro
+           —sus atletas usan la app igual—, pero de cara al público es una
+           academia aparte, con su propia página /academia/. Así que NO sale en
+           la lista de grupos de atletismo en pista. Se excluye por id. */
+        .neq('id', 'c288b979-cd00-4abb-96da-30fa997ef297')
         .order('nacidos_desde', { ascending: false, nullsFirst: false })
         .order('nombre'),
       /* «tarifas_vigentes» y no «tarifas»: esa vista deja fuera las
@@ -790,7 +803,15 @@
       if (rf.error || rg.error || rt.error) throw new Error('lectura');
 
       var todas = rt.data || [];
-      var propias = todas.filter(function (t) { return t.clave !== 'cuota-socio'; });
+      /* Igual que en la lista de grupos: la Academia AC98 (antes «Grupo A»)
+         tampoco sale en el precio público de atletismo en pista. Su tarifa es
+         `pista-velocidad-a` (y por si acaso, también se excluye por su grupo_id).
+         Así en pista solo quedan Velocidad y Fondo y medio fondo. */
+      var propias = todas.filter(function (t) {
+        return t.clave !== 'cuota-socio'
+          && t.clave !== 'pista-velocidad-a'
+          && t.grupo_id !== 'c288b979-cd00-4abb-96da-30fa997ef297';
+      });
 
       /* La cuota de socio es de los adultos del club. En las escuelas la
          cuota de la temporada lo incluye todo y NO se es socio por

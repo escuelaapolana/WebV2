@@ -60,8 +60,6 @@
 
   label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:10px 0 5px; }
   input, select { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-size:15px; font-family: var(--fuente-texto); background:#fff; color: var(--navy); }
-  .apuntarme { display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:end; margin-top:6px; }
-  @media (max-width:600px){ .apuntarme { grid-template-columns:1fr; } }
   .btn { cursor:pointer; }
   .btn--mini { padding:9px 16px; font-size:14px; }
   /* «Quitarme» deshace algo que el club ya ha dado por hecho: 44 px como
@@ -285,15 +283,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   var atleta = MIS_ATLETAS[0];
 
-  var CATALOGO = [], falloCatalogo = false;
-  var pc = await sb.from('pruebas').select('nombre,disciplina,ambito').eq('activa', true).order('orden');
-  if (pc.error) falloCatalogo = true; else CATALOGO = pc.data || [];
-
-  var COMPS = [], INSCRIPCIONES = [];
-  /* Cada lista sabe si se ha podido leer. Sin esto, un fallo de conexión se
+  var COMPS = [];
+  /* La lista sabe si se ha podido leer. Sin esto, un fallo de conexión se
      veía igual que un calendario vacío: «no hay competiciones» a alguien que
      tiene una el sábado. */
-  var falloComps = false, falloInscr = false;
+  var falloComps = false;
 
   /* Reintentar solo lo que ha fallado, sin recargar la página. */
   var REINTENTOS = {}, nRe = 0;
@@ -323,34 +317,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .order('fecha_inicio', { ascending: true });
     falloComps = !!c.error;
     COMPS = (c.error ? [] : (c.data || []));
-
-    var i = await sb.from('competicion_atleta').select('id,competicion_id,prueba,estado').eq('atleta_id', atleta.id);
-    falloInscr = !!i.error;
-    INSCRIPCIONES = (i.error ? [] : (i.data || []));
-  }
-
-  // Desplegable de pruebas: primero las suyas, luego el catálogo del ámbito
-  function opcionesPruebas(ambito){
-    var lista = CATALOGO.filter(function(p){ return !ambito || p.ambito === ambito; });
-    var mias = (atleta.especialidades || []).filter(function(n){
-      return lista.some(function(p){ return p.nombre === n; });
-    });
-    var grupos = {}, orden = [];
-    lista.forEach(function(p){
-      var g = (p.disciplina || 'otras');
-      if (!grupos[g]) { grupos[g] = []; orden.push(g); }
-      grupos[g].push(p.nombre);
-    });
-    var top = mias.length ? '<optgroup label="★ Mis pruebas">' + mias.map(function(n){ return '<option>'+esc(n)+'</option>'; }).join('') + '</optgroup>' : '';
-    return '<option value="">— elige tu prueba —</option>' + top +
-      orden.map(function(g){
-        return '<optgroup label="'+esc(g)+'">' + grupos[g].map(function(n){ return '<option>'+esc(n)+'</option>'; }).join('') + '</optgroup>';
-      }).join('');
   }
 
   // ---------- pintar ----------
   function tarjetaComp(c){
-    var mias = INSCRIPCIONES.filter(function(x){ return x.competicion_id === c.id && x.estado !== 'cancelada'; });
     var plazoOff = pasado(c.fecha_limite_interna);
     var abierta = !!c.inscripcion_abierta && !plazoOff;
     var coste = parseFloat(c.coste) || 0;
@@ -392,52 +362,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       html += '<div class="ics-fila"><button type="button" class="btn btn--neutro btn--mini" data-ics="'+esc(c.id)+'">Añadir a mi calendario</button></div>';
     }
     html += '</div>';
-
-    // Mis pruebas en esta competición
-    html += '<h3>Mis pruebas aquí</h3>';
-    if (falloInscr) {
-      /* Decir «no te has apuntado a nada» cuando no se ha podido mirar es lo
-         que hace que alguien se apunte dos veces. */
-      html += htmlError('No hemos podido comprobar tus pruebas',
-        'Puede ser tu conexión. Si ya le habías dicho al club que vas, sigue apuntado: no vuelvas a hacerlo hasta verlo aquí.',
-        recargar);
-    } else if (!mias.length) {
-      html += '<p class="letra-chica" style="margin:0 0 4px">Todavía no le has dicho al club a qué pruebas vas aquí.</p>';
-    } else {
-      html += '<ul class="mis-pruebas">' + mias.map(function(x){
-        var quitar = (abierta && x.estado === 'apuntado')
-          ? '<button class="btn--peligro" data-quitar="'+x.id+'">Quitarme</button>'
-          : '<span class="pill">'+(x.estado === 'confirmada' ? 'ya en la federación' : 'bloqueada')+'</span>';
-        return '<li><span>'+esc(x.prueba)+' ' +
-          (x.estado === 'confirmada' ? '<span class="pill ok">El club te cuenta</span>' : '<span class="pill aviso">Avisado</span>') +
-          '</span>' + quitar + '</li>';
-      }).join('') + '</ul>';
-    }
-
-    // Decirle al club que voy (control interno: no es la inscripción oficial)
-    if (abierta && falloCatalogo) {
-      /* Sin catálogo de pruebas el desplegable saldría vacío y el botón no
-         haría nada: mejor decir que no se ha podido cargar y dar una salida. */
-      html += '<h3>Decirle al club que voy</h3>' +
-        htmlError('No hemos podido cargar la lista de pruebas',
-          'Puede ser tu conexión. La inscripción sigue abierta: vuelve a intentarlo, o díselo a tu entrenador por mensaje.',
-          recargar);
-    } else if (abierta) {
-      html += '<h3>Decirle al club que voy</h3>' +
-        '<p class="letra-chica" style="margin-top:0;">Así el club sabe con quién cuenta y en qué pruebas. ' +
-          (c.circular_url ? 'La inscripción oficial se hace en el enlace de arriba.' : 'De la inscripción oficial se encarga el club.') + '</p>' +
-        '<div class="apuntarme">' +
-          '<div><label for="sel-'+c.id+'">Prueba</label><select id="sel-'+c.id+'">'+opcionesPruebas(c.ambito)+'</select></div>' +
-          '<div><button class="btn btn--fantasma btn--mini" data-apuntar="'+c.id+'">Decir que voy</button></div>' +
-        '</div>' +
-        '<span class="msg" id="msg-'+c.id+'"></span>';
-    } else if (plazoOff) {
-      /* Que el plazo está cerrado ya lo dicen la pastilla de arriba y la línea
-         de la fecha: aquí solo hace falta decir qué se puede hacer ahora. */
-      html += '<div class="bloqueado">Si necesitas entrar o salir de esta competición, habla directamente con tu entrenador.</div>';
-    } else {
-      html += '<div class="bloqueado">El club todavía no ha abierto esta competición. Cuando la abra, podrás decir aquí a qué pruebas vas.</div>';
-    }
 
     return html + '</div>';
   }
@@ -497,41 +421,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // ---------- acciones ----------
   wrap.addEventListener('click', async function(e){
-    var apuntar = e.target.getAttribute && e.target.getAttribute('data-apuntar');
-    var quitar = e.target.getAttribute && e.target.getAttribute('data-quitar');
     var ics = e.target.getAttribute && e.target.getAttribute('data-ics');
-
     if (ics) {
       var comp = COMPS.filter(function(x){ return x.id === ics; })[0];
       if (comp) icsDescargar(icsDeCompeticion(comp));
-      return;
-    }
-
-    if (apuntar) {
-      var sel = $('sel-' + apuntar), msg = $('msg-' + apuntar);
-      var prueba = sel ? sel.value.trim() : '';
-      if (!prueba) { msg.textContent = 'Elige primero la prueba.'; msg.className = 'msg error'; return; }
-      msg.textContent = 'Avisando al club…'; msg.className = 'msg';
-      var r = await sb.from('competicion_atleta').insert({
-        competicion_id: apuntar, atleta_id: atleta.id, prueba: prueba, estado: 'apuntado'
-      });
-      if (r.error) {
-        var yaEsta = (r.error.code === '23505');
-        msg.textContent = yaEsta
-          ? 'El club ya sabe que vas a esa prueba.'
-          : 'No hemos podido avisar al club. Puede que el plazo se haya cerrado, o ser tu conexión: inténtalo otra vez.';
-        msg.className = 'msg ' + (yaEsta ? 'error' : 'fallo');
-        return;
-      }
-      await cargarDatos(); pintar();
-      return;
-    }
-
-    if (quitar) {
-      if (!await APX.confirm('¿Decirle al club que ya no vas a esta prueba?', { aceptar:'Quitarme', peligro:true })) return;
-      var d = await sb.from('competicion_atleta').delete().eq('id', quitar);
-      if (d.error) { APX.toast('No hemos podido quitarte de esa prueba', 'error', { detalle:'Puede ser tu conexión: inténtalo otra vez.' }); return; }
-      await cargarDatos(); pintar();
     }
   });
 

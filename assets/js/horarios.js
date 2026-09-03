@@ -280,8 +280,28 @@
   }
 
   /* ---------- Pintado ---------- */
-  function htmlTarjeta(e) {
+  /* En la parrilla de escritorio (plegable=true) cada tarjeta es un
+     desplegable: cerrada enseña solo el nombre del grupo —así la semana se
+     escanea de un vistazo, sin ruido— y al pincharla se abre con la hora, la
+     sede y el entrenador. En el acordeón de móvil no: allí el día ya es un
+     desplegable, y meter otro dentro sería abrir dos veces para lo mismo, así
+     que las tarjetas van planas (plegable=false). */
+  function htmlTarjeta(e, plegable) {
     var franja = e.fin ? (e.inicio + ' – ' + e.fin) : (e.inicio + ' h');
+    var cuerpo =
+      '<span class="hora">' + esc(franja) + '</span>' +
+      (e.lugar ? '<span class="lugar">' + esc(e.lugar) + '</span>' : '') +
+      (e.entrenador ? '<span class="entrena">Con ' + esc(e.entrenador) + '</span>' : '') +
+      (e.nota ? '<span class="nota">' + esc(e.nota) + '</span>' : '');
+    if (plegable) {
+      return '<details class="hor-tarj hor-tarj--plegable" style="--c:' + e.familia.color + '" title="' + escAttr(e.crudo) + '">' +
+               '<summary class="hor-tarj-cab">' +
+                 '<span class="nombre">' + esc(e.nombre) + '</span>' +
+                 '<span class="caret" aria-hidden="true"></span>' +
+               '</summary>' +
+               '<div class="hor-tarj-cuerpo">' + cuerpo + '</div>' +
+             '</details>';
+    }
     return '<article class="hor-tarj" style="--c:' + e.familia.color + '" title="' + escAttr(e.crudo) + '">' +
              '<span class="hora">' + esc(franja) + '</span>' +
              '<span class="nombre">' + esc(e.nombre) + '</span>' +
@@ -301,7 +321,7 @@
                   '<span class="dia">' + (esHoy ? 'Hoy' : DIAS_CORTO[d]) + '</span>' +
                   '<span class="num">' + (fechas[d].getDate() < 10 ? '0' : '') + fechas[d].getDate() + '</span>' +
                 '</div>' +
-                (lista.length ? lista.map(htmlTarjeta).join('') : '<div class="hor-vacio">Sin entrenos</div>') +
+                (lista.length ? lista.map(function (x) { return htmlTarjeta(x, true); }).join('') : '<div class="hor-vacio">Sin entrenos</div>') +
               '</div>';
     }
     document.getElementById('hor-parrilla').innerHTML = html;
@@ -410,6 +430,11 @@
       .from('grupos')
       .select('id, nombre, seccion, horario, entrenador_id, turno')
       .eq('activo', true)
+      /* La Academia AC98 (antes «Grupo A») no sale en la parrilla pública: es
+         una academia por selección con su propia página, no un grupo abierto
+         del calendario. Sigue siendo un grupo por dentro (los atletas la ven en
+         su app). Se excluye por id. */
+      .neq('id', 'c288b979-cd00-4abb-96da-30fa997ef297')
       .order('nombre')
       /* Dentro del mismo nombre, primero el turno de lunes: dos líneas
          iguales que unas veces empiezan por el lunes y otras por el
