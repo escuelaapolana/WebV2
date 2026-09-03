@@ -226,9 +226,9 @@
        el gesto de volver atrás y la gente la pulsaba sin mirar; el sitio
        se queda ocupado por el escudo, que no hace nada al tocarlo.
        ----------------------------------------------------------------- */
-    '.pt-top{position:relative;background:linear-gradient(180deg,#2E4258,#25354A);color:#fff;display:flex;align-items:center;justify-content:space-between;' +
+    '.pt-top{position:relative;background:linear-gradient(180deg,#35506E,#20303F);color:#fff;display:flex;align-items:center;justify-content:space-between;' +
       'gap:10px;min-height:52px;padding:4px clamp(14px,4vw,40px);flex-wrap:nowrap;width:100%;box-sizing:border-box;' +
-      'box-shadow:0 3px 14px rgba(20,30,42,.20);border-bottom:1px solid rgba(255,255,255,.06)}' +
+      'box-shadow:0 4px 16px rgba(20,30,42,.28);border-bottom:1px solid rgba(255,255,255,.06)}' +
     '.pt-top .izq{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden}' +
     /* El escudo es azul oscuro con el detalle fino, y sobre la banda navy se
        perdía: se veía una mancha. Va sobre un disco blanco, que es como está
