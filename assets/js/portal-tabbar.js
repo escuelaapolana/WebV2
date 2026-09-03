@@ -62,21 +62,23 @@
   css.textContent =
     '.pt-tabbar{display:none}' +
     '@media (max-width:760px){' +
-      /* hueco al final del contenido para que la barra no tape nada */
-      'body.pt-con-tabbar{padding-bottom:calc(' + ALTO + 'px + env(safe-area-inset-bottom))}' +
-      '.pt-tabbar{display:flex;align-items:stretch;position:fixed;left:0;right:0;bottom:0;z-index:600;' +
-        'box-sizing:border-box;max-width:100%;' +
-        'background:rgba(251,249,244,.96);-webkit-backdrop-filter:saturate(1.3) blur(10px);backdrop-filter:saturate(1.3) blur(10px);' +
-        'border-top:1px solid var(--linea,#EAE3D5);' +
-        'padding:10px 6px calc(10px + env(safe-area-inset-bottom))}' +
-      '.pt-tabbar a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
-        'min-height:48px;padding:0 2px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
-        'font-family:inherit;font-size:11px;font-weight:400;line-height:1.2;text-transform:none;' +
+      /* hueco al final del contenido para que la barra flotante no tape nada */
+      'body.pt-con-tabbar{padding-bottom:calc(' + ALTO + 'px + 20px + env(safe-area-inset-bottom))}' +
+      /* Barra flotante en píldora, como la maqueta: centrada, redonda, iconos
+         solos y con sombra para que flote sobre el contenido. */
+      '.pt-tabbar{display:flex;align-items:center;gap:2px;position:fixed;left:50%;transform:translateX(-50%);right:auto;' +
+        'bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;box-sizing:border-box;max-width:calc(100% - 20px);' +
+        'background:rgba(255,255,255,.88);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
+        'border:1px solid rgba(30,45,65,.08);border-radius:999px;' +
+        'padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
+      '.pt-tabbar a{position:relative;flex:0 0 auto;display:grid;place-items:center;width:58px;height:46px;border-radius:999px;' +
+        'text-decoration:none;color:var(--texto-suave,#6E6656);transition:background .2s ease,color .2s ease;' +
         '-webkit-tap-highlight-color:transparent}' +
-      '.pt-tabbar a span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      /* Iconos solos: la maqueta no lleva texto bajo el icono */
+      '.pt-tabbar a span{display:none}' +
       '.pt-tabbar .ic{width:24px;height:24px;flex:0 0 24px}' +
-      '.pt-tabbar a.activo{color:#2F6FA8}' +
-      '.pt-tabbar a.activo span{font-weight:600}' +
+      '.pt-tabbar a:not(.activo):hover{background:var(--crema,#FAF7F0);color:var(--navy,#26374B)}' +
+      '.pt-tabbar a.activo{background:var(--navy,#26374B);color:#fff}' +
     '}';
   /* Los avisos flotantes suben por encima de la barra: de eso se encarga
      apxSitio() en portal-auth.js, que mide el alto real de la barra al
