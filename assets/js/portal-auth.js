@@ -269,6 +269,15 @@
       'border-radius:999px;background:#8FC0E8;color:#1E4E78;font-family:inherit;font-size:13px;font-weight:600;line-height:1}' +
     '.pt-avatar:hover span{background:#A9D0F0}' +
     '.pt-papel:focus-visible,.pt-avatar:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
+    /* Pastilla «Web» y nombre en el avatar, como la maqueta */
+    '.pt-web{display:inline-flex;align-items:center;gap:6px;color:#fff;text-decoration:none;font-size:13px;font-weight:600;' +
+      'background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:0 13px;min-height:44px;' +
+      'box-sizing:border-box;-webkit-tap-highlight-color:transparent}' +
+    '.pt-web:hover{background:rgba(255,255,255,.18)}' +
+    '.pt-web svg{flex:0 0 auto}' +
+    '.pt-avatar .pt-nom{width:auto;height:auto;min-width:0;border-radius:0;background:none;color:#fff;' +
+      'font-size:13.5px;font-weight:600;padding:0 4px 0 2px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}' +
+    '@media(max-width:440px){.pt-web span{display:none}.pt-avatar .pt-nom{display:none}}' +
 
     /* Lo tuyo, colgando del avatar. Va pegado a él, no en el centro de la
        pantalla: lo que se pulsa y lo que aparece tienen que estar juntos. */
@@ -750,6 +759,7 @@
          pantallas (la función se llamaba más de una vez). */
       if (document.querySelector('.pt-top')) return;
       var nombre = (perfil && perfil.nombre) ? perfil.nombre : email;
+      var primerNom = String(nombre).trim().split(/\s+/)[0] || nombre;
       var ini = iniciales(perfil, email);
       var top = document.createElement('div');
       top.className = 'pt-top';
@@ -759,6 +769,11 @@
           '<span class="marca">Apolana</span>' +
         '</div>' +
         '<div class="der">' +
+          /* Pastilla «Web» a la web pública del club (como la maqueta). */
+          '<a class="pt-web" href="' + b + '" title="Ir a la web del club">' +
+            '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+              '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>' +
+            '<span>Web</span></a>' +
           /* La píldora nace escondida: si solo tienes un papel no aparece
              nunca, y la mayoría del club está en ese caso. */
           '<button type="button" class="pt-papel" id="pt-papel" aria-haspopup="dialog">' +
@@ -767,6 +782,8 @@
           '</button>' +
           '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="menu" ' +
             'aria-expanded="false" aria-controls="pt-menu" aria-label="Lo tuyo: perfil y salir">' +
+            /* El nombre, como en la maqueta, a la izquierda del círculo. */
+            '<span class="pt-nom">' + esc(primerNom) + '</span>' +
             /* Las iniciales son el respaldo. Si la persona ha puesto foto en
                su perfil, se pinta encima en cuanto llega: se subía, se
                guardaba, se veía en el perfil y en los retos, y aquí seguían
