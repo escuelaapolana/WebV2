@@ -280,8 +280,12 @@
       'font-size:13.5px;font-weight:600;padding:0 0 0 2px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}' +
     '.pt-avatar .pt-rol{width:auto;height:auto;min-width:0;border-radius:0;background:none;color:rgba(255,255,255,.62);' +
       'font-size:13px;font-weight:400;padding:0 3px 0 5px;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis}' +
-    '@media(max-width:520px){.pt-avatar .pt-rol{display:none}}' +
-    '@media(max-width:440px){.pt-web span{display:none}.pt-avatar .pt-nom{display:none}}' +
+    /* En móvil NO se ocultan los textos: «Web» y el nombre+rol se ven
+       siempre (igual que en el admin). Solo se aprieta el espaciado y se
+       recorta el ancho del nombre para que la barra no se parta en dos filas. */
+    '@media(max-width:440px){.pt-web{padding-left:8px;padding-right:8px;gap:5px}' +
+      '.pt-avatar .pt-nom{max-width:84px}.pt-avatar .pt-rol{max-width:96px;padding-left:4px}}' +
+    '@media(max-width:360px){.pt-avatar .pt-nom{max-width:64px}.pt-avatar .pt-rol{max-width:72px}}' +
 
     /* Lo tuyo, colgando del avatar. Va pegado a él, no en el centro de la
        pantalla: lo que se pulsa y lo que aparece tienen que estar juntos. */
