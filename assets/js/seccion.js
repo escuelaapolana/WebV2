@@ -497,11 +497,11 @@
     var btn1 = nodo('button', 'eg-banda on'); btn1.type = 'button';
     btn1.appendChild(nodo('span', 'et', 'Primera hora'));
     btn1.appendChild(nodo('span', 'an', rango(b1) || '2023 – 2015'));
-    btn1.appendChild(nodo('span', 'ed', 'Los pequeños'));
+    /* Fuera «Los pequeños» / «Los mayores»: Andrés no los quiere en las
+       tarjetas de primera y segunda hora. Se queda el rótulo y el rango de años. */
     var btn2 = nodo('button', 'eg-banda'); btn2.type = 'button';
     btn2.appendChild(nodo('span', 'et', 'Segunda hora'));
     btn2.appendChild(nodo('span', 'an', rango(b2) || '2014 – 2009'));
-    btn2.appendChild(nodo('span', 'ed', 'Los mayores'));
     sel.appendChild(btn1); sel.appendChild(btn2);
     wrap.appendChild(sel);
 
