@@ -58,6 +58,49 @@
               'stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.6"/><path d="M16 16l4.5 4.5"/></svg>'
   };
 
+  /* ---------- un icono por pantalla, para el menú «Todo» ----------
+     Así el menú del panel se lee como el «Más» del entrenador: icono a la
+     izquierda + nombre. Se elige por la carpeta de la ruta; lo que no encaje
+     se queda con un icono de pantalla genérico (nunca sin icono). */
+  var _def    = svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9h17"/>');
+  var _globo  = svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/>');
+  var _foto   = svg('<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M4 18l5-4 4 3 3-2 4 3"/>');
+  var _campana= svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10.5 20a2 2 0 0 0 3 0"/>');
+  var _caja   = svg('<path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/>');
+  var _trofeo = svg('<path d="M7 4h10v3a5 5 0 0 1-10 0z"/><path d="M12 12v4M8 20h8"/>');
+  var _doc    = svg('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>');
+  var PIC = {
+    atletas: IC.personas, grupos: IC.personas, usuarios: IC.personas, contactos: IC.personas,
+    importar: svg('<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'),
+    confirmaciones: svg('<path d="M4 12.5l5 5L20 6.5"/>'),
+    altas: svg('<path d="M3 13l3-8h12l3 8"/><path d="M3 13v5h18v-5h-6a3 3 0 0 1-6 0z"/>'),
+    cobros: IC.dinero, 'pagos-online': IC.dinero, tarifas: IC.dinero,
+    pedidos: _caja, cubo: _caja,
+    eventos: svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
+    competiciones: _trofeo, liga: _trofeo, retos: _trofeo, records: _trofeo,
+    tests: svg('<path d="M5 20V10M12 20V4M19 20v-7"/>'),
+    pruebas: svg('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'),
+    'avisos-push': _campana, avisos: _campana, noticias: _globo, tienda: _caja,
+    perfil: svg('<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>'),
+    portal: svg('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'),
+    paginas: _globo, mapa: _globo, redes: _globo, colaboradores: _globo,
+    contenido: _doc, documentos: _doc, plantillas: _doc,
+    imagenes: _foto, biblioteca: _foto,
+    buzon: svg('<path d="M4 5h16v14H4z"/><path d="M4 8l8 5 8-5"/>'),
+    automatizaciones: svg('<circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/>'),
+    campo: IC.pista
+  };
+  function iconoDe(url) {
+    var u = String(url || '');
+    if (url === raiz()) return IC.inicio;                 /* Inicio del panel */
+    var h = u.indexOf('#');
+    var s = h !== -1 ? u.slice(h + 1)
+                     : (u.replace(/[?].*$/, '').replace(/\/+$/, '').split('/').pop() || '');
+    if (PIC[s]) return PIC[s];
+    if (s === '' || s === 'admin') return IC.inicio;
+    return _def;
+  }
+
   /* ---------- estilos ---------- */
   var css = document.createElement('style');
   css.setAttribute('data-piel', 'navegacion');
@@ -151,6 +194,7 @@
     '.at-hoja .lista a .txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}' +
     '.at-hoja .lista a .t{font-size:15px;line-height:1.3;color:var(--navy,#2E4256)}' +
     '.at-hoja .lista a .b{font-size:14px;line-height:1.3;color:var(--texto-suave,#6E6656)}' +
+    '.at-hoja .lista a .ic{flex:0 0 22px;width:22px;height:22px;color:var(--azul-oscuro,#2F6FA8)}' +
     '.at-hoja .lista a .chev{flex:0 0 auto;font-style:normal;font-size:19px;line-height:1;color:var(--texto-suave,#6E6656)}' +
     '.at-hoja .lista a.aqui .t{font-weight:600;color:var(--azul-oscuro,#2F6FA8)}' +
 
@@ -487,6 +531,7 @@
 
   function itemHTML(txt, sub, url, aqui) {
     return '<a href="' + esc(url) + '"' + (aqui ? ' class="aqui"' : '') + ' data-clave="' + esc(clave(url)) + '">' +
+           iconoDe(url) +
            '<span class="txt"><span class="t">' + esc(txt) + '</span>' +
            '<span class="b">' + esc(sub) + '</span></span>' +
            '<i class="chev" aria-hidden="true">›</i></a>';
