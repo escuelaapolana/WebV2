@@ -1904,14 +1904,17 @@
       }
       try {
         obs = new MutationObserver(function () {
-          if (hayContenido()) {
-            resuelto = true; if (obs) obs.disconnect(); quitarTransicion();
-            /* La zona ha cuajado: se reinicia el contador anti-bucle del hub. */
-            try { sessionStorage.removeItem('apolana.zona.salto'); } catch (e) {}
-          }
+          if (hayContenido()) { resuelto = true; if (obs) obs.disconnect(); quitarTransicion(); }
         });
         obs.observe(cont, { childList: true, subtree: true });
       } catch (e) {}
+      /* Reinicio del contador anti-bucle del hub, pero SOLO si la página se
+         queda quieta 5 s (no en el primer pintado): si en ese rato la pantalla
+         salta/recarga, este setTimeout muere con ella y el contador se conserva,
+         así el bucle de saltos se corta a los 2 en vez de reiniciarse sin fin. */
+      setTimeout(function () {
+        try { sessionStorage.removeItem('apolana.zona.salto'); } catch (e) {}
+      }, 5000);
       /* Si por lo que sea nunca llega a haber MutationObserver, la transición
          no se queda pegada para siempre: a los 8 s se quita igual. */
       setTimeout(function () { if (hayContenido()) quitarTransicion(); }, 8000);
