@@ -100,6 +100,19 @@
     if (s === '' || s === 'admin') return IC.inicio;
     return _def;
   }
+  /* Icono para las cabeceras de sección (Personas, Dinero, …), para que se
+     lean como una fila más aunque sean desplegables. */
+  function iconoSeccion(t) {
+    var k = String(t || '').toLowerCase();
+    var M = {
+      'personas': IC.personas, 'dinero': IC.dinero,
+      'actividad': svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
+      'tu cuenta': svg('<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>'),
+      'la web': _globo,
+      'club': svg('<path d="M12 3l8 3v6c0 4.6-3.2 7.6-8 9-4.8-1.4-8-4.4-8-9V6z"/>')
+    };
+    return M[k] || _def;
+  }
 
   /* ---------- estilos ---------- */
   var css = document.createElement('style');
@@ -210,20 +223,25 @@
     '.at-hoja .atajos a span{flex:1 1 auto;min-width:0}' +
     '.at-hoja .atajos a:hover{background:#FCFAF5}' +
 
-    /* «Todo, por bloques»: plegados y con su recuento al lado */
-    '.at-hoja .bloque{border-top:1px solid var(--crema-media,#EFE9DC)}' +
-    '.at-hoja .bloque:first-of-type{border-top:0}' +
+    /* «Todo, por bloques»: cada cabecera es una FILA-TARJETA igual que las
+       demás (icono + nombre + recuento + flecha), y al pulsarla se abren sus
+       opciones debajo. Así todo el menú es calco del «Más» del entrenador. */
+    '.at-hoja .bloque{margin:0 0 8px}' +
     '.at-hoja .bloque > summary{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:center;' +
-      'gap:12px;min-height:48px;box-sizing:border-box;padding:11px 2px;font-size:15px;color:var(--navy,#2E4256);' +
-      '-webkit-tap-highlight-color:transparent}' +
+      'gap:12px;min-height:46px;box-sizing:border-box;padding:10px 14px;font-size:15px;color:var(--navy,#2E4256);' +
+      'background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:13px;' +
+      'box-shadow:0 5px 14px -12px rgba(46,66,86,.32);-webkit-tap-highlight-color:transparent}' +
+    '.at-hoja .bloque > summary:hover{background:#FCFAF5}' +
     '.at-hoja .bloque > summary::-webkit-details-marker{display:none}' +
+    '.at-hoja .bloque > summary .ic{flex:0 0 22px;width:22px;height:22px;color:var(--azul-oscuro,#2F6FA8)}' +
     '.at-hoja .bloque > summary .nom{flex:1 1 auto;min-width:0}' +
-    '.at-hoja .bloque > summary .n{font-family:var(--fuente-dato,inherit);font-size:14px;color:var(--texto-suave,#6E6656)}' +
-    '.at-hoja .bloque > summary .fl{flex:0 0 auto;width:7px;height:7px;margin-right:4px;' +
+    '.at-hoja .bloque > summary .n{font-family:var(--fuente-dato,inherit);font-size:13px;color:var(--texto-suave,#6E6656)}' +
+    '.at-hoja .bloque > summary .fl{flex:0 0 auto;width:7px;height:7px;margin-right:2px;' +
       'border-right:2px solid var(--texto-suave,#6E6656);border-bottom:2px solid var(--texto-suave,#6E6656);' +
       'transform:rotate(45deg) translate(-2px,-2px);transition:transform .18s ease}' +
     '.at-hoja .bloque[open] > summary .fl{transform:rotate(-135deg) translate(-2px,-2px)}' +
-    '.at-hoja .bloque > .lista{margin:0 0 12px}' +
+    '.at-hoja .bloque[open] > summary{margin-bottom:8px}' +
+    '.at-hoja .bloque > .lista{margin:0 0 4px;padding-left:12px}' +
     '.at-hoja .oculto-busca{display:none !important}' +
     'body.at-hoja-abierta{overflow:hidden}' +
 
@@ -572,7 +590,7 @@
       }
       var dentro = reales.some(function (e) { return clave(e.url) === aqui; });
       html += '<details class="bloque"' + (dentro ? ' open' : '') + '>' +
-              '<summary><span class="nom">' + esc(b.t) + '</span>' +
+              '<summary>' + iconoSeccion(b.t) + '<span class="nom">' + esc(b.t) + '</span>' +
               '<span class="n">' + reales.length + '</span><i class="fl" aria-hidden="true"></i></summary>' +
               '<div class="lista">';
       reales.forEach(function (e) {
