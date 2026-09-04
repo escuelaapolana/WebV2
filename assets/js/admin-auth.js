@@ -81,7 +81,7 @@
     '.adm-top .der .adm-perfil:hover{background:rgba(255,255,255,.2)}' +
     '.adm-top .der .adm-perfil .av{width:28px;height:28px;flex:0 0 auto;border-radius:50%;background:linear-gradient(135deg,#C9A23A,#8A6A1E);display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}' +
     '.adm-top .der .adm-salir-btn{color:rgba(255,255,255,.72);border-color:rgba(255,255,255,.25)}' +
-    '@media(max-width:640px){.adm-top .der .ir-web span,.adm-top .der .adm-perfil .rol{display:none}.adm-top .der .ir-web{padding:8px 11px}.adm-top .der .adm-perfil{padding:5px 6px}}' +
+    '@media(max-width:560px){.adm-top .der{gap:7px}.adm-top .der .ir-web{padding:8px 12px}}' +
     '@media(max-width:560px){.adm-top{padding:8px 14px;gap:8px;min-height:56px}.adm-top .der{gap:4px}.adm-top a.volver .txt{display:none}.adm-top a.volver{padding:10px}.adm-top .sep{display:none}.adm-top .marca{font-size:18px}.adm-top button{padding:10px 15px}.adm-top a.ir-web{padding:10px 6px}}' +
     /* --- Caja de acceso: mismo aire que la del portal --- */
     '.adm-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid #EAE3D5;border-radius:20px;padding:30px 26px 26px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +

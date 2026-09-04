@@ -71,8 +71,10 @@
     '.at-tabbar a,.at-tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
       'min-height:48px;padding:6px 4px;border-radius:18px;text-decoration:none;color:var(--texto-suave,#6E6656);background:none;border:0;cursor:pointer;' +
       'font-family:inherit;font-size:12px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;-webkit-tap-highlight-color:transparent}' +
-    '.at-tabbar span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-    '.at-tabbar .ic{width:23px;height:23px;flex:0 0 23px}' +
+    /* Barra de abajo SOLO con iconos (sin texto): así no se corta nada. */
+    '.at-tabbar span{display:none}' +
+    '.at-tabbar a,.at-tabbar button{gap:0}' +
+    '.at-tabbar .ic{width:25px;height:25px;flex:0 0 25px}' +
     '.at-tabbar .activo{background:var(--navy,#2E4256);color:#fff}' +
     '.at-tabbar .activo span{font-weight:600}' +
     '.at-hoja[hidden],.at-fondo[hidden],.at-tabbar[hidden]{display:none !important}' +

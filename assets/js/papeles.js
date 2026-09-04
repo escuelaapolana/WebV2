@@ -90,12 +90,17 @@
     '.pap-franja button:hover{background:rgba(255,255,255,.6)}' +
 
     /* --- EL SELECTOR --- */
+    /* Hoja inferior, como la maqueta (cp-hoja): sube desde abajo, fondo blanco,
+       bordes redondeados solo arriba y un asa. Antes era un cuadro centrado. */
     '.pap-fondo{position:fixed;inset:0;z-index:9997;background:rgba(46,66,86,.45);display:flex;' +
-      'align-items:flex-start;justify-content:center;padding:clamp(12px,5vh,52px) 12px;overflow:auto;' +
+      'align-items:flex-end;justify-content:center;padding:0;overflow:auto;' +
       'font-family:var(--fuente-texto,inherit)}' +
-    '.pap-caja{background:var(--crema,#FBF9F4);border:1px solid var(--linea,#EAE3D5);border-radius:14px;' +
-      'width:min(430px,100%);box-shadow:0 30px 70px -25px rgba(46,66,86,.55);' +
-      'padding:18px 16px 16px;box-sizing:border-box}' +
+    '.pap-caja{background:#fff;border:0;border-radius:22px 22px 0 0;' +
+      'width:min(560px,100%);box-shadow:0 -10px 44px rgba(20,30,42,.34);' +
+      'padding:10px clamp(16px,4vw,22px) calc(22px + env(safe-area-inset-bottom));box-sizing:border-box;' +
+      'max-height:90vh;overflow-y:auto;animation:papUp .35s cubic-bezier(.2,.7,.2,1)}' +
+    '@keyframes papUp{from{transform:translateY(34px);opacity:0}to{transform:none;opacity:1}}' +
+    '.pap-caja .pap-tir{width:40px;height:5px;border-radius:999px;background:#E4DCCB;margin:2px auto 14px}' +
     '.pap-cab{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}' +
     '.pap-cab .pap-quien{font-size:14px;color:var(--texto-suave,#6E6656);display:block}' +
     '.pap-cab h3{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;' +
@@ -229,6 +234,7 @@
     fondo.className = 'pap-fondo';
     fondo.innerHTML =
       '<div class="pap-caja" role="dialog" aria-modal="true" aria-label="Cambiar de papel">' +
+        '<div class="pap-tir" aria-hidden="true"></div>' +
         '<div class="pap-cab">' +
           '<div><span class="pap-quien">' + esc(d.nombre || '') + '</span><h3>Cambiar de papel</h3></div>' +
           '<button type="button" class="pap-x" data-cerrar>Cerrar</button>' +
