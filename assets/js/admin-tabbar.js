@@ -173,21 +173,23 @@
 
     /* --- de 899 px para abajo: barra de cinco y ni rastro de la lateral --- */
     '@media (max-width:' + CORTE + 'px){' +
-      'body.at-con-tabbar{padding-bottom:calc(' + ALTO + 'px + env(safe-area-inset-bottom))}' +
-      '.at-tabbar{display:flex;align-items:stretch;position:fixed;left:0;right:0;bottom:0;z-index:600;' +
-        'box-sizing:border-box;max-width:100%;' +
-        'background:rgba(255,255,255,.97);-webkit-backdrop-filter:saturate(1.3) blur(10px);backdrop-filter:saturate(1.3) blur(10px);' +
-        'border-top:1px solid var(--linea,#EAE3D5);' +
-        'padding:10px 6px calc(10px + env(safe-area-inset-bottom))}' +
-      '.at-tabbar a,.at-tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;' +
-        'min-height:48px;padding:0 2px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
+      'body.at-con-tabbar{padding-bottom:calc(' + ALTO + 'px + 20px + env(safe-area-inset-bottom))}' +
+      /* Barra flotante en píldora, como la maqueta de admin (con texto bajo el
+         icono, que la maqueta de admin sí lo lleva: Resumen/Socios/Compes/Más). */
+      '.at-tabbar{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);right:auto;bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;' +
+        'box-sizing:border-box;max-width:calc(100% - 20px);' +
+        'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
+        'border:1px solid rgba(30,45,65,.08);border-radius:26px;' +
+        'padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
+      '.at-tabbar a,.at-tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
+        'min-height:48px;padding:6px 4px;border-radius:18px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
         'background:none;border:0;cursor:pointer;' +
-        'font-family:inherit;font-size:13px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;' +
+        'font-family:inherit;font-size:12px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;' +
         '-webkit-tap-highlight-color:transparent}' +
       '.at-tabbar span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-      '.at-tabbar .ic{width:24px;height:24px;flex:0 0 24px}' +
-      /* el activo cambia de color, nunca de grosor de trazo */
-      '.at-tabbar .activo{color:var(--azul-oscuro,#2F6FA8)}' +
+      '.at-tabbar .ic{width:23px;height:23px;flex:0 0 23px}' +
+      /* el activo va en píldora navy, como las demás zonas */
+      '.at-tabbar .activo{background:var(--navy,#2E4256);color:#fff}' +
       '.at-tabbar .activo span{font-weight:600}' +
       /* el buscador de la cabecera pasa a su propia línea, a ancho completo,
          y la sesión se queda arriba con el nombre de la pantalla */
