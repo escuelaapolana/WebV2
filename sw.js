@@ -3,7 +3,7 @@
    (por eso los cambios se ven al momento); si no hay conexión, sirve lo último
    que se vio. No toca las peticiones a Supabase ni a los CDN (siempre a la red,
    para que los datos y el acceso vayan en vivo). */
-const CACHE = 'apolana-v7';
+const CACHE = 'apolana-v8';
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 

@@ -263,12 +263,15 @@
     /* El avatar. Se ve a 32 px y se pulsa en 44. */
     /* Un poco más ancho que alto: el círculo mide lo de siempre y lo que crece
        es el hueco de la flecha, que va al lado y no encima. */
-    '.pt-avatar{display:inline-flex;align-items:center;justify-content:center;gap:1px;width:auto;min-width:52px;height:44px;' +
-      'flex:0 0 auto;padding:0 3px 0 0;border:0;border-radius:999px;background:none;cursor:pointer;' +
+    '.pt-avatar{display:inline-flex;align-items:center;gap:9px;width:auto;height:44px;box-sizing:border-box;' +
+      'flex:0 0 auto;padding:5px 15px 5px 5px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.10);cursor:pointer;' +
       'user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}' +
+    '.pt-avatar:hover{background:rgba(255,255,255,.2)}' +
+    /* Círculo DORADO con las iniciales, calcado a la píldora de admin (misma
+       app, misma barra). Si hay foto de perfil, se pinta encima. */
     '.pt-avatar span{display:flex;align-items:center;justify-content:center;width:32px;height:32px;' +
-      'border-radius:999px;background:#8FC0E8;color:#1E4E78;font-family:inherit;font-size:13px;font-weight:600;line-height:1}' +
-    '.pt-avatar:hover span{background:#A9D0F0}' +
+      'border-radius:999px;background:linear-gradient(135deg,#C9A23A,#8A6A1E);color:#fff;background-size:cover;background-position:center;' +
+      'font-family:inherit;font-size:13px;font-weight:700;line-height:1}' +
     '.pt-papel:focus-visible,.pt-avatar:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
     /* Pastilla «Web» y nombre en el avatar, como la maqueta */
     '.pt-web{display:inline-flex;align-items:center;gap:6px;color:#fff;text-decoration:none;font-size:13px;font-weight:600;' +
@@ -799,12 +802,6 @@
             /* El papel activo, dentro de la misma píldora (como la maqueta:
                «Andrés · Atleta»). Lo rellena ponerPildora(); nace vacío. */
             '<span class="pt-rol" id="pt-rol"></span>' +
-            /* La misma flechita que lleva el papel de al lado. Sin ella, el
-               círculo con las iniciales parece una foto de perfil y no algo
-               que se pulse: hay que descubrir por casualidad que abre un
-               menú. Y justo al lado hay otro botón que sí la lleva, así que
-               la diferencia se nota. */
-            '<span class="pt-fl pt-fl-av" aria-hidden="true">&#9662;</span>' +
           '</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
