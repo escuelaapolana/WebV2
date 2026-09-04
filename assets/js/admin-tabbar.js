@@ -61,8 +61,19 @@
   var css = document.createElement('style');
   css.setAttribute('data-piel', 'navegacion');
   css.textContent =
-    /* la barra de abajo solo existe en móvil; la hoja y el buscador, en las dos */
-    '.at-tabbar{display:none}' +
+    /* La barra flotante existe en TODOS los tamaños (la maqueta de admin es de
+       móvil). El menú lateral se retira en apolana.css. */
+    'body.at-con-tabbar{padding-bottom:calc(' + ALTO + 'px + 20px + env(safe-area-inset-bottom))}' +
+    '.at-tabbar{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);right:auto;bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;box-sizing:border-box;max-width:calc(100% - 20px);' +
+      'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
+      'border:1px solid rgba(30,45,65,.08);border-radius:26px;padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
+    '.at-tabbar a,.at-tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
+      'min-height:48px;padding:6px 4px;border-radius:18px;text-decoration:none;color:var(--texto-suave,#6E6656);background:none;border:0;cursor:pointer;' +
+      'font-family:inherit;font-size:12px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;-webkit-tap-highlight-color:transparent}' +
+    '.at-tabbar span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.at-tabbar .ic{width:23px;height:23px;flex:0 0 23px}' +
+    '.at-tabbar .activo{background:var(--navy,#2E4256);color:#fff}' +
+    '.at-tabbar .activo span{font-weight:600}' +
     '.at-hoja[hidden],.at-fondo[hidden],.at-tabbar[hidden]{display:none !important}' +
 
     /* --- buscador de la cabecera navy (todas las páginas del panel) --- */
@@ -171,28 +182,9 @@
       '.at-hoja .cuerpo{padding-bottom:20px}' +
     '}' +
 
-    /* --- de 899 px para abajo: barra de cinco y ni rastro de la lateral --- */
+    /* --- de 899 px para abajo: el buscador de la cabecera a su propia línea
+       (la barra flotante y el ocultado de la lateral ya son globales) --- */
     '@media (max-width:' + CORTE + 'px){' +
-      'body.at-con-tabbar{padding-bottom:calc(' + ALTO + 'px + 20px + env(safe-area-inset-bottom))}' +
-      /* Barra flotante en píldora, como la maqueta de admin (con texto bajo el
-         icono, que la maqueta de admin sí lo lleva: Resumen/Socios/Compes/Más). */
-      '.at-tabbar{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);right:auto;bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;' +
-        'box-sizing:border-box;max-width:calc(100% - 20px);' +
-        'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
-        'border:1px solid rgba(30,45,65,.08);border-radius:26px;' +
-        'padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
-      '.at-tabbar a,.at-tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
-        'min-height:48px;padding:6px 4px;border-radius:18px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
-        'background:none;border:0;cursor:pointer;' +
-        'font-family:inherit;font-size:12px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;' +
-        '-webkit-tap-highlight-color:transparent}' +
-      '.at-tabbar span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-      '.at-tabbar .ic{width:23px;height:23px;flex:0 0 23px}' +
-      /* el activo va en píldora navy, como las demás zonas */
-      '.at-tabbar .activo{background:var(--navy,#2E4256);color:#fff}' +
-      '.at-tabbar .activo span{font-weight:600}' +
-      /* el buscador de la cabecera pasa a su propia línea, a ancho completo,
-         y la sesión se queda arriba con el nombre de la pantalla */
       '.adm-top .der,.admin-top .sesion{order:2}' +
       '.adm-top .at-busca-cab,.admin-top .at-busca-cab{order:3;flex:1 1 100%;max-width:none;margin:2px 0 0}' +
       /* el aviso queda 16 px por encima de la barra de pestañas (kit 30g) */
