@@ -139,12 +139,15 @@
     '.at-hoja .nota{margin:9px 2px 0;font-size:14px;line-height:1.45;color:var(--texto-suave,#6E6656)}' +
 
     /* resultados: nombre y, debajo, su bloque */
-    '.at-hoja .lista{background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;overflow:hidden}' +
-    '.at-hoja .lista a{display:flex;align-items:center;gap:12px;min-height:48px;box-sizing:border-box;' +
-      'padding:11px 15px;border-top:1px solid var(--crema-media,#EFE9DC);text-decoration:none;' +
+    /* Cada opción es una tarjeta blanca con borde y profundidad, como el menú
+       «Más» del entrenador (que gustó más). Antes era una lista con divisorias
+       dentro de un solo recuadro. */
+    '.at-hoja .lista{display:flex;flex-direction:column;gap:8px}' +
+    '.at-hoja .lista a{display:flex;align-items:center;gap:12px;min-height:52px;box-sizing:border-box;' +
+      'padding:13px 15px;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;' +
+      'box-shadow:0 6px 16px -12px rgba(46,66,86,.35);text-decoration:none;' +
       'color:var(--navy,#2E4256);-webkit-tap-highlight-color:transparent}' +
-    '.at-hoja .lista a:first-child{border-top:0}' +
-    '.at-hoja .lista a:hover{background:var(--crema,#FBF9F4)}' +
+    '.at-hoja .lista a:hover{background:#FCFAF5;box-shadow:0 12px 24px -14px rgba(46,66,86,.5)}' +
     '.at-hoja .lista a .txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}' +
     '.at-hoja .lista a .t{font-size:15px;line-height:1.3;color:var(--navy,#2E4256)}' +
     '.at-hoja .lista a .b{font-size:14px;line-height:1.3;color:var(--texto-suave,#6E6656)}' +
