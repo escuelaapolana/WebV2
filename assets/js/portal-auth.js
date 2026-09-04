@@ -1812,7 +1812,34 @@
        aparece contenido de verdad, así que no molesta si todo va bien. */
     (function watchdog() {
       if (!cont) return;
-      var resuelto = false, obs = null;
+      var resuelto = false, obs = null, transicion = null;
+
+      /* Si venimos de «cambiar de vista», la pantalla de transición se enseña
+         YA (cubriendo el blanco de la carga) y se retira en cuanto hay
+         contenido. Así el cambio de rol es una transición, no un parpadeo. */
+      (function pintarTransicion() {
+        var quien = null;
+        try { quien = sessionStorage.getItem('apolana.cambiando'); sessionStorage.removeItem('apolana.cambiando'); } catch (e) {}
+        if (!quien) return;
+        transicion = document.createElement('div');
+        transicion.setAttribute('role', 'status');
+        transicion.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;' +
+          'align-items:center;justify-content:center;gap:18px;text-align:center;padding:28px;' +
+          'background:var(--app-fondo,#FDFDFB);font-family:inherit;color:#2E4256';
+        transicion.innerHTML =
+          '<div style="width:38px;height:38px;border-radius:50%;border:3px solid #E4DCCB;border-top-color:#2E4256;animation:ptSpin .8s linear infinite"></div>' +
+          '<div style="font-family:var(--fuente-titulo,inherit);font-weight:700;text-transform:uppercase;font-size:20px;line-height:1.1">' +
+            (quien === '1' ? 'Cambiando de vista…' : ('Cargando ' + quien + '…')) + '</div>';
+        var st = document.createElement('style');
+        st.textContent = '@keyframes ptSpin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(st);
+        (document.body || document.documentElement).appendChild(transicion);
+      })();
+      function quitarTransicion() {
+        if (transicion && transicion.parentNode) transicion.parentNode.removeChild(transicion);
+        transicion = null;
+      }
+
       function hayContenido() {
         try { return cont.getElementsByTagName('*').length > 4; } catch (e) { return true; }
       }
@@ -1831,13 +1858,21 @@
       }
       try {
         obs = new MutationObserver(function () {
-          if (hayContenido()) { resuelto = true; if (obs) obs.disconnect(); }
+          if (hayContenido()) {
+            resuelto = true; if (obs) obs.disconnect(); quitarTransicion();
+            /* La zona ha cuajado: se reinicia el contador anti-bucle del hub. */
+            try { sessionStorage.removeItem('apolana.zona.salto'); } catch (e) {}
+          }
         });
         obs.observe(cont, { childList: true, subtree: true });
       } catch (e) {}
+      /* Si por lo que sea nunca llega a haber MutationObserver, la transición
+         no se queda pegada para siempre: a los 8 s se quita igual. */
+      setTimeout(function () { if (hayContenido()) quitarTransicion(); }, 8000);
       setTimeout(function () {
         if (obs) obs.disconnect();
-        if (resuelto || hayContenido() || !hayToken()) return;
+        if (resuelto || hayContenido() || !hayToken()) { quitarTransicion(); return; }
+        quitarTransicion();
         var ov = document.createElement('div');
         ov.setAttribute('role', 'alert');
         ov.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;' +

@@ -25,20 +25,23 @@
   .rotulo { font-size:15px; font-weight: 600; color: var(--navy); margin: 48px 0 10px; }
   @media (max-width: 600px) { .rotulo { margin-top: 32px; } }
 
-  /* Fila de lista (kit 30d): un contenedor con separadores, no tarjetas sueltas. */
-  .filas { background: #fff; border: 1px solid var(--linea-marcada); border-radius: 14px; overflow: hidden; }
-  .filas a { display: flex; align-items: center; gap: 14px; min-height: 48px; box-sizing: border-box;
-             padding: 12px 16px; text-decoration: none; color: var(--navy);
-             border-bottom: 1px solid var(--linea); }
-  .filas a:last-child { border-bottom: 0; }
-  .filas a:hover { background: var(--crema); }
+  /* Tarjetas del portal: una rejilla de tarjetas con profundidad, que se
+     despegan al pasar por encima. Sencillas y monas, mismo lenguaje que la web. */
+  .filas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 13px; }
+  .filas a { display: flex; align-items: center; gap: 13px; min-height: 64px; box-sizing: border-box;
+             padding: 15px 17px; text-decoration: none; color: var(--navy);
+             background: #fff; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 16px;
+             box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -16px rgba(30,45,65,.22);
+             transition: transform .32s cubic-bezier(.2,.7,.2,1), box-shadow .32s ease, border-color .32s ease; }
+  .filas a:hover { transform: translateY(-4px); border-color: var(--azul-filete, #3B85C0);
+             box-shadow: 0 2px 5px rgba(30,45,65,.08), 0 20px 36px -18px rgba(30,45,65,.32); }
   .filas .txt { flex: 1; min-width: 0; }
-  .filas b { display: block; font-size:15px; font-weight: 600; color: var(--navy); }
-  .filas small { display: block; font-size:13px; line-height: 1.4; color: var(--texto-suave); margin-top: 2px; }
+  .filas b { display: block; font-size:15.5px; font-weight: 600; color: var(--navy); }
+  .filas small { display: block; font-size:13px; line-height: 1.4; color: var(--texto-suave); margin-top: 3px; }
   /* Nombres propios del club: van en ámbar, y solo en texto (carácter 31a). */
   .marca { color: #8A5307; }
   /* El chevron nunca va en azul: se leería como un enlace distinto del resto de la fila. */
-  .filas .chev { flex: 0 0 auto; display: flex; color: #6E6656; }
+  .filas .chev { flex: 0 0 auto; display: flex; color: #B9AE97; }
 
   .nota { margin: 10px 2px 0; font-size:14px; line-height: 1.5; color: var(--texto-suave); }
 </style>
@@ -74,15 +77,21 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
        cuadra con el activo (típico tras cambiar de papel). En vez de volver
        a saltar —y parpadear sin fin—, se borra el recuerdo y nos quedamos en
        el hub, que siempre deja elegir. Antes esto era un bucle infinito. */
-    var saltoPrevio = 0;
-    try { saltoPrevio = parseInt(sessionStorage.getItem(SALTO_MARCA) || '0', 10) || 0; } catch (e2) {}
-    if (zonaGuardada && saltoPrevio && (Date.now() - saltoPrevio) < 6000) {
+    /* Anti-bucle por CONTADOR, no por tiempo: en móvil lento el rebote tarda
+       más de 6 s y el anti-bucle viejo no saltaba, dejando la app dando vueltas
+       (o colgada). Ahora se cuentan los saltos: si ya van 2 sin que la zona
+       cuaje, el destino rebota → se borra el recuerdo y nos quedamos en el hub.
+       El contador lo pone a cero portal-auth.js en cuanto una zona pinta
+       contenido de verdad, así que un uso normal nunca lo agota. */
+    var saltos = 0;
+    try { saltos = parseInt(sessionStorage.getItem(SALTO_MARCA) || '0', 10) || 0; } catch (e2) {}
+    if (zonaGuardada && saltos >= 2) {
       try { localStorage.removeItem(ZONA_MEM); sessionStorage.removeItem(SALTO_MARCA); } catch (e3) {}
       zonaGuardada = '';   /* se sigue al hub, sin rebotar */
     }
     /* Nunca al panel desde aquí (haría bucle): solo zonas del portal. */
     if (zonaGuardada && zonaGuardada.indexOf('/admin/') === -1) {
-      try { sessionStorage.setItem(SALTO_MARCA, String(Date.now())); } catch (e4) {}
+      try { sessionStorage.setItem(SALTO_MARCA, String(saltos + 1)); } catch (e4) {}
       location.replace(zonaGuardada); return;
     }
   } catch (e) { /* sin localStorage: se sigue con el hub de siempre */ }
@@ -110,8 +119,7 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   /* Accesos del club que no dependen del rol (maqueta 19b, bloque «sin cuenta»). */
   var PUBLICO = bloque('Del club',
     fila(base + 'noticias/', 'Noticias y calendario del club', 'Lo que pasa en el club, semana a semana.') +
-    fila(base, 'Grupos, horarios y precios', 'Dónde y cuándo entrena cada grupo.') +
-    fila(base + 'familias/', 'Familia Apolana', 'Cómo baja la cuota cuando hay varios en casa.'));
+    fila(base, 'Grupos, horarios y precios', 'Dónde y cuándo entrena cada grupo.'));
 
   /* Pantallas del portal que comparten varios roles. Se pintan como filas
      debajo de las zonas para que se pueda llegar a todas desde aquí. */
@@ -133,12 +141,16 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
     tests:        { titulo: 'Batería de tests',      desc: 'Tus pruebas físicas y cómo vas mejorando.',                  url: base + 'portal/tests/' }
   };
   /* «Mi perfil» va el primero en todos los roles: es de todo el mundo. */
+  /* Simplificado: la app es una herramienta de entrenamiento (atleta con
+     entrenador, entrenador y admin). Fuera de aquí lo de socio suelto: liga,
+     competiciones, documentos, avisos, tienda, redes, solicitudes… se ocultan
+     de momento. Se puede reactivar cualquiera volviéndolo a poner en su lista. */
   var ACCESOS_ROL = {
-    atleta:      ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'cubo', 'competiciones', 'tests', 'lesiones', 'carga', 'redes', 'documentos', 'tienda'],
-    familia:     ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'cubo', 'competiciones', 'tests', 'redes', 'documentos', 'tienda'],
-    entrenador:  ['perfil', 'avisos', 'liga', 'mensajes', 'calendario', 'solicitudes', 'cubo', 'competiciones', 'tests', 'calles', 'lesiones', 'carga', 'documentos', 'tienda'],
-    coordinador: ['perfil', 'avisos', 'calendario', 'solicitudes', 'competiciones', 'documentos'],
-    admin:       ['perfil', 'avisos', 'calendario', 'solicitudes', 'competiciones', 'calles', 'documentos', 'tienda']
+    atleta:      ['perfil', 'calendario', 'cubo', 'calles', 'tests', 'carga', 'lesiones', 'mensajes'],
+    familia:     ['perfil', 'calendario', 'cubo', 'mensajes'],
+    entrenador:  ['perfil', 'calendario', 'cubo', 'calles', 'tests', 'carga', 'lesiones', 'mensajes'],
+    coordinador: ['perfil', 'calendario'],
+    admin:       ['perfil', 'calendario', 'cubo', 'calles', 'tests', 'carga', 'lesiones', 'mensajes']
   };
 
   /* Cuántas peticiones de plaza esperan respuesta de esta persona. Llega

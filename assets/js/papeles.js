@@ -211,10 +211,39 @@
     alert(msg);
   }
 
+  /* Pantalla de transición a pantalla completa mientras se cambia de vista.
+     Cubre el hueco entre «guardar el papel» y que la zona nueva pinte, para
+     que NUNCA se vea el blanco. La zona nueva la retira en cuanto tiene
+     contenido (lo hace el watchdog de portal-auth.js); si algo se cuelga, ese
+     mismo watchdog ofrece «Volver a cargar». */
+  function pantallaTransicion(titulo) {
+    var ov = document.createElement('div');
+    ov.id = 'pap-transicion';
+    ov.setAttribute('role', 'status');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;' +
+      'align-items:center;justify-content:center;gap:18px;text-align:center;padding:28px;' +
+      'background:var(--app-fondo,#FDFDFB);font-family:inherit;color:#2E4256';
+    ov.innerHTML =
+      '<div class="pap-tr-spin" style="width:38px;height:38px;border-radius:50%;border:3px solid #E4DCCB;' +
+        'border-top-color:#2E4256;animation:papSpin .8s linear infinite"></div>' +
+      '<div style="font-family:var(--fuente-titulo,inherit);font-weight:700;text-transform:uppercase;font-size:20px;line-height:1.1">' +
+        'Cambiando a ' + esc(titulo || 'otra vista') + '…</div>';
+    if (!document.getElementById('pap-tr-css')) {
+      var st = document.createElement('style'); st.id = 'pap-tr-css';
+      st.textContent = '@keyframes papSpin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(st);
+    }
+    document.body.appendChild(ov);
+  }
+
   async function cambiar(rol) {
     var r = await sb().rpc('rol_activo_poner', { p_rol: rol || null });
     if (r.error) { decir('No se ha podido cambiar: ' + r.error.message, 'error'); return false; }
     olvidar();
+    /* Aviso a la zona nueva de que venimos de un cambio: así enseña la
+       pantalla de transición nada más cargar, en vez del blanco. */
+    try { sessionStorage.setItem('apolana.cambiando', titulo(rol || r.data) || '1'); } catch (e) {}
+    pantallaTransicion(titulo(rol || r.data));
     var destino = (PAPEL[r.data] && PAPEL[r.data].va) || null;
     if (destino && location.pathname.indexOf('/' + destino) === -1) location.href = base() + destino;
     else location.reload();
