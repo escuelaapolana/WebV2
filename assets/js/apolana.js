@@ -674,7 +674,7 @@ class ApolanaHero extends HTMLElement {
 
     this.innerHTML = `
       <section class="pag-hero${foto ? ' pag-hero--foto' : ''}">
-        ${foto ? `<img class="pag-hero-foto" src="${escaparHTML(ruta(foto))}" alt=""${
+        ${foto ? `<img class="pag-hero-foto" src="${escaparHTML(ruta(foto))}" alt="" decoding="async" fetchpriority="high"${
           this.getAttribute('foto-hueco') ? ` data-img="${t('foto-hueco')}"` : ''}>
           <div class="pag-hero-velo"></div>` : ''}
         <div class="contenedor">
