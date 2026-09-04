@@ -105,6 +105,7 @@
       'width:min(560px,100%);box-shadow:0 -10px 44px rgba(20,30,42,.34);' +
       'padding:10px clamp(16px,4vw,22px) calc(22px + env(safe-area-inset-bottom));box-sizing:border-box;' +
       'max-height:90vh;overflow-y:auto;animation:papUp .35s cubic-bezier(.2,.7,.2,1)}' +
+    '.pap-caja:focus{outline:none}' +
     '@keyframes papUp{from{transform:translateY(34px);opacity:0}to{transform:none;opacity:1}}' +
     '.pap-caja .pap-tir{width:40px;height:5px;border-radius:999px;background:#E4DCCB;margin:2px auto 14px}' +
     '.pap-cab{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}' +
@@ -424,8 +425,14 @@
       });
     }
 
-    var primero = fondo.querySelector('.pap-op:not([disabled])');
-    if (primero) primero.focus();
+    /* El foco va a la HOJA, no al primer rol. Antes se enfocaba el primer
+       botón de rol no deshabilitado (p. ej. «Atleta»), y su anillo de foco
+       azul se leía como un SEGUNDO papel «seleccionado» a la vez que el activo
+       («Estás aquí»): parecía que estabas en dos vistas al mismo tiempo. Así
+       el foco queda dentro del diálogo (Escape y tabulación funcionan) sin
+       marcar ningún rol de más. */
+    var caja = fondo.querySelector('.pap-caja');
+    if (caja) { caja.setAttribute('tabindex', '-1'); try { caja.focus({ preventScroll: true }); } catch (e) { caja.focus(); } }
   }
 
   /* ------------------------------------------------------------
