@@ -782,14 +782,10 @@
             '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
               '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>' +
             '<span>Web</span></a>' +
-          /* La píldora nace escondida: si solo tienes un papel no aparece
-             nunca, y la mayoría del club está en ese caso. */
-          '<button type="button" class="pt-papel" id="pt-papel" aria-haspopup="dialog">' +
-            '<span class="pt-txt"></span>' +
-            '<span class="pt-fl" aria-hidden="true">&#9662;</span>' +
-          '</button>' +
-          '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="menu" ' +
-            'aria-expanded="false" aria-controls="pt-menu" aria-label="Lo tuyo: perfil y salir">' +
+          /* La pastilla del nombre. Si solo tienes un papel no se pulsa (se le
+             quita la flechita en unSoloPapel); con varios, abre la hoja. */
+          '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="dialog" ' +
+            'aria-label="Cambiar de vista">' +
             /* Las iniciales son el respaldo. Si la persona ha puesto foto en
                su perfil, se pinta encima en cuanto llega: se subía, se
                guardaba, se veía en el perfil y en los retos, y aquí seguían
@@ -810,30 +806,10 @@
                la diferencia se nota. */
             '<span class="pt-fl pt-fl-av" aria-hidden="true">&#9662;</span>' +
           '</button>' +
-        '</div>' +
-        '<div class="pt-menu" id="pt-menu" hidden role="menu">' +
-          '<span class="pt-quien"><b>' + esc(nombre) + '</b><small>' + esc(email) + '</small></span>' +
-          '<a role="menuitem" href="' + b + 'portal/perfil/">Mi perfil</a>' +
-          '<a role="menuitem" class="pt-hijos" href="' + b + 'portal/familia/" hidden>Mis hijos</a>' +
-          /* Cambiar de papel: solo aparece si la persona tiene más de un papel.
-             Lo activa ponerPildora(). Antes vivía en una pastilla aparte. */
-          '<button type="button" role="menuitem" class="pt-cambiar" id="pt-cambiar" hidden>Cambiar de papel</button>' +
-          '<a role="menuitem" href="' + b + '">Ir a la web</a>' +
-          /* Cerrar sesión se busca con prisa —un móvil prestado, la cuenta de
-             otro— así que va apartado del resto, con su raya y su icono, y
-             es lo único del menú que no es un sitio al que ir. «Cambiar la
-             contraseña» no está aquí: vive en Mi perfil, que es donde se
-             buscan los ajustes, y una entrada menos hace que esta se vea. */
-          '<button type="button" role="menuitem" class="pt-salir" id="pt-salir">' +
-            '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" ' +
-              'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-              '<path d="M15 17v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v2"/>' +
-              '<path d="M19 12H9m10 0-3.2-3.2M19 12l-3.2 3.2"/></svg>' +
-            'Salir</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
 
-      /* --- el menú del avatar --- */
+      /* --- el nombre/avatar abre la hoja «Cambiar de vista» --- */
       var bAvatar = document.getElementById('pt-avatar');
 
       /* La foto del perfil, si la hay. Va aparte y sin hacer ruido: el almacén
@@ -859,60 +835,44 @@
           }, function () { /* sin foto, las iniciales */ });
         } catch (e) { /* igual */ }
       })();
+      /* El avatar ya NO abre un desplegable. Aquel menú era fijo y se cerraba
+         con cualquier scroll: en el móvil se descolgaba y se sentía roto («me
+         lleva a la web»). Ahora el nombre abre la HOJA «Cambiar de vista» —la
+         misma del panel de admin— y SOLO si tienes más de un papel. Quien solo
+         es atleta no tiene nada que elegir: su nombre no se pulsa. El enganche
+         del clic lo pone ponerPildora() más abajo, cuando ya se sabe el papel.
+         El <div.pt-menu> del template se retira para que no quede nada muerto. */
       var menu = document.getElementById('pt-menu');
-      function cerrarMenu() {
-        menu.hidden = true;
-        bAvatar.setAttribute('aria-expanded', 'false');
-      }
-      bAvatar.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var abrir = menu.hidden;
-        menu.hidden = !abrir;
-        bAvatar.setAttribute('aria-expanded', abrir ? 'true' : 'false');
-        if (abrir) {
-          /* Colgado del avatar, no en el centro de la pantalla: lo que se
-             pulsa y lo que aparece tienen que estar juntos. */
-          menu.style.top = (bAvatar.getBoundingClientRect().bottom + 4) + 'px';
-          var primero = menu.querySelector('a,button');
-          if (primero) primero.focus();
-        }
-      });
-      /* La barra se va con el scroll; el menú, que es fijo, se quedaría
-         flotando solo. Se cierra. */
-      window.addEventListener('scroll', function () { if (!menu.hidden) cerrarMenu(); }, { passive: true });
-      window.addEventListener('resize', function () { if (!menu.hidden) cerrarMenu(); });
-      document.addEventListener('click', function (e) {
-        if (!menu.hidden && !menu.contains(e.target)) cerrarMenu();
-      });
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && !menu.hidden) { cerrarMenu(); bAvatar.focus(); }
-      });
+      if (menu) menu.remove();
+      bAvatar.setAttribute('aria-haspopup', 'dialog');
+      bAvatar.removeAttribute('aria-controls');
 
-      document.getElementById('pt-salir').addEventListener('click', async function () {
-        await sb.auth.signOut(); location.reload();
-      });
-      /* «Mis hijos» solo si los hay: un menú con una puerta que no lleva a
-         ninguna parte es peor que un menú corto. */
-      if (perfil && perfil.id) {
-        misAtletas(perfil.id).then(function (r) {
-          var hijos = (r.data || []).filter(function (a) { return a.perfil_padre_id === perfil.id; });
-          var el = menu.querySelector('.pt-hijos');
-          if (el && hijos.length) el.hidden = false;
-        });
-      }
+      /* Cerrar sesión ya no vive en la barra. Para quien tiene varios papeles
+         está al pie de la hoja «Cambiar de vista»; para quien solo es atleta,
+         en su Perfil (como la maqueta de perfil). La barra queda limpia: escudo,
+         APOLANA, Web y el nombre.
 
-      /* La píldora sale cuando se sabe en qué papel estás. Si solo tienes
-         uno, no sale nunca: la mayoría del club está en ese caso y para
-         ellos la barra es escudo y avatar. */
+         La píldora del papel se enciende cuando se sabe en qué papel estás. Si
+         solo tienes uno, el nombre NO se pulsa: es la mayoría del club, y para
+         ellos la barra es escudo, Web y nombre, sin nada que abrir. */
       conPapeles(function () {
-        if (!window.APOLANA_PAPELES) return;
+        if (!window.APOLANA_PAPELES) { unSoloPapel(); return; }
         window.APOLANA_PAPELES.cargar().then(function (d) {
-          if (!d || (d.roles || []).length < 2) return;
+          if (!d || (d.roles || []).length < 2) { unSoloPapel(); return; }
           ponerPildora(perfil, window.APOLANA_PAPELES.titulo(d.activo), d.activo, function () {
             window.APOLANA_PAPELES.abrir();
           });
-        });
+        }, unSoloPapel);
       });
+
+      /* Un único papel: el nombre se ve, pero no invita a tocar. Fuera la
+         flechita y el cursor de «pulsable», que si no la gente lo toca y no
+         pasa nada. */
+      function unSoloPapel() {
+        var fav = bAvatar.querySelector('.pt-fl-av'); if (fav) fav.hidden = true;
+        bAvatar.style.cursor = 'default';
+        bAvatar.removeAttribute('aria-haspopup');
+      }
     }
 
     /* ------------------------------------------------------------
@@ -957,20 +917,15 @@
        el selector de papeles si los hay, y si no la hoja de zonas. */
     async function ponerPildora(perfil, titulo, rol, alPulsar) {
       /* La píldora enseña SOLO el nombre («Andrés»), igual en toda la app
-         (portal y panel): el papel ya no se escribe aquí (antes ponía «· Atleta»).
-         El cambio de vista es una entrada del menú del avatar. */
+         (portal y panel): el papel ya no se escribe aquí (antes ponía «· Atleta»). */
       var rolEl = document.getElementById('pt-rol');
       if (rolEl) rolEl.textContent = '';
-      var camb = document.getElementById('pt-cambiar');
-      if (camb) {
-        camb.hidden = false;
-        camb.onclick = function () {
-          var m = document.getElementById('pt-menu');
-          if (m) m.hidden = true;
-          var av = document.getElementById('pt-avatar');
-          if (av) av.setAttribute('aria-expanded', 'false');
-          if (typeof alPulsar === 'function') alPulsar();
-        };
+      /* El propio nombre/avatar abre la hoja «Cambiar de vista» (como en el
+         panel de admin al pulsar «Andrés»). Ya no hay pastilla ni menú aparte. */
+      var av = document.getElementById('pt-avatar');
+      if (av) {
+        av.style.cursor = 'pointer';
+        av.onclick = function () { if (typeof alPulsar === 'function') alPulsar(); };
       }
       pildoraPuesta = true;
     }
