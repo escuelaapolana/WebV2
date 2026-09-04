@@ -137,6 +137,9 @@
       'background:#fff;border-radius:10px;padding:10px 13px;font-family:inherit;font-size:15px;' +
       'color:var(--navy,#2E4256);cursor:pointer}' +
     '.pap-abrir select:disabled{opacity:.6;cursor:default}' +
+    '.pap-salir{width:100%;box-sizing:border-box;min-height:44px;margin-top:14px;border:1px solid #E7CDC4;' +
+      'border-radius:12px;background:#fff;font-family:inherit;font-size:15px;font-weight:600;color:#B0563A;cursor:pointer}' +
+    '.pap-salir:hover{background:#FBF3F0}' +
     /* La fila en la que ya estás no se pulsa, pero se lee igual de bien:
        apagarla sería apagar justo la que contesta a la pregunta. */
     '.pap-op[disabled]:not([aria-current="true"]){opacity:.55}' +
@@ -331,6 +334,7 @@
             }).join('') +
           '</select>' +
         '</div>' +
+        '<button type="button" class="pap-salir" data-salir>Cerrar sesión</button>' +
       '</div>';
 
     document.body.appendChild(fondo);
@@ -344,6 +348,14 @@
     document.addEventListener('keydown', tecla, true);
     fondo.addEventListener('click', function (e) { if (e.target === fondo) cerrar(); });
     fondo.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+    /* Cerrar sesión desde la hoja (antes había un botón «Salir» en la barra de
+       arriba; la maqueta no lo lleva, así que la salida vive aquí). */
+    var elSalir = fondo.querySelector('[data-salir]');
+    if (elSalir) elSalir.addEventListener('click', function () {
+      elSalir.disabled = true; elSalir.textContent = 'Saliendo…';
+      try { sb().auth.signOut().then(function () { location.href = base(); }, function () { location.href = base(); }); }
+      catch (e) { location.href = base(); }
+    });
 
     /* Los recuentos llegan cuando llegan y sustituyen a la descripción.
        El que no se pueda calcular se queda con su frase: fila sin
