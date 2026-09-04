@@ -123,7 +123,10 @@
 
   F.hayAlgo = function (valor, queEs) {
     if (String(valor || '').trim().length >= 2) return null;
-    return 'Falta ' + queEs + '.';
+    /* «Faltan» cuando lo que se pide es plural («tus apellidos»); «Falta»
+       cuando es singular («tu nombre», «el correo»). */
+    var plural = /^(tus|los|las|sus|mis)\s/i.test(queEs || '');
+    return (plural ? 'Faltan ' : 'Falta ') + queEs + '.';
   };
 
   F.correo = function (valor) {
