@@ -51,6 +51,7 @@
     pista:    svg('<circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9M9.5 2h5M18.5 7l1.5-1.5"/>'),
     personas: svg('<circle cx="9" cy="8" r="3.3"/><path d="M2.8 20c0-3.4 2.8-5.5 6.2-5.5s6.2 2.1 6.2 5.5"/><path d="M16.5 5.6a3.3 3.3 0 0 1 0 6.3M18 14.9c2 .7 3.3 2.4 3.3 4.6"/>'),
     dinero:   svg('<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/>'),
+    compe:    svg('<path d="M13 2L5 13h6l-1 9 8-11h-6z"/>'),
     menu:     '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
               '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>',
     lupa:     '<svg class="lupa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
@@ -195,11 +196,12 @@
   /* ---------- pestañas ---------- */
   function pestanas() {
     var r = raiz();
+    /* Como la maqueta de admin: Resumen · Socios · Compes (+ Más). Pista y
+       Dinero pasan a «Más»: el resto del panel se abre desde ahí. */
     return [
-      { id: 'inicio',   txt: 'Inicio',   ic: IC.inicio,   url: r },
-      { id: 'pista',    txt: 'Pista',    ic: IC.pista,    url: r + 'campo/' },
-      { id: 'personas', txt: 'Personas', ic: IC.personas, url: r + 'atletas/' },
-      { id: 'dinero',   txt: 'Dinero',   ic: IC.dinero,   url: r + 'cobros/' }
+      { id: 'inicio',   txt: 'Resumen', ic: IC.inicio,   url: r },
+      { id: 'personas', txt: 'Socios',  ic: IC.personas, url: r + 'atletas/' },
+      { id: 'compe',    txt: 'Compes',  ic: IC.compe,    url: r + 'competiciones/' }
     ];
   }
 
@@ -329,10 +331,9 @@
   function activa() {
     var c = carpeta();
     if (c === '') return 'inicio';
-    if (c === 'campo') return 'pista';
     if (c === 'atletas') return 'personas';
-    if (c === 'cobros') return 'dinero';
-    return 'menu';   /* el resto del panel se abre desde «Menú» */
+    if (c === 'competiciones') return 'compe';
+    return 'menu';   /* el resto del panel se abre desde «Más» */
   }
 
   function esc(s) {
@@ -786,7 +787,8 @@
     if (ya) return;
     ya = true;
 
-    buscadorArriba();
+    /* Sin buscador en la cabecera: la maqueta de admin no lo lleva arriba.
+       Se busca desde «Más» (la hoja abre con su propio buscador). */
     anotar(carpeta());   /* esta pantalla, para «las que más usas» */
 
     /* Si la página se pinta de verdad su propia barra, no ponemos otra.
@@ -801,7 +803,7 @@
              t.ic + '<span>' + t.txt + '</span></a>';
     }).join('');
     html += '<button type="button" class="at-menu' + (act === 'menu' ? ' activo' : '') + '" ' +
-            'aria-haspopup="dialog" aria-expanded="false">' + IC.menu + '<span>Menú</span></button>';
+            'aria-haspopup="dialog" aria-expanded="false">' + IC.menu + '<span>Más</span></button>';
 
     nodo = document.createElement('nav');
     nodo.className = 'at-tabbar';
