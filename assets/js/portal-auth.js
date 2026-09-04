@@ -276,7 +276,10 @@
     '.pt-web:hover{background:rgba(255,255,255,.18)}' +
     '.pt-web svg{flex:0 0 auto}' +
     '.pt-avatar .pt-nom{width:auto;height:auto;min-width:0;border-radius:0;background:none;color:#fff;' +
-      'font-size:13.5px;font-weight:600;padding:0 4px 0 2px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}' +
+      'font-size:13.5px;font-weight:600;padding:0 0 0 2px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}' +
+    '.pt-avatar .pt-rol{width:auto;height:auto;min-width:0;border-radius:0;background:none;color:rgba(255,255,255,.62);' +
+      'font-size:13px;font-weight:400;padding:0 3px 0 5px;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis}' +
+    '@media(max-width:520px){.pt-avatar .pt-rol{display:none}}' +
     '@media(max-width:440px){.pt-web span{display:none}.pt-avatar .pt-nom{display:none}}' +
 
     /* Lo tuyo, colgando del avatar. Va pegado a él, no en el centro de la
@@ -792,6 +795,9 @@
                el PRIMER span del avatar: si el nombre fuera el primero, la
                foto le borraría el texto. */
             '<span class="pt-nom">' + esc(primerNom) + '</span>' +
+            /* El papel activo, dentro de la misma píldora (como la maqueta:
+               «Andrés · Atleta»). Lo rellena ponerPildora(); nace vacío. */
+            '<span class="pt-rol" id="pt-rol"></span>' +
             /* La misma flechita que lleva el papel de al lado. Sin ella, el
                círculo con las iniciales parece una foto de perfil y no algo
                que se pulse: hay que descubrir por casualidad que abre un
@@ -804,6 +810,9 @@
           '<span class="pt-quien"><b>' + esc(nombre) + '</b><small>' + esc(email) + '</small></span>' +
           '<a role="menuitem" href="' + b + 'portal/perfil/">Mi perfil</a>' +
           '<a role="menuitem" class="pt-hijos" href="' + b + 'portal/familia/" hidden>Mis hijos</a>' +
+          /* Cambiar de papel: solo aparece si la persona tiene más de un papel.
+             Lo activa ponerPildora(). Antes vivía en una pastilla aparte. */
+          '<button type="button" role="menuitem" class="pt-cambiar" id="pt-cambiar" hidden>Cambiar de papel</button>' +
           '<a role="menuitem" href="' + b + '">Ir a la web</a>' +
           /* Cerrar sesión se busca con prisa —un móvil prestado, la cuenta de
              otro— así que va apartado del resto, con su raya y su icono, y
@@ -942,17 +951,22 @@
     /* Pinta la píldora con el papel activo. `alPulsar` es lo que abre:
        el selector de papeles si los hay, y si no la hoja de zonas. */
     async function ponerPildora(perfil, titulo, rol, alPulsar) {
-      var b1 = document.getElementById('pt-papel');
-      if (!b1) return;
-      var detalle = await deQue(rol, perfil);
-      b1.querySelector('.pt-txt').innerHTML =
-        esc(titulo) + (detalle ? '<span class="pt-dequé"> · ' + esc(detalle) + '</span>' : '');
-      b1.classList.add('ver');
-      /* Con dos mandos a la derecha la barra ya no se parte, pero en un
-         móvil muy estrecho APOLANA todavía estorba: se avisa. */
-      var top = document.querySelector('.pt-top');
-      if (top) top.classList.add('pt-mas-mandos');
-      b1.onclick = alPulsar;
+      /* El papel activo va DENTRO de la píldora del avatar («Andrés · Atleta»),
+         como la maqueta, en vez de una pastilla de rol aparte. El cambio de
+         papel pasa a ser una entrada del menú del avatar. */
+      var rolEl = document.getElementById('pt-rol');
+      if (rolEl) rolEl.textContent = '· ' + titulo;
+      var camb = document.getElementById('pt-cambiar');
+      if (camb) {
+        camb.hidden = false;
+        camb.onclick = function () {
+          var m = document.getElementById('pt-menu');
+          if (m) m.hidden = true;
+          var av = document.getElementById('pt-avatar');
+          if (av) av.setAttribute('aria-expanded', 'false');
+          if (typeof alPulsar === 'function') alPulsar();
+        };
+      }
       pildoraPuesta = true;
     }
 
