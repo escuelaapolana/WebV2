@@ -148,27 +148,31 @@
       function (e) { if (t) clearTimeout(t); throw e; }
     );
   }
-  /* Candado de sesión con tiempo límite. Supabase usa `navigator.locks` para
-     que dos pestañas no refresquen el token a la vez. El problema: si una
-     pestaña (o la web, al volver al portal) deja el candado cogido y no lo
-     suelta, la siguiente se queda esperándolo PARA SIEMPRE —y eso NO es un
-     fetch, así que el límite de arriba no lo corta—: la app se queda cargando
-     sin fin y sin dar ningún error. Es la causa del cuelgue al ir web → portal.
-     Aquí: se intenta el candado, pero si en 5 s no se consigue, se sigue igual
-     (mejor una posible carrera rarísima que un cuelgue eterno). */
-  async function lockConLimite(nombre, acquireTimeout, fn) {
-    if (typeof navigator === 'undefined' || !navigator.locks || !navigator.locks.request) {
-      return await fn();
-    }
-    var ctrl = new AbortController();
-    var t = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 5000);
-    try {
-      return await navigator.locks.request(nombre, { signal: ctrl.signal }, async function () { return await fn(); });
-    } catch (e) {
-      /* No se pudo coger el candado a tiempo (abortado u ocupado): se ejecuta
-         igual, que es lo que evita el cuelgue. */
-      return await fn();
-    } finally { clearTimeout(t); }
+  /* Candado de sesión que NUNCA se cuelga.
+     Supabase, por defecto, usa `navigator.locks` para que dos PESTAÑAS no
+     refresquen el token a la vez. El problema: si una pestaña (o la web, al
+     volver al portal) deja ese candado cogido y no lo suelta, la siguiente se
+     queda esperándolo PARA SIEMPRE —y no es un fetch, así que el límite de
+     arriba no lo corta—: la app carga sin fin y sin dar ningún error. En
+     Safari es peor: ni siquiera se puede cancelar por `signal`. Por eso el
+     cuelgue al ir web → portal, y sobre todo en Safari / la app instalada.
+     Solución: un candado SOLO en memoria, dentro de esta misma pestaña (una
+     cola de promesas). Serializa los refrescos de la pestaña —que es lo único
+     que importa de verdad— y, al ser promesas locales que siempre resuelven
+     (el fetch ya tiene su límite de 15 s), no puede quedarse colgado jamás.
+     Entre pestañas ya no hay candado: como mucho una carrera rarísima, que
+     Supabase tolera; un cuelgue eterno, no. */
+  var _colaCandado = Promise.resolve();
+  function lockConLimite(nombre, acquireTimeout, fn) {
+    var anterior = _colaCandado;
+    var soltar;
+    _colaCandado = new Promise(function (r) { soltar = r; });
+    return anterior.catch(function () {}).then(function () {
+      return Promise.resolve().then(fn).then(
+        function (v) { soltar(); return v; },
+        function (e) { soltar(); throw e; }
+      );
+    });
   }
 
   window.APOLANA_DB = window.supabase.createClient(URL, KEY, {
