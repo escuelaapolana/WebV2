@@ -323,8 +323,10 @@
        320 px—, lo que se aparta es el nombre; el escudo no se quita nunca. */
     '@media(max-width:340px){.pt-top.pt-mas-mandos .marca{display:none}}' +
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
-    '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000}' +
-    '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px}' +
+    '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000;animation:pt-fondo-in 180ms ease}' +
+    '@keyframes pt-fondo-in{from{opacity:0}to{opacity:1}}' +
+    '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px;animation:pt-caja-sube var(--dur-entrada,220ms) var(--ease-salida,cubic-bezier(.23,1,.32,1))}' +
+    '@keyframes pt-caja-sube{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}' +
     '@media(min-width:640px){.pt-hoja{align-items:center}.pt-hoja .caja{border-radius:14px}}' +
     '.pt-hoja .cab{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}' +
     '.pt-hoja h2{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:28px;line-height:1.05;color:#2E4256;margin:0}' +
