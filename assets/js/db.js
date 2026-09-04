@@ -148,8 +148,31 @@
       function (e) { if (t) clearTimeout(t); throw e; }
     );
   }
+  /* Candado de sesión con tiempo límite. Supabase usa `navigator.locks` para
+     que dos pestañas no refresquen el token a la vez. El problema: si una
+     pestaña (o la web, al volver al portal) deja el candado cogido y no lo
+     suelta, la siguiente se queda esperándolo PARA SIEMPRE —y eso NO es un
+     fetch, así que el límite de arriba no lo corta—: la app se queda cargando
+     sin fin y sin dar ningún error. Es la causa del cuelgue al ir web → portal.
+     Aquí: se intenta el candado, pero si en 5 s no se consigue, se sigue igual
+     (mejor una posible carrera rarísima que un cuelgue eterno). */
+  async function lockConLimite(nombre, acquireTimeout, fn) {
+    if (typeof navigator === 'undefined' || !navigator.locks || !navigator.locks.request) {
+      return await fn();
+    }
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 5000);
+    try {
+      return await navigator.locks.request(nombre, { signal: ctrl.signal }, async function () { return await fn(); });
+    } catch (e) {
+      /* No se pudo coger el candado a tiempo (abortado u ocupado): se ejecuta
+         igual, que es lo que evita el cuelgue. */
+      return await fn();
+    } finally { clearTimeout(t); }
+  }
+
   window.APOLANA_DB = window.supabase.createClient(URL, KEY, {
-    auth: { storage: ALMACEN },
+    auth: { storage: ALMACEN, lock: lockConLimite },
     global: { fetch: fetchConLimite }
   });
 
