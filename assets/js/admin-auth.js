@@ -139,6 +139,7 @@
          dorado + «Administración»), que al pulsarla abre «cambiar de papel».
          Fuera el correo suelto y la franja «Estás como…»: el papel va aquí. */
       var GLOBO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>';
+      var _ini = ((email || 'A').charAt(0) || 'A').toUpperCase();
       top.innerHTML =
         '<div class="izq"><a class="volver" href="' + base() + 'admin/"><i>←</i><span class="txt">Panel</span></a>' +
         '<span class="sep">·</span>' +
@@ -146,16 +147,22 @@
         '<div class="der">' +
           '<a class="ir-web" href="' + base() + '">' + GLOBO + '<span>Web</span></a>' +
           '<button type="button" class="adm-perfil" id="adm-perfil" aria-haspopup="dialog">' +
-            '<span class="av">A</span><span class="rol">Administración</span></button>' +
-          '<button id="adm-salir" class="adm-salir-btn">Salir</button></div>';
+            '<span class="av">' + esc(_ini) + '</span><span class="rol">Administración</span></button>' +
+        '</div>';   /* sin «Salir»: la salida vive en la hoja del perfil (calco) */
       document.body.insertBefore(top, document.body.firstChild);
-      document.getElementById('adm-salir').addEventListener('click', async function () {
-        await sb.auth.signOut(); location.reload();
-      });
       /* La píldora de perfil abre «cambiar de papel» (papeles.js ya cargado). */
       document.getElementById('adm-perfil').addEventListener('click', function () {
         if (window.APOLANA_PAPELES && window.APOLANA_PAPELES.abrir) window.APOLANA_PAPELES.abrir();
       });
+      /* El NOMBRE en la píldora (como el portal). Si no se lee, queda «Administración». */
+      try {
+        sb.from('perfiles').select('nombre').eq('email', email).maybeSingle().then(function (pr) {
+          var nom = (pr && pr.data && pr.data.nombre) ? String(pr.data.nombre).trim().split(' ')[0] : '';
+          if (!nom) return;
+          var r = top.querySelector('.adm-perfil .rol'); if (r) r.textContent = nom;
+          var a = top.querySelector('.adm-perfil .av'); if (a) a.textContent = nom.charAt(0).toUpperCase();
+        }, function () {});
+      } catch (e) {}
     }
 
     function mostrarLogin(mensaje) {
@@ -174,7 +181,7 @@
         '<img class="adm-logo" src="' + base() + 'assets/img/logo.png" alt="Club Apolana">' +
         '<h1>Esto es del panel del club</h1>' +
         '<p class="lema">Tu sesión está abierta, pero el papel que llevas puesto ahora mismo no entra aquí. ' +
-        'Cámbiate arriba —donde pone «Estás como…»— y vuelve a abrir esta página.</p>' +
+        'Pulsa «Cambiar de papel», elige Administración y vuelve a abrir esta página.</p>' +
         '<div class="adm-papel-btns">' +
           '<button type="button" class="btn btn--primario" id="adm-cambiar-papel">Cambiar de papel</button>' +
           '<a class="adm-papel-salida" href="' + base() + 'portal/">Ir a mi zona</a>' +
