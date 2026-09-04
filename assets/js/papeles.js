@@ -54,6 +54,12 @@
     cubo:         { titulo: 'El Cubo',       que: 'Clases, reservas y bonos de El Cubo.',          va: 'admin/cubo/',         mando: true }
   };
   var ORDEN = ['atleta', 'padre', 'entrenador', 'coordinador', 'escuela', 'cubo', 'tesoreria', 'contabilidad', 'admin', 'junta'];
+  /* Color del icono de cada rol en la hoja «cambiar de vista», como la maqueta. */
+  var COLORROL = {
+    atleta: '#3B85C0', padre: '#7A5CA8', entrenador: '#2E7D6B', coordinador: '#C36A4E',
+    escuela: '#4E8A3E', cubo: '#6B5B8A', tesoreria: '#B07A2E', contabilidad: '#2F6FA8',
+    admin: '#C9A23A', junta: '#8A6A4E'
+  };
 
   function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
   function base() { return window.APOLANA_BASE || '../'; }
@@ -265,19 +271,21 @@
       '<div class="pap-caja" role="dialog" aria-modal="true" aria-label="Cambiar de papel">' +
         '<div class="pap-tir" aria-hidden="true"></div>' +
         '<div class="pap-cab">' +
-          '<div><span class="pap-quien">' + esc(d.nombre || '') + '</span><h3>Cambiar de papel</h3></div>' +
+          '<div><span class="pap-quien">' + esc(d.nombre || '') + '</span><h3>Cambiar de vista</h3></div>' +
           '<button type="button" class="pap-x" data-cerrar>Cerrar</button>' +
         '</div>' +
         '<div id="pap-filas">' +
           roles.map(function (r) {
             var p = PAPEL[r] || { titulo: r, que: '' };
             var act = (r === d.activo);
+            /* Icono con fondo de color por rol, como la maqueta (cp-op). */
+            var color = COLORROL[r] || '#2E4256';
             return '<button type="button" class="pap-op" data-rol="' + esc(r) + '"' +
               ' aria-current="' + act + '"' + (act ? ' disabled' : '') + '>' +
-              '<span class="pap-ico">' + (ICO[r] || ICO.admin) + '</span>' +
+              '<span class="pap-ico" style="background:' + color + ';color:#fff">' + (ICO[r] || ICO.admin) + '</span>' +
               '<span class="pap-t"><b>' + esc(p.titulo) + '</b>' +
                 '<span data-pdte="' + esc(r) + '">' + esc(p.que) + '</span></span>' +
-              (act ? '<span class="pap-ahora">Ahora</span>' : '<span class="pap-chev">' + CHEV + '</span>') +
+              (act ? '<span class="pap-ahora">Estás aquí</span>' : '<span class="pap-chev">' + CHEV + '</span>') +
             '</button>';
           }).join('') +
         '</div>' +
