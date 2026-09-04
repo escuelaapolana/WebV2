@@ -706,37 +706,43 @@
     if (!datos.tarifas.length) {
       caja.appendChild(vacio('El precio de esta sección todavía no está publicado. Escríbenos y te lo decimos.'));
     } else {
-      var lista = nodo('div', 'sec-tarifas');
+      /* El cuadro-tabla bueno (el mismo que la página de socio): columnas
+         «Si entrenas en… · Socio · No socio». Si ninguna tarifa tiene precio de
+         no socio, se queda en dos columnas. */
+      var hayNoSocio = datos.tarifas.some(function (t) { return t.importe_no_socio != null && t.importe_no_socio !== ''; });
+      var tabla = nodo('div', 'tabla-precios ' + (hayNoSocio ? 'tres' : 'dos'));
+      var enc = nodo('div', 'fila encabezado');
+      enc.appendChild(nodo('span', null, 'Si entrenas en…'));
+      enc.appendChild(nodo('span', null, hayNoSocio ? 'Socio' : 'Precio'));
+      if (hayNoSocio) enc.appendChild(nodo('span', null, 'No socio'));
+      tabla.appendChild(enc);
+
       datos.tarifas.forEach(function (t) {
-        var f = nodo('div', 'sec-tarifa');
+        var f = nodo('div', 'fila');
         if (t.id) { f.setAttribute('data-editable-tarifa', t.id); f._apoTarifa = t; }
+        var concepto = nodo('span', 'concepto', conceptoCorto(t.concepto, titulo));
+        var dias = limpio(t.dias);
+        if (dias) concepto.appendChild(nodo('small', 'sec-dias', dias));
+        f.appendChild(concepto);
+
         var imp = importeDe(t);
-        var que = nodo('div', 'que');
-        que.appendChild(nodo('span', 'concepto', conceptoCorto(t.concepto, titulo)));
-        var propia = (limpio(t.notas) === notaComun) ? '' : limpio(t.notas);
-        var detalle = [limpio(t.dias), hayNumero ? propia : ''].filter(Boolean).join(' · ');
-        if (detalle) que.appendChild(nodo('span', 'detalle', detalle));
-        f.appendChild(que);
+        f.appendChild(nodo('span', 'cifra' + (imp.esNumero ? '' : ' tenue'), imp.texto || 'Sin publicar'));
 
-        if (imp.texto) f.appendChild(nodo('span', 'importe' + (imp.esNumero ? '' : ' importe--texto'), imp.texto));
-        else f.appendChild(nodo('span', 'importe importe--texto sec-vacio', 'Sin publicar'));
-
-        if (t.importe_no_socio != null && t.importe_no_socio !== '') {
-          var extra = nodo('span', 'detalle');
-          /* Si hay un segundo importe (p. ej. 5 días frente a 3), se pinta el
-             rango «50-70 €/mes», igual que ya hace la línea de socios. Sin esto
-             solo salía el primero y no se veía que el precio depende de los días. */
-          var cifraNS = euros(t.importe_no_socio);
-          if (t.importe_no_socio_hasta != null && t.importe_no_socio_hasta !== ''
-              && Number(t.importe_no_socio_hasta) > Number(t.importe_no_socio)) {
-            cifraNS = euros(t.importe_no_socio).replace(' €', '') + '-' + euros(t.importe_no_socio_hasta);
+        if (hayNoSocio) {
+          var ns = '—';
+          if (t.importe_no_socio != null && t.importe_no_socio !== '') {
+            var cifraNS = euros(t.importe_no_socio);
+            if (t.importe_no_socio_hasta != null && t.importe_no_socio_hasta !== ''
+                && Number(t.importe_no_socio_hasta) > Number(t.importe_no_socio)) {
+              cifraNS = euros(t.importe_no_socio).replace(' €', '') + '-' + euros(t.importe_no_socio_hasta);
+            }
+            ns = cifraNS + (PERIODO[limpio(t.periodicidad)] || '');
           }
-          extra.textContent = 'No socios: ' + cifraNS + (PERIODO[limpio(t.periodicidad)] || '');
-          que.appendChild(extra);
+          f.appendChild(nodo('span', 'cifra tenue', ns));
         }
-        lista.appendChild(f);
+        tabla.appendChild(f);
       });
-      caja.appendChild(lista);
+      caja.appendChild(tabla);
       if (notaComun) caja.appendChild(nodo('p', 'sec-nota', notaComun));
     }
 
