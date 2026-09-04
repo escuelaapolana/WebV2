@@ -1801,6 +1801,57 @@
       });
     }
 
+    /* ------------------------------------------------------------
+       RED DE SEGURIDAD CONTRA EL «BLANCO ETERNO»
+       ------------------------------------------------------------
+       Al cambiar de rol (o con una red mala) la página a veces se
+       queda cargando sin pintar nunca el contenido. Antes se quedaba
+       en blanco para siempre. Ahora: si a los 14 s hay sesión guardada
+       (o sea, deberías ver tu zona) pero #portal-contenido sigue vacío,
+       se ofrece «Volver a cargar». Un observer lo cancela en cuanto
+       aparece contenido de verdad, así que no molesta si todo va bien. */
+    (function watchdog() {
+      if (!cont) return;
+      var resuelto = false, obs = null;
+      function hayContenido() {
+        try { return cont.getElementsByTagName('*').length > 4; } catch (e) { return true; }
+      }
+      function hayToken() {
+        try {
+          var sts = [window.localStorage, window.sessionStorage];
+          for (var s = 0; s < sts.length; s++) {
+            var st = sts[s]; if (!st) continue;
+            for (var i = 0; i < st.length; i++) {
+              var k = st.key(i);
+              if (k && /-auth-token(\.\d+)?$/.test(k) && st.getItem(k)) return true;
+            }
+          }
+        } catch (e) {}
+        return false;
+      }
+      try {
+        obs = new MutationObserver(function () {
+          if (hayContenido()) { resuelto = true; if (obs) obs.disconnect(); }
+        });
+        obs.observe(cont, { childList: true, subtree: true });
+      } catch (e) {}
+      setTimeout(function () {
+        if (obs) obs.disconnect();
+        if (resuelto || hayContenido() || !hayToken()) return;
+        var ov = document.createElement('div');
+        ov.setAttribute('role', 'alert');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;' +
+          'align-items:center;justify-content:center;gap:15px;text-align:center;padding:28px;' +
+          'background:var(--app-fondo,#FDFDFB);font-family:inherit;color:#2E4256';
+        ov.innerHTML =
+          '<div style="font-family:var(--fuente-titulo,inherit);font-weight:700;text-transform:uppercase;font-size:22px;line-height:1.1">La app tarda más de lo normal</div>' +
+          '<div style="max-width:320px;font-size:15px;line-height:1.5;color:#6E6656">A veces pasa justo después de cambiar de vista. Vuelve a cargar y ya está.</div>' +
+          '<button type="button" style="min-height:48px;padding:12px 24px;border:0;border-radius:12px;background:#2E4256;color:#fff;font:inherit;font-weight:600;font-size:15px;cursor:pointer">Volver a cargar</button>';
+        ov.querySelector('button').addEventListener('click', function () { location.reload(); });
+        document.body.appendChild(ov);
+      }, 14000);
+    })();
+
     arranque();
   });
 })();
