@@ -187,6 +187,27 @@
       var r = await sb().rpc('mis_papeles');
       DATOS = (r.error || !r.data) ? null : r.data;
     } catch (e) { DATOS = null; }
+    /* La app se queda con 4 vistas: Atleta, Entrenador, El Cubo y
+       Administración. Tesorería, contabilidad y junta NO son vistas aparte:
+       todas entran por el panel, así que se muestran como «Administración»
+       (una sola). Coordinación y familia se retiran de las vistas del portal.
+       Los permisos de dentro los siguen decidiendo las reglas de la base; esto
+       solo simplifica lo que se ELIGE. Si a alguien no le quedara ninguna, se
+       deja lo que tenga (no se le encierra). */
+    if (DATOS && DATOS.roles && DATOS.roles.length) {
+      var ADMIN_FAM = ['admin', 'tesoreria', 'contabilidad', 'junta'];
+      var OK = ['atleta', 'entrenador', 'cubo', 'admin'];
+      var f = DATOS.roles
+        .map(function (x) { return ADMIN_FAM.indexOf(x) !== -1 ? 'admin' : x; })
+        .filter(function (x) { return OK.indexOf(x) !== -1; });
+      f = f.filter(function (x, i) { return f.indexOf(x) === i; });   /* sin repetidos */
+      if (f.length) {
+        DATOS.roles = f;
+        if (DATOS.activo && f.indexOf(DATOS.activo) === -1) {
+          DATOS.activo = (ADMIN_FAM.indexOf(DATOS.activo) !== -1 && f.indexOf('admin') !== -1) ? 'admin' : f[0];
+        }
+      }
+    }
     return DATOS;
   }
 

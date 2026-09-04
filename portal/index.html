@@ -60,41 +60,18 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   var base = window.APOLANA_BASE || '../';
   function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
 
-  /* SALTO DIRECTO A TU ZONA — para no pasar por este hub intermedio al abrir.
-     La primera vez, cuando abajo se resuelve que solo tienes un papel, se
-     guarda tu zona; desde entonces, al abrir la app se salta aquí mismo,
-     ANTES de pintar nada, y se ahorra el pantallazo del hub. Va por correo
-     para que en un aparato compartido no lleve a la zona de otra persona; y
-     si algún día pasas a tener varios papeles, abajo se borra este recuerdo
-     y vuelves a ver el hub para elegir. La barra de arriba siempre deja
-     cambiar de zona, así que esto nunca deja a nadie encerrado. */
+  /* ELEGIR ROL AL ENTRAR. El hub SIEMPRE se muestra: ya no se salta
+     automáticamente a ninguna zona. Aquel «salto directo a tu zona» era el
+     origen de los cuelgues y bucles al volver de la web (sobre todo en la app
+     instalada del iPhone): la entrada intentaba cargar una zona pesada y, si
+     algo se atascaba, se quedaba en blanco. Ahora la entrada es esta pantalla
+     ligera, que se pinta al instante; desde aquí eliges tu vista, y la barra de
+     arriba deja cambiar cuando quieras. Se borra cualquier recuerdo de salto. */
   var ZONA_MEM = 'apolana.zona.' + ((perfil && perfil.email) || '');
-  var SALTO_MARCA = 'apolana.zona.salto';   /* anti-bucle, por pestaña */
   try {
-    var zonaGuardada = ((perfil && perfil.email) && localStorage.getItem(ZONA_MEM)) || '';
-    /* ANTI-BUCLE. Si acabamos de saltar a la zona guardada y hemos vuelto
-       AQUÍ en menos de 6 s, es que esa zona nos rebotó: su papel ya no
-       cuadra con el activo (típico tras cambiar de papel). En vez de volver
-       a saltar —y parpadear sin fin—, se borra el recuerdo y nos quedamos en
-       el hub, que siempre deja elegir. Antes esto era un bucle infinito. */
-    /* Anti-bucle por CONTADOR, no por tiempo: en móvil lento el rebote tarda
-       más de 6 s y el anti-bucle viejo no saltaba, dejando la app dando vueltas
-       (o colgada). Ahora se cuentan los saltos: si ya van 2 sin que la zona
-       cuaje, el destino rebota → se borra el recuerdo y nos quedamos en el hub.
-       El contador lo pone a cero portal-auth.js en cuanto una zona pinta
-       contenido de verdad, así que un uso normal nunca lo agota. */
-    var saltos = 0;
-    try { saltos = parseInt(sessionStorage.getItem(SALTO_MARCA) || '0', 10) || 0; } catch (e2) {}
-    if (zonaGuardada && saltos >= 2) {
-      try { localStorage.removeItem(ZONA_MEM); sessionStorage.removeItem(SALTO_MARCA); } catch (e3) {}
-      zonaGuardada = '';   /* se sigue al hub, sin rebotar */
-    }
-    /* Nunca al panel desde aquí (haría bucle): solo zonas del portal. */
-    if (zonaGuardada && zonaGuardada.indexOf('/admin/') === -1) {
-      try { sessionStorage.setItem(SALTO_MARCA, String(saltos + 1)); } catch (e4) {}
-      location.replace(zonaGuardada); return;
-    }
-  } catch (e) { /* sin localStorage: se sigue con el hub de siempre */ }
+    localStorage.removeItem(ZONA_MEM);
+    sessionStorage.removeItem('apolana.zona.salto');
+  } catch (e) { /* sin localStorage: da igual, igualmente se muestra el hub */ }
 
   /* Chevron del kit (30a): el único icono que va a la derecha de una fila. */
   var CHEV = '<span class="chev">' +
@@ -240,14 +217,9 @@ APOLANA_PORTAL.listo(function (sb, perfil) {
   if (typeof APOLANA_PORTAL.papeles === 'function') {
     APOLANA_PORTAL.papeles().then(function (lista) {
       if (!lista || !lista.length) return;
-      /* Login único: si solo tienes un papel, al portal no: directo a tu zona.
-         Y se recuerda, para que la próxima vez se salte aquí antes de pintar. */
-      if (lista.length === 1 && lista[0].url) {
-        try { if (perfil && perfil.email && lista[0].url.indexOf('/admin/') === -1) localStorage.setItem(ZONA_MEM, lista[0].url); } catch (e) {}
-        location.replace(lista[0].url); return;
-      }
-      /* Varios papeles: este hub es tu sitio. Se borra el recuerdo de «zona
-         única» por si antes tenías uno solo, para que siempre puedas elegir. */
+      /* Ya NO se salta a la zona aunque solo haya un papel: el hub es la
+         entrada para todos (elegir rol al entrar). Evita el cuelgue de cargar
+         una zona pesada nada más abrir. Se limpia cualquier recuerdo antiguo. */
       try { localStorage.removeItem(ZONA_MEM); } catch (e) {}
       var claves = [], descs = {};
       lista.forEach(function (p) { claves.push(p.clave); descs[p.clave] = p.desc; });

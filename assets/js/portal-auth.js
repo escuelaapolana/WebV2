@@ -1541,7 +1541,10 @@
          misma puerta: el panel. Lo que ven dentro lo deciden las reglas
          de la base, no esta lista. */
       if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
-      return lista;
+      /* La app se queda con 4 vistas: atleta, entrenador, El Cubo y admin.
+         Familia y coordinación se retiran como vistas del portal. */
+      var OK4 = ['atleta', 'entrenador', 'cubo', 'admin'];
+      return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
     }
 
     function papelActivo(lista) {
@@ -1686,15 +1689,11 @@
          y sin pedir nada más. Solo en el hub y solo si no acabas de entrar
          por el enlace del correo. Si tienes varios papeles, el recuerdo se
          borra solo y vuelves a ver el hub. */
-      if (!recienLlegado && /\/portal\/(index\.html)?$/.test(location.pathname)) {
-        try {
-          var zonaRapida = localStorage.getItem('apolana.zona.' + email);
-          /* Nunca saltar a una zona del PANEL desde aquí: el panel, si el papel
-             no entra, devuelve al portal → bucle. La zona guardada solo vale si
-             es del portal. */
-          if (zonaRapida && zonaRapida.indexOf('/admin/') === -1) { location.replace(zonaRapida); return; }
-        } catch (e) { /* sin localStorage: sigue el camino normal */ }
-      }
+      /* SALTO DIRECTO DESACTIVADO: el hub siempre se muestra (elegir rol al
+         entrar). Antes, al abrir en el hub se saltaba a la zona recordada antes
+         de pintar; ese salto provocaba cuelgues/bucles al volver de la web,
+         sobre todo en la app instalada. Ahora se entra por el hub, que se pinta
+         al instante, y desde ahí se elige. */
 
       var perfil = null;
       try {
