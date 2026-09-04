@@ -956,11 +956,11 @@
     /* Pinta la píldora con el papel activo. `alPulsar` es lo que abre:
        el selector de papeles si los hay, y si no la hoja de zonas. */
     async function ponerPildora(perfil, titulo, rol, alPulsar) {
-      /* El papel activo va DENTRO de la píldora del avatar («Andrés · Atleta»),
-         como la maqueta, en vez de una pastilla de rol aparte. El cambio de
-         papel pasa a ser una entrada del menú del avatar. */
+      /* La píldora enseña SOLO el nombre («Andrés»), igual en toda la app
+         (portal y panel): el papel ya no se escribe aquí (antes ponía «· Atleta»).
+         El cambio de vista es una entrada del menú del avatar. */
       var rolEl = document.getElementById('pt-rol');
-      if (rolEl) rolEl.textContent = '· ' + titulo;
+      if (rolEl) rolEl.textContent = '';
       var camb = document.getElementById('pt-cambiar');
       if (camb) {
         camb.hidden = false;

@@ -289,6 +289,16 @@
       return ORDEN.indexOf(a) - ORDEN.indexOf(b);
     });
 
+    /* «Ahora» se marca por DÓNDE estás (la URL), no por el rol_activo guardado:
+       si estás en el panel del club, «Administración» es la actual aunque el
+       rol_activo aún fuera «atleta» (típico al entrar directo). Así puedes
+       saltar a cualquier otra vista —incluida atleta— sin quedarte encallado. */
+    var _activo = d.activo;
+    for (var _iz = 0; _iz < roles.length; _iz++) {
+      var _va = PAPEL[roles[_iz]] && PAPEL[roles[_iz]].va;
+      if (_va && location.pathname.indexOf('/' + _va) !== -1) { _activo = roles[_iz]; break; }
+    }
+
     var fondo = document.createElement('div');
     fondo.className = 'pap-fondo';
     fondo.innerHTML =
@@ -301,7 +311,7 @@
         '<div id="pap-filas">' +
           roles.map(function (r) {
             var p = PAPEL[r] || { titulo: r, que: '' };
-            var act = (r === d.activo);
+            var act = (r === _activo);
             /* Icono con fondo de color por rol, como la maqueta (cp-op). */
             var color = COLORROL[r] || '#2E4256';
             return '<button type="button" class="pap-op" data-rol="' + esc(r) + '"' +

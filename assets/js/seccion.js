@@ -714,8 +714,9 @@
     }
 
     /* Una cifra «40-60 €» con su periodo («al mes») debajo, en pequeño. */
-    function cifra(texto, esNumero, tenue) {
+    function cifra(texto, esNumero, tenue, etiqueta) {
       var span = nodo('span', 'sp-val' + (tenue ? ' ns' : '') + (esNumero ? '' : ' tenue'));
+      if (etiqueta) span.setAttribute('data-et', etiqueta);   /* en móvil se enseña como rótulo */
       var m = esNumero ? String(texto).match(/^(.*?€)\s*\/?\s*(mes|año|temporada|semana|clase)?/i) : null;
       if (m) {
         span.appendChild(document.createTextNode(m[1]));
@@ -753,7 +754,7 @@
         f.appendChild(concepto);
 
         var imp = importeDe(t);
-        f.appendChild(cifra(imp.texto || 'Sin publicar', imp.esNumero, false));
+        f.appendChild(cifra(imp.texto || 'Sin publicar', imp.esNumero, false, hayNoSocio ? 'Socio' : 'Precio'));
 
         if (hayNoSocio) {
           if (t.importe_no_socio != null && t.importe_no_socio !== '') {
@@ -762,9 +763,9 @@
                 && Number(t.importe_no_socio_hasta) > Number(t.importe_no_socio)) {
               cifraNS = euros(t.importe_no_socio).replace(' €', '') + '-' + euros(t.importe_no_socio_hasta);
             }
-            f.appendChild(cifra(cifraNS + (PERIODO[limpio(t.periodicidad)] || ''), true, true));
+            f.appendChild(cifra(cifraNS + (PERIODO[limpio(t.periodicidad)] || ''), true, true, 'No socio'));
           } else {
-            f.appendChild(nodo('span', 'sp-val ns tenue', '—'));
+            f.appendChild(cifra('—', false, true, 'No socio'));
           }
         }
         tp.appendChild(f);
@@ -780,7 +781,7 @@
       cuota.appendChild(ic);
       var tx = nodo('span', 'tx');
       tx.appendChild(nodo('b', null, hayNumero ? 'Cuota de socio · una vez al año' : 'Solo la cuota de socio'));
-      var subCuota = 'A partir del segundo año, 110 €. Se cobra en septiembre.';
+      var subCuota = 'A partir del segundo año, 110 €. Se cobra en noviembre.';
       if (limpio(datos.socio.notas)) subCuota = 'A partir del segundo año, 110 €. ' + limpio(datos.socio.notas);
       tx.appendChild(nodo('small', null, subCuota));
       cuota.appendChild(tx);
