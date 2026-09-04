@@ -72,6 +72,16 @@
   .grafico svg { width:100%; height:auto; display:block; }
   .grafico .leyenda { font-size:13px; color: var(--texto-suave); padding:2px 4px 4px; }
   .grafico .mejora { color:#1e7a3d; font-weight:600; }
+  /* Progresión (maqueta de marcas) · UNA sola gráfica destacada + selector de
+     prueba en chips. La gráfica se redibuja al cambiar de chip; no una por
+     prueba. */
+  .pg-chips { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+  .pg-chips button { font:inherit; font-size:13px; font-weight:600; cursor:pointer;
+    background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:999px;
+    padding:7px 14px; color:var(--texto-suave,#6E6656); transition:background .15s ease, border-color .15s ease, color .15s ease; }
+  .pg-chips button.sel { border-color:var(--navy,#26374B); background:var(--navy,#26374B); color:#fff; }
+  .grafico--solo { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:18px;
+    padding:14px 12px 8px; box-shadow:0 1px 2px rgba(30,45,65,.06), 0 14px 30px -16px rgba(30,45,65,.28); }
   /* MARCAS (maqueta 37b) · una sola tarjeta navy por pantalla: tu mejor marca.
      El resto de los datos van en listas de filas sobre crema. */
   /* Tarjeta de récord · clavada a la maqueta de marcas: degradado navy con
@@ -5837,6 +5847,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   try { var fGuardado=window.localStorage.getItem('apolana.marcas.filtro'); if(fGuardado==='competicion'||fGuardado==='entreno') mkFiltro=fGuardado; } catch(e){}
   var mkEscucha=false;
   var mkVerTodas=false;      /* «Las 13» despliega la lista entera de marcas */
+  var mkPruebaSel=null;      /* Progresión: QUÉ prueba se ve en la única gráfica */
+  var mkProgData={};         /* { prueba: {arr:[puntos], mas:bool} } para redibujar */
 
   // Las marcas antiguas no traen contexto: se ven en «Todas» y no se pierden.
   function marcasDe(f){
@@ -5918,6 +5930,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         if(!ev.target.closest) return;
         var t=ev.target.closest('#mk-todas');
         if(t){ mkVerTodas=!mkVerTodas; pintarMarcas(); return; }
+        var bp=ev.target.closest('[data-mk-prueba]'); if(bp){ redibujarProg(bp.getAttribute('data-mk-prueba')); return; }
         var be=ev.target.closest('[data-mk-edit]'); if(be){ editarMarca(be.getAttribute('data-mk-edit')); return; }
         var bd=ev.target.closest('[data-mk-del]'); if(bd){ borrarMarca(bd.getAttribute('data-mk-del')); return; }
         var b=ev.target.closest('[data-mk-f]'); if(!b) return;
@@ -6073,17 +6086,52 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</div>';
       }).join('')+'</div>';
 
-    /* 4 · Progresión: las gráficas de las pruebas con dos marcas o más */
-    var graficos='', gi=0;
+    /* 4 · Progresión: UNA sola gráfica, destacada, con un SELECTOR de prueba.
+       Antes se pintaba una gráfica por prueba, todas seguidas; ahora se elige
+       en chips cuál ver y la gráfica se redibuja con esa prueba. Solo entran
+       las pruebas con dos marcas o más: con una sola no hay evolución que
+       dibujar (`graficoPrueba` no se toca; se le pasa la prueba elegida). */
+    mkProgData={}; var progClaves=[];
     claves.forEach(function(k){
       var arr=porPrueba[k].map(function(x){return {fecha:x.fecha||'',y:valorMarca(x),disp:x.tiempo_display||''};}).filter(function(p){return p.y!=null&&p.fecha;}).sort(function(a,b){return a.fecha<b.fecha?-1:1;});
-      if(arr.length>=2){ graficos+=graficoPrueba(k,arr,catMasMejor(k),gi++); }
+      if(arr.length>=2){ mkProgData[k]={arr:arr,mas:catMasMejor(k)}; progClaves.push(k); }
     });
-    var progHtml = graficos
-      ? '<div class="lista-tit"><span class="et">Progresión</span></div><div class="graficos">'+graficos+'</div>'
-      : '<p class="vacio" style="margin-bottom:14px;">Con dos marcas o más de una misma prueba verás aquí tu evolución.</p>';
+    var progHtml;
+    if(progClaves.length){
+      /* Por defecto, la prueba con MÁS marcas (más evolución que enseñar). Si ya
+         había una elegida y sigue teniendo gráfica, se respeta al refrescar. */
+      if(!mkPruebaSel || !mkProgData[mkPruebaSel])
+        mkPruebaSel=progClaves.slice().sort(function(a,b){ return mkProgData[b].arr.length-mkProgData[a].arr.length; })[0];
+      var chips=progClaves.map(function(k){
+        return '<button type="button" data-mk-prueba="'+esc(k)+'"'+(k===mkPruebaSel?' class="sel"':'')+'>'+esc(k)+'</button>';
+      }).join('');
+      progHtml='<div class="lista-tit"><span class="et">Progresión</span></div>'+
+        '<div class="pg-chips" role="group" aria-label="Elige la prueba a ver">'+chips+'</div>'+
+        '<div id="mk-pg-graf">'+graficoSolo(mkPruebaSel)+'</div>';
+    } else {
+      mkPruebaSel=null;
+      progHtml='<div class="lista-tit"><span class="et">Progresión</span></div>'+
+        '<p class="vacio" style="margin-bottom:14px;">Con dos marcas o más de una misma prueba verás aquí tu evolución.</p>';
+    }
 
     cont.innerHTML=filtro+mejorHtml+porPruebaHtml+ultimas+progHtml+volumenHTML()+fuerzaHTML();
+  }
+
+  /* La ÚNICA gráfica de progresión, ya en tarjeta destacada. Reusa `graficoPrueba`
+     (que no se toca) y solo le añade la clase `grafico--solo` para el marco. */
+  function graficoSolo(k){
+    var d=mkProgData[k]; if(!d) return '';
+    return graficoPrueba(k, d.arr, d.mas, 0).replace('class="grafico"','class="grafico grafico--solo"');
+  }
+  /* Cambiar de prueba: redibuja solo la gráfica y mueve el chip activo, sin
+     repintar toda la pantalla de marcas. */
+  function redibujarProg(k){
+    if(!mkProgData[k]) return;
+    mkPruebaSel=k;
+    var box=$('mk-pg-graf'); if(box) box.innerHTML=graficoSolo(k);
+    Array.prototype.forEach.call(document.querySelectorAll('.pg-chips [data-mk-prueba]'), function(b){
+      b.classList.toggle('sel', b.getAttribute('data-mk-prueba')===k);
+    });
   }
 
   /* ------------------------------------------------------------
