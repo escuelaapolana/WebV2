@@ -146,10 +146,10 @@
         { id: 'mas',        txt: 'Más',        ic: IC.mas,      url: tengoEntrenador ? (urlEntrenador + '#mas') : (b + 'portal/') }
       ];
     } else {
-      var sec = SECCION_ENTRENO[zona] || 'entreno';
+      /* Como la maqueta de atleta: Inicio · Calendario · Marcas · Más (sin
+         «Entreno»: al entreno se entra desde la tarjeta de hoy o el calendario). */
       lista = [
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,  url: urlZona },
-        { id: 'entreno',    txt: 'Entreno',    ic: IC.entreno, url: urlZona + '#' + sec, hay: tengoZona },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
         { id: 'marcas',     txt: 'Marcas',     ic: IC.marcas,  url: urlZona + '#marcas',  hay: tengoZona },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: tengoZona ? (urlZona + '#mas') : (b + 'portal/') }
