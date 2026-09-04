@@ -181,7 +181,11 @@
   .bl-mid { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
   .bl-tit { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:21px; line-height:1.05; color: var(--navy); }
   .bl-res { font-size:13px; line-height:1.3; color: var(--texto-suave); }
-  .bl-prog { flex:none; font-size:13px; line-height:1.1; color: var(--azul-oscuro); background: var(--azul-suave); border-radius:999px; padding:5px 10px; white-space:nowrap; }
+  /* El contador «X de N hechas» va DEBAJO del título y su resumen, dentro de
+     .bl-mid, y nunca a su lado: en el móvil un título largo (uppercase 21px) y
+     la pastilla se peleaban por el mismo renglón y esta acababa comiéndose el
+     nombre del bloque. Abajo, alineada a la izquierda, no tapa nada. */
+  .bl-prog { align-self:flex-start; margin-top:4px; font-size:13px; line-height:1.1; color: var(--azul-oscuro); background: var(--azul-suave); border-radius:999px; padding:5px 10px; white-space:nowrap; }
   .bl-prog.lleno { background:#e6f4ea; color:#1e7a3d; font-weight:600; }
   .bl-prog[hidden] { display:none; }
   .bl-cuerpo { padding:2px 14px 8px; }
@@ -1316,6 +1320,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // ---------- helpers ----------
   function tiempoANum(s){ if(s==null) return null; s=String(s).trim().replace(',','.'); if(s.indexOf(':')>-1){ var p=s.split(':'); if(p.length>=3) return (parseInt(p[0],10)||0)*3600+(parseInt(p[1],10)||0)*60+(parseFloat(p[2])||0); return (parseInt(p[0],10)||0)*60+(parseFloat(p[1])||0); } var n=parseFloat(s); return isNaN(n)?null:n; }
+  /* El VALOR NUMÉRICO de una marca para la gráfica: manda `tiempo_segundos`
+     (lo que guarda la base) y, si no está, se lee del texto. Pero «11″38» con
+     parseFloat a secas daba 11 —el ″ corta los decimales— y entonces todas las
+     marcas de una prueba caían al mismo alto: una línea plana que parecía rota.
+     Se cambia el ″ por punto decimal antes de leerlo. */
+  function valorMarca(x){
+    if(x){ var s=x.tiempo_segundos; if(s!=null && s!=='' && !isNaN(Number(s))) return Number(s); }
+    var t=x&&x.tiempo_display; if(t==null) return null;
+    return tiempoANum(String(t).replace(/[″"]/g,'.'));
+  }
   function formatFecha(iso){ if(!iso) return ''; var d=new Date(iso+'T00:00:00'); var di=['dom','lun','mar','mié','jue','vie','sáb'], me=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return di[d.getDay()]+' '+d.getDate()+' '+me[d.getMonth()]; }
   function fechaLarga(iso){ if(!iso) return ''; var d=new Date(iso+'T00:00:00'); var di=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'], me=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']; return di[d.getDay()]+' '+d.getDate()+' '+me[d.getMonth()]; }
   function iniciales(nom,ape){ var a=(nom||'').trim().charAt(0), b=(ape||'').trim().charAt(0); return ((a+b)||'·').toUpperCase(); }
@@ -1345,21 +1359,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     function Y(v){ var t=(v-lo)/(hi-lo); return padT+plotH*(masMejor?(1-t):t); }
     var bestI=0; for(var b=1;b<pts.length;b++){ if(masMejor?pts[b].y>pts[bestI].y:pts[b].y<pts[bestI].y) bestI=b; }
     var gid='grad'+(idx||0);
-    var grid=''; for(var g=0;g<=2;g++){ var gy=(padT+plotH*g/2).toFixed(1); grid+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--linea)" stroke-width="1.9" stroke-dasharray="2 5"></line>'; }
+    /* ⚠️ COLORES LITERALES, NO var() DENTRO DEL SVG.
+       En un atributo de presentación (stroke=, fill=, stop-color=) el
+       var(--azul) NO lo resuelve el Safari del iPhone —solo dentro de style—,
+       así que la línea, el área y los puntos salían INVISIBLES y la gráfica
+       parecía «no generarse». La maqueta ya usa hex a pelo por lo mismo. */
+    var C_AZUL='#2F6FA8', C_NAVY='#2E4256', C_LINEA='#EAE3D5';
+    var grid=''; for(var g=0;g<=2;g++){ var gy=(padT+plotH*g/2).toFixed(1); grid+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="'+C_LINEA+'" stroke-width="1.9" stroke-dasharray="2 5"></line>'; }
     var coords=pts.map(function(p,i){return X(i).toFixed(1)+','+Y(p.y).toFixed(1);});
     var area='M'+padL+','+(padT+plotH).toFixed(1)+' L'+coords.join(' L')+' L'+(W-padR)+','+(padT+plotH).toFixed(1)+' Z';
     var puntos=pts.map(function(p,i){ var x=X(i),y=Y(p.y); var best=(i===bestI&&pts.length>1);
-      return (best?'<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="7" fill="var(--azul)" opacity="0.16"></circle>':'')+
-        '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(best?4.3:3)+'" fill="'+(best?'var(--azul-oscuro)':'#fff')+'" stroke="var(--azul)" stroke-width="1.9"></circle>'+
-        '<text x="'+x.toFixed(1)+'" y="'+(y-9).toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+(best?'var(--azul-oscuro)':'var(--navy)')+'">'+esc(p.disp)+'</text>'+
+      return (best?'<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="7" fill="'+C_AZUL+'" opacity="0.16"></circle>':'')+
+        '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(best?4.3:3)+'" fill="'+(best?C_AZUL:'#fff')+'" stroke="'+C_AZUL+'" stroke-width="1.9"></circle>'+
+        '<text x="'+x.toFixed(1)+'" y="'+(y-9).toFixed(1)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+(best?C_AZUL:C_NAVY)+'">'+esc(p.disp)+'</text>'+
         '<text x="'+x.toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle" font-size="8.5" fill="#9a958c">'+esc(fechaCorta(p.fecha))+'</text>';
     }).join('');
     var svg='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Evolución de '+esc(nombre)+'">'+
-      '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--azul)" stop-opacity="0.28"></stop><stop offset="1" stop-color="var(--azul)" stop-opacity="0"></stop></linearGradient></defs>'+
+      '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+C_AZUL+'" stop-opacity="0.28"></stop><stop offset="1" stop-color="'+C_AZUL+'" stop-opacity="0"></stop></linearGradient></defs>'+
       grid+'<path d="'+area+'" fill="url(#'+gid+')"></path>'+
-      '<polyline fill="none" stroke="var(--azul)" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" points="'+coords.join(' ')+'"></polyline>'+puntos+
-      '<text x="'+padL+'" y="19" font-size="12.5" font-weight="700" fill="var(--navy)">'+esc(nombre)+'</text>'+
-      '<text x="'+(W-padR)+'" y="19" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--azul-oscuro)">MMP '+esc(pts[bestI].disp)+'</text></svg>';
+      '<polyline fill="none" stroke="'+C_AZUL+'" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" points="'+coords.join(' ')+'"></polyline>'+puntos+
+      '<text x="'+padL+'" y="19" font-size="12.5" font-weight="700" fill="'+C_NAVY+'">'+esc(nombre)+'</text>'+
+      '<text x="'+(W-padR)+'" y="19" text-anchor="end" font-size="10.5" font-weight="700" fill="'+C_AZUL+'">MMP '+esc(pts[bestI].disp)+'</text></svg>';
     var mej = masMejor ? (pts[pts.length-1].y - pts[0].y) : (pts[0].y - pts[pts.length-1].y);
     var u = masMejor ? ' m' : '', ley='';
     if(mej>0.001) ley='<span class="mejora">▲ '+mej.toFixed(2)+u+' mejor que al empezar</span>';
@@ -2287,8 +2307,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<summary class="bl-cab">'+
           '<span class="bl-num">'+(bi+1)+'</span>'+
           '<span class="bl-mid"><span class="bl-tit">'+esc(b.etiqueta||'Bloque')+'</span>'+
-          '<span class="bl-res">'+esc(resumenBloque(b, dis, s))+'</span></span>'+
-          '<span class="bl-prog" hidden></span>'+FLECHA+
+          '<span class="bl-res">'+esc(resumenBloque(b, dis, s))+'</span>'+
+          '<span class="bl-prog" hidden></span></span>'+FLECHA+
         '</summary>'+
         '<div class="bl-cuerpo">'+filas+mas+
         (entreEj?'<div class="bl-entre">'+esc(entreEj)+'</div>':'')+'</div></details>';
@@ -6056,7 +6076,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* 4 · Progresión: las gráficas de las pruebas con dos marcas o más */
     var graficos='', gi=0;
     claves.forEach(function(k){
-      var arr=porPrueba[k].map(function(x){return {fecha:x.fecha||'',y:tiempoANum(x.tiempo_display),disp:x.tiempo_display||''};}).filter(function(p){return p.y!=null&&p.fecha;}).sort(function(a,b){return a.fecha<b.fecha?-1:1;});
+      var arr=porPrueba[k].map(function(x){return {fecha:x.fecha||'',y:valorMarca(x),disp:x.tiempo_display||''};}).filter(function(p){return p.y!=null&&p.fecha;}).sort(function(a,b){return a.fecha<b.fecha?-1:1;});
       if(arr.length>=2){ graficos+=graficoPrueba(k,arr,catMasMejor(k),gi++); }
     });
     var progHtml = graficos
