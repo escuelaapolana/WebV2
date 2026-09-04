@@ -129,6 +129,19 @@
 
   function vacio(texto) { return nodo('p', 'sec-vacio', texto); }
 
+  /* «Cómo se llega a la sede»: una tarjeta con chincheta, coherente con el
+     resto de tarjetas de la página (grupos, precio, «De un vistazo»). Antes
+     era un recuadro crema plano y parecía un pegote. El estilo lo pone
+     apolana.css (.sec-acceso); aquí solo se arma la caja con su icono. */
+  function tarjetaAcceso(texto) {
+    var caja = nodo('div', 'sec-acceso');
+    var ic = nodo('span', 'ic');
+    ic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+    caja.appendChild(ic);
+    caja.appendChild(nodo('span', 'tx', texto));
+    return caja;
+  }
+
   /* Pone `url` en la imagen, pero solo cuando ya está descargada entera.
      Si nunca llega, la imagen se queda con la foto que trae el HTML. Es la
      misma idea que en imagenes-web.js; no se comparte porque cada archivo
@@ -536,7 +549,7 @@
     wrap.appendChild(p2);
 
     var acceso = limpio(datos.ficha && datos.ficha.acceso);
-    if (acceso) wrap.appendChild(nodo('p', 'sec-nota sec-acceso', acceso));
+    if (acceso) wrap.appendChild(tarjetaAcceso(acceso));
     caja.appendChild(wrap);
 
     function ver(n) {
@@ -680,7 +693,7 @@
        toca a mi hijo y cuándo). Lo escribe el club en Panel → Páginas,
        casilla «Cómo se llega»; vacía, no aparece nada. */
     var acceso = limpio(datos.ficha && datos.ficha.acceso);
-    if (acceso) caja.appendChild(nodo('p', 'sec-nota sec-acceso', acceso));
+    if (acceso) caja.appendChild(tarjetaAcceso(acceso));
   }
 
   /* ---------------------------------------------------------
