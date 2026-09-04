@@ -39,16 +39,14 @@
      archivo no llega (sin conexión, caché vieja), no pasa nada:
      la página sigue funcionando exactamente igual que hoy.
      ------------------------------------------------------------ */
+  /* Antes esto pintaba la franja «Estás como…». Ya no: el papel activo va en
+     la píldora de perfil del top bar, y esa píldora abre «cambiar de papel».
+     Aquí solo se CARGA papeles.js para que APOLANA_PAPELES.abrir() exista. */
   function montarPapeles() {
-    function hazlo() {
-      if (!window.APOLANA_PAPELES) return;
-      try { window.APOLANA_PAPELES.montar(); } catch (e) {}
-    }
-    if (window.APOLANA_PAPELES) { hazlo(); return; }
+    if (window.APOLANA_PAPELES) return;
     var s = document.createElement('script');
     s.src = base() + 'assets/js/papeles.js';
     s.async = true;
-    s.addEventListener('load', hazlo);
     s.addEventListener('error', function () { /* sin interruptor, pero la página entera sigue viva */ });
     document.head.appendChild(s);
   }
@@ -72,17 +70,18 @@
     '.adm-top .sep{color:rgba(255,255,255,.4);flex:0 0 auto}' +
     '.adm-top .marca{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:20px;line-height:1.15;color:#fff;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}' +
     '.adm-top .der{display:flex;align-items:center;gap:12px;font-size:14px;color:#cdd6e0;min-width:0;flex:0 0 auto}' +
-    '.adm-top .der span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:26vw}' +
     '.adm-top button{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:10px 18px;min-height:44px;font-size:14px;cursor:pointer;font-family:inherit;white-space:nowrap;flex:0 0 auto}' +
     '.adm-top button:hover{background:rgba(255,255,255,.12)}' +
-    /* «Ir a la web» va a la derecha, junto a «Salir», y con menos peso que él:
-       uno lleva a un sitio y el otro cierra la sesión. Mismo criterio que en
-       el portal. En la esquina de arriba a la izquierda no va nunca: ahí el
-       móvil pone el gesto de volver atrás y se pulsa sin mirar. */
-    '.adm-top a.ir-web{flex:0 0 auto;display:inline-flex;align-items:center;min-height:44px;padding:10px 10px;border-radius:10px;color:rgba(255,255,255,.72);text-decoration:none;font-size:14px;white-space:nowrap}' +
-    '.adm-top a.ir-web:hover{background:rgba(255,255,255,.12);color:#fff}' +
-    /* El correo solo cabe bien en pantallas anchas; en móvil manda el título. */
-    '@media(max-width:900px){.adm-top .der span{display:none}}' +
+    /* Chrome como la maqueta de admin: píldora «Web» con globo y píldora de
+       perfil (avatar dorado + rol). Nada de correo suelto ni de franja. */
+    '.adm-top .der .ir-web{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:8px 15px;border-radius:999px;color:#fff;text-decoration:none;font-size:14px;white-space:nowrap;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);box-sizing:border-box}' +
+    '.adm-top .der .ir-web:hover{background:rgba(255,255,255,.2);color:#fff}' +
+    '.adm-top .der .ir-web svg{width:16px;height:16px;flex:0 0 auto;opacity:.92}' +
+    '.adm-top .der .adm-perfil{flex:0 0 auto;display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:5px 15px 5px 6px;border-radius:999px;color:#fff;font-size:14px;white-space:nowrap;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);cursor:pointer;box-sizing:border-box}' +
+    '.adm-top .der .adm-perfil:hover{background:rgba(255,255,255,.2)}' +
+    '.adm-top .der .adm-perfil .av{width:28px;height:28px;flex:0 0 auto;border-radius:50%;background:linear-gradient(135deg,#C9A23A,#8A6A1E);display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}' +
+    '.adm-top .der .adm-salir-btn{color:rgba(255,255,255,.72);border-color:rgba(255,255,255,.25)}' +
+    '@media(max-width:640px){.adm-top .der .ir-web span,.adm-top .der .adm-perfil .rol{display:none}.adm-top .der .ir-web{padding:8px 11px}.adm-top .der .adm-perfil{padding:5px 6px}}' +
     '@media(max-width:560px){.adm-top{padding:8px 14px;gap:8px;min-height:56px}.adm-top .der{gap:4px}.adm-top a.volver .txt{display:none}.adm-top a.volver{padding:10px}.adm-top .sep{display:none}.adm-top .marca{font-size:18px}.adm-top button{padding:10px 15px}.adm-top a.ir-web{padding:10px 6px}}' +
     /* --- Caja de acceso: mismo aire que la del portal --- */
     '.adm-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid #EAE3D5;border-radius:20px;padding:30px 26px 26px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
@@ -135,16 +134,27 @@
     function barra(email) {
       var top = document.createElement('div');
       top.className = 'adm-top';
+      /* Chrome como la maqueta de admin: atrás + título a la izquierda; a la
+         derecha una píldora «Web» con globo y la píldora de perfil (avatar
+         dorado + «Administración»), que al pulsarla abre «cambiar de papel».
+         Fuera el correo suelto y la franja «Estás como…»: el papel va aquí. */
+      var GLOBO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>';
       top.innerHTML =
         '<div class="izq"><a class="volver" href="' + base() + 'admin/"><i>←</i><span class="txt">Panel</span></a>' +
         '<span class="sep">·</span>' +
         '<span class="marca">' + esc(tituloPagina()) + '</span></div>' +
-        '<div class="der"><span>' + esc(email) + '</span>' +
-        '<a class="ir-web" href="' + base() + '">Ir a la web</a>' +
-        '<button id="adm-salir">Salir</button></div>';
+        '<div class="der">' +
+          '<a class="ir-web" href="' + base() + '">' + GLOBO + '<span>Web</span></a>' +
+          '<button type="button" class="adm-perfil" id="adm-perfil" aria-haspopup="dialog">' +
+            '<span class="av">A</span><span class="rol">Administración</span></button>' +
+          '<button id="adm-salir" class="adm-salir-btn">Salir</button></div>';
       document.body.insertBefore(top, document.body.firstChild);
       document.getElementById('adm-salir').addEventListener('click', async function () {
         await sb.auth.signOut(); location.reload();
+      });
+      /* La píldora de perfil abre «cambiar de papel» (papeles.js ya cargado). */
+      document.getElementById('adm-perfil').addEventListener('click', function () {
+        if (window.APOLANA_PAPELES && window.APOLANA_PAPELES.abrir) window.APOLANA_PAPELES.abrir();
       });
     }
 
