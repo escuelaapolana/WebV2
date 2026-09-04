@@ -264,7 +264,7 @@
        es el hueco de la flecha, que va al lado y no encima. */
     '.pt-avatar{display:inline-flex;align-items:center;justify-content:center;gap:1px;width:auto;min-width:52px;height:44px;' +
       'flex:0 0 auto;padding:0 3px 0 0;border:0;border-radius:999px;background:none;cursor:pointer;' +
-      '-webkit-tap-highlight-color:transparent}' +
+      'user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}' +
     '.pt-avatar span{display:flex;align-items:center;justify-content:center;width:32px;height:32px;' +
       'border-radius:999px;background:#8FC0E8;color:#1E4E78;font-family:inherit;font-size:13px;font-weight:600;line-height:1}' +
     '.pt-avatar:hover span{background:#A9D0F0}' +
