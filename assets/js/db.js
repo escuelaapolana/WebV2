@@ -131,7 +131,27 @@
     }
   };
 
-  window.APOLANA_DB = window.supabase.createClient(URL, KEY, { auth: { storage: ALMACEN } });
+  /* Límite de tiempo GLOBAL para TODA petición a la base (y a la de sesión):
+     si en 15 s no responde, se aborta y la promesa se rechaza, en vez de
+     quedarse colgada para siempre. Era la raíz del «cuelgue eterno» en móvil,
+     sobre todo al volver de la web con la sesión en mitad de un refresco de
+     token: una sola consulta atascada dejaba la pantalla cargando sin fin, sin
+     dar ningún error. Ahora cada zona recibe el fallo y enseña su aviso /
+     «volver a cargar» en vez del blanco. Se toca en un único sitio: el cliente. */
+  function fetchConLimite(url, opts) {
+    opts = opts || {};
+    var ctrl = null;
+    try { ctrl = new AbortController(); if (!opts.signal) opts.signal = ctrl.signal; } catch (e) {}
+    var t = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 15000) : 0;
+    return fetch(url, opts).then(
+      function (r) { if (t) clearTimeout(t); return r; },
+      function (e) { if (t) clearTimeout(t); throw e; }
+    );
+  }
+  window.APOLANA_DB = window.supabase.createClient(URL, KEY, {
+    auth: { storage: ALMACEN },
+    global: { fetch: fetchConLimite }
+  });
 
   /* ============================================================
      AVISAR AL CLUB DE QUE HA ENTRADO ALGO
