@@ -1435,15 +1435,28 @@
        son la suma de lo que piden las pantallas de familia y atleta,
        para que a ninguna le falte nada y no tenga que volver a
        preguntar. */
+    /* Ninguna consulta puede colgar la app para siempre. Un try/catch NO salva
+       de un cuelgue (la promesa nunca resuelve, así que nunca se lanza el
+       catch): en móvil, tras cambiar de zona o volver desde la web, una query
+       se puede quedar esperando sin fin. Con esto, si en 9 s no responde, se
+       resuelve como «error» y la app sigue —vacía o con su aviso—, en vez de
+       quedarse cargando eternamente (era la raíz del cuelgue al cambiar de rol). */
+    function conTiempo(promesa) {
+      return Promise.race([
+        Promise.resolve(promesa),
+        new Promise(function (res) { setTimeout(function () { res({ error: true, data: [], _tiempo: true }); }, 9000); })
+      ]);
+    }
+
     function misAtletas(id) {
       if (_atletasProm) return _atletasProm;
       _atletasProm = (async function () {
         if (!id) return { error: false, data: [] };
         try {
-          var r = await sb.from('atletas')
+          var r = await conTiempo(sb.from('atletas')
             .select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia,especialidades,perfil_id,perfil_padre_id,entrenador_id')
             .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id)
-            .order('nombre');
+            .order('nombre'));
           if (r && r.error) return { error: true, data: [] };
           return { error: false, data: (r && r.data) || [] };
         } catch (e) { return { error: true, data: [] }; }
@@ -1459,8 +1472,8 @@
       if (_gruposProm) return _gruposProm;
       _gruposProm = (async function () {
         try {
-          var r = await sb.from('grupos')
-            .select('id,nombre,horario,turno,seccion,entrenador_id');
+          var r = await conTiempo(sb.from('grupos')
+            .select('id,nombre,horario,turno,seccion,entrenador_id'));
           if (r && r.error) return { error: true, data: [] };
           return { error: false, data: (r && r.data) || [] };
         } catch (e) { return { error: true, data: [] }; }
