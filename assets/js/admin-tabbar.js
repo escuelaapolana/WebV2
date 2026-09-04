@@ -186,9 +186,9 @@
        «Más» del entrenador (que gustó más). Antes era una lista con divisorias
        dentro de un solo recuadro. */
     '.at-hoja .lista{display:flex;flex-direction:column;gap:8px}' +
-    '.at-hoja .lista a{display:flex;align-items:center;gap:12px;min-height:52px;box-sizing:border-box;' +
-      'padding:13px 15px;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;' +
-      'box-shadow:0 6px 16px -12px rgba(46,66,86,.35);text-decoration:none;' +
+    '.at-hoja .lista a{display:flex;align-items:center;gap:12px;min-height:46px;box-sizing:border-box;' +
+      'padding:10px 14px;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:13px;' +
+      'box-shadow:0 5px 14px -12px rgba(46,66,86,.32);text-decoration:none;' +
       'color:var(--navy,#2E4256);-webkit-tap-highlight-color:transparent}' +
     '.at-hoja .lista a:hover{background:#FCFAF5;box-shadow:0 12px 24px -14px rgba(46,66,86,.5)}' +
     '.at-hoja .lista a .txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}' +
@@ -198,13 +198,17 @@
     '.at-hoja .lista a .chev{flex:0 0 auto;font-style:normal;font-size:19px;line-height:1;color:var(--texto-suave,#6E6656)}' +
     '.at-hoja .lista a.aqui .t{font-weight:600;color:var(--azul-oscuro,#2F6FA8)}' +
 
-    /* «Las que más usas»: rejilla de dos */
-    '.at-hoja .atajos{display:grid;grid-template-columns:1fr 1fr;gap:9px}' +
-    '.at-hoja .atajos a{display:flex;align-items:center;min-height:48px;box-sizing:border-box;' +
-      'padding:10px 14px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:12px;background:#fff;' +
+    /* «Las que más usas»: filas iguales que la lista (icono + nombre, una debajo
+       de otra, misma altura), para que TODO el menú sea calco del entrenador. */
+    '.at-hoja .atajos{display:flex;flex-direction:column;gap:8px}' +
+    '.at-hoja .atajos a{display:flex;align-items:center;gap:12px;min-height:46px;box-sizing:border-box;' +
+      'padding:10px 14px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:13px;background:#fff;' +
+      'box-shadow:0 5px 14px -12px rgba(46,66,86,.32);' +
       'text-decoration:none;color:var(--navy,#2E4256);font-size:15px;line-height:1.25;' +
       '-webkit-tap-highlight-color:transparent}' +
-    '.at-hoja .atajos a:hover{border-color:var(--azul-filete, #3B85C0)}' +
+    '.at-hoja .atajos a .ic{flex:0 0 22px;width:22px;height:22px;color:var(--azul-oscuro,#2F6FA8)}' +
+    '.at-hoja .atajos a span{flex:1 1 auto;min-width:0}' +
+    '.at-hoja .atajos a:hover{background:#FCFAF5}' +
 
     /* «Todo, por bloques»: plegados y con su recuento al lado */
     '.at-hoja .bloque{border-top:1px solid var(--crema-media,#EFE9DC)}' +
@@ -533,7 +537,7 @@
     return '<a href="' + esc(url) + '"' + (aqui ? ' class="aqui"' : '') + ' data-clave="' + esc(clave(url)) + '">' +
            iconoDe(url) +
            '<span class="txt"><span class="t">' + esc(txt) + '</span>' +
-           '<span class="b">' + esc(sub) + '</span></span>' +
+           (sub ? '<span class="b">' + esc(sub) + '</span>' : '') + '</span>' +
            '<i class="chev" aria-hidden="true">›</i></a>';
   }
 
@@ -542,7 +546,7 @@
     var html = '<h3>Las que más usas</h3><div class="atajos">';
     m.lista.forEach(function (e) {
       html += '<a href="' + esc(e.url) + '" data-clave="' + esc(e.clave) + '"' +
-              (!e.panel && e.clave === aqui ? ' class="aqui"' : '') + '>' + esc(e.txt) + '</a>';
+              (!e.panel && e.clave === aqui ? ' class="aqui"' : '') + '>' + iconoDe(e.url) + '<span>' + esc(e.txt) + '</span></a>';
     });
     html += '</div>';
     if (m.estrenando) {
@@ -561,7 +565,7 @@
       if (!b.t) {
         html += '<div class="lista" style="margin-bottom:12px">';
         reales.forEach(function (e) {
-          html += itemHTML(e.txt, e.desc, e.url, clave(e.url) === aqui);
+          html += itemHTML(e.txt, '', e.url, clave(e.url) === aqui);
         });
         html += '</div>';
         return;
@@ -572,7 +576,7 @@
               '<span class="n">' + reales.length + '</span><i class="fl" aria-hidden="true"></i></summary>' +
               '<div class="lista">';
       reales.forEach(function (e) {
-        html += itemHTML(e.txt, e.desc, e.url, clave(e.url) === aqui);
+        html += itemHTML(e.txt, '', e.url, clave(e.url) === aqui);
       });
       html += '</div></details>';
     });
