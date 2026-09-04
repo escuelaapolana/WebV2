@@ -68,13 +68,13 @@
     '.at-tabbar{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);right:auto;bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;box-sizing:border-box;max-width:calc(100% - 20px);' +
       'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
       'border:1px solid rgba(30,45,65,.08);border-radius:26px;padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
-    '.at-tabbar a,.at-tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
-      'min-height:48px;padding:6px 4px;border-radius:18px;text-decoration:none;color:var(--texto-suave,#6E6656);background:none;border:0;cursor:pointer;' +
+    '.at-tabbar a,.at-tabbar button{flex:0 0 auto;min-width:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;' +
+      'min-height:52px;padding:9px 22px;border-radius:20px;text-decoration:none;color:var(--texto-suave,#6E6656);background:none;border:0;cursor:pointer;' +
       'font-family:inherit;font-size:12px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;-webkit-tap-highlight-color:transparent}' +
-    /* Barra de abajo SOLO con iconos (sin texto): así no se corta nada. */
+    /* Barra de abajo SOLO con iconos (sin texto), pero con presencia (no enana):
+       iconos grandes y cada uno con su sitio. */
     '.at-tabbar span{display:none}' +
-    '.at-tabbar a,.at-tabbar button{gap:0}' +
-    '.at-tabbar .ic{width:25px;height:25px;flex:0 0 25px}' +
+    '.at-tabbar .ic{width:27px;height:27px;flex:0 0 27px}' +
     '.at-tabbar .activo{background:var(--navy,#2E4256);color:#fff}' +
     '.at-tabbar .activo span{font-weight:600}' +
     '.at-hoja[hidden],.at-fondo[hidden],.at-tabbar[hidden]{display:none !important}' +

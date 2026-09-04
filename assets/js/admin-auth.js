@@ -62,7 +62,7 @@
   css.textContent =
     'html,body{max-width:100%;overflow-x:hidden}' +
     /* --- Barra superior: misma altura, tipografía y colores que la del panel principal --- */
-    '.adm-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px clamp(14px,4vw,40px);min-height:60px;flex-wrap:nowrap;width:100%;box-sizing:border-box}' +
+    '.adm-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px clamp(14px,4vw,40px);min-height:60px;flex-wrap:nowrap;width:100%;box-sizing:border-box;user-select:none;-webkit-user-select:none}' +
     '.adm-top .izq{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden}' +
     '.adm-top a.volver{color:#cdd6e0;text-decoration:none;font-size:15px;display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;padding:10px 12px;margin-left:-12px;border-radius:10px;min-height:44px;box-sizing:border-box}' +
     '.adm-top a.volver:hover{background:rgba(255,255,255,.12);color:#fff}' +
