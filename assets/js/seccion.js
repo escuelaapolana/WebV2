@@ -703,79 +703,108 @@
     var notaComun = (datos.tarifas.length > 1 && notas[0] && notas.every(function (n) { return n === notas[0]; }))
       ? notas[0] : '';
 
+    /* La cabecera «Precio» de la sección se mete DENTRO de la tarjeta (maqueta
+       A, aprobada) y se esconde la de fuera para no duplicarla. */
+    var cabFuera = caja.parentNode ? caja.parentNode.querySelector('.sec-cab') : null;
+    var tituloTxt = 'Precio', notaTxt = 'Lo que se paga, sin letra pequeña';
+    if (cabFuera) {
+      var _h = cabFuera.querySelector('h2'); if (_h && limpio(_h.textContent)) tituloTxt = limpio(_h.textContent);
+      var _n = cabFuera.querySelector('.nota'); if (_n && limpio(_n.textContent)) notaTxt = limpio(_n.textContent);
+      cabFuera.style.display = 'none';
+    }
+
+    /* Una cifra «40-60 €» con su periodo («al mes») debajo, en pequeño. */
+    function cifra(texto, esNumero, tenue) {
+      var span = nodo('span', 'sp-val' + (tenue ? ' ns' : '') + (esNumero ? '' : ' tenue'));
+      var m = esNumero ? String(texto).match(/^(.*?€)\s*\/?\s*(mes|año|temporada|semana|clase)?/i) : null;
+      if (m) {
+        span.appendChild(document.createTextNode(m[1]));
+        var per = (m[2] || '').toLowerCase();
+        var pt = per === 'mes' ? 'al mes' : per === 'año' ? 'al año' : per === 'temporada' ? 'por temporada'
+               : per === 'semana' ? 'a la semana' : per === 'clase' ? 'por clase' : '';
+        if (pt) span.appendChild(nodo('small', null, pt));
+      } else { span.textContent = texto; }
+      return span;
+    }
+
+    var tarjeta = nodo('div', 'sp-precio');
+    var cb = nodo('div', 'sp-cab');
+    cb.appendChild(nodo('h2', null, tituloTxt));
+    cb.appendChild(nodo('span', 'n', notaTxt));
+    tarjeta.appendChild(cb);
+
     if (!datos.tarifas.length) {
-      caja.appendChild(vacio('El precio de esta sección todavía no está publicado. Escríbenos y te lo decimos.'));
+      tarjeta.appendChild(vacio('El precio de esta sección todavía no está publicado. Escríbenos y te lo decimos.'));
     } else {
-      /* El cuadro-tabla bueno (el mismo que la página de socio): columnas
-         «Si entrenas en… · Socio · No socio». Si ninguna tarifa tiene precio de
-         no socio, se queda en dos columnas. */
       var hayNoSocio = datos.tarifas.some(function (t) { return t.importe_no_socio != null && t.importe_no_socio !== ''; });
-      var tabla = nodo('div', 'tabla-precios ' + (hayNoSocio ? 'tres' : 'dos'));
-      var enc = nodo('div', 'fila encabezado');
+      var tp = nodo('div', 'sp-tp ' + (hayNoSocio ? 'tres' : 'dos'));
+      var enc = nodo('div', 'sp-fila sp-enc');
       enc.appendChild(nodo('span', null, 'Si entrenas en…'));
       enc.appendChild(nodo('span', null, hayNoSocio ? 'Socio' : 'Precio'));
       if (hayNoSocio) enc.appendChild(nodo('span', null, 'No socio'));
-      tabla.appendChild(enc);
+      tp.appendChild(enc);
 
       datos.tarifas.forEach(function (t) {
-        var f = nodo('div', 'fila');
+        var f = nodo('div', 'sp-fila');
         if (t.id) { f.setAttribute('data-editable-tarifa', t.id); f._apoTarifa = t; }
-        var concepto = nodo('span', 'concepto', conceptoCorto(t.concepto, titulo));
+        var concepto = nodo('span', 'sp-concepto', conceptoCorto(t.concepto, titulo));
         var dias = limpio(t.dias);
-        if (dias) concepto.appendChild(nodo('small', 'sec-dias', dias));
+        if (dias) concepto.appendChild(nodo('small', null, dias));
         f.appendChild(concepto);
 
         var imp = importeDe(t);
-        f.appendChild(nodo('span', 'cifra' + (imp.esNumero ? '' : ' tenue'), imp.texto || 'Sin publicar'));
+        f.appendChild(cifra(imp.texto || 'Sin publicar', imp.esNumero, false));
 
         if (hayNoSocio) {
-          var ns = '—';
           if (t.importe_no_socio != null && t.importe_no_socio !== '') {
             var cifraNS = euros(t.importe_no_socio);
             if (t.importe_no_socio_hasta != null && t.importe_no_socio_hasta !== ''
                 && Number(t.importe_no_socio_hasta) > Number(t.importe_no_socio)) {
               cifraNS = euros(t.importe_no_socio).replace(' €', '') + '-' + euros(t.importe_no_socio_hasta);
             }
-            ns = cifraNS + (PERIODO[limpio(t.periodicidad)] || '');
+            f.appendChild(cifra(cifraNS + (PERIODO[limpio(t.periodicidad)] || ''), true, true));
+          } else {
+            f.appendChild(nodo('span', 'sp-val ns tenue', '—'));
           }
-          f.appendChild(nodo('span', 'cifra tenue', ns));
         }
-        tabla.appendChild(f);
+        tp.appendChild(f);
       });
-      caja.appendChild(tabla);
-      if (notaComun) caja.appendChild(nodo('p', 'sec-nota', notaComun));
+      tarjeta.appendChild(tp);
     }
 
-    /* La cuota de socio no está dentro del precio del entrenamiento:
-       se paga aparte, una vez al año. Se dice aquí para que nadie se
-       lleve la sorpresa en septiembre. */
+    /* Cuota de socio: su propia tarjeta dentro del bloque (maqueta A). */
     if (datos.socio) {
-      var suma = nodo('div', 'sec-suma');
-      suma.appendChild(nodo('span', 'k', hayNumero
-        ? 'Y aparte, una vez al año, la cuota de socio'
-        : 'Aquí solo se paga la cuota de socio'));
-      suma.appendChild(nodo('span', 'v', importeDe(datos.socio).texto));
-      caja.appendChild(suma);
-      /* El importe de arriba es el del PRIMER año; a partir del segundo baja a
-         110 €. Se dice en todas las secciones para que quede claro desde ya. */
-      caja.appendChild(nodo('p', 'sec-nota', 'A partir del segundo año, la cuota de socio es 110 €.'));
-      /* Solo en atletismo en pista: la franja de edad de la sección. */
-      var elSec = document.querySelector('[data-seccion]');
-      if (elSec && elSec.getAttribute('data-seccion') === 'competicion') {
-        caja.appendChild(nodo('p', 'sec-nota', 'Desde 2008 en adelante (año de nacimiento).'));
-      }
-      if (limpio(datos.socio.notas)) caja.appendChild(nodo('p', 'sec-nota', limpio(datos.socio.notas)));
+      var cuota = nodo('div', 'sp-cuota');
+      var ic = nodo('span', 'ic');
+      ic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg>';
+      cuota.appendChild(ic);
+      var tx = nodo('span', 'tx');
+      tx.appendChild(nodo('b', null, hayNumero ? 'Cuota de socio · una vez al año' : 'Solo la cuota de socio'));
+      var subCuota = 'A partir del segundo año, 110 €. Se cobra en septiembre.';
+      if (limpio(datos.socio.notas)) subCuota = 'A partir del segundo año, 110 €. ' + limpio(datos.socio.notas);
+      tx.appendChild(nodo('small', null, subCuota));
+      cuota.appendChild(tx);
+      cuota.appendChild(nodo('span', 'imp', importeDe(datos.socio).texto));
+      tarjeta.appendChild(cuota);
     }
 
-    /* La letra pequeña de la sección: descuentos, quién tiene precio de
-       socio, cómo se amplían los días… Lo escribe el club en Panel →
-       Páginas, casilla «Nota del precio». Si está vacía, no sale nada. */
-    var nota = limpio(datos.ficha && datos.ficha.precio);
-    if (nota) {
-      lineas(nota).forEach(function (linea) {
-        caja.appendChild(nodo('p', 'sec-nota', linea));
-      });
+    /* Notas al pie: la común de las tarifas, la letra pequeña de la sección y
+       —solo en atletismo en pista— la franja de edad. */
+    var pies = [];
+    if (notaComun) pies.push(notaComun);
+    var elSec = document.querySelector('[data-seccion]');
+    if (datos.socio && elSec && elSec.getAttribute('data-seccion') === 'competicion') {
+      pies.push('Desde 2008 en adelante (año de nacimiento).');
     }
+    var notaSec = limpio(datos.ficha && datos.ficha.precio);
+    if (notaSec) lineas(notaSec).forEach(function (l) { pies.push(l); });
+    if (pies.length) {
+      var nz = nodo('div', 'sp-notas');
+      pies.forEach(function (p) { nz.appendChild(nodo('p', null, p)); });
+      tarjeta.appendChild(nz);
+    }
+
+    caja.appendChild(tarjeta);
   }
 
   /* ---------------------------------------------------------
