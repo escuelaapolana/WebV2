@@ -205,6 +205,41 @@
   .bl-sep i { flex:1; height:1px; background: var(--linea); }
   .bl-sep span { font-size:13px; color: var(--texto-suave); white-space:nowrap; }
   .bl-entre { font-size:13px; color: var(--texto-suave); padding:8px 0 2px; }
+  /* ============================================================
+     BLOQUE «SOLO MARCAR» (bocetos del dueño)
+     ------------------------------------------------------------
+     Entrenamientos donde el atleta NO apunta marcas: lee la lista
+     en modo INFO (×N ejercicio) y marca el bloque entero como hecho
+     con un ✓ redondo que va FUERA de la caja, a la derecha, con
+     44px de zona táctil. El RPE sigue en el feedback «¿Cómo fue?».
+     ============================================================ */
+  .bl-marca { display:flex; align-items:flex-start; gap:12px; }
+  .bl-marca .bloque { flex:1 1 auto; min-width:0; }
+  /* En este modo la caja lleva solo el título y la flecha (sin número) */
+  .bl-cab-info { min-height:56px; }
+  .bl-cuerpo-info { padding:8px 16px 14px; }
+  .bl-nota-cab { font-size:13px; color: var(--texto-suave); margin:0 0 8px; }
+  .bl-nota-pie { font-size:13px; color: var(--texto-suave); margin:10px 0 0; padding-top:8px; border-top:1px solid var(--linea); }
+  .bl-lista { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+  .bl-linea { display:flex; align-items:baseline; gap:12px; padding:7px 0; border-bottom:1px solid var(--linea); }
+  .bl-linea:last-child { border-bottom:0; }
+  .bl-x { flex:none; min-width:36px; font-family: var(--fuente-dato); font-weight:700; font-size:16px; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .bl-nom { flex:1 1 auto; min-width:0; font-size:16px; color: var(--texto); }
+  .bl-nom.vacio { color: var(--texto-suave); font-size:14px; }
+  .bl-det { display:block; font-size:13px; color: var(--texto-suave); }
+  .bl-int { flex:none; font-family: var(--fuente-mono); font-size:14px; color: var(--azul-oscuro); white-space:nowrap; }
+  /* El ✓ redondo de fuera: apagado sin marcar, verde lleno al marcar */
+  .bl-check { flex:none; width:44px; height:44px; margin-top:6px; padding:0; border-radius:50%;
+              border:2px solid var(--linea-marcada, #E4DCCB); background:#fff; color: var(--texto-suave);
+              display:flex; align-items:center; justify-content:center; cursor:pointer;
+              -webkit-tap-highlight-color:transparent; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+  .bl-check svg { width:24px; height:24px; opacity:.3; }
+  .bl-check:hover { border-color: var(--verde, #2E7D52); }
+  .bl-check.hecho { background: var(--verde, #2E7D52); border-color: var(--verde, #2E7D52); color:#fff; }
+  .bl-check.hecho svg { opacity:1; }
+  .bl-check:focus-visible { outline:2px solid var(--azul-filete, #3B85C0); outline-offset:2px; }
+  .bl-check-leer { cursor:default; }
+  .bl-scaffold[hidden] { display:none; }
   /* Volumen y tiempo, separados: se planifica con el tiempo, no con los metros */
   .ses-cifras { display:flex; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
   .ses-cifra { flex:1 1 0; min-width:120px; background: var(--crema-banda); border-radius:10px; padding:9px 12px; display:flex; flex-direction:column; gap:1px; }
@@ -2123,6 +2158,92 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     return p.join(' · ');
   }
+  /* ============================================================
+     BLOQUE «SOLO MARCAR» · contrato: el BLOQUE trae solo_marcar:true
+     ------------------------------------------------------------
+     El atleta no apunta marcas: solo lee la lista (modo info) y marca
+     el bloque entero como HECHO con el ✓ redondo de fuera. El RPE
+     sigue yendo en el feedback «¿Cómo fue?», no se toca aquí.
+
+     El ✓ del bloque marca TODAS sus filas como hechas reutilizando
+     el MISMO andamiaje que guarda lo demás: cada fila lleva un
+     `.serie-inputs` OCULTO con una sola `.ej-fila` y su `.s-ok`. Así
+     `serieHecha`, la cosecha a `tiempos_reales`, el `prefillTiempos`
+     y el feedback funcionan sin inventar tablas ni campos nuevos.
+
+     Campos de fila que se leen (todos ya existen): `series` para el
+     ×N, `ejercicio`/`nombre`, `distancia`, `ritmo`, `detalle`.
+     Campos NUEVOS a nivel de bloque: `solo_marcar` (bool),
+     `nota_cab` (cabecerita) y `nota_pie` (nota al pie).
+     ============================================================ */
+  // ¿Está guardada como hecha la fila fi del bloque bi? (para el estado inicial)
+  function filaMarcadaHecha(hechos, f, key){
+    var g=registroDeFila(hechos, f, key); if(!g) return false;
+    var sr=(Array.isArray(g.series) && g.series[0]) || null;
+    if(sr) return !!sr.hecha;
+    return Array.isArray(g.tiempos) && g.tiempos[0]!=null && String(g.tiempos[0]).trim()!=='';
+  }
+  // Una línea de la lista info: «×N  nombre   ritmo»
+  function lineaSoloMarcar(f){
+    var n=esSerie(f); if(n<1) n=parseInt(f.series,10)||1;
+    var nom=String(f.ejercicio||f.nombre||f.distancia||'').trim();
+    var rit=String(f.ritmo||'').trim();
+    var det=String(f.detalle||'').trim();
+    var mid=esc(nom)+(det?'<span class="bl-det">'+esc(det)+'</span>':'');
+    return '<li class="bl-linea">'+
+      '<span class="bl-x">×'+n+'</span>'+
+      '<span class="bl-nom">'+mid+'</span>'+
+      (rit?'<span class="bl-int">'+esc(rit)+'</span>':'')+
+      '</li>';
+  }
+  // El andamiaje oculto de una fila: lo que la cosecha ya sabe guardar
+  function scaffoldSoloMarcar(f, key, hechos){
+    var nom=String(f.ejercicio||f.nombre||f.distancia||'').trim();
+    var hecha=filaMarcadaHecha(hechos, f, key);
+    return '<div class="serie-inputs" data-eje="'+escA(nom)+'" data-medida="hecho" data-key="'+key+'" data-mandadas="1"'+
+      (f.id?' data-fid="'+escA(f.id)+'"':'')+'>'+
+      '<div class="ej-fila" data-i="0"'+(hecha?' data-hecha="1"':'')+'>'+
+      '<button type="button" class="s-ok" aria-pressed="'+(hecha?'true':'false')+'" tabindex="-1" '+
+      'aria-label="'+escA((nom||'Ejercicio')+' hecho')+'">'+VISTO+'</button></div></div>';
+  }
+  function bloqueSoloMarcar(b, bi, dis, s, leer, hechos, abiertoBl){
+    var filas=(b.filas||[]);
+    var lineas=filas.map(lineaSoloMarcar).join('') ||
+      '<li class="bl-linea"><span class="bl-nom vacio">Por definir</span></li>';
+    var scaf=filas.map(function(f,fi){ return scaffoldSoloMarcar(f, 'b'+bi+'f'+fi, hechos); }).join('');
+    var todasHechas = filas.length>0 && filas.every(function(f,fi){
+      return filaMarcadaHecha(hechos, f, 'b'+bi+'f'+fi);
+    });
+    var cab = b.nota_cab ? '<div class="bl-nota-cab">'+esc(b.nota_cab)+'</div>' : '';
+    var pie = b.nota_pie ? '<div class="bl-nota-pie">'+esc(b.nota_pie)+'</div>' : '';
+    var det='<details class="bloque bloque-info" data-b="'+bi+'"'+(abiertoBl?' open':'')+'>'+
+      '<summary class="bl-cab bl-cab-info">'+
+        '<span class="bl-mid"><span class="bl-tit">'+esc(b.etiqueta||'Bloque')+'</span>'+
+        '<span class="bl-res">'+esc(resumenBloque(b, dis, s))+'</span></span>'+FLECHA+
+      '</summary>'+
+      '<div class="bl-cuerpo bl-cuerpo-info">'+cab+
+        '<ul class="bl-lista">'+lineas+'</ul>'+pie+
+        '<div class="bl-scaffold" hidden>'+scaf+'</div>'+
+      '</div></details>';
+    // El ✓ de fuera. En solo lectura (día pasado) es un sello, no un botón.
+    var chk = leer
+      ? '<span class="bl-check bl-check-leer'+(todasHechas?' hecho':'')+'" aria-hidden="true">'+VISTO+'</span>'
+      : '<button type="button" class="bl-check'+(todasHechas?' hecho':'')+'" aria-pressed="'+(todasHechas?'true':'false')+'" '+
+        'aria-label="Marcar el bloque '+escA(b.etiqueta||'')+' como hecho">'+VISTO+'</button>';
+    return '<div class="bl-marca">'+det+chk+'</div>';
+  }
+  // Sincroniza el ✓ de fuera con el estado de las filas ocultas del bloque
+  function sincronizarChecksBloque(raiz){
+    if(!raiz || !raiz.querySelectorAll) return;
+    raiz.querySelectorAll('.bl-marca').forEach(function(row){
+      var chk=row.querySelector('.bl-check'); if(!chk) return;
+      var oks=row.querySelectorAll('.s-ok'); if(!oks.length) return;
+      var todas=true;
+      oks.forEach(function(ok){ if(ok.getAttribute('aria-pressed')!=='true') todas=false; });
+      chk.classList.toggle('hecho', todas);
+      if(chk.tagName==='BUTTON') chk.setAttribute('aria-pressed', todas?'true':'false');
+    });
+  }
   // Qué bloques quedan abiertos: lo que dejó el atleta la última vez y, si es la
   // primera, la parte principal (o el primer bloque si ninguno se llama así).
   function claveBloques(sid){ return 'apolana.entreno.bloques.'+sid; }
@@ -2304,6 +2425,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var D=DESC();
     var ultimoBl=Math.max(0, bloques.length-1);
     var bloquesHtml=bloques.map(function(b,bi){
+      /* Bloque «solo marcar»: otro render (lista info + ✓ de fuera). Los bloques
+         normales NO cambian ni un pixel; solo entra aquí si el BLOQUE lo pide. */
+      if(b && b.solo_marcar){
+        var entreSM='';
+        if(D && bi<bloques.length-1){ try { entreSM=D.textoEntreBloques(b)||''; } catch(e){} }
+        return bloqueSoloMarcar(b, bi, dis, s, leer, hechos, abierto(bi))+
+          (entreSM?'<div class="bl-sep"><i></i><span>'+esc(entreSM)+'</span><i></i></div>':'');
+      }
       var filas=(b.filas||[]).map(function(f,fi){return filaHTML(f,'b'+bi+'f'+fi,dis,leer,hechos,s);}).join('')||'<div class="ejer"><div class="fila"><span class="ej vacio">Por definir</span></div></div>';
       /* Y detrás, lo que añadió él por su cuenta */
       filas+=extrasDeBloque(todos, bi, ultimoBl).map(function(x){
@@ -3659,6 +3788,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        «+ Serie», porque una sesión guardada con series de más se vuelve a
        pintar al abrirla y ahí también hay que poder quitarlas. */
     if(raiz.querySelectorAll) raiz.querySelectorAll('.serie-inputs').forEach(verMenosSerie);
+    /* El ✓ de fuera de cada bloque «solo marcar» refleja sus filas: así al
+       cargar (tras el prefill) y tras cada toque queda verde solo si están
+       todas hechas. */
+    sincronizarChecksBloque(raiz);
     avisoNoHecho(raiz);
   }
 
@@ -4418,6 +4551,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        igual: esto es un atajo para el futuro, no un requisito de hoy. */
     var bnc=t.closest('.bn-guardar');
     if(bnc){ guardarEnBanco(bnc); return; }
+    /* El ✓ redondo de FUERA del bloque «solo marcar»: marca (o desmarca) TODAS
+       las filas ocultas del bloque de una vez. Lo demás —guardar, contar si el
+       día está entero, el feedback— sigue igual, porque por dentro son las
+       mismas `.s-ok` que ya se cosechan. */
+    var blk=t.closest('.bl-check');
+    if(blk && blk.tagName==='BUTTON'){
+      var poner = blk.getAttribute('aria-pressed')!=='true';
+      var row=blk.closest('.bl-marca');
+      if(row) row.querySelectorAll('.s-ok').forEach(function(o){
+        o.setAttribute('aria-pressed', poner?'true':'false');
+        var fl=o.closest('.ej-fila');
+        if(fl){ if(poner) fl.setAttribute('data-hecha','1'); else fl.removeAttribute('data-hecha'); }
+      });
+      var cajaBlk=t.closest('.entreno-uno');
+      progresoBloques(cajaBlk);        // sincroniza el ✓ de fuera con las filas
+      marcarSucio(cajaBlk);
+      return;
+    }
     /* El ✓, que solo existe donde no hay ningún número que apuntar */
     var ok=t.closest('.s-ok');
     if(ok){
