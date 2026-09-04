@@ -1625,7 +1625,18 @@
     }
 
     async function arranque() {
-      var s = await sb.auth.getSession();
+      /* Ninguna llamada del arranque puede colgar la app: si tarda demasiado se
+         resuelve con un valor por defecto y se sigue (login, reintento o zona
+         vacía) en vez de quedarse cargando para siempre. Era la raíz del
+         cuelgue al volver de la web (la sesión, en mitad de un refresco de
+         token, dejaba getSession/la consulta del perfil esperando sin fin). */
+      function conLimite(promesa, ms, siTarda) {
+        return Promise.race([
+          Promise.resolve(promesa),
+          new Promise(function (res) { setTimeout(function () { res(siTarda); }, ms || 8000); })
+        ]);
+      }
+      var s = await conLimite(sb.auth.getSession(), 8000, { data: { session: null } });
       if (!s.data || !s.data.session) {
         /* Sin sesión a la primera NO es «no has entrado». Al abrir la app en
            frío, getSession puede tardar en devolver la sesión guardada, y
@@ -1636,12 +1647,12 @@
         if (!hayTokenGuardado()) { mostrarLogin(); return; }
         var recuperada = null;
         try {
-          var rs = await sb.auth.refreshSession();
+          var rs = await conLimite(sb.auth.refreshSession(), 8000, { data: { session: null } });
           if (rs && rs.data && rs.data.session) recuperada = rs.data.session;
         } catch (e) { /* seguimos reintentando con getSession */ }
         for (var intento = 0; !recuperada && intento < 12; intento++) {
           await new Promise(function (r) { setTimeout(r, 200); });
-          var g = await sb.auth.getSession();
+          var g = await conLimite(sb.auth.getSession(), 5000, { data: { session: null } });
           if (g.data && g.data.session) recuperada = g.data.session;
         }
         if (!recuperada) { mostrarLogin(); return; }
@@ -1687,11 +1698,33 @@
 
       var perfil = null;
       try {
-        var r = await sb.from('perfiles')
+        var r = await conLimite(sb.from('perfiles')
           .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta')
-          .eq('email', email).maybeSingle();
+          .eq('email', email).maybeSingle(), 8000, { error: true, data: null });
         if (!r.error) perfil = r.data;
       } catch (e) { /* si aún no hay permisos de lectura, perfil queda null */ }
+
+      /* Hay sesión pero la ficha no ha cargado (la consulta se cortó por tiempo
+         o falló). Sin ficha, ni la barra ni las pantallas pueden pintarse: en
+         vez de petar en blanco, se ofrece recargar (casi siempre lo arregla).
+         Antes esto dejaba la app colgada al volver de la web con la sesión en
+         mitad de un refresco de token. */
+      if (!perfil) {
+        login.style.display = 'none';
+        var ovF = document.createElement('div');
+        ovF.setAttribute('role', 'alert');
+        ovF.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;' +
+          'align-items:center;justify-content:center;gap:15px;text-align:center;padding:28px;' +
+          'background:var(--app-fondo,#FDFDFB);font-family:inherit;color:#2E4256';
+        ovF.innerHTML =
+          '<div style="font-family:var(--fuente-titulo,inherit);font-weight:700;text-transform:uppercase;font-size:22px;line-height:1.1">No hemos podido cargar tu ficha</div>' +
+          '<div style="max-width:320px;font-size:15px;line-height:1.5;color:#6E6656">Puede ser un tirón de conexión. Vuelve a cargar y suele entrar.</div>' +
+          '<button type="button" style="min-height:48px;padding:12px 24px;border:0;border-radius:12px;background:#2E4256;color:#fff;font:inherit;font-weight:600;font-size:15px;cursor:pointer">Volver a cargar</button>';
+        ovF.querySelector('button').addEventListener('click', function () { location.reload(); });
+        (document.body || document.documentElement).appendChild(ovF);
+        return;
+      }
+
       login.style.display = 'none';
       barra(perfil, email);
       if (cont) cont.style.display = '';
