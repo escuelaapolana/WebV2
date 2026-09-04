@@ -228,6 +228,47 @@
     .not-filtros { display: block; }
     .filtro-caja { position: static; min-width: 0; max-width: none; margin-top: 10px; box-shadow: none; }
   }
+
+  /* ===========================================================
+     PAGINACIÓN NUMERADA
+     Con ~100 noticias, cargarlas todas de golpe hacía una página de casi
+     48.000 px en móvil. Se trocea el listado y se pasa de página sin recargar.
+     Los números son <button> reales (navegación por teclado y lector) y la
+     página activa se marca con aria-current="page".
+     =========================================================== */
+  .paginacion {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 8px; margin-top: 40px;
+  }
+  .paginacion:empty { display: none; }
+  .paginacion button {
+    min-width: 44px; min-height: 44px; padding: 0 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radio-pastilla);
+    background: #fff; border: 1px solid var(--linea-borde);
+    color: var(--texto); font: inherit; font-size: 15px; cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .paginacion button:hover:not([disabled]):not([aria-current="page"]) {
+    border-color: var(--azul-filete, #3B85C0); color: var(--navy);
+  }
+  /* La página activa: mismo tratamiento que el botón «Filtrar» encendido, para
+     que la web use un solo lenguaje para «esto es lo que está puesto». */
+  .paginacion button[aria-current="page"] {
+    background: var(--azul-oscuro); border-color: var(--azul-oscuro);
+    color: #fff; font-weight: 600; cursor: default;
+  }
+  .paginacion button[disabled] { opacity: .4; cursor: default; }
+  /* Los puntos suspensivos no son un botón: hueco que no se puede pulsar. */
+  .paginacion .pag-puntos {
+    min-width: 24px; text-align: center; color: var(--texto-suave); user-select: none;
+  }
+  .paginacion .pag-flecha { font-weight: 600; }
+  @media (max-width: 560px) {
+    /* En móvil los textos «anterior / siguiente» ocupan mucho: se dejan solo
+       las flechas y los números. */
+    .paginacion .pag-flecha .pag-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  }
 </style>
 </head>
 <body>
@@ -315,6 +356,7 @@
       <!-- El listado se genera desde Supabase -->
       <div id="destacada-cont"></div>
       <div class="rejilla" id="rejilla-noticias"></div>
+      <nav class="paginacion" id="paginacion" aria-label="Páginas de noticias"></nav>
       <p id="estado-noticias" class="intro cargando" style="margin-top:24px;">Cargando noticias…</p>
     </div>
   </section>
@@ -330,6 +372,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   var base = window.APOLANA_BASE || '../';
   var destCont = document.getElementById('destacada-cont');
   var rejilla = document.getElementById('rejilla-noticias');
+  var paginacion = document.getElementById('paginacion');
   var estado = document.getElementById('estado-noticias');
   var filtros = document.getElementById('filtros');
   var filtrosSec = document.getElementById('filtros-seccion');
@@ -339,6 +382,17 @@ document.addEventListener('DOMContentLoaded', async function () {
   var cuentaFiltros = document.getElementById('filtros-cuenta');
   var limpiarFiltros = document.getElementById('filtros-limpiar');
   var cat = '', sec = '';   /* lo elegido en cada bloque; '' es «sin filtrar» */
+  /* Cuántas noticias por página. Con ~100 noticias, 12 deja una página que se
+     abarca de un vistazo sin que el móvil mida 48.000 px. En la página 1 la
+     primera es la «destacada» (formato grande) y las otras 11 van en rejilla,
+     así que son 12 en total en todas las páginas. */
+  var POR_PAGINA = 12;
+  var pagina = 1;
+  /* Se puede compartir/enlazar una página con ?p=2. La 1 va sin parámetro. */
+  (function () {
+    var p = parseInt(new URLSearchParams(location.search).get('p'), 10);
+    if (p > 1) pagina = p;
+  })();
   var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   /* El nombre bonito de cada sección. La base las guarda sin acentos y con
      guiones ("escuela-natacion"), que es como se llaman las carpetas de la web. */
@@ -387,7 +441,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     });
     pintarBoton(lista.length);
     if (!lista.length) {
-      destCont.innerHTML = ''; rejilla.innerHTML = '';
+      destCont.innerHTML = ''; rejilla.innerHTML = ''; paginacion.innerHTML = '';
       estado.style.display = '';
       /* Decir CUÁL de los dos filtros deja la lista vacía, porque con dos
          a la vez «no hay noticias» no dice dónde tocar para arreglarlo. */
@@ -397,24 +451,103 @@ document.addEventListener('DOMContentLoaded', async function () {
       return;
     }
     estado.style.display = 'none';
-    var d = lista[0];
-    destCont.innerHTML =
-      '<a class="destacada" href="'+enlace(d)+'">' + img(d) +
+
+    /* Trocear el listado ya filtrado en páginas de POR_PAGINA. La página se
+       recorta al rango válido: así ?p=99 o quedarse en la página 3 y luego
+       filtrar (que deja menos páginas) no muestra una página vacía. */
+    var totalPaginas = Math.ceil(lista.length / POR_PAGINA);
+    if (pagina > totalPaginas) pagina = totalPaginas;
+    if (pagina < 1) pagina = 1;
+    var desde = (pagina - 1) * POR_PAGINA;
+    var enPagina = lista.slice(desde, desde + POR_PAGINA);
+
+    /* La «destacada» (formato grande) solo en la página 1: es la noticia más
+       nueva. En el resto, todo va en rejilla. */
+    if (pagina === 1) {
+      destCont.innerHTML = htmlDestacada(enPagina[0]);
+      rejilla.innerHTML = enPagina.slice(1).map(htmlTarjeta).join('');
+    } else {
+      destCont.innerHTML = '';
+      rejilla.innerHTML = enPagina.map(htmlTarjeta).join('');
+    }
+    pintarPaginacion(totalPaginas);
+  }
+
+  function htmlDestacada(d) {
+    if (!d) return '';
+    return '<a class="destacada" href="'+enlace(d)+'">' + img(d) +
       '<div class="cuerpo">' +
         '<span class="eyebrow eyebrow--azul">'+ate(d)+'</span>' +
         '<span class="titular">'+esc(d.titulo)+'</span>' +
         (d.excerpt ? '<p class="intro">'+esc(d.excerpt)+'</p>' : '') +
         '<span class="enlace-flecha">Leer la crónica →</span>' +
       '</div></a>';
-    rejilla.innerHTML = lista.slice(1).map(function(n){
-      return '<a class="not-card" href="'+enlace(n)+'">' + img(n) +
-        '<div class="cuerpo">' +
-          '<span class="eyebrow">'+ate(n)+'</span>' +
-          '<span class="tit">'+esc(n.titulo)+'</span>' +
-          (n.excerpt ? '<span class="resumen">'+esc(n.excerpt)+'</span>' : '') +
-        '</div></a>';
-    }).join('');
   }
+  function htmlTarjeta(n) {
+    return '<a class="not-card" href="'+enlace(n)+'">' + img(n) +
+      '<div class="cuerpo">' +
+        '<span class="eyebrow">'+ate(n)+'</span>' +
+        '<span class="tit">'+esc(n.titulo)+'</span>' +
+        (n.excerpt ? '<span class="resumen">'+esc(n.excerpt)+'</span>' : '') +
+      '</div></a>';
+  }
+
+  /* ------------------------------------------------------------
+     CONTROLES DE PÁGINA (1, 2, 3 … + ‹ anterior / siguiente ›)
+     ------------------------------------------------------------
+     Números como botones reales (teclado y lector). Con muchas páginas se
+     muestra una ventana alrededor de la actual con «…» para no llenar la fila.
+     ------------------------------------------------------------ */
+  function pintarPaginacion(totalPaginas) {
+    if (!totalPaginas || totalPaginas <= 1) { paginacion.innerHTML = ''; return; }
+
+    /* Qué números mostrar: siempre la 1 y la última, y una ventana de ±1
+       alrededor de la actual. Los saltos se rellenan con «…». */
+    var nums = [];
+    for (var i = 1; i <= totalPaginas; i++) {
+      if (i === 1 || i === totalPaginas || (i >= pagina - 1 && i <= pagina + 1)) nums.push(i);
+    }
+
+    var html = '<button type="button" class="pag-flecha" data-ir="' + (pagina - 1) + '"' +
+      (pagina === 1 ? ' disabled' : '') + ' aria-label="Página anterior">' +
+      '‹ <span class="pag-texto">anterior</span></button>';
+
+    var previo = 0;
+    nums.forEach(function (n) {
+      if (n - previo > 1) html += '<span class="pag-puntos" aria-hidden="true">…</span>';
+      previo = n;
+      var activa = n === pagina;
+      html += '<button type="button" data-ir="' + n + '"' +
+        (activa ? ' aria-current="page"' : '') +
+        ' aria-label="Página ' + n + '">' + n + '</button>';
+    });
+
+    html += '<button type="button" class="pag-flecha" data-ir="' + (pagina + 1) + '"' +
+      (pagina === totalPaginas ? ' disabled' : '') + ' aria-label="Página siguiente">' +
+      '<span class="pag-texto">siguiente</span> ›</button>';
+
+    paginacion.innerHTML = html;
+  }
+
+  /* Cambiar de página sin recargar: repinta, guarda ?p= en la URL para poder
+     compartirla, y sube al principio del listado (no al tope de la web). */
+  function sincronizaUrl() {
+    var url = new URL(location.href);
+    if (pagina > 1) url.searchParams.set('p', pagina); else url.searchParams.delete('p');
+    history.replaceState(null, '', url);
+  }
+  function irAPagina(n) {
+    pagina = n;
+    pinta();
+    sincronizaUrl();
+    var ancla = document.querySelector('.not-cab');
+    if (ancla) ancla.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  paginacion.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-ir]'); if (!b || b.disabled) return;
+    var n = parseInt(b.getAttribute('data-ir'), 10);
+    if (n && n !== pagina) irAPagina(n);
+  });
 
   /* ------------------------------------------------------------
      EL BOTÓN «FILTRAR» Y SU DESPLEGABLE
@@ -448,7 +581,9 @@ document.addEventListener('DOMContentLoaded', async function () {
       [].forEach.call(cont.querySelectorAll('button'), function (o) { o.setAttribute('aria-pressed', 'false'); });
       b.setAttribute('aria-pressed', 'true');
       alElegir(b.getAttribute(attr));
+      pagina = 1;   /* al filtrar cambia el listado: se vuelve a la página 1 */
       pinta();
+      sincronizaUrl();
     });
   }
   engancharBloque(filtrosSec, 'data-sec', function (v) { sec = v; });
@@ -462,7 +597,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     [filtrosSec, filtros].forEach(function (cont) {
       [].forEach.call(cont.querySelectorAll('button'), function (o, i) { o.setAttribute('aria-pressed', i === 0 ? 'true' : 'false'); });
     });
+    pagina = 1;
     pinta();
+    sincronizaUrl();
   });
   /* Cerrar al pulsar fuera y con Escape: un panel que solo se cierra con el
      mismo botón se queda abierto tapando la primera noticia. */
