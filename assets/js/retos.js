@@ -918,7 +918,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     h += '<p class="rt-nota-sec">De cada persona se ve su rango, sus medallas y sus retos. Ni marcas, ni tiempos, ' +
          'ni datos de contacto.</p>' +
          '<input type="search" id="bs-txt" class="rt-buscar" placeholder="Buscar por nombre…" ' +
-         'aria-label="Buscar a alguien del club" autocomplete="off" value="' + esc(BUSCA) + '">' +
+         /* esc() no escapa comillas; en un atributo hay que escaparlas también,
+            si no lo que teclea el usuario podría romper el value (self-XSS). */
+         'aria-label="Buscar a alguien del club" autocomplete="off" value="' + esc(BUSCA).replace(/"/g, '&quot;') + '">' +
          '<div class="rt-filas" id="bs-lista">' + listaMiembros() + '</div>';
     return h;
   }
