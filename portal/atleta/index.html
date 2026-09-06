@@ -978,6 +978,8 @@
   label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:10px 0 5px; }
   input, select, textarea { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-size:15px; font-family: var(--fuente-texto); background:#fff; color: var(--navy); }
   textarea { min-height:64px; resize:vertical; }
+  .fb-card .fb-opt { font-weight:400; color: var(--texto-suave); }
+  .fb-card .fb-cond[hidden] { display:none; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .acciones { display:flex; align-items:center; gap:10px; margin-top:16px; flex-wrap:wrap; }
   .msg { font-size:14px; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
@@ -3145,7 +3147,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     delete SEM_FALLO[lunes];
     try {
       var se=await sb.from('sesiones')
-        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids,origen')
+        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids,origen,duracion_min')
         .eq('publicada',true).gte('fecha',lunes).lte('fecha',addDias(lunes,6))
         .order('fecha',{ascending:true});
       if(se.error) SEM_FALLO[lunes]=true; else lista=se.data||[];
@@ -3160,9 +3162,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          usan de verdad para rellenar el formulario de feedback; los otros
          tres (id, atleta_id y la hora en que se guardó) no los mira nadie
          en esta pantalla y viajaban por costumbre. */
-      var rg=await sb.from('registros_sesion')
-        .select('id,sesion_id,sensacion_general,rpe,tiempos_reales,como_me_siento,molestias,notas_atleta,horas_sueno,peso_kg,estado,series_hechas,series_previstas,motivo_no_hecho,nota_no_hecho,corregido_en,corregido_veces')
+      /* Se piden también las columnas nuevas de la hoja de sesión (migración
+         167: estado_manual, completado_pct, molestia_sesion, molestia_localizacion,
+         superficie, momento, duracion_min). Si la migración TODAVÍA no está
+         aplicada, ese select falla entero y dejaría la semana sin rellenar; por
+         eso, si falla, se reintenta con las columnas de siempre. Así lo apuntado
+         se sigue viendo esté o no aplicada la migración. */
+      var COLS_BASE='id,sesion_id,sensacion_general,rpe,tiempos_reales,como_me_siento,molestias,notas_atleta,horas_sueno,peso_kg,estado,series_hechas,series_previstas,motivo_no_hecho,nota_no_hecho,corregido_en,corregido_veces';
+      var COLS_NUEVAS=COLS_BASE+',estado_manual,completado_pct,molestia_sesion,molestia_localizacion,superficie,momento,duracion_min';
+      var rg=await sb.from('registros_sesion').select(COLS_NUEVAS)
         .eq('atleta_id',at.id).in('sesion_id',ids);
+      if(rg.error){
+        rg=await sb.from('registros_sesion').select(COLS_BASE)
+          .eq('atleta_id',at.id).in('sesion_id',ids);
+      }
       if(!rg.error && rg.data) rg.data.forEach(function(r){ REG[r.sesion_id]=r; });
       /* El `id` del registro se pide desde ahora porque es por donde cuelga
          el comentario del entrenador. Antes no lo miraba nadie y viajaba
@@ -3361,34 +3374,87 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // Tarjeta "¿Cómo ha ido?" de UNA sesión, rellenada con lo que ya haya guardado.
   // Puntuar es tocar una ficha del 1 al 10; el resto del formulario queda plegado.
+  /* Opciones de los desplegables de la hoja de sesión (FORMULARIO 2). Todos
+     CERRADOS: el motivo, la zona de la molestia y la superficie van a listas
+     fijas para que las alertas y los informes puedan agrupar. */
+  var FB_MOTIVO=[['tiempo','Falta de tiempo'],['molestia','Molestia o dolor'],['enfermedad','Enfermedad'],['viaje','Viaje'],['instalacion','Instalación no disponible'],['cansancio','Cansancio'],['otro','Otro']];
+  var FB_ZONA=[['ninguna','Ninguna'],['isquio','Isquio'],['soleo_gemelo','Sóleo/gemelo'],['rodilla','Rodilla'],['lumbar','Lumbar'],['cadera','Cadera'],['tobillo','Tobillo'],['aductor','Aductor'],['pie','Pie'],['otra','Otra']];
+  var FB_SUPERF=[['pista','Pista'],['hierba','Hierba'],['asfalto','Asfalto'],['tierra','Tierra'],['gimnasio','Gimnasio'],['mixta','Mixta'],['otra','Otra']];
+  var FB_MOMENTO=[['unica','Única'],['manana','Mañana'],['tarde','Tarde']];
+  function fbOpciones(pares, sel){
+    return pares.map(function(o){
+      return '<option value="'+esc(o[0])+'"'+(String(sel)===String(o[0])?' selected':'')+'>'+esc(o[1])+'</option>';
+    }).join('');
+  }
   function fichaFeedback(s){
     var reg=REG[s.id]||null;
-    // Fila de fichas 1-10 que escribe en un campo oculto (así se guarda igual que antes)
-    function escala(destino, sel){
-      var f=''; for(var i=1;i<=10;i++) f+='<button type="button" class="esc'+(String(sel)===String(i)?' sel':'')+'" data-esc="'+destino+'" data-v="'+i+'" aria-pressed="'+(String(sel)===String(i)?'true':'false')+'">'+i+'</button>';
+    /* Fila de fichas que escribe en un campo oculto (así se guarda igual que
+       antes). `desde` deja empezar en 0: el RPE y la molestia del club van de
+       0 a 10, y el 0 —descanso / sin molestia— es una respuesta, no un hueco. */
+    function escala(destino, sel, desde){
+      desde = (desde==null?1:desde);
+      var f=''; for(var i=desde;i<=10;i++) f+='<button type="button" class="esc'+(String(sel)===String(i)?' sel':'')+'" data-esc="'+destino+'" data-v="'+i+'" aria-pressed="'+(String(sel)===String(i)?'true':'false')+'">'+i+'</button>';
       return '<div class="escala" role="group">'+f+'</div>'+
              '<input type="hidden" class="'+destino+'" value="'+esc(sel!=null?sel:'')+'">';
     }
-    var hayDetalles = !!(reg && (reg.como_me_siento||reg.molestias||reg.notas_atleta||reg.horas_sueno!=null||reg.peso_kg!=null));
+    /* La duración se PRERRELLENA con la planificada de la sesión
+       (`sesiones.duracion_min`, migración 034). Si ya hay una real guardada, se
+       usa esa. Lo importante es que no salga en blanco: en blanco no la rellena
+       nadie, y entonces no hay dato de carga. */
+    var durPlan=(s && s.duracion_min!=null) ? s.duracion_min : '';
+    var durVal =(reg && reg.duracion_min!=null) ? reg.duracion_min : durPlan;
+    var est   =(reg && reg.estado) || 'completo';       // por defecto: Hecha
+    var pct   =(reg && reg.completado_pct!=null) ? reg.completado_pct : '';
+    var mol   =(reg && reg.molestia_sesion!=null) ? reg.molestia_sesion : null;
+    var molLoc=(reg && reg.molestia_localizacion) || '';
+    var superf=(reg && reg.superficie) || '';
+    var momento=(reg && reg.momento) || 'unica';
+    var motivo=(reg && reg.motivo_no_hecho) || '';
+    var esMedias = (est==='a_medias');
+    var faltaAlgo = (est==='a_medias' || est==='no_hecho');
+    var hayMol = (mol!=null && Number(mol)>0);
     return '<div class="tarjeta fb-card"><h2>¿Cómo ha ido?</h2>'+
-      '<div class="escala-tit"><b>Sensación general</b><span>1 fatal · 10 genial</span></div>'+
-      escala('fb-sensacion', reg&&reg.sensacion_general)+
-      '<div class="escala-tit"><b>Esfuerzo (RPE)</b><span>1 muy suave · 10 al límite</span></div>'+
-      escala('fb-rpe', reg&&reg.rpe)+
-      '<button type="button" class="fb-mas'+(hayDetalles?' abierto':'')+'" aria-expanded="'+(hayDetalles?'true':'false')+'"><span class="fl">&rsaquo;</span>Añadir detalles</button>'+
-      '<div class="fb-detalles"'+(hayDetalles?'':' hidden')+'>'+
-        '<label>¿Cómo te sientes?</label><input class="fb-siento" type="text" value="'+esc(reg&&reg.como_me_siento||'')+'" placeholder="con energía, cansado…">'+
-        '<label>Molestias (si hay)</label><input class="fb-molestias" type="text" value="'+esc(reg&&reg.molestias||'')+'" placeholder="ninguna / gemelo derecho…">'+
-        '<label>Notas para el entrenador</label><textarea class="fb-notas" placeholder="lo que quieras contar del entrenamiento">'+esc(reg&&reg.notas_atleta||'')+'</textarea>'+
-        '<div class="grid2">'+
-          '<div><label>Horas de sueño</label><input class="fb-sueno" inputmode="decimal" value="'+esc(reg&&reg.horas_sueno!=null?reg.horas_sueno:'')+'" placeholder="p. ej. 7.5"></div>'+
-          '<div><label>Peso (kg)</label><input class="fb-peso" inputmode="decimal" value="'+esc(reg&&reg.peso_kg!=null?reg.peso_kg:'')+'" placeholder="opcional"></div>'+
-        '</div>'+
+      /* 1 · Estado. Lo declara el atleta; sustituye al «series hechas/previstas»
+         que se deducía. Hecha / A medias / No hecha. */
+      '<label>¿La sesión?</label>'+
+      '<select class="fb-est">'+
+        '<option value="completo"'+(est==='completo'?' selected':'')+'>Hecha</option>'+
+        '<option value="a_medias"'+(est==='a_medias'?' selected':'')+'>A medias</option>'+
+        '<option value="no_hecho"'+(est==='no_hecho'?' selected':'')+'>No hecha</option>'+
+      '</select>'+
+      /* Cuánto se hizo: solo si «A medias». */
+      '<div class="fb-cond fb-cond-pct"'+(esMedias?'':' hidden')+'>'+
+        '<label>¿Cuánto hiciste? (%)</label>'+
+        '<input class="fb-pct" type="number" min="0" max="100" inputmode="numeric" value="'+esc(pct)+'" placeholder="p. ej. 60">'+
       '</div>'+
-      /* «Te han quedado 4 series sin hacer, ¿por qué?». Se pregunta UNA vez, al
-         final, y solo si de verdad falta algo. Preguntarlo serie por serie
-         sería insoportable y dejaría de marcarse a la tercera sesión. */
-      '<div class="no-hecho" data-nh hidden></div>'+
+      /* Por qué faltó: si «A medias» o «No hecha». Desplegable cerrado. */
+      '<div class="fb-cond fb-cond-motivo"'+(faltaAlgo?'':' hidden')+'>'+
+        '<label>¿Por qué?</label>'+
+        '<select class="fb-motivo"><option value="">Elige…</option>'+fbOpciones(FB_MOTIVO, motivo)+'</select>'+
+      '</div>'+
+      /* 2 · Duración real, prerrellenada. */
+      '<label>Duración (min)</label>'+
+      '<input class="fb-duracion" type="number" min="0" max="240" inputmode="numeric" value="'+esc(durVal)+'" placeholder="minutos">'+
+      /* 3 · Esfuerzo (RPE), escala del club 0-10. Ya existía. */
+      '<div class="escala-tit"><b>Esfuerzo (RPE)</b><span>0 descanso · 3 moderado · 5 duro · 7 muy duro · 10 máximo</span></div>'+
+      escala('fb-rpe', reg&&reg.rpe, 0)+
+      /* 4 · Molestia de ESTA sesión, 0-10 (antes era texto libre). */
+      '<div class="escala-tit"><b>Molestia</b><span>0 ninguna · 10 máxima</span></div>'+
+      escala('fb-molestia', mol, 0)+
+      /* Dónde molesta: solo si la molestia es mayor que 0. */
+      '<div class="fb-cond fb-cond-molloc"'+(hayMol?'':' hidden')+'>'+
+        '<label>¿Dónde?</label>'+
+        '<select class="fb-molloc"><option value="">Elige…</option>'+fbOpciones(FB_ZONA, molLoc)+'</select>'+
+      '</div>'+
+      /* 5 · Superficie (opcional). */
+      '<label>Superficie <span class="fb-opt">(opcional)</span></label>'+
+      '<select class="fb-superf"><option value="">—</option>'+fbOpciones(FB_SUPERF, superf)+'</select>'+
+      /* 6 · Notas libres para el entrenador. */
+      '<label>Notas para el entrenador</label>'+
+      '<textarea class="fb-notas" placeholder="lo que quieras contar del entrenamiento">'+esc(reg&&reg.notas_atleta||'')+'</textarea>'+
+      /* 7 · Momento del día (para quien entrena dos veces). */
+      '<label>Momento del día</label>'+
+      '<select class="fb-momento">'+fbOpciones(FB_MOMENTO, momento)+'</select>'+
       /* ------------------------------------------------------------
          UN SOLO BOTÓN, Y AZUL
          ------------------------------------------------------------
@@ -3413,6 +3479,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="fb-estado"><span class="msg fb-msg"></span><span class="fb-sucio" hidden>Tienes cambios sin guardar</span></div>'+
       '</div>'+
       '</div>';
+  }
+
+  /* Los condicionales de la hoja de sesión: el % solo si «A medias», el motivo
+     si «A medias» o «No hecha», y la zona de la molestia solo si la molestia es
+     mayor que 0. Se recalcula al cambiar el estado (un <select> lanza `input`) o
+     al tocar la escala de molestia. */
+  function sincronizarFB(caja){
+    if(!caja || !caja.querySelector) return;
+    caja.querySelectorAll('.fb-card').forEach(function(card){
+      var est=card.querySelector('.fb-est');
+      var estV=est?est.value:'';
+      var molI=card.querySelector('.fb-molestia');
+      var molV=molI?molI.value:'';
+      function ver(sel, cond){
+        var d=card.querySelector(sel); if(d) d.hidden=!cond;
+      }
+      ver('.fb-cond-pct', estV==='a_medias');
+      ver('.fb-cond-motivo', estV==='a_medias' || estV==='no_hecho');
+      ver('.fb-cond-molloc', molV!=='' && Number(molV)>0);
+    });
   }
 
   /* ------------------------------------------------------------
@@ -3507,7 +3593,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   /* Cómo se dice el motivo cuando se lee, que no es como se pregunta: se
      pregunta «¿por qué?» y se lee «no dio tiempo». */
-  var MOTIVO_LEER={ tiempo:'no dio tiempo', molestia:'algo molestaba', otro:'por otra cosa' };
+  var MOTIVO_LEER={ tiempo:'falta de tiempo', molestia:'molestia o dolor', enfermedad:'enfermedad', viaje:'viaje', instalacion:'instalación no disponible', cansancio:'cansancio', otro:'otra cosa' };
+  /* Cómo se leen los desplegables cerrados de la hoja de sesión. */
+  var ZONA_LEER={ ninguna:'ninguna', isquio:'isquio', soleo_gemelo:'sóleo/gemelo', rodilla:'rodilla', lumbar:'lumbar', cadera:'cadera', tobillo:'tobillo', aductor:'aductor', pie:'pie', otra:'otra zona' };
+  var SUPERF_LEER={ pista:'pista', hierba:'hierba', asfalto:'asfalto', tierra:'tierra', gimnasio:'gimnasio', mixta:'mixta', otra:'otra' };
+  var MOMENTO_LEER={ unica:'', manana:'mañana', tarde:'tarde' };
 
   function fichaFeedbackLeer(s){
     var reg=REG[s.id]; if(!reg) return '';
@@ -3516,9 +3606,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        medias, eso cambia cómo se lee todo lo demás. Un RPE de 5 en un
        entrenamiento entero y en medio entrenamiento no significan lo mismo. */
     if(reg.estado==='a_medias'||reg.estado==='no_hecho'){
-      var cuantas = (reg.series_previstas>0)
-        ? reg.series_hechas+' de '+reg.series_previstas+' series'
-        : (reg.estado==='no_hecho'?'no llegaste a hacerlo':'se quedó a medias');
+      /* Cuánto se hizo: primero el % que declaró el atleta (hoja nueva), y si
+         no lo hay, el recuento de series de siempre. */
+      var cuantas = (reg.completado_pct!=null)
+        ? reg.completado_pct+'% hecho'
+        : ((reg.series_previstas>0)
+            ? reg.series_hechas+' de '+reg.series_previstas+' series'
+            : (reg.estado==='no_hecho'?'no llegaste a hacerlo':'se quedó a medias'));
       var pq = reg.motivo_no_hecho ? ' · '+(MOTIVO_LEER[reg.motivo_no_hecho]||reg.motivo_no_hecho) : '';
       partes+='<div class="fbl-medias">'+
         esc(reg.estado==='no_hecho'?'No lo hiciste':'Se quedó a medias')+
@@ -3534,9 +3628,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* Las molestias van aparte y en ámbar: es lo único de aquel día sobre lo
        que alguien puede tener que hacer algo. */
     trocear(reg.molestias).forEach(function(m){ chips.push('<span class="fbl-chip ojo">'+esc(m)+'</span>'); });
+    /* La molestia de la sesión (hoja nueva): número + zona, en ámbar como el
+       resto de lo que alguien tiene que mirar. */
+    if(reg.molestia_sesion!=null && reg.molestia_sesion>0){
+      var zt = reg.molestia_localizacion ? (ZONA_LEER[reg.molestia_localizacion]||reg.molestia_localizacion) : '';
+      chips.push('<span class="fbl-chip ojo">Molestia '+reg.molestia_sesion+'/10'+(zt?' · '+esc(zt):'')+'</span>');
+    }
     if(chips.length) partes+='<div class="fbl-chips">'+chips.join('')+'</div>';
     if(reg.notas_atleta) partes+='<div class="fbl-nota">«'+esc(reg.notas_atleta)+'»</div>';
     var extra=[];
+    if(reg.duracion_min!=null) extra.push(reg.duracion_min+' min');
+    if(reg.superficie) extra.push(SUPERF_LEER[reg.superficie]||reg.superficie);
+    if(reg.momento && MOMENTO_LEER[reg.momento]) extra.push(MOMENTO_LEER[reg.momento]);
     if(reg.horas_sueno!=null) extra.push(String(reg.horas_sueno).replace('.',',')+' h de sueño');
     if(reg.peso_kg!=null) extra.push(String(reg.peso_kg).replace('.',',')+' kg');
     if(extra.length) partes+='<div class="fbl-extra">'+esc(extra.join(' · '))+'</div>';
@@ -4796,7 +4899,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!ya){ esc10.classList.add('sel'); esc10.setAttribute('aria-pressed','true'); }
       var campo=grupo.parentNode.querySelector('.'+destino);
       if(campo) campo.value = ya ? '' : v;
-      marcarSucio(t.closest('.entreno-uno'));
+      var cajaEsc=t.closest('.entreno-uno');
+      /* La escala de molestia abre/cierra la zona: se escribe en un campo
+         oculto, así que el `input` de arriba no salta y hay que sincronizar
+         aquí a mano. */
+      if(destino==='fb-molestia') sincronizarFB(cajaEsc);
+      marcarSucio(cajaEsc);
       return;
     }
     var mas=t.closest('.fb-mas');
@@ -4829,6 +4937,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       progresoBloques(caja);
     }
     if(t.classList.contains('cambio-in')) pintarSugerencias(t);
+    /* La hoja de sesión: al cambiar el estado (un <select> lanza `input`) se
+       abren o cierran el %, el motivo y la zona de la molestia. */
+    if(t.classList.contains('fb-est')) sincronizarFB(caja);
     marcarSucio(caja);
   });
   /* Enter en el campo del ejercicio = «Listo». Escribir «zancada patinador» y
@@ -5253,25 +5364,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var antes=(REG[sid] && REG[sid].tiempos_reales) || null;
       if(pos && pos!==llave && antes && antes[pos] && !antes[llave]) tiempos[pos]=null;
     });
-    /* El motivo, si quedó algo sin hacer. Se pregunta una vez al final y es
-       opcional: obligar a explicarse es la forma más rápida de que se deje de
-       marcar, y entonces el historial vuelve a mentir. */
-    var panel=caja.querySelector('[data-nh]');
-    var motivo=(panel && !panel.hidden && panel.getAttribute('data-motivo'))||null;
-    var notaNH=panel?panel.querySelector('.nh-nota'):null;
-    function numOrNull(v){ v=(v||'').trim().replace(',','.'); if(!v) return null; var n=parseFloat(v); return isNaN(n)?null:n; }
-    function intOrNull(v){ if(!v) return null; var n=parseInt(v,10); return isNaN(n)?null:n; }
+    function intOrNull(v){ if(v===0||v==='0') return 0; if(!v) return null; var n=parseInt(v,10); return isNaN(n)?null:n; }
+    function clampInt(v,min,max){ var n=intOrNull(v); if(n==null) return null; return Math.max(min,Math.min(max,n)); }
+    /* ------------------------------------------------------------
+       LA HOJA DE SESIÓN (FORMULARIO 2, migración 167)
+       El atleta DECLARA el estado; el resto sale de sus campos. Los
+       condicionales se limpian aquí también, no solo en pantalla: si estaba
+       «A medias» con un % y lo cambia a «Hecha», el % no se cuela guardado. */
+    var estadoSel=val('.fb-est')||null;                         // completo|a_medias|no_hecho
+    var pct    =(estadoSel==='a_medias') ? clampInt(val('.fb-pct'),0,100) : null;
+    var motivo =(estadoSel==='a_medias'||estadoSel==='no_hecho') ? (val('.fb-motivo')||null) : null;
+    var molSes =clampInt(val('.fb-molestia'),0,10);
+    var molLoc =(molSes!=null && molSes>0) ? (val('.fb-molloc')||null) : null;
+    var superf =val('.fb-superf')||null;
+    var moment =val('.fb-momento')||null;
+    var durMin =clampInt(val('.fb-duracion'),0,240);
     var payload={
       sesion_id: sid, atleta_id: at.id,
-      sensacion_general: intOrNull(val('.fb-sensacion')),
+      estado: estadoSel,
+      estado_manual: true,
+      completado_pct: pct,
       rpe: intOrNull(val('.fb-rpe')),
-      como_me_siento: val('.fb-siento').trim()||null,
-      molestias: val('.fb-molestias').trim()||null,
+      molestia_sesion: molSes,
+      molestia_localizacion: molLoc,
+      superficie: superf,
+      momento: moment,
+      duracion_min: durMin,
       notas_atleta: val('.fb-notas').trim()||null,
-      horas_sueno: numOrNull(val('.fb-sueno')),
-      peso_kg: numOrNull(val('.fb-peso')),
       motivo_no_hecho: motivo,
-      nota_no_hecho: (motivo && notaNH && notaNH.value.trim())||null
+      nota_no_hecho: null
     };
     /* ------------------------------------------------------------
        DOS PASOS, Y EN ESTE ORDEN
@@ -5297,8 +5418,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        corrección (migración 104): pedirla es una vuelta que ya se estaba
        dando y evita que la pantalla se invente esos tres campos por su
        cuenta y acabe diciendo algo distinto de lo que hay guardado. */
+    var COLS_LEER='id,estado,series_hechas,series_previstas,corregido_en,corregido_veces';
     var up=await sb.from('registros_sesion').upsert(payload,{onConflict:'sesion_id,atleta_id'})
-             .select('id,estado,series_hechas,series_previstas,corregido_en,corregido_veces').maybeSingle();
+             .select(COLS_LEER).maybeSingle();
+    if(up.error){
+      /* La migración 167 puede NO estar aplicada todavía: entonces las columnas
+         nuevas no existen (o el motivo nuevo no cabe en el tope viejo de tres
+         valores) y el guardado falla entero. Antes de rendirse se reintenta con
+         lo que SIEMPRE existe, para que el atleta pueda mandar su feedback pase
+         lo que pase; lo nuevo se guardará en cuanto el dueño aplique la
+         migración. */
+      var legado={
+        sesion_id: sid, atleta_id: at.id,
+        estado: estadoSel,
+        rpe: intOrNull(val('.fb-rpe')),
+        notas_atleta: val('.fb-notas').trim()||null
+      };
+      /* El motivo solo si es uno de los tres de siempre; los cuatro nuevos no
+         caben en el tope viejo y tumbarían también el reintento. */
+      if(motivo==='tiempo'||motivo==='molestia'||motivo==='otro') legado.motivo_no_hecho=motivo;
+      up=await sb.from('registros_sesion').upsert(legado,{onConflict:'sesion_id,atleta_id'})
+           .select(COLS_LEER).maybeSingle();
+    }
     if(up.error){ msg.textContent='Error: '+up.error.message; msg.className='msg fb-msg error'; }
     /* `pintarSemana` además del inicio: el visto del día tiene que aparecer
        en la tira en cuanto se guarda, no en la siguiente recarga. */
@@ -5318,8 +5459,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            se acaba de marcar a medias. */
         var filasT=filasMandadas(caja), hechasT=0;
         filasT.forEach(function(f){ if(serieHecha(f)) hechasT++; });
-        payload.estado = !filasT.length ? 'completo'
-                       : (hechasT===0 ? 'no_hecho' : (hechasT<filasT.length ? 'a_medias' : 'completo'));
+        /* El estado lo declaró el atleta: se respeta. Solo se deduce del
+           recuento si por lo que sea llegó sin elegir. */
+        payload.estado = estadoSel || (!filasT.length ? 'completo'
+                       : (hechasT===0 ? 'no_hecho' : (hechasT<filasT.length ? 'a_medias' : 'completo')));
         payload.series_hechas=hechasT; payload.series_previstas=filasT.length;
         var antes=REG[sid]||{};
         payload.id=antes.id; payload.corregido_en=antes.corregido_en; payload.corregido_veces=antes.corregido_veces;
