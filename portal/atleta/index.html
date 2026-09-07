@@ -978,8 +978,8 @@
   label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin:10px 0 5px; }
   input, select, textarea { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--linea-borde); border-radius:10px; font-size:15px; font-family: var(--fuente-texto); background:#fff; color: var(--navy); }
   textarea { min-height:64px; resize:vertical; }
-  .fb-card .fb-opt { font-weight:400; color: var(--texto-suave); }
-  .fb-card .fb-cond[hidden] { display:none; }
+  .fb-card .fb-opt, .bien-card .fb-opt { font-weight:400; color: var(--texto-suave); }
+  .fb-card .fb-cond[hidden], .bien-card .fb-cond[hidden] { display:none; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .acciones { display:flex; align-items:center; gap:10px; margin-top:16px; flex-wrap:wrap; }
   .msg { font-size:14px; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
@@ -2705,6 +2705,34 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var rg2=await sb.from('documentos').select('id').eq('visibilidad','grupo').eq('activo',true).limit(50);
     if(!rg2.error && rg2.data) RECURSOS_GRUPO=rg2.data.length;
   } catch(e){}
+
+  /* -----------------------------------------------------------------
+     BIENESTAR DIARIO (FORMULARIO 1 · «¿Cómo amaneces?»)
+     Una vez al día, antes de entrenar. Solo se le pide a los grupos que
+     lo tienen encendido (hoy el Grupo Pro): es la RPC `atleta_pide_bienestar`
+     la que lo decide, la misma que gobierna la RLS de la 148. Si no toca,
+     no se pinta y no se puede ni intentar guardar (la RLS lo cortaría).
+     ----------------------------------------------------------------- */
+  var BIEN_PIDE=false;   // ¿a este atleta se le pide el diario?
+  var BIEN_HOY=null;     // fila de HOY si ya la rellenó (para reabrir y corregir)
+  var BIEN_NUEVAS=true;  // ¿existen ya las columnas de la migración 168?
+  try {
+    var bp=await sb.rpc('atleta_pide_bienestar',{p_atleta:at.id});
+    if(!bp.error) BIEN_PIDE=!!bp.data;
+  } catch(e){}
+  if(BIEN_PIDE){
+    /* Se piden las columnas NUEVAS primero. Si la migración 168 aún no está
+       aplicada, Postgres se queja de la columna que falta: se reintenta con
+       las que había en la 148, y el formulario funciona igual (guarda lo que
+       la tabla admita). Así el push no depende de aplicar la migración. */
+    try {
+      var COLS_BIEN_NUEVAS='sueno_calidad,fatiga,dolor_muscular,estres,horas_sueno,motivacion,molestia,molestia_localizacion,peso_kg,nota';
+      var COLS_BIEN_VIEJAS='sueno_calidad,fatiga,dolor_muscular,estres,horas_sueno,nota';
+      var bh=await sb.from('bienestar_diario').select(COLS_BIEN_NUEVAS).eq('atleta_id',at.id).eq('fecha',todayISO).maybeSingle();
+      if(bh.error){ BIEN_NUEVAS=false; bh=await sb.from('bienestar_diario').select(COLS_BIEN_VIEJAS).eq('atleta_id',at.id).eq('fecha',todayISO).maybeSingle(); }
+      if(!bh.error && bh.data) BIEN_HOY=bh.data;
+    } catch(e){}
+  }
 
   // Rango del juego de retos: la fila de Inicio con la medalla en ámbar y qué
   // falta para el siguiente. Solo si el atleta participa: si no, no hay fila.
@@ -5538,6 +5566,131 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     wrap.scrollIntoView({block:'start'});
   }
 
+  /* ------------------------------------------------------------------
+     FORMULARIO 1 · BIENESTAR («¿Cómo amaneces?»)
+     Diario, antes de entrenar. Escalas tocables en la DIRECCIÓN de la
+     especificación (¡sagrada!): 1=malo/poco donde toca, 5=bueno/mucho
+     donde toca. Guarda con upsert por atleta+fecha (una vez al día).
+     Funciona aunque la migración 168 no esté aplicada: si una columna
+     nueva no existe, se guarda sin ella (ver `guardarBienestar`).
+     ------------------------------------------------------------------ */
+  function escBien(campo, sel, desde, hasta){
+    var f='';
+    for(var i=desde;i<=hasta;i++){
+      var s=(String(sel)===String(i));
+      f+='<button type="button" class="esc'+(s?' sel':'')+'" data-besc="'+campo+'" data-bv="'+i+'" aria-pressed="'+(s?'true':'false')+'">'+i+'</button>';
+    }
+    return '<div class="escala" role="group">'+f+'</div>'+
+           '<input type="hidden" class="bien-'+campo+'" value="'+esc(sel!=null?sel:'')+'">';
+  }
+  function bienestarHTML(){
+    var b=BIEN_HOY||{};
+    function v(k){ return (b && b[k]!=null) ? b[k] : null; }
+    var mol=v('molestia');
+    var hayMol=(mol!=null && Number(mol)>0);
+    var ya=!!BIEN_HOY;
+    return '<div class="tarjeta bien-card">'+
+      '<h2>¿Cómo amaneces?</h2>'+
+      '<p class="fb-nota" style="margin:2px 0 4px">Un momento antes de entrenar. Lo ves tú y tu entrenador, nadie más.</p>'+
+      /* Horas de sueño · decimal 0-14 · obligatorio */
+      '<label>Horas de sueño</label>'+
+      '<input class="bien-sueno_h" type="number" min="0" max="14" step="0.5" inputmode="decimal" value="'+esc(v('horas_sueno')!=null?v('horas_sueno'):'')+'" placeholder="p. ej. 7.5">'+
+      /* Calidad del sueño · 1 muy mala → 5 muy buena (DIRECTA) */
+      '<div class="escala-tit"><b>Calidad del sueño</b><span>1 muy mala · 5 muy buena</span></div>'+
+      escBien('sueno_calidad', v('sueno_calidad'), 1, 5)+
+      /* Fatiga · 1 nada → 5 muchísima (el índice la INVIERTE) */
+      '<div class="escala-tit"><b>Fatiga</b><span>1 nada · 5 muchísima</span></div>'+
+      escBien('fatiga', v('fatiga'), 1, 5)+
+      /* Dolor muscular · 1 nada → 5 mucho (INVERSA en el índice) */
+      '<div class="escala-tit"><b>Dolor muscular</b><span>1 nada · 5 mucho</span></div>'+
+      escBien('dolor_muscular', v('dolor_muscular'), 1, 5)+
+      /* Estrés · 1 nada → 5 mucho (INVERSA en el índice) */
+      '<div class="escala-tit"><b>Estrés</b><span>1 nada · 5 mucho</span></div>'+
+      escBien('estres', v('estres'), 1, 5)+
+      /* Motivación · 1 ninguna → 5 mucha (DIRECTA en el índice) */
+      '<div class="escala-tit"><b>Motivación</b><span>1 ninguna · 5 mucha</span></div>'+
+      escBien('motivacion', v('motivacion'), 1, 5)+
+      /* Molestia al amanecer · 0 nada → 10 máxima */
+      '<div class="escala-tit"><b>Molestia</b><span>0 nada · 10 máxima</span></div>'+
+      escBien('molestia', mol, 0, 10)+
+      /* Zona: solo si hay molestia (>0) */
+      '<div class="fb-cond bien-cond-molloc"'+(hayMol?'':' hidden')+'>'+
+        '<label>¿Dónde?</label>'+
+        '<select class="bien-molloc"><option value="">Elige…</option>'+fbOpciones(FB_ZONA, v('molestia_localizacion')||'')+'</select>'+
+      '</div>'+
+      /* Peso · decimal · opcional */
+      '<label>Peso (kg) <span class="fb-opt">(opcional)</span></label>'+
+      '<input class="bien-peso" type="number" min="0" max="299" step="0.1" inputmode="decimal" value="'+esc(v('peso_kg')!=null?v('peso_kg'):'')+'" placeholder="kg">'+
+      /* Comentario · opcional */
+      '<label>Comentario <span class="fb-opt">(opcional)</span></label>'+
+      '<textarea class="bien-coment" placeholder="lo que quieras contar de cómo te encuentras">'+esc(v('nota')||'')+'</textarea>'+
+      '<div class="fb-cerrar">'+
+        '<button type="button" class="fb-guardar bien-guardar">'+(ya?'Actualizar cómo amaneces':'Guardar cómo amaneces')+'</button>'+
+        '<p class="fb-nota">Se guarda solo lo de hoy. Puedes volver a entrar y cambiarlo.</p>'+
+        '<div class="fb-estado"><span class="msg bien-msg"></span></div>'+
+      '</div>'+
+      '</div>';
+  }
+  /* La zona de la molestia se abre/cierra según la molestia (>0). */
+  function sincronizarBien(card){
+    if(!card) return;
+    var molI=card.querySelector('.bien-molestia');
+    var molV=molI?molI.value:'';
+    var d=card.querySelector('.bien-cond-molloc');
+    if(d) d.hidden=!(molV!=='' && Number(molV)>0);
+  }
+  async function guardarBienestar(btn){
+    var card=btn.closest('.bien-card'); if(!card) return;
+    var msg=card.querySelector('.bien-msg');
+    function num(sel){ var el=card.querySelector(sel); if(!el) return null; var s=String(el.value||'').trim(); return s===''?null:Number(s); }
+    function txt(sel){ var el=card.querySelector(sel); return el?String(el.value||'').trim():''; }
+    var sueno_h  = num('.bien-sueno_h');
+    var sCal     = num('.bien-sueno_calidad');
+    var fat      = num('.bien-fatiga');
+    var dolMus   = num('.bien-dolor_muscular');
+    var estr     = num('.bien-estres');
+    var motiv    = num('.bien-motivacion');
+    var mol      = num('.bien-molestia');
+    var molLoc   = txt('.bien-molloc');
+    var peso     = num('.bien-peso');
+    var coment   = txt('.bien-coment');
+    /* Obligatorios: horas de sueño, las cinco subescalas y la molestia.
+       Sin las cinco subescalas el índice no calcula. */
+    if(sueno_h==null || sCal==null || fat==null || dolMus==null || estr==null || motiv==null || mol==null){
+      if(msg){ msg.textContent='Rellena las horas de sueño, las cinco valoraciones y la molestia.'; msg.className='msg bien-msg error'; }
+      return;
+    }
+    if(btn.disabled) return;
+    btn.disabled=true;
+    if(msg){ msg.textContent='Guardando…'; msg.className='msg bien-msg'; }
+    /* Payload completo (migración 168). Si la molestia es 0, la zona va a
+       null: no hay dónde que apuntar. El comentario libre vive en `nota`. */
+    var payload={ atleta_id:at.id, fecha:todayISO,
+      horas_sueno:sueno_h, sueno_calidad:sCal, fatiga:fat, dolor_muscular:dolMus, estres:estr,
+      motivacion:motiv, molestia:mol,
+      molestia_localizacion:(mol>0 && molLoc)?molLoc:null,
+      peso_kg:(peso!=null?peso:null),
+      nota:(coment||null) };
+    async function upsert(p){ return sb.from('bienestar_diario').upsert(p,{onConflict:'atleta_id,fecha'}).select().single(); }
+    var r=await upsert(payload);
+    /* Si la migración 168 aún no está aplicada, la columna nueva no existe:
+       se reintenta sin las columnas nuevas para no perder el resto. */
+    if(r.error && /column|columna|schema cache|does not exist/i.test(r.error.message||'')){
+      BIEN_NUEVAS=false;
+      var basico={ atleta_id:at.id, fecha:todayISO,
+        horas_sueno:sueno_h, sueno_calidad:sCal, fatiga:fat, dolor_muscular:dolMus, estres:estr,
+        nota:(coment||null) };
+      r=await upsert(basico);
+    }
+    btn.disabled=false;
+    if(r.error){
+      if(msg){ msg.textContent='No se ha podido guardar. Inténtalo otra vez.'; msg.className='msg bien-msg error'; }
+      return;
+    }
+    BIEN_HOY=r.data||payload;
+    if(msg){ msg.textContent='Guardado. Buen entreno.'; msg.className='msg bien-msg ok'; }
+  }
+
   /* «La fila que manda» vive ahora en el módulo compartido, junto al resto de
      decisiones sobre cómo se resume una sesión: si estuviera aquí, cada
      pantalla acabaría teniendo su propia idea de cuál es el ejercicio
@@ -5604,6 +5757,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     /* El formulario de apuntar, si está abierto: pegado a la tira, que es
        donde acabas de elegir el día. */
     if(APU_DIA) html+=apuntarHTML(APU_DIA);
+
+    /* «¿CÓMO AMANECES?» · el diario de bienestar del día. Va arriba, antes
+       de la tarjeta del entreno, porque se rellena ANTES de entrenar. Solo
+       si al atleta se le pide (grupo Pro) y solo mirando HOY: el diario es
+       de hoy, no de un día que se esté ojeando. */
+    if(BIEN_PIDE && (DIA_OJEO||todayISO)===todayISO) html+=bienestarHTML();
 
     /* 2 · el entreno de hoy: la ÚNICA tarjeta navy de la pantalla. Si hoy hay
        dos sesiones (pista y gimnasio, por ejemplo) solo la primera va en navy;
@@ -6112,6 +6271,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(String(ev.target.id||'').indexOf('apu-')!==0) return;
     apuRecordar();
     apuPintarRitmo();
+  });
+
+  /* BIENESTAR («¿Cómo amaneces?»): las escalas escriben en su campo oculto
+     y el botón guarda. Listener propio para no tocar la hoja de sesión. */
+  $('sec-hoy').addEventListener('click', function(ev){
+    var t=ev.target; if(!t||!t.closest) return;
+    var b=t.closest('.esc[data-besc]');
+    if(b){
+      var grupo=b.parentNode, campo=b.getAttribute('data-besc'), val=b.getAttribute('data-bv');
+      var ya=b.classList.contains('sel');
+      grupo.querySelectorAll('.esc').forEach(function(x){ x.classList.remove('sel'); x.setAttribute('aria-pressed','false'); });
+      if(!ya){ b.classList.add('sel'); b.setAttribute('aria-pressed','true'); }
+      var oc=grupo.parentNode.querySelector('.bien-'+campo);
+      if(oc) oc.value = ya ? '' : val;
+      if(campo==='molestia') sincronizarBien(b.closest('.bien-card'));
+      return;
+    }
+    var g=t.closest('.bien-guardar');
+    if(g){ guardarBienestar(g); }
   });
 
   // ---------- MÁS (maqueta 22b): tres bloques, nunca lista plana ----------
