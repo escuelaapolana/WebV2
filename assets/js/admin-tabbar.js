@@ -262,6 +262,61 @@
       /* el aviso queda 16 px por encima de la barra de pestañas (kit 30g) */
       'body.at-con-tabbar .apx-host{bottom:calc(16px + ' + ALTO + 'px + env(safe-area-inset-bottom))}' +
     '}';
+
+  /* ============================================================
+     BARRA LATERAL DE ESCRITORIO (de 900 px para arriba)
+     ------------------------------------------------------------
+     En PC vuelve el menú lateral a la izquierda —el árbol entero del
+     panel— y la barra flotante de abajo desaparece: nunca se ven las
+     dos a la vez. En móvil la lateral no existe (display:none) y manda
+     la de abajo, exactamente como hasta ahora. El contenido se envuelve
+     en `.admin-main` (JS) para que el grid coloque lateral + contenido
+     sin descolocar los paneles. Se usa la clase `.at-side` (no
+     `.admin-side`) para no chocar con el freno global de apolana.css. */
+  css.textContent +=
+    '.at-side{display:none}' +
+    '@media (min-width:' + (CORTE + 1) + 'px){' +
+      '.admin-wrap{display:grid !important;grid-template-columns:238px minmax(0,1fr) !important;' +
+        'gap:26px;align-items:start;max-width:1340px}' +
+      '.at-tabbar{display:none !important}' +
+      'body.at-con-tabbar{padding-bottom:24px}' +
+      '.at-side{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:2px;' +
+        'max-height:calc(100vh - 32px);overflow:auto;background:#fff;' +
+        'border:1px solid var(--linea-marcada,#E4DCCB);border-radius:16px;padding:10px;' +
+        'box-shadow:0 12px 26px -18px rgba(46,66,86,.5)}' +
+      '.at-side .buscar-btn{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;' +
+        'min-height:42px;margin-bottom:6px;padding:9px 12px;border:1px solid var(--linea-borde,#D4CBB9);' +
+        'border-radius:11px;background:var(--crema,#FBF9F4);cursor:pointer;font-family:inherit;' +
+        'font-size:14px;color:var(--texto-suave,#6E6656);text-align:left}' +
+      '.at-side .buscar-btn:hover{background:#fff;border-color:var(--azul-filete,#3B85C0);color:var(--navy,#2E4256)}' +
+      '.at-side .buscar-btn .lupa{flex:0 0 17px;width:17px;height:17px}' +
+      '.at-side .buscar-btn span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.at-side a.dir,.at-side .grupo>summary{display:flex;align-items:center;gap:11px;min-height:42px;' +
+        'box-sizing:border-box;padding:9px 12px;border-radius:11px;text-decoration:none;' +
+        'color:var(--navy,#2E4256);font-size:14.5px;line-height:1.2}' +
+      '.at-side a.dir .ic,.at-side .grupo>summary .ic{flex:0 0 20px;width:20px;height:20px;color:var(--azul-oscuro,#2F6FA8)}' +
+      '.at-side a.dir:hover,.at-side .grupo>summary:hover{background:var(--crema-media,#EFE9DA)}' +
+      '.at-side a.aqui{background:var(--navy,#2E4256);color:#fff;font-weight:600}' +
+      '.at-side a.aqui .ic{color:#fff}' +
+      '.at-side .grupo{margin:0}' +
+      '.at-side .grupo>summary{font-weight:600;cursor:pointer;user-select:none;list-style:none}' +
+      '.at-side .grupo>summary::-webkit-details-marker{display:none}' +
+      '.at-side .grupo>summary .nom{flex:1 1 auto;min-width:0}' +
+      '.at-side .grupo>summary .fl{flex:0 0 auto;width:7px;height:7px;margin-right:2px;' +
+        'border-right:2px solid var(--texto-suave,#6E6656);border-bottom:2px solid var(--texto-suave,#6E6656);' +
+        'transform:rotate(45deg) translate(-2px,-2px);transition:transform .18s ease}' +
+      '.at-side .grupo[open]>summary .fl{transform:rotate(-135deg) translate(-2px,-2px)}' +
+      '.at-side .grupo>.sub{display:flex;flex-direction:column;gap:1px;padding:1px 0 6px}' +
+      '.at-side .grupo>.sub a{display:flex;align-items:center;gap:10px;min-height:38px;box-sizing:border-box;' +
+        'padding:8px 12px 8px 22px;border-radius:10px;text-decoration:none;color:var(--texto,#40484F);' +
+        'font-size:13.5px;line-height:1.25}' +
+      '.at-side .grupo>.sub a .ic{flex:0 0 17px;width:17px;height:17px;color:var(--azul-oscuro,#2F6FA8)}' +
+      '.at-side .grupo>.sub a:hover{background:var(--crema-media,#EFE9DA)}' +
+      '.at-side .grupo>.sub a.aqui{background:var(--navy,#2E4256);color:#fff;font-weight:600}' +
+      '.at-side .grupo>.sub a.aqui .ic{color:#fff}' +
+      '.at-side .sep{height:1px;background:var(--crema-media,#EFE9DA);margin:6px 8px}' +
+    '}';
+
   document.head.appendChild(css);
 
   /* ---------- pestañas ---------- */
@@ -853,6 +908,71 @@
     top.appendChild(b);
   }
 
+  /* ---------- la barra lateral de escritorio ----------
+     Se construye del mismo árbol que el menú (mapa()), así que nunca se
+     desincroniza. El contenido se mete en `.admin-main` para que el grid
+     coloque «lateral + contenido» sin descolocar los paneles del panel. */
+  function pintarLateral() {
+    var wrap = document.querySelector('.admin-wrap');
+    if (!wrap || wrap.querySelector('.at-side')) return;
+
+    /* Un único contenedor para el contenido. El inicio ya lo trae; las
+       subsecciones cuelgan varios `.panel` directos y hay que envolverlos. */
+    var main = null, kids = wrap.children, i;
+    for (i = 0; i < kids.length; i++) {
+      if (kids[i].classList && kids[i].classList.contains('admin-main')) { main = kids[i]; break; }
+    }
+    if (!main) {
+      main = document.createElement('div');
+      main.className = 'admin-main';
+      while (wrap.firstChild) { main.appendChild(wrap.firstChild); }
+      wrap.appendChild(main);
+    }
+
+    var aqui = carpeta();
+    function activo(url) { return url.indexOf('/admin/') !== -1 && clave(url) === aqui; }
+
+    var html = '<button type="button" class="buscar-btn" aria-haspopup="dialog">' +
+               IC.lupa + '<span>Buscar una pantalla o una persona</span></button>';
+    mapa().forEach(function (b) {
+      var enl = b.enlaces.filter(function (e) { return !e.panel; });
+      if (!enl.length) return;
+      if (!b.t) {
+        enl.forEach(function (e) {
+          var on = activo(e.url);
+          html += '<a class="dir' + (on ? ' aqui' : '') + '" href="' + esc(e.url) + '"' +
+                  (on ? ' aria-current="page"' : '') + '>' + iconoDe(e.url) +
+                  '<span class="nom">' + esc(e.txt) + '</span></a>';
+        });
+        html += '<div class="sep"></div>';
+        return;
+      }
+      var dentro = enl.some(function (e) { return activo(e.url); });
+      html += '<details class="grupo"' + (dentro ? ' open' : '') + '>' +
+              '<summary>' + iconoSeccion(b.t) + '<span class="nom">' + esc(b.t) +
+              '</span><span class="fl"></span></summary><div class="sub">' +
+              enl.map(function (e) {
+                var on = activo(e.url);
+                return '<a class="' + (on ? 'aqui' : '') + '" href="' + esc(e.url) + '"' +
+                       (on ? ' aria-current="page"' : '') + '>' + iconoDe(e.url) +
+                       '<span class="nom">' + esc(e.txt) + '</span></a>';
+              }).join('') + '</div></details>';
+    });
+
+    var side = document.createElement('nav');
+    side.className = 'at-side';
+    side.setAttribute('aria-label', 'Secciones del panel');
+    side.innerHTML = html;
+    wrap.insertBefore(side, wrap.firstChild);
+
+    var bb = side.querySelector('.buscar-btn');
+    if (bb) bb.addEventListener('click', function () { abrir(true); });
+    side.addEventListener('click', function (e) {
+      var a = e.target.closest ? e.target.closest('a[href]') : null;
+      if (a) anotar(clave(a.getAttribute('href')));
+    });
+  }
+
   /* ---------- pintado ---------- */
   var nodo = null, ya = false;
   function pintar() {
@@ -862,6 +982,9 @@
     /* Sin buscador en la cabecera: la maqueta de admin no lo lleva arriba.
        Se busca desde «Más» (la hoja abre con su propio buscador). */
     anotar(carpeta());   /* esta pantalla, para «las que más usas» */
+
+    /* La lateral de escritorio se monta siempre (en móvil va display:none). */
+    pintarLateral();
 
     /* Si la página se pinta de verdad su propia barra, no ponemos otra.
        Un `<nav class="tabbar" hidden></nav>` vacío no cuenta: eso deja la
