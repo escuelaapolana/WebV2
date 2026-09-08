@@ -679,6 +679,14 @@ APOLANA_ADMIN.listo(function (sb) {
       '<span class="v' + (vacio ? ' falta' : '') + '">' +
       (vacio ? esc(falta || 'No lo puso') : valor) + '</span></div>';
   }
+  /* Un documento subido al bucket privado: solo la ruta llega aquí. Al pulsar
+     se firma un enlace temporal (solo admin puede) y se ve la imagen/PDF. */
+  function docBoton(rotulo, ruta) {
+    if (!ruta) return d(rotulo, null, 'No lo adjuntó');
+    return '<div class="dato"><span class="r">' + esc(rotulo) + '</span>' +
+      '<span class="v"><button type="button" class="pz-btn pz-btn--borde" data-doc="' + esc(ruta) + '">Ver el documento</button>' +
+      '<span data-doc-caja style="display:block;margin-top:8px"></span></span></div>';
+  }
   /* Un número tapado, con su botón de enseñarlo entero. */
   function tapado(rotulo, texto, hay, que, id, falta) {
     if (!hay) return d(rotulo, null, falta);
@@ -725,7 +733,28 @@ APOLANA_ADMIN.listo(function (sb) {
     } else if (a.secciones && a.secciones.length) {
       h += d('Se apunta a', esc(lista(a.secciones, SECCION)));
     }
+    if (a.que === 'socio') {
+      h += d('Nacionalidad', a.nacionalidad ? esc(a.nacionalidad) : null, 'No la dijo');
+      var nac = [a.ciudad_nacimiento, a.provincia_nacimiento, a.pais_nacimiento].filter(Boolean).join(', ');
+      h += d('Nació en', nac ? esc(nac) : null, 'No lo dijo');
+    }
     h += '</div>';
+
+    /* --- Equipación y documentos (socio) --- */
+    if (a.que === 'socio') {
+      var fisico = [a.peso ? esc(a.peso) + ' kg' : null,
+                    a.estatura ? esc(a.estatura) + ' cm' : null].filter(Boolean).join(' · ');
+      var tallasSoc = [a.talla_camiseta ? 'camiseta ' + esc(a.talla_camiseta) : null,
+                       a.talla_pantalon ? 'pantalón ' + esc(a.talla_pantalon) : null,
+                       a.talla_calcetin ? 'calcetín ' + esc(a.talla_calcetin) : null].filter(Boolean).join(' · ');
+      h += '<div class="bloque"><h3>Equipación y documentos</h3>';
+      h += d('Físico', fisico || null, 'No lo dijo');
+      h += d('Tallas', tallasSoc || null, 'Sin talla');
+      h += docBoton('Foto carnet', a.foto_carnet);
+      h += docBoton('DNI o NIE · anverso', a.dni_anverso);
+      h += docBoton('DNI o NIE · reverso', a.dni_reverso);
+      h += '</div>';
+    }
 
     /* --- Los hijos, uno por tarjeta --- */
     if (a.que === 'escuela') {
@@ -963,6 +992,26 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     /* La firma, que pesa y por eso se pide solo cuando se pulsa. */
+    if (b.hasAttribute('data-doc')) {
+      var ruta = b.getAttribute('data-doc');
+      b.disabled = true; b.textContent = 'Un momento…';
+      var rd = await sb.storage.from('altas-documentos').createSignedUrl(ruta, 300);
+      var cd = b.parentNode ? b.parentNode.querySelector('[data-doc-caja]') : null;
+      if (rd.error || !rd.data || !rd.data.signedUrl) {
+        b.disabled = false; b.textContent = 'Ver el documento';
+        apoToast('No se ha podido abrir el documento.', 'error');
+        return;
+      }
+      var urlDoc = rd.data.signedUrl;
+      var esPdf = /\.pdf(\?|$)/i.test(ruta);
+      if (cd) cd.innerHTML =
+        '<a href="' + esc(urlDoc) + '" target="_blank" rel="noopener">Abrir en pestaña</a>' +
+        (esPdf ? '' : '<br><img alt="Documento del alta" src="' + esc(urlDoc) +
+          '" style="max-width:100%;border-radius:10px;margin-top:8px;border:1px solid var(--linea)">');
+      b.remove();
+      return;
+    }
+
     if (b.hasAttribute('data-firma')) {
       var mid = b.getAttribute('data-firma');
       b.disabled = true; b.textContent = 'Un momento…';
