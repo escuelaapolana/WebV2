@@ -146,6 +146,28 @@
         <span class="error"></span>
       </div>
 
+      <!-- Documentos (opcionales aquí; si no, el club los pide al revisar).
+           Van a un almacén privado que solo ve la administración. -->
+      <span class="etiqueta">Documentos <span class="fina">(opcional)</span></span>
+      <span class="ayuda">Foto tipo carnet y tu DNI/NIE por las dos caras. Se guardan cifrados y solo los ve la administración del club, para la licencia y el registro de socios.</span>
+      <div class="campo" style="margin-top:4px">
+        <label for="foto-carnet">Foto tipo carnet</label>
+        <input type="file" id="foto-carnet" accept="image/*">
+        <span class="error"></span>
+      </div>
+      <div class="campo-par">
+        <div class="campo">
+          <label for="dni-anverso">DNI o NIE · anverso</label>
+          <input type="file" id="dni-anverso" accept="image/*,application/pdf">
+          <span class="error"></span>
+        </div>
+        <div class="campo">
+          <label for="dni-reverso">DNI o NIE · reverso</label>
+          <input type="file" id="dni-reverso" accept="image/*,application/pdf">
+          <span class="error"></span>
+        </div>
+      </div>
+
       <div class="form-pie">
         <button type="button" class="btn-principal" data-ir="2">Siguiente</button>
         <button type="button" class="btn-texto" data-guardar>Guardar y seguir luego</button>
@@ -653,13 +675,52 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   /* ---- Enviar ---- */
-  $('enviar').addEventListener('click', function () {
+  /* Sube los documentos (foto carnet, DNI por las dos caras) a un almacén
+     PRIVADO antes de mandar el alta. Se guarda solo la RUTA, nunca una URL
+     pública. Cada alta va a su propia carpeta al azar. Si no se adjunta un
+     archivo, se manda null y el club lo pide luego. */
+  async function subirDocumentos() {
+    var sb = window.APOLANA_DB;
+    var carpeta = 'alta-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    async function uno(inputId, prefijo) {
+      var inp = $(inputId);
+      var f = inp && inp.files && inp.files[0];
+      if (!f) return null;
+      var ext = String(f.name || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      var ruta = carpeta + '/' + prefijo + '.' + ext;
+      var r = await sb.storage.from('altas-documentos')
+                .upload(ruta, f, { contentType: f.type || undefined, upsert: false });
+      if (r.error) throw r.error;
+      return (r.data && r.data.path) || ruta;
+    }
+    return {
+      foto_carnet: await uno('foto-carnet', 'carnet'),
+      dni_anverso: await uno('dni-anverso', 'dni-anverso'),
+      dni_reverso: await uno('dni-reverso', 'dni-reverso')
+    };
+  }
+
+  $('enviar').addEventListener('click', async function () {
     if (enviando) return;
     enviando = true;
     var boton = $('enviar');
     boton.disabled = true;
     boton.textContent = 'Enviando…';
     $('fallo-envio').style.display = 'none';
+
+    var docs = { foto_carnet: null, dni_anverso: null, dni_reverso: null };
+    try {
+      boton.textContent = 'Subiendo documentos…';
+      docs = await subirDocumentos();
+      boton.textContent = 'Enviando…';
+    } catch (e) {
+      enviando = false; boton.disabled = false; boton.textContent = 'Hacerme socio';
+      var avd = $('fallo-envio');
+      avd.textContent = 'No se han podido subir los documentos. Comprueba que son imágenes o PDF y que no pesan más de 10 MB. También puedes quitarlos y enviarlo sin ellos: el club te los pedirá luego.';
+      avd.style.display = 'block';
+      avd.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
 
     F.llamar('enviar_alta_socio', {
       p: {
@@ -702,6 +763,9 @@ document.addEventListener('DOMContentLoaded', function () {
         talla_camiseta: $('talla-camiseta').value,
         talla_pantalon: $('talla-pantalon').value,
         talla_calcetin: $('talla-calcetin').value,
+        foto_carnet: docs.foto_carnet,
+        dni_anverso: docs.dni_anverso,
+        dni_reverso: docs.dni_reverso,
         segundos: F.segundosDentro(),
         apellido_de_soltera: $('cepo').value
       }
