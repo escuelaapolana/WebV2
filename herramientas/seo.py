@@ -90,6 +90,7 @@ PAGINAS = [
     ("club/palmares/index.html",                  "club/palmares/",                 "0.6",  True),
     ("club/ranking/index.html",                   "club/ranking/",                  "0.5",  True),
     ("club/records/index.html",                   "club/records/",                  "0.6",  True),
+    ("premios/index.html",                        "premios/",                       "0.5",  True),
     ("liga/index.html",                           "liga/",                          "0.5",  True),
     ("noticias/index.html",                       "noticias/",                      "0.7",  True),
     ("galeria/index.html",                        "galeria/",                       "0.5",  True),
