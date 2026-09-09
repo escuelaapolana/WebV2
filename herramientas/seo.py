@@ -63,7 +63,7 @@ PAGINAS = [
     # (ruta del archivo,                          ruta publica,                     prioridad, en_sitemap)
     ("index.html",                                "",                               "1.0",  True),
     ("escuelas/index.html",                       "escuelas/",                      "0.9",  True),
-    ("escuela/index.html",                        "escuela/",                       "0.9",  True),
+    ("escuela-atletismo/index.html",              "escuela-atletismo/",             "0.9",  True),
     ("escuela-natacion/index.html",               "escuela-natacion/",              "0.8",  True),
     ("escuela-municipal-atletismo/index.html",    "escuela-municipal-atletismo/",   "0.7",  True),
     ("campus/index.html",                         "campus/",                        "0.7",  True),

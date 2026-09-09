@@ -60,7 +60,7 @@ const MENU = [
      tres, así que en el menú basta una entrada; el deporte adaptado y el
      atletismo adaptado se cuentan dentro de ella. */
   { clave: 'escuelas', texto: 'Escuelas', url: '/escuelas/', sub: [
-    { texto: 'Escuela de atletismo', url: '/escuela/' },
+    { texto: 'Escuela de atletismo', url: '/escuela-atletismo/' },
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
     { texto: 'Escuelas municipales', url: '/escuela-municipal-atletismo/' },
     { texto: 'Campus de verano',     url: '/campus/' },
