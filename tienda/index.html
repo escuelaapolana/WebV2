@@ -189,6 +189,10 @@
   .pedido-total span { font-size: 15px; color: var(--texto); }
   .pedido-total b { font-family: var(--fuente-titulo); font-weight: 700; font-size: 32px; letter-spacing: -0.02em; color: var(--azul-oscuro); line-height: 1; }
   .pedido .nota { font-size: 13px; color: var(--texto-suave); line-height: 1.5; }
+  .pedido-datos { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .pedido-datos label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--texto-suave); }
+  .pedido-datos input { border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit; color: var(--navy); background: #fff; }
+  .pedido-datos input:focus { outline: 2px solid var(--azul-filete, #3B85C0); outline-offset: 1px; }
   .pedido .vacia { font-size: 15px; color: var(--texto-suave); line-height: 1.55; margin: 0; }
   .pedido .vaciar {
     background: none; border: 0; padding: 0; align-self: flex-start;
@@ -289,11 +293,12 @@
      · La cesta vive solo en este navegador (localStorage), así que
        se conserva al recargar la página. Hasta que no se confirma,
        el club no se entera de nada.
-     · Al confirmar se crea un pedido en `pedidos` y sus líneas en
-       `pedido_items`, siempre en estado "pendiente": es lo único
-       que las reglas de seguridad dejan crear a un socio. A partir
-       de ahí lo mueve el club desde su panel.
-     · AQUÍ NO SE COBRA NADA: no hay pasarela de pago.
+     · Al pulsar «Pagar», la función `tienda-pagar` mira EN LA BASE
+       cuánto vale cada prenda (nunca se fía del navegador), crea el
+       pedido + sus líneas y abre la pasarela de Stripe. El pedido se
+       marca «pagado» solo cuando Stripe avisa (webhook firmado).
+     · Compra el socio con sesión (va a su ficha) o un invitado (que
+       deja nombre y contacto). La tarjeta se teclea en Stripe, nunca aquí.
      ============================================================ -->
 <script>
 (function () {
@@ -450,19 +455,19 @@
 
   /* ---------- la cesta en pantalla ---------- */
   var AVISO_PAGO =
-    '<div class="caja-aviso"><b>Aquí no se paga nada</b>' +
-    'La tienda no tiene pasarela de pago: al confirmar solo le llega el aviso al club. ' +
-    'Te avisaremos cuando el pedido esté preparado y se cobra con la cuota del mes o en persona al recogerlo.</div>';
+    '<div class="caja-aviso"><b>Pago seguro y recogida</b>' +
+    'Pagas con tarjeta en la página de Stripe: nosotros no vemos tu tarjeta. ' +
+    'Cuando esté listo, se recoge en la oficina del club (oficina Nº 1), en el Estadio de Atletismo, ' +
+    'martes y jueves de 18:00 a 20:00.</div>';
 
   function pintarCesta() {
     if (!elPedido) return;
 
     if (enviado) {
       elPedido.innerHTML =
-        '<div class="caja-ok" role="status"><b>Pedido enviado</b>' +
-        'El club ya lo tiene apuntado. Te avisaremos cuando esté preparado para recoger en la oficina del club (oficina Nº 1), ' +
+        '<div class="caja-ok" role="status"><b>¡Pago recibido!</b>' +
+        'Gracias. El club ya tiene tu pedido apuntado y pagado. Te avisaremos cuando esté listo para recoger en la oficina del club (oficina Nº 1), ' +
         'en el Estadio de Atletismo, los martes y jueves de 18:00 a 20:00.</div>' +
-        '<p class="nota">No se te ha cobrado nada: no hay pasarela de pago. Se paga con la cuota del mes o en persona al recogerlo.</p>' +
         '<button type="button" class="btn btn--fantasma" id="otro-pedido" style="width:100%;">Hacer otro pedido</button>';
       return;
     }
@@ -495,14 +500,21 @@
     var accion;
     if (!sesionLista) {
       accion = '<button type="button" class="btn btn--primario" style="width:100%;" disabled>Comprobando tu cuenta…</button>';
-    } else if (!perfil) {
-      accion =
-        '<div class="caja-aviso"><b>Entra para enviarlo</b>' +
-        'El pedido va a nombre de una persona del club, así que hace falta entrar con tu cuenta. ' +
-        'La cesta se queda guardada mientras tanto.</div>' +
-        '<a class="btn btn--primario" href="../portal/" style="width:100%;">Entrar en el portal</a>';
     } else {
-      accion = '<button type="button" class="btn btn--primario" id="confirmar" style="width:100%;">Confirmar pedido</button>';
+      var datos;
+      if (!perfil) {
+        // Invitado: pedimos lo justo para avisarle y prepararle el pedido.
+        datos =
+          '<div class="pedido-datos">' +
+            '<label>Nombre y apellidos<input type="text" id="c-nombre" autocomplete="name" placeholder="Tu nombre"></label>' +
+            '<label>Correo<input type="email" id="c-email" autocomplete="email" placeholder="tucorreo@ejemplo.com"></label>' +
+            '<label>Teléfono<input type="tel" id="c-telefono" autocomplete="tel" placeholder="Para avisarte de la recogida"></label>' +
+          '</div>';
+      } else {
+        datos = '<p class="nota">Compras como <b>' + esc(((perfil.nombre || '') + ' ' + (perfil.apellidos || '')).trim()) + '</b>.</p>';
+      }
+      accion = datos +
+        '<button type="button" class="btn btn--primario" id="pagar" style="width:100%;">Pagar · ' + eur(totalCesta()) + '</button>';
     }
 
     elPedido.innerHTML =
@@ -543,51 +555,58 @@
     return null;
   }
 
-  function confirmar(boton) {
+  function pagar(boton) {
     var sb = window.APOLANA_DB;
     if (!cesta.length) return;
-    if (!sb || !perfil) { mensaje('No hemos podido comprobar tu cuenta. Recarga la página e inténtalo otra vez.', true); return; }
+    if (!sb || !sb.functions) { mensaje('No hemos podido conectar con el club. Recarga la página e inténtalo otra vez.', true); return; }
 
-    var lineas = [];
+    // Las líneas: solo producto, talla y cantidad. El PRECIO lo pone la base.
+    var items = [];
     for (var i = 0; i < cesta.length; i++) {
       var pid = idDe(cesta[i]);
-      if (!pid) { mensaje('No hemos podido identificar «' + esc(cesta[i].nombre) + '» en el catálogo del club. Recarga la página e inténtalo otra vez.', true); return; }
-      lineas.push({ producto_id: pid, talla: cesta[i].talla, cantidad: cesta[i].cantidad, precio_unitario: cesta[i].precio });
+      if (!pid) { mensaje('No hemos podido identificar «' + esc(cesta[i].nombre) + '» en el catálogo. Recarga la página e inténtalo otra vez.', true); return; }
+      items.push({ producto_id: pid, talla: cesta[i].talla, cantidad: cesta[i].cantidad });
     }
 
+    // El contacto: del socio si hay sesión; si no, del formulario de invitado.
+    var contacto;
+    if (perfil) {
+      contacto = { nombre: ((perfil.nombre || '') + ' ' + (perfil.apellidos || '')).trim(), email: perfil.email || '' };
+    } else {
+      var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+      contacto = { nombre: g('c-nombre'), email: g('c-email'), telefono: g('c-telefono') };
+      if (!contacto.nombre || !(contacto.email || contacto.telefono)) {
+        mensaje('Para comprar sin cuenta necesitamos tu nombre y un correo o teléfono.', true);
+        return;
+      }
+    }
+
+    var textoBoton = 'Pagar · ' + eur(totalCesta());
     boton.disabled = true;
-    boton.textContent = 'Enviando…';
+    boton.textContent = 'Abriendo el pago…';
     mensaje('');
 
-    var total = Math.round(totalCesta() * 100) / 100;
-    sb.from('pedidos').insert({ perfil_id: perfil.id, estado: 'pendiente', total: total }).select('id').single()
+    var reponer = function (msg) {
+      boton.disabled = false;
+      boton.textContent = textoBoton;
+      if (msg) mensaje(msg, true);
+    };
+
+    sb.functions.invoke('tienda-pagar', { body: { items: items, contacto: contacto } })
       .then(function (r) {
-        if (r.error || !r.data) throw new Error(r.error ? r.error.message : 'sin respuesta');
-        var pedidoId = r.data.id;
-        return sb.from('pedido_items').insert(lineas.map(function (x) {
-          return { pedido_id: pedidoId, producto_id: x.producto_id, talla: x.talla, cantidad: x.cantidad, precio_unitario: x.precio_unitario };
-        })).then(function (ri) {
-          if (ri.error) throw new Error('lineas: ' + ri.error.message);
-          return pedidoId;
-        });
-      })
-      .then(function (pedidoId) {
-        enviado = pedidoId;
-        cesta = [];
-        guardarCesta();
-        pintarCesta();
-        /* El pedido ya está guardado con sus prendas y quien lo hace
-           ya ve su confirmación. Ahora, y solo ahora, se le da un
-           toque al móvil de quien lo prepara. Va suelto y sin esperar
-           respuesta: si fallara, aquí no se entera nadie y el pedido
-           sigue estando. */
-        sb.avisarAlClub('pedido');
+        if (r.error) {
+          var ctx = r.error.context;
+          return (ctx && ctx.json ? ctx.json() : Promise.resolve(null))
+            .catch(function () { return null; })
+            .then(function (d) { reponer((d && d.mensaje) || 'No hemos podido abrir el pago. Inténtalo de nuevo en un minuto.'); });
+        }
+        if (!r.data || !r.data.url) { reponer('No hemos podido abrir el pago. Inténtalo de nuevo.'); return; }
+        // A la pasarela de Stripe. La cesta se queda por si el pago se cancela.
+        window.location.href = r.data.url;
       })
       .catch(function (e) {
-        boton.disabled = false;
-        boton.textContent = 'Confirmar pedido';
-        mensaje('No hemos podido enviar el pedido. Inténtalo de nuevo en un rato o escríbenos desde <a href="../contacto/">contacto</a>.', true);
-        console.warn('[Apolana] pedido:', e && e.message ? e.message : e);
+        reponer('No hemos podido conectar con la pasarela de pago. Inténtalo en un minuto.');
+        console.warn('[Apolana] tienda-pagar:', e && e.message ? e.message : e);
       });
   }
 
@@ -621,7 +640,7 @@
     var b = ev.target.closest ? ev.target.closest('button') : null;
     if (!b) return;
 
-    if (b.id === 'confirmar') { confirmar(b); return; }
+    if (b.id === 'pagar') { pagar(b); return; }
     if (b.id === 'vaciar') { cesta = []; guardarCesta(); pintarCesta(); return; }
     if (b.id === 'otro-pedido') { enviado = null; pintarCesta(); return; }
 
@@ -643,7 +662,21 @@
   /* ---------- arranque ---------- */
   document.addEventListener('DOMContentLoaded', function () {
     cesta = leerCesta();
+
+    // ¿Volvemos de la pasarela de Stripe?
+    var pagoVuelta = null;
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      pagoVuelta = qs.get('pago');
+      if (pagoVuelta === 'hecho') { enviado = true; cesta = []; guardarCesta(); }
+      if (pagoVuelta) {
+        qs.delete('pago'); qs.delete('ref');
+        window.history.replaceState(null, '', window.location.pathname + (qs.toString() ? '?' + qs.toString() : ''));
+      }
+    } catch (e) {}
+
     pintarCesta();
+    if (pagoVuelta === 'cancelado') { mensaje('Pago cancelado. Tu cesta sigue aquí; puedes intentarlo de nuevo cuando quieras.', false); }
 
     cargarCatalogo().then(function () {
       pintarCatalogo();
