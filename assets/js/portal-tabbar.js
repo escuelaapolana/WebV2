@@ -94,6 +94,8 @@
     if (r.indexOf('/portal/atleta/') !== -1) return 'atleta';
     if (r.indexOf('/portal/familia/') !== -1) return 'familia';
     if (r.indexOf('/portal/coordinador/') !== -1) return 'coordinador';
+    if (r.indexOf('/portal/cubo-atleta/') !== -1) return 'cubo-atleta';
+    if (r.indexOf('/portal/cubo-lista/') !== -1) return 'cubo-lista';
     return null;
   }
   function recordada() {
@@ -114,7 +116,7 @@
     if (!vale(z)) z = recordada();
     if (!vale(z)) {
       /* Con varios papeles y sin pista, manda el de atleta. */
-      var orden = ['atleta', 'familia', 'entrenador', 'coordinador'];
+      var orden = ['atleta', 'familia', 'cubo-atleta', 'entrenador', 'cubo-lista', 'coordinador'];
       z = null;
       for (var i = 0; i < orden.length && !z; i++) {
         if (claves.indexOf(orden[i]) !== -1) z = orden[i];
@@ -136,6 +138,25 @@
     var tengoEntrenador = claves.indexOf('entrenador') !== -1;
     var urlEntrenador = b + 'portal/entrenador/';
     var lista;
+
+    /* El Cubo · quien ENTRENA: barra sencilla, sin marcas ni feedback.
+       Inicio (noticias) · Entrenamientos (sus horarios) · Calendario · Más. */
+    if (zona === 'cubo-atleta') {
+      return [
+        { id: 'inicio',         txt: 'Inicio',         ic: IC.inicio,  url: b + 'portal/cubo-atleta/' },
+        { id: 'entrenamientos', txt: 'Entrenamientos', ic: IC.entreno, url: b + 'portal/cubo-atleta/#entrenamientos' },
+        { id: 'calendario',     txt: 'Calendario',     ic: IC.agenda,  url: b + 'portal/calendario/' },
+        { id: 'mas',            txt: 'Más',            ic: IC.mas,     url: b + 'portal/cubo-atleta/#mas' }
+      ];
+    }
+    /* El Cubo · entrenador que SOLO pasa lista. */
+    if (zona === 'cubo-lista') {
+      return [
+        { id: 'inicio',     txt: 'Lista',      ic: IC.lista,  url: b + 'portal/cubo-lista/' },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/calendario/' },
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-lista/#mas' }
+      ];
+    }
 
     if (deportivo) {
       lista = [

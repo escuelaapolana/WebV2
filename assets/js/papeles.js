@@ -47,18 +47,22 @@
     entrenador:   { titulo: 'Entrenador',    que: 'Tus grupos: planificar y pasar lista.',         va: 'portal/entrenador/',  mando: false },
     atleta:       { titulo: 'Atleta',        que: 'Tus entrenamientos, tus marcas y tus recibos.', va: 'portal/atleta/',      mando: false },
     padre:        { titulo: 'Familia',       que: 'La ficha de tus hijos, faltas y pagos.',        va: 'portal/familia/',     mando: false },
+    /* El Cubo, lado de quien ENTRENA (no confundir con `cubo`, que es la
+       gestión). Vista sencilla: horarios de su grupo y su cuota mensual. */
+    'cubo-atleta':{ titulo: 'El Cubo',       que: 'Tus horarios de entrenamiento y tu cuota.',     va: 'portal/cubo-atleta/', mando: false },
+    'cubo-lista': { titulo: 'Lista del Cubo',que: 'Pasar lista en El Cubo.',                        va: 'portal/cubo-lista/',  mando: false },
     /* Estos dos existen en la base desde las migraciones 109 y 144 y no
        estaban aquí: quien los llevaba veía «cubo» y «escuela» en crudo en
        la franja de arriba, en minúscula y sin explicar qué abren. */
     escuela:      { titulo: 'Escuela',       que: 'Altas, niños y grupos de la escuela, y la ropa.', va: 'admin/',           mando: true },
     cubo:         { titulo: 'El Cubo',       que: 'Clases, reservas y bonos de El Cubo.',          va: 'admin/cubo/',         mando: true }
   };
-  var ORDEN = ['atleta', 'padre', 'entrenador', 'coordinador', 'escuela', 'cubo', 'tesoreria', 'contabilidad', 'admin', 'junta'];
+  var ORDEN = ['atleta', 'padre', 'cubo-atleta', 'entrenador', 'cubo-lista', 'coordinador', 'escuela', 'cubo', 'tesoreria', 'contabilidad', 'admin', 'junta'];
   /* Color del icono de cada rol en la hoja «cambiar de vista», como la maqueta. */
   var COLORROL = {
     atleta: '#3B85C0', padre: '#7A5CA8', entrenador: '#2E7D6B', coordinador: '#C36A4E',
     escuela: '#4E8A3E', cubo: '#6B5B8A', tesoreria: '#B07A2E', contabilidad: '#2F6FA8',
-    admin: '#C9A23A', junta: '#8A6A4E'
+    admin: '#C9A23A', junta: '#8A6A4E', 'cubo-atleta': '#4E7C8A', 'cubo-lista': '#2E7D6B'
   };
 
   function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
