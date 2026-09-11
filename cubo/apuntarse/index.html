@@ -43,6 +43,8 @@
   .opcion .tx b { display:block; font-size:15px; color:var(--navy,#26374B); }
   .opcion .tx small { display:block; font-size:13px; color:var(--texto-suave,#6E6656); margin-top:1px; }
   .opcion .precio { font-family:var(--fuente-dato,'IBM Plex Mono',monospace); font-weight:700; color:var(--navy,#26374B); font-size:15px; }
+  .cuota-linea { font-size:16px; color:var(--navy,#26374B); background:#F5F9FC; border:1px solid #cfe0ee; border-radius:12px; padding:12px 15px; margin:0 0 16px; }
+  .cuota-linea b { font-family:var(--fuente-dato,'IBM Plex Mono',monospace); font-size:18px; }
   .enviar { display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:52px; margin-top:8px;
             border:0; border-radius:999px; background:var(--azul,#2F6FA8); color:#fff; font-family:inherit;
             font-size:17px; font-weight:600; cursor:pointer; }
@@ -62,7 +64,7 @@
 <main class="ap-form">
   <div id="cubo-form">
     <h1 data-texto="cubo.alta.titulo">Apúntate a El Cubo</h1>
-    <p class="intro" data-texto="cubo.alta.intro">Entrenamiento de fuerza y prevención en grupos reducidos, junto a la pista. Déjanos tus datos y elige tu horario.</p>
+    <p class="intro" data-texto="cubo.alta.intro">Entrenamiento de fuerza y prevención en grupos reducidos, junto a la pista. Déjanos tus datos y elige tu horario. <b>Las familias de la escuela tienen precio reducido.</b></p>
     <p class="aviso" data-texto="cubo.alta.aviso">No se paga nada ahora. La temporada empieza el <b>21 de septiembre</b>: el primer cobro de la cuota será entonces, y a partir de ahí cada mes automáticamente.</p>
 
     <form id="f" novalidate>
@@ -70,8 +72,14 @@
       <div class="campo"><label for="apellidos">Apellidos</label><input type="text" id="apellidos" name="apellidos" autocomplete="family-name" required></div>
       <div class="campo"><label for="dni">DNI <span class="opt">(opcional)</span></label><input type="text" id="dni" name="dni" autocomplete="off"></div>
       <div class="campo"><label for="telefono">Teléfono</label><input type="tel" id="telefono" name="telefono" autocomplete="tel" required></div>
-      <div class="campo"><label for="hijo">Nombre del hijo/a <span class="opt">(si es de la escuela)</span></label><input type="text" id="hijo" name="hijo"></div>
       <div class="campo"><label for="direccion">Dirección <span class="opt">(opcional)</span></label><input type="text" id="direccion" name="direccion" autocomplete="street-address"></div>
+
+      <fieldset>
+        <legend data-texto="cubo.alta.escuela.leyenda">¿Tienes un hijo/a en la escuela del club?</legend>
+        <label class="opcion"><input type="radio" name="escuela" value="si"><span class="tx"><b>Sí</b><small>precio reducido · el club lo comprueba</small></span></label>
+        <label class="opcion"><input type="radio" name="escuela" value="no"><span class="tx"><b>No, vengo por mi cuenta</b><small>tarifa general</small></span></label>
+      </fieldset>
+      <div class="campo" id="campo-hijo" hidden><label for="hijo">Nombre del hijo/a en la escuela</label><input type="text" id="hijo" name="hijo"></div>
 
       <fieldset>
         <legend data-texto="cubo.alta.horario.leyenda">¿Qué horario quieres?</legend>
@@ -82,9 +90,10 @@
 
       <fieldset>
         <legend data-texto="cubo.alta.dias.leyenda">¿Cuántos días por semana?</legend>
-        <label class="opcion"><input type="radio" name="dias" value="2"><span class="tx"><b>Dos días</b><small>los dos días del horario elegido</small></span><span class="precio">30 €/mes</span></label>
-        <label class="opcion"><input type="radio" name="dias" value="1"><span class="tx"><b>Un día</b><small>vengo solo uno de los dos — dínoslo abajo</small></span><span class="precio">20 €/mes</span></label>
+        <label class="opcion"><input type="radio" name="dias" value="2"><span class="tx"><b>Dos días</b><small>los dos días del horario elegido</small></span></label>
+        <label class="opcion"><input type="radio" name="dias" value="1"><span class="tx"><b>Un día</b><small>vengo solo uno de los dos — dínoslo abajo</small></span></label>
       </fieldset>
+      <p class="cuota-linea" id="cuota" hidden>Tu cuota: <b id="cuota-num"></b></p>
 
       <div class="campo"><label for="nota">¿Algo que debamos saber? <span class="opt">(si vienes un solo día, dinos cuál)</span></label><textarea id="nota" name="nota"></textarea></div>
 
@@ -108,12 +117,38 @@
     function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
     function radio(name) { var e = f.querySelector('input[name="' + name + '"]:checked'); return e ? e.value : ''; }
     function fallo(msg) { err.textContent = msg; err.hidden = false; }
+    function esEscuela() { return radio('escuela') === 'si'; }
+
+    // Precio en dos tramos: escuela 20/30 · fuera 30/40 (1/2 días).
+    function precio(escuela, dias) {
+      if (escuela) return dias === 1 ? 20 : 30;
+      return dias === 1 ? 30 : 40;
+    }
+
+    // Enseña el campo del hijo solo si es familia de la escuela, y refresca la cuota.
+    function refrescar() {
+      var esc = radio('escuela');
+      document.getElementById('campo-hijo').hidden = (esc !== 'si');
+      var d = parseInt(radio('dias'), 10);
+      var cuota = document.getElementById('cuota');
+      if (esc && d) {
+        document.getElementById('cuota-num').textContent = precio(esc === 'si', d) + ' €/mes';
+        cuota.hidden = false;
+      } else {
+        cuota.hidden = true;
+      }
+    }
+    f.addEventListener('change', function (ev) {
+      if (ev.target && (ev.target.name === 'escuela' || ev.target.name === 'dias')) refrescar();
+    });
 
     f.addEventListener('submit', async function (ev) {
       ev.preventDefault();
       err.hidden = true;
       if (!val('nombre') || !val('apellidos')) return fallo('Pon tu nombre y tus apellidos.');
       if (!val('telefono')) return fallo('Déjanos un teléfono de contacto.');
+      if (!radio('escuela')) return fallo('Dinos si tienes un hijo/a en la escuela del club.');
+      if (esEscuela() && !val('hijo')) return fallo('Para el precio reducido, dinos el nombre de tu hijo/a en la escuela.');
       if (!radio('slot')) return fallo('Elige un horario.');
       if (!radio('dias')) return fallo('Dinos si vienes uno o dos días por semana.');
       if (!db() || !db().rpc) return fallo('No hemos podido conectar. Revisa tu conexión y vuelve a intentarlo.');
@@ -122,7 +157,7 @@
       var r = await db().rpc('cubo_alta_crear', { p: {
         nombre: val('nombre'), apellidos: val('apellidos'), dni: val('dni'),
         telefono: val('telefono'), hijo: val('hijo'), direccion: val('direccion'),
-        slot: radio('slot'), dias: parseInt(radio('dias'), 10), nota: val('nota')
+        escuela: esEscuela(), slot: radio('slot'), dias: parseInt(radio('dias'), 10), nota: val('nota')
       } });
       btn.disabled = false; btn.textContent = t;
 
