@@ -326,7 +326,7 @@
        Dinero pasan a «Más»: el resto del panel se abre desde ahí. */
     return [
       { id: 'inicio',   txt: 'Resumen', ic: IC.inicio,   url: r },
-      { id: 'personas', txt: 'Socios',  ic: IC.personas, url: r + 'atletas/' },
+      { id: 'personas', txt: 'Personas',  ic: IC.personas, url: r + 'atletas/' },
       { id: 'compe',    txt: 'Compes',  ic: IC.compe,    url: r + 'competiciones/' }
     ];
   }
@@ -352,7 +352,7 @@
         { txt: 'En la pista',      url: r + 'campo/', desc: 'pasar lista y ver los grupos', ancho: true }
       ] },
       { t: 'Personas', enlaces: [
-        { txt: 'Atletas',                 url: r + 'atletas/',        desc: 'las fichas de los socios' },
+        { txt: 'Personas',                url: r + 'atletas/',        desc: 'las fichas de las personas del club' },
         { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
         { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'horarios, entrenador y cuota' },
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' },
