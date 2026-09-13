@@ -8578,6 +8578,46 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var FBD_ESTADO={ hecho:'Hecho', a_medias:'A medias', no_hecho:'No hecho' };
   var FBD_MOTIVO={ tiempo:'No le dio tiempo', molestia:'Le molestaba algo', otro:'Otro motivo' };
 
+  /* Las marcas y tiempos que apuntó el atleta (registros_sesion.tiempos_reales),
+     un ejercicio por línea: «Tempo: 33, 31, 33…» / «Sentadilla: 60 kg × 8…».
+     Esto es lo que faltaba en la descarga: los números, no solo cuántas series. */
+  function fmtTiemposFB(tr){
+    if(!tr || typeof tr!=='object') return '';
+    var out=[];
+    Object.keys(tr).forEach(function(k){
+      var v=tr[k]; if(!v || typeof v!=='object') return;
+      var ej=v.ejercicio||'', med=v.medida, series=Array.isArray(v.series)?v.series:[], vals=[];
+      series.forEach(function(s){
+        if(!s || !s.hecha) return;
+        if(med==='hecho') vals.push('✓');
+        else if(med==='tiempo') vals.push((s.tiempo||'')+(s.distancia?(' ('+s.distancia+')'):''));
+        else if(med==='distancia') vals.push((s.distancia||'')+(s.tiempo?(' '+s.tiempo):''));
+        else if(med==='peso_reps'||med==='peso') vals.push((s.peso!=null&&s.peso!==''?(s.peso+' kg'):'')+(s.reps!=null&&s.reps!==''?(' × '+s.reps):''));
+        else if(med==='reps') vals.push(String(s.reps||''));
+        else vals.push(String(s.tiempo||s.distancia||'✓'));
+      });
+      vals=vals.filter(function(x){ return String(x).trim(); });
+      if(med==='hecho' && vals.length) out.push(ej+': hecho');
+      else if(vals.length) out.push(ej+': '+vals.join(', '));
+    });
+    return out.join('\n');
+  }
+  /* SheetJS solo cuando hace falta (al descargar), no en cada carga de la página. */
+  function cargarXLSX(){
+    return new Promise(function(res){
+      if(window.XLSX) return res(true);
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=function(){ res(!!window.XLSX); };
+      s.onerror=function(){ res(false); };
+      document.head.appendChild(s);
+    });
+  }
+  function nombreDiaFB(f){
+    var d=diaSemana(f)||'';
+    return (d?d.charAt(0).toUpperCase()+d.slice(1):'Día')+' '+String(f).slice(8,10)+'.'+String(f).slice(5,7);
+  }
+
   async function descargarFeedbackSemana(){
     var desde=$('fbd-desde').value, hasta=$('fbd-hasta').value;
     if(!desde || !hasta){ fbdMsg('Elige las dos fechas.', true); return; }
@@ -8615,7 +8655,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         if(!fq.error && fq.data) fq.data.forEach(function(c){ COM[c.registro_id]=c.comentario; });
       } catch(e){}
 
-      var cols=['Fecha','Atleta','Grupo','Entrenamiento','Estado','RPE','Sensación','Sueño (h)','Peso (kg)','Series hechas','Series previstas','Motivo no hecho','Cómo se siente','Molestias','Notas del atleta','Tu comentario'];
       regs.sort(function(a,b){
         var sa=SES[a.sesion_id]||{}, sb2=SES[b.sesion_id]||{};
         if((sa.fecha||'')!==(sb2.fecha||'')) return (sa.fecha||'')<(sb2.fecha||'')?-1:1;
@@ -8623,40 +8662,56 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         return ((na.apellidos||'')+(na.nombre||'')).localeCompare(((nb.apellidos||'')+(nb.nombre||'')),'es');
       });
 
-      var filas=[cols.map(celdaCSV).join(';')];
-      regs.forEach(function(r){
-        var s=SES[r.sesion_id]||{}; var at=atletaPorId(r.atleta_id)||{};
-        filas.push([
-          s.fecha||'',
-          ((at.nombre||'')+' '+(at.apellidos||'')).trim(),
-          nombreGrupo(s.grupo_id)||'',
-          s.titulo||'',
-          FBD_ESTADO[r.estado]||'',
-          r.rpe==null?'':r.rpe,
-          r.sensacion_general==null?'':r.sensacion_general,
-          r.horas_sueno==null?'':r.horas_sueno,
-          r.peso_kg==null?'':r.peso_kg,
-          r.series_hechas==null?'':r.series_hechas,
-          r.series_previstas==null?'':r.series_previstas,
-          r.motivo_no_hecho?(FBD_MOTIVO[r.motivo_no_hecho]||r.motivo_no_hecho):'',
-          r.como_me_siento||'',
-          r.molestias||'',
-          r.notas_atleta||'',
-          COM[r.id]||''
-        ].map(celdaCSV).join(';'));
-      });
+      /* Una fila por registro, YA con las marcas y los tiempos. */
+      function filaDe(r){
+        var s=SES[r.sesion_id]||{}, at=atletaPorId(r.atleta_id)||{};
+        var ser=(r.series_hechas==null?'·':r.series_hechas)+' / '+(r.series_previstas==null?'·':r.series_previstas);
+        return {
+          fecha:s.fecha||'', dia:s.fecha?nombreDiaFB(s.fecha):'',
+          atleta:((at.nombre||'')+' '+(at.apellidos||'')).trim(), grupo:nombreGrupo(s.grupo_id)||'',
+          entreno:s.titulo||'', estado:FBD_ESTADO[r.estado]||'', rpe:r.rpe==null?'':r.rpe,
+          sens:r.sensacion_general==null?'':r.sensacion_general, ser:ser,
+          marcas:fmtTiemposFB(r.tiempos_reales),
+          molestias:r.molestias||'', siente:r.como_me_siento||'', notas:r.notas_atleta||'',
+          motivo:r.motivo_no_hecho?(FBD_MOTIVO[r.motivo_no_hecho]||r.motivo_no_hecho):'',
+          sueno:r.horas_sueno==null?'':r.horas_sueno, peso:r.peso_kg==null?'':r.peso_kg,
+          coment:COM[r.id]||''
+        };
+      }
 
-      /* BOM delante para que Excel lea bien las tildes; separador «;» que es
-         lo que espera el Excel en español. */
-      var csv='﻿'+filas.join('\r\n');
-      var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-      var url=URL.createObjectURL(blob);
-      var a=document.createElement('a');
-      a.href=url; a.download='feedback_'+desde+'_'+hasta+'.csv';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
-
-      fbdMsg(regs.length+(regs.length===1?' registro descargado.':' registros descargados.'));
+      var okX=await cargarXLSX();
+      if(okX && window.XLSX){
+        /* Excel con UNA PESTAÑA POR DÍA y las marcas/tiempos incluidas. */
+        var COLS=['Atleta','Entrenamiento','Estado','RPE','Sensación','Series (hechas/prev.)','Marcas y tiempos','Molestias','Cómo se siente','Notas del atleta','Sueño (h)','Peso (kg)','Tu comentario'];
+        var W=[{wch:22},{wch:20},{wch:11},{wch:6},{wch:7},{wch:14},{wch:48},{wch:20},{wch:20},{wch:30},{wch:8},{wch:8},{wch:26}];
+        var porDia={}; regs.forEach(function(r){ var f=(SES[r.sesion_id]||{}).fecha||'—'; (porDia[f]=porDia[f]||[]).push(r); });
+        var wb=XLSX.utils.book_new();
+        Object.keys(porDia).sort().forEach(function(f){
+          var aoa=[COLS];
+          porDia[f].forEach(function(r){ var d=filaDe(r);
+            aoa.push([d.atleta,d.entreno,d.estado,d.rpe,d.sens,d.ser,d.marcas,d.molestias,d.siente,d.notas,d.sueno,d.peso,d.coment]); });
+          var ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=W;
+          XLSX.utils.book_append_sheet(wb, ws, (f==='—'?'Sin fecha':nombreDiaFB(f)).slice(0,31));
+        });
+        XLSX.writeFile(wb, 'feedback_'+desde+'_'+hasta+'.xlsx');
+        fbdMsg(regs.length+(regs.length===1?' registro descargado (Excel por día).':' registros descargados (Excel por día).'));
+      } else {
+        /* Respaldo CSV: también con «Día» y las marcas/tiempos. BOM + «;» para el Excel español. */
+        var cols=['Día','Fecha','Atleta','Grupo','Entrenamiento','Estado','RPE','Sensación','Sueño (h)','Peso (kg)','Series hechas','Series previstas','Marcas y tiempos','Motivo no hecho','Cómo se siente','Molestias','Notas del atleta','Tu comentario'];
+        var filas=[cols.map(celdaCSV).join(';')];
+        regs.forEach(function(r){ var d=filaDe(r);
+          filas.push([d.dia,d.fecha,d.atleta,d.grupo,d.entreno,d.estado,d.rpe,d.sens,d.sueno,d.peso,
+            (r.series_hechas==null?'':r.series_hechas),(r.series_previstas==null?'':r.series_previstas),
+            d.marcas.replace(/\n/g,' · '),d.motivo,d.siente,d.molestias,d.notas,d.coment].map(celdaCSV).join(';'));
+        });
+        var csv='﻿'+filas.join('\r\n');
+        var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+        var url=URL.createObjectURL(blob);
+        var a=document.createElement('a'); a.href=url; a.download='feedback_'+desde+'_'+hasta+'.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+        fbdMsg(regs.length+(regs.length===1?' registro descargado.':' registros descargados.'));
+      }
     } catch(e){
       fbdMsg('No hemos podido preparar la hoja. Prueba otra vez en un momento.', true);
     }
