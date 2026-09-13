@@ -165,25 +165,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ---- 6 · Ficha de atleta (tipo cubo) en su grupo ----
+  let atletaId: string | null = null;
   const rAt = await rest(`atletas?select=id,grupo_id,tipo_membresia&perfil_id=eq.${perfilId}&limit=1`);
   const yaFicha = Array.isArray(rAt.datos) ? rAt.datos[0] : null;
   if (yaFicha) {
+    atletaId = yaFicha.id;
     // No pisamos una membresía existente (socio/escuela): solo rellenamos huecos.
     const patch: Record<string, unknown> = {};
     if (!yaFicha.grupo_id && grupoId) patch.grupo_id = grupoId;
     if (!yaFicha.tipo_membresia) patch.tipo_membresia = "cubo";
     if (Object.keys(patch).length) await rest(`atletas?id=eq.${yaFicha.id}`, { method: "PATCH", body: JSON.stringify(patch) });
   } else {
-    await rest("atletas", {
+    const rIns = await rest("atletas", {
       method: "POST",
+      headers: { Prefer: "return=representation" },
       body: JSON.stringify({
         perfil_id: perfilId, nombre, apellidos, dni: dni || null,
         email, telefono, tipo_membresia: "cubo", grupo_id: grupoId, estado: "prueba",
       }),
     });
+    const creada = Array.isArray(rIns.datos) ? rIns.datos[0] : rIns.datos;
+    atletaId = (creada as { id?: string } | null)?.id ?? null;
   }
 
-  // ---- 7 · Registro del alta (para la lista del club) ----
+  // ---- 7 · Registro del alta (para la lista del club), enlazado a la cuenta ----
   await rest("cubo_altas", {
     method: "POST",
     body: JSON.stringify({
@@ -191,6 +196,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       hijo: hijo || null, direccion: direccion || null,
       horario: SLOT_A_GRUPO[slot], dias, precio_mes: precio,
       nota: nota || null, es_escuela: escuela, estado: "pendiente",
+      perfil_id: perfilId, atleta_id: atletaId,
     }),
   });
 
