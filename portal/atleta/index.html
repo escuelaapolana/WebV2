@@ -787,6 +787,7 @@
                    font-family: var(--fuente-dato); font-variant-numeric:tabular-nums; }
   .apu-hms span { flex:none; font-size:14px; color: var(--texto-suave); }
   .apu-pista { margin:8px 0 0; font-family: var(--fuente-dato); font-size:13px; color: var(--azul-oscuro); min-height:18px; }
+  .apu-pista.apu-pista--alerta { font-family: inherit; color:#B0563A; line-height:1.5; }
   .apu-pie { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
   .apu-msg { flex:1; min-width:120px; font-size:13px; color: var(--texto-suave); }
   .apu-msg.mal { color:#B96F09; }
@@ -6158,15 +6159,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      cada 100 m, que es como se habla en la piscina. */
   function apuPintarRitmo(){
     var caja=$('apu-ritmo'); if(!caja) return;
+    caja.classList.remove('apu-pista--alerta');
     var d=APU_DEP[apuSel]||APU_DEP.bici;
     var dist=numDe(($('apu-dist')||{}).value), t=segApu();
     if(!dist || !t || !d.unidad){ caja.textContent=''; return; }
     var metros = d.unidad==='km' ? dist*1000 : dist;
     if(metros<=0){ caja.textContent=''; return; }
     var porKm = t/(metros/1000);
-    caja.textContent = d.unidad==='m'
-      ? 'Ritmo: '+minSegTxt(t/(metros/100))+' cada 100 m'
-      : 'Ritmo: '+minSegTxt(porKm)+' /km · '+(metros/1000/(t/3600)).toFixed(1).replace('.',',')+' km/h';
+    if(d.unidad==='m'){ caja.textContent = 'Ritmo: '+minSegTxt(t/(metros/100))+' cada 100 m'; return; }
+    /* Aviso si el ritmo es imposible: casi siempre es haber metido los
+       minutos en la casilla de las horas (18:14 → 18 h 14 min). */
+    var kmh = (metros/1000)/(t/3600);
+    if(kmh < 3 || kmh > 50){
+      caja.classList.add('apu-pista--alerta');
+      caja.textContent = '⚠️ Sale un ritmo rarísimo ('+kmh.toFixed(1).replace('.',',')+' km/h). Revisa el tiempo: los minutos van en «min» y los segundos en «s» (deja «h» en 0 si no llegas a la hora).';
+      return;
+    }
+    caja.textContent = 'Ritmo: '+minSegTxt(porKm)+' /km · '+kmh.toFixed(1).replace('.',',')+' km/h';
   }
   function numDe(v){
     if(v==null) return 0;
@@ -6208,6 +6217,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var desn=numDe(($('apu-desn')||{}).value);
     if(d.unidad && !dist && !seg){
       msg.textContent='Pon al menos la distancia o el tiempo.'; msg.className='apu-msg mal'; return;
+    }
+    /* Red de seguridad: si el ritmo sale imposible (casi siempre por meter
+       los minutos en la casilla de las horas), preguntar antes de guardar. */
+    if(d.unidad==='km' && dist>0 && seg>0){
+      var kmhChk = dist/(seg/3600);
+      if((kmhChk < 3 || kmhChk > 50) &&
+         !window.confirm('El tiempo da un ritmo rarísimo ('+kmhChk.toFixed(1).replace('.',',')+' km/h). ¿Seguro que lo guardas así?\n\nSi no, revisa el tiempo: los minutos van en «min» y los segundos en «s» (deja «h» en 0 si no llegas a la hora).')){
+        return;
+      }
     }
     boton.disabled=true; msg.textContent='Guardando…'; msg.className='apu-msg';
 
