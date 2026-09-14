@@ -347,6 +347,10 @@
   .apt-in input:focus { outline:2px solid var(--azul-filete,#3B85C0); outline-offset:-1px; }
   .apt-msg { min-height:20px; font-size:13px; color: var(--texto-suave); margin-bottom:10px; }
   .apt-msg.error { color:#B0563A; }
+  .apt-par { display:flex; gap:10px; margin-bottom:10px; }
+  .apt-par .apt-in { flex:1; min-width:0; }
+  .apt-mas { display:inline-flex; align-items:center; min-height:44px; padding:0 4px; margin-bottom:12px;
+    background:none; border:0; color: var(--azul-filete,#3B85C0); font:inherit; font-weight:600; cursor:pointer; }
 </style>
 <script>
 /* Avisos suaves del portal (APX), iguales que en el resto de pantallas. */
@@ -442,8 +446,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       grupo:'Saltos', ayuda:'Salto horizontal a pies juntos. Mejor de 3.' },
     { k:'balon_medicinal', corto:'B. medic.', nombre:'Balón medicinal', unidad:'m', dec:2, intentos:3, menosMejor:false,
       grupo:'Lanzamientos', ayuda:'Lanzamiento hacia delante con las dos manos. Mejor de 3.' },
-    { k:'test_10_5', corto:'10/5', nombre:'Test 10/5', unidad:'', unidadLarga:'índice', dec:2, intentos:1, menosMejor:false,
-      grupo:'Saltos', ayuda:'Rebotes repetidos: fuerza reactiva (índice, más es mejor).' }
+    { k:'drop_jump', corto:'Drop jump', nombre:'Drop jump', unidad:'cm', dec:1, pares:true, menosMejor:false,
+      grupo:'Saltos', ayuda:'Caída desde el cajón y salto reactivo. En cada intento: altura del cajón y altura del salto, en cm.' }
   ];
   function testPorClave(k){ for(var i=0;i<TESTS.length;i++){ if(TESTS[i].k===k) return TESTS[i]; } return TESTS[0]; }
 
@@ -859,7 +863,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var f = RES_ABIERTA[testK];
     var fmt = t.serie ? ((f && f.formato_rsi) || 6) : null;
     var prev = (f && Array.isArray(f.intentos)) ? f.intentos.slice() : [];
-    function inputs(nn){
+
+    function inputsSimples(nn){
       var h='';
       for(var i=0;i<nn;i++){
         var v = prev[i]!=null ? String(prev[i]).replace('.',',') : '';
@@ -869,36 +874,92 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
       return h;
     }
-    var n = t.serie ? fmt : (t.intentos || 1);
-    var fmtSel = t.serie ? '<div class="apt-fmt">Serie de: '+
-        '<button type="button" data-fmt="6" class="'+(fmt===6?'on':'')+'">6</button>'+
-        '<button type="button" data-fmt="10" class="'+(fmt===10?'on':'')+'">10</button></div>' : '';
+    function filaPar(p){
+      p = p || {};
+      var c = p.cajon!=null ? String(p.cajon).replace('.',',') : '';
+      var s = p.salto!=null ? String(p.salto).replace('.',',') : '';
+      return '<div class="apt-par">'+
+        '<label class="apt-in"><span>Cajón (cm)</span><input type="text" inputmode="decimal" data-cajon value="'+esc(c)+'" placeholder="30"></label>'+
+        '<label class="apt-in"><span>Salto (cm)</span><input type="text" inputmode="decimal" data-salto value="'+esc(s)+'" placeholder="cm"></label>'+
+      '</div>';
+    }
+
+    var cuerpo, fmtSel = '';
+    if(t.pares){
+      var arr = prev.length ? prev : [{},{},{}];
+      cuerpo = '<div class="apt-ins" id="apt-ins">'+arr.map(filaPar).join('')+'</div>'+
+               '<button type="button" class="apt-mas" id="apt-mas">+ Añadir altura</button>';
+    } else {
+      var n = t.serie ? fmt : (t.intentos || 1);
+      fmtSel = t.serie ? '<div class="apt-fmt">Serie de: '+
+          '<button type="button" data-fmt="6" class="'+(fmt===6?'on':'')+'">6</button>'+
+          '<button type="button" data-fmt="10" class="'+(fmt===10?'on':'')+'">10</button></div>' : '';
+      cuerpo = '<div class="apt-ins" id="apt-ins">'+inputsSimples(n)+'</div>';
+    }
+
     var m = document.createElement('div');
     m.className = 'apt-modal';
     m.innerHTML = '<div class="apt-hoja"><button type="button" class="apt-x" aria-label="Cerrar">✕</button>'+
       '<h3>'+esc(t.nombre)+'</h3>'+
-      (t.ayuda?'<p class="apt-ayuda">'+esc(t.ayuda)+'</p>':'')+ fmtSel +
-      '<div class="apt-ins" id="apt-ins">'+inputs(n)+'</div>'+
+      (t.ayuda?'<p class="apt-ayuda">'+esc(t.ayuda)+'</p>':'')+ fmtSel + cuerpo +
       '<div class="apt-msg" id="apt-msg"></div>'+
       '<button type="button" class="btn-grande" id="apt-guardar">Guardar</button></div>';
     document.body.appendChild(m);
-    function leer(){ return Array.prototype.map.call(m.querySelectorAll('#apt-ins [data-i]'), function(inp){ return inp.value; }); }
+
     function cerrar(){ m.remove(); }
     m.querySelector('.apt-x').addEventListener('click', cerrar);
     m.addEventListener('click', function(e){ if(e.target===m) cerrar(); });
-    m.querySelectorAll('[data-fmt]').forEach(function(b){
-      b.addEventListener('click', function(){
-        fmt = parseInt(b.getAttribute('data-fmt'),10);
-        prev = leer().map(aptNum);
-        m.querySelectorAll('[data-fmt]').forEach(function(x){ x.classList.toggle('on', x===b); });
-        m.querySelector('#apt-ins').innerHTML = inputs(fmt);
+
+    if(t.pares){
+      m.querySelector('#apt-mas').addEventListener('click', function(){
+        m.querySelector('#apt-ins').insertAdjacentHTML('beforeend', filaPar({}));
       });
-    });
+    } else if(t.serie){
+      m.querySelectorAll('[data-fmt]').forEach(function(b){
+        b.addEventListener('click', function(){
+          fmt = parseInt(b.getAttribute('data-fmt'),10);
+          prev = Array.prototype.map.call(m.querySelectorAll('#apt-ins [data-i]'), function(inp){ return aptNum(inp.value); });
+          m.querySelectorAll('[data-fmt]').forEach(function(x){ x.classList.toggle('on', x===b); });
+          m.querySelector('#apt-ins').innerHTML = inputsSimples(fmt);
+        });
+      });
+    }
+
     m.querySelector('#apt-guardar').addEventListener('click', function(){
-      var vals = leer().map(aptNum).filter(function(x){ return x!=null; });
-      guardarApuntar(t, vals, fmt, m);
+      if(t.pares){
+        var pares = Array.prototype.map.call(m.querySelectorAll('.apt-par'), function(row){
+          return { cajon: aptNum(row.querySelector('[data-cajon]').value), salto: aptNum(row.querySelector('[data-salto]').value) };
+        }).filter(function(p){ return p.salto!=null; });
+        guardarPares(t, pares, m);
+      } else {
+        var vals = Array.prototype.map.call(m.querySelectorAll('#apt-ins [data-i]'), function(inp){ return aptNum(inp.value); })
+                   .filter(function(x){ return x!=null; });
+        guardarApuntar(t, vals, fmt, m);
+      }
     });
-    var primero = m.querySelector('#apt-ins input'); if(primero) primero.focus();
+    var primero = m.querySelector('input'); if(primero) primero.focus();
+  }
+
+  async function guardarPares(t, pares, modal){
+    var msg = modal.querySelector('#apt-msg');
+    var f = RES_ABIERTA[t.k];
+    if(!pares.length){
+      if(f){ var d = await sb.from('test_resultados').delete().eq('id', f.id);
+             if(!d.error) delete RES_ABIERTA[t.k]; }
+      cerrarModal(modal); pintarMisResultados(); return;
+    }
+    msg.className='apt-msg'; msg.textContent='Guardando…';
+    var mejor = Math.max.apply(null, pares.map(function(p){ return p.salto; }));
+    var fila = { bateria_id: BAT_ABIERTA.id, atleta_id: FICHA.id, test: t.k,
+      intentos: pares, mejor: mejor, formato_rsi: null, no_asiste:false };
+    var r = await sb.from('test_resultados')
+      .upsert(fila, { onConflict:'bateria_id,atleta_id,test' })
+      .select('id,test,intentos,mejor,formato_rsi,no_asiste').single();
+    if(r.error){ msg.className='apt-msg error';
+      msg.textContent = 'No se ha podido guardar. Comprueba la conexión y vuelve a darle.'; return; }
+    RES_ABIERTA[t.k] = r.data;
+    cerrarModal(modal);
+    await pantallaMisResultados();
   }
 
   async function guardarApuntar(t, vals, fmt, modal){
@@ -1140,7 +1201,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('t-cond').addEventListener('click', abrirCondiciones);
 
     var chips = $('t-chips');
-    chips.innerHTML = TESTS.map(function(t){
+    chips.innerHTML = TESTS.filter(function(t){ return !t.pares; }).map(function(t){
       return '<button type="button" data-t="'+t.k+'"'+(t.k===TEST.k?' class="activo"':'')+'>'+esc(t.corto)+'</button>';
     }).join('');
     chips.querySelectorAll('[data-t]').forEach(function(b){
