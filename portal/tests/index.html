@@ -351,6 +351,26 @@
   .apt-par .apt-in { flex:1; min-width:0; }
   .apt-mas { display:inline-flex; align-items:center; min-height:44px; padding:0 4px; margin-bottom:12px;
     background:none; border:0; color: var(--azul-filete,#3B85C0); font:inherit; font-weight:600; cursor:pointer; }
+
+  /* Radiografía · el detalle completo, de solo lectura */
+  .rad { margin-top:22px; border:1px solid var(--linea-borde); border-radius:16px; background:#fff; overflow:hidden; }
+  .rad > summary { list-style:none; cursor:pointer; padding:15px 16px; font-weight:700; color: var(--navy);
+    display:flex; align-items:center; gap:8px; }
+  .rad > summary::-webkit-details-marker { display:none; }
+  .rad > summary::before { content:'📊'; }
+  .rad-cuerpo { padding:0 16px 18px; }
+  .rad-h { margin:18px 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color: var(--texto-suave); font-weight:700; }
+  .rad-h .rad-ayuda { display:block; text-transform:none; letter-spacing:0; font-weight:500; font-size:12px; color: var(--texto-suave); margin-top:2px; }
+  .rad-linea { display:flex; justify-content:space-between; align-items:baseline; padding:7px 0; border-bottom:1px solid var(--linea,#EDE6D7); }
+  .rad-linea:last-child { border-bottom:0; }
+  .rad-linea span { font-size:14.5px; color: var(--texto); }
+  .rad-linea b { font-family: var(--fuente-dato); font-size:16px; color: var(--navy); }
+  .rad-tabla { width:100%; border-collapse:collapse; font-size:14px; }
+  .rad-tabla th { text-align:left; font-size:12px; color: var(--texto-suave); font-weight:600; padding:4px 8px 4px 0; border-bottom:1px solid var(--linea-borde); }
+  .rad-tabla td { padding:8px 8px 8px 0; border-bottom:1px solid var(--linea,#EDE6D7); font-family: var(--fuente-dato); color: var(--texto); }
+  .rad-tabla tbody tr:last-child td { border-bottom:0; }
+  .rad-tabla td b { color: var(--navy); }
+  .rad-pie { margin:16px 0 0; font-size:13px; color: var(--texto-suave); line-height:1.55; }
 </style>
 <script>
 /* Avisos suaves del portal (APX), iguales que en el resto de pantallas. */
@@ -633,7 +653,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     FICHA = MIS_FICHAS[0];
 
     var rr = await sb.from('test_resultados')
-      .select('atleta_id,test,mejor,formato_rsi,no_asiste,test_baterias(fecha,sede)')
+      .select('atleta_id,test,mejor,intentos,formato_rsi,no_asiste,test_baterias(fecha,sede)')
       .in('atleta_id', MIS_FICHAS.map(function(f){ return f.id; }));
     if(rr.error){
       pintarMis(esDePermisos(rr.error)
@@ -649,7 +669,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!fe) return;                       // sin día no hay nada que contar
       (TOMAS[f.atleta_id] = TOMAS[f.atleta_id] || []).push({
         test: f.test, mejor: (f.mejor==null?null:Number(f.mejor)),
-        formato: f.formato_rsi, falta: !!f.no_asiste,
+        intentos: f.intentos, formato: f.formato_rsi, falta: !!f.no_asiste,
         fecha: String(fe).slice(0,10), sede: (f.test_baterias.sede||'')
       });
     });
@@ -660,6 +680,74 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // Envoltorio común: cabecera + lo que toque debajo.
   function pintarMis(html){
     wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+html+avisoOtroPapel()+'</div>';
+  }
+
+  // ============================================================
+  // 4 quater · RADIOGRAFÍA · el detalle completo de la última batería
+  // ------------------------------------------------------------
+  // Lee lo guardado (incluido el detalle fino del drop jump: RSI por
+  // cajón y los pogos con altura/TC) y lo enseña en una tabla clara,
+  // para que el atleta vea su perfil y dónde tiene que centrarse.
+  // ============================================================
+  function radNum(v, dec){
+    if(v==null || isNaN(v)) return '—';
+    var s = Number(v).toFixed(dec).replace(/\.?0+$/,'');
+    return s.replace('.', ',');
+  }
+  function radiografiaDe(fichaId){
+    var t = (TOMAS[fichaId]||[]).filter(function(x){ return !x.falta; });
+    if(!t.length) return null;
+    var ultima = null;
+    t.forEach(function(x){ if(!ultima || x.fecha > ultima) ultima = x.fecha; });
+    var filas = t.filter(function(x){ return x.fecha === ultima; });
+    var by = {};
+    filas.forEach(function(x){ by[x.test] = x; });
+    return { fecha: ultima, sede: (filas[0]||{}).sede || '', by: by };
+  }
+  function radLinea(nombre, toma, unidad, dec){
+    if(!toma || toma.mejor==null) return '';
+    return '<div class="rad-linea"><span>'+esc(nombre)+'</span><b>'+radNum(toma.mejor, dec)+(unidad?' '+unidad:'')+'</b></div>';
+  }
+  function bloqueRadiografia(fichaId){
+    var r = radiografiaDe(fichaId);
+    if(!r) return '';
+    var by = r.by, partes = [];
+
+    var vel = radLinea('10 m salida de tacos', by['10m'], 's', 2) +
+              radLinea('30 m desde tacos', by['30m_tacos'], 's', 2) +
+              radLinea('30 m lanzado', by['30_lanzado'], 's', 2);
+    if(vel) partes.push('<h4 class="rad-h">Velocidad</h4>'+vel);
+
+    var salt = radLinea('CMJ', by['cmj'], 'cm', 1) +
+               radLinea('SJ', by['sj'], 'cm', 1) +
+               radLinea('Abalakov', by['abalakov'], 'cm', 1) +
+               radLinea('Salto horizontal', by['salto_horizontal'], 'm', 2) +
+               radLinea('Balón medicinal', by['balon_medicinal'], 'm', 2);
+    if(salt) partes.push('<h4 class="rad-h">Salto y potencia</h4>'+salt);
+
+    var dj = by['drop_jump'];
+    if(dj && Array.isArray(dj.intentos) && dj.intentos.length){
+      var fdj = dj.intentos.filter(function(p){ return p && p.salto!=null; }).map(function(p){
+        return '<tr><td>'+radNum(p.cajon,1)+' cm</td><td><b>'+radNum(p.salto,1)+' cm</b></td><td>'+radNum(p.rsi,2)+'</td></tr>';
+      }).join('');
+      if(fdj) partes.push('<h4 class="rad-h">Drop jump <span class="rad-ayuda">reactividad por altura de caída · RSI alto = mejor rebote</span></h4>'+
+        '<table class="rad-tabla"><thead><tr><th>Cajón</th><th>Salto</th><th>RSI</th></tr></thead><tbody>'+fdj+'</tbody></table>');
+
+      var pg = dj.intentos[0] && dj.intentos[0].pogos;
+      if(Array.isArray(pg) && pg.length){
+        var fpg = pg.map(function(p,i){
+          return '<tr><td>'+(p.serie||i+1)+'</td><td>'+radNum(p.altura,1)+' cm</td><td>'+radNum(p.rsi_medio,2)+'</td><td>'+radNum(p.rsi_max,2)+'</td><td>'+radNum(p.tc,3)+' s</td></tr>';
+        }).join('');
+        partes.push('<h4 class="rad-h">10 pogos <span class="rad-ayuda">resistencia reactiva · TC bajo = más reactivo</span></h4>'+
+          '<table class="rad-tabla"><thead><tr><th>Serie</th><th>Altura</th><th>RSI med.</th><th>RSI máx.</th><th>TC</th></tr></thead><tbody>'+fpg+'</tbody></table>');
+      }
+    }
+
+    if(!partes.length) return '';
+    return '<details class="rad" open><summary>Radiografía completa · '+esc(fLarga(r.fecha))+(r.sede?' · '+esc(r.sede):'')+'</summary>'+
+      '<div class="rad-cuerpo">'+partes.join('')+
+      '<p class="rad-pie">Es tu punto de partida. Donde vayas más flojo —velocidad, salto o reactividad— es donde toca centrarse.</p>'+
+      '</div></details>';
   }
 
   // Las tomas de un atleta agrupadas por prueba. El RSI de 6 saltos y
@@ -786,7 +874,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }).join('');
     }
 
-    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+bloqueApuntar()+cuerpo+avisoOtroPapel()+'</div>';
+    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+bloqueApuntar()+cuerpo+bloqueRadiografia(FICHA.id)+avisoOtroPapel()+'</div>';
 
     wrap.querySelectorAll('[data-ficha]').forEach(function(b){
       b.addEventListener('click', async function(){
