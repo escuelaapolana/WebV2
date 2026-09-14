@@ -317,6 +317,36 @@
   .otro-papel { background: var(--crema-banda); border:1px solid var(--linea-borde); border-radius:14px;
                 padding:14px 16px; margin-top:18px; font-size:14px; color: var(--texto); line-height:1.55; }
   .otro-papel b { color: var(--navy); }
+
+  /* Apuntar mis marcas · lo que rellena el propio atleta */
+  .apt-caja { margin-bottom:22px; }
+  .apt-fila { width:100%; display:flex; align-items:center; gap:12px; padding:14px 16px; min-height:56px;
+    background:#fff; border:1px solid var(--linea-borde); border-top-width:0; cursor:pointer; font:inherit; text-align:left; }
+  .caja-filas .apt-fila:first-child { border-top-width:1px; border-radius:14px 14px 0 0; }
+  .caja-filas .apt-fila:last-child { border-radius:0 0 14px 14px; }
+  .apt-fila:only-child { border-radius:14px; }
+  .apt-fila:active { background: var(--crema); }
+  .apt-nom { flex:1; font-size:15px; font-weight:600; color: var(--navy); }
+  .apt-dato { font-family: var(--fuente-dato); font-size:16px; font-weight:700; color: var(--navy); }
+  .apt-dato.vacia { font-family:inherit; font-size:13.5px; font-weight:600; color: var(--azul-filete,#3B85C0); }
+  .apt-fila i { color: var(--texto-suave); font-style:normal; font-size:18px; }
+  .apt-modal { position:fixed; inset:0; background:rgba(20,30,45,.45); display:flex; align-items:flex-end; justify-content:center; z-index:9000; }
+  .apt-hoja { background:#fff; width:100%; max-width:520px; border-radius:18px 18px 0 0;
+    padding:20px 18px calc(20px + env(safe-area-inset-bottom)); position:relative; box-shadow:0 -10px 40px rgba(20,30,45,.25); }
+  .apt-hoja h3 { margin:0 4px 4px 0; color: var(--navy); }
+  .apt-ayuda { margin:0 0 14px; font-size:13px; color: var(--texto-suave); line-height:1.5; }
+  .apt-x { position:absolute; top:12px; right:12px; background:none; border:0; font-size:18px; color: var(--texto-suave); cursor:pointer; min-width:40px; min-height:40px; }
+  .apt-fmt { display:flex; align-items:center; gap:8px; margin-bottom:14px; font-size:14px; color: var(--texto-suave); }
+  .apt-fmt button { min-width:46px; min-height:40px; border:1px solid var(--linea-borde); border-radius:10px; background:#fff; font:inherit; font-weight:700; color: var(--navy); cursor:pointer; }
+  .apt-fmt button.on { background: var(--navy); color:#fff; border-color: var(--navy); }
+  .apt-ins { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  .apt-in { display:flex; flex-direction:column; gap:4px; flex:1; min-width:88px; }
+  .apt-in span { font-size:12px; color: var(--texto-suave); }
+  .apt-in input { min-height:54px; border:1px solid var(--linea-borde); border-radius:12px; padding:0 10px;
+    font:inherit; font-size:20px; font-family: var(--fuente-dato); text-align:center; }
+  .apt-in input:focus { outline:2px solid var(--azul-filete,#3B85C0); outline-offset:-1px; }
+  .apt-msg { min-height:20px; font-size:13px; color: var(--texto-suave); margin-bottom:10px; }
+  .apt-msg.error { color:#B0563A; }
 </style>
 <script>
 /* Avisos suaves del portal (APX), iguales que en el resto de pantallas. */
@@ -557,6 +587,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // a fallar.
   // ============================================================
   var MIS_FICHAS = [], FICHA = null, TOMAS = {}, ABIERTA = null;
+  var BAT_ABIERTA = null, RES_ABIERTA = {};   // la batería del día para que el atleta apunte, y sus marcas en ella
 
   function cabeceraMis(){
     var propia = MIS_FICHAS.length === 1 && MIS_FICHAS[0].perfil_id === (perfil && perfil.id);
@@ -580,7 +611,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       'Has entrado bien, pero tu cuenta aún no está enlazada con una ficha del club. Avísanos y lo dejamos listo.')); return; }
 
     var ra = await sb.from('atletas')
-      .select('id,nombre,apellidos,categoria,perfil_id')
+      .select('id,nombre,apellidos,categoria,perfil_id,grupo_id')
       .or('perfil_id.eq.'+miId+',perfil_padre_id.eq.'+miId)
       .order('nombre');
     if(ra.error){
@@ -620,6 +651,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         fecha: String(fe).slice(0,10), sede: (f.test_baterias.sede||'')
       });
     });
+    await cargarBateriaAbierta();
     pintarMisResultados();
   }
 
@@ -752,14 +784,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }).join('');
     }
 
-    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+cuerpo+avisoOtroPapel()+'</div>';
+    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+bloqueApuntar()+cuerpo+avisoOtroPapel()+'</div>';
 
     wrap.querySelectorAll('[data-ficha]').forEach(function(b){
-      b.addEventListener('click', function(){
+      b.addEventListener('click', async function(){
         FICHA = MIS_FICHAS.filter(function(f){ return f.id===b.getAttribute('data-ficha'); })[0] || FICHA;
         ABIERTA = null;
+        await cargarBateriaAbierta();
         pintarMisResultados();
       });
+    });
+    wrap.querySelectorAll('[data-apt]').forEach(function(b){
+      b.addEventListener('click', function(){ abrirApuntar(b.getAttribute('data-apt')); });
     });
     wrap.querySelectorAll('[data-prueba]').forEach(function(b){
       b.addEventListener('click', function(){
@@ -769,6 +805,126 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
     });
   }
+
+  // ============================================================
+  // 4 ter · APUNTAR · el atleta mete sus propias marcas
+  // ------------------------------------------------------------
+  // La batería (el día de test) la crea el equipo técnico; aquí el
+  // atleta rellena SOLO su ficha. La base ya lo limita a `mis_atletas()`;
+  // esta pantalla solo enseña lo que se puede tocar.
+  // ============================================================
+  async function cargarBateriaAbierta(){
+    BAT_ABIERTA = null; RES_ABIERTA = {};
+    if(!FICHA || !FICHA.grupo_id) return;
+    var b = await sb.from('test_baterias')
+      .select('id,fecha,sede,grupo_id')
+      .eq('grupo_id', FICHA.grupo_id)
+      .order('fecha',{ascending:false}).limit(1);
+    if(b.error || !b.data || !b.data.length) return;
+    var bat = b.data[0];
+    var dias = Math.round((new Date(hoyISO()) - new Date(String(bat.fecha).slice(0,10)))/86400000);
+    if(dias > 21) return;   // una batería de hace más de 3 semanas ya no es «la de hoy»
+    BAT_ABIERTA = bat;
+    var rr = await sb.from('test_resultados')
+      .select('id,test,intentos,mejor,formato_rsi,no_asiste')
+      .eq('bateria_id', bat.id).eq('atleta_id', FICHA.id);
+    (rr.data||[]).forEach(function(f){ RES_ABIERTA[f.test] = f; });
+  }
+
+  function bloqueApuntar(){
+    if(!BAT_ABIERTA){
+      return '<div class="otro-papel" style="margin-bottom:16px"><b>¿Toca test?</b> '+
+             'Cuando el equipo técnico abra la batería del día, aquí te saldrá para apuntar tus marcas.</div>';
+    }
+    var filas = TESTS.map(function(t){
+      var f = RES_ABIERTA[t.k];
+      var hecho = f && !f.no_asiste && f.mejor!=null;
+      var dato = hecho ? '<span class="apt-dato">'+conUnidad(Number(f.mejor), t)+'</span>'
+                       : '<span class="apt-dato vacia">apuntar</span>';
+      return '<button type="button" class="apt-fila" data-apt="'+esc(t.k)+'">'+
+        '<span class="apt-nom">'+esc(t.nombre)+'</span>'+dato+'<i>›</i></button>';
+    }).join('');
+    return '<div class="apt-caja">'+
+      '<p class="rotulo" style="margin:0 0 8px">Apuntar mis marcas · '+esc(fCorta(BAT_ABIERTA.fecha))+
+      (BAT_ABIERTA.sede?' · '+esc(BAT_ABIERTA.sede):'')+'</p>'+
+      '<div class="caja-filas">'+filas+'</div></div>';
+  }
+
+  function aptNum(s){
+    if(s==null || String(s).trim()==='') return null;
+    var n = Number(String(s).replace(',','.').replace(/[^0-9.\-]/g,''));
+    return isFinite(n) ? n : null;
+  }
+
+  function abrirApuntar(testK){
+    var t = testPorClave(testK);
+    var f = RES_ABIERTA[testK];
+    var fmt = t.serie ? ((f && f.formato_rsi) || 6) : null;
+    var prev = (f && Array.isArray(f.intentos)) ? f.intentos.slice() : [];
+    function inputs(nn){
+      var h='';
+      for(var i=0;i<nn;i++){
+        var v = prev[i]!=null ? String(prev[i]).replace('.',',') : '';
+        h += '<label class="apt-in"><span>'+(t.serie?'Salto '+(i+1):'Intento '+(i+1))+'</span>'+
+             '<input type="text" inputmode="decimal" data-i="'+i+'" value="'+esc(v)+'" '+
+             'placeholder="'+esc(t.unidad||t.unidadLarga||'')+'"></label>';
+      }
+      return h;
+    }
+    var n = t.serie ? fmt : (t.intentos || 1);
+    var fmtSel = t.serie ? '<div class="apt-fmt">Serie de: '+
+        '<button type="button" data-fmt="6" class="'+(fmt===6?'on':'')+'">6</button>'+
+        '<button type="button" data-fmt="10" class="'+(fmt===10?'on':'')+'">10</button></div>' : '';
+    var m = document.createElement('div');
+    m.className = 'apt-modal';
+    m.innerHTML = '<div class="apt-hoja"><button type="button" class="apt-x" aria-label="Cerrar">✕</button>'+
+      '<h3>'+esc(t.nombre)+'</h3>'+
+      (t.ayuda?'<p class="apt-ayuda">'+esc(t.ayuda)+'</p>':'')+ fmtSel +
+      '<div class="apt-ins" id="apt-ins">'+inputs(n)+'</div>'+
+      '<div class="apt-msg" id="apt-msg"></div>'+
+      '<button type="button" class="btn-grande" id="apt-guardar">Guardar</button></div>';
+    document.body.appendChild(m);
+    function leer(){ return Array.prototype.map.call(m.querySelectorAll('#apt-ins [data-i]'), function(inp){ return inp.value; }); }
+    function cerrar(){ m.remove(); }
+    m.querySelector('.apt-x').addEventListener('click', cerrar);
+    m.addEventListener('click', function(e){ if(e.target===m) cerrar(); });
+    m.querySelectorAll('[data-fmt]').forEach(function(b){
+      b.addEventListener('click', function(){
+        fmt = parseInt(b.getAttribute('data-fmt'),10);
+        prev = leer().map(aptNum);
+        m.querySelectorAll('[data-fmt]').forEach(function(x){ x.classList.toggle('on', x===b); });
+        m.querySelector('#apt-ins').innerHTML = inputs(fmt);
+      });
+    });
+    m.querySelector('#apt-guardar').addEventListener('click', function(){
+      var vals = leer().map(aptNum).filter(function(x){ return x!=null; });
+      guardarApuntar(t, vals, fmt, m);
+    });
+    var primero = m.querySelector('#apt-ins input'); if(primero) primero.focus();
+  }
+
+  async function guardarApuntar(t, vals, fmt, modal){
+    var msg = modal.querySelector('#apt-msg');
+    var f = RES_ABIERTA[t.k];
+    if(!vals.length){
+      if(f){ var d = await sb.from('test_resultados').delete().eq('id', f.id);
+             if(!d.error) delete RES_ABIERTA[t.k]; }
+      cerrarModal(modal); pintarMisResultados(); return;
+    }
+    msg.className='apt-msg'; msg.textContent='Guardando…';
+    var fila = { bateria_id: BAT_ABIERTA.id, atleta_id: FICHA.id, test: t.k,
+      intentos: vals, mejor: calcularMejor(t, vals), formato_rsi: t.serie?fmt:null, no_asiste:false };
+    var r = await sb.from('test_resultados')
+      .upsert(fila, { onConflict:'bateria_id,atleta_id,test' })
+      .select('id,test,intentos,mejor,formato_rsi,no_asiste').single();
+    if(r.error){ msg.className='apt-msg error';
+      msg.textContent = 'No se ha podido guardar. Comprueba la conexión y vuelve a darle.'; return; }
+    RES_ABIERTA[t.k] = r.data;
+    cerrarModal(modal);
+    await pantallaMisResultados();   // refresca también el histórico de abajo
+  }
+
+  function cerrarModal(m){ if(m && m.parentNode) m.remove(); }
 
   async function pantallaInicio(){
     var opciones = '<option value="">(sin grupo concreto)</option>' + GRUPOS.map(function(g){
