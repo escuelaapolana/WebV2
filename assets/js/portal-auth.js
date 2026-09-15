@@ -1355,6 +1355,7 @@
     var ZONAS = {
       entrenador:  { titulo: 'Entrenador',     desc: 'Tus grupos: planificar y leer el feedback.', url: b + 'portal/entrenador/',  carpeta: '/portal/entrenador/' },
       atleta:      { titulo: 'Atleta',         desc: 'Tus entrenamientos y tus marcas.',           url: b + 'portal/atleta/',      carpeta: '/portal/atleta/' },
+      cubo:        { titulo: 'El Cubo',        desc: 'Tus clases, horarios y tu cuota.',           url: b + 'portal/cubo-atleta/', carpeta: '/portal/cubo-atleta/' },
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
@@ -1449,6 +1450,7 @@
       var esAtleta = (rol === 'atleta');
       var esFamilia = (rol === 'padre');
       var esEntrenador = (rol === 'entrenador');
+      var esCubo = (rol === 'cubo-atleta');
       var hijos = [];
 
       /* Las fichas y los grupos NO se piden aquí: se piden una sola vez
@@ -1457,7 +1459,12 @@
       var r = await misAtletas(id);
       if (!r.error) {
         r.data.forEach(function (a) {
-          if (a.perfil_id === id) esAtleta = true;
+          /* Una ficha del Cubo (tipo `cubo`) NO es un atleta de pista: su
+             persona va a la zona de El Cubo, no a la de atleta. */
+          if (a.perfil_id === id) {
+            if (a.tipo_membresia === 'cubo') esCubo = true;
+            else esAtleta = true;
+          }
           if (a.perfil_padre_id === id) { esFamilia = true; if (a.nombre) hijos.push(a.nombre); }
           if (a.entrenador_id === id) esEntrenador = true;
         });
@@ -1484,6 +1491,7 @@
         esAtleta     = esAtleta     && (rol === 'atleta');
         esFamilia    = esFamilia    && (rol === 'padre');
         esEntrenador = esEntrenador && (rol === 'entrenador');
+        esCubo       = esCubo       && (rol === 'cubo-atleta');
       }
 
       function anadir(clave, desc) {
@@ -1493,6 +1501,7 @@
       }
       if (esEntrenador) anadir('entrenador');
       if (esAtleta) anadir('atleta');
+      if (esCubo) anadir('cubo');
       if (esFamilia) anadir('familia', hijos.length ? hijos.join(', ') : null);
       if (rol === 'coordinador') anadir('coordinador');
       /* Administración, tesorería, contabilidad y junta entran por la

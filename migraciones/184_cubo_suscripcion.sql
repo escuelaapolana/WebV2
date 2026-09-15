@@ -24,4 +24,9 @@ drop policy if exists cubo_altas_propia_lee on public.cubo_altas;
 create policy cubo_altas_propia_lee on public.cubo_altas
   for select using (perfil_id = public.mi_perfil_id());
 
+-- Sin este permiso de tabla, la RLS no llega a filtrar: el usuario logueado
+-- (rol `authenticated`) no podía leer NADA de cubo_altas y el portal decía
+-- «no vemos tu alta». La política de arriba ya limita a su propia fila.
+grant select on public.cubo_altas to authenticated;
+
 commit;
