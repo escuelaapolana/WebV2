@@ -65,6 +65,22 @@
                font-size:14px; line-height:1.45; border:1px solid; }
   .cb-vuelta.ok { background:#EDF5EC; border-color:#BFD9BB; color:#2E5A2A; }
   .cb-vuelta.ko { background:#FBF0EC; border-color:#E6C4B5; color:#8A4A2E; }
+  /* Aviso de pago pendiente en el Inicio */
+  .cb-pend { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:0 0 18px;
+             background:#FBF0EC; border:1px solid #E6C4B5; border-radius:14px; padding:14px 16px; }
+  .cb-pend .tx { flex:1 1 190px; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .cb-pend .tx b { color:#8A4A2E; font-size:15px; }
+  .cb-pend .tx span { color:#8A4A2E; font-size:13.5px; opacity:.92; }
+  .cb-pend .btn { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; min-height:44px;
+                  padding:0 18px; border-radius:999px; border:1px solid var(--navy,#26374B); background:var(--navy,#26374B);
+                  color:#fff; font:inherit; font-size:15px; font-weight:600; cursor:pointer; }
+  .cb-pend .btn:disabled { opacity:.62; cursor:progress; }
+  .cb-pend .pago-msg { flex-basis:100%; margin:2px 0 0; font-size:13.5px; color:#B23B3B; }
+  /* Próximo / último pago dentro de la tarjeta de cuota */
+  .cuota .pagos { display:flex; flex-wrap:wrap; gap:10px; margin:2px 0 4px; }
+  .cuota .pago { flex:1 1 130px; background:var(--crema-media,#F1EADC); border-radius:10px; padding:9px 12px; }
+  .cuota .pago span { display:block; font-size:12px; color:var(--texto-suave,#6E6656); }
+  .cuota .pago b { font-size:14px; color:var(--navy,#26374B); }
 </style>
 </head>
 <body>
@@ -145,10 +161,57 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '«Más» › «Tu cuota mensual».</span></div>';
   }
 
+  // INICIO · sus horarios de la semana + (si toca) aviso de pago pendiente.
   async function pintarInicio() {
+    var qsC = new URLSearchParams(location.search).get('cuota');
     $('cb').innerHTML = bannerVuelta() +
       '<h1 class="saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
-      '<p class="sub">Las noticias del club</p>' +
+      '<p class="sub">Tus entrenamientos en El Cubo</p>' +
+      '<div id="cb-aviso"></div>' +
+      '<div id="cb-lista"><div class="ap-esq" data-esq="filas:3"></div></div>';
+
+    var res = await Promise.all([horarios(), cuota()]);
+    var h = res[0], c = res[1];
+
+    // Aviso de pago pendiente, bien visible (salvo si acaban de pagar).
+    var alta = c.alta;
+    var pendiente = alta && (alta.suscripcion_estado == null || alta.suscripcion_estado === 'impago');
+    if (pendiente && qsC !== 'hecho') {
+      var txt = alta.suscripcion_estado === 'impago'
+        ? 'Tu cuota no se ha podido cobrar este mes.'
+        : 'Tu cuota mensual está pendiente de activar.';
+      $('cb-aviso').innerHTML =
+        '<div class="cb-pend">' +
+          '<div class="tx"><b>Pago pendiente</b><span>' + esc(txt) + '</span></div>' +
+          '<button type="button" class="btn activo" id="cb-pagar">' +
+            (alta.suscripcion_estado === 'impago' ? 'Reactivar la cuota' : 'Pagar la cuota') + '</button>' +
+          '<p class="pago-msg" id="cb-pago-msg" hidden></p>' +
+        '</div>';
+      engancharPago();
+    }
+
+    var caja = $('cb-lista');
+    if (!h.data.length) {
+      caja.innerHTML = APOLANA_UI.vacio('Aún no tienes horarios asignados',
+        'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus días y horas de entrenamiento.');
+      return;
+    }
+    caja.innerHTML = '<div class="hor">' + h.data.map(function (x) {
+      var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
+      return '<div class="fila">' +
+        '<span class="dia">' + esc(DIAS[(x.dia_semana || 1) - 1] || '') + '</span>' +
+        '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
+          (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
+          (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
+        '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  // NOTICIAS del club.
+  async function pintarNoticias() {
+    $('cb').innerHTML =
+      '<h1 class="saludo">Noticias</h1>' +
+      '<p class="sub">Lo último del club</p>' +
       '<div id="cb-lista"><div class="ap-esq" data-esq="filas:3"></div></div>';
     var n = await noticias();
     var caja = $('cb-lista');
@@ -169,34 +232,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }).join('');
   }
 
-  async function pintarEntrenamientos() {
-    $('cb').innerHTML = '<h1 class="saludo">Entrenamientos</h1>' +
-      '<p class="sub">Tus días y horarios en El Cubo</p>' +
-      '<div id="cb-lista"><div class="ap-esq" data-esq="filas:3"></div></div>';
-    var h = await horarios();
-    var caja = $('cb-lista');
-    if (!h.data.length) {
-      caja.innerHTML = APOLANA_UI.vacio('Aún no tienes horarios asignados',
-        'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus días y horas de entrenamiento.');
-      return;
-    }
-    caja.innerHTML = '<div class="hor">' + h.data.map(function (x) {
-      var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
-      return '<div class="fila">' +
-        '<span class="dia">' + esc(DIAS[(x.dia_semana || 1) - 1] || '') + '</span>' +
-        '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
-          (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
-          (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
-        '</span></div>';
-    }).join('') + '</div>';
-  }
-
   // Su propia alta del Cubo (la RLS deja que cada quien vea la suya).
   var _cuota = null;
   async function cuota() {
     if (_cuota) return _cuota;
     var r = await sb.from('cubo_altas')
-      .select('precio_mes,suscripcion_estado,proximo_cobro')
+      .select('precio_mes,suscripcion_estado,proximo_cobro,ultimo_cobro')
       .eq('perfil_id', perfil.id)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -215,10 +256,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if (estado === 'activa') {
       var prox = alta.proximo_cobro ? fechaLarga(alta.proximo_cobro) : '';
+      // Último pago: solo si es un cobro real (a partir del 21 sep); el de la
+      // puesta en marcha es de 0 € y no cuenta como pago hecho.
+      var ini = '2026-09-21';
+      var ult = (alta.ultimo_cobro && String(alta.ultimo_cobro).slice(0, 10) >= ini)
+        ? fechaLarga(alta.ultimo_cobro) : '';
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
-        '<p><b>Cuota activa.</b> ' + esc(precio) + ' € al mes' +
-          (prox ? ' · próximo cobro el ' + esc(prox) : '') + '.<br>' +
-          'Se cobra sola con tu tarjeta cada mes; no tienes que hacer nada.</p>' +
+        '<p><b>Cuota activa.</b> ' + esc(precio) + ' € al mes. ' +
+          'Se cobra sola con tu tarjeta; no tienes que hacer nada.</p>' +
+        '<div class="pagos">' +
+          '<div class="pago"><span>Próximo pago</span><b>' + (prox ? esc(prox) : 'Por confirmar') + '</b></div>' +
+          (ult ? '<div class="pago"><span>Último pago</span><b>' + esc(ult) + '</b></div>' : '') +
+        '</div>' +
         '<p class="fina">¿Cambiar de tarjeta o dar de baja la cuota? Habla con el club.</p>' +
       '</div>';
     }
@@ -266,6 +315,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function pintarMas() {
     $('cb').innerHTML = '<h1 class="saludo">Más</h1>' +
       '<div id="cb-cuota"><div class="ap-esq" data-esq="filas:2"></div></div>' +
+      '<p class="rotulo">El club</p>' +
+      '<a class="fila-mas" href="' + b + 'tienda/"><span><b>Tienda del club</b>' +
+        '<small>Equipación y ropa oficial.</small></span></a>' +
+      '<a class="fila-mas" href="' + b + 'contacto/"><span><b>Contactar con el club</b>' +
+        '<small>Escríbenos cualquier duda.</small></span></a>' +
       '<p class="rotulo">Tu cuenta</p>' +
       '<a class="fila-mas" href="' + b + 'portal/perfil/"><span><b>Mi perfil</b>' +
         '<small>Tu nombre, tus datos y tu contraseña.</small></span></a>' +
@@ -282,7 +336,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function pintar() {
     var h = (location.hash || '').replace('#', '');
-    if (h === 'entrenamientos') return pintarEntrenamientos();
+    if (h === 'noticias') return pintarNoticias();
     if (h === 'mas') return pintarMas();
     return pintarInicio();
   }

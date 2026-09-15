@@ -52,6 +52,7 @@
     lista:   svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 3v3M16 3v3M8 11l2 2 3.5-3.5M8 16h6"/>'),
     feedback: svg('<path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/><path d="M8 10h8M8 13h5"/>'),
     mensajes: svg('<path d="M20 12a7 7 0 0 1-10 6.3L4 20l1.7-4.2A7 7 0 1 1 20 12z"/>'),
+    noticias: svg('<path d="M4 5h13v14H4z"/><path d="M17 8h3v9a2 2 0 0 1-2 2h-1z"/><path d="M7 8h7M7 11h7M7 14h4"/>'),
     docs:    svg('<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h4"/>'),
     mas:     '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
              '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>'
@@ -140,13 +141,12 @@
     var lista;
 
     /* El Cubo · quien ENTRENA: barra sencilla, sin marcas ni feedback.
-       Inicio (noticias) · Entrenamientos (sus horarios) · Calendario · Más. */
+       Inicio (sus horarios/su semana) · Noticias · Más. */
     if (zona === 'cubo-atleta') {
       return [
-        { id: 'inicio',         txt: 'Inicio',         ic: IC.inicio,  url: b + 'portal/cubo-atleta/' },
-        { id: 'entrenamientos', txt: 'Entrenamientos', ic: IC.entreno, url: b + 'portal/cubo-atleta/#entrenamientos' },
-        { id: 'calendario',     txt: 'Calendario',     ic: IC.agenda,  url: b + 'portal/calendario/' },
-        { id: 'mas',            txt: 'Más',            ic: IC.mas,     url: b + 'portal/cubo-atleta/#mas' }
+        { id: 'inicio',   txt: 'Inicio',   ic: IC.inicio,   url: b + 'portal/cubo-atleta/' },
+        { id: 'noticias', txt: 'Noticias', ic: IC.noticias, url: b + 'portal/cubo-atleta/#noticias' },
+        { id: 'mas',      txt: 'Más',      ic: IC.mas,       url: b + 'portal/cubo-atleta/#mas' }
       ];
     }
     /* El Cubo · entrenador que SOLO pasa lista. */
@@ -203,7 +203,12 @@
     if (r.indexOf('/portal/calendario/') !== -1) id = 'calendario';
     else if (r.indexOf('/portal/mensajes/') !== -1 && tienePestana(tabs, 'mensajes')) id = 'mensajes';
     else if (r.indexOf('/portal/documentos/') !== -1 && tienePestana(tabs, 'documentos')) id = 'documentos';
-    else if (zonaDeRuta(r) === zona) id = 'inicio';
+    else if (zonaDeRuta(r) === zona) {
+      /* En su propia página, si el hash apunta a una pestaña (p. ej.
+         #noticias, #mas), esa es la encendida; si no, Inicio. */
+      var h = (location.hash || '').replace('#', '');
+      id = tienePestana(tabs, h) ? h : 'inicio';
+    }
     /* El resto de pantallas (El Cubo, Documentos, Mensajes, Tests, Lesiones,
        Carga, Calles, Competiciones, Redes) se abren desde «Más»: es la que
        se queda encendida, igual que hace la zona de atleta con Pagos. */
@@ -216,8 +221,10 @@
 
   /* ---------- pintado ---------- */
   var nodo = null;
+  var _ultZona = null, _ultClaves = null;
   function pintar(zona, claves) {
     if (document.querySelector('.tabbar')) { quitar(); return; }   /* la página se pintó su propia barra */
+    _ultZona = zona; _ultClaves = claves;
     var tabs = pestanas(zona, claves);
     var act = activa(zona, tabs);
     var html = tabs.map(function (t) {
@@ -276,6 +283,12 @@
       });
     });
   }
+
+  /* Al navegar por hash dentro de la misma página (Inicio/#noticias/#mas),
+     se repinta para que la pestaña encendida siga al hash. */
+  window.addEventListener('hashchange', function () {
+    if (nodo && _ultZona) pintar(_ultZona, _ultClaves);
+  });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', arrancar);
