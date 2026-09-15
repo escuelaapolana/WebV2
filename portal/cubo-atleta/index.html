@@ -161,17 +161,30 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '«Más» › «Tu cuota mensual».</span></div>';
   }
 
-  // INICIO · sus horarios de la semana + (si toca) aviso de pago pendiente.
+  function noticiaHTML(x) {
+    return '<a class="noti" href="' + b + 'noticias/">' +
+      (x.foto_portada ? '<img src="' + esc(x.foto_portada) + '" alt="" loading="lazy">' : '') +
+      '<div class="tx">' +
+        (x.categoria ? '<span class="cat">' + esc(x.categoria) + '</span>' : '') +
+        '<h2>' + esc(x.titulo) + '</h2>' +
+        (x.excerpt ? '<p>' + esc(x.excerpt) + '</p>' : '') +
+        '<div class="fecha">' + esc(fechaLarga(x.fecha_publicacion)) + '</div>' +
+      '</div></a>';
+  }
+
+  // INICIO · su entrenamiento (horarios) + aviso de pago si toca + noticias.
   async function pintarInicio() {
     var qsC = new URLSearchParams(location.search).get('cuota');
     $('cb').innerHTML = bannerVuelta() +
       '<h1 class="saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
       '<p class="sub">Tus entrenamientos en El Cubo</p>' +
       '<div id="cb-aviso"></div>' +
-      '<div id="cb-lista"><div class="ap-esq" data-esq="filas:3"></div></div>';
+      '<div id="cb-horarios"><div class="ap-esq" data-esq="filas:2"></div></div>' +
+      '<p class="rotulo">Noticias del club</p>' +
+      '<div id="cb-noticias"><div class="ap-esq" data-esq="filas:2"></div></div>';
 
-    var res = await Promise.all([horarios(), cuota()]);
-    var h = res[0], c = res[1];
+    var res = await Promise.all([horarios(), cuota(), noticias()]);
+    var h = res[0], c = res[1], n = res[2];
 
     // Aviso de pago pendiente, bien visible (salvo si acaban de pagar).
     var alta = c.alta;
@@ -190,46 +203,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       engancharPago();
     }
 
-    var caja = $('cb-lista');
+    // Sus horarios
+    var caja = $('cb-horarios');
     if (!h.data.length) {
       caja.innerHTML = APOLANA_UI.vacio('Aún no tienes horarios asignados',
         'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus días y horas de entrenamiento.');
-      return;
+    } else {
+      caja.innerHTML = '<div class="hor">' + h.data.map(function (x) {
+        var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
+        return '<div class="fila">' +
+          '<span class="dia">' + esc(DIAS[(x.dia_semana || 1) - 1] || '') + '</span>' +
+          '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
+            (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
+            (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
+          '</span></div>';
+      }).join('') + '</div>';
     }
-    caja.innerHTML = '<div class="hor">' + h.data.map(function (x) {
-      var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
-      return '<div class="fila">' +
-        '<span class="dia">' + esc(DIAS[(x.dia_semana || 1) - 1] || '') + '</span>' +
-        '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
-          (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
-          (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
-        '</span></div>';
-    }).join('') + '</div>';
-  }
 
-  // NOTICIAS del club.
-  async function pintarNoticias() {
-    $('cb').innerHTML =
-      '<h1 class="saludo">Noticias</h1>' +
-      '<p class="sub">Lo último del club</p>' +
-      '<div id="cb-lista"><div class="ap-esq" data-esq="filas:3"></div></div>';
-    var n = await noticias();
-    var caja = $('cb-lista');
-    if (!n.data.length) {
-      caja.innerHTML = APOLANA_UI.vacio('Todavía no hay noticias',
-        'Cuando el club publique algo, aparecerá aquí.');
-      return;
-    }
-    caja.innerHTML = n.data.map(function (x) {
-      return '<a class="noti" href="' + b + 'noticias/">' +
-        (x.foto_portada ? '<img src="' + esc(x.foto_portada) + '" alt="" loading="lazy">' : '') +
-        '<div class="tx">' +
-          (x.categoria ? '<span class="cat">' + esc(x.categoria) + '</span>' : '') +
-          '<h2>' + esc(x.titulo) + '</h2>' +
-          (x.excerpt ? '<p>' + esc(x.excerpt) + '</p>' : '') +
-          '<div class="fecha">' + esc(fechaLarga(x.fecha_publicacion)) + '</div>' +
-        '</div></a>';
-    }).join('');
+    // Noticias del club, debajo
+    var cn = $('cb-noticias');
+    cn.innerHTML = n.data.length
+      ? n.data.map(noticiaHTML).join('')
+      : APOLANA_UI.vacio('Todavía no hay noticias', 'Cuando el club publique algo, aparecerá aquí.');
   }
 
   // Su propia alta del Cubo (la RLS deja que cada quien vea la suya).
@@ -336,7 +331,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function pintar() {
     var h = (location.hash || '').replace('#', '');
-    if (h === 'noticias') return pintarNoticias();
     if (h === 'mas') return pintarMas();
     return pintarInicio();
   }

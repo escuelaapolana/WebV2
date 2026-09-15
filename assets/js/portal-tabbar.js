@@ -141,12 +141,13 @@
     var lista;
 
     /* El Cubo · quien ENTRENA: barra sencilla, sin marcas ni feedback.
-       Inicio (sus horarios/su semana) · Noticias · Más. */
+       Inicio (sus horarios + noticias) · Calendario (horario del club) · Más.
+       El calendario es la parrilla pública del club (escuela, natación…). */
     if (zona === 'cubo-atleta') {
       return [
-        { id: 'inicio',   txt: 'Inicio',   ic: IC.inicio,   url: b + 'portal/cubo-atleta/' },
-        { id: 'noticias', txt: 'Noticias', ic: IC.noticias, url: b + 'portal/cubo-atleta/#noticias' },
-        { id: 'mas',      txt: 'Más',      ic: IC.mas,       url: b + 'portal/cubo-atleta/#mas' }
+        { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio, url: b + 'portal/cubo-atleta/' },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'horarios/' },
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-atleta/#mas' }
       ];
     }
     /* El Cubo · entrenador que SOLO pasa lista. */
