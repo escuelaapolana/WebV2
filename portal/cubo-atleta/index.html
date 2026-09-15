@@ -57,6 +57,14 @@
   .cuota .btn { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px;
                 border-radius:999px; border:1px solid var(--linea-borde,#C9C0AE); background:var(--crema-media,#F1EADC);
                 color:var(--texto-suave,#6E6656); font:inherit; font-size:15px; font-weight:600; cursor:not-allowed; }
+  .cuota .btn.activo { background:var(--navy,#26374B); border-color:var(--navy,#26374B); color:#fff; cursor:pointer; }
+  .cuota .btn.activo:disabled { opacity:.62; cursor:progress; }
+  .cuota .pago-msg { margin:10px 0 0; font-size:13.5px; color:#B23B3B; }
+  .cuota .fina { font-size:12.5px; color:var(--texto-tenue,#9A927F); margin:10px 0 0; }
+  .cb-vuelta { display:flex; gap:10px; align-items:flex-start; border-radius:14px; padding:13px 15px; margin:0 0 14px;
+               font-size:14px; line-height:1.45; border:1px solid; }
+  .cb-vuelta.ok { background:#EDF5EC; border-color:#BFD9BB; color:#2E5A2A; }
+  .cb-vuelta.ko { background:#FBF0EC; border-color:#E6C4B5; color:#8A4A2E; }
 </style>
 </head>
 <body>
@@ -121,8 +129,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // --------------------------------------------------------
   //  VISTAS
   // --------------------------------------------------------
+  // Aviso al volver de la pasarela de Stripe (?cuota=hecho / cancelado).
+  function bannerVuelta() {
+    var qs = new URLSearchParams(location.search);
+    var c = qs.get('cuota');
+    if (!c) return '';
+    // Limpiamos la URL para que no reaparezca al recargar.
+    qs.delete('cuota'); qs.delete('ref');
+    history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash);
+    if (c === 'hecho') {
+      return '<div class="cb-vuelta ok">✅ <span>¡Listo! Tu cuota queda activada. El primer cobro (10 €) será el ' +
+        '21 de septiembre y, a partir de ahí, se renueva sola cada mes. Puedes verlo en «Más».</span></div>';
+    }
+    return '<div class="cb-vuelta ko">⚠️ <span>Has salido sin terminar el pago. Cuando quieras, actívala desde ' +
+      '«Más» › «Tu cuota mensual».</span></div>';
+  }
+
   async function pintarInicio() {
-    $('cb').innerHTML = '<h1 class="saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
+    $('cb').innerHTML = bannerVuelta() +
+      '<h1 class="saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
       '<p class="sub">Las noticias del club</p>' +
       '<div id="cb-lista"><div class="ap-esq" data-esq="filas:3"></div></div>';
     var n = await noticias();
@@ -166,14 +191,81 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }).join('') + '</div>';
   }
 
-  function pintarMas() {
+  // Su propia alta del Cubo (la RLS deja que cada quien vea la suya).
+  var _cuota = null;
+  async function cuota() {
+    if (_cuota) return _cuota;
+    var r = await sb.from('cubo_altas')
+      .select('precio_mes,suscripcion_estado,proximo_cobro')
+      .eq('perfil_id', perfil.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    _cuota = { error: r.error ? r.error.message : '', alta: (r.data && r.data[0]) || null };
+    return _cuota;
+  }
+
+  function bloqueCuota(alta) {
+    if (!alta) {
+      return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
+        '<p>Aún no vemos tu alta en El Cubo. Si acabas de apuntarte, dale un momento y recarga; ' +
+        'si no, habla con el club.</p></div>';
+    }
+    var precio = alta.precio_mes;
+    var estado = alta.suscripcion_estado;
+
+    if (estado === 'activa') {
+      var prox = alta.proximo_cobro ? fechaLarga(alta.proximo_cobro) : '';
+      return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
+        '<p><b>Cuota activa.</b> ' + esc(precio) + ' € al mes' +
+          (prox ? ' · próximo cobro el ' + esc(prox) : '') + '.<br>' +
+          'Se cobra sola con tu tarjeta cada mes; no tienes que hacer nada.</p>' +
+        '<p class="fina">¿Cambiar de tarjeta o dar de baja la cuota? Habla con el club.</p>' +
+      '</div>';
+    }
+
+    var texto = estado === 'impago'
+      ? '<p>Tu último recibo no se ha podido cobrar. Vuelve a activar la cuota con una tarjeta al día.</p>'
+      : '<p>Paga la cuota con tarjeta y se renovará sola cada mes. El primer recibo es el <b>21 de ' +
+        'septiembre</b> y son <b>10 €</b> (mes de entrada); después, ' + esc(precio) + ' € al mes.</p>';
+    return '<div class="cuota"><h2>Tu cuota mensual</h2>' + texto +
+      '<button type="button" class="btn activo" id="cb-pagar">' +
+        (estado === 'impago' ? 'Reactivar la cuota' : 'Pagar la cuota') + '</button>' +
+      '<p class="pago-msg" id="cb-pago-msg" hidden></p>' +
+      '<p class="fina">La tarjeta se teclea en la página segura de Stripe; el club no la ve.</p>' +
+    '</div>';
+  }
+
+  function engancharPago() {
+    var bp = $('cb-pagar');
+    if (!bp) return;
+    bp.addEventListener('click', function () {
+      var txt = bp.textContent;
+      bp.disabled = true;
+      bp.textContent = 'Abriendo el pago…';
+      var msg = $('cb-pago-msg');
+      var fallo = function (t) {
+        bp.disabled = false; bp.textContent = txt;
+        if (msg) { msg.hidden = false; msg.textContent = t; }
+      };
+      sb.functions.invoke('cubo-pagar', { body: {} }).then(function (r) {
+        if (r.error) {
+          var ctx = r.error.context;
+          return (ctx && ctx.json ? ctx.json() : Promise.resolve(null))
+            .catch(function () { return null; })
+            .then(function (d) { fallo((d && d.mensaje) || 'No hemos podido abrir el pago. Inténtalo en un minuto.'); });
+        }
+        if (!r.data || !r.data.url) { fallo('No hemos podido abrir el pago. Inténtalo de nuevo.'); return; }
+        window.location.href = r.data.url; // a la pasarela de Stripe
+      }).catch(function (e) {
+        fallo('No hemos podido conectar con la pasarela. Inténtalo en un minuto.');
+        console.warn('[Apolana] cubo-pagar:', e && e.message ? e.message : e);
+      });
+    });
+  }
+
+  async function pintarMas() {
     $('cb').innerHTML = '<h1 class="saludo">Más</h1>' +
-      '<div class="cuota">' +
-        '<h2>Tu cuota mensual</h2>' +
-        '<p>El pago de la cuota con tarjeta (y su renovación automática cada mes) se activará muy pronto. ' +
-           'De momento, para cualquier duda con el pago habla con el club.</p>' +
-        '<span class="btn" aria-disabled="true">Pagar la cuota · próximamente</span>' +
-      '</div>' +
+      '<div id="cb-cuota"><div class="ap-esq" data-esq="filas:2"></div></div>' +
       '<p class="rotulo">Tu cuenta</p>' +
       '<a class="fila-mas" href="' + b + 'portal/perfil/"><span><b>Mi perfil</b>' +
         '<small>Tu nombre, tus datos y tu contraseña.</small></span></a>' +
@@ -183,6 +275,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (s) s.addEventListener('click', function () {
       try { sb.auth.signOut().then(function () { location.href = b; }); } catch (e) { location.href = b; }
     });
+    var c = await cuota();
+    $('cb-cuota').innerHTML = bloqueCuota(c.alta);
+    engancharPago();
   }
 
   function pintar() {
