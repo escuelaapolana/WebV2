@@ -1355,7 +1355,7 @@
     var ZONAS = {
       entrenador:  { titulo: 'Entrenador',     desc: 'Tus grupos: planificar y leer el feedback.', url: b + 'portal/entrenador/',  carpeta: '/portal/entrenador/' },
       atleta:      { titulo: 'Atleta',         desc: 'Tus entrenamientos y tus marcas.',           url: b + 'portal/atleta/',      carpeta: '/portal/atleta/' },
-      cubo:        { titulo: 'El Cubo',        desc: 'Tus clases, horarios y tu cuota.',           url: b + 'portal/cubo-atleta/', carpeta: '/portal/cubo-atleta/' },
+      'cubo-atleta': { titulo: 'El Cubo',     desc: 'Tus clases, horarios y tu cuota.',           url: b + 'portal/cubo-atleta/', carpeta: '/portal/cubo-atleta/' },
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
@@ -1501,7 +1501,7 @@
       }
       if (esEntrenador) anadir('entrenador');
       if (esAtleta) anadir('atleta');
-      if (esCubo) anadir('cubo');
+      if (esCubo) anadir('cubo-atleta');
       if (esFamilia) anadir('familia', hijos.length ? hijos.join(', ') : null);
       if (rol === 'coordinador') anadir('coordinador');
       /* Administración, tesorería, contabilidad y junta entran por la
@@ -1510,7 +1510,7 @@
       if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
       /* La app se queda con 4 vistas: atleta, entrenador, El Cubo y admin.
          Familia y coordinación se retiran como vistas del portal. */
-      var OK4 = ['atleta', 'entrenador', 'cubo', 'admin'];
+      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'admin'];
       return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
     }
 
