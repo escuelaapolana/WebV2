@@ -205,13 +205,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<p class="rotulo">Noticias del club</p>' +
       '<div id="cb-noticias"><div class="ap-esq" data-esq="filas:2"></div></div>';
 
-    var res = await Promise.all([horarios(), cuota(), noticias()]);
-    var h = res[0], c = res[1], n = res[2];
+    var res = await Promise.all([horarios(), cuota(), noticias(), cobroAbierto()]);
+    var h = res[0], c = res[1], n = res[2], abierto = res[3];
 
-    // Aviso de pago pendiente, bien visible (salvo si acaban de pagar).
+    // Aviso de pago pendiente, bien visible (solo si el cobro ya está abierto
+    // y no acaban de pagar).
     var alta = c.alta;
     var pendiente = alta && (alta.suscripcion_estado == null || alta.suscripcion_estado === 'impago');
-    if (pendiente && qsC !== 'hecho') {
+    if (pendiente && abierto && qsC !== 'hecho') {
       var txt = alta.suscripcion_estado === 'impago'
         ? 'Tu cuota no se ha podido cobrar este mes.'
         : 'Tu cuota mensual está pendiente de activar.';
@@ -249,6 +250,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       : APOLANA_UI.vacio('Todavía no hay noticias', 'Cuando el club publique algo, aparecerá aquí.');
   }
 
+  // ¿Está abierto el cobro con tarjeta? (interruptor del club, tabla cubo_config)
+  var _cfg = null;
+  async function cobroAbierto() {
+    if (_cfg) return _cfg.abierto;
+    var r = await sb.from('cubo_config').select('cobro_abierto').eq('id', 1).maybeSingle();
+    _cfg = { abierto: !!(r.data && r.data.cobro_abierto) };
+    return _cfg.abierto;
+  }
+
   // Su propia alta del Cubo (la RLS deja que cada quien vea la suya).
   var _cuota = null;
   async function cuota() {
@@ -262,7 +272,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return _cuota;
   }
 
-  function bloqueCuota(alta) {
+  function bloqueCuota(alta, abierto) {
     if (!alta) {
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
         '<p>Aún no vemos tu alta en El Cubo. Si acabas de apuntarte, dale un momento y recarga; ' +
@@ -270,6 +280,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     var precio = alta.precio_mes;
     var estado = alta.suscripcion_estado;
+
+    // Cobro aún no abierto: se informa de la cuota pero sin botón de pago.
+    if (!abierto && estado !== 'activa') {
+      return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
+        '<p>Tu cuota será de <b>' + esc(precio) + ' € al mes</b>. ' +
+        'El pago con tarjeta se <b>abrirá muy pronto</b>; te avisaremos cuando puedas activarlo. ' +
+        'No tienes que hacer nada todavía.</p></div>';
+    }
 
     if (estado === 'activa') {
       var prox = alta.proximo_cobro ? fechaLarga(alta.proximo_cobro) : '';
@@ -405,8 +423,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (s) s.addEventListener('click', function () {
       try { sb.auth.signOut().then(function () { location.href = b; }); } catch (e) { location.href = b; }
     });
-    var c = await cuota();
-    $('cb-cuota').innerHTML = bloqueCuota(c.alta);
+    var res = await Promise.all([cuota(), cobroAbierto()]);
+    $('cb-cuota').innerHTML = bloqueCuota(res[0].alta, res[1]);
     engancharPago();
   }
 
