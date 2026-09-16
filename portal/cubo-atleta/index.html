@@ -81,6 +81,13 @@
   .cuota .pago { flex:1 1 130px; background:var(--crema-media,#F1EADC); border-radius:10px; padding:9px 12px; }
   .cuota .pago span { display:block; font-size:12px; color:var(--texto-suave,#6E6656); }
   .cuota .pago b { font-size:14px; color:var(--navy,#26374B); }
+  /* Calendario del club (horarios por sección) */
+  .cal-sec { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px; box-shadow:var(--s1); padding:4px 16px 10px; margin-bottom:14px; }
+  .cal-sec h2 { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; font-size:14px; color:var(--navy,#26374B); margin:13px 0 4px; }
+  .cal-fila { padding:9px 0; border-top:1px solid var(--linea,#EDE6D7); }
+  .cal-sec h2 + .cal-fila { border-top:0; }
+  .cal-fila b { display:block; font-size:14.5px; font-weight:600; color:var(--navy,#26374B); }
+  .cal-fila span { display:block; font-size:13px; line-height:1.45; color:var(--texto-suave,#6E6656); margin-top:2px; }
 </style>
 </head>
 <body>
@@ -307,6 +314,52 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
+  // CALENDARIO del club · horarios de todas las secciones (grupos.horario,
+  // que es de lectura pública). Solo lo esencial: por sección, cada grupo
+  // con su horario en texto. Sin nada que apuntar.
+  var _grupos = null;
+  async function gruposClub() {
+    if (_grupos) return _grupos;
+    var r = await sb.from('grupos').select('nombre,seccion,horario').order('nombre');
+    var data = (r.data || []).filter(function (g) { return g.horario && String(g.horario).trim(); });
+    _grupos = { error: r.error ? r.error.message : '', data: data };
+    return _grupos;
+  }
+  var CAL_SEC = [
+    { k: 'cubo',             t: 'El Cubo' },
+    { k: 'escuela',          t: 'Escuela de atletismo' },
+    { k: 'escuela-natacion', t: 'Escuela de natación' },
+    { k: 'natacion',         t: 'Natación' },
+    { k: 'competicion',      t: 'Competición' },
+    { k: 'running',          t: 'Running' }
+  ];
+  async function pintarCalendario() {
+    $('cb').innerHTML =
+      '<h1 class="saludo">Calendario</h1>' +
+      '<p class="sub">Horarios de entrenamiento del club</p>' +
+      '<div id="cb-cal"><div class="ap-esq" data-esq="filas:4"></div></div>';
+    var g = await gruposClub();
+    var caja = $('cb-cal');
+    if (!g.data.length) {
+      caja.innerHTML = APOLANA_UI.vacio('Sin horarios', 'Aún no hay horarios publicados.');
+      return;
+    }
+    var html = CAL_SEC.map(function (s) {
+      var vistos = {}, filas = [];
+      g.data.forEach(function (x) {
+        if (x.seccion !== s.k) return;
+        var key = x.nombre + '|' + x.horario;
+        if (vistos[key]) return; vistos[key] = 1; filas.push(x);
+      });
+      if (!filas.length) return '';
+      return '<section class="cal-sec"><h2>' + esc(s.t) + '</h2>' +
+        filas.map(function (x) {
+          return '<div class="cal-fila"><b>' + esc(x.nombre) + '</b><span>' + esc(x.horario) + '</span></div>';
+        }).join('') + '</section>';
+    }).join('');
+    caja.innerHTML = html || APOLANA_UI.vacio('Sin horarios', 'Aún no hay horarios publicados.');
+  }
+
   async function pintarMas() {
     $('cb').innerHTML = '<h1 class="saludo">Más</h1>' +
       '<div id="cb-cuota"><div class="ap-esq" data-esq="filas:2"></div></div>' +
@@ -331,6 +384,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function pintar() {
     var h = (location.hash || '').replace('#', '');
+    if (h === 'calendario') return pintarCalendario();
     if (h === 'mas') return pintarMas();
     return pintarInicio();
   }

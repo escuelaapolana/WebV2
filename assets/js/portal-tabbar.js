@@ -146,7 +146,7 @@
     if (zona === 'cubo-atleta') {
       return [
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio, url: b + 'portal/cubo-atleta/' },
-        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'horarios/' },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/cubo-atleta/#calendario' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-atleta/#mas' }
       ];
     }
