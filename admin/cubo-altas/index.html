@@ -41,7 +41,9 @@
   .cuota-est.activa { background:#EAF3E3; color:#3E7A34; } .cuota-est.impago { background:#F7E4DE; color:#9A4A2E; }
   .cuota-est.cancelada { background:#EEE9DF; color:#7A7263; } .cuota-est.sin { background:#F4EAD6; color:#8A5307; }
   .cuota-est.baja { background:#F7E4DE; color:#9A4A2E; }
+  .cuota-est.espera { background:#EEF3F8; color:#2F6FA8; }
   .b-baja { background:#fff; color:#9A3B3B; border-color:#e0b4b0; } .b-baja:hover{ background:#fbeceb; }
+  .b-plaza { background:var(--azul,#2F6FA8); color:#fff; border-color:var(--azul,#2F6FA8); } .b-plaza:hover{ background:var(--azul-hover,#1E4E78); }
   .ca-cobro { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:2px 0 18px;
               border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:14px 16px; background:#fff; }
   .ca-cobro.abierto { border-color:#BFD9BB; background:#F2F8F1; }
@@ -52,6 +54,10 @@
   .ca-cobro .b.abrir { background:var(--azul,#2F6FA8); color:#fff; }
   .ca-cobro .b.cerrar { background:#fff; color:var(--navy,#26374B); border-color:var(--linea-borde,#C9C0AE); }
   .ca-cobro .b[disabled]{ opacity:.5; cursor:progress; }
+  .ca-aforo { flex-basis:100%; margin-top:8px; padding-top:10px; border-top:1px solid var(--linea,#EDE6D7); font-size:13.5px; color:var(--texto-suave,#6E6656); }
+  .ca-aforo b { color:var(--navy,#26374B); }
+  .ca-aforo small { display:block; margin-top:2px; font-size:12.5px; }
+  .aforo-link { background:none; border:0; padding:0; font:inherit; color:var(--azul,#2F6FA8); text-decoration:underline; cursor:pointer; }
   .alta-acc { display:flex; gap:9px; flex-wrap:wrap; margin-top:13px; padding-top:12px; border-top:1px solid var(--linea,#EDE6D7); }
   .b { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:0 16px; border-radius:999px; font:inherit; font-size:14.5px; font-weight:600; cursor:pointer; border:1px solid transparent; }
   .b-si { background:var(--azul,#2F6FA8); color:#fff; border-color:var(--azul,#2F6FA8); } .b-si:hover{ background:var(--azul-hover,#1E4E78); }
@@ -113,10 +119,12 @@ APOLANA_ADMIN.listo(function (sb) {
   function pagoHTML(a){
     var e=a.suscripcion_estado, baja='';
     if(a.baja_solicitada) baja=' <span class="cuota-est baja">Baja solicitada</span>';
+    var esp = a.lista_espera ? ' <span class="cuota-est espera">Lista de espera</span>' : '';
     if(e==='activa'){ var px=a.proximo_cobro?(' · próx. cobro '+fecha(a.proximo_cobro)):''; return '<span class="cuota-est activa">Cuota activa'+esc(px)+'</span>'+baja; }
     if(e==='impago') return '<span class="cuota-est impago">Cuota impagada</span>'+baja;
     if(e==='cancelada') return '<span class="cuota-est cancelada">Cuota dada de baja</span>';
-    return '<span class="cuota-est sin">Sin pagar la cuota</span>'+baja;
+    if(a.lista_espera) return '<span class="cuota-est espera">Lista de espera</span>';
+    return '<span class="cuota-est sin">Sin pagar la cuota</span>'+esp;
   }
 
   function tarjeta(a){
@@ -132,6 +140,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(est!=='rechazada') acc+='<button type="button" class="b b-no" data-id="'+esc(a.id)+'" data-e="rechazada">Rechazar</button>';
     if(est!=='pendiente') acc+='<button type="button" class="b b-volver" data-id="'+esc(a.id)+'" data-e="pendiente">Volver a pendiente</button>';
     if(a.suscripcion_estado==='activa') acc+='<button type="button" class="b b-baja" data-baja="'+esc(a.id)+'">Dar de baja'+(a.baja_solicitada?' (pedida)':'')+'</button>';
+    if(a.lista_espera) acc+='<button type="button" class="b b-plaza" data-plaza="'+esc(a.id)+'">Dar plaza</button>';
     return '<article class="alta">'+
       '<div class="alta-top">'+
         '<span class="quien"><b>'+esc((a.nombre||'')+' '+(a.apellidos||''))+'</b>'+
@@ -171,11 +180,17 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   // ---- Interruptor: abrir/cerrar el cobro de la cuota (tabla cubo_config) ----
-  var COBRO = null;
+  var COBRO = null, LIMITE = null;
   async function cargarCobro(){
-    var r = await sb.from('cubo_config').select('cobro_abierto').eq('id',1).maybeSingle();
+    var r = await sb.from('cubo_config').select('cobro_abierto,limite_grupo').eq('id',1).maybeSingle();
     COBRO = r.error ? null : !!(r.data && r.data.cobro_abierto);
+    LIMITE = (r.data && r.data.limite_grupo!=null) ? r.data.limite_grupo : 20;
     pintarCobro();
+  }
+  function aforoHTML(){
+    return '<div class="ca-aforo">Aforo por grupo: <b>'+esc(LIMITE)+' plazas</b> · '+
+      '<button type="button" class="aforo-link" id="ca-limite">Cambiar</button>'+
+      '<small>Cuando un grupo se llena, las altas nuevas entran en lista de espera.</small></div>';
   }
   function pintarCobro(){
     var caja=$('ca-cobro'); if(!caja) return;
@@ -184,12 +199,12 @@ APOLANA_ADMIN.listo(function (sb) {
       caja.className='ca-cobro abierto';
       caja.innerHTML='<div class="tx"><b>Cobro de la cuota · Abierto</b>'+
         '<small>Los padres ya ven el botón de pagar y pueden activar su cuota.</small></div>'+
-        '<button type="button" class="b cerrar" id="ca-cobro-btn" data-abrir="0">Cerrar el cobro</button>';
+        '<button type="button" class="b cerrar" id="ca-cobro-btn" data-abrir="0">Cerrar el cobro</button>'+aforoHTML();
     } else {
       caja.className='ca-cobro';
       caja.innerHTML='<div class="tx"><b>Cobro de la cuota · Cerrado</b>'+
         '<small>Se apuntan y ven sus horarios, pero aún no pagan. Ábrelo cuando Stripe esté en real.</small></div>'+
-        '<button type="button" class="b abrir" id="ca-cobro-btn" data-abrir="1">Abrir el cobro</button>';
+        '<button type="button" class="b abrir" id="ca-cobro-btn" data-abrir="1">Abrir el cobro</button>'+aforoHTML();
     }
   }
   async function toggleCobro(btn){
@@ -217,9 +232,31 @@ APOLANA_ADMIN.listo(function (sb) {
     pintar(); toast('Cuota dada de baja');
   }
 
+  async function darPlaza(id, btn){
+    btn.disabled=true;
+    var r=await sb.from('cubo_altas').update({ lista_espera:false }).eq('id', id).select('id');
+    if(r.error){ toast('No se ha podido: '+r.error.message,'error'); btn.disabled=false; return; }
+    ALTAS.forEach(function(a){ if(a.id===id) a.lista_espera=false; });
+    pintar(); toast('Plaza dada · ya puede pagar la cuota');
+  }
+  async function cambiarLimite(){
+    var actual = LIMITE!=null ? LIMITE : 20;
+    var v = prompt('Aforo por grupo del Cubo (plazas antes de lista de espera):', String(actual));
+    if(v==null) return;
+    var n = parseInt(String(v).replace(/[^0-9]/g,''),10);
+    if(!n || n<1){ toast('Pon un número válido.','error'); return; }
+    var r=await sb.from('cubo_config').update({ limite_grupo:n }).eq('id',1);
+    if(r.error){ toast('No se ha podido: '+r.error.message,'error'); return; }
+    LIMITE=n; pintarCobro(); toast('Aforo: '+n+' por grupo');
+  }
+
   $('admin-contenido').addEventListener('click', function(ev){
     var t=ev.target.closest?ev.target.closest('#ca-cobro-btn'):null;
     if(t){ toggleCobro(t); return; }
+    var pl=ev.target.closest?ev.target.closest('.b-plaza[data-plaza]'):null;
+    if(pl){ darPlaza(pl.getAttribute('data-plaza'), pl); return; }
+    var lim=ev.target.closest?ev.target.closest('#ca-limite'):null;
+    if(lim){ cambiarLimite(); return; }
     var bb=ev.target.closest?ev.target.closest('.b-baja[data-baja]'):null;
     if(bb){ darBaja(bb.getAttribute('data-baja'), bb); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;

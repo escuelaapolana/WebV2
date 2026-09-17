@@ -113,6 +113,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const grupo = Array.isArray(rGrupo.datos) ? rGrupo.datos[0] : null;
   const grupoId: string | null = grupo?.id ?? null;
 
+  // ---- 2b · Aforo: si el turno está lleno, esta alta va a lista de espera.
+  //          El límite (por defecto 20) vive en cubo_config; solo cuentan las
+  //          altas con plaza (no lista de espera, no rechazadas). ----
+  let enListaEspera = false;
+  const rLim = await rest(`cubo_config?select=limite_grupo&id=eq.1&limit=1`);
+  const limite = Number((Array.isArray(rLim.datos) ? rLim.datos[0] : null)?.limite_grupo ?? 20);
+  const rCuenta = await rest(
+    `cubo_altas?select=id&horario=eq.${encodeURIComponent(SLOT_A_GRUPO[slot])}` +
+    `&lista_espera=eq.false&estado=neq.rechazada`,
+  );
+  const ocupadas = Array.isArray(rCuenta.datos) ? rCuenta.datos.length : 0;
+  if (Number.isFinite(limite) && limite > 0 && ocupadas >= limite) enListaEspera = true;
+
   // ---- 3 · Crear la cuenta. Un trigger crea el perfil (rol 'atleta' por
   //          defecto); justo después lo dejamos como 'cubo-atleta'. ----
   let yaExistia = false;
@@ -196,9 +209,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       hijo: hijo || null, direccion: direccion || null,
       horario: SLOT_A_GRUPO[slot], dias, precio_mes: precio,
       nota: nota || null, es_escuela: escuela, estado: "pendiente",
-      perfil_id: perfilId, atleta_id: atletaId,
+      perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
   });
 
-  return responder({ ok: true, ya_existia: yaExistia, perfil_id: perfilId, precio_mes: precio }, 200, origen);
+  return responder({ ok: true, ya_existia: yaExistia, perfil_id: perfilId, precio_mes: precio, lista_espera: enListaEspera }, 200, origen);
 });

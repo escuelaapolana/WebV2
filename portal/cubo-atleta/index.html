@@ -213,10 +213,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var res = await Promise.all([horarios(), cuota(), noticias(), cobroAbierto()]);
     var h = res[0], c = res[1], n = res[2], abierto = res[3];
 
-    // Aviso de pago pendiente, bien visible (solo si el cobro ya está abierto
-    // y no acaban de pagar).
     var alta = c.alta;
-    var pendiente = alta && (alta.suscripcion_estado == null || alta.suscripcion_estado === 'impago');
+    // En lista de espera: aviso propio, y no se pide pago.
+    if (alta && alta.lista_espera && alta.suscripcion_estado !== 'activa') {
+      $('cb-aviso').innerHTML =
+        '<div class="cb-pend" style="background:#EEF3F8;border-color:#BcD3E6">' +
+          '<div class="tx"><b style="color:#2F6FA8">En lista de espera</b>' +
+          '<span style="color:#2F6FA8">Tu grupo está completo. Te avisaremos en cuanto haya sitio.</span></div>' +
+        '</div>';
+    }
+    // Aviso de pago pendiente, bien visible (solo si el cobro ya está abierto,
+    // no está en lista de espera y no acaban de pagar).
+    var pendiente = alta && !alta.lista_espera && (alta.suscripcion_estado == null || alta.suscripcion_estado === 'impago');
     if (pendiente && abierto && qsC !== 'hecho') {
       var txt = alta.suscripcion_estado === 'impago'
         ? 'Tu cuota no se ha podido cobrar este mes.'
@@ -270,7 +278,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cuota() {
     if (_cuota) return _cuota;
     var r = await sb.from('cubo_altas')
-      .select('id,precio_mes,suscripcion_estado,proximo_cobro,ultimo_cobro,baja_solicitada')
+      .select('id,precio_mes,suscripcion_estado,proximo_cobro,ultimo_cobro,baja_solicitada,lista_espera')
       .eq('perfil_id', perfil.id)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -286,6 +294,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     var precio = alta.precio_mes;
     var estado = alta.suscripcion_estado;
+
+    // En lista de espera: aún no hay cuota que pagar.
+    if (alta.lista_espera && estado !== 'activa') {
+      return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
+        '<p><b>Estás en lista de espera.</b> Tu grupo está completo ahora mismo. En cuanto haya un ' +
+        'sitio te avisamos y podrás activar tu cuota (' + esc(precio) + ' € al mes). De momento no ' +
+        'tienes que hacer nada.</p></div>';
+    }
 
     // Cobro aún no abierto: se informa de la cuota pero sin botón de pago.
     if (!abierto && estado !== 'activa') {
