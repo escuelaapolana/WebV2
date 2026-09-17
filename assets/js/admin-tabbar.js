@@ -355,8 +355,7 @@
         { txt: 'Personas',                url: r + 'atletas/',        desc: 'las fichas de las personas del club' },
         { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
         { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'horarios, entrenador y cuota' },
-        { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' },
-        { txt: 'Quién va a ir',           url: r + 'confirmaciones/', desc: 'confirmaciones para una carrera' }
+        { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
       /* El Cubo, su propio bloque: es una sección con su gestión (socios,
          cuotas, cobro, grupos) y conviene tenerla a un golpe de vista. */
@@ -411,8 +410,8 @@
       ] },
       { t: 'Club', enlaces: [
         { txt: 'Personas de contacto',     url: r + 'contactos/',        desc: 'quién lleva cada sección y su teléfono' },
-        { txt: 'Buzón',                    url: r + 'buzon/',            desc: 'mensajes de contacto' },
-        { txt: 'Buzón',                    url: r + '#buzon',            desc: 'solicitudes de inscripción', panel: true },
+        { txt: 'Buzón',                        url: r + 'buzon/',            desc: 'mensajes de contacto' },
+        { txt: 'Solicitudes de inscripción',   url: r + '#buzon',            desc: 'quién ha pedido plaza', panel: true },
         { txt: 'Se pone solo',             url: r + 'automatizaciones/', desc: 'lo que se publica sin tocar nada' },
         { txt: 'Plantillas de email',      url: r + 'plantillas/',       desc: 'respuestas ya escritas' },
         { txt: 'Récords',                  url: r + 'records/',          desc: 'las mejores marcas del club' },
