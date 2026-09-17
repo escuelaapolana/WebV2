@@ -58,11 +58,7 @@
   /* --- Ayudantes ------------------------------------------- */
   function $(id) { return document.getElementById(id); }
 
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s === null || s === undefined) ? '' : String(s);
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   function fechaCorta(iso) {
     if (!iso) return '';

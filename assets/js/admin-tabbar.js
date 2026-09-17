@@ -1200,11 +1200,7 @@
   }
 
   /* ---------- utilidades ---------- */
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s == null ? '' : String(s));
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function icono(trazo, ancho) {
     return '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" ' +
       'stroke-width="' + (ancho || 1.9) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +

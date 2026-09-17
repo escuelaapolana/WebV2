@@ -46,7 +46,7 @@
 
   /* ---------- utilidades ---------- */
   function db() { return window.APOLANA_DB; }
-  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function aviso(mensaje, tipo, opciones) {
     if (window.APX && typeof window.APX.toast === 'function') return window.APX.toast(mensaje, tipo, opciones);
     if (typeof window.apoToast === 'function') return window.apoToast(mensaje, tipo, opciones);

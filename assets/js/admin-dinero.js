@@ -35,11 +35,7 @@
   'use strict';
 
   function sb() { return window.APOLANA_DB; }
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s == null ? '' : String(s));
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function aviso(msg, tipo, opts) {
     if (typeof window.apoToast === 'function') return window.apoToast(msg, tipo, opts);
     if (tipo === 'error') console.error(msg); else console.log(msg);

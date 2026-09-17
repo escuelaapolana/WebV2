@@ -86,11 +86,7 @@
 
   /* Todo lo que viene de la base pasa por aquí antes de ser HTML.
      Un nombre con «<» no puede romper una pantalla. */
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s == null ? '' : String(s));
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function attr(n, v) { return (v == null || v === '') ? '' : ' ' + n + '="' + esc(v) + '"'; }
   /* Igual, pero el vacío también cuenta: el chip «Todas» vale «» y ese
      vacío es su valor de filtro, no una ausencia. */

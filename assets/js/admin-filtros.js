@@ -71,11 +71,7 @@
   }
 
   /* ---------- utilidades ---------- */
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s == null ? '' : String(s));
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   /* El valor neutro: el que significa «sin filtrar». */
   function neutro(c) {

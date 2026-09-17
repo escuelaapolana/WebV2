@@ -68,11 +68,7 @@
   function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
   function base() { return window.APOLANA_BASE || '../'; }
   function sb() { return window.APOLANA_DB; }
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s == null ? '' : String(s));
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   /* ------------------------------------------------------------
      Estilo. Va aquí porque esto se pinta en las 50 pantallas y no

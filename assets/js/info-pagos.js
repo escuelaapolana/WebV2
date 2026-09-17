@@ -45,11 +45,7 @@
   var FILAS = null;      // caché de la consulta: una sola por página
   var CARGANDO = null;
 
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = (s == null ? '' : String(s));
-    return d.innerHTML;
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function escA(s) { return esc(s).replace(/"/g, '&quot;'); }
   function limpio(s) { return (s == null ? '' : String(s)).trim(); }
 

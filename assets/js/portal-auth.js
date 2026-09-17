@@ -39,7 +39,7 @@
        tocan. Quien necesite cambiar un campo, que copie la fila. */
   };
   function base() { return window.APOLANA_BASE || '../'; }
-  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   /* --------------------------------------------------------------
      LO QUE TRAE EL ENLACE DEL CORREO · se mira YA, aquí arriba
