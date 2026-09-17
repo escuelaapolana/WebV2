@@ -50,7 +50,7 @@ const MENU = [
     { texto: 'Natación adultos',    url: '/natacion/' },
     { texto: 'Montaña',             url: '/montana/' },
     { texto: 'Triatlón',            url: '/triatlon/' },
-    { texto: 'El Cubo · sala de fuerza', url: '/cubo/' },
+    { texto: 'El Cubo · entrenamiento funcional', url: '/cubo/' },
   ] },
   /* Los programas municipales (atletismo, triatlón y deporte adaptado) van
      DENTRO de Escuelas, no en «Entrenar»: son formación para peques, no hay
