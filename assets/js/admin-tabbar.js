@@ -362,8 +362,7 @@
          cuotas, cobro, grupos) y conviene tenerla a un golpe de vista. */
       { t: 'El Cubo', enlaces: [
         { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'quién entrena, sus pagos, las altas y abrir o cerrar el cobro' },
-        { txt: 'Grupos del Cubo',  url: r + 'grupos/',     desc: 'los grupos del Cubo y sus horarios' },
-        { txt: 'Clases y bonos',   url: r + 'cubo/',       desc: 'el modelo antiguo por bonos de uso' }
+        { txt: 'Grupos del Cubo',  url: r + 'grupos/',     desc: 'los grupos del Cubo y sus horarios' }
       ] },
       { t: 'Dinero', enlaces: [
         /* Las altas van en Dinero y no en Personas por quién las trabaja:
