@@ -40,6 +40,8 @@
   .cuota-est { display:inline-block; font-size:11.5px; font-weight:700; border-radius:7px; padding:3px 9px; margin-top:2px; }
   .cuota-est.activa { background:#EAF3E3; color:#3E7A34; } .cuota-est.impago { background:#F7E4DE; color:#9A4A2E; }
   .cuota-est.cancelada { background:#EEE9DF; color:#7A7263; } .cuota-est.sin { background:#F4EAD6; color:#8A5307; }
+  .cuota-est.baja { background:#F7E4DE; color:#9A4A2E; }
+  .b-baja { background:#fff; color:#9A3B3B; border-color:#e0b4b0; } .b-baja:hover{ background:#fbeceb; }
   .ca-cobro { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:2px 0 18px;
               border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:14px 16px; background:#fff; }
   .ca-cobro.abierto { border-color:#BFD9BB; background:#F2F8F1; }
@@ -109,11 +111,12 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   function pagoHTML(a){
-    var e=a.suscripcion_estado;
-    if(e==='activa'){ var px=a.proximo_cobro?(' · próx. cobro '+fecha(a.proximo_cobro)):''; return '<span class="cuota-est activa">Cuota activa'+esc(px)+'</span>'; }
-    if(e==='impago') return '<span class="cuota-est impago">Cuota impagada</span>';
+    var e=a.suscripcion_estado, baja='';
+    if(a.baja_solicitada) baja=' <span class="cuota-est baja">Baja solicitada</span>';
+    if(e==='activa'){ var px=a.proximo_cobro?(' · próx. cobro '+fecha(a.proximo_cobro)):''; return '<span class="cuota-est activa">Cuota activa'+esc(px)+'</span>'+baja; }
+    if(e==='impago') return '<span class="cuota-est impago">Cuota impagada</span>'+baja;
     if(e==='cancelada') return '<span class="cuota-est cancelada">Cuota dada de baja</span>';
-    return '<span class="cuota-est sin">Sin pagar la cuota</span>';
+    return '<span class="cuota-est sin">Sin pagar la cuota</span>'+baja;
   }
 
   function tarjeta(a){
@@ -128,6 +131,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(est!=='aprobada') acc+='<button type="button" class="b b-si" data-id="'+esc(a.id)+'" data-e="aprobada">Aprobar</button>';
     if(est!=='rechazada') acc+='<button type="button" class="b b-no" data-id="'+esc(a.id)+'" data-e="rechazada">Rechazar</button>';
     if(est!=='pendiente') acc+='<button type="button" class="b b-volver" data-id="'+esc(a.id)+'" data-e="pendiente">Volver a pendiente</button>';
+    if(a.suscripcion_estado==='activa') acc+='<button type="button" class="b b-baja" data-baja="'+esc(a.id)+'">Dar de baja'+(a.baja_solicitada?' (pedida)':'')+'</button>';
     return '<article class="alta">'+
       '<div class="alta-top">'+
         '<span class="quien"><b>'+esc((a.nombre||'')+' '+(a.apellidos||''))+'</b>'+
@@ -201,9 +205,23 @@ APOLANA_ADMIN.listo(function (sb) {
     toast(abrir?'Cobro abierto · los padres ya pueden pagar':'Cobro cerrado');
   }
 
+  async function darBaja(id, btn){
+    if(!confirm('¿Dar de baja esta cuota? Se cancelará la suscripción en Stripe y dejará de cobrarse.')) return;
+    var txt=btn.textContent; btn.disabled=true; btn.textContent='Dando de baja…';
+    var r=await sb.functions.invoke('cubo-baja',{ body:{ alta_id:id } });
+    if(r.error || !(r.data && r.data.ok)){
+      var m=''; try{ var ctx=r.error&&r.error.context; if(ctx&&ctx.json){ var d=await ctx.json(); m=d&&d.mensaje; } }catch(e){}
+      toast(m||'No se ha podido dar de baja.','error'); btn.disabled=false; btn.textContent=txt; return;
+    }
+    ALTAS.forEach(function(a){ if(a.id===id){ a.suscripcion_estado='cancelada'; a.baja_solicitada=null; } });
+    pintar(); toast('Cuota dada de baja');
+  }
+
   $('admin-contenido').addEventListener('click', function(ev){
     var t=ev.target.closest?ev.target.closest('#ca-cobro-btn'):null;
     if(t){ toggleCobro(t); return; }
+    var bb=ev.target.closest?ev.target.closest('.b-baja[data-baja]'):null;
+    if(bb){ darBaja(bb.getAttribute('data-baja'), bb); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
     if(f){ filtro=f.getAttribute('data-f'); pintar(); return; }
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;

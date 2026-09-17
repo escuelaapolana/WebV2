@@ -61,6 +61,8 @@
   .cuota .btn.activo:disabled { opacity:.62; cursor:progress; }
   .cuota .pago-msg { margin:10px 0 0; font-size:13.5px; color:#B23B3B; }
   .cuota .fina { font-size:12.5px; color:var(--texto-tenue,#9A927F); margin:10px 0 0; }
+  .cuota .enlace { background:none; border:0; padding:0; font:inherit; color:var(--azul,#2F6FA8); text-decoration:underline; cursor:pointer; }
+  .cuota .enlace:hover { color:var(--azul-hover,#1E4E78); }
   .cb-vuelta { display:flex; gap:10px; align-items:flex-start; border-radius:14px; padding:13px 15px; margin:0 0 14px;
                font-size:14px; line-height:1.45; border:1px solid; }
   .cb-vuelta.ok { background:#EDF5EC; border-color:#BFD9BB; color:#2E5A2A; }
@@ -264,7 +266,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cuota() {
     if (_cuota) return _cuota;
     var r = await sb.from('cubo_altas')
-      .select('precio_mes,suscripcion_estado,proximo_cobro,ultimo_cobro')
+      .select('id,precio_mes,suscripcion_estado,proximo_cobro,ultimo_cobro,baja_solicitada')
       .eq('perfil_id', perfil.id)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -296,14 +298,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var ini = '2026-09-21';
       var ult = (alta.ultimo_cobro && String(alta.ultimo_cobro).slice(0, 10) >= ini)
         ? fechaLarga(alta.ultimo_cobro) : '';
+      var baja = alta.baja_solicitada
+        ? '<p class="fina">Has pedido la baja. El club la tramitará y dejará de cobrarte. Si fue un error, escríbenos.</p>'
+        : '<p class="fina">¿Cambiar de tarjeta? Escríbenos. ¿Quieres darte de baja? ' +
+          '<button type="button" class="enlace" id="cb-baja">Solicitar la baja</button></p>' +
+          '<p class="pago-msg" id="cb-baja-msg" hidden></p>';
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
         '<p><b>Cuota activa.</b> ' + esc(precio) + ' € al mes. ' +
           'Se cobra sola con tu tarjeta; no tienes que hacer nada.</p>' +
         '<div class="pagos">' +
           '<div class="pago"><span>Próximo pago</span><b>' + (prox ? esc(prox) : 'Por confirmar') + '</b></div>' +
           (ult ? '<div class="pago"><span>Último pago</span><b>' + esc(ult) + '</b></div>' : '') +
-        '</div>' +
-        '<p class="fina">¿Cambiar de tarjeta o dar de baja la cuota? Habla con el club.</p>' +
+        '</div>' + baja +
       '</div>';
     }
 
@@ -343,6 +349,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }).catch(function (e) {
         fallo('No hemos podido conectar con la pasarela. Inténtalo en un minuto.');
         console.warn('[Apolana] cubo-pagar:', e && e.message ? e.message : e);
+      });
+    });
+  }
+
+  // Solicitar la baja (opción B): el padre la pide, el club la tramita.
+  function engancharBaja() {
+    var b = $('cb-baja');
+    if (!b) return;
+    b.addEventListener('click', function () {
+      if (!confirm('¿Seguro que quieres solicitar la baja de tu cuota? El club la tramitará y dejará de cobrarte.')) return;
+      var msg = $('cb-baja-msg');
+      b.disabled = true; b.textContent = 'Enviando…';
+      sb.rpc('cubo_baja_solicitar').then(function (r) {
+        if (r.error || (r.data && r.data.ok === false)) {
+          b.disabled = false; b.textContent = 'Solicitar la baja';
+          if (msg) { msg.hidden = false; msg.textContent = 'No se ha podido. Vuelve a intentarlo o escríbenos.'; }
+          return;
+        }
+        _cuota = null; pintarMas();
+      }).catch(function () {
+        b.disabled = false; b.textContent = 'Solicitar la baja';
+        if (msg) { msg.hidden = false; msg.textContent = 'No se ha podido conectar. Inténtalo de nuevo.'; }
       });
     });
   }
@@ -426,6 +454,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var res = await Promise.all([cuota(), cobroAbierto()]);
     $('cb-cuota').innerHTML = bloqueCuota(res[0].alta, res[1]);
     engancharPago();
+    engancharBaja();
   }
 
   function pintar() {
