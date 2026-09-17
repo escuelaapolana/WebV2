@@ -796,6 +796,15 @@
       tx.appendChild(nodo('b', null, hayNumero ? 'Cuota de socio · una vez al año' : 'Solo la cuota de socio'));
       var subCuota = 'A partir del segundo año, 110 €. Se cobra en noviembre.';
       if (limpio(datos.socio.notas)) subCuota = 'A partir del segundo año, 110 €. ' + limpio(datos.socio.notas);
+      /* En El Cubo entrena quien quiera (padres de la escuela y gente de fuera):
+         la cuota de socio es aparte y no hace falta para entrenar. Se dice
+         de primeras para que nadie la lea como un requisito. */
+      var _elSec = document.querySelector('[data-seccion]');
+      if (_elSec && _elSec.getAttribute('data-seccion') === 'cubo') {
+        cuota.classList.add('sp-cuota--opcional');
+        tx.querySelector('b').textContent = 'Cuota de socio · opcional, no hace falta para entrenar';
+        subCuota = 'Solo si además quieres ser socio del club. ' + subCuota;
+      }
       tx.appendChild(nodo('small', null, subCuota));
       cuota.appendChild(tx);
       cuota.appendChild(nodo('span', 'imp', importeDe(datos.socio).texto));
