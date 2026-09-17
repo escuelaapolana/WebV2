@@ -157,7 +157,21 @@
       '<span class="edv-msg" id="edv-msg"></span>';
     document.body.appendChild(b);
     document.body.classList.add('edv-hay-barra');
+    posicionarBarra();
+    window.addEventListener('resize', posicionarBarra);
     return b;
+  }
+
+  /* La app monta abajo la barra «Volver a mi perfil». La barra del editor se
+     coloca JUSTO ENCIMA de ella (no sobre ella) para que ambas se vean; si esa
+     barra no está o está oculta, la del editor baja a ras de suelo. */
+  function posicionarBarra() {
+    var bar = document.querySelector('.edv-barra');
+    if (!bar) return;
+    var bv = barraVolver();
+    var h = (bv && bv.style.display !== 'none' && bv.offsetHeight) ? bv.offsetHeight : 0;
+    bar.style.bottom = h + 'px';
+    document.body.style.paddingBottom = (h + 64) + 'px';
   }
 
   /* La app instalada monta OTRA barra fija abajo («Volver a mi perfil»,
@@ -174,9 +188,9 @@
     var bv = barraVolver();
     if (!bv) return;
     bv.style.display = 'none';
-    /* Esa barra fijaba el padding-bottom del body a su medida (inline, que
-       gana a la clase). Se quita para que valga el hueco de 64px del editor. */
-    document.body.style.paddingBottom = '';
+    /* Sin la barra «Volver», el editor baja a ras de suelo y reserva solo su
+       hueco de 64px (posicionarBarra lo recalcula). */
+    posicionarBarra();
   }
   function mostrarVolver() {
     var bv = barraVolver();
@@ -184,6 +198,7 @@
     bv.style.display = '';
     /* Que vuelva a reservar su hueco: su propio listener recalcula al 'resize'. */
     try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+    posicionarBarra();
   }
 
   function aviso(txt, clase) {
@@ -751,12 +766,51 @@
        en el panel de Biblioteca. Se pintan hasta 300 de una vez (con carga
        perezosa); si hay más, el buscador afina. */
     cuerpo.innerHTML =
+      '<div class="edv-subir-fila"><button type="button" class="edv-btn edv-subir">↑ Subir del ordenador</button>' +
+        '<span class="edv-pista edv-subir-msg"></span></div>' +
+      '<input type="file" accept="image/*" class="edv-file" style="display:none">' +
       '<input type="search" class="edv-buscar" placeholder="Buscar por nombre, grupo o fecha…" autocomplete="off">' +
       '<div class="edv-fotos"></div>' +
-      '<p class="edv-pista"><span class="edv-cuenta"></span> · para subir una nueva, ' +
-      '<a href="' + (window.APOLANA_BASE || '../') + 'admin/biblioteca/">ve a Biblioteca</a>.</p>';
+      '<p class="edv-pista"><span class="edv-cuenta"></span> · o sube una nueva del ordenador con el botón de arriba.</p>';
     var rej = $('.edv-fotos', cuerpo);
     var cuenta = $('.edv-cuenta', cuerpo);
+
+    /* Subir una foto del ordenador sin salir a Biblioteca: se sube al almacén
+       de la biblioteca (igual que en admin/biblioteca) y se usa al momento,
+       reutilizando el botón «Usar esto» del pie (que la publica). */
+    var fileInput = $('.edv-file', cuerpo);
+    var btnSubir = $('.edv-subir', cuerpo);
+    var msgSubir = $('.edv-subir-msg', cuerpo);
+    btnSubir.addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', async function () {
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { msgSubir.textContent = 'Tiene que ser una imagen.'; fileInput.value = ''; return; }
+      btnSubir.disabled = true;
+      msgSubir.textContent = 'Subiendo «' + file.name + '»…';
+      try {
+        var pid = null;
+        try { var rp = await sb.rpc('mi_perfil_id'); if (!rp.error) pid = rp.data || null; } catch (e) {}
+        var limpio2 = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+        var ruta = BIB.CARPETA_BIBLIO + '/' + Date.now() + '-' + limpio2;
+        var up = await sb.storage.from(BIB.CUBO_PRIVADO).upload(ruta, file, { cacheControl: '3600', upsert: false });
+        if (up.error) { msgSubir.textContent = 'No se ha podido subir: ' + up.error.message; return; }
+        var ins = await sb.from('biblioteca_fotos')
+          .insert({ ruta: ruta, cubo: BIB.CUBO_PRIVADO, nombre: file.name, subida_por: pid })
+          .select().single();
+        if (ins.error) {
+          try { await sb.storage.from(BIB.CUBO_PRIVADO).remove([ruta]); } catch (e) {}
+          msgSubir.textContent = 'No se ha podido guardar: ' + ins.error.message; return;
+        }
+        elegida.foto = ins.data;                 // la recién subida
+        biblioteca.unshift(ins.data);            // que quede en la biblioteca cargada
+        msgSubir.textContent = 'Subida ✓ · usándola…';
+        var ok = document.querySelector('.edv-panel .edv-ok');
+        if (ok) ok.click();                      // publica y la usa, como «Usar esto»
+      } finally {
+        btnSubir.disabled = false; fileInput.value = '';
+      }
+    });
     function sinTildes(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
     function pinta(filtro) {
       var q = sinTildes(filtro).trim();
@@ -872,11 +926,16 @@
 
   // ---------- estilos ----------
   var CSS = [
-    '.edv-barra{position:fixed;left:0;right:0;bottom:0;z-index:9000;display:flex;align-items:center;gap:10px;',
+    /* z-index por ENCIMA de la barra «Volver a mi perfil» de la app (9500),
+       y se apila justo encima de ella (posicionarBarra) para que no la tape. */
+    '.edv-barra{position:fixed;left:0;right:0;bottom:0;z-index:9600;display:flex;align-items:center;gap:10px;',
       'padding:10px clamp(12px,3vw,24px);background:#2E4256;color:#fff;',
       'font-family:var(--fuente-texto,system-ui);font-size:14px;flex-wrap:wrap;',
       'box-shadow:0 -6px 20px -12px rgba(0,0,0,.5)}',
     '.edv-hay-barra{padding-bottom:64px}',
+    '.edv-subir-fila{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}',
+    '.edv-subir{min-height:38px}',
+    '.edv-subir-msg{margin:0}',
     '.edv-que{opacity:.72;flex:1;min-width:120px}',
     '.edv-btn{min-height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.4);',
       'background:transparent;color:#fff;font:inherit;font-weight:600;cursor:pointer}',
