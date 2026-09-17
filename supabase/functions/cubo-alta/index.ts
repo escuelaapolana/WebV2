@@ -83,6 +83,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let b: Record<string, any> = {};
   try { b = await req.json(); } catch { /* vacío */ }
 
+  // ---- 0 · Anti-spam ----
+  // Honeypot: un campo oculto que una persona nunca rellena. Si viene con algo,
+  // es un bot: fingimos éxito para no darle pistas y no creamos nada.
+  if (String(b.website ?? "").trim() !== "") {
+    return responder({ ok: true, ya_existia: false, perfil_id: null, lista_espera: false }, 200, origen);
+  }
+  // Límite por IP (crear cuentas es lo más sensible). Fail-open si no hay IP.
+  const ipCliente = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  if (ipCliente) {
+    const desde = new Date(Date.now() - 15 * 60000).toISOString();
+    const rRate = await rest(
+      `rate_limit_log?select=id&accion=eq.cubo-alta&ip=eq.${encodeURIComponent(ipCliente)}` +
+      `&creado_en=gt.${encodeURIComponent(desde)}`,
+    );
+    const intentos = Array.isArray(rRate.datos) ? rRate.datos.length : 0;
+    if (intentos >= 6) {
+      return responder({ error: "rate", mensaje: "Demasiados intentos desde tu conexión. Prueba de nuevo dentro de un rato." }, 429, origen);
+    }
+    await rest("rate_limit_log", { method: "POST", body: JSON.stringify({ ip: ipCliente, accion: "cubo-alta" }) });
+  }
+
   // ---- 1 · Validar ----
   const nombre = corta(b.nombre, 120);
   const apellidos = corta(b.apellidos, 120);
