@@ -347,8 +347,10 @@
   .apt-in input:focus { outline:2px solid var(--azul-filete,#3B85C0); outline-offset:-1px; }
   .apt-msg { min-height:20px; font-size:13px; color: var(--texto-suave); margin-bottom:10px; }
   .apt-msg.error { color:#B0563A; }
-  .apt-par { display:flex; gap:10px; margin-bottom:10px; }
+  .apt-par { display:flex; gap:10px; margin-bottom:10px; align-items:flex-end; }
   .apt-par .apt-in { flex:1; min-width:0; }
+  .apt-par .apt-peso { flex:0 0 46px; align-self:center; font-family: var(--fuente-dato); font-size:15px; font-weight:600; color: var(--navy); }
+  .apt-total { margin:-4px 0 14px; font-size:14px; font-weight:600; color: var(--navy); font-family: var(--fuente-dato); min-height:18px; }
   .apt-mas { display:inline-flex; align-items:center; min-height:44px; padding:0 4px; margin-bottom:12px;
     background:none; border:0; color: var(--azul-filete,#3B85C0); font:inherit; font-weight:600; cursor:pointer; }
 
@@ -465,14 +467,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       grupo:'Velocidad', ayuda:'Aceleración con salida de tacos. Se cronometran los 30 m.' },
     { k:'60m', corto:'60 lanz.', nombre:'60 m lanzado', unidad:'s', dec:2, intentos:2, menosMejor:true,
       grupo:'Velocidad', ayuda:'Sprint largo. Se pueden tomar parciales de 30 y 60.' },
-    { k:'300m', corto:'300 m', nombre:'300 m', unidad:'s', dec:2, intentos:1, menosMejor:true,
-      grupo:'Resistencia', ayuda:'Velocidad-resistencia. Un solo intento por batería.' },
+    { k:'300m', corto:'300 m', nombre:'300 m', unidad:'s', dec:2, intentos:1, menosMejor:true, tramos:true,
+      grupo:'Resistencia', ayuda:'Apunta los parciales de cada 100 m; el total se suma solo.' },
     { k:'1000m', corto:'1000 m', nombre:'1000 m', unidad:'s', dec:1, intentos:1, menosMejor:true,
       grupo:'Resistencia', ayuda:'Control de fondo. Apunta el tiempo total en segundos (p. ej. 3:20 → 200).' },
     { k:'salto_horizontal', corto:'S. horiz.', nombre:'Salto horizontal', unidad:'m', dec:2, intentos:3, menosMejor:false,
       grupo:'Saltos', ayuda:'Salto horizontal a pies juntos. Mejor de 3.' },
-    { k:'balon_medicinal', corto:'B. medic.', nombre:'Balón medicinal', unidad:'m', dec:2, intentos:3, menosMejor:false,
-      grupo:'Lanzamientos', ayuda:'Lanzamiento hacia delante con las dos manos. Mejor de 3.' },
+    { k:'balon_medicinal', corto:'B. medic.', nombre:'Balón medicinal', unidad:'m', dec:2, intentos:3, menosMejor:false, pesos:[3,4,5],
+      grupo:'Lanzamientos', ayuda:'Lanzamiento hacia delante con las dos manos. Dos intentos por cada peso.' },
     { k:'drop_jump', corto:'Drop jump', nombre:'Drop jump', unidad:'cm', dec:1, pares:true, menosMejor:false,
       grupo:'Saltos', ayuda:'Caída desde el cajón y salto reactivo. En cada intento: altura del cajón y altura del salto, en cm.' }
   ];
@@ -1012,11 +1014,34 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div>';
     }
 
+    // Una fila por peso (balón medicinal): dos intentos por peso.
+    function filaPeso(peso){
+      var ex = prev.filter(function(p){ return p && Number(p.peso)===Number(peso); })[0] || {};
+      var v1 = ex.i1!=null ? String(ex.i1).replace('.',',') : '';
+      var v2 = ex.i2!=null ? String(ex.i2).replace('.',',') : '';
+      return '<div class="apt-par" data-peso="'+peso+'">'+
+        '<span class="apt-peso">'+peso+' kg</span>'+
+        '<label class="apt-in"><span>Intento 1 (m)</span><input type="text" inputmode="decimal" data-b1 value="'+esc(v1)+'" placeholder="m"></label>'+
+        '<label class="apt-in"><span>Intento 2 (m)</span><input type="text" inputmode="decimal" data-b2 value="'+esc(v2)+'" placeholder="m"></label>'+
+      '</div>';
+    }
+    // Parciales del 300 m.
+    function inpTramo(k,lab){
+      var ex = prev[0] || {};
+      var v = ex[k]!=null ? String(ex[k]).replace('.',',') : '';
+      return '<label class="apt-in"><span>'+lab+'</span><input type="text" inputmode="decimal" data-'+k+' value="'+esc(v)+'" placeholder="s"></label>';
+    }
+
     var cuerpo, fmtSel = '';
     if(t.pares){
       var arr = prev.length ? prev : [{},{},{}];
       cuerpo = '<div class="apt-ins" id="apt-ins">'+arr.map(filaPar).join('')+'</div>'+
                '<button type="button" class="apt-mas" id="apt-mas">+ Añadir altura</button>';
+    } else if(t.pesos){
+      cuerpo = '<div class="apt-ins" id="apt-ins">'+t.pesos.map(filaPeso).join('')+'</div>';
+    } else if(t.tramos){
+      cuerpo = '<div class="apt-ins" id="apt-ins">'+inpTramo('p1','0–100 m')+inpTramo('p2','100–200 m')+inpTramo('p3','200–300 m')+'</div>'+
+               '<p class="apt-total" id="apt-total"></p>';
     } else {
       var n = t.serie ? fmt : (t.intentos || 1);
       fmtSel = t.serie ? '<div class="apt-fmt">Serie de: '+
@@ -1042,6 +1067,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       m.querySelector('#apt-mas').addEventListener('click', function(){
         m.querySelector('#apt-ins').insertAdjacentHTML('beforeend', filaPar({}));
       });
+    } else if(t.tramos){
+      var actualizarTotal = function(){
+        var vals = ['p1','p2','p3'].map(function(k){ return aptNum(m.querySelector('[data-'+k+']').value); });
+        var tot = vals.every(function(x){ return x!=null; }) ? vals.reduce(function(a,b){ return a+b; }, 0) : null;
+        m.querySelector('#apt-total').textContent = tot!=null ? 'Total: '+tot.toFixed(2).replace('.',',')+' s' : '';
+      };
+      m.querySelectorAll('#apt-ins input').forEach(function(inp){ inp.addEventListener('input', actualizarTotal); });
+      actualizarTotal();
     } else if(t.serie){
       m.querySelectorAll('[data-fmt]').forEach(function(b){
         b.addEventListener('click', function(){
@@ -1059,6 +1092,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           return { cajon: aptNum(row.querySelector('[data-cajon]').value), salto: aptNum(row.querySelector('[data-salto]').value) };
         }).filter(function(p){ return p.salto!=null; });
         guardarPares(t, pares, m);
+      } else if(t.pesos){
+        var pesos = Array.prototype.map.call(m.querySelectorAll('.apt-par'), function(row){
+          var i1 = aptNum(row.querySelector('[data-b1]').value);
+          var i2 = aptNum(row.querySelector('[data-b2]').value);
+          var vv = [i1,i2].filter(function(x){ return x!=null; });
+          return { peso: Number(row.getAttribute('data-peso')), i1:i1, i2:i2, mejor: vv.length ? Math.max.apply(null, vv) : null };
+        }).filter(function(p){ return p.mejor!=null; });
+        guardarBalon(t, pesos, m);
+      } else if(t.tramos){
+        var p1=aptNum(m.querySelector('[data-p1]').value), p2=aptNum(m.querySelector('[data-p2]').value), p3=aptNum(m.querySelector('[data-p3]').value);
+        var tr = (p1!=null && p2!=null && p3!=null) ? { p1:p1, p2:p2, p3:p3, total: Number((p1+p2+p3).toFixed(2)) } : null;
+        guardarTramos(t, tr, m);
       } else {
         var vals = Array.prototype.map.call(m.querySelectorAll('#apt-ins [data-i]'), function(inp){ return aptNum(inp.value); })
                    .filter(function(x){ return x!=null; });
@@ -1088,6 +1133,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     RES_ABIERTA[t.k] = r.data;
     cerrarModal(modal);
     await pantallaMisResultados();
+  }
+
+  async function guardarBalon(t, pesos, modal){
+    var msg = modal.querySelector('#apt-msg');
+    var f = RES_ABIERTA[t.k];
+    if(!pesos.length){
+      if(f){ var d = await sb.from('test_resultados').delete().eq('id', f.id); if(!d.error) delete RES_ABIERTA[t.k]; }
+      cerrarModal(modal); pintarMisResultados(); return;
+    }
+    msg.className='apt-msg'; msg.textContent='Guardando…';
+    var ref = pesos.filter(function(p){ return Number(p.peso)===3; })[0] || pesos[0];
+    var fila = { bateria_id: BAT_ABIERTA.id, atleta_id: FICHA.id, test: t.k, intentos: pesos, mejor: ref.mejor, formato_rsi:null, no_asiste:false };
+    var r = await sb.from('test_resultados').upsert(fila, { onConflict:'bateria_id,atleta_id,test' }).select('id,test,intentos,mejor,formato_rsi,no_asiste').single();
+    if(r.error){ msg.className='apt-msg error'; msg.textContent='No se ha podido guardar. Comprueba la conexión y vuelve a darle.'; return; }
+    RES_ABIERTA[t.k] = r.data; cerrarModal(modal); await pantallaMisResultados();
+  }
+
+  async function guardarTramos(t, tr, modal){
+    var msg = modal.querySelector('#apt-msg');
+    var f = RES_ABIERTA[t.k];
+    if(!tr){
+      if(f){ var d = await sb.from('test_resultados').delete().eq('id', f.id); if(!d.error) delete RES_ABIERTA[t.k]; }
+      cerrarModal(modal); pintarMisResultados(); return;
+    }
+    msg.className='apt-msg'; msg.textContent='Guardando…';
+    var fila = { bateria_id: BAT_ABIERTA.id, atleta_id: FICHA.id, test: t.k, intentos: [tr], mejor: tr.total, formato_rsi:null, no_asiste:false };
+    var r = await sb.from('test_resultados').upsert(fila, { onConflict:'bateria_id,atleta_id,test' }).select('id,test,intentos,mejor,formato_rsi,no_asiste').single();
+    if(r.error){ msg.className='apt-msg error'; msg.textContent='No se ha podido guardar. Comprueba la conexión y vuelve a darle.'; return; }
+    RES_ABIERTA[t.k] = r.data; cerrarModal(modal); await pantallaMisResultados();
   }
 
   async function guardarApuntar(t, vals, fmt, modal){
