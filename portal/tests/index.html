@@ -371,6 +371,13 @@
   .rad-tabla tbody tr:last-child td { border-bottom:0; }
   .rad-tabla td b { color: var(--navy); }
   .rad-pie { margin:16px 0 0; font-size:13px; color: var(--texto-suave); line-height:1.55; }
+  /* Gráfica del balón medicinal: una barra por peso */
+  .rad-bars { display:flex; flex-direction:column; gap:9px; padding:4px 0 2px; }
+  .rad-bar { display:grid; grid-template-columns:50px 1fr auto; align-items:center; gap:10px; }
+  .rad-bar .rb-lab { font-size:13px; color: var(--texto-suave); }
+  .rad-bar .rb-track { height:14px; background: var(--crema-media,#EFE9DC); border-radius:999px; overflow:hidden; }
+  .rad-bar .rb-fill { display:block; height:100%; background: var(--azul,#2F6FA8); border-radius:999px; }
+  .rad-bar .rb-val { font-family: var(--fuente-dato); font-size:14px; color: var(--navy); }
 </style>
 <script>
 /* Avisos suaves del portal (APX), iguales que en el resto de pantallas. */
@@ -442,7 +449,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var TESTS = [
     { k:'30_lanzado', corto:'30 lanz.', nombre:'30 m lanzado', unidad:'s', dec:2, intentos:2, menosMejor:true,
       grupo:'Velocidad', ayuda:'Velocidad máxima ya en carrera: se entra con 20 m de impulso y solo se cronometran los 30 m centrales.' },
-    { k:'150m', corto:'150 m', nombre:'150 m', unidad:'s', dec:2, intentos:1, menosMejor:true,
+    { k:'150m', corto:'150 lanz.', nombre:'150 m lanzado', unidad:'s', dec:2, intentos:1, menosMejor:true,
       grupo:'Velocidad', ayuda:'Resistencia a la velocidad. Un solo intento por batería: el segundo nunca sale limpio.' },
     { k:'cmj', corto:'CMJ', nombre:'CMJ', unidad:'cm', dec:1, intentos:3, menosMejor:false,
       grupo:'Saltos', ayuda:'Salto con contramovimiento: bajas y subes en un gesto, manos en la cintura.' },
@@ -456,7 +463,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       grupo:'Velocidad', ayuda:'Aceleración corta con salida de tacos: se cronometran los primeros 10 m.' },
     { k:'30m_tacos', corto:'30 tacos', nombre:'30 m desde tacos', unidad:'s', dec:2, intentos:2, menosMejor:true,
       grupo:'Velocidad', ayuda:'Aceleración con salida de tacos. Se cronometran los 30 m.' },
-    { k:'60m', corto:'60 m', nombre:'60 m', unidad:'s', dec:2, intentos:2, menosMejor:true,
+    { k:'60m', corto:'60 lanz.', nombre:'60 m lanzado', unidad:'s', dec:2, intentos:2, menosMejor:true,
       grupo:'Velocidad', ayuda:'Sprint largo. Se pueden tomar parciales de 30 y 60.' },
     { k:'300m', corto:'300 m', nombre:'300 m', unidad:'s', dec:2, intentos:1, menosMejor:true,
       grupo:'Resistencia', ayuda:'Velocidad-resistencia. Un solo intento por batería.' },
@@ -713,16 +720,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!r) return '';
     var by = r.by, partes = [];
 
+    var mil = (function(){ var t=by['1000m']; if(!t||t.mejor==null) return '';
+      var v=Number(t.mejor), m=Math.floor(v/60), s=v-m*60;
+      return '<div class="rad-linea"><span>1000 m</span><b>'+m+':'+(s<10?'0':'')+radNum(s,1)+'</b></div>'; })();
     var vel = radLinea('10 m salida de tacos', by['10m'], 's', 2) +
               radLinea('30 m desde tacos', by['30m_tacos'], 's', 2) +
-              radLinea('30 m lanzado', by['30_lanzado'], 's', 2);
-    if(vel) partes.push('<h4 class="rad-h">Velocidad</h4>'+vel);
+              radLinea('30 m lanzado', by['30_lanzado'], 's', 2) +
+              radLinea('60 m lanzado', by['60m'], 's', 2) +
+              radLinea('150 m lanzado', by['150m'], 's', 2) +
+              mil;
+    if(vel) partes.push('<h4 class="rad-h">Velocidad y resistencia</h4>'+vel);
 
     var salt = radLinea('CMJ', by['cmj'], 'cm', 1) +
                radLinea('SJ', by['sj'], 'cm', 1) +
                radLinea('Abalakov', by['abalakov'], 'cm', 1) +
-               radLinea('Salto horizontal', by['salto_horizontal'], 'm', 2) +
-               radLinea('Balón medicinal', by['balon_medicinal'], 'm', 2);
+               radLinea('Salto horizontal', by['salto_horizontal'], 'm', 2);
     if(salt) partes.push('<h4 class="rad-h">Salto y potencia</h4>'+salt);
 
     var dj = by['drop_jump'];
@@ -741,6 +753,34 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         partes.push('<h4 class="rad-h">10 pogos <span class="rad-ayuda">resistencia reactiva · TC bajo = más reactivo</span></h4>'+
           '<table class="rad-tabla"><thead><tr><th>Serie</th><th>Altura</th><th>RSI med.</th><th>RSI máx.</th><th>TC</th></tr></thead><tbody>'+fpg+'</tbody></table>');
       }
+    }
+
+    // Balón medicinal: una barra por peso (más lejos = más potencia)
+    var bm = by['balon_medicinal'];
+    if(bm && Array.isArray(bm.intentos) && bm.intentos.length && bm.intentos[0] && bm.intentos[0].peso!=null){
+      var pesos = bm.intentos.slice().sort(function(a,b){ return a.peso-b.peso; });
+      var maxd = Math.max.apply(null, pesos.map(function(p){ return Number(p.mejor)||0; })) || 1;
+      var barras = pesos.map(function(p){
+        var pct = Math.max(4, Math.round((Number(p.mejor)/maxd)*100));
+        return '<div class="rad-bar"><span class="rb-lab">'+radNum(p.peso,0)+' kg</span>'+
+          '<span class="rb-track"><span class="rb-fill" style="width:'+pct+'%"></span></span>'+
+          '<span class="rb-val">'+radNum(p.mejor,2)+' m</span></div>';
+      }).join('');
+      partes.push('<h4 class="rad-h">Balón medicinal <span class="rad-ayuda">lanzamiento por peso · más lejos = más potencia</span></h4><div class="rad-bars">'+barras+'</div>');
+    } else if(bm && bm.mejor!=null){
+      partes.push('<h4 class="rad-h">Salto y potencia</h4>'+radLinea('Balón medicinal', bm, 'm', 2));
+    }
+
+    // 300 m con sus parciales por tramo de 100 m
+    var m3 = by['300m'];
+    if(m3 && Array.isArray(m3.intentos) && m3.intentos[0] && m3.intentos[0].total!=null){
+      var sp = m3.intentos[0];
+      partes.push('<h4 class="rad-h">300 m <span class="rad-ayuda">por tramos de 100 m</span></h4>'+
+        '<table class="rad-tabla"><thead><tr><th>0–100</th><th>100–200</th><th>200–300</th><th>Total</th></tr></thead><tbody>'+
+        '<tr><td>'+radNum(sp.p1,2)+' s</td><td>'+radNum(sp.p2,2)+' s</td><td>'+radNum(sp.p3,2)+' s</td><td><b>'+radNum(sp.total,2)+' s</b></td></tr>'+
+        '</tbody></table>');
+    } else if(m3 && m3.mejor!=null){
+      partes.push('<h4 class="rad-h">300 m</h4>'+radLinea('300 m', m3, 's', 2));
     }
 
     if(!partes.length) return '';
