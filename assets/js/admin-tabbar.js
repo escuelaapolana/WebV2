@@ -75,7 +75,7 @@
     confirmaciones: svg('<path d="M4 12.5l5 5L20 6.5"/>'),
     altas: svg('<path d="M3 13l3-8h12l3 8"/><path d="M3 13v5h18v-5h-6a3 3 0 0 1-6 0z"/>'),
     cobros: IC.dinero, 'pagos-online': IC.dinero, tarifas: IC.dinero,
-    pedidos: _caja, cubo: _caja,
+    pedidos: _caja, cubo: _caja, 'cubo-altas': _caja,
     eventos: svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
     competiciones: _trofeo, liga: _trofeo, retos: _trofeo, records: _trofeo,
     tests: svg('<path d="M5 20V10M12 20V4M19 20v-7"/>'),
@@ -105,7 +105,7 @@
   function iconoSeccion(t) {
     var k = String(t || '').toLowerCase();
     var M = {
-      'personas': IC.personas, 'dinero': IC.dinero,
+      'personas': IC.personas, 'dinero': IC.dinero, 'el cubo': _caja,
       'actividad': svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
       'tu cuenta': svg('<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>'),
       'la web': _globo,
@@ -358,6 +358,13 @@
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' },
         { txt: 'Quién va a ir',           url: r + 'confirmaciones/', desc: 'confirmaciones para una carrera' }
       ] },
+      /* El Cubo, su propio bloque: es una sección con su gestión (socios,
+         cuotas, cobro, grupos) y conviene tenerla a un golpe de vista. */
+      { t: 'El Cubo', enlaces: [
+        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'quién entrena, sus pagos, las altas y abrir o cerrar el cobro' },
+        { txt: 'Grupos del Cubo',  url: r + 'grupos/',     desc: 'los grupos del Cubo y sus horarios' },
+        { txt: 'Clases y bonos',   url: r + 'cubo/',       desc: 'el modelo antiguo por bonos de uso' }
+      ] },
       { t: 'Dinero', enlaces: [
         /* Las altas van en Dinero y no en Personas por quién las trabaja:
            en septiembre las revisa el tesorero, y el tesorero solo ve este
@@ -373,7 +380,6 @@
         { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
         { txt: 'Competiciones',        url: r + 'competiciones/', desc: 'carreras e inscripciones' },
         { txt: 'Liga Apolana',         url: r + 'liga/',          desc: 'clasificación y puntos' },
-        { txt: 'El Cubo',              url: r + 'cubo/',          desc: 'clases de fuerza y bonos' },
         { txt: 'Batería de tests',     url: r + 'tests/',         desc: 'pruebas físicas y marcas' },
         { txt: 'Retos y medallas',     url: r + 'retos/',         desc: 'los logros de los atletas' },
         { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' },
