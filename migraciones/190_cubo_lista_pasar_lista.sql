@@ -18,6 +18,11 @@ as $$
   ), false);
 $$;
 
+-- Imprescindible: sin EXECUTE para los roles del front, la política de abajo
+-- que la usa hace fallar TODA lectura de cubo_altas (ver mig 191). Se concede
+-- igual que es_admin().
+grant execute on function public.es_cubo_lista() to anon, authenticated;
+
 -- Ve las altas del Cubo (para saber quién entrena en cada grupo)
 drop policy if exists "cubo-lista ve altas del cubo" on public.cubo_altas;
 create policy "cubo-lista ve altas del cubo" on public.cubo_altas
