@@ -671,58 +671,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
     });
 
-    // --- 3) EL CUBO (si ya existe; si no, el calendario no se rompe) ---
+    // --- 3) EL CUBO por bonos: retirado. El Cubo pasó a grupos con cuota
+    //        mensual (sin clases sueltas por uso), así que ya no se apunta
+    //        aquí ni se «gasta un uso». Sus horarios fijos salen con el resto
+    //        del calendario del club. ---
     HAY_CUBO = false;
-    var reservas = {};
-    try {
-      var rc = await sb.from('cubo_clases_ocupacion').select('*')
-        .eq('activa', true).gte('fecha', desde).lte('fecha', hasta);
-      if (rc.error) falla('las clases de El Cubo');
-      if (!rc.error && rc.data) {
-        HAY_CUBO = true;
-        if (atleta) {
-          var rr = await sb.from('cubo_reservas').select('clase_id,estado').eq('atleta_id', atleta.id);
-          if (!rr.error && rr.data) rr.data.forEach(function (x) { reservas[x.clase_id] = x.estado; });
-        }
-        var ahora = new Date();
-        rc.data.forEach(function (c) {
-          var mi = reservas[c.clase_id];
-          var apuntado = (mi === 'reservada' || mi === 'asistida');
-          var enEspera = (mi === 'lista_espera');
-          var empezada = (new Date(c.fecha + 'T' + (c.hora_inicio || '00:00:00')) < ahora);
-          var completa = (c.libres <= 0);
-
-          var estado, clase, accion = null, nota = '';
-          if (apuntado) {
-            estado = 'Ya apuntado'; clase = 'ok';
-            if (!empezada) accion = { tipo: 'quitar-cubo', id: c.clase_id, texto: 'Quitarme', estilo: 'fantasma' };
-          } else if (enEspera) {
-            estado = 'En lista de espera'; clase = 'espera';
-            if (!empezada) accion = { tipo: 'quitar-cubo', id: c.clase_id, texto: 'Salir de la lista', estilo: 'fantasma' };
-          } else if (empezada) {
-            estado = 'Cerrada'; clase = 'no';
-          } else if (completa) {
-            estado = 'Completa'; clase = 'no';
-            accion = { tipo: 'apuntar-cubo', id: c.clase_id, texto: 'Apuntarme a la lista de espera', estilo: 'fantasma' };
-          } else {
-            estado = 'Abierta'; clase = 'ok';
-            accion = { tipo: 'apuntar-cubo', id: c.clase_id, texto: 'Me apunto · gasta 1 uso', estilo: 'primario' };
-            nota = 'Apuntarte gasta un uso de tu bono de El Cubo.';
-          }
-
-          acts.push({
-            fuente: 'cubo', id: c.clase_id, fecha: c.fecha, hora: hhmm(c.hora_inicio), horaFin: hhmm(c.hora_fin),
-            titulo: c.titulo || 'Clase de El Cubo', tipoTexto: 'Clase de El Cubo',
-            grupo: c.monitor ? 'Con ' + c.monitor : '', lugar: 'El Cubo · sala del club', seccion: null,
-            plazas: c.plazas, apuntados: c.ocupadas, libres: c.libres,
-            descripcion: c.notas || '',
-            mio: apuntado || enEspera, puedo: !!accion && accion.tipo === 'apuntar-cubo' && !completa,
-            estado: estado, pillClase: clase, nota: nota, accion: accion,
-            contacto: { href: '../cubo/', texto: 'Ver mi bono de El Cubo' }
-          });
-        });
-      }
-    } catch (e) { HAY_CUBO = false; falla('las clases de El Cubo'); }
 
     // --- 4) COMPETICIONES (se apunta en /portal/competiciones/) ---
     var misComps = {};
@@ -1168,7 +1121,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             'Hay más cosas en el calendario, pero se quedan fuera de lo que has elegido ver. ' +
             'Los filtros que tienes puestos están aquí arriba: quítalos y vuelve a verlo todo.')
         : APOLANA_UI.vacio('Todavía no hay nada apuntado',
-            'Aquí irán apareciendo los entrenamientos, las clases de El Cubo y las competiciones en cuanto el club las publique. Lo que se repite cada semana está en los horarios del club.',
+            'Aquí irán apareciendo los entrenamientos y las competiciones en cuanto el club las publique. Lo que se repite cada semana está en los horarios del club.',
             APOLANA_UI.boton('Ver los horarios de la semana', '../../horarios/'));
     }
     var h = '<div class="agenda">';
@@ -1260,7 +1213,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       /* Con una consulta caída no se dice que no hay nada: eso ya lo explica el
          aviso de arriba, y aquí sería contradecirlo. */
       h += APOLANA_UI.vacio('Todavía no hay nada por delante',
-        'Aquí irán apareciendo los entrenamientos, las clases de El Cubo y las competiciones en cuanto ' +
+        'Aquí irán apareciendo los entrenamientos y las competiciones en cuanto ' +
         'el club las publique. Lo que se repite cada semana está en los horarios del club.',
         APOLANA_UI.boton('Ver los horarios de la semana', '../../horarios/'));
     }
@@ -1622,7 +1575,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var tipos = [
       { id: 'competicion', txt: 'Competiciones' },
       { id: 'evento', txt: 'Eventos del club' },
-      { id: 'cubo', txt: 'El Cubo' },
       { id: 'entreno', txt: 'Entrenamientos' }
     ];
     var h = '<div class="filtro-bloque"><h3>Qué quieres ver</h3><div class="filtro-ops" data-grupo="tipo">' +
@@ -1770,15 +1722,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } else if (acc === 'quitar-sesion') {
       r = await sb.from('sesion_inscripciones').delete().eq('sesion_id', idAcc).eq('atleta_id', atleta.id);
       modalAviso = r.error ? '!' + mensajeError(r.error) : 'Te has quitado.';
-    } else if (acc === 'apuntar-cubo') {
-      r = await sb.rpc('cubo_apuntarme', { p_clase: idAcc, p_atleta: atleta.id });
-      if (r.error) modalAviso = '!' + mensajeError(r.error);
-      else modalAviso = (r.data === 'lista_espera')
-        ? 'La clase está completa: te hemos puesto en la lista de espera. Si queda una plaza, te avisamos.'
-        : 'Apuntado. Se te descuenta un uso del bono.';
-    } else if (acc === 'quitar-cubo') {
-      r = await sb.rpc('cubo_desapuntarme', { p_clase: idAcc, p_atleta: atleta.id });
-      modalAviso = r.error ? '!' + mensajeError(r.error) : 'Te has quitado de la clase.';
     } else if (acc === 'anular-competicion') {
       r = await sb.from('competicion_atleta').delete().eq('id', idAcc).eq('atleta_id', atleta.id);
       modalAviso = r.error ? '!' + mensajeError(r.error) : 'Has anulado tu inscripción. Avisa a tu entrenador si es de última hora.';

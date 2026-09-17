@@ -50,9 +50,7 @@ const MENU = [
     { texto: 'Natación adultos',    url: '/natacion/' },
     { texto: 'Montaña',             url: '/montana/' },
     { texto: 'Triatlón',            url: '/triatlon/' },
-    /* El Cubo, el último: es el único que va por bonos de uso y no por
-       cuota mensual, así que se separa del resto a propósito. */
-    { texto: 'El Cubo · por bonos de uso', url: '/cubo/' },
+    { texto: 'El Cubo · sala de fuerza', url: '/cubo/' },
   ] },
   /* Los programas municipales (atletismo, triatlón y deporte adaptado) van
      DENTRO de Escuelas, no en «Entrenar»: son formación para peques, no hay
