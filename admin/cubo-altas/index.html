@@ -32,6 +32,7 @@
   .alta .quien b { font-size:16px; color:var(--navy,#26374B); }
   .alta .quien .tag { font-size:10.5px; font-weight:700; text-transform:uppercase; border-radius:6px; padding:2px 7px; margin-left:8px; vertical-align:2px; }
   .alta .quien .tag.esc { background:#EAF3E3; color:#4E8A3E; } .alta .quien .tag.fuera { background:#EDE6F5; color:#5B4B8A; }
+  .alta .quien .tag.socio { background:#E7F1F9; color:#2F6FA8; }
   .alta .quien small { display:block; font-size:12.5px; color:var(--texto-suave,#6E6656); margin-top:3px; line-height:1.55; }
   .alta .quien small a { color:var(--azul-oscuro,#2F6FA8); text-decoration:none; }
   .alta .precio { font-family:var(--dato); font-weight:700; font-size:18px; color:var(--navy,#26374B); white-space:nowrap; }
@@ -58,6 +59,18 @@
   .ca-aforo b { color:var(--navy,#26374B); }
   .ca-aforo small { display:block; margin-top:2px; font-size:12.5px; }
   .aforo-link { background:none; border:0; padding:0; font:inherit; color:var(--azul,#2F6FA8); text-decoration:underline; cursor:pointer; }
+  .ca-rot { font-family:var(--fuente-titulo,inherit); font-weight:700; text-transform:uppercase; font-size:13px; letter-spacing:.03em; color:var(--texto-suave,#6E6656); margin:24px 0 10px; }
+  .cg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+  .cg-card { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:14px 16px; }
+  .cg-card h3 { font-family:var(--fuente-titulo,inherit); font-weight:700; font-size:16px; color:var(--navy,#26374B); margin:0 0 3px; }
+  .cg-card .cg-hor { font-size:12.5px; line-height:1.4; color:var(--texto-suave,#6E6656); margin:0 0 10px; }
+  .cg-ocup { display:flex; align-items:baseline; gap:8px; }
+  .cg-ocup b { font-family:var(--fuente-dato,monospace); font-size:22px; color:var(--navy,#26374B); }
+  .cg-ocup span { font-size:12.5px; color:var(--texto-suave,#6E6656); }
+  .cg-bar { height:8px; border-radius:999px; background:var(--crema-media,#EFE9DC); overflow:hidden; margin-top:8px; }
+  .cg-bar i { display:block; height:100%; background:var(--azul,#2F6FA8); border-radius:999px; }
+  .cg-bar.lleno i { background:#C99A5B; }
+  .cg-espera { font-size:12px; color:#8A5307; margin:6px 0 0; }
   .alta-acc { display:flex; gap:9px; flex-wrap:wrap; margin-top:13px; padding-top:12px; border-top:1px solid var(--linea,#EDE6D7); }
   .b { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:0 16px; border-radius:999px; font:inherit; font-size:14.5px; font-weight:600; cursor:pointer; border:1px solid transparent; }
   .b-si { background:var(--azul,#2F6FA8); color:#fff; border-color:var(--azul,#2F6FA8); } .b-si:hover{ background:var(--azul-hover,#1E4E78); }
@@ -75,9 +88,11 @@
 <div id="admin-contenido">
   <div class="ca-wrap">
     <a class="volver" href="../">← Volver al panel</a>
-    <h1 class="saludo">Altas de El Cubo</h1>
-    <p class="sub">Quién se ha apuntado a entrenar. Revisa el descuento de escuela antes de aprobar.</p>
+    <h1 class="saludo">El Cubo · socios y cuotas</h1>
+    <p class="sub">Los grupos y su ocupación, el cobro, y quién se ha apuntado.</p>
     <div id="ca-cobro"></div>
+    <div id="ca-grupos"></div>
+    <p class="ca-rot">Quién se ha apuntado</p>
     <div class="chips" id="ca-chips" hidden></div>
     <div id="ca-lista" class="ca-cargando">Cargando…</div>
   </div>
@@ -144,7 +159,7 @@ APOLANA_ADMIN.listo(function (sb) {
     return '<article class="alta">'+
       '<div class="alta-top">'+
         '<span class="quien"><b>'+esc((a.nombre||'')+' '+(a.apellidos||''))+'</b>'+
-          '<span class="tag '+(a.es_escuela?'esc':'fuera')+'">'+(a.es_escuela?'Escuela':'De fuera')+'</span>'+
+          '<span class="tag '+(a.es_escuela?'esc':(a.es_socio?'socio':'fuera'))+'">'+(a.es_escuela?'Escuela':(a.es_socio?'Socio':'De fuera'))+'</span>'+
           '<small>'+cont.join(' · ')+'</small>'+
           '<small>'+linea2.join(' · ')+'</small>'+
           (a.nota?'<small>«'+esc(a.nota)+'»</small>':'')+
@@ -166,6 +181,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var lista=visibles();
     if(!lista.length){ caja.innerHTML=vacioHTML('Nada con este filtro','Prueba con otro estado.'); return; }
     caja.innerHTML=lista.map(tarjeta).join('');
+    pintarGrupos();
   }
 
   async function refrescar(){ $('ca-lista').className='ca-cargando'; $('ca-lista').textContent='Cargando…'; await cargar(); pintar(); }
@@ -186,6 +202,33 @@ APOLANA_ADMIN.listo(function (sb) {
     COBRO = r.error ? null : !!(r.data && r.data.cobro_abierto);
     LIMITE = (r.data && r.data.limite_grupo!=null) ? r.data.limite_grupo : 20;
     pintarCobro();
+    pintarGrupos();
+  }
+
+  // ---- Grupos del Cubo con su ocupación (X/aforo + lista de espera) ----
+  var GRUPOS_CUBO = null;
+  async function cargarGrupos(){
+    var r = await sb.from('grupos').select('nombre,horario').eq('seccion','cubo').eq('activo',true).order('nombre');
+    GRUPOS_CUBO = r.error ? [] : (r.data||[]);
+    pintarGrupos();
+  }
+  function pintarGrupos(){
+    var caja=$('ca-grupos'); if(!caja || !GRUPOS_CUBO) return;
+    if(!GRUPOS_CUBO.length){ caja.innerHTML=''; return; }
+    var lim = LIMITE!=null ? LIMITE : 20;
+    caja.innerHTML = '<p class="ca-rot">Grupos del Cubo</p><div class="cg-grid">' + GRUPOS_CUBO.map(function(g){
+      var ocup = ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && (a.estado||'pendiente')!=='rechazada'; }).length;
+      var espera = ALTAS.filter(function(a){ return a.horario===g.nombre && a.lista_espera; }).length;
+      var pct = Math.min(100, Math.round(ocup/lim*100));
+      var lleno = ocup>=lim;
+      var nombre = String(g.nombre||'').replace(/^El Cubo\s*·\s*/i,'');
+      return '<div class="cg-card"><h3>'+esc(nombre)+'</h3>'+
+        (g.horario?'<p class="cg-hor">'+esc(g.horario)+'</p>':'')+
+        '<div class="cg-ocup"><b>'+ocup+'/'+lim+'</b><span>plazas'+(lleno?' · completo':'')+'</span></div>'+
+        '<div class="cg-bar'+(lleno?' lleno':'')+'"><i style="width:'+pct+'%"></i></div>'+
+        (espera?'<p class="cg-espera">'+espera+' en lista de espera</p>':'')+
+      '</div>';
+    }).join('') + '</div>';
   }
   function aforoHTML(){
     return '<div class="ca-aforo">Aforo por grupo: <b>'+esc(LIMITE)+' plazas</b> · '+
@@ -247,7 +290,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(!n || n<1){ toast('Pon un número válido.','error'); return; }
     var r=await sb.from('cubo_config').update({ limite_grupo:n }).eq('id',1);
     if(r.error){ toast('No se ha podido: '+r.error.message,'error'); return; }
-    LIMITE=n; pintarCobro(); toast('Aforo: '+n+' por grupo');
+    LIMITE=n; pintarCobro(); pintarGrupos(); toast('Aforo: '+n+' por grupo');
   }
 
   $('admin-contenido').addEventListener('click', function(ev){
@@ -267,6 +310,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   refrescar();
   cargarCobro();
+  cargarGrupos();
 });
 </script>
 

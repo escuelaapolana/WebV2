@@ -92,6 +92,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const hijo = corta(b.hijo, 160);
   const nota = corta(b.nota, 400);
   const escuela = b.escuela === true || b.escuela === "true";
+  const socio = b.socio === true || b.socio === "true";
+  // Familias de la escuela y socios del club pagan lo mismo (precio reducido).
+  const reducido = escuela || socio;
   const slot = corta(b.slot, 20);
   const diasN = Math.round(Number(b.dias));
   const dias = diasN === 1 ? 1 : (diasN === 2 ? 2 : 0);
@@ -106,7 +109,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return responder({ error: "correo", mensaje: "Ese correo no parece válido." }, 400, origen);
   if (password.length < 8) return responder({ error: "clave", mensaje: "La contraseña necesita al menos 8 caracteres." }, 400, origen);
 
-  const precio = escuela ? (dias === 1 ? 20 : 30) : (dias === 1 ? 30 : 40);
+  const precio = reducido ? (dias === 1 ? 20 : 30) : (dias === 1 ? 30 : 40);
 
   // ---- 2 · Grupo del turno ----
   const rGrupo = await rest(`grupos?select=id&seccion=eq.cubo&nombre=eq.${encodeURIComponent(SLOT_A_GRUPO[slot])}&limit=1`);
@@ -208,7 +211,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       nombre, apellidos, dni: dni || null, telefono,
       hijo: hijo || null, direccion: direccion || null,
       horario: SLOT_A_GRUPO[slot], dias, precio_mes: precio,
-      nota: nota || null, es_escuela: escuela, estado: "pendiente",
+      nota: nota || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
       perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
   });

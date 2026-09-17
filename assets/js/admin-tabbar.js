@@ -357,11 +357,10 @@
         { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'horarios, entrenador y cuota' },
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
-      /* El Cubo, su propio bloque: es una sección con su gestión (socios,
-         cuotas, cobro, grupos) y conviene tenerla a un golpe de vista. */
+      /* El Cubo, su propio bloque: toda su gestión (socios, cuotas, cobro,
+         aforo y ocupación de los grupos) vive en una sola pantalla. */
       { t: 'El Cubo', enlaces: [
-        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'quién entrena, sus pagos, las altas y abrir o cerrar el cobro' },
-        { txt: 'Grupos del Cubo',  url: r + 'grupos/',     desc: 'los grupos del Cubo y sus horarios' }
+        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' }
       ] },
       { t: 'Dinero', enlaces: [
         /* Las altas van en Dinero y no en Personas por quién las trabaja:
