@@ -1356,6 +1356,7 @@
       entrenador:  { titulo: 'Entrenador',     desc: 'Tus grupos: planificar y leer el feedback.', url: b + 'portal/entrenador/',  carpeta: '/portal/entrenador/' },
       atleta:      { titulo: 'Atleta',         desc: 'Tus entrenamientos y tus marcas.',           url: b + 'portal/atleta/',      carpeta: '/portal/atleta/' },
       'cubo-atleta': { titulo: 'El Cubo',     desc: 'Tus clases, horarios y tu cuota.',           url: b + 'portal/cubo-atleta/', carpeta: '/portal/cubo-atleta/' },
+      'cubo-lista': { titulo: 'Lista del Cubo', desc: 'Pasar lista en El Cubo.',                  url: b + 'portal/cubo-lista/',  carpeta: '/portal/cubo-lista/' },
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
@@ -1451,6 +1452,7 @@
       var esFamilia = (rol === 'padre');
       var esEntrenador = (rol === 'entrenador');
       var esCubo = (rol === 'cubo-atleta');
+      var esCuboLista = (rol === 'cubo-lista');
       var hijos = [];
 
       /* Las fichas y los grupos NO se piden aquí: se piden una sola vez
@@ -1492,6 +1494,7 @@
         esFamilia    = esFamilia    && (rol === 'padre');
         esEntrenador = esEntrenador && (rol === 'entrenador');
         esCubo       = esCubo       && (rol === 'cubo-atleta');
+        esCuboLista  = esCuboLista  && (rol === 'cubo-lista');
       }
 
       function anadir(clave, desc) {
@@ -1502,6 +1505,7 @@
       if (esEntrenador) anadir('entrenador');
       if (esAtleta) anadir('atleta');
       if (esCubo) anadir('cubo-atleta');
+      if (esCuboLista) anadir('cubo-lista');
       if (esFamilia) anadir('familia', hijos.length ? hijos.join(', ') : null);
       if (rol === 'coordinador') anadir('coordinador');
       /* Administración, tesorería, contabilidad y junta entran por la
@@ -1510,7 +1514,7 @@
       if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
       /* La app se queda con 4 vistas: atleta, entrenador, El Cubo y admin.
          Familia y coordinación se retiran como vistas del portal. */
-      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'admin'];
+      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'cubo-lista', 'admin'];
       return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
     }
 
