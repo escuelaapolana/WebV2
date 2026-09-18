@@ -104,9 +104,14 @@
      lean como una fila más aunque sean desplegables. */
   function iconoSeccion(t) {
     var k = String(t || '').toLowerCase();
+    var _calendario = svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>');
     var M = {
       'personas': IC.personas, 'dinero': IC.dinero, 'el cubo': _caja,
-      'actividad': svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
+      'la escuela': svg('<path d="M12 4 2 9l10 5 10-5-10-5z"/><path d="M6 11.5V16c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"/>'),
+      'competición y calendario': _calendario,
+      'actividad': _calendario,
+      'comunicación': svg('<path d="M4 5.5h16v10H9l-4 3.5v-3.5H4z"/>'),
+      'datos del club': svg('<path d="M4.5 20V11M10 20V5M15.5 20v-6M3 20.5h18"/>'),
       'tu cuenta': svg('<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>'),
       'la web': _globo,
       'club': svg('<path d="M12 3l8 3v6c0 4.6-3.2 7.6-8 9-4.8-1.4-8-4.4-8-9V6z"/>')
@@ -351,48 +356,48 @@
         { txt: 'Inicio del panel', url: r,           desc: 'lo que hay que resolver hoy', ancho: true },
         { txt: 'En la pista',      url: r + 'campo/', desc: 'pasar lista y ver los grupos', ancho: true }
       ] },
+      /* ── SECCIONES ── cada una lo suyo. El Cubo ya es autónomo; la escuela y
+         competición agrupan sus entradas propias. Lo COMPARTIDO (personas,
+         dinero, comunicación, web) va debajo, porque sirve a todas a la vez.
+         Los hubs por sección (que filtran las herramientas comunes) llegarán
+         después. */
+      { t: 'El Cubo', enlaces: [
+        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' }
+      ] },
+      { t: 'La escuela', enlaces: [
+        { txt: 'Altas que entran',        url: r + 'altas/',      desc: 'lo que rellenan las familias (y los socios) en la web' },
+        { txt: 'Histórico de la escuela', url: r + 'historico/',  desc: 'las temporadas pasadas' }
+      ] },
+      { t: 'Competición y calendario', enlaces: [
+        { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
+        { txt: 'Competiciones',        url: r + 'competiciones/', desc: 'carreras e inscripciones' },
+        { txt: 'Liga Apolana',         url: r + 'liga/',          desc: 'clasificación y puntos' },
+        { txt: 'Récords',              url: r + 'records/',       desc: 'las mejores marcas del club' },
+        { txt: 'Palmarés',             url: r + 'palmares/',      desc: 'medallas y podios' },
+        { txt: 'Batería de tests',     url: r + 'tests/',         desc: 'pruebas físicas y marcas' },
+        { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' },
+        { txt: 'Retos y medallas',     url: r + 'retos/',         desc: 'los logros de los atletas' }
+      ] },
+      /* ── COMPARTIDO ── herramientas que sirven a todas las secciones. */
       { t: 'Personas', enlaces: [
         { txt: 'Personas',                url: r + 'atletas/',        desc: 'las fichas de las personas del club' },
         { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
         { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'horarios, entrenador y cuota' },
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
-      /* El Cubo, su propio bloque: toda su gestión (socios, cuotas, cobro,
-         aforo y ocupación de los grupos) vive en una sola pantalla. */
-      { t: 'El Cubo', enlaces: [
-        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' }
-      ] },
       { t: 'Dinero', enlaces: [
-        /* Las altas van en Dinero y no en Personas por quién las trabaja:
-           en septiembre las revisa el tesorero, y el tesorero solo ve este
-           bloque. Además un alta trae la forma de pago y el número de
-           cuenta, que es por donde empieza el recibo. */
-        { txt: 'Altas que entran',  url: r + 'altas/',        desc: 'lo que rellenan las familias en la web' },
         { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
         { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
-        { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' },
-        { txt: 'Pagos con tarjeta', url: r + 'pagos-online/', desc: 'lo que se cobra por internet' }
+        { txt: 'Pagos con tarjeta', url: r + 'pagos-online/', desc: 'lo que se cobra por internet' },
+        { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' }
       ] },
-      { t: 'Actividad', enlaces: [
-        { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
-        { txt: 'Competiciones',        url: r + 'competiciones/', desc: 'carreras e inscripciones' },
-        { txt: 'Liga Apolana',         url: r + 'liga/',          desc: 'clasificación y puntos' },
-        { txt: 'Batería de tests',     url: r + 'tests/',         desc: 'pruebas físicas y marcas' },
-        { txt: 'Retos y medallas',     url: r + 'retos/',         desc: 'los logros de los atletas' },
-        { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' },
-        { txt: 'Avisos al móvil',      url: r + 'avisos-push/',   desc: 'notificaciones que se envían' }
-      ] },
-      /* Esta no es del panel, es del portal, pero se busca desde aquí:
-         quien quiere que le lleguen los avisos a SU teléfono entra al
-         panel a buscarlo y no lo encuentra, porque desde el panel se
-         mandan, no se reciben. */
-      { t: 'Tu cuenta', enlaces: [
-        { txt: 'Recibir avisos en mi móvil', url: base() + 'portal/avisos/',
-          desc: 'activarlos en tu propio teléfono' },
-        { txt: 'Mi perfil',                  url: base() + 'portal/perfil/',
-          desc: 'tu foto, tu nombre y tu contraseña' },
-        { txt: 'Ver la app como socio',      url: base() + 'portal/',
-          desc: 'el portal, lo que ve la gente del club' }
+      { t: 'Comunicación', enlaces: [
+        { txt: 'Buzón',                      url: r + 'buzon/',            desc: 'mensajes de contacto' },
+        { txt: 'Solicitudes de inscripción', url: r + '#buzon',            desc: 'quién ha pedido plaza', panel: true },
+        { txt: 'Avisos al móvil',            url: r + 'avisos-push/',      desc: 'notificaciones que se envían' },
+        { txt: 'Plantillas de email',        url: r + 'plantillas/',       desc: 'respuestas ya escritas' },
+        { txt: 'Personas de contacto',       url: r + 'contactos/',        desc: 'quién lleva cada sección y su teléfono' },
+        { txt: 'Se pone solo',               url: r + 'automatizaciones/', desc: 'lo que se publica sin tocar nada' }
       ] },
       { t: 'La web', enlaces: [
         { txt: 'Franja informativa',    url: r + '#avisos',   desc: 'el aviso de la portada', panel: true },
@@ -407,17 +412,21 @@
         { txt: 'Peticiones de redes',   url: r + 'redes/',        desc: 'lo que proponen los socios' },
         { txt: 'Mapa de contenido',     url: r + 'mapa/',         desc: 'qué hay en cada página' }
       ] },
-      { t: 'Club', enlaces: [
-        { txt: 'Personas de contacto',     url: r + 'contactos/',        desc: 'quién lleva cada sección y su teléfono' },
-        { txt: 'Buzón',                        url: r + 'buzon/',            desc: 'mensajes de contacto' },
-        { txt: 'Solicitudes de inscripción',   url: r + '#buzon',            desc: 'quién ha pedido plaza', panel: true },
-        { txt: 'Se pone solo',             url: r + 'automatizaciones/', desc: 'lo que se publica sin tocar nada' },
-        { txt: 'Plantillas de email',      url: r + 'plantillas/',       desc: 'respuestas ya escritas' },
-        { txt: 'Récords',                  url: r + 'records/',          desc: 'las mejores marcas del club' },
-        { txt: 'Palmarés',                 url: r + 'palmares/',         desc: 'medallas y podios' },
-        { txt: 'Estadísticas del club',    url: r + 'estadisticas/',     desc: 'los números del club' },
-        { txt: 'Informes y datos',         url: r + 'informes/',         desc: 'informes para exportar' },
-        { txt: 'Histórico de la escuela',  url: r + 'historico/',        desc: 'las temporadas pasadas' }
+      { t: 'Datos del club', enlaces: [
+        { txt: 'Estadísticas del club', url: r + 'estadisticas/', desc: 'los números del club' },
+        { txt: 'Informes y datos',      url: r + 'informes/',     desc: 'informes para exportar' }
+      ] },
+      /* Esta no es del panel, es del portal, pero se busca desde aquí:
+         quien quiere que le lleguen los avisos a SU teléfono entra al
+         panel a buscarlo y no lo encuentra, porque desde el panel se
+         mandan, no se reciben. */
+      { t: 'Tu cuenta', enlaces: [
+        { txt: 'Recibir avisos en mi móvil', url: base() + 'portal/avisos/',
+          desc: 'activarlos en tu propio teléfono' },
+        { txt: 'Mi perfil',                  url: base() + 'portal/perfil/',
+          desc: 'tu foto, tu nombre y tu contraseña' },
+        { txt: 'Ver la app como socio',      url: base() + 'portal/',
+          desc: 'el portal, lo que ve la gente del club' }
       ] }
     ];
   }
