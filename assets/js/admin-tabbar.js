@@ -365,6 +365,8 @@
         { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' }
       ] },
       { t: 'La escuela', enlaces: [
+        { txt: 'Personas de la escuela',  url: r + 'atletas/?seccion=escuela', desc: 'los niños y niñas de la escuela' },
+        { txt: 'Grupos de la escuela',    url: r + 'grupos/?seccion=escuela',  desc: 'los grupos de la escuela y sus horarios' },
         { txt: 'Altas que entran',        url: r + 'altas/',      desc: 'lo que rellenan las familias (y los socios) en la web' },
         { txt: 'Histórico de la escuela', url: r + 'historico/',  desc: 'las temporadas pasadas' }
       ] },
