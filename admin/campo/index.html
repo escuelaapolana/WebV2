@@ -195,6 +195,15 @@ body.pista-viva #admin-contenido { min-height: 100vh; }
 .p-barra .p-estado.sucio { color: var(--f-ambar); }
 .p-barra .p-estado.ok { color: var(--f-verde-txt); }
 .p-barra .p-bots { display: flex; gap: 10px; }
+.p-obs { padding: 0 2px 8px; }
+.p-obs label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 0 0 5px; }
+.p-obs label span { font-weight: 400; color: var(--f-sub); }
+.p-obs textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--linea-borde);
+  border-radius: 10px; font-family: inherit; font-size: 15px; line-height: 1.4; resize: vertical; color: var(--navy); background: #fff; }
+.p-obs textarea:focus { outline: 2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
+.p-obs .p-obs-msg { font-size: 13px; color: var(--f-verde-txt); }
+.e-obs { margin-top: 16px; max-width: 640px; }
+.e-obs .p-obs { padding: 0; }
 .b-borde { border: 1px solid var(--linea-borde); background: #fff; color: var(--navy);
   border-radius: 999px; min-height: 52px; padding: 0 20px; font-family: inherit; font-size: 15px;
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
@@ -457,6 +466,32 @@ window.APOLANA_ADMIN.listo(function (sb) {
   var HOY_POR_GRUPO = {};
   var AUSENCIAS = {};                        /* AUSENCIAS[atleta_id] = aviso de la familia de ESE día */
   var NOTAS_HOY = {};                        /* notas del día de la lista, por atleta */
+  var OBS = {};                              /* observación del grupo por día: OBS['gid|fecha'] = texto */
+  async function cargarObs(gid, fecha) {
+    var k = gid + '|' + fecha;
+    try {
+      var r = await sb.from('campo_observaciones').select('texto').eq('grupo_id', gid).eq('fecha', fecha).maybeSingle();
+      OBS[k] = (r && !r.error && r.data) ? (r.data.texto || '') : (OBS[k] || '');
+    } catch (e) { OBS[k] = OBS[k] || ''; }
+  }
+  async function guardarObs() {
+    if (!LST.grupo) return;
+    var f = LST.fecha || fechaHoy();
+    var k = LST.grupo + '|' + f;
+    var msg = $('obs-msg');
+    var pid = null; try { var rp = await sb.rpc('mi_perfil_id'); if (!rp.error) pid = rp.data || null; } catch (e) {}
+    var r = await sb.from('campo_observaciones').upsert(
+      { grupo_id: LST.grupo, fecha: f, texto: OBS[k] || '', autor_id: pid, actualizado: new Date().toISOString() },
+      { onConflict: 'grupo_id,fecha' });
+    if (msg) { msg.textContent = r.error ? 'No se guardó' : 'Guardado ✓'; if (!r.error) setTimeout(function () { var m = $('obs-msg'); if (m && m.textContent === 'Guardado ✓') m.textContent = ''; }, 1600); }
+  }
+  function obsHTML() {
+    if (!LST.grupo) return '';
+    var k = LST.grupo + '|' + (LST.fecha || fechaHoy());
+    return '<div class="p-obs"><label for="obs-txt">Observaciones del día <span>(incidencias, cambios, quién vino a probar…)</span></label>' +
+      '<textarea id="obs-txt" rows="2" placeholder="Ej.: hoy vino Carmen a probar · cambiamos a la pista de atrás por lluvia">' + esc(OBS[k] || '') + '</textarea>' +
+      '<span class="p-obs-msg" id="obs-msg"></span></div>';
+  }
   var NOTAS_AT = [];                         /* notas del atleta abierto en la ficha */
   var CARGA_ERROR = '';
 
@@ -871,6 +906,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
       } catch (e) {}
       await cargarNotasDia(ids, LST.fecha);
     }
+    await cargarObs(gid, LST.fecha);
     if (recuperarBorrador()) {
       LST.sucio = true;
       LST.error = 'Se han recuperado las marcas que quedaron sin guardar en este móvil. Repásalas y dale a «Guardar lista».';
@@ -1250,7 +1286,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     else if (LST.guardadoEn) { estado = 'Guardado a las ' + LST.guardadoEn; clase = 'ok'; }
     else if (c.marcados === 0) { estado = 'Todavía no has marcado a nadie.'; }
     else { estado = marcadosDe(c); }
-    return '<div class="p-barra">' +
+    return '<div class="p-barra">' + obsHTML() +
       '<span class="p-estado ' + clase + '">' + esc(estado) + '</span>' +
       '<div class="p-bots">' +
         '<button type="button" class="b-borde" id="p-todos" aria-label="Marcar como que han venido los que quedan sin marcar">Todos</button>' +
@@ -1559,7 +1595,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     else h += listaAtletasHTML(atls) +
       '<span class="at-pie">' + atletasTxt(atls.length) + ' · ' + (c.sinMarcar ? c.sinMarcar + ' sin marcar' : 'todos marcados') +
       (LST.guardadoEn ? ' · guardado a las ' + esc(LST.guardadoEn) : LST.sucio ? ' · cambios sin guardar' : '') + '</span>';
-    h += '</div></div>';
+    h += '</div>' + (g ? '<div class="e-obs">' + obsHTML() + '</div>' : '') + '</div>';
     RAIZ.innerHTML = h;
     engancharComunes();
   }
@@ -1602,6 +1638,11 @@ window.APOLANA_ADMIN.listo(function (sb) {
 
     var gu = $('p-guardar'); if (gu) gu.addEventListener('click', guardarLista);
     var td = $('p-todos'); if (td) td.addEventListener('click', todosLosQueQuedan);
+    var ot = $('obs-txt');
+    if (ot) {
+      ot.addEventListener('input', function () { OBS[LST.grupo + '|' + (LST.fecha || fechaHoy())] = ot.value; });
+      ot.addEventListener('blur', function () { guardarObs(); });
+    }
 
     RAIZ.querySelectorAll('[data-marcar]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -1674,23 +1715,86 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (window.apoToast) window.apoToast(nombreDe(a) + ' ya no está en prueba', 'ok');
   }
 
+  /* Descargar: se elige el PERIODO (desde/hasta) y el grupo (o todos). Sale un
+     CSV con una fila por atleta y día, con la asistencia y la observación del
+     día. Antes solo bajaba el grupo abierto y la semana en pantalla. */
   function exportar() {
-    var g = GMAP[LST.grupo]; if (!g) return;
-    var sem = semanaDe(SEMANA);
-    var dias = diasDeLaSemana(g.id, sem);
-    var lin = ['Atleta;' + dias.map(function (d) { return d.et + ' ' + fechaBonita(d.fecha); }).join(';') + ';Mes'];
-    atletasDeGrupo(g.id).forEach(function (a) {
-      var m = mesDe(a.id, sem.hasta > fechaHoy() ? fechaHoy() : sem.hasta);
-      lin.push([nombreDe(a)].concat(dias.map(function (d) {
-        var v = ASIS[a.id] ? ASIS[a.id][d.fecha] : undefined;
-        return v === true ? 'ha venido' : v === false ? 'no ha venido' : '';
-      })).concat([m.dias ? m.vino + ' de ' + m.dias : '']).join(';'));
+    var hoy = fechaHoy();
+    var d0 = new Date(); d0.setDate(d0.getDate() - 14); var desdeDef = iso(d0);
+    var gsel = gruposConAtletas();
+    var estilo = 'width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--linea-borde);border-radius:10px;font:inherit;font-size:15px;margin-bottom:12px;background:#fff;color:var(--navy)';
+    var ov = document.createElement('div');
+    ov.className = 'modal-export';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(20,30,40,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px 22px;box-shadow:0 20px 60px -20px rgba(20,30,40,.6)">' +
+      '<h3 style="margin:0 0 4px;font-size:18px;color:var(--navy)">Descargar asistencia</h3>' +
+      '<p style="margin:0 0 14px;font-size:14px;color:var(--f-sub)">Elige el periodo y el grupo. Sale un CSV para abrir en Excel, con la observación de cada día.</p>' +
+      '<label style="display:block;font-size:13px;font-weight:600;margin:0 0 5px;color:var(--navy)">Desde</label>' +
+      '<input type="date" id="ex-desde" value="' + esc(desdeDef) + '" max="' + esc(hoy) + '" style="' + estilo + '">' +
+      '<label style="display:block;font-size:13px;font-weight:600;margin:0 0 5px;color:var(--navy)">Hasta</label>' +
+      '<input type="date" id="ex-hasta" value="' + esc(hoy) + '" max="' + esc(hoy) + '" style="' + estilo + '">' +
+      '<label style="display:block;font-size:13px;font-weight:600;margin:0 0 5px;color:var(--navy)">Grupo</label>' +
+      '<select id="ex-grupo" style="' + estilo + '"><option value="">Todos los grupos</option>' +
+        gsel.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === LST.grupo ? ' selected' : '') + '>' + esc(x.nombre) + '</option>'; }).join('') +
+      '</select>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">' +
+        '<button type="button" class="btn btn--neutro" id="ex-cancel">Cancelar</button>' +
+        '<button type="button" class="btn btn--primario" id="ex-ok">Descargar</button></div>' +
+      '<span id="ex-msg" style="display:block;margin-top:10px;font-size:13px;color:var(--f-sub)"></span></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+    $('ex-cancel').addEventListener('click', function () { ov.remove(); });
+    $('ex-ok').addEventListener('click', async function () {
+      var d = $('ex-desde').value, hh = $('ex-hasta').value, gid = $('ex-grupo').value;
+      if (!d || !hh) { $('ex-msg').textContent = 'Elige las dos fechas.'; return; }
+      if (d > hh) { $('ex-msg').textContent = '«Desde» tiene que ir antes que «Hasta».'; return; }
+      this.disabled = true; $('ex-msg').textContent = 'Preparando la descarga…';
+      var n = await descargarRango(d, hh, gid || null);
+      if (n < 0) { $('ex-msg').textContent = 'No se ha podido leer. Reinténtalo.'; this.disabled = false; return; }
+      if (n === 0) { $('ex-msg').textContent = 'No hay asistencia guardada en ese periodo.'; this.disabled = false; return; }
+      ov.remove();
+    });
+  }
+
+  async function descargarRango(desde, hasta, gid) {
+    var qa = sb.from('asistencia').select('atleta_id,fecha,presente,grupo_id').gte('fecha', desde).lte('fecha', hasta);
+    if (gid) qa = qa.eq('grupo_id', gid);
+    var ra = await qa;
+    if (ra.error) return -1;
+    var qo = sb.from('campo_observaciones').select('grupo_id,fecha,texto').gte('fecha', desde).lte('fecha', hasta);
+    if (gid) qo = qo.eq('grupo_id', gid);
+    var ro = await qo;
+    var obs = {};
+    if (!ro.error && ro.data) ro.data.forEach(function (o) { obs[o.grupo_id + '|' + o.fecha] = o.texto || ''; });
+    function nom(id) { var a = AMAP[id]; return a ? [a.apellidos || '', a.nombre || ''] : ['', String(id)]; }
+    function gnom(id) { var g = GMAP[id]; return g ? g.nombre : String(id); }
+    function q(s) { s = String(s == null ? '' : s); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+    var filas = (ra.data || []).slice().sort(function (x, y) {
+      if (x.fecha !== y.fecha) return x.fecha < y.fecha ? -1 : 1;
+      var gx = gnom(x.grupo_id).toLowerCase(), gy = gnom(y.grupo_id).toLowerCase();
+      if (gx !== gy) return gx < gy ? -1 : 1;
+      var nx = nom(x.atleta_id).join(' ').toLowerCase(), ny = nom(y.atleta_id).join(' ').toLowerCase();
+      return nx < ny ? -1 : 1;
+    });
+    var lin = ['Fecha;Grupo;Apellidos;Nombre;Asistencia;Observación del día'];
+    filas.forEach(function (r) {
+      var nm = nom(r.atleta_id);
+      lin.push([q(r.fecha), q(gnom(r.grupo_id)), q(nm[0]), q(nm[1]), r.presente ? 'ha venido' : 'no ha venido', q(obs[r.grupo_id + '|' + r.fecha] || '')].join(';'));
+    });
+    /* Observaciones de días donde no se guardó asistencia (por si acaso). */
+    Object.keys(obs).forEach(function (k) {
+      if (!obs[k]) return;
+      var p = k.split('|'), g2 = p[0], f = p[1];
+      var ya = (ra.data || []).some(function (r) { return r.grupo_id === g2 && r.fecha === f; });
+      if (!ya) lin.push([q(f), q(gnom(g2)), '', '', '', q(obs[k])].join(';'));
     });
     var url = URL.createObjectURL(new Blob(['﻿' + lin.join('\n')], { type: 'text/csv;charset=utf-8' }));
     var a = document.createElement('a');
-    a.href = url; a.download = 'asistencia-' + norm(g.nombre).replace(/[^a-z0-9]+/g, '-') + '-' + sem.desde + '.csv';
+    a.href = url;
+    a.download = 'asistencia-' + desde + '_a_' + hasta + (gid ? '-' + norm(gnom(gid)).replace(/[^a-z0-9]+/g, '-') : '') + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    return filas.length;
   }
 
   /* ============================================================
