@@ -45,6 +45,7 @@
   .cuota-est.espera { background:#EEF3F8; color:#2F6FA8; }
   .b-baja { background:#fff; color:#9A3B3B; border-color:#e0b4b0; } .b-baja:hover{ background:#fbeceb; }
   .b-plaza { background:var(--azul,#2F6FA8); color:#fff; border-color:var(--azul,#2F6FA8); } .b-plaza:hover{ background:var(--azul-hover,#1E4E78); }
+  .b-pago { background:#F4F7FA; color:#2F6FA8; border-color:#DCE7F1; } .b-pago:hover{ background:#E7F1F9; }
   .ca-cobro { display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:2px 0 18px;
               border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:14px 16px; background:#fff; }
   .ca-cobro.abierto { border-color:#BFD9BB; background:#F2F8F1; }
@@ -154,7 +155,12 @@ APOLANA_ADMIN.listo(function (sb) {
     if(est!=='aprobada') acc+='<button type="button" class="b b-si" data-id="'+esc(a.id)+'" data-e="aprobada">Aprobar</button>';
     if(est!=='rechazada') acc+='<button type="button" class="b b-no" data-id="'+esc(a.id)+'" data-e="rechazada">Rechazar</button>';
     if(est!=='pendiente') acc+='<button type="button" class="b b-volver" data-id="'+esc(a.id)+'" data-e="pendiente">Volver a pendiente</button>';
-    if(a.suscripcion_estado==='activa') acc+='<button type="button" class="b b-baja" data-baja="'+esc(a.id)+'">Dar de baja'+(a.baja_solicitada?' (pedida)':'')+'</button>';
+    if(a.suscripcion_estado==='activa'){
+      acc+='<button type="button" class="b b-pago" data-pago-saltar="'+esc(a.id)+'">Saltar/aplazar mes</button>';
+      acc+='<button type="button" class="b b-pago" data-pago-cargo="'+esc(a.id)+'">Cargo / descuento</button>';
+      acc+='<button type="button" class="b b-pago" data-pago-cuota="'+esc(a.id)+'">Cambiar cuota</button>';
+      acc+='<button type="button" class="b b-baja" data-baja="'+esc(a.id)+'">Dar de baja'+(a.baja_solicitada?' (pedida)':'')+'</button>';
+    }
     if(a.lista_espera) acc+='<button type="button" class="b b-plaza" data-plaza="'+esc(a.id)+'">Dar plaza</button>';
     if(a.horario) acc+='<button type="button" class="b b-grupo" data-grupo="'+esc(a.id)+'">Cambiar de grupo</button>';
     return '<article class="alta">'+
@@ -276,6 +282,40 @@ APOLANA_ADMIN.listo(function (sb) {
     pintar(); toast('Cuota dada de baja');
   }
 
+  // ---- Ajustes de cobro (Stripe) · solo con la cuota activa ----
+  async function invocarPago(id, extra, btn, okMsg){
+    var txt=btn.textContent; btn.disabled=true; btn.textContent='…';
+    var r=await sb.functions.invoke('cubo-pago',{ body: Object.assign({ alta_id:id }, extra) });
+    btn.disabled=false; btn.textContent=txt;
+    if(r.error || !(r.data && r.data.ok)){
+      var m=''; try{ var ctx=r.error&&r.error.context; if(ctx&&ctx.json){ var d=await ctx.json(); m=d&&d.mensaje; } }catch(e){}
+      toast(m||'No se ha podido.','error'); return;
+    }
+    if(extra.accion==='cuota' && r.data.precio_mes){ ALTAS.forEach(function(a){ if(a.id===id) a.precio_mes=r.data.precio_mes; }); pintar(); }
+    toast(okMsg);
+  }
+  async function pagoSaltar(id, btn){
+    if(!confirm('¿Saltar el próximo cobro de esta persona?\n\nEste mes no se le pasa el recibo (se le abona su cuota). Para APLAZAR y juntarlo con el mes que viene, dale luego a «Cargo / descuento» con el importe el mes siguiente.')) return;
+    await invocarPago(id, { accion:'saltar_mes' }, btn, 'Mes saltado · no se le cobrará el próximo recibo');
+  }
+  async function pagoCargo(id, btn){
+    var v = prompt('Importe en € para el PRÓXIMO recibo.\nPositivo = cobrar de más · negativo = descontar\n(ej.: 30 para un cargo, -10 para un descuento)');
+    if(v==null) return;
+    var n = Number(String(v).replace(',','.'));
+    if(!n){ toast('Pon un número.','error'); return; }
+    var concepto = prompt('¿Qué concepto? (se ve en el recibo)', n<0?'Descuento':'Cargo') || '';
+    await invocarPago(id, { accion:(n<0?'descuento':'cargo'), importe:Math.abs(n), concepto:concepto }, btn,
+      (n<0?'Descuento':'Cargo')+' de '+Math.abs(n)+' € en el próximo recibo');
+  }
+  async function pagoCuota(id, btn){
+    var a = ALTAS.filter(function(x){ return x.id===id; })[0];
+    var v = prompt('Nueva cuota mensual en € (a partir del próximo recibo):', a?String(a.precio_mes||''):'');
+    if(v==null) return;
+    var n = Number(String(v).replace(',','.'));
+    if(!n || n<=0){ toast('Pon una cuota válida.','error'); return; }
+    await invocarPago(id, { accion:'cuota', importe:n }, btn, 'Cuota cambiada a '+n+' €/mes');
+  }
+
   async function darPlaza(id, btn){
     btn.disabled=true;
     var r=await sb.from('cubo_altas').update({ lista_espera:false }).eq('id', id).select('id');
@@ -326,6 +366,12 @@ APOLANA_ADMIN.listo(function (sb) {
     if(lim){ cambiarLimite(); return; }
     var bb=ev.target.closest?ev.target.closest('.b-baja[data-baja]'):null;
     if(bb){ darBaja(bb.getAttribute('data-baja'), bb); return; }
+    var ps=ev.target.closest?ev.target.closest('[data-pago-saltar]'):null;
+    if(ps){ pagoSaltar(ps.getAttribute('data-pago-saltar'), ps); return; }
+    var pc=ev.target.closest?ev.target.closest('[data-pago-cargo]'):null;
+    if(pc){ pagoCargo(pc.getAttribute('data-pago-cargo'), pc); return; }
+    var pq=ev.target.closest?ev.target.closest('[data-pago-cuota]'):null;
+    if(pq){ pagoCuota(pq.getAttribute('data-pago-cuota'), pq); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
     if(f){ filtro=f.getAttribute('data-f'); pintar(); return; }
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;
