@@ -61,6 +61,7 @@ const MENU = [
     { texto: 'Escuela de atletismo', url: '/escuela-atletismo/' },
     { texto: 'Escuela de natación',  url: '/escuela-natacion/' },
     { texto: 'Escuelas municipales', url: '/escuela-municipal-atletismo/' },
+    { texto: 'Cross escolar',        url: '/cross-escolar/' },
     { texto: 'Campus de verano',     url: '/campus/' },
     /* Para los padres mientras el peque entrena o está en el cole: el
        entrenamiento funcional vive en El Cubo, y el running de padres, en Running. */
