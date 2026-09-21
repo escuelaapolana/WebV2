@@ -146,20 +146,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const permImg = a.permiso_imagen === true ? "Sí" : (a.permiso_imagen === false ? "No" : "");
 
+  // Secciones con nombre legible (el mismo que ve el socio en el formulario).
+  const NOMBRE_SECCION: Record<string, string> = {
+    atletismo: "Atletismo y ruta", montana: "Montaña",
+    triatlon: "Triatlón", natacion: "Natación", sin_decidir: "Aún no lo tiene claro",
+  };
+  const secciones = Array.isArray(a.secciones)
+    ? (a.secciones as string[]).map((s) => NOMBRE_SECCION[s] ?? s).join(", ")
+    : a.secciones;
+  const lugarNac = [a.ciudad_nacimiento, a.provincia_nacimiento, a.pais_nacimiento]
+    .map((x) => (x ?? "").toString().trim()).filter(Boolean).join(" · ");
+
   const filas = [
     fila("Referencia", a.referencia),
     fila("Nombre", nombreCompleto),
     fila("DNI", a.dni),
     fila("Nacimiento", a.fecha_nacimiento),
+    fila("Lugar de nacimiento", lugarNac),
     fila("Sexo", a.sexo),
     fila("Correo", a.email),
     fila("Teléfono", a.telefono),
+    fila("Teléfono a INFO APOLANA", a.telefono_info_apolana === false ? "No autorizado" : "Autorizado"),
     fila("Dirección", `${a.direccion ?? ""} · ${a.cp ?? ""} ${a.localidad ?? ""} (${a.provincia ?? ""})`.replace(/^ · /, "").trim()),
-    fila("Secciones", a.secciones),
+    fila("Sección/es a la que entra", secciones),
     fila("Nacionalidad", a.nacionalidad),
     fila("Talla camiseta", a.talla_camiseta),
     fila("Talla pantalón", a.talla_pantalon),
     fila("Permiso de imagen", permImg),
+    fila("Tratamiento de datos (RGPD)", a.acepta_proteccion_datos ? "Aceptado" : "No consta"),
     fila("Titular cuenta", a.titular_cuenta),
     fila("IBAN", a.iban),
     fila("Domiciliación aceptada", a.consiente_domiciliacion ? "Sí" : "No"),
