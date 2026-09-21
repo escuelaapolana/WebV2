@@ -36,14 +36,17 @@ const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 const WEBS_DEL_CLUB = [
   "https://escuelaapolana.github.io/WebV2/",
   "https://escuelaapolana.github.io/apolana-club/",
+  "https://atletismoapolana.com/",
+  "https://www.atletismoapolana.com/",
 ];
 
 function origenesPermitidos(): string[] {
+  // ACCESO_ORIGENES SUMA a la lista del código, no la sustituye: así el login
+  // desde el dominio nuevo funciona aunque la variable tenga dominios viejos.
   const puestos = (Deno.env.get("ACCESO_ORIGENES") ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
-  if (puestos.length) return puestos;
   const deLasWebs = WEBS_DEL_CLUB.map((u) => new URL(u).origin);
-  return [...new Set([...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8137"])];
+  return [...new Set([...puestos, ...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8137"])];
 }
 
 function cors(origen: string | null): Record<string, string> {

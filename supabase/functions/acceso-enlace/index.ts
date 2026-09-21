@@ -69,8 +69,15 @@ const SERVICE_KEY =
 // se cogiera, cualquiera podría pedir un enlace del club que lleve a
 // su propia web y quedarse con la sesión de quien lo pulse.
 const WEBS_DEL_CLUB = [
+  // El dominio viejo va primero a propósito: es el que URL_BASE usa para el
+  // enlace mágico y el que ya está autorizado en Supabase Auth. GitHub Pages
+  // redirige solo de él al dominio nuevo, así que el enlace acaba en
+  // atletismoapolana.com igual. El dominio nuevo se añade para que el login
+  // FUNCIONE desde él (si no, «Origen no permitido»).
   "https://escuelaapolana.github.io/WebV2/",
   "https://escuelaapolana.github.io/apolana-club/",
+  "https://atletismoapolana.com/",
+  "https://www.atletismoapolana.com/",
 ];
 
 const URL_BASE = (Deno.env.get("ACCESO_URL_BASE") ?? WEBS_DEL_CLUB[0]).replace(/\/*$/, "/");
@@ -80,13 +87,15 @@ const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 // Quién puede llamarnos desde un navegador
 // ------------------------------------------------------------
 function origenesPermitidos(): string[] {
+  // La variable ACCESO_ORIGENES SUMA a la lista del código, no la sustituye:
+  // así, aunque la variable se quedara con dominios viejos, el login sigue
+  // funcionando desde el dominio nuevo (que va en WEBS_DEL_CLUB). Antes la
+  // variable ganaba y por eso «Origen no permitido» desde atletismoapolana.com.
   const puestos = (Deno.env.get("ACCESO_ORIGENES") ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
-  if (puestos.length) return puestos;
-  // Por defecto, las webs del club (solo el dominio, sin la carpeta)
-  // y el servidor de pruebas de casa.
+  // Las webs del club (solo el dominio, sin la carpeta) y el servidor de casa.
   const deLasWebs = WEBS_DEL_CLUB.map((u) => new URL(u).origin);
-  return [...new Set([...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000"])];
+  return [...new Set([...puestos, ...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000"])];
 }
 
 function cors(origen: string | null): Record<string, string> {
