@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alta de entrenador · Club Atletismo Apolana</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/formularios.js" defer></script>
+<style>
+  body { background: var(--crema, #F7F2E7); margin: 0; font-family: var(--fuente-texto, system-ui); color: var(--texto, #2E4256); }
+  .ent-wrap { max-width: 460px; margin: 0 auto; padding: clamp(28px, 6vw, 60px) 20px; }
+  .ent-marca { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+  .ent-marca img { width: 46px; height: 46px; }
+  .ent-marca span { font-family: var(--fuente-titulo, inherit); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--navy, #26374B); font-size: 15px; }
+  .ent-card { background: #fff; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 18px; padding: clamp(22px, 5vw, 32px);
+    box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 20px 44px -24px rgba(30,45,65,.3); }
+  h1 { font-family: var(--fuente-titulo, inherit); font-weight: 700; text-transform: uppercase; font-size: clamp(24px, 6vw, 30px); color: var(--navy, #26374B); margin: 0 0 8px; line-height: 1.05; }
+  .ent-intro { color: var(--texto-suave, #6E6656); font-size: 15px; line-height: 1.55; margin: 0 0 22px; }
+  .campo { margin-bottom: 16px; }
+  .campo label { display: block; font-weight: 600; font-size: 14px; color: var(--navy, #26374B); margin-bottom: 6px; }
+  .campo input { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--linea-borde, #D8CFBC); border-radius: 10px; font: inherit; font-size: 15px; color: var(--navy, #26374B); background: #fff; }
+  .campo input:focus { outline: 2px solid var(--azul, #3B85C0); outline-offset: 1px; border-color: var(--azul, #3B85C0); }
+  .trampa { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .btn-principal { width: 100%; margin-top: 6px; padding: 13px 18px; border: 0; border-radius: 999px; background: var(--navy, #26374B); color: #fff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; }
+  .btn-principal:hover { background: #1f2d3d; }
+  .btn-principal:disabled { opacity: .6; cursor: default; }
+  .ent-error { display: none; margin-top: 14px; font-size: 14px; line-height: 1.5; color: var(--error-texto, #B0563A); }
+  .ent-hecho { display: none; text-align: center; }
+  .ent-hecho .tic { width: 56px; height: 56px; border-radius: 50%; background: #E8F3EC; color: #2E9E5B; display: grid; place-items: center; margin: 0 auto 14px; font-size: 30px; }
+  .ent-pie { margin-top: 18px; font-size: 13px; color: var(--texto-tenue, #9A927F); line-height: 1.5; }
+</style>
+</head>
+<body>
+  <div class="ent-wrap">
+    <div class="ent-marca">
+      <img src="../../assets/img/favicon-escudo.png" alt="Apolana">
+      <span>Club Atletismo Apolana</span>
+    </div>
+
+    <div class="ent-card">
+      <!-- Formulario -->
+      <div id="form">
+        <h1>Alta de entrenador</h1>
+        <p class="ent-intro">Date de alta como <strong>entrenador de la escuela</strong>. Te enviaremos un enlace a tu correo para entrar en tu zona; luego el club te asigna tu grupo.</p>
+
+        <div class="campo">
+          <label for="nombre">Nombre</label>
+          <input type="text" id="nombre" autocomplete="given-name">
+        </div>
+        <div class="campo">
+          <label for="apellidos">Apellidos</label>
+          <input type="text" id="apellidos" autocomplete="family-name">
+        </div>
+        <div class="campo">
+          <label for="email">Correo electrónico</label>
+          <input type="email" id="email" inputmode="email" autocomplete="email">
+        </div>
+
+        <!-- Trampa anti-bots: si se rellena, se descarta en el servidor -->
+        <div class="trampa" aria-hidden="true">
+          <label for="cepo">No rellenar</label>
+          <input type="text" id="cepo" tabindex="-1" autocomplete="off">
+        </div>
+
+        <button type="button" class="btn-principal" id="enviar">Darme de alta</button>
+        <div class="ent-error" id="error"></div>
+        <p class="ent-pie">Solo para entrenadores del club. Al darte de alta aceptas que el club gestione tu acceso.</p>
+      </div>
+
+      <!-- Hecho -->
+      <div id="hecho" class="ent-hecho">
+        <div class="tic">&#10003;</div>
+        <h1>¡Listo!</h1>
+        <p class="ent-intro" id="hecho-texto"></p>
+        <p class="ent-pie">Si no ves el correo, mira en <strong>spam</strong>. El enlace te deja entrar sin contraseña. Una vez dentro, el club te asignará tu grupo para pasar lista y subir entrenamientos.</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var enviando = false;
+
+  function fallo(msg) {
+    var e = $('error');
+    e.textContent = msg;
+    e.style.display = 'block';
+  }
+
+  $('enviar').addEventListener('click', async function () {
+    if (enviando) return;
+    $('error').style.display = 'none';
+
+    var nombre = $('nombre').value.trim();
+    var email = $('email').value.trim();
+    if (!nombre) return fallo('Pon tu nombre.');
+    if (!window.F || !F.correo(email)) return fallo('Ese correo no parece bien escrito. Revísalo, por favor.');
+
+    enviando = true;
+    var boton = $('enviar');
+    boton.disabled = true;
+    boton.textContent = 'Enviando…';
+
+    var r = await F.llamar('alta_entrenador', {
+      p: {
+        nombre: nombre,
+        apellidos: $('apellidos').value.trim(),
+        email: email,
+        segundos: F.segundosDentro(),
+        apellido_de_soltera: $('cepo').value
+      }
+    });
+
+    if (!r || !r.ok) {
+      enviando = false; boton.disabled = false; boton.textContent = 'Darme de alta';
+      return fallo((r && r.mensaje) || 'No se ha podido enviar. Vuelve a intentarlo en un rato.');
+    }
+
+    // Mandar el enlace de acceso al correo (suelto; si falla, la invitación ya está).
+    try {
+      if (window.APOLANA_DB && window.APOLANA_DB.functions) {
+        await window.APOLANA_DB.functions.invoke('acceso-enlace', { body: { email: email } });
+      }
+    } catch (e) { /* la invitación ya existe; puede pedir el enlace desde el acceso */ }
+
+    $('hecho-texto').innerHTML = 'Te hemos enviado un enlace de acceso a <strong>' +
+      email.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }) +
+      '</strong>. Ábrelo desde el correo para entrar.';
+    $('form').style.display = 'none';
+    $('hecho').style.display = 'block';
+    window.scrollTo(0, 0);
+  });
+});
+</script>
+</body>
+</html>
