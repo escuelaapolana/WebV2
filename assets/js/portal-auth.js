@@ -709,6 +709,11 @@
         '<p class="pt-nota"><b>¿Es tu primera vez?</b> Todavía no tienes contraseña. ' +
           'Escribe tu correo en la casilla de arriba y pulsa aquí: te llega un enlace y entras con él.</p>' +
         '<button type="button" class="pt-btn2" id="pt-pedir">Enviarme un enlace al correo</button>' +
+        /* Quien SÍ tiene contraseña pero no la recuerda: mismo enlace por
+           correo, pero al volver le sale directamente «Ponte una contraseña»
+           (sin pedirle la vieja). Marca la intención antes de mandar. */
+        '<p class="pt-nota" style="margin-top:14px">¿Tienes contraseña pero <b>no te acuerdas</b>?</p>' +
+        '<button type="button" class="pt-olvido" id="pt-olvide">No me acuerdo de mi contraseña</button>' +
       '</div>' +
       /* --------------------------------------------------------
          LA ESPERA · lo que se ve mientras el correo va de camino
@@ -991,6 +996,7 @@
     var elMantener = document.getElementById('pt-mantener');
     var elOtra     = document.getElementById('pt-otra');
     var elPedir    = document.getElementById('pt-pedir');
+    var elOlvide   = document.getElementById('pt-olvide');
     var elEspera   = document.getElementById('pt-espera');
     var elReenviar = document.getElementById('pt-reenviar');
     var elClave    = document.getElementById('pt-clave');
@@ -1229,6 +1235,47 @@
       verEspera(email);
     });
 
+    /* ---- «No me acuerdo de mi contraseña» ----
+       Mismo enlace por correo que arriba (el que SÍ funciona), pero deja
+       apuntada la intención de CAMBIARLA: al volver del correo, en vez de
+       entrar y ya está, sale «Ponte una contraseña» sin pedir la vieja.
+       Se apunta en sessionStorage porque el enlace se abre en la misma
+       pestaña/navegador; si no sobrevive, no pasa nada: entra como siempre. */
+    if (elOlvide) elOlvide.addEventListener('click', async function () {
+      var msg = document.getElementById('pt-msg');
+      var email = elEmail.value.trim();
+      msg.className = 'msg';
+      if (!pareceCorreo(email)) {
+        msg.textContent = 'Primero escribe tu correo en la casilla de arriba: el enlace te llega ahí.';
+        msg.className = 'msg error';
+        try { elEmail.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+        elEmail.focus();
+        elEmail.classList.add('pt-hay-que-mirar');
+        setTimeout(function () { elEmail.classList.remove('pt-hay-que-mirar'); }, 2600);
+        return;
+      }
+      try { sessionStorage.setItem('apolana_cambiar_clave', '1'); } catch (e) {}
+      apuntarMantener();
+      elOlvide.disabled = true;
+      msg.textContent = 'Enviando…';
+      var como = await pedirEnlace(email);
+      elOlvide.disabled = false;
+      if (como === 'apagado') {
+        msg.textContent = 'Enviar el enlace todavía no está activado. '
+          + 'Escribe a escuelaapolana@gmail.com y te damos acceso.';
+        return;
+      }
+      if (como === 'sinllegar') {
+        msg.textContent = 'No hemos podido enviar el enlace. Mira si tienes conexión y vuelve a probar. '
+          + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
+        return;
+      }
+      msg.textContent = '';
+      correoEnviado = email;
+      vecesEnviado = 1;
+      verEspera(email);
+    });
+
     /* ==========================================================
        PONTE UNA CONTRASEÑA · lo primero al llegar del correo
        ----------------------------------------------------------
@@ -1239,6 +1286,15 @@
     async function tocaPonerClave(usuario, recienLlegado) {
       if (!recienLlegado) return false;            /* solo al llegar del correo */
       if (_tipoEnlace === 'recovery') return true; /* la ha pedido cambiar: siempre */
+      /* Ha pulsado «no me acuerdo de mi contraseña» antes de pedir el enlace:
+         aunque el enlace sea de entrar (no de recuperar), le dejamos poner una
+         nueva sin la vieja. La marca se gasta aquí, para que no se repita. */
+      try {
+        if (sessionStorage.getItem('apolana_cambiar_clave') === '1') {
+          sessionStorage.removeItem('apolana_cambiar_clave');
+          return true;
+        }
+      } catch (e) { /* sin sessionStorage, se sigue con lo de siempre */ }
       /* Se lo preguntamos a la base, que es donde está el dato de verdad.
          Antes se adivinaba por una marca que se guarda al ponerla desde la
          web: sirve para quien la puso aquí, pero no para las cuentas a las
