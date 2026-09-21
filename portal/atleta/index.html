@@ -1014,6 +1014,14 @@
   .fb-plegable[open] > summary.fb-cab .fb-fl { transform: rotate(90deg); }
   .fb-cuerpo-fb { padding: 6px clamp(16px,3vw,22px) clamp(16px,3vw,22px); }
   .fb-cuerpo-fb > label:first-child, .fb-cuerpo-fb > .escala-tit:first-child { margin-top:2px; }
+  /* Cuadro «Apunta aquí tus marcas» (modo simple) */
+  .fb-marcas-caja { background: var(--ambar-fondo, #FBF1D9); border:1px solid var(--ambar-borde, #E6C877); border-radius:14px; padding:14px 15px; margin:2px 0 18px; }
+  .fb-marcas-tit { display:block; font-weight:700; font-size:15px; color:#8A5307; margin:0 0 8px; }
+  .fb-marcas-guion { list-style:none; margin:0 0 10px; padding:0; display:flex; flex-direction:column; gap:4px; }
+  .fb-marcas-guion li { font-size:13.5px; line-height:1.4; color: var(--texto-suave, #6E6656); padding-left:14px; position:relative; }
+  .fb-marcas-guion li::before { content:'·'; position:absolute; left:4px; color: var(--ambar-borde, #E6C877); font-weight:700; }
+  textarea.fb-marcas { width:100%; box-sizing:border-box; min-height:120px; resize:vertical; border:1px solid var(--linea-borde, #D8CFBC); border-radius:10px; padding:12px 14px; font:inherit; font-size:15px; line-height:1.5; color: var(--navy, #26374B); background:#fff; }
+  textarea.fb-marcas:focus { outline:2px solid var(--azul, #3B85C0); outline-offset:1px; border-color: var(--azul, #3B85C0); }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .acciones { display:flex; align-items:center; gap:10px; margin-top:16px; flex-wrap:wrap; }
   .msg { font-size:14px; } .msg.ok { color:#1e7a3d; } .msg.error { color:#b3261e; }
@@ -1619,6 +1627,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   function esSerie(f){ var n=parseInt(f.series,10); return (n>0 && n<=30)?n:0; }
+
+  /* ------------------------------------------------------------------
+     MODO SIMPLE (Academia AC98 de momento)
+     El atleta solo VE el entreno, marca cada bloque como hecho (un ✓ por
+     bloque, sin casillas por serie) y escribe sus marcas en un cuadro de
+     texto libre al pie. Nace para el grupo de Andrés; se amplía a más
+     grupos cambiando esta comprobación. */
+  var GRUPO_ACADEMIA = 'c288b979-cd00-4abb-96da-30fa997ef297';
+  function modoSimple(){ return !!(at && at.grupo_id === GRUPO_ACADEMIA); }
+  /* Las líneas de la parte principal, en texto, para recordarle qué apuntar
+     en el cuadro de marcas. */
+  function guionMarcas(s){
+    var bloques = (s && Array.isArray(s.bloques)) ? s.bloques : [];
+    var pr = bloques.filter(function(b){ return /principal/i.test(b.etiqueta||''); });
+    var origen = pr.length ? pr : bloques;
+    var lineas = [];
+    origen.forEach(function(b){ (b.filas||[]).forEach(function(f){
+      var t = (f && f.ejercicio || '').trim(); if(t) lineas.push(t);
+    }); });
+    return lineas;
+  }
   // Para meter texto dentro de un atributo: esc() no toca las comillas y un nombre
   // como 3x300 "al 90%" rompería el data-eje que usa el guardado.
   function escA(s){ return esc(s).replace(/"/g,'&quot;'); }
@@ -2551,8 +2580,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var ultimoBl=Math.max(0, bloques.length-1);
     var bloquesHtml=bloques.map(function(b,bi){
       /* Bloque «solo marcar»: otro render (lista info + ✓ de fuera). Los bloques
-         normales NO cambian ni un pixel; solo entra aquí si el BLOQUE lo pide. */
-      if(b && b.solo_marcar){
+         normales NO cambian ni un pixel; solo entra aquí si el BLOQUE lo pide.
+         En MODO SIMPLE todos los bloques van así (✓ por bloque, sin casillas). */
+      if(b && (b.solo_marcar || modoSimple())){
         var entreSM='';
         if(D && bi<bloques.length-1){ try { entreSM=D.textoEntreBloques(b)||''; } catch(e){} }
         return bloqueSoloMarcar(b, bi, dis, s, leer, hechos, abierto(bi))+
@@ -3265,7 +3295,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          eso, si falla, se reintenta con las columnas de siempre. Así lo apuntado
          se sigue viendo esté o no aplicada la migración. */
       var COLS_BASE='id,sesion_id,sensacion_general,rpe,tiempos_reales,como_me_siento,molestias,notas_atleta,horas_sueno,peso_kg,estado,series_hechas,series_previstas,motivo_no_hecho,nota_no_hecho,corregido_en,corregido_veces';
-      var COLS_NUEVAS=COLS_BASE+',estado_manual,completado_pct,molestia_sesion,molestia_localizacion,superficie,momento,duracion_min';
+      var COLS_NUEVAS=COLS_BASE+',estado_manual,completado_pct,molestia_sesion,molestia_localizacion,superficie,momento,duracion_min,marcas_texto';
       var rg=await sb.from('registros_sesion').select(COLS_NUEVAS)
         .eq('atleta_id',at.id).in('sesion_id',ids);
       if(rg.error){
@@ -3509,7 +3539,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var esMedias = (est==='a_medias');
     var faltaAlgo = (est==='a_medias' || est==='no_hecho');
     var hayMol = (mol!=null && Number(mol)>0);
-    return '<details class="tarjeta fb-card fb-plegable">'+
+    /* MODO SIMPLE · cuadro grande de marcas en texto libre, con las líneas de
+       la parte principal encima como recordatorio de qué apuntar. */
+    var simple = modoSimple();
+    var guion  = simple ? guionMarcas(s) : [];
+    var marcasBox = simple ? (
+      '<div class="fb-marcas-caja">'+
+        '<label class="fb-marcas-tit" for="fb-marcas-'+esc(s.id)+'">Apunta aquí tus marcas</label>'+
+        (guion.length ? '<ul class="fb-marcas-guion">'+guion.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>' : '')+
+        '<textarea id="fb-marcas-'+esc(s.id)+'" class="fb-marcas" rows="6" placeholder="Escribe tus tiempos serie a serie. Por ejemplo:  150 → s1 22.4 · s2 22.1 · s3 22.3">'+esc(reg&&reg.marcas_texto||'')+'</textarea>'+
+      '</div>'
+    ) : '';
+    return '<details class="tarjeta fb-card fb-plegable"'+(simple?' open':'')+'>'+
       '<summary class="fb-cab"><span class="fb-mid"><span class="fb-tit">¿Cómo ha ido?</span>'+
         '<span class="fb-est-mini'+(reg?' ok':'')+'">'+
           (reg?('✓ '+({completo:'Hecha',a_medias:'A medias',no_hecho:'No hecha'}[est]||'Apuntado')+((reg.rpe!=null&&reg.rpe!=='')?(' · RPE '+reg.rpe):''))
@@ -3517,6 +3558,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '</span></span>'+
         '<svg class="fb-fl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></summary>'+
       '<div class="fb-cuerpo-fb">'+
+      marcasBox+
       /* 1 · Estado. Lo declara el atleta; sustituye al «series hechas/previstas»
          que se deducía. Hecha / A medias / No hecha. */
       '<label>¿La sesión?</label>'+
@@ -5497,6 +5539,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       momento: moment,
       duracion_min: durMin,
       notas_atleta: val('.fb-notas').trim()||null,
+      marcas_texto: val('.fb-marcas').trim()||null,
       motivo_no_hecho: motivo,
       nota_no_hecho: null
     };
