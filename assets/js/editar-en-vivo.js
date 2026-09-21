@@ -934,8 +934,11 @@
       'box-shadow:0 -6px 20px -12px rgba(0,0,0,.5)}',
     '.edv-hay-barra{padding-bottom:64px}',
     '.edv-subir-fila{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}',
-    '.edv-subir{min-height:38px;background:#2E4256;color:#fff;border-color:#2E4256}',
-    '.edv-subir:hover{background:#24344a}',
+    /* Doble clase (.edv-btn.edv-subir) a propósito: gana en especificidad a
+       `.edv-btn{background:transparent}` de más abajo, que si no lo dejaba
+       transparente sobre blanco = invisible (era el bug del botón que no se veía). */
+    '.edv-btn.edv-subir{min-height:38px;background:#2E4256;color:#fff;border-color:#2E4256}',
+    '.edv-btn.edv-subir:hover{background:#24344a}',
     '.edv-subir-msg{margin:0}',
     '.edv-que{opacity:.72;flex:1;min-width:120px}',
     '.edv-btn{min-height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.4);',
