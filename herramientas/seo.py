@@ -330,7 +330,7 @@ def datos_estructurados(base):
         # el codigo postal no se pone porque la web no lo dice.
         "address": {
             "@type": "PostalAddress",
-            "streetAddress": "Av. de Elche, 3",
+            "streetAddress": "C/ Hondón de las Nieves, 4",
             "addressLocality": "Alicante",
             "addressRegion": "Alicante",
             "addressCountry": "ES",
@@ -347,7 +347,7 @@ def datos_estructurados(base):
                 "name": "Estadio de Atletismo Joaquín Villar",
                 "description": "Pista de tartán, foso de saltos y jaula de lanzamientos. "
                                "Casa de la escuela de atletismo, de la sección de pista y del grupo de running.",
-                "address": {"@type": "PostalAddress", "streetAddress": "Av. de Elche, 3",
+                "address": {"@type": "PostalAddress", "streetAddress": "C/ Hondón de las Nieves, 4",
                             "addressLocality": "Alicante", "addressCountry": "ES"},
             },
             {
