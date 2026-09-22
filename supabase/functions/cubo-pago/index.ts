@@ -159,5 +159,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ ok: true, accion, precio_mes: Math.round(Math.abs(importe) / 100) }, 200, origen);
   }
 
+  // Pausar / reanudar los cobros (hasta que el club lo reactive). No es baja:
+  // la suscripción sigue viva, pero Stripe NO cobra mientras esté pausada
+  // (pause_collection = void). Reanudar la deja como estaba.
+  if (accion === "pausar" || accion === "reanudar") {
+    const pausar = accion === "pausar";
+    const rUpd = await stripe(`subscriptions/${encodeURIComponent(sub)}`, "POST",
+      pausar ? { "pause_collection[behavior]": "void" } : { "pause_collection": "" });
+    if (!rUpd.ok) {
+      console.error("Stripe pausa:", rUpd.datos?.error?.message ?? rUpd.estado);
+      return responder({ error: "pasarela", mensaje: "Stripe no lo aceptó: " + (rUpd.datos?.error?.message ?? "inténtalo otra vez") }, 502, origen);
+    }
+    await rest(`cubo_altas?id=eq.${encodeURIComponent(altaId)}`, {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ suscripcion_estado: pausar ? "pausada" : "activa" }),
+    });
+    return responder({ ok: true, accion, estado: pausar ? "pausada" : "activa" }, 200, origen);
+  }
+
   return responder({ error: "accion", mensaje: "Acción no reconocida." }, 400, origen);
 });

@@ -42,6 +42,7 @@
   .cuota-est.activa { background:#EAF3E3; color:#3E7A34; } .cuota-est.impago { background:#F7E4DE; color:#9A4A2E; }
   .cuota-est.cancelada { background:#EEE9DF; color:#7A7263; } .cuota-est.sin { background:#F4EAD6; color:#8A5307; }
   .cuota-est.baja { background:#F7E4DE; color:#9A4A2E; }
+  .cuota-est.pausa { background:#F4EAD6; color:#8A5307; }
   .cuota-est.espera { background:#EEF3F8; color:#2F6FA8; }
   .b-baja { background:#fff; color:#9A3B3B; border-color:#e0b4b0; } .b-baja:hover{ background:#fbeceb; }
   .b-plaza { background:var(--azul,#2F6FA8); color:#fff; border-color:var(--azul,#2F6FA8); } .b-plaza:hover{ background:var(--azul-hover,#1E4E78); }
@@ -138,6 +139,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var esp = a.lista_espera ? ' <span class="cuota-est espera">Lista de espera</span>' : '';
     if(e==='activa'){ var px=a.proximo_cobro?(' · próx. cobro '+fecha(a.proximo_cobro)):''; return '<span class="cuota-est activa">Cuota activa'+esc(px)+'</span>'+baja; }
     if(e==='impago') return '<span class="cuota-est impago">Cuota impagada</span>'+baja;
+    if(e==='pausada') return '<span class="cuota-est pausa">Pagos en pausa</span>'+baja;
     if(e==='cancelada') return '<span class="cuota-est cancelada">Cuota dada de baja</span>';
     if(a.lista_espera) return '<span class="cuota-est espera">Lista de espera</span>';
     return '<span class="cuota-est sin">Sin pagar la cuota</span>'+esp;
@@ -160,7 +162,11 @@ APOLANA_ADMIN.listo(function (sb) {
     if(est==='aprobada' && a.suscripcion_estado!=='activa'){
       acc+='<button type="button" class="b '+(a.cobro_abierto?'b-cerrar-cobro':'b-abrir-cobro')+'" data-cobro="'+esc(a.id)+'" data-abierto="'+(a.cobro_abierto?'1':'0')+'">'+(a.cobro_abierto?'Cerrar cobro':'Abrir cobro')+'</button>';
     }
-    if(a.suscripcion_estado==='activa'){
+    if(a.suscripcion_estado==='activa' || a.suscripcion_estado==='pausada'){
+      if(a.suscripcion_estado==='pausada')
+        acc+='<button type="button" class="b b-si" data-pago-reanudar="'+esc(a.id)+'">Reanudar pagos</button>';
+      else
+        acc+='<button type="button" class="b b-pago" data-pago-pausar="'+esc(a.id)+'">Pausar pagos</button>';
       acc+='<button type="button" class="b b-pago" data-pago-saltar="'+esc(a.id)+'">Saltar/aplazar mes</button>';
       acc+='<button type="button" class="b b-pago" data-pago-cargo="'+esc(a.id)+'">Cargo / descuento</button>';
       acc+='<button type="button" class="b b-pago" data-pago-cuota="'+esc(a.id)+'">Cambiar cuota</button>';
@@ -324,7 +330,16 @@ APOLANA_ADMIN.listo(function (sb) {
       toast(m||'No se ha podido.','error'); return;
     }
     if(extra.accion==='cuota' && r.data.precio_mes){ ALTAS.forEach(function(a){ if(a.id===id) a.precio_mes=r.data.precio_mes; }); pintar(); }
+    if(r.data.estado){ ALTAS.forEach(function(a){ if(a.id===id) a.suscripcion_estado=r.data.estado; }); pintar(); }
     toast(okMsg);
+  }
+  async function pagoPausar(id, btn){
+    if(!confirm('¿Pausar los pagos de esta persona?\n\nNo se le cobrará nada hasta que le des a «Reanudar pagos». No es una baja: sigue en el Cubo.')) return;
+    await invocarPago(id, { accion:'pausar' }, btn, 'Pagos en pausa · no se le cobrará hasta reanudar');
+  }
+  async function pagoReanudar(id, btn){
+    if(!confirm('¿Reanudar los pagos de esta persona? Se le volverá a cobrar su cuota cada mes.')) return;
+    await invocarPago(id, { accion:'reanudar' }, btn, 'Pagos reanudados');
   }
   async function pagoSaltar(id, btn){
     if(!confirm('¿Saltar el próximo cobro de esta persona?\n\nEste mes no se le pasa el recibo (se le abona su cuota). Para APLAZAR y juntarlo con el mes que viene, dale luego a «Cargo / descuento» con el importe el mes siguiente.')) return;
@@ -398,6 +413,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if(lim){ cambiarLimite(); return; }
     var bb=ev.target.closest?ev.target.closest('.b-baja[data-baja]'):null;
     if(bb){ darBaja(bb.getAttribute('data-baja'), bb); return; }
+    var pp=ev.target.closest?ev.target.closest('[data-pago-pausar]'):null;
+    if(pp){ pagoPausar(pp.getAttribute('data-pago-pausar'), pp); return; }
+    var pr=ev.target.closest?ev.target.closest('[data-pago-reanudar]'):null;
+    if(pr){ pagoReanudar(pr.getAttribute('data-pago-reanudar'), pr); return; }
     var ps=ev.target.closest?ev.target.closest('[data-pago-saltar]'):null;
     if(ps){ pagoSaltar(ps.getAttribute('data-pago-saltar'), ps); return; }
     var pc=ev.target.closest?ev.target.closest('[data-pago-cargo]'):null;
