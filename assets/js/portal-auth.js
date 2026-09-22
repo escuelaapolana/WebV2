@@ -1409,7 +1409,7 @@
           apuntarQueTieneClave();
           _claveRecienPuesta = true;
           try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}
-          seguirAlPortal();
+          mostrarClaveHecha();
           return;
         }
         if (/least|short|characters|length|weak/i.test(m)) {
@@ -1423,13 +1423,29 @@
         return;
       }
 
-      _claveRecienPuesta = true;   // que arranque() NO vuelva a pedir la clave
-      // Borrar el flag ANTES de navegar a la zona: si no, la página de destino
-      // (p. ej. El Cubo) lo vería aún puesto y volvería a pedir la contraseña.
+      _claveRecienPuesta = true;
       try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}
-      seguirAlPortal();
-      try { window.APX.toast('Contraseña guardada', null, { detalle: 'La próxima vez entra con tu correo y esta contraseña.' }); } catch (e) {}
+      /* Éxito: mensaje claro y un botón para entrar. NO se navega solo (era
+         justo eso lo que rebotaba a «Ponte una contraseña» en la página de
+         destino). El usuario pulsa y entra limpio. */
+      mostrarClaveHecha();
     });
+
+    /* Pantalla de «contraseña cambiada» con un botón para entrar al portal. */
+    function mostrarClaveHecha() {
+      var cont = document.getElementById('pt-clave');
+      if (!cont) { seguirAlPortal(); return; }
+      cont.innerHTML =
+        '<div class="tic" style="width:56px;height:56px;border-radius:50%;background:#E8F3EC;color:#2E9E5B;' +
+          'display:grid;place-items:center;margin:0 auto 14px;font-size:30px">&#10003;</div>' +
+        '<h2 style="text-align:center">Contraseña cambiada</h2>' +
+        '<p class="pt-clave-txt">Se ha cambiado correctamente. Ya puedes entrar con tu correo y tu nueva contraseña.</p>' +
+        '<div style="margin-top:16px"><button class="btn btn--primario" id="pt-clave-ir" style="width:100%">Entrar a mi portal</button></div>';
+      var irBtn = document.getElementById('pt-clave-ir');
+      if (irBtn) irBtn.addEventListener('click', function () {
+        try { location.href = location.origin + '/portal/'; } catch (e) { location.reload(); }
+      });
+    }
 
     /* Nunca un callejón sin salida: si en ese momento no puede o no
        quiere, se sale y se vuelve a entrar por el enlace otro día. */
@@ -1763,7 +1779,15 @@
           try { var rc = await sb.rpc('debo_cambiar_clave'); debeClave = !!(rc && rc.data === true); }
           catch (e) { /* si falla, no forzamos */ }
         }
-        if (debeClave) { pedirClave(email); return; }
+        if (debeClave) {
+          /* Se gasta la marca YA, al mostrar la pantalla: así, cuando guarde y
+             la app le lleve a su zona, esa página nueva ya NO la ve y no vuelve
+             a pedirla (era el rebote). El botón «cambiar de perfil» del portal
+             siempre puede volver a pedir un correo si hace falta. */
+          try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}
+          _forzarClave = false;
+          pedirClave(email); return;
+        }
       }
 
       /* Y aquí, antes que nada: quien llega del correo y todavía no
