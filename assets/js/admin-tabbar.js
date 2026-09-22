@@ -362,7 +362,8 @@
          Los hubs por sección (que filtran las herramientas comunes) llegarán
          después. */
       { t: 'El Cubo', enlaces: [
-        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' }
+        { txt: 'Socios y cuotas',  url: r + 'cubo-altas/', desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' },
+        { txt: 'Asistencia',       url: r + 'asistencia/', desc: 'quién vino a entrenar cada día' }
       ] },
       { t: 'La escuela', enlaces: [
         { txt: 'Personas de la escuela',  url: r + 'atletas/?seccion=escuela', desc: 'los niños y niñas de la escuela' },
