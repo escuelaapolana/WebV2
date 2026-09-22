@@ -440,6 +440,23 @@
       </div>
       <span id="error-domic" style="display:none;font-size:14px;line-height:1.45;color:var(--error-texto);"></span>
 
+      <!-- Acceso: cuenta para entrar a la zona de socio (noticias + actividades) -->
+      <div class="tarjeta-form tarjeta-form--banda" id="caja-acceso" style="margin-top:14px">
+        <h3 data-texto="socio.alta.acceso.titulo">Tu acceso a la web</h3>
+        <p class="fina" data-texto="socio.alta.acceso.intro">Ponte una contraseña para entrar a tu zona de socio (noticias del club y actividades para apuntarte). Entrarás con tu correo <b id="acceso-correo"></b> y esta contraseña.</p>
+        <div class="campo">
+          <label for="clave" data-texto="socio.alta.acceso.clave">Contraseña</label>
+          <input type="password" id="clave" autocomplete="new-password" minlength="8">
+          <span class="ayuda" data-texto="socio.alta.acceso.clave-ayuda">Al menos 8 caracteres.</span>
+          <span class="error"></span>
+        </div>
+        <div class="campo">
+          <label for="clave-2" data-texto="socio.alta.acceso.clave2">Repite la contraseña</label>
+          <input type="password" id="clave-2" autocomplete="new-password">
+          <span class="error"></span>
+        </div>
+      </div>
+
       <div id="fallo-envio" class="nota-form nota-form--error" style="display:none;margin-top:18px"></div>
 
       <div class="form-pie">
@@ -667,6 +684,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!$('titular-cuenta').value.trim()) {
         $('titular-cuenta').value = ($('nombre').value.trim() + ' ' + $('apellidos').value.trim()).trim();
       }
+      var ac = $('acceso-correo'); if (ac) ac.textContent = $('email').value.trim();
     }
     $('cuenta').textContent = Math.min(n, 3) + ' de 3';
     $('avance').style.width = Math.min(n / 3 * 100, 100) + '%';
@@ -787,6 +805,21 @@ document.addEventListener('DOMContentLoaded', function () {
       ed.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    // Acceso: contraseña para su cuenta de socio.
+    var clave = $('clave').value, clave2 = $('clave-2').value;
+    var eClave = $('clave').parentNode.querySelector('.error');
+    var eClave2 = $('clave-2').parentNode.querySelector('.error');
+    if (eClave) eClave.textContent = ''; if (eClave2) eClave2.textContent = '';
+    if (clave.length < 8) {
+      if (eClave) eClave.textContent = 'Ponte una contraseña de al menos 8 caracteres para poder entrar.';
+      $('clave').focus(); $('caja-acceso').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (clave !== clave2) {
+      if (eClave2) eClave2.textContent = 'Las dos contraseñas no coinciden.';
+      $('clave-2').focus(); $('caja-acceso').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     enviando = true;
     var boton = $('enviar');
     boton.disabled = true;
@@ -875,6 +908,28 @@ document.addEventListener('DOMContentLoaded', function () {
       F.olvidar('socio');
       pintarHecho(r.referencia);
       irA(5);
+      /* Crear la CUENTA de acceso del socio (correo + contraseña → rol socio).
+         Va suelto: si fallara, el alta ya está guardada y el club le da acceso
+         a mano. Al terminar, se cuenta en la pantalla de «hecho». */
+      (function () {
+        if (!window.APOLANA_DB || !window.APOLANA_DB.functions) return;
+        var correoAcc = $('email').value.trim();
+        window.APOLANA_DB.functions.invoke('socio-cuenta', {
+          body: { email: correoAcc, password: $('clave').value, nombre: $('nombre').value.trim(), apellidos: $('apellidos').value.trim() }
+        }).then(function (rc) {
+          var d = rc && rc.data;
+          var caja = document.getElementById('acceso-hecho');
+          if (!caja) return;
+          if (d && d.ok) {
+            caja.innerHTML = (d.ya_existia
+              ? 'Ya tenías cuenta con <b>' + F.escapar(correoAcc) + '</b>: entra con tu contraseña de siempre.'
+              : 'Tu cuenta está lista: entra con <b>' + F.escapar(correoAcc) + '</b> y la contraseña que has puesto.') +
+              ' <a href="' + (window.APOLANA_BASE || '../../') + 'portal/" style="color:var(--navy);font-weight:600;text-decoration:none">Entrar a mi zona →</a>';
+          } else {
+            caja.innerHTML = 'Tu alta está recibida. El acceso a la web lo activará el club en breve.';
+          }
+        }).catch(function () {});
+      })();
       /* El alta ya está guardada y quien se apunta ya tiene su
          referencia. Ahora, y solo ahora, se le da un toque al móvil
          de quien la revisa. Va suelto y sin esperar respuesta: si
@@ -899,6 +954,7 @@ document.addEventListener('DOMContentLoaded', function () {
          el punto 1 de abajo ya cuenta que el club escribe. */
       '<p class="form-entradilla">Lo hemos recibido. Tu referencia es <strong>' + F.escapar(referencia) + '</strong>: ' +
       'apúntala o hazle una foto a esta pantalla, es lo que te preguntamos si nos llamas.</p>' +
+      '<div id="acceso-hecho" style="margin-top:14px;padding:14px 16px;border-radius:12px;background:#EAF3E3;color:#2E6B3A;font-size:14.5px;line-height:1.5;">Creando tu acceso a la web…</div>' +
       '<div style="height:26px"></div>' +
       '<h2 style="font-family:var(--fuente-titulo);font-weight:700;font-size:25px;line-height:1;text-transform:uppercase;color:var(--navy);margin:0 0 16px;">Qué pasa ahora</h2>' +
       '<div class="pasos-siguientes">' +

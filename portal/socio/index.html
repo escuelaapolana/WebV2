@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Socio · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif;
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.26); }
+  body { background:var(--crema,#FBF9F4); }
+  .sw-wrap { max-width:680px; margin:0 auto; padding:clamp(18px,4vw,26px) clamp(14px,4vw,26px) 48px; }
+  .saludo { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; letter-spacing:-0.01em;
+            font-size:clamp(24px,5.5vw,34px); line-height:1.02; color:var(--navy,#26374B); margin:4px 0 2px; }
+  .sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 4px; }
+  .rotulo { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; font-size:14px;
+            color:var(--navy,#26374B); margin:24px 0 10px; }
+
+  /* Actividad abierta */
+  .act { display:block; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px;
+         box-shadow:var(--s1); padding:15px 17px; margin-bottom:12px; }
+  .act .cab { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .act h2 { font-family:var(--ap-titulo); font-weight:700; font-size:17px; line-height:1.15; color:var(--navy,#26374B); margin:0; }
+  .act .cuando { font-size:13px; color:#8A5307; font-weight:700; white-space:nowrap; }
+  .act p { font-size:14px; line-height:1.5; color:var(--texto-suave,#6E6656); margin:8px 0 0; }
+  .act .lugar { font-size:13px; color:var(--texto-tenue,#9A927F); margin-top:5px; }
+  .act .btn { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 18px; margin-top:12px;
+              background:var(--navy,#26374B); color:#fff; border-radius:999px; font-weight:600; font-size:14px; text-decoration:none; }
+
+  /* Noticias */
+  .noti { display:block; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px;
+          box-shadow:var(--s1); overflow:hidden; margin-bottom:14px; text-decoration:none; color:inherit; }
+  .noti img { display:block; width:100%; height:auto; background:var(--crema-media,#F1EADC); }
+  .noti .tx { padding:13px 16px 15px; }
+  .noti .cat { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#8A5307; }
+  .noti h2 { font-family:var(--ap-titulo); font-weight:700; font-size:18px; line-height:1.2; color:var(--navy,#26374B); margin:3px 0 5px; }
+  .noti p { font-size:14px; line-height:1.5; color:var(--texto-suave,#6E6656); margin:0; }
+  .noti .fecha { font-size:12.5px; color:var(--texto-tenue,#9A927F); margin-top:7px; }
+</style>
+</head>
+<body>
+
+<div id="portal-contenido">
+  <div class="sw-wrap" id="sw"></div>
+</div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+  };
+  var b = (window.APOLANA_BASE || '../../');
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fechaLarga(iso) {
+    if (!iso) return '';
+    var p = String(iso).slice(0,10).split('-');
+    if (p.length !== 3) return esc(iso);
+    return (+p[2]) + ' de ' + MESES[(+p[1])-1];
+  }
+  var nombre = (perfil && perfil.nombre) ? String(perfil.nombre).split(' ')[0] : '';
+
+  // ---- Datos ----
+  async function actividades() {
+    var hoy = new Date().toISOString().slice(0, 10);
+    // Actividades del club abiertas a inscripción, de hoy en adelante.
+    var r = await sb.from('eventos')
+      .select('titulo,descripcion,fecha_inicio,fecha_fin,lugar,inscripcion_abierta,url')
+      .eq('inscripcion_abierta', true)
+      .gte('fecha_inicio', hoy)
+      .order('fecha_inicio', { ascending: true })
+      .limit(20);
+    return r.error ? { error: r.error.message, data: [] } : { error: '', data: r.data || [] };
+  }
+  async function noticias() {
+    var r = await sb.from('noticias')
+      .select('id,titulo,excerpt,categoria,foto_portada,fecha_publicacion')
+      .eq('publicada', true)
+      .order('fecha_publicacion', { ascending: false })
+      .limit(20);
+    return r.error ? { error: r.error.message, data: [] } : { error: '', data: r.data || [] };
+  }
+
+  function actHTML(a) {
+    var url = (a.url && String(a.url).indexOf('http') === 0) ? a.url : '';
+    var cta = url
+      ? '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">Apuntarme →</a>'
+      : '<a class="btn" href="' + b + 'contacto/">Escribir al club para apuntarme</a>';
+    return '<article class="act">' +
+      '<div class="cab"><h2>' + esc(a.titulo || 'Actividad') + '</h2>' +
+        '<span class="cuando">' + esc(fechaLarga(a.fecha_inicio)) + '</span></div>' +
+      (a.lugar ? '<div class="lugar">' + esc(a.lugar) + '</div>' : '') +
+      (a.descripcion ? '<p>' + esc(a.descripcion) + '</p>' : '') +
+      cta +
+    '</article>';
+  }
+  function noticiaHTML(x) {
+    var src = (window.APOLANA_IMG ? window.APOLANA_IMG(x.foto_portada) : x.foto_portada);
+    return '<a class="noti" href="' + b + 'noticias/">' +
+      (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+      '<div class="tx">' +
+        (x.categoria ? '<span class="cat">' + esc(x.categoria) + '</span>' : '') +
+        '<h2>' + esc(x.titulo) + '</h2>' +
+        (x.excerpt ? '<p>' + esc(x.excerpt) + '</p>' : '') +
+        '<div class="fecha">' + esc(fechaLarga(x.fecha_publicacion)) + '</div>' +
+      '</div></a>';
+  }
+
+  var caja = $('sw');
+  caja.innerHTML =
+    '<h1 class="saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
+    '<p class="sub">Tu zona de socio del Club Atletismo Apolana.</p>' +
+    '<div id="sw-act"></div>' +
+    '<div class="rotulo">Noticias del club</div>' +
+    '<div id="sw-noti"><div class="ap-esq" data-esq="filas:2"></div></div>';
+
+  var res = await Promise.all([actividades(), noticias()]);
+  var act = res[0], noti = res[1];
+
+  // Actividades abiertas (solo si hay; si no, no se pone la sección)
+  var cA = $('sw-act');
+  if (act.data && act.data.length) {
+    cA.innerHTML = '<div class="rotulo">Actividades para apuntarte</div>' + act.data.map(actHTML).join('');
+  } else {
+    cA.innerHTML = '';
+  }
+
+  // Noticias
+  var cN = $('sw-noti');
+  cN.innerHTML = (noti.data && noti.data.length)
+    ? noti.data.map(noticiaHTML).join('')
+    : (window.APOLANA_UI
+        ? APOLANA_UI.vacio('Todavía no hay noticias', 'Cuando el club publique algo, aparecerá aquí.')
+        : '<p class="sub">Todavía no hay noticias.</p>');
+});
+</script>
+
+</body>
+</html>
