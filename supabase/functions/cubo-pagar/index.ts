@@ -8,14 +8,13 @@
 //   suscripción de Stripe: guarda la tarjeta ahora y cobra sola cada
 //   mes. La tarjeta NUNCA pasa por la web: se teclea en Stripe.
 //
-// EL TRATO (decidido por Andrés)
-//   · Arrancan el 21. El PRIMER recibo es el 21 y son 10 € a todos
-//     (mes de entrada), da igual la tarifa. Para eso: la suscripción
-//     empieza con «periodo de prueba» hasta el 21 (no cobra hoy) y el
-//     primer recibo lleva un descuento de (tarifa − 10) €, de una vez.
-//   · A partir de ahí, cada 21 se cobra la tarifa completa (20/30/40).
-//   · Si alguien se apunta ya pasado el 21, se cobra en el acto (los
-//     10 € de entrada) y de ahí en adelante, mensual.
+// EL TRATO (decidido por Andrés, sep 2026)
+//   · Al activar, se cobra HOY un «primer pago» que el club pone por
+//     persona (cubo_altas.primer_pago_cent; 10 € por defecto). Empezaron
+//     a entrenar el 21, así que septiembre no es mes completo: ese primer
+//     pago es la entrada reducida, y al pagarlo se guarda la tarjeta.
+//   · La cuota entera (precio_mes) se cobra sola el DÍA 5 de cada mes,
+//     empezando el próximo día 5. Sin prueba gratis.
 //
 // LO QUE NO SE FÍA DEL NAVEGADOR
 //   · El importe. Lo pone el servidor leyendo `cubo_altas`. Si el
@@ -45,11 +44,30 @@ const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
   .replace(/\/*$/, "/");
 
-// Prueba de 1 SEMANA desde que cada persona activa su cuota (guarda la tarjeta
-// hoy y no se le cobra nada durante 7 días). Al 8º día empieza a cobrarse la
-// tarifa completa cada mes. (Antes: fecha fija del 21 con «mes de entrada» de
-// 10 €; eso era la promo de salida y ya no aplica.)
-const TRIAL_DIAS = 7;
+// MODELO (decidido por Andrés, sep 2026):
+//   · Al activar, la persona paga un «PRIMER PAGO» que fija el club por
+//     persona (cubo_altas.primer_pago_cent; por defecto 10 €). Empezaron
+//     a entrenar el 21, así que septiembre no es mes completo: ese primer
+//     pago es la entrada reducida. Al pagarlo, la tarjeta queda guardada.
+//   · La CUOTA ENTERA (precio_mes) se cobra sola el DÍA 5 de cada mes,
+//     empezando el próximo día 5. Nada de prueba gratis.
+// Cómo se consigue en Stripe: suscripción con billing_cycle_anchor al
+// próximo día 5 y proration_behavior=none (no cobra la cuota hoy), más
+// un artículo de una vez (el primer pago) que sí se cobra en el acto.
+const PRIMER_PAGO_DEFECTO_CENT = 1000; // 10 € si el club no puso otro
+const DIA_COBRO = 5;                    // día del mes en que se cobra la cuota
+
+// Próximo día 5 (a las 09:00 UTC) a partir de ahora, en segundos unix.
+function proximoDia5(): number {
+  const ahora = new Date();
+  const y = ahora.getUTCFullYear();
+  const m = ahora.getUTCMonth();
+  let cand = new Date(Date.UTC(y, m, DIA_COBRO, 9, 0, 0));
+  if (cand.getTime() <= ahora.getTime()) {
+    cand = new Date(Date.UTC(y, m + 1, DIA_COBRO, 9, 0, 0));
+  }
+  return Math.floor(cand.getTime() / 1000);
+}
 
 function vuelta(resultado: "hecho" | "cancelado"): string {
   return `${URL_BASE}portal/cubo-atleta/?cuota=${resultado}`;
@@ -93,34 +111,6 @@ async function rest(ruta: string, opciones: Opciones = {}) {
   return { ok: r.ok, estado: r.status, datos: d };
 }
 
-// Un cupón de «(tarifa − 10) € de descuento, una sola vez». Se crea con
-// un id fijo por importe, así clics repetidos reutilizan el mismo cupón
-// en vez de sembrar Stripe de cupones. Si ya existe, se reutiliza.
-async function cuponEntrada(descuentoCent: number): Promise<string | null> {
-  const id = `cubo-entrada-${descuentoCent}`;
-  const p = new URLSearchParams();
-  p.set("id", id);
-  p.set("amount_off", String(descuentoCent));
-  p.set("currency", "eur");
-  p.set("duration", "once");
-  p.set("name", "El Cubo · mes de entrada");
-  const r = await fetch("https://api.stripe.com/v1/coupons", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${STRIPE_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Idempotency-Key": `cupon-${id}`,
-    },
-    body: p.toString(),
-  });
-  if (r.ok) return id;
-  const err = await r.json().catch(() => null);
-  // Ya existía (de un pago anterior): perfecto, se reutiliza.
-  if (err?.error?.code === "resource_already_exists") return id;
-  console.error("No se pudo crear el cupón de entrada:", err?.error?.message ?? r.status);
-  return null;
-}
-
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -156,7 +146,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ---- 2 · Su alta del Cubo: de ahí sale el precio (nunca del navegador) ----
   const rAlta = await rest(
-    `cubo_altas?select=id,precio_mes,stripe_subscription_id,suscripcion_estado,nombre,apellidos,cobro_abierto` +
+    `cubo_altas?select=id,precio_mes,primer_pago_cent,stripe_subscription_id,suscripcion_estado,nombre,apellidos,cobro_abierto` +
     `&perfil_id=eq.${perfilId}&order=created_at.desc&limit=1`,
   );
   const alta = Array.isArray(rAlta.datos) ? rAlta.datos[0] : null;
@@ -193,12 +183,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   const importeMesCent = precioMes * 100;
 
+  // Primer pago (entrada): lo puso el club por persona; si no, 10 € por defecto.
+  const primerPagoCent = Number.isFinite(Number(alta.primer_pago_cent)) && Number(alta.primer_pago_cent) > 0
+    ? Math.round(Number(alta.primer_pago_cent))
+    : PRIMER_PAGO_DEFECTO_CENT;
+  // Stripe no cobra menos de 0,50 €: por debajo, no hay primer pago (solo se
+  // guarda la tarjeta con prueba hasta el día 5).
+  const cobraPrimerPago = primerPagoCent >= 50;
+
   // La referencia con la que casaremos el aviso de Stripe en el webhook.
   const referencia = `cubo-${alta.id}`;
 
-  // ---- 4 · La sesión de Stripe (suscripción mensual con 1 semana de prueba) ----
-  const ahora = Math.floor(Date.now() / 1000);
-  const trialEnd = ahora + TRIAL_DIAS * 24 * 60 * 60; // 7 días desde ahora
+  // ---- 4 · La sesión de Stripe (suscripción anclada al día 5) ----
+  // La cuota entera se ancla al próximo día 5 y NO se prorratea (no se cobra
+  // hoy). Lo que sí se cobra hoy es el primer pago (artículo de una vez).
+  const anclaDia5 = proximoDia5();
 
   const params = new URLSearchParams();
   params.set("mode", "subscription");
@@ -208,16 +207,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("success_url", `${vuelta("hecho")}&ref=${referencia}`);
   params.set("cancel_url", vuelta("cancelado"));
 
-  // Precio recurrente mensual, montado al vuelo con la tarifa de la base.
+  // [0] Cuota mensual recurrente (tarifa entera de la base). Su primer cobro
+  // será el día 5 (por el ancla), no hoy.
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", "eur");
   params.set("line_items[0][price_data][unit_amount]", String(importeMesCent));
   params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("line_items[0][price_data][product_data][name]", "Cuota mensual · El Cubo");
 
-  // 1 semana de prueba: guarda la tarjeta hoy y el primer cobro (tarifa
-  // completa) es dentro de 7 días. Sin descuento de entrada.
-  params.set("subscription_data[trial_end]", String(trialEnd));
+  // [1] Primer pago (entrada), de una vez: se cobra HOY, en la primera factura.
+  if (cobraPrimerPago) {
+    params.set("line_items[1][quantity]", "1");
+    params.set("line_items[1][price_data][currency]", "eur");
+    params.set("line_items[1][price_data][unit_amount]", String(primerPagoCent));
+    params.set("line_items[1][price_data][product_data][name]", "Primer pago · El Cubo (entrada)");
+  }
+
+  // La cuota se ancla al día 5 y no se prorratea: hoy no se cobra la cuota.
+  params.set("subscription_data[billing_cycle_anchor]", String(anclaDia5));
+  params.set("subscription_data[proration_behavior]", "none");
+  // Si NO hay primer pago que cobrar hoy, damos prueba hasta el día 5 para que
+  // igualmente se guarde la tarjeta sin cobrar nada ahora.
+  if (!cobraPrimerPago) {
+    params.set("subscription_data[trial_end]", String(anclaDia5));
+  }
 
   // Etiquetas para reconocer el pago desde el webhook (en la suscripción,
   // que es lo que viaja en los avisos de cobro recurrente).
@@ -248,7 +261,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     url: sesion.url,
     referencia,
     precio_mes: precioMes,
-    trial_dias: TRIAL_DIAS,
-    en_prueba: true,
+    primer_pago_cent: cobraPrimerPago ? primerPagoCent : 0,
+    ancla_dia5: anclaDia5,
   }, 200, origen);
 });

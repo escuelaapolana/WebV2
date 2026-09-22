@@ -212,7 +212,10 @@ APOLANA_ADMIN.listo(function (sb) {
         '<span class="precio">'+esc(a.precio_mes||'')+' €/mes</span>'+
         '<span class="est '+esc(est)+'">'+esc(NOMBRE_EST[est]||est)+'</span>'+
         (est==='aprobada' && a.suscripcion_estado!=='activa'
-          ? '<span class="est '+(a.cobro_abierto?'aprobada':'pendiente')+'">'+(a.cobro_abierto?'Cobro abierto':'En prueba (no cobra)')+'</span>'
+          ? '<span class="est '+(a.cobro_abierto?'aprobada':'pendiente')+'">'+
+              (a.cobro_abierto
+                ? 'Cobro abierto'+(a.primer_pago_cent>0?' · 1er pago '+eurCent(a.primer_pago_cent):'')
+                : 'En prueba (no cobra)')+'</span>'
           : '')+
       '</div>'+
       '<div class="alta-acc">'+acc+'</div>'+
@@ -246,13 +249,37 @@ APOLANA_ADMIN.listo(function (sb) {
   // No cobra nada: solo hace que a esa persona le aparezca (o no) «Pagar la
   // cuota» en su portal. Los que quedan cerrados están «de prueba».
   async function abrirCobro(id, estabaAbierto, btn){
-    btn.disabled=true;
     var nuevo=!estabaAbierto;
-    var r=await sb.rpc('cubo_cobro_abrir',{ p_id:id, p_abierto:nuevo });
-    if(r.error){ toast(r.error.message||'No se ha podido.', 'error'); btn.disabled=false; return; }
-    ALTAS.forEach(function(a){ if(a.id===id) a.cobro_abierto=nuevo; });
+    var a=null; ALTAS.forEach(function(x){ if(x.id===id) a=x; });
+    // Al ABRIR: se pregunta el primer pago (entrada) y luego se avisa por correo.
+    if(nuevo){
+      var porDef = (a && a.primer_pago_cent>0) ? (a.primer_pago_cent/100) : 10;
+      var v = prompt('PRIMER PAGO de entrada para '+((a&&a.nombre)||'esta persona')+' (€).\n'+
+        'Es lo que paga ahora al activar (guarda su tarjeta). La cuota entera se cobrará sola el día 5 de cada mes.',
+        String(porDef).replace('.',','));
+      if(v==null) return; // canceló
+      var n = Number(String(v).replace(',','.'));
+      if(!(n>0)){ toast('Pon un importe válido para el primer pago.','error'); return; }
+      btn.disabled=true;
+      var rp = await sb.rpc('cubo_primer_pago_set', { p_alta_id:id, p_euros:n });
+      if(rp.error){ toast(rp.error.message||'No se ha podido guardar el primer pago.','error'); btn.disabled=false; return; }
+      var r=await sb.rpc('cubo_cobro_abrir',{ p_id:id, p_abierto:true });
+      if(r.error){ toast(r.error.message||'No se ha podido.', 'error'); btn.disabled=false; return; }
+      ALTAS.forEach(function(x){ if(x.id===id){ x.cobro_abierto=true; x.primer_pago_cent=Math.round(n*100); } });
+      pintar();
+      // Aviso por correo (extra: si falla, el cobro ya está abierto igualmente).
+      var av = await sb.functions.invoke('cubo-cobro-aviso', { body:{ alta_id:id } }).catch(function(){ return null; });
+      var ok = av && av.data && av.data.ok;
+      toast(ok?'Cobro abierto · correo enviado':'Cobro abierto (el correo no salió; avísale por WhatsApp)', ok?'':'error');
+      return;
+    }
+    // Al CERRAR: solo cerrar, sin correo.
+    btn.disabled=true;
+    var r2=await sb.rpc('cubo_cobro_abrir',{ p_id:id, p_abierto:false });
+    if(r2.error){ toast(r2.error.message||'No se ha podido.', 'error'); btn.disabled=false; return; }
+    ALTAS.forEach(function(x){ if(x.id===id) x.cobro_abierto=false; });
     pintar();
-    toast(nuevo?'Cobro abierto a esta persona':'Cobro cerrado (queda de prueba)');
+    toast('Cobro cerrado (queda de prueba)');
   }
   // Poner un pago puntual: concepto + importe → le sale a pagar en su app.
   async function ponerPago(id, btn){
