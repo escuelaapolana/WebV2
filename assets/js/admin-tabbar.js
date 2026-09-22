@@ -356,26 +356,31 @@
         { txt: 'Inicio del panel', url: r,           desc: 'lo que hay que resolver hoy', ancho: true },
         { txt: 'En la pista',      url: r + 'campo/', desc: 'pasar lista y ver los grupos', ancho: true }
       ] },
-      /* ── SECCIONES ── cada una lo suyo. El Cubo ya es autónomo; la escuela y
-         competición agrupan sus entradas propias. Lo COMPARTIDO (personas,
-         dinero, comunicación, web) va debajo, porque sirve a todas a la vez.
-         Los hubs por sección (que filtran las herramientas comunes) llegarán
-         después. */
+      /* ── SECCIONES ── cada una con LO SUYO dentro (Cubo, Escuela, Socios,
+         Pista y competición). Lo COMPARTIDO (personas, dinero, comunicación,
+         web, datos) va debajo, porque sirve a todas a la vez. */
       { t: 'El Cubo', enlaces: [
-        { txt: 'Socios y cuotas',   url: r + 'cubo-altas/',            desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' },
+        { txt: 'Cuotas y pagos del Cubo', url: r + 'cubo-altas/',        desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' },
         { txt: 'Integrantes del Cubo', url: r + 'atletas/?seccion=cubo', desc: 'las personas del Cubo: ficha, cambios, baja, cambiar de grupo' },
         { txt: 'Grupos del Cubo',   url: r + 'grupos/?seccion=cubo',   desc: 'los grupos del Cubo, su horario y entrenador' },
         { txt: 'Asistencia',        url: r + 'asistencia/',            desc: 'quién vino a entrenar cada día' }
       ] },
       { t: 'La escuela', enlaces: [
-        { txt: 'Personas de la escuela',  url: r + 'atletas/?seccion=escuela', desc: 'los niños y niñas de la escuela' },
+        { txt: 'Niños y niñas',           url: r + 'atletas/?seccion=escuela', desc: 'las personas de la escuela' },
         { txt: 'Grupos de la escuela',    url: r + 'grupos/?seccion=escuela',  desc: 'los grupos de la escuela y sus horarios' },
-        { txt: 'Altas que entran',        url: r + 'altas/',      desc: 'lo que rellenan las familias (y los socios) en la web' },
+        { txt: 'Altas de familias',       url: r + 'altas/',      desc: 'lo que rellenan las familias en la web' },
         { txt: 'Histórico de la escuela', url: r + 'historico/',  desc: 'las temporadas pasadas' }
       ] },
-      { t: 'Competición y calendario', enlaces: [
-        { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
+      { t: 'Socios', enlaces: [
+        { txt: 'Socios y estado',    url: r + 'socios/',  desc: 'quién es socio, al día o impago, filtros y los que pasan a socio' },
+        { txt: 'Altas de socio',     url: r + 'altas/',   desc: 'las solicitudes de socio por revisar' },
+        { txt: 'Recibos y cuotas',   url: r + 'cobros/',  desc: 'la cuota de socio, remesas y devoluciones' }
+      ] },
+      { t: 'Pista y competición', enlaces: [
+        { txt: 'Atletas de pista',     url: r + 'atletas/?seccion=competicion', desc: 'los atletas de pista y competición' },
+        { txt: 'Grupos de pista',      url: r + 'grupos/?seccion=competicion',  desc: 'los grupos de pista y sus horarios' },
         { txt: 'Competiciones',        url: r + 'competiciones/', desc: 'carreras e inscripciones' },
+        { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
         { txt: 'Liga Apolana',         url: r + 'liga/',          desc: 'clasificación y puntos' },
         { txt: 'Récords',              url: r + 'records/',       desc: 'las mejores marcas del club' },
         { txt: 'Palmarés',             url: r + 'palmares/',      desc: 'medallas y podios' },
