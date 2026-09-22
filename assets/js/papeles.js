@@ -51,6 +51,9 @@
        gestión). Vista sencilla: horarios de su grupo y su cuota mensual. */
     'cubo-atleta':{ titulo: 'El Cubo',       que: 'Tus horarios de entrenamiento y tu cuota.',     va: 'portal/cubo-atleta/', mando: false },
     'cubo-lista': { titulo: 'Lista del Cubo',que: 'Pasar lista en El Cubo.',                        va: 'portal/cubo-lista/',  mando: false },
+    /* Socio de acceso básico: entra a su zona (noticias del club y
+       actividades a las que apuntarse). No es un papel de entreno. */
+    socio:        { titulo: 'Socio',         que: 'Noticias del club y actividades para apuntarte.', va: 'portal/socio/',      mando: false },
     /* Estos dos existen en la base desde las migraciones 109 y 144 y no
        estaban aquí: quien los llevaba veía «cubo» y «escuela» en crudo en
        la franja de arriba, en minúscula y sin explicar qué abren. */

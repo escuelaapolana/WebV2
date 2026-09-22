@@ -91,14 +91,25 @@ function parsear(ics: string): Evento[] {
       dentro = false;
       const ini = ev.inicio as { iso: string; diaCompleto: boolean } | undefined;
       if (ini) {
+        const descHtml = (ev.descripcion as string) || "";
+        // El enlace de la carrera suele venir DENTRO de la descripción como
+        // <a href="...">, no en la propiedad URL. Se saca de ahí si hace falta.
+        let url = (ev.url as string) || "";
+        if (!url) {
+          const m = descHtml.match(/href=["']?(https?:\/\/[^"'>\s]+)/i) ||
+                    descHtml.match(/(https?:\/\/[^\s"'<>]+)/i);
+          if (m) url = m[1];
+        }
+        // Descripción para mostrar: sin etiquetas HTML.
+        const descTexto = descHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
         eventos.push({
           titulo: (ev.titulo as string) || "(sin título)",
           inicio: ini.iso,
           fin: (ev.fin as { iso: string } | undefined)?.iso ?? null,
           lugar: (ev.lugar as string) || "",
-          descripcion: (ev.descripcion as string) || "",
+          descripcion: descTexto,
           dia_completo: ini.diaCompleto,
-          url: (ev.url as string) || "",
+          url,
         });
       }
       continue;
