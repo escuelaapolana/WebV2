@@ -281,14 +281,8 @@
   css.textContent +=
     '.at-side{display:none}' +
     '@media (min-width:' + (CORTE + 1) + 'px){' +
-      /* Layout ÚNICO para todo el panel: la barra lateral fija a la izquierda
-         y el contenido a su lado, con el mismo ancho y centrado en todas las
-         pantallas (antes cada página traía su propio ancho/margen y por eso
-         unas se pegaban a la izquierda y otras se centraban). !important para
-         ganar a la CSS que cada página trae de su época. */
       '.admin-wrap{display:grid !important;grid-template-columns:238px minmax(0,1fr) !important;' +
-        'gap:26px !important;align-items:start !important;max-width:none !important;' +
-        'margin:0 !important;padding:22px clamp(16px,2.5vw,34px) 48px !important;box-sizing:border-box !important}' +
+        'gap:26px;align-items:start;max-width:1340px}' +
       '.at-tabbar{display:none !important}' +
       'body.at-con-tabbar{padding-bottom:24px}' +
       '.at-side{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:2px;' +
