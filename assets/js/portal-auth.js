@@ -1992,6 +1992,16 @@
       }, 14000);
     })();
 
+    /* Segunda red para «cambiar la contraseña»: si Supabase avisa de que se
+       ha entrado por un enlace de recuperación (evento PASSWORD_RECOVERY),
+       se fuerza «Ponte una contraseña» aunque la marca de la URL se hubiera
+       perdido. Con esto y con ?recuperar=1, una de las dos siempre pilla. */
+    try {
+      sb.auth.onAuthStateChange(function (evento) {
+        if (evento === 'PASSWORD_RECOVERY') { _forzarClave = true; arranque(); }
+      });
+    } catch (e) { /* sin evento, queda la marca de la URL */ }
+
     arranque();
   });
 })();
