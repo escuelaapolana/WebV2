@@ -81,6 +81,11 @@ const WEBS_DEL_CLUB = [
 ];
 
 const URL_BASE = (Deno.env.get("ACCESO_URL_BASE") ?? WEBS_DEL_CLUB[0]).replace(/\/*$/, "/");
+// A dónde vuelve el enlace del correo: el dominio nuevo (ya está en la lista de
+// Redirect URLs de Supabase Auth), así aterriza DIRECTO en /portal/ y no rebota
+// por la home. Antes iba a URL_BASE (dominio viejo), que no estaba permitido y
+// Supabase lo mandaba a la home.
+const REDIRECT_PORTAL = Deno.env.get("ACCESO_REDIRECT_PORTAL") ?? "https://atletismoapolana.com/portal/";
 const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 
 // ------------------------------------------------------------
@@ -211,8 +216,8 @@ async function mandarEnlace(email: string): Promise<boolean> {
       email,
       create_user: false,
       should_create_user: false,
-      options: { email_redirect_to: `${URL_BASE}portal/` },
-      redirect_to: `${URL_BASE}portal/`,
+      options: { email_redirect_to: REDIRECT_PORTAL },
+      redirect_to: REDIRECT_PORTAL,
     }),
   });
   if (!r.ok) console.error("[acceso-enlace] no se pudo enviar:", r.status, await r.text());
