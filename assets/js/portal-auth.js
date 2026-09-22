@@ -62,6 +62,7 @@
   var _acabaDeEntrar = false;  // ha entrado AHORA, pulsando el enlace
   var _tipoEnlace = '';    // qué enlace era: 'recovery' si venía de «cambiar la contraseña»
   var _forzarClave = false; // viene de «cambiar la contraseña» (marca en la URL, ver abajo)
+  var _claveRecienPuesta = false; // acaba de guardar la contraseña: no volver a pedirla
   (function () {
     var h = (location.hash || '').replace(/^#/, '');
     if (!h || h.indexOf('=') === -1) return;
@@ -760,6 +761,11 @@
                     'aria-controls="pt-clave-1" aria-label="Ver la contraseña">Ver</button>' +
           '</div>' +
           '<p class="pt-pista">Al menos 6 letras o números. Elige algo que puedas recordar; pulsa «Ver» para leer lo que escribes.</p>' +
+          '<label for="pt-clave-2" style="margin-top:10px;display:block">Repite la contraseña</label>' +
+          '<div class="pt-campo">' +
+            '<input type="password" id="pt-clave-2" autocomplete="new-password" ' +
+                   'autocapitalize="none" autocorrect="off" spellcheck="false">' +
+          '</div>' +
           '<div style="margin-top:16px"><button class="btn btn--primario" type="submit" id="pt-clave-ok" style="width:100%">Guardar y entrar</button></div>' +
           '<div class="msg" id="pt-clave-msg" role="status" aria-live="polite"></div>' +
         '</form>' +
@@ -1371,11 +1377,18 @@
       e.preventDefault();
       var msg = document.getElementById('pt-clave-msg');
       var clave = elClave1.value;
+      var clave2El = document.getElementById('pt-clave-2');
+      var clave2 = clave2El ? clave2El.value : clave;
       msg.className = 'msg';
 
       if (clave.length < 6) {
         msg.textContent = 'Un poco más larga: al menos 6 letras o números.';
         elClave1.focus();
+        return;
+      }
+      if (clave !== clave2) {
+        msg.textContent = 'Las dos contraseñas no coinciden. Vuelve a escribirlas iguales.';
+        if (clave2El) clave2El.focus();
         return;
       }
 
@@ -1394,6 +1407,7 @@
         /* Ya tenía puesta esta misma: no hay nada que cambiar, adentro. */
         if (/same.{0,4}password|should be different/i.test(m)) {
           apuntarQueTieneClave();
+          _claveRecienPuesta = true;
           seguirAlPortal();
           return;
         }
@@ -1408,6 +1422,7 @@
         return;
       }
 
+      _claveRecienPuesta = true;   // que arranque() NO vuelva a pedir la clave
       seguirAlPortal();
       try { window.APX.toast('Contraseña guardada', null, { detalle: 'La próxima vez entra con tu correo y esta contraseña.' }); } catch (e) {}
     });
@@ -1738,12 +1753,14 @@
          una petición reciente, se gasta (la RPC la borra) y se enseña «Ponte
          una contraseña». Fiable en cualquier flujo (hash o PKCE) y sin tocar
          el redirect del correo. La marca vieja ?recuperar=1 también vale. */
-      var debeClave = _forzarClave;
-      if (!debeClave) {
-        try { var rc = await sb.rpc('debo_cambiar_clave'); debeClave = !!(rc && rc.data === true); }
-        catch (e) { /* si falla, no forzamos */ }
+      if (!_claveRecienPuesta) {
+        var debeClave = _forzarClave;
+        if (!debeClave) {
+          try { var rc = await sb.rpc('debo_cambiar_clave'); debeClave = !!(rc && rc.data === true); }
+          catch (e) { /* si falla, no forzamos */ }
+        }
+        if (debeClave) { pedirClave(email); return; }
       }
-      if (debeClave) { pedirClave(email); return; }
 
       /* Y aquí, antes que nada: quien llega del correo y todavía no
          tiene contraseña se pone una. Es lo primero que hace en su vida
