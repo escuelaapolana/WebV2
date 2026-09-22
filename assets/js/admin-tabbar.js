@@ -326,6 +326,18 @@
       '.at-side .at-grupo>.sub a.aqui{background:var(--navy,#2E4256);color:#fff;font-weight:600}' +
       '.at-side .at-grupo>.sub a.aqui .ic{color:#fff}' +
       '.at-side .sep{height:1px;background:var(--crema-media,#EFE9DA);margin:6px 8px}' +
+    '}' +
+    /* Muchas pantallas del panel llevan por dentro un diseño de dos columnas
+       «lista + panel lateral de ~320px». Con la barra lateral puesta (238px)
+       ya no caben las TRES columnas salvo en monitores muy anchos, y el
+       contenido se estruja (el texto cae letra a letra). Regla única: cuando
+       la barra está y el ancho es menor de 1340px, ese panel lateral baja
+       DEBAJO de la lista y la lista ocupa todo el ancho. En pantallas anchas
+       se queda al lado. Se hace aquí, en un solo sitio, para no ir pantalla
+       por pantalla; cada página trae su propio nombre de rejilla. */
+    '@media (min-width:' + (CORTE + 1) + 'px) and (max-width:1340px){' +
+      '.admin-wrap .cuerpo,.admin-wrap .dos,.admin-wrap .tar-cuerpo,' +
+      '.admin-wrap .pl-cuerpo,.admin-wrap .e-cols{grid-template-columns:1fr}' +
     '}';
 
   document.head.appendChild(css);
