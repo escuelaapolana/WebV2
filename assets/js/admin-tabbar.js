@@ -282,7 +282,12 @@
     '.at-side{display:none}' +
     '@media (min-width:' + (CORTE + 1) + 'px){' +
       '.admin-wrap{display:grid !important;grid-template-columns:238px minmax(0,1fr) !important;' +
-        'gap:26px;align-items:start;max-width:1340px}' +
+        'gap:26px;align-items:start;max-width:1340px;' +
+        /* Solo se estandariza el LADO IZQUIERDO (alineación y hueco), para que
+           la barra quede en el mismo sitio en TODAS las pantallas. NO se toca
+           el ancho del contenido (ni max-width ni el lado derecho), así no se
+           estruja ninguna tabla ni se solapa nada. */
+        'margin-left:0 !important;padding-left:clamp(14px,2vw,26px) !important}' +
       '.at-tabbar{display:none !important}' +
       'body.at-con-tabbar{padding-bottom:24px}' +
       '.at-side{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:2px;' +
