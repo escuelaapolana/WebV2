@@ -366,39 +366,42 @@
          Pista y competición). Lo COMPARTIDO (personas, dinero, comunicación,
          web, datos) va debajo, porque sirve a todas a la vez. */
       { t: 'El Cubo', enlaces: [
-        { txt: 'Cuotas y pagos del Cubo', url: r + 'cubo-altas/',        desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' },
+        { txt: 'El Cubo',              url: r + 'cubo/',              desc: 'clases, bonos y quién entrena en el Cubo' },
+        { txt: 'Cuotas y pagos del Cubo', url: r + 'cubo-altas/',    desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' },
         { txt: 'Integrantes del Cubo', url: r + 'atletas/?seccion=cubo', desc: 'las personas del Cubo: ficha, cambios, baja, cambiar de grupo' },
-        { txt: 'Grupos del Cubo',   url: r + 'grupos/?seccion=cubo',   desc: 'los grupos del Cubo, su horario y entrenador' },
-        { txt: 'Asistencia',        url: r + 'asistencia/',            desc: 'quién vino a entrenar cada día' }
+        { txt: 'Grupos del Cubo',      url: r + 'grupos/?seccion=cubo',   desc: 'los grupos del Cubo, su horario y entrenador' },
+        { txt: 'Asistencia del Cubo',  url: r + 'asistencia/',        desc: 'quién vino a entrenar cada día' }
       ] },
       { t: 'La escuela', enlaces: [
         { txt: 'Niños y niñas',           url: r + 'atletas/?seccion=escuela', desc: 'las personas de la escuela' },
         { txt: 'Grupos de la escuela',    url: r + 'grupos/?seccion=escuela',  desc: 'los grupos de la escuela y sus horarios' },
-        { txt: 'Altas de familias',       url: r + 'altas/',      desc: 'lo que rellenan las familias en la web' },
+        { txt: 'Altas de familias',       url: r + 'altas/?tipo=escuela', desc: 'lo que rellenan las familias en la web' },
+        { txt: 'Repartir la escuela',     url: r + 'repartir/',   desc: 'colocar a cada niño en su grupo' },
         { txt: 'Histórico de la escuela', url: r + 'historico/',  desc: 'las temporadas pasadas' }
       ] },
       { t: 'Socios', enlaces: [
-        { txt: 'Socios y estado',    url: r + 'socios/',  desc: 'quién es socio, al día o impago, filtros y los que pasan a socio' },
-        { txt: 'Altas de socio',     url: r + 'altas/',   desc: 'las solicitudes de socio por revisar' },
-        { txt: 'Recibos y cuotas',   url: r + 'cobros/',  desc: 'la cuota de socio, remesas y devoluciones' }
+        { txt: 'Socios y estado',    url: r + 'socios/',         desc: 'quién es socio, al día o impago, filtros y los que pasan a socio' },
+        { txt: 'Altas de socio',     url: r + 'altas/?tipo=socio', desc: 'las solicitudes de socio por revisar' }
       ] },
-      { t: 'Pista y competición', enlaces: [
+      { t: 'Pista', enlaces: [
         { txt: 'Atletas de pista',     url: r + 'atletas/?seccion=competicion', desc: 'los atletas de pista y competición' },
         { txt: 'Grupos de pista',      url: r + 'grupos/?seccion=competicion',  desc: 'los grupos de pista y sus horarios' },
+        { txt: 'Batería de tests',     url: r + 'tests/',         desc: 'pruebas físicas y marcas' },
+        { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' }
+      ] },
+      { t: 'Competición', enlaces: [
         { txt: 'Competiciones',        url: r + 'competiciones/', desc: 'carreras e inscripciones' },
-        { txt: 'Calendario y eventos', url: r + 'eventos/',       desc: 'las fechas del club' },
+        { txt: 'Quién va a ir',        url: r + 'confirmaciones/', desc: 'quién ha confirmado para cada carrera' },
         { txt: 'Liga Apolana',         url: r + 'liga/',          desc: 'clasificación y puntos' },
         { txt: 'Récords',              url: r + 'records/',       desc: 'las mejores marcas del club' },
         { txt: 'Palmarés',             url: r + 'palmares/',      desc: 'medallas y podios' },
-        { txt: 'Batería de tests',     url: r + 'tests/',         desc: 'pruebas físicas y marcas' },
-        { txt: 'Catálogo de pruebas',  url: r + 'pruebas/',       desc: 'distancias y pruebas' },
         { txt: 'Retos y medallas',     url: r + 'retos/',         desc: 'los logros de los atletas' }
       ] },
       /* ── COMPARTIDO ── herramientas que sirven a todas las secciones. */
-      { t: 'Personas', enlaces: [
-        { txt: 'Personas',                url: r + 'atletas/',        desc: 'las fichas de las personas del club' },
+      { t: 'Personas y grupos', enlaces: [
+        { txt: 'Todas las personas',      url: r + 'atletas/',        desc: 'las fichas de todas las personas del club' },
+        { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'todos los grupos: horarios, entrenador y cuota' },
         { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
-        { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'horarios, entrenador y cuota' },
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
       { t: 'Dinero', enlaces: [
@@ -424,11 +427,15 @@
         { txt: 'Fotos de la web',       url: r + 'imagenes/',     desc: 'las imágenes de cada página' },
         { txt: 'Biblioteca de fotos',   url: r + 'biblioteca/',   desc: 'todas las fotos subidas' },
         { txt: 'Colaboradores',         url: r + 'colaboradores/', desc: 'patrocinadores y logos' },
-        { txt: 'Documentos',            url: r + 'documentos/',   desc: 'papeles y autorizaciones' },
         { txt: 'Peticiones de redes',   url: r + 'redes/',        desc: 'lo que proponen los socios' },
         { txt: 'Mapa de contenido',     url: r + 'mapa/',         desc: 'qué hay en cada página' }
       ] },
-      { t: 'Datos del club', enlaces: [
+      /* ── EL CLUB ── lo que vale para todo el club a la vez: el calendario,
+         los papeles y los números. Antes el calendario colgaba de Pista (y
+         no es solo de pista) y Documentos de La web (y no son de la web). */
+      { t: 'Club', enlaces: [
+        { txt: 'Calendario y eventos',  url: r + 'eventos/',      desc: 'las fechas del club' },
+        { txt: 'Documentos',            url: r + 'documentos/',   desc: 'papeles y autorizaciones' },
         { txt: 'Estadísticas del club', url: r + 'estadisticas/', desc: 'los números del club' },
         { txt: 'Informes y datos',      url: r + 'informes/',     desc: 'informes para exportar' }
       ] },
@@ -489,9 +496,19 @@
      toca su comportamiento. */
   function claveActual() {
     var base = carpeta();
-    var sec = '';
-    try { sec = (new URLSearchParams(location.search).get('seccion') || '').trim().toLowerCase(); } catch (e) {}
-    return (base && sec) ? base + '/?seccion=' + sec : base;
+    if (!base) return base;
+    var sec = '', tipo = '';
+    try {
+      var p = new URLSearchParams(location.search);
+      sec  = (p.get('seccion') || '').trim().toLowerCase();
+      tipo = (p.get('tipo')    || '').trim().toLowerCase();
+    } catch (e) {}
+    /* Mismo formato que clave(url): la carpeta más el único parámetro que
+       separa dos entradas del menú que comparten página (atletas por
+       sección, altas por tipo). Así ninguna página se marca en dos sitios. */
+    if (sec)  return base + '/?seccion=' + sec;
+    if (tipo) return base + '/?tipo=' + tipo;
+    return base;
   }
   function activa() {
     var c = carpeta();
