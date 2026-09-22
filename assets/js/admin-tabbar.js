@@ -476,6 +476,17 @@
     if (i === -1) return '';
     return r.slice(i + 7).replace(/\/+$/, '');
   }
+  /* Llave de la página ACTUAL para marcar el menú (lateral y hoja): igual que
+     carpeta(), pero incluyendo el ?seccion= si lo hay, para distinguir
+     «Integrantes del Cubo» (atletas/?seccion=cubo) de «Personas» (atletas/).
+     La barra de abajo (móvil) sigue usando carpeta() a secas, así que no se
+     toca su comportamiento. */
+  function claveActual() {
+    var base = carpeta();
+    var sec = '';
+    try { sec = (new URLSearchParams(location.search).get('seccion') || '').trim().toLowerCase(); } catch (e) {}
+    return (base && sec) ? base + '/?seccion=' + sec : base;
+  }
   function activa() {
     var c = carpeta();
     if (c === '') return 'inicio';
@@ -637,7 +648,7 @@
   }
 
   function pintarAtajos() {
-    var m = masUsadas(), aqui = carpeta();
+    var m = masUsadas(), aqui = claveActual();
     var html = '<h3>Las que más usas</h3><div class="atajos">';
     m.lista.forEach(function (e) {
       html += '<a href="' + esc(e.url) + '" data-clave="' + esc(e.clave) + '"' +
@@ -652,7 +663,7 @@
   }
 
   function pintarTodo() {
-    var aqui = carpeta();
+    var aqui = claveActual();
     var html = '<h3>Todo, por bloques</h3>';
     mapa().forEach(function (b) {
       var reales = b.enlaces.filter(function (e) { return !e.panel; });
@@ -951,7 +962,7 @@
       wrap.appendChild(main);
     }
 
-    var aqui = carpeta();
+    var aqui = claveActual();
     function activo(url) { return url.indexOf('/admin/') !== -1 && clave(url) === aqui; }
 
     var html = '<button type="button" class="buscar-btn" aria-haspopup="dialog">' +
