@@ -88,6 +88,24 @@ async function patchAlta(filtro: string, cambios: Record<string, unknown>) {
   return r.ok;
 }
 
+// Marca un pago puntual (cubo_cobros) como cobrado. Solo si sigue pendiente
+// (idempotente: si el webhook llega dos veces, no pasa nada).
+async function patchCobro(cobroId: string, cambios: Record<string, unknown>) {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/cubo_cobros?id=eq.${encodeURIComponent(cobroId)}&estado=eq.pendiente`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json", Prefer: "return=minimal",
+      },
+      body: JSON.stringify(cambios),
+    },
+  );
+  if (!r.ok) console.error("PATCH cubo_cobros falló:", r.status, await r.text().catch(() => ""));
+  return r.ok;
+}
+
 const idDe = (v: unknown): string | null =>
   typeof v === "string" ? v : ((v as { id?: string } | null)?.id ?? null);
 
@@ -160,6 +178,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
           stripe_subscription_id: idDe(objeto.subscription),
           suscripcion_estado: "activa",
         };
+      } else if (objeto.mode === "payment") {
+        // Pago puntual («ponle un pago»): marcar el cobro como cobrado.
+        const cobroId = objeto.metadata?.cobro_id ?? objeto.payment_intent?.metadata?.cobro_id;
+        if (cobroId) {
+          await patchCobro(String(cobroId), {
+            estado: "pagado",
+            pagado_en: new Date().toISOString(),
+            stripe_payment_intent: idDe(objeto.payment_intent),
+          });
+        }
       }
       break;
     }
