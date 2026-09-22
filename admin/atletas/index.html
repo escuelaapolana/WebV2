@@ -92,6 +92,11 @@
   tbody tr.fila { cursor: pointer; }
   tbody tr.fila:hover { background: #F6F2E8; }
   tbody tr.fila:focus-visible { outline: 2px solid var(--azul-filete, #3B85C0); outline-offset: -2px; }
+  .cg-btn { border: 0; background: transparent; color: var(--texto-tenue, #9A927F); cursor: pointer; font-size: 14px;
+    padding: 1px 5px; margin-left: 4px; border-radius: 6px; line-height: 1; opacity: .5; transition: opacity .12s, color .12s, background .12s; }
+  tbody tr.fila:hover .cg-btn, tbody tr.fila:focus-within .cg-btn { opacity: 1; }
+  .cg-btn:hover { color: var(--navy, #26374B); background: #EDE6D7; }
+  .cg-sel { font: inherit; padding: 5px 8px; border: 1px solid var(--azul-filete, #3B85C0); border-radius: 8px; max-width: 210px; background: #fff; }
   /* La fila que pide algo va con fondo ámbar, y su motivo se lee al lado */
   tbody tr.pide { background: var(--ambar-fondo); }
   tbody tr.pide:hover { background: #F9EBD3; }
@@ -265,8 +270,8 @@
     <div class="lados centro">
       <div class="pcab">
         <div>
-          <div class="migas"><span class="aqui">Personas</span></div>
-          <h1>Personas</h1>
+          <div class="migas" id="pcab-migas"><span class="aqui">Personas</span></div>
+          <h1 id="pcab-titulo">Personas</h1>
         </div>
         <div class="acciones">
           <button type="button" class="b2" id="exportar">Exportar</button>
@@ -496,6 +501,21 @@ APOLANA_ADMIN.listo(function (sb) {
   /* Sección desde la URL (?seccion=escuela): «Personas de la escuela» del menú
      abre esta pantalla ya acotada a quien entrena en un grupo de esa sección. */
   var SECCION_URL = (new URLSearchParams(location.search).get('seccion') || '').trim().toLowerCase();
+  /* Cabecera NATIVA por sección: si se entra desde «El Cubo / La escuela /
+     Pista» del menú, la pantalla se titula con esa sección (no «Personas» a
+     secas), para que se sienta la sección y no una lista genérica filtrada. */
+  var NOMBRE_SECCION = { cubo: 'El Cubo', escuela: 'La escuela', competicion: 'Pista y competición',
+    natacion: 'Natación', running: 'Running', triatlon: 'Triatlón', montana: 'Montaña',
+    'escuela-natacion': 'Escuela de natación' };
+  (function marcarSeccion() {
+    if (!SECCION_URL) return;
+    var nom = NOMBRE_SECCION[SECCION_URL] || (SECCION_URL.charAt(0).toUpperCase() + SECCION_URL.slice(1));
+    var t = document.getElementById('pcab-titulo'); if (t) t.textContent = nom;
+    var m = document.getElementById('pcab-migas');
+    if (m) m.innerHTML = '<a href="./" style="color:inherit;text-decoration:none">Personas</a> › <span class="aqui">' + nom + '</span>';
+    try { document.title = nom + ' · Panel Apolana'; } catch (e) {}
+    document.body.setAttribute('data-seccion', SECCION_URL);
+  })();
   function esDeSeccion(a) {
     if (!SECCION_URL) return true;
     var ids = gruposDe(a);
@@ -763,10 +783,14 @@ APOLANA_ADMIN.listo(function (sb) {
      pequeño. Con uno solo se lee igual que siempre; con dos, se ve. */
   function celdaGrupos(a) {
     var ids = gruposDe(a);
-    if (!ids.length) return 'Sin grupo';
     var mas = ids.slice(1).map(function (id) { return gruposById[id] || 'otro grupo'; });
-    return esc(gruposById[ids[0]] || 'Sin grupo') +
-      (mas.length ? '<span class="mas-grupos">y ' + esc(mas.join(', ')) + '</span>' : '');
+    var txt = !ids.length ? '<span class="nada">Sin grupo</span>'
+      : esc(gruposById[ids[0]] || 'Sin grupo') +
+        (mas.length ? '<span class="mas-grupos">y ' + esc(mas.join(', ')) + '</span>' : '');
+    /* Botón de cambio rápido: cambia el grupo principal desde la lista, sin
+       abrir la ficha entera (conserva los demás grupos y pide confirmar). */
+    return txt + ' <button type="button" class="cg-btn" data-cg="' + esc(a.id) +
+      '" title="Cambiar de grupo" aria-label="Cambiar de grupo">⇄</button>';
   }
 
   function pintar() {
@@ -1169,6 +1193,24 @@ APOLANA_ADMIN.listo(function (sb) {
       refrescarLote();
       return;
     }
+    /* Cambio de grupo rápido: el botón ⇄ abre un selector en la propia celda;
+       usar el selector no debe abrir la ficha. */
+    if (e.target.closest('.cg-sel')) { e.stopPropagation(); return; }
+    var cg = e.target.closest('.cg-btn');
+    if (cg) {
+      e.stopPropagation();
+      var cgId = cg.getAttribute('data-cg');
+      var cgA = TODOS.filter(function (x) { return x.id === cgId; })[0];
+      if (!cgA) return;
+      var actual = gruposDe(cgA)[0] || '';
+      var celda = cg.closest('td');
+      var opts = '<option value="">(sin grupo)</option>' + GRUPOS.map(function (g) {
+        return '<option value="' + esc(g.id) + '"' + (g.id === actual ? ' selected' : '') + '>' + esc(gruposById[g.id] || g.nombre) + '</option>';
+      }).join('');
+      celda.innerHTML = '<select class="cg-sel" data-cg-id="' + esc(cgId) + '" aria-label="Cambiar de grupo">' + opts + '</select>';
+      var s = celda.querySelector('.cg-sel'); if (s) s.focus();
+      return;
+    }
     if (e.target.closest('[data-primer-atleta]')) { abrir(); return; }
     if (e.target.closest('[data-limpiar]')) {
       $('f-buscar').value = ''; $('f-estado').value = ''; $('f-grupo').value = ''; $('f-tipo').value = '';
@@ -1180,6 +1222,34 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('atletas').select('*').eq('id', fila.getAttribute('data-ed')).single();
     if (r.error) { apoToast('No se pudo abrir la ficha: ' + r.error.message, 'error'); return; }
     abrir(r.data);
+  });
+  /* Al elegir en el selector de grupo de una fila: se confirma y se mueve
+     (conservando los demás grupos de la persona). Usa la misma RPC que la
+     ficha (`apo_grupos_de_atleta`), así que no hay dos formas de mover a nadie. */
+  $('tabla').addEventListener('change', async function (e) {
+    var sel = e.target.closest('.cg-sel');
+    if (!sel) return;
+    e.stopPropagation();
+    var atletaId = sel.getAttribute('data-cg-id');
+    var nuevo = sel.value || '';
+    var a = TODOS.filter(function (x) { return x.id === atletaId; })[0];
+    if (!a) { pintar(); return; }
+    var actuales = gruposDe(a);
+    var principalActual = actuales[0] || '';
+    if (nuevo === principalActual) { pintar(); return; }
+    var nombreG = nuevo ? (gruposById[nuevo] || 'ese grupo') : 'sin grupo';
+    var ok = await apoConfirm({ titulo: 'Cambiar de grupo',
+      texto: 'Vas a mover a ' + nombreCompleto(a) + ' a ' + nombreG + '.' +
+        (actuales.length > 1 ? ' Sus otros grupos se mantienen.' : ''), confirmar: 'Mover' });
+    if (!ok) { pintar(); return; }
+    var otros = actuales.slice(1).filter(function (id) { return id !== nuevo; });
+    var todos = (nuevo ? [nuevo] : []).concat(otros);
+    var rr = await sb.rpc('apo_grupos_de_atleta', { p_atleta: atletaId, p_grupos: todos, p_principal: nuevo || null });
+    if (rr && rr.error) { apoToast('No se ha podido cambiar de grupo: ' + rr.error.message, 'error'); pintar(); return; }
+    MIEMBROS[atletaId] = todos.map(function (id) { return { grupo_id: id, principal: id === (nuevo || null) }; });
+    a.grupo_id = nuevo || null;
+    apoToast('Grupo cambiado', 'ok');
+    pintar();
   });
   $('tabla').addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
