@@ -1254,20 +1254,24 @@
         setTimeout(function () { elEmail.classList.remove('pt-hay-que-mirar'); }, 2600);
         return;
       }
+      /* Correo de RECUPERACIÓN de verdad (type=recovery). El enlace que llega
+         trae ya «cambiar la contraseña»: al pulsarlo se aterriza con
+         type=recovery y sale «Ponte una contraseña» SIN depender de que
+         sobreviva ninguna marca (el intento anterior con sessionStorage se
+         perdía al abrir el enlace en otra pestaña). Belt-and-suspenders: se
+         deja también la marca por si el enlace se abre en la misma pestaña. */
       try { sessionStorage.setItem('apolana_cambiar_clave', '1'); } catch (e) {}
       apuntarMantener();
       elOlvide.disabled = true;
       msg.textContent = 'Enviando…';
-      var como = await pedirEnlace(email);
+      var r;
+      try { r = await sb.auth.resetPasswordForEmail(email, { redirectTo: alPortal() }); }
+      catch (e) { r = { error: { message: 'red' } }; }
       elOlvide.disabled = false;
-      if (como === 'apagado') {
-        msg.textContent = 'Enviar el enlace todavía no está activado. '
-          + 'Escribe a escuelaapolana@gmail.com y te damos acceso.';
-        return;
-      }
-      if (como === 'sinllegar') {
+      if (r && r.error) {
         msg.textContent = 'No hemos podido enviar el enlace. Mira si tienes conexión y vuelve a probar. '
           + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
+        msg.className = 'msg error';
         return;
       }
       msg.textContent = '';
