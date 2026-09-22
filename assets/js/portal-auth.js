@@ -1090,9 +1090,11 @@
 
        Callarse en estos dos casos sería dejar a una familia mirando
        el buzón para siempre. */
-    async function pedirEnlace(email) {
+    async function pedirEnlace(email, opciones) {
       try {
-        var r = await sb.functions.invoke('acceso-enlace', { body: { email: email } });
+        var cuerpoEnlace = { email: email };
+        if (opciones && opciones.cambiarClave) cuerpoEnlace.cambiar_clave = true;
+        var r = await sb.functions.invoke('acceso-enlace', { body: cuerpoEnlace });
         if (!r || !r.error) return 'enviado';
         var estado = r.error.context && r.error.context.status;
         if (estado === 503) return 'apagado';
@@ -1267,19 +1269,21 @@
          sobreviva ninguna marca (el intento anterior con sessionStorage se
          perdía al abrir el enlace en otra pestaña). Belt-and-suspenders: se
          deja también la marca por si el enlace se abre en la misma pestaña. */
-      try { sessionStorage.setItem('apolana_cambiar_clave', '1'); } catch (e) {}
       apuntarMantener();
       elOlvide.disabled = true;
       msg.textContent = 'Enviando…';
-      var destino = alPortal() + (alPortal().indexOf('?') > -1 ? '&' : '?') + 'recuperar=1';
-      var r;
-      try { r = await sb.auth.resetPasswordForEmail(email, { redirectTo: destino }); }
-      catch (e) { r = { error: { message: 'red' } }; }
+      // Enlace de entrada normal (el que SÍ funciona), pero pidiéndole que
+      // vuelva a /portal/?recuperar=1 para que salga «Ponte una contraseña».
+      var como = await pedirEnlace(email, { cambiarClave: true });
       elOlvide.disabled = false;
-      if (r && r.error) {
+      if (como === 'apagado') {
+        msg.textContent = 'Enviar el enlace todavía no está activado. '
+          + 'Escribe a escuelaapolana@gmail.com y te damos acceso.';
+        return;
+      }
+      if (como === 'sinllegar') {
         msg.textContent = 'No hemos podido enviar el enlace. Mira si tienes conexión y vuelve a probar. '
           + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
-        msg.className = 'msg error';
         return;
       }
       msg.textContent = '';

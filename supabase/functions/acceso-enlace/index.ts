@@ -195,7 +195,13 @@ async function cuentaDe(email: string): Promise<string | null> {
 // arriba, después de comprobar que esa persona tiene derecho. Así,
 // aunque un día se abra este hueco por error, por aquí no se puede
 // dar de alta a nadie que no esté en la base del club.
-async function mandarEnlace(email: string): Promise<boolean> {
+async function mandarEnlace(email: string, cambiarClave = false): Promise<boolean> {
+  // Si viene de «no me acuerdo de mi contraseña», el enlace vuelve a
+  // /portal/?recuperar=1: la app, al ver esa marca, enseña «Ponte una
+  // contraseña» en cuanto hay sesión. Es un enlace de entrada normal (el que
+  // ya funciona), solo cambia a dónde vuelve; así no dependemos del correo de
+  // recuperación de Supabase ni de su lista de dominios.
+  const destino = `${URL_BASE}portal/${cambiarClave ? "?recuperar=1" : ""}`;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
     method: "POST",
     headers: {
@@ -207,10 +213,8 @@ async function mandarEnlace(email: string): Promise<boolean> {
       email,
       create_user: false,
       should_create_user: false,
-    // El enlace vuelve SIEMPRE al portal del club, a una dirección
-    // que está escrita aquí y que nadie de fuera puede cambiar.
-      options: { email_redirect_to: `${URL_BASE}portal/` },
-      redirect_to: `${URL_BASE}portal/`,
+      options: { email_redirect_to: destino },
+      redirect_to: destino,
     }),
   });
   if (!r.ok) console.error("[acceso-enlace] no se pudo enviar:", r.status, await r.text());
@@ -246,10 +250,11 @@ Deno.serve(async (peticion) => {
     );
   }
 
-  let cuerpo: { email?: string };
+  let cuerpo: { email?: string; cambiar_clave?: boolean };
   try { cuerpo = await peticion.json(); } catch { cuerpo = {}; }
 
   const email = String(cuerpo.email ?? "").trim().toLowerCase();
+  const cambiarClave = cuerpo.cambiar_clave === true;
   // Un correo con pinta de correo y de largo razonable. Lo que no
   // pase de aquí ni siquiera se apunta.
   if (!/^[^\s@,;]{1,64}@[^\s@,;]{1,190}\.[a-z]{2,}$/i.test(email)) {
@@ -277,7 +282,7 @@ Deno.serve(async (peticion) => {
       try { await rpc("acceso_enganchar", { p_uid: id, p_email: email }); }
       catch (e) { console.error("[acceso-enlace] enganche:", e); }
     }
-    await mandarEnlace(email);
+    await mandarEnlace(email, cambiarClave);
   } catch (e) {
     // Un fallo por dentro tampoco cambia lo que ve quien lo pidió:
     // queda escrito en el registro de Supabase y punto.
