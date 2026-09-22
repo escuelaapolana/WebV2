@@ -180,13 +180,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
         };
       } else if (objeto.mode === "payment") {
         // Pago puntual («ponle un pago»): marcar el cobro como cobrado.
-        const cobroId = objeto.metadata?.cobro_id ?? objeto.payment_intent?.metadata?.cobro_id;
+        // El id del cobro viaja en metadata Y en client_reference_id
+        // (cubocobro-<id>): se prueban las dos por robustez.
+        let cobroId: string | null =
+          (objeto.metadata?.cobro_id as string | undefined) ?? null;
+        const ref = objeto.client_reference_id;
+        if (!cobroId && typeof ref === "string" && ref.startsWith("cubocobro-")) {
+          cobroId = ref.slice("cubocobro-".length);
+        }
         if (cobroId) {
           await patchCobro(String(cobroId), {
             estado: "pagado",
             pagado_en: new Date().toISOString(),
             stripe_payment_intent: idDe(objeto.payment_intent),
           });
+        } else {
+          console.error("checkout.session.completed (payment) sin cobro_id:", JSON.stringify(objeto.metadata), objeto.client_reference_id);
         }
       }
       break;
