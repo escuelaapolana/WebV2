@@ -105,6 +105,7 @@ APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
   var ALTAS = [], filtro = 'pendiente', fallo = '';
+  var COBROS = {};   // alta_id -> [pagos puntuales pendientes]
 
   var MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   function fecha(iso){ if(!iso) return ''; var d=new Date(iso); return d.getDate()+' '+MESES[d.getMonth()]; }
@@ -117,6 +118,12 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('cubo_altas').select('*').order('created_at',{ascending:false});
     if(r.error){ fallo=r.error.message; ALTAS=[]; return; }
     ALTAS = r.data||[];
+    await cargarCobros();
+  }
+  async function cargarCobros(){
+    COBROS = {};
+    var r = await sb.from('cubo_cobros').select('id,alta_id,concepto,importe_cent,estado,created_at').eq('estado','pendiente');
+    if(!r.error && r.data){ r.data.forEach(function(c){ (COBROS[c.alta_id]=COBROS[c.alta_id]||[]).push(c); }); }
   }
 
   function visibles(){ return filtro==='todas' ? ALTAS : ALTAS.filter(function(a){ return (a.estado||'pendiente')===filtro; }); }
@@ -143,6 +150,17 @@ APOLANA_ADMIN.listo(function (sb) {
     if(e==='cancelada') return '<span class="cuota-est cancelada">Cuota dada de baja</span>';
     if(a.lista_espera) return '<span class="cuota-est espera">Lista de espera</span>';
     return '<span class="cuota-est sin">Sin pagar la cuota</span>'+esp;
+  }
+  function eurCent(c){ return (Number(c)/100).toFixed(2).replace('.',',')+' €'; }
+  // Pagos puntuales pendientes de esta persona (le aparecen a pagar en su app).
+  function pagosPuntualesHTML(a){
+    var lista = COBROS[a.id]||[];
+    if(!lista.length) return '';
+    return '<div style="margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px">'+lista.map(function(c){
+      return '<span class="cuota-est pausa">💳 '+esc(c.concepto)+' · '+esc(eurCent(c.importe_cent))+
+        ' <button type="button" data-cancelar-pago="'+esc(c.id)+'" title="Quitar este pago pendiente" '+
+        'style="border:0;background:none;cursor:pointer;color:#8A5307;font-weight:700;padding:0 2px">✕</button></span>';
+    }).join('')+'</div>';
   }
 
   function tarjeta(a){
@@ -174,6 +192,8 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if(a.lista_espera) acc+='<button type="button" class="b b-plaza" data-plaza="'+esc(a.id)+'">Dar plaza</button>';
     if(a.horario) acc+='<button type="button" class="b b-grupo" data-grupo="'+esc(a.id)+'">Cambiar de grupo</button>';
+    // Poner un pago puntual (concepto + importe) que le aparece en su app.
+    if(est==='aprobada') acc+='<button type="button" class="b b-pago" data-poner-pago="'+esc(a.id)+'">Poner un pago</button>';
     // Eliminar la solicitud (rechazadas / de prueba). La RPC no deja si tiene
     // suscripción activa (primero «Dar de baja»).
     if(a.suscripcion_estado!=='activa' && a.suscripcion_estado!=='pausada')
@@ -187,6 +207,7 @@ APOLANA_ADMIN.listo(function (sb) {
           (a.nota?'<small>«'+esc(a.nota)+'»</small>':'')+
           '<small>Apuntado el '+esc(fecha(a.created_at))+'</small>'+
           pagoHTML(a)+
+          pagosPuntualesHTML(a)+
         '</span>'+
         '<span class="precio">'+esc(a.precio_mes||'')+' €/mes</span>'+
         '<span class="est '+esc(est)+'">'+esc(NOMBRE_EST[est]||est)+'</span>'+
@@ -232,6 +253,29 @@ APOLANA_ADMIN.listo(function (sb) {
     ALTAS.forEach(function(a){ if(a.id===id) a.cobro_abierto=nuevo; });
     pintar();
     toast(nuevo?'Cobro abierto a esta persona':'Cobro cerrado (queda de prueba)');
+  }
+  // Poner un pago puntual: concepto + importe → le sale a pagar en su app.
+  async function ponerPago(id, btn){
+    var concepto = prompt('¿Qué le cobras? (concepto que verá en su app)\nEj.: Camiseta del club, Inscripción competición…');
+    if(concepto==null || !concepto.trim()) return;
+    var v = prompt('Importe en € (ej.: 15 o 12,50):');
+    if(v==null) return;
+    var n = Number(String(v).replace(',','.'));
+    if(!(n>0)){ toast('Pon un importe válido.','error'); return; }
+    if(btn) btn.disabled=true;
+    var r = await sb.rpc('cubo_cobro_poner', { p_alta_id:id, p_concepto:concepto.trim(), p_importe:n });
+    if(btn) btn.disabled=false;
+    if(r.error){ toast(r.error.message||'No se ha podido.','error'); return; }
+    await cargarCobros(); pintar();
+    toast('Pago puesto · le aparece en su app');
+  }
+  async function cancelarPago(cobroId, btn){
+    if(!confirm('¿Quitar este pago pendiente? Dejará de aparecerle a pagar.')) return;
+    if(btn) btn.disabled=true;
+    var r = await sb.rpc('cubo_cobro_cancelar', { p_id:cobroId });
+    if(r.error){ toast(r.error.message||'No se ha podido.','error'); if(btn) btn.disabled=false; return; }
+    await cargarCobros(); pintar();
+    toast('Pago quitado');
   }
   async function eliminarCubo(id, btn){
     var a=null; ALTAS.forEach(function(x){ if(x.id===id) a=x; });
@@ -443,6 +487,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if(cb){ abrirCobro(cb.getAttribute('data-cobro'), cb.getAttribute('data-abierto')==='1', cb); return; }
     var elim=ev.target.closest?ev.target.closest('[data-eliminar]'):null;
     if(elim){ eliminarCubo(elim.getAttribute('data-eliminar'), elim); return; }
+    var pp=ev.target.closest?ev.target.closest('[data-poner-pago]'):null;
+    if(pp){ ponerPago(pp.getAttribute('data-poner-pago'), pp); return; }
+    var cp=ev.target.closest?ev.target.closest('[data-cancelar-pago]'):null;
+    if(cp){ cancelarPago(cp.getAttribute('data-cancelar-pago'), cp); return; }
     var at=ev.target.closest?ev.target.closest('#ca-abrir-todos'):null;
     if(at){ abrirCobroTodos(at); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;

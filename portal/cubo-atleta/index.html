@@ -204,6 +204,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<h1 class="saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
       '<p class="sub">Tus entrenamientos en El Cubo</p>' +
       '<div id="cb-aviso"></div>' +
+      '<div id="cb-pagos"></div>' +
       '<div id="cb-horarios"><div class="ap-esq" data-esq="filas:2"></div></div>' +
       '<p class="rotulo">Otras actividades del club</p>' +
       otrasHTML() +
@@ -242,6 +243,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       engancharPago();
     }
 
+    // Pagos puntuales que le ha puesto el club (camiseta, inscripción…).
+    await pintarPagos();
+
     // Sus horarios
     var caja = $('cb-horarios');
     var cab = h.grupo ? '<p class="rotulo cb-grupo">Tu grupo · ' + esc(h.grupo) + '</p>' : '';
@@ -265,6 +269,39 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cn.innerHTML = n.data.length
       ? n.data.map(noticiaHTML).join('')
       : APOLANA_UI.vacio('Todavía no hay noticias', 'Cuando el club publique algo, aparecerá aquí.');
+  }
+
+  // Pagos puntuales que el club le ha puesto (concepto + importe). Se pagan con
+  // tarjeta (Stripe). La RLS deja que cada quien vea solo los suyos.
+  async function pintarPagos() {
+    var caja = $('cb-pagos'); if (!caja) return;
+    var r = await sb.from('cubo_cobros')
+      .select('id,concepto,importe_cent').eq('estado', 'pendiente').order('created_at');
+    var lista = (!r.error && r.data) ? r.data : [];
+    if (!lista.length) { caja.innerHTML = ''; return; }
+    caja.innerHTML = lista.map(function (c) {
+      var eur = (Number(c.importe_cent) / 100).toFixed(2).replace('.', ',');
+      return '<div class="cb-pend">' +
+        '<div class="tx"><b>Pago pendiente</b><span>' + esc(c.concepto) + ' · ' + esc(eur) + ' €</span></div>' +
+        '<button type="button" class="btn activo" data-pagar-cobro="' + esc(c.id) + '">Pagar ' + esc(eur) + ' €</button>' +
+      '</div>';
+    }).join('');
+    caja.querySelectorAll('[data-pagar-cobro]').forEach(function (b) {
+      b.addEventListener('click', function () { pagarCobro(b.getAttribute('data-pagar-cobro'), b); });
+    });
+  }
+  async function pagarCobro(cobroId, btn) {
+    var txt = btn.textContent; btn.disabled = true; btn.textContent = 'Abriendo el pago…';
+    var vuelta = function (t) { btn.disabled = false; btn.textContent = txt; if (t) alert(t); };
+    try {
+      var r = await sb.functions.invoke('cubo-cobro-pagar', { body: { cobro_id: cobroId } });
+      if (r.error) {
+        var d = null; try { if (r.error.context && r.error.context.json) d = await r.error.context.json(); } catch (e) {}
+        return vuelta((d && d.mensaje) || 'No hemos podido abrir el pago. Inténtalo en un minuto.');
+      }
+      if (!r.data || !r.data.url) return vuelta('No hemos podido abrir el pago. Inténtalo de nuevo.');
+      window.location.href = r.data.url; // a la pasarela de Stripe
+    } catch (e) { vuelta('No hemos podido conectar con la pasarela. Inténtalo en un minuto.'); }
   }
 
   // ¿Está abierto el cobro con tarjeta? (interruptor del club, tabla cubo_config)
