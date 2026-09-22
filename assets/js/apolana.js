@@ -732,6 +732,15 @@ document.addEventListener('DOMContentLoaded', async function () {
       var ses = await db.auth.getSession();
       var s = ses && ses.data && ses.data.session;
       if (!s) return;                                   // visita normal: se queda «Acceso»
+      /* Si pidió «cambiar la contraseña» y el enlace del correo le trajo a una
+         página pública (no al portal), se le lleva al portal, que es donde
+         puede cambiarla. La intención está en la base (debo_cambiar_clave). */
+      try {
+        if (location.pathname.indexOf('/portal/') === -1) {
+          var rcc = await db.rpc('debo_cambiar_clave');
+          if (rcc && rcc.data === true) { location.replace(location.origin + '/portal/'); return; }
+        }
+      } catch (e) { /* si falla, se sigue como siempre */ }
       var correo = (s.user && s.user.email) || '';
       var nombre = '';
       if (correo) {

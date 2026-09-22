@@ -1348,6 +1348,7 @@
          pedir (si no, bucle). */
       _forzarClave = false;
       _tipoEnlace = '';
+      try { sb.rpc('cambio_clave_hecho'); } catch (e) {}   // gastar el flag de la base
       try { sessionStorage.removeItem('apolana_cambiar_clave'); } catch (e) {}
       try {
         var u = new URL(location.href);
@@ -1415,6 +1416,7 @@
        quiere, se sale y se vuelve a entrar por el enlace otro día. */
     document.getElementById('pt-clave-salir').addEventListener('click', async function () {
       _forzarClave = false;
+      try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}   // no volver a forzar
       try { await sb.auth.signOut(); } catch (e) {}
       // Quitar ?recuperar=1 de la URL para que un login normal no re-fuerce.
       try { var u = new URL(location.href); u.searchParams.delete('recuperar'); location.replace(u.href); return; } catch (e) {}
