@@ -1101,12 +1101,29 @@
         var cuerpoEnlace = { email: email };
         if (opciones && opciones.cambiarClave) cuerpoEnlace.cambiar_clave = true;
         var r = await sb.functions.invoke('acceso-enlace', { body: cuerpoEnlace });
-        if (!r || !r.error) return 'enviado';
+        if (!r || !r.error) {
+          /* El correo no es de nadie del club: no habrá correo. Se avisa. */
+          if (r && r.data && r.data.reconocido === false) return 'noreconocido';
+          return 'enviado';
+        }
         var estado = r.error.context && r.error.context.status;
         if (estado === 503) return 'apagado';
         if (!estado) return 'sinllegar';
       } catch (e) { return 'sinllegar'; }
       return 'enviado';
+    }
+
+    /* Aviso cuando el correo no lo tiene el club: en vez de dejar esperando
+       un correo que no llega, se dice y se ofrece hacerse socio/apuntarse. */
+    function verNoReconocido(email) {
+      var msg = document.getElementById('pt-msg') || document.getElementById('pt-msg2');
+      if (msg) {
+        msg.className = 'msg';
+        msg.innerHTML = 'No reconocemos <b>' + (email ? String(email).replace(/[&<>"]/g, '') : 'ese correo') +
+          '</b> como cuenta del club. Si quieres formar parte del club, ' +
+          '<a href="' + b + 'inscripcion/" style="color:var(--azul-oscuro,#1E4E78);font-weight:600;">apúntate aquí</a> ' +
+          'y te damos acceso.';
+      }
     }
 
     function verEspera(email) {
@@ -1244,6 +1261,7 @@
           + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
         return;
       }
+      if (como === 'noreconocido') { verNoReconocido(email); return; }
       msg.textContent = '';
       correoEnviado = email;
       vecesEnviado = 1;
@@ -1292,6 +1310,7 @@
           + 'Si sigue igual, escribe a escuelaapolana@gmail.com.';
         return;
       }
+      if (como === 'noreconocido') { verNoReconocido(email); return; }
       msg.textContent = '';
       correoEnviado = email;
       vecesEnviado = 1;
@@ -1481,6 +1500,7 @@
       'cubo-lista': { titulo: 'Lista del Cubo', desc: 'Pasar lista en El Cubo.',                  url: b + 'portal/cubo-lista/',  carpeta: '/portal/cubo-lista/' },
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
+      socio:       { titulo: 'Socio',          desc: 'Noticias del club y actividades.',           url: b + 'portal/socio/',       carpeta: '/portal/socio/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
     };
 
@@ -1630,13 +1650,15 @@
       if (esCuboLista) anadir('cubo-lista');
       if (esFamilia) anadir('familia', hijos.length ? hijos.join(', ') : null);
       if (rol === 'coordinador') anadir('coordinador');
+      /* El socio de acceso básico: su zona es noticias + actividades. */
+      if (rol === 'socio') anadir('socio');
       /* Administración, tesorería, contabilidad y junta entran por la
          misma puerta: el panel. Lo que ven dentro lo deciden las reglas
          de la base, no esta lista. */
       if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
-      /* La app se queda con 4 vistas: atleta, entrenador, El Cubo y admin.
-         Familia y coordinación se retiran como vistas del portal. */
-      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'cubo-lista', 'admin'];
+      /* La app se queda con estas vistas del portal (familia y coordinación
+         se retiran); el socio entra a la suya. */
+      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'cubo-lista', 'socio', 'admin'];
       return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
     }
 

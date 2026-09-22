@@ -273,9 +273,13 @@ Deno.serve(async (peticion) => {
     const sePuede = await rpc("acceso_pedir_apuntar", { p_email: email, p_origen: dedonde });
     if (sePuede !== true) return comoSiempre(origen);
 
-    // 2 · ¿Tiene derecho a entrar?
+    // 2 · ¿Tiene derecho a entrar? Si el correo NO es de nadie del club, se
+    // dice CLARAMENTE (reconocido:false) para no dejar a la persona esperando
+    // un correo que no va a llegar; el portal le ofrece hacerse socio.
     const tieneDerecho = await rpc("acceso_puede_entrar", { p_email: email });
-    if (tieneDerecho !== true) return comoSiempre(origen);
+    if (tieneDerecho !== true) {
+      return responder({ ok: true, reconocido: false }, 200, origen);
+    }
 
     // 3 · Cuenta, enganche y correo.
     const id = await cuentaDe(email);
