@@ -174,6 +174,10 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if(a.lista_espera) acc+='<button type="button" class="b b-plaza" data-plaza="'+esc(a.id)+'">Dar plaza</button>';
     if(a.horario) acc+='<button type="button" class="b b-grupo" data-grupo="'+esc(a.id)+'">Cambiar de grupo</button>';
+    // Eliminar la solicitud (rechazadas / de prueba). La RPC no deja si tiene
+    // suscripción activa (primero «Dar de baja»).
+    if(a.suscripcion_estado!=='activa' && a.suscripcion_estado!=='pausada')
+      acc+='<button type="button" class="b b-no" data-eliminar="'+esc(a.id)+'">Eliminar</button>';
     return '<article class="alta">'+
       '<div class="alta-top">'+
         '<span class="quien"><b>'+esc((a.nombre||'')+' '+(a.apellidos||''))+'</b>'+
@@ -228,6 +232,18 @@ APOLANA_ADMIN.listo(function (sb) {
     ALTAS.forEach(function(a){ if(a.id===id) a.cobro_abierto=nuevo; });
     pintar();
     toast(nuevo?'Cobro abierto a esta persona':'Cobro cerrado (queda de prueba)');
+  }
+  async function eliminarCubo(id, btn){
+    var a=null; ALTAS.forEach(function(x){ if(x.id===id) a=x; });
+    var quien=a?((a.nombre||'')+' '+(a.apellidos||'')).trim():'esta solicitud';
+    if(!confirm('¿Eliminar la solicitud de '+quien+'? Se borra del todo y NO se puede deshacer.')) return;
+    btn.disabled=true;
+    var r=await sb.rpc('cubo_alta_eliminar',{ p_id:id });
+    if(r.error){ toast(r.error.message||'No se ha podido.', 'error'); btn.disabled=false; return; }
+    if(r.data && r.data.ok===false){ toast(r.data.mensaje||'No se puede eliminar.', 'error'); btn.disabled=false; return; }
+    ALTAS=ALTAS.filter(function(x){ return x.id!==id; });
+    pintar();
+    toast('Solicitud eliminada');
   }
   async function abrirCobroTodos(btn){
     var pend=ALTAS.filter(function(a){ return (a.estado==='aprobada') && a.suscripcion_estado!=='activa' && !a.cobro_abierto; }).length;
@@ -425,6 +441,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(pq){ pagoCuota(pq.getAttribute('data-pago-cuota'), pq); return; }
     var cb=ev.target.closest?ev.target.closest('[data-cobro]'):null;
     if(cb){ abrirCobro(cb.getAttribute('data-cobro'), cb.getAttribute('data-abierto')==='1', cb); return; }
+    var elim=ev.target.closest?ev.target.closest('[data-eliminar]'):null;
+    if(elim){ eliminarCubo(elim.getAttribute('data-eliminar'), elim); return; }
     var at=ev.target.closest?ev.target.closest('#ca-abrir-todos'):null;
     if(at){ abrirCobroTodos(at); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
