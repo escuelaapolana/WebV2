@@ -46,7 +46,7 @@
       <!-- Formulario -->
       <div id="form">
         <h1>Alta de entrenador</h1>
-        <p class="ent-intro">Date de alta como <strong>entrenador de la escuela</strong>. Te enviaremos un enlace a tu correo para entrar en tu zona; luego el club te asigna tu grupo.</p>
+        <p class="ent-intro">Date de alta como <strong>entrenador de la escuela</strong>. Crea tu cuenta con tu correo y una contraseña para entrar; luego el club te asigna tu grupo.</p>
 
         <div class="campo">
           <label for="nombre">Nombre</label>
@@ -59,6 +59,10 @@
         <div class="campo">
           <label for="email">Correo electrónico</label>
           <input type="email" id="email" inputmode="email" autocomplete="email">
+        </div>
+        <div class="campo">
+          <label for="password">Contraseña (la que quieras, para entrar)</label>
+          <input type="password" id="password" autocomplete="new-password" minlength="8">
         </div>
 
         <!-- Trampa anti-bots: si se rellena, se descarta en el servidor -->
@@ -77,7 +81,7 @@
         <div class="tic">&#10003;</div>
         <h1>¡Listo!</h1>
         <p class="ent-intro" id="hecho-texto"></p>
-        <p class="ent-pie">Si no ves el correo, mira en <strong>spam</strong>. El enlace te deja entrar sin contraseña. Una vez dentro, el club te asignará tu grupo para pasar lista y subir entrenamientos.</p>
+        <p class="ent-pie">Entra desde <strong>Acceso</strong> con tu correo y tu contraseña. Una vez dentro, el club te asignará tu grupo para pasar lista y subir entrenamientos.</p>
       </div>
     </div>
   </div>
@@ -100,43 +104,46 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var nombre = $('nombre').value.trim();
     var email = $('email').value.trim();
+    var password = $('password').value;
     if (!nombre) return fallo('Pon tu nombre.');
     if (!F) return fallo('Recarga la página e inténtalo otra vez.');
     var errCorreo = F.correo(email);   // null si está bien; mensaje si está mal
     if (errCorreo) return fallo(errCorreo);
+    if ((password || '').length < 8) return fallo('La contraseña necesita 8 caracteres o más.');
 
     enviando = true;
     var boton = $('enviar');
     boton.disabled = true;
-    boton.textContent = 'Enviando…';
+    boton.textContent = 'Creando tu cuenta…';
 
-    var r = await F.llamar('alta_entrenador', {
-      p: {
-        nombre: nombre,
-        apellidos: $('apellidos').value.trim(),
-        email: email,
-        segundos: F.segundosDentro(),
-        apellido_de_soltera: $('cepo').value
-      }
-    });
+    var r;
+    try {
+      r = await window.APOLANA_DB.functions.invoke('entrenador-alta', {
+        body: {
+          nombre: nombre,
+          apellidos: $('apellidos').value.trim(),
+          email: email,
+          password: password,
+          segundos: F.segundosDentro(),
+          apellido_de_soltera: $('cepo').value
+        }
+      });
+    } catch (e) { r = { error: e }; }
 
-    if (!r || !r.ok) {
+    var datos = r && r.data;
+    if (!r || r.error || !datos || datos.ok === false) {
       enviando = false; boton.disabled = false; boton.textContent = 'Darme de alta';
-      return fallo((r && r.mensaje) || 'No se ha podido enviar. Vuelve a intentarlo en un rato.');
+      var m = (datos && datos.error) || '';
+      if (!m) { try { var ctx = r.error && r.error.context; if (ctx && ctx.json) { var d = await ctx.json(); m = d && d.error; } } catch (e) {} }
+      return fallo(m || 'No se ha podido. Vuelve a intentarlo en un rato.');
     }
 
-    // Mandar el enlace de acceso al correo (suelto; si falla, la invitación ya está).
-    try {
-      if (window.APOLANA_DB && window.APOLANA_DB.functions) {
-        // cambiar_clave: al entrar por el enlace le sale «Ponte una contraseña»,
-        // así se pone una y a partir de ahí entra siempre con correo + contraseña.
-        await window.APOLANA_DB.functions.invoke('acceso-enlace', { body: { email: email, cambiar_clave: true } });
-      }
-    } catch (e) { /* la invitación ya existe; puede pedir el enlace desde el acceso */ }
-
-    $('hecho-texto').innerHTML = 'Te hemos enviado un enlace de acceso a <strong>' +
-      email.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }) +
-      '</strong>. Ábrelo desde el correo para entrar.';
+    var yaTenia = datos.ya === 'perfil' || datos.ya === 'cuenta';
+    $('hecho-texto').innerHTML = yaTenia
+      ? 'Ya tenías una cuenta con <strong>' + email.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }) +
+        '</strong>. Entra con tu correo y tu contraseña de siempre.'
+      : '¡Cuenta creada! Ya puedes entrar con tu correo <strong>' + email.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }) +
+        '</strong> y la contraseña que has puesto.';
     $('form').style.display = 'none';
     $('hecho').style.display = 'block';
     window.scrollTo(0, 0);
