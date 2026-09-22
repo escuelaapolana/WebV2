@@ -1039,6 +1039,19 @@
       var a = e.target.closest ? e.target.closest('a[href]') : null;
       if (a) anotar(clave(a.getAttribute('href')));
     });
+
+    /* Al abrir un grupo, que sus opciones se asomen a la vista. La barra
+       tiene scroll propio; si el grupo está abajo del todo (p. ej. «Tu
+       cuenta»), sus opciones caen por debajo del borde y parece que «no
+       sale nada». El evento `toggle` no burbujea, así que se engancha a
+       cada grupo. */
+    Array.prototype.forEach.call(side.querySelectorAll('details.at-grupo'), function (d) {
+      d.addEventListener('toggle', function () {
+        if (!d.open) return;
+        var sub = d.querySelector('.sub');
+        if (sub && sub.scrollIntoView) { try { sub.scrollIntoView({ block: 'nearest' }); } catch (e) { sub.scrollIntoView(false); } }
+      });
+    });
   }
 
   /* ---------- pintado ---------- */
