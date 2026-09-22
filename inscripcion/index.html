@@ -283,7 +283,8 @@
               </select>
             </label>
             <label>Comentario (opcional)<textarea id="pi-comentario"></textarea></label>
-            <button type="submit" class="btn btn--primario">Enviar mis datos</button>
+            <button type="submit" class="btn btn--primario" id="pi-enviar">Enviar mis datos</button>
+            <a class="btn btn--primario" id="pi-directa" target="_blank" rel="noopener" href="#" hidden style="text-decoration:none;text-align:center;"></a>
             <span class="nota" id="pi-nota" style="font-size:13px;color:var(--texto-suave);" data-texto="inscripcion.t1">El club te contactará en 24-48 h.</span>
             <!-- Aviso de privacidad en el punto de recogida: quien deja aquí su
                  teléfono tiene que saber quién lo guarda antes de dejarlo. -->
@@ -308,8 +309,55 @@ document.addEventListener('DOMContentLoaded', function () {
   var form = document.getElementById('form-preinsc');
   if (!form) return;
   var nota = document.getElementById('pi-nota');
+  // Según lo que le interese, algunas secciones NO van al buzón, sino directas
+  // al canal de su responsable: escuela de atletismo → formulario de inscripción;
+  // natación (escuela o adultos) → WhatsApp de Mario. El resto sí va al buzón.
+  var FORM_ATLETISMO = 'https://forms.gle/2fj2LLnExUMUkkyH6';
+  var WA_MARIO = '34666033044';
+  function rutaDirecta(interes, nombre) {
+    if (interes === 'escuela-atletismo') return FORM_ATLETISMO;
+    if (interes === 'escuela-natacion' || interes === 'natacion') {
+      var que = interes === 'escuela-natacion' ? 'la escuela de natación' : 'la natación de adultos';
+      var txt = 'Hola Mario, soy ' + (nombre || '') + '. Quería probar ' + que + '.';
+      return 'https://wa.me/' + WA_MARIO + '?text=' + encodeURIComponent(txt);
+    }
+    return null;
+  }
+
+  // Al elegir escuela de atletismo o natación, en vez del botón de «enviar al
+  // buzón» aparece un botón directo (formulario o WhatsApp de Mario). Así no
+  // tienen que rellenar todo para que les atienda su responsable.
+  var selInteres = document.getElementById('pi-interes');
+  var btnEnviar = document.getElementById('pi-enviar');
+  var lnkDirecta = document.getElementById('pi-directa');
+  var elNombre = document.getElementById('pi-nombre');
+  function refrescarDirecta() {
+    var interes = selInteres.value;
+    var directa = rutaDirecta(interes, elNombre.value.trim());
+    if (directa) {
+      lnkDirecta.href = directa;
+      lnkDirecta.textContent = interes === 'escuela-atletismo'
+        ? 'Ir al formulario de inscripción' : 'Escribir a Mario por WhatsApp';
+      lnkDirecta.hidden = false;
+      btnEnviar.hidden = true;
+      nota.textContent = interes === 'escuela-atletismo'
+        ? 'La escuela de atletismo se inscribe por este formulario.'
+        : 'La natación la lleva Mario: te atiende por WhatsApp.';
+    } else {
+      lnkDirecta.hidden = true;
+      btnEnviar.hidden = false;
+      nota.textContent = 'El club te contactará en 24-48 h.';
+    }
+  }
+  if (selInteres) { selInteres.addEventListener('change', refrescarDirecta); elNombre.addEventListener('input', refrescarDirecta); refrescarDirecta(); }
+
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
+    var interes = document.getElementById('pi-interes').value;
+    var nombre = document.getElementById('pi-nombre').value.trim();
+    // Escuela de atletismo y natación se atienden directas (no al buzón).
+    var directa = rutaDirecta(interes, nombre);
+    if (directa) { window.location.href = directa; return; }
     if (!window.APOLANA_DB) { nota.textContent = 'Ahora mismo no se puede enviar. Llámanos, por favor.'; return; }
     var btn = form.querySelector('button[type=submit]');
     btn.disabled = true; nota.textContent = 'Enviando…';
