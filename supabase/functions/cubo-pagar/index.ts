@@ -45,11 +45,11 @@ const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
   .replace(/\/*$/, "/");
 
-// El primer cobro: el 21 de septiembre de 2026 a las 00:00 (hora de
-// Madrid, CEST = UTC+2) → 2026-09-20T22:00:00Z.
-const INICIO_TS = Math.floor(Date.UTC(2026, 8, 20, 22, 0, 0) / 1000);
-// El mes de entrada cuesta 10 € a todos, sea cual sea la tarifa.
-const PRIMER_MES_EUROS = 10;
+// Prueba de 1 SEMANA desde que cada persona activa su cuota (guarda la tarjeta
+// hoy y no se le cobra nada durante 7 días). Al 8º día empieza a cobrarse la
+// tarifa completa cada mes. (Antes: fecha fija del 21 con «mes de entrada» de
+// 10 €; eso era la promo de salida y ya no aplica.)
+const TRIAL_DIAS = 7;
 
 function vuelta(resultado: "hecho" | "cancelado"): string {
   return `${URL_BASE}portal/cubo-atleta/?cuota=${resultado}`;
@@ -185,33 +185,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const precioMes = Math.round(Number(alta.precio_mes));
-  if (!Number.isFinite(precioMes) || precioMes < PRIMER_MES_EUROS) {
+  if (!Number.isFinite(precioMes) || precioMes < 1) {
     return responder({
       error: "sin_precio",
       mensaje: "Tu cuota aún no tiene tarifa asignada. Escríbenos y lo dejamos listo.",
     }, 409, origen);
   }
   const importeMesCent = precioMes * 100;
-  const descuentoCent = (precioMes - PRIMER_MES_EUROS) * 100; // (tarifa − 10) €
 
   // La referencia con la que casaremos el aviso de Stripe en el webhook.
   const referencia = `cubo-${alta.id}`;
 
-  // ---- 3 · Cupón del mes de entrada (si hay algo que descontar) ----
-  let cuponId: string | null = null;
-  if (descuentoCent > 0) {
-    cuponId = await cuponEntrada(descuentoCent);
-    if (!cuponId) {
-      return responder({
-        error: "pasarela",
-        mensaje: "No hemos podido preparar el pago. Vuelve a intentarlo en un minuto.",
-      }, 502, origen);
-    }
-  }
-
-  // ---- 4 · La sesión de Stripe (suscripción mensual) ----
+  // ---- 4 · La sesión de Stripe (suscripción mensual con 1 semana de prueba) ----
   const ahora = Math.floor(Date.now() / 1000);
-  const enPrueba = INICIO_TS > ahora + 60; // aún no ha llegado el 21 → no cobra hoy
+  const trialEnd = ahora + TRIAL_DIAS * 24 * 60 * 60; // 7 días desde ahora
 
   const params = new URLSearchParams();
   params.set("mode", "subscription");
@@ -228,11 +215,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("line_items[0][price_data][product_data][name]", "Cuota mensual · El Cubo");
 
-  if (cuponId) params.set("discounts[0][coupon]", cuponId);
-
-  // El primer cobro, el 21: hasta entonces, «prueba» (guarda tarjeta, no
-  // cobra). Si ya pasó el 21, se cobra en el acto.
-  if (enPrueba) params.set("subscription_data[trial_end]", String(INICIO_TS));
+  // 1 semana de prueba: guarda la tarjeta hoy y el primer cobro (tarifa
+  // completa) es dentro de 7 días. Sin descuento de entrada.
+  params.set("subscription_data[trial_end]", String(trialEnd));
 
   // Etiquetas para reconocer el pago desde el webhook (en la suscripción,
   // que es lo que viaja en los avisos de cobro recurrente).
@@ -263,7 +248,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     url: sesion.url,
     referencia,
     precio_mes: precioMes,
-    primer_mes: PRIMER_MES_EUROS,
-    en_prueba: enPrueba,
+    trial_dias: TRIAL_DIAS,
+    en_prueba: true,
   }, 200, origen);
 });
