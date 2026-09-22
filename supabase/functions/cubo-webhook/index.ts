@@ -221,14 +221,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       break;
     }
 
-    // Cambió el estado de la suscripción (renovación, prueba→activa, mora…).
+    // Se creó la suscripción (al activar), o cambió su estado (renovación,
+    // prueba→activa, mora…). En ambos casos anotamos estado y próximo cobro.
+    // En «prueba hasta el día 5», el próximo cobro es el fin de la prueba.
+    case "customer.subscription.created":
     case "customer.subscription.updated": {
       const est = estadoDe(String(objeto.status ?? ""));
+      const proximo = aFecha(objeto.current_period_end) ?? aFecha(objeto.trial_end);
       hecho = {
         stripe_subscription_id: objeto.id,
         stripe_customer_id: idDe(objeto.customer),
         ...(est ? { suscripcion_estado: est } : {}),
-        proximo_cobro: aFecha(objeto.current_period_end),
+        ...(proximo ? { proximo_cobro: proximo } : {}),
       };
       break;
     }

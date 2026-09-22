@@ -223,14 +223,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     params.set("line_items[1][price_data][product_data][name]", "Primer pago · El Cubo (entrada)");
   }
 
-  // La cuota se ancla al día 5 y no se prorratea: hoy no se cobra la cuota.
-  params.set("subscription_data[billing_cycle_anchor]", String(anclaDia5));
-  params.set("subscription_data[proration_behavior]", "none");
-  // Si NO hay primer pago que cobrar hoy, damos prueba hasta el día 5 para que
-  // igualmente se guarde la tarjeta sin cobrar nada ahora.
-  if (!cobraPrimerPago) {
-    params.set("subscription_data[trial_end]", String(anclaDia5));
-  }
+  // La cuota entera no entra hasta el día 5: se pone «prueba» hasta esa fecha.
+  // Así HOY solo se cobra el primer pago (artículo de una vez), y el primer
+  // recibo de la cuota es el día 5. El fin de la prueba fija el día de cobro,
+  // por lo que a partir de ahí se cobra cada día 5. (No se usa
+  // billing_cycle_anchor + proration_behavior=none porque Stripe no lo permite
+  // junto con un precio de una vez.)
+  params.set("subscription_data[trial_end]", String(anclaDia5));
 
   // Etiquetas para reconocer el pago desde el webhook (en la suscripción,
   // que es lo que viaja en los avisos de cobro recurrente).
