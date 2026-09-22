@@ -91,11 +91,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cobroId = String(cuerpo.cobro_id ?? "").trim();
   if (!cobroId) return responder({ error: "datos", mensaje: "Falta el pago." }, 400, origen);
 
-  const rC = await rest(`cubo_cobros?select=id,perfil_id,concepto,importe_cent,estado&id=eq.${encodeURIComponent(cobroId)}&limit=1`);
+  const rC = await rest(`cubo_cobros?select=id,perfil_id,concepto,importe_cent,estado,stripe_session_id&id=eq.${encodeURIComponent(cobroId)}&limit=1`);
   const cobro = Array.isArray(rC.datos) ? rC.datos[0] : null;
   if (!cobro) return responder({ error: "no_existe", mensaje: "Ese pago ya no está." }, 404, origen);
   if (cobro.perfil_id !== perfilId) return responder({ error: "ajeno", mensaje: "Ese pago no es tuyo." }, 403, origen);
+  if (cobro.estado === "pagado") return responder({ error: "ya_pagado", mensaje: "Este pago ya está cobrado. ¡Gracias!" }, 409, origen);
   if (cobro.estado !== "pendiente") return responder({ error: "estado", mensaje: "Ese pago ya no está pendiente." }, 409, origen);
+
+  // ANTI DOBLE-COBRO. Si ya había una sesión de pago de este cobro, se mira en
+  // Stripe: si YA está pagada (aunque la base aún ponga pendiente porque el
+  // webhook no llegó), se marca cobrado y NO se abre otro pago. Si sigue
+  // abierta, se reutiliza esa misma sesión (Stripe cobra una sola vez).
+  if (cobro.stripe_session_id) {
+    const rExist = await fetch(
+      `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(String(cobro.stripe_session_id))}`,
+      { headers: { Authorization: `Bearer ${STRIPE_KEY}` } });
+    const sesExist = await rExist.json().catch(() => null);
+    if (rExist.ok && sesExist) {
+      if (sesExist.payment_status === "paid") {
+        await rest(`cubo_cobros?id=eq.${encodeURIComponent(cobro.id)}&estado=eq.pendiente`, {
+          method: "PATCH", headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            estado: "pagado", pagado_en: new Date().toISOString(),
+            stripe_payment_intent: typeof sesExist.payment_intent === "string" ? sesExist.payment_intent : null,
+          }),
+        });
+        return responder({ error: "ya_pagado", mensaje: "Este pago ya se había cobrado. ¡Gracias!" }, 409, origen);
+      }
+      // Sesión aún válida y sin pagar → se reutiliza (no se crea otra).
+      if (sesExist.status === "open" && sesExist.url) {
+        return responder({ url: sesExist.url, cobro_id: cobro.id, reutilizada: true }, 200, origen);
+      }
+    }
+  }
 
   const importeCent = Math.round(Number(cobro.importe_cent));
   if (!Number.isFinite(importeCent) || importeCent < 1) {
