@@ -1408,6 +1408,7 @@
         if (/same.{0,4}password|should be different/i.test(m)) {
           apuntarQueTieneClave();
           _claveRecienPuesta = true;
+          try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}
           seguirAlPortal();
           return;
         }
@@ -1423,6 +1424,9 @@
       }
 
       _claveRecienPuesta = true;   // que arranque() NO vuelva a pedir la clave
+      // Borrar el flag ANTES de navegar a la zona: si no, la página de destino
+      // (p. ej. El Cubo) lo vería aún puesto y volvería a pedir la contraseña.
+      try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}
       seguirAlPortal();
       try { window.APX.toast('Contraseña guardada', null, { detalle: 'La próxima vez entra con tu correo y esta contraseña.' }); } catch (e) {}
     });
