@@ -156,7 +156,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ---- 2 · Su alta del Cubo: de ahí sale el precio (nunca del navegador) ----
   const rAlta = await rest(
-    `cubo_altas?select=id,precio_mes,stripe_subscription_id,suscripcion_estado,nombre,apellidos` +
+    `cubo_altas?select=id,precio_mes,stripe_subscription_id,suscripcion_estado,nombre,apellidos,cobro_abierto` +
     `&perfil_id=eq.${perfilId}&order=created_at.desc&limit=1`,
   );
   const alta = Array.isArray(rAlta.datos) ? rAlta.datos[0] : null;
@@ -165,6 +165,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       error: "sin_alta",
       mensaje: "No encontramos tu alta en El Cubo. Escríbenos y lo dejamos listo.",
     }, 404, origen);
+  }
+
+  // El cobro se abre POR PERSONA desde el club (columna cobro_abierto). Si no
+  // está abierto, no se puede pagar aún — ni desde el botón ni llamando aquí.
+  if (alta.cobro_abierto !== true) {
+    return responder({
+      error: "cobro_cerrado",
+      mensaje: "El pago de tu cuota aún no está abierto. El club te avisará cuando puedas activarlo.",
+    }, 409, origen);
   }
 
   // Ya tiene la cuota activa: no abrimos otra (evita doble suscripción).

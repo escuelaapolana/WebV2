@@ -155,6 +155,11 @@ APOLANA_ADMIN.listo(function (sb) {
     if(est!=='aprobada') acc+='<button type="button" class="b b-si" data-id="'+esc(a.id)+'" data-e="aprobada">Aprobar</button>';
     if(est!=='rechazada') acc+='<button type="button" class="b b-no" data-id="'+esc(a.id)+'" data-e="rechazada">Rechazar</button>';
     if(est!=='pendiente') acc+='<button type="button" class="b b-volver" data-id="'+esc(a.id)+'" data-e="pendiente">Volver a pendiente</button>';
+    // Abrir/cerrar el cobro POR PERSONA (solo aprobadas que aún no pagan).
+    // Mientras esté cerrado, a esa persona NO le sale «Pagar la cuota» (prueba).
+    if(est==='aprobada' && a.suscripcion_estado!=='activa'){
+      acc+='<button type="button" class="b '+(a.cobro_abierto?'b-cerrar-cobro':'b-abrir-cobro')+'" data-cobro="'+esc(a.id)+'" data-abierto="'+(a.cobro_abierto?'1':'0')+'">'+(a.cobro_abierto?'Cerrar cobro':'Abrir cobro')+'</button>';
+    }
     if(a.suscripcion_estado==='activa'){
       acc+='<button type="button" class="b b-pago" data-pago-saltar="'+esc(a.id)+'">Saltar/aplazar mes</button>';
       acc+='<button type="button" class="b b-pago" data-pago-cargo="'+esc(a.id)+'">Cargo / descuento</button>';
@@ -175,6 +180,9 @@ APOLANA_ADMIN.listo(function (sb) {
         '</span>'+
         '<span class="precio">'+esc(a.precio_mes||'')+' €/mes</span>'+
         '<span class="est '+esc(est)+'">'+esc(NOMBRE_EST[est]||est)+'</span>'+
+        (est==='aprobada' && a.suscripcion_estado!=='activa'
+          ? '<span class="est '+(a.cobro_abierto?'aprobada':'pendiente')+'">'+(a.cobro_abierto?'Cobro abierto':'En prueba (no cobra)')+'</span>'
+          : '')+
       '</div>'+
       '<div class="alta-acc">'+acc+'</div>'+
     '</article>';
@@ -182,6 +190,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   function pintar(){
     pintarChips();
+    pintarCobro();
     pintarGrupos();
     var caja=$('ca-lista'); caja.className='';
     if(fallo){ caja.innerHTML=vacioHTML('No hemos podido traer las altas','Puede ser la conexión. Recarga la página.'); return; }
@@ -200,6 +209,29 @@ APOLANA_ADMIN.listo(function (sb) {
     ALTAS.forEach(function(a){ if(a.id===id) a.estado=estado; });
     pintar();
     toast(estado==='aprobada'?'Alta aprobada':estado==='rechazada'?'Alta rechazada':'Vuelta a pendiente');
+  }
+
+  // ---- Abrir/cerrar el cobro POR PERSONA ----
+  // No cobra nada: solo hace que a esa persona le aparezca (o no) «Pagar la
+  // cuota» en su portal. Los que quedan cerrados están «de prueba».
+  async function abrirCobro(id, estabaAbierto, btn){
+    btn.disabled=true;
+    var nuevo=!estabaAbierto;
+    var r=await sb.rpc('cubo_cobro_abrir',{ p_id:id, p_abierto:nuevo });
+    if(r.error){ toast(r.error.message||'No se ha podido.', 'error'); btn.disabled=false; return; }
+    ALTAS.forEach(function(a){ if(a.id===id) a.cobro_abierto=nuevo; });
+    pintar();
+    toast(nuevo?'Cobro abierto a esta persona':'Cobro cerrado (queda de prueba)');
+  }
+  async function abrirCobroTodos(btn){
+    var pend=ALTAS.filter(function(a){ return (a.estado==='aprobada') && a.suscripcion_estado!=='activa' && !a.cobro_abierto; }).length;
+    if(!confirm('Abrir el cobro a los '+pend+' aprobados que aún están de prueba. Les aparecerá «Pagar la cuota». ¿Seguir?')) return;
+    if(btn) btn.disabled=true;
+    var r=await sb.rpc('cubo_cobro_abrir',{ p_todos_aprobados:true, p_abierto:true });
+    if(r.error){ toast(r.error.message||'No se ha podido.', 'error'); if(btn) btn.disabled=false; return; }
+    ALTAS.forEach(function(a){ if(a.estado==='aprobada') a.cobro_abierto=true; });
+    pintar();
+    toast('Cobro abierto a '+(r.data||0)+' personas');
   }
 
   // ---- Interruptor: abrir/cerrar el cobro de la cuota (tabla cubo_config) ----
@@ -244,18 +276,18 @@ APOLANA_ADMIN.listo(function (sb) {
   }
   function pintarCobro(){
     var caja=$('ca-cobro'); if(!caja) return;
-    if(COBRO===null){ caja.innerHTML=''; caja.className=''; return; }
-    if(COBRO){
-      caja.className='ca-cobro abierto';
-      caja.innerHTML='<div class="tx"><b>Cobro de la cuota · Abierto</b>'+
-        '<small>Los padres ya ven el botón de pagar y pueden activar su cuota.</small></div>'+
-        '<button type="button" class="b cerrar" id="ca-cobro-btn" data-abrir="0">Cerrar el cobro</button>'+aforoHTML();
-    } else {
-      caja.className='ca-cobro';
-      caja.innerHTML='<div class="tx"><b>Cobro de la cuota · Cerrado</b>'+
-        '<small>Se apuntan y ven sus horarios, pero aún no pagan. Ábrelo cuando Stripe esté en real.</small></div>'+
-        '<button type="button" class="b abrir" id="ca-cobro-btn" data-abrir="1">Abrir el cobro</button>'+aforoHTML();
-    }
+    if(!ALTAS){ caja.innerHTML=''; caja.className=''; return; }
+    // El cobro es POR PERSONA (cada tarjeta tiene su «Abrir/Cerrar cobro»).
+    // Aquí solo el resumen y el atajo para abrirlo a todos los de prueba.
+    var aprob=ALTAS.filter(function(a){ return (a.estado==='aprobada') && a.suscripcion_estado!=='activa'; });
+    var abiertos=aprob.filter(function(a){ return a.cobro_abierto; }).length;
+    var prueba=aprob.length-abiertos;
+    caja.className='ca-cobro'+(abiertos>0?' abierto':'');
+    caja.innerHTML='<div class="tx"><b>Cobro por persona</b>'+
+      '<small><b>'+abiertos+'</b> con cobro abierto · <b>'+prueba+'</b> de prueba (no les sale pagar). '+
+      'Abre el cobro a cada uno en su tarjeta, o a todos los de prueba de golpe.</small></div>'+
+      (prueba>0?'<button type="button" class="b abrir" id="ca-abrir-todos">Abrir cobro a los '+prueba+' de prueba</button>':'')+
+      aforoHTML();
   }
   async function toggleCobro(btn){
     var abrir = btn.getAttribute('data-abrir')==='1';
@@ -372,6 +404,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if(pc){ pagoCargo(pc.getAttribute('data-pago-cargo'), pc); return; }
     var pq=ev.target.closest?ev.target.closest('[data-pago-cuota]'):null;
     if(pq){ pagoCuota(pq.getAttribute('data-pago-cuota'), pq); return; }
+    var cb=ev.target.closest?ev.target.closest('[data-cobro]'):null;
+    if(cb){ abrirCobro(cb.getAttribute('data-cobro'), cb.getAttribute('data-abierto')==='1', cb); return; }
+    var at=ev.target.closest?ev.target.closest('#ca-abrir-todos'):null;
+    if(at){ abrirCobroTodos(at); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
     if(f){ filtro=f.getAttribute('data-f'); pintar(); return; }
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;
