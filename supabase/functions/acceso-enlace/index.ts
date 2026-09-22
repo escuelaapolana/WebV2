@@ -195,13 +195,11 @@ async function cuentaDe(email: string): Promise<string | null> {
 // arriba, después de comprobar que esa persona tiene derecho. Así,
 // aunque un día se abra este hueco por error, por aquí no se puede
 // dar de alta a nadie que no esté en la base del club.
-async function mandarEnlace(email: string, cambiarClave = false): Promise<boolean> {
-  // Si viene de «no me acuerdo de mi contraseña», el enlace vuelve a
-  // /portal/?recuperar=1: la app, al ver esa marca, enseña «Ponte una
-  // contraseña» en cuanto hay sesión. Es un enlace de entrada normal (el que
-  // ya funciona), solo cambia a dónde vuelve; así no dependemos del correo de
-  // recuperación de Supabase ni de su lista de dominios.
-  const destino = `${URL_BASE}portal/${cambiarClave ? "?recuperar=1" : ""}`;
+async function mandarEnlace(email: string): Promise<boolean> {
+  // El enlace vuelve SIEMPRE al portal, a la dirección de siempre (que está en
+  // la lista de redirecciones permitidas de Supabase). La intención de
+  // «cambiar la contraseña» NO viaja en la URL (eso rompía el envío si la URL
+  // con parámetro no estaba permitida); viaja por la base (marcar_cambio_clave).
   const r = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
     method: "POST",
     headers: {
@@ -213,8 +211,8 @@ async function mandarEnlace(email: string, cambiarClave = false): Promise<boolea
       email,
       create_user: false,
       should_create_user: false,
-      options: { email_redirect_to: destino },
-      redirect_to: destino,
+      options: { email_redirect_to: `${URL_BASE}portal/` },
+      redirect_to: `${URL_BASE}portal/`,
     }),
   });
   if (!r.ok) console.error("[acceso-enlace] no se pudo enviar:", r.status, await r.text());
@@ -282,7 +280,12 @@ Deno.serve(async (peticion) => {
       try { await rpc("acceso_enganchar", { p_uid: id, p_email: email }); }
       catch (e) { console.error("[acceso-enlace] enganche:", e); }
     }
-    await mandarEnlace(email, cambiarClave);
+    // Si pidió cambiar la contraseña, se apunta en la base (no en la URL).
+    if (cambiarClave) {
+      try { await rpc("marcar_cambio_clave", { p_email: email }); }
+      catch (e) { console.error("[acceso-enlace] marcar_cambio_clave:", e); }
+    }
+    await mandarEnlace(email);
   } catch (e) {
     // Un fallo por dentro tampoco cambia lo que ve quien lo pidió:
     // queda escrito en el registro de Supabase y punto.

@@ -1731,10 +1731,17 @@
         try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       }
 
-      /* Viene de «cambiar la contraseña» (marca ?recuperar=1 en la URL):
-         hay sesión de recuperación → se le enseña «Ponte una contraseña»
-         SIEMPRE, sin depender de si el token llegó por hash o por ?code=. */
-      if (_forzarClave) { pedirClave(email); return; }
+      /* ¿Pidió «cambiar la contraseña»? La intención viaja por la base
+         (marcar_cambio_clave en acceso-enlace). Se pregunta al entrar: si hay
+         una petición reciente, se gasta (la RPC la borra) y se enseña «Ponte
+         una contraseña». Fiable en cualquier flujo (hash o PKCE) y sin tocar
+         el redirect del correo. La marca vieja ?recuperar=1 también vale. */
+      var debeClave = _forzarClave;
+      if (!debeClave) {
+        try { var rc = await sb.rpc('debo_cambiar_clave'); debeClave = !!(rc && rc.data === true); }
+        catch (e) { /* si falla, no forzamos */ }
+      }
+      if (debeClave) { pedirClave(email); return; }
 
       /* Y aquí, antes que nada: quien llega del correo y todavía no
          tiene contraseña se pone una. Es lo primero que hace en su vida
