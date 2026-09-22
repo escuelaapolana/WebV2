@@ -61,6 +61,7 @@
   var _delEnlace = null;   // el enlace ya no valía: por qué
   var _acabaDeEntrar = false;  // ha entrado AHORA, pulsando el enlace
   var _tipoEnlace = '';    // qué enlace era: 'recovery' si venía de «cambiar la contraseña»
+  var _forzarClave = false; // viene de «cambiar la contraseña» (marca en la URL, ver abajo)
   (function () {
     var h = (location.hash || '').replace(/^#/, '');
     if (!h || h.indexOf('=') === -1) return;
@@ -72,6 +73,12 @@
       _tipoEnlace = p.get('type') || '';
     }
   })();
+  /* Marca de recuperación en la URL. El correo de «cambiar la contraseña»
+     vuelve con ?recuperar=1 en la dirección: eso NO se pierde entre pestañas
+     (va en el propio enlace) y no depende de si el token viene en el hash
+     (flujo implícito) o como ?code= (flujo PKCE). Si está, en cuanto haya
+     sesión se enseña «Ponte una contraseña». */
+  try { if (new URLSearchParams(location.search).get('recuperar') === '1') _forzarClave = true; } catch (e) {}
 
   /* Lo que se le dice a alguien cuyo enlace ya no vale. En cristiano
      y sin una palabra en inglés: el enlace caduca a la hora y solo
@@ -1264,8 +1271,9 @@
       apuntarMantener();
       elOlvide.disabled = true;
       msg.textContent = 'Enviando…';
+      var destino = alPortal() + (alPortal().indexOf('?') > -1 ? '&' : '?') + 'recuperar=1';
       var r;
-      try { r = await sb.auth.resetPasswordForEmail(email, { redirectTo: alPortal() }); }
+      try { r = await sb.auth.resetPasswordForEmail(email, { redirectTo: destino }); }
       catch (e) { r = { error: { message: 'red' } }; }
       elOlvide.disabled = false;
       if (r && r.error) {
@@ -1331,6 +1339,16 @@
     /* Guardada (o ya la tenía): se recoge esta pantalla y sigue el portal
        como si nada. */
     function seguirAlPortal() {
+      /* Ya se puso la contraseña: se apaga la marca de recuperación y se
+         limpia de la URL, para que al volver a arranque() NO se vuelva a
+         pedir (si no, bucle). */
+      _forzarClave = false;
+      _tipoEnlace = '';
+      try { sessionStorage.removeItem('apolana_cambiar_clave'); } catch (e) {}
+      try {
+        var u = new URL(location.href);
+        if (u.searchParams.has('recuperar')) { u.searchParams.delete('recuperar'); history.replaceState(null, '', u.href); }
+      } catch (e) {}
       elClave.hidden = true;
       elClave1.value = '';
       elClave1.type = 'password';
@@ -1392,7 +1410,10 @@
     /* Nunca un callejón sin salida: si en ese momento no puede o no
        quiere, se sale y se vuelve a entrar por el enlace otro día. */
     document.getElementById('pt-clave-salir').addEventListener('click', async function () {
+      _forzarClave = false;
       try { await sb.auth.signOut(); } catch (e) {}
+      // Quitar ?recuperar=1 de la URL para que un login normal no re-fuerce.
+      try { var u = new URL(location.href); u.searchParams.delete('recuperar'); location.replace(u.href); return; } catch (e) {}
       location.reload();
     });
 
@@ -1705,6 +1726,11 @@
         _acabaDeEntrar = false;
         try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       }
+
+      /* Viene de «cambiar la contraseña» (marca ?recuperar=1 en la URL):
+         hay sesión de recuperación → se le enseña «Ponte una contraseña»
+         SIEMPRE, sin depender de si el token llegó por hash o por ?code=. */
+      if (_forzarClave) { pedirClave(email); return; }
 
       /* Y aquí, antes que nada: quien llega del correo y todavía no
          tiene contraseña se pone una. Es lo primero que hace en su vida
