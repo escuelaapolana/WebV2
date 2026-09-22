@@ -276,8 +276,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function pintarPagos() {
     var caja = $('cb-pagos'); if (!caja) return;
     var r = await sb.from('cubo_cobros')
-      .select('id,concepto,importe_cent').eq('estado', 'pendiente').order('created_at');
+      .select('id,concepto,importe_cent,stripe_session_id').eq('estado', 'pendiente').order('created_at');
     var lista = (!r.error && r.data) ? r.data : [];
+    // Red de seguridad: si alguno ya se pagó (y el webhook no llegó), se
+    // confirma contra Stripe y se descarta de la lista.
+    var conSesion = lista.filter(function (c) { return c.stripe_session_id; });
+    if (conSesion.length) {
+      var pagados = {};
+      await Promise.all(conSesion.map(function (c) {
+        return sb.functions.invoke('cubo-cobro-confirmar', { body: { cobro_id: c.id } })
+          .then(function (rr) { if (rr && rr.data && rr.data.pagado) pagados[c.id] = true; })
+          .catch(function () {});
+      }));
+      lista = lista.filter(function (c) { return !pagados[c.id]; });
+    }
     if (!lista.length) { caja.innerHTML = ''; return; }
     caja.innerHTML = lista.map(function (c) {
       var eur = (Number(c.importe_cent) / 100).toFixed(2).replace('.', ',');
