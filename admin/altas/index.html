@@ -402,10 +402,46 @@ APOLANA_ADMIN.listo(function (sb) {
         'Las altas se ven, pero no se ha podido leer ' + noLeido.join(' ni ') + '.', cargar);
     }
 
+    await marcarYaEnClub();
     pintarTemporadas();
     pintar();
     /* Ya hay datos y quien mira puede verlos: se enseña el botón de copia. */
     var bc = $('alt-copia'); if (bc) bc.hidden = false;
+  }
+
+  /* ¿Esta alta es de alguien que YA tiene ficha en el club? Para no duplicar.
+     En SOCIO se casa por correo/teléfono/DNI. En ESCUELA solo por DNI del
+     niño (el correo/teléfono suele ser del tutor, que sí puede ser del club
+     sin que lo sea el niño → evitamos el falso positivo). */
+  var YA_CLUB = {};
+  async function marcarYaEnClub() {
+    YA_CLUB = {};
+    var contactos = [], dnis = [];
+    ALTAS.forEach(function (a) {
+      if (a.dni) dnis.push(a.dni);
+      if (a.que === 'socio') {
+        var c = correoDe(a), t = telefonoDe(a);
+        if (c) contactos.push(c);
+        if (t) contactos.push(t);
+      }
+    });
+    if (!contactos.length && !dnis.length) return;
+    try {
+      var r = await sb.rpc('persona_ya_en_club', { p_contactos: contactos, p_dnis: dnis });
+      if (!r.error && r.data) r.data.forEach(function (m) {
+        YA_CLUB[(m.clave || '').trim().toLowerCase()] = m;
+      });
+    } catch (e) { /* sin conexión: se ignora */ }
+  }
+  function yaEnClubDe(a) {
+    var claves = [];
+    if (a.dni) claves.push(a.dni);
+    if (a.que === 'socio') { if (correoDe(a)) claves.push(correoDe(a)); if (telefonoDe(a)) claves.push(telefonoDe(a)); }
+    for (var i = 0; i < claves.length; i++) {
+      var k = String(claves[i]).trim().toLowerCase();
+      if (YA_CLUB[k]) return YA_CLUB[k];
+    }
+    return null;
   }
 
   /* ============================================================
@@ -630,6 +666,8 @@ APOLANA_ADMIN.listo(function (sb) {
        necesita cuando falta algo, y lo que falta si falta. Y quién la
        revisó ya, que es lo que evita que dos personas la trabajen otra vez. */
     var ctx = [correoDe(a), telefonoDe(a)].filter(Boolean);
+    var yc = yaEnClubDe(a);
+    if (yc) ctx.unshift('⚠️ YA ES DEL CLUB: ' + ((yc.nombre || '') + ' ' + (yc.apellidos || '')).trim() + ' — enlázalo, no dupliques');
     if (a.que === 'escuela' && !a.tiene_iban) ctx.push('sin número de cuenta');
     if (a.estado !== 'pendiente' && a.revisada_por_nombre) {
       ctx.push('la vio ' + a.revisada_por_nombre + ' el ' + fechaCorta(a.revisada_en));

@@ -921,7 +921,23 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
     SOLIC = r.data || [];
+    await marcarYaEnClub();
     pintarSolic();
+  }
+
+  // Marca qué solicitudes son de gente que YA está en el club (por su correo o
+  // teléfono), para no crear fichas duplicadas. Si falla, no pasa nada.
+  var YA_CLUB = {};
+  async function marcarYaEnClub() {
+    YA_CLUB = {};
+    var medios = SOLIC.map(function (s) { return (s.medio || '').trim(); }).filter(Boolean);
+    if (!medios.length) return;
+    try {
+      var r = await sb.rpc('persona_ya_en_club', { p_contactos: medios, p_dnis: [] });
+      if (!r.error && r.data) r.data.forEach(function (m) {
+        YA_CLUB[(m.clave || '').trim().toLowerCase()] = m;
+      });
+    } catch (e) { /* sin conexión: se ignora */ }
   }
 
   function textoSol(s) {
@@ -994,6 +1010,13 @@ APOLANA_ADMIN.listo(function (sb) {
         '<span class="bz-cuando">' + esc(fechaCorta(s.created_at)) + ' · <b>' + esc(haceCuanto(s.created_at)) + '</b></span>' +
       '</div>' +
       (s.medio ? '<p class="bz-quien">' + esc(s.medio) + '</p>' : '') +
+      (function () {
+        var y = YA_CLUB[(s.medio || '').trim().toLowerCase()];
+        if (!y) return '';
+        return '<p style="margin:6px 0 0;padding:8px 12px;border-radius:9px;background:#F4EAD6;color:#8A5307;font-size:13.5px;line-height:1.4;">' +
+          '⚠️ <b>Ya es del club:</b> ' + esc(((y.nombre || '') + ' ' + (y.apellidos || '')).trim()) +
+          '. No crees una ficha nueva — enlázalo a la suya.</p>';
+      })() +
       pide_html +
       (s.comentario ? '<div class="bz-mensaje">' + esc(s.comentario) + '</div>' : '') +
       '<div class="bz-acciones">' + acciones + '</div>' +
