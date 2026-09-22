@@ -101,6 +101,34 @@
   .pill-estado { font-size: 13px; padding: 2px 8px; border-radius: 999px; }
   .pill-si { background: #e6f4ea; color: #1e7a3d; }
   .pill-no { background: var(--crema-media); color: var(--texto-suave); }
+
+  /* --- Desplegable de integrantes de cada grupo --- */
+  /* El nombre del grupo es un botón: al pulsarlo, el grupo se abre por
+     debajo y enseña a quién tiene dentro. Se lee la lista solo la primera
+     vez que se abre (y se guarda), para no pedir dieciocho listas de golpe. */
+  .g-toggle { display: inline-flex; align-items: center; gap: 8px; width: 100%;
+    background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+    font-family: inherit; font-size: 14px; color: var(--navy); text-align: left; }
+  .g-toggle .g-chevron { flex: 0 0 auto; width: 16px; height: 16px; color: var(--texto-suave);
+    transition: transform .18s ease; }
+  .g-toggle[aria-expanded="true"] .g-chevron { transform: rotate(90deg); color: var(--navy); }
+  .g-toggle .g-nom { font-weight: 600; }
+  .g-toggle:hover .g-nom { text-decoration: underline; text-underline-offset: 2px; }
+  .g-toggle .celda-turno { margin-top: 2px; }
+
+  .g-detalle > td { background: var(--crema-media, #F1EADC); border-bottom: 1px solid var(--linea);
+    padding: 4px 8px 14px; }
+  .g-integrantes { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; }
+  .g-integrantes .g-cargando, .g-integrantes .g-vacio { font-size: 13px; color: var(--texto-suave); padding: 4px 2px; }
+  .g-persona { display: inline-flex; align-items: baseline; gap: 6px; background: #fff;
+    border: 1px solid var(--linea-borde, #C9C0AE); border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+  .g-persona.g-baja { opacity: .55; }
+  .g-persona .g-p-nom { font-weight: 600; color: var(--navy); }
+  .g-persona .g-p-cat { color: var(--texto-suave); font-size: 12px; }
+  .g-persona .g-p-estrella { color: #C79A3B; font-size: 12px; }
+  .g-detalle .g-abrir-lista { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    font-size: 13px; color: var(--azul-filete, #3B85C0); text-decoration: none; font-weight: 600; }
+  .g-detalle .g-abrir-lista:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -281,6 +309,61 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!r.error && r.data) r.data.forEach(function (x) { CUANTOS[x.grupo_id] = (CUANTOS[x.grupo_id] || 0) + 1; });
   }
 
+  /* Qué grupos están abiertos ahora mismo (para que sigan abiertos al
+     buscar o al recargar la tabla) y la lista de gente de cada uno, que se
+     guarda una vez leída (MIEMBROS[grupo_id] = array de atletas). */
+  var ABIERTOS = {};
+  var MIEMBROS = {};
+
+  /* Lee de la base quién entrena en un grupo: la tabla de pertenencias
+     dice quién está, y de «atletas» sacamos nombre, apellidos y estado.
+     Se pide en dos pasos (ids y luego fichas) para no depender de que la
+     base deje cruzar las dos tablas de un tirón. */
+  async function cargarIntegrantes(gid) {
+    var rg = await sb.from('atleta_grupos').select('atleta_id,principal').eq('grupo_id', gid);
+    if (rg.error) return { error: rg.error.message };
+    var filas = rg.data || [];
+    if (!filas.length) return { lista: [] };
+    var ids = filas.map(function (x) { return x.atleta_id; });
+    var esPrincipal = {};
+    filas.forEach(function (x) { esPrincipal[x.atleta_id] = !!x.principal; });
+    var ra = await sb.from('atletas').select('id,nombre,apellidos,categoria,estado').in('id', ids);
+    if (ra.error) return { error: ra.error.message };
+    var lista = (ra.data || []).map(function (a) {
+      return { id: a.id, nombre: a.nombre, apellidos: a.apellidos, categoria: a.categoria,
+               estado: a.estado, principal: esPrincipal[a.id] };
+    });
+    /* Orden: primero por apellidos y luego por nombre, como en las listas. */
+    lista.sort(function (a, b) {
+      var x = ((a.apellidos || '') + ' ' + (a.nombre || '')).toLowerCase();
+      var y = ((b.apellidos || '') + ' ' + (b.nombre || '')).toLowerCase();
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    return { lista: lista };
+  }
+
+  /* Pinta dentro del contenedor la gente ya cargada (o la pide si es la
+     primera vez que se abre ese grupo). */
+  async function pintarIntegrantes(gid, cont) {
+    if (!MIEMBROS[gid]) {
+      cont.innerHTML = '<span class="g-cargando">Cargando integrantes…</span>';
+      var r = await cargarIntegrantes(gid);
+      if (r.error) { cont.innerHTML = '<span class="g-vacio">No se ha podido leer la lista: ' + esc(r.error) + '</span>'; return; }
+      MIEMBROS[gid] = r.lista;
+    }
+    var gente = MIEMBROS[gid];
+    if (!gente.length) { cont.innerHTML = '<span class="g-vacio">Este grupo todavía no tiene a nadie dentro.</span>'; return; }
+    cont.innerHTML = gente.map(function (a) {
+      var baja = (a.estado && a.estado !== 'activo') ? ' g-baja' : '';
+      var cat = a.categoria ? '<span class="g-p-cat">' + esc(a.categoria) + '</span>' : '';
+      var est = a.principal ? '<span class="g-p-estrella" title="Grupo principal">★</span>' : '';
+      return '<span class="g-persona' + baja + '">' + est +
+        '<span class="g-p-nom">' + esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim() || '—') + '</span>' + cat +
+      '</span>';
+    }).join('') +
+    '<a class="g-abrir-lista" href="../atletas/?grupo=' + encodeURIComponent(gid) + '">Ver en la lista de atletas →</a>';
+  }
+
   async function cargarGrupos() {
     var tb = $('tabla-grupos').querySelector('tbody');
     tb.innerHTML = ADM.filaCargando(7);
@@ -342,9 +425,15 @@ APOLANA_ADMIN.listo(function (sb) {
 
     tb.innerHTML = lista.map(function (g) {
       var dias = turnoEnPalabras(g);
-      return '<tr>' +
-        '<td>' + esc(g.nombre) +
-          (dias ? '<span class="celda-turno">' + esc(dias) + '</span>' : '') + '</td>' +
+      var abierto = ABIERTOS[g.id] ? ' aria-expanded="true"' : '';
+      return '<tr class="g-fila" data-g="' + g.id + '">' +
+        '<td>' +
+          '<button type="button" class="g-toggle" data-abrir="' + g.id + '"' + abierto + '>' +
+            '<svg class="g-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
+            '<span><span class="g-nom">' + esc(g.nombre) + '</span>' +
+              (dias ? '<span class="celda-turno">' + esc(dias) + '</span>' : '') + '</span>' +
+          '</button>' +
+        '</td>' +
         '<td>' + esc(nombreSeccion(g.seccion)) + '</td>' +
         '<td class="anio-celda">' + esc(textoNacidos(g)) + '</td>' +
         '<td class="anio-celda">' + (SIN_CUENTA ? '—' : (CUANTOS[g.id] || 0)) + '</td>' +
@@ -356,8 +445,23 @@ APOLANA_ADMIN.listo(function (sb) {
           '<button type="button" class="acc-ic acc-ic--peligro" data-borrar="' + g.id + '" data-nom="' + esc(g.nombre) + '" aria-label="Borrar el grupo" title="Borrar">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>' +
         '</div></td>' +
+      '</tr>' +
+      '<tr class="g-detalle' + (ABIERTOS[g.id] ? '' : ' oculto') + '" data-det="' + g.id + '">' +
+        '<td colspan="7"><div class="g-integrantes" data-cont="' + g.id + '">' +
+          (ABIERTOS[g.id] ? '' : '<span class="g-cargando">…</span>') +
+        '</div></td>' +
       '</tr>';
     }).join('');
+
+    /* Si un grupo ya estaba abierto (p. ej. tras buscar), se vuelve a
+       pintar su lista: la tabla se ha regenerado entera. */
+    Object.keys(ABIERTOS).forEach(function (gid) {
+      if (ABIERTOS[gid]) {
+        var cont = tb.querySelector('[data-cont="' + gid + '"]');
+        var det = tb.querySelector('[data-det="' + gid + '"]');
+        if (cont && det) { det.classList.remove('oculto'); pintarIntegrantes(gid, cont); }
+      }
+    });
   }
 
   $('f-buscar').addEventListener('input', pintarGrupos);
@@ -390,6 +494,19 @@ APOLANA_ADMIN.listo(function (sb) {
 
   $('tabla-grupos').addEventListener('click', async function (e) {
     if (e.target.closest && e.target.closest('[data-primero]')) { abrirForm(); return; }
+    /* Abrir/cerrar el grupo para ver a su gente. */
+    var abEl = e.target.closest && e.target.closest('[data-abrir]');
+    if (abEl) {
+      var gid = abEl.getAttribute('data-abrir');
+      var det = $('tabla-grupos').querySelector('[data-det="' + gid + '"]');
+      var cont = det && det.querySelector('[data-cont="' + gid + '"]');
+      var abrir = !ABIERTOS[gid];
+      ABIERTOS[gid] = abrir;
+      abEl.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+      if (det) det.classList.toggle('oculto', !abrir);
+      if (abrir && cont) pintarIntegrantes(gid, cont);
+      return;
+    }
     if (e.target.closest && e.target.closest('[data-limpiar]')) {
       $('f-buscar').value = ''; $('f-activo').value = ''; pintarGrupos(); return;
     }
