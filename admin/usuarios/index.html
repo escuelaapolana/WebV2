@@ -548,6 +548,8 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     var menu = [{ texto: 'Cambiar el papel', accion: 'editar' }];
+    // Los entrenadores traen ficha completa (DNI, fecha, dirección…) de su alta.
+    if (p.rol === 'entrenador') menu.push({ texto: 'Ver ficha', accion: 'ficha' });
     menu.push(p.activo === false
       ? { texto: 'Volver a activarla', accion: 'activar' }
       : { texto: 'Desactivar a esta persona', accion: 'desactivar', ojo: true });
@@ -625,6 +627,7 @@ APOLANA_ADMIN.listo(function (sb) {
   PZ.alPulsar('#tabla-personas', function (accion, id) {
     if (accion === 'editar') { editando = id; pintarPersonas(); return; }
     if (accion === 'hecho')  { editando = null; pintarPersonas(); return; }
+    if (accion === 'ficha')  { verFicha(id); return; }
     if (accion === 'desactivar' || accion === 'activar') cambiarActivo(id, accion === 'activar');
   });
 
@@ -635,6 +638,34 @@ APOLANA_ADMIN.listo(function (sb) {
     if (window.APOLANA_FILTROS) APOLANA_FILTROS.repasar();
     pintarPersonas();
   });
+
+  /* Ver la ficha completa de un entrenador: su teléfono (del perfil) y los
+     datos que dejó en el alta (DNI, fecha, dirección…), que viven en
+     entrenador_ficha y solo lee el admin o el propio monitor. Solo lectura,
+     en el mismo diálogo que ya usa la página. */
+  async function verFicha(id) {
+    var p = perfiles.filter(function (x) { return x.id === id; })[0];
+    var r = await sb.from('entrenador_ficha')
+      .select('dni,fecha_nacimiento,sexo,direccion,cp,localidad').eq('perfil_id', id).maybeSingle();
+    if (r.error) { apoToast('No se pudo leer la ficha: ' + r.error.message, 'error'); return; }
+    var f = r.data;
+    if (!f) { apoToast('Este entrenador aún no tiene ficha completa (alta con el formulario antiguo).', ''); return; }
+    function fecha(s) {
+      if (!s) return '—';
+      var t = String(s).slice(0, 10).split('-');
+      return t.length === 3 ? (t[2] + '/' + t[1] + '/' + t[0]) : s;
+    }
+    var lineas = [
+      'Teléfono:  ' + ((p && p.telefono) || '—'),
+      'DNI:  ' + (f.dni || '—'),
+      'Fecha de nacimiento:  ' + fecha(f.fecha_nacimiento),
+      'Sexo:  ' + (f.sexo || '—'),
+      'Dirección:  ' + (f.direccion || '—'),
+      'CP:  ' + (f.cp || '—'),
+      'Localidad:  ' + (f.localidad || '—')
+    ].join('\n');
+    await apoConfirm({ titulo: 'Ficha de ' + ((p && nombreCompleto(p)) || 'entrenador'), texto: lineas, confirmar: 'Cerrar' });
+  }
 
   /* Activar o desactivar, que antes era un desplegable más en la fila. */
   async function cambiarActivo(id, activo) {
