@@ -1639,6 +1639,12 @@
         esCuboLista  = esCuboLista  && (rol === 'cubo-lista');
       }
 
+      /* El Cubo manda: si esta persona es del Cubo, NO se le añade además la
+         vista de "atleta de pista" por tener una ficha de socio o de escuela.
+         Un socio que se apunta al Cubo entra directo a lo suyo (sus turnos), sin
+         dos vistas que confunden y sin tener que saber cambiar de rol. */
+      if (esCubo) esAtleta = false;
+
       function anadir(clave, desc) {
         var z = ZONAS[clave];
         if (!z) return;
