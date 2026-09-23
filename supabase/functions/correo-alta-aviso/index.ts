@@ -32,6 +32,7 @@ const BREVO_API_KEY = (Deno.env.get("BREVO_API_KEY") ?? "").trim();
 const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com").trim();
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
 const CORREO_ADMIN = (Deno.env.get("CORREO_ADMIN") ?? "administracion@atletismoapolana.com").trim();
+const CORREO_URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com").replace(/\/+$/, "");
 const BUCKET = "altas-documentos";
 
 function cors(origen: string | null): Record<string, string> {
@@ -97,6 +98,27 @@ function fila(etiqueta: string, valor: unknown): string {
   if (v === null || v === undefined || String(v).trim() === "") return "";
   return `<tr><td style="padding:6px 10px;color:#71717a;white-space:nowrap;vertical-align:top">${esc(etiqueta)}</td>` +
     `<td style="padding:6px 10px;color:#18181b"><b>${esc(v)}</b></td></tr>`;
+}
+
+// Correo de CONFIRMACIÓN para el propio socio (no el aviso a administración).
+function correoSocioHtml(d: { nombre: string; referencia: string; secciones: string }): string {
+  const sec = d.secciones && d.secciones.trim()
+    ? `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#40484F">Secciones a las que te apuntas: <b>${esc(d.secciones)}</b></p>`
+    : "";
+  const ref = d.referencia ? ` (referencia <b>${esc(d.referencia)}</b>)` : "";
+  return `<!doctype html><html><body style="margin:0;background:#eef3f0;padding:24px 12px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+    <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px -18px rgba(11,93,59,.4)">
+      <tr><td style="background:#0b5d3b;padding:20px 28px"><span style="color:#fff;font-size:17px;font-weight:700;letter-spacing:.3px">Club Atletismo Apolana</span></td></tr>
+      <tr><td style="padding:26px 28px 30px">
+        <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#0b5d3b">Solicitud recibida ✅</p>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#40484F">Hola <b>${esc(d.nombre)}</b>, ¡gracias por querer hacerte socio del Club Atletismo Apolana! Hemos recibido tu solicitud${ref}.</p>
+        ${sec}
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#40484F">La revisamos y te confirmamos en breve. Ya tienes tu <b>cuenta creada</b> — puedes entrar en la app con tu correo.</p>
+        <a href="${CORREO_URL_BASE}/portal/" style="display:inline-block;background:#0b5d3b;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:11px">Entrar en la app</a>
+        <p style="margin:22px 0 0;font-size:13px;color:#6E6656;line-height:1.6">¡Bienvenido/a!<br>Club Atletismo Apolana</p>
+      </td></tr>
+    </table>
+  </body></html>`;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -216,6 +238,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let d: unknown = null;
     try { d = await resp.json(); } catch { /* */ }
     return responder({ ok: false, motivo: "brevo-rechazo", estado: resp.status, brevo: d }, 200, origen);
+  }
+
+  // 5 · Confirmación al PROPIO SOCIO (a su correo). Es un extra: va después
+  //     del aviso a administración y, si fallara, no rompe la respuesta ni el
+  //     alta (que ya está guardada). Se manda una sola vez, como el aviso,
+  //     porque este bloque solo se ejecuta si se reclamó el aviso arriba.
+  if (a.email) {
+    try {
+      const secStr = typeof secciones === "string" ? secciones : "";
+      await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: { "api-key": BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
+          to: [{ email: String(a.email), name: nombreCompleto || undefined }],
+          subject: "Hemos recibido tu solicitud de socio ✅",
+          htmlContent: correoSocioHtml({
+            nombre: String(a.nombre ?? ""),
+            referencia: String(a.referencia ?? ""),
+            secciones: secStr,
+          }),
+        }),
+      });
+    } catch (e) {
+      console.error("Correo confirmación socio · error:", e);
+    }
   }
 
   return responder({ ok: true }, 200, origen);
