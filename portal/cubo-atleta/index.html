@@ -116,6 +116,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var p = String(iso).slice(0,10).split('-');
     return (+p[2]) + ' de ' + MESES[(+p[1])-1] + ' de ' + p[0];
   }
+  /* Los PRÓXIMOS entrenamientos con fecha real: proyecta el horario semanal
+     (día de la semana + hora) sobre las próximas ~6 semanas y devuelve las
+     siguientes sesiones. Los grupos de la prueba gratis no empiezan hasta el
+     2 de octubre. dia_semana: 1=lunes … 7=domingo. */
+  function proximosEntrenos(horas, n) {
+    var out = [];
+    var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    var inicioGratis = new Date(2026, 9, 2);   // 2 de octubre de 2026
+    var d = new Date(hoy);
+    var limite = new Date(hoy); limite.setDate(limite.getDate() + 42);
+    while (d <= limite) {
+      var dow = d.getDay();                    // 0=domingo … 6=sábado
+      horas.forEach(function (hh) {
+        var dowJs = (hh.dia_semana === 7) ? 0 : hh.dia_semana;
+        if (dow === dowJs && !(hh._gratis && d < inicioGratis)) out.push({ fecha: new Date(d), h: hh });
+      });
+      d.setDate(d.getDate() + 1);
+    }
+    out.sort(function (a, b) { return (+a.fecha - +b.fecha) || String(a.h.hora_inicio || '').localeCompare(String(b.h.hora_inicio || '')); });
+    return out.slice(0, n);
+  }
+  /* «Viernes 3 de octubre» a partir de un Date. */
+  function diaFecha(d) { return DIAS[(d.getDay() + 6) % 7] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; }
   var nombre = (perfil && perfil.nombre) ? String(perfil.nombre).split(' ')[0] : '';
 
   // --------------------------------------------------------
@@ -159,6 +182,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .in('grupo_id', gids).eq('activo', true)
       .order('dia_semana').order('hora_inicio');
     var data = (r && !r.error && r.data) ? r.data : [];
+    // Marca cada horario si es de un grupo de la prueba gratis (empieza el 2-oct).
+    data.forEach(function (x) { x._gratis = /Fuerza gratis/i.test(nombres[x.grupo_id] || ''); });
     _horarios = {
       error: r && r.error ? r.error.message : false,
       data: data,
@@ -270,22 +295,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // Pagos puntuales que le ha puesto el club (camiseta, inscripción…).
     await pintarPagos();
 
-    // Sus horarios
+    // Sus PRÓXIMOS entrenamientos (con día y hora reales), no solo el horario semanal.
     var caja = $('cb-horarios');
-    var cab = h.varios ? '<p class="rotulo cb-grupo">Tus turnos del Cubo</p>' : (h.grupo ? '<p class="rotulo cb-grupo">Tu grupo · ' + esc(h.grupo) + '</p>' : '');
     if (!h.data.length) {
-      caja.innerHTML = cab + APOLANA_UI.vacio('Aún no tienes horarios asignados',
-        'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus días y horas de entrenamiento.');
+      caja.innerHTML = '<p class="rotulo cb-grupo">Tus entrenamientos</p>' + APOLANA_UI.vacio('Aún no tienes turnos asignados',
+        'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus próximos entrenamientos con día y hora.');
     } else {
-      caja.innerHTML = cab + '<div class="hor">' + h.data.map(function (x) {
-        var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
-        return '<div class="fila">' +
-          '<span class="dia">' + esc(DIAS[(x.dia_semana || 1) - 1] || '') + '</span>' +
-          '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
-            (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
-            (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
-          '</span></div>';
-      }).join('') + '</div>';
+      var prox = proximosEntrenos(h.data, 6);
+      var cab = '<p class="rotulo cb-grupo">Tus próximos entrenamientos</p>';
+      caja.innerHTML = cab + (prox.length
+        ? '<div class="hor">' + prox.map(function (p) {
+            var x = p.h;
+            var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
+            return '<div class="fila">' +
+              '<span class="dia">' + esc(diaFecha(p.fecha)) + '</span>' +
+              '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
+                (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
+                (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
+              '</span></div>';
+          }).join('') + '</div>'
+        : APOLANA_UI.vacio('Sin entrenamientos próximos', 'Tus clases empiezan pronto; aquí verás las fechas en cuanto lleguen.'));
     }
 
     // Noticias del club, debajo
