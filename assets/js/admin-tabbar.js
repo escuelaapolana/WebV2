@@ -412,6 +412,7 @@
       { t: 'Personas y grupos', enlaces: [
         { txt: 'Todas las personas',      url: r + 'atletas/',        desc: 'las fichas de todas las personas del club' },
         { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'todos los grupos: horarios, entrenador y cuota' },
+        { txt: 'Entrenadores',            url: r + 'entrenadores/',   desc: 'los monitores: su ficha y a qué grupo llevan' },
         { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
