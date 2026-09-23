@@ -110,8 +110,8 @@ function correoSocioHtml(d: { nombre: string; referencia: string; secciones: str
     <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px -18px rgba(11,93,59,.4)">
       <tr><td style="background:#0b5d3b;padding:20px 28px"><span style="color:#fff;font-size:17px;font-weight:700;letter-spacing:.3px">Club Atletismo Apolana</span></td></tr>
       <tr><td style="padding:26px 28px 30px">
-        <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#0b5d3b">Solicitud recibida ✅</p>
-        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#40484F">Hola <b>${esc(d.nombre)}</b>, ¡gracias por querer hacerte socio del Club Atletismo Apolana! Hemos recibido tu solicitud${ref}.</p>
+        <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#0b5d3b">Alta recibida ✅</p>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#40484F">Hola <b>${esc(d.nombre)}</b>, ¡gracias por querer hacerte socio del Club Atletismo Apolana! Hemos recibido tu alta${ref}.</p>
         ${sec}
         <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#40484F">La revisamos y te confirmamos en breve. Ya tienes tu <b>cuenta creada</b> — puedes entrar en la app con tu correo.</p>
         <a href="${CORREO_URL_BASE}/portal/" style="display:inline-block;background:#0b5d3b;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:11px">Entrar en la app</a>
@@ -253,7 +253,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         body: JSON.stringify({
           sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
           to: [{ email: String(a.email), name: nombreCompleto || undefined }],
-          subject: "Hemos recibido tu solicitud de socio ✅",
+          subject: "Hemos recibido tu alta de socio ✅",
           htmlContent: correoSocioHtml({
             nombre: String(a.nombre ?? ""),
             referencia: String(a.referencia ?? ""),
