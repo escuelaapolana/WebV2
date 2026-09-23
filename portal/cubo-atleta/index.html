@@ -136,21 +136,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   async function horarios() {
     if (_horarios) return _horarios;
-    var gid = null;
+    // Junta TODOS sus grupos del Cubo: el principal de su ficha y todos los de
+    // `atleta_grupos` (en la prueba de fuerza uno puede estar en varios turnos).
+    var gids = [];
     try {
       var m = await APOLANA_PORTAL.misAtletas(perfil.id);
-      var ficha = (m && m.data || []).filter(function (a) { return a && a.grupo_id; })[0];
-      gid = ficha ? ficha.grupo_id : null;
+      var fichas = (m && m.data || []);
+      fichas.forEach(function (a) { if (a && a.grupo_id) gids.push(a.grupo_id); });
+      var ids = fichas.map(function (a) { return a.id; }).filter(Boolean);
+      if (ids.length) {
+        var rag = await sb.from('atleta_grupos').select('grupo_id').in('atleta_id', ids);
+        if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gids.push(x.grupo_id); });
+      }
     } catch (e) {}
-    if (!gid) { _horarios = { data: [], grupo: '' }; return _horarios; }
-    var rg = await sb.from('grupos').select('nombre').eq('id', gid).maybeSingle();
+    gids = gids.filter(function (v, i) { return v && gids.indexOf(v) === i; });
+    if (!gids.length) { _horarios = { data: [], grupo: '', varios: false }; return _horarios; }
+    var rg = await sb.from('grupos').select('id,nombre').in('id', gids);
+    var nombres = {};
+    ((rg && rg.data) || []).forEach(function (g) { nombres[g.id] = g.nombre; });
     var r = await sb.from('grupo_horarios')
-      .select('dia_semana,hora_inicio,hora_fin,lugar,nota')
-      .eq('grupo_id', gid).eq('activo', true)
+      .select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar,nota')
+      .in('grupo_id', gids).eq('activo', true)
       .order('dia_semana').order('hora_inicio');
-    _horarios = r.error
-      ? { error: r.error.message, data: [], grupo: '' }
-      : { data: r.data || [], grupo: (rg.data && rg.data.nombre) || '' };
+    var data = (r && !r.error && r.data) ? r.data : [];
+    _horarios = {
+      error: r && r.error ? r.error.message : false,
+      data: data,
+      grupo: gids.length === 1 ? (nombres[gids[0]] || '') : '',
+      varios: gids.length > 1
+    };
     return _horarios;
   }
 
@@ -258,7 +272,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     // Sus horarios
     var caja = $('cb-horarios');
-    var cab = h.grupo ? '<p class="rotulo cb-grupo">Tu grupo · ' + esc(h.grupo) + '</p>' : '';
+    var cab = h.varios ? '<p class="rotulo cb-grupo">Tus turnos del Cubo</p>' : (h.grupo ? '<p class="rotulo cb-grupo">Tu grupo · ' + esc(h.grupo) + '</p>' : '');
     if (!h.data.length) {
       caja.innerHTML = cab + APOLANA_UI.vacio('Aún no tienes horarios asignados',
         'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus días y horas de entrenamiento.');

@@ -199,22 +199,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (!perfilId) return responder({ error: "perfil", mensaje: "La cuenta se creó pero no pudimos terminar tu ficha. Escríbenos y lo dejamos listo." }, 200, origen);
 
-  // 6 · Ficha: buscar la suya (por perfil, o por correo/DNI si ya la tenía como socio/escuela). No se pisa su tipo.
+  // 6 · Ficha: SOLO la ligada a su propia cuenta (perfil_id). No se busca por
+  //     correo: un mismo correo puede ser de otra persona de la familia (una
+  //     madre socia que se apunta con el correo del hijo), y engancharía la
+  //     cuenta a la ficha equivocada. Si no tiene ficha propia, se crea una.
   let atletaId: string | null = null;
-  let rAt = await rest(`atletas?select=id,grupo_id,tipo_membresia,perfil_id&perfil_id=eq.${perfilId}&limit=1`);
-  let ficha = Array.isArray(rAt.datos) ? rAt.datos[0] : null;
-  if (!ficha) {
-    rAt = await rest(`atletas?select=id,grupo_id,tipo_membresia,perfil_id&email=eq.${encodeURIComponent(email)}&limit=1`);
-    ficha = Array.isArray(rAt.datos) ? rAt.datos[0] : null;
-    if (ficha && !ficha.perfil_id) await rest(`atletas?id=eq.${ficha.id}`, { method: "PATCH", body: JSON.stringify({ perfil_id: perfilId }) });
-  }
+  const rAt = await rest(`atletas?select=id,tipo_membresia&perfil_id=eq.${perfilId}&limit=1`);
+  const ficha = Array.isArray(rAt.datos) ? rAt.datos[0] : null;
   if (ficha) {
     atletaId = ficha.id;
     if (!ficha.tipo_membresia) await rest(`atletas?id=eq.${ficha.id}`, { method: "PATCH", body: JSON.stringify({ tipo_membresia: "cubo" }) });
   } else {
     const rIns = await rest("atletas", {
       method: "POST", headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ perfil_id: perfilId, nombre, apellidos, email, telefono, tipo_membresia: "cubo", estado: "prueba" }),
+      body: JSON.stringify({ perfil_id: perfilId, nombre, apellidos, email, telefono, tipo_membresia: "cubo", estado: "prueba", grupo_id: grupoDe(disponibles[0]) }),
     });
     const creada = Array.isArray(rIns.datos) ? rIns.datos[0] : rIns.datos;
     atletaId = (creada as { id?: string } | null)?.id ?? null;
