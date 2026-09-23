@@ -422,6 +422,7 @@
         { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' }
       ] },
       { t: 'Comunicación', enlaces: [
+        { txt: 'Enlaces para compartir',     url: r + 'enlaces/',          desc: 'los enlaces de los formularios (Cubo, monitores, socio…), para copiar y mandar' },
         { txt: 'Buzón',                      url: r + 'buzon/',            desc: 'mensajes de contacto' },
         { txt: 'Solicitudes de inscripción', url: r + '#buzon',            desc: 'quién ha pedido plaza', panel: true },
         { txt: 'Avisos al móvil',            url: r + 'avisos-push/',      desc: 'notificaciones que se envían' },
