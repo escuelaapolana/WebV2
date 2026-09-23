@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuerza gratis del Cubo · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .cp-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(26px,5vw,34px); color: var(--navy); margin: 0 0 4px; }
+  .cp-cab p { font-size: 15px; color: var(--texto-suave); margin: 0 0 20px; max-width: 62ch; line-height: 1.6; }
+  .cp-cab a { color: var(--azul-oscuro, #2F6FA8); }
+
+  .cp-turnos { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 22px; }
+  @media (max-width: 620px) { .cp-turnos { grid-template-columns: 1fr; } }
+  .cp-turno { background: #fff; border: 1px solid var(--linea); border-radius: 14px; box-shadow: var(--sombra-suave); padding: 16px 18px; }
+  .cp-turno .et { font-size: 13px; color: var(--texto-suave); }
+  .cp-turno .dia { font-size: 17px; font-weight: 700; color: var(--navy); margin: 2px 0; }
+  .cp-turno .n { font-family: var(--fuente-dato); font-size: 30px; font-weight: 700; color: var(--navy); }
+  .cp-turno .n small { font-size: 15px; color: var(--texto-suave); font-weight: 400; }
+  .cp-turno.lleno .n { color: #B0563A; }
+  .cp-turno .barra { height: 7px; border-radius: 999px; background: var(--crema-media, #EFE9DA); margin-top: 8px; overflow: hidden; }
+  .cp-turno .barra > span { display: block; height: 100%; background: var(--navy, #26374B); }
+  .cp-turno.pocos .barra > span { background: #C79A3B; }
+
+  .cp-buscar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .cp-buscar input { flex: 1 1 240px; max-width: 340px; box-sizing: border-box; min-height: 44px; padding: 10px 14px; border: 1px solid var(--linea-borde); border-radius: 999px; background: #fff; font-family: inherit; font-size: 15px; color: var(--navy); }
+  .cp-buscar select { min-height: 44px; border-radius: 999px; padding: 8px 14px; }
+  .cp-buscar .cuenta { margin-left: auto; font-family: var(--fuente-dato); font-size: 14px; color: var(--texto-suave); }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--linea); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .3px; color: var(--texto-suave); background: var(--crema, #FBF9F4); }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 2px 9px; margin: 0 3px 3px 0; background: var(--crema-media, #EFE9DA); color: var(--navy); }
+  .pill.q-socio { background: #e6f0fb; color: #2F6FA8; }
+  .pill.q-escuela { background: #fdf0e0; color: #B96F09; }
+  .cp-alt { color: var(--texto-suave); font-size: 13px; font-style: italic; }
+  .cp-tel a { color: var(--azul-oscuro, #2F6FA8); text-decoration: none; }
+</style>
+</head>
+<body class="adm-piel">
+<div class="admin-wrap">
+  <div class="cp-cab">
+    <h1>Fuerza gratis del Cubo</h1>
+    <p>Los que se han apuntado a los <b>3 turnos gratuitos</b> de octubre (formulario: <a href="../../cubo/fuerza-gratis/" target="_blank">/cubo/fuerza-gratis/</a>). Mira cuántos hay en cada turno para decidir si amplías o cancelas alguno. Abajo, sus preferencias de horario alternativo.</p>
+  </div>
+  <div class="cp-turnos" id="turnos"></div>
+  <div class="cp-buscar">
+    <input type="search" id="buscar" placeholder="Buscar por nombre o teléfono…" aria-label="Buscar">
+    <select id="f-turno" aria-label="Filtrar por turno">
+      <option value="">Todos los turnos</option>
+      <option value="viernes">Viernes</option>
+      <option value="sabado">Sábado</option>
+      <option value="domingo">Domingo</option>
+    </select>
+    <span class="cuenta" id="cuenta"></span>
+  </div>
+  <div id="lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  var PLAZAS = 20;
+  var DIAS = [['viernes','Viernes','18:30–19:30'],['sabado','Sábado','9:00–10:30'],['domingo','Domingo','9:00–10:30']];
+  var QTXT = { socio: 'Socio', escuela: 'Escuela', otro: 'Otro' };
+  var ALTAS = [];
+
+  async function cargar() {
+    var r = await sb.from('cubo_prueba').select('*').neq('estado','cancelado').order('created_at', { ascending: false });
+    if (r.error) { $('lista').innerHTML = ADM.error(r.error.message, cargar); return; }
+    ALTAS = r.data || [];
+    pintarTurnos();
+    pintar();
+  }
+
+  function pintarTurnos() {
+    $('turnos').innerHTML = DIAS.map(function (d) {
+      var n = ALTAS.filter(function (a) { return (a.turnos || []).indexOf(d[0]) !== -1; }).length;
+      var lleno = n >= PLAZAS, pocos = n > 0 && n < 6;
+      var pct = Math.min(100, Math.round(n / PLAZAS * 100));
+      return '<div class="cp-turno' + (lleno ? ' lleno' : '') + (pocos ? ' pocos' : '') + '">' +
+        '<div class="et">' + esc(d[2]) + '</div><div class="dia">' + esc(d[1]) + '</div>' +
+        '<div class="n">' + n + '<small> / ' + PLAZAS + '</small></div>' +
+        '<div class="barra"><span style="width:' + pct + '%"></span></div>' +
+        (lleno ? '<div class="et" style="color:#B0563A;margin-top:6px">Completo</div>' : (pocos ? '<div class="et" style="color:#B96F09;margin-top:6px">Pocos — ¿cancelar?</div>' : '')) +
+      '</div>';
+    }).join('');
+  }
+
+  function pintar() {
+    var q = ($('buscar').value || '').trim().toLowerCase();
+    var ft = $('f-turno').value;
+    var lista = ALTAS.filter(function (a) {
+      if (ft && (a.turnos || []).indexOf(ft) === -1) return false;
+      if (!q) return true;
+      return ((a.nombre || '') + ' ' + (a.apellidos || '') + ' ' + (a.telefono || '') + ' ' + (a.email || '')).toLowerCase().indexOf(q) !== -1;
+    });
+    $('cuenta').textContent = lista.length === ALTAS.length
+      ? ALTAS.length + (ALTAS.length === 1 ? ' apuntado' : ' apuntados')
+      : lista.length + ' de ' + ALTAS.length;
+
+    if (!ALTAS.length) { $('lista').innerHTML = ADM.vacio('Todavía no se ha apuntado nadie', 'Cuando alguien rellene el formulario de fuerza gratis, aparecerá aquí.', ''); return; }
+    if (!lista.length) { $('lista').innerHTML = ADM.vacio('Nadie encaja con el filtro', 'Prueba con otra palabra o quita el filtro.', ''); return; }
+
+    $('lista').innerHTML = '<table><thead><tr><th>Persona</th><th>Turnos</th><th>Quién</th><th>Contacto</th><th>Otro horario</th></tr></thead><tbody>' +
+      lista.map(function (a) {
+        var turnos = (a.turnos || []).map(function (t) { return '<span class="pill">' + esc({ viernes:'Viernes', sabado:'Sábado', domingo:'Domingo' }[t] || t) + '</span>'; }).join('');
+        var quien = '<span class="pill q-' + esc(a.quien || 'otro') + '">' + esc(QTXT[a.quien] || a.quien || '—') + '</span>' +
+          (a.quien === 'escuela' && a.hijo ? '<div class="cp-alt">hijo/a: ' + esc(a.hijo) + '</div>' : '');
+        return '<tr>' +
+          '<td><b>' + esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim() || '—') + '</b></td>' +
+          '<td>' + (turnos || '—') + '</td>' +
+          '<td>' + quien + '</td>' +
+          '<td class="cp-tel">' + (a.telefono ? '<a href="tel:' + esc(a.telefono) + '">' + esc(a.telefono) + '</a>' : '') +
+            (a.email ? '<div class="cp-alt">' + esc(a.email) + '</div>' : '') + '</td>' +
+          '<td>' + (a.alternativa ? '<span class="cp-alt">' + esc(a.alternativa) + '</span>' : '—') + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  $('buscar').addEventListener('input', pintar);
+  $('f-turno').addEventListener('change', pintar);
+  cargar();
+});
+</script>
+</body>
+</html>

@@ -378,6 +378,7 @@
          web, datos) va debajo, porque sirve a todas a la vez. */
       { t: 'El Cubo', enlaces: [
         { txt: 'El Cubo',              url: r + 'cubo/',              desc: 'clases, bonos y quién entrena en el Cubo' },
+        { txt: 'Fuerza gratis (prueba)', url: r + 'cubo-prueba/',     desc: 'apuntados a los 3 turnos gratis de octubre, por turno' },
         { txt: 'Cuotas y pagos del Cubo', url: r + 'cubo-altas/',    desc: 'grupos y ocupación, pagos, altas y abrir o cerrar el cobro' },
         { txt: 'Integrantes del Cubo', url: r + 'atletas/?seccion=cubo', desc: 'las personas del Cubo: ficha, cambios, baja, cambiar de grupo' },
         { txt: 'Grupos del Cubo',      url: r + 'grupos/?seccion=cubo',   desc: 'los grupos del Cubo, su horario y entrenador' },
