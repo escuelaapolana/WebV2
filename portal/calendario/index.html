@@ -803,6 +803,48 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { falla('los eventos del club'); }
 
+    // --- 6) CLASES FIJAS DEL CUBO (horario semanal de sus grupos del Cubo).
+    //        Antes solo estaban en /horarios/; ahora salen también aquí, día a
+    //        día, para quien entrena en el Cubo (de pago o la prueba gratis). ---
+    try {
+      var misFichas = atletas.filter(function (a) { return a && perfil && a.perfil_id === perfil.id; });
+      var gidsCubo = [];
+      misFichas.forEach(function (a) { if (a.grupo_id) gidsCubo.push(a.grupo_id); });
+      var idsAt = misFichas.map(function (a) { return a.id; }).filter(Boolean);
+      if (idsAt.length) {
+        var rag = await sb.from('atleta_grupos').select('grupo_id').in('atleta_id', idsAt);
+        if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gidsCubo.push(x.grupo_id); });
+      }
+      gidsCubo = gidsCubo.filter(function (v, i) { return v && gidsCubo.indexOf(v) === i && GRUPOS[v] && GRUPOS[v].seccion === 'cubo'; });
+      if (gidsCubo.length) {
+        var rgh = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar').in('grupo_id', gidsCubo).eq('activo', true);
+        if (rgh && !rgh.error && rgh.data && rgh.data.length) {
+          var d0 = new Date(desde + 'T00:00:00'), d1 = new Date(hasta + 'T00:00:00');
+          rgh.data.forEach(function (h) {
+            var dowJs = (h.dia_semana === 7) ? 0 : h.dia_semana;   // 1=lun…7=dom → JS 0=dom
+            var nombreG = (GRUPOS[h.grupo_id] && GRUPOS[h.grupo_id].nombre) || 'El Cubo';
+            var esGratis = /Fuerza gratis/i.test(nombreG);
+            var d = new Date(d0);
+            while (d <= d1) {
+              if (d.getDay() === dowJs) {
+                var f = iso(d);
+                // La prueba gratis de fuerza empieza el finde del 2-3-4 de octubre.
+                if (!(esGratis && f < '2026-10-02')) {
+                  acts.push({
+                    fuente: 'cubo', id: 'clase-' + h.grupo_id + '-' + f, fecha: f,
+                    hora: hhmm(h.hora_inicio), horaFin: h.hora_fin ? hhmm(h.hora_fin) : '',
+                    titulo: esGratis ? 'El Cubo · Fuerza' : 'El Cubo',
+                    lugar: h.lugar || '', grupo: nombreG
+                  });
+                }
+              }
+              d.setDate(d.getDate() + 1);
+            }
+          });
+        }
+      }
+    } catch (e) { /* si falla, el resto del calendario sigue */ }
+
     ACTIVIDADES = juntarEntrenos(acts);
     ACTIVIDADES.forEach(function (a, i) { a.i = i; a.clave = a.fuente + '|' + a.id + '|' + a.fecha; });
     fundirCompeticiones();
