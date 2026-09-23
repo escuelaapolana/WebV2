@@ -31,6 +31,14 @@ const SERVICE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 
+// Correo de confirmación (Brevo). Mismas variables que el resto de correos
+// del club (correo-alta, cubo-cobro-aviso…): remitente y clave se ponen en
+// los secretos de Supabase. Si falta la clave, no se manda y el alta sigue.
+const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY") ?? "";
+const CORREO_REMITENTE = Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com";
+const CORREO_REMITENTE_NOMBRE = Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana";
+const CORREO_URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com").replace(/\/+$/, "");
+
 const SLOT_A_GRUPO: Record<string, string> = {
   "lx-1730": "El Cubo · L y X 17:30",
   "mj-1730": "El Cubo · M y J 17:30",
@@ -71,6 +79,62 @@ async function rest(ruta: string, opciones: Opciones = {}) {
 
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function corta(v: unknown, n: number) { return String(v ?? "").trim().slice(0, n); }
+
+// ---- Correo de confirmación al que se apunta ----
+function esc(s: unknown): string {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+}
+
+type DatosCorreo = {
+  email: string; nombre: string; grupoNombre: string; horario: string;
+  dias: number; precio: number; lista: boolean;
+};
+
+function correoConfirmaHtml(d: DatosCorreo): string {
+  const cuerpo = d.lista
+    ? `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#40484F">El turno <b>${esc(d.grupoNombre)}</b> está completo ahora mismo, así que quedas en <b>lista de espera</b>. Te escribimos en cuanto se abra una plaza — no se te cobra nada hasta entonces.</p>`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:2px 0 16px">
+         <tr><td style="padding:7px 0;color:#6E6656;font-size:13px;width:120px">Tu grupo</td><td style="padding:7px 0;color:#26374B;font-size:15px;font-weight:600">${esc(d.grupoNombre)}</td></tr>
+         <tr><td style="padding:7px 0;color:#6E6656;font-size:13px">Entrenas</td><td style="padding:7px 0;color:#26374B;font-size:15px;font-weight:600">${esc(d.horario || "—")}</td></tr>
+         <tr><td style="padding:7px 0;color:#6E6656;font-size:13px">Cuota</td><td style="padding:7px 0;color:#26374B;font-size:15px;font-weight:600">${d.precio} €/mes (${d.dias} ${d.dias === 1 ? "día" : "días"})</td></tr>
+       </table>
+       <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#40484F">Ya tienes tu cuenta creada — entra en la app con tu correo. En breve te avisaremos para <b>activar el pago</b> de la cuota.</p>`;
+  return `<!doctype html><html><body style="margin:0;background:#F1EADC;padding:24px 12px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+    <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px -18px rgba(38,55,75,.5)">
+      <tr><td style="background:#26374B;padding:20px 28px"><span style="color:#fff;font-size:17px;font-weight:700;letter-spacing:.3px">EL CUBO · Club Atletismo Apolana</span></td></tr>
+      <tr><td style="padding:26px 28px 30px">
+        <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#26374B">${d.lista ? "Te hemos apuntado" : "¡Te has apuntado a El Cubo!"} ✅</p>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#40484F">Hola <b>${esc(d.nombre)}</b>, ${d.lista ? "hemos recibido tu solicitud." : "hemos recibido tu alta. Estos son tus datos:"}</p>
+        ${cuerpo}
+        <a href="${CORREO_URL_BASE}/portal/" style="display:inline-block;background:#26374B;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:11px">Entrar en la app</a>
+        <p style="margin:22px 0 0;font-size:13px;color:#6E6656;line-height:1.6">¡Nos vemos en el entreno!<br>Club Atletismo Apolana</p>
+      </td></tr>
+    </table>
+  </body></html>`;
+}
+
+async function enviarConfirmacion(d: DatosCorreo): Promise<void> {
+  // Sin clave de Brevo, no se manda (y el alta no se entera): igual que el
+  // resto de correos del club, es un extra que nunca bloquea ni rompe.
+  if (!BREVO_API_KEY || !d.email) return;
+  try {
+    const asunto = d.lista ? "Lista de espera · El Cubo" : "Te has apuntado a El Cubo ✅";
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sender: { name: CORREO_REMITENTE_NOMBRE, email: CORREO_REMITENTE },
+        to: [{ email: d.email, name: d.nombre || undefined }],
+        subject: asunto,
+        htmlContent: correoConfirmaHtml(d),
+      }),
+    });
+    if (!r.ok) console.error("Correo confirmación Cubo · Brevo:", r.status, await r.text().catch(() => ""));
+  } catch (e) {
+    console.error("Correo confirmación Cubo · error:", e);
+  }
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
@@ -133,7 +197,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const precio = reducido ? (dias === 1 ? 20 : 30) : (dias === 1 ? 30 : 40);
 
   // ---- 2 · Grupo del turno ----
-  const rGrupo = await rest(`grupos?select=id&seccion=eq.cubo&nombre=eq.${encodeURIComponent(SLOT_A_GRUPO[slot])}&limit=1`);
+  const rGrupo = await rest(`grupos?select=id,nombre,horario&seccion=eq.cubo&nombre=eq.${encodeURIComponent(SLOT_A_GRUPO[slot])}&limit=1`);
   const grupo = Array.isArray(rGrupo.datos) ? rGrupo.datos[0] : null;
   const grupoId: string | null = grupo?.id ?? null;
 
@@ -235,6 +299,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
       nota: nota || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
       perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
+  });
+
+  // ---- 8 · Correo de confirmación al que se apunta (con sus días de
+  //          entrenamiento). Es un extra: si falla, el alta ya está hecha y
+  //          la respuesta sale igual. ----
+  await enviarConfirmacion({
+    email, nombre,
+    grupoNombre: (grupo?.nombre as string) ?? SLOT_A_GRUPO[slot],
+    horario: (grupo?.horario as string) ?? "",
+    dias, precio, lista: enListaEspera,
   });
 
   return responder({ ok: true, ya_existia: yaExistia, perfil_id: perfilId, precio_mes: precio, lista_espera: enListaEspera }, 200, origen);
