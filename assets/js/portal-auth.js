@@ -1867,12 +1867,23 @@
          al instante, y desde ahí se elige. */
 
       var perfil = null;
-      try {
-        var r = await conLimite(sb.from('perfiles')
-          .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta')
-          .eq('email', email).maybeSingle(), 8000, { error: true, data: null });
-        if (!r.error) perfil = r.data;
-      } catch (e) { /* si aún no hay permisos de lectura, perfil queda null */ }
+      /* El perfil se cachea en sessionStorage para no repedirlo a la red en cada
+         cambio de pestaña de la barra. Se SALTA el caché cuando venimos de
+         «cambiar de vista» (apolana.cambiando) o de recién entrar por el enlace
+         (recienLlegado): ahí el rol_activo puede haber cambiado y hay que leerlo
+         fresco. TTL corto (60 s) por si algo del perfil cambia. */
+      var ckPerfil = 'apo-perfil-' + email;
+      var forzarPerfilFresco = recienLlegado;
+      try { if (sessionStorage.getItem('apolana.cambiando')) forzarPerfilFresco = true; } catch (e) {}
+      if (!forzarPerfilFresco) perfil = deCache(ckPerfil, 60000);
+      if (!perfil) {
+        try {
+          var r = await conLimite(sb.from('perfiles')
+            .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta')
+            .eq('email', email).maybeSingle(), 8000, { error: true, data: null });
+          if (!r.error && r.data) { perfil = r.data; aCache(ckPerfil, perfil); }
+        } catch (e) { /* si aún no hay permisos de lectura, perfil queda null */ }
+      }
 
       /* Hay sesión pero la ficha no ha cargado (la consulta se cortó por tiempo
          o falló). Sin ficha, ni la barra ni las pantallas pueden pintarse: en
