@@ -1550,17 +1550,41 @@
       ]);
     }
 
+    /* Caché ligera en sessionStorage para no volver a pedir a la red, en CADA
+       cambio de pestaña de la barra, cosas que no cambian entre toques (tus
+       fichas y los grupos del club). Antes cada pestaña era una página nueva que
+       repetía estas consultas → se notaba la espera. El perfil (con el rol
+       activo) NO se cachea: se lee siempre fresco para que el cambio de vista
+       funcione. TTL corto: si algo cambia, se refresca solo al poco. */
+    function deCache(clave, ttlMs) {
+      try {
+        var raw = sessionStorage.getItem(clave);
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (!o || (Date.now() - o.t) > ttlMs) return null;
+        return o.v;
+      } catch (e) { return null; }
+    }
+    function aCache(clave, v) {
+      try { sessionStorage.setItem(clave, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
+    }
+
     function misAtletas(id) {
       if (_atletasProm) return _atletasProm;
       _atletasProm = (async function () {
         if (!id) return { error: false, data: [] };
+        var ck = 'apo-atletas-' + id;
+        var c = deCache(ck, 180000);                 // 3 min
+        if (c) return { error: false, data: c };
         try {
           var r = await conTiempo(sb.from('atletas')
             .select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia,especialidades,perfil_id,perfil_padre_id,entrenador_id')
             .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id)
             .order('nombre'));
           if (r && r.error) return { error: true, data: [] };
-          return { error: false, data: (r && r.data) || [] };
+          var data = (r && r.data) || [];
+          aCache(ck, data);
+          return { error: false, data: data };
         } catch (e) { return { error: true, data: [] }; }
       })();
       return _atletasProm;
@@ -1573,11 +1597,15 @@
     function grupos() {
       if (_gruposProm) return _gruposProm;
       _gruposProm = (async function () {
+        var c = deCache('apo-grupos', 300000);       // 5 min (público y estable)
+        if (c) return { error: false, data: c };
         try {
           var r = await conTiempo(sb.from('grupos')
             .select('id,nombre,horario,turno,seccion,entrenador_id'));
           if (r && r.error) return { error: true, data: [] };
-          return { error: false, data: (r && r.data) || [] };
+          var data = (r && r.data) || [];
+          aCache('apo-grupos', data);
+          return { error: false, data: data };
         } catch (e) { return { error: true, data: [] }; }
       })();
       return _gruposProm;
