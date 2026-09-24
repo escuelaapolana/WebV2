@@ -402,7 +402,7 @@
           'z-index:2147483000;max-width:520px;margin:0 auto;background:#26374B;color:#fff;border-radius:14px;' +
           'padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.28);' +
           'font-family:system-ui,-apple-system,sans-serif;font-size:14.5px;line-height:1.35;';
-        b.innerHTML = '<span style="flex:1">Hay una versión nueva de la app.</span>' +
+        b.innerHTML = '<span style="flex:1">Actualiza para tener lo último.</span>' +
           '<button type="button" style="flex:0 0 auto;background:#fff;color:#26374B;border:0;border-radius:999px;' +
           'padding:9px 16px;font:inherit;font-weight:700;cursor:pointer;min-height:40px;">Actualizar</button>';
         b.lastChild.addEventListener('click', function () {
