@@ -374,6 +374,60 @@
         }).catch(function () { /* sin conexión o no soportado: no pasa nada */ });
       });
     }
+
+    /* --- Aviso de versión nueva -------------------------------------------
+       El service worker de arriba solo se entera de una versión nueva si
+       cambia `sw.js`. En un despliegue normal (una página, un JS) sw.js NO
+       cambia, así que la app instalada abierta se quedaba con lo viejo. Aquí
+       comprobamos un `version.txt` que se sella en CADA despliegue (hook de
+       git en herramientas/hooks): si cambia mientras la app está abierta,
+       sale un aviso para recargar. Solo un aviso; no se recarga por sorpresa. */
+    (function () {
+      if (!('fetch' in window)) return;
+      var VER_URL = base + 'version.txt';
+      var actual = null, avisado = false, ultima = 0;
+      function pedir(cb) {
+        fetch(VER_URL + '?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.text() : null; })
+          .then(function (t) { cb(t ? t.trim() : null); })
+          .catch(function () { cb(null); });
+      }
+      function aviso() {
+        if (avisado || !document.body || document.getElementById('apo-nueva-version')) return;
+        avisado = true;
+        var b = document.createElement('div');
+        b.id = 'apo-nueva-version';
+        b.setAttribute('role', 'status');
+        b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));' +
+          'z-index:2147483000;max-width:520px;margin:0 auto;background:#26374B;color:#fff;border-radius:14px;' +
+          'padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.28);' +
+          'font-family:system-ui,-apple-system,sans-serif;font-size:14.5px;line-height:1.35;';
+        b.innerHTML = '<span style="flex:1">Hay una versión nueva de la app.</span>' +
+          '<button type="button" style="flex:0 0 auto;background:#fff;color:#26374B;border:0;border-radius:999px;' +
+          'padding:9px 16px;font:inherit;font-weight:700;cursor:pointer;min-height:40px;">Actualizar</button>';
+        b.lastChild.addEventListener('click', function () {
+          try { b.lastChild.textContent = 'Actualizando…'; b.lastChild.disabled = true; } catch (e) {}
+          location.reload();
+        });
+        document.body.appendChild(b);
+      }
+      function comprobar() {
+        pedir(function (v) {
+          if (!v) return;
+          if (actual == null) { actual = v; return; }   // primera vez: referencia
+          if (v !== actual) aviso();
+        });
+      }
+      comprobar();                                       // marca la versión cargada
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        var ahora = Date.now();
+        if (ahora - ultima < 60000) return;              // como mucho 1 comprobación/min
+        ultima = ahora;
+        comprobar();
+      });
+    })();
+
   } catch (e) { /* si algo falla, la web sigue funcionando igual */ }
 })();
 
