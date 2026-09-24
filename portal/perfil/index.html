@@ -154,12 +154,14 @@
       <div class="foto-fila">
         <div class="avatar" id="pf-avatar"><span id="pf-iniciales">··</span></div>
         <div class="foto-acciones">
+          <button type="button" class="btn btn--neutro" id="pf-hacer-foto">Hacer foto</button>
           <button type="button" class="btn btn--neutro" id="pf-cambiar">Cambiar foto</button>
           <button type="button" class="btn btn--fantasma oculto" id="pf-quitar">Quitar foto</button>
         </div>
       </div>
-      <p class="pista">Puedes hacerla con el móvil en ese momento. La recortamos cuadrada y la reducimos aquí mismo, así que no gasta datos aunque la foto original sea enorme.</p>
+      <p class="pista">Puedes hacerla con el móvil en ese momento con «Hacer foto», o elegir una que ya tengas con «Cambiar foto». La recortamos cuadrada y la reducimos aquí mismo, así que no gasta datos aunque la foto original sea enorme.</p>
       <input type="file" id="pf-archivo" class="oculto" accept="image/*">
+      <input type="file" id="pf-camara" class="oculto" accept="image/*" capture="user">
       <p class="msg" id="pf-msg-foto"></p>
     </section>
 
@@ -644,6 +646,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   $('pf-cambiar').addEventListener('click', function () { $('pf-archivo').click(); });
+  $('pf-hacer-foto').addEventListener('click', function () { $('pf-camara').click(); });
 
   /* Cerrar sesión: se cierra en Supabase y se vuelve a la entrada del portal.
      Se pregunta antes, que en un móvil prestado el botón se roza sin querer. */
@@ -656,9 +659,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     location.href = '../';
   });
 
-  $('pf-archivo').addEventListener('change', async function () {
-    var archivo = this.files && this.files[0];
-    this.value = '';                                   /* para poder repetir la misma foto */
+  function botonesFoto(desactivar) {
+    ['pf-cambiar', 'pf-hacer-foto'].forEach(function (id) { var b = $(id); if (b) b.disabled = desactivar; });
+  }
+
+  /* Mismo flujo tanto si la foto viene de la galería (pf-archivo) como si se
+     acaba de hacer con la cámara (pf-camara, con `capture`). */
+  async function procesarFoto(archivo) {
     if (!archivo) return;
 
     if (archivo.type && archivo.type.indexOf('image/') !== 0) {
@@ -670,15 +677,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return;
     }
 
-    var boton = $('pf-cambiar');
-    boton.disabled = true;
+    botonesFoto(true);
     aviso(msgFoto, 'Preparando la foto…');
 
     var trozo;
     try {
       trozo = await reducir(archivo);
     } catch (e) {
-      boton.disabled = false;
+      botonesFoto(false);
       aviso(msgFoto, 'No hemos podido leer esa imagen. Prueba con otra o haz la foto de nuevo.', 'error');
       return;
     }
@@ -707,9 +713,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } catch (e) {
       aviso(msgFoto, 'No hemos podido guardar la foto. Puede ser tu conexión: inténtalo otra vez en un momento.', 'fallo');
     } finally {
-      boton.disabled = false;
+      botonesFoto(false);
     }
-  });
+  }
+
+  /* La cámara (pf-camara) y la galería (pf-archivo) comparten el mismo flujo.
+     Se limpia el value para poder repetir la misma foto. */
+  function alElegirFoto() { var f = this.files && this.files[0]; this.value = ''; procesarFoto(f); }
+  $('pf-archivo').addEventListener('change', alElegirFoto);
+  $('pf-camara').addEventListener('change', alElegirFoto);
 
   $('pf-quitar').addEventListener('click', async function () {
     if (!yo.foto_ruta) return;
