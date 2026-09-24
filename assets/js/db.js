@@ -407,7 +407,17 @@
           'padding:9px 16px;font:inherit;font-weight:700;cursor:pointer;min-height:40px;">Actualizar</button>';
         b.lastChild.addEventListener('click', function () {
           try { b.lastChild.textContent = 'Actualizando…'; b.lastChild.disabled = true; } catch (e) {}
-          location.reload();
+          /* Con el service worker «caché primero», recargar a secas serviría lo
+             viejo desde la caché. Así que primero LIMPIAMOS la caché y luego
+             recargamos: la recarga trae todo nuevo de la red y se ve de una. */
+          var recargar = function () { location.reload(); };
+          try {
+            if (window.caches && caches.keys) {
+              caches.keys()
+                .then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); })
+                .then(recargar, recargar);
+            } else { recargar(); }
+          } catch (e) { recargar(); }
         });
         document.body.appendChild(b);
       }

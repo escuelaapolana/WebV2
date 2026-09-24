@@ -1,9 +1,14 @@
 /* Service worker del Club Atletismo Apolana.
-   Estrategia "red primero": cuando hay internet siempre trae la última versión
-   (por eso los cambios se ven al momento); si no hay conexión, sirve lo último
-   que se vio. No toca las peticiones a Supabase ni a los CDN (siempre a la red,
-   para que los datos y el acceso vayan en vivo). */
-const CACHE = 'apolana-v8';
+   Estrategia "caché primero" (modelo app-shell): el esqueleto de la app —páginas,
+   JS, CSS, fuentes— se sirve AL INSTANTE desde la caché del móvil y se revalida
+   por detrás para la próxima vez. Así la app abre rápido sin esperar a descargar
+   e interpretar ~450 KB de JavaScript cada vez.
+   · Los DATOS (Supabase) y los CDN NO pasan por aquí: siempre a la red, así que lo
+     que ves sigue siendo en vivo. Lo único cacheado es el código de la web.
+   · La frescura del código la avisa `version.txt` + el botón «Actualiza» (ver
+     assets/js/db.js): al pulsarlo se limpia la caché y se recarga, trayendo lo
+     último. `version.txt` se pide SIEMPRE a la red para que ese aviso funcione. */
+const CACHE = 'apolana-v9';
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 
@@ -20,32 +25,38 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET') return;                         // no tocar envíos de datos
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;          // Supabase / CDN: siempre a la red
+
+  /* version.txt SIEMPRE a la red: el aviso de «Actualiza» depende de leerlo fresco.
+     (Además llega con ?t= único, así que tampoco tendría sentido cachearlo.) */
+  if (url.pathname.slice(-11) === 'version.txt') {
+    e.respondWith(fetch(req).catch(function () { return new Response('', { status: 504 }); }));
+    return;
+  }
+
+  /* CACHÉ PRIMERO + revalidación en segundo plano (stale-while-revalidate). */
   e.respondWith((async function () {
-    try {
-      /* Se salta la caché del navegador SIEMPRE, no solo en las navegaciones:
-         GitHub Pages manda todo con `max-age=600`, así que un JS o un CSS recién
-         publicado tardaba hasta diez minutos en verse aunque el service worker
-         fuera «red primero» (el navegador le colaba su copia cacheada). Las
-         páginas se piden con `reload` (descarga entera) y los demás recursos con
-         `no-cache` (revalida con la red: si no ha cambiado, 304 y listo). Sin
-         conexión, el `catch` de abajo sirve lo último guardado. */
-      const fresh = await fetch(req, { cache: req.mode === 'navigate' ? 'reload' : 'no-cache' });
-      // Solo se guarda lo que ha venido bien: si un día la web contesta con un
-      // error, no queremos que se quede pegado y se sirva sin conexión.
-      if (fresh && fresh.ok && fresh.type === 'basic') {
-        const cache = await caches.open(CACHE);
-        cache.put(req, fresh.clone());
-      }
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(req);
+
+    // Pide la versión nueva y actualiza la caché para la PRÓXIMA vez. No bloquea.
+    const revalidar = fetch(req, { cache: 'no-cache' }).then(function (fresh) {
+      if (fresh && fresh.ok && fresh.type === 'basic') { cache.put(req, fresh.clone()); }
       return fresh;
-    } catch (err) {
-      const cached = await caches.match(req);
-      if (cached) return cached;
-      if (req.mode === 'navigate') {
-        const home = await caches.match(self.registration.scope + 'portal/');
-        if (home) return home;
-      }
-      throw err;
+    }).catch(function () { return null; });
+
+    // Si está en caché, se sirve YA (instantáneo) y se revalida por detrás.
+    if (cached) { revalidar; return cached; }
+
+    // Primera vez (no estaba en caché): se espera a la red.
+    const fresh = await revalidar;
+    if (fresh) return fresh;
+
+    // Sin red y sin caché: en una navegación, el portal como último recurso.
+    if (req.mode === 'navigate') {
+      const home = await cache.match(self.registration.scope + 'portal/');
+      if (home) return home;
     }
+    return new Response('', { status: 504, statusText: 'sin conexion' });
   })());
 });
 
