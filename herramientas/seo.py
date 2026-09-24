@@ -180,7 +180,7 @@ KEYWORDS = {
     "legal/aviso-legal/":           "aviso legal Club Atletismo Apolana, titular de la web, NIF G-03845500",
     "legal/privacidad/":            "política de privacidad Apolana, protección de datos club de atletismo, datos de menores",
     "legal/condiciones/":           "condiciones de uso portal Apolana, términos del club, condiciones app",
-    "legal/cookies/":               "política de cookies Apolana, web sin cookies, privacidad del navegador",
+    "legal/cookies/":               "política de cookies Apolana, Google Analytics con consentimiento, cookies necesarias, privacidad del navegador",
 }
 
 # Descripcion mas corta para la tarjeta al compartir (Open Graph), cuando la
@@ -194,6 +194,11 @@ OG_DESC = {
 # Paginas a las que NO se les pone la etiqueta canonica ESTATICA porque su
 # direccion real lleva parametro (?id=...) y la fija el propio JavaScript.
 SIN_CANONICAL = {"noticias/articulo/"}
+
+# Paginas que EXISTEN pero estan retiradas o en pausa: siguen accesibles por
+# URL directa, pero NO se indexan (van con noindex aunque la web sea indexable)
+# ni aparecen en el sitemap. Asi Google no las ofrece como resultado.
+NOINDEX = {"familias/"}
 
 # Paginas que apuntan su canonica a OTRA direccion (son un alias). Ejemplo:
 # /horarios/ es la misma tabla que la vista de horarios del calendario, asi que
@@ -235,6 +240,12 @@ def bloque(base, ruta_publica, titulo, descripcion, foto, canonical, indexable):
             "     mire, para que no compita con atletismoapolana.com. EL DIA DEL\n"
             "     CAMBIO DE DOMINIO HAY QUE QUITAR ESTA LINEA (la quita sola el\n"
             "     comando de arriba con --indexable). -->"
+        )
+        partes.append('<meta name="robots" content="noindex, follow">')
+    elif ruta_publica in NOINDEX:
+        partes.append(
+            "<!-- Pagina retirada / en pausa: sigue accesible por URL directa\n"
+            "     pero NO se indexa ni va al sitemap (ver NOINDEX en seo.py). -->"
         )
         partes.append('<meta name="robots" content="noindex, follow">')
     else:
@@ -502,6 +513,8 @@ def sitemap(base):
     for _archivo, ruta_publica, prio, en_sitemap in PAGINAS:
         if not en_sitemap:
             continue
+        if ruta_publica in NOINDEX:
+            continue
         filas.append(
             "  <url>\n"
             "    <loc>%s%s</loc>\n"
@@ -525,12 +538,10 @@ def robots(base):
     txt = (
         "# Que puede mirar Google y que no.\n"
         "#\n"
-        "# OJO: mientras la web viva en escuelaapolana.github.io/WebV2/ este\n"
-        "# archivo NO lo lee nadie, porque los buscadores solo miran el robots.txt\n"
-        "# que esta en la RAIZ del dominio y aqui la web cuelga de /WebV2/.\n"
-        "# Empieza a funcionar el dia que la web viva en atletismoapolana.com.\n"
-        "# Hasta entonces, lo que protege al panel y al portal es la etiqueta\n"
-        "# <meta name=\"robots\" content=\"noindex\"> que llevan sus paginas.\n"
+        "# La web ya vive en atletismoapolana.com, asi que este robots.txt esta\n"
+        "# activo (lo genera herramientas/seo.py; no editar a mano).\n"
+        "# El panel y el portal, ademas, llevan\n"
+        "# <meta name=\"robots\" content=\"noindex\"> en cada una de sus paginas.\n"
         "\n"
         "User-agent: *\n"
         "Allow: /\n"
