@@ -485,3 +485,76 @@
     startY = null; pull = 0;
   }, { passive: true });
 })();
+
+/* ==========================================================================
+   GOOGLE ANALYTICS con consentimiento de cookies (RGPD)
+   --------------------------------------------------------------------------
+   Se carga en todas las páginas que llevan este db.js (web pública + app),
+   pero GA SOLO arranca si la persona ACEPTA. Las cookies de sesión/login son
+   "necesarias" y no dependen de esto (van aparte). Un aviso discreto abajo; la
+   elección se guarda y no vuelve a salir. Política de cookies en legal/cookies/.
+   Para reabrir el aviso (p. ej. un botón «gestionar cookies»): APOLANA_COOKIES.abrir()
+   ========================================================================== */
+(function () {
+  try {
+    var GA_ID = 'G-20FPP160T5';
+    var CLAVE = 'apo-cookies';                 // 'si' | 'no'
+    var base = window.APOLANA_BASE || './';
+
+    function leer() { try { return localStorage.getItem(CLAVE); } catch (e) { return null; } }
+    function guardar(v) { try { localStorage.setItem(CLAVE, v); } catch (e) {} }
+
+    function cargarGA() {
+      if (window.__apoGA) return; window.__apoGA = true;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID;
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      window.gtag('js', new Date());
+      window.gtag('config', GA_ID);
+    }
+
+    function quitar() {
+      var b = document.getElementById('apo-cookies-aviso');
+      if (b && b.parentNode) b.parentNode.removeChild(b);
+    }
+
+    function mostrar() {
+      if (!document.body || document.getElementById('apo-cookies-aviso')) return;
+      var b = document.createElement('div');
+      b.id = 'apo-cookies-aviso';
+      b.setAttribute('role', 'dialog');
+      b.setAttribute('aria-label', 'Aviso de cookies');
+      b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));' +
+        'z-index:2147482000;max-width:560px;margin:0 auto;background:#26374B;color:#fff;border-radius:14px;' +
+        'padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-family:system-ui,-apple-system,sans-serif;' +
+        'font-size:13.5px;line-height:1.45;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;';
+      b.innerHTML =
+        '<span style="flex:1 1 240px;min-width:200px">Usamos cookies propias y de <b>Google Analytics</b> para ver cómo se usa la web y mejorarla. ' +
+        'Las de tu sesión son necesarias. <a href="' + base + 'legal/cookies/" style="color:#fff;text-decoration:underline">Más información</a>.</span>' +
+        '<span style="flex:0 0 auto;display:flex;gap:8px;margin-left:auto">' +
+        '<button type="button" data-ck="no" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55);border-radius:999px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;min-height:40px">Rechazar</button>' +
+        '<button type="button" data-ck="si" style="background:#fff;color:#26374B;border:0;border-radius:999px;padding:9px 18px;font:inherit;font-weight:700;cursor:pointer;min-height:40px">Aceptar</button>' +
+        '</span>';
+      b.addEventListener('click', function (e) {
+        var t = e.target;
+        if (!t || t.tagName !== 'BUTTON') return;
+        var v = t.getAttribute('data-ck');
+        guardar(v); quitar();
+        if (v === 'si') cargarGA();
+      });
+      document.body.appendChild(b);
+    }
+
+    /* Para un futuro «gestionar cookies» desde la política. */
+    window.APOLANA_COOKIES = { abrir: mostrar };
+
+    var elegido = leer();
+    if (elegido === 'si') { cargarGA(); }
+    else if (elegido === 'no') { /* no se carga nada */ }
+    else if (document.body) { mostrar(); }
+    else { document.addEventListener('DOMContentLoaded', mostrar); }
+  } catch (e) { /* si algo falla, la web sigue igual */ }
+})();
