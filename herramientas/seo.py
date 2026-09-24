@@ -198,7 +198,7 @@ SIN_CANONICAL = {"noticias/articulo/"}
 # Paginas que EXISTEN pero estan retiradas o en pausa: siguen accesibles por
 # URL directa, pero NO se indexan (van con noindex aunque la web sea indexable)
 # ni aparecen en el sitemap. Asi Google no las ofrece como resultado.
-NOINDEX = {"familias/"}
+NOINDEX = {"familias/", "instalaciones/"}
 
 # Paginas que apuntan su canonica a OTRA direccion (son un alias). Ejemplo:
 # /horarios/ es la misma tabla que la vista de horarios del calendario, asi que
