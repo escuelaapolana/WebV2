@@ -528,11 +528,32 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     FALLOS = [];
     function falla(que) { if (FALLOS.indexOf(que) === -1) FALLOS.push(que); }
 
+    /* Estas consultas son independientes entre sí, así que se LANZAN A LA VEZ
+       (en paralelo) y se esperan más abajo donde se usan. Antes iban en serie
+       —cada await esperaba al anterior— y la carga del calendario era la SUMA de
+       ~8 idas-y-vueltas; así es ~una sola. `lanzar` fuerza a que la consulta
+       arranque ya (Promise.resolve dispara el thenable de Supabase) y a que
+       nunca rechace: si falla, resuelve como {error}. */
+    function lanzar(q) { return Promise.resolve(q).then(function (r) { return r; }, function () { return { error: true, data: null }; }); }
+    var pGrupos = lanzar(sb.from('grupos').select('id,nombre,turno,seccion,descripcion,pruebas'));
+    var pSesiones = lanzar(sb.from('sesiones')
+      .select('id,fecha,hora,titulo,tipo,rol,deporte,deporte_2,papel_dia,lugar,grupo_id,atletas_ids')
+      .eq('publicada', true).gte('fecha', desde).lte('fecha', hasta));
+    var pAgenda = lanzar(sb.from('sesiones_agenda').select('*').gte('fecha', desde).lte('fecha', hasta));
+    var pInscr = atleta ? lanzar(sb.from('sesion_inscripciones').select('sesion_id,estado,motivo').eq('atleta_id', atleta.id)) : null;
+    var pCompAt = atleta ? lanzar(sb.from('competicion_atleta').select('id,competicion_id,prueba,estado').eq('atleta_id', atleta.id)) : null;
+    var pComp = lanzar(sb.from('competiciones')
+      .select('id,nombre,sede,fecha_inicio,ambito,coste,fecha_limite_interna,inscripcion_abierta,circular_url')
+      .order('fecha_inicio', { ascending: true }));
+    var pInscrEv = atleta ? lanzar(sb.from('inscripciones_eventos').select('evento_id,estado').eq('atleta_id', atleta.id)) : null;
+    var pEventos = lanzar(sb.from('eventos').select('id,titulo,descripcion,tipo,fecha_inicio,lugar,seccion,inscripcion_abierta')
+      .gte('fecha_inicio', desde + 'T00:00:00').lte('fecha_inicio', hasta + 'T23:59:59'));
+
     // --- grupos (lectura pública): nombres y secciones para los filtros ---
     try {
       /* La descripción y las pruebas se piden aquí para poder desplegar, al
          abrir el entrenamiento de la escuela, qué hace cada grupo. */
-      var rg = await sb.from('grupos').select('id,nombre,turno,seccion,descripcion,pruebas');
+      var rg = await pGrupos;
       if (!rg.error && rg.data) {
         GRUPOS = {}; var secs = {};
         /* En el calendario cada entrenamiento dice de qué grupo es. La escuela
@@ -552,9 +573,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // --- 1) MIS entrenamientos (tabla `sesiones`, con su permiso de siempre) ---
     var mias = {};
     try {
-      var rm = await sb.from('sesiones')
-        .select('id,fecha,hora,titulo,tipo,rol,deporte,deporte_2,papel_dia,lugar,grupo_id,atletas_ids')
-        .eq('publicada', true).gte('fecha', desde).lte('fecha', hasta);
+      var rm = await pSesiones;
       if (rm.error) falla('los entrenamientos');
       else (rm.data || []).forEach(function (s) {
         var deMiGrupo = atleta && s.grupo_id && s.grupo_id === atleta.grupo_id;
@@ -566,7 +585,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // --- 2) LO QUE HACE TODO EL CLUB (vista `sesiones_agenda`) ---
     var vistas = {};
     try {
-      var ra = await sb.from('sesiones_agenda').select('*').gte('fecha', desde).lte('fecha', hasta);
+      var ra = await pAgenda;
       if (!ra.error && ra.data) ra.data.forEach(function (s) { vistas[s.sesion_id] = s; });
     } catch (e) { /* si la vista aún no está, se ven solo las propias */ }
 
@@ -578,7 +597,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            o rechazado. Se guarda el estado, no un sí/no, porque «pedido» y
            «tengo plaza» no se pueden pintar igual: alguien se presentaría
            un sábado creyendo que iba. */
-        var ri = await sb.from('sesion_inscripciones').select('sesion_id,estado,motivo').eq('atleta_id', atleta.id);
+        var ri = await pInscr;
         if (!ri.error && ri.data) ri.data.forEach(function (x) { misEntrenos[x.sesion_id] = x; });
       } catch (e) { /* nada */ }
     }
@@ -681,7 +700,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var misComps = {};
     if (atleta) {
       try {
-        var rca = await sb.from('competicion_atleta').select('id,competicion_id,prueba,estado').eq('atleta_id', atleta.id);
+        var rca = await pCompAt;
         if (!rca.error && rca.data) rca.data.forEach(function (x) {
           if (x.estado !== 'cancelada') (misComps[x.competicion_id] = misComps[x.competicion_id] || []).push(x);
         });
@@ -690,9 +709,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     PROXIMA = null;
     try {
-      var rcp = await sb.from('competiciones')
-        .select('id,nombre,sede,fecha_inicio,ambito,coste,fecha_limite_interna,inscripcion_abierta,circular_url')
-        .order('fecha_inicio', { ascending: true });
+      var rcp = await pComp;
       if (rcp.error) falla('las competiciones');
       if (!rcp.error && rcp.data) {
         rcp.data.forEach(function (c) {
@@ -771,13 +788,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var misEventos = {};
     if (atleta) {
       try {
-        var rie = await sb.from('inscripciones_eventos').select('evento_id,estado').eq('atleta_id', atleta.id);
+        var rie = await pInscrEv;
         if (!rie.error && rie.data) rie.data.forEach(function (x) { if (x.estado !== 'baja') misEventos[x.evento_id] = true; });
       } catch (e) { /* nada */ }
     }
     try {
-      var re = await sb.from('eventos').select('id,titulo,descripcion,tipo,fecha_inicio,lugar,seccion,inscripcion_abierta')
-        .gte('fecha_inicio', desde + 'T00:00:00').lte('fecha_inicio', hasta + 'T23:59:59');
+      var re = await pEventos;
       if (re.error) falla('los eventos del club');
       if (!re.error && re.data) {
         re.data.forEach(function (v3) {
