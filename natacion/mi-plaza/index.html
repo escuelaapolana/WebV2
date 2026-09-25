@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Mi plaza de natación · Club Apolana</title>
+<style>
+  :root{
+    --navy:#26374B; --crema:#F4EEE1; --dorado:#C7A34A; --azul:#2F6FA8;
+    --linea:#E4DCCB; --suave:#6E6656; --verde:#2E7D32; --rojo:#B3261E;
+    --bg:#FBF8F1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--navy);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;-webkit-font-smoothing:antialiased}
+  .cab{background:var(--navy);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px}
+  .cab .escudo{width:30px;height:30px;border-radius:50%;background:#fff;color:var(--navy);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
+  .cab b{font-size:16px;letter-spacing:.3px}
+  .wrap{max-width:640px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:22px;margin:6px 0 2px}
+  .sub{color:var(--suave);font-size:14px;margin:0 0 20px}
+  .cargando,.aviso{color:var(--suave);text-align:center;padding:40px 10px}
+  .aviso.err{color:var(--rojo)}
+  .franja{background:#fff;border:1px solid var(--linea);border-radius:16px;padding:16px;margin-bottom:16px}
+  .franja h2{font-size:16px;margin:0 0 2px}
+  .franja .meta{color:var(--suave);font-size:13.5px;margin:0 0 12px}
+  .franja .meta .nivel{display:inline-block;background:var(--crema);border-radius:999px;padding:1px 9px;font-weight:600;color:var(--navy);margin-left:6px}
+  .avisa{font-size:13px;color:var(--suave);margin:0 0 8px}
+  .dias{display:flex;flex-wrap:wrap;gap:8px}
+  .dia{border:1px solid var(--linea);background:#fff;border-radius:12px;padding:8px 12px;font-size:14px;
+    cursor:pointer;display:flex;flex-direction:column;align-items:center;min-width:66px;transition:.12s;user-select:none}
+  .dia small{color:var(--suave);font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+  .dia b{font-size:15px}
+  .dia.no{background:#FBE3E1;border-color:#F1C7C3;color:var(--rojo)}
+  .dia.no small,.dia.no b{color:var(--rojo)}
+  .dia .estado{font-size:11px;margin-top:3px;font-weight:600;color:var(--verde)}
+  .dia.no .estado{color:var(--rojo)}
+  .dia[aria-busy="true"]{opacity:.5;pointer-events:none}
+  .pie{color:var(--suave);font-size:12.5px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+  <div class="cab"><span class="escudo">A</span><b>APOLANA · Natación</b></div>
+  <div class="wrap">
+    <div id="cont"><p class="cargando">Cargando tu plaza…</p></div>
+    <p class="pie">Club Atletismo Apolana · Si algo no cuadra, avisa a tu monitor/a.</p>
+  </div>
+
+<script src="../../assets/js/supabase.js" defer></script>
+<script defer>
+(function () {
+  var URL = 'https://icaxokjsvhlreuwpyxeb.supabase.co';
+  var KEY = 'sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH';
+  var DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  var DIAS_C = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  var codigo = new URLSearchParams(location.search).get('c');
+  var sb = null, cont = document.getElementById('cont');
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m];}); }
+  function aviso(txt, err){ cont.innerHTML = '<p class="aviso'+(err?' err':'')+'">'+esc(txt)+'</p>'; }
+  function iso(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+
+  function proximas(dia, n){
+    var out = [], d = new Date(); d.setHours(0,0,0,0);
+    var guard = 0;
+    while (out.length < n && guard++ < 60){
+      if (d.getDay() === dia) out.push(new Date(d));
+      d.setDate(d.getDate()+1);
+    }
+    return out;
+  }
+
+  function pinta(data){
+    var aus = {};
+    (data.ausencias||[]).forEach(function(a){ aus[a.franja_id+'|'+a.fecha] = true; });
+    var franjas = data.franjas || [];
+    var html = '<h1>Hola, ' + esc(data.nombre) + '</h1>' +
+      '<p class="sub">Tu plaza de natación. Si un día no vas a venir, márcalo aquí para que lo sepamos.</p>';
+    if (!franjas.length){
+      html += '<p class="aviso">No hay ninguna franja asignada todavía.</p>';
+    }
+    franjas.forEach(function(f){
+      html += '<div class="franja">' +
+        '<h2>' + esc(DIAS[f.dia] || '') + ' · ' + esc(f.hora) + '</h2>' +
+        '<p class="meta">' + esc(f.grupo) + ' · Calle ' + esc(f.calle) +
+          (f.nivel ? '<span class="nivel">' + esc(f.nivel) + '</span>' : '') + '</p>' +
+        '<p class="avisa">¿No vienes algún día? Toca la fecha:</p>' +
+        '<div class="dias">';
+      proximas(f.dia, 4).forEach(function(d){
+        var fecha = iso(d);
+        var no = !!aus[f.franja_id + '|' + fecha];
+        html += '<button class="dia' + (no?' no':'') + '" data-franja="' + f.franja_id + '" data-fecha="' + fecha + '">' +
+          '<small>' + DIAS_C[d.getDay()] + '</small>' +
+          '<b>' + d.getDate() + ' ' + MESES[d.getMonth()] + '</b>' +
+          '<span class="estado">' + (no ? 'No viene' : 'Viene') + '</span>' +
+          '</button>';
+      });
+      html += '</div></div>';
+    });
+    cont.innerHTML = html;
+    cont.querySelectorAll('.dia').forEach(function(btn){ btn.addEventListener('click', function(){ toggle(btn); }); });
+  }
+
+  async function toggle(btn){
+    var no = btn.classList.contains('no');
+    var fn = no ? 'natacion_quitar_ausencia' : 'natacion_marcar_ausencia';
+    btn.setAttribute('aria-busy','true');
+    var res = await sb.rpc(fn, { p_codigo: codigo, p_franja: btn.dataset.franja, p_fecha: btn.dataset.fecha });
+    btn.removeAttribute('aria-busy');
+    if (res.error || !res.data || res.data.ok === false){ return; }
+    btn.classList.toggle('no');
+    var esNo = btn.classList.contains('no');
+    btn.querySelector('.estado').textContent = esNo ? 'No viene' : 'Viene';
+  }
+
+  async function cargar(){
+    if (!codigo){ return aviso('Falta el código de acceso en el enlace.', true); }
+    if (!window.supabase){ return setTimeout(cargar, 80); }
+    sb = window.supabase.createClient(URL, KEY);
+    var res = await sb.rpc('natacion_mi_plaza', { p_codigo: codigo });
+    if (res.error || !res.data){ return aviso('Este enlace no es válido. Pídele a tu monitor/a el enlace de tu plaza.', true); }
+    pinta(res.data);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cargar); else cargar();
+})();
+</script>
+</body>
+</html>
