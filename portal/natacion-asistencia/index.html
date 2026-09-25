@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asistencia de natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',monospace);
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.26); }
+  body { background:var(--crema,#FBF9F4); }
+  .na-wrap { max-width:680px; margin:0 auto; padding:clamp(18px,4vw,26px) clamp(14px,4vw,26px) 40px; }
+  .saludo { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; letter-spacing:-0.01em;
+            font-size:clamp(24px,5.5vw,34px); line-height:1.02; color:var(--navy,#26374B); margin:4px 0 2px; }
+  .sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 14px; }
+  .na-barra { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+              background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; box-shadow:var(--s1);
+              padding:12px 15px; margin-bottom:16px; }
+  .na-barra input[type=date] { font:inherit; font-size:15px; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE);
+              border-radius:10px; padding:7px 10px; background:var(--crema,#FBF9F4); }
+  .na-barra .cont { font-size:14px; color:var(--texto-suave,#6E6656); }
+  .na-barra .cont b { color:#B3261E; font-family:var(--dato); font-size:17px; }
+  .na-fr { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px; box-shadow:var(--s1); padding:15px 16px; margin-bottom:15px; }
+  .na-fr h2 { font-family:var(--ap-titulo); font-size:17px; margin:0 0 1px; color:var(--navy,#26374B); }
+  .na-fr .fmeta { font-size:12.5px; color:var(--texto-tenue,#9A927F); margin:0 0 11px; }
+  .na-fr .fmeta b { color:#B3261E; }
+  .na-calle { font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--texto-tenue,#9A927F); margin:10px 0 6px; font-weight:700; }
+  .na-lista { display:flex; flex-direction:column; gap:7px; }
+  .na-fila { display:flex; align-items:center; gap:11px; width:100%; box-sizing:border-box; text-align:left;
+             background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; padding:10px 13px; font:inherit; color:var(--navy,#26374B); cursor:pointer; }
+  .na-fila .nom { flex:1; min-width:0; font-size:15px; font-weight:600; }
+  .na-fila .nivel { font-size:11.5px; color:var(--texto-tenue,#9A927F); font-weight:500; }
+  .na-fila .est { font-size:12.5px; font-weight:700; color:#2E7D6B; white-space:nowrap; }
+  .na-fila.no { background:#FBE3E1; border-color:#F1C7C3; }
+  .na-fila.no .nom, .na-fila.no .est { color:#B3261E; }
+  .na-fila[aria-busy="true"] { opacity:.5; pointer-events:none; }
+  .na-vacio { color:var(--texto-suave,#6E6656); text-align:center; padding:30px 10px; }
+  .na-toast { position:fixed; left:50%; bottom:86px; transform:translate(-50%,14px); opacity:0; transition:.24s;
+              background:var(--navy,#26374B); color:#fff; font-size:14px; padding:10px 16px; border-radius:999px; z-index:60; }
+  .na-toast.ver { opacity:1; transform:translate(-50%,0); }
+  .na-toast.err { background:#B23B3B; }
+</style>
+</head>
+<body>
+
+  <div class="na-wrap" id="na"></div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('na');
+  var UI = window.APOLANA_UI;
+  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, cargado = false;
+
+  var DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var ORDEN_CALLE = { 'C1':1,'C2':2,'C3':3,'Vaso':4 };
+  function pad(n){ return (n<10?'0':'')+n; }
+  function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function diaDe(s){ var p=s.split('-'); return new Date(+p[0],+p[1]-1,+p[2]).getDay(); }
+  function fechaLarga(s){ var p=s.split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]); return DIAS[d.getDay()]+' '+d.getDate()+' de '+MESES[d.getMonth()]; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function toast(msg,tipo){ var t=document.createElement('div'); t.className='na-toast'+(tipo==='err'?' err':''); t.textContent=msg;
+    document.body.appendChild(t); requestAnimationFrame(function(){ t.classList.add('ver'); });
+    setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); },2200); }
+
+  async function cargar(){
+    FRANJAS = []; INSCR = []; AUS = {};
+    var dia = diaDe(fecha);
+    if (dia >= 1 && dia <= 6){
+      var f = await sb.from('natacion_franjas').select('id,dia,hora,grupo,monitores').eq('dia', dia).eq('activa', true).order('hora');
+      FRANJAS = f.error ? [] : (f.data||[]);
+      if (FRANJAS.length){
+        var ids = FRANJAS.map(function(x){ return x.id; });
+        var i = await sb.from('natacion_inscripciones').select('id,franja_id,acceso_id,nombre,calle,nivel,tipo').in('franja_id', ids).eq('activa', true);
+        INSCR = i.error ? [] : (i.data||[]);
+        var a = await sb.from('natacion_ausencias').select('acceso_id,franja_id').eq('fecha', fecha);
+        if (!a.error) (a.data||[]).forEach(function(x){ AUS[x.acceso_id+'|'+x.franja_id] = true; });
+      }
+    }
+    cargado = true;
+  }
+
+  function esAusente(m){ return !!AUS[m.acceso_id+'|'+m.franja_id]; }
+
+  async function toggle(id){
+    var m = INSCR.filter(function(x){ return x.id===id; })[0];
+    if (!m || !m.acceso_id){ toast('Ficha sin enlazar.','err'); return; }
+    var key = m.acceso_id+'|'+m.franja_id, aus = !!AUS[key];
+    if (aus){
+      var rd = await sb.from('natacion_ausencias').delete().eq('acceso_id', m.acceso_id).eq('franja_id', m.franja_id).eq('fecha', fecha);
+      if (rd.error){ toast('No se pudo guardar','err'); return; }
+      delete AUS[key];
+    } else {
+      var ru = await sb.from('natacion_ausencias').upsert(
+        { acceso_id:m.acceso_id, franja_id:m.franja_id, fecha:fecha, origen:'monitor' },
+        { onConflict:'acceso_id,franja_id,fecha' });
+      if (ru.error){ toast('No se pudo guardar: '+ru.error.message,'err'); return; }
+      AUS[key] = true;
+    }
+    pintar();
+  }
+
+  function pintar(){
+    var dia = diaDe(fecha);
+    var totalFaltan = Object.keys(AUS).length;
+    var cuerpo;
+    if (dia === 0){
+      cuerpo = '<p class="na-vacio">El domingo no hay natación.</p>';
+    } else if (!FRANJAS.length){
+      cuerpo = '<p class="na-vacio">No hay franjas de natación este día. (Si no ves nada y deberías, quizá no tienes permiso.)</p>';
+    } else {
+      cuerpo = FRANJAS.map(function(f){
+        var suyos = INSCR.filter(function(m){ return m.franja_id===f.id; });
+        var faltan = suyos.filter(esAusente).length;
+        var porCalle = {};
+        suyos.forEach(function(m){ (porCalle[m.calle]=porCalle[m.calle]||[]).push(m); });
+        var calles = Object.keys(porCalle).sort(function(a,b){ return (ORDEN_CALLE[a]||9)-(ORDEN_CALLE[b]||9); });
+        var bloques = calles.map(function(c){
+          var filas = porCalle[c].sort(function(a,b){ return (a.nombre||'').toLowerCase() < (b.nombre||'').toLowerCase() ? -1 : 1; })
+            .map(function(m){
+              var no = esAusente(m);
+              return '<button type="button" class="na-fila'+(no?' no':'')+'" data-m="'+esc(m.id)+'">'+
+                '<span class="nom">'+esc(m.nombre)+(m.nivel?' <span class="nivel">· '+esc(m.nivel)+'</span>':'')+'</span>'+
+                '<span class="est">'+(no?'No viene':'Viene')+'</span></button>';
+            }).join('');
+          return '<div class="na-calle">Calle '+esc(c)+'</div><div class="na-lista">'+filas+'</div>';
+        }).join('');
+        return '<div class="na-fr">'+
+          '<h2>'+esc(DIAS[f.dia])+' · '+esc(String(f.hora).slice(0,5))+'</h2>'+
+          '<p class="fmeta">'+esc(f.grupo)+' · '+suyos.length+' nadadores'+(faltan?' · <b>'+faltan+' no vienen</b>':'')+(f.monitores?' · '+esc(f.monitores):'')+'</p>'+
+          bloques+'</div>';
+      }).join('');
+    }
+    wrap.innerHTML =
+      '<h1 class="saludo">Asistencia de natación</h1>'+
+      '<p class="sub">Quién ha avisado que no viene. Toca a alguien para marcarlo tú también.</p>'+
+      '<div class="na-barra">'+
+        '<input type="date" id="na-fecha" value="'+esc(fecha)+'">'+
+        '<span class="cont">'+esc(fechaLarga(fecha))+' · <b>'+totalFaltan+'</b> no vienen</span>'+
+      '</div>'+ cuerpo;
+  }
+
+  async function pintarTodo(){
+    if (UI) wrap.innerHTML = '<div class="ap-esq" data-esq="filas:4"></div>';
+    await cargar();
+    pintar();
+  }
+
+  wrap.addEventListener('click', function(ev){
+    var fi = ev.target.closest ? ev.target.closest('.na-fila[data-m]') : null;
+    if (fi){ toggle(fi.getAttribute('data-m')); return; }
+  });
+  wrap.addEventListener('change', function(ev){
+    if (ev.target && ev.target.id==='na-fecha'){ fecha = ev.target.value || hoyISO(); pintarTodo(); }
+  });
+
+  pintarTodo();
+});
+</script>
+</body>
+</html>
