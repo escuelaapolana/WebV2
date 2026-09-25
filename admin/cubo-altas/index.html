@@ -340,10 +340,17 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   // ---- Grupos del Cubo con su ocupación (X/aforo + lista de espera) ----
+  // La ocupación son los INTEGRANTES REALES de cada grupo (atleta_grupos), no
+  // las altas de la web: así cuenta a todos —también los de fuerza gratis, que
+  // se apuntan por otro formulario— y cuadra con «Grupos del Cubo» e «Integrantes».
   var GRUPOS_CUBO = null;
+  var CUENTA_GRUPO = {};  // grupo_id -> nº de integrantes reales
   async function cargarGrupos(){
     var r = await sb.from('grupos').select('id,nombre,horario').eq('seccion','cubo').eq('activo',true).order('nombre');
     GRUPOS_CUBO = r.error ? [] : (r.data||[]);
+    CUENTA_GRUPO = {};
+    var rc = await sb.from('atleta_grupos').select('grupo_id');
+    if(!rc.error && rc.data){ rc.data.forEach(function(x){ CUENTA_GRUPO[x.grupo_id] = (CUENTA_GRUPO[x.grupo_id]||0) + 1; }); }
     pintarGrupos();
   }
   function pintarGrupos(){
@@ -351,7 +358,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(!GRUPOS_CUBO.length){ caja.innerHTML=''; return; }
     var lim = LIMITE!=null ? LIMITE : 20;
     caja.innerHTML = '<p class="ca-rot">Grupos del Cubo</p><div class="cg-grid">' + GRUPOS_CUBO.map(function(g){
-      var ocup = ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && (a.estado||'pendiente')!=='rechazada'; }).length;
+      var ocup = CUENTA_GRUPO[g.id] || 0;  // integrantes reales del grupo (atleta_grupos)
       var espera = ALTAS.filter(function(a){ return a.horario===g.nombre && a.lista_espera; }).length;
       var pct = Math.min(100, Math.round(ocup/lim*100));
       var lleno = ocup>=lim;
