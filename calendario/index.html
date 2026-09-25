@@ -1342,22 +1342,36 @@
           if (!isNaN(dt.getTime())) hora = ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
         }
         var gDesc = (limpio(ev.descripcion) && limpio(ev.descripcion) !== limpio(ev.titulo)) ? limpio(ev.descripcion) : '';
-        var ga = apuntar(ki, {
-          clase: 'competicion', hora: hora,
-          titulo: limpio(ev.titulo) || 'Competición', tipoTexto: 'Competición',
-          /* Es una carrera externa: NO es del grupo «Pista» ni de ninguna
-             sección del club, así que no se le pone «Quién». delCalendario
-             hace que el filtro la deje pasar igualmente. */
+        /* Google no manda disciplina. Se lee de una MARCA en el título o la
+           descripción del evento del Google Calendar:
+             [Natación]  → competición de natación (si no, se asume atletismo)
+             [Evento]    → NO es competición, es un evento del club (la comida
+                           anual, una charla…): no puntúa ni pide ámbito.
+           La marca se quita del título que se ve. */
+        var gMarca = limpio(ev.titulo) + ' ' + gDesc;
+        var esEvento = /\[\s*(evento|club)\s*\]/i.test(gMarca);
+        var gAmbito = /\[\s*(nataci[oó]n|nat)\s*\]/i.test(gMarca) ? 'natacion' : 'atletismo';
+        var gTitulo = (limpio(ev.titulo) || (esEvento ? 'Evento del club' : 'Competición'))
+          .replace(/\[\s*(nataci[oó]n|nat|atletismo|atl|evento|club)\s*\]/ig, '')
+          .replace(/\s{2,}/g, ' ').trim() || (esEvento ? 'Evento del club' : 'Competición');
+        var ga = apuntar(ki, esEvento ? {
+          clase: 'evento', hora: hora, titulo: gTitulo, tipoTexto: 'Evento del club',
           lugar: limpio(ev.lugar), grupo: '', seccion: null,
-          delCalendario: true, abierta: false, descripcion: gDesc,
+          descripcion: gDesc, url: limpio(ev.url), fuente: 'google'
+        } : {
+          clase: 'competicion', hora: hora, titulo: gTitulo, tipoTexto: 'Competición',
+          /* Carrera externa: NO es del grupo «Pista» ni de ninguna sección del
+             club; delCalendario la deja pasar el filtro según su ámbito. */
+          lugar: limpio(ev.lugar), grupo: '', seccion: gAmbito === 'natacion' ? 'natacion' : 'competicion',
+          delCalendario: true, ambito: gAmbito, abierta: false, descripcion: gDesc,
           url: limpio(ev.url), fuente: 'google'
         });
         ok = true;
-        if (ki >= hoyKey) {
+        if (!esEvento && ki >= hoyKey) {
           COMPES.push({ c: {
-            id: null, nombre: limpio(ev.titulo) || 'Competición',
+            id: null, nombre: gTitulo,
             sede: limpio(ev.lugar), fecha_inicio: ki, fecha_fin: null,
-            ambito: null, coste: null, circular_url: limpio(ev.url),
+            ambito: gAmbito, coste: null, circular_url: limpio(ev.url),
             inscripcion_abierta: false, fecha_limite_interna: null
           }, plazoPasado: false, i: ga ? ga.i : null });
         }
