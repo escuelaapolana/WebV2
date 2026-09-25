@@ -1059,7 +1059,17 @@
     var ses = await sb.auth.getSession();
     if (!ses || !ses.data || !ses.data.session) return;
     var r = await sb.rpc('es_admin');
-    if (r.error || !r.data) return;
+    var puede = !r.error && !!r.data;
+    /* Si no es admin pero es RESPONSABLE de la sección de esta página, también
+       puede editarla — solo la suya: la base (RLS) únicamente le deja escribir
+       las claves de su sección (natacion.*, escuela-natacion.*…). */
+    if (!puede && seccion) {
+      try {
+        var rr = await sb.rpc('soy_responsable', { p_seccion: seccion });
+        puede = !rr.error && !!rr.data;
+      } catch (e) { /* sin la función, se queda como estaba: solo admin */ }
+    }
+    if (!puede) return;
 
     ponerEstilos();
     barra();
