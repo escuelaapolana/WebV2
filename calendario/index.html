@@ -285,6 +285,26 @@
     font-family: inherit; font-size: 14px; cursor: pointer;
   }
 
+  /* ---- Lista de próximas citas de la sección elegida (debajo del calendario) ---- */
+  .lista-seccion { margin-top: 22px; }
+  .lista-seccion h3 {
+    font-family: var(--fuente-titulo, inherit); text-transform: uppercase;
+    font-size: 15px; letter-spacing: .3px; color: var(--navy, #26374B); margin: 0 0 10px;
+  }
+  .lista-seccion .ls-ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .lista-seccion li {
+    display: flex; align-items: baseline; gap: 12px;
+    background: #fff; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 12px; padding: 11px 14px;
+  }
+  .lista-seccion .ls-f {
+    flex: 0 0 auto; min-width: 76px; font-family: var(--fuente-dato, monospace);
+    font-size: 13.5px; color: var(--azul-oscuro, #2F6FA8); text-transform: capitalize;
+  }
+  .lista-seccion .ls-t { flex: 1; font-size: 15px; color: var(--navy, #26374B); }
+  .lista-seccion .ls-lugar { color: var(--texto-suave, #6E6656); }
+  .lista-seccion .ls-lugar::before { content: ' · '; color: var(--texto-tenue, #9A927F); }
+  .lista-seccion .ls-nada { color: var(--texto-suave, #6E6656); font-size: 14px; }
+
   /* La semana de siete columnas necesita algo más de aire que el resto de la
      página: se ensancha el contenedor de ese bloque (intro, filtros y parrilla
      van con la misma clase para que queden alineados) y se recorta el margen
@@ -1680,6 +1700,41 @@
     return h + '</div>';
   }
 
+  /* ---------- lista de próximas citas de la SECCIÓN elegida ----------
+     Cuando se marca una sección (Natación, Running…), debajo del calendario
+     sale la lista de TODAS sus próximas citas, para no tener que ir buscándolas
+     por el mes. Respeta los filtros activos (usa pasa()). */
+  function pintarListaSeccion() {
+    var secs = algunoDe(fSecs);
+    if (!secs.length) return '';
+    var label = secs.map(function (s) { return ETIQUETA_SECCION[s] || s; }).join(' y ');
+    var out = [], vistos = {};
+    Object.keys(porDia).forEach(function (clave) {
+      if (clave < hoyKey) return;                       // solo lo que viene
+      (porDia[clave] || []).forEach(function (a) {
+        if (a.clase === 'cierre' || !sePinta(a) || !pasa(a)) return;
+        var k = clave + '|' + a.clase + '|' + claveTitulo(a.titulo);
+        if (vistos[k]) return; vistos[k] = true;
+        out.push({ clave: clave, a: a });
+      });
+    });
+    out.sort(function (x, y) { return x.clave < y.clave ? -1 : (x.clave > y.clave ? 1 : 0); });
+    var cuerpo;
+    if (!out.length) {
+      cuerpo = '<p class="ls-nada">No hay próximas citas de ' + esc(label.toLowerCase()) + '.</p>';
+    } else {
+      cuerpo = '<ul class="ls-ul">' + out.map(function (o) {
+        var a = o.a, d = deClave(o.clave);
+        var fecha = DIAS_CORTO[d.getDay()] + ' ' + d.getDate() + ' ' + MESES_CORTO[d.getMonth()];
+        var lugar = limpio(a.lugar) ? '<span class="ls-lugar">' + esc(limpio(a.lugar)) + '</span>' : '';
+        return '<li><span class="ls-f">' + esc(fecha) + '</span>' +
+          '<span class="ls-t">' + esc(a.titulo || '') + lugar + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    return '<div class="lista-seccion"><h3>' + esc(label) + ' · próximas citas' +
+      (out.length ? ' (' + out.length + ')' : '') + '</h3>' + cuerpo + '</div>';
+  }
+
   /* ---------- chips de los filtros aplicados ---------- */
   function pintarChips() {
     var cont = document.getElementById('filtros-chips');
@@ -1761,7 +1816,7 @@
         ? '<div class="filtro-aviso"><span>' + esc(textoAviso()) + '</span>' +
           '<button type="button" id="quitar-filtros-vista">Ver todo otra vez</button></div>'
         : '';
-      cont.innerHTML = aviso + (vista === 'mes' ? pintarMes() : pintarSemana());
+      cont.innerHTML = aviso + (vista === 'mes' ? pintarMes() : pintarSemana()) + pintarListaSeccion();
     }
 
     Array.prototype.forEach.call(document.querySelectorAll('#cal-vistas button'), function (b) {
