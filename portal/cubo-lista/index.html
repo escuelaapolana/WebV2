@@ -82,7 +82,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var b = window.APOLANA_BASE || '../../';
   var UI = window.APOLANA_UI;
 
-  var GRUPOS = [], ALTAS = [], sel = null, fecha = hoyISO(), ASIS = {}, cargado = false;
+  var GRUPOS = [], ALTAS = [], PRUEBA = [], sel = null, fecha = hoyISO(), ASIS = {}, cargado = false;
 
   function pad(n){ return (n<10?'0':'')+n; }
   function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
@@ -91,6 +91,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function fechaLarga(s){ var p=s.split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]); return DIAS[d.getDay()]+' '+d.getDate()+' de '+MESES[d.getMonth()]; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function sinPrefijo(n){ return String(n||'').replace(/^El Cubo\s*·\s*/i,''); }
+  /* Grupos de FUERZA GRATIS: su gente no está en cubo_altas (no son atletas ni
+     tienen cuenta), sino en cubo_prueba. Se reconoce por el nombre y su turno. */
+  function esGratis(g){ return !!g && /fuerza\s*gratis/i.test(g.nombre||''); }
+  function turnoDe(g){
+    var s = ((g&&(g.nombre||''))+' '+(g&&(g.horario||''))).toLowerCase();
+    if(s.indexOf('viernes')>=0) return 'viernes';
+    if(s.indexOf('sábado')>=0 || s.indexOf('sabado')>=0) return 'sabado';
+    if(s.indexOf('domingo')>=0) return 'domingo';
+    return null;
+  }
+  function cuenta(g){
+    if(esGratis(g)){ var t=turnoDe(g); return PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1; }).length; }
+    return ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera; }).length;
+  }
   function toast(msg,tipo){ var t=document.createElement('div'); t.className='cl-toast'+(tipo==='err'?' err':''); t.textContent=msg;
     document.body.appendChild(t); requestAnimationFrame(function(){ t.classList.add('ver'); });
     setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); },2000); }
@@ -100,6 +114,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     GRUPOS = g.error ? [] : (g.data||[]);
     var a = await sb.from('cubo_altas').select('id,nombre,apellidos,horario,atleta_id,estado,lista_espera').eq('estado','aprobada');
     ALTAS = a.error ? [] : (a.data||[]);
+    var p = await sb.from('cubo_prueba').select('id,nombre,apellidos,turnos,estado').neq('estado','cancelado');
+    PRUEBA = p.error ? [] : (p.data||[]);
     if(!sel && GRUPOS.length) sel = GRUPOS[0].id;
     cargado = true;
   }
@@ -107,31 +123,74 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargarAsis(){
     ASIS = {};
     if(!sel) return;
+    var g = grupoSel();
+    if(esGratis(g)){
+      var t = turnoDe(g);
+      var rp = await sb.from('cubo_prueba_asistencia').select('prueba_id,presente').eq('turno', t).eq('fecha', fecha);
+      if(!rp.error) (rp.data||[]).forEach(function(x){ ASIS[x.prueba_id] = !!x.presente; });
+      return;
+    }
     var r = await sb.from('asistencia').select('atleta_id,presente').eq('grupo_id', sel).eq('fecha', fecha);
     if(!r.error) (r.data||[]).forEach(function(x){ ASIS[x.atleta_id] = !!x.presente; });
   }
 
   function grupoSel(){ return GRUPOS.filter(function(g){ return g.id===sel; })[0] || null; }
+  /* Gente del grupo seleccionado, normalizada para pintar/marcar igual venga de
+     cubo_altas (de pago) o de cubo_prueba (gratis):
+       { id, nombre, apellidos, key, gratis, sinFicha }
+     · id  = lo que va en data-a y llega a marcar()
+     · key = con qué se guarda la asistencia (atleta_id de pago, prueba_id gratis) */
   function miembros(){
     var g = grupoSel(); if(!g) return [];
-    return ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera; })
-      .sort(function(x,y){ return (((x.apellidos||'')+' '+(x.nombre||'')).toLowerCase() < ((y.apellidos||'')+' '+(y.nombre||'')).toLowerCase()) ? -1 : 1; });
+    var arr;
+    if(esGratis(g)){
+      var t = turnoDe(g);
+      arr = PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1; }).map(function(p){
+        return { id:p.id, nombre:p.nombre, apellidos:p.apellidos, key:p.id, gratis:true, sinFicha:false };
+      });
+    } else {
+      arr = ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera; }).map(function(a){
+        return { id:a.id, nombre:a.nombre, apellidos:a.apellidos, key:a.atleta_id, gratis:false, sinFicha:!a.atleta_id };
+      });
+    }
+    return arr.sort(function(x,y){ return (((x.apellidos||'')+' '+(x.nombre||'')).toLowerCase() < ((y.apellidos||'')+' '+(y.nombre||'')).toLowerCase()) ? -1 : 1; });
   }
 
-  async function marcar(altaId){
-    var a = ALTAS.filter(function(x){ return x.id===altaId; })[0];
-    if(!a || !a.atleta_id){ toast('Esta ficha no está enlazada; avisa al club.','err'); return; }
-    var vino = !!ASIS[a.atleta_id];
+  async function marcar(id){
+    var g = grupoSel();
+    var m = miembros().filter(function(x){ return x.id===id; })[0];
+    if(!m) return;
+
+    // --- Turno de FUERZA GRATIS: asistencia por persona de la prueba ---
+    if(m.gratis){
+      var t = turnoDe(g), vinoP = !!ASIS[m.key];
+      if(vinoP){
+        var rdp = await sb.from('cubo_prueba_asistencia').delete().eq('prueba_id', m.key).eq('turno', t).eq('fecha', fecha);
+        if(rdp.error){ toast('No se pudo guardar','err'); return; }
+        delete ASIS[m.key];
+      } else {
+        var rup = await sb.from('cubo_prueba_asistencia').upsert(
+          { prueba_id:m.key, turno:t, fecha:fecha, presente:true, registrado_por:(perfil&&perfil.id)||null },
+          { onConflict:'prueba_id,turno,fecha' });
+        if(rup.error){ toast('No se pudo guardar: '+rup.error.message,'err'); return; }
+        ASIS[m.key] = true;
+      }
+      pintarLista(); return;
+    }
+
+    // --- Grupo de pago: asistencia por atleta (tabla asistencia) ---
+    if(!m.key){ toast('Esta ficha no está enlazada; avisa al club.','err'); return; }
+    var vino = !!ASIS[m.key];
     if(vino){
-      var rd = await sb.from('asistencia').delete().eq('atleta_id', a.atleta_id).eq('grupo_id', sel).eq('fecha', fecha);
+      var rd = await sb.from('asistencia').delete().eq('atleta_id', m.key).eq('grupo_id', sel).eq('fecha', fecha);
       if(rd.error){ toast('No se pudo guardar','err'); return; }
-      delete ASIS[a.atleta_id];
+      delete ASIS[m.key];
     } else {
       var ru = await sb.from('asistencia').upsert(
-        { atleta_id:a.atleta_id, grupo_id:sel, fecha:fecha, presente:true, registrado_por:(perfil&&perfil.id)||null },
+        { atleta_id:m.key, grupo_id:sel, fecha:fecha, presente:true, registrado_por:(perfil&&perfil.id)||null },
         { onConflict:'atleta_id,fecha,grupo_id' });
       if(ru.error){ toast('No se pudo guardar: '+ru.error.message,'err'); return; }
-      ASIS[a.atleta_id] = true;
+      ASIS[m.key] = true;
     }
     pintarLista();
   }
@@ -139,23 +198,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pintarLista(){
     var g = grupoSel();
     var chips = GRUPOS.map(function(x){
-      var n = ALTAS.filter(function(a){ return a.horario===x.nombre && !a.lista_espera; }).length;
       return '<button type="button" class="cl-chip'+(x.id===sel?' on':'')+'" data-g="'+esc(x.id)+'">'+esc(sinPrefijo(x.nombre))+
-        '<small>'+n+' personas</small></button>';
+        '<small>'+cuenta(x)+' personas</small></button>';
     }).join('');
 
     var lst = miembros();
-    var vinieron = lst.filter(function(a){ return ASIS[a.atleta_id]; }).length;
+    var vinieron = lst.filter(function(a){ return ASIS[a.key]; }).length;
+    var vacio = esGratis(g)
+      ? (UI ? UI.vacio('Nadie apuntado a este turno', 'Cuando alguien rellene el formulario de fuerza gratis para este día, aparecerá aquí.') : '<p>Nadie apuntado a este turno todavía.</p>')
+      : (UI ? UI.vacio('Nadie en este grupo', 'Cuando el club apruebe altas en este horario, aparecerán aquí.') : '<p>Nadie en este grupo todavía.</p>');
 
     var filas = lst.length ? lst.map(function(a){
-      var vino = !!ASIS[a.atleta_id];
-      var sinFicha = !a.atleta_id;
+      var vino = !!ASIS[a.key];
+      var sinFicha = a.sinFicha;
       return '<button type="button" class="cl-fila'+(vino?' vino':'')+'" data-a="'+esc(a.id)+'"'+(sinFicha?' disabled':'')+'>'+
         '<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>'+
         '<span class="nom"><b>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</b>'+(sinFicha?'<small>ficha sin enlazar</small>':'')+'</span>'+
         '<span class="est">'+(vino?'Vino':'—')+'</span>'+
       '</button>';
-    }).join('') : (UI ? UI.vacio('Nadie en este grupo', 'Cuando el club apruebe altas en este horario, aparecerán aquí.') : '<p>Nadie en este grupo todavía.</p>');
+    }).join('') : vacio;
 
     wrap.innerHTML =
       '<h1 class="saludo">Pasar lista</h1>'+
