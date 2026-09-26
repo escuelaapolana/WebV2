@@ -69,6 +69,12 @@
   };
 
   function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
+  /* La tarjeta «Administración» agrupa admin/tesorería/contabilidad/junta en un
+     solo botón (token de pantalla 'admin'), pero al backend hay que mandarle el
+     rol que la persona TIENE de verdad; si no, rol_activo_poner responde «ese
+     papel no es tuyo» a quien es junta/tesorero/contable pero no admin. El rol
+     real lo calcula cargar() en DATOS.adminReal. */
+  function rolReal(r) { return (r === 'admin' && DATOS && DATOS.adminReal) ? DATOS.adminReal : r; }
   function base() { return window.APOLANA_BASE || '../'; }
   function sb() { return window.APOLANA_DB; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -204,6 +210,10 @@
     if (DATOS && DATOS.roles && DATOS.roles.length) {
       var ADMIN_FAM = ['admin', 'tesoreria', 'contabilidad', 'junta'];
       var OK = ['atleta', 'entrenador', 'cubo', 'admin'];
+      /* El rol REAL detrás de la tarjeta «Administración»: el primero de la
+         familia que la persona tenga de verdad (admin > tesorería > contabilidad
+         > junta). Se envía este al cambiar, no el token colapsado 'admin'. */
+      DATOS.adminReal = ADMIN_FAM.filter(function (x) { return DATOS.roles.indexOf(x) !== -1; })[0] || null;
       var f = DATOS.roles
         .map(function (x) { return ADMIN_FAM.indexOf(x) !== -1 ? 'admin' : x; })
         .filter(function (x) { return OK.indexOf(x) !== -1; });
@@ -271,7 +281,7 @@
   }
 
   async function cambiar(rol) {
-    var r = await sb().rpc('rol_activo_poner', { p_rol: rol || null });
+    var r = await sb().rpc('rol_activo_poner', { p_rol: rolReal(rol) || null });
     if (r.error) { decir('No se ha podido cambiar: ' + r.error.message, 'error'); return false; }
     olvidar();
     /* Aviso a la zona nueva de que venimos de un cambio: así enseña la
@@ -343,8 +353,11 @@
           '<select id="pap-al-entrar">' +
             '<option value=""' + (!d.al_entrar ? ' selected' : '') + '>El último que usé</option>' +
             roles.map(function (r) {
+              /* d.al_entrar guarda el rol REAL (p.ej. 'junta'); la opción de la
+                 tarjeta colapsada es 'admin', así que también casa por adminReal. */
+              var selc = (d.al_entrar === r) || (r === 'admin' && !!DATOS && d.al_entrar === DATOS.adminReal);
               return '<option value="' + esc(r) + '"' +
-                (d.al_entrar === r ? ' selected' : '') + '>' + esc(titulo(r)) + '</option>';
+                (selc ? ' selected' : '') + '>' + esc(titulo(r)) + '</option>';
             }).join('') +
           '</select>' +
         '</div>' +
@@ -415,7 +428,7 @@
       sel.addEventListener('change', function () {
         var rol = sel.value || null;
         sel.disabled = true;
-        sb().rpc('rol_al_entrar_poner', { p_rol: rol }).then(function (r) {
+        sb().rpc('rol_al_entrar_poner', { p_rol: rolReal(rol) }).then(function (r) {
           sel.disabled = false;
           if (r.error) { sel.value = antes; decir('No se ha podido guardar: ' + r.error.message, 'error'); return; }
           antes = sel.value;
