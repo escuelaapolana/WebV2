@@ -27,6 +27,23 @@
 // ============================================================
 
 const BREVO_API_KEY = (Deno.env.get("BREVO_API_KEY") ?? "").trim();
+const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") ?? "").trim();
+const ANON_KEY = (Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "").trim();
+
+// Candado: solo administración. Antes era un endpoint público que enviaba correo
+// real sin límite (gasto de la cuota de Brevo) y filtraba remitente/destino/messageId.
+async function esAdmin(auth: string | null): Promise<boolean> {
+  if (!auth || !SUPABASE_URL) return false;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/es_admin`, {
+      method: "POST",
+      headers: { apikey: ANON_KEY, Authorization: auth, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!r.ok) return false;
+    return (await r.json()) === true;
+  } catch { return false; }
+}
 
 const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com").trim();
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
@@ -46,6 +63,11 @@ function responder(cuerpo: unknown, estado: number): Response {
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return responder({ ok: true }, 200);
+
+  // Solo administración (con su sesión). A cualquiera sin permiso, misma respuesta.
+  if (!(await esAdmin(req.headers.get("authorization")))) {
+    return responder({ error: "no_autorizado", mensaje: "Solo administración." }, 403);
+  }
 
   // Sin clave no se puede hacer nada: se avisa con buenos modales.
   if (!BREVO_API_KEY) {
@@ -88,10 +110,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }),
     });
   } catch (e) {
+    console.error("[correo-prueba] sin conexión con Brevo:", String(e));
     return responder({
       error: "sin_conexion",
       mensaje: "No se pudo contactar con Brevo. Vuelve a intentarlo en un minuto.",
-      detalle: String(e),
     }, 502);
   }
 
@@ -100,21 +122,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try { datos = JSON.parse(cuerpo); } catch { /* Brevo casi siempre da JSON */ }
 
   if (!respBrevo.ok) {
-    // Brevo devuelve { code, message } cuando algo falla (clave mala, remitente sin verificar…)
+    // El detalle de Brevo (clave mala, remitente sin verificar…) al registro, no al cliente.
+    console.error("[correo-prueba] Brevo rechazó:", respBrevo.status, datos ?? cuerpo);
     return responder({
       error: "brevo_rechazo",
-      estado: respBrevo.status,
-      brevo: datos ?? cuerpo,
-      remitente: REMITENTE_EMAIL,
-      destino: DESTINO_PRUEBA,
+      mensaje: "Brevo no aceptó el envío. Revisa la clave y el remitente en Supabase.",
     }, 502);
   }
 
   return responder({
     ok: true,
     mensaje: "Correo de prueba enviado.",
-    destino: DESTINO_PRUEBA,
-    remitente: REMITENTE_EMAIL,
-    brevo: datos,
   }, 200);
 });

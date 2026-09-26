@@ -114,11 +114,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (p) {
       perfilId = p.id;
       if (yaExistia) {
-        const roles: string[] = Array.isArray(p.roles) && p.roles.length ? p.roles.slice() : (p.rol ? [p.rol] : []);
-        if (!roles.includes("socio")) {
-          roles.push("socio");
-          await rest(`perfiles?id=eq.${perfilId}`, { method: "PATCH", body: JSON.stringify({ roles }) });
-        }
+        // Cuenta YA existente: no se le tocan los roles. Añadir 'socio' a una
+        // cuenta ajena identificada solo por el correo (sin comprobar la
+        // contraseña) sería modificar el perfil de un tercero. Si un socio real
+        // ya tenía cuenta, entra con su contraseña de siempre; si necesita el rol
+        // 'socio', se lo pone administración desde el panel.
       } else {
         await rest(`perfiles?id=eq.${perfilId}`, {
           method: "PATCH",
