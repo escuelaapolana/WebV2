@@ -70,6 +70,18 @@ async function yaTieneCuenta(email: string): Promise<boolean> {
 
 function corta(v: unknown, n: number): string { return String(v ?? "").trim().slice(0, n); }
 
+const PORTAL = Deno.env.get("ACCESO_REDIRECT_PORTAL") ?? "https://atletismoapolana.com/portal/";
+// Verificación por enlace: si el correo ya es del club, la cuenta nace SIN
+// contraseña y se manda un enlace mágico al correo real (nadie ocupa cuentas ajenas).
+async function correoDelClub(email: string): Promise<boolean> {
+  try { return (await rpc("correo_ya_del_club", { p_email: email })) === true; } catch { return false; }
+}
+async function enviarEnlace(email: string): Promise<void> {
+  try {
+    await api(`/auth/v1/otp`, { method: "POST", body: JSON.stringify({ email, should_create_user: false, options: { email_redirect_to: PORTAL }, redirect_to: PORTAL }) });
+  } catch (e) { console.error("[entrenador-alta] enlace:", e); }
+}
+
 type Ficha = {
   telefono: string; fecha_nacimiento: string; dni: string;
   sexo: string; direccion: string; cp: string; localidad: string;
@@ -167,19 +179,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return responder({ ok: false, error: (r && r.mensaje) || "No se ha podido. Inténtalo otra vez." }, 400, origen);
     }
 
-    // ¿Existe ya la cuenta? Si no, se crea con la contraseña puesta.
+    // ¿Existe ya la cuenta? Si no, se crea (sin contraseña si el correo ya es del club).
     let ya = "nuevo";
+    let verificar = false;
     if (r.ya === "perfil" || await yaTieneCuenta(email)) {
       ya = "cuenta";
     } else {
+      const conocido = await correoDelClub(email);
       const crear = await api(`/auth/v1/admin/users`, {
         method: "POST",
-        body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
+        body: JSON.stringify(conocido
+          ? { email, email_confirm: true, user_metadata: { nombre, apellidos } }
+          : { email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
       });
       if (!crear.ok) {
         console.error("[entrenador-alta] crear cuenta:", crear.status, await crear.text());
         return responder({ ok: false, error: "No se pudo crear la cuenta. Inténtalo otra vez." }, 500, origen);
       }
+      if (conocido) { await enviarEnlace(email); verificar = true; }
     }
 
     // 4 · Guardar la ficha (teléfono al perfil + datos sensibles a
@@ -187,7 +204,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     try { await guardarFicha(email, ficha); }
     catch (e) { console.error("[entrenador-alta] ficha:", e); }
 
-    return responder({ ok: true, ya }, 200, origen);
+    return responder({ ok: true, ya, verificar }, 200, origen);
   } catch (e) {
     console.error("[entrenador-alta]", e);
     return responder({ ok: false, error: "No se ha podido. Inténtalo en un rato." }, 500, origen);

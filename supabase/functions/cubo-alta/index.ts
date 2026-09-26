@@ -136,6 +136,23 @@ async function enviarConfirmacion(d: DatosCorreo): Promise<void> {
   }
 }
 
+const PORTAL = Deno.env.get("ACCESO_REDIRECT_PORTAL") ?? "https://atletismoapolana.com/portal/";
+// Verificación por enlace: si el correo ya es del club, la cuenta nace SIN
+// contraseña y se manda un enlace mágico al correo real (nadie ocupa cuentas ajenas).
+async function correoDelClub(email: string): Promise<boolean> {
+  const r = await rest(`rpc/correo_ya_del_club`, { method: "POST", body: JSON.stringify({ p_email: email }) });
+  return r.datos === true;
+}
+async function enviarEnlace(email: string): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
+      method: "POST",
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, should_create_user: false, options: { email_redirect_to: PORTAL }, redirect_to: PORTAL }),
+    });
+  } catch (e) { console.error("[cubo-alta] enlace:", e); }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -216,11 +233,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ---- 3 · Crear la cuenta. Un trigger crea el perfil (rol 'atleta' por
   //          defecto); justo después lo dejamos como 'cubo-atleta'. ----
+  const conocido = await correoDelClub(email);
   let yaExistia = false;
   const rCrea = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
     method: "POST",
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, email_confirm: true }),
+    body: JSON.stringify(conocido ? { email, email_confirm: true } : { email, password, email_confirm: true }),
   });
   if (!rCrea.ok) {
     const err = await rCrea.json().catch(() => null);
@@ -311,5 +329,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     dias, precio, lista: enListaEspera,
   });
 
-  return responder({ ok: true, ya_existia: yaExistia, perfil_id: perfilId, precio_mes: precio, lista_espera: enListaEspera }, 200, origen);
+  const verificar = conocido && !yaExistia;
+  if (verificar) await enviarEnlace(email);
+  return responder({ ok: true, ya_existia: yaExistia, verificar, perfil_id: perfilId, precio_mes: precio, lista_espera: enListaEspera }, 200, origen);
 });

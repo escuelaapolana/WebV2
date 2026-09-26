@@ -103,6 +103,18 @@ async function yaTieneCuenta(email: string): Promise<boolean> {
   return lista.some((u: { email?: string }) => (u.email ?? "").toLowerCase() === email);
 }
 
+const PORTAL = Deno.env.get("ACCESO_REDIRECT_PORTAL") ?? "https://atletismoapolana.com/portal/";
+// Verificación por enlace: si el correo ya es del club, la cuenta nace SIN
+// contraseña y se manda un enlace mágico al correo real (nadie ocupa cuentas ajenas).
+async function correoDelClub(email: string): Promise<boolean> {
+  try { return (await rpc("correo_ya_del_club", { p_email: email })) === true; } catch { return false; }
+}
+async function enviarEnlace(email: string): Promise<void> {
+  try {
+    await api(`/auth/v1/otp`, { method: "POST", body: JSON.stringify({ email, should_create_user: false, options: { email_redirect_to: PORTAL }, redirect_to: PORTAL }) });
+  } catch (e) { console.error("[acceso-grupo] enlace:", e); }
+}
+
 // ============================================================
 Deno.serve(async (peticion) => {
   const origen = peticion.headers.get("origin");
@@ -183,9 +195,12 @@ Deno.serve(async (peticion) => {
         filas.some((x: { rol?: string }) => x.rol === "entrenador" || x.rol === "coordinador");
     }
     if (esStaff) {
+      const conocidoT = await correoDelClub(email);
       const crearT = await api(`/auth/v1/admin/users`, {
         method: "POST",
-        body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
+        body: JSON.stringify(conocidoT
+          ? { email, email_confirm: true, user_metadata: { nombre, apellidos } }
+          : { email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
       });
       if (!crearT.ok) {
         console.error("[acceso-grupo] cuenta staff:", crearT.status, await crearT.text());
@@ -201,7 +216,8 @@ Deno.serve(async (peticion) => {
           body: JSON.stringify({ entrenador_id: uid }),
         });
       }
-      return responder({ ok: true, entrenador: true }, 200, origen);
+      if (conocidoT) await enviarEnlace(email);
+      return responder({ ok: true, entrenador: true, verificar: conocidoT }, 200, origen);
     }
 
     // 4 · El entrenador del grupo, para dejarlo puesto en la ficha.
@@ -253,19 +269,20 @@ Deno.serve(async (peticion) => {
     // 7 · La cuenta, con la contraseña que ha elegido el atleta y el correo
     //     ya confirmado. El disparador de la base crea el perfil y engancha
     //     la ficha por email.
+    const conocido = await correoDelClub(email);
     const crear = await api(`/auth/v1/admin/users`, {
       method: "POST",
-      body: JSON.stringify({
-        email, password, email_confirm: true,
-        user_metadata: { nombre, apellidos },
-      }),
+      body: JSON.stringify(conocido
+        ? { email, email_confirm: true, user_metadata: { nombre, apellidos } }
+        : { email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
     });
     if (!crear.ok) {
       console.error("[acceso-grupo] cuenta:", crear.status, await crear.text());
       return responder({ ok: false, error: "No se pudo crear la cuenta. ¿Ya te habías apuntado?" }, 500, origen);
     }
 
-    return responder({ ok: true }, 200, origen);
+    if (conocido) await enviarEnlace(email);
+    return responder({ ok: true, verificar: conocido }, 200, origen);
   } catch (e) {
     console.error("[acceso-grupo]", e);
     return responder({ ok: false, error: "Algo ha fallado. Inténtalo otra vez en un momento." }, 500, origen);
