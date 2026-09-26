@@ -70,7 +70,18 @@
     responsable: '#2E7D6B'
   };
 
-  function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
+  /* La sección de cada responsable, para etiquetar su papel por su área
+     ("Responsable natación", "Responsable escuela de atletismo"…). */
+  var AREA_SEC = { 'natacion': 'natación', 'escuela-natacion': 'natación', 'escuela-atletismo': 'escuela de atletismo', 'pista': 'pista', 'montana': 'montaña', 'triatlon': 'triatlón', 'running': 'running' };
+  function labelResponsable(secs) {
+    var areas = (secs || []).map(function (s) { return AREA_SEC[s] || s; })
+      .filter(function (v, i, a) { return a.indexOf(v) === i; });
+    return areas.length ? ('Responsable ' + areas.join(' y ')) : 'Responsable';
+  }
+  function titulo(r) {
+    if (r === 'responsable') return labelResponsable(DATOS && DATOS.responsable);
+    return (PAPEL[r] && PAPEL[r].titulo) || r;
+  }
   /* La tarjeta «Administración» agrupa admin/tesorería/contabilidad/junta en un
      solo botón (token de pantalla 'admin'), pero al backend hay que mandarle el
      rol que la persona TIENE de verdad; si no, rol_activo_poner responde «ese
@@ -334,7 +345,7 @@
             return '<button type="button" class="pap-op" data-rol="' + esc(r) + '"' +
               ' aria-current="' + act + '"' + (act ? ' disabled' : '') + '>' +
               '<span class="pap-ico" style="background:' + color + ';color:#fff">' + (ICO[r] || ICO.admin) + '</span>' +
-              '<span class="pap-t"><b>' + esc(p.titulo) + '</b>' +
+              '<span class="pap-t"><b>' + esc(titulo(r)) + '</b>' +
                 '<span data-pdte="' + esc(r) + '">' + esc(p.que) + '</span></span>' +
               (act ? '<span class="pap-ahora">Estás aquí</span>' : '<span class="pap-chev">' + CHEV + '</span>') +
             '</button>';
