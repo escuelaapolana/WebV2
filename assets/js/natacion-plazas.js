@@ -77,7 +77,7 @@
        (sin filtro) → todas. Las mixtas (Escuela + Máster) salen en ambas. */
   function filtrar(filas, filtro) {
     if (filtro === 'escuela') return filas.filter(function (f) { return /escuela/i.test(f.grupo || ''); });
-    if (filtro === 'master')  return filas.filter(function (f) { return /m[aá]ster|perfeccion/i.test(f.grupo || ''); });
+    if (filtro === 'master')  return filas.filter(function (f) { var g = f.grupo || ''; return /m[aá]ster|perfeccion/i.test(g) && !/escuela/i.test(g); });
     return filas;
   }
 
