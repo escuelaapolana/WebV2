@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestión de natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',monospace);
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.26); }
+  body { background:var(--crema,#FBF9F4); }
+  .ng-wrap { max-width:680px; margin:0 auto; padding:clamp(18px,4vw,26px) clamp(14px,4vw,26px) 40px; }
+  .saludo { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; letter-spacing:-0.01em;
+            font-size:clamp(23px,5.5vw,32px); line-height:1.02; color:var(--navy,#26374B); margin:4px 0 2px; }
+  .sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 16px; }
+  select, input[type=text] { font:inherit; font-size:14px; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE);
+            border-radius:9px; padding:7px 9px; background:#fff; }
+  .ng-franja-sel { width:100%; font-size:15.5px; padding:11px 12px; margin-bottom:16px; }
+  .ng-tarjeta { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px; box-shadow:var(--s1); padding:15px 16px; margin-bottom:16px; }
+  .ng-tarjeta h3 { font-family:var(--ap-titulo); font-size:15px; text-transform:uppercase; letter-spacing:.3px; color:var(--navy,#26374B); margin:0 0 12px; }
+  /* semáforo */
+  .ng-sem-op { display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:14px; cursor:pointer; }
+  .ng-niv-caja { display:flex; flex-wrap:wrap; gap:12px; margin:10px 0; }
+  .ng-niv-caja label { font-size:13.5px; display:inline-flex; gap:6px; align-items:center; cursor:pointer; }
+  .ng-crit { width:100%; box-sizing:border-box; min-height:54px; font:inherit; font-size:14px; border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:9px 11px; margin-top:6px; }
+  /* calles */
+  .ng-calle-tit { font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--texto-tenue,#9A927F); font-weight:700; margin:12px 0 7px; }
+  .ng-fila { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .ng-fila .nom { font-size:15px; font-weight:600; color:var(--navy,#26374B); }
+  .ng-fila .tag { font-size:11px; font-weight:600; color:var(--texto-suave,#6E6656); background:var(--crema,#F4EEE1); border-radius:999px; padding:1px 8px; margin-left:6px; }
+  .ng-fila .ctrl { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; align-items:center; }
+  .ng-fila .ctrl select { flex:0 1 auto; }
+  .ng-quitar { font:inherit; font-size:12.5px; color:#B3261E; background:#FBE3E1; border:1px solid #F1C7C3; border-radius:9px; padding:6px 10px; cursor:pointer; margin-left:auto; }
+  .ng-add { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px; }
+  .ng-add input { flex:1 1 150px; }
+  .ng-btn { font:inherit; font-weight:600; font-size:14px; background:var(--navy,#26374B); color:#fff; border:none; border-radius:10px; padding:9px 15px; cursor:pointer; }
+  .ng-btn--g { background:#2E7D6B; }
+  .ng-toast { position:fixed; left:50%; bottom:86px; transform:translate(-50%,14px); opacity:0; transition:.24s;
+              background:var(--navy,#26374B); color:#fff; font-size:14px; padding:10px 16px; border-radius:999px; z-index:60; }
+  .ng-toast.ver { opacity:1; transform:translate(-50%,0); }
+  .ng-toast.err { background:#B23B3B; }
+  .ng-vacio { color:var(--texto-suave,#6E6656); text-align:center; padding:26px 10px; }
+</style>
+</head>
+<body>
+
+  <div class="ng-wrap" id="ng"></div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('ng');
+  var FR = [], INS = [], sel = null, cargado = false;
+  var DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  var NIVELES = ['Iniciación', 'Desarrollo', 'Perfeccionamiento'];
+  var TIPOS = ['Escuela', 'Máster'];
+  var ORDEN_CALLE = { 'C1':1, 'C2':2, 'C3':3, 'Vaso':4 };
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function toast(msg, tipo){ var t=document.createElement('div'); t.className='ng-toast'+(tipo==='err'?' err':''); t.textContent=msg;
+    document.body.appendChild(t); requestAnimationFrame(function(){ t.classList.add('ver'); });
+    setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); }, 2200); }
+  function hhmm(h){ return String(h).slice(0,5); }
+  function franja(){ return FR.filter(function(f){ return f.id===sel; })[0] || null; }
+  function callesDe(f){ var c=[]; for (var k=1; k<=(f.calles||1); k++) c.push('C'+k); if (f.tiene_vaso) c.push('Vaso'); return c; }
+  function opciones(lista, val){ return lista.map(function(o){ return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join(''); }
+
+  async function cargar(){
+    var f = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,admite_niveles,criterio').order('orden');
+    FR = f.error ? [] : (f.data || []);
+    await recargarIns();
+    if (!sel && FR.length) sel = FR[0].id;
+    cargado = true;
+  }
+  async function recargarIns(){
+    var i = await sb.from('natacion_inscripciones').select('id,franja_id,calle,nombre,tipo,nivel').eq('activa', true);
+    if (!i.error) INS = i.data || [];
+  }
+  async function mut(prom, msgOk){
+    var r = await prom;
+    if (r.error){ toast('No se pudo guardar: ' + r.error.message, 'err'); return false; }
+    if (msgOk) toast(msgOk);
+    await recargarIns(); pintar(); return true;
+  }
+
+  function pintar(){
+    var f = franja();
+    if (!f){ wrap.innerHTML = '<h1 class="saludo">Gestión de natación</h1><p class="ng-vacio">No hay franjas, o no tienes permiso para verlas.</p>'; return; }
+    var calles = callesDe(f);
+    var suyos = INS.filter(function(m){ return m.franja_id===f.id; });
+    var porCalle = {}; suyos.forEach(function(m){ (porCalle[m.calle]=porCalle[m.calle]||[]).push(m); });
+    var callesOrden = Object.keys(porCalle).sort(function(a,b){ return (ORDEN_CALLE[a]||9)-(ORDEN_CALLE[b]||9); });
+    var franjaOpts = FR.map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===sel?' selected':'')+'>'+esc(DIAS[x.dia]+' '+hhmm(x.hora)+' · '+x.grupo)+'</option>'; }).join('');
+    var moverOpts = FR.filter(function(x){ return x.id!==f.id; }).map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(DIAS[x.dia]+' '+hhmm(x.hora))+'</option>'; }).join('');
+
+    var roster = callesOrden.length ? callesOrden.map(function(c){
+      var filas = porCalle[c].sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; }).map(function(m){
+        return '<div class="ng-fila">' +
+          '<span class="nom">'+esc(m.nombre)+'</span><span class="tag">'+esc(m.tipo)+'</span>' +
+          '<div class="ctrl">' +
+            '<select class="ng-sel-nivel" data-id="'+esc(m.id)+'" title="Nivel">'+opciones(NIVELES, m.nivel)+'</select>' +
+            '<select class="ng-sel-calle" data-id="'+esc(m.id)+'" title="Calle">'+opciones(calles, m.calle)+'</select>' +
+            '<select class="ng-sel-mover" data-id="'+esc(m.id)+'" title="Mover a otra franja"><option value="">Mover a…</option>'+moverOpts+'</select>' +
+            '<button type="button" class="ng-quitar" data-id="'+esc(m.id)+'">Quitar</button>' +
+          '</div></div>';
+      }).join('');
+      return '<div class="ng-calle-tit">Calle '+esc(c)+' · '+porCalle[c].length+'</div>'+filas;
+    }).join('') : '<p class="ng-vacio">Todavía no hay nadie en esta franja.</p>';
+
+    var niv = f.admite_niveles || [];
+    wrap.innerHTML =
+      '<h1 class="saludo">Gestión de natación</h1>' +
+      '<p class="sub">Elige una franja para ver y organizar sus nadadores por calle.</p>' +
+      '<select id="ng-franja" class="ng-franja-sel">'+franjaOpts+'</select>' +
+
+      '<div class="ng-tarjeta">' +
+        '<h3>Plazas / semáforo (lo que ve la web)</h3>' +
+        '<label class="ng-sem-op"><input type="radio" name="ng-sem" value="verde"'+(f.semaforo==='verde'?' checked':'')+'> 🟢 Admite</label>' +
+        '<label class="ng-sem-op"><input type="radio" name="ng-sem" value="ambar"'+(f.semaforo==='ambar'?' checked':'')+'> 🟠 Consultar</label>' +
+        '<label class="ng-sem-op"><input type="radio" name="ng-sem" value="rojo"'+(f.semaforo==='rojo'?' checked':'')+'> 🔴 Completo</label>' +
+        '<div class="ng-niv-caja">' + NIVELES.map(function(n){ return '<label><input type="checkbox" class="ng-niv" value="'+esc(n)+'"'+(niv.indexOf(n)!==-1?' checked':'')+'> '+esc(n)+'</label>'; }).join('') + '</div>' +
+        '<textarea id="ng-crit" class="ng-crit" placeholder="Nota para nuevas altas (opcional)">'+esc(f.criterio||'')+'</textarea>' +
+        '<div style="margin-top:10px"><button type="button" class="ng-btn ng-btn--g" id="ng-guardar-sem">Guardar plazas</button></div>' +
+      '</div>' +
+
+      '<div class="ng-tarjeta">' +
+        '<h3>Nadadores ('+suyos.length+')</h3>' + roster +
+        '<div class="ng-calle-tit" style="margin-top:16px">Añadir nadador</div>' +
+        '<div class="ng-add">' +
+          '<input type="text" id="ng-nom" placeholder="Nombre y apellidos">' +
+          '<select id="ng-tipo">'+opciones(TIPOS, /escuela/i.test(f.grupo)?'Escuela':'Máster')+'</select>' +
+          '<select id="ng-nivel">'+opciones(NIVELES, NIVELES[0])+'</select>' +
+          '<select id="ng-calle">'+opciones(calles, calles[0])+'</select>' +
+          '<button type="button" class="ng-btn" id="ng-anadir">Añadir</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  wrap.addEventListener('change', function(ev){
+    var t = ev.target;
+    if (t.id === 'ng-franja'){ sel = t.value; pintar(); return; }
+    if (t.classList.contains('ng-sel-nivel')){ mut(sb.from('natacion_inscripciones').update({ nivel: t.value }).eq('id', t.getAttribute('data-id'))); return; }
+    if (t.classList.contains('ng-sel-calle')){ mut(sb.from('natacion_inscripciones').update({ calle: t.value }).eq('id', t.getAttribute('data-id'))); return; }
+    if (t.classList.contains('ng-sel-mover') && t.value){ mut(sb.from('natacion_inscripciones').update({ franja_id: t.value }).eq('id', t.getAttribute('data-id')), 'Movido de franja'); return; }
+  });
+  wrap.addEventListener('click', function(ev){
+    var q = ev.target.closest ? ev.target.closest('.ng-quitar') : null;
+    if (q){ if (confirm('¿Quitar a este nadador de la franja?')) mut(sb.from('natacion_inscripciones').update({ activa:false }).eq('id', q.getAttribute('data-id')), 'Quitado'); return; }
+    if (ev.target.id === 'ng-anadir'){ anadir(); return; }
+    if (ev.target.id === 'ng-guardar-sem'){ guardarSem(); return; }
+  });
+
+  async function anadir(){
+    var nombre = (document.getElementById('ng-nom').value || '').trim();
+    if (!nombre){ toast('Pon el nombre', 'err'); return; }
+    var ok = await mut(sb.from('natacion_inscripciones').insert({
+      franja_id: sel, nombre: nombre,
+      tipo: document.getElementById('ng-tipo').value, nivel: document.getElementById('ng-nivel').value,
+      calle: document.getElementById('ng-calle').value, activa: true }), 'Añadido');
+  }
+  function guardarSem(){
+    var sem = document.querySelector('input[name=ng-sem]:checked');
+    var niveles = [].map.call(document.querySelectorAll('.ng-niv:checked'), function(c){ return c.value; });
+    var crit = (document.getElementById('ng-crit').value || '').trim();
+    mut(sb.from('natacion_franjas').update({ semaforo: sem ? sem.value : null, admite_niveles: niveles, criterio: crit }).eq('id', sel), 'Plazas guardadas');
+  }
+
+  if (!cargado){ wrap.innerHTML = '<div class="ap-esq" data-esq="filas:4"></div>'; await cargar(); }
+  pintar();
+});
+</script>
+</body>
+</html>
