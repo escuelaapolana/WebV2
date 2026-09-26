@@ -16,6 +16,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
+const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("PAGOS_ORIGENES") ?? Deno.env.get("CORREO_ORIGENES") ?? "")
@@ -49,6 +50,15 @@ async function rest(ruta: string, opciones: RequestInit = {}) {
 }
 const corta = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 
+// Un resumen del origen que no se puede deshacer: sirve para contar peticiones
+// sin guardar la IP de nadie (mismo patrón que acceso-enlace).
+async function resumen(texto: string): Promise<string> {
+  const bytes = new TextEncoder().encode(SAL + "·" + texto);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).slice(0, 12)
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -64,6 +74,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return responder({ error: "correo", mensaje: "Ese correo no parece válido." }, 400, origen);
   if (password.length < 8) return responder({ error: "clave", mensaje: "La contraseña necesita al menos 8 caracteres." }, 400, origen);
+
+  // 0 · Freno anti-abuso por origen (mismo patrón que acceso-enlace): sin esto,
+  //     cualquiera podía crear cuentas en masa o enumerar correos aporreando
+  //     esta puerta. 30 por origen y hora; de sobra para un alta de verdad.
+  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+  const ritmo = await rest(`rpc/alta_ritmo`, {
+    method: "POST",
+    body: JSON.stringify({ p_tipo: "socio-cuenta", p_origen: dedonde, p_max: 30 }),
+  });
+  if (ritmo.datos !== true) {
+    return responder({ error: "ritmo", mensaje: "Demasiados intentos desde aquí. Prueba de nuevo dentro de un rato." }, 429, origen);
+  }
 
   // 1 · Crear la cuenta (un trigger crea el perfil; luego lo dejamos 'socio').
   let yaExistia = false;

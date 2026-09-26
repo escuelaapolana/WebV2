@@ -274,11 +274,13 @@ Deno.serve(async (peticion) => {
     if (sePuede !== true) return comoSiempre(origen);
 
     // 2 · ¿Tiene derecho a entrar? Si el correo NO es de nadie del club, se
-    // dice CLARAMENTE (reconocido:false) para no dejar a la persona esperando
-    // un correo que no va a llegar; el portal le ofrece hacerse socio.
+    // responde EXACTAMENTE IGUAL que a un miembro (sin `reconocido`): de otro
+    // modo era un oráculo para enumerar quién pertenece al club (incluidas
+    // familias de menores). El aviso de "no reconocido" no puede darse aquí sin
+    // filtrar; quien no reciba el correo, que use "hacerse socio".
     const tieneDerecho = await rpc("acceso_puede_entrar", { p_email: email });
     if (tieneDerecho !== true) {
-      return responder({ ok: true, reconocido: false }, 200, origen);
+      return comoSiempre(origen);
     }
 
     // 3 · Cuenta, enganche y correo.

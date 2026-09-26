@@ -140,17 +140,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors() });
   if (req.method !== "GET" && req.method !== "POST") return responder({ error: "Método no admitido." }, 405);
 
-  const param = new URL(req.url).searchParams.get("url");
-  const url = (param && param.startsWith("http")) ? param : ICS_URL;
+  // SSRF: se IGNORA cualquier ?url= del cliente. Solo se lee el calendario
+  // configurado (GOOGLE_CAL_ICS_URL); antes esta función era un proxy abierto y
+  // un oráculo de red (devolvía el status/el error de conexión de la URL pedida).
+  const url = ICS_URL;
   if (!url) return responder({ error: "sin_configurar", mensaje: "Falta la dirección del calendario (GOOGLE_CAL_ICS_URL)." }, 200);
 
   let ics = "";
   try {
     const r = await fetch(url, { headers: { "User-Agent": "Apolana-web" } });
-    if (!r.ok) return responder({ error: "google", estado: r.status, mensaje: "No hemos podido leer el calendario." }, 200);
+    if (!r.ok) return responder({ error: "google", mensaje: "No hemos podido leer el calendario." }, 200);
     ics = await r.text();
   } catch (e) {
-    return responder({ error: "conexion", mensaje: "No hemos podido conectar con Google.", detalle: String(e) }, 200);
+    console.error("[calendario-google]", String(e));
+    return responder({ error: "conexion", mensaje: "No hemos podido conectar con Google." }, 200);
   }
 
   const todos = parsear(ics);
