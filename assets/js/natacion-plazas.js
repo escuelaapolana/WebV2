@@ -71,9 +71,20 @@
     cont.innerHTML = out.join('');
   }
 
+  /* Filtra las franjas según el data-filtro del contenedor:
+       'escuela' → franjas de la escuela (grupo con "Escuela")
+       'master'  → franjas de adultos (grupo con "Máster" o "Perfeccionamiento")
+       (sin filtro) → todas. Las mixtas (Escuela + Máster) salen en ambas. */
+  function filtrar(filas, filtro) {
+    if (filtro === 'escuela') return filas.filter(function (f) { return /escuela/i.test(f.grupo || ''); });
+    if (filtro === 'master')  return filas.filter(function (f) { return /m[aá]ster|perfeccion/i.test(f.grupo || ''); });
+    return filas;
+  }
+
   function init() {
     var cont = document.getElementById('cs-plazas-nat');
     if (!cont) return;
+    var filtro = (cont.getAttribute('data-filtro') || '').toLowerCase();
     var db = window.APOLANA_DB;
     if (!db) { return setTimeout(init, 80); }  // esperar a db.js (defer)
     db.from('natacion_vacantes')
@@ -81,7 +92,7 @@
       .order('dia', { ascending: true }).order('hora', { ascending: true })
       .then(function (res) {
         if (res.error || !res.data) { cont.innerHTML = ''; return; }
-        pintar(cont, res.data);
+        pintar(cont, filtrar(res.data, filtro));
       })
       .catch(function () { cont.innerHTML = ''; });
   }
