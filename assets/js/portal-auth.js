@@ -1501,6 +1501,7 @@
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
       socio:       { titulo: 'Socio',          desc: 'Noticias del club y actividades.',           url: b + 'portal/socio/',       carpeta: '/portal/socio/' },
+      responsable: { titulo: 'Responsable',    desc: 'Lo que gestionas de tu sección.',            url: b + 'portal/responsable/', carpeta: '/portal/responsable/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
     };
 
@@ -1686,13 +1687,16 @@
       if (rol === 'coordinador') anadir('coordinador');
       /* El socio de acceso básico: su zona es noticias + actividades. */
       if (rol === 'socio') anadir('socio');
+      /* Responsable de sección (natación, escuela…): su hub de tarjetas. Lo que
+         ve y gestiona dentro lo deciden las reglas de la base (soy_responsable). */
+      if (rol === 'responsable') anadir('responsable');
       /* Administración, tesorería, contabilidad y junta entran por la
          misma puerta: el panel. Lo que ven dentro lo deciden las reglas
          de la base, no esta lista. */
       if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
       /* La app se queda con estas vistas del portal (familia y coordinación
          se retiran); el socio entra a la suya. */
-      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'cubo-lista', 'socio', 'admin'];
+      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'cubo-lista', 'socio', 'admin', 'responsable'];
       return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
     }
 

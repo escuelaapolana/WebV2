@@ -43,6 +43,7 @@
     tesoreria:    { titulo: 'Tesorero',      que: 'Cobros, cuotas, remesas y excepciones.',        va: 'admin/',              mando: true },
     contabilidad: { titulo: 'Contable',      que: 'Socios y adultos: remesas y transferencias.',   va: 'admin/',              mando: true },
     coordinador:  { titulo: 'Coordinación',  que: 'Los grupos de tu sección.',                     va: 'portal/coordinador/', mando: true },
+    responsable:  { titulo: 'Responsable',   que: 'Lo que gestionas de tu sección.',               va: 'portal/responsable/', mando: true },
     junta:        { titulo: 'Junta',         que: 'El club, sin la parte del dinero.',             va: 'admin/',              mando: false },
     entrenador:   { titulo: 'Entrenador',    que: 'Tus grupos: planificar y pasar lista.',         va: 'portal/entrenador/',  mando: false },
     atleta:       { titulo: 'Atleta',        que: 'Tus entrenamientos, tus marcas y tus recibos.', va: 'portal/atleta/',      mando: false },
@@ -60,12 +61,13 @@
     escuela:      { titulo: 'Escuela',       que: 'Altas, niños y grupos de la escuela, y la ropa.', va: 'admin/',           mando: true },
     cubo:         { titulo: 'El Cubo',       que: 'Clases, reservas y bonos de El Cubo.',          va: 'admin/cubo/',         mando: true }
   };
-  var ORDEN = ['atleta', 'padre', 'cubo-atleta', 'entrenador', 'cubo-lista', 'coordinador', 'escuela', 'cubo', 'tesoreria', 'contabilidad', 'admin', 'junta'];
+  var ORDEN = ['atleta', 'padre', 'cubo-atleta', 'entrenador', 'cubo-lista', 'responsable', 'coordinador', 'escuela', 'cubo', 'tesoreria', 'contabilidad', 'admin', 'junta'];
   /* Color del icono de cada rol en la hoja «cambiar de vista», como la maqueta. */
   var COLORROL = {
     atleta: '#3B85C0', padre: '#7A5CA8', entrenador: '#2E7D6B', coordinador: '#C36A4E',
     escuela: '#4E8A3E', cubo: '#6B5B8A', tesoreria: '#B07A2E', contabilidad: '#2F6FA8',
-    admin: '#C9A23A', junta: '#8A6A4E', 'cubo-atleta': '#4E7C8A', 'cubo-lista': '#2E7D6B'
+    admin: '#C9A23A', junta: '#8A6A4E', 'cubo-atleta': '#4E7C8A', 'cubo-lista': '#2E7D6B',
+    responsable: '#2E7D6B'
   };
 
   function titulo(r) { return (PAPEL[r] && PAPEL[r].titulo) || r; }
@@ -185,7 +187,8 @@
     tesoreria:    ic('<rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="M3.5 10.5h17"/>'),
     contabilidad: ic('<rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="M3.5 10.5h17"/>'),
     admin:        ic('<path d="M4 6.5h16M7 12h10M10 17.5h4"/>'),
-    junta:        ic('<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/>')
+    junta:        ic('<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/>'),
+    responsable:  ic('<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>')
   };
   var CHEV = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -209,7 +212,7 @@
        deja lo que tenga (no se le encierra). */
     if (DATOS && DATOS.roles && DATOS.roles.length) {
       var ADMIN_FAM = ['admin', 'tesoreria', 'contabilidad', 'junta'];
-      var OK = ['atleta', 'entrenador', 'cubo', 'admin'];
+      var OK = ['atleta', 'entrenador', 'cubo', 'admin', 'responsable'];
       /* El rol REAL detrás de la tarjeta «Administración»: el primero de la
          familia que la persona tenga de verdad (admin > tesorería > contabilidad
          > junta). Se envía este al cambiar, no el token colapsado 'admin'. */
