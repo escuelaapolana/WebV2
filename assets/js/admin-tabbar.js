@@ -341,6 +341,30 @@
 
   document.head.appendChild(css);
 
+  /* FLUIDEZ del panel · La transición suave entre páginas (crossfade, con la
+     barra lateral FIJA) hay que declararla PRONTO —antes del primer pintado—
+     para que la lateral no se «cierre y abra» en cada navegación. Y se precarga
+     el shell de mundos, para que la barra no aparezca con retraso. */
+  var _shellCbs = [];
+  (function () {
+    try {
+      var vt = document.createElement('style');
+      vt.textContent = '@view-transition{navigation:auto}' +
+        '@media (min-width:900px){.at-side{view-transition-name:mm-lateral}}';
+      document.head.appendChild(vt);
+    } catch (e) {}
+    try {
+      var s = document.createElement('script');
+      s.src = base() + 'assets/js/mundos.js';
+      s.setAttribute('data-mundos-shell', '1');
+      s.onload = function () {
+        var sh = window.APOLANA_MUNDOS_SHELL;
+        if (sh) { var cbs = _shellCbs; _shellCbs = []; cbs.forEach(function (cb) { cb(sh); }); }
+      };
+      document.head.appendChild(s);
+    } catch (e) {}
+  })();
+
   /* ---------- pestañas ---------- */
   function pestanas() {
     var r = raiz();
@@ -1031,14 +1055,23 @@
     });
   }
 
-  /* Carga assets/js/mundos.js (si aún no está) y entrega su API compartida.
-     Si fallara, el panel se queda sin lateral pero la página funciona igual. */
+  /* Entrega la API compartida del shell (assets/js/mundos.js), que ya se
+     precargó arriba. Si aún no terminó de cargar, se apunta a la cola; si por
+     lo que sea no se precargó, se carga aquí. Si fallara, el panel se queda sin
+     lateral pero la página funciona igual. */
   function conShell(cb) {
     if (window.APOLANA_MUNDOS_SHELL) { cb(window.APOLANA_MUNDOS_SHELL); return; }
-    var s = document.createElement('script');
-    s.src = base() + 'assets/js/mundos.js';
-    s.onload = function () { if (window.APOLANA_MUNDOS_SHELL) cb(window.APOLANA_MUNDOS_SHELL); };
-    document.head.appendChild(s);
+    _shellCbs.push(cb);
+    if (!document.querySelector('script[data-mundos-shell]')) {
+      var s = document.createElement('script');
+      s.src = base() + 'assets/js/mundos.js';
+      s.setAttribute('data-mundos-shell', '1');
+      s.onload = function () {
+        var sh = window.APOLANA_MUNDOS_SHELL;
+        if (sh) { var cbs = _shellCbs; _shellCbs = []; cbs.forEach(function (cb2) { cb2(sh); }); }
+      };
+      document.head.appendChild(s);
+    }
   }
 
   /* ---------- pintado ---------- */
