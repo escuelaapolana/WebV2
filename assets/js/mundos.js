@@ -138,6 +138,54 @@
     document.head.appendChild(sr);
   } catch (e) {}
 
+  /* ---------- conmutador de mundos, con ACCESO POR PERSONA ----------
+     El conmutador enseña solo los mundos a los que la persona puede entrar
+     (RPC `mis_mundos`: admin = todos; el resto = los de sus secciones de
+     responsable). Mientras llega la respuesta se enseña solo el mundo actual
+     (nunca mundos que no son suyos); se cachea por sesión para que sea
+     instantáneo en las siguientes páginas. Si no hay sesión/cliente, se deja
+     lo que haya (la protección de datos la siguen haciendo las reglas RLS). */
+  var CACHE_KEY = 'apolana-mis-mundos';
+  var worldsBox = null;
+
+  function worldRowHtml(w) {
+    var act = w.key === M.key;
+    return '<a class="mm-w" href="' + esc(w.home) + '" style="--pt:' + w.dot + '" ' +
+      'aria-current="' + act + '"' + (act ? ' aria-label="Estás en ' + esc(w.nombre) + '"' : '') + '>' +
+      '<span class="pt"></span><span class="nm">' + esc(w.nombre) + '</span></a>';
+  }
+  function worldsHtml(keys) {
+    var list;
+    if (!keys) { list = MUNDOS; }                 // null = todos (admin)
+    else {
+      list = MUNDOS.filter(function (w) { return keys.indexOf(w.key) !== -1; });
+      if (!list.some(function (w) { return w.key === M.key; })) list = [M].concat(list); // el actual siempre
+    }
+    return list.map(worldRowHtml).join('');
+  }
+  function pintaMundos(keys) { if (worldsBox) worldsBox.innerHTML = worldsHtml(keys); }
+
+  function leerCache() {
+    try { var v = sessionStorage.getItem(CACHE_KEY); if (v === 'todos') return null; if (v) return JSON.parse(v); } catch (e) {}
+    return undefined; // sin cache
+  }
+  function guardarCache(keys) { try { sessionStorage.setItem(CACHE_KEY, keys == null ? 'todos' : JSON.stringify(keys)); } catch (e) {} }
+
+  var _intentos = 0;
+  function cargarMisMundos() {
+    var c = window.APOLANA_DB;
+    if (!c || !c.rpc) { if (_intentos++ < 6) setTimeout(cargarMisMundos, 400); return; }
+    var listo = (c.auth && c.auth.getSession) ? c.auth.getSession() : Promise.resolve();
+    listo.then(function () { return c.rpc('mis_mundos'); }).then(function (r) {
+      if (!r || r.error || !Array.isArray(r.data)) return;   // error: deja lo que haya
+      var keys = r.data;
+      var todas = MUNDOS.every(function (w) { return keys.indexOf(w.key) !== -1; });
+      var val = todas ? null : keys;   // admin (todos) -> null, a prueba de mundos futuros
+      guardarCache(val);
+      pintaMundos(val);
+    }).catch(function () {});
+  }
+
   /* ---------- montaje ---------- */
   function montar() {
     var content = CFG.contentSel ? document.querySelector(CFG.contentSel) : null;
@@ -152,12 +200,8 @@
     side.style.setProperty('--mm-acento', acento);
     side.setAttribute('aria-label', 'Mundos del panel');
 
-    var worlds = MUNDOS.map(function (w) {
-      var act = w.key === M.key;
-      return '<a class="mm-w" href="' + esc(w.home) + '" style="--pt:' + w.dot + '" ' +
-        'aria-current="' + act + '"' + (act ? ' aria-label="Estás en ' + esc(w.nombre) + '"' : '') + '>' +
-        '<span class="pt"></span><span class="nm">' + esc(w.nombre) + '</span></a>';
-    }).join('');
+    var _cache = leerCache();
+    var worlds = worldsHtml(_cache === undefined ? [M.key] : _cache);
 
     var navHtml = '';
     if (M.screens && M.screens.length) {
@@ -188,6 +232,10 @@
     main.appendChild(content);
     layout.appendChild(side);
     layout.appendChild(main);
+
+    // Acceso por persona: enseñar solo los mundos de cada uno (async).
+    worldsBox = side.querySelector('.mm-worlds');
+    cargarMisMundos();
   }
 
   if (document.readyState === 'loading') {
