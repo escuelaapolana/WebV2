@@ -391,6 +391,11 @@
         { txt: 'Repartir la escuela',     url: r + 'repartir/',   desc: 'colocar a cada niño en su grupo' },
         { txt: 'Histórico de la escuela', url: r + 'historico/',  desc: 'las temporadas pasadas' }
       ] },
+      { t: 'Natación', enlaces: [
+        { txt: 'Todos los de natación', url: r + 'natacion/',                        desc: 'la lista completa: adultos y escuela, con su franja, calle y nivel' },
+        { txt: 'Gestionar franjas',     url: base() + 'portal/natacion-gestion/',    desc: 'días, calles, cupos, semáforo, altas y bajas' },
+        { txt: 'Quién falta hoy',       url: base() + 'portal/natacion-asistencia/', desc: 'pasar lista de natación, por franja' }
+      ] },
       { t: 'Socios', enlaces: [
         { txt: 'Socios y estado',    url: r + 'socios/',         desc: 'quién es socio, al día o impago, filtros y los que pasan a socio' },
         { txt: 'Altas de socio',     url: r + 'altas/?tipo=socio', desc: 'las solicitudes de socio por revisar' }

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Natación · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media,#F1EADC); }
+  .admin-wrap { max-width: 900px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .na-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(26px,5vw,34px); color: var(--navy); margin: 0 0 4px; }
+  .na-cab p { font-size: 15px; color: var(--texto-suave); margin: 0 0 18px; max-width: 62ch; line-height: 1.55; }
+  .na-cab p a { color: var(--azul-oscuro,#2F6FA8); }
+  /* barra: buscar + filtro + contadores */
+  .na-barra { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+  .na-barra input { flex: 1 1 240px; max-width: 340px; box-sizing: border-box; min-height: 44px; padding: 10px 14px;
+    border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 999px; background: #fff; font-family: inherit; font-size: 15px; color: var(--navy); }
+  .na-fil { display: inline-flex; background: #fff; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 999px; padding: 3px; }
+  .na-fil button { border: 0; background: transparent; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--texto-suave,#6E6656);
+    padding: 8px 14px; min-height: 38px; border-radius: 999px; cursor: pointer; }
+  .na-fil button[aria-pressed="true"] { background: var(--navy,#26374B); color: #fff; }
+  .na-cuenta { margin-left: auto; font-family: var(--fuente-dato,monospace); font-size: 13.5px; color: var(--texto-suave); }
+  .na-cuenta b { color: var(--navy); }
+  /* tarjetas de persona */
+  .na-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%,420px),1fr)); gap: 12px; }
+  .na-card { background: #fff; border: 1px solid var(--linea,#EAE3D5); border-radius: 14px; box-shadow: var(--sombra-suave,0 3px 8px rgba(30,45,65,.07)); padding: 14px 16px; }
+  .na-top { display: flex; align-items: center; gap: 11px; }
+  .na-ava { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px; color: #fff; }
+  .na-ava.esc { background: #2E7D6B; } .na-ava.mas { background: #2F6FA8; }
+  .na-nom { flex: 1 1 auto; min-width: 0; }
+  .na-nom b { display: block; font-size: 16px; color: var(--navy,#26374B); line-height: 1.15; }
+  .na-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; border-radius: 999px; padding: 2px 9px; margin-top: 3px; }
+  .na-badge.esc { background: #E3F1EA; color: #1c5a49; } .na-badge.mas { background: #EAF2F9; color: #235e8f; }
+  .na-cod { flex: 0 0 auto; font-family: var(--fuente-dato,monospace); font-size: 12px; color: var(--texto-tenue,#9A927F); background: var(--crema,#FBF9F4); border: 1px solid var(--linea,#EAE3D5); border-radius: 8px; padding: 4px 8px; }
+  .na-franjas { margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--linea,#EAE3D5); display: flex; flex-direction: column; gap: 6px; }
+  .na-fr { display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; color: var(--texto,#4A4437); }
+  .na-fr .dia { font-weight: 600; color: var(--navy,#26374B); min-width: 118px; }
+  .na-fr .det { color: var(--texto-suave,#6E6656); }
+  .na-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 12px; }
+</style>
+</head>
+<body>
+  <div class="admin-wrap" id="na"></div>
+
+<script>
+APOLANA_ADMIN.listo(async function (sb) {
+  var wrap = document.getElementById('na');
+  var DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  var ORDEN_CALLE = { 'C1':1,'C2':2,'C3':3,'C4':4,'Vaso':9 };
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function hhmm(h){ return String(h).slice(0,5); }
+  function ini(n){ var p=String(n||'').trim().split(/\s+/); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
+
+  wrap.innerHTML = '<div class="ap-esq" data-esq="filas:4"></div>';
+
+  var rf = await sb.from('natacion_franjas').select('id,dia,hora,grupo');
+  var ri = await sb.from('natacion_inscripciones').select('nombre,tipo,calle,nivel,acceso_id,franja_id').eq('activa', true);
+  var ra = await sb.from('natacion_accesos').select('id,codigo,nombre');
+  if (rf.error || ri.error){ wrap.innerHTML = '<p class="na-vacio">No hemos podido cargar la natación. Recarga en un momento.</p>'; return; }
+  var FR = {}; (rf.data||[]).forEach(function(f){ FR[f.id]=f; });
+  var COD = {}; (ra.error?[]:(ra.data||[])).forEach(function(a){ COD[a.id]=a.codigo; });
+
+  // Agrupar por PERSONA (por su código de familia; si no, por nombre).
+  var pers = {};
+  (ri.data||[]).forEach(function(m){
+    var k = m.acceso_id || ('nom:'+m.nombre);
+    var p = pers[k] || (pers[k] = { nombre:m.nombre, codigo: COD[m.acceso_id]||'', tipos:{}, franjas:[] });
+    if (m.tipo) p.tipos[m.tipo] = true;
+    var f = FR[m.franja_id];
+    if (f) p.franjas.push({ dia:f.dia, hora:hhmm(f.hora), grupo:f.grupo, calle:m.calle, nivel:m.nivel, tipo:m.tipo });
+  });
+  var LISTA = Object.keys(pers).map(function(k){ return pers[k]; });
+  LISTA.forEach(function(p){ p.franjas.sort(function(a,b){ return a.dia!==b.dia ? a.dia-b.dia : (a.hora<b.hora?-1:1); }); });
+  LISTA.sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; });
+
+  var nEsc = LISTA.filter(function(p){ return p.tipos['Escuela']; }).length;
+  var nMas = LISTA.filter(function(p){ return p.tipos['Máster']; }).length;
+
+  var filtro = 'todos', busca = '';
+  function pinta(){
+    var q = busca.trim().toLowerCase();
+    var vis = LISTA.filter(function(p){
+      if (filtro==='escuela' && !p.tipos['Escuela']) return false;
+      if (filtro==='adultos' && !p.tipos['Máster']) return false;
+      if (q && (p.nombre||'').toLowerCase().indexOf(q)===-1) return false;
+      return true;
+    });
+    var cards = vis.length ? vis.map(function(p){
+      var esEsc = !!p.tipos['Escuela'], esMas = !!p.tipos['Máster'];
+      var badge = esEsc && esMas ? '<span class="na-badge esc">Escuela</span> <span class="na-badge mas">Adultos</span>'
+        : esEsc ? '<span class="na-badge esc">Escuela</span>' : '<span class="na-badge mas">Adultos</span>';
+      var franjas = p.franjas.map(function(f){
+        return '<div class="na-fr"><span class="dia">'+esc(DIAS[f.dia]+' '+f.hora)+'</span>' +
+          '<span class="det">'+esc(f.calle)+' · '+esc(f.nivel||'—')+'</span></div>';
+      }).join('');
+      return '<div class="na-card">' +
+        '<div class="na-top">' +
+          '<span class="na-ava '+(esEsc&&!esMas?'esc':'mas')+'">'+esc(ini(p.nombre).toUpperCase())+'</span>' +
+          '<span class="na-nom"><b>'+esc(p.nombre)+'</b>'+badge+'</span>' +
+          (p.codigo ? '<span class="na-cod" title="Código de familia">'+esc(p.codigo)+'</span>' : '') +
+        '</div>' +
+        '<div class="na-franjas">'+franjas+'</div>' +
+      '</div>';
+    }).join('') : '<p class="na-vacio">Nadie con ese filtro.</p>';
+
+    wrap.innerHTML =
+      '<div class="na-cab"><h1>Natación</h1>' +
+        '<p>Todos los de natación, adultos y escuela, cada uno con sus días, su calle y su nivel. Para organizar franjas, calles y cupos usa <a href="../../portal/natacion-gestion/">Gestionar franjas</a>.</p></div>' +
+      '<div class="na-barra">' +
+        '<input type="search" id="na-q" placeholder="Buscar por nombre…" value="'+esc(busca)+'">' +
+        '<div class="na-fil" role="group" aria-label="Filtrar">' +
+          '<button data-f="todos" aria-pressed="'+(filtro==='todos')+'">Todos</button>' +
+          '<button data-f="escuela" aria-pressed="'+(filtro==='escuela')+'">Escuela</button>' +
+          '<button data-f="adultos" aria-pressed="'+(filtro==='adultos')+'">Adultos</button>' +
+        '</div>' +
+        '<span class="na-cuenta"><b>'+vis.length+'</b> · '+nEsc+' escuela · '+nMas+' adultos</span>' +
+      '</div>' +
+      '<div class="na-lista">'+cards+'</div>';
+
+    var qi = document.getElementById('na-q');
+    if (qi){ qi.addEventListener('input', function(){ busca = qi.value; var pos=qi.selectionStart; pinta(); var n=document.getElementById('na-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(e){} } }); }
+  }
+  wrap.addEventListener('click', function(ev){
+    var b = ev.target.closest ? ev.target.closest('[data-f]') : null;
+    if (b){ filtro = b.getAttribute('data-f'); pinta(); }
+  });
+  pinta();
+});
+</script>
+</body>
+</html>
