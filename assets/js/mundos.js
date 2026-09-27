@@ -152,6 +152,9 @@
     css.setAttribute('data-piel', 'mundos');
     css.textContent =
       '@view-transition{navigation:auto}' +
+      /* La barra lateral NO se anima en la transición: se queda quieta (sin
+         deslizarse). Solo el contenido hace crossfade. */
+      '::view-transition-group(mm-lateral){animation:none}' +
       '.mm-side{display:none}' +
       '@media (min-width:900px){' +
         '.mm-layout{display:grid;grid-template-columns:262px minmax(0,1fr);gap:26px;' +

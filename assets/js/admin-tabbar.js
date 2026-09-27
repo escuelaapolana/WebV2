@@ -350,6 +350,7 @@
     try {
       var vt = document.createElement('style');
       vt.textContent = '@view-transition{navigation:auto}' +
+        '::view-transition-group(mm-lateral){animation:none}' +   /* la lateral no se desliza */
         '@media (min-width:900px){.at-side{view-transition-name:mm-lateral}}';
       document.head.appendChild(vt);
     } catch (e) {}
@@ -1136,10 +1137,16 @@
     })();
   }
 
+  /* La barra lateral se construye CUANTO ANTES (no necesita la sesión: es
+     navegación), para que ya esté puesta antes del primer pintado y no
+     «aparezca» ni se deslice al cambiar de página. El resto (barra flotante de
+     móvil) sí espera a la señal de sesión. admin-auth solo añade su barra navy
+     con insertBefore en el body, así que no pisa el layout. */
+  function pronto() { try { pintarLateral(); } catch (e) {} }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', arrancar);
+    document.addEventListener('DOMContentLoaded', function () { pronto(); arrancar(); });
   } else {
-    arrancar();
+    pronto(); arrancar();
   }
 })();
 
