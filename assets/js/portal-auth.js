@@ -63,6 +63,9 @@
   var _tipoEnlace = '';    // qué enlace era: 'recovery' si venía de «cambiar la contraseña»
   var _forzarClave = false; // viene de «cambiar la contraseña» (marca en la URL, ver abajo)
   var _claveRecienPuesta = false; // acaba de guardar la contraseña: no volver a pedirla
+  var _poniendoClave = false; // mostrando «Ponte una contraseña»: NADA la reinicia por detrás
+                              // (un re-arranque tapaba esa pantalla con el aviso de «no carga la ficha»
+                              //  mientras el usuario iba a repetir la contraseña → se quedaba a medias)
   (function () {
     var h = (location.hash || '').replace(/^#/, '');
     if (!h || h.indexOf('=') === -1) return;
@@ -1362,6 +1365,7 @@
       extras(false);
       document.getElementById('pt-clave-mail').textContent = email;
       document.getElementById('pt-clave-msg').textContent = '';
+      _poniendoClave = true;   // a partir de aquí, nada reinicia esta pantalla
       try { elClave1.focus(); } catch (e) {}
     }
 
@@ -1389,6 +1393,7 @@
       var elT = login.querySelector('h1');
       if (elT) elT.hidden = false;
       extras(true);
+      _poniendoClave = false;   // ya no está en «Ponte una contraseña»
       arranque();
     }
 
@@ -1470,6 +1475,7 @@
        quiere, se sale y se vuelve a entrar por el enlace otro día. */
     document.getElementById('pt-clave-salir').addEventListener('click', async function () {
       _forzarClave = false;
+      _poniendoClave = false;
       try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}   // no volver a forzar
       try { await sb.auth.signOut(); } catch (e) {}
       // Quitar ?recuperar=1 de la URL para que un login normal no re-fuerce.
@@ -1781,6 +1787,11 @@
     }
 
     async function arranque() {
+      /* Mientras alguien pone su contraseña por primera vez, NO se reinicia por
+         detrás: un segundo arranque (por el evento de sesión o el doble arranque
+         del arranque en frío) tapaba esa pantalla con el aviso de «no hemos
+         podido cargar tu ficha» justo cuando iba a repetir la contraseña. */
+      if (_poniendoClave) return;
       /* Ninguna llamada del arranque puede colgar la app: si tarda demasiado se
          resuelve con un valor por defecto y se sigue (login, reintento o zona
          vacía) en vez de quedarse cargando para siempre. Era la raíz del
@@ -2127,7 +2138,7 @@
        perdido. Con esto y con ?recuperar=1, una de las dos siempre pilla. */
     try {
       sb.auth.onAuthStateChange(function (evento) {
-        if (evento === 'PASSWORD_RECOVERY') { _forzarClave = true; arranque(); }
+        if (evento === 'PASSWORD_RECOVERY') { _forzarClave = true; if (_poniendoClave) return; arranque(); }
       });
     } catch (e) { /* sin evento, queda la marca de la URL */ }
 
