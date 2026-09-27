@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reservas y abono · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>
+  window.APOLANA_BASE="../../";
+  window.APOLANA_MUNDO = { world:"natacion", screen:"reservas", contentSel:"#rv" };
+</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/mundos.js" defer></script>
+<style>
+  :root{ --mm-acento:#2F6FA8; }
+  body{ background:var(--crema,#FBF9F4); }
+  #rv{ max-width:860px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 60px; }
+  .rv-cab h1{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(24px,5vw,32px); color:var(--navy); margin:0 0 3px; }
+  .rv-cab p{ font-size:14.5px; color:var(--texto-suave); margin:0 0 16px; max-width:64ch; line-height:1.5; }
+  .rv-rot{ font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--texto-suave); margin:22px 0 11px; }
+  .rv-fecha{ display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:12px 16px; }
+  .rv-fecha input[type=date]{ font:inherit; font-size:15px; color:var(--navy); border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:8px 11px; background:#fff; }
+  .rv-fecha .dtxt{ margin-left:auto; font-size:13.5px; color:var(--texto-suave); }
+
+  .rv-card{ background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:14px 16px; margin-bottom:11px; }
+  .rv-top{ display:flex; align-items:center; gap:11px; flex-wrap:wrap; }
+  .rv-top b{ font-family:var(--fuente-titulo); font-size:17px; color:var(--navy); }
+  .rv-chips{ display:flex; gap:7px; flex-wrap:wrap; margin-left:auto; font-size:12.5px; color:var(--texto-suave); }
+  .rv-chip{ background:var(--crema,#F4EEE1); border:1px solid var(--linea,#EAE3D5); border-radius:999px; padding:2px 10px; }
+  .rv-hue{ font-weight:700; border-radius:999px; padding:2px 11px; }
+  .rv-hue.v{ background:#E3F1EA; color:#1c5a49; } .rv-hue.r{ background:#FBE3E1; color:#B3261E; }
+  .rv-reservar{ margin-top:11px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .rv-reservar select{ flex:1 1 200px; min-width:160px; font:inherit; font-size:14px; color:var(--navy); border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:9px 11px; background:#fff; }
+  .rv-btn{ font:inherit; font-weight:600; font-size:14px; background:var(--mm-acento,#2F6FA8); color:#fff; border:0; border-radius:10px; padding:9px 16px; min-height:42px; cursor:pointer; }
+  .rv-btn.sec{ background:#fff; color:var(--navy); border:1px solid var(--linea-borde,#D4CBB9); }
+  .rv-btn:disabled{ opacity:.5; cursor:default; }
+  .rv-nada{ color:var(--texto-suave); font-size:14px; padding:6px 2px; }
+
+  .rv-fila{ display:flex; align-items:center; gap:11px; padding:10px 0; border-top:1px solid var(--linea,#EFEAE0); }
+  .rv-fila:first-child{ border-top:0; }
+  .rv-fila .nom{ flex:1 1 auto; min-width:0; font-size:15px; color:var(--navy); font-weight:600; }
+  .rv-fila .sub{ font-size:12.5px; color:var(--texto-suave); font-weight:400; }
+  .rv-saldo{ font-family:var(--fuente-dato); font-weight:700; color:var(--navy); min-width:26px; text-align:center; }
+  .rv-mini{ width:34px; height:34px; border-radius:9px; border:1px solid var(--linea-borde,#D4CBB9); background:#fff; font-size:18px; color:var(--navy); cursor:pointer; }
+  .rv-quitar{ font:inherit; font-size:12.5px; color:#B3261E; background:#FBE3E1; border:1px solid #F1C7C3; border-radius:9px; padding:6px 11px; cursor:pointer; }
+  .rv-add{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  .rv-add select{ flex:1 1 200px; font:inherit; font-size:14px; color:var(--navy); border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:9px 11px; background:#fff; }
+  .rv-add input[type=number]{ width:80px; font:inherit; font-size:14px; border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:9px; text-align:center; }
+  .rv-toast{ position:fixed; left:50%; bottom:26px; transform:translate(-50%,14px); opacity:0; transition:.22s; z-index:60; background:var(--navy,#2E4256); color:#fff; font-size:14px; padding:10px 18px; border-radius:999px; box-shadow:0 12px 26px -10px rgba(30,45,65,.5); max-width:calc(100% - 32px); text-align:center; }
+  .rv-toast.ver{ opacity:1; transform:translate(-50%,0); } .rv-toast.err{ background:#B0563A; }
+</style>
+</head>
+<body>
+  <div id="rv"><p class="rv-nada" style="text-align:center;padding:28px">Cargando…</p></div>
+  <div class="rv-toast" id="rv-toast"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('rv');
+  var toast = document.getElementById('rv-toast');
+  var DIAS = ['','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function hhmm(h){ return String(h).slice(0,5); }
+  var _t; function avisar(m,err){ toast.textContent=m; toast.className='rv-toast ver'+(err?' err':''); clearTimeout(_t); _t=setTimeout(function(){toast.className='rv-toast';}, err?3600:2000); }
+  function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function diaSemana(iso){ var p=iso.split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]); var w=d.getDay(); return w===0?7:w; } // 1..7
+
+  var fecha = hoyISO();
+  var ACC = [];   // accesos activos
+
+  async function cargarBase(){
+    var ra = await sb.from('natacion_accesos').select('id,codigo,nombre').eq('activo', true).order('nombre');
+    ACC = ra.error ? [] : (ra.data||[]);
+  }
+
+  async function pinta(){
+    var d = diaSemana(fecha);
+    var rh = await sb.rpc('natacion_huecos', { p_fecha: fecha });
+    var franjas = (rh && !rh.error && rh.data) ? rh.data : [];
+    var rab = await sb.from('natacion_abonos').select('acceso_id,nombre,saldo');
+    var abonos = (rab.error?[]:(rab.data||[]));
+    var abSaldo = {}; abonos.forEach(function(a){ abSaldo[a.acceso_id]=a; });
+    var rrv = await sb.from('natacion_reservas').select('id,franja_id,nombre,calle,acceso_id').eq('fecha', fecha).eq('estado','reservada');
+    var reservas = (rrv.error?[]:(rrv.data||[]));
+    var resPorFranja = {}; reservas.forEach(function(r){ (resPorFranja[r.franja_id]=resPorFranja[r.franja_id]||[]).push(r); });
+
+    var conSaldo = abonos.filter(function(a){ return (a.saldo||0) > 0; });
+    var optAbonados = conSaldo.map(function(a){ return '<option value="'+esc(a.acceso_id)+'">'+esc(a.nombre||'—')+' ('+a.saldo+')</option>'; }).join('');
+
+    // Franjas del día
+    var htmlFranjas = franjas.length ? franjas.map(function(f){
+      var hue = f.huecos;
+      var puede = hue > 0 && conSaldo.length > 0;
+      var lista = (resPorFranja[f.franja_id]||[]).map(function(r){
+        return '<div class="rv-fila"><span class="nom">'+esc(r.nombre||'—')+(r.calle?' <span class="sub">· '+esc(r.calle)+'</span>':'')+'</span>'+
+          '<button class="rv-quitar" data-cancel="'+esc(r.id)+'">Quitar</button></div>';
+      }).join('');
+      return '<div class="rv-card">'+
+        '<div class="rv-top"><b>'+hhmm(f.hora)+' · '+esc(f.grupo)+'</b>'+
+          '<span class="rv-chips"><span class="rv-chip">'+f.fijos+' fijos</span>'+
+            '<span class="rv-chip">'+f.bajas+' bajas</span>'+
+            '<span class="rv-chip">'+f.reservas+' reservas</span>'+
+            '<span class="rv-hue '+(hue>0?'v':'r')+'">'+hue+' huecos</span></span></div>'+
+        lista +
+        (hue>0
+          ? '<div class="rv-reservar"><select data-sel="'+esc(f.franja_id)+'"'+(conSaldo.length?'':' disabled')+'>'+
+              (conSaldo.length? optAbonados : '<option>— nadie con clases de abono —</option>')+'</select>'+
+              '<button class="rv-btn" data-reservar="'+esc(f.franja_id)+'"'+(puede?'':' disabled')+'>Reservar</button></div>'
+          : '<div class="rv-nada" style="margin-top:8px">Sin huecos: prioridad para los fijos.</div>')+
+      '</div>';
+    }).join('') : '<div class="rv-nada">Ese día no hay franjas de natación.</div>';
+
+    // Abonos (saldos)
+    var htmlAbonos = abonos.length ? abonos.sort(function(a,b){return (b.saldo||0)-(a.saldo||0);}).map(function(a){
+      return '<div class="rv-fila"><span class="nom">'+esc(a.nombre||'—')+' <span class="sub">· clases pendientes</span></span>'+
+        '<button class="rv-mini" data-ab="'+esc(a.acceso_id)+'" data-delta="-1">−</button>'+
+        '<span class="rv-saldo">'+(a.saldo||0)+'</span>'+
+        '<button class="rv-mini" data-ab="'+esc(a.acceso_id)+'" data-delta="1">＋</button></div>';
+    }).join('') : '<div class="rv-nada">Nadie tiene abono todavía. Dale clases a alguien abajo.</div>';
+
+    var optAcc = ACC.map(function(a){ return '<option value="'+esc(a.id)+'">'+esc(a.nombre||a.codigo)+'</option>'; }).join('');
+
+    wrap.innerHTML =
+      '<div class="rv-cab"><h1>Reservas y abono</h1>'+
+        '<p>Los fijos tienen su plaza por defecto. Si un fijo se da de baja un día, queda hueco y puedes dárselo a alguien con clases de abono pendientes.</p></div>'+
+      '<div class="rv-fecha"><label style="font-size:13.5px;color:var(--texto-suave)">Día</label>'+
+        '<input type="date" id="rv-f" value="'+esc(fecha)+'">'+
+        '<span class="dtxt">'+esc(DIAS[d]||'')+'</span></div>'+
+      '<p class="rv-rot">Franjas de ese día · huecos</p>'+ htmlFranjas +
+      '<p class="rv-rot">Abono · clases pendientes</p>'+
+      '<div class="rv-card">'+ htmlAbonos +
+        '<div class="rv-add"><select id="rv-acc">'+optAcc+'</select>'+
+          '<input type="number" id="rv-n" min="0" value="4" title="Clases">'+
+          '<button class="rv-btn sec" id="rv-dar">Dar abono</button></div></div>';
+
+    var fi = document.getElementById('rv-f');
+    if (fi) fi.addEventListener('change', function(){ fecha = fi.value || hoyISO(); pinta(); });
+    var dar = document.getElementById('rv-dar');
+    if (dar) dar.addEventListener('click', async function(){
+      var acc = document.getElementById('rv-acc').value;
+      var n = parseInt(document.getElementById('rv-n').value,10); if(isNaN(n)) n=0;
+      var nom = (ACC.filter(function(a){return a.id===acc;})[0]||{}).nombre || null;
+      dar.disabled=true;
+      var r = await sb.rpc('natacion_abono_set', { p_acceso_id:acc, p_saldo:n, p_nombre:nom });
+      dar.disabled=false;
+      var d = r && r.data; if (r.error || (d && d.ok===false)) { avisar((d&&d.msg)||'No se pudo.', true); return; }
+      avisar('Abono actualizado.'); pinta();
+    });
+  }
+
+  wrap.addEventListener('click', async function(ev){
+    var res = ev.target.closest ? ev.target.closest('[data-reservar]') : null;
+    if (res){ var fr=res.getAttribute('data-reservar'); var sel=wrap.querySelector('[data-sel="'+fr+'"]'); var acc=sel&&sel.value;
+      if(!acc){ avisar('Elige a quién.', true); return; } res.disabled=true;
+      var r = await sb.rpc('natacion_reservar', { p_franja:fr, p_fecha:fecha, p_acceso_id:acc, p_calle:null });
+      res.disabled=false; var d=r&&r.data; if(r.error||(d&&d.ok===false)){ avisar((d&&d.msg)||'No se pudo.', true); return; }
+      avisar((d&&d.msg)||'Reserva hecha.'); pinta(); return; }
+    var can = ev.target.closest ? ev.target.closest('[data-cancel]') : null;
+    if (can){ can.disabled=true; var r=await sb.rpc('natacion_cancelar_reserva', { p_id:can.getAttribute('data-cancel') });
+      can.disabled=false; var d=r&&r.data; if(r.error||(d&&d.ok===false)){ avisar((d&&d.msg)||'No se pudo.', true); return; }
+      avisar((d&&d.msg)||'Cancelada.'); pinta(); return; }
+    var ab = ev.target.closest ? ev.target.closest('[data-ab]') : null;
+    if (ab){ var acc=ab.getAttribute('data-ab'); var delta=parseInt(ab.getAttribute('data-delta'),10);
+      var fila=ab.closest('.rv-fila'); var saldoEl=fila&&fila.querySelector('.rv-saldo'); var actual=saldoEl?parseInt(saldoEl.textContent,10)||0:0;
+      var nuevo=Math.max(0, actual+delta); ab.disabled=true;
+      var r=await sb.rpc('natacion_abono_set', { p_acceso_id:acc, p_saldo:nuevo, p_nombre:null });
+      ab.disabled=false; var d=r&&r.data; if(r.error||(d&&d.ok===false)){ avisar((d&&d.msg)||'No se pudo.', true); return; }
+      if(saldoEl) saldoEl.textContent=nuevo; return; }
+  });
+
+  await cargarBase();
+  await pinta();
+});
+</script>
+</body>
+</html>

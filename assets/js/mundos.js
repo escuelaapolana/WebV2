@@ -81,6 +81,7 @@
         {key:'nadadores',  t:'Nadadores',        i:'people',   url:B+'portal/natacion/?p=nadadores'},
         {key:'franjas',    t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
+        {key:'reservas',   t:'Reservas y abono', i:'ticket',   url:B+'portal/natacion-reservas/'},
         {key:'plazas',     t:'Ver en la web',    i:'signal',   url:B+'natacion/', ext:true}
       ] },
     { key:'escuela-nat', nombre:'Escuela de natación', dot:'#2E8C86', home:B+'portal/escuela-natacion/',
