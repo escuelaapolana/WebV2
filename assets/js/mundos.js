@@ -56,7 +56,7 @@
         {key:'nadadores',  t:'Nadadores',        i:'people',   url:B+'portal/natacion/?p=nadadores'},
         {key:'franjas',    t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
-        {key:'plazas',     t:'Plazas en la web', i:'signal',   url:B+'natacion/'}
+        {key:'plazas',     t:'Ver en la web',    i:'signal',   url:B+'natacion/', ext:true}
       ] },
     { key:'escuela-nat', nombre:'Escuela de natación',   dot:'#2E8C86', home:B+'portal/natacion/' },
     { key:'cubo',        nombre:'El Cubo',               dot:'#B5714A', home:B+'admin/cubo/' },
@@ -150,8 +150,10 @@
       navHtml = '<div class="mm-navt">' + esc(M.nombre) + '</div><nav class="mm-nav" aria-label="Secciones de ' + esc(M.nombre) + '">' +
         M.screens.map(function (s) {
           var act = s.key === (CFG.screen || 'resumen');
-          return '<a class="mm-i" href="' + esc(s.url) + '" aria-current="' + act + '"' + (act ? ' aria-current="page"' : '') + '>' +
-            '<span class="mm-ic">' + ico(s.i) + '</span><span>' + esc(s.t) + '</span></a>';
+          return '<a class="mm-i" href="' + esc(s.url) + '"' +
+            (s.ext ? ' target="_blank" rel="noopener"' : '') +
+            ' aria-current="' + act + '">' +
+            '<span class="mm-ic">' + ico(s.i) + '</span><span>' + esc(s.t) + (s.ext ? ' ↗' : '') + '</span></a>';
         }).join('') + '</nav>';
     }
 
