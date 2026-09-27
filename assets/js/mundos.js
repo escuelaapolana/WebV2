@@ -80,8 +80,11 @@
     '.mm-side{display:none}' +
     '@media (min-width:900px){' +
       /* En PC: rejilla lateral + contenido, y fuera la barra flotante. */
-      '.mm-layout{display:grid;grid-template-columns:262px minmax(0,1fr);gap:22px;' +
-        'max-width:1320px;margin:0 auto;padding:20px clamp(16px,3vw,30px) 48px;align-items:start}' +
+      /* Pegada a la izquierda (no centrada): la lateral vive junto al borde,
+         como en un panel. El ancho se limita para que el contenido no se
+         estire de más en pantallas muy anchas; el hueco queda a la derecha. */
+      '.mm-layout{display:grid;grid-template-columns:262px minmax(0,1fr);gap:26px;' +
+        'max-width:1460px;margin:0;padding:20px clamp(18px,3vw,34px) 48px;align-items:start}' +
       '.mm-layout>.mm-main{min-width:0}' +
       /* el contenido de la página, ya sin su propio centrado/ancho */
       '.mm-layout>.mm-main>*{max-width:none !important;margin-left:0 !important;margin-right:0 !important;padding-left:0 !important;padding-right:0 !important}' +
