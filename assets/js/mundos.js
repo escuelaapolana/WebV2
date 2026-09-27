@@ -263,8 +263,8 @@
       navHtml(M, esActivo) +
       '<p class="mm-nota">Entras en los mundos para los que tienes permiso. Cada persona ve los suyos.</p>';
   }
-  function renderHub(el, M) {
-    var cards = (M.screens || []).filter(function (s) { return s.key !== 'resumen'; }).map(function (s) {
+  function hubCardsHtml(M) {
+    return (M.screens || []).filter(function (s) { return s.key !== 'resumen'; }).map(function (s) {
       return '<a class="mh-card" href="' + esc(s.url) + '"' + (s.ext ? ' target="_blank" rel="noopener"' : '') + '>' +
         '<span class="ico">' + ico(s.i) + '</span>' +
         '<h3>' + esc(s.t) + '</h3>' +
@@ -272,12 +272,14 @@
         '<span class="pie">' + (s.pill ? '<span class="mh-pill">' + esc(s.pill) + '</span>' : '') +
           '<span class="mh-flecha">' + (s.ext ? 'Ver ↗' : 'Abrir →') + '</span></span></a>';
     }).join('');
+  }
+  function renderHub(el, M) {
     el.innerHTML =
       '<div class="mh-cab"><div class="mh-eyebrow">Mundo</div>' +
         '<h1><span class="pt-g"></span>' + esc(M.nombre.replace(/\s*·\s*Club$/, '')) + '</h1>' +
         (M.frase ? '<p>' + esc(M.frase) + '</p>' : '') + '</div>' +
       '<p class="mh-rot">Herramientas de este mundo</p>' +
-      '<div class="mh-hub">' + cards + '</div>';
+      '<div class="mh-hub">' + hubCardsHtml(M) + '</div>';
   }
 
   /* ---------- acceso por persona (RPC mis_mundos) ---------- */
@@ -363,6 +365,12 @@
     MUNDOS: MUNDOS,
     injectCSS: injectCSS,
     resolverURL: resolverURL,
+    /* HTML del hub de un mundo (tarjetas de herramientas), para páginas que
+       pintan su propio Resumen y quieren añadir el hub debajo. */
+    hubHTML: function (worldKey) {
+      var M = mundoPorClave(worldKey);
+      return M ? '<div class="mh-hub">' + hubCardsHtml(M) + '</div>' : '';
+    },
     /* Rellena un elemento (la .at-side del panel) con la barra de mundos.
        `screenIdx` marca la pantalla activa por índice (-1 = ninguna). */
     montarEn: function (el, worldKey, screenIdx) {
