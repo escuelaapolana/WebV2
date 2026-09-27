@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acceso a los mundos · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  /* Ancho completo para que admin-tabbar monte la barra lateral; contenido dentro. */
+  .admin-wrap { width:100%; max-width:none; margin:0; padding:0; }
+  .mu-wrap { max-width:1000px; margin:0 auto; padding:clamp(20px,3vw,34px) clamp(16px,4vw,32px) 70px; }
+  .mu-cab h1 { font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(26px,5vw,34px); color:var(--navy); margin:0 0 4px; }
+  .mu-cab p { font-size:15px; color:var(--texto-suave); margin:0 0 6px; max-width:70ch; line-height:1.55; }
+  .mu-cab .gen { font-size:13px; color:var(--texto-tenue); margin:0 0 18px; }
+  .mu-cab .gen b { color:var(--texto-suave); }
+
+  .mu-buscar { position:relative; margin-bottom:20px; max-width:420px; }
+  .mu-buscar input { width:100%; box-sizing:border-box; min-height:46px; padding:11px 16px; border:1px solid var(--linea-borde,#D4CBB9);
+    border-radius:999px; background:#fff; font:inherit; font-size:15px; color:var(--navy); }
+  .mu-res { position:absolute; left:0; right:0; top:52px; z-index:5; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB);
+    border-radius:14px; box-shadow:var(--sombra-tarjeta,0 26px 50px -32px rgba(46,66,86,.5)); overflow:hidden; max-height:320px; overflow-y:auto; }
+  .mu-res button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none; cursor:pointer;
+    font:inherit; padding:11px 15px; color:var(--navy); border-bottom:1px solid var(--linea,#EFEAE0); }
+  .mu-res button:last-child { border-bottom:0; }
+  .mu-res button:hover { background:var(--crema-media,#EFE9DC); }
+  .mu-res .em { color:var(--texto-tenue); font-size:12.5px; }
+  .mu-res .vacio { padding:14px 15px; color:var(--texto-suave); font-size:14px; }
+
+  .mu-lista { display:flex; flex-direction:column; gap:12px; }
+  .mu-card { background:#fff; border:1px solid var(--linea,#EAE3D5); border-radius:16px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:15px 17px; }
+  .mu-top { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .mu-ava { width:40px; height:40px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; background:var(--navy,#2E4256); color:#fff; font-weight:700; font-size:14px; font-family:var(--fuente-titulo); }
+  .mu-nom { flex:1 1 auto; min-width:0; }
+  .mu-nom b { display:block; font-size:16px; color:var(--navy); line-height:1.15; }
+  .mu-nom span { font-size:12.5px; color:var(--texto-tenue); }
+  .mu-cuenta { font-family:var(--fuente-dato); font-size:12.5px; color:var(--texto-suave); }
+  .mu-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .mu-chip { display:inline-flex; align-items:center; gap:8px; cursor:pointer; border:1px solid var(--linea-borde,#D4CBB9); background:#fff;
+    border-radius:999px; padding:7px 13px; min-height:38px; font:inherit; font-size:13.5px; font-weight:600; color:var(--texto-suave,#6E6656); transition:.12s; }
+  .mu-chip .d { width:10px; height:10px; border-radius:50%; background:var(--d); opacity:.5; }
+  .mu-chip[aria-pressed="true"] { color:var(--navy); border-color:transparent; background:color-mix(in srgb, var(--d) 15%, #fff); }
+  .mu-chip[aria-pressed="true"] .d { opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--d) 25%, transparent); }
+  .mu-chip[disabled] { opacity:.5; cursor:default; }
+  .mu-vacio { text-align:center; color:var(--texto-suave); padding:30px 12px; }
+
+  .mu-toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%,14px); opacity:0; transition:.22s; z-index:60;
+    background:var(--navy,#2E4256); color:#fff; font-size:14px; padding:10px 18px; border-radius:999px; box-shadow:0 12px 26px -10px rgba(30,45,65,.5); }
+  .mu-toast.ver { opacity:1; transform:translate(-50%,0); }
+  .mu-toast.err { background:#B0563A; }
+</style>
+</head>
+<body class="adm-piel">
+  <div class="admin-wrap">
+    <div class="mu-wrap" id="mu">
+      <div class="mu-cab"><h1>Acceso a los mundos</h1><p>Cargando…</p></div>
+    </div>
+  </div>
+  <div class="mu-toast" id="mu-toast"></div>
+
+<script>
+APOLANA_ADMIN.listo(async function (sb) {
+  var wrap = document.getElementById('mu');
+  var toast = document.getElementById('mu-toast');
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function ini(n){ var p=String(n||'').trim().split(/\s+/); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
+  function sinT(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+  var _t;
+  function avisar(msg, err){ toast.textContent=msg; toast.className='mu-toast ver'+(err?' err':''); clearTimeout(_t); _t=setTimeout(function(){ toast.className='mu-toast'; }, err?3400:1800); }
+
+  // Mundos asignables (General/Club es solo de admin, no se asigna aquí).
+  var WORLDS = [
+    { key:'natacion',     nombre:'Natación',             dot:'#2F6FA8', write:'natacion',          match:['natacion'] },
+    { key:'escuela-nat',  nombre:'Escuela de natación',  dot:'#2E8C86', write:'escuela-natacion',  match:['escuela-natacion'] },
+    { key:'cubo',         nombre:'El Cubo',              dot:'#B5714A', write:'cubo',              match:['cubo'] },
+    { key:'pista',        nombre:'Atletismo pista',      dot:'#4A5FA6', write:'pista',             match:['pista','competicion'] },
+    { key:'escuela-atl',  nombre:'Escuela de atletismo', dot:'#3F7A4C', write:'escuela-atletismo', match:['escuela-atletismo','escuela'] },
+    { key:'running',      nombre:'Running',              dot:'#C6892F', write:'running',           match:['running'] },
+    { key:'comunicacion', nombre:'Comunicación',         dot:'#6E5AA6', write:'comunicacion',      match:['comunicacion'] }
+  ];
+
+  // ---- carga ----
+  var rr = await sb.from('responsable_seccion').select('perfil_id,seccion');
+  var rp = await sb.from('perfiles').select('id,nombre,apellidos,email').order('apellidos').limit(3000);
+  if (rr.error) { wrap.innerHTML = '<div class="mu-cab"><h1>Acceso a los mundos</h1><p>No hemos podido cargar los accesos. Recarga en un momento.</p></div>'; return; }
+
+  var secs = {};             // perfil_id -> { seccion: true }
+  (rr.data||[]).forEach(function(r){ (secs[r.perfil_id] = secs[r.perfil_id] || {})[r.seccion] = true; });
+  var PERS = {};             // id -> perfil
+  (rp.error?[]:(rp.data||[])).forEach(function(p){
+    p._nom = ((p.nombre||'')+' '+(p.apellidos||'')).replace(/\s+/g,' ').trim() || p.email || p.id;
+    p._busca = sinT(p._nom+' '+(p.email||''));
+    PERS[p.id] = p;
+  });
+  var mostrados = Object.keys(secs);   // arrancamos con quien ya tiene algún mundo
+  var busca = '';
+
+  function tiene(id, w){ var s = secs[id]||{}; return w.match.some(function(x){ return s[x]; }); }
+  function nMundos(id){ return WORLDS.filter(function(w){ return tiene(id,w); }).length; }
+
+  function cardHTML(id){
+    var p = PERS[id] || { _nom:'(desconocido)', email:'' };
+    var chips = WORLDS.map(function(w){
+      var on = tiene(id,w);
+      return '<button class="mu-chip" data-id="'+esc(id)+'" data-w="'+esc(w.key)+'" style="--d:'+w.dot+'" aria-pressed="'+on+'">'+
+        '<span class="d"></span>'+esc(w.nombre)+'</button>';
+    }).join('');
+    return '<div class="mu-card" data-card="'+esc(id)+'">'+
+      '<div class="mu-top">'+
+        '<span class="mu-ava">'+esc(ini(p._nom).toUpperCase())+'</span>'+
+        '<span class="mu-nom"><b>'+esc(p._nom)+'</b>'+(p.email?'<span>'+esc(p.email)+'</span>':'')+'</span>'+
+        '<span class="mu-cuenta">'+nMundos(id)+' mundo'+(nMundos(id)===1?'':'s')+'</span>'+
+      '</div>'+
+      '<div class="mu-chips">'+chips+'</div>'+
+    '</div>';
+  }
+
+  function pinta(){
+    var cards = mostrados.map(cardHTML).join('') || '<p class="mu-vacio">Nadie tiene acceso a un mundo todavía. Búscalo arriba y márcale sus mundos.</p>';
+    wrap.innerHTML =
+      '<div class="mu-cab"><h1>Acceso a los mundos</h1>'+
+        '<p>Marca a qué mundos entra cada persona. Cada uno verá en su panel solo los mundos que le toques aquí.</p>'+
+        '<p class="gen"><b>General · Club</b> (personas, dinero, web…) lo ven solo los administradores; no se asigna aquí.</p></div>'+
+      '<div class="mu-buscar"><input type="search" id="mu-q" placeholder="Buscar una persona para darle acceso…" value="'+esc(busca)+'"><div id="mu-res"></div></div>'+
+      '<div class="mu-lista">'+cards+'</div>';
+    var qi = document.getElementById('mu-q');
+    if (qi){ qi.addEventListener('input', function(){ busca = qi.value; pintaRes(); }); qi.addEventListener('focus', pintaRes); }
+    pintaRes();
+  }
+
+  function pintaRes(){
+    var box = document.getElementById('mu-res');
+    if (!box) return;
+    var q = sinT(busca).trim();
+    if (!q){ box.innerHTML=''; box.style.display='none'; return; }
+    var yaSet = {}; mostrados.forEach(function(id){ yaSet[id]=true; });
+    var hits = [];
+    for (var id in PERS){ if (!yaSet[id] && PERS[id]._busca.indexOf(q)!==-1){ hits.push(PERS[id]); if (hits.length>=12) break; } }
+    box.style.display='block';
+    box.innerHTML = hits.length ? hits.map(function(p){
+      return '<button data-add="'+esc(p.id)+'"><span class="mu-ava" style="width:28px;height:28px;font-size:11px">'+esc(ini(p._nom).toUpperCase())+'</span>'+
+        '<span><b style="color:var(--navy)">'+esc(p._nom)+'</b>'+(p.email?' <span class="em">'+esc(p.email)+'</span>':'')+'</span></button>';
+    }).join('') : '<div class="vacio">Nadie con ese nombre.</div>';
+  }
+
+  // ---- interacción ----
+  wrap.addEventListener('click', async function(ev){
+    var add = ev.target.closest ? ev.target.closest('[data-add]') : null;
+    if (add){ var id=add.getAttribute('data-add'); if (mostrados.indexOf(id)===-1) mostrados.unshift(id); busca=''; pinta(); return; }
+    var chip = ev.target.closest ? ev.target.closest('.mu-chip') : null;
+    if (!chip || chip.disabled) return;
+    var id = chip.getAttribute('data-id');
+    var w = WORLDS.filter(function(x){ return x.key===chip.getAttribute('data-w'); })[0];
+    if (!w) return;
+    var quiero = chip.getAttribute('aria-pressed')!=='true';   // toggle destino
+    chip.disabled = true;
+    var r;
+    if (quiero) r = await sb.from('responsable_seccion').insert({ perfil_id:id, seccion:w.write });
+    else        r = await sb.from('responsable_seccion').delete().eq('perfil_id', id).in('seccion', w.match);
+    chip.disabled = false;
+    if (r && r.error){ avisar('No se pudo guardar. Prueba otra vez.', true); return; }
+    // actualizar estado local
+    secs[id] = secs[id] || {};
+    w.match.forEach(function(x){ delete secs[id][x]; });
+    if (quiero) secs[id][w.write] = true;
+    chip.setAttribute('aria-pressed', quiero);
+    var card = chip.closest('.mu-card'); var cnt = card && card.querySelector('.mu-cuenta');
+    if (cnt){ var n=nMundos(id); cnt.textContent = n+' mundo'+(n===1?'':'s'); }
+    avisar(quiero ? 'Le has dado '+w.nombre : 'Le has quitado '+w.nombre);
+  });
+  // cerrar resultados al hacer clic fuera
+  document.addEventListener('click', function(ev){
+    if (!ev.target.closest || (!ev.target.closest('.mu-buscar'))){ var box=document.getElementById('mu-res'); if(box){ box.innerHTML=''; box.style.display='none'; } }
+  });
+
+  pinta();
+});
+</script>
+</body>
+</html>
