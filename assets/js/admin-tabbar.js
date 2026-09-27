@@ -1004,61 +1004,41 @@
       wrap.appendChild(main);
     }
 
-    var aqui = claveActual();
-    function activo(url) { return url.indexOf('/admin/') !== -1 && clave(url) === aqui; }
-
-    var html = '<button type="button" class="buscar-btn" aria-haspopup="dialog">' +
-               IC.lupa + '<span>Buscar una pantalla o una persona</span></button>';
-    mapa().forEach(function (b) {
-      var enl = b.enlaces.filter(function (e) { return !e.panel; });
-      if (!enl.length) return;
-      if (!b.t) {
-        enl.forEach(function (e) {
-          var on = activo(e.url);
-          html += '<a class="dir' + (on ? ' aqui' : '') + '" href="' + esc(e.url) + '"' +
-                  (on ? ' aria-current="page"' : '') + '>' + iconoDe(e.url) +
-                  '<span class="nom">' + esc(e.txt) + '</span></a>';
-        });
-        html += '<div class="sep"></div>';
-        return;
-      }
-      var dentro = enl.some(function (e) { return activo(e.url); });
-      html += '<details class="at-grupo"' + (dentro ? ' open' : '') + '>' +
-              '<summary>' + iconoSeccion(b.t) + '<span class="nom">' + esc(b.t) +
-              '</span><span class="fl"></span></summary><div class="sub">' +
-              enl.map(function (e) {
-                var on = activo(e.url);
-                return '<a class="' + (on ? 'aqui' : '') + '" href="' + esc(e.url) + '"' +
-                       (on ? ' aria-current="page"' : '') + '>' + iconoDe(e.url) +
-                       '<span class="nom">' + esc(e.txt) + '</span></a>';
-              }).join('') + '</div></details>';
-    });
-
+    /* La barra lateral del panel es ahora la MISMA de los mundos
+       (assets/js/mundos.js): así el panel viejo y los mundos son el mismo
+       diseño. Aquí solo se crea la .at-side con el buscador + un hueco, y el
+       shell la rellena con el mundo que toca según la URL. */
     var side = document.createElement('nav');
     side.className = 'at-side';
-    side.setAttribute('aria-label', 'Secciones del panel');
-    side.innerHTML = html;
+    side.setAttribute('aria-label', 'Mundos del panel');
+    side.innerHTML = '<button type="button" class="buscar-btn" aria-haspopup="dialog">' +
+      IC.lupa + '<span>Buscar una pantalla o una persona</span></button>' +
+      '<div class="at-mundos"></div>';
     wrap.insertBefore(side, wrap.firstChild);
 
     var bb = side.querySelector('.buscar-btn');
     if (bb) bb.addEventListener('click', function () { abrir(true); });
-    side.addEventListener('click', function (e) {
-      var a = e.target.closest ? e.target.closest('a[href]') : null;
-      if (a) anotar(clave(a.getAttribute('href')));
-    });
 
-    /* Al abrir un grupo, que sus opciones se asomen a la vista. La barra
-       tiene scroll propio; si el grupo está abajo del todo (p. ej. «Tu
-       cuenta»), sus opciones caen por debajo del borde y parece que «no
-       sale nada». El evento `toggle` no burbujea, así que se engancha a
-       cada grupo. */
-    Array.prototype.forEach.call(side.querySelectorAll('details.at-grupo'), function (d) {
-      d.addEventListener('toggle', function () {
-        if (!d.open) return;
-        var sub = d.querySelector('.sub');
-        if (sub && sub.scrollIntoView) { try { sub.scrollIntoView({ block: 'nearest' }); } catch (e) { sub.scrollIntoView(false); } }
+    conShell(function (shell) {
+      var caja = side.querySelector('.at-mundos');
+      if (!caja) return;
+      var r = shell.resolverURL() || { world: 'general', screenIdx: -1 };
+      shell.montarEn(caja, r.world, r.screenIdx);
+      caja.addEventListener('click', function (e) {
+        var a = e.target.closest ? e.target.closest('a[href]') : null;
+        if (a) anotar(clave(a.getAttribute('href')));
       });
     });
+  }
+
+  /* Carga assets/js/mundos.js (si aún no está) y entrega su API compartida.
+     Si fallara, el panel se queda sin lateral pero la página funciona igual. */
+  function conShell(cb) {
+    if (window.APOLANA_MUNDOS_SHELL) { cb(window.APOLANA_MUNDOS_SHELL); return; }
+    var s = document.createElement('script');
+    s.src = base() + 'assets/js/mundos.js';
+    s.onload = function () { if (window.APOLANA_MUNDOS_SHELL) cb(window.APOLANA_MUNDOS_SHELL); };
+    document.head.appendChild(s);
   }
 
   /* ---------- pintado ---------- */

@@ -8,25 +8,23 @@
    navegación del mundo en el que estás. En móvil no aparece: manda
    la barra flotante de la app (no se tocan las dos a la vez).
 
-   Es ADITIVA y opt-in: una página entra en un mundo declarando,
-   ANTES de cargar este script:
+   DOS MODOS, un mismo aspecto:
+   · Portal (páginas /portal/<mundo>/…): la página declara
+     `window.APOLANA_MUNDO = { world, screen, contentSel, home? }`
+     ANTES de cargar este script, y aquí se envuelve el contenido en
+     la rejilla [lateral | contenido]. Si `home:true`, además se pinta
+     el «Resumen» del mundo (hub de tarjetas) desde el mapa.
+   · Panel (páginas /admin/…): NO hay APOLANA_MUNDO. Este script solo
+     EXPONE `window.APOLANA_MUNDOS_SHELL`, y `admin-tabbar.js` lo usa
+     para rellenar su propia barra lateral con los mundos (el mundo se
+     deduce de la URL). Así el panel viejo y los mundos son el mismo
+     diseño.
 
-     window.APOLANA_MUNDO = { world:'natacion', screen:'resumen',
-                              contentSel:'#nat' };
-
-   `contentSel` = el contenedor de contenido de la página, que se
-   envuelve en la rejilla [lateral | contenido]. Si la página aún no
-   lo tiene al cargar (lo pinta su JS después), el contenedor debe
-   existir vacío en el HTML.
-
-   No depende de la sesión: los enlaces son a páginas reales; quién
-   entra a cada mundo lo deciden las reglas de acceso de cada página.
+   El acceso por persona (qué mundos ve cada uno) sale del RPC
+   `mis_mundos`; la protección de datos la siguen haciendo las RLS.
    ============================================================ */
 (function () {
   'use strict';
-
-  var CFG = window.APOLANA_MUNDO;
-  if (!CFG || !CFG.world) return;
 
   function base() { return window.APOLANA_BASE || '../../'; }
   var B = base();
@@ -62,9 +60,7 @@
   function ico(n){ return '<svg viewBox="0 0 24 24" '+P+'>'+(ICO[n]||ICO.grid)+'</svg>'; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
-  /* ---------- Los MUNDOS (mapa aprobado). `home` = a dónde lleva el
-     conmutador; `screens` = navegación del mundo (solo en el mundo
-     activo hace falta el detalle; para los demás basta `home`). ----- */
+  /* ---------- Los MUNDOS (mapa aprobado) ---------- */
   var MUNDOS = [
     { key:'general', nombre:'General · Club', dot:'#2E4256', home:B+'portal/general/',
       frase:'El club por dentro: personas, socios, dinero, la web y los avisos que se envían.',
@@ -146,153 +142,125 @@
         {t:'Peticiones de redes',    i:'at',   url:B+'admin/redes/',     d:'Lo que proponen los socios.'}
       ] }
   ];
+  function mundoPorClave(k){ for(var i=0;i<MUNDOS.length;i++){ if(MUNDOS[i].key===k) return MUNDOS[i]; } return null; }
 
-  function mundoActual(){ for(var i=0;i<MUNDOS.length;i++){ if(MUNDOS[i].key===CFG.world) return MUNDOS[i]; } return null; }
-  var M = mundoActual();
-  if (!M) return;
+  /* ---------- estilos (una vez) ---------- */
+  var _cssDone = false;
+  function injectCSS() {
+    if (_cssDone) return; _cssDone = true;
+    var css = document.createElement('style');
+    css.setAttribute('data-piel', 'mundos');
+    css.textContent =
+      '@view-transition{navigation:auto}' +
+      '.mm-side{display:none}' +
+      '@media (min-width:900px){' +
+        '.mm-layout{display:grid;grid-template-columns:262px minmax(0,1fr);gap:26px;' +
+          'max-width:1460px;margin:0;padding:20px clamp(18px,3vw,34px) 48px;align-items:start}' +
+        '.mm-layout>.mm-main{min-width:0}' +
+        '.mm-layout>.mm-main>*{max-width:none !important;margin-left:0 !important;margin-right:0 !important;padding-left:0 !important;padding-right:0 !important}' +
+        'body.mm-on .pt-tabbar{display:none !important}' +
+        'body.mm-on .at-side{display:none !important}' +
+        'body.mm-on.pt-con-tabbar{padding-bottom:24px !important}' +
+        '.mm-side{display:block;position:sticky;top:16px;align-self:start;view-transition-name:mm-lateral}' +
+        '.mm-isla{background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:16px 12px}' +
+        '.mm-rotulo{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--texto-suave,#6E6656);padding:2px 8px 8px;display:flex;gap:8px;align-items:center}' +
+        '.mm-rotulo .q{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--texto-tenue,#6E6656);font-size:11px}' +
+        '.mm-worlds{display:flex;flex-direction:column;gap:2px}' +
+        '.mm-w{display:flex;align-items:center;gap:11px;width:100%;text-decoration:none;text-align:left;' +
+          'font-family:inherit;font-size:14.5px;font-weight:600;color:var(--texto,#4A4437);line-height:1.15;' +
+          'padding:9px 11px;min-height:42px;border-radius:var(--radio-dentro,10px);border-left:3px solid transparent}' +
+        '.mm-w .pt{width:11px;height:11px;border-radius:50%;flex:0 0 auto;background:var(--pt);box-shadow:0 0 0 3px color-mix(in srgb, var(--pt) 16%, transparent)}' +
+        '.mm-w .nm{flex:1 1 auto;min-width:0}' +
+        '.mm-w:hover{background:var(--crema-media,#EFE9DC)}' +
+        '.mm-w[aria-current="true"]{background:var(--crema-media,#EFE9DC);background:color-mix(in srgb, var(--pt) 16%, #fff);' +
+          'border-left-color:var(--pt);color:var(--navy,#2E4256);font-weight:700;' +
+          'box-shadow:0 6px 14px -12px color-mix(in srgb, var(--pt) 70%, transparent)}' +
+        '.mm-w[aria-current="true"] .pt{box-shadow:0 0 0 3px color-mix(in srgb, var(--pt) 30%, transparent)}' +
+        '.mm-sep{height:1px;background:var(--linea-marcada,#E4DCCB);margin:14px 6px;border-radius:2px}' +
+        '.mm-navt{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mm-acento);padding:2px 8px 8px}' +
+        '.mm-nav{display:flex;flex-direction:column;gap:1px}' +
+        '.mm-i{display:flex;align-items:center;gap:10px;width:100%;text-decoration:none;text-align:left;' +
+          'font-family:inherit;font-size:14px;font-weight:500;color:var(--texto,#4A4437);line-height:1.2;' +
+          'padding:8px 11px;min-height:40px;border-radius:var(--radio-dentro,10px);border-left:3px solid transparent}' +
+        '.mm-i .mm-ic{width:20px;height:20px;flex:0 0 auto;display:grid;place-items:center;color:var(--texto-suave,#6E6656)}' +
+        '.mm-i .mm-ic svg{width:18px;height:18px}' +
+        '.mm-i:hover{background:var(--crema-media,#EFE9DC)}' +
+        '.mm-i[aria-current="true"]{background:var(--crema-media,#EFE9DC);background:color-mix(in srgb, var(--mm-acento) 12%, #fff);' +
+          'color:var(--navy,#2E4256);font-weight:600;border-left-color:var(--mm-acento)}' +
+        '.mm-i[aria-current="true"] .mm-ic{color:var(--mm-acento)}' +
+        '.mm-nota{margin:14px 8px 2px;padding-top:12px;border-top:1px solid var(--linea-marcada,#E4DCCB);' +
+          'font-size:11.5px;line-height:1.45;color:var(--texto-tenue,#6E6656)}' +
+        '.mm-nota b{color:var(--texto-suave,#6E6656)}' +
+        /* la lateral de mundos DENTRO del panel viejo (.at-side de admin-tabbar) */
+        '.at-side .at-mundos{display:flex;flex-direction:column;gap:2px}' +
+      '}' +
+      /* HUB (Resumen de un mundo) — todos los tamaños */
+      '.mh-cab{margin:2px 0 20px}' +
+      '.mh-eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mm-acento,#2F6FA8);margin-bottom:8px}' +
+      '.mh-cab h1{font-family:var(--fuente-titulo);text-transform:uppercase;font-size:clamp(27px,5vw,38px);line-height:1;color:var(--navy,#2E4256);margin:0;display:flex;align-items:center;gap:12px}' +
+      '.mh-cab h1 .pt-g{width:15px;height:15px;border-radius:50%;background:var(--mm-acento,#2F6FA8);flex:0 0 auto;box-shadow:0 0 0 4px color-mix(in srgb, var(--mm-acento,#2F6FA8) 18%, transparent)}' +
+      '.mh-cab p{font-size:15.5px;color:var(--texto-suave,#6E6656);margin:10px 0 0;max-width:64ch;line-height:1.5}' +
+      '.mh-rot{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--texto-suave,#6E6656);margin:0 0 12px}' +
+      '.mh-hub{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}' +
+      '.mh-card{display:flex;flex-direction:column;text-decoration:none;background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:17px;color:inherit;transition:transform .3s cubic-bezier(.2,.7,.2,1),box-shadow .3s cubic-bezier(.2,.7,.2,1)}' +
+      '.mh-card:hover{transform:translateY(-4px);box-shadow:0 1px 2px rgba(30,45,65,.06),0 12px 22px -12px rgba(30,45,65,.2),0 26px 46px -28px rgba(30,45,65,.24)}' +
+      '.mh-card .ico{width:42px;height:42px;border-radius:var(--radio-dentro,10px);display:grid;place-items:center;background:var(--azul-suave,#EAF2F9);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 13%, #fff);color:var(--mm-acento,#2F6FA8);margin-bottom:13px}' +
+      '.mh-card .ico svg{width:22px;height:22px}' +
+      '.mh-card h3{font-family:var(--fuente-titulo);font-weight:700;text-transform:uppercase;font-size:17px;color:var(--navy,#2E4256);margin:0 0 5px;line-height:1.05}' +
+      '.mh-card .d{font-size:13.5px;color:var(--texto-suave,#6E6656);line-height:1.45;margin:0;flex:1 1 auto}' +
+      '.mh-card .pie{display:flex;align-items:center;gap:8px;margin-top:13px}' +
+      '.mh-pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--mm-acento,#2F6FA8);background:var(--azul-suave,#EAF2F9);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 12%, #fff);border-radius:999px;padding:4px 11px;line-height:1}' +
+      '.mh-flecha{margin-left:auto;color:var(--mm-acento,#2F6FA8);font-weight:600;font-size:13.5px}';
+    document.head.appendChild(css);
+  }
 
-  /* ---------- estilos (prefijo mm-, solo PC) ---------- */
-  var css = document.createElement('style');
-  css.setAttribute('data-piel','mundos');
-  css.textContent =
-    /* FLUIDEZ · transición suave entre páginas del panel (crossfade en vez de
-       recarga en blanco). La barra lateral lleva view-transition-name, así que
-       se queda FIJA y solo cambia el contenido. Navegador sin soporte: navega
-       normal, sin romperse. Solo entre páginas que cargan este shell. */
-    '@view-transition{navigation:auto}' +
-    /* Oculta por defecto (móvil); el @media de abajo la muestra en PC.
-       Mismo selector .mm-side en ambos sitios para que gane el de la media
-       query por orden, no por especificidad. */
-    '.mm-side{display:none}' +
-    '@media (min-width:900px){' +
-      /* En PC: rejilla lateral + contenido, y fuera la barra flotante. */
-      /* Pegada a la izquierda (no centrada): la lateral vive junto al borde,
-         como en un panel. El ancho se limita para que el contenido no se
-         estire de más en pantallas muy anchas; el hueco queda a la derecha. */
-      '.mm-layout{display:grid;grid-template-columns:262px minmax(0,1fr);gap:26px;' +
-        'max-width:1460px;margin:0;padding:20px clamp(18px,3vw,34px) 48px;align-items:start}' +
-      '.mm-layout>.mm-main{min-width:0}' +
-      /* el contenido de la página, ya sin su propio centrado/ancho */
-      '.mm-layout>.mm-main>*{max-width:none !important;margin-left:0 !important;margin-right:0 !important;padding-left:0 !important;padding-right:0 !important}' +
-      'body.mm-on .pt-tabbar{display:none !important}' +
-      'body.mm-on .at-side{display:none !important}' +
-      'body.mm-on.pt-con-tabbar{padding-bottom:24px !important}' +
-      '.mm-side{display:block;position:sticky;top:16px;align-self:start;view-transition-name:mm-lateral}' +
-      '.mm-isla{background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:16px 12px}' +
-      '.mm-rotulo{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--texto-suave,#6E6656);padding:2px 8px 8px;display:flex;gap:8px;align-items:center}' +
-      '.mm-rotulo .q{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--texto-tenue,#6E6656);font-size:11px}' +
-      '.mm-worlds{display:flex;flex-direction:column;gap:2px}' +
-      '.mm-w{display:flex;align-items:center;gap:11px;width:100%;text-decoration:none;text-align:left;' +
-        'font-family:inherit;font-size:14.5px;font-weight:600;color:var(--texto,#4A4437);line-height:1.15;' +
-        'padding:9px 11px;min-height:42px;border-radius:var(--radio-dentro,10px);border-left:3px solid transparent}' +
-      '.mm-w .pt{width:11px;height:11px;border-radius:50%;flex:0 0 auto;background:var(--pt);box-shadow:0 0 0 3px color-mix(in srgb, var(--pt) 16%, transparent)}' +
-      '.mm-w .nm{flex:1 1 auto;min-width:0}' +
-      '.mm-w:hover{background:var(--crema-media,#EFE9DC)}' +
-      '.mm-w[aria-current="true"]{background:var(--crema-media,#EFE9DC);background:color-mix(in srgb, var(--pt) 16%, #fff);' +
-        'border-left-color:var(--pt);color:var(--navy,#2E4256);font-weight:700;' +
-        'box-shadow:0 6px 14px -12px color-mix(in srgb, var(--pt) 70%, transparent)}' +
-      '.mm-w[aria-current="true"] .pt{box-shadow:0 0 0 3px color-mix(in srgb, var(--pt) 30%, transparent)}' +
-      '.mm-sep{height:1px;background:var(--linea-marcada,#E4DCCB);margin:14px 6px;border-radius:2px}' +
-      '.mm-navt{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mm-acento);padding:2px 8px 8px}' +
-      '.mm-nav{display:flex;flex-direction:column;gap:1px}' +
-      '.mm-i{display:flex;align-items:center;gap:10px;width:100%;text-decoration:none;text-align:left;' +
-        'font-family:inherit;font-size:14px;font-weight:500;color:var(--texto,#4A4437);line-height:1.2;' +
-        'padding:8px 11px;min-height:40px;border-radius:var(--radio-dentro,10px);border-left:3px solid transparent}' +
-      '.mm-i .mm-ic{width:20px;height:20px;flex:0 0 auto;display:grid;place-items:center;color:var(--texto-suave,#6E6656)}' +
-      '.mm-i .mm-ic svg{width:18px;height:18px}' +
-      '.mm-i:hover{background:var(--crema-media,#EFE9DC)}' +
-      '.mm-i[aria-current="true"]{background:var(--crema-media,#EFE9DC);background:color-mix(in srgb, var(--mm-acento) 12%, #fff);' +
-        'color:var(--navy,#2E4256);font-weight:600;border-left-color:var(--mm-acento)}' +
-      '.mm-i[aria-current="true"] .mm-ic{color:var(--mm-acento)}' +
-      '.mm-nota{margin:14px 8px 2px;padding-top:12px;border-top:1px solid var(--linea-marcada,#E4DCCB);' +
-        'font-size:11.5px;line-height:1.45;color:var(--texto-tenue,#6E6656)}' +
-      '.mm-nota b{color:var(--texto-suave,#6E6656)}' +
-    '}';
-  /* Estilos del HUB (el «Resumen» de cada mundo: cabecera + tarjetas de las
-     herramientas). Valen en todos los tamaños; el color es el del mundo. */
-  css.textContent +=
-    '.mh-cab{margin:2px 0 20px}' +
-    '.mh-eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mm-acento,#2F6FA8);margin-bottom:8px}' +
-    '.mh-cab h1{font-family:var(--fuente-titulo);text-transform:uppercase;font-size:clamp(27px,5vw,38px);line-height:1;color:var(--navy,#2E4256);margin:0;display:flex;align-items:center;gap:12px}' +
-    '.mh-cab h1 .pt-g{width:15px;height:15px;border-radius:50%;background:var(--mm-acento,#2F6FA8);flex:0 0 auto;box-shadow:0 0 0 4px color-mix(in srgb, var(--mm-acento,#2F6FA8) 18%, transparent)}' +
-    '.mh-cab p{font-size:15.5px;color:var(--texto-suave,#6E6656);margin:10px 0 0;max-width:64ch;line-height:1.5}' +
-    '.mh-rot{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--texto-suave,#6E6656);margin:0 0 12px}' +
-    '.mh-hub{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}' +
-    '.mh-card{display:flex;flex-direction:column;text-decoration:none;background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:17px;color:inherit;transition:transform .3s cubic-bezier(.2,.7,.2,1),box-shadow .3s cubic-bezier(.2,.7,.2,1)}' +
-    '.mh-card:hover{transform:translateY(-4px);box-shadow:0 1px 2px rgba(30,45,65,.06),0 12px 22px -12px rgba(30,45,65,.2),0 26px 46px -28px rgba(30,45,65,.24)}' +
-    '.mh-card .ico{width:42px;height:42px;border-radius:var(--radio-dentro,10px);display:grid;place-items:center;background:var(--azul-suave,#EAF2F9);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 13%, #fff);color:var(--mm-acento,#2F6FA8);margin-bottom:13px}' +
-    '.mh-card .ico svg{width:22px;height:22px}' +
-    '.mh-card h3{font-family:var(--fuente-titulo);font-weight:700;text-transform:uppercase;font-size:17px;color:var(--navy,#2E4256);margin:0 0 5px;line-height:1.05}' +
-    '.mh-card .d{font-size:13.5px;color:var(--texto-suave,#6E6656);line-height:1.45;margin:0;flex:1 1 auto}' +
-    '.mh-card .pie{display:flex;align-items:center;gap:8px;margin-top:13px}' +
-    '.mh-pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--mm-acento,#2F6FA8);background:var(--azul-suave,#EAF2F9);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 12%, #fff);border-radius:999px;padding:4px 11px;line-height:1}' +
-    '.mh-flecha{margin-left:auto;color:var(--mm-acento,#2F6FA8);font-weight:600;font-size:13.5px}';
+  function injectPrefetch() {
+    try {
+      if (document.querySelector('script[data-mm-prefetch]')) return;
+      var sr = document.createElement('script');
+      sr.type = 'speculationrules'; sr.setAttribute('data-mm-prefetch', '1');
+      sr.textContent = '{"prefetch":[{"source":"document","where":{"href_matches":"/portal/natacion*"},"eagerness":"moderate"}]}';
+      document.head.appendChild(sr);
+    } catch (e) {}
+  }
 
-  document.head.appendChild(css);
-
-  /* FLUIDEZ · precarga (solo HTML) de las páginas de natación al pasar el ratón,
-     para que abran casi al instante. No ejecuta su JS ni toca datos. */
-  try {
-    var sr = document.createElement('script');
-    sr.type = 'speculationrules';
-    sr.textContent = '{"prefetch":[{"source":"document","where":{"href_matches":"/portal/natacion*"},"eagerness":"moderate"}]}';
-    document.head.appendChild(sr);
-  } catch (e) {}
-
-  /* ---------- conmutador de mundos, con ACCESO POR PERSONA ----------
-     El conmutador enseña solo los mundos a los que la persona puede entrar
-     (RPC `mis_mundos`: admin = todos; el resto = los de sus secciones de
-     responsable). Mientras llega la respuesta se enseña solo el mundo actual
-     (nunca mundos que no son suyos); se cachea por sesión para que sea
-     instantáneo en las siguientes páginas. Si no hay sesión/cliente, se deja
-     lo que haya (la protección de datos la siguen haciendo las reglas RLS). */
-  var CACHE_KEY = 'apolana-mis-mundos';
-  var worldsBox = null;
-
-  function worldRowHtml(w) {
-    var act = w.key === M.key;
+  /* ---------- render de la barra (compartido por los dos modos) ---------- */
+  function worldRowHtml(w, activeKey) {
+    var act = w.key === activeKey;
     return '<a class="mm-w" href="' + esc(w.home) + '" style="--pt:' + w.dot + '" ' +
       'aria-current="' + act + '"' + (act ? ' aria-label="Estás en ' + esc(w.nombre) + '"' : '') + '>' +
       '<span class="pt"></span><span class="nm">' + esc(w.nombre) + '</span></a>';
   }
-  function worldsHtml(keys) {
+  function worldsHtml(keys, activeKey) {
     var list;
-    if (!keys) { list = MUNDOS; }                 // null = todos (admin)
+    if (!keys) { list = MUNDOS; }                                   // null = todos (admin)
     else {
       list = MUNDOS.filter(function (w) { return keys.indexOf(w.key) !== -1; });
-      if (!list.some(function (w) { return w.key === M.key; })) list = [M].concat(list); // el actual siempre
+      if (!list.some(function (w) { return w.key === activeKey; })) {
+        var actual = mundoPorClave(activeKey);
+        if (actual) list = [actual].concat(list);                   // el actual siempre visible
+      }
     }
-    return list.map(worldRowHtml).join('');
+    return list.map(function (w) { return worldRowHtml(w, activeKey); }).join('');
   }
-  function pintaMundos(keys) { if (worldsBox) worldsBox.innerHTML = worldsHtml(keys); }
-
-  function leerCache() {
-    try { var v = sessionStorage.getItem(CACHE_KEY); if (v === 'todos') return null; if (v) return JSON.parse(v); } catch (e) {}
-    return undefined; // sin cache
+  function navHtml(M, esActivo) {
+    if (!M.screens || !M.screens.length) return '';
+    return '<div class="mm-navt">' + esc(M.nombre) + '</div><nav class="mm-nav" aria-label="Secciones de ' + esc(M.nombre) + '">' +
+      M.screens.map(function (s, idx) {
+        var act = esActivo(s, idx);
+        return '<a class="mm-i" href="' + esc(s.url) + '"' + (s.ext ? ' target="_blank" rel="noopener"' : '') +
+          ' aria-current="' + act + '">' +
+          '<span class="mm-ic">' + ico(s.i) + '</span><span>' + esc(s.t) + (s.ext ? ' ↗' : '') + '</span></a>';
+      }).join('') + '</nav>';
   }
-  function guardarCache(keys) { try { sessionStorage.setItem(CACHE_KEY, keys == null ? 'todos' : JSON.stringify(keys)); } catch (e) {} }
-
-  var _intentos = 0;
-  function cargarMisMundos() {
-    var c = window.APOLANA_DB;
-    if (!c || !c.rpc) { if (_intentos++ < 6) setTimeout(cargarMisMundos, 400); return; }
-    var listo = (c.auth && c.auth.getSession) ? c.auth.getSession() : Promise.resolve();
-    listo.then(function () { return c.rpc('mis_mundos'); }).then(function (r) {
-      if (!r || r.error || !Array.isArray(r.data)) return;   // error: deja lo que haya
-      var keys = r.data;
-      var todas = MUNDOS.every(function (w) { return keys.indexOf(w.key) !== -1; });
-      var val = todas ? null : keys;   // admin (todos) -> null, a prueba de mundos futuros
-      guardarCache(val);
-      pintaMundos(val);
-    }).catch(function () {});
+  function sideInnerHtml(M, esActivo, keys) {
+    return '<div class="mm-rotulo">Mundos <span class="q">· cambia de un clic</span></div>' +
+      '<div class="mm-worlds">' + worldsHtml(keys, M.key) + '</div>' +
+      '<div class="mm-sep"></div>' +
+      navHtml(M, esActivo) +
+      '<p class="mm-nota">Entras en los mundos para los que tienes permiso. Cada persona ve los suyos.</p>';
   }
-
-  /* ---------- HUB: el «Resumen» de un mundo (cabecera + tarjetas) ----------
-     Se pinta cuando la página lo pide con APOLANA_MUNDO.home = true. Sale del
-     mismo mapa MUNDOS, así que un mundo nuevo es solo su entrada aquí + una
-     página mínima que declare el mundo. (Natación trae su propio Resumen con
-     datos en vivo, así que NO usa home.) */
-  function renderHub(el) {
+  function renderHub(el, M) {
     var cards = (M.screens || []).filter(function (s) { return s.key !== 'resumen'; }).map(function (s) {
       return '<a class="mh-card" href="' + esc(s.url) + '"' + (s.ext ? ' target="_blank" rel="noopener"' : '') + '>' +
         '<span class="ico">' + ico(s.i) + '</span>' +
@@ -309,13 +277,122 @@
       '<div class="mh-hub">' + cards + '</div>';
   }
 
-  /* ---------- montaje ---------- */
+  /* ---------- acceso por persona (RPC mis_mundos) ---------- */
+  var CACHE_KEY = 'apolana-mis-mundos';
+  function leerCache() {
+    try { var v = sessionStorage.getItem(CACHE_KEY); if (v === 'todos') return null; if (v) return JSON.parse(v); } catch (e) {}
+    return undefined;
+  }
+  function guardarCache(keys) { try { sessionStorage.setItem(CACHE_KEY, keys == null ? 'todos' : JSON.stringify(keys)); } catch (e) {} }
+  function cargarMisMundos(onData) {
+    var intentos = 0;
+    (function go() {
+      var c = window.APOLANA_DB;
+      if (!c || !c.rpc) { if (intentos++ < 6) setTimeout(go, 400); return; }
+      var listo = (c.auth && c.auth.getSession) ? c.auth.getSession() : Promise.resolve();
+      listo.then(function () { return c.rpc('mis_mundos'); }).then(function (r) {
+        if (!r || r.error || !Array.isArray(r.data)) return;
+        var keys = r.data;
+        var todas = MUNDOS.every(function (w) { return keys.indexOf(w.key) !== -1; });
+        var val = todas ? null : keys;   // admin (todos) -> null, a prueba de mundos futuros
+        guardarCache(val); onData(val);
+      }).catch(function () {});
+    })();
+  }
+
+  /* ---------- resolver el mundo/pantalla desde una URL del panel ---------- */
+  function folderKey(u) {
+    var s = String(u || '');
+    var i = s.indexOf('/admin/');
+    if (i !== -1) s = s.slice(i + 7);
+    else { i = s.indexOf('admin/'); if (i === -1) return ''; s = s.slice(i + 6); }
+    if (s.indexOf('#') !== -1) return '';   // pestañas del inicio (#noticias…): no mapean
+    var q = '', qi = s.indexOf('?');
+    if (qi !== -1) {
+      try { var p = new URLSearchParams(s.slice(qi)); var sec = p.get('seccion'), tipo = p.get('tipo');
+        if (sec) q = '?seccion=' + sec.toLowerCase(); else if (tipo) q = '?tipo=' + tipo.toLowerCase(); } catch (e) {}
+      s = s.slice(0, qi);
+    }
+    s = s.replace(/index\.html?$/i, '').replace(/\/+$/, '');
+    var folder = (s.split('/')[0] || '');
+    return folder ? folder + q : '';
+  }
+  var _idx = null;
+  function urlIndex() {
+    if (_idx) return _idx; _idx = {};
+    MUNDOS.forEach(function (w) {
+      (w.screens || []).forEach(function (s, i) {
+        var k = folderKey(s.url);
+        if (k && !(k in _idx)) _idx[k] = { world: w.key, idx: i };
+      });
+    });
+    return _idx;
+  }
+  var COARSE = {
+    atletas:'general', socios:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', pedidos:'general',
+    paginas:'general', contenido:'general', imagenes:'general', biblioteca:'general', colaboradores:'general', mapa:'general',
+    documentos:'general', estadisticas:'general', informes:'general', usuarios:'general', importar:'general', contactos:'general',
+    grupos:'general', mundos:'general', campo:'general', buzon:'general', automatizaciones:'general',
+    cubo:'cubo', 'cubo-altas':'cubo', 'cubo-prueba':'cubo', asistencia:'cubo',
+    natacion:'natacion',
+    tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista',
+    repartir:'escuela-atl', historico:'escuela-atl', altas:'general',
+    eventos:'comunicacion', enlaces:'comunicacion', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
+  };
+  function resolverURL() {
+    if (location.pathname.indexOf('/admin/') === -1) return null;
+    var cur = folderKey(location.pathname + location.search);
+    var map = urlIndex();
+    if (cur && map[cur]) return { world: map[cur].world, screenIdx: map[cur].idx };
+    var folderOnly = cur.split('?')[0];
+    if (folderOnly && map[folderOnly]) return { world: map[folderOnly].world, screenIdx: map[folderOnly].idx };
+    var sec = '';
+    try { sec = (new URLSearchParams(location.search).get('seccion') || '').toLowerCase(); } catch (e) {}
+    var bySec = { cubo:'cubo', escuela:'escuela-atl', competicion:'pista', running:'running' };
+    if (bySec[sec]) return { world: bySec[sec], screenIdx: -1 };
+    return { world: (COARSE[folderOnly] || 'general'), screenIdx: -1 };
+  }
+
+  /* ============================================================
+     API compartida (la usa admin-tabbar.js para el panel)
+     ============================================================ */
+  window.APOLANA_MUNDOS_SHELL = {
+    MUNDOS: MUNDOS,
+    injectCSS: injectCSS,
+    resolverURL: resolverURL,
+    /* Rellena un elemento (la .at-side del panel) con la barra de mundos.
+       `screenIdx` marca la pantalla activa por índice (-1 = ninguna). */
+    montarEn: function (el, worldKey, screenIdx) {
+      if (!el) return;
+      injectCSS();
+      var M = mundoPorClave(worldKey) || MUNDOS[0];
+      el.style.setProperty('--mm-acento', M.dot);
+      var esActivo = function (s, idx) { return idx === screenIdx; };
+      var cache = leerCache();
+      var initKeys = (cache === undefined) ? [worldKey] : cache;
+      el.innerHTML = sideInnerHtml(M, esActivo, initKeys);
+      var box = el.querySelector('.mm-worlds');
+      cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, worldKey); });
+    }
+  };
+
+  /* ============================================================
+     Modo PORTAL (auto-montaje) — solo si la página declara el mundo
+     ============================================================ */
+  var CFG = window.APOLANA_MUNDO;
+  if (!CFG || !CFG.world) return;              // panel: solo exponemos la API
+  var M = mundoPorClave(CFG.world);
+  if (!M) return;
+
+  injectCSS();
+  injectPrefetch();
+
   function montar() {
     var content = CFG.contentSel ? document.querySelector(CFG.contentSel) : null;
-    if (!content) { /* sin contenedor no envolvemos: no rompemos la página */ return; }
+    if (!content) return;
     if (document.querySelector('.mm-layout')) return;
 
-    if (CFG.home) renderHub(content);   // el Resumen del mundo se pinta desde el mapa
+    if (CFG.home) renderHub(content, M);
 
     document.body.classList.add('mm-on');
     var acento = M.dot;
@@ -325,29 +402,11 @@
     side.style.setProperty('--mm-acento', acento);
     side.setAttribute('aria-label', 'Mundos del panel');
 
-    var _cache = leerCache();
-    var worlds = worldsHtml(_cache === undefined ? [M.key] : _cache);
+    var esActivo = function (s) { return s.key === (CFG.screen || 'resumen'); };
+    var cache = leerCache();
+    var initKeys = (cache === undefined) ? [M.key] : cache;
+    side.innerHTML = '<div class="mm-isla">' + sideInnerHtml(M, esActivo, initKeys) + '</div>';
 
-    var navHtml = '';
-    if (M.screens && M.screens.length) {
-      navHtml = '<div class="mm-navt">' + esc(M.nombre) + '</div><nav class="mm-nav" aria-label="Secciones de ' + esc(M.nombre) + '">' +
-        M.screens.map(function (s) {
-          var act = s.key === (CFG.screen || 'resumen');
-          return '<a class="mm-i" href="' + esc(s.url) + '"' +
-            (s.ext ? ' target="_blank" rel="noopener"' : '') +
-            ' aria-current="' + act + '">' +
-            '<span class="mm-ic">' + ico(s.i) + '</span><span>' + esc(s.t) + (s.ext ? ' ↗' : '') + '</span></a>';
-        }).join('') + '</nav>';
-    }
-
-    side.innerHTML = '<div class="mm-isla">' +
-      '<div class="mm-rotulo">Mundos <span class="q">· cambia de un clic</span></div>' +
-      '<div class="mm-worlds">' + worlds + '</div>' +
-      (navHtml ? '<div class="mm-sep"></div>' + navHtml : '') +
-      '<p class="mm-nota">Entras en los mundos para los que tienes permiso. Cada persona ve los suyos.</p>' +
-    '</div>';
-
-    // Envolver: [ lateral | (contenido) ] dentro de .mm-layout, en el sitio del contenido.
     var layout = document.createElement('div');
     layout.className = 'mm-layout';
     layout.style.setProperty('--mm-acento', acento);
@@ -358,14 +417,10 @@
     layout.appendChild(side);
     layout.appendChild(main);
 
-    // Acceso por persona: enseñar solo los mundos de cada uno (async).
-    worldsBox = side.querySelector('.mm-worlds');
-    cargarMisMundos();
+    var box = side.querySelector('.mm-worlds');
+    cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, M.key); });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', montar);
-  } else {
-    montar();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar);
+  else montar();
 })();
