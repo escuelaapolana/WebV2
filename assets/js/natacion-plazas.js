@@ -28,6 +28,8 @@
       '.nat-pill.verde{color:#2E7D32;background:#E7F4E8}' +
       '.nat-pill.ambar{color:#B26A00;background:#FBEFD6}' +
       '.nat-pill.rojo{color:#B3261E;background:#FBE3E1}' +
+      '.nat-intro{margin:0 0 16px;font-size:14px;line-height:1.5;color:var(--texto,#3B3B3B)}' +
+      '.nat-intro b{color:var(--navy,#26374B)}' +
       '.nat-dia{margin-bottom:16px}' +
       '.nat-dia h3{font-size:15px;text-transform:uppercase;letter-spacing:.4px;color:var(--navy,#26374B);margin:0 0 8px}' +
       '.nat-dia ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}' +
@@ -40,7 +42,7 @@
     document.head.appendChild(css);
   }
 
-  function pintar(cont, filas) {
+  function pintar(cont, filas, filtro) {
     if (!filas.length) { cont.innerHTML = ''; return; }
     estilos();
     var porDia = {};
@@ -50,6 +52,14 @@
         '<span class="nat-pill verde">Admite plazas</span>' +
         '<span class="nat-pill ambar">Consultar</span>' +
         '<span class="nat-pill rojo">Completo</span></div>'];
+    /* Cada franja es un día suelto, no un paquete: se puede venir uno, dos o
+       los días que se quiera, según haya hueco. En adultos eso es la regla, así
+       que se dice de entrada; el aviso general del cierre lo repite en corto. */
+    if (filtro === 'master') {
+      out.push('<p class="nat-intro">Cada día es una <b>franja independiente</b>: ' +
+        'ven a nadar los días que quieras —uno, dos o los que necesites— según ' +
+        'haya hueco en tu nivel. No hace falta venir todos los días de un grupo.</p>');
+    }
     Object.keys(porDia).map(Number).sort(function (a, b) { return a - b; }).forEach(function (d) {
       out.push('<div class="nat-dia"><h3>' + esc(DIAS[d] || '') + '</h3><ul>');
       porDia[d].forEach(function (f) {
@@ -66,18 +76,28 @@
       });
       out.push('</ul></div>');
     });
-    out.push('<p class="nat-nota">Escuela = niños y niñas · Máster = adultos. Las plazas se ajustan al nivel de cada franja; para inscribirte, escribe al club.</p>');
+    var cierre = (filtro === 'master')
+      ? 'Las plazas van por el nivel de cada franja. Para apuntarte o preguntar por un día suelto, escribe a Mario.'
+      : 'Escuela = niños y niñas · Máster = adultos. Las plazas se ajustan al nivel de cada franja; para inscribirte, escribe al club.';
+    out.push('<p class="nat-nota">' + cierre + '</p>');
     out.push('</div>');
     cont.innerHTML = out.join('');
   }
 
   /* Filtra las franjas según el data-filtro del contenedor:
        'escuela' → franjas de la escuela (grupo con "Escuela")
-       'master'  → franjas de adultos (grupo con "Máster" o "Perfeccionamiento")
-       (sin filtro) → todas. Las mixtas (Escuela + Máster) salen en ambas. */
+       'master'  → franjas de adultos (grupo con "Máster"; incluye las mixtas
+                   "Escuela + Máster" y "Perfeccionamiento / Máster", pero NO la
+                   de "Perfeccionamiento" a secas, que es de la escuela)
+       (sin filtro) → todas.
+     Las mixtas (p. ej. "Escuela + Máster") salen en AMBAS: un adulto de
+     Desarrollo/Perfeccionamiento entrena en esas franjas igual que un chaval,
+     así que también son plazas de adultos. Por eso el filtro máster NO excluye
+     las que llevan "Escuela": basta con que el grupo mencione máster o
+     perfeccionamiento. */
   function filtrar(filas, filtro) {
     if (filtro === 'escuela') return filas.filter(function (f) { return /escuela/i.test(f.grupo || ''); });
-    if (filtro === 'master')  return filas.filter(function (f) { var g = f.grupo || ''; return /m[aá]ster|perfeccion/i.test(g) && !/escuela/i.test(g); });
+    if (filtro === 'master')  return filas.filter(function (f) { return /m[aá]ster/i.test(f.grupo || ''); });
     return filas;
   }
 
@@ -92,7 +112,7 @@
       .order('dia', { ascending: true }).order('hora', { ascending: true })
       .then(function (res) {
         if (res.error || !res.data) { cont.innerHTML = ''; return; }
-        pintar(cont, filtrar(res.data, filtro));
+        pintar(cont, filtrar(res.data, filtro), filtro);
       })
       .catch(function () { cont.innerHTML = ''; });
   }

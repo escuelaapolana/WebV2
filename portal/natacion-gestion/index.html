@@ -109,11 +109,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // Tipos que tiene una franja (por sus inscritos; si está vacía, por el nombre del grupo).
   function tiposDe(f){
+    // Unión SIEMPRE de los tipos por inscritos + por el nombre del grupo: así una
+    // franja mixta ("Escuela + Máster") que de momento solo tenga inscritos de un
+    // tipo no se le oculta al responsable del otro (podría no ver ni meter al 1º).
     var t = {}; insDe(f).forEach(function(m){ if(m.tipo) t[m.tipo]=true; });
-    if (!Object.keys(t).length){
-      if (/m[aá]ster/i.test(f.grupo||'')) t['Máster']=true;
-      if (/escuela|perfeccion/i.test(f.grupo||'')) t['Escuela']=true;
-    }
+    if (/m[aá]ster/i.test(f.grupo||'')) t['Máster']=true;
+    if (/escuela|perfeccion/i.test(f.grupo||'')) t['Escuela']=true;
     return t;
   }
   function enTipo(f){ return !TIPO || !!tiposDe(f)[TIPO]; }
@@ -145,11 +146,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function franjaAcc(f){
     var calles = callesDe(f);
-    var suyos = insDe(f);
+    var todos = insDe(f);
+    // El roster se acota al tipo (escuela/adultos) para no mezclar; los CUPOS y
+    // las VACANTES cuentan a TODOS (las calles son físicas y compartidas).
+    var suyos = TIPO ? todos.filter(function(m){ return m.tipo === TIPO; }) : todos;
     var ct = cupoTotal(f);
-    var libres = ct - suyos.length;
+    var libres = ct - todos.length;
     var semClass = f.semaforo==='verde'?'sem-verde':f.semaforo==='ambar'?'sem-ambar':f.semaforo==='rojo'?'sem-rojo':'sem-gris';
-    var resumen = suyos.length + (ct? ' / '+ct : '') + ' nadadores' + (f.semaforo_forzado? ' · forzado' : '');
+    var resumen = todos.length + (ct? ' / '+ct : '') + ' nadadores' + (f.semaforo_forzado? ' · forzado' : '');
     var abierto = (abierta === f.id);
 
     // roster por calle
@@ -234,12 +238,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="ng-dias">'+chips+'</div>' + cuerpo;
   }
 
-  // Guardar los cupos de una franja (todos sus inputs).
-  function guardarCupos(franjaId){
+  function semClaseDe(sem){ return 'sem ' + (sem==='verde'?'sem-verde':sem==='ambar'?'sem-ambar':sem==='rojo'?'sem-rojo':'sem-gris'); }
+
+  // Refresca EN SITIO la cabecera (semáforo + resumen) y la línea de vacantes de
+  // una franja, sin repintar todo el panel (para no perder el foco al saltar
+  // entre las calles al poner cupos).
+  function refrescarFranja(f){
+    var cab = document.querySelector('[data-abrir="'+f.id+'"]');
+    if (!cab) return;
+    var acc = cab.closest('.ng-acc');
+    var ct = cupoTotal(f), libres = ct - insDe(f).length;
+    var sem = cab.querySelector('.sem'); if (sem) sem.className = semClaseDe(f.semaforo);
+    var info = cab.querySelector('.info span'); if (info) info.textContent = insDe(f).length + (ct? ' / '+ct : '') + ' nadadores' + (f.semaforo_forzado? ' · forzado' : '');
+    var vac = acc && acc.querySelector('.ng-vac');
+    if (vac) vac.innerHTML = ct
+      ? ('Vacantes: <b class="'+(libres<=0?'rojo':libres<=2?'ambar':'verde')+'">'+Math.max(0,libres)+'</b> de '+ct)
+      : 'Pon el cupo de cada calle para calcular las vacantes solas.';
+  }
+
+  // Guardar los cupos de una franja (todos sus inputs) SIN repintar todo.
+  async function guardarCupos(franjaId){
     var ins = document.querySelectorAll('.ng-cupo-in[data-franja="'+franjaId+'"]');
     var cupos = {};
     [].forEach.call(ins, function(el){ var v=el.value.trim(); if (v!=='' && !isNaN(parseInt(v,10))) cupos[el.getAttribute('data-calle')] = parseInt(v,10); });
-    mut(sb.from('natacion_franjas').update({ cupos: cupos }).eq('id', franjaId), 'Plazas guardadas');
+    var r = await sb.from('natacion_franjas').update({ cupos: cupos }).eq('id', franjaId);
+    if (r && r.error){ toast('No se pudo guardar: '+r.error.message,'err'); return; }
+    toast('Plazas guardadas');
+    // El trigger recalculó el semáforo: releo SOLO esta franja y refresco en sitio.
+    var rf = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,semaforo_forzado,cupos,admite_niveles,criterio').eq('id', franjaId).maybeSingle();
+    if (rf && !rf.error && rf.data){
+      for (var i=0;i<FR.length;i++){ if (FR[i].id===franjaId){ FR[i]=rf.data; break; } }
+      refrescarFranja(rf.data);
+    }
   }
 
   async function anadir(franjaId){
