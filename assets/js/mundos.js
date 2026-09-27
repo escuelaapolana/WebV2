@@ -74,6 +74,11 @@
   var css = document.createElement('style');
   css.setAttribute('data-piel','mundos');
   css.textContent =
+    /* FLUIDEZ · transición suave entre páginas del panel (crossfade en vez de
+       recarga en blanco). La barra lateral lleva view-transition-name, así que
+       se queda FIJA y solo cambia el contenido. Navegador sin soporte: navega
+       normal, sin romperse. Solo entre páginas que cargan este shell. */
+    '@view-transition{navigation:auto}' +
     /* Oculta por defecto (móvil); el @media de abajo la muestra en PC.
        Mismo selector .mm-side en ambos sitios para que gane el de la media
        query por orden, no por especificidad. */
@@ -91,7 +96,7 @@
       'body.mm-on .pt-tabbar{display:none !important}' +
       'body.mm-on .at-side{display:none !important}' +
       'body.mm-on.pt-con-tabbar{padding-bottom:24px !important}' +
-      '.mm-side{display:block;position:sticky;top:16px;align-self:start}' +
+      '.mm-side{display:block;position:sticky;top:16px;align-self:start;view-transition-name:mm-lateral}' +
       '.mm-isla{background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:16px 12px}' +
       '.mm-rotulo{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--texto-suave,#6E6656);padding:2px 8px 8px;display:flex;gap:8px;align-items:center}' +
       '.mm-rotulo .q{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--texto-tenue,#6E6656);font-size:11px}' +
@@ -123,6 +128,15 @@
       '.mm-nota b{color:var(--texto-suave,#6E6656)}' +
     '}';
   document.head.appendChild(css);
+
+  /* FLUIDEZ · precarga (solo HTML) de las páginas de natación al pasar el ratón,
+     para que abran casi al instante. No ejecuta su JS ni toca datos. */
+  try {
+    var sr = document.createElement('script');
+    sr.type = 'speculationrules';
+    sr.textContent = '{"prefetch":[{"source":"document","where":{"href_matches":"/portal/natacion*"},"eagerness":"moderate"}]}';
+    document.head.appendChild(sr);
+  } catch (e) {}
 
   /* ---------- montaje ---------- */
   function montar() {
