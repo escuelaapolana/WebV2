@@ -90,7 +90,7 @@
       frase:'Los peques del agua: franjas, cupos, asistencia y familias.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-natacion/'},
-        {t:'Niños y niñas',    i:'people',   url:B+'admin/natacion/',                          d:'La lista de la escuela de natación.'},
+        {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
         {t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
         {t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/?tipo=Escuela', d:'Quién viene a cada sesión.'},
         {t:'Ver en la web',    i:'signal',   url:B+'escuela-natacion/',                        d:'El semáforo de plazas que ven las familias.', ext:true}

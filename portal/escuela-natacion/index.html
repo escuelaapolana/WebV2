@@ -10,8 +10,10 @@
 <link rel="stylesheet" href="../../assets/css/apolana.css">
 <script>
   window.APOLANA_BASE="../../";
-  /* El «Resumen» de este mundo lo pinta assets/js/mundos.js desde su mapa (home:true). */
-  window.APOLANA_MUNDO = { world:"escuela-nat", screen:"resumen", home:true, contentSel:"#w" };
+  (function(){
+    var p = new URLSearchParams(location.search).get('p');
+    window.APOLANA_MUNDO = { world:'escuela-nat', screen:(p==='ninos'?'ninos':'resumen'), contentSel:'#en' };
+  })();
 </script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
@@ -19,15 +21,101 @@
 <script src="../../assets/js/portal-tabbar.js" defer></script>
 <script src="../../assets/js/mundos.js" defer></script>
 <style>
+  :root{ --mm-acento:#2E8C86; }
   body{ background:var(--crema,#FBF9F4); }
-  #w{ max-width:820px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 40px; }
+  #en{ max-width:900px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 40px; }
+  .en-msg{ color:var(--texto-suave,#6E6656); text-align:center; padding:26px 10px; }
+  .en-stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:13px; margin-bottom:24px; }
+  .en-stat{ background:#fff; border-radius:var(--radio,14px); box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:16px 18px 14px; position:relative; overflow:hidden; }
+  .en-stat::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--mm-acento); opacity:.9; }
+  .en-stat b{ font-family:var(--fuente-titulo); font-weight:700; font-size:clamp(26px,3vw,34px); color:var(--navy); line-height:1; display:block; }
+  .en-stat span{ font-size:12.5px; color:var(--texto-suave); margin-top:5px; display:block; }
+  .en-subcab{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:2px 0 16px; }
+  .en-volver{ display:inline-flex; align-items:center; gap:7px; text-decoration:none; background:#fff; border:1px solid var(--linea-borde,#D4CBB9); color:var(--texto); font-size:14px; font-weight:600; min-height:40px; padding:8px 14px 8px 12px; border-radius:999px; }
+  .en-volver:hover{ background:var(--crema-media,#EFE9DC); }
+  .en-subcab h2{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(22px,3.2vw,28px); color:var(--navy); margin:0; }
+  .en-cuenta{ margin-left:auto; font-family:var(--fuente-dato); font-size:13px; color:var(--texto-suave); }
+  .en-cuenta b{ color:var(--navy); }
+  .en-filtros{ display:flex; gap:10px; margin-bottom:14px; }
+  .en-filtros input{ flex:1 1 220px; max-width:340px; min-height:44px; padding:10px 16px; border:1px solid var(--linea-borde,#D4CBB9); border-radius:999px; background:#fff; font:inherit; font-size:15px; color:var(--navy); }
+  .en-personas{ display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr)); gap:12px; }
+  .en-p{ background:#fff; border-radius:var(--radio,14px); box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:14px 15px; }
+  .en-p .fila{ display:flex; align-items:center; gap:11px; }
+  .en-p .ava{ width:40px; height:40px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; color:#fff; font-weight:700; font-size:14px; font-family:var(--fuente-titulo); background:var(--mm-acento); }
+  .en-p .nom{ flex:1 1 auto; min-width:0; }
+  .en-p .nom b{ display:block; font-size:15.5px; color:var(--navy); line-height:1.15; }
+  .en-p .cod{ flex:0 0 auto; font-family:var(--fuente-dato); font-size:11.5px; color:var(--texto-tenue); background:var(--crema,#FBF9F4); border:1px solid var(--linea,#EAE3D5); border-radius:8px; padding:4px 8px; }
+  .en-fr{ margin-top:11px; padding-top:10px; border-top:1px dashed var(--linea,#EAE3D5); display:flex; flex-direction:column; gap:5px; }
+  .en-fr .l{ display:flex; align-items:baseline; gap:9px; font-size:13px; }
+  .en-fr .d{ font-weight:600; color:var(--navy); min-width:118px; }
+  .en-fr .x{ color:var(--texto-suave); }
 </style>
 </head>
 <body>
-  <div id="w"></div>
+  <div id="en"><p class="en-msg">Cargando…</p></div>
 <script>
-  /* Asegura sesión + cabecera navy del portal (redirige si no hay sesión). */
-  if (window.APOLANA_PORTAL && APOLANA_PORTAL.listo) APOLANA_PORTAL.listo(function(){});
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('en');
+  var DIAS = ['','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+  var B = window.APOLANA_BASE || '../../';
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function hhmm(h){ return String(h).slice(0,5); }
+  function ini(n){ var p=String(n||'').trim().split(/\s+/); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
+
+  var p = new URLSearchParams(location.search).get('p');
+
+  if (p === 'ninos') {
+    // Lista de niños/as de la escuela de natación
+    var rf = await sb.from('natacion_franjas').select('id,dia,hora,grupo');
+    var ri = await sb.from('natacion_inscripciones').select('nombre,tipo,calle,nivel,acceso_id,franja_id').eq('activa', true).eq('tipo','Escuela');
+    var ra = await sb.from('natacion_accesos').select('id,codigo');
+    if (rf.error || ri.error) { wrap.innerHTML = '<p class="en-msg">No hemos podido cargar la escuela. Recarga en un momento.</p>'; return; }
+    var FR = {}; (rf.data||[]).forEach(function(f){ FR[f.id]=f; });
+    var COD = {}; (ra.error?[]:(ra.data||[])).forEach(function(a){ COD[a.id]=a.codigo; });
+    var pers = {};
+    (ri.data||[]).forEach(function(m){
+      var k = m.acceso_id || ('nom:'+m.nombre);
+      var pe = pers[k] || (pers[k] = { nombre:m.nombre, codigo:COD[m.acceso_id]||'', franjas:[] });
+      var f = FR[m.franja_id]; if (f) pe.franjas.push({ dia:f.dia, hora:hhmm(f.hora), calle:m.calle, nivel:m.nivel });
+    });
+    var LISTA = Object.keys(pers).map(function(k){ return pers[k]; });
+    LISTA.forEach(function(pe){ pe.franjas.sort(function(a,b){ return a.dia!==b.dia ? a.dia-b.dia : (a.hora<b.hora?-1:1); }); });
+    LISTA.sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; });
+    var total = LISTA.length, busca='';
+    function pinta(){
+      var q = busca.trim().toLowerCase();
+      var vis = LISTA.filter(function(pe){ return !q || (pe.nombre||'').toLowerCase().indexOf(q)!==-1; });
+      var cards = vis.length ? vis.map(function(pe){
+        var fr = pe.franjas.map(function(f){ return '<span class="l"><span class="d">'+esc(DIAS[f.dia]+' '+f.hora)+'</span><span class="x">'+esc(f.calle)+' · '+esc(f.nivel||'—')+'</span></span>'; }).join('') || '<span class="x" style="font-size:13px;color:var(--texto-suave)">Sin franja asignada aún</span>';
+        return '<div class="en-p"><div class="fila">'+
+          '<span class="ava">'+esc(ini(pe.nombre).toUpperCase())+'</span>'+
+          '<span class="nom"><b>'+esc(pe.nombre)+'</b></span>'+
+          (pe.codigo?'<span class="cod" title="Código de familia">'+esc(pe.codigo)+'</span>':'')+
+          '</div><div class="en-fr">'+fr+'</div></div>';
+      }).join('') : '<p class="en-msg">Nadie con ese nombre.</p>';
+      wrap.innerHTML =
+        '<div class="en-subcab"><a class="en-volver" href="'+B+'portal/escuela-natacion/">← Resumen</a>'+
+        '<h2>Niños y niñas</h2><span class="en-cuenta"><b>'+total+'</b> en total · mostrando '+vis.length+'</span></div>'+
+        '<div class="en-filtros"><input type="search" id="en-q" placeholder="Buscar por nombre…" value="'+esc(busca)+'"></div>'+
+        '<div class="en-personas">'+cards+'</div>';
+      var qi=document.getElementById('en-q');
+      if(qi){ qi.addEventListener('input', function(){ busca=qi.value; var pos=qi.selectionStart; pinta(); var n=document.getElementById('en-q'); if(n){ n.focus(); try{n.setSelectionRange(pos,pos);}catch(e){} } }); }
+    }
+    pinta();
+    return;
+  }
+
+  // Resumen: cabecera + cifras (mundo_stats) + hub
+  var stats = [];
+  try { var rs = await sb.rpc('mundo_stats', { p_world:'escuela-nat' }); if (rs && !rs.error && Array.isArray(rs.data)) stats = rs.data; } catch (e) {}
+  var shell = window.APOLANA_MUNDOS_SHELL;
+  wrap.innerHTML =
+    '<div class="mh-cab"><div class="mh-eyebrow">Mundo</div><h1><span class="pt-g"></span>Escuela de natación</h1>'+
+      '<p>Los peques del agua: niños y niñas, franjas, cupos y familias.</p></div>'+
+    (stats.length ? '<div class="en-stats">'+stats.map(function(s){ return '<div class="en-stat"><b>'+esc(s.n)+'</b><span>'+esc(s.l)+'</span></div>'; }).join('')+'</div>' : '')+
+    '<p class="mh-rot" style="font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--texto-suave);margin:0 0 12px">Herramientas de este mundo</p>'+
+    (shell && shell.hubHTML ? shell.hubHTML('escuela-nat') : '');
+});
 </script>
 </body>
 </html>
