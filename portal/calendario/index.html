@@ -29,6 +29,7 @@
     --c-cierre-suave: #FDF3E3;
     --c-cierre-borde: #EBD9B8;
     --c-cubo: #6B5B8A;
+    --c-natacion: #2E8C86;
     --c-entreno: #DDD5C5;
   }
 
@@ -140,6 +141,8 @@
   .tarj.k-cierre .sub.dentro { color:#1e7a3d; }
 
   .tarj.k-cubo { border-left:4px solid var(--c-cubo); }
+  .tarj.k-natacion { border-left:4px solid var(--c-natacion); }
+  .tarj.k-natacion .hh { color: var(--c-natacion); }
   .tarj.k-evento { border-left:4px solid var(--c-evento); }
 
   /* ===========================================================
@@ -166,6 +169,7 @@
   .lin.mia .tt { font-weight:600; }
   .lin.k-competicion .hh, .lin.k-competicion .tt { color: var(--c-competicion); }
   .lin.k-cierre .hh, .lin.k-cierre .tt { color: var(--c-cierre); }
+  .lin.k-natacion .hh, .lin.k-natacion .tt { color: var(--c-natacion); }
 
   /* ===========================================================
      VISTA MES · solo puntos, y debajo el día elegido
@@ -190,7 +194,7 @@
   .dia .puntos i { width:5px; height:5px; border-radius:999px; display:block; }
   .p-entreno { background: var(--c-entreno); } .p-cubo { background: var(--c-cubo); }
   .p-competicion { background: var(--c-competicion); } .p-cierre { background: var(--c-cierre); }
-  .p-evento { background: var(--c-evento); }
+  .p-evento { background: var(--c-evento); } .p-natacion { background: var(--c-natacion); }
 
   /* Debajo del mes, «Próximos entrenamientos»: el título y la lista que viene */
   .detalle-dia { margin-top:20px; display:flex; flex-direction:column; gap:8px; }
@@ -237,6 +241,7 @@
   .modal-eti.morada { background:#F1ECF8; color: var(--c-cubo); }
   .modal-eti.ambar { background: var(--c-cierre-suave); color: var(--c-cierre); }
   .modal-eti.gris { background: var(--crema-media); color: var(--texto-suave); }
+  .modal-eti.agua { background:#E6F2F1; color: var(--c-natacion); }
 
   .modal-datos { margin-top:16px; display:flex; flex-direction:column; }
   .modal-datos .fila { display:flex; gap:14px; padding:10px 0; border-bottom:1px solid var(--crema-banda); }
@@ -339,7 +344,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                      triatlon:'Triatlón', montana:'Montaña', pista:'Pista', marcha:'Marcha',
                      cubo:'El Cubo', 'escuela-natacion':'Escuela de natación',
                      'escuela-municipal':'Escuela municipal', 'deporte-adaptado':'Deporte adaptado' };
-  var COLOR_ETIQUETA = { entreno:'', cubo:'morada', competicion:'roja', evento:'', cierre:'ambar' };
+  var COLOR_ETIQUETA = { entreno:'', cubo:'morada', natacion:'agua', competicion:'roja', evento:'', cierre:'ambar' };
   var NOMBRE_TIPO = { entreno:'Entrenamientos', cubo:'El Cubo', competicion:'Competiciones', evento:'Eventos del club' };
   /* El ámbito de una competición, dicho como se dice. "atletismo" no se enseña:
      es lo normal y no aporta nada. */
@@ -861,6 +866,50 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { /* si falla, el resto del calendario sigue */ }
 
+    // --- 6b) FRANJAS DE NATACIÓN (horario semanal fijo de quien nada). Enlace
+    //        persona → su ficha (atleta) → natacion_accesos → inscripciones →
+    //        franja; o directamente por perfil_id. Es tuyo: se resalta. ---
+    try {
+      var misFichasN = atletas.filter(function (a) { return a && perfil && a.perfil_id === perfil.id; });
+      var idsAtN = misFichasN.map(function (a) { return a.id; }).filter(Boolean);
+      var insN = [];
+      if (idsAtN.length) {
+        var rna = await sb.from('natacion_accesos').select('id').in('atleta_id', idsAtN);
+        var accIds = (rna && !rna.error && rna.data) ? rna.data.map(function (x) { return x.id; }) : [];
+        if (accIds.length) {
+          var ri1 = await sb.from('natacion_inscripciones').select('franja_id,calle,nivel').eq('activa', true).in('acceso_id', accIds);
+          if (ri1 && !ri1.error && ri1.data) insN = insN.concat(ri1.data);
+        }
+      }
+      var ri2 = await sb.from('natacion_inscripciones').select('franja_id,calle,nivel').eq('activa', true).eq('perfil_id', perfil.id);
+      if (ri2 && !ri2.error && ri2.data) insN = insN.concat(ri2.data);
+      if (insN.length) {
+        var frIdsN = insN.map(function (m) { return m.franja_id; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+        var rfr = await sb.from('natacion_franjas').select('id,dia,hora,grupo').in('id', frIdsN);
+        var FRN = {}; if (rfr && !rfr.error && rfr.data) rfr.data.forEach(function (f) { FRN[f.id] = f; });
+        var vistoN = {}, d0n = new Date(desde + 'T00:00:00'), d1n = new Date(hasta + 'T00:00:00');
+        insN.forEach(function (m) {
+          var f = FRN[m.franja_id]; if (!f) return;
+          var dowJs = (Number(f.dia) === 7) ? 0 : Number(f.dia);
+          var d = new Date(d0n);
+          while (d <= d1n) {
+            if (d.getDay() === dowJs) {
+              var fe = iso(d), keyN = f.id + '|' + fe;
+              if (!vistoN[keyN]) {
+                vistoN[keyN] = true;
+                acts.push({
+                  fuente: 'natacion', id: 'nat-' + f.id + '-' + fe, fecha: fe,
+                  hora: hhmm(f.hora), horaFin: '', titulo: 'Natación', tipoTexto: 'Natación', mio: true,
+                  lugar: '', grupo: [f.grupo, m.calle, m.nivel].filter(Boolean).join(' · ')
+                });
+              }
+            }
+            d.setDate(d.getDate() + 1);
+          }
+        });
+      }
+    } catch (e) { /* si falla, el resto del calendario sigue */ }
+
     ACTIVIDADES = juntarEntrenos(acts);
     ACTIVIDADES.forEach(function (a, i) { a.i = i; a.clave = a.fuente + '|' + a.id + '|' + a.fecha; });
     fundirCompeticiones();
@@ -1106,6 +1155,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function etiquetaCorta(a) {
     if (a.juntos) return a.titulo;   // ya viene armada: «Entrenamiento · Escuela»
     if (a.fuente === 'cubo') return a.titulo || 'El Cubo';
+    if (a.fuente === 'natacion') return a.titulo || 'Natación';
     if (a.fuente === 'competicion') return a.titulo || 'Competición';
     if (a.fuente === 'cierre') return a.titulo || 'Cierra la inscripción';
     if (a.fuente === 'evento') return a.titulo || 'Evento del club';
@@ -1126,6 +1176,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if (a.fuente === 'cierre') return '';   // el cierre lleva su propio aviso
     if (a.fuente === 'cubo') return [a.lugar, a.grupo].filter(Boolean).join(' · ');
+    if (a.fuente === 'natacion') return [a.lugar, a.grupo].filter(Boolean).join(' · ');
     return a.lugar || '';
   }
 
@@ -1239,7 +1290,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var f = y + '-' + pad(m + 1) + '-' + pad(n);
       var lista = mapa[f] || [];
       var puntos = '';
-      ['competicion', 'cierre', 'evento', 'cubo', 'entreno'].forEach(function (k) {
+      ['competicion', 'cierre', 'evento', 'cubo', 'natacion', 'entreno'].forEach(function (k) {
         if (lista.some(function (a) { return a.fuente === k; })) puntos += '<i class="p-' + k + '"></i>';
       });
       var cls = 'dia' + (f === HOY_ISO ? ' hoy' : '') + (f === diaElegido ? ' elegido' : '');
@@ -1313,6 +1364,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<span><i class="p-evento"></i>Evento del club</span>' +
           '<span><i class="p-cierre"></i>Cierre de inscripción</span>' +
           '<span><i class="p-cubo"></i>El Cubo</span>' +
+          '<span><i class="p-natacion"></i>Natación</span>' +
           '<span><i class="p-entreno"></i>Entrenamiento</span>' +
         '</div>' +
       '</div>' +
