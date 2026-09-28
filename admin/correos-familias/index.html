@@ -60,13 +60,27 @@
   </div>
 
   <div class="cf-card">
-    <h2>Envío real</h2>
+    <h2>Envío real · Escuela</h2>
     <p class="sub">Manda a <b>todas las familias</b> de escuela con enlace generado. Cada una recibe el suyo, con sus hijos y horarios. Pregunta primero cuántas son.</p>
     <div class="cf-btns cf-real">
       <button type="button" id="cf-contar">Ver a cuántas se enviaría</button>
       <button type="button" id="cf-enviar" disabled>Enviar a todas</button>
     </div>
     <div class="cf-estado" id="cf-est-real"></div>
+  </div>
+
+  <div class="cf-card">
+    <h2>Adultos · Máster</h2>
+    <p class="sub">Correo para <b>cada nadador Máster</b> (a su propio correo), con su <b>calle, nivel y días</b>. La prueba usa el correo de arriba. Primero prueba, luego el envío real.</p>
+    <div class="cf-btns">
+      <button type="button" id="cfm-prueba">Prueba a mi correo</button>
+      <button type="button" id="cfm-prueba-ya">Prueba · ya tiene cuenta</button>
+    </div>
+    <div class="cf-btns cf-real" style="margin-top:12px">
+      <button type="button" id="cfm-contar">Ver a cuántos se enviaría</button>
+      <button type="button" id="cfm-enviar" disabled>Enviar a todos</button>
+    </div>
+    <div class="cf-estado" id="cf-est-master"></div>
   </div>
 </div>
 </div>
@@ -157,6 +171,66 @@ APOLANA_ADMIN.listo(function (sb) {
         (d.fallos ? 'err' : 'ok'));
       $('cf-contar').disabled = false;
     } catch (e) { pon($('cf-est-real'), 'Error: ' + (e && e.message || e), 'err'); $('cf-contar').disabled = false; }
+  });
+
+  // ================== MÁSTER (adultos) ==================
+  function pruebaMaster(ya) {
+    return async function () {
+      var destino = ($('cf-destino').value || '').trim();
+      if (!destino) { pon($('cf-est-master'), 'Pon un correo de destino arriba.', 'err'); return; }
+      $('cfm-prueba').disabled = true; $('cfm-prueba-ya').disabled = true;
+      pon($('cf-est-master'), 'Enviando prueba…');
+      try {
+        var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'prueba', publico: 'master', destino: destino, ya_cuenta: ya } });
+        if (r.error) pon($('cf-est-master'), 'No se pudo enviar: ' + r.error.message, 'err');
+        else if (r.data && r.data.ok) pon($('cf-est-master'), '✓ Prueba Máster enviada a ' + destino + (ya ? ' (con nota «ya tiene cuenta»)' : '') + '.\nMuestra: ' + (r.data.muestra || ''), 'ok');
+        else pon($('cf-est-master'), 'No se envió: ' + JSON.stringify(r.data), 'err');
+      } catch (e) { pon($('cf-est-master'), 'Error: ' + (e && e.message || e), 'err'); }
+      $('cfm-prueba').disabled = false; $('cfm-prueba-ya').disabled = false;
+    };
+  }
+  $('cfm-prueba').addEventListener('click', pruebaMaster(false));
+  $('cfm-prueba-ya').addEventListener('click', pruebaMaster(true));
+
+  var totalM = null;
+  $('cfm-contar').addEventListener('click', async function () {
+    pon($('cf-est-master'), 'Consultando…');
+    try {
+      var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'real', publico: 'master' } });
+      if (r.error) { pon($('cf-est-master'), 'Error: ' + r.error.message, 'err'); return; }
+      var d = r.data || {};
+      var pend = d.pendientes != null ? d.pendientes : (d.enviables || d.total || 0);
+      totalM = pend;
+      var msg = 'Pendientes de enviar: ' + pend;
+      if (d.ya_invitadas) msg += ' · ya recibieron: ' + d.ya_invitadas;
+      if ((d.total || 0) > (d.enviables || 0)) msg += ' · se saltan ' + ((d.total || 0) - (d.enviables || 0));
+      msg += pend ? '. Pulsa «Enviar a todos».' : '. No queda ninguno pendiente.';
+      if (d.brevo_ok === false) msg += '\n⚠️ Brevo no respondió; avísame antes de enviar.';
+      if (d.rebotados) msg += '\n⚠️ Rebotó ' + d.rebotados + ': ' + (d.detalle_rebotados || []).join(', ');
+      pon($('cf-est-master'), msg);
+      $('cfm-enviar').disabled = pend === 0;
+    } catch (e) { pon($('cf-est-master'), 'Error: ' + (e && e.message || e), 'err'); }
+  });
+
+  $('cfm-enviar').addEventListener('click', async function () {
+    var cuantos = totalM == null ? 'todos los Máster' : (totalM + ' nadadores');
+    var seguir = window.apoConfirm
+      ? await window.apoConfirm('Vas a enviar el correo de acceso a ' + cuantos + '. ¿Seguimos?', { ok: 'Enviar', tono: 'peligro' })
+      : window.confirm('Vas a enviar el correo de acceso a ' + cuantos + '. ¿Seguimos?');
+    if (!seguir) return;
+    $('cfm-enviar').disabled = true; $('cfm-contar').disabled = true;
+    pon($('cf-est-master'), 'Enviando… (unos segundos)');
+    try {
+      var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'real', publico: 'master', confirmar: true } });
+      if (r.error) { pon($('cf-est-master'), 'Error de red: ' + r.error.message + '\nLo enviado queda marcado; reintenta y solo saldrá lo que falte.', 'err'); $('cfm-contar').disabled = false; return; }
+      var d = r.data || {};
+      if (d.ok === false) { pon($('cf-est-master'), 'Se cortó a mitad. Reintenta (no duplica).', 'err'); $('cfm-contar').disabled = false; $('cfm-enviar').disabled = false; return; }
+      pon($('cf-est-master'),
+        '✓ Enviados ahora: ' + (d.enviados || 0) + '\nYa estaban: ' + (d.ya_estaban || 0) +
+        '\nSaltados: ' + (d.saltados || 0) + '\nFallos: ' + (d.fallos || 0) +
+        (d.fallos ? '\n' + JSON.stringify(d.detalle_fallos) : ''), (d.fallos ? 'err' : 'ok'));
+      $('cfm-contar').disabled = false;
+    } catch (e) { pon($('cf-est-master'), 'Error: ' + (e && e.message || e), 'err'); $('cfm-contar').disabled = false; }
   });
 });
 </script>
