@@ -83,14 +83,17 @@ APOLANA_ADMIN.listo(function (sb) {
 
   function anio(f) { if (!f) return NaN; var y = parseInt(String(f).slice(0, 4), 10); return isNaN(y) ? NaN : y; }
   function edad(f) { var y = anio(f); if (isNaN(y)) return null; return (new Date().getFullYear()) - y; }
-  // Un socio = ficha con tipo_membresia 'socio', o sin membresía conocida y
-  // nacido antes de 2009 (adulto). Misma lógica que usa hoy el panel.
+  // Un socio = ficha con tipo_membresia 'socio', o SIN membresía puesta pero
+  // CON número de socio (socio mal etiquetado). Antes se contaba como socio a
+  // cualquier adulto sin datos, y eso metía a entrenadores, máster, atletas y
+  // hasta voluntarios en el recuento (salían 215 en vez de ~172 reales).
   function esSocio(a) {
     var t = a.tipo_membresia;
     if (t === 'socio') return true;
-    if (t === 'escuela' || t === 'municipal' || t === 'cubo') return false;
-    var y = anio(a.fecha_nacimiento);
-    return !(y >= ANIO_ESCUELA); // sin fecha o < 2009 → socio
+    // No son socios: escuela, municipal, El Cubo y 'atleta' (compite, no es socio).
+    if (t === 'escuela' || t === 'municipal' || t === 'cubo' || t === 'atleta') return false;
+    // Sin tipo: socio solo si tiene número de socio.
+    return a.numero_socio != null && String(a.numero_socio).trim() !== '';
   }
   // Candidato a pasar a socio: se pasa a socio el AÑO QUE SE CUMPLEN 18
   // (nacidos ese año). Este año, 2008; el que viene, 2009; y así. Solo se
@@ -114,7 +117,7 @@ APOLANA_ADMIN.listo(function (sb) {
   async function cargar() {
     // Personas (no de baja)
     var ra = await sb.from('atletas')
-      .select('id,nombre,apellidos,estado,fecha_nacimiento,tipo_membresia,telefono,email')
+      .select('id,nombre,apellidos,estado,fecha_nacimiento,tipo_membresia,numero_socio,telefono,email')
       .neq('estado', 'baja');
     var gente = (!ra.error && ra.data) ? ra.data : [];
     SOCIOS = gente.filter(esSocio);
