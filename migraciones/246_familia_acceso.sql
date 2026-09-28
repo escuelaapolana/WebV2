@@ -31,7 +31,7 @@ language sql stable security definer set search_path = 'public' as $$
   -- La ficha del nadador puede colgar de la inscripción (escuela) o del
   -- acceso/código (máster). Y una inscripción puede ir directa a un perfil.
   with mias as (
-    select i.franja_id, i.calle, i.nivel, i.tipo,
+    select i.id as ins_id, i.franja_id, i.calle, i.nivel, i.tipo, i.acceso_id,
            coalesce(i.atleta_id, ac.atleta_id) as atleta_id
     from public.natacion_inscripciones i
     left join public.natacion_accesos ac on ac.id = i.acceso_id
@@ -53,7 +53,21 @@ language sql stable security definer set search_path = 'public' as $$
       'tipo',      m.tipo,
       'atleta_id', m.atleta_id,
       'de',        (select btrim(a2.nombre || ' ' || coalesce(a2.apellidos, ''))
-                      from public.atletas a2 where a2.id = m.atleta_id)
+                      from public.atletas a2 where a2.id = m.atleta_id),
+      -- Compañeros de esa franja, con los apellidos en asteriscos (nombre entero).
+      'companeros', coalesce((
+        select jsonb_agg(masc order by masc) from (
+          select (select string_agg(case when o = 1 or length(w) <= 2 then w else left(w, 3) || '***' end, ' ' order by o)
+                  from unnest(regexp_split_to_array(btrim(i2.nombre), '\s+')) with ordinality as u(w, o)) as masc
+          from public.natacion_inscripciones i2
+          where i2.franja_id = f.id and i2.activa and i2.id <> m.ins_id
+            and (m.acceso_id is null or i2.acceso_id is distinct from m.acceso_id)
+        ) z), '[]'::jsonb),
+      -- Faltas ya avisadas de aquí en adelante (para pintarlas marcadas).
+      'ausencias', coalesce((
+        select jsonb_agg(a3.fecha order by a3.fecha)
+        from public.natacion_ausencias a3
+        where a3.acceso_id = m.acceso_id and a3.franja_id = f.id and a3.fecha >= current_date), '[]'::jsonb)
     ) order by f.dia, f.hora), '[]'::jsonb)
   from mias m
   join public.natacion_franjas f on f.id = m.franja_id;

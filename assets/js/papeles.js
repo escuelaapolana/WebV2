@@ -217,13 +217,14 @@
     /* La app se queda con 4 vistas: Atleta, Entrenador, El Cubo y
        Administración. Tesorería, contabilidad y junta NO son vistas aparte:
        todas entran por el panel, así que se muestran como «Administración»
-       (una sola). Coordinación y familia se retiran de las vistas del portal.
+       (una sola). Coordinación se retira de las vistas del portal; «Familia»
+       SÍ es una vista (las familias de la escuela de natación entran por ahí).
        Los permisos de dentro los siguen decidiendo las reglas de la base; esto
        solo simplifica lo que se ELIGE. Si a alguien no le quedara ninguna, se
        deja lo que tenga (no se le encierra). */
     if (DATOS && DATOS.roles && DATOS.roles.length) {
       var ADMIN_FAM = ['admin', 'tesoreria', 'contabilidad', 'junta'];
-      var OK = ['atleta', 'entrenador', 'cubo', 'admin', 'responsable'];
+      var OK = ['atleta', 'padre', 'entrenador', 'cubo', 'admin', 'responsable'];
       /* El rol REAL detrás de la tarjeta «Administración»: el primero de la
          familia que la persona tenga de verdad (admin > tesorería > contabilidad
          > junta). Se envía este al cambiar, no el token colapsado 'admin'. */
