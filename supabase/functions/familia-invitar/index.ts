@@ -200,7 +200,60 @@ async function enviarBrevo(destino: string, hijos: Hijo[], enlace: string, asunt
   return { ok: false, estado: r.status, brevo: datos };
 }
 
-type FilaFamilia = { email: string; token: string | null; hijos: Hijo[]; ya_tiene_cuenta: boolean };
+type FilaFamilia = { email: string; token: string | null; hijos: Hijo[]; ya_tiene_cuenta: boolean; invitado_en?: string | null };
+
+// Deja sellado en la base que a esta familia YA se le mandó (por token, único).
+// Así un reintento no vuelve a escribirle: es idempotente.
+async function sellarInvitado(token: string): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/familia_invitaciones?token=eq.${encodeURIComponent(token)}`, {
+      method: "PATCH",
+      headers: {
+        apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json", Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ invitado_en: new Date().toISOString() }),
+    });
+  } catch (_e) { /* si falla el sello, peor es no enviar; el reintento lo pilla luego */ }
+}
+
+// Pregunta a Brevo a QUIÉN se le ha enviado ya HOY un correo de esta campaña
+// (por si un intento anterior mandó a algunas antes de cortarse). Devuelve el
+// conjunto de correos en minúsculas. Si Brevo no contesta, conjunto vacío.
+async function yaEnviadosBrevo(): Promise<Set<string>> {
+  const set = new Set<string>();
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const url = `https://api.brevo.com/v3/smtp/emails?startDate=${hoy}&endDate=${hoy}&limit=1000`;
+    const r = await fetch(url, { headers: { "api-key": BREVO_API_KEY, accept: "application/json" } });
+    if (!r.ok) return set;
+    const d = await r.json();
+    const arr = (d?.transactionalEmails ?? d?.emails ?? []) as Array<Record<string, unknown>>;
+    for (const e of arr) {
+      const subj = String(e?.subject ?? "");
+      // Solo los de ESTA campaña (no pruebas, que llevan «[PRUEBA…]» delante).
+      if (!subj.startsWith("Tu acceso a la Web")) continue;
+      let to = "";
+      if (typeof e?.email === "string") to = e.email;
+      else if (Array.isArray(e?.to) && e.to[0] && typeof e.to[0] === "object") {
+        to = String((e.to[0] as Record<string, unknown>).email ?? "");
+      }
+      if (to) set.add(to.toLowerCase().trim());
+    }
+  } catch (_e) { /* sin reconciliación; nos quedamos con lo que diga invitado_en */ }
+  return set;
+}
+
+// Ejecuta `fn` sobre los items en tandas concurrentes de `n` (rápido y sin
+// pasarse: el envío secuencial de 61 tardaba tanto que cortaba la función).
+async function enTandas<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += n) {
+    const lote = items.slice(i, i + n);
+    out.push(...await Promise.all(lote.map(fn)));
+  }
+  return out;
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
@@ -262,32 +315,56 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }, 200, origen);
   }
 
-  // ---- MODO REAL: a todas las familias ----
+  // ---- MODO REAL: a todas las familias (idempotente y en tandas) ----
   if (modo === "real") {
-    const soloA = String(cuerpo.solo_a ?? "").trim().toLowerCase(); // opcional: enviar solo a una familia real
+    const soloA = String(cuerpo.solo_a ?? "").trim().toLowerCase(); // opcional: solo una familia
     const objetivo = soloA ? familias.filter((f) => (f.email || "").toLowerCase() === soloA) : familias;
     const enviables = objetivo.filter(enviable);
+    const pendientesAntes = enviables.filter((f) => !f.invitado_en);
     if (cuerpo.confirmar !== true) {
       return responder({
         error: "falta_confirmar", mensaje: "Pon confirmar:true para enviar de verdad.",
-        total: objetivo.length, enviables: enviables.length,
+        total: objetivo.length, enviables: enviables.length, pendientes: pendientesAntes.length,
+        ya_invitadas: enviables.length - pendientesAntes.length,
       }, 200, origen);
     }
-    const enviados: string[] = [];
-    const fallos: Array<{ email: string; motivo: unknown }> = [];
-    const saltados: string[] = [];
-    for (const f of objetivo) {
-      if (!enviable(f)) { saltados.push(f.email); continue; }
-      const r = await enviarBrevo(f.email, f.hijos, enlaceDe(f.token), ASUNTO, f.ya_tiene_cuenta === true);
-      if (r.ok) enviados.push(f.email);
-      else fallos.push({ email: f.email, motivo: r });
-      await new Promise((res) => setTimeout(res, 200)); // suave con Brevo
+
+    try {
+      // 1 · Reconciliar con Brevo: sellar a quien YA se le mandó hoy (por si un
+      //     intento anterior envió a algunas antes de cortarse). No se reenvía.
+      const yaBrevo = await yaEnviadosBrevo();
+      const yaEstaban: string[] = [];
+      for (const f of enviables) {
+        const sellada = !!f.invitado_en;
+        const enBrevo = yaBrevo.has((f.email || "").toLowerCase().trim());
+        if (sellada || enBrevo) {
+          yaEstaban.push(f.email);
+          if (!sellada && enBrevo && f.token) await sellarInvitado(f.token); // persistir lo que Brevo sabe
+        }
+      }
+      const yaSet = new Set(yaEstaban.map((e) => e.toLowerCase().trim()));
+      const porEnviar = enviables.filter((f) => !yaSet.has((f.email || "").toLowerCase().trim()));
+
+      // 2 · Enviar el resto en tandas concurrentes; sellar cada acierto.
+      const enviados: string[] = [];
+      const fallos: Array<{ email: string; motivo: unknown }> = [];
+      await enTandas(porEnviar, 8, async (f) => {
+        const r = await enviarBrevo(f.email, f.hijos, enlaceDe(f.token), ASUNTO, f.ya_tiene_cuenta === true);
+        if (r.ok) { enviados.push(f.email); if (f.token) await sellarInvitado(f.token); }
+        else fallos.push({ email: f.email, motivo: r });
+      });
+
+      const saltados = objetivo.filter((f) => !enviable(f)).map((f) => f.email);
+      return responder({
+        ok: true, modo, total: objetivo.length,
+        enviados: enviados.length, ya_estaban: yaEstaban.length,
+        saltados: saltados.length, fallos: fallos.length,
+        detalle_fallos: fallos, detalle_saltados: saltados,
+      }, 200, origen);
+    } catch (e) {
+      // Aun si algo peta, lo enviado quedó sellado: reintentar es seguro.
+      return responder({ ok: false, modo, error: "fallo_envio", detalle: String(e) }, 200, origen);
     }
-    return responder({
-      ok: true, modo, total: objetivo.length,
-      enviados: enviados.length, saltados: saltados.length, fallos: fallos.length,
-      detalle_fallos: fallos, detalle_saltados: saltados,
-    }, 200, origen);
   }
 
   return responder({ error: "modo_desconocido", modo }, 400, origen);

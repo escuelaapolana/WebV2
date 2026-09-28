@@ -116,11 +116,15 @@ APOLANA_ADMIN.listo(function (sb) {
     try {
       var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'real' } }); // sin confirmar → solo cuenta
       if (r.error) { pon($('cf-est-real'), 'Error: ' + r.error.message, 'err'); return; }
-      var total = (r.data && r.data.total) || 0;
-      total62 = (r.data && (r.data.enviables != null ? r.data.enviables : r.data.total)) || 0;
-      var extra = (total > total62) ? ' (' + (total - total62) + ' se saltan: prueba o correo inválido)' : '';
-      pon($('cf-est-real'), 'Se enviaría a ' + total62 + ' familias' + extra + '. Pulsa «Enviar a todas» para lanzarlo.');
-      $('cf-enviar').disabled = total62 === 0;
+      var d = r.data || {};
+      var pend = d.pendientes != null ? d.pendientes : (d.enviables != null ? d.enviables : d.total) || 0;
+      total62 = pend;
+      var msg = 'Pendientes de enviar: ' + pend;
+      if (d.ya_invitadas) msg += ' · ya recibieron: ' + d.ya_invitadas;
+      if ((d.total || 0) > (d.enviables || 0)) msg += ' · se saltan ' + ((d.total || 0) - (d.enviables || 0)) + ' (prueba/inválido)';
+      msg += pend ? '. Pulsa «Enviar a todas».' : '. No queda ninguna pendiente.';
+      pon($('cf-est-real'), msg);
+      $('cf-enviar').disabled = pend === 0;
     } catch (e) { pon($('cf-est-real'), 'Error: ' + (e && e.message || e), 'err'); }
   });
 
@@ -135,12 +139,17 @@ APOLANA_ADMIN.listo(function (sb) {
     pon($('cf-est-real'), 'Enviando… (puede tardar un poco)');
     try {
       var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'real', confirmar: true } });
-      if (r.error) { pon($('cf-est-real'), 'Error: ' + r.error.message, 'err'); $('cf-contar').disabled = false; return; }
+      if (r.error) { pon($('cf-est-real'), 'Error de red: ' + r.error.message + '\nLo enviado queda marcado; vuelve a pulsar «Ver a cuántas» y «Enviar a todas» para mandar solo lo que falte (no se duplica).', 'err'); $('cf-contar').disabled = false; return; }
       var d = r.data || {};
+      if (d.ok === false) {
+        pon($('cf-est-real'), 'Se cortó a mitad: ' + (d.detalle || d.error || '') + '\nLo enviado queda marcado; pulsa otra vez «Enviar a todas» para completar (no se duplica).', 'err');
+        $('cf-contar').disabled = false; $('cf-enviar').disabled = false; return;
+      }
       pon($('cf-est-real'),
-        '✓ Enviados: ' + (d.enviados || 0) + ' de ' + (d.total || 0) +
-        '.\nSaltados (sin enlace): ' + (d.saltados || 0) +
-        '.\nFallos: ' + (d.fallos || 0) +
+        '✓ Enviados ahora: ' + (d.enviados || 0) +
+        '\nYa estaban (no se reenvía): ' + (d.ya_estaban || 0) +
+        '\nSaltados (prueba/inválido): ' + (d.saltados || 0) +
+        '\nFallos: ' + (d.fallos || 0) +
         (d.fallos ? '\n' + JSON.stringify(d.detalle_fallos) : ''),
         (d.fallos ? 'err' : 'ok'));
       $('cf-contar').disabled = false;
