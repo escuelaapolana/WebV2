@@ -285,7 +285,13 @@ async function sellarInvitado(token: string): Promise<void> {
 // anterior mandó a algunas antes de "cortarse"). Usa el endpoint de EVENTOS,
 // que sí lista los envíos recientes con su destinatario. Devuelve el conjunto
 // de correos (minúsculas), cuántos eventos vio (diagnóstico) y si Brevo contestó.
-async function yaEnviadosBrevo(): Promise<{ set: Set<string>; rebotados: Set<string>; raw: number; ok: boolean }> {
+function sinAcentos(x: string): string {
+  return String(x || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+// `claveAsunto` (ya normalizada, sin acentos) limita la reconciliación a ESTA
+// campaña: así el correo de ESCUELA no cuenta como «ya enviado» para MÁSTER, y
+// alguien que esté en las dos recibe los dos correos.
+async function yaEnviadosBrevo(claveAsunto: string): Promise<{ set: Set<string>; rebotados: Set<string>; raw: number; ok: boolean }> {
   const set = new Set<string>();
   const rebotados = new Set<string>();
   let raw = 0, ok = false;
@@ -301,8 +307,9 @@ async function yaEnviadosBrevo(): Promise<{ set: Set<string>; rebotados: Set<str
     for (const e of arr) {
       const to = String(e?.email ?? "").toLowerCase().trim();
       if (!to) continue;
-      const subj = String(e?.subject ?? "");
-      if (subj.startsWith("[PRUEBA")) continue; // no contar las pruebas
+      const subjN = sinAcentos(String(e?.subject ?? ""));
+      if (subjN.startsWith("[prueba")) continue;          // no contar las pruebas
+      if (claveAsunto && !subjN.includes(claveAsunto)) continue; // solo ESTA campaña
       set.add(to);
       const ev = String(e?.event ?? "").toLowerCase();
       if (ev.includes("bounce") || ev === "blocked" || ev === "invalid" || ev === "error" || ev === "spam") {
@@ -361,6 +368,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     : "Tu acceso a la Web y App del Club Apolana 🏊";
   // El nombre del remitente cambia según el público (escuela vs adultos).
   const REMIT = esMaster ? "Natación Máster · Apolana" : REMITENTE_NOMBRE;
+  // Clave para reconciliar SOLO esta campaña en Brevo (sin acentos). Así quien
+  // esté en escuela y en máster recibe los dos correos, no se le salta uno.
+  const CLAVE_ASUNTO = esMaster ? "natacion master" : "web y app";
 
   // No enviar a: cuentas de prueba, correos internos, ni direcciones mal
   // formadas. Se saltan y se cuentan aparte (no se cuela ni un correo raro).
@@ -417,6 +427,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const objetivo = soloA ? registros.filter((f) => (f.email || "").toLowerCase() === soloA) : registros;
     const enviables = objetivo.filter(enviable);
 
+    // REENVÍO FORZADO a UNA sola familia (dijo que no le llegó / fue a spam):
+    // salta la reconciliación y el "ya invitado", y le manda igual. Requiere
+    // solo_a + forzar + confirmar. Vuelve a sellar invitado_en.
+    if (cuerpo.forzar === true && cuerpo.confirmar === true && soloA) {
+      const uno = enviables[0];
+      if (!uno) return responder({ ok: false, modo, publico, error: "no_enviable", msg: "Esa familia no tiene enlace o el correo no es válido." }, 200, origen);
+      const r = await mandar(uno.email, uno, enlaceDe(uno.token), (uno as { ya_tiene_cuenta?: boolean }).ya_tiene_cuenta === true);
+      if (r.ok && uno.token) await sellarInvitado(uno.token);
+      return responder({ ok: r.ok, modo, publico, forzado: true, destino: uno.email, ...(r.ok ? {} : { fallo: r }) }, 200, origen);
+    }
+
     // RECONCILIAR SIEMPRE (tanto al contar como al enviar): preguntar a Brevo a
     // quién ya se le mandó hoy y sellarlo. Así «Ver a cuántas» ya descuenta lo
     // que alcanzó un intento anterior, y nunca se reenvía a nadie.
@@ -424,7 +445,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let brevoOk = false;
     const rebotados: string[] = []; // familias de la campaña cuyo correo rebotó
     try {
-      const rec = await yaEnviadosBrevo();
+      const rec = await yaEnviadosBrevo(CLAVE_ASUNTO);
       brevoOk = rec.ok; brevoHoy = rec.raw;
       for (const f of enviables) {
         const suyo = (f.email || "").toLowerCase().trim();
