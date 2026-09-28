@@ -866,41 +866,32 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { /* si falla, el resto del calendario sigue */ }
 
-    // --- 6b) FRANJAS DE NATACIÓN (horario semanal fijo de quien nada). Enlace
-    //        persona → su ficha (atleta) → natacion_accesos → inscripciones →
-    //        franja; o directamente por perfil_id. Es tuyo: se resalta. ---
+    // --- 6b) NATACIÓN: mis franjas y las de mis hijos, vía RPC security-definer
+    //        (natacion_mis_plazas). Las tablas de natación no las lee un atleta
+    //        normal por RLS (solo staff/responsable), pero la función devuelve
+    //        SOLO lo tuyo y lo de tus hijos, así que funciona en cualquier rol.
+    //        Es tuyo: se resalta. ---
     try {
-      var misFichasN = atletas.filter(function (a) { return a && perfil && a.perfil_id === perfil.id; });
-      var idsAtN = misFichasN.map(function (a) { return a.id; }).filter(Boolean);
-      var insN = [];
-      if (idsAtN.length) {
-        var rna = await sb.from('natacion_accesos').select('id').in('atleta_id', idsAtN);
-        var accIds = (rna && !rna.error && rna.data) ? rna.data.map(function (x) { return x.id; }) : [];
-        if (accIds.length) {
-          var ri1 = await sb.from('natacion_inscripciones').select('franja_id,calle,nivel').eq('activa', true).in('acceso_id', accIds);
-          if (ri1 && !ri1.error && ri1.data) insN = insN.concat(ri1.data);
-        }
-      }
-      var ri2 = await sb.from('natacion_inscripciones').select('franja_id,calle,nivel').eq('activa', true).eq('perfil_id', perfil.id);
-      if (ri2 && !ri2.error && ri2.data) insN = insN.concat(ri2.data);
-      if (insN.length) {
-        var frIdsN = insN.map(function (m) { return m.franja_id; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
-        var rfr = await sb.from('natacion_franjas').select('id,dia,hora,grupo').in('id', frIdsN);
-        var FRN = {}; if (rfr && !rfr.error && rfr.data) rfr.data.forEach(function (f) { FRN[f.id] = f; });
+      var rmp = await sb.rpc('natacion_mis_plazas');
+      var plazas = (rmp && !rmp.error && Array.isArray(rmp.data)) ? rmp.data : [];
+      if (plazas.length) {
+        var quienesN = {}; plazas.forEach(function (p) { if (p.atleta_id) quienesN[p.atleta_id] = 1; });
+        var hayVariosN = Object.keys(quienesN).length > 1;   // familia con varios hijos
         var vistoN = {}, d0n = new Date(desde + 'T00:00:00'), d1n = new Date(hasta + 'T00:00:00');
-        insN.forEach(function (m) {
-          var f = FRN[m.franja_id]; if (!f) return;
-          var dowJs = (Number(f.dia) === 7) ? 0 : Number(f.dia);
+        plazas.forEach(function (p) {
+          var dowJs = (Number(p.dia) === 7) ? 0 : Number(p.dia);
           var d = new Date(d0n);
           while (d <= d1n) {
             if (d.getDay() === dowJs) {
-              var fe = iso(d), keyN = f.id + '|' + fe;
+              var fe = iso(d), keyN = p.franja_id + '|' + (p.atleta_id || '') + '|' + fe;
               if (!vistoN[keyN]) {
                 vistoN[keyN] = true;
+                var quien = (hayVariosN && p.de) ? String(p.de).split(/\s+/)[0] : '';
                 acts.push({
-                  fuente: 'natacion', id: 'nat-' + f.id + '-' + fe, fecha: fe,
-                  hora: hhmm(f.hora), horaFin: '', titulo: 'Natación', tipoTexto: 'Natación', mio: true,
-                  lugar: '', grupo: [f.grupo, m.calle, m.nivel].filter(Boolean).join(' · ')
+                  fuente: 'natacion', id: 'nat-' + p.franja_id + '-' + (p.atleta_id || '') + '-' + fe, fecha: fe,
+                  hora: p.hora, horaFin: '', titulo: quien ? 'Natación · ' + quien : 'Natación',
+                  tipoTexto: 'Natación', mio: true, lugar: '',
+                  grupo: [p.grupo, p.calle, p.nivel].filter(Boolean).join(' · ')
                 });
               }
             }
