@@ -320,44 +320,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const soloA = String(cuerpo.solo_a ?? "").trim().toLowerCase(); // opcional: solo una familia
     const objetivo = soloA ? familias.filter((f) => (f.email || "").toLowerCase() === soloA) : familias;
     const enviables = objetivo.filter(enviable);
-    const pendientesAntes = enviables.filter((f) => !f.invitado_en);
+
+    // RECONCILIAR SIEMPRE (tanto al contar como al enviar): preguntar a Brevo a
+    // quién ya se le mandó hoy y sellarlo. Así «Ver a cuántas» ya descuenta lo
+    // que alcanzó un intento anterior, y nunca se reenvía a nadie.
+    let brevoHoy = -1;      // cuántos correos de la campaña reporta Brevo hoy (-1 = no contestó)
+    let brevoOk = false;
+    try {
+      const yaBrevo = await yaEnviadosBrevo();
+      brevoHoy = yaBrevo.size; brevoOk = true;
+      for (const f of enviables) {
+        if (!f.invitado_en && f.token && yaBrevo.has((f.email || "").toLowerCase().trim())) {
+          await sellarInvitado(f.token);
+          f.invitado_en = new Date().toISOString(); // reflejarlo ya en este cálculo
+        }
+      }
+    } catch (_e) { /* sin reconciliación nos guiamos por invitado_en */ }
+
+    const pendientes = enviables.filter((f) => !f.invitado_en);
+    const yaInvitadas = enviables.length - pendientes.length;
+
     if (cuerpo.confirmar !== true) {
       return responder({
         error: "falta_confirmar", mensaje: "Pon confirmar:true para enviar de verdad.",
-        total: objetivo.length, enviables: enviables.length, pendientes: pendientesAntes.length,
-        ya_invitadas: enviables.length - pendientesAntes.length,
+        total: objetivo.length, enviables: enviables.length,
+        pendientes: pendientes.length, ya_invitadas: yaInvitadas,
+        brevo_ok: brevoOk, brevo_hoy: brevoHoy,
       }, 200, origen);
     }
 
     try {
-      // 1 · Reconciliar con Brevo: sellar a quien YA se le mandó hoy (por si un
-      //     intento anterior envió a algunas antes de cortarse). No se reenvía.
-      const yaBrevo = await yaEnviadosBrevo();
-      const yaEstaban: string[] = [];
-      for (const f of enviables) {
-        const sellada = !!f.invitado_en;
-        const enBrevo = yaBrevo.has((f.email || "").toLowerCase().trim());
-        if (sellada || enBrevo) {
-          yaEstaban.push(f.email);
-          if (!sellada && enBrevo && f.token) await sellarInvitado(f.token); // persistir lo que Brevo sabe
-        }
-      }
-      const yaSet = new Set(yaEstaban.map((e) => e.toLowerCase().trim()));
-      const porEnviar = enviables.filter((f) => !yaSet.has((f.email || "").toLowerCase().trim()));
-
-      // 2 · Enviar el resto en tandas concurrentes; sellar cada acierto.
       const enviados: string[] = [];
       const fallos: Array<{ email: string; motivo: unknown }> = [];
-      await enTandas(porEnviar, 8, async (f) => {
+      await enTandas(pendientes, 8, async (f) => {
         const r = await enviarBrevo(f.email, f.hijos, enlaceDe(f.token), ASUNTO, f.ya_tiene_cuenta === true);
         if (r.ok) { enviados.push(f.email); if (f.token) await sellarInvitado(f.token); }
         else fallos.push({ email: f.email, motivo: r });
       });
-
       const saltados = objetivo.filter((f) => !enviable(f)).map((f) => f.email);
       return responder({
         ok: true, modo, total: objetivo.length,
-        enviados: enviados.length, ya_estaban: yaEstaban.length,
+        enviados: enviados.length, ya_estaban: yaInvitadas,
         saltados: saltados.length, fallos: fallos.length,
         detalle_fallos: fallos, detalle_saltados: saltados,
       }, 200, origen);
