@@ -157,6 +157,28 @@
   .nat-hora { font-family: var(--fuente-mono); font-weight:700; color:#2E8C86; font-size:16px; min-width:56px; }
   .nat-info { color: var(--navy); font-size:15px; }
   .nat-card-inicio { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px; box-shadow: var(--sombra-suave, 0 10px 22px -16px rgba(46,66,86,.5)); padding:16px 18px; margin-bottom:14px; }
+  .bonos-card { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px; box-shadow: var(--sombra-suave, 0 10px 22px -16px rgba(46,66,86,.5)); padding:16px 18px; margin-bottom:14px; }
+  .bonos-tit { font-weight:700; color:var(--navy,#2E4256); font-size:16px; }
+  .bonos-sub { margin:4px 0 12px; font-size:14px; color:var(--texto-suave,#6B6558); line-height:1.5; }
+  .bonos-saldo { font-size:14px; color:var(--texto-suave,#6B6558); background:var(--crema,#FBF9F4); border:1px solid var(--linea,#EAE3D5); border-radius:10px; padding:8px 12px; }
+  .bonos-saldo.hay { color:#0e5b2f; background:#eef7f0; border-color:#bfe3c9; }
+  .bonos-acc { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .bonos-btn { min-height:44px; padding:10px 16px; border-radius:999px; font-size:14px; font-family:inherit; cursor:pointer; border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy,#2E4256); }
+  .bonos-btn.prim { background:#12a3a3; border-color:#12a3a3; color:#fff; font-weight:600; }
+  .bonos-btn:hover { filter:brightness(1.05); }
+  .bonos-panel { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  .bp-tit { font-size:14px; font-weight:600; color:var(--navy,#2E4256); }
+  .bp-op { text-align:left; min-height:44px; padding:10px 14px; border-radius:12px; border:1px solid var(--linea-borde,#C9C0AE); background:var(--crema,#FBF9F4); color:var(--navy,#2E4256); font-size:14px; font-family:inherit; cursor:pointer; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  .bp-op:hover { background:#fff; border-color:#12a3a3; }
+  .bp-huecos { color:var(--texto-suave,#6B6558); font-size:13px; white-space:nowrap; }
+  .bonos-inp { padding:10px 12px; border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; font-size:16px; font-family:inherit; color:var(--navy,#2E4256); }
+  .bonos-disp { display:flex; flex-direction:column; gap:8px; }
+  .bonos-vacio { font-size:14px; color:var(--texto-suave,#6B6558); padding:6px 2px; }
+  .bonos-lista { margin-top:12px; }
+  .bonos-lt { font-size:13px; color:var(--texto-suave,#6B6558); margin-bottom:6px; }
+  .bonos-fila { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--linea,#EAE3D5); font-size:14px; color:var(--navy,#2E4256); }
+  .bonos-x { flex:0 0 auto; min-height:36px; padding:6px 12px; border-radius:999px; border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy,#2E4256); font-size:13px; font-family:inherit; cursor:pointer; }
+  .bonos-x:hover { border-color:#b3261e; color:#b3261e; }
   .nat-det { border-top:1px solid var(--crema-media); }
   .nat-det + .nat-det, .nat-bloque .nat-fila + .nat-det, .nat-det + .nat-fila { border-top:1px solid var(--crema-media); }
   .nat-det:first-of-type { border-top:0; }
@@ -2685,6 +2707,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ve su horario aunque no tenga grupo ni sesiones de atletismo.
   var MIS_NAT=[];
   try { var _rn=await sb.rpc('natacion_mis_plazas'); if(_rn && !_rn.error && Array.isArray(_rn.data)) MIS_NAT=_rn.data; } catch(e){}
+  /* Bonos de natación Máster: si un día no puede ir, lo avisa y se apunta otro
+     día. Solo sale para nadadores máster (la RPC contesta es_master:false si no). */
+  var MASTER_BONOS=null;
+  try { var _mb=await sb.rpc('natacion_master_estado'); if(_mb && !_mb.error && _mb.data && _mb.data.es_master) MASTER_BONOS=_mb.data; } catch(e){}
   var nombre = at ? ((at.nombre||'')+' '+(at.apellidos||'')) : (perfil.nombre||'');
   // Cabecera de «Hoy»: la fecha pequeña, el saludo y las iniciales del atleta
   var ini = at ? iniciales(at.nombre, at.apellidos) : iniciales(perfil.nombre, perfil.apellidos);
@@ -4248,6 +4274,85 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           comp.map(function(c){ return '<span class="nat-chip">'+esc(c)+'</span>'; }).join('')+'</div></div></details>';
       }).join('')+'</div>';
   }
+
+  // ============================================================
+  // BONOS DE NATACIÓN (MÁSTER) · si un día no puedo ir, me apunto otro día
+  // ============================================================
+  function _isoProx(dia){
+    var d=new Date(todayISO+'T00:00:00');
+    for(var i=0;i<14;i++){ var wd=d.getDay(); wd=(wd===0?7:wd); if(wd===dia) return d.toISOString().slice(0,10); d.setDate(d.getDate()+1); }
+    return todayISO;
+  }
+  function _fCorta(iso){ var d=new Date(iso+'T00:00:00'); var D=['dom','lun','mar','mié','jue','vie','sáb']; return D[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1); }
+  function _calN(c){ return String(c||'').replace(/^C/i,''); }
+  function bonosCardHTML(){
+    if(!MASTER_BONOS) return '';
+    var b=MASTER_BONOS, saldo=b.saldo||0, reservas=b.reservas||[], noVoy=b.no_voy||[];
+    var h='<div class="bonos-card"><div class="bonos-tit">🔁 Cambiar de sesión</div>'+
+      '<p class="bonos-sub">Si un día no puedes venir, <b>avísanos</b> y podrás apuntarte otro día que te venga bien.</p>'+
+      '<div class="bonos-saldo'+(saldo>0?' hay':'')+'">'+(saldo>0?('Tienes <b>'+saldo+'</b> sesión'+(saldo>1?'es':'')+' para recuperar'):'No tienes sesiones pendientes de recuperar')+'</div>'+
+      '<div class="bonos-acc">'+
+        '<button type="button" class="bonos-btn" data-bp="novoy">Un día no puedo ir</button>'+
+        (saldo>0?'<button type="button" class="bonos-btn prim" data-bp="usar">Apuntarme a otra sesión</button>':'')+
+      '</div><div id="bonos-panel"></div>';
+    if(reservas.length){
+      h+='<div class="bonos-lista"><div class="bonos-lt">Sesiones que vas a recuperar</div>'+
+        reservas.map(function(r){ return '<div class="bonos-fila"><span>'+esc(_fCorta(r.fecha))+' · '+esc(r.hora)+' · calle '+esc(_calN(r.calle))+'</span>'+
+          '<button type="button" class="bonos-x" data-cancel="'+esc(r.id)+'">Quitar</button></div>'; }).join('')+'</div>';
+    }
+    if(noVoy.length){
+      h+='<div class="bonos-lista"><div class="bonos-lt">Has avisado que no vas</div>'+
+        noVoy.map(function(n){ return '<div class="bonos-fila"><span>'+esc(_fCorta(n.fecha))+' · '+esc(n.hora)+'</span>'+
+          '<button type="button" class="bonos-x" data-sivoy="'+esc(n.franja_id)+'|'+esc(n.fecha)+'">Sí voy</button></div>'; }).join('')+'</div>';
+    }
+    return h+'</div>';
+  }
+  function pintarBonos(){ var el=document.getElementById('bonos-master'); if(el) el.innerHTML=bonosCardHTML(); }
+  async function recargaBonos(){ try{ var r=await sb.rpc('natacion_master_estado'); if(r&&!r.error&&r.data&&r.data.es_master) MASTER_BONOS=r.data; }catch(e){} pintarBonos(); }
+  function panelNoVoy(){
+    var vis={}, arr=[];
+    MIS_NAT.forEach(function(p){ if(p.franja_id && !vis[p.franja_id]){ vis[p.franja_id]=1; arr.push(p); } });
+    if(!arr.length) return '<div class="bonos-panel">No encontramos tus sesiones fijas.</div>';
+    return '<div class="bonos-panel"><div class="bp-tit">¿Qué día no puedes ir?</div>'+
+      arr.map(function(p){ var iso=_isoProx(Number(p.dia)); return '<button type="button" class="bp-op" data-novoy="'+esc(p.franja_id)+'|'+iso+'">'+esc(_fCorta(iso))+' · '+esc(p.hora)+' · '+esc(p.grupo||'')+'</button>'; }).join('')+'</div>';
+  }
+  function panelUsar(){
+    return '<div class="bonos-panel"><div class="bp-tit">¿Qué día quieres venir?</div>'+
+      '<input type="date" id="bonos-fecha" class="bonos-inp" min="'+todayISO+'">'+
+      '<div id="bonos-disp" class="bonos-disp"></div></div>';
+  }
+  async function cargarDisp(fecha){
+    var cont=document.getElementById('bonos-disp'); if(!cont) return;
+    cont.innerHTML='<div class="bonos-vacio">Buscando…</div>';
+    try{
+      var r=await sb.rpc('natacion_master_disponibles',{p_fecha:fecha});
+      var arr=(r&&!r.error&&Array.isArray(r.data))?r.data:[];
+      if(!arr.length){ cont.innerHTML='<div class="bonos-vacio">No hay hueco ese día en ninguna calle a la que llegues.</div>'; return; }
+      cont.innerHTML=arr.map(function(d){ return '<button type="button" class="bp-op" data-usar="'+esc(d.franja_id)+'|'+esc(fecha)+'">'+esc(d.hora)+' · '+esc(d.grupo||'')+' · calle '+esc(_calN(d.calle))+' <span class="bp-huecos">'+d.huecos+' libre'+(d.huecos>1?'s':'')+'</span></button>'; }).join('');
+    }catch(e){ cont.innerHTML='<div class="bonos-vacio">No se pudo cargar.</div>'; }
+  }
+  document.addEventListener('click', async function(ev){
+    if(!document.getElementById('bonos-master')) return;
+    var t=ev.target.closest ? ev.target.closest('[data-bp],[data-novoy],[data-usar],[data-cancel],[data-sivoy]') : null;
+    if(!t) return;
+    if(t.hasAttribute('data-bp')){ var p=document.getElementById('bonos-panel'); var w=t.getAttribute('data-bp'); if(p) p.innerHTML=(w==='novoy'?panelNoVoy():panelUsar()); return; }
+    if(t.hasAttribute('data-novoy')){ var pv=t.getAttribute('data-novoy').split('|'); t.disabled=true;
+      var r=await sb.rpc('natacion_master_no_voy',{p_franja:pv[0],p_fecha:pv[1]});
+      if(r&&!r.error&&r.data&&r.data.ok){ if(window.apoToast) apoToast('Avisado. Ya puedes apuntarte otro día.','ok'); await recargaBonos(); }
+      else { if(window.apoToast) apoToast((r&&r.data&&r.data.msg)||'No se pudo marcar.','error'); t.disabled=false; } return; }
+    if(t.hasAttribute('data-usar')){ var uv=t.getAttribute('data-usar').split('|'); t.disabled=true;
+      var r2=await sb.rpc('natacion_master_usar_bono',{p_franja:uv[0],p_fecha:uv[1]});
+      if(r2&&!r2.error&&r2.data&&r2.data.ok){ if(window.apoToast) apoToast('¡Apuntado! Calle '+_calN(r2.data.calle)+'.','ok'); await recargaBonos(); }
+      else { if(window.apoToast) apoToast((r2&&r2.data&&r2.data.msg)||'No se pudo apuntar.','error'); t.disabled=false; } return; }
+    if(t.hasAttribute('data-cancel')){ var r3=await sb.rpc('natacion_master_cancelar',{p_reserva:t.getAttribute('data-cancel')});
+      if(r3&&!r3.error&&r3.data&&r3.data.ok){ if(window.apoToast) apoToast('Quitada. Te devolvemos la sesión.','ok'); await recargaBonos(); } return; }
+    if(t.hasAttribute('data-sivoy')){ var sv=t.getAttribute('data-sivoy').split('|');
+      var r4=await sb.rpc('natacion_master_si_voy',{p_franja:sv[0],p_fecha:sv[1]});
+      if(r4&&!r4.error&&r4.data&&r4.data.ok){ if(window.apoToast) apoToast('Hecho.','ok'); await recargaBonos(); } return; }
+  });
+  document.addEventListener('change', function(ev){
+    if(ev.target && ev.target.id==='bonos-fecha' && ev.target.value) cargarDisp(ev.target.value);
+  });
 
   function pintarDia(iso){
     diaSel=iso;
@@ -5970,6 +6075,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // Natación de ese día (franja fija): se muestra tenga o no sesión de atletismo.
     var natHoy = natRowsHTML(diaVer);
     if(natHoy) html+='<div class="nat-card-inicio">'+natHoy+'</div>';
+    // Autoservicio de bonos del máster (si un día no puede ir, se apunta otro).
+    if(MASTER_BONOS) html+='<div id="bonos-master">'+bonosCardHTML()+'</div>';
     if(hoySes.length){
       html+=hoySes.slice(0,1).map(function(s){
         var hecho=!!REG[s.id];
