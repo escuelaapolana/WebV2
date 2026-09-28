@@ -215,7 +215,14 @@
       '.mh-card .d{font-size:13.5px;color:var(--texto-suave,#6E6656);line-height:1.45;margin:0;flex:1 1 auto}' +
       '.mh-card .pie{display:flex;align-items:center;gap:8px;margin-top:13px}' +
       '.mh-pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--mm-acento,#2F6FA8);background:var(--azul-suave,#EAF2F9);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 12%, #fff);border-radius:999px;padding:4px 11px;line-height:1}' +
-      '.mh-flecha{margin-left:auto;color:var(--mm-acento,#2F6FA8);font-weight:600;font-size:13.5px}';
+      '.mh-flecha{margin-left:auto;color:var(--mm-acento,#2F6FA8);font-weight:600;font-size:13.5px}' +
+      /* tira de cifras en vivo del mundo (encima del hub); si no hay, no ocupa */
+      '.mh-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px;margin:0 0 24px}' +
+      '.mh-stats:empty{display:none;margin:0}' +
+      '.mh-stat{background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:16px 18px 14px;position:relative;overflow:hidden}' +
+      '.mh-stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--mm-acento,#2F6FA8);opacity:.9}' +
+      '.mh-stat b{font-family:var(--fuente-titulo);font-weight:700;font-size:clamp(26px,3vw,34px);color:var(--navy,#2E4256);line-height:1;display:block}' +
+      '.mh-stat span{font-size:12.5px;color:var(--texto-suave,#6E6656);margin-top:5px;display:block}';
     document.head.appendChild(css);
   }
 
@@ -280,8 +287,22 @@
       '<div class="mh-cab"><div class="mh-eyebrow">Mundo</div>' +
         '<h1><span class="pt-g"></span>' + esc(M.nombre.replace(/\s*·\s*Club$/, '')) + '</h1>' +
         (M.frase ? '<p>' + esc(M.frase) + '</p>' : '') + '</div>' +
+      '<div class="mh-stats" data-mh-stats></div>' +
       '<p class="mh-rot">Herramientas de este mundo</p>' +
       '<div class="mh-hub">' + hubCardsHtml(M) + '</div>';
+    // cifras en vivo del mundo (si hay cliente/sesión); si no, se queda sin tira
+    var c = window.APOLANA_DB;
+    if (c && c.rpc) {
+      (c.auth && c.auth.getSession ? c.auth.getSession() : Promise.resolve())
+        .then(function () { return c.rpc('mundo_stats', { p_world: M.key }); })
+        .then(function (r) {
+          if (!r || r.error || !Array.isArray(r.data) || !r.data.length) return;
+          var box = el.querySelector('[data-mh-stats]'); if (!box) return;
+          box.innerHTML = r.data.map(function (s) {
+            return '<div class="mh-stat"><b>' + esc(s.n) + '</b><span>' + esc(s.l) + '</span></div>';
+          }).join('');
+        }).catch(function () {});
+    }
   }
 
   /* ---------- acceso por persona (RPC mis_mundos) ---------- */
