@@ -182,12 +182,12 @@ function textoPlano(hijos: Hijo[], enlace: string): string {
   return `¡Hola!\n\nYa puedes entrar a la Web y App del Club Apolana para llevar la natación de tu familia.\n\nEntra y crea tu contraseña: ${enlace}\n\nEn tu familia:\n${l}\n\nLas mensualidades se siguen pagando por SportMember, igual que hasta ahora.\n\nEscuela de Natación · Club Atletismo Apolana`;
 }
 
-async function enviarCorreo(destino: string, asunto: string, html: string, text: string) {
+async function enviarCorreo(destino: string, asunto: string, html: string, text: string, nombreRem: string = REMITENTE_NOMBRE) {
   const r = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: { "api-key": BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({
-      sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
+      sender: { name: nombreRem, email: REMITENTE_EMAIL },
       to: [{ email: destino }],
       subject: asunto,
       htmlContent: html,
@@ -359,6 +359,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const ASUNTO = esMaster
     ? "Tu acceso a la natación Máster · Club Apolana 🏊"
     : "Tu acceso a la Web y App del Club Apolana 🏊";
+  // El nombre del remitente cambia según el público (escuela vs adultos).
+  const REMIT = esMaster ? "Natación Máster · Apolana" : REMITENTE_NOMBRE;
 
   // No enviar a: cuentas de prueba, correos internos, ni direcciones mal
   // formadas. Se saltan y se cuentan aparte (no se cuela ni un correo raro).
@@ -372,8 +374,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Construye y manda el correo del registro (familia o máster).
   // deno-lint-ignore no-explicit-any
   const mandar = (destino: string, f: any, enlace: string, yaTiene: boolean) => esMaster
-    ? enviarCorreo(destino, ASUNTO, correoMasterHtml(f.nombre, f.franjas, enlace, yaTiene), textoMaster(f.nombre, f.franjas, enlace))
-    : enviarCorreo(destino, ASUNTO, correoHtml(f.hijos, enlace, yaTiene), textoPlano(f.hijos, enlace));
+    ? enviarCorreo(destino, ASUNTO, correoMasterHtml(f.nombre, f.franjas, enlace, yaTiene), textoMaster(f.nombre, f.franjas, enlace), REMIT)
+    : enviarCorreo(destino, ASUNTO, correoHtml(f.hijos, enlace, yaTiene), textoPlano(f.hijos, enlace), REMIT);
 
   // ---- MODO PRUEBA: correo de muestra a un destino ----
   if (modo === "prueba") {
@@ -389,7 +391,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (!elegido) return responder({ error: "sin_datos" }, 200, origen);
       const r = await enviarCorreo(destino, `[PRUEBA · Máster] ${ASUNTO}`,
         correoMasterHtml(elegido.nombre, elegido.franjas, enlaceDemo, yaCuenta),
-        textoMaster(elegido.nombre, elegido.franjas, enlaceDemo));
+        textoMaster(elegido.nombre, elegido.franjas, enlaceDemo), REMIT);
       return responder({ ok: r.ok, modo, publico, destino, muestra: tituloCase(elegido.nombre), ...(r.ok ? {} : { fallo: r }) }, 200, origen);
     }
 
@@ -401,7 +403,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         Math.abs((a.hijos?.length ?? 0) - nHijos) - Math.abs((b.hijos?.length ?? 0) - nHijos))[0];
     if (!elegida) return responder({ error: "sin_familias" }, 200, origen);
     const r = await enviarCorreo(destino, `[PRUEBA · ${nHijos} hijo/a(s)] ${ASUNTO}`,
-      correoHtml(elegida.hijos, enlaceDemo, yaCuenta), textoPlano(elegida.hijos, enlaceDemo));
+      correoHtml(elegida.hijos, enlaceDemo, yaCuenta), textoPlano(elegida.hijos, enlaceDemo), REMIT);
     return responder({
       ok: r.ok, modo, destino, n_hijos: nHijos,
       muestra_hijos: (elegida.hijos || []).map((h) => tituloCase(h.nombre)),
