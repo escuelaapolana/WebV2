@@ -29,6 +29,10 @@ const SERVICE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET_APOLANA") ?? "";
+/* Secreto del webhook en modo PRUEBA (opcional). Con él, este mismo webhook
+   verifica también los avisos de test (para probar el cobro del alta de socio en
+   test sin romper el real). Si no está, solo funciona el real. */
+const WEBHOOK_SECRET_TEST = Deno.env.get("STRIPE_WEBHOOK_SECRET_APOLANA_TEST") ?? "";
 
 const TOLERANCIA_SEGUNDOS = 60 * 5;
 
@@ -106,6 +110,23 @@ async function patchCobro(cobroId: string, cambios: Record<string, unknown>) {
   return r.ok;
 }
 
+// Marca un ALTA DE SOCIO como pagada. Solo si no lo estaba ya (idempotente).
+async function patchAltaSocio(altaId: string, cambios: Record<string, unknown>) {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/altas_socio?id=eq.${encodeURIComponent(altaId)}&pago_estado=neq.pagado`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json", Prefer: "return=minimal",
+      },
+      body: JSON.stringify(cambios),
+    },
+  );
+  if (!r.ok) console.error("PATCH altas_socio falló:", r.status, await r.text().catch(() => ""));
+  return r.ok;
+}
+
 const idDe = (v: unknown): string | null =>
   typeof v === "string" ? v : ((v as { id?: string } | null)?.id ?? null);
 
@@ -140,15 +161,20 @@ const aFecha = (ts: unknown): string | null =>
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return new Response("Método no admitido.", { status: 405 });
-  if (!SUPABASE_URL || !SERVICE_KEY || !WEBHOOK_SECRET) {
+  if (!SUPABASE_URL || !SERVICE_KEY || (!WEBHOOK_SECRET && !WEBHOOK_SECRET_TEST)) {
     console.error("Faltan variables: el webhook del Cubo no puede trabajar.");
     return new Response("Sin configurar.", { status: 503 });
   }
 
   const crudo = await req.text();
   const cabecera = req.headers.get("stripe-signature") ?? "";
-  if (!(await firmaValida(crudo, cabecera, WEBHOOK_SECRET))) {
-    console.warn("Aviso del Cubo con firma que no cuadra: descartado.");
+  // Se acepta si cuadra con el secreto REAL o con el de PRUEBA (así vale para los
+  // dos modos: el cobro del Cubo en real y el del alta de socio en test).
+  const firmaOk =
+    (WEBHOOK_SECRET && await firmaValida(crudo, cabecera, WEBHOOK_SECRET)) ||
+    (WEBHOOK_SECRET_TEST && await firmaValida(crudo, cabecera, WEBHOOK_SECRET_TEST));
+  if (!firmaOk) {
+    console.warn("Aviso con firma que no cuadra (ni real ni prueba): descartado.");
     return new Response("Firma no válida.", { status: 400 });
   }
 
@@ -158,6 +184,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const tipo: string = evento.type ?? "";
   const objeto = evento.data?.object ?? null;
   if (!objeto) return new Response(JSON.stringify({ recibido: true }), { status: 200 });
+
+  // --- ALTA DE SOCIO pagada por SEPA (referencia socio-<id de alta>) ---
+  // El adeudo SEPA es de cobro diferido: al completar el checkout se acepta el
+  // mandato (el dinero entra en unos días). Damos el alta por pagada aquí, al
+  // aceptar el mandato, que es lo acordado; si luego se devuelve, lo ve el club.
+  const refSocio: string | null =
+    (typeof objeto.client_reference_id === "string" ? objeto.client_reference_id : null) ??
+    (typeof objeto.metadata?.referencia === "string" ? objeto.metadata.referencia : null);
+  if (typeof refSocio === "string" && refSocio.startsWith("socio-")) {
+    if (tipo === "checkout.session.completed") {
+      await patchAltaSocio(refSocio.slice("socio-".length), {
+        pago_estado: "pagado",
+        pagado_en: new Date().toISOString(),
+        stripe_pago_ref: idDe(objeto.payment_intent),
+      });
+    }
+    return new Response(JSON.stringify({ recibido: true, socio: true }), { status: 200 });
+  }
 
   const filtro = filtroDe(objeto);
   if (!filtro) {
