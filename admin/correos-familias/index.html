@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Correos de familias · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media); }
+  .cf-wrap { max-width: 720px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .cf-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(26px,5vw,34px); color: var(--navy); margin: 0 0 4px; }
+  .cf-cab p { font-size: 15px; color: var(--texto-suave); margin: 0 0 22px; max-width: 62ch; line-height: 1.6; }
+  .cf-card { background:#fff; border:1px solid var(--linea); border-radius:16px; box-shadow: var(--sombra-suave); padding: 18px 18px 20px; margin: 0 0 18px; }
+  .cf-card h2 { font-size: 18px; color: var(--navy); margin: 0 0 4px; }
+  .cf-card .sub { font-size: 14px; color: var(--texto-suave); margin: 0 0 14px; line-height:1.5; }
+  .cf-lab { display:block; font-size:14px; color:#6B6558; margin: 0 0 5px; }
+  .cf-inp { width:100%; box-sizing:border-box; padding:12px 13px; border:1px solid #E0D8C8; border-radius:12px; font-size:16px; font-family:inherit; color:var(--navy); background:#fff; margin: 0 0 14px; }
+  .cf-inp:focus { outline:2px solid #3B85C0; border-color:#3B85C0; }
+  .cf-btns { display:flex; gap:10px; flex-wrap:wrap; }
+  .cf-btns button { min-height:46px; box-sizing:border-box; padding:11px 18px; border-radius:999px; font-size:15px; font-family:inherit; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--azul-filete,#3B85C0); background: var(--navy,#2E4256); color:#fff; font-weight:600; }
+  .cf-btns button:hover { filter: brightness(1.08); }
+  .cf-btns button:disabled { opacity:.5; cursor:default; }
+  .cf-real button { background:#8a2020; border-color:#8a2020; }
+  .cf-estado { margin-top:14px; font-size:14px; color:var(--texto-suave); line-height:1.55; white-space:pre-wrap; }
+  .cf-estado.ok { color:#1e7a3d; }
+  .cf-estado.err { color:#b3261e; }
+  .cf-dato { font-family: var(--fuente-dato, monospace); font-size:13px; }
+</style>
+</head>
+<body class="adm-piel">
+
+<div id="admin-contenido">
+<div class="cf-wrap">
+  <div class="cf-cab">
+    <h1>Correos de familias</h1>
+    <p>Manda a cada familia de la <b>escuela de natación</b> su correo con el enlace de acceso y los horarios de sus hijos. Primero prueba a tu correo; cuando lo veas bien, lanza el envío a todas.</p>
+  </div>
+
+  <div class="cf-card">
+    <h2>Prueba</h2>
+    <p class="sub">Se manda un correo de <b>muestra</b> (con datos reales de una familia, pero enlace de demostración que no toca ninguna cuenta) a la dirección que pongas.</p>
+    <label class="cf-lab" for="cf-destino">Enviar la prueba a</label>
+    <input class="cf-inp" id="cf-destino" type="email" value="andres.apolana@gmail.com" autocomplete="email">
+    <div class="cf-btns">
+      <button type="button" data-prueba="1">1 hijo/a</button>
+      <button type="button" data-prueba="2">2 hijos/as</button>
+      <button type="button" data-prueba="3">3 hijos/as</button>
+      <button type="button" data-prueba="1" data-ya="1">Ya tiene cuenta</button>
+    </div>
+    <div class="cf-estado" id="cf-est-prueba"></div>
+  </div>
+
+  <div class="cf-card">
+    <h2>Envío real</h2>
+    <p class="sub">Manda a <b>todas las familias</b> de escuela con enlace generado. Cada una recibe el suyo, con sus hijos y horarios. Pregunta primero cuántas son.</p>
+    <div class="cf-btns cf-real">
+      <button type="button" id="cf-contar">Ver a cuántas se enviaría</button>
+      <button type="button" id="cf-enviar" disabled>Enviar a todas</button>
+    </div>
+    <div class="cf-estado" id="cf-est-real"></div>
+  </div>
+</div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var total62 = null;
+
+  function pon(el, texto, clase) {
+    el.className = 'cf-estado' + (clase ? ' ' + clase : '');
+    el.textContent = texto;
+  }
+  function botones(sel, desactivar) {
+    Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.disabled = desactivar; });
+  }
+
+  // ---- Prueba ----
+  Array.prototype.forEach.call(document.querySelectorAll('[data-prueba]'), function (btn) {
+    btn.addEventListener('click', async function () {
+      var n = Number(btn.getAttribute('data-prueba')) || 1;
+      var ya = btn.getAttribute('data-ya') === '1';
+      var destino = ($('cf-destino').value || '').trim();
+      if (!destino) { pon($('cf-est-prueba'), 'Pon un correo de destino.', 'err'); return; }
+      botones('[data-prueba]', true);
+      pon($('cf-est-prueba'), 'Enviando prueba…');
+      try {
+        var r = await sb.functions.invoke('familia-invitar', {
+          body: { modo: 'prueba', destino: destino, n_hijos: n, ya_cuenta: ya }
+        });
+        if (r.error) { pon($('cf-est-prueba'), 'No se pudo enviar: ' + r.error.message, 'err'); }
+        else if (r.data && r.data.ok) {
+          var quien = (r.data.muestra_hijos || []).join(', ');
+          pon($('cf-est-prueba'), '✓ Prueba enviada a ' + destino + (ya ? ' (con nota «ya tiene cuenta»)' : '') +
+            '.\nMuestra: ' + quien, 'ok');
+        } else {
+          pon($('cf-est-prueba'), 'No se envió: ' + JSON.stringify(r.data), 'err');
+        }
+      } catch (e) { pon($('cf-est-prueba'), 'Error: ' + (e && e.message || e), 'err'); }
+      botones('[data-prueba]', false);
+    });
+  });
+
+  // ---- Real: contar ----
+  $('cf-contar').addEventListener('click', async function () {
+    pon($('cf-est-real'), 'Consultando…');
+    try {
+      var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'real' } }); // sin confirmar → solo cuenta
+      if (r.error) { pon($('cf-est-real'), 'Error: ' + r.error.message, 'err'); return; }
+      total62 = (r.data && r.data.total) || 0;
+      pon($('cf-est-real'), 'Se enviaría a ' + total62 + ' familias. Pulsa «Enviar a todas» para lanzarlo.');
+      $('cf-enviar').disabled = total62 === 0;
+    } catch (e) { pon($('cf-est-real'), 'Error: ' + (e && e.message || e), 'err'); }
+  });
+
+  // ---- Real: enviar ----
+  $('cf-enviar').addEventListener('click', async function () {
+    var cuantas = total62 == null ? 'todas las familias' : (total62 + ' familias');
+    var seguir = window.apoConfirm
+      ? await window.apoConfirm('Vas a enviar el correo de acceso a ' + cuantas + '. ¿Seguimos?', { ok: 'Enviar', tono: 'peligro' })
+      : window.confirm('Vas a enviar el correo de acceso a ' + cuantas + '. ¿Seguimos?');
+    if (!seguir) return;
+    $('cf-enviar').disabled = true; $('cf-contar').disabled = true;
+    pon($('cf-est-real'), 'Enviando… (puede tardar un poco)');
+    try {
+      var r = await sb.functions.invoke('familia-invitar', { body: { modo: 'real', confirmar: true } });
+      if (r.error) { pon($('cf-est-real'), 'Error: ' + r.error.message, 'err'); $('cf-contar').disabled = false; return; }
+      var d = r.data || {};
+      pon($('cf-est-real'),
+        '✓ Enviados: ' + (d.enviados || 0) + ' de ' + (d.total || 0) +
+        '.\nSaltados (sin enlace): ' + (d.saltados || 0) +
+        '.\nFallos: ' + (d.fallos || 0) +
+        (d.fallos ? '\n' + JSON.stringify(d.detalle_fallos) : ''),
+        (d.fallos ? 'err' : 'ok'));
+      $('cf-contar').disabled = false;
+    } catch (e) { pon($('cf-est-real'), 'Error: ' + (e && e.message || e), 'err'); $('cf-contar').disabled = false; }
+  });
+});
+</script>
+</body>
+</html>
