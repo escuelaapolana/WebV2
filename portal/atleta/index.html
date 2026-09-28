@@ -150,6 +150,12 @@
      hoy que para hace tres meses. */
   .entreno-cab { margin-bottom:12px; }
   .entreno-cab h2 { margin:0; }
+  /* Franja de natación en el día (Inicio): verde-agua, como en el calendario. */
+  .nat-tit { font-family: var(--fuente-titulo); text-transform:uppercase; font-size:16px; color:#2E8C86; margin:0 0 6px; letter-spacing:.02em; }
+  .nat-fila { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--crema-media); }
+  .nat-fila:first-of-type { border-top:0; }
+  .nat-hora { font-family: var(--fuente-mono); font-weight:700; color:#2E8C86; font-size:16px; min-width:56px; }
+  .nat-info { color: var(--navy); font-size:15px; }
   .chips { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:0; }
   .chip { font-family: var(--fuente-mono); font-size:13px; text-transform:none;  background: var(--crema-media); color: var(--texto-suave); padding:4px 10px; border-radius:999px; }
   .nota { font-size:14px; color: var(--texto); background: var(--crema); border-left:3px solid var(--azul-filete, #3B85C0); padding:10px 12px; border-radius:10px; margin:0 0 16px; }
@@ -657,6 +663,7 @@
   .dia .d-tipo { font-family: var(--fuente-mono); font-size:13px;  text-transform:none; color: var(--texto-suave); white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
   .dia .d-punto { width:7px; height:7px; border-radius:50%; background: var(--azul); }
   .dia .d-punto.personal { background: var(--navy); }
+  .dia .d-punto.nat { background:#2E8C86; }
   /* El visto ocupa exactamente lo mismo que el punto (7 px de alto): al
      apuntar cómo te fue, la tira no da un salto. */
   .dia .d-hecho { height:7px; line-height:7px; font-size:12px; font-weight:700; color: var(--verde, #3F7A4C); }
@@ -2660,6 +2667,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   } catch(e){ falloFicha=true; }
 
   var todayISO=isoDe(new Date());
+  // Franjas de natación de quien ha entrado: no son 'sesiones', así que se
+  // cargan aparte y se enseñan en el día que toca. La RPC devuelve SOLO lo
+  // tuyo (y lo de tus hijos), en cualquier rol; por eso el atleta de natación
+  // ve su horario aunque no tenga grupo ni sesiones de atletismo.
+  var MIS_NAT=[];
+  try { var _rn=await sb.rpc('natacion_mis_plazas'); if(_rn && !_rn.error && Array.isArray(_rn.data)) MIS_NAT=_rn.data; } catch(e){}
   var nombre = at ? ((at.nombre||'')+' '+(at.apellidos||'')) : (perfil.nombre||'');
   // Cabecera de «Hoy»: la fecha pequeña, el saludo y las iniciales del atleta
   var ini = at ? iniciales(at.nombre, at.apellidos) : iniciales(perfil.nombre, perfil.apellidos);
@@ -3470,8 +3483,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var nom=['lun','mar','mié','jue','vie','sáb','dom'], html='';
     for(var i=0;i<7;i++){
       var iso=addDias(lunesVis,i), ses=sesionesDe(iso);
+      var nd = ses.length ? [] : natDelDia(iso);
       var num=new Date(iso+'T00:00:00').getDate();
-      var cls='dia'+(ses.length?'':' vacio')+(iso===HOY_ISO?' hoy':'')+(iso===diaSel?' sel':'');
+      var cls='dia'+((ses.length||nd.length)?'':' vacio')+(iso===HOY_ISO?' hoy':'')+(iso===diaSel?' sel':'');
       var marca, titulo;
       if(ses.length){
         var personal=ses.some(function(s){ return s.atletas_ids!=null; });
@@ -3487,6 +3501,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
               '<span class="d-tipo">'+esc(etiqueta)+'</span>';
         titulo=formatFecha(iso)+': '+(ses[0].titulo||'entrenamiento')+(ses.length>1?' (y '+(ses.length-1)+' más)':(personal?' · solo para ti':''))+
                (apuntado?' · ya apuntaste cómo te fue':'');
+      } else if(nd.length){
+        marca='<span class="d-punto nat" aria-hidden="true"></span><span class="d-tipo">natación</span>';
+        titulo=formatFecha(iso)+': natación '+nd.map(function(p){return p.hora;}).join(', ');
       } else {
         marca='<span class="d-tipo">libre</span>';
         titulo=formatFecha(iso)+': sin entrenamiento';
@@ -4195,10 +4212,30 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var di=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
     return isNaN(d.getTime()) ? '' : di[d.getDay()]+' '+fechaDiaMes(iso);
   }
+  /* Natación de un día: las franjas fijas de quien ha entrado (solo lo suyo;
+     si está viendo a OTRO atleta, no se enseña, que la RPC devuelve lo propio). */
+  function natDelDia(iso){
+    if (esOtro() || !MIS_NAT.length) return [];
+    var wd=new Date(iso+'T00:00:00').getDay();      // 0=dom..6=sáb
+    var dia = wd===0 ? 7 : wd;                        // 1=lun..7=dom (como natacion_franjas)
+    return MIS_NAT.filter(function(p){ return Number(p.dia)===dia; });
+  }
+  function natRowsHTML(iso){
+    var nat=natDelDia(iso); if(!nat.length) return '';
+    return '<div class="nat-bloque"><div class="nat-tit">Natación</div>'+
+      nat.map(function(p){
+        var det=[p.grupo,p.calle,p.nivel].filter(Boolean).join(' · ');
+        var quien = (p.de && MIS_NAT.filter(function(x){return x.atleta_id;}).map(function(x){return x.atleta_id;}).filter(function(v,i,a){return a.indexOf(v)===i;}).length>1) ? String(p.de).split(/\s+/)[0]+' · ' : '';
+        return '<div class="nat-fila"><span class="nat-hora">'+esc(p.hora)+'</span>'+
+               '<span class="nat-info"><b>Tu franja</b>'+(det?' · '+esc(quien+det):'')+'</span></div>';
+      }).join('')+'</div>';
+  }
+
   function pintarDia(iso){
     diaSel=iso;
     pintarSemana();
     var lista=sesionesDe(iso), cont=$('entreno-cont');
+    var natHTML=natRowsHTML(iso);
     if(!lista.length){
       var cabDia='<div class="entreno-cab"><div class="ent-fecha">'+esc(fechaDeDia(iso))+'</div>'+
         '<h2 class="ent-tit">'+esc(iso===todayISO?'Hoy no toca':'Sin entrenamiento')+'</h2></div>';
@@ -4209,6 +4246,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           htmlError('No hemos podido cargar tus entrenamientos',
             'Puede ser tu conexión. No sabemos si hoy tienes entrenamiento o no: vuelve a intentarlo, y si tienes dudas pregunta a tu entrenador.',
             async function(){ await cargarSemana(lunesVis); pintarDia(diaSel); })+'</div>';
+        return;
+      }
+      // Sin sesión de atletismo, pero SÍ franja de natación ese día: se enseña.
+      if(natHTML){
+        cont.innerHTML='<div class="tarjeta">'+cabDia+natHTML+'</div>'+'<div class="ent-pies" id="ent-pies" hidden></div>';
+        vecinosDe(iso).then(function(v){ pintarFlechas(iso, v); });
         return;
       }
       var haySemana=sesDe(SEM[lunesVis], VIENDO).length;
@@ -4222,7 +4265,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       vecinosDe(iso).then(function(v){ pintarFlechas(iso, v); });
       return;
     }
-    cont.innerHTML=lista.map(function(s){
+    cont.innerHTML=(natHTML?'<div class="tarjeta">'+natHTML+'</div>':'')+lista.map(function(s){
       /* Un día que ya pasó y que el atleta apuntó se lee, no se edita: lo que
          escribió aquel día es un hecho. Los que se quedaron sin apuntar siguen
          abiertos, porque apuntarlos tarde es lo que hace que esto sirva.
