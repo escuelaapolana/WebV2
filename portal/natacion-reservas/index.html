@@ -52,6 +52,16 @@
   .rv-add{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
   .rv-add select{ flex:1 1 200px; font:inherit; font-size:14px; color:var(--navy); border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:9px 11px; background:#fff; }
   .rv-add input[type=number]{ width:80px; font:inherit; font-size:14px; border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:9px; text-align:center; }
+  /* Buscador de personas (en vez de un desplegable largo) */
+  .rv-combo{ position:relative; flex:1 1 220px; min-width:180px; }
+  .rv-combo input[type=search]{ width:100%; box-sizing:border-box; font:inherit; font-size:14px; color:var(--navy); border:1px solid var(--linea-borde,#D4CBB9); border-radius:10px; padding:9px 11px; background:#fff; }
+  .rv-lista{ position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:40; background:#fff; border:1px solid var(--linea-borde,#D4CBB9); border-radius:12px; box-shadow:0 14px 30px -12px rgba(30,45,65,.35); max-height:264px; overflow:auto; padding:5px; }
+  .rv-lista[hidden]{ display:none; }
+  .rv-opt{ display:flex; align-items:baseline; gap:6px; width:100%; text-align:left; font:inherit; font-size:14.5px; color:var(--navy); background:none; border:0; border-radius:8px; padding:9px 11px; cursor:pointer; min-height:40px; }
+  .rv-opt:hover{ background:var(--crema,#F4EEE1); }
+  .rv-opt .cod{ margin-left:auto; font-family:var(--fuente-dato); font-size:11.5px; color:var(--texto-tenue,#9a9081); }
+  .rv-mas{ font-size:12.5px; color:var(--texto-suave); padding:8px 11px; }
+  .rv-vacio{ font-size:13.5px; color:var(--texto-suave); padding:10px 11px; }
   .rv-toast{ position:fixed; left:50%; bottom:26px; transform:translate(-50%,14px); opacity:0; transition:.22s; z-index:60; background:var(--navy,#2E4256); color:#fff; font-size:14px; padding:10px 18px; border-radius:999px; box-shadow:0 12px 26px -10px rgba(30,45,65,.5); max-width:calc(100% - 32px); text-align:center; }
   .rv-toast.ver{ opacity:1; transform:translate(-50%,0); } .rv-toast.err{ background:#B0563A; }
 </style>
@@ -66,6 +76,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var DIAS = ['','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function hhmm(h){ return String(h).slice(0,5); }
+  function normaliza(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
   var _t; function avisar(m,err){ toast.textContent=m; toast.className='rv-toast ver'+(err?' err':''); clearTimeout(_t); _t=setTimeout(function(){toast.className='rv-toast';}, err?3600:2000); }
   function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function diaSemana(iso){ var p=iso.split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]); var w=d.getDay(); return w===0?7:w; } // 1..7
@@ -123,8 +134,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<button class="rv-mini" data-ab="'+esc(a.acceso_id)+'" data-delta="1">＋</button></div>';
     }).join('') : '<div class="rv-nada">Nadie tiene abono todavía. Dale clases a alguien abajo.</div>';
 
-    var optAcc = ACC.map(function(a){ return '<option value="'+esc(a.id)+'">'+esc(a.nombre||a.codigo)+'</option>'; }).join('');
-
     wrap.innerHTML =
       '<div class="rv-cab"><h1>Reservas y abono</h1>'+
         '<p>Los fijos tienen su plaza por defecto. Si un fijo se da de baja un día, queda hueco y puedes dárselo a alguien con clases de abono pendientes.</p></div>'+
@@ -134,15 +143,46 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<p class="rv-rot">Franjas de ese día · huecos</p>'+ htmlFranjas +
       '<p class="rv-rot">Abono · clases pendientes</p>'+
       '<div class="rv-card">'+ htmlAbonos +
-        '<div class="rv-add"><select id="rv-acc">'+optAcc+'</select>'+
+        '<div class="rv-add"><div class="rv-combo">'+
+            '<input type="search" id="rv-acc-q" placeholder="Busca un nombre…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="rv-acc-list">'+
+            '<div class="rv-lista" id="rv-acc-list" hidden></div></div>'+
           '<input type="number" id="rv-n" min="0" value="4" title="Clases">'+
           '<button class="rv-btn sec" id="rv-dar">Dar abono</button></div></div>';
 
     var fi = document.getElementById('rv-f');
     if (fi) fi.addEventListener('change', function(){ fecha = fi.value || hoyISO(); pinta(); });
+    // Buscador de personas para "Dar abono" (en vez de un desplegable largo)
+    var accQ = document.getElementById('rv-acc-q');
+    var accList = document.getElementById('rv-acc-list');
+    if (accQ && accList) {
+      var CAP = 40;
+      var cerrarL = function(){ accList.hidden = true; accQ.setAttribute('aria-expanded','false'); };
+      var elegir = function(id){ var a=ACC.filter(function(x){return x.id===id;})[0]; if(!a) return; accQ.value=a.nombre||a.codigo; accQ.dataset.id=id; cerrarL(); };
+      var pintaL = function(){
+        var term = normaliza(accQ.value);
+        var todos = ACC.filter(function(a){ return normaliza(a.nombre||a.codigo).indexOf(term)!==-1; });
+        var vis = todos.slice(0, CAP), extra = todos.length - vis.length;
+        accList.innerHTML = vis.length
+          ? vis.map(function(a){ return '<button type="button" class="rv-opt" data-id="'+esc(a.id)+'">'+esc(a.nombre||a.codigo)+(a.nombre&&a.codigo?'<span class="cod">'+esc(a.codigo)+'</span>':'')+'</button>'; }).join('')
+              + (extra>0?'<div class="rv-mas">…y '+extra+' más. Escribe para afinar.</div>':'')
+          : '<div class="rv-vacio">Nadie con ese nombre.</div>';
+        accList.hidden = false; accQ.setAttribute('aria-expanded','true');
+      };
+      accQ.addEventListener('focus', pintaL);
+      accQ.addEventListener('input', function(){ accQ.dataset.id=''; pintaL(); });
+      accQ.addEventListener('keydown', function(ev){
+        if (ev.key==='Enter'){ ev.preventDefault(); var f=accList.querySelector('.rv-opt'); if(f) elegir(f.getAttribute('data-id')); }
+        else if (ev.key==='Escape'){ cerrarL(); }
+      });
+      accQ.addEventListener('blur', function(){ setTimeout(cerrarL, 150); });
+      accList.addEventListener('click', function(ev){ var b=ev.target.closest?ev.target.closest('.rv-opt'):null; if(b) elegir(b.getAttribute('data-id')); });
+    }
+
     var dar = document.getElementById('rv-dar');
     if (dar) dar.addEventListener('click', async function(){
-      var acc = document.getElementById('rv-acc').value;
+      var acc = accQ ? (accQ.dataset.id||'') : '';
+      if (!acc && accQ){ var term=normaliza(accQ.value); var cand=ACC.filter(function(a){return normaliza(a.nombre||a.codigo)===term;}); if(cand.length===1) acc=cand[0].id; }
+      if (!acc){ avisar('Busca y elige a quién darle abono.', true); return; }
       var n = parseInt(document.getElementById('rv-n').value,10); if(isNaN(n)) n=0;
       var nom = (ACC.filter(function(a){return a.id===acc;})[0]||{}).nombre || null;
       dar.disabled=true;
