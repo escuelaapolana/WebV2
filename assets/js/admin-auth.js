@@ -21,6 +21,9 @@
      todas las familias y las notas de los críos. Ahora entra por aquí,
      y esta es la única pantalla que se le abre. */
   var DEL_CUBO = /\/admin\/cubo\//;
+  /* La Liga: la lleva el responsable de comunicación (gestiona la liga del
+     club) sin ser administración. Entra a validar y publicar puntos por aquí. */
+  var DEL_LIGA = /\/admin\/liga\//;
   window.APOLANA_ADMIN = { listo: function (cb) { _cb = cb; } };
 
   function base() { return window.APOLANA_BASE || '../../'; }
@@ -296,6 +299,14 @@
           if (!suya && DEL_CUBO.test(location.pathname)) {
             var delCubo = await sb.rpc('cubo_es_gestor');
             suya = !delCubo.error && !!delCubo.data;
+          }
+          /* La Liga vive dentro del mundo de Comunicación: quien lo lleve
+             (responsable de comunicación) entra a validar/publicar puntos,
+             aunque su papel principal sea atleta. Lo que ve dentro lo deciden
+             las reglas de la base (es_responsable_liga). */
+          if (!suya && DEL_LIGA.test(location.pathname)) {
+            var delLiga = await sb.rpc('es_responsable_liga');
+            suya = !delLiga.error && !!delLiga.data;
           }
           if (!suya) {
             /* Ni administración, ni papel del club, ni equipo técnico en una
