@@ -73,7 +73,8 @@
         {t:'Buzón',           i:'inbox',     url:B+'admin/buzon/',       d:'Los mensajes que llegan de contacto.'},
         {t:'La web',          i:'globe',     url:B+'admin/paginas/',     d:'Páginas, textos y fotos de la web.'},
         {t:'Datos del club',  i:'clipboard', url:B+'admin/documentos/',  d:'Documentos y datos legales.'},
-        {t:'Acceso a los mundos', i:'shuffle', url:B+'admin/mundos/',    d:'Quién entra a cada mundo (Natación, Cubo…).'}
+        {t:'Acceso a los mundos', i:'shuffle', url:B+'admin/mundos/',    d:'Quién entra a cada mundo (Natación, Cubo…).'},
+        {t:'Enlaces para compartir', i:'link', url:B+'admin/enlaces/',   d:'Los enlaces de los formularios, para copiar y mandar.'}
       ] },
     { key:'natacion', nombre:'Natación', dot:'#2F6FA8', home:B+'portal/natacion/',
       frase:'Adultos y máster. Franjas, calles, cupos y quién falta.',
@@ -140,7 +141,6 @@
         {t:'Avisos al móvil', i:'bell',      url:B+'admin/avisos-push/', d:'Notificaciones a la gente del club.'},
         {t:'Calendario',      i:'calendar',  url:B+'admin/eventos/',     d:'Eventos y fechas del club.'},
         {t:'Liga',            i:'chart',      url:B+'admin/liga/',        d:'Comunicar la Liga Apolana.'},
-        {t:'Enlaces para compartir', i:'link', url:B+'admin/enlaces/',   d:'Los enlaces de los formularios, para copiar.'},
         {t:'Peticiones de redes',    i:'at',   url:B+'admin/redes/',     d:'Lo que proponen los socios.'}
       ] }
   ];
@@ -365,7 +365,7 @@
     natacion:'natacion',
     tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista',
     repartir:'escuela-atl', historico:'escuela-atl', altas:'general',
-    eventos:'comunicacion', enlaces:'comunicacion', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
+    eventos:'comunicacion', enlaces:'general', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
   };
   function resolverURL() {
     if (location.pathname.indexOf('/admin/') === -1) return null;
