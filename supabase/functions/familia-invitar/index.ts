@@ -232,6 +232,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     `${URL_BASE}familia/entrar/?t=${encodeURIComponent(token ?? "")}`;
   const ASUNTO = "Tu acceso a la Web y App del Club Apolana 🏊";
 
+  // No enviar a: cuentas de prueba, correos internos, ni direcciones mal
+  // formadas. Se saltan y se cuentan aparte (no se cuela ni un correo raro).
+  const emailOk = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || ""));
+  const excluible = (e: string) => {
+    const x = String(e || "").toLowerCase().trim();
+    return /@apolana\.club$/.test(x) || x === "andres.apolana@gmail.com" || x === "itakadyr@gmail.com";
+  };
+  const enviable = (f: FilaFamilia) => !!f.token && emailOk(f.email) && !excluible(f.email);
+
   // ---- MODO PRUEBA: correo de muestra a un destino ----
   if (modo === "prueba") {
     const destino = String(cuerpo.destino ?? "andres.apolana@gmail.com").trim();
@@ -255,16 +264,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ---- MODO REAL: a todas las familias ----
   if (modo === "real") {
-    if (cuerpo.confirmar !== true) {
-      return responder({ error: "falta_confirmar", mensaje: "Pon confirmar:true para enviar de verdad.", total: familias.length }, 200, origen);
-    }
     const soloA = String(cuerpo.solo_a ?? "").trim().toLowerCase(); // opcional: enviar solo a una familia real
     const objetivo = soloA ? familias.filter((f) => (f.email || "").toLowerCase() === soloA) : familias;
+    const enviables = objetivo.filter(enviable);
+    if (cuerpo.confirmar !== true) {
+      return responder({
+        error: "falta_confirmar", mensaje: "Pon confirmar:true para enviar de verdad.",
+        total: objetivo.length, enviables: enviables.length,
+      }, 200, origen);
+    }
     const enviados: string[] = [];
     const fallos: Array<{ email: string; motivo: unknown }> = [];
     const saltados: string[] = [];
     for (const f of objetivo) {
-      if (!f.token) { saltados.push(f.email); continue; }
+      if (!enviable(f)) { saltados.push(f.email); continue; }
       const r = await enviarBrevo(f.email, f.hijos, enlaceDe(f.token), ASUNTO, f.ya_tiene_cuenta === true);
       if (r.ok) enviados.push(f.email);
       else fallos.push({ email: f.email, motivo: r });
