@@ -217,31 +217,36 @@ async function sellarInvitado(token: string): Promise<void> {
   } catch (_e) { /* si falla el sello, peor es no enviar; el reintento lo pilla luego */ }
 }
 
-// Pregunta a Brevo a QUIÉN se le ha enviado ya HOY un correo de esta campaña
-// (por si un intento anterior mandó a algunas antes de cortarse). Devuelve el
-// conjunto de correos en minúsculas. Si Brevo no contesta, conjunto vacío.
-async function yaEnviadosBrevo(): Promise<Set<string>> {
+// Pregunta a Brevo a QUIÉN se le ha enviado un correo HOY (por si un intento
+// anterior mandó a algunas antes de "cortarse"). Usa el endpoint de EVENTOS,
+// que sí lista los envíos recientes con su destinatario. Devuelve el conjunto
+// de correos (minúsculas), cuántos eventos vio (diagnóstico) y si Brevo contestó.
+async function yaEnviadosBrevo(): Promise<{ set: Set<string>; rebotados: Set<string>; raw: number; ok: boolean }> {
   const set = new Set<string>();
+  const rebotados = new Set<string>();
+  let raw = 0, ok = false;
   try {
-    const hoy = new Date().toISOString().slice(0, 10);
-    const url = `https://api.brevo.com/v3/smtp/emails?startDate=${hoy}&endDate=${hoy}&limit=1000`;
+    // days=1 = hoy (no compatible con startDate/endDate). Traemos todos los eventos.
+    const url = `https://api.brevo.com/v3/smtp/statistics/events?days=1&limit=2500&sort=desc`;
     const r = await fetch(url, { headers: { "api-key": BREVO_API_KEY, accept: "application/json" } });
-    if (!r.ok) return set;
+    if (!r.ok) return { set, rebotados, raw, ok };
+    ok = true;
     const d = await r.json();
-    const arr = (d?.transactionalEmails ?? d?.emails ?? []) as Array<Record<string, unknown>>;
+    const arr = (d?.events ?? []) as Array<Record<string, unknown>>;
+    raw = arr.length;
     for (const e of arr) {
+      const to = String(e?.email ?? "").toLowerCase().trim();
+      if (!to) continue;
       const subj = String(e?.subject ?? "");
-      // Solo los de ESTA campaña (no pruebas, que llevan «[PRUEBA…]» delante).
-      if (!subj.startsWith("Tu acceso a la Web")) continue;
-      let to = "";
-      if (typeof e?.email === "string") to = e.email;
-      else if (Array.isArray(e?.to) && e.to[0] && typeof e.to[0] === "object") {
-        to = String((e.to[0] as Record<string, unknown>).email ?? "");
+      if (subj.startsWith("[PRUEBA")) continue; // no contar las pruebas
+      set.add(to);
+      const ev = String(e?.event ?? "").toLowerCase();
+      if (ev.includes("bounce") || ev === "blocked" || ev === "invalid" || ev === "error" || ev === "spam") {
+        rebotados.add(to);
       }
-      if (to) set.add(to.toLowerCase().trim());
     }
   } catch (_e) { /* sin reconciliación; nos quedamos con lo que diga invitado_en */ }
-  return set;
+  return { set, rebotados, raw, ok };
 }
 
 // Ejecuta `fn` sobre los items en tandas concurrentes de `n` (rápido y sin
@@ -324,13 +329,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // RECONCILIAR SIEMPRE (tanto al contar como al enviar): preguntar a Brevo a
     // quién ya se le mandó hoy y sellarlo. Así «Ver a cuántas» ya descuenta lo
     // que alcanzó un intento anterior, y nunca se reenvía a nadie.
-    let brevoHoy = -1;      // cuántos correos de la campaña reporta Brevo hoy (-1 = no contestó)
+    let brevoHoy = -1;      // nº de eventos que Brevo reporta hoy (-1 = no contestó)
     let brevoOk = false;
+    const rebotados: string[] = []; // familias de la campaña cuyo correo rebotó
     try {
-      const yaBrevo = await yaEnviadosBrevo();
-      brevoHoy = yaBrevo.size; brevoOk = true;
+      const rec = await yaEnviadosBrevo();
+      brevoOk = rec.ok; brevoHoy = rec.raw;
       for (const f of enviables) {
-        if (!f.invitado_en && f.token && yaBrevo.has((f.email || "").toLowerCase().trim())) {
+        const suyo = (f.email || "").toLowerCase().trim();
+        if (rec.rebotados.has(suyo)) rebotados.push(f.email);
+        if (!f.invitado_en && f.token && rec.set.has(suyo)) {
           await sellarInvitado(f.token);
           f.invitado_en = new Date().toISOString(); // reflejarlo ya en este cálculo
         }
@@ -346,6 +354,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         total: objetivo.length, enviables: enviables.length,
         pendientes: pendientes.length, ya_invitadas: yaInvitadas,
         brevo_ok: brevoOk, brevo_hoy: brevoHoy,
+        rebotados: rebotados.length, detalle_rebotados: rebotados,
       }, 200, origen);
     }
 
