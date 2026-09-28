@@ -1700,9 +1700,10 @@
          misma puerta: el panel. Lo que ven dentro lo deciden las reglas
          de la base, no esta lista. */
       if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') anadir('admin');
-      /* La app se queda con estas vistas del portal (familia y coordinación
-         se retiran); el socio entra a la suya. */
-      var OK4 = ['atleta', 'entrenador', 'cubo-atleta', 'cubo-lista', 'socio', 'admin', 'responsable'];
+      /* La app se queda con estas vistas del portal (coordinación se retira);
+         «familia» SÍ es una vista (las familias de la escuela de natación).
+         El socio entra a la suya. */
+      var OK4 = ['atleta', 'padre', 'familia', 'entrenador', 'cubo-atleta', 'cubo-lista', 'socio', 'admin', 'responsable'];
       return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
     }
 
