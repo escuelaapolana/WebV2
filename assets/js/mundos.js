@@ -357,7 +357,7 @@
     return _idx;
   }
   var COARSE = {
-    atletas:'general', socios:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', pedidos:'general',
+    atletas:'general', socios:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', 'cubo-pagos':'general', pedidos:'general',
     paginas:'general', contenido:'general', imagenes:'general', biblioteca:'general', colaboradores:'general', mapa:'general',
     documentos:'general', estadisticas:'general', informes:'general', usuarios:'general', importar:'general', contactos:'general',
     grupos:'general', mundos:'general', campo:'general', buzon:'general', automatizaciones:'general',
