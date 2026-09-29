@@ -236,6 +236,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("subscription_data[metadata][referencia]", referencia);
   params.set("subscription_data[metadata][perfil_id]", perfilId);
   params.set("subscription_data[metadata][alta_id]", alta.id);
+  // Nombre de la persona en los metadatos: sale en el export de Stripe, para que
+  // la contable empareje cada cobro con quién es (además del email del cliente).
+  var persona = String((alta.nombre || "") + " " + (alta.apellidos || "")).trim();
+  if (persona) {
+    params.set("subscription_data[metadata][persona]", persona);
+    params.set("metadata[persona]", persona);
+  }
   params.set("metadata[referencia]", referencia);
 
   const rStripe = await fetch("https://api.stripe.com/v1/checkout/sessions", {

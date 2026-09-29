@@ -94,6 +94,7 @@
     <a class="volver" href="../">← Volver al panel</a>
     <h1 class="saludo">El Cubo · socios y cuotas</h1>
     <p class="sub">Los grupos y su ocupación, el cobro, y quién se ha apuntado.</p>
+    <p class="sub" style="margin-top:-4px"><a href="../cubo-pagos/" style="color:var(--azul,#2F6FA8);text-decoration:underline">📊 Exportar pagos (Excel para la contable)</a></p>
     <div id="ca-cobro"></div>
     <div id="ca-grupos"></div>
     <p class="ca-rot">Quién se ha apuntado</p>
@@ -121,11 +122,34 @@ APOLANA_ADMIN.listo(function (sb) {
     if(r.error){ fallo=r.error.message; ALTAS=[]; return; }
     ALTAS = r.data||[];
     await cargarCobros();
+    indexarDuplicados();
   }
   async function cargarCobros(){
     COBROS = {};
     var r = await sb.from('cubo_cobros').select('id,alta_id,concepto,importe_cent,estado,created_at').eq('estado','pendiente');
     if(!r.error && r.data){ r.data.forEach(function(c){ (COBROS[c.alta_id]=COBROS[c.alta_id]||[]).push(c); }); }
+  }
+
+  // --- Aviso de DUPLICADOS: misma persona dada de alta más de una vez ---
+  // Salta si otra alta NO rechazada comparte cuenta (perfil_id), ficha (atleta_id)
+  // o teléfono+nombre (reenvío del formulario). Teléfono solo no basta: así no
+  // marca a dos hermanos que comparten el móvil de un padre.
+  var DUP = {};
+  function _norm(s){ return String(s==null?'':s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+  function _claves(a){
+    var k=[];
+    if(a.perfil_id) k.push('p:'+a.perfil_id);
+    if(a.atleta_id) k.push('a:'+a.atleta_id);
+    if(a.telefono && (a.nombre||a.apellidos)) k.push('t:'+_norm(a.telefono)+'|'+_norm(a.nombre));
+    return k;
+  }
+  function indexarDuplicados(){
+    DUP={}; var mapa={};
+    ALTAS.forEach(function(a){ if((a.estado||'')==='rechazada') return; _claves(a).forEach(function(k){ (mapa[k]=mapa[k]||[]).push(a.id); }); });
+    ALTAS.forEach(function(a){
+      if((a.estado||'')==='rechazada'){ DUP[a.id]=false; return; }
+      DUP[a.id]=_claves(a).some(function(k){ return (mapa[k]||[]).some(function(id){ return id!==a.id; }); });
+    });
   }
 
   function visibles(){ return filtro==='todas' ? ALTAS : ALTAS.filter(function(a){ return (a.estado||'pendiente')===filtro; }); }
@@ -208,6 +232,7 @@ APOLANA_ADMIN.listo(function (sb) {
           '<small>'+linea2.join(' · ')+'</small>'+
           (a.nota?'<small>«'+esc(a.nota)+'»</small>':'')+
           '<small>Apuntado el '+esc(fecha(a.created_at))+'</small>'+
+          (DUP[a.id] && est!=='rechazada' ? '<small class="dup-aviso" style="color:#9A3B3B;font-weight:700">⚠️ Posible duplicado · ya hay otra alta de esta persona</small>' : '')+
           pagoHTML(a)+
           pagosPuntualesHTML(a)+
         '</span>'+
