@@ -381,7 +381,21 @@
     '.ap-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;' +
       'padding:10px 18px;box-sizing:border-box;border-radius:999px;font-family:inherit;font-size:15px;' +
       'font-weight:600;line-height:1.2;cursor:pointer;text-decoration:none}' +
-    '.ap-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}';
+    '.ap-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
+    /* «Ver como…» (solo admin/staff): mismo aspecto que la píldora «Web». */
+    '.pt-top .der .ver-como{display:inline-flex;align-items:center;gap:6px;color:#fff;font-size:13px;font-weight:600;' +
+      'background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:0 13px;min-height:44px;' +
+      'box-sizing:border-box;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}' +
+    '.pt-top .der .ver-como:hover{background:rgba(255,255,255,.18)}' +
+    '.pt-top .der .ver-como svg{flex:0 0 auto}' +
+    '@media(max-width:440px){.pt-top .der .ver-como span{display:none}.pt-top .der .ver-como{padding:0 9px}}' +
+    '.vc-menu{position:fixed;z-index:2147483000;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;box-shadow:0 20px 44px -18px rgba(46,66,86,.55);padding:8px;min-width:250px;max-width:calc(100vw - 24px)}' +
+    '.vc-menu[hidden]{display:none}' +
+    '.vc-menu .vc-titu{font-size:12px;color:var(--texto-suave,#6E6656);padding:6px 10px 4px;text-transform:uppercase;letter-spacing:.04em}' +
+    '.vc-menu a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:10px;color:var(--navy,#2E4256);text-decoration:none;font-size:14.5px;min-height:44px;box-sizing:border-box}' +
+    '.vc-menu a:hover{background:var(--crema,#F4EEE1)}' +
+    '.vc-menu a .vc-fl{color:var(--texto-suave,#6E6656);flex:0 0 auto}' +
+    '.vc-menu .vc-pie{font-size:11.5px;color:var(--texto-suave,#6E6656);padding:9px 10px 4px;line-height:1.4;border-top:1px solid var(--linea,#EDE6D7);margin-top:6px}';
   document.head.appendChild(css);
 
   /* ============================================================
@@ -795,6 +809,11 @@
       var nombre = (perfil && perfil.nombre) ? perfil.nombre : email;
       var primerNom = String(nombre).trim().split(/\s+/)[0] || nombre;
       var ini = iniciales(perfil, email);
+      /* «Ver como…» solo para quien gestiona (admin/tesorería/contabilidad/junta). */
+      var _staff = !!(perfil && Array.isArray(perfil.roles) && perfil.roles.some(function (r) {
+        return ['admin', 'tesoreria', 'contabilidad', 'junta'].indexOf(r) !== -1;
+      }));
+      var OJO_VC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
       var top = document.createElement('div');
       top.className = 'pt-top';
       top.innerHTML =
@@ -808,6 +827,7 @@
             '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
               '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>' +
             '<span>Web</span></a>' +
+          (_staff ? '<button type="button" class="ver-como" id="pt-ver-como" aria-haspopup="true" aria-expanded="false">' + OJO_VC + '<span>Ver como…</span></button>' : '') +
           /* La pastilla del nombre. Si solo tienes un papel no se pulsa (se le
              quita la flechita en unSoloPapel); con varios, abre la hoja. */
           '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="dialog" ' +
@@ -828,6 +848,40 @@
           '</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
+
+      /* «Ver como…» (solo admin/staff): abre cada vista de rol en una pestaña
+         nueva para revisar cómo queda la app desde cada papel. Solo mirar; no
+         suplanta a nadie (la RLS sigue mandando), se ve con los datos propios. */
+      if (_staff) (function () {
+        var VISTAS = [
+          ['Atleta', 'portal/atleta/'],
+          ['Familia', 'portal/familia/'],
+          ['Entrenador', 'portal/entrenador/'],
+          ['El Cubo (atleta)', 'portal/cubo-atleta/'],
+          ['El Cubo (pasar lista)', 'portal/cubo-lista/'],
+          ['Socio', 'portal/socio/'],
+          ['Responsable de sección', 'portal/responsable/'],
+          ['Escuela de natación', 'portal/escuela-natacion/'],
+          ['Escuela de atletismo', 'portal/escuela-atletismo/'],
+          ['Calendario del club', 'portal/calendario/']
+        ];
+        var FL = '<span class="vc-fl" aria-hidden="true">↗</span>';
+        var menu = document.createElement('div');
+        menu.className = 'vc-menu'; menu.hidden = true; menu.setAttribute('role', 'menu');
+        menu.innerHTML = '<div class="vc-titu">Abrir la vista de…</div>' +
+          VISTAS.map(function (v) { return '<a role="menuitem" href="' + b + v[1] + '" target="_blank" rel="noopener">' + esc(v[0]) + FL + '</a>'; }).join('') +
+          '<div class="vc-pie">Se abre en una pestaña nueva, solo para mirar cómo queda. La verás con tus propios datos (o vacía si no tienes ese papel).</div>';
+        document.body.appendChild(menu);
+        var vb = document.getElementById('pt-ver-como');
+        if (!vb) return;
+        function colocar() { var r = vb.getBoundingClientRect(); menu.style.top = (r.bottom + 6) + 'px'; menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px'; }
+        function fuera(e) { if (!menu.contains(e.target) && e.target !== vb && !vb.contains(e.target)) cerrar(); }
+        function cerrar() { menu.hidden = true; vb.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', fuera, true); }
+        function abrir() { colocar(); menu.hidden = false; vb.setAttribute('aria-expanded', 'true'); setTimeout(function () { document.addEventListener('click', fuera, true); }, 0); }
+        vb.addEventListener('click', function (e) { e.stopPropagation(); if (menu.hidden) abrir(); else cerrar(); });
+        window.addEventListener('resize', function () { if (!menu.hidden) colocar(); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !menu.hidden) cerrar(); });
+      })();
 
       /* --- el nombre/avatar abre la hoja «Cambiar de vista» --- */
       var bAvatar = document.getElementById('pt-avatar');

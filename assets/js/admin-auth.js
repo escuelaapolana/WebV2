@@ -110,7 +110,19 @@
     '.adm-papel-btns{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:20px}' +
     '.adm-papel-btns .btn{min-width:220px}' +
     '.adm-papel-salida{font-size:15px;color:#2F6FA8;text-decoration:none;min-height:44px;display:inline-flex;align-items:center}' +
-    '.adm-papel-salida:hover{text-decoration:underline}';
+    '.adm-papel-salida:hover{text-decoration:underline}' +
+    /* «Ver como…»: píldora en la cabecera del panel + menú para abrir cada vista de rol */
+    '.adm-top .der .ver-como{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:8px 15px;border-radius:999px;color:#fff;font-size:14px;white-space:nowrap;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);cursor:pointer;font-family:inherit;box-sizing:border-box}' +
+    '.adm-top .der .ver-como:hover{background:rgba(255,255,255,.2)}' +
+    '.adm-top .der .ver-como svg{width:16px;height:16px;flex:0 0 auto;opacity:.92}' +
+    '@media(max-width:640px){.adm-top .der .ver-como span{display:none}.adm-top .der .ver-como{padding:10px}}' +
+    '.vc-menu{position:fixed;z-index:2147483000;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;box-shadow:0 20px 44px -18px rgba(46,66,86,.55);padding:8px;min-width:250px;max-width:calc(100vw - 24px)}' +
+    '.vc-menu[hidden]{display:none}' +
+    '.vc-menu .vc-titu{font-size:12px;color:var(--texto-suave,#6E6656);padding:6px 10px 4px;text-transform:uppercase;letter-spacing:.04em}' +
+    '.vc-menu a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:10px;color:var(--navy,#2E4256);text-decoration:none;font-size:14.5px;min-height:44px;box-sizing:border-box}' +
+    '.vc-menu a:hover{background:var(--crema,#F4EEE1)}' +
+    '.vc-menu a .vc-fl{color:var(--texto-suave,#6E6656);flex:0 0 auto}' +
+    '.vc-menu .vc-pie{font-size:11.5px;color:var(--texto-suave,#6E6656);padding:9px 10px 4px;line-height:1.4;border-top:1px solid var(--linea,#EDE6D7);margin-top:6px}';
   document.head.appendChild(css);
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -142,6 +154,7 @@
          dorado + «Administración»), que al pulsarla abre «cambiar de papel».
          Fuera el correo suelto y la franja «Estás como…»: el papel va aquí. */
       var GLOBO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>';
+      var OJO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
       var _ini = ((email || 'A').charAt(0) || 'A').toUpperCase();
       top.innerHTML =
         '<div class="izq"><a class="volver" href="' + base() + 'admin/"><i>←</i><span class="txt">Panel</span></a>' +
@@ -149,6 +162,7 @@
         '<span class="marca">' + esc(tituloPagina()) + '</span></div>' +
         '<div class="der">' +
           '<a class="ir-web" href="' + base() + '">' + GLOBO + '<span>Web</span></a>' +
+          '<button type="button" class="ver-como" id="ver-como" aria-haspopup="true" aria-expanded="false">' + OJO + '<span>Ver como…</span></button>' +
           '<button type="button" class="adm-perfil" id="adm-perfil" aria-haspopup="dialog">' +
             '<span class="av">' + esc(_ini) + '</span><span class="rol">Administración</span></button>' +
         '</div>';   /* sin «Salir»: la salida vive en la hoja del perfil (calco) */
@@ -157,6 +171,45 @@
       document.getElementById('adm-perfil').addEventListener('click', function () {
         if (window.APOLANA_PAPELES && window.APOLANA_PAPELES.abrir) window.APOLANA_PAPELES.abrir();
       });
+      /* «Ver como…»: abre cada vista de rol en una pestaña nueva, para revisar
+         cómo se ve la app desde cada papel tras hacer cambios. Solo mirar: se
+         ve con los datos del propio admin (o vacía si no tiene ese papel); no
+         suplanta a nadie (la RLS sigue mandando). */
+      (function () {
+        var b = base();
+        var VISTAS = [
+          ['Atleta', 'portal/atleta/'],
+          ['Familia', 'portal/familia/'],
+          ['Entrenador', 'portal/entrenador/'],
+          ['El Cubo (atleta)', 'portal/cubo-atleta/'],
+          ['El Cubo (pasar lista)', 'portal/cubo-lista/'],
+          ['Socio', 'portal/socio/'],
+          ['Responsable de sección', 'portal/responsable/'],
+          ['Escuela de natación', 'portal/escuela-natacion/'],
+          ['Escuela de atletismo', 'portal/escuela-atletismo/'],
+          ['Calendario del club', 'portal/calendario/']
+        ];
+        var FL = '<span class="vc-fl" aria-hidden="true">↗</span>';
+        var menu = document.createElement('div');
+        menu.className = 'vc-menu'; menu.hidden = true;
+        menu.setAttribute('role', 'menu');
+        menu.innerHTML = '<div class="vc-titu">Abrir la vista de…</div>' +
+          VISTAS.map(function (v) { return '<a role="menuitem" href="' + b + v[1] + '" target="_blank" rel="noopener">' + esc(v[0]) + FL + '</a>'; }).join('') +
+          '<div class="vc-pie">Se abre en una pestaña nueva, solo para mirar cómo queda. La verás con tus propios datos (o vacía si no tienes ese papel).</div>';
+        document.body.appendChild(menu);
+        var btn = document.getElementById('ver-como');
+        function colocar() {
+          var r = btn.getBoundingClientRect();
+          menu.style.top = (r.bottom + 6) + 'px';
+          menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+        }
+        function fuera(e) { if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) cerrar(); }
+        function cerrar() { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', fuera, true); }
+        function abrir() { colocar(); menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); setTimeout(function () { document.addEventListener('click', fuera, true); }, 0); }
+        btn.addEventListener('click', function (e) { e.stopPropagation(); if (menu.hidden) abrir(); else cerrar(); });
+        window.addEventListener('resize', function () { if (!menu.hidden) colocar(); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !menu.hidden) cerrar(); });
+      })();
       /* El NOMBRE en la píldora (como el portal). Si no se lee, queda «Administración». */
       try {
         sb.from('perfiles').select('nombre').eq('email', email).maybeSingle().then(function (pr) {
