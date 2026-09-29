@@ -30,7 +30,7 @@ montaña, fuerza y las escuelas de niños).
 - **Supabase (PostgreSQL)** como base de datos, autenticación y almacenamiento.
   103 tablas, 310 políticas de seguridad a nivel de fila, 149 migraciones SQL.
 - **5 funciones Edge** en Deno para lo que no puede vivir en el navegador:
-  enlaces de acceso, avisos, pagos con tarjeta y la integración con Strava.
+  enlaces de acceso, avisos y pagos con tarjeta.
 
 Tamaño: 31 páginas públicas, 38 pantallas de panel, 20 de portal.
 

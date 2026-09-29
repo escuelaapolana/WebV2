@@ -31,6 +31,9 @@
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// A dónde lleva el enlace mágico cuando el correo ya es de una cuenta con más
+// permisos que una familia (se le manda en vez de fijarle la contraseña).
+const PORTAL = Deno.env.get("ACCESO_REDIRECT_PORTAL") ?? "https://atletismoapolana.com/portal/";
 
 const WEBS_DEL_CLUB = [
   "https://escuelaapolana.github.io/WebV2/",
@@ -82,24 +85,58 @@ async function rpc(nombre: string, cuerpo: unknown): Promise<unknown> {
   try { return t ? JSON.parse(t) : null; } catch { return t; }
 }
 
-// Busca la cuenta por correo; si no está, la crea con la contraseña puesta.
-// Si ya existe, le fija esa contraseña (el token es la autorización).
-async function cuentaConClave(email: string, password: string): Promise<string | null> {
+// Papeles que un alta de FAMILIA puede llevar sin riesgo: los que salen de las
+// fichas (padre/atleta) o el de familia. Cualquier OTRO papel (entrenador,
+// responsable, admin, junta, tesoreria, coordinador, socio, cubo-*…) es una
+// cuenta con más permisos, y a ésa NUNCA se le fija contraseña con un token de
+// familia: se le manda un enlace mágico a su correo real (igual que socio-cuenta).
+const PAPELES_FAMILIA = new Set(["atleta", "padre", "familia"]);
+
+// Enlace mágico al correo real: solo el dueño del buzón entra (should_create_user
+// false: si por lo que fuera no existiera la cuenta, no se crea nada).
+async function enviarEnlace(email: string): Promise<void> {
+  try {
+    await rest(`/auth/v1/otp`, {
+      method: "POST",
+      body: JSON.stringify({ email, should_create_user: false, options: { email_redirect_to: PORTAL }, redirect_to: PORTAL }),
+    });
+  } catch (e) { console.error("[familia-cuenta] enlace:", e); }
+}
+
+// ¿Existe ya una cuenta con este correo? Devuelve su id (o null).
+async function buscarCuenta(email: string): Promise<string | null> {
   const buscar = await rest(
     `/auth/v1/admin/users?filter=${encodeURIComponent(email)}`, { method: "GET" });
-  let id: string | null = null;
-  if (buscar.ok) {
-    const datos = await buscar.json();
-    const lista = Array.isArray(datos?.users) ? datos.users : [];
-    const suya = lista.find((u: { email?: string }) => (u.email ?? "").toLowerCase() === email);
-    if (suya?.id) id = suya.id as string;
-  }
-  if (id) {
-    // Ya tenía cuenta (p. ej. es socia/atleta): le ponemos la contraseña nueva.
-    await rest(`/auth/v1/admin/users/${id}`, {
+  if (!buscar.ok) return null;
+  const datos = await buscar.json();
+  const lista = Array.isArray(datos?.users) ? datos.users : [];
+  const suya = lista.find((u: { email?: string }) => (u.email ?? "").toLowerCase() === email);
+  return (suya?.id as string) ?? null;
+}
+
+// ¿La cuenta (buscada por id, sin depender de mayúsculas del correo) tiene algún
+// papel por encima de una familia? Ante la duda (no se puede leer el perfil)
+// decimos que sí: preferimos mandar enlace antes que fijarle una contraseña a
+// alguien. Una cuenta a medias (sin perfil aún) no cuenta como cuenta con permisos.
+async function cuentaElevada(uid: string): Promise<boolean> {
+  const r = await rest(`/rest/v1/perfiles?id=eq.${uid}&select=rol,roles`, { method: "GET" });
+  if (!r.ok) return true;
+  const filas = await r.json().catch(() => null);
+  const p = Array.isArray(filas) ? filas[0] : null;
+  if (!p) return false;
+  const papeles = [p.rol, ...(Array.isArray(p.roles) ? p.roles : [])]
+    .filter((x: unknown) => typeof x === "string" && (x as string).trim() !== "");
+  return papeles.some((x: string) => !PAPELES_FAMILIA.has(x));
+}
+
+// Deja la cuenta con la contraseña puesta. Si no existía, la crea; si ya existía
+// (aquí solo se llega con cuentas de familia/atleta), le fija la nueva.
+async function cuentaConClave(email: string, password: string, idExistente: string | null): Promise<string | null> {
+  if (idExistente) {
+    await rest(`/auth/v1/admin/users/${idExistente}`, {
       method: "PUT", body: JSON.stringify({ password, email_confirm: true }),
     });
-    return id;
+    return idExistente;
   }
   const crear = await rest(`/auth/v1/admin/users`, {
     method: "POST",
@@ -146,19 +183,43 @@ Deno.serve(async (peticion) => {
     const email = String(inv.email_tutor ?? "").trim().toLowerCase();
     if (!email) return responder({ ok: false, error: "Este enlace no es válido." }, 200, origen);
 
-    // 2 · Cuenta con la contraseña puesta.
-    const uid = await cuentaConClave(email, password);
+    // 2 · Sellar el token AHORA y de forma atómica, ANTES de tocar ninguna
+    //     cuenta: un único UPDATE lo marca SOLO si sigue sin usar (usado_en is
+    //     null). Si otra petición ya lo gastó, no se actualiza ninguna fila y
+    //     paramos. Así el enlace no se puede reusar ni correr dos veces a la vez.
+    const sello = await rest(
+      `/rest/v1/familia_invitaciones?token=eq.${encodeURIComponent(token)}&usado_en=is.null`,
+      { method: "PATCH", headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ usado_en: new Date().toISOString() }) });
+    const selladas = sello.ok ? await sello.json().catch(() => []) : [];
+    if (!Array.isArray(selladas) || selladas.length === 0) {
+      return responder({ ok: false, error: "Este enlace ya se ha usado. Si ya tienes cuenta, entra con tu contraseña." }, 200, origen);
+    }
+
+    // 3 · ¿Ya hay cuenta con este correo? Si la hay y tiene MÁS permisos que una
+    //     familia (entrenador, responsable, admin, tesoreria, socio, cubo-*…), NO
+    //     le fijamos la contraseña con un token de familia: le mandamos un enlace
+    //     mágico a su buzón —solo el dueño entra— (igual que socio-cuenta). El
+    //     token ya quedó gastado, así que el enlace de WhatsApp no vale a nadie más.
+    const idExistente = await buscarCuenta(email);
+    if (idExistente && await cuentaElevada(idExistente)) {
+      await enviarEnlace(email);
+      return responder({ ok: true, enlace: true, email }, 200, origen);
+    }
+
+    // 4 · Cuenta con la contraseña puesta (nueva, o ya existente de familia/atleta).
+    const uid = await cuentaConClave(email, password, idExistente);
     if (!uid) return responder({ ok: false, error: "No hemos podido crear la cuenta. Inténtalo de nuevo." }, 500, origen);
 
-    // 3 · Atar a sus hijos (por email_tutor) y ponerle rol de familia.
+    // 5 · Atar a sus hijos (por email_tutor) y ponerle rol de familia.
     try { await rpc("acceso_enganchar", { p_uid: uid, p_email: email }); }
     catch (e) { console.error("[familia-cuenta] enganche:", e); }
 
-    // 4 · Sellar el token (un solo uso).
+    // 6 · Anotar quién gastó el enlace (ya sellado como usado en el paso 2).
     await rest(`/rest/v1/familia_invitaciones?token=eq.${encodeURIComponent(token)}`, {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ usado_en: new Date().toISOString(), usado_por: uid }),
+      body: JSON.stringify({ usado_por: uid }),
     });
 
     // Devolvemos el correo para que la página inicie sesión con la contraseña.

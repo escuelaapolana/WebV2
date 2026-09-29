@@ -91,8 +91,9 @@ const VAPID_PUBLICA = (Deno.env.get("VAPID_PUBLIC_KEY") ?? "").trim()
 const VAPID_PRIVADA = (Deno.env.get("VAPID_PRIVATE_KEY") ?? "").trim();
 const VAPID_CONTACTO = (Deno.env.get("VAPID_SUBJECT") ?? "mailto:escuelaapolana@gmail.com").trim();
 
-const URL_BASE = (Deno.env.get("AVISOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
+const URL_BASE = (Deno.env.get("AVISOS_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
+const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 
 const CATEGORIAS = ["entrenos", "competiciones", "pagos", "noticias", "retos"];
 const PUBLICOS = ["todos", "grupo", "rol", "persona"];
@@ -142,6 +143,15 @@ async function consulta(ruta: string, opciones: Opciones = {}) {
   let datos: unknown = null;
   try { datos = texto ? JSON.parse(texto) : null; } catch { datos = texto; }
   return { ok: r.ok, estado: r.status, datos };
+}
+
+// Un resumen del origen que no se puede deshacer: cuenta peticiones sin
+// guardar la IP de nadie (mismo patrón que socio-cuenta / acceso-enlace).
+async function resumen(entrada: string): Promise<string> {
+  const bytes = new TextEncoder().encode(SAL + "·" + entrada);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).slice(0, 12)
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ============================================================
@@ -585,6 +595,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let asomo: Record<string, unknown> = {};
   try { asomo = await req.clone().json(); } catch { /* cuerpo vacío o roto */ }
 
+  // Un resumen del origen, para frenar el aporreo de los dos caminos que
+  // saltan solos (cola y novedad) SIN pedir sesión: son públicos a propósito
+  // (los dispara la web), así que el único tope que cabe aquí es por origen.
+  // No frena el camino de abajo (escribir un aviso en el panel), que ya lleva
+  // su propia barrera de sesión y permiso.
+  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+
   // ---------------------------------------------------------------
   // 0.b.1 · ¿VIENEN A VACIAR LA COLA? · las peticiones de plaza
   // ---------------------------------------------------------------
@@ -602,6 +619,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // es exactamente lo mismo que no llamar: los recados ya están
   // decididos y se mandan una sola vez.
   if (asomo.cola === true) {
+    // Freno por origen: vaciar la cola es barato y encima se auto-cura (lo que
+    // no salga se queda apuntado para el siguiente movimiento), así que el tope
+    // va holgado —lo llaman personas con sesión y varias pueden compartir IP—.
+    const ritmoC = await consulta("rpc/alta_ritmo", {
+      method: "POST", body: JSON.stringify({ p_tipo: "aviso-cola", p_origen: dedonde, p_max: 120 }),
+    });
+    if (ritmoC.datos !== true) return responder({ ok: true, toques: 0, motivo: "ritmo" }, 200, origen);
+
     const rCfgC = await consulta("avisos_config?select=activo&id=eq.1&limit=1");
     const cfgC = Array.isArray(rCfgC.datos) ? rCfgC.datos[0] : null;
     if (!cfgC?.activo) return responder({ ok: true, toques: 0, motivo: "apagado" }, 200, origen);
@@ -622,6 +647,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const novedadPedida = String(asomo.novedad ?? "").trim();
   if (novedadPedida) {
+    // Freno por origen: lo dispara la web pública en cada alta/pedido (uno por
+    // envío), así que 60 por origen y hora sobran para el uso de verdad y
+    // cortan el aporreo. Si frena de más no se pierde nada: el alta ya está
+    // guardada y sigue en «Necesita tu atención» del panel.
+    const ritmoN = await consulta("rpc/alta_ritmo", {
+      method: "POST", body: JSON.stringify({ p_tipo: "aviso-novedad", p_origen: dedonde, p_max: 60 }),
+    });
+    if (ritmoN.datos !== true) return responder({ ok: true, avisado: false, motivo: "ritmo" }, 200, origen);
+
     // Se comprueba que la palabra sea UNA DE LAS TRES de verdad, y no
     // cualquier cosa que una lista en JavaScript conteste por su
     // cuenta: pedir la bandeja «constructor» devolvería algo con

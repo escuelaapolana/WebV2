@@ -48,7 +48,7 @@ const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 // a su pantalla del bono: es donde están los usos que acaba de
 // comprar. Lo demás, a la portada, que siempre existe y nunca da un
 // 404. Las dos se pueden cambiar con PAGOS_URL_OK y PAGOS_URL_KO.
-const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
+const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
 
 function vuelta(tipo: string, resultado: "hecho" | "cancelado"): string {

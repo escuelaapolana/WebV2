@@ -96,9 +96,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // --- 0 · Freno anti-abuso por origen ---
   // Sin esto se podían ENUMERAR las referencias SOC-… (oráculo de quién es socio y
-  // quién ha pagado) y, con una referencia ajena, escribir es_familiar/familiar_nota
-  // en un alta que no es tuya. El freno corta el aporreo (con tu propia referencia,
-  // recién obtenida de tu alta, nunca llegas al tope).
+  // quién ha pagado). El freno corta el aporreo (con tu propia referencia, recién
+  // obtenida de tu alta, nunca llegas al tope).
   const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
   const ritmo = await consulta(`rpc/alta_ritmo`, {
     method: "POST",
@@ -109,7 +108,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // --- 1 · Datos del navegador: solo la referencia y el sí/no de familiar ---
-  let cuerpo: { referencia?: string; es_familiar?: boolean; familiar_nota?: string } = {};
+  let cuerpo: { referencia?: string } = {};
   try { cuerpo = await req.json(); } catch { /* cuerpo vacío */ }
   const referencia = String(cuerpo.referencia ?? "").trim();
   if (!referencia) {
@@ -147,13 +146,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "ya_pagado", mensaje: "Tu alta ya está pagada. No hace falta volver a pagar." }, 409, origen);
   }
 
-  // Guardamos el sí/no de familiar en el alta (lo comprueba Isa para diciembre).
-  const esFamiliar = cuerpo.es_familiar === true;
-  await consulta(`altas_socio?id=eq.${alta.id}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ es_familiar: esFamiliar, familiar_nota: (cuerpo.familiar_nota ?? "").toString().slice(0, 300) || null }),
-  });
+  // El sí/no de familiar (informativo para Isa, de cara a diciembre) NO se toca
+  // aquí: este endpoint es público y solo debe crear la sesión de pago, nunca
+  // escribir campos del alta con datos del navegador (una referencia ajena, que
+  // además viaja en la URL de retorno de Stripe, podría fijarlos en un alta que no
+  // es suya). Si se quiere pedir esa pregunta, se guarda al enviar el formulario
+  // (RPC enviar_alta_socio), no aquí.
 
   // --- 4 · La sesión de Stripe (adeudo SEPA, de una vez) ---
   const refPago = `socio-${alta.id}`;

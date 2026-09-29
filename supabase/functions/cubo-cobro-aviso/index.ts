@@ -30,7 +30,7 @@ const ANON_KEY =
 const BREVO_API_KEY = (Deno.env.get("BREVO_API_KEY") ?? "").trim();
 const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com").trim();
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
-const URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
+const URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
 
 function cors(origen: string | null): Record<string, string> {

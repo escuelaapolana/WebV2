@@ -30,9 +30,23 @@ const ANON_KEY =
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 
+// Webs que pueden llamar aquí desde un navegador. Lista FIJA en el código
+// (nunca se refleja "*"): mismo criterio que las funciones acceso-*. Están el
+// dominio actual (GitHub Pages), el dominio nuevo y el servidor local de
+// pruebas. Si algún día se sirve la web desde otro dominio, se añade aquí.
+const ORIGENES_OK = [
+  "https://escuelaapolana.github.io",
+  "https://atletismoapolana.com",
+  "https://www.atletismoapolana.com",
+  "http://localhost:8000",
+  "http://127.0.0.1:8000",
+];
 function cors(o: string | null): Record<string, string> {
+  // Solo se refleja el origen si está en la lista; si no, cae al primero (un
+  // dominio del club), nunca "*".
+  const valor = o && ORIGENES_OK.includes(o) ? o : ORIGENES_OK[0];
   return {
-    "Access-Control-Allow-Origin": o ?? "*",
+    "Access-Control-Allow-Origin": valor,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
@@ -70,6 +84,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
   if (req.method !== "POST") return responder({ error: "Método no admitido." }, 405, origen);
+  // Si la llamada viene de una web que no es del club, ni se mira. (Sin
+  // cabecera Origin —llamada de servidor, no de navegador— se deja pasar.)
+  if (origen && !ORIGENES_OK.includes(origen)) {
+    return responder({ error: "origen", mensaje: "Origen no permitido." }, 403, origen);
+  }
   if (!SUPABASE_URL || !SERVICE_KEY || !STRIPE_KEY) {
     return responder({ error: "config", mensaje: "No está configurado." }, 503, origen);
   }

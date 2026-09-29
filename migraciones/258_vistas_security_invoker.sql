@@ -1,0 +1,44 @@
+-- vistas_security_invoker · Cierre del hallazgo F1 (vistas sin security_invoker)
+-- -----------------------------------------------------------------------------
+-- CONCLUSIÓN DE LA REVISIÓN: aparte de `altas_socio_panel` (que ya se arregla en
+-- la migración 254, y que a día de hoy ya aparece aplicada en producción con
+-- security_invoker='on'), NINGUNA otra vista de `public` debe recibir el candado.
+--
+-- Por eso esta migración NO ejecuta ningún ALTER VIEW: es un REGISTRO de la
+-- decisión, para que nadie vuelva a "ponérselo por higiene" sin querer y rompa
+-- la web pública. Las regresiones futuras las vigila
+-- `herramientas/chequeo_vistas_candado.py`.
+--
+-- Por qué el resto de vistas sin candado corren como DUEÑO A PROPÓSITO:
+--
+--   · cubo_clases_ocupacion  → la migración 042 (calendario público) le puso
+--       EXPLÍCITAMENTE `security_invoker = false` para que la web pública
+--       (index.html + /calendario, con la clave publishable = rol `anon`) pueda
+--       pintar las clases de El Cubo. `cubo_clases` NO tiene política RLS para
+--       `anon`; con el candado la sección «Clases de El Cubo» quedaría VACÍA
+--       para cualquier visitante no logueado. Lo único algo sensible que expone
+--       es `notas` y el primer nombre del monitor (la 079 ya recortó el
+--       apellido); afinarlo es decisión de producto, no un candado.
+--
+--   · sesiones_agenda  → vista CURADA (solo sesiones `publicada` y de grupo o de
+--       inscripción abierta; sin nombres). La 041 la dejó como definer a
+--       propósito y la 042 le devolvió el SELECT a `anon` para el calendario
+--       público. Con candado, `anon` no leería nada y, además, un usuario
+--       logueado solo vería las sesiones de SU grupo (rompería la agenda «lo que
+--       hace todo el club» del portal).
+--
+--   · liga_clasificacion_general / _por_categoria / _por_disciplina  → la 046 las
+--       dejó como definer y la 230 enmascara los nombres de menores DENTRO de la
+--       vista uniéndose a `atletas`. Como `atletas` está bajo RLS y un usuario
+--       normal solo ve a sus atletas, con `security_invoker=on` ese JOIN daría
+--       NULL para los demás y el enmascarado se caería → mostraría el nombre
+--       COMPLETO del menor. Ponerles el candado EMPEORA la privacidad.
+--
+--   · galeria_publica, natacion_vacantes (mig 224), palmares_publico,
+--     records_club_publico, ranking_marcas, pagos_catalogo, entrenadores_publicos,
+--     contactos_publicos, cubo_personas, cubo_monitores, como_se_paga,
+--     buzon_bandeja y las vistas de retos → nacieron owner-run a propósito:
+--     exponen datos ya agregados o recortados a `anon`/portal que la RLS de la
+--     tabla base no dejaría leer.
+--
+-- (Migración de solo documentación: no contiene sentencias ejecutables.)

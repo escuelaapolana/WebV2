@@ -34,7 +34,7 @@ const ANON_KEY =
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 
-const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/")
+const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
 
 // La ropa vuelve siempre a la tienda: es donde se ve la cesta y el aviso.

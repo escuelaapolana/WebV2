@@ -127,6 +127,21 @@ async function patchAltaSocio(altaId: string, cambios: Record<string, unknown>) 
   return r.ok;
 }
 
+// Modo efectivo del sistema ('prueba' | 'real'), SIEMPRE de la base (igual que
+// socio-pagar). Ante cualquier fallo de lectura, 'prueba' (no endurecer de más:
+// así nunca se rompe el flujo de test si la consulta falla puntualmente).
+async function modoEfectivo(): Promise<string> {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/pagos_config?select=modo&id=eq.1&limit=1`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+    );
+    if (!r.ok) return "prueba";
+    const filas = await r.json().catch(() => []);
+    return String(filas?.[0]?.modo ?? "prueba").toLowerCase();
+  } catch { return "prueba"; }
+}
+
 const idDe = (v: unknown): string | null =>
   typeof v === "string" ? v : ((v as { id?: string } | null)?.id ?? null);
 
@@ -180,6 +195,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let evento: Record<string, any>;
   try { evento = JSON.parse(crudo); } catch { return new Response("Aviso ilegible.", { status: 400 }); }
+
+  // Blindaje al pasar a REAL: si por descuido se dejara puesto el secreto de
+  // PRUEBA, un evento de test (livemode=false) firmado con él NO debe tocar
+  // altas reales. Solo consultamos la config cuando el evento es de test; los
+  // reales (livemode=true) pasan sin mirar nada. En modo 'prueba' se acepta
+  // como hasta ahora (el guard no dispara).
+  if (evento.livemode === false && (await modoEfectivo()) === "real") {
+    console.warn("Evento de PRUEBA (livemode=false) recibido en modo REAL: descartado.");
+    return new Response("Evento de prueba en modo real.", { status: 400 });
+  }
 
   const tipo: string = evento.type ?? "";
   const objeto = evento.data?.object ?? null;

@@ -34,6 +34,7 @@ const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atlet
 const CORREO_ADMIN = (Deno.env.get("CORREO_ADMIN") ?? "administracion@atletismoapolana.com").trim();
 const CORREO_URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com").replace(/\/+$/, "");
 const BUCKET = "altas-documentos";
+const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("CORREO_ORIGENES") ?? Deno.env.get("PAGOS_ORIGENES") ?? "")
@@ -76,6 +77,15 @@ async function rest(metodo: string, ruta: string, cuerpo?: unknown, extra?: Reco
   let datos: unknown = null;
   try { datos = texto ? JSON.parse(texto) : null; } catch { datos = texto; }
   return { ok: r.ok, datos };
+}
+
+// Un resumen del origen que no se puede deshacer: cuenta peticiones sin
+// guardar la IP de nadie (mismo patrón que socio-cuenta / socio-pagar).
+async function resumen(entrada: string): Promise<string> {
+  const bytes = new TextEncoder().encode(SAL + "·" + entrada);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).slice(0, 12)
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // Enlace firmado (30 días) a un documento privado. Devuelve URL completa o null.
@@ -128,15 +138,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) return responder({ ok: false, motivo: "config" }, 200, origen);
   if (!BREVO_API_KEY) return responder({ ok: false, motivo: "sin-configurar" }, 200, origen);
 
+  // Freno anti-abuso por origen (mismo patrón que socio-cuenta / socio-pagar):
+  // sin esto, cualquiera podía aporrear esta puerta con referencias SOC-…
+  // ajenas y usar la respuesta como oráculo (existe / ya avisada). 30 por
+  // origen y hora: de sobra para las altas de verdad, incluso varias seguidas
+  // desde la misma conexión del club.
+  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+  const ritmo = await rest("POST", "rpc/alta_ritmo", { p_tipo: "correo-alta-aviso", p_origen: dedonde, p_max: 30 });
+  // Si se pasa del ritmo se corta EN SILENCIO con el mismo {ok:true}: ni
+  // siquiera se le dice que hay un freno. El alta ya está guardada y el panel
+  // la enseña igual; como mucho no sale el correo de un envío repetido.
+  if (ritmo.datos !== true) return responder({ ok: true }, 200, origen);
+
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
   const referencia = String(cuerpo.referencia ?? "").trim().toUpperCase();
-  if (!/^SOC-[0-9A-Z-]{2,20}$/.test(referencia)) return responder({ ok: false, motivo: "referencia" }, 200, origen);
+  // A partir de aquí SIEMPRE se contesta {ok:true}, pase lo que pase con el
+  // alta: que la referencia no valga, que no exista o que ya estuviera avisada
+  // no se distinguen desde fuera, para no dar un oráculo de quién es socio. La
+  // idempotencia del correo la sigue garantizando el PATCH atómico de abajo.
+  if (!/^SOC-[0-9A-Z-]{2,20}$/.test(referencia)) return responder({ ok: true }, 200, origen);
 
   // 1 · Leer el alta (todos los campos) por su referencia.
   const rAlta = await rest("GET", `altas_socio?select=*&referencia=eq.${encodeURIComponent(referencia)}&limit=1`);
   const a = Array.isArray(rAlta.datos) ? (rAlta.datos[0] as Record<string, unknown>) : null;
-  if (!a) return responder({ ok: false, motivo: "no-esta" }, 200, origen);
+  if (!a) return responder({ ok: true }, 200, origen);
 
   // 2 · Reclamar el aviso de forma atómica: solo si aún no se ha enviado.
   const reclamo = await rest(
@@ -146,7 +172,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     { Prefer: "return=representation" },
   );
   const reclamado = Array.isArray(reclamo.datos) && reclamo.datos.length > 0;
-  if (!reclamado) return responder({ ok: true, motivo: "ya-avisado" }, 200, origen);
+  if (!reclamado) return responder({ ok: true }, 200, origen);
 
   // 3 · Enlaces firmados a las fotos.
   const [carnet, dniA, dniB] = await Promise.all([

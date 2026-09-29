@@ -387,7 +387,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ? enviarCorreo(destino, ASUNTO, correoMasterHtml(f.nombre, f.franjas, enlace, yaTiene), textoMaster(f.nombre, f.franjas, enlace), REMIT)
     : enviarCorreo(destino, ASUNTO, correoHtml(f.hijos, enlace, yaTiene), textoPlano(f.hijos, enlace), REMIT);
 
-  // ---- MODO PRUEBA: correo de muestra a un destino ----
+  // ---- MODO PRUEBA: correo de MUESTRA con datos FICTICIOS ----
+  // La muestra usa un nadador/familia de EJEMPLO inventado: NUNCA sale por
+  // correo el nombre ni el horario reales de ningún menor. Solo sirve para
+  // ver el diseño del correo y el enlace de demostración.
   if (modo === "prueba") {
     const destino = String(cuerpo.destino ?? "andres.apolana@gmail.com").trim();
     // Enlace de DEMOSTRACIÓN (no válido) para que al pulsarlo no toque ninguna cuenta real.
@@ -395,28 +398,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const yaCuenta = cuerpo.ya_cuenta === true;
 
     if (esMaster) {
-      // Un nadador con más franjas, para ver el layout con varios días.
-      // deno-lint-ignore no-explicit-any
-      const elegido: any = [...registros].sort((a: any, b: any) => (b.franjas?.length ?? 0) - (a.franjas?.length ?? 0))[0];
-      if (!elegido) return responder({ error: "sin_datos" }, 200, origen);
+      // Nadador de EJEMPLO con varias franjas, para ver el layout con varios días.
+      const nombreDemo = "Nadador de Prueba";
+      const franjasDemo: FranjaM[] = [
+        { dia: 1, hora: "20:00", calle: "3", nivel: "Perfeccionamiento" },
+        { dia: 3, hora: "20:00", calle: "3", nivel: "Perfeccionamiento" },
+        { dia: 5, hora: "21:00", calle: "4", nivel: "Perfeccionamiento" },
+      ];
       const r = await enviarCorreo(destino, `[PRUEBA · Máster] ${ASUNTO}`,
-        correoMasterHtml(elegido.nombre, elegido.franjas, enlaceDemo, yaCuenta),
-        textoMaster(elegido.nombre, elegido.franjas, enlaceDemo), REMIT);
-      return responder({ ok: r.ok, modo, publico, destino, muestra: tituloCase(elegido.nombre), ...(r.ok ? {} : { fallo: r }) }, 200, origen);
+        correoMasterHtml(nombreDemo, franjasDemo, enlaceDemo, yaCuenta),
+        textoMaster(nombreDemo, franjasDemo, enlaceDemo), REMIT);
+      return responder({ ok: r.ok, modo, publico, destino, muestra: nombreDemo, ...(r.ok ? {} : { fallo: r }) }, 200, origen);
     }
 
     const nHijos = Math.max(1, Math.min(6, Number(cuerpo.n_hijos ?? 1) || 1));
-    // Busca una familia real con ese nº de hijos; si no hay, la que más se acerque.
-    const conN = registros.filter((f) => (f.hijos || []).length === nHijos);
-    const elegida = conN[0]
-      ?? [...registros].sort((a, b) =>
-        Math.abs((a.hijos?.length ?? 0) - nHijos) - Math.abs((b.hijos?.length ?? 0) - nHijos))[0];
-    if (!elegida) return responder({ error: "sin_familias" }, 200, origen);
+    // Familia de EJEMPLO con nHijos hijos ficticios (nada real de ningún menor).
+    const nivelesDemo = ["Iniciación", "Perfeccionamiento", "Tecnificación"];
+    const hijosDemo: Hijo[] = Array.from({ length: nHijos }, (_v, i) => ({
+      nombre: nHijos === 1 ? "Nadador de Prueba" : `Nadador de Prueba ${i + 1}`,
+      franjas: [
+        { dia: 1, hora: "18:30", nivel: nivelesDemo[i % nivelesDemo.length] },
+        { dia: 3, hora: "18:30", nivel: nivelesDemo[i % nivelesDemo.length] },
+      ],
+    }));
     const r = await enviarCorreo(destino, `[PRUEBA · ${nHijos} hijo/a(s)] ${ASUNTO}`,
-      correoHtml(elegida.hijos, enlaceDemo, yaCuenta), textoPlano(elegida.hijos, enlaceDemo), REMIT);
+      correoHtml(hijosDemo, enlaceDemo, yaCuenta), textoPlano(hijosDemo, enlaceDemo), REMIT);
     return responder({
       ok: r.ok, modo, destino, n_hijos: nHijos,
-      muestra_hijos: (elegida.hijos || []).map((h) => tituloCase(h.nombre)),
+      muestra_hijos: hijosDemo.map((h) => tituloCase(h.nombre)),
       ...(r.ok ? {} : { fallo: r }),
     }, 200, origen);
   }
