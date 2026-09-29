@@ -62,16 +62,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var hoyIso = hoy.getFullYear() + '-' + ('0'+(hoy.getMonth()+1)).slice(-2) + '-' + ('0'+hoy.getDate()).slice(-2);
   var anoTemp = (hoy.getMonth()+1) >= 7 ? hoy.getFullYear() : hoy.getFullYear()-1;   // la temporada arranca el 1-jul
   var temporadaIso = anoTemp + '-07-01';
-  var kpi = { socios:'—', nuevos:0, grupos:'—', cuotas:'—', compes:'—' };
-  try {
-    var ra = await sb.from('atletas').select('estado,created_at');
-    if (ra && !ra.error && ra.data) {
-      var activos = ra.data.filter(function(a){ return !a.estado || a.estado === 'activo'; });   // sin estado = activo por defecto
-      kpi.socios = activos.length;
-      kpi.nuevos = activos.filter(function(a){ return (a.created_at || '').slice(0,10) >= temporadaIso; }).length;
-    }
-  } catch (e) {}
-  try { var rg = await sb.from('grupos').select('id', { count:'exact', head:true }); if (rg && !rg.error) kpi.grupos = rg.count || 0; } catch (e) {}
+  var kpi = { cuotas:'—', compes:'—' };
+  // Recuento por SECCIÓN (cada una con su fuente real, RPC gated por admin).
+  // Antes era «357 socios activos +357» — falso: contaba todos los atletas.
+  var sec = {};
+  try { var rs = await sb.rpc('general_secciones'); if (rs && !rs.error && rs.data) sec = rs.data; } catch (e) {}
   try { var rc = await sb.from('competiciones').select('id', { count:'exact', head:true }).gte('fecha_inicio', hoyIso); if (rc && !rc.error) kpi.compes = rc.count || 0; } catch (e) {}
   try {
     var rp = await sb.from('pagos').select('estado,fecha_vencimiento').in('estado', ['pendiente','impagado']);
@@ -79,12 +74,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       kpi.cuotas = rp.data.filter(function(p){ return p.estado === 'impagado' || (p.estado === 'pendiente' && p.fecha_vencimiento && p.fecha_vencimiento < hoyIso); }).length;
     }
   } catch (e) {}
+  // Cada tarjeta lleva el color de su mundo, para que no sea monocromo.
+  function kcard(n, etq, color){
+    return '<div class="g-kpi"'+(color?' style="border-top:3px solid '+color+'"':'')+'><b>'+esc(n==null?'—':n)+'</b><span>'+etq+'</span></div>';
+  }
   var kpiHTML =
     '<div class="g-kpis">'+
-      '<div class="g-kpi"><b>'+esc(kpi.socios)+'</b><span>Socios activos'+(kpi.nuevos ? ' <small>+'+kpi.nuevos+' esta temporada</small>' : '')+'</span></div>'+
-      '<div class="g-kpi"><b>'+esc(kpi.grupos)+'</b><span>Grupos y escuelas</span></div>'+
-      '<div class="g-kpi"><b>'+esc(kpi.cuotas)+'</b><span>Cuotas pendientes</span></div>'+
-      '<div class="g-kpi"><b>'+esc(kpi.compes)+'</b><span>Competiciones próximas</span></div>'+
+      kcard(sec.socios,           'Socios',                   '#2E4256')+
+      kcard(sec.familias,         'Familias',                 '#7A5CA8')+
+      kcard(sec.escuela_natacion, 'Escuela de natación',      '#3B85C0')+
+      kcard(sec.natacion_master,  'Natación máster',          '#2E8C86')+
+      kcard(sec.cubo,             'El Cubo',                  '#C36A4E')+
+      kcard(sec.atletismo,        'Atletismo pista/escuela',  '#B0563A')+
+      kcard(kpi.cuotas,           'Cuotas pendientes',        '#B96F09')+
+      kcard(kpi.compes,           'Competiciones próximas',   '#3E8E5A')+
     '</div>';
 
   var ITEMS = [
