@@ -38,6 +38,10 @@
   .pill.activa { background: #EAF3E3; color: #4E8A3E; }
   .pill.sin { background: var(--crema-media, #EFE9DA); color: var(--texto-suave); }
   .mono { font-family: var(--fuente-dato); font-size: 12px; color: var(--texto-suave); }
+  .cp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--linea-borde,#C9C0AE); background: #fff; color: var(--navy,#26374B); border-radius: 999px; padding: 8px 15px; font: inherit; font-size: 14px; cursor: pointer; }
+  .chip.on { background: var(--navy,#26374B); color: #fff; border-color: var(--navy,#26374B); }
+  .chip .c { font-family: var(--fuente-dato); opacity: .75; margin-left: 5px; }
 </style>
 </head>
 <body class="adm-piel">
@@ -46,6 +50,7 @@
     <h1>Pagos del Cubo</h1>
     <p>Listado para la contabilidad: cada persona con su cuota, su primer pago y los <b>identificadores de Stripe</b> (cliente y suscripción) para cruzar con el export de Stripe (Payments/Payouts). El botón <b>Exportar</b> baja un CSV que abre directo en Excel. · <a href="../cubo-altas/">← Altas y cobros del Cubo</a></p>
   </div>
+  <div class="cp-chips" id="chips"></div>
   <div class="cp-barra">
     <input type="search" id="buscar" placeholder="Buscar por nombre, email o teléfono…" aria-label="Buscar">
     <span class="cuenta" id="cuenta"></span>
@@ -74,6 +79,9 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   var FILAS = [];  // {a, email}
+  var estadoFiltro = 'todos';
+  function esPagado(a){ return a.suscripcion_estado==='activa'; }
+  function esPendiente(a){ return a.cobro_abierto && a.suscripcion_estado!=='activa'; }
 
   async function cargar(){
     var r = await sb.from('cubo_altas')
@@ -95,14 +103,23 @@ APOLANA_ADMIN.listo(function (sb) {
 
   function visibles(){
     var q=($('buscar').value||'').trim().toLowerCase();
-    if(!q) return FILAS;
     return FILAS.filter(function(f){
       var a=f.a;
-      return ((a.nombre||'')+' '+(a.apellidos||'')+' '+(f.email||'')+' '+(a.telefono||'')).toLowerCase().indexOf(q)!==-1;
+      if(estadoFiltro==='pagados' && !esPagado(a)) return false;
+      if(estadoFiltro==='pendientes' && !esPendiente(a)) return false;
+      if(q && ((a.nombre||'')+' '+(a.apellidos||'')+' '+(f.email||'')+' '+(a.telefono||'')).toLowerCase().indexOf(q)===-1) return false;
+      return true;
     });
+  }
+  function pintarChips(){
+    var pag=FILAS.filter(function(f){return esPagado(f.a);}).length;
+    var pen=FILAS.filter(function(f){return esPendiente(f.a);}).length;
+    var chips=[{v:'todos',t:'Todos',c:FILAS.length},{v:'pagados',t:'Han pagado',c:pag},{v:'pendientes',t:'Pendientes',c:pen}];
+    $('chips').innerHTML=chips.map(function(c){ return '<button type="button" class="chip'+(estadoFiltro===c.v?' on':'')+'" data-f="'+c.v+'">'+esc(c.t)+' <span class="c">'+c.c+'</span></button>'; }).join('');
   }
 
   function pintar(){
+    pintarChips();
     var lista=visibles();
     $('cuenta').textContent = lista.length===FILAS.length
       ? FILAS.length+(FILAS.length===1?' persona':' personas')
@@ -178,6 +195,7 @@ APOLANA_ADMIN.listo(function (sb) {
   $('buscar').addEventListener('input', pintar);
   $('exportar').addEventListener('click', exportar);
   $('avisar').addEventListener('click', avisarPendientes);
+  $('chips').addEventListener('click', function(e){ var b=e.target.closest('[data-f]'); if(b){ estadoFiltro=b.getAttribute('data-f'); pintar(); } });
   cargar();
 });
 </script>
