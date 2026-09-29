@@ -36,6 +36,13 @@
   .g-card.hay b{ color:#8A5307; }
   .g-card.hay .fl{ color:#8A5307; }
   .g-nada{ font-size:14px; color:var(--texto-suave,#6E6656); background:#fff; border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:16px 18px; margin-bottom:26px; }
+
+  /* KPIs del club (un vistazo, como la home de antes) */
+  .g-kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:12px; margin:0 0 26px; }
+  .g-kpi{ background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:15px 16px; }
+  .g-kpi b{ display:block; font-family:var(--fuente-titulo); font-weight:700; font-size:30px; line-height:1; color:var(--navy,#2E4256); }
+  .g-kpi span{ display:block; font-size:13px; color:var(--texto-suave,#6E6656); margin-top:4px; line-height:1.3; }
+  .g-kpi small{ color:#4E8A3E; font-weight:600; }
 </style>
 </head>
 <body>
@@ -49,6 +56,36 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // Recuentos del día a día (admin/staff). Si no hay permiso, vuelve {}.
   var counts = {};
   try { var r = await sb.rpc('general_resumen'); if (r && !r.error && r.data) counts = r.data; } catch (e) {}
+
+  // --- KPIs del club (mismos criterios que la home de antes) ---
+  var hoy = new Date();
+  var hoyIso = hoy.getFullYear() + '-' + ('0'+(hoy.getMonth()+1)).slice(-2) + '-' + ('0'+hoy.getDate()).slice(-2);
+  var anoTemp = (hoy.getMonth()+1) >= 7 ? hoy.getFullYear() : hoy.getFullYear()-1;   // la temporada arranca el 1-jul
+  var temporadaIso = anoTemp + '-07-01';
+  var kpi = { socios:'—', nuevos:0, grupos:'—', cuotas:'—', compes:'—' };
+  try {
+    var ra = await sb.from('atletas').select('estado,created_at');
+    if (ra && !ra.error && ra.data) {
+      var activos = ra.data.filter(function(a){ return !a.estado || a.estado === 'activo'; });   // sin estado = activo por defecto
+      kpi.socios = activos.length;
+      kpi.nuevos = activos.filter(function(a){ return (a.created_at || '').slice(0,10) >= temporadaIso; }).length;
+    }
+  } catch (e) {}
+  try { var rg = await sb.from('grupos').select('id', { count:'exact', head:true }); if (rg && !rg.error) kpi.grupos = rg.count || 0; } catch (e) {}
+  try { var rc = await sb.from('competiciones').select('id', { count:'exact', head:true }).gte('fecha_inicio', hoyIso); if (rc && !rc.error) kpi.compes = rc.count || 0; } catch (e) {}
+  try {
+    var rp = await sb.from('pagos').select('estado,fecha_vencimiento').in('estado', ['pendiente','impagado']);
+    if (rp && !rp.error && rp.data) {
+      kpi.cuotas = rp.data.filter(function(p){ return p.estado === 'impagado' || (p.estado === 'pendiente' && p.fecha_vencimiento && p.fecha_vencimiento < hoyIso); }).length;
+    }
+  } catch (e) {}
+  var kpiHTML =
+    '<div class="g-kpis">'+
+      '<div class="g-kpi"><b>'+esc(kpi.socios)+'</b><span>Socios activos'+(kpi.nuevos ? ' <small>+'+kpi.nuevos+' esta temporada</small>' : '')+'</span></div>'+
+      '<div class="g-kpi"><b>'+esc(kpi.grupos)+'</b><span>Grupos y escuelas</span></div>'+
+      '<div class="g-kpi"><b>'+esc(kpi.cuotas)+'</b><span>Cuotas pendientes</span></div>'+
+      '<div class="g-kpi"><b>'+esc(kpi.compes)+'</b><span>Competiciones próximas</span></div>'+
+    '</div>';
 
   var ITEMS = [
     { k:'altas_socio',   t:'Altas de socio por revisar',    url:'admin/altas/?tipo=socio' },
@@ -72,6 +109,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     '<div class="mh-cab"><div class="mh-eyebrow">Mundo</div>'+
       '<h1><span class="pt-g"></span>General</h1>'+
       '<p>El club por dentro. Aquí ves de un vistazo lo que va llegando y lo que está pendiente de ti.</p></div>'+
+    kpiHTML+
     '<p class="mh-rot">Pendiente de ti · lo que llega</p>'+
     (hayAlgo ? '' : '<div class="g-nada">Todo al día: no hay nada pendiente de revisar ahora mismo. Cuando lleguen altas, inscripciones o mensajes, aparecerán aquí.</div>')+
     '<div class="g-pend">'+cards+'</div>'+
