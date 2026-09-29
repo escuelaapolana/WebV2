@@ -148,6 +148,20 @@
   .par .v.frase { font-family: var(--fuente-texto); font-size: 14px; color: var(--texto-suave); }
   .par.raya { border-top: 1px solid var(--linea); margin-top: 6px; padding-top: 9px; }
 
+  /* Un poco de color para que la hoja de Dinero no sea tan monocroma: cada
+     tarjeta del lateral lleva un filete del color de su sección, y su título
+     el mismo tono. El anclaje de color fuerte es la banda navy de arriba. */
+  aside .tar { border-left: 4px solid var(--linea-marcada); }
+  #cubo-resumen { border-left-color: #C36A4E; background: linear-gradient(180deg,#FCF4EF,#fff 70%); }
+  #cubo-resumen h2 { color: #A5502F; }
+  #cubo-resumen .par .v { color: #A5502F; }
+  #dos-cuentas { border-left-color: #2F6FA8; }
+  #dos-cuentas h2 { color: #285C86; }
+  #tar-cerrado { border-left-color: #3E8E5A; }
+  #tar-cerrado h2 { color: #2F6E45; }
+  /* El número que manda de la banda (lo que entra al mes) en dorado cálido. */
+  .banda-navy .dato.manda .n { color: #F2C879; }
+
   .nota { background: var(--crema-banda); border-radius: var(--radio); padding: 14px 16px;
           display: flex; flex-direction: column; gap: 4px; }
   .nota .t { font-size: 15px; font-weight: 600; color: var(--navy); }
@@ -236,7 +250,7 @@
           <h1>Cobros</h1>
         </div>
         <div class="acciones">
-          <a class="b2" href="../cubo-pagos/">Pagos de El Cubo →</a>
+          <a class="b2" href="../cubo-pagos/" style="background:#C36A4E;border-color:#C36A4E;color:#fff;font-weight:600">💳 Pagos de El Cubo →</a>
           <button type="button" class="b2" id="exportar">Exportar</button>
           <button type="button" class="btn btn--primario btn--mini" id="nuevo-recibo">+ Nuevo recibo</button>
         </div>
@@ -306,7 +320,7 @@
             <div id="cubo-cuerpo"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span></div></div>
           </div>
 
-          <div class="tar">
+          <div class="tar" id="dos-cuentas">
             <h2>Las dos cuentas</h2>
             <div id="ip-fichas"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span></div></div>
           </div>
@@ -547,6 +561,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   var recibos = [], atletas = [], atletasPorId = {}, CORREOS = {};
   var VISTA = [], TOPE_RESOLVER = 8;
+  var cuotaCuboMes = null;   // €/mes recurrente de El Cubo (Stripe); lo rellena cargarCubo
   /* Si la lista de atletas o la de correos no se ha podido leer, la pantalla
      no puede afirmar «atleta no encontrado» ni «falta el correo»: no lo sabe. */
   var sinLeer = { atletas: false, correos: false };
@@ -643,23 +658,24 @@ APOLANA_ADMIN.listo(function (sb) {
 
   /* ---------- banda navy: siempre sobre el total, es el ancla ---------- */
   function pintarBanda() {
-    /* La banda navy solo va si hay un número que mande: sin recibos no se
-       pone una franja llena de ceros para rellenar. */
+    /* La banda navy es un BALANCE DE DINERO, no un recuento de recibos: manda
+       lo que entra al mes (la cuota recurrente de El Cubo) y, cuando haya
+       recibos, lo cobrado y lo que falta por cobrar. Siempre visible. */
     var caja = document.querySelector('.banda-navy');
-    caja.classList.toggle('oculto', !recibos.length);
-    if (!recibos.length) return;
-    var sc = recibos.filter(sinCobrar);
-    var nImp = recibos.filter(function (p) { return p.estado === 'impagado'; }).length;
-    var nVen = recibos.filter(vencido).length;
-    var total = sc.reduce(function (s, p) { return s + Number(p.importe || 0); }, 0);
+    if (caja) caja.classList.remove('oculto');
+    var sc  = recibos.filter(sinCobrar);
+    var pag = recibos.filter(function (p) { return p.estado === 'pagado'; });
+    var sincobrar = sc.reduce(function (s, p) { return s + Number(p.importe || 0); }, 0);
+    var cobrado   = pag.reduce(function (s, p) { return s + Number(p.importe || 0); }, 0);
     var h = '';
-    h += '<div class="dato manda"><span class="et">Sin cobrar</span><span class="n">' + esc(eur(total)) + '</span></div>';
-    h += '<span class="raya"></span>';
-    /* Cuántos recibos hay se dice UNA vez, en el recuento de la banda de
-       filtros: allí ya dice a la vez lo filtrado y el total. Repetirlo aquí y
-       al pie de la lista era decir tres veces el mismo número. */
-    h += '<div class="dato ojo"><span class="et">Impagados</span><span class="n">' + nImp + '</span></div>';
-    h += '<div class="dato ojo"><span class="et">Vencidos</span><span class="n">' + nVen + '</span></div>';
+    /* Lo que entra cada mes por El Cubo (suscripciones activas de Stripe): es
+       el dinero recurrente del club ahora mismo, así que va de ancla. */
+    if (cuotaCuboMes != null) {
+      h += '<div class="dato manda"><span class="et">El Cubo · al mes</span><span class="n">' + esc(eur(cuotaCuboMes)) + '</span></div>';
+      h += '<span class="raya"></span>';
+    }
+    h += '<div class="dato"><span class="et">Recibos cobrados</span><span class="n">' + esc(eur(cobrado)) + '</span></div>';
+    h += '<div class="dato' + (sincobrar ? ' ojo' : '') + '"><span class="et">Recibos por cobrar</span><span class="n">' + esc(eur(sincobrar)) + '</span></div>';
     h += '<span class="hueco"></span>';
     if (sc.length) h += '<button type="button" class="b-clara" id="ver-sincobrar">Ver los ' + sc.length + ' sin cobrar</button>';
     $('banda-cifras').innerHTML = h;
@@ -1057,6 +1073,8 @@ APOLANA_ADMIN.listo(function (sb) {
     var pagando    = altas.filter(function (a) { return a.suscripcion_estado === 'activa'; });
     var pendientes = altas.filter(function (a) { return a.cobro_abierto && a.suscripcion_estado !== 'activa'; });
     var cuotaMes = pagando.reduce(function (s, a) { return s + Number(a.precio_mes || 0); }, 0);
+    cuotaCuboMes = cuotaMes;
+    try { pintarBanda(); } catch (e) { /* la banda se pinta también al cargar recibos */ }
     cont.innerHTML =
       '<div class="par"><span class="k">Pagando</span><span class="v">' + pagando.length + '</span></div>' +
       '<div class="par"><span class="k">Pendientes</span><span class="v' + (pendientes.length ? ' ojo' : '') + '">' + pendientes.length + '</span></div>' +
