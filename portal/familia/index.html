@@ -71,6 +71,12 @@
   .fa-guardar{ font:inherit; font-weight:600; font-size:14px; background:var(--fa-agua); color:#fff; border:0; border-radius:10px; padding:9px 18px; min-height:42px; cursor:pointer; }
   .fa-guardar:disabled{ opacity:.5; }
 
+  /* Menú «Más» */
+  .fa-mas{ display:flex; flex-direction:column; gap:10px; }
+  .fa-mas-op{ display:block; width:100%; box-sizing:border-box; text-align:left; font:inherit; font-size:15.5px; font-weight:600; color:var(--navy); background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:15px 16px; min-height:52px; cursor:pointer; text-decoration:none; }
+  .fa-mas-op:hover{ border-color:var(--azul-filete,#3B85C0); }
+  .fa-mas-op.fa-salir{ color:#B0563A; }
+
   /* Todo lo que hay en el club */
   .fa-club-btn{ width:100%; display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:14px 16px; cursor:pointer; font:inherit; text-align:left; }
   .fa-club-btn b{ flex:1; color:var(--navy); font-size:15.5px; }
@@ -130,6 +136,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // Avisos (noticias publicadas)
   var AVISOS=[];
   try { var rn = await sb.from('noticias').select('titulo,excerpt,fecha_publicacion').eq('publicada',true).order('fecha_publicacion',{ascending:false}).limit(3); if (rn && !rn.error && rn.data) AVISOS=rn.data; } catch(e){}
+
+  // ¿Tiene más de un papel? Solo entonces tiene sentido «Cambiar de vista» en Más.
+  var PUEDE_CAMBIAR = false;
+  try { var _pp = (window.APOLANA_PORTAL && APOLANA_PORTAL.papeles) ? await APOLANA_PORTAL.papeles() : []; PUEDE_CAMBIAR = (_pp || []).length > 1; } catch(e){}
 
   // --------- pintar ---------
   function faltaChip(hijoId, franjaId, fe, marcada){
@@ -191,7 +201,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="fa-club-cuerpo" id="fa-club-cuerpo"></div>';
     wrap.innerHTML = html;
   }
-  render();
+
+  // --------- «Más»: menú sencillo (sin marcas ni feedback) ---------
+  function masHTML(){
+    var b = window.APOLANA_BASE || '../../';
+    var ops = '';
+    if (PUEDE_CAMBIAR) ops += '<a class="fa-mas-op" href="'+b+'portal/">Cambiar de vista</a>';
+    ops += '<a class="fa-mas-op" href="'+b+'legal/privacidad/">Privacidad</a>' +
+           '<a class="fa-mas-op" href="'+b+'legal/aviso-legal/">Aviso legal</a>' +
+           '<a class="fa-mas-op" href="'+b+'legal/cookies/">Cookies</a>' +
+           '<button type="button" class="fa-mas-op fa-salir" id="fa-salir">Cerrar sesión</button>';
+    return '<div class="fa-cab"><h1>Más</h1><p>Ajustes y ayuda.</p></div>' +
+      '<div class="fa-mas">' + ops + '</div>' +
+      '<p class="fa-msg" style="margin-top:14px">Para cambiar de contraseña o si algo no cuadra, escríbenos por WhatsApp.</p>';
+  }
+
+  // --------- enrutado por hash: Inicio/Ficha comparten página; Más es su propia vista ---------
+  function aplicarHash(){
+    var h = location.hash;
+    if (h === '#mas'){ wrap.innerHTML = masHTML(); return; }
+    render();
+    if (h === '#ficha'){
+      var fics = wrap.querySelectorAll('.fa-ficha');
+      for (var i=0;i<fics.length;i++) fics[i].classList.add('abierta');
+      var primera = wrap.querySelector('.fa-hijo');
+      if (primera){ try{ primera.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} }
+    }
+  }
+  aplicarHash();
+  window.addEventListener('hashchange', aplicarHash);
 
   // --------- Todo lo que hay en el club (lazy) ---------
   async function cargarClub(){
@@ -229,6 +267,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // --------- interacciones ---------
   wrap.addEventListener('click', async function(ev){
     var t = ev.target;
+    // cerrar sesión (menú Más)
+    if (t.closest && t.closest('#fa-salir')){
+      var base = window.APOLANA_BASE || '../../';
+      try { sb.auth.signOut().then(function(){ location.href = base; }, function(){ location.href = base; }); }
+      catch(e){ location.href = base; }
+      return;
+    }
     // abrir/cerrar entreno
     var cab = t.closest && t.closest('.fa-ent-cab');
     if (cab){ cab.parentNode.classList.toggle('abierto'); return; }

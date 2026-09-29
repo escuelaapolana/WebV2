@@ -111,7 +111,9 @@
 
   function resolverZona(claves) {
     claves = claves || [];
-    function vale(z) { return z && (!claves.length || claves.indexOf(z) !== -1); }
+    /* El papel se llama 'padre' por dentro, pero su zona/página es 'familia'.
+       Se tratan como lo mismo para que la barra de la familia salga bien. */
+    function vale(z) { return z && (!claves.length || claves.indexOf(z) !== -1 || (z === 'familia' && claves.indexOf('padre') !== -1)); }
     var z = zonaDeRuta(location.pathname);
     if (!vale(z)) z = zonaDeRuta(rutaAnterior());
     if (!vale(z)) z = recordada();
@@ -133,7 +135,7 @@
 
   function pestanas(zona, claves) {
     var b = base();
-    var tengoZona = claves.indexOf(zona) !== -1;
+    var tengoZona = claves.indexOf(zona) !== -1 || (zona === 'familia' && claves.indexOf('padre') !== -1);
     var urlZona = tengoZona ? (b + 'portal/' + zona + '/') : (b + 'portal/');
     var deportivo = (zona === 'entrenador' || zona === 'coordinador');
     var tengoEntrenador = claves.indexOf('entrenador') !== -1;
@@ -156,6 +158,16 @@
         { id: 'inicio',     txt: 'Lista',      ic: IC.lista,  url: b + 'portal/cubo-lista/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/calendario/' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-lista/#mas' }
+      ];
+    }
+    /* Familia: barra sencilla, sin «Marcas» ni «Entreno». Inicio (sus hijos y
+       horarios) · Calendario (parrilla del club) · Ficha del hijo/s · Más. */
+    if (zona === 'familia') {
+      return [
+        { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio, url: urlZona },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
+        { id: 'ficha',      txt: 'Ficha',      ic: IC.docs,    url: urlZona + '#ficha' },
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: urlZona + '#mas' }
       ];
     }
 
