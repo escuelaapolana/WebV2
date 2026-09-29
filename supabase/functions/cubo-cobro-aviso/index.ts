@@ -30,6 +30,9 @@ const ANON_KEY =
 const BREVO_API_KEY = (Deno.env.get("BREVO_API_KEY") ?? "").trim();
 const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com").trim();
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
+// El correo SALE de info@ (remitente pro), pero las RESPUESTAS van a Andrés,
+// que es quien las lee (info@ no lo mira nadie). Así no se pierde nada.
+const RESPUESTAS_EMAIL = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 const URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
 
@@ -152,6 +155,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       headers: { "api-key": BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({
         sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
+        replyTo: { name: REMITENTE_NOMBRE, email: RESPUESTAS_EMAIL },
         to: [{ email: destino }],
         subject: "Ya puedes activar tu cuota de El Cubo",
         htmlContent: correoHtml(nombre, precioMes, primer),
