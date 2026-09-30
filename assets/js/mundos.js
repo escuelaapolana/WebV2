@@ -158,6 +158,13 @@
          deslizarse). Solo el contenido hace crossfade. */
       '::view-transition-group(mm-lateral){animation:none}' +
       '.mm-side{display:none}' +
+      /* Dentro de un mundo (admin), la barra INFERIOR personal del portal se
+         oculta EN TODOS LOS TAMAÑOS: en móvil se colaba (Inicio/Calendario/
+         Mensajes de tu zona personal mezclados con el panel, que despistaba).
+         Para salir del panel o ir a tu zona personal está la barra de ARRIBA
+         (tu nombre → «Cambiar de vista»). */
+      'body.mm-on .pt-tabbar{display:none !important}' +
+      'body.mm-on.pt-con-tabbar{padding-bottom:24px !important}' +
       '@media (min-width:900px){' +
         '.mm-layout{display:grid;grid-template-columns:262px minmax(0,1fr);gap:26px;' +
           'max-width:1460px;margin:0;padding:20px clamp(18px,3vw,34px) 48px;align-items:start}' +
