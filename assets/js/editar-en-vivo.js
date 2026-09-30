@@ -60,6 +60,11 @@
        Cada columna dice de qué campo sale (lo pone seccion.js). */
     { sel: '[data-campo="puntos_destacados"]', campo: 'puntos_destacados', tipo: 'lista', nombre: 'Qué incluye' },
     { sel: '[data-campo="que_traer"]',         campo: 'que_traer',         tipo: 'lista', nombre: 'Qué traer' },
+    /* La nota libre del precio (p. ej. «Ampliar a 5 días…») y la tarjeta de
+       «cómo apuntarse» (acceso): eran los dos campos de sección que se pintaban
+       sin marca y no se podían editar en fantasma. */
+    { sel: '[data-campo="precio"]', campo: 'precio', tipo: 'parrafo', nombre: 'Nota del precio' },
+    { sel: '[data-campo="acceso"]', campo: 'acceso', tipo: 'parrafo', nombre: 'Cómo apuntarse' },
 
     /* --- LA PORTADA ---
        Usa la misma fila de `contenido_secciones` (seccion = 'home') y las

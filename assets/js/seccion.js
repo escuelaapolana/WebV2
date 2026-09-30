@@ -138,7 +138,9 @@
     var ic = nodo('span', 'ic');
     ic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
     caja.appendChild(ic);
-    caja.appendChild(nodo('span', 'tx', texto));
+    var tx = nodo('span', 'tx', texto);
+    tx.setAttribute('data-campo', 'acceso');   // editable en modo fantasma
+    caja.appendChild(tx);
     return caja;
   }
 
@@ -810,12 +812,22 @@
     if (datos.socio && elSec && elSec.getAttribute('data-seccion') === 'competicion') {
       pies.push('Desde 2008 en adelante (año de nacimiento).');
     }
-    var notaSec = limpio(datos.ficha && datos.ficha.precio);
-    if (notaSec) lineas(notaSec).forEach(function (l) { pies.push(l); });
     if (pies.length) {
       var nz = nodo('div', 'sp-notas');
       pies.forEach(function (p) { nz.appendChild(nodo('p', null, p)); });
       tarjeta.appendChild(nz);
+    }
+    /* La nota LIBRE del precio (campo `precio`) va en SU PROPIO bloque, marcado
+       editable: así el modo fantasma la puede tocar sin mezclarla con la nota
+       común de las tarifas ni la franja de edad (que son calculadas, no un campo
+       que se edite). Antes iba dentro del mismo `sp-notas` sin marca → no era
+       editable (era el caso de «Ampliar a 5 días…» de la escuela). */
+    var notaSec = limpio(datos.ficha && datos.ficha.precio);
+    if (notaSec) {
+      var nzp = nodo('div', 'sp-notas');
+      nzp.setAttribute('data-campo', 'precio');
+      lineas(notaSec).forEach(function (l) { nzp.appendChild(nodo('p', null, l)); });
+      tarjeta.appendChild(nzp);
     }
 
     caja.appendChild(tarjeta);
