@@ -157,19 +157,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (rp && !rp.error && Array.isArray(rp.data)) plazas = rp.data;
   } catch (e) {}
 
-  // ---- entreno de hoy (sesiones de mis grupos / asignadas a mí) ----
+  // ---- entreno de hoy · SOLO el asignado a MÍ ----
+  //  Academia va por atleta (una fila por persona, mismo grupo_id): si casáramos
+  //  por grupo saldría el de OTRO atleta. Por eso se prioriza la sesión cuya lista
+  //  `atletas_ids` me incluye; solo si no hay ninguna personal se usa una sesión
+  //  de grupo SIN lista de atletas (esa sí es para todo el grupo).
   var entrenoHoy = null;
   try {
     var rs = await sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia')
       .eq('publicada', true).eq('fecha', HOY_ISO);
     if (rs && !rs.error && rs.data) {
-      var mias = rs.data.filter(function (s) {
-        if ((s.papel_dia || s.tipo) === 'descanso') return false;
-        var deGrupo = s.grupo_id && gids.indexOf(s.grupo_id) >= 0;
-        var paraMi = s.atletas_ids && aids.some(function (id) { return s.atletas_ids.indexOf(id) >= 0; });
-        return deGrupo || paraMi;
-      });
-      if (mias.length) entrenoHoy = mias[0];
+      var noDescanso = function (s) { return (s.papel_dia || s.tipo) !== 'descanso'; };
+      var paraMi = function (s) { return s.atletas_ids && s.atletas_ids.length && aids.some(function (id) { return s.atletas_ids.indexOf(id) >= 0; }); };
+      var personal = rs.data.filter(function (s) { return noDescanso(s) && paraMi(s); });
+      var grupal = rs.data.filter(function (s) { return noDescanso(s) && !paraMi(s) && (!s.atletas_ids || !s.atletas_ids.length) && s.grupo_id && gids.indexOf(s.grupo_id) >= 0; });
+      entrenoHoy = personal[0] || grupal[0] || null;
     }
   } catch (e) {}
 

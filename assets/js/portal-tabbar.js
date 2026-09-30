@@ -214,7 +214,7 @@
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,  url: urlZona },
         { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,   url: b + 'portal/lo-mio/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
-        { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: tengoZona ? (urlZona + '#mas') : (b + 'portal/') }
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: tengoZona ? (urlZona + '#mas') : (b + 'portal/mas/') }
       ];
     }
 
