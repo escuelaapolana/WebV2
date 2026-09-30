@@ -28,9 +28,15 @@
 //      el índice único del bono). Ver la migración 053, apartado 6.
 //
 // CLAVES (variables de entorno de Supabase; aquí no hay ninguna)
-//     STRIPE_WEBHOOK_SECRET      (la copias del panel de Stripe)
-//     SUPABASE_URL               (la pone Supabase sola)
-//     SUPABASE_SERVICE_ROLE_KEY  (la pone Supabase sola)
+//     STRIPE_WEBHOOK_SECRET       (el del endpoint LIVE — bonos, ropa…)
+//     STRIPE_WEBHOOK_SECRET_TEST  (el del endpoint de PRUEBA, opcional; hace
+//                                  falta para probar el alta de socio en test)
+//     SUPABASE_URL                (la pone Supabase sola)
+//     SUPABASE_SERVICE_ROLE_KEY   (la pone Supabase sola)
+//
+// Se admiten los DOS secretos a la vez: cada aviso de Stripe se valida contra
+// el que sea (live o test). Así los cobros de verdad siguen entrando y, además,
+// se puede probar el alta de socio en modo prueba sin tocar el secreto live.
 //
 // Cómo se despliega (SIN comprobar el JWT: quien llama es Stripe, no
 // una persona con sesión; la seguridad la da la firma):
@@ -42,6 +48,7 @@ const SERVICE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+const WEBHOOK_SECRET_TEST = Deno.env.get("STRIPE_WEBHOOK_SECRET_TEST") ?? "";
 
 // Margen de reloj: un aviso con más de cinco minutos se rechaza, para
 // que nadie pueda reenviar uno viejo que grabó por el camino.
@@ -133,7 +140,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // cabeceras CORS a propósito: no es para el navegador.
   if (req.method !== "POST") return new Response("Método no admitido.", { status: 405 });
 
-  if (!SUPABASE_URL || !SERVICE_KEY || !WEBHOOK_SECRET) {
+  if (!SUPABASE_URL || !SERVICE_KEY || !(WEBHOOK_SECRET || WEBHOOK_SECRET_TEST)) {
     // Sin claves no se puede comprobar nada, así que no se confirma
     // ningún pago. Se contesta 503 para que Stripe reintente cuando
     // el club termine de configurarlo.
@@ -145,7 +152,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const crudo = await req.text();
   const cabecera = req.headers.get("stripe-signature") ?? "";
 
-  if (!(await firmaValida(crudo, cabecera, WEBHOOK_SECRET))) {
+  // Se valida contra el secreto live y, si no cuadra, contra el de test. Basta
+  // con que uno de los dos case (cada aviso viene firmado con el de su entorno).
+  const firmaOk = (WEBHOOK_SECRET && await firmaValida(crudo, cabecera, WEBHOOK_SECRET))
+    || (WEBHOOK_SECRET_TEST && await firmaValida(crudo, cabecera, WEBHOOK_SECRET_TEST));
+  if (!firmaOk) {
     console.warn("Aviso con firma que no cuadra: descartado.");
     return new Response("Firma no válida.", { status: 400 });
   }
@@ -238,6 +249,54 @@ Deno.serve(async (req: Request): Promise<Response> => {
     default:
       console.log(`Aviso ${tipo}: no hace falta hacer nada.`);
       resultado = { ignorado: true };
+  }
+
+  // --- Aviso a administración (Isa) SOLO cuando el pago del alta de socio
+  //     acaba de entrar de verdad ---
+  // El correo con los datos + DNI se dispara AQUÍ, en el servidor, y nunca
+  // desde el navegador: así nadie puede provocarlo con un ?pago=hecho falso en
+  // la URL sin haber pagado. Se acota a la confirmación FRESCA (repetido=false,
+  // efecto=aplicado) para que no salga dos veces (Stripe manda checkout.* y
+  // payment_intent.* por el mismo pago); correo-alta-aviso además es idempotente
+  // por su cuenta (aviso_enviado_en), como segunda red.
+  const r = resultado as Record<string, any> | null;
+  if (r && r.ok === true && r.repetido !== true && r.tipo === "alta_socio" && r.efecto === "aplicado") {
+    const altaRef = objeto?.metadata?.alta_ref
+      ?? objeto?.payment_intent?.metadata?.alta_ref
+      ?? null;
+    if (altaRef) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/correo-alta-aviso`, {
+          method: "POST",
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ referencia: altaRef }),
+        });
+      } catch (e) {
+        // El pago ya quedó marcado; el correo es un extra. Si falla, no se
+        // reintenta el webhook por esto (a Stripe se le contesta 200 igual).
+        console.error("Alta de socio pagada, pero falló el aviso por correo:", e);
+      }
+    } else {
+      console.error("Alta de socio pagada sin alta_ref en el aviso de Stripe (no se puede avisar).");
+    }
+    // Toque a los móviles del club («hay una nueva alta, mira el panel»). No
+    // lleva ni un dato de la persona: la base decide si toca o sería ruido. Va
+    // suelto y en silencio; si falla, no pasa nada (el correo ya salió).
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/aviso-enviar`, {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ novedad: "alta_socio" }),
+      });
+    } catch (_e) { /* el toque es un extra; el pago y el correo ya están */ }
   }
 
   // Siempre 200 si el aviso era legítimo: si contestáramos error,

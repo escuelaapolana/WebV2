@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hacerme socio · Club Atletismo Apolana</title>
-<meta name="description" content="Hazte socio del Club Atletismo Apolana en Alicante. Una pantalla corta, sin pagar nada ahora.">
+<meta name="description" content="Hazte socio del Club Atletismo Apolana en Alicante. Una pantalla corta y la primera cuota con tarjeta.">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
@@ -406,12 +406,12 @@
       <div class="tarjeta-form tarjeta-form--banda" style="margin-top:14px">
         <h3 data-texto="socio.alta.pago.titulo">Qué se paga</h3>
         <div id="precio"></div>
-        <p class="fina" data-texto="socio.alta.pago.fina">No hay que pagar nada ahora. Con la domiciliación de abajo, el primer recibo se pasa cuando el club revise y active tu alta.</p>
+        <p class="fina" data-texto="socio.alta.pago.fina">La primera cuota (35 €) se paga con tarjeta al terminar el formulario. La renovación anual la pasa el club por recibo domiciliado (déjanos la cuenta abajo).</p>
       </div>
 
       <div class="tarjeta-form tarjeta-form--banda" id="caja-domic" style="margin-top:14px">
         <h3 data-texto="socio.alta.domic.titulo">Domiciliación bancaria</h3>
-        <p class="fina" data-texto="socio.alta.domic.intro">La cuota de socio se cobra por recibo domiciliado. Déjanos la cuenta y acepta la orden; así el club puede pasar los recibos cuando active tu alta.</p>
+        <p class="fina" data-texto="socio.alta.domic.intro">La renovación anual se cobra por recibo domiciliado. Déjanos la cuenta y acepta la orden; así el club puede pasar el recibo de la renovación (la primera cuota la pagas ahora con tarjeta).</p>
 
         <div class="campo">
           <label for="titular-cuenta" data-texto="socio.alta.domic.titular">Titular de la cuenta</label>
@@ -483,6 +483,19 @@ document.addEventListener('DOMContentLoaded', function () {
   var paso = 1;
   var enviando = false;
   var cuotaSocio = null;
+
+  /* ¿Volvemos de pagar la primera cuota? Stripe redirige aquí:
+       ?pago=hecho&ref=...  → SOLO se llega si el pago ENTRÓ → alta completada.
+       ?pago=cancelado      → el pago no se hizo → el alta queda pendiente.
+     (pagoConfirmado/pintarHecho/irA son declaraciones, ya están disponibles.) */
+  var _qp; try { _qp = new URLSearchParams(location.search); } catch (e) { _qp = null; }
+  var _pago = _qp ? _qp.get('pago') : null;
+  function _refGuardada() { try { return localStorage.getItem('socio_alta_ref') || ''; } catch (e) { return ''; } }
+  if (_pago === 'hecho') { pagoConfirmado((_qp.get('ref')) || _refGuardada()); return; }
+  if (_pago === 'cancelado') {
+    var _rc = _refGuardada();
+    if (_rc) { pintarHecho(_rc); irA(5); var _m = $('pago-msg'); if (_m) _m.textContent = 'El pago no se completó. Tu alta está guardada; puedes pagarla ahora.'; return; }
+  }
 
   var TEXTO_NORMAS = 'He leído y acepto las normas del club y las bases de los premios.';
   var TEXTO_DATOS =
@@ -936,46 +949,77 @@ document.addEventListener('DOMContentLoaded', function () {
           }
         }).catch(function () {});
       })();
-      /* El alta ya está guardada y quien se apunta ya tiene su
-         referencia. Ahora, y solo ahora, se le da un toque al móvil
-         de quien la revisa. Va suelto y sin esperar respuesta: si
-         fallara, aquí no se entera nadie y el alta sigue estando. */
-      F.avisarAlClub('alta_socio');
-      /* Correo a administración con todos los datos y las fotos del DNI.
-         Suelto y sin esperar: si fallara, el alta ya está guardada. */
-      if (r.referencia && window.APOLANA_DB && window.APOLANA_DB.functions) {
-        try {
-          window.APOLANA_DB.functions.invoke('correo-alta-aviso', { body: { referencia: r.referencia } });
-        } catch (e) { /* el alta ya está; el aviso es un extra */ }
-      }
+      /* El aviso al club y el CORREO A ISA con los datos NO se mandan aquí:
+         Andrés quiere que a Isa solo le llegue si HA ENTRADO EL PAGO. Se disparan
+         en la vuelta de Stripe (`?pago=hecho`), que solo se alcanza si se pagó.
+         Aquí solo se guarda la referencia por si el pago se cancela y hay que
+         reintentarlo. */
+      try { localStorage.setItem('socio_alta_ref', r.referencia || ''); } catch (e) {}
     });
   });
 
   function pintarHecho(referencia) {
     $('hecho').innerHTML =
-      '<h1 class="form-titulo">Ya eres uno más</h1>' +
-      /* Decía «te hemos mandado el resumen» y no lo manda nadie: no hay
-         ningún correo automático detrás de este formulario. Se dice lo
-         que sí es verdad —que está recibido y cuál es su referencia— y
-         el punto 1 de abajo ya cuenta que el club escribe. */
-      '<p class="form-entradilla">Lo hemos recibido. Tu referencia es <strong>' + F.escapar(referencia) + '</strong>: ' +
-      'apúntala o hazle una foto a esta pantalla, es lo que te preguntamos si nos llamas.</p>' +
+      '<h1 class="form-titulo">Ya casi está</h1>' +
+      '<p class="form-entradilla">Hemos recibido tus datos. Tu referencia es <strong>' + F.escapar(referencia) + '</strong>: ' +
+      'apúntala o hazle una foto a esta pantalla.</p>' +
       '<div id="acceso-hecho" style="margin-top:14px;padding:14px 16px;border-radius:12px;background:#EAF3E3;color:#2E6B3A;font-size:14.5px;line-height:1.5;">Creando tu acceso a la web…</div>' +
-      '<div style="height:26px"></div>' +
-      '<h2 style="font-family:var(--fuente-titulo);font-weight:700;font-size:25px;line-height:1;text-transform:uppercase;color:var(--navy);margin:0 0 16px;">Qué pasa ahora</h2>' +
-      '<div class="pasos-siguientes">' +
-        '<div><span class="n">1</span><p><strong>El club revisa tu alta</strong> y te escribe para darte la bienvenida y, si entrenas con el club, contarte con qué grupo y cuándo.</p></div>' +
-        '<div><span class="n">2</span><p><strong>La domiciliación ya nos la has dejado.</strong> Con tu cuenta y la orden aceptada, el club puede pasar el recibo de la cuota.</p></div>' +
-        '<div><span class="n">3</span><p><strong>No hay nada que pagar ahora.</strong> El primer recibo se pasa cuando el club revise y active tu alta.</p></div>' +
-      '</div>' +
-      '<div class="form-pie" style="margin-top:26px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">' +
-        '<a class="btn-principal" href="../../entrenar/" style="text-decoration:none">Ver los grupos</a>' +
-        '<a href="../../" style="text-decoration:none;color:var(--navy);font-weight:600;padding:10px 6px">Volver al inicio</a>' +
+      /* La primera cuota se paga AQUÍ con tarjeta. Solo cuando entra el pago le
+         llega a administración la ficha (correo con datos + DNI). La renovación
+         anual la pasa el club por recibo domiciliado. */
+      '<div style="margin-top:22px;padding:18px 18px 20px;border-radius:14px;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);box-shadow:0 12px 30px -18px rgba(46,66,86,.5)">' +
+        '<h2 style="font-family:var(--fuente-titulo);font-weight:700;font-size:23px;line-height:1;text-transform:uppercase;color:var(--navy);margin:0 0 8px;">Última cosa: la primera cuota</h2>' +
+        '<p style="margin:0 0 14px;line-height:1.5;font-size:15px;color:#3f3f46">Para completar tu alta, paga la primera cuota de socio: <strong>35 €</strong> con tarjeta. En cuanto entre el pago, el club recibe tu ficha y te da la bienvenida.</p>' +
+        '<button type="button" class="btn-principal" id="pagar-cuota" style="border:0;cursor:pointer">Pagar la primera cuota · 35 € →</button>' +
+        '<p class="fina" style="margin:12px 0 0;font-size:13.5px;color:var(--texto-suave,#6E6656)">La renovación anual la pasa el club por recibo domiciliado (la orden ya nos la has dejado). Pago seguro con Stripe.</p>' +
+        '<p class="fina" id="pago-msg" style="margin:8px 0 0;font-size:13.5px;color:#B3261E"></p>' +
       '</div>' +
       '<div style="margin-top:22px;padding:16px;border-radius:12px;background:#F1EADC;text-align:center;line-height:1.5;"><p style="margin:0 0 10px;font-size:14.5px;color:#3f3f46;">📲 <b>Llévate la web como app</b> en tu móvil para entrar más rápido a tu zona del club.</p><a href="https://atletismoapolana.com/app/" style="display:inline-block;background:#26374B;color:#fff;text-decoration:none;padding:10px 20px;border-radius:999px;font-weight:600;font-size:14px;">Cómo instalarla</a></div>';
+    var bp = document.getElementById('pagar-cuota');
+    if (bp) bp.addEventListener('click', function () { irAPagar(referencia, bp); });
     $('volver').style.visibility = 'hidden';
     $('cuenta').textContent = '';
     $('avance').style.width = '100%';
+  }
+
+  /* Abre la pasarela de pago (Stripe, tarjeta) para la primera cuota. */
+  function irAPagar(referencia, btn) {
+    if (!window.APOLANA_DB || !window.APOLANA_DB.functions) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Abriendo el pago…'; }
+    var msg = document.getElementById('pago-msg'); if (msg) msg.textContent = '';
+    try { localStorage.setItem('socio_alta_ref', referencia || ''); } catch (e) {}
+    window.APOLANA_DB.functions.invoke('socio-pagar', { body: { referencia: referencia } }).then(function (r) {
+      var d = r && r.data;
+      if (d && d.url) { location.href = d.url; return; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Pagar la primera cuota · 35 € →'; }
+      if (msg) msg.textContent = (d && d.mensaje) || 'No se pudo abrir el pago. Vuelve a intentarlo en un minuto.';
+    }).catch(function () {
+      if (btn) { btn.disabled = false; btn.textContent = 'Pagar la primera cuota · 35 € →'; }
+      if (msg) msg.textContent = 'No se pudo abrir el pago. Vuelve a intentarlo en un minuto.';
+    });
+  }
+
+  /* Pantalla de VUELTA del pago (Stripe redirige aquí con ?pago=hecho&ref=...).
+     Solo se llega si el pago entró: es AQUÍ donde se avisa a administración (Isa)
+     con los datos + DNI y se toca el móvil de quien revisa. */
+  function pagoConfirmado(referencia) {
+    try { localStorage.removeItem('socio_alta_ref'); } catch (e) {}
+    var wrap = $('hecho');
+    if (wrap) wrap.innerHTML =
+      '<h1 class="form-titulo">¡Ya eres socio!</h1>' +
+      '<p class="form-entradilla">Tu primera cuota está pagada y tu alta enviada al club' +
+      (referencia ? ' (referencia <strong>' + F.escapar(referencia) + '</strong>)' : '') + '. Te damos la bienvenida y revisamos tu ficha.</p>' +
+      '<div style="margin-top:18px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">' +
+        '<a class="btn-principal" href="' + (window.APOLANA_BASE || '../../') + 'portal/" style="text-decoration:none">Entrar a mi zona →</a>' +
+        '<a href="../../" style="text-decoration:none;color:var(--navy);font-weight:600;padding:10px 6px">Volver al inicio</a>' +
+      '</div>';
+    try { $('volver').style.visibility = 'hidden'; $('cuenta').textContent = ''; $('avance').style.width = '100%'; } catch (e) {}
+    irA(5);
+    /* OJO · el correo a administración (Isa) con los datos + DNI y el toque a los
+       móviles NO se disparan aquí. Los manda el SERVIDOR (pago-webhook) cuando
+       Stripe confirma el cobro de verdad. Si se dispararan desde esta pantalla,
+       cualquiera podría provocarlos entrando a mano en `?pago=hecho&ref=SOC-…`
+       sin haber pagado. Esta pantalla es solo la enhorabuena al socio. */
   }
 
   /* ---- Guardar y seguir luego ---- */

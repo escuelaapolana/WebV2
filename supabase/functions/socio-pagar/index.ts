@@ -1,18 +1,22 @@
 // ============================================================
-// socio-pagar · cobra el alta de socio por adeudo SEPA (Stripe)
+// socio-pagar · cobra la PRIMERA cuota de socio con TARJETA (Stripe)
 // ------------------------------------------------------------
 // QUÉ HACE
 //   Tras enviar el formulario de alta de socio (que ya guardó el alta y devolvió
 //   su `referencia`), el navegador llama aquí. Se busca el alta EN LA BASE por su
 //   referencia, se lee el importe EN LA BASE (pagos_config.precio_alta_socio_cent,
-//   nunca del navegador) y se abre una sesión de pago de Stripe con adeudo SEPA
-//   (mode=payment, una vez). La persona teclea su IBAN y acepta el mandato EN
-//   STRIPE (nunca aquí). Cuando Stripe confirma, el webhook marca el alta pagada.
+//   35 € por defecto, nunca del navegador) y se abre una sesión de pago de Stripe
+//   con TARJETA (mode=payment, una vez). Cuando Stripe confirma, el webhook marca
+//   el alta pagada, así a administración (Isa) le llega ya pagada.
+//   La RENOVACIÓN anual (125 €, desde diciembre) NO va por aquí: la pasa Isa por
+//   recibo domiciliado (el IBAN se recoge en el formulario para eso).
+//   Se usa TARJETA, no SEPA, a propósito: la tarjeta no necesita la verificación
+//   de documentos de Stripe que sí exige el adeudo SEPA.
 //
 // TEST vs REAL
 //   Se mira `pagos_config.modo`: si es 'real' se usa la clave live de Apolana; si
 //   no, la de prueba (STRIPE_SECRET_KEY_APOLANA_TEST). Así se prueba en test y se
-//   pasa a real cambiando el modo (cuando Stripe verifique los documentos del SEPA).
+//   pasa a real cambiando el modo a 'real' en pagos_config.
 //
 // CLAVES (variables de entorno de Supabase; aquí no hay ninguna)
 //   STRIPE_SECRET_KEY_APOLANA        (live de Apolana)
@@ -124,11 +128,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "sin_precio", mensaje: "El importe del alta no está configurado." }, 409, origen);
   }
 
-  const STRIPE_KEY = modo === "real" ? SK_LIVE : (SK_TEST || SK_LIVE);
+  // OJO · en modo 'prueba' se usa SOLO la clave de test. NO se cae a la live:
+  // si no está la de test, se contesta con un error claro en vez de hacer un
+  // cargo REAL cuando quien prueba cree que está en prueba. La live se reserva
+  // para 'real' y punto.
+  const STRIPE_KEY = modo === "real" ? SK_LIVE : SK_TEST;
   if (!STRIPE_KEY) {
     return responder({
       error: "no_activado",
-      mensaje: "El pago del alta todavía no está activado. Escríbenos y te decimos cómo pagarlo.",
+      mensaje: modo === "real"
+        ? "El pago del alta todavía no está activado. Escríbenos y te decimos cómo pagarlo."
+        : "El pago en modo prueba aún no está listo (falta la clave de test de Stripe). Avísanos.",
     }, 503, origen);
   }
 
@@ -153,12 +163,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // es suya). Si se quiere pedir esa pregunta, se guarda al enviar el formulario
   // (RPC enviar_alta_socio), no aquí.
 
-  // --- 4 · La sesión de Stripe (adeudo SEPA, de una vez) ---
+  // --- 4 · La sesión de Stripe (TARJETA, de una vez) ---
   const refPago = `socio-${alta.id}`;
+
+  // Registramos el pago en `pagos_online` (si no existía ya con esa referencia),
+  // para que al confirmar Stripe, el webhook → pagos_confirmar → pagos_aplicar_efecto
+  // pueda marcar el alta como pagada. El importe y el alta van de la base, no del
+  // navegador. tipo='alta_socio' es el que interpreta pagos_aplicar_efecto.
+  await consulta(`pagos_online`, {
+    method: "POST",
+    headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+    body: JSON.stringify({
+      referencia: refPago,
+      tipo: "alta_socio",
+      concepto: "Primera cuota de socio",
+      importe_centimos: importeCent,
+      moneda: "eur",
+      estado: "iniciado",
+      metadatos: { alta_id: alta.id, alta_ref: referencia },
+    }),
+  });
+
   const params = new URLSearchParams();
   params.set("mode", "payment");
   params.set("locale", "es");
-  params.set("payment_method_types[0]", "sepa_debit");
+  params.set("payment_method_types[0]", "card");
   params.set("client_reference_id", refPago);
   if (alta.email) params.set("customer_email", alta.email);
   params.set("success_url", `${vuelta("hecho")}&ref=${encodeURIComponent(referencia)}`);
