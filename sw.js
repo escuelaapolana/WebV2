@@ -8,7 +8,7 @@
    · La frescura del código la avisa `version.txt` + el botón «Actualiza» (ver
      assets/js/db.js): al pulsarlo se limpia la caché y se recarga, trayendo lo
      último. `version.txt` se pide SIEMPRE a la red para que ese aviso funcione. */
-const CACHE = 'apolana-v57';
+const CACHE = 'apolana-v58';
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 

@@ -211,7 +211,7 @@
          «Marcas» sale de la barra y se llega desde «Lo mío» (bloque Atletismo →
          «Tus marcas»); así todas las zonas comparten las mismas 4 pestañas. */
       lista = [
-        { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,  url: urlZona },
+        { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,  url: b + 'portal/inicio/' },
         { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,   url: b + 'portal/lo-mio/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: tengoZona ? (urlZona + '#mas') : (b + 'portal/mas/') }
@@ -244,6 +244,7 @@
     if (r.indexOf('/portal/calendario/') !== -1) id = 'calendario';
     else if (r.indexOf('/portal/lo-mio/') !== -1 && tienePestana(tabs, 'lomio')) id = 'lomio';
     else if (r.indexOf('/portal/mas/') !== -1 && tienePestana(tabs, 'mas')) id = 'mas';
+    else if (r.indexOf('/portal/inicio/') !== -1 && tienePestana(tabs, 'inicio')) id = 'inicio';
     else if (r.indexOf('/portal/mensajes/') !== -1 && tienePestana(tabs, 'mensajes')) id = 'mensajes';
     else if (r.indexOf('/portal/documentos/') !== -1 && tienePestana(tabs, 'documentos')) id = 'documentos';
     else if (zonaDeRuta(r) === zona) {

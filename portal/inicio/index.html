@@ -26,6 +26,13 @@
   .in-rot{ font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; font-size:14px;
            color:var(--navy,#26374B); margin:22px 0 10px; }
 
+  /* «Tu entreno de hoy» (adaptativo): solo sale a quien entrena hoy */
+  .in-hoy{ background:var(--navy,#26374B); color:#fff; border-radius:16px; padding:16px; margin:14px 0 4px; border-left:4px solid #4A5FA6; box-shadow:var(--s1); }
+  .in-hoy .eti{ display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#fff; background:#4A5FA6; padding:3px 9px; border-radius:6px; }
+  .in-hoy .tit{ font-family:var(--ap-titulo); font-weight:800; font-size:24px; line-height:1.02; margin:8px 0 3px; }
+  .in-hoy .meta{ font-size:13px; color:rgba(255,255,255,.72); }
+  .in-hoy .btn{ display:inline-flex; align-items:center; min-height:40px; padding:0 16px; border-radius:999px; background:#fff; color:var(--navy,#26374B); font-size:13.5px; font-weight:600; text-decoration:none; margin-top:12px; }
+
   /* Actividad abierta a inscripción */
   .act{ display:block; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:16px;
         box-shadow:var(--s1); padding:15px 17px; margin-bottom:12px; }
@@ -110,16 +117,53 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div></a>';
   }
 
+  /* «Tu entreno de hoy» (adaptativo): SOLO la sesión asignada a la persona.
+     En Academia cada atleta tiene su fila con el mismo grupo_id, así que se
+     prioriza la sesión cuya `atletas_ids` me incluye (no la primera del grupo). */
+  async function entrenoDeHoy() {
+    try {
+      var m = await APOLANA_PORTAL.misAtletas(perfil.id);
+      var fichas = (m && m.data || []).filter(function (a) { return a && (a.perfil_id === perfil.id || a.perfil_padre_id === perfil.id); });
+      var gids = [], aids = fichas.map(function (a) { return a.id; }).filter(Boolean);
+      fichas.forEach(function (a) { if (a.grupo_id) gids.push(a.grupo_id); });
+      if (aids.length) {
+        var rag = await sb.from('atleta_grupos').select('grupo_id').in('atleta_id', aids);
+        if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gids.push(x.grupo_id); });
+      }
+      var hy = new Date();
+      var hyISO = hy.getFullYear() + '-' + ('0' + (hy.getMonth() + 1)).slice(-2) + '-' + ('0' + hy.getDate()).slice(-2);
+      var rs = await sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia')
+        .eq('publicada', true).eq('fecha', hyISO);
+      if (!rs || rs.error || !rs.data) return null;
+      var noDescanso = function (s) { return (s.papel_dia || s.tipo) !== 'descanso'; };
+      var paraMi = function (s) { return s.atletas_ids && s.atletas_ids.length && aids.some(function (id) { return s.atletas_ids.indexOf(id) >= 0; }); };
+      var personal = rs.data.filter(function (s) { return noDescanso(s) && paraMi(s); });
+      var grupal = rs.data.filter(function (s) { return noDescanso(s) && !paraMi(s) && (!s.atletas_ids || !s.atletas_ids.length) && s.grupo_id && gids.indexOf(s.grupo_id) >= 0; });
+      return personal[0] || grupal[0] || null;
+    } catch (e) { return null; }
+  }
+
   var caja = document.getElementById('in');
   caja.innerHTML =
     '<h1 class="in-saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
     '<p class="in-sub">' + esc(saludoFecha) + '</p>' +
+    '<div id="in-hoy"></div>' +
     '<div id="in-act"></div>' +
     '<div class="in-rot">Noticias del club</div>' +
     '<div id="in-noti"><div class="ap-esq" data-esq="filas:2"></div></div>';
 
-  var res = await Promise.all([actividades(), noticias()]);
-  var act = res[0], noti = res[1];
+  var res = await Promise.all([actividades(), noticias(), entrenoDeHoy()]);
+  var act = res[0], noti = res[1], hoy = res[2];
+
+  // Entreno de hoy (solo si la persona entrena hoy)
+  var cH = document.getElementById('in-hoy');
+  if (hoy) {
+    var metaH = [(hoy.hora ? String(hoy.hora).slice(0, 5) : ''), hoy.lugar].filter(Boolean).join(' · ');
+    cH.innerHTML = '<div class="in-hoy"><span class="eti">Tu entreno de hoy</span>' +
+      '<div class="tit">' + esc(hoy.titulo || 'Entrenamiento') + '</div>' +
+      (metaH ? '<div class="meta">' + esc(metaH) + '</div>' : '') +
+      '<a class="btn" href="' + b + 'portal/atleta/#entreno">Abrir el entrenamiento</a></div>';
+  } else { cH.innerHTML = ''; }
 
   var cA = document.getElementById('in-act');
   cA.innerHTML = (act.data && act.data.length)
