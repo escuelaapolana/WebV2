@@ -54,6 +54,7 @@
     mensajes: svg('<path d="M20 12a7 7 0 0 1-10 6.3L4 20l1.7-4.2A7 7 0 1 1 20 12z"/>'),
     noticias: svg('<path d="M4 5h13v14H4z"/><path d="M17 8h3v9a2 2 0 0 1-2 2h-1z"/><path d="M7 8h7M7 11h7M7 14h4"/>'),
     docs:    svg('<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h4"/>'),
+    lomio:   svg('<path d="M4 9v6M7 6.5v11M17 6.5v11M20 9v6M7 12h10"/>'),
     mas:     '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
              '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>'
   };
@@ -97,6 +98,7 @@
     if (r.indexOf('/portal/coordinador/') !== -1) return 'coordinador';
     if (r.indexOf('/portal/cubo-atleta/') !== -1) return 'cubo-atleta';
     if (r.indexOf('/portal/cubo-lista/') !== -1) return 'cubo-lista';
+    if (r.indexOf('/portal/socio/') !== -1) return 'socio';
     return null;
   }
   function recordada() {
@@ -119,7 +121,9 @@
     if (!vale(z)) z = recordada();
     if (!vale(z)) {
       /* Con varios papeles y sin pista, manda el de atleta. */
-      var orden = ['atleta', 'familia', 'cubo-atleta', 'entrenador', 'cubo-lista', 'coordinador'];
+      /* 'socio' va al FINAL: solo manda si la persona no tiene ninguna otra zona
+         (un socio puro). Quien es socio Y atleta/cubo/… conserva su zona de antes. */
+      var orden = ['atleta', 'familia', 'cubo-atleta', 'entrenador', 'cubo-lista', 'coordinador', 'socio'];
       z = null;
       for (var i = 0; i < orden.length && !z; i++) {
         if (claves.indexOf(orden[i]) !== -1) z = orden[i];
@@ -144,10 +148,18 @@
 
     /* El Cubo · quien ENTRENA: barra sencilla, sin marcas ni feedback.
        Inicio (sus horarios + noticias) · Calendario (horario del club) · Más.
-       El calendario es la parrilla pública del club (escuela, natación…). */
+       El calendario es la parrilla pública del club (escuela, natación…).
+       NOTA: se mantiene la parrilla propia (cubo-atleta/#calendario) y NO se
+       redirige al unificado todavía. Motivo (verificado 30-sep): la parrilla del
+       Cubo muestra TODOS los grupos del usuario vía misAtletas (p. ej. Xavier
+       Franco, que hace Cubo + running «Madre Tierra», grupo con horario recurrente
+       pero SIN sesiones con fecha), mientras el unificado solo pinta el horario
+       recurrente del Cubo → esa persona perdería sus clases de running. La
+       unificación se hará en la Fase 2 cubriendo esos casos (sin doble conteo). */
     if (zona === 'cubo-atleta') {
       return [
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio, url: b + 'portal/cubo-atleta/' },
+        { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,  url: b + 'portal/lo-mio/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/cubo-atleta/#calendario' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-atleta/#mas' }
       ];
@@ -168,6 +180,18 @@
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
         { id: 'ficha',      txt: 'Ficha',      ic: IC.docs,    url: urlZona + '#ficha' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: urlZona + '#mas' }
+      ];
+    }
+
+    /* Socio de acceso básico: noticias + actividades del club. Barra sencilla:
+       Inicio (su zona de socio) · Calendario (el del club) · Mensajes. Antes caía
+       en la barra 'atleta' degradada (Inicio/Más iban al hub genérico /portal/). */
+    if (zona === 'socio') {
+      return [
+        { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,   url: b + 'portal/socio/' },
+        { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,    url: b + 'portal/lo-mio/' },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda,   url: b + 'portal/calendario/' },
+        { id: 'mensajes',   txt: 'Mensajes',   ic: IC.mensajes, url: b + 'portal/mensajes/' }
       ];
     }
 
@@ -214,6 +238,7 @@
     var r = location.pathname;
     var id = null;
     if (r.indexOf('/portal/calendario/') !== -1) id = 'calendario';
+    else if (r.indexOf('/portal/lo-mio/') !== -1 && tienePestana(tabs, 'lomio')) id = 'lomio';
     else if (r.indexOf('/portal/mensajes/') !== -1 && tienePestana(tabs, 'mensajes')) id = 'mensajes';
     else if (r.indexOf('/portal/documentos/') !== -1 && tienePestana(tabs, 'documentos')) id = 'documentos';
     else if (zonaDeRuta(r) === zona) {
