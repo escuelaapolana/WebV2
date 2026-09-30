@@ -825,44 +825,66 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { falla('los eventos del club'); }
 
-    // --- 6) CLASES FIJAS DEL CUBO (horario semanal de sus grupos del Cubo).
-    //        Antes solo estaban en /horarios/; ahora salen también aquí, día a
-    //        día, para quien entrena en el Cubo (de pago o la prueba gratis). ---
+    // --- 6) HORARIO SEMANAL FIJO de los grupos de la persona (grupo_horarios).
+    //        El Cubo SIEMPRE se proyecta así (no usa sesiones con fecha). Para el
+    //        RESTO de secciones (running, escuela…) solo se proyecta el horario
+    //        recurrente de los grupos que NO tienen NINGUNA sesión con fecha en la
+    //        ventana → así no se duplica con las sesiones reales, pero tampoco se
+    //        pierde un grupo que solo vive como horario fijo (p. ej. el running
+    //        «Madre Tierra», sin sesiones con fecha: antes al pasar al calendario
+    //        unificado esa persona lo perdía). ---
     try {
       var misFichas = atletas.filter(function (a) { return a && perfil && a.perfil_id === perfil.id; });
-      var gidsCubo = [];
-      misFichas.forEach(function (a) { if (a.grupo_id) gidsCubo.push(a.grupo_id); });
+      var gidsMios = [];
+      misFichas.forEach(function (a) { if (a.grupo_id) gidsMios.push(a.grupo_id); });
       var idsAt = misFichas.map(function (a) { return a.id; }).filter(Boolean);
       if (idsAt.length) {
         var rag = await sb.from('atleta_grupos').select('grupo_id').in('atleta_id', idsAt);
-        if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gidsCubo.push(x.grupo_id); });
+        if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gidsMios.push(x.grupo_id); });
       }
-      gidsCubo = gidsCubo.filter(function (v, i) { return v && gidsCubo.indexOf(v) === i && GRUPOS[v] && GRUPOS[v].seccion === 'cubo'; });
-      if (gidsCubo.length) {
-        var rgh = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar').in('grupo_id', gidsCubo).eq('activo', true);
+      gidsMios = gidsMios.filter(function (v, i) { return v && gidsMios.indexOf(v) === i && GRUPOS[v]; });
+      /* Grupos que YA tienen sesión con fecha en la ventana (sección 1/2): su
+         horario recurrente NO se proyecta, para no duplicar. El Cubo se proyecta
+         siempre (no tiene sesiones con fecha). */
+      var conSesion = {};
+      acts.forEach(function (a) { if (a.fuente === 'entreno' && a.grupoId) conSesion[a.grupoId] = true; });
+      var gidsRec = gidsMios.filter(function (v) { return GRUPOS[v].seccion === 'cubo' || !conSesion[v]; });
+      if (gidsRec.length) {
+        var rgh = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar').in('grupo_id', gidsRec).eq('activo', true);
         if (rgh && !rgh.error && rgh.data && rgh.data.length) {
           var d0 = new Date(desde + 'T00:00:00'), d1 = new Date(hasta + 'T00:00:00');
           rgh.data.forEach(function (h) {
+            var g = GRUPOS[h.grupo_id] || null;
+            var esCubo = g && g.seccion === 'cubo';
             var dowJs = (h.dia_semana === 7) ? 0 : h.dia_semana;   // 1=lun…7=dom → JS 0=dom
-            var nombreG = (GRUPOS[h.grupo_id] && GRUPOS[h.grupo_id].nombre) || 'El Cubo';
-            var esGratis = /Fuerza gratis/i.test(nombreG);
+            var nombreG = (g && g.nombre) || (esCubo ? 'El Cubo' : 'Entrenamiento');
+            var esGratis = esCubo && /Fuerza gratis/i.test(nombreG);
             var d = new Date(d0);
             while (d <= d1) {
               if (d.getDay() === dowJs) {
                 var f = iso(d);
                 // La prueba gratis de fuerza empieza el finde del 2-3-4 de octubre.
                 if (!(esGratis && f < '2026-10-02')) {
-                  acts.push({
-                    fuente: 'cubo', id: 'clase-' + h.grupo_id + '-' + f, fecha: f,
-                    hora: hhmm(h.hora_inicio), horaFin: h.hora_fin ? hhmm(h.hora_fin) : '',
-                    titulo: esGratis ? 'El Cubo · Fuerza' : 'El Cubo',
-                    lugar: h.lugar || '', grupo: nombreG,
-                    /* Son las clases del propio usuario (solo se cargan sus grupos
-                       de Cubo), así que son SUYAS: entran en «Lo mío» y se resaltan,
-                       igual que la natación. Sin esto, las clases del Cubo se
-                       quedaban fuera del filtro «Lo mío». */
-                    mio: true
-                  });
+                  if (esCubo) {
+                    acts.push({
+                      fuente: 'cubo', id: 'clase-' + h.grupo_id + '-' + f, fecha: f,
+                      hora: hhmm(h.hora_inicio), horaFin: h.hora_fin ? hhmm(h.hora_fin) : '',
+                      titulo: esGratis ? 'El Cubo · Fuerza' : 'El Cubo',
+                      lugar: h.lugar || '', grupo: nombreG,
+                      /* Clases del propio usuario → son SUYAS: entran en «Lo mío». */
+                      mio: true
+                    });
+                  } else {
+                    /* Horario fijo de un grupo de otra sección SIN sesiones con
+                       fecha (p. ej. running). Es suyo → «Lo mío». */
+                    acts.push({
+                      fuente: 'entreno', id: 'horario-' + h.grupo_id + '-' + f, fecha: f,
+                      hora: hhmm(h.hora_inicio), horaFin: h.hora_fin ? hhmm(h.hora_fin) : '',
+                      titulo: nombreG, grupoId: h.grupo_id, grupo: nombreG,
+                      seccion: g ? g.seccion : null, lugar: h.lugar || '',
+                      mio: true
+                    });
+                  }
                 }
               }
               d.setDate(d.getDate() + 1);

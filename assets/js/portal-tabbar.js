@@ -146,22 +146,19 @@
     var urlEntrenador = b + 'portal/entrenador/';
     var lista;
 
-    /* El Cubo · quien ENTRENA: barra sencilla, sin marcas ni feedback.
-       Inicio (sus horarios + noticias) · Calendario (horario del club) · Más.
-       El calendario es la parrilla pública del club (escuela, natación…).
-       NOTA: se mantiene la parrilla propia (cubo-atleta/#calendario) y NO se
-       redirige al unificado todavía. Motivo (verificado 30-sep): la parrilla del
-       Cubo muestra TODOS los grupos del usuario vía misAtletas (p. ej. Xavier
-       Franco, que hace Cubo + running «Madre Tierra», grupo con horario recurrente
-       pero SIN sesiones con fecha), mientras el unificado solo pinta el horario
-       recurrente del Cubo → esa persona perdería sus clases de running. La
-       unificación se hará en la Fase 2 cubriendo esos casos (sin doble conteo). */
+    /* El Cubo · quien ENTRENA: barra UNIFICADA con el resto del portal.
+       Inicio (su página del Cubo) · Lo mío · Calendario (el UNIFICADO) · Más.
+       El Calendario ya NO es la parrilla propia (cubo-atleta/#calendario): usa el
+       unificado, que desde el arreglo del 30-sep proyecta también el horario
+       recurrente de grupos sin sesiones con fecha (p. ej. running «Madre Tierra»
+       de Xavier Franco), así que nadie pierde sus clases. El «Más» es la página
+       compartida portal/mas/, donde vive su cuota/baja (módulo cubo-cuota.js). */
     if (zona === 'cubo-atleta') {
       return [
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio, url: b + 'portal/cubo-atleta/' },
         { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,  url: b + 'portal/lo-mio/' },
-        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/cubo-atleta/#calendario' },
-        { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-atleta/#mas' }
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/calendario/' },
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/mas/' }
       ];
     }
     /* El Cubo · entrenador que SOLO pasa lista. */
@@ -239,6 +236,7 @@
     var id = null;
     if (r.indexOf('/portal/calendario/') !== -1) id = 'calendario';
     else if (r.indexOf('/portal/lo-mio/') !== -1 && tienePestana(tabs, 'lomio')) id = 'lomio';
+    else if (r.indexOf('/portal/mas/') !== -1 && tienePestana(tabs, 'mas')) id = 'mas';
     else if (r.indexOf('/portal/mensajes/') !== -1 && tienePestana(tabs, 'mensajes')) id = 'mensajes';
     else if (r.indexOf('/portal/documentos/') !== -1 && tienePestana(tabs, 'documentos')) id = 'documentos';
     else if (zonaDeRuta(r) === zona) {
