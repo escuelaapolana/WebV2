@@ -6,12 +6,16 @@
 //   su `referencia`), el navegador llama aquí. Se busca el alta EN LA BASE por su
 //   referencia, se lee el importe EN LA BASE (pagos_config.precio_alta_socio_cent,
 //   35 € por defecto, nunca del navegador) y se abre una sesión de pago de Stripe
-//   con TARJETA (mode=payment, una vez). Cuando Stripe confirma, el webhook marca
-//   el alta pagada, así a administración (Isa) le llega ya pagada.
+//   por DOMICILIACIÓN SEPA (mode=payment, una vez; Stripe recoge el IBAN y el
+//   mandato en su pantalla). SEPA es de cobro DIFERIDO (tarda días): el mandato
+//   se acepta al terminar, pero el dinero entra días después. El webhook avisa a
+//   administración (Isa) SOLO cuando el cobro SE LIQUIDA de verdad
+//   (checkout.session.async_payment_succeeded), no al aceptar el mandato.
+//   Se usa SEPA en vez de tarjeta a propósito: la comisión de Stripe es mucho
+//   menor (0,8% tope 5 € vs 1,5%+0,25 € de tarjeta). Requiere SEPA activado en
+//   Stripe (verificación de identidad del representante, YA hecha).
 //   La RENOVACIÓN anual (125 €, desde diciembre) NO va por aquí: la pasa Isa por
-//   recibo domiciliado (el IBAN se recoge en el formulario para eso).
-//   Se usa TARJETA, no SEPA, a propósito: la tarjeta no necesita la verificación
-//   de documentos de Stripe que sí exige el adeudo SEPA.
+//   recibo domiciliado (el IBAN del formulario es para eso).
 //
 // TEST vs REAL
 //   Se mira `pagos_config.modo`: si es 'real' se usa la clave live de Apolana; si
@@ -187,7 +191,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const params = new URLSearchParams();
   params.set("mode", "payment");
   params.set("locale", "es");
-  params.set("payment_method_types[0]", "card");
+  params.set("payment_method_types[0]", "sepa_debit");
   params.set("client_reference_id", refPago);
   if (alta.email) params.set("customer_email", alta.email);
   params.set("success_url", `${vuelta("hecho")}&ref=${encodeURIComponent(referencia)}`);
