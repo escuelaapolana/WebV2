@@ -132,7 +132,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cargado = true;
   }
   async function recargarIns(){
-    var i = await sb.from('natacion_inscripciones').select('id,franja_id,calle,nombre,tipo,nivel,atleta_id').eq('activa', true);
+    var i = await sb.from('natacion_inscripciones').select('id,franja_id,calle,nombre,tipo,nivel,atleta_id,acceso_id').eq('activa', true);
     if (!i.error) INS = i.data || [];
   }
   async function mut(prom, msgOk){
@@ -298,16 +298,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // Si esa persona YA está en natación (misma escritura del nombre), devuelve su
-  // ficha (atleta_id). Así, al volver a añadirla en otra franja, la fila nueva
-  // se enlaza a la MISMA ficha y no sale «separada» en el buscador (era justo el
-  // fallo de Leonardo: el alta a mano creaba una fila suelta, sin ficha).
+  // identidad: el CÓDIGO de acceso (acceso_id, que es como agrupan por familia
+  // las listas «Niños y niñas» / distribución) y la ficha (atleta_id). Así la
+  // fila nueva se une a ella y NO sale «separada». Era el fallo de Leonardo: el
+  // alta a mano creaba una fila suelta, sin código ni ficha.
   function fichaDe(nombre){
     var n = (nombre || '').trim().toLowerCase();
     if (!n) return null;
+    var acc = null, atl = null;
     for (var i = 0; i < INS.length; i++){
-      if (INS[i].atleta_id && (INS[i].nombre || '').trim().toLowerCase() === n) return INS[i].atleta_id;
+      if ((INS[i].nombre || '').trim().toLowerCase() !== n) continue;
+      if (!acc && INS[i].acceso_id) acc = INS[i].acceso_id;
+      if (!atl && INS[i].atleta_id) atl = INS[i].atleta_id;
     }
-    return null;
+    return (acc || atl) ? { acceso_id: acc, atleta_id: atl } : null;
   }
 
   async function anadir(franjaId){
@@ -319,8 +323,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var nivel = acc.querySelector('.ng-add-nivel').value;
     var calle = acc.querySelector('.ng-add-calle').value;
     var fila = { franja_id: franjaId, nombre: nombre, tipo: tipo, nivel: nivel, calle: calle, activa: true };
-    var aid = fichaDe(nombre);           // si ya existe, se reutiliza su ficha
-    if (aid) fila.atleta_id = aid;
+    var id = fichaDe(nombre);   // si ya existe, se reutilizan su código y su ficha
+    if (id){ if (id.acceso_id) fila.acceso_id = id.acceso_id; if (id.atleta_id) fila.atleta_id = id.atleta_id; }
     await mut(sb.from('natacion_inscripciones').insert(fila), 'Añadido');
   }
 
