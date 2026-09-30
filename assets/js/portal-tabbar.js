@@ -74,14 +74,17 @@
       'background:rgba(255,255,255,.88);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
       'border:1px solid rgba(30,45,65,.08);border-radius:999px;' +
       'padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
-    '.pt-tabbar a{position:relative;flex:0 0 auto;display:grid;place-items:center;width:58px;height:46px;border-radius:999px;' +
-      'text-decoration:none;color:var(--texto-suave,#6E6656);transition:background .2s ease,color .2s ease;' +
+    '.pt-tabbar a{position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;' +
+      'min-width:62px;padding:7px 8px 6px;border-radius:16px;' +
+      'text-decoration:none;color:var(--texto-suave,#6E6656);transition:color .2s ease;' +
       '-webkit-tap-highlight-color:transparent}' +
-    /* Iconos solos: la maqueta no lleva texto bajo el icono */
-    '.pt-tabbar a span{display:none}' +
+    /* Con etiqueta bajo el icono, como la maqueta (Inicio · Lo mío · Calendario · Más) */
+    '.pt-tabbar a span{display:block;font-size:10.5px;font-weight:600;line-height:1}' +
     '.pt-tabbar .ic{width:24px;height:24px;flex:0 0 24px}' +
-    '.pt-tabbar a:not(.activo):hover{background:var(--crema,#FAF7F0);color:var(--navy,#26374B)}' +
-    '.pt-tabbar a.activo{background:var(--navy,#26374B);color:#fff}';
+    '.pt-tabbar a:not(.activo):hover{color:var(--navy,#26374B)}' +
+    /* Activo = navy + negrita, sin pastilla de fondo (como la maqueta) */
+    '.pt-tabbar a.activo{color:var(--navy,#26374B)}' +
+    '.pt-tabbar a.activo span{font-weight:700}';
   /* Los avisos flotantes suben por encima de la barra: de eso se encarga
      apxSitio() en portal-auth.js, que mide el alto real de la barra al
      mostrar cada aviso. Aquí antes había un comentario que anunciaba una
