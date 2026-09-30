@@ -28,7 +28,10 @@
   function base() { return window.APOLANA_BASE || '../../'; }
 
   /* ---------- ¿esta página tiene barra propia? ---------- */
-  var ZONAS_CON_BARRA = ['/portal/atleta/', '/portal/entrenador/', '/portal/familia/'];
+  /* Páginas que pintan SU PROPIA barra (aquí este componente se aparta). Familia
+     ya NO está: no pinta `.tabbar` propia, así que se quedaba sin barra inferior;
+     ahora usa la barra común unificada (Inicio·Lo mío·Calendario·Más). */
+  var ZONAS_CON_BARRA = ['/portal/atleta/', '/portal/entrenador/'];
   function tieneBarraPropia() {
     var r = location.pathname;
     for (var i = 0; i < ZONAS_CON_BARRA.length; i++) {
@@ -172,10 +175,13 @@
     /* Familia: barra sencilla, sin «Marcas» ni «Entreno». Inicio (sus hijos y
        horarios) · Calendario (parrilla del club) · Ficha del hijo/s · Más. */
     if (zona === 'familia') {
+      /* Barra UNIFICADA: Inicio · Lo mío · Calendario · Más. La ficha de los
+         hijos se abre desde el Inicio (botón «Ficha» de cada hijo) y desde #ficha;
+         «Lo mío» muestra la natación de los hijos (natacion_mis_plazas). */
       return [
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio, url: urlZona },
-        { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
-        { id: 'ficha',      txt: 'Ficha',      ic: IC.docs,    url: urlZona + '#ficha' },
+        { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,  url: b + 'portal/lo-mio/' },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/calendario/' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: urlZona + '#mas' }
       ];
     }
@@ -201,12 +207,13 @@
         { id: 'mas',        txt: 'Más',        ic: IC.mas,      url: tengoEntrenador ? (urlEntrenador + '#mas') : (b + 'portal/') }
       ];
     } else {
-      /* Como la maqueta de atleta: Inicio · Calendario · Marcas · Más (sin
-         «Entreno»: al entreno se entra desde la tarjeta de hoy o el calendario). */
+      /* Barra UNIFICADA (atleta y demás): Inicio · Lo mío · Calendario · Más.
+         «Marcas» sale de la barra y se llega desde «Lo mío» (bloque Atletismo →
+         «Tus marcas»); así todas las zonas comparten las mismas 4 pestañas. */
       lista = [
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,  url: urlZona },
+        { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,   url: b + 'portal/lo-mio/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
-        { id: 'marcas',     txt: 'Marcas',     ic: IC.marcas,  url: urlZona + '#marcas',  hay: tengoZona },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: tengoZona ? (urlZona + '#mas') : (b + 'portal/') }
       ];
     }
