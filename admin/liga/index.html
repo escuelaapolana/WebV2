@@ -839,6 +839,22 @@ APOLANA_ADMIN.listo(function (sb) {
 
   function puntosDe(p) { return p.es_relevo ? 0 : (p.puntos_aplicados || 0); }
 
+  /* Aviso de DUPLICADA: la misma persona, el mismo día, la misma disciplina,
+     distancia, modalidad y (no) relevo = la misma prueba metida dos veces
+     (aunque el nombre esté escrito distinto, «Matino» vs «Maitino»). Se marca
+     para que quien valida rechace la de más y no se cuenten los puntos doble. */
+  var DUP_KEYS = {};
+  function dupKey(p) {
+    var quien = p.atleta_id || ('L·' + (p.nombre_libre || '').trim().toLowerCase());
+    return [quien, p.fecha || '', p.disciplina || '', (p.distancia_km == null ? '' : p.distancia_km),
+            (p.modalidad || ''), (p.es_relevo ? 'r' : '')].join('|');
+  }
+  function recalcDuplicados() {
+    DUP_KEYS = {};
+    PARTICIPACIONES.forEach(function (p) { var k = dupKey(p); DUP_KEYS[k] = (DUP_KEYS[k] || 0) + 1; });
+  }
+  function esDuplicada(p) { return DUP_KEYS[dupKey(p)] > 1; }
+
   function pintarPendientes(pend) {
     var cont = $('lista-pendientes'), inc = $('lista-incompletas');
     CORRECTAS = [];
@@ -858,6 +874,7 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
 
+    recalcDuplicados();
     var tarjetas = [], sueltas = [];
     pend.forEach(function (p) {
       var d = diagnostico(p);
@@ -900,7 +917,9 @@ APOLANA_ADMIN.listo(function (sb) {
             '<span>' + oficial + '</span>' +
             (d.tipo === 'ok' ? '<span class="visto">' + VISTO + 'Aparece como Club Atletismo Apolana</span>' : '') +
             (fueraDePlazo(p) ? '<span class="pill pill-tarde">fuera de plazo</span>' : '') +
+            (esDuplicada(p) ? '<span class="pill" style="background:#FBE3E1;color:#B3261E;border:1px solid #F1C7C3">⚠️ Posible duplicada</span>' : '') +
           '</div>' +
+          (esDuplicada(p) ? '<span class="porque">Esta persona ya tiene otra prueba el mismo día, con la misma disciplina y distancia. Si es la misma carrera metida dos veces, <strong>rechaza esta</strong> para no contar los puntos doble.</span>' : '') +
           (d.porque ? '<span class="porque">' + d.porque + '</span>' : '') +
           (nAdj ? '<div class="pruebas-adj" data-adj="' + p.id + '">' + ADM.esqueleto(1) + '</div>' : '') +
         '</div>' +
