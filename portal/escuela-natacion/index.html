@@ -45,6 +45,10 @@
   .en-p .nom{ flex:1 1 auto; min-width:0; }
   .en-p .nom b{ display:block; font-size:15.5px; color:var(--navy); line-height:1.15; }
   .en-p .cod{ flex:0 0 auto; font-family:var(--fuente-dato); font-size:11.5px; color:var(--texto-tenue); background:var(--crema,#FBF9F4); border:1px solid var(--linea,#EAE3D5); border-radius:8px; padding:4px 8px; }
+  .en-p .en-enviar{ flex:0 0 auto; font-size:12.5px; font-weight:600; color:var(--navy,#26374B); background:#E6F2F1; border:1px solid #BEE0DC; border-radius:8px; padding:6px 10px; cursor:pointer; min-height:34px; }
+  .en-p .en-enviar:hover{ background:#D6EBE8; }
+  .en-p .en-enviar:disabled{ opacity:.7; cursor:default; }
+  .en-p .en-enviar.ok{ background:#EAF3E3; border-color:#CDE6BE; color:#2E6B3A; }
   .en-fr{ margin-top:11px; padding-top:10px; border-top:1px dashed var(--linea,#EAE3D5); display:flex; flex-direction:column; gap:5px; }
   .en-fr .l{ display:flex; align-items:baseline; gap:9px; font-size:13px; }
   .en-fr .d{ font-weight:600; color:var(--navy); min-width:118px; }
@@ -82,6 +86,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     LISTA.forEach(function(pe){ pe.franjas.sort(function(a,b){ return a.dia!==b.dia ? a.dia-b.dia : (a.hora<b.hora?-1:1); }); });
     LISTA.sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; });
     var total = LISTA.length, busca='';
+    // Enviar los horarios por correo a la familia (Edge correo-natacion-horarios,
+    // que comprueba que quien llama es del club y saca el correo del tutor de la
+    // base). Delegado en `wrap`, que no se recrea al repintar la lista.
+    wrap.addEventListener('click', function(ev){
+      var btn = ev.target.closest ? ev.target.closest('.en-enviar') : null;
+      if(!btn || btn.disabled) return;
+      var cod = btn.getAttribute('data-cod'); if(!cod) return;
+      if(!confirm('¿Enviar los horarios de natación por correo a la familia?')) return;
+      var txt = btn.textContent; btn.disabled = true; btn.textContent = 'Enviando…';
+      sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: cod } }).then(function(r){
+        var d = r && r.data;
+        if(d && d.ok){ btn.textContent = '✓ Enviado'; btn.classList.add('ok'); }
+        else { btn.disabled = false; btn.textContent = txt; alert((d && d.mensaje) || 'No se pudo enviar. Comprueba que la familia tenga un correo guardado.'); }
+      }).catch(function(){ btn.disabled = false; btn.textContent = txt; alert('No se pudo enviar. Inténtalo de nuevo en un momento.'); });
+    });
     function pinta(){
       var q = busca.trim().toLowerCase();
       var vis = LISTA.filter(function(pe){ return !q || (pe.nombre||'').toLowerCase().indexOf(q)!==-1; });
@@ -91,6 +110,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<span class="ava">'+esc(ini(pe.nombre).toUpperCase())+'</span>'+
           '<span class="nom"><b>'+esc(pe.nombre)+'</b></span>'+
           (pe.codigo?'<span class="cod" title="Código de familia">'+esc(pe.codigo)+'</span>':'')+
+          (pe.codigo?'<button type="button" class="en-enviar" data-cod="'+esc(pe.codigo)+'" title="Enviar los horarios por correo a la familia">✉ Horarios</button>':'')+
           '</div><div class="en-fr">'+fr+'</div></div>';
       }).join('') : '<p class="en-msg">Nadie con ese nombre.</p>';
       wrap.innerHTML =

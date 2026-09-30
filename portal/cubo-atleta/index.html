@@ -125,6 +125,7 @@
   .cal-ses .tx small { display:block; font-size:12.5px; color:var(--texto-suave,#6E6656); margin-top:1px; }
   .cal-ses.sec-cubo { --pc:#26374B; } .cal-ses.sec-running { --pc:#2F6FA8; }
   .cal-ses.sec-competicion { --pc:#8A5307; } .cal-ses.sec-escuela { --pc:#3E7D57; }
+  .cal-ses.sec-natacion { --pc:#2E8C86; }
   .cal-ses.mia .tx b::after { content:'Tú'; margin-left:7px; font-size:10.5px; font-weight:700; color:#fff;
                               background:var(--navy,#26374B); border-radius:999px; padding:1px 7px; vertical-align:middle; }
 </style>
@@ -552,7 +553,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // sesiones aparecen en los mismos días. Solo secciones con horario estructurado
   // (grupo_horarios: día + hora). Natación/montaña no lo tienen → van como enlaces
   // en «Otras actividades del club», debajo.
-  var SEC_ETI = { cubo:'El Cubo', running:'Running', competicion:'Competición', escuela:'Escuela' };
+  var SEC_ETI = { cubo:'El Cubo', running:'Running', competicion:'Competición', escuela:'Escuela', natacion:'Natación' };
   var CAL_MIAS = { k: 'cubo', t: 'Mis actividades' };           // lo tuyo (tus clases del Cubo)
   var CAL_OTRAS = [                                             // otras secciones del club, para asomarse
     { k: 'running',     t: 'Running' },
@@ -588,6 +589,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                hora_inicio:x.hora_inicio, hora_fin:x.hora_fin, lugar:x.lugar, nota:x.nota,
                _gratis:x._gratis, mine:true };
     });
+  }
+  // TU natación personal (las franjas donde nadas). No vive en grupo_horarios:
+  // se saca de natacion_mis_plazas (respeta RLS: solo lo tuyo o de tus hijos).
+  // Así, quien hace Cubo Y natación ve las dos cosas juntas en su semana. No se
+  // pinta antes del 1-oct (suelo de la distribución de Vía Parque, _natInicio).
+  async function misHorasNatacion() {
+    try {
+      var r = await sb.rpc('natacion_mis_plazas');
+      var arr = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
+      return arr.map(function (p) {
+        var etq = [p.grupo, p.nivel].filter(Boolean).join(' · ');
+        return { seccion:'natacion', grupo: etq || 'Natación', dia_semana: p.dia,
+                 hora_inicio: (p.hora || ''), hora_fin: null,
+                 lugar: (p.calle ? 'Calle ' + p.calle : ''), nota: null, mine:true, _natInicio:true };
+      });
+    } catch (e) { return []; }
   }
 
   function lunesDe(offset) {                            // lunes 00:00 de la semana `offset`
@@ -665,7 +682,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var caja = $('cb-cal');
     var activas = CAL_TODAS.filter(function (c) { return calSecs[c.k]; }).map(function (c) { return c.k; });
     var listas = await Promise.all(activas.map(function (k) {
-      return k === 'cubo' ? misHorasCubo() : seccionHoras(k);
+      return k === 'cubo'
+        ? Promise.all([misHorasCubo(), misHorasNatacion()]).then(function (r) { return r[0].concat(r[1]); })
+        : seccionHoras(k);
     }));
     var sesiones = [].concat.apply([], listas);
 
@@ -676,6 +695,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     sesiones.forEach(function (s) {
       var idx = (+s.dia_semana || 1) - 1; if (idx < 0 || idx > 6) return;
       if (s._gratis && dias[idx].fecha < inicioGratis) return;   // la prueba gratis no empieza hasta el 2-oct
+      if (s._natInicio && fechaISO(dias[idx].fecha) < '2026-10-01') return;  // natación: suelo del 1-oct
       dias[idx].ses.push(s);
     });
     // En cada día, une los grupos que comparten sección+hora+lugar (p. ej. varios
