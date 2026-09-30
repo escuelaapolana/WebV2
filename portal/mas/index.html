@@ -71,7 +71,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     mensajes:'<path d="M20 12a7 7 0 0 1-10 6.3L4 20l1.7-4.2A7 7 0 1 1 20 12z"/>',
     documentos:'<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h4"/>',
     tienda:'<path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
-    contacto:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'
+    contacto:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    recursos:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/>',
+    pagos:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/>',
+    retos:'<circle cx="12" cy="14" r="5"/><path d="M9 9.5 7 3M15 9.5 17 3"/>',
+    liga:'<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+    carga:'<path d="M3 12h4l2 6 4-13 2 8 2-3h4"/>',
+    lesiones:'<rect x="3" y="3" width="18" height="18" rx="5"/><path d="M12 8v8M8 12h8"/>',
+    noticias:'<path d="M4 5h13v14H4z"/><path d="M17 8h3v9a2 2 0 0 1-2 2h-1z"/><path d="M7 8h7M7 11h7M7 14h4"/>'
   };
   function fila(titulo, sub, href, icon) {
     return '<a class="fila-mas" href="' + esc(href) + '"><span class="fm-icbox">' + svg(icon || IC.documentos) + '</span>' +
@@ -79,13 +86,45 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="chev" aria-hidden="true">›</span></a>';
   }
 
+  // ¿Es atleta (algún grupo NO-Cubo)? ¿Academia? → para mostrar sus cosas en «Más»
+  var esAtleta = false, esAcademia = false;
+  try {
+    var m = await APOLANA_PORTAL.misAtletas(perfil.id);
+    var mis = (m && m.data || []).filter(function (a) { return a && a.perfil_id === perfil.id; });
+    var gids = mis.map(function (a) { return a.grupo_id; }).filter(Boolean);
+    var aids = mis.map(function (a) { return a.id; }).filter(Boolean);
+    if (aids.length) {
+      var rag = await sb.from('atleta_grupos').select('grupo_id').in('atleta_id', aids);
+      if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gids.push(x.grupo_id); });
+    }
+    if (gids.length) {
+      var rg = await sb.from('grupos').select('id,nombre,seccion').in('id', gids);
+      if (rg && !rg.error && rg.data) rg.data.forEach(function (g) {
+        if (g.seccion && g.seccion !== 'cubo') esAtleta = true;
+        if (g.nombre && /academia|ac98/i.test(g.nombre)) esAcademia = true;
+      });
+    }
+  } catch (e) {}
+
   var html = '<h1 class="mas-h">Más</h1>' +
-    '<div id="ms-cubo"><div id="ms-cuota"></div></div>' +
-    '<div class="mas-rot">Tú</div>' +
+    '<div id="ms-cubo"><div id="ms-cuota"></div></div>';
+
+  if (esAtleta) {
+    html += '<div class="mas-rot">Tu entreno</div>' +
+      fila('Recursos del grupo', 'Material y recursos', b + 'portal/atleta/#recursos', IC.recursos) +
+      fila('Pagos y recibos', 'Tus recibos y cuotas', b + 'portal/atleta/#pagos', IC.pagos) +
+      fila('Mis retos y medallas', 'Logros y medallas', b + 'portal/retos/', IC.retos) +
+      fila('Liga Apolana', 'Tus pruebas y el ranking', b + 'portal/liga/', IC.liga) +
+      fila('Carga y bienestar', 'Tu diario de entreno', b + 'portal/carga/', IC.carga) +
+      (esAcademia ? fila('Lesiones y disponibilidad', 'Tu parte de lesiones', b + 'portal/lesiones/', IC.lesiones) : '');
+  }
+
+  html += '<div class="mas-rot">Tú</div>' +
       fila('Mi ficha y mis datos', 'Tus datos personales', b + 'portal/perfil/', IC.ficha) +
       fila('Mis mensajes', 'Avisos y mensajes del club', b + 'portal/mensajes/', IC.mensajes) +
       fila('Documentos', 'Circulares y documentos', b + 'portal/documentos/', IC.documentos) +
     '<div class="mas-rot">Del club</div>' +
+      fila('Noticias', 'Novedades del club', b + 'noticias/', IC.noticias) +
       fila('Tienda del club', 'Equipación y ropa', b + 'tienda/', IC.tienda) +
       fila('Contacto', 'Escríbenos', b + 'contacto/', IC.contacto) +
     '<button type="button" class="mas-salir" id="ms-salir">Cerrar sesión</button>';

@@ -217,7 +217,8 @@
         { id: 'inicio',     txt: 'Inicio',     ic: IC.inicio,  url: b + 'portal/inicio/' },
         { id: 'lomio',      txt: 'Lo mío',     ic: IC.lomio,   url: b + 'portal/lo-mio/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda,  url: b + 'portal/calendario/' },
-        { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: tengoZona ? (urlZona + '#mas') : (b + 'portal/mas/') }
+        /* «Más» = página compartida portal/mas/ (no la hoja del inicio del atleta) */
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,     url: b + 'portal/mas/' }
       ];
     }
 
