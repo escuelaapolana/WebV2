@@ -122,6 +122,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      prioriza la sesión cuya `atletas_ids` me incluye (no la primera del grupo). */
   async function entrenoDeHoy() {
     try {
+      var hy = new Date();
+      var hyISO = hy.getFullYear() + '-' + ('0' + (hy.getMonth() + 1)).slice(-2) + '-' + ('0' + hy.getDate()).slice(-2);
+      // Las sesiones de hoy no dependen de las fichas: se lanzan YA, en paralelo.
+      var pRs = Promise.resolve(sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia').eq('publicada', true).eq('fecha', hyISO)).then(function (r) { return r; }, function () { return { error: true }; });
       var m = await APOLANA_PORTAL.misAtletas(perfil.id);
       var fichas = (m && m.data || []).filter(function (a) { return a && (a.perfil_id === perfil.id || a.perfil_padre_id === perfil.id); });
       var gids = [], aids = fichas.map(function (a) { return a.id; }).filter(Boolean);
@@ -130,10 +134,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var rag = await sb.from('atleta_grupos').select('grupo_id').in('atleta_id', aids);
         if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gids.push(x.grupo_id); });
       }
-      var hy = new Date();
-      var hyISO = hy.getFullYear() + '-' + ('0' + (hy.getMonth() + 1)).slice(-2) + '-' + ('0' + hy.getDate()).slice(-2);
-      var rs = await sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia')
-        .eq('publicada', true).eq('fecha', hyISO);
+      var rs = await pRs;   // sesiones de hoy (lanzadas arriba)
       if (!rs || rs.error || !rs.data) return null;
       var noDescanso = function (s) { return (s.papel_dia || s.tipo) !== 'descanso'; };
       var paraMi = function (s) { return s.atletas_ids && s.atletas_ids.length && aids.some(function (id) { return s.atletas_ids.indexOf(id) >= 0; }); };

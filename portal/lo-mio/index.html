@@ -108,6 +108,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   //  QUÉ HACE ESTA PERSONA · sus fichas → sus grupos → secciones
   // ============================================================
+  /* Consultas que NO dependen de las fichas: se LANZAN YA (en paralelo con la
+     cadena fichas→grupos) y se esperan abajo, para que la carga no sea la SUMA
+     de todas las idas-y-vueltas en serie. `lanzar` arranca y nunca rechaza. */
+  function lanzar(q) { return Promise.resolve(q).then(function (r) { return r; }, function () { return { error: true, data: null }; }); }
+  var pPlazas = lanzar(sb.rpc('natacion_mis_plazas'));
+  var pMaster = lanzar(sb.rpc('natacion_master_estado'));
+  var pSes = lanzar(sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia').eq('publicada', true).eq('fecha', HOY_ISO));
+
   var fichas = [];
   try {
     var m = await APOLANA_PORTAL.misAtletas(perfil.id);
@@ -150,18 +158,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } catch (e) {}
   }
 
-  // ---- natación (mis franjas y las de mis hijos) ----
+  // ---- natación (lanzada arriba, en paralelo) ----
   var plazas = [];
-  try {
-    var rp = await sb.rpc('natacion_mis_plazas');
-    if (rp && !rp.error && Array.isArray(rp.data)) plazas = rp.data;
-  } catch (e) {}
+  var rp = await pPlazas;
+  if (rp && !rp.error && Array.isArray(rp.data)) plazas = rp.data;
 
   // ¿Máster de natación? Entonces puede «Cambiar de sesión» (no voy / apuntarme a
   // otra). La tarjeta del bono vive en el home del atleta (portal/atleta/), así
   // que se ofrece un acceso directo desde aquí.
   var esMaster = false;
-  try { var rmm = await sb.rpc('natacion_master_estado'); esMaster = !!(rmm && rmm.data && rmm.data.es_master); } catch (e) {}
+  var rmm = await pMaster;
+  esMaster = !!(rmm && rmm.data && rmm.data.es_master);
 
   // ---- entreno de hoy · SOLO el asignado a MÍ ----
   //  Academia va por atleta (una fila por persona, mismo grupo_id): si casáramos
@@ -170,8 +177,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   //  de grupo SIN lista de atletas (esa sí es para todo el grupo).
   var entrenoHoy = null;
   try {
-    var rs = await sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia')
-      .eq('publicada', true).eq('fecha', HOY_ISO);
+    var rs = await pSes;   // sesiones de hoy, lanzadas arriba en paralelo
     if (rs && !rs.error && rs.data) {
       var noDescanso = function (s) { return (s.papel_dia || s.tipo) !== 'descanso'; };
       var paraMi = function (s) { return s.atletas_ids && s.atletas_ids.length && aids.some(function (id) { return s.atletas_ids.indexOf(id) >= 0; }); };
