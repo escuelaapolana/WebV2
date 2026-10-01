@@ -21,6 +21,7 @@
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
 <script src="../../assets/js/mundos.js" defer></script>
+<script src="../../assets/js/natacion-ficha.js" defer></script>
 <style>
   :root{ --mm-acento:#2F6FA8; }
   body{ background:var(--crema,#FBF9F4); }
@@ -75,9 +76,13 @@
   .na-p{ background:#fff; border-radius:var(--radio,14px); box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:14px 15px; }
   .na-p .fila{ display:flex; align-items:center; gap:11px; }
   .na-p .ava{ width:40px; height:40px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; color:#fff; font-weight:700; font-size:14px; font-family:var(--fuente-titulo); background:var(--mm-acento); }
-  .na-p .nom{ flex:1 1 auto; min-width:0; }
-  .na-p .nom b{ display:block; font-size:15.5px; color:var(--navy); line-height:1.15; }
-  .na-p .cod{ flex:0 0 auto; font-family:var(--fuente-dato); font-size:11.5px; color:var(--texto-tenue); background:var(--crema,#FBF9F4); border:1px solid var(--linea,#EAE3D5); border-radius:8px; padding:4px 8px; }
+  .na-p .nom{ flex:1 1 auto; min-width:0; text-align:left; background:none; border:0; padding:4px 2px; cursor:pointer; font:inherit; border-radius:8px; }
+  .na-p .nom:hover{ background:var(--crema,#FBF9F4); }
+  .na-p .nom b{ display:block; font-size:15.5px; color:var(--navy); line-height:1.15; overflow-wrap:anywhere; }
+  .na-p .nom .cod{ display:block; font-family:var(--fuente-dato); font-size:11px; color:var(--texto-tenue); margin-top:2px; }
+  .na-p .na-enviar{ flex:0 0 auto; width:40px; height:40px; font-size:17px; line-height:1; color:var(--navy,#26374B); background:#E6F2F1; border:1px solid #BEE0DC; border-radius:10px; padding:0; cursor:pointer; }
+  .na-p .na-enviar:disabled{ opacity:.7; cursor:default; }
+  .na-p .na-enviar.ok{ background:#EAF3E3; border-color:#CDE6BE; color:#2E6B3A; }
   .na-fr{ margin-top:11px; padding-top:10px; border-top:1px dashed var(--linea,#EAE3D5); display:flex; flex-direction:column; gap:5px; }
   .na-fr .l{ display:flex; align-items:baseline; gap:9px; font-size:13px; }
   .na-fr .d{ font-weight:600; color:var(--navy); min-width:118px; }
@@ -116,6 +121,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   var FR = {}; (rf.data||[]).forEach(function(f){ FR[f.id]=f; });
   var COD = {}; (ra.error?[]:(ra.data||[])).forEach(function(a){ COD[a.id]=a.codigo; });
+  if (window.APOLANA_NAT_FICHA) APOLANA_NAT_FICHA.init(sb);
 
   // Este mundo = Natación adultos/máster. (La escuela de natación será su propio mundo.)
   var insMaster = (ri.data||[]).filter(function(m){ return m.tipo==='Máster'; });
@@ -165,6 +171,52 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   function nadadores(){
     var busca = '';
+    // Releer SOLO los máster y repintar (tras editar en la ficha).
+    async function recargar(){
+      var ri2 = await sb.from('natacion_inscripciones').select('nombre,tipo,calle,nivel,acceso_id,franja_id').eq('activa', true).eq('tipo','Máster');
+      if (!ri2.error){
+        var pers2 = {};
+        (ri2.data||[]).forEach(function(m){
+          var k = m.acceso_id || ('nom:'+m.nombre);
+          var pe = pers2[k] || (pers2[k] = { nombre:m.nombre, codigo:COD[m.acceso_id]||'', franjas:[] });
+          var f = FR[m.franja_id]; if (f) pe.franjas.push({ dia:f.dia, hora:hhmm(f.hora), calle:m.calle, nivel:m.nivel });
+        });
+        PERSONAS = Object.keys(pers2).map(function(k){ return pers2[k]; });
+        PERSONAS.forEach(function(p){ p.franjas.sort(function(a,b){ return a.dia!==b.dia ? a.dia-b.dia : (a.hora<b.hora?-1:1); }); });
+        PERSONAS.sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; });
+      }
+      pinta();
+    }
+    // Ficha (ver/cambiar nivel, calle, horarios) + enviar correo de acceso. Delegado
+    // en `wrap`, que persiste aunque pinta() recree su contenido.
+    wrap.addEventListener('click', async function(ev){
+      var fic = ev.target.closest ? ev.target.closest('[data-ficha]') : null;
+      if (fic && window.APOLANA_NAT_FICHA){
+        APOLANA_NAT_FICHA.abrir({ codigo: fic.getAttribute('data-ficha'), nombre: fic.getAttribute('data-nom') || '', onCambio: recargar });
+        return;
+      }
+      var btn = ev.target.closest ? ev.target.closest('.na-enviar') : null;
+      if(!btn || btn.disabled) return;
+      var cod = btn.getAttribute('data-cod'); if(!cod) return;
+      if(!confirm('¿Enviar el correo de acceso al nadador?\n\nSi ya tiene cuenta recibe sus horarios; si no, la invitación para crearla.')) return;
+      var txt = btn.textContent; btn.disabled = true; btn.textContent = '…';
+      try {
+        var pr = await sb.rpc('natacion_familia_preparar', { p_codigo: cod });
+        if (pr.error) throw pr.error;
+        var info = pr.data || {}, r, ok;
+        if (info.ya_tiene_cuenta){
+          r = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: cod } });
+          ok = r && r.data && r.data.ok;
+          if(ok){ btn.textContent='✓'; btn.title='Horarios enviados'; btn.classList.add('ok'); }
+          else throw new Error((r && r.data && r.data.mensaje) || 'No se pudo enviar.');
+        } else {
+          r = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico:'master', solo_a: info.email, forzar:true, confirmar:true } });
+          ok = r && r.data && r.data.ok;
+          if(ok){ btn.textContent='✓'; btn.title='Invitación enviada'; btn.classList.add('ok'); }
+          else throw new Error((r && r.data && (r.data.msg||r.data.mensaje)) || 'No se pudo enviar la invitación.');
+        }
+      } catch(e){ btn.disabled=false; btn.textContent=txt; alert((e && e.message) || 'No se pudo enviar. Comprueba que tenga correo guardado.'); }
+    });
     function pinta(){
       var q = busca.trim().toLowerCase();
       var vis = PERSONAS.filter(function(p){ return !q || (p.nombre||'').toLowerCase().indexOf(q)!==-1; });
@@ -172,13 +224,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var fr = p.franjas.map(function(f){ return '<span class="l"><span class="d">'+esc(DIAS[f.dia]+' '+f.hora)+'</span><span class="x">'+esc(f.calle)+' · '+esc(f.nivel||'—')+'</span></span>'; }).join('');
         return '<div class="na-p"><div class="fila">'+
           '<span class="ava">'+esc(ini(p.nombre).toUpperCase())+'</span>'+
-          '<span class="nom"><b>'+esc(p.nombre)+'</b></span>'+
-          (p.codigo?'<span class="cod" title="Código de familia">'+esc(p.codigo)+'</span>':'')+
+          '<button type="button" class="nom"'+(p.codigo?' data-ficha="'+esc(p.codigo)+'" data-nom="'+esc(p.nombre)+'"':'')+' title="Ver y cambiar nivel, calle y horarios">'+
+            '<b>'+esc(p.nombre)+'</b>'+
+            (p.codigo?'<small class="cod">'+esc(p.codigo)+'</small>':'')+
+          '</button>'+
+          (p.codigo?'<button type="button" class="na-enviar" data-cod="'+esc(p.codigo)+'" title="Enviar el correo de acceso (horarios si ya tiene cuenta, invitación si no)">✉</button>':'')+
           '</div><div class="na-fr">'+fr+'</div></div>';
       }).join('') : '<p class="na-msg">Nadie con ese nombre.</p>';
       wrap.innerHTML =
         '<div class="na-subcab"><a class="na-volver" href="'+B+'portal/natacion/">← Resumen</a>'+
-        '<h2>Nadadores</h2><span class="na-cuenta"><b>'+nNad+'</b> en total · mostrando '+vis.length+'</span></div>'+
+        '<h2>Nadadores</h2><span class="na-cuenta"><b>'+PERSONAS.length+'</b> en total · mostrando '+vis.length+'</span></div>'+
         '<div class="na-filtros"><input type="search" id="na-q" placeholder="Buscar por nombre…" value="'+esc(busca)+'"></div>'+
         '<div class="na-personas">'+cards+'</div>';
       var qi = document.getElementById('na-q');

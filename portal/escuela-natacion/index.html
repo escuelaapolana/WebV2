@@ -20,6 +20,7 @@
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
 <script src="../../assets/js/mundos.js" defer></script>
+<script src="../../assets/js/natacion-ficha.js" defer></script>
 <style>
   :root{ --mm-acento:#2E8C86; }
   body{ background:var(--crema,#FBF9F4); }
@@ -42,10 +43,11 @@
   .en-p{ background:#fff; border-radius:var(--radio,14px); box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:14px 15px; }
   .en-p .fila{ display:flex; align-items:center; gap:11px; }
   .en-p .ava{ width:40px; height:40px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; color:#fff; font-weight:700; font-size:14px; font-family:var(--fuente-titulo); background:var(--mm-acento); }
-  .en-p .nom{ flex:1 1 auto; min-width:0; }
-  .en-p .nom b{ display:block; font-size:15.5px; color:var(--navy); line-height:1.15; }
-  .en-p .cod{ flex:0 0 auto; font-family:var(--fuente-dato); font-size:11.5px; color:var(--texto-tenue); background:var(--crema,#FBF9F4); border:1px solid var(--linea,#EAE3D5); border-radius:8px; padding:4px 8px; }
-  .en-p .en-enviar{ flex:0 0 auto; font-size:12.5px; font-weight:600; color:var(--navy,#26374B); background:#E6F2F1; border:1px solid #BEE0DC; border-radius:8px; padding:6px 10px; cursor:pointer; min-height:34px; }
+  .en-p .nom{ flex:1 1 auto; min-width:0; text-align:left; background:none; border:0; padding:4px 2px; cursor:pointer; font:inherit; border-radius:8px; }
+  .en-p .nom:hover{ background:var(--crema,#FBF9F4); }
+  .en-p .nom b{ display:block; font-size:15.5px; color:var(--navy); line-height:1.15; overflow-wrap:anywhere; }
+  .en-p .nom .cod{ display:block; font-family:var(--fuente-dato); font-size:11px; color:var(--texto-tenue); margin-top:2px; }
+  .en-p .en-enviar{ flex:0 0 auto; width:40px; height:40px; font-size:17px; line-height:1; color:var(--navy,#26374B); background:#E6F2F1; border:1px solid #BEE0DC; border-radius:10px; padding:0; cursor:pointer; }
   .en-p .en-enviar:hover{ background:#D6EBE8; }
   .en-p .en-enviar:disabled{ opacity:.7; cursor:default; }
   .en-p .en-enviar.ok{ background:#EAF3E3; border-color:#CDE6BE; color:#2E6B3A; }
@@ -70,22 +72,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   if (p === 'ninos') {
     // Lista de niños/as de la escuela de natación
-    var rf = await sb.from('natacion_franjas').select('id,dia,hora,grupo');
-    var ri = await sb.from('natacion_inscripciones').select('nombre,tipo,calle,nivel,acceso_id,franja_id').eq('activa', true).eq('tipo','Escuela');
-    var ra = await sb.from('natacion_accesos').select('id,codigo');
-    if (rf.error || ri.error) { wrap.innerHTML = '<p class="en-msg">No hemos podido cargar la escuela. Recarga en un momento.</p>'; return; }
-    var FR = {}; (rf.data||[]).forEach(function(f){ FR[f.id]=f; });
-    var COD = {}; (ra.error?[]:(ra.data||[])).forEach(function(a){ COD[a.id]=a.codigo; });
-    var pers = {};
-    (ri.data||[]).forEach(function(m){
-      var k = m.acceso_id || ('nom:'+m.nombre);
-      var pe = pers[k] || (pers[k] = { nombre:m.nombre, codigo:COD[m.acceso_id]||'', franjas:[] });
-      var f = FR[m.franja_id]; if (f) pe.franjas.push({ dia:f.dia, hora:hhmm(f.hora), calle:m.calle, nivel:m.nivel });
-    });
-    var LISTA = Object.keys(pers).map(function(k){ return pers[k]; });
-    LISTA.forEach(function(pe){ pe.franjas.sort(function(a,b){ return a.dia!==b.dia ? a.dia-b.dia : (a.hora<b.hora?-1:1); }); });
-    LISTA.sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; });
-    var total = LISTA.length, busca='';
+    if (window.APOLANA_NAT_FICHA) APOLANA_NAT_FICHA.init(sb);
+    var LISTA = [], total = 0, busca = '';
+    async function cargarLista(){
+      var rf = await sb.from('natacion_franjas').select('id,dia,hora,grupo');
+      var ri = await sb.from('natacion_inscripciones').select('nombre,tipo,calle,nivel,acceso_id,franja_id').eq('activa', true).eq('tipo','Escuela');
+      var ra = await sb.from('natacion_accesos').select('id,codigo');
+      if (rf.error || ri.error) return false;
+      var FR = {}; (rf.data||[]).forEach(function(f){ FR[f.id]=f; });
+      var COD = {}; (ra.error?[]:(ra.data||[])).forEach(function(a){ COD[a.id]=a.codigo; });
+      var pers = {};
+      (ri.data||[]).forEach(function(m){
+        var k = m.acceso_id || ('nom:'+m.nombre);
+        var pe = pers[k] || (pers[k] = { nombre:m.nombre, codigo:COD[m.acceso_id]||'', franjas:[] });
+        var f = FR[m.franja_id]; if (f) pe.franjas.push({ dia:f.dia, hora:hhmm(f.hora), calle:m.calle, nivel:m.nivel });
+      });
+      LISTA = Object.keys(pers).map(function(k){ return pers[k]; });
+      LISTA.forEach(function(pe){ pe.franjas.sort(function(a,b){ return a.dia!==b.dia ? a.dia-b.dia : (a.hora<b.hora?-1:1); }); });
+      LISTA.sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; });
+      total = LISTA.length;
+      return true;
+    }
+    if (!(await cargarLista())) { wrap.innerHTML = '<p class="en-msg">No hemos podido cargar la escuela. Recarga en un momento.</p>'; return; }
     // Enviar los horarios por correo a la familia (Edge correo-natacion-horarios,
     // que comprueba que quien llama es del club y saca el correo del tutor de la
     // base). Delegado en `wrap`, que no se recrea al repintar la lista.
@@ -94,11 +102,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // horarios, correo-natacion-horarios) o no (→ invitación para crearla,
     // familia-invitar). Así desde aquí se avisa a cualquiera, tenga cuenta o no.
     wrap.addEventListener('click', async function(ev){
+      var fic = ev.target.closest ? ev.target.closest('[data-ficha]') : null;
+      if (fic && window.APOLANA_NAT_FICHA){
+        APOLANA_NAT_FICHA.abrir({ codigo: fic.getAttribute('data-ficha'), nombre: fic.getAttribute('data-nom') || '',
+          onCambio: async function(){ await cargarLista(); pinta(); } });
+        return;
+      }
       var btn = ev.target.closest ? ev.target.closest('.en-enviar') : null;
       if(!btn || btn.disabled) return;
       var cod = btn.getAttribute('data-cod'); if(!cod) return;
       if(!confirm('¿Enviar el correo de acceso a la familia?\n\nSi ya tiene cuenta recibe sus horarios; si no, la invitación para crearla.')) return;
-      var txt = btn.textContent; btn.disabled = true; btn.textContent = 'Enviando…';
+      var txt = btn.textContent; btn.disabled = true; btn.textContent = '…';
       try {
         var pr = await sb.rpc('natacion_familia_preparar', { p_codigo: cod });
         if (pr.error) throw pr.error;
@@ -106,12 +120,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         if (info.ya_tiene_cuenta){
           r = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: cod } });
           ok = r && r.data && r.data.ok;
-          if(ok){ btn.textContent = '✓ Horarios enviados'; btn.classList.add('ok'); }
+          if(ok){ btn.textContent = '✓'; btn.title = 'Horarios enviados'; btn.classList.add('ok'); }
           else throw new Error((r && r.data && r.data.mensaje) || 'No se pudo enviar.');
         } else {
           r = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico:(info.tipo==='Máster'?'master':'familia'), solo_a: info.email, forzar:true, confirmar:true } });
           ok = r && r.data && r.data.ok;
-          if(ok){ btn.textContent = '✓ Invitación enviada'; btn.classList.add('ok'); }
+          if(ok){ btn.textContent = '✓'; btn.title = 'Invitación enviada'; btn.classList.add('ok'); }
           else throw new Error((r && r.data && (r.data.msg || r.data.mensaje)) || 'No se pudo enviar la invitación.');
         }
       } catch(e){
@@ -126,9 +140,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var fr = pe.franjas.map(function(f){ return '<span class="l"><span class="d">'+esc(DIAS[f.dia]+' '+f.hora)+'</span><span class="x">'+esc(f.calle)+' · '+esc(f.nivel||'—')+'</span></span>'; }).join('') || '<span class="x" style="font-size:13px;color:var(--texto-suave)">Sin franja asignada aún</span>';
         return '<div class="en-p"><div class="fila">'+
           '<span class="ava">'+esc(ini(pe.nombre).toUpperCase())+'</span>'+
-          '<span class="nom"><b>'+esc(pe.nombre)+'</b></span>'+
-          (pe.codigo?'<span class="cod" title="Código de familia">'+esc(pe.codigo)+'</span>':'')+
-          (pe.codigo?'<button type="button" class="en-enviar" data-cod="'+esc(pe.codigo)+'" title="Enviar el correo de acceso a la familia (horarios si ya tiene cuenta, invitación si no)">✉ Enviar acceso</button>':'')+
+          '<button type="button" class="nom"'+(pe.codigo?' data-ficha="'+esc(pe.codigo)+'" data-nom="'+esc(pe.nombre)+'"':'')+' title="Ver y cambiar nivel, calle y horarios">'+
+            '<b>'+esc(pe.nombre)+'</b>'+
+            (pe.codigo?'<small class="cod">'+esc(pe.codigo)+'</small>':'')+
+          '</button>'+
+          (pe.codigo?'<button type="button" class="en-enviar" data-cod="'+esc(pe.codigo)+'" title="Enviar el correo de acceso a la familia (horarios si ya tiene cuenta, invitación si no)">✉</button>':'')+
           '</div><div class="en-fr">'+fr+'</div></div>';
       }).join('') : '<p class="en-msg">Nadie con ese nombre.</p>';
       wrap.innerHTML =
