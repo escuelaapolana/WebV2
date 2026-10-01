@@ -338,7 +338,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) return responder({ error: "config" }, 503, origen);
   if (!BREVO_API_KEY) return responder({ error: "sin-configurar", mensaje: "Falta BREVO_API_KEY." }, 503, origen);
 
-  // 1 · ¿Quién eres? JWT + admin.
+  // 1 · ¿Quién eres? JWT.
   const cabecera = req.headers.get("Authorization") ?? "";
   const jwt = cabecera.toLowerCase().startsWith("bearer ") ? cabecera.slice(7).trim() : "";
   if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
@@ -346,12 +346,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
     headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` },
   });
   if (!rUser.ok) return responder({ error: "sin_sesion" }, 401, origen);
-  if (!(await comoUsuario("es_admin", jwt))) return responder({ error: "sin_permiso" }, 403, origen);
 
   // 2 · Cuerpo
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* */ }
   const modo = String(cuerpo.modo ?? "prueba").trim();
+
+  // 3 · Permiso. El envío MASIVO y la muestra siguen siendo SOLO admin. El envío
+  //     a UNA familia (modo real + solo_a + forzar + confirmar) lo puede disparar
+  //     también el gestor de natación: es justo lo que hace el alta de un nadador
+  //     (Mario lo crea → le sale su correo), y solo va al correo de ESA familia
+  //     (sale del token en base, no del navegador).
+  const soloUno = modo === "real" &&
+    String(cuerpo.solo_a ?? "").trim() !== "" &&
+    cuerpo.forzar === true && cuerpo.confirmar === true;
+  const esAdmin = await comoUsuario("es_admin", jwt);
+  const permitido = esAdmin || (soloUno && await comoUsuario("soy_gestor_natacion", jwt));
+  if (!permitido) return responder({ error: "sin_permiso" }, 403, origen);
 
   // ¿Escuela (familias) o Máster (adultos)?
   const publico = String(cuerpo.publico ?? "familia").trim();

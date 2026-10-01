@@ -78,6 +78,28 @@
   .ng-toast.ver { opacity:1; transform:translate(-50%,0); }
   .ng-toast.err { background:#B23B3B; }
   .ng-vacio { color:var(--texto-suave,#6E6656); text-align:center; padding:26px 10px; }
+  /* alta de un nadador nuevo */
+  .ng-nuevo { display:inline-flex; align-items:center; gap:7px; margin-bottom:16px; background:#2E7D6B; }
+  .nf-bg { position:fixed; inset:0; background:rgba(46,66,86,.5); z-index:80; display:flex; align-items:flex-start;
+           justify-content:center; padding:clamp(14px,5vh,54px) 14px; overflow:auto; -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+  .nf-bg[hidden] { display:none; }
+  .nf-caja { background:#fff; border-radius:16px; box-shadow:0 30px 70px -25px rgba(46,66,86,.6); width:min(560px,100%); padding:20px 20px 22px; }
+  .nf-caja h2 { font-family:var(--ap-titulo); text-transform:uppercase; font-size:22px; color:var(--navy,#26374B); margin:0 0 3px; }
+  .nf-caja p.ayuda { font-size:13px; color:var(--texto-suave,#6E6656); margin:0 0 14px; line-height:1.4; }
+  .nf-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .nf-campo { display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .nf-campo.ancho { grid-column:1 / -1; }
+  .nf-campo label { font-size:12px; font-weight:600; color:var(--texto-suave,#6E6656); }
+  .nf-campo input, .nf-campo select { width:100%; box-sizing:border-box; }
+  .nf-franjas { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:11px; padding:10px; max-height:190px;
+                overflow:auto; display:flex; flex-direction:column; gap:6px; }
+  .nf-fr { display:flex; align-items:center; gap:9px; font-size:14px; color:var(--navy,#26374B); cursor:pointer; }
+  .nf-fr input { width:auto; }
+  .nf-acc { display:flex; gap:10px; margin-top:16px; }
+  .nf-acc .ng-btn { flex:1; }
+  .nf-cancelar { flex:1; font:inherit; font-weight:600; font-size:14px; background:var(--crema-media,#EFE9DC);
+                 color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:9px 15px; cursor:pointer; }
+  .nf-req { color:#B23B3B; }
 </style>
 </head>
 <body>
@@ -246,6 +268,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     wrap.innerHTML =
       '<h1 class="saludo">'+esc(titulo)+'</h1>' +
       '<p class="sub">Elige qué ver y el día; despliega cada franja para sus calles, cupos y nadadores.</p>' +
+      '<button type="button" class="ng-btn ng-nuevo">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>' +
+        ' Nuevo nadador</button>' +
       tipos +
       '<div class="ng-dias">'+chips+'</div>' + cuerpo + datalistNombres();
   }
@@ -328,8 +353,125 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     await mut(sb.from('natacion_inscripciones').insert(fila), 'Añadido');
   }
 
+  // ============================================================
+  //  ALTA DE UN NADADOR NUEVO (ficha + acceso + franjas + correo)
+  //  ------------------------------------------------------------
+  //  Hace el alta COMPLETA en un paso (RPC natacion_crear_nadador) y
+  //  SIEMPRE manda un correo a la familia: si no tiene cuenta, la
+  //  invitación para crearla (familia-invitar); si ya la tiene, sus
+  //  horarios (correo-natacion-horarios). La ficha se ata a la familia
+  //  sola, por el correo del tutor, cuando abren el enlace.
+  // ============================================================
+  function franjaLabel(f){ return DIAS[f.dia] + ' ' + hhmm(f.hora) + ' · ' + (f.grupo || ''); }
+
+  function abrirForm(){
+    var frOrden = FR.slice().sort(function(a,b){ return (a.dia-b.dia) || (hhmm(a.hora)<hhmm(b.hora)?-1:1); });
+    var checks = frOrden.map(function(f){
+      return '<label class="nf-fr"><input type="checkbox" class="nf-fr-in" value="'+esc(f.id)+'"> '+esc(franjaLabel(f))+'</label>';
+    }).join('') || '<span class="sub">No hay franjas creadas.</span>';
+    var bg = document.createElement('div'); bg.className = 'nf-bg'; bg.id = 'nf-bg';
+    bg.innerHTML =
+      '<div class="nf-caja">' +
+        '<h2>Nuevo nadador</h2>' +
+        '<p class="ayuda">Se crea su ficha, su código de acceso y sus franjas. Y le llega un correo a la familia: ' +
+          'si no tiene cuenta, el enlace para crearla; si ya la tiene, sus horarios.</p>' +
+        '<div class="nf-grid">' +
+          '<div class="nf-campo ancho"><label>Tipo</label><select id="nf-tipo">' +
+            '<option value="Escuela">Escuela de natación (menor)</option>' +
+            '<option value="Máster">Máster (adulto)</option></select></div>' +
+          '<div class="nf-campo"><label>Nombre <span class="nf-req">*</span></label><input type="text" id="nf-nombre" autocomplete="off"></div>' +
+          '<div class="nf-campo"><label>Apellidos</label><input type="text" id="nf-apellidos" autocomplete="off"></div>' +
+          '<div class="nf-campo"><label>DNI</label><input type="text" id="nf-dni" autocomplete="off"></div>' +
+          '<div class="nf-campo"><label>Fecha de nacimiento</label><input type="date" id="nf-nac"></div>' +
+          '<div class="nf-campo ancho"><label id="nf-email-lab">Correo del tutor <span class="nf-req">*</span></label><input type="text" id="nf-email" inputmode="email" autocomplete="off" placeholder="correo@ejemplo.com"></div>' +
+          '<div class="nf-campo" id="nf-campo-tutor"><label>Nombre del tutor</label><input type="text" id="nf-tutor" autocomplete="off"></div>' +
+          '<div class="nf-campo"><label>Teléfono</label><input type="text" id="nf-tel" inputmode="tel" autocomplete="off"></div>' +
+          '<div class="nf-campo"><label>Nivel</label><select id="nf-nivel">'+opciones(NIVELES, NIVELES[2])+'</select></div>' +
+          '<div class="nf-campo"><label>Calle</label><select id="nf-calle">'+opciones(['C1','C2','C3','C4'],'C1')+'</select></div>' +
+          '<div class="nf-campo ancho"><label>Franjas <span class="nf-req">*</span></label><div class="nf-franjas">'+checks+'</div></div>' +
+        '</div>' +
+        '<div class="nf-acc">' +
+          '<button type="button" class="nf-cancelar" id="nf-cancelar">Cancelar</button>' +
+          '<button type="button" class="ng-btn" id="nf-crear">Crear y avisar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(bg);
+    bg.addEventListener('click', function(e){ if (e.target===bg) cerrarForm(); });
+    document.getElementById('nf-cancelar').addEventListener('click', cerrarForm);
+    document.getElementById('nf-crear').addEventListener('click', crearNadador);
+
+    // Escuela vs Máster: en máster el correo es el del PROPIO nadador (adulto,
+    // sin tutor) y la calle suele ser C2. Se precarga según el filtro de arriba.
+    var selTipo = document.getElementById('nf-tipo');
+    if (selTipo){
+      selTipo.value = (TIPO === 'Máster') ? 'Máster' : 'Escuela';
+      var ajustar = function(){
+        var esMas = selTipo.value === 'Máster';
+        var lab = document.getElementById('nf-email-lab');
+        if (lab) lab.innerHTML = (esMas ? 'Correo del nadador' : 'Correo del tutor') + ' <span class="nf-req">*</span>';
+        var ct = document.getElementById('nf-campo-tutor');
+        if (ct) ct.style.display = esMas ? 'none' : '';
+        var cal = document.getElementById('nf-calle');
+        if (cal && esMas && cal.value === 'C1') cal.value = 'C2';
+        if (cal && !esMas && cal.value === 'C2') cal.value = 'C1';
+      };
+      selTipo.addEventListener('change', ajustar);
+      ajustar();
+    }
+
+    var n = document.getElementById('nf-nombre'); if (n) n.focus();
+  }
+  function cerrarForm(){ var bg = document.getElementById('nf-bg'); if (bg) bg.remove(); }
+
+  async function crearNadador(){
+    var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    var nombre = g('nf-nombre'), email = g('nf-email').toLowerCase();
+    var tipo = g('nf-tipo') || 'Escuela';
+    var esMas = tipo === 'Máster';
+    var franjas = [].map.call(document.querySelectorAll('.nf-fr-in:checked'), function(c){ return c.value; });
+    if (!nombre){ toast('Pon el nombre', 'err'); return; }
+    if (!email || email.indexOf('@') < 1){ toast(esMas ? 'Pon el correo del nadador' : 'Pon el correo del tutor', 'err'); return; }
+    if (!franjas.length){ toast('Elige al menos una franja', 'err'); return; }
+    var btn = document.getElementById('nf-crear'); if (btn){ btn.disabled = true; btn.textContent = 'Creando…'; }
+
+    var r = await sb.rpc('natacion_crear_nadador', {
+      p_nombre: nombre, p_apellidos: g('nf-apellidos') || null, p_dni: g('nf-dni') || null,
+      p_fecha_nac: g('nf-nac') || null, p_email_tutor: email, p_nombre_tutor: esMas ? null : (g('nf-tutor') || null),
+      p_telefono_tutor: g('nf-tel') || null, p_franjas: franjas, p_nivel: g('nf-nivel'),
+      p_calle: g('nf-calle') || (esMas ? 'C2' : 'C1'), p_tipo: tipo
+    });
+    if (r.error){
+      toast('No se pudo crear: ' + r.error.message, 'err');
+      if (btn){ btn.disabled = false; btn.textContent = 'Crear y avisar'; }
+      return;
+    }
+    var res = r.data || {};
+
+    // Correo SIEMPRE: invitación si no tiene cuenta, horarios si ya la tiene.
+    var correoOk = false, correoMsg = '';
+    try {
+      if (res.ya_tiene_cuenta){
+        var rc = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: res.codigo } });
+        correoOk = !(rc && rc.error); correoMsg = 'horarios';
+      } else {
+        var ri = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: esMas ? 'master' : 'familia', solo_a: res.email_tutor, forzar:true, confirmar:true } });
+        correoOk = !!(ri && !ri.error && ri.data && ri.data.ok); correoMsg = 'invitación para crear cuenta';
+      }
+    } catch (e){ correoOk = false; }
+
+    cerrarForm();
+    if (correoOk) toast(nombre.split(' ')[0] + ' creada · correo enviado (' + correoMsg + ')');
+    else toast(nombre.split(' ')[0] + ' creada · ⚠ el correo no salió, reintenta con «Horarios»', 'err');
+
+    await recargarIns();
+    var f2 = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,semaforo_forzado,cupos,admite_niveles,criterio').order('dia').order('hora');
+    if (!f2.error) FR = f2.data || FR;
+    pintar();
+  }
+
   // --- eventos ---
   wrap.addEventListener('click', function(ev){
+    if (ev.target.closest && ev.target.closest('.ng-nuevo')){ abrirForm(); return; }
     var cab = ev.target.closest ? ev.target.closest('[data-abrir]') : null;
     if (cab){ var id = cab.getAttribute('data-abrir'); abierta = (abierta===id) ? null : id; pintar(); return; }
     var q = ev.target.closest ? ev.target.closest('.ng-quitar') : null;
