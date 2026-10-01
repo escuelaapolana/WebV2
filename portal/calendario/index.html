@@ -953,6 +953,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     //        normal por RLS (solo staff/responsable), pero la función devuelve
     //        SOLO lo tuyo y lo de tus hijos, así que funciona en cualquier rol.
     //        Es tuyo: se resalta. ---
+    var misNatDH = {};   // día|hora de MIS franjas, para que 6d no las duplique
     try {
       var rmp = await sb.rpc('natacion_mis_plazas');
       var plazas = (rmp && !rmp.error && Array.isArray(rmp.data)) ? rmp.data : [];
@@ -967,6 +968,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var vistoN = {}, d0n = new Date(desde + 'T00:00:00'), d1n = new Date(hasta + 'T00:00:00');
         plazas.forEach(function (p) {
           var dowJs = (Number(p.dia) === 7) ? 0 : Number(p.dia);
+          misNatDH[Number(p.dia) + '|' + hhmm(p.hora)] = true;
           var d = new Date(d0n);
           while (d <= d1n) {
             if (d.getDay() === dowJs) {
@@ -980,6 +982,39 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                   tipoTexto: 'Natación', mio: true, lugar: '',
                   grupo: [p.grupo, p.calle, p.nivel].filter(Boolean).join(' · '),
                   companeros: p.companeros || []
+                });
+              }
+            }
+            d.setDate(d.getDate() + 1);
+          }
+        });
+      }
+    } catch (e) { /* si falla, el resto del calendario sigue */ }
+
+    // --- 6d) NATACIÓN del CLUB (para «Todo el club»): las franjas públicas
+    //        (vista `natacion_vacantes`, que la lee cualquiera; `natacion_franjas`
+    //        está restringida por RLS). Así un socio o alguien del Cubo ve también
+    //        la natación «por si quiere probar». Marcado mio:false → solo en «Todo
+    //        el club». Se saltan las franjas en las que la persona YA está (salen
+    //        en 6b como suyas, en «Lo mío»). ---
+    try {
+      var rnv = await sb.from('natacion_vacantes').select('dia,hora,grupo');
+      if (rnv && !rnv.error && rnv.data && rnv.data.length) {
+        var dnv0 = new Date(desde + 'T00:00:00'), dnv1 = new Date(hasta + 'T00:00:00');
+        rnv.data.forEach(function (fr) {
+          var hh = hhmm(fr.hora);
+          if (misNatDH[Number(fr.dia) + '|' + hh]) return;   // ya es suya
+          var dowJs = (Number(fr.dia) === 7) ? 0 : Number(fr.dia);
+          var d = new Date(dnv0);
+          while (d <= dnv1) {
+            if (d.getDay() === dowJs) {
+              var fe = iso(d);
+              if (fe >= '2026-10-01') {
+                acts.push({
+                  fuente: 'natacion', id: 'natclub-' + fr.dia + '-' + hh + '-' + fe, fecha: fe,
+                  hora: hh, horaFin: '',
+                  titulo: fr.grupo ? 'Natación · ' + fr.grupo : 'Natación',
+                  tipoTexto: 'Natación', grupo: fr.grupo || '', lugar: '', mio: false
                 });
               }
             }
