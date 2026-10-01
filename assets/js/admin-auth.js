@@ -177,13 +177,18 @@
          suplanta a nadie (la RLS sigue mandando). */
       (function () {
         var b = base();
+        /* La app está UNIFICADA: atleta, Cubo, socio y natación entran todos al
+           MISMO portal (Inicio común → Lo mío/Calendario/Más), no a páginas
+           sueltas por rol. Por eso hay UNA sola entrada «La app del miembro» que
+           abre el portal unificado (portal/inicio/), en vez de mandar a
+           portal/atleta/ o portal/cubo-atleta/ —las vistas viejas por rol—. Las
+           que SÍ son herramientas distintas (familia, entrenador, pasar lista,
+           responsable y los mundos de escuela) se mantienen aparte. */
         var VISTAS = [
-          ['Atleta', 'portal/atleta/'],
+          ['La app del miembro', 'portal/inicio/'],
           ['Familia', 'portal/familia/'],
           ['Entrenador', 'portal/entrenador/'],
-          ['El Cubo (atleta)', 'portal/cubo-atleta/'],
           ['El Cubo (pasar lista)', 'portal/cubo-lista/'],
-          ['Socio', 'portal/socio/'],
           ['Responsable de sección', 'portal/responsable/'],
           ['Escuela de natación', 'portal/escuela-natacion/'],
           ['Escuela de atletismo', 'portal/escuela-atletismo/'],

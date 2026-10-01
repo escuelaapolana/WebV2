@@ -46,15 +46,17 @@
     responsable:  { titulo: 'Responsable',   que: 'Lo que gestionas de tu sección.',               va: 'portal/responsable/', mando: true },
     junta:        { titulo: 'Junta',         que: 'El club, sin la parte del dinero.',             va: 'admin/',              mando: false },
     entrenador:   { titulo: 'Entrenador',    que: 'Tus grupos: planificar y pasar lista.',         va: 'portal/entrenador/',  mando: false },
-    atleta:       { titulo: 'Atleta',        que: 'Tus entrenamientos, tus marcas y tus recibos.', va: 'portal/atleta/',      mando: false },
+    /* La app está UNIFICADA: atleta, Cubo y socio entran al MISMO portal
+       (Inicio común → Lo mío/Calendario/Más), que se adapta a lo que hace cada
+       uno. Por eso estos tres van a `portal/inicio/`, no a las páginas viejas
+       por rol (portal/atleta/, portal/cubo-atleta/, portal/socio/), que eran
+       «la versión vieja» al cambiar de papel. Lo suyo (entreno, marcas, cuota,
+       horarios) sigue estando dentro, en «Lo mío». */
+    atleta:       { titulo: 'Atleta',        que: 'Tus entrenamientos, tus marcas y tus recibos.', va: 'portal/inicio/',      mando: false },
     padre:        { titulo: 'Familia',       que: 'La ficha de tus hijos, faltas y pagos.',        va: 'portal/familia/',     mando: false },
-    /* El Cubo, lado de quien ENTRENA (no confundir con `cubo`, que es la
-       gestión). Vista sencilla: horarios de su grupo y su cuota mensual. */
-    'cubo-atleta':{ titulo: 'El Cubo',       que: 'Tus horarios de entrenamiento y tu cuota.',     va: 'portal/cubo-atleta/', mando: false },
+    'cubo-atleta':{ titulo: 'El Cubo',       que: 'Tus horarios de entrenamiento y tu cuota.',     va: 'portal/inicio/',      mando: false },
     'cubo-lista': { titulo: 'Lista del Cubo',que: 'Pasar lista en El Cubo.',                        va: 'portal/cubo-lista/',  mando: false },
-    /* Socio de acceso básico: entra a su zona (noticias del club y
-       actividades a las que apuntarse). No es un papel de entreno. */
-    socio:        { titulo: 'Socio',         que: 'Noticias del club y actividades para apuntarte.', va: 'portal/socio/',      mando: false },
+    socio:        { titulo: 'Socio',         que: 'Noticias del club y actividades para apuntarte.', va: 'portal/inicio/',     mando: false },
     /* Estos dos existen en la base desde las migraciones 109 y 144 y no
        estaban aquí: quien los llevaba veía «cubo» y «escuela» en crudo en
        la franja de arriba, en minúscula y sin explicar qué abren. */
@@ -325,7 +327,11 @@
     var _activo = d.activo;
     for (var _iz = 0; _iz < roles.length; _iz++) {
       var _va = PAPEL[roles[_iz]] && PAPEL[roles[_iz]].va;
-      if (_va && location.pathname.indexOf('/' + _va) !== -1) { _activo = roles[_iz]; break; }
+      /* El portal unificado (portal/inicio/) lo comparten atleta, Cubo y socio,
+         así que la URL NO distingue cuál es: ahí manda el rol_activo real
+         (d.activo) y no se adivina por la dirección. El resto de vistas (panel,
+         entrenador, familia…) sí son únicas y la URL sí las identifica. */
+      if (_va && _va !== 'portal/inicio/' && location.pathname.indexOf('/' + _va) !== -1) { _activo = roles[_iz]; break; }
     }
 
     var fondo = document.createElement('div');
