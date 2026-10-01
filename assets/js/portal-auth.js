@@ -1719,6 +1719,23 @@
          La base ya lo hacía bien: `es_admin()` y `es_staff()` miran
          `coalesce(rol_activo, rol)`. Esto es lo mismo, en la pantalla.
          Con un solo papel concedido no hay nada que elegir: mandan los datos. */
+      /* Zonas que esta persona posee DE VERDAD (por sus datos: ficha propia,
+         hijos, grupos que entrena; o su rol), SIN filtrar por el papel activo.
+         La guardia de zona usa esto: quien actúa como Cubo/familia pero TIENE
+         ficha de atleta puede abrir su página de atleta (p. ej. el autoservicio
+         del bono de natación) sin que se le eche. El filtro de abajo decide solo
+         QUÉ vista se ofrece por defecto, no a qué zonas puede entrar. */
+      var propias = [];
+      if (esEntrenador) propias.push('entrenador');
+      if (esAtleta)     propias.push('atleta');
+      if (esCubo)       propias.push('cubo-atleta');
+      if (esCuboLista)  propias.push('cubo-lista');
+      if (esFamilia)    propias.push('familia');
+      if (rol === 'coordinador') propias.push('coordinador');
+      if (rol === 'socio')       propias.push('socio');
+      if (rol === 'responsable') propias.push('responsable');
+      if (rol === 'admin' || rol === 'tesoreria' || rol === 'contabilidad' || rol === 'junta') propias.push('admin');
+
       var concedidos = (perfil.roles && perfil.roles.length) ? perfil.roles : [];
       if (concedidos.length > 1) {
         esAtleta     = esAtleta     && (rol === 'atleta');
@@ -1758,7 +1775,11 @@
          «familia» SÍ es una vista (las familias de la escuela de natación).
          El socio entra a la suya. */
       var OK4 = ['atleta', 'padre', 'familia', 'entrenador', 'cubo-atleta', 'cubo-lista', 'socio', 'admin', 'responsable'];
-      return lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
+      var resultado = lista.filter(function (p) { return OK4.indexOf(p.clave) !== -1; });
+      /* Se cuelga en el array el conjunto de zonas propias (sin filtrar por rol
+         activo) para que la guardia de zona no eche a quien visita una zona suya. */
+      resultado.zonasPropias = propias.filter(function (k) { return OK4.indexOf(k) !== -1; });
+      return resultado;
     }
 
     function papelActivo(lista) {
@@ -2074,11 +2095,17 @@
            admin puede ver cualquier zona. Nunca redirige desde /portal/ ni desde
            /admin/, para no crear bucles de redirección. */
         var claves = lista.map(function (p) { return p.clave; });
+        /* Para la guardia miramos las zonas que la persona POSEE de verdad (no
+           solo el papel activo): así un máster que actúa como Cubo/familia puede
+           abrir su página de atleta —autoservicio del bono, sus marcas— sin que
+           se le eche. Si por lo que sea no viniera el dato, caemos a las claves
+           activas (comportamiento anterior). */
+        var propias = lista.zonasPropias || claves;
         var ruta = location.pathname;
         if (claves.indexOf('admin') === -1 && ruta.indexOf('/admin/') === -1) {
           for (var k in ZONAS) {
             if (!ZONAS.hasOwnProperty(k) || k === 'admin') continue;
-            if (ruta.indexOf(ZONAS[k].carpeta) !== -1 && claves.indexOf(k) === -1) {
+            if (ruta.indexOf(ZONAS[k].carpeta) !== -1 && propias.indexOf(k) === -1) {
               location.replace(b + 'portal/');
               return;
             }
