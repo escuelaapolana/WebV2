@@ -54,7 +54,9 @@ const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://atletismoapolana.co
 function vuelta(tipo: string, resultado: "hecho" | "cancelado"): string {
   const puesta = Deno.env.get(resultado === "hecho" ? "PAGOS_URL_OK" : "PAGOS_URL_KO");
   if (puesta) return puesta;
-  const destino = tipo === "bono" ? `${URL_BASE}portal/cubo/` : URL_BASE;
+  const destino = tipo === "bono" ? `${URL_BASE}portal/cubo/`
+    : tipo === "recibo" ? `${URL_BASE}portal/inicio/`
+    : URL_BASE;
   return `${destino}?pago=${resultado}`;
 }
 
@@ -149,9 +151,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const clave = String(cuerpo.clave ?? cuerpo.tipo ?? "").trim();
   const atletaId = cuerpo.atleta_id ? String(cuerpo.atleta_id).trim() : null;
+  // Pagar un RECIBO del libro de cobros (pagos): llega su id. El importe y de
+  // quién es se comprueban EN LA BASE (pagos_iniciar_recibo), nunca aquí.
+  const pagoId = cuerpo.pago_id ? String(cuerpo.pago_id).trim() : null;
   // Nota deliberada: si viene un `importe`, se ignora. El precio sale de la base.
 
-  if (!clave) {
+  if (!clave && !pagoId) {
     return responder({ error: "falta_clave", mensaje: "No sabemos qué quieres pagar." }, 400, origen);
   }
 
@@ -180,15 +185,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ---------------------------------------------------------------
   // 4 · Abrir el pago EN LA BASE · aquí es donde nace el importe
   // ---------------------------------------------------------------
-  const rPago = await consulta("rpc/pagos_iniciar", {
-    method: "POST",
-    body: JSON.stringify({
-      p_clave: clave,
-      p_perfil: perfil.id,
-      p_atleta: atletaId,
-      p_metadatos: { origen: "web", nota: cuerpo.nota ?? null },
-    }),
-  });
+  const rPago = pagoId
+    ? await consulta("rpc/pagos_iniciar_recibo", {
+        method: "POST",
+        body: JSON.stringify({ p_pago_id: pagoId, p_perfil: perfil.id }),
+      })
+    : await consulta("rpc/pagos_iniciar", {
+        method: "POST",
+        body: JSON.stringify({
+          p_clave: clave,
+          p_perfil: perfil.id,
+          p_atleta: atletaId,
+          p_metadatos: { origen: "web", nota: cuerpo.nota ?? null },
+        }),
+      });
 
   if (!rPago.ok) {
     const msg = (rPago.datos as { message?: string } | null)?.message ?? "";

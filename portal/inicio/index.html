@@ -53,6 +53,24 @@
   .noti h2{ font-family:var(--ap-titulo); font-weight:700; font-size:18px; line-height:1.2; color:var(--navy,#26374B); margin:3px 0 5px; }
   .noti p{ font-size:14px; line-height:1.5; color:var(--texto-suave,#6E6656); margin:0; }
   .noti .fecha{ font-size:12.5px; color:var(--texto-tenue,#9A927F); margin-top:7px; }
+
+  /* «Por pagar» (adaptativo): solo sale si la persona tiene recibos pendientes */
+  .in-pagar{ background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-left:4px solid #B9762A;
+             border-radius:16px; box-shadow:var(--s1); padding:15px 17px; margin:14px 0 4px; }
+  .in-pagar h2{ font-family:var(--ap-titulo); font-weight:800; text-transform:uppercase; font-size:15px; color:var(--navy,#26374B); margin:0 0 4px; }
+  .in-pagar .rec{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+                  padding:11px 0; border-top:1px solid var(--linea,#EEE8DA); }
+  .in-pagar .rec:first-of-type{ border-top:none; }
+  .in-pagar .rec .info{ flex:1 1 150px; min-width:0; }
+  .in-pagar .rec .con{ font-weight:600; color:var(--navy,#26374B); font-size:15px; }
+  .in-pagar .rec .met{ font-size:12.5px; color:var(--texto-suave,#6E6656); margin-top:2px; }
+  .in-pagar .rec .imp{ font-family:var(--ap-titulo); font-weight:700; font-size:16px; color:var(--navy,#26374B); white-space:nowrap; }
+  .in-pagar .rec .btn{ display:inline-flex; align-items:center; min-height:38px; padding:0 15px; border-radius:999px;
+                       background:var(--navy,#26374B); color:#fff; font-size:13px; font-weight:600; border:none; cursor:pointer; white-space:nowrap; }
+  .in-pagar .rec .btn[disabled]{ opacity:.6; cursor:default; }
+  .in-aviso-pago{ border-radius:12px; padding:11px 14px; font-size:14px; margin:12px 0 2px; }
+  .in-aviso-pago.ok{ background:#E8F3EC; border:1px solid #BFDCC9; color:#1E5631; }
+  .in-aviso-pago.ko{ background:#FBF0E6; border:1px solid #EAD6BE; color:#8A5307; }
 </style>
 </head>
 <body>
@@ -90,6 +108,61 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .order('fecha_publicacion', { ascending: false })
       .limit(20);
     return r.error ? { error: r.error.message, data: [] } : { error: '', data: r.data || [] };
+  }
+
+  function eur(n){ try { return new Intl.NumberFormat('es-ES',{ style:'currency', currency:'EUR' }).format(Number(n||0)); } catch(e){ return (Number(n||0)).toFixed(2)+' €'; } }
+  function periodoTexto(p){ if(!p) return ''; var t=String(p).split('-'); if(t.length!==2) return String(p); return (MESES[(+t[1])-1]||t[1])+' '+t[0]; }
+
+  /* Recibos pendientes de la persona (los suyos y, si es familia, los de sus
+     hijos). La RLS ya solo deja ver los propios. Pagables: no anulados, no
+     pagados y con importe. */
+  async function recibosPorPagar() {
+    try {
+      var m = await APOLANA_PORTAL.misAtletas(perfil.id);
+      var fichas = (m && m.data) || [];
+      var aids = fichas.map(function (a) { return a.id; }).filter(Boolean);
+      if (!aids.length) return { data: [], nombres: {}, varios: false };
+      var nombres = {};
+      fichas.forEach(function (a) { nombres[a.id] = ((a.nombre || '') + ' ' + (a.apellidos || '')).trim(); });
+      var r = await sb.from('pagos')
+        .select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,periodo,metodo,anulado')
+        .in('atleta_id', aids)
+        .order('fecha_vencimiento', { ascending: true, nullsFirst: false });
+      if (r.error) return { data: [], nombres: nombres, varios: aids.length > 1 };
+      var lista = (r.data || []).filter(function (p) {
+        return !p.anulado && p.estado !== 'pagado' && Number(p.importe) > 0;
+      });
+      return { data: lista, nombres: nombres, varios: aids.length > 1 };
+    } catch (e) { return { data: [], nombres: {}, varios: false }; }
+  }
+
+  function pagarHTML(info) {
+    if (!info.data.length) return '';
+    var filas = info.data.map(function (p) {
+      var met = [];
+      if (info.varios && info.nombres[p.atleta_id]) met.push(info.nombres[p.atleta_id]);
+      if (p.periodo) met.push(periodoTexto(p.periodo));
+      else if (p.fecha_vencimiento) met.push('vence el ' + fechaLarga(p.fecha_vencimiento));
+      return '<div class="rec"><div class="info"><div class="con">' + esc(p.concepto || 'Recibo') + '</div>' +
+        (met.length ? '<div class="met">' + esc(met.join(' · ')) + '</div>' : '') + '</div>' +
+        '<div class="imp">' + eur(p.importe) + '</div>' +
+        '<button type="button" class="btn" data-pago="' + esc(p.id) + '">Pagar con tarjeta</button></div>';
+    }).join('');
+    return '<div class="in-pagar"><h2>Por pagar</h2>' + filas + '</div>';
+  }
+
+  async function pagar(pagoId, btn) {
+    var txt = btn.textContent; btn.disabled = true; btn.textContent = 'Abriendo el pago…';
+    var fin = function (msg) { btn.disabled = false; btn.textContent = txt; if (msg) alert(msg); };
+    try {
+      var r = await sb.functions.invoke('pago-crear', { body: { pago_id: pagoId } });
+      if (r.error) {
+        var d = null; try { if (r.error.context && r.error.context.json) d = await r.error.context.json(); } catch (e) {}
+        return fin((d && d.mensaje) || 'No hemos podido abrir el pago. Inténtalo en un minuto.');
+      }
+      if (!r.data || !r.data.url) return fin('No hemos podido abrir el pago. Inténtalo de nuevo.');
+      window.location.href = r.data.url; // a la pasarela de Stripe
+    } catch (e) { fin('No hemos podido conectar con la pasarela. Inténtalo en un minuto.'); }
   }
 
   function actHTML(a) {
@@ -148,13 +221,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   caja.innerHTML =
     '<h1 class="in-saludo">Hola' + (nombre ? ', ' + esc(nombre) : '') + '</h1>' +
     '<p class="in-sub">' + esc(saludoFecha) + '</p>' +
+    '<div id="in-aviso-pago"></div>' +
     '<div id="in-hoy"></div>' +
+    '<div id="in-pagar"></div>' +
     '<div id="in-act"></div>' +
     '<div class="in-rot">Noticias del club</div>' +
     '<div id="in-noti"><div class="ap-esq" data-esq="filas:2"></div></div>';
 
-  var res = await Promise.all([actividades(), noticias(), entrenoDeHoy()]);
-  var act = res[0], noti = res[1], hoy = res[2];
+  // Aviso tras volver de la pasarela (?pago=hecho / cancelado)
+  try {
+    var qp = new URLSearchParams(location.search).get('pago');
+    var cav = document.getElementById('in-aviso-pago');
+    if (qp === 'hecho') cav.outerHTML = '<div class="in-aviso-pago ok" id="in-aviso-pago">¡Pago recibido! Gracias. Puede tardar unos segundos en actualizarse.</div>';
+    else if (qp === 'cancelado') cav.outerHTML = '<div class="in-aviso-pago ko" id="in-aviso-pago">Has salido sin pagar. Puedes intentarlo cuando quieras.</div>';
+  } catch (e) {}
+
+  var res = await Promise.all([actividades(), noticias(), entrenoDeHoy(), recibosPorPagar()]);
+  var act = res[0], noti = res[1], hoy = res[2], recibos = res[3];
+
+  // Recibos por pagar (solo si hay)
+  var cP = document.getElementById('in-pagar');
+  if (cP) {
+    cP.innerHTML = pagarHTML(recibos);
+    cP.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('.btn[data-pago]') : null;
+      if (btn) pagar(btn.getAttribute('data-pago'), btn);
+    });
+  }
 
   // Entreno de hoy (solo si la persona entrena hoy)
   var cH = document.getElementById('in-hoy');
