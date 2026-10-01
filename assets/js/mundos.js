@@ -230,6 +230,55 @@
       '.mh-stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--mm-acento,#2F6FA8);opacity:.9}' +
       '.mh-stat b{font-family:var(--fuente-titulo);font-weight:700;font-size:clamp(26px,3vw,34px);color:var(--navy,#2E4256);line-height:1;display:block}' +
       '.mh-stat span{font-size:12.5px;color:var(--texto-suave,#6E6656);margin-top:5px;display:block}';
+
+    /* --- NAVEGACIÓN DE MUNDOS EN MÓVIL (<900px) ---------------------------
+       La lateral es solo de PC. En el móvil, dentro de un mundo, hacía falta
+       una barra para moverse: a otra sección del mundo, cambiar de mundo o
+       salir a tu portal. Antes no había NINGUNA y en una subpágina (p. ej.
+       «Asistencia») te quedabas sin salida. Solo aparece en páginas de mundo
+       del portal (body.mm-on); en el panel viejo (/admin/) manda su barra. */
+    css.textContent +=
+      '.mm-tab{display:none}' +
+      '.mm-sheet-bg{display:none;position:fixed;inset:0;z-index:700;background:rgba(46,66,86,.45);opacity:0;transition:opacity .18s ease}' +
+      '.mm-sheet-bg.ver{opacity:1}' +
+      '.mm-sheet{position:fixed;left:0;right:0;bottom:0;z-index:701;box-sizing:border-box;max-height:86vh;overflow:auto;' +
+        '-webkit-overflow-scrolling:touch;background:var(--crema,#FBF9F4);border-top-left-radius:16px;border-top-right-radius:16px;' +
+        'box-shadow:0 -20px 44px -22px rgba(46,66,86,.55);transform:translateY(100%);transition:transform .22s ease;' +
+        'padding:16px 16px calc(20px + env(safe-area-inset-bottom))}' +
+      '.mm-sheet.ver{transform:none}' +
+      '.mm-sheet-cab{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:2px}' +
+      '.mm-sheet-cab h2{margin:0;font-family:var(--fuente-titulo,inherit);text-transform:uppercase;font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
+      '.mm-sheet-x{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:1px solid var(--linea-borde,#D4CBB9);background:#fff;color:var(--texto-suave,#6E6656);font-family:inherit;font-size:16px;line-height:1;cursor:pointer}' +
+      '.mm-srot{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--texto-suave,#6E6656);margin:16px 2px 8px}' +
+      '.mm-row,.mm-wrow{display:flex;align-items:center;gap:12px;min-height:48px;box-sizing:border-box;padding:10px 13px;background:#fff;' +
+        'border:1px solid var(--linea-marcada,#E4DCCB);border-radius:13px;margin-bottom:8px;text-decoration:none;color:var(--navy,#2E4256);' +
+        'font-size:15px;line-height:1.2;box-shadow:0 5px 14px -12px rgba(46,66,86,.32)}' +
+      '.mm-row .mm-ic{flex:0 0 22px;width:22px;height:22px;display:grid;place-items:center;color:var(--mm-acento,#2F6FA8)}' +
+      '.mm-row .mm-ic svg{width:20px;height:20px}' +
+      '.mm-row .mm-rt,.mm-wrow .mm-rt{flex:1 1 auto;min-width:0}' +
+      '.mm-row.act{border-color:var(--mm-acento,#2F6FA8);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 8%, #fff)}' +
+      '.mm-row.act .mm-rt{font-weight:700}' +
+      '.mm-wrow .pt{flex:0 0 auto;width:12px;height:12px;border-radius:50%;background:var(--pt);box-shadow:0 0 0 3px color-mix(in srgb, var(--pt) 16%, transparent)}' +
+      '.mm-wrow.act{border-color:var(--pt);background:color-mix(in srgb, var(--pt) 10%, #fff)}' +
+      '.mm-wrow.act .mm-rt{font-weight:700}' +
+      '.mm-salir{display:block;width:100%;text-align:center;margin-top:16px;padding:12px;background:none;border:0;' +
+        'font-family:inherit;font-size:14px;font-weight:600;color:var(--azul-oscuro,#2F6FA8);text-decoration:underline;cursor:pointer}' +
+      '@media (max-width:899px){' +
+        'body.mm-on.pt-con-tabbar,body.mm-on{padding-bottom:calc(80px + env(safe-area-inset-bottom)) !important}' +
+        'body.mm-on .mm-tab{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);' +
+          'bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;box-sizing:border-box;max-width:calc(100% - 20px);' +
+          'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
+          'border:1px solid rgba(30,45,65,.08);border-radius:26px;padding:6px;' +
+          'box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
+        '.mm-tab .mm-tb{flex:1 1 0;min-width:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
+          'min-height:52px;padding:7px 10px;border-radius:20px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
+          'background:none;border:0;cursor:pointer;font-family:inherit}' +
+        '.mm-tab .mm-tb .mm-ti{display:grid;place-items:center}' +
+        '.mm-tab .mm-tb svg{width:23px;height:23px}' +
+        '.mm-tab .mm-tb span:not(.mm-ti){font-size:10.5px;font-weight:600;line-height:1.1}' +
+        '.mm-tab .mm-tb.act{background:var(--mm-acento,#2E4256);color:#fff}' +
+      '}' +
+      '@media (min-width:900px){.mm-tab,.mm-sheet,.mm-sheet-bg{display:none !important}}';
     document.head.appendChild(css);
   }
 
@@ -460,6 +509,87 @@
 
     var box = side.querySelector('.mm-worlds');
     cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, M.key); });
+
+    montarBarraMovil(M);   // en móvil, la barra de navegación del mundo
+  }
+
+  /* ---------- barra de mundo para MÓVIL (<900px) ----------
+     Tres pestañas: el Resumen del mundo (sus tarjetas), «Secciones» (una hoja
+     con todas las pantallas del mundo + cambiar de mundo + salir a tu portal)
+     y tu portal personal. Reemplaza a la barra personal, que aquí se oculta. */
+  var _menuIco = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+    '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
+  function montarBarraMovil(M) {
+    if (document.querySelector('.mm-tab')) return;
+    var acento = M.dot, salir = B + 'portal/';
+
+    var bar = document.createElement('nav');
+    bar.className = 'mm-tab';
+    bar.style.setProperty('--mm-acento', acento);
+    bar.setAttribute('aria-label', 'Navegación de ' + M.nombre);
+    bar.innerHTML =
+      '<a class="mm-tb act" href="' + esc(M.home) + '"><span class="mm-ti">' + ico('grid') + '</span><span>Mundo</span></a>' +
+      '<button type="button" class="mm-tb mm-menu" aria-haspopup="dialog"><span class="mm-ti">' + _menuIco + '</span><span>Secciones</span></button>' +
+      '<a class="mm-tb" href="' + esc(salir) + '"><span class="mm-ti">' + ico('user') + '</span><span>Mi portal</span></a>';
+    document.body.appendChild(bar);
+
+    var bg = document.createElement('div'); bg.className = 'mm-sheet-bg';
+    var sheet = document.createElement('div');
+    sheet.className = 'mm-sheet';
+    sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true');
+    sheet.setAttribute('aria-label', 'Secciones de ' + M.nombre);
+    sheet.style.setProperty('--mm-acento', acento);
+
+    function screensSheet() {
+      return (M.screens || []).map(function (s) {
+        var act = s.key === (CFG.screen || 'resumen');
+        return '<a class="mm-row' + (act ? ' act' : '') + '" href="' + esc(s.url) + '"' +
+          (s.ext ? ' target="_blank" rel="noopener"' : '') + '>' +
+          '<span class="mm-ic">' + ico(s.i) + '</span>' +
+          '<span class="mm-rt">' + esc(s.t) + (s.ext ? ' ↗' : '') + '</span></a>';
+      }).join('');
+    }
+    function worldsSheet(keys) {
+      var list = (!keys) ? MUNDOS : MUNDOS.filter(function (w) { return keys.indexOf(w.key) !== -1; });
+      if (!list.some(function (w) { return w.key === M.key; })) {
+        var a = mundoPorClave(M.key); if (a) list = [a].concat(list);
+      }
+      return list.map(function (w) {
+        var act = w.key === M.key;
+        return '<a class="mm-wrow' + (act ? ' act' : '') + '" href="' + esc(w.home) + '" style="--pt:' + w.dot + '">' +
+          '<span class="pt"></span><span class="mm-rt">' + esc(w.nombre) + '</span></a>';
+      }).join('');
+    }
+    function pinta(keys) {
+      sheet.innerHTML =
+        '<div class="mm-sheet-cab"><h2>' + esc(M.nombre.replace(/\s*·\s*Club$/, '')) + '</h2>' +
+          '<button type="button" class="mm-sheet-x" aria-label="Cerrar">✕</button></div>' +
+        '<div class="mm-srot">Secciones</div>' + screensSheet() +
+        '<div class="mm-srot">Cambiar de mundo</div>' + worldsSheet(keys) +
+        '<a class="mm-salir" href="' + esc(salir) + '">Salir a mi portal</a>';
+      var x = sheet.querySelector('.mm-sheet-x'); if (x) x.addEventListener('click', cerrar);
+    }
+    var cache = leerCache();
+    pinta(cache === undefined ? [M.key] : cache);
+    cargarMisMundos(function (val) { pinta(val); });
+
+    document.body.appendChild(bg);
+    document.body.appendChild(sheet);
+
+    function abrir() {
+      bg.style.display = 'block';
+      void bg.offsetWidth;                       // fuerza el reflow para que la transición se vea
+      bg.classList.add('ver'); sheet.classList.add('ver');
+      document.body.style.overflow = 'hidden';
+    }
+    function cerrar() {
+      bg.classList.remove('ver'); sheet.classList.remove('ver');
+      document.body.style.overflow = '';
+      setTimeout(function () { bg.style.display = 'none'; }, 220);
+    }
+    bar.querySelector('.mm-menu').addEventListener('click', abrir);
+    bg.addEventListener('click', cerrar);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar);
