@@ -188,6 +188,12 @@
   .modal-caja h2 { font-family: var(--fuente-titulo); font-weight: 700; text-transform: uppercase;
                    font-size: 21px; color: var(--navy); margin: 0 0 4px; }
   .modal-caja .sub-ficha { font-size: 14px; color: var(--texto-suave); margin: 0 0 6px; }
+  .resumen-cobro { margin: 16px 0 4px; padding: 13px 15px; border-radius: 12px;
+    background: var(--crema, #F6F1E7); border: 1px solid var(--linea, #E6DFCF);
+    font-size: 15px; color: var(--navy); line-height: 1.4; }
+  .resumen-cobro b { font-weight: 700; }
+  .resumen-cobro .total { font-family: var(--fuente-titulo); font-size: 19px; }
+  .resumen-cobro .aviso { display: block; margin-top: 4px; font-size: 13px; color: var(--texto-suave); }
 
   label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 10px 0 5px; }
   input, textarea, select { width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde);
@@ -252,6 +258,7 @@
         <div class="acciones">
           <a class="b2" href="../cubo-pagos/" style="background:#C36A4E;border-color:#C36A4E;color:#fff;font-weight:600">💳 Pagos de El Cubo →</a>
           <button type="button" class="b2" id="exportar">Exportar</button>
+          <button type="button" class="b2" id="cobrar-grupo">👥 Cobrar a un grupo</button>
           <button type="button" class="btn btn--primario btn--mini" id="nuevo-recibo">+ Nuevo recibo</button>
         </div>
       </div>
@@ -411,6 +418,71 @@
           <button class="b2" type="button" id="cancelar">Cancelar</button>
           <span class="msg" id="msg-form"></span>
           <button class="btn--peligro oculto" type="button" id="borrar">Borrar el recibo</button>
+        </div>
+      </form>
+      </div>
+    </div>
+
+    <!-- ===== COBRAR A UN GRUPO (encima de la lista) ===== -->
+    <div class="encima oculto" id="panel-grupo">
+      <div class="modal-caja">
+      <h2>Cobrar a un grupo</h2>
+      <p class="sub-ficha">Crea de una vez un recibo igual para cada atleta del grupo. Si alguien ya tiene uno con el mismo concepto y periodo, se salta (no se duplica).</p>
+      <form id="form-grupo">
+        <div class="grid2">
+          <div>
+            <label for="g-grupo">Grupo</label>
+            <select id="g-grupo" required><option value="">— Elige un grupo —</option></select>
+          </div>
+          <div>
+            <label for="g-concepto">Concepto</label>
+            <input type="text" id="g-concepto" required placeholder="Cuota de entrenamiento · octubre">
+          </div>
+        </div>
+        <div class="grid3">
+          <div>
+            <label for="g-importe">Importe por persona (€)</label>
+            <input type="number" id="g-importe" step="0.01" min="0" required placeholder="45.00">
+          </div>
+          <div>
+            <label for="g-vence">Vence el</label>
+            <input type="date" id="g-vence">
+          </div>
+          <div>
+            <label for="g-periodo">Periodo</label>
+            <input type="month" id="g-periodo">
+          </div>
+        </div>
+        <div class="grid3">
+          <div>
+            <label for="g-cuenta">Cuenta</label>
+            <select id="g-cuenta">
+              <option value="">— Sin definir —</option>
+              <option value="escuela">Escuela</option>
+              <option value="club">Club</option>
+            </select>
+          </div>
+          <div>
+            <label for="g-metodo">Forma de cobro</label>
+            <select id="g-metodo">
+              <option value="domiciliado">Domiciliado</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="otro">Otro</option>
+              <option value="">— Sin definir —</option>
+            </select>
+          </div>
+          <div>
+            <label for="g-notas">Notas</label>
+            <input type="text" id="g-notas" placeholder="Opcional">
+          </div>
+        </div>
+        <div class="resumen-cobro" id="g-preview" aria-live="polite">Elige un grupo y pon el importe para ver el total.</div>
+        <div class="pie-form">
+          <button class="btn btn--primario btn--mini" type="submit" id="g-enviar">Crear los recibos</button>
+          <button class="b2" type="button" id="g-cancelar">Cancelar</button>
+          <span class="msg" id="msg-grupo"></span>
         </div>
       </form>
       </div>
@@ -1031,6 +1103,124 @@ APOLANA_ADMIN.listo(function (sb) {
     cargar();
   });
 
+  /* ---------- cobrar a un grupo entero ----------
+     Un recibo igual para cada atleta del grupo, de una tacada (RPC
+     cobro_grupo_crear, que salta a quien ya tenga uno igual sin anular). */
+  var SECCION_LBL = {
+    'competicion': 'Competición', 'cubo': 'El Cubo', 'escuela': 'Escuela de atletismo',
+    'escuela-natacion': 'Escuela de natación', 'natacion': 'Natación', 'running': 'Running'
+  };
+  var gruposCargados = false;
+  async function cargarGruposCobro() {
+    var rg = await sb.from('grupos').select('id,nombre,seccion').eq('activo', true);
+    var ra = await sb.from('atletas').select('grupo_id,estado');
+    if (rg.error || ra.error) {
+      $('g-grupo').innerHTML = '<option value="">No se pudieron leer los grupos</option>';
+      return;
+    }
+    var cuenta = {};
+    (ra.data || []).forEach(function (a) {
+      if (!a.grupo_id) return;
+      if ((a.estado || 'activo') === 'baja') return;
+      cuenta[a.grupo_id] = (cuenta[a.grupo_id] || 0) + 1;
+    });
+    var lista = (rg.data || [])
+      .map(function (g) { return { id: g.id, nombre: g.nombre, seccion: g.seccion, n: cuenta[g.id] || 0 }; })
+      .filter(function (g) { return g.n > 0; })
+      .sort(function (a, b) {
+        var sa = SECCION_LBL[a.seccion] || a.seccion || '', sb2 = SECCION_LBL[b.seccion] || b.seccion || '';
+        if (sa !== sb2) return sa < sb2 ? -1 : 1;
+        return (a.nombre || '') < (b.nombre || '') ? -1 : 1;
+      });
+    if (!lista.length) {
+      $('g-grupo').innerHTML = '<option value="">No hay grupos con atletas</option>';
+      return;
+    }
+    $('g-grupo').innerHTML = '<option value="">— Elige un grupo —</option>' +
+      lista.map(function (g) {
+        var secc = SECCION_LBL[g.seccion] || g.seccion || '';
+        return '<option value="' + g.id + '" data-n="' + g.n + '">' +
+          esc(g.nombre) + (secc ? ' · ' + esc(secc) : '') + ' (' + g.n + ')</option>';
+      }).join('');
+    gruposCargados = true;
+  }
+
+  function grupoN() {
+    var op = $('g-grupo').options[$('g-grupo').selectedIndex];
+    return op ? (parseInt(op.getAttribute('data-n'), 10) || 0) : 0;
+  }
+  function previewGrupo() {
+    var n = grupoN(), imp = Number($('g-importe').value);
+    if (!$('g-grupo').value || !(imp > 0)) {
+      $('g-preview').innerHTML = 'Elige un grupo y pon el importe para ver el total.';
+      return;
+    }
+    $('g-preview').innerHTML = 'Se crearán hasta <b>' + n + '</b> recibo' + (n === 1 ? '' : 's') +
+      ' de <b>' + eur(imp) + '</b> cada uno. Total: <span class="total">' + eur(n * imp) + '</span>' +
+      '<span class="aviso">A quien ya tenga un recibo con el mismo concepto y periodo no se le vuelve a crear.</span>';
+  }
+
+  function abrirGrupo() {
+    $('form-grupo').reset();
+    $('g-metodo').value = 'domiciliado';
+    $('msg-grupo').textContent = ''; $('msg-grupo').className = 'msg';
+    if (!gruposCargados) cargarGruposCobro().then(previewGrupo);
+    previewGrupo();
+    $('panel-grupo').classList.remove('oculto');
+    $('panel-grupo').scrollTop = 0;
+  }
+  function cerrarGrupo() { $('panel-grupo').classList.add('oculto'); }
+
+  $('cobrar-grupo').addEventListener('click', abrirGrupo);
+  $('g-cancelar').addEventListener('click', cerrarGrupo);
+  $('panel-grupo').addEventListener('click', function (e) { if (e.target === this) cerrarGrupo(); });
+  $('g-grupo').addEventListener('change', previewGrupo);
+  $('g-importe').addEventListener('input', previewGrupo);
+  $('g-vence').addEventListener('change', function () {
+    if (!$('g-periodo').value && $('g-vence').value) $('g-periodo').value = $('g-vence').value.slice(0, 7);
+  });
+
+  $('form-grupo').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var grupo = $('g-grupo').value;
+    var concepto = $('g-concepto').value.trim();
+    var importe = Number($('g-importe').value);
+    var n = grupoN();
+    if (!grupo) { $('msg-grupo').textContent = 'Elige un grupo.'; $('msg-grupo').className = 'msg error'; return; }
+    if (!concepto) { $('msg-grupo').textContent = 'Falta el concepto.'; $('msg-grupo').className = 'msg error'; return; }
+    if (!(importe > 0)) { $('msg-grupo').textContent = 'El importe debe ser mayor que 0.'; $('msg-grupo').className = 'msg error'; return; }
+
+    var nombreGrupo = ($('g-grupo').options[$('g-grupo').selectedIndex].text || '').replace(/\s*\(\d+\)\s*$/, '');
+    var ok = await apoConfirm({
+      titulo: 'Crear los recibos',
+      texto: 'Vas a crear hasta ' + n + ' recibo' + (n === 1 ? '' : 's') + ' de ' + eur(importe) +
+             ' (total ' + eur(n * importe) + ') para «' + nombreGrupo + '», concepto «' + concepto + '».'
+    });
+    if (!ok) return;
+
+    $('msg-grupo').textContent = 'Creando…'; $('msg-grupo').className = 'msg';
+    $('g-enviar').disabled = true;
+    var r = await sb.rpc('cobro_grupo_crear', {
+      p_grupo: grupo,
+      p_concepto: concepto,
+      p_importe: importe,
+      p_cuenta: $('g-cuenta').value || null,
+      p_periodo: $('g-periodo').value || ($('g-vence').value ? $('g-vence').value.slice(0, 7) : null),
+      p_vencimiento: $('g-vence').value || null,
+      p_metodo: $('g-metodo').value || null,
+      p_notas: $('g-notas').value.trim() || null
+    });
+    $('g-enviar').disabled = false;
+    if (r.error) { $('msg-grupo').textContent = 'Error: ' + r.error.message; $('msg-grupo').className = 'msg error'; return; }
+    var d = r.data || {};
+    var msg = 'Creados ' + (d.creados || 0) + ' recibo' + ((d.creados === 1) ? '' : 's') +
+              ' (' + eur(d.total || 0) + ')' +
+              (d.omitidos ? '. ' + d.omitidos + ' ya los tenían, no se duplicaron.' : '.');
+    cerrarGrupo();
+    apoToast(msg, 'ok');
+    cargar();
+  });
+
   /* ---------- exportar lo que se está viendo ----------
      Solo lo que sale en la lista: ni correos ni teléfonos de las familias. */
   $('exportar').addEventListener('click', function () {
@@ -1166,6 +1356,7 @@ APOLANA_ADMIN.listo(function (sb) {
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (!$('panel-info').classList.contains('oculto')) { cerrarInfo(); return; }
+    if (!$('panel-grupo').classList.contains('oculto')) { cerrarGrupo(); return; }
     if (!$('panel-form').classList.contains('oculto')) cerrarForm();
   });
 
