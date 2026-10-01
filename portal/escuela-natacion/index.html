@@ -89,17 +89,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // Enviar los horarios por correo a la familia (Edge correo-natacion-horarios,
     // que comprueba que quien llama es del club y saca el correo del tutor de la
     // base). Delegado en `wrap`, que no se recrea al repintar la lista.
-    wrap.addEventListener('click', function(ev){
+    // Enviar el correo de acceso a la familia. Botón INTELIGENTE: la RPC
+    // natacion_familia_preparar dice si la familia ya tiene cuenta (→ sus
+    // horarios, correo-natacion-horarios) o no (→ invitación para crearla,
+    // familia-invitar). Así desde aquí se avisa a cualquiera, tenga cuenta o no.
+    wrap.addEventListener('click', async function(ev){
       var btn = ev.target.closest ? ev.target.closest('.en-enviar') : null;
       if(!btn || btn.disabled) return;
       var cod = btn.getAttribute('data-cod'); if(!cod) return;
-      if(!confirm('¿Enviar los horarios de natación por correo a la familia?')) return;
+      if(!confirm('¿Enviar el correo de acceso a la familia?\n\nSi ya tiene cuenta recibe sus horarios; si no, la invitación para crearla.')) return;
       var txt = btn.textContent; btn.disabled = true; btn.textContent = 'Enviando…';
-      sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: cod } }).then(function(r){
-        var d = r && r.data;
-        if(d && d.ok){ btn.textContent = '✓ Enviado'; btn.classList.add('ok'); }
-        else { btn.disabled = false; btn.textContent = txt; alert((d && d.mensaje) || 'No se pudo enviar. Comprueba que la familia tenga un correo guardado.'); }
-      }).catch(function(){ btn.disabled = false; btn.textContent = txt; alert('No se pudo enviar. Inténtalo de nuevo en un momento.'); });
+      try {
+        var pr = await sb.rpc('natacion_familia_preparar', { p_codigo: cod });
+        if (pr.error) throw pr.error;
+        var info = pr.data || {}, r, ok;
+        if (info.ya_tiene_cuenta){
+          r = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: cod } });
+          ok = r && r.data && r.data.ok;
+          if(ok){ btn.textContent = '✓ Horarios enviados'; btn.classList.add('ok'); }
+          else throw new Error((r && r.data && r.data.mensaje) || 'No se pudo enviar.');
+        } else {
+          r = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico:(info.tipo==='Máster'?'master':'familia'), solo_a: info.email, forzar:true, confirmar:true } });
+          ok = r && r.data && r.data.ok;
+          if(ok){ btn.textContent = '✓ Invitación enviada'; btn.classList.add('ok'); }
+          else throw new Error((r && r.data && (r.data.msg || r.data.mensaje)) || 'No se pudo enviar la invitación.');
+        }
+      } catch(e){
+        btn.disabled = false; btn.textContent = txt;
+        alert((e && e.message) || 'No se pudo enviar. Comprueba que la familia tenga un correo guardado.');
+      }
     });
     function pinta(){
       var q = busca.trim().toLowerCase();
@@ -110,7 +128,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<span class="ava">'+esc(ini(pe.nombre).toUpperCase())+'</span>'+
           '<span class="nom"><b>'+esc(pe.nombre)+'</b></span>'+
           (pe.codigo?'<span class="cod" title="Código de familia">'+esc(pe.codigo)+'</span>':'')+
-          (pe.codigo?'<button type="button" class="en-enviar" data-cod="'+esc(pe.codigo)+'" title="Enviar los horarios por correo a la familia">✉ Horarios</button>':'')+
+          (pe.codigo?'<button type="button" class="en-enviar" data-cod="'+esc(pe.codigo)+'" title="Enviar el correo de acceso a la familia (horarios si ya tiene cuenta, invitación si no)">✉ Enviar acceso</button>':'')+
           '</div><div class="en-fr">'+fr+'</div></div>';
       }).join('') : '<p class="en-msg">Nadie con ese nombre.</p>';
       wrap.innerHTML =
