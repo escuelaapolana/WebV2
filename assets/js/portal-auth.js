@@ -1553,14 +1553,20 @@
        base no le va a dejar entrar. Para volver está la banda de
        arriba, que en ese caso sale siempre (assets/js/papeles.js).
        -------------------------------------------------------- */
+    /* `url` = a dónde se ENTRA (incl. el salto directo al abrir la app); `carpeta`
+       = cómo se RECONOCE la zona (la guardia y papelActivo). La app está unificada:
+       atleta, Cubo y socio ENTRAN al portal unificado (portal/inicio/), pero su
+       carpeta sigue siendo la suya (portal/inicio/ no es carpeta de ninguna zona,
+       así que la guardia no rebota a quien aterriza ahí). Antes url=portal/atleta/
+       etc. → al abrir la app se abría «la versión vieja». */
     var ZONAS = {
       entrenador:  { titulo: 'Entrenador',     desc: 'Tus grupos: planificar y leer el feedback.', url: b + 'portal/entrenador/',  carpeta: '/portal/entrenador/' },
-      atleta:      { titulo: 'Atleta',         desc: 'Tus entrenamientos y tus marcas.',           url: b + 'portal/atleta/',      carpeta: '/portal/atleta/' },
-      'cubo-atleta': { titulo: 'El Cubo',     desc: 'Tus clases, horarios y tu cuota.',           url: b + 'portal/cubo-atleta/', carpeta: '/portal/cubo-atleta/' },
+      atleta:      { titulo: 'Atleta',         desc: 'Tus entrenamientos y tus marcas.',           url: b + 'portal/inicio/',      carpeta: '/portal/atleta/' },
+      'cubo-atleta': { titulo: 'El Cubo',     desc: 'Tus clases, horarios y tu cuota.',           url: b + 'portal/inicio/',      carpeta: '/portal/cubo-atleta/' },
       'cubo-lista': { titulo: 'Lista del Cubo', desc: 'Pasar lista en El Cubo.',                  url: b + 'portal/cubo-lista/',  carpeta: '/portal/cubo-lista/' },
       familia:     { titulo: 'Familia',        desc: 'Ficha de tus hijos, faltas y pagos.',        url: b + 'portal/familia/',     carpeta: '/portal/familia/' },
       coordinador: { titulo: 'Coordinación',   desc: 'Los grupos de tu sección.',                  url: b + 'portal/coordinador/', carpeta: '/portal/coordinador/' },
-      socio:       { titulo: 'Socio',          desc: 'Noticias del club y actividades.',           url: b + 'portal/socio/',       carpeta: '/portal/socio/' },
+      socio:       { titulo: 'Socio',          desc: 'Noticias del club y actividades.',           url: b + 'portal/inicio/',      carpeta: '/portal/socio/' },
       responsable: { titulo: 'Responsable',    desc: 'Lo que gestionas de tu sección.',            url: b + 'portal/responsable/', carpeta: '/portal/responsable/' },
       admin:       { titulo: 'Administración', desc: 'Cobros, contenido web y usuarios.',          url: b + 'admin/',              carpeta: '/admin/' }
     };
