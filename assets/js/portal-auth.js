@@ -24,6 +24,41 @@
      madre que además tiene ficha de atleta).
    ============================================================ */
 (function () {
+  /* FLUIDEZ · Transiciones suaves entre páginas del portal: el CONTENIDO hace
+     crossfade y las barras de arriba (.pt-top) y abajo (.pt-tabbar) se quedan
+     QUIETAS, así no parpadean al cambiar de pestaña. Es progresivo: el navegador
+     que no lo soporte navega como siempre, sin ningún efecto negativo. Se inyecta
+     PRONTO (portal-auth.js no es defer) para que la opción ya esté puesta cuando
+     se navegue y cuando el navegador tome la «foto» de la página que entra. */
+  try {
+    var _vt = document.createElement('style');
+    _vt.setAttribute('data-piel', 'fluidez');
+    /* Crossfade de la página ENTERA (sin nombrar las barras): las barras se
+       pintan con un pequeño retardo (tras sesión+perfil), así que nombrarlas y
+       congelarlas (animation:none) las haría «desaparecer» de golpe en cada
+       salto. El crossfade de toda la página es suave pase lo que pase y, sobre
+       todo, quita el «fogonazo blanco» de recarga. */
+    _vt.textContent = '@view-transition{navigation:auto}';
+    (document.head || document.documentElement).appendChild(_vt);
+  } catch (e) { /* sin transiciones, la app sigue igual */ }
+
+  /* FLUIDEZ · Prefetch de las 4 páginas del portal unificado: cuando se toca la
+     barra, el HTML ya está traído → navegación casi instantánea (y con el SW,
+     sin coste en visitas repetidas). Progresivo: el navegador sin soporte lo
+     ignora. Solo lista estática, nada de prerender (no ejecuta las páginas). */
+  try {
+    var _b = (window.APOLANA_BASE || '../../');
+    var _sr = document.createElement('script');
+    _sr.type = 'speculationrules';
+    _sr.textContent = JSON.stringify({
+      prefetch: [{ source: 'list', urls: [
+        _b + 'portal/inicio/', _b + 'portal/lo-mio/',
+        _b + 'portal/calendario/', _b + 'portal/mas/'
+      ] }]
+    });
+    (document.head || document.documentElement).appendChild(_sr);
+  } catch (e) { /* sin prefetch, la app sigue igual */ }
+
   var _cb = null;
   var _papeles = null;      // promesa cacheada con los papeles del usuario
   window.APOLANA_PORTAL = {
