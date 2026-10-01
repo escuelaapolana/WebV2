@@ -903,6 +903,51 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { /* si falla, el resto del calendario sigue */ }
 
+    // --- 6c) CLUB ENTERO: el horario semanal de TODOS los grupos (no solo los
+    //        tuyos), para que «Todo el club» muestre las clases de la semana
+    //        (Cubo, escuela, pista, running…). Marcado mio:false → no sale en
+    //        «Lo mío», solo al elegir «Todo el club». Se saltan los grupos propios
+    //        (ya proyectados en 6) y los que tienen sesión con fecha (sección 1/2,
+    //        para no duplicar; el Cubo se proyecta siempre). Luego juntarEntrenos
+    //        agrupa por sección/hora (p. ej. toda la escuela a la vez). ---
+    try {
+      var _mios = gidsMios || [], _con = conSesion || {};
+      var gidsClub = Object.keys(GRUPOS).filter(function (id) {
+        return _mios.indexOf(id) < 0 && (GRUPOS[id].seccion === 'cubo' || !_con[id]);
+      });
+      if (gidsClub.length) {
+        var rghC = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar').in('grupo_id', gidsClub).eq('activo', true);
+        if (rghC && !rghC.error && rghC.data && rghC.data.length) {
+          var dc0 = new Date(desde + 'T00:00:00'), dc1 = new Date(hasta + 'T00:00:00');
+          rghC.data.forEach(function (h) {
+            var g = GRUPOS[h.grupo_id] || null;
+            var esCubo = g && g.seccion === 'cubo';
+            var dowJs = (h.dia_semana === 7) ? 0 : h.dia_semana;
+            var nombreG = (g && g.nombre) || (esCubo ? 'El Cubo' : 'Entrenamiento');
+            var esGratis = esCubo && /Fuerza gratis/i.test(nombreG);
+            var d = new Date(dc0);
+            while (d <= dc1) {
+              if (d.getDay() === dowJs) {
+                var f = iso(d);
+                if (!(esGratis && f < '2026-10-02')) {
+                  acts.push({
+                    fuente: esCubo ? 'cubo' : 'entreno',
+                    id: 'club-' + h.grupo_id + '-' + f, fecha: f,
+                    hora: hhmm(h.hora_inicio), horaFin: h.hora_fin ? hhmm(h.hora_fin) : '',
+                    titulo: esCubo ? (esGratis ? 'El Cubo · Fuerza' : 'El Cubo') : nombreG,
+                    grupoId: esCubo ? null : h.grupo_id, grupo: nombreG,
+                    seccion: g ? g.seccion : null, lugar: h.lugar || '',
+                    mio: false
+                  });
+                }
+              }
+              d.setDate(d.getDate() + 1);
+            }
+          });
+        }
+      }
+    } catch (e) { /* si falla, el resto del calendario sigue */ }
+
     // --- 6b) NATACIÓN: mis franjas y las de mis hijos, vía RPC security-definer
     //        (natacion_mis_plazas). Las tablas de natación no las lee un atleta
     //        normal por RLS (solo staff/responsable), pero la función devuelve
