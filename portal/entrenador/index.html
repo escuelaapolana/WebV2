@@ -8669,10 +8669,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           atleta:((at.nombre||'')+' '+(at.apellidos||'')).trim(), grupo:nombreGrupo(s.grupo_id)||'',
           entreno:s.titulo||'', estado:FBD_ESTADO[r.estado]||'', rpe:r.rpe==null?'':r.rpe,
           sens:r.sensacion_general==null?'':r.sensacion_general, ser:ser,
-          /* Dos fuentes de marcas: las series cronometradas (tiempos_reales) y
-             el cuadro de texto libre donde apuntan Academia/Velocidad
-             (marcas_texto). Las dos van juntas en la columna de marcas. */
-          marcas:[fmtTiemposFB(r.tiempos_reales),(r.marcas_texto||'').trim()].filter(Boolean).join('\n'),
+          marcas:fmtTiemposFB(r.tiempos_reales),
+          /* El cuadro de texto libre donde Academia/Velocidad apuntan sus
+             tiempos. Va en COLUMNA PROPIA para que siempre se vea (si se mete
+             en la de series, en Excel queda pegado debajo y no se ve). */
+          marcasTexto:(r.marcas_texto||'').trim(),
           molestias:r.molestias||'', siente:r.como_me_siento||'', notas:r.notas_atleta||'',
           motivo:r.motivo_no_hecho?(FBD_MOTIVO[r.motivo_no_hecho]||r.motivo_no_hecho):'',
           sueno:r.horas_sueno==null?'':r.horas_sueno, peso:r.peso_kg==null?'':r.peso_kg,
@@ -8683,14 +8684,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var okX=await cargarXLSX();
       if(okX && window.XLSX){
         /* Excel con UNA PESTAÑA POR DÍA y las marcas/tiempos incluidas. */
-        var COLS=['Atleta','Entrenamiento','Estado','RPE','Sensación','Series (hechas/prev.)','Marcas y tiempos','Molestias','Cómo se siente','Notas del atleta','Sueño (h)','Peso (kg)','Tu comentario'];
-        var W=[{wch:22},{wch:20},{wch:11},{wch:6},{wch:7},{wch:14},{wch:48},{wch:20},{wch:20},{wch:30},{wch:8},{wch:8},{wch:26}];
+        var COLS=['Atleta','Entrenamiento','Estado','RPE','Sensación','Series (hechas/prev.)','Marcas y tiempos','Marcas (texto del atleta)','Molestias','Cómo se siente','Notas del atleta','Sueño (h)','Peso (kg)','Tu comentario'];
+        var W=[{wch:22},{wch:20},{wch:11},{wch:6},{wch:7},{wch:14},{wch:40},{wch:40},{wch:20},{wch:20},{wch:30},{wch:8},{wch:8},{wch:26}];
         var porDia={}; regs.forEach(function(r){ var f=(SES[r.sesion_id]||{}).fecha||'—'; (porDia[f]=porDia[f]||[]).push(r); });
         var wb=XLSX.utils.book_new();
         Object.keys(porDia).sort().forEach(function(f){
           var aoa=[COLS];
           porDia[f].forEach(function(r){ var d=filaDe(r);
-            aoa.push([d.atleta,d.entreno,d.estado,d.rpe,d.sens,d.ser,d.marcas,d.molestias,d.siente,d.notas,d.sueno,d.peso,d.coment]); });
+            aoa.push([d.atleta,d.entreno,d.estado,d.rpe,d.sens,d.ser,d.marcas,d.marcasTexto,d.molestias,d.siente,d.notas,d.sueno,d.peso,d.coment]); });
           var ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=W;
           XLSX.utils.book_append_sheet(wb, ws, (f==='—'?'Sin fecha':nombreDiaFB(f)).slice(0,31));
         });
@@ -8698,12 +8699,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         fbdMsg(regs.length+(regs.length===1?' registro descargado (Excel por día).':' registros descargados (Excel por día).'));
       } else {
         /* Respaldo CSV: también con «Día» y las marcas/tiempos. BOM + «;» para el Excel español. */
-        var cols=['Día','Fecha','Atleta','Grupo','Entrenamiento','Estado','RPE','Sensación','Sueño (h)','Peso (kg)','Series hechas','Series previstas','Marcas y tiempos','Motivo no hecho','Cómo se siente','Molestias','Notas del atleta','Tu comentario'];
+        var cols=['Día','Fecha','Atleta','Grupo','Entrenamiento','Estado','RPE','Sensación','Sueño (h)','Peso (kg)','Series hechas','Series previstas','Marcas y tiempos','Marcas (texto del atleta)','Motivo no hecho','Cómo se siente','Molestias','Notas del atleta','Tu comentario'];
         var filas=[cols.map(celdaCSV).join(';')];
         regs.forEach(function(r){ var d=filaDe(r);
           filas.push([d.dia,d.fecha,d.atleta,d.grupo,d.entreno,d.estado,d.rpe,d.sens,d.sueno,d.peso,
             (r.series_hechas==null?'':r.series_hechas),(r.series_previstas==null?'':r.series_previstas),
-            d.marcas.replace(/\n/g,' · '),d.motivo,d.siente,d.molestias,d.notas,d.coment].map(celdaCSV).join(';'));
+            d.marcas.replace(/\n/g,' · '),(d.marcasTexto||'').replace(/\n/g,' · '),d.motivo,d.siente,d.molestias,d.notas,d.coment].map(celdaCSV).join(';'));
         });
         var csv='﻿'+filas.join('\r\n');
         var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
