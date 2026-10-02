@@ -141,7 +141,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (!ALTAS.length) { $('lista').innerHTML = ADM.vacio('Todavía no se ha apuntado nadie', 'Cuando alguien rellene el formulario de fuerza gratis, aparecerá aquí.', ''); return; }
     if (!lista.length) { $('lista').innerHTML = ADM.vacio('Nadie encaja con el filtro', 'Prueba con otra palabra o quita el filtro.', ''); return; }
 
-    $('lista').innerHTML = '<table><thead><tr><th>Persona</th><th>Turnos</th><th>Quién</th><th>Contacto</th><th>Otro horario</th></tr></thead><tbody>' +
+    $('lista').innerHTML = '<table><thead><tr><th>Persona</th><th>Turnos</th><th>Quién</th><th>Contacto</th><th>Otro horario</th><th></th></tr></thead><tbody>' +
       lista.map(function (a) {
         var turnos = (a.turnos || []).map(function (t) { return '<span class="pill">' + esc({ viernes:'Viernes', sabado:'Sábado', domingo:'Domingo' }[t] || t) + '</span>'; }).join('');
         var quien = '<span class="pill q-' + esc(a.quien || 'otro') + '">' + esc(QTXT[a.quien] || a.quien || '—') + '</span>' +
@@ -153,12 +153,28 @@ APOLANA_ADMIN.listo(function (sb) {
           '<td class="cp-tel">' + (a.telefono ? '<a href="tel:' + esc(a.telefono) + '">' + esc(a.telefono) + '</a>' : '') +
             (a.email ? '<div class="cp-alt">' + esc(a.email) + '</div>' : '') + '</td>' +
           '<td>' + (a.alternativa ? '<span class="cp-alt">' + esc(a.alternativa) + '</span>' : '—') + '</td>' +
+          '<td><button type="button" class="cp-cancel" data-id="' + esc(a.id) + '" data-nom="' + esc(((a.nombre || '') + ' ' + (a.apellidos || '')).trim()) + '" style="border:1px solid var(--linea);background:#fff;color:#9A3B3B;font-size:12px;font-weight:600;border-radius:8px;padding:6px 11px;cursor:pointer;white-space:nowrap">Cancelar</button></td>' +
         '</tr>';
       }).join('') + '</tbody></table>';
   }
 
   $('buscar').addEventListener('input', pintar);
   $('f-turno').addEventListener('change', pintar);
+
+  // Cancelar a un apuntado: deja de contar y no recibe recordatorios.
+  $('lista').addEventListener('click', async function (ev) {
+    var b = ev.target.closest ? ev.target.closest('.cp-cancel[data-id]') : null;
+    if (!b) return;
+    var id = b.getAttribute('data-id'), nom = b.getAttribute('data-nom') || 'esta persona';
+    var texto = '¿Cancelar a ' + nom + '? Dejará de contar en el turno y no recibirá recordatorios.';
+    var ok = window.apoConfirm ? await apoConfirm({ titulo: 'Cancelar apuntado', texto: texto, peligro: true }) : window.confirm(texto);
+    if (!ok) return;
+    var r = await sb.from('cubo_prueba').update({ estado: 'cancelado' }).eq('id', id);
+    if (r.error) { if (window.apoToast) apoToast('No se pudo cancelar: ' + r.error.message, 'error'); else alert('No se pudo cancelar.'); return; }
+    if (window.apoToast) apoToast(nom + ' cancelado', 'ok', { deshacer: async function () { await sb.from('cubo_prueba').update({ estado: 'apuntado' }).eq('id', id); await cargar(); } });
+    await cargar();
+  });
+
   cargar();
 });
 </script>
