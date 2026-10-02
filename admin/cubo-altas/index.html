@@ -75,6 +75,12 @@
   .cg-bar i { display:block; height:100%; background:var(--azul,#2F6FA8); border-radius:999px; }
   .cg-bar.lleno i { background:#C99A5B; }
   .cg-espera { font-size:12px; color:#8A5307; margin:6px 0 0; }
+  .cg-dia { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-top:12px; }
+  .cg-dia:first-of-type { margin-top:2px; }
+  .cg-dia-n { font-size:13px; font-weight:600; color:var(--navy,#26374B); }
+  .cg-dia-c b { font-family:var(--fuente-dato,monospace); font-size:17px; color:var(--navy,#26374B); }
+  .cg-dia-c span { font-size:12px; color:var(--texto-suave,#6E6656); }
+  .cg-dia-c.lleno b { color:#B0563A; }
   .alta-acc { display:flex; gap:9px; flex-wrap:wrap; margin-top:13px; padding-top:12px; border-top:1px solid var(--linea,#EDE6D7); }
   .b { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:0 16px; border-radius:999px; font:inherit; font-size:14.5px; font-weight:600; cursor:pointer; border:1px solid transparent; }
   .b-si { background:var(--azul,#2F6FA8); color:#fff; border-color:var(--azul,#2F6FA8); } .b-si:hover{ background:var(--azul-hover,#1E4E78); }
@@ -385,14 +391,38 @@ APOLANA_ADMIN.listo(function (sb) {
     var caja=$('ca-grupos'); if(!caja || !GRUPOS_CUBO) return;
     if(!GRUPOS_CUBO.length){ caja.innerHTML=''; return; }
     var lim = LIMITE!=null ? LIMITE : 20;
+    var DIAS_SEM = {1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo'};
     caja.innerHTML = '<p class="ca-rot">Grupos del Cubo</p><div class="cg-grid">' + GRUPOS_CUBO.map(function(g){
-      var ocup = CUENTA_GRUPO[g.id] || 0;  // integrantes reales del grupo (atleta_grupos)
       var espera = ALTAS.filter(function(a){ return a.horario===g.nombre && a.lista_espera; }).length;
+      var nombre = String(g.nombre||'').replace(/^El Cubo\s*·\s*/i,'');
+      // Altas aprobadas y activas de este grupo (cubo_altas es donde vive dias_semana).
+      var altasG = ALTAS.filter(function(a){ return a.horario===g.nombre && (a.estado==='aprobada') && !a.lista_espera; });
+      // Días propios del grupo = unión de los dias_semana fijados de sus altas.
+      var dias = [];
+      altasG.forEach(function(a){ (a.dias_semana||[]).forEach(function(d){ if(dias.indexOf(d)===-1) dias.push(d); }); });
+      dias.sort(function(x,y){ return x-y; });
+
+      var cab = '<h3>'+esc(nombre)+'</h3>'+(g.horario?'<p class="cg-hor">'+esc(g.horario)+'</p>':'');
+
+      // Grupo de VARIOS días (L y X, M y J…): una fila por día, cada uno con su conteo.
+      // Quien no tiene días fijados (dias_semana vacío) cuenta en TODOS los días del grupo.
+      if(dias.length>=2){
+        var filas = dias.map(function(D){
+          var n = altasG.filter(function(a){ var ds=a.dias_semana||[]; return !ds.length || ds.indexOf(D)!==-1; }).length;
+          var lleno = n>=lim, pct = Math.min(100, Math.round(n/lim*100));
+          return '<div class="cg-dia"><span class="cg-dia-n">'+esc(DIAS_SEM[D]||('Día '+D))+'</span>'+
+            '<span class="cg-dia-c'+(lleno?' lleno':'')+'"><b>'+n+'</b><span>/'+lim+(lleno?' · completo':'')+'</span></span></div>'+
+            '<div class="cg-bar'+(lleno?' lleno':'')+'"><i style="width:'+pct+'%"></i></div>';
+        }).join('');
+        return '<div class="cg-card">'+cab+filas+
+          (espera?'<p class="cg-espera">'+espera+' en lista de espera</p>':'')+'</div>';
+      }
+
+      // Grupo de UN solo día (gratis viernes/sábado/domingo…): conteo único del grupo.
+      var ocup = CUENTA_GRUPO[g.id] || 0;  // integrantes reales del grupo (atleta_grupos)
       var pct = Math.min(100, Math.round(ocup/lim*100));
       var lleno = ocup>=lim;
-      var nombre = String(g.nombre||'').replace(/^El Cubo\s*·\s*/i,'');
-      return '<div class="cg-card"><h3>'+esc(nombre)+'</h3>'+
-        (g.horario?'<p class="cg-hor">'+esc(g.horario)+'</p>':'')+
+      return '<div class="cg-card">'+cab+
         '<div class="cg-ocup"><b>'+ocup+'/'+lim+'</b><span>plazas'+(lleno?' · completo':'')+'</span></div>'+
         '<div class="cg-bar'+(lleno?' lleno':'')+'"><i style="width:'+pct+'%"></i></div>'+
         (espera?'<p class="cg-espera">'+espera+' en lista de espera</p>':'')+
