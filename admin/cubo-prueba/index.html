@@ -98,9 +98,33 @@ APOLANA_ADMIN.listo(function (sb) {
         '<div class="n">' + n + '<small> / ' + PLAZAS + '</small></div>' +
         '<div class="barra"><span style="width:' + pct + '%"></span></div>' +
         (lleno ? '<div class="et" style="color:#B0563A;margin-top:6px">Completo</div>' : (pocos ? '<div class="et" style="color:#B96F09;margin-top:6px">Pocos — ¿cancelar?</div>' : '')) +
+        (n > 0 ? '<button type="button" class="cp-rec" data-turno="' + esc(d[0]) + '" style="margin-top:12px;width:100%;border:none;cursor:pointer;background:#26374B;color:#fff;font-size:13px;font-weight:600;border-radius:9px;padding:10px">📧 Enviar recordatorio por correo</button>' : '') +
       '</div>';
     }).join('');
   }
+
+  // Envía el recordatorio del turno por correo (Edge cubo-recordatorio → Brevo).
+  $('turnos').addEventListener('click', async function (ev) {
+    var b = ev.target.closest ? ev.target.closest('.cp-rec[data-turno]') : null;
+    if (!b) return;
+    var turno = b.getAttribute('data-turno');
+    var dNom = { viernes: 'viernes', sabado: 'sábado', domingo: 'domingo' }[turno] || turno;
+    var n = ALTAS.filter(function (a) { return (a.turnos || []).indexOf(turno) !== -1 && a.email; }).length;
+    var texto = 'Se enviará el recordatorio por correo a los apuntados del ' + dNom + ' (los que tienen correo y no están cancelados). ¿Seguir?';
+    var ok = window.apoConfirm ? await apoConfirm({ titulo: 'Enviar recordatorio', texto: texto }) : window.confirm(texto);
+    if (!ok) return;
+    var txt = b.textContent; b.disabled = true; b.textContent = 'Enviando…';
+    var r = await sb.functions.invoke('cubo-recordatorio', { body: { turno: turno } });
+    b.disabled = false; b.textContent = txt;
+    var avisar = function (msg, tono) { if (window.apoToast) apoToast(msg, tono === 'ok' ? 'ok' : (tono || '')); else alert(msg); };
+    if (r.error) {
+      var d = null; try { if (r.error.context && r.error.context.json) d = await r.error.context.json(); } catch (e) {}
+      avisar((d && d.mensaje) || 'No se ha podido enviar. Inténtalo en un rato.', 'error'); return;
+    }
+    var data = r.data || {};
+    avisar('Recordatorio enviado a ' + (data.enviados || 0) + ' persona' + ((data.enviados === 1) ? '' : 's') +
+      (data.fallidos ? ' (' + data.fallidos + ' fallaron)' : ''), data.fallidos ? 'error' : 'ok');
+  });
 
   function pintar() {
     var q = ($('buscar').value || '').trim().toLowerCase();
