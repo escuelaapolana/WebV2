@@ -46,6 +46,11 @@
   .hor .det { flex:1; min-width:0; }
   .hor .hh { font-family:var(--dato); font-size:15px; color:var(--navy,#26374B); }
   .hor .lugar { display:block; font-size:13px; color:var(--texto-suave,#6E6656); margin-top:2px; }
+  .hor .cb-novoy { align-self:center; flex:0 0 auto; border:1px solid var(--linea-borde,#D9D2C2); background:#fff; color:var(--texto-suave,#6E6656);
+    font-size:12.5px; font-weight:600; border-radius:999px; padding:7px 13px; cursor:pointer; white-space:nowrap; }
+  .hor .cb-novoy.off { background:#E7F4E8; border-color:#BFDCC9; color:#2E7D32; }
+  .hor .cb-novoy[disabled] { opacity:.6; }
+  .hor .fila.novoy .dia, .hor .fila.novoy .hh { text-decoration:line-through; color:var(--texto-suave,#6E6656); }
 
   /* Más */
   .fila-mas { display:flex; align-items:center; gap:12px; width:100%; box-sizing:border-box; text-align:left;
@@ -344,19 +349,44 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         'En cuanto el club te ponga en un grupo del Cubo, verás aquí tus próximos entrenamientos con día y hora.');
     } else {
       var prox = proximosEntrenos(h.data, 6);
+      // Las sesiones a las que ya avisó «no voy» (para pintarlas marcadas).
+      var AUS = {};
+      try { var raus = await sb.rpc('cubo_mis_ausencias'); if (raus && !raus.error && Array.isArray(raus.data)) raus.data.forEach(function (a) { AUS[(a.grupo_id || '') + '|' + a.fecha] = true; }); } catch (e) {}
+      function isoDe(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
       var cab = '<p class="rotulo cb-grupo">Tus próximos entrenamientos</p>';
       caja.innerHTML = cab + (prox.length
         ? '<div class="hor">' + prox.map(function (p) {
-            var x = p.h;
+            var x = p.h, iso = isoDe(p.fecha), noVoy = !!AUS[(x.grupo_id || '') + '|' + iso];
             var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
-            return '<div class="fila">' +
+            return '<div class="fila' + (noVoy ? ' novoy' : '') + '">' +
               '<span class="dia">' + esc(diaFecha(p.fecha)) + '</span>' +
               '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
                 (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
                 (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
-              '</span></div>';
+              '</span>' +
+              '<button type="button" class="cb-novoy' + (noVoy ? ' off' : '') + '" data-grupo="' + esc(x.grupo_id || '') + '" data-fecha="' + iso + '">' + (noVoy ? '✓ Avisado' : 'No voy') + '</button>' +
+              '</div>';
           }).join('') + '</div>'
         : APOLANA_UI.vacio('Sin entrenamientos próximos', 'Tus clases empiezan pronto; aquí verás las fechas en cuanto lleguen.'));
+
+      // «No voy» / «sí voy» a una sesión (se registra para que lo vea el club).
+      if (!caja.dataset.novoyWired) {
+        caja.dataset.novoyWired = '1';
+        caja.addEventListener('click', async function (ev) {
+          var b = ev.target.closest ? ev.target.closest('.cb-novoy[data-fecha]') : null;
+          if (!b) return;
+          var grupo = b.getAttribute('data-grupo') || null, fecha = b.getAttribute('data-fecha');
+          var yaNoVoy = b.classList.contains('off');
+          b.disabled = true;
+          var r = await sb.rpc(yaNoVoy ? 'cubo_si_voy' : 'cubo_no_voy', { p_grupo: grupo, p_fecha: fecha });
+          b.disabled = false;
+          if (r.error) { alert('No se ha podido guardar. Inténtalo de nuevo.'); return; }
+          var ahoraOff = !yaNoVoy;
+          b.classList.toggle('off', ahoraOff);
+          b.textContent = ahoraOff ? '✓ Avisado' : 'No voy';
+          var fila = b.closest('.fila'); if (fila) fila.classList.toggle('novoy', ahoraOff);
+        });
+      }
     }
 
     // Noticias del club, debajo

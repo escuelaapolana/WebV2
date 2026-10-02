@@ -56,6 +56,9 @@
   .cl-fila .nom b { display:block; font-size:16px; font-weight:600; }
   .cl-fila .nom small { display:block; font-size:12.5px; color:var(--texto-tenue,#9A927F); margin-top:1px; }
   .cl-fila .est { font-size:13px; font-weight:600; color:var(--texto-tenue,#9A927F); }
+  .cl-fila.novoy { opacity:.6; }
+  .cl-fila.novoy .nom b { text-decoration:line-through; }
+  .cl-fila.novoy .est { color:#B0563A; }
   .cl-fila.vino .est { color:#2E7D6B; }
 
   /* Más */
@@ -82,7 +85,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var b = window.APOLANA_BASE || '../../';
   var UI = window.APOLANA_UI;
 
-  var GRUPOS = [], ALTAS = [], PRUEBA = [], sel = null, fecha = hoyISO(), ASIS = {}, cargado = false;
+  var GRUPOS = [], ALTAS = [], PRUEBA = [], sel = null, fecha = hoyISO(), ASIS = {}, AUSF = {}, cargado = false;
 
   function pad(n){ return (n<10?'0':'')+n; }
   function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
@@ -120,9 +123,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var dg=diasDelGrupo(g); return !dg.length || dg.indexOf(D)!==-1;   // sin marcar = todos los días del turno
   }
   function cuenta(g){
-    if(esGratis(g)){ var t=turnoDe(g); return PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1; }).length; }
+    if(esGratis(g)){ var t=turnoDe(g); return PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1 && !AUSF[p.perfil_id]; }).length; }
     var D=diaSemFecha();
-    return ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && vieneEseDia(a,D,g); }).length;
+    return ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && vieneEseDia(a,D,g) && !AUSF[a.perfil_id]; }).length;
   }
   function toast(msg,tipo){ var t=document.createElement('div'); t.className='cl-toast'+(tipo==='err'?' err':''); t.textContent=msg;
     document.body.appendChild(t); requestAnimationFrame(function(){ t.classList.add('ver'); });
@@ -131,17 +134,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargar(){
     var g = await sb.from('grupos').select('id,nombre,horario').eq('seccion','cubo').eq('activo',true).order('nombre');
     GRUPOS = g.error ? [] : (g.data||[]);
-    var a = await sb.from('cubo_altas').select('id,nombre,apellidos,horario,atleta_id,estado,lista_espera,dias_semana').eq('estado','aprobada');
+    var a = await sb.from('cubo_altas').select('id,nombre,apellidos,horario,atleta_id,perfil_id,estado,lista_espera,dias_semana').eq('estado','aprobada');
     ALTAS = a.error ? [] : (a.data||[]);
-    var p = await sb.from('cubo_prueba').select('id,nombre,apellidos,turnos,estado').neq('estado','cancelado');
+    var p = await sb.from('cubo_prueba').select('id,nombre,apellidos,turnos,estado,perfil_id').neq('estado','cancelado');
     PRUEBA = p.error ? [] : (p.data||[]);
     if(!sel && GRUPOS.length) sel = GRUPOS[0].id;
     cargado = true;
   }
 
   async function cargarAsis(){
-    ASIS = {};
+    ASIS = {}; AUSF = {};
     if(!sel) return;
+    /* Quién ha avisado que NO viene ESE día (por perfil). El staff del Cubo
+       puede leer todas las ausencias (RLS). */
+    var ra = await sb.from('cubo_ausencias').select('perfil_id').eq('fecha', fecha);
+    if(!ra.error) (ra.data||[]).forEach(function(x){ if(x.perfil_id) AUSF[x.perfil_id] = true; });
     var g = grupoSel();
     if(esGratis(g)){
       var t = turnoDe(g);
@@ -165,15 +172,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(esGratis(g)){
       var t = turnoDe(g);
       arr = PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1; }).map(function(p){
-        return { id:p.id, nombre:p.nombre, apellidos:p.apellidos, key:p.id, gratis:true, sinFicha:false };
+        return { id:p.id, nombre:p.nombre, apellidos:p.apellidos, key:p.id, gratis:true, sinFicha:false, noViene:!!AUSF[p.perfil_id] };
       });
     } else {
       var D=diaSemFecha();
       arr = ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && vieneEseDia(a,D,g); }).map(function(a){
-        return { id:a.id, nombre:a.nombre, apellidos:a.apellidos, key:a.atleta_id, gratis:false, sinFicha:!a.atleta_id };
+        return { id:a.id, nombre:a.nombre, apellidos:a.apellidos, key:a.atleta_id, gratis:false, sinFicha:!a.atleta_id, noViene:!!AUSF[a.perfil_id] };
       });
     }
-    return arr.sort(function(x,y){ return (((x.apellidos||'')+' '+(x.nombre||'')).toLowerCase() < ((y.apellidos||'')+' '+(y.nombre||'')).toLowerCase()) ? -1 : 1; });
+    return arr.sort(function(x,y){
+      if(!!x.noViene !== !!y.noViene) return x.noViene ? 1 : -1;   // los que avisaron «no voy», al final
+      return (((x.apellidos||'')+' '+(x.nombre||'')).toLowerCase() < ((y.apellidos||'')+' '+(y.nombre||'')).toLowerCase()) ? -1 : 1;
+    });
   }
 
   async function marcar(id){
@@ -224,6 +234,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     var lst = miembros();
     var vinieron = lst.filter(function(a){ return ASIS[a.key]; }).length;
+    var esperados = lst.filter(function(a){ return !a.noViene; }).length;   // los que no han avisado «no voy»
+    var noVienen = lst.filter(function(a){ return a.noViene; }).length;
     var vacio = esGratis(g)
       ? (UI ? UI.vacio('Nadie apuntado a este turno', 'Cuando alguien rellene el formulario de fuerza gratis para este día, aparecerá aquí.') : '<p>Nadie apuntado a este turno todavía.</p>')
       : (UI ? UI.vacio('Nadie en este grupo', 'Cuando el club apruebe altas en este horario, aparecerán aquí.') : '<p>Nadie en este grupo todavía.</p>');
@@ -231,10 +243,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var filas = lst.length ? lst.map(function(a){
       var vino = !!ASIS[a.key];
       var sinFicha = a.sinFicha;
-      return '<button type="button" class="cl-fila'+(vino?' vino':'')+'" data-a="'+esc(a.id)+'"'+(sinFicha?' disabled':'')+'>'+
+      var est = vino ? 'Vino' : (a.noViene ? 'No viene' : '—');
+      var sub = a.noViene ? '<small>avisó que no viene</small>' : (sinFicha ? '<small>ficha sin enlazar</small>' : '');
+      return '<button type="button" class="cl-fila'+(vino?' vino':'')+(a.noViene?' novoy':'')+'" data-a="'+esc(a.id)+'"'+(sinFicha?' disabled':'')+'>'+
         '<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>'+
-        '<span class="nom"><b>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</b>'+(sinFicha?'<small>ficha sin enlazar</small>':'')+'</span>'+
-        '<span class="est">'+(vino?'Vino':'—')+'</span>'+
+        '<span class="nom"><b>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</b>'+sub+'</span>'+
+        '<span class="est">'+est+'</span>'+
       '</button>';
     }).join('') : vacio;
 
@@ -244,7 +258,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (GRUPOS.length ? '<div class="cl-grupos">'+chips+'</div>' : '')+
       '<div class="cl-barra">'+
         '<span class="fh"><input type="date" id="cl-fecha" value="'+esc(fecha)+'" max="'+esc(hoyISO())+'"></span>'+
-        '<span class="cont">Han venido <b>'+vinieron+'</b> de '+lst.length+(esGratis(g)?'':' <small>('+esc(DIAS[diaSemFecha()===7?0:diaSemFecha()])+')</small>')+'</span>'+
+        '<span class="cont">Han venido <b>'+vinieron+'</b> de '+esperados+(esGratis(g)?'':' <small>('+esc(DIAS[diaSemFecha()===7?0:diaSemFecha()])+')</small>')+(noVienen?' · <small>'+noVienen+' no vienen</small>':'')+'</span>'+
       '</div>'+
       '<div class="cl-lista">'+filas+'</div>';
   }
