@@ -219,6 +219,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const slot = corta(b.slot, 20);
   const diasN = Math.round(Number(b.dias));
   const dias = diasN === 1 ? 1 : (diasN === 2 ? 2 : 0);
+  // Qué DÍAS concretos viene (1=lun…4=jue). 2 días = los dos del turno; 1 día =
+  // el que eligió (validado contra los días del turno; si no cuadra, queda null
+  // y en la lista de Claudia se le ve los dos días hasta marcarlo).
+  const diasDelSlot = String(slot).startsWith("mj") ? [2, 4] : [1, 3];
+  const diaUno = Math.round(Number(b.dia));
+  const diasSemana = dias === 2
+    ? diasDelSlot
+    : (diasDelSlot.indexOf(diaUno) !== -1 ? [diaUno] : null);
   const email = corta(b.email, 160).toLowerCase();
   const password = String(b.password ?? "");
 
@@ -332,7 +340,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     body: JSON.stringify({
       nombre, apellidos, dni: dni || null, telefono,
       hijo: hijo || null, direccion: direccion || null,
-      horario: SLOT_A_GRUPO[slot], dias, precio_mes: precio,
+      horario: SLOT_A_GRUPO[slot], dias, dias_semana: diasSemana, precio_mes: precio,
       nota: nota || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
       perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
