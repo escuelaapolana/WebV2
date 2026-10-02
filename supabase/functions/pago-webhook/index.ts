@@ -251,37 +251,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
       resultado = { ignorado: true };
   }
 
-  // --- Aviso a administración (Isa) SOLO cuando el pago del alta de socio
-  //     acaba de entrar de verdad ---
-  // El correo con los datos + DNI se dispara AQUÍ, en el servidor, y nunca
-  // desde el navegador: así nadie puede provocarlo con un ?pago=hecho falso en
-  // la URL sin haber pagado. Se acota a la confirmación FRESCA (repetido=false,
-  // efecto=aplicado) para que no salga dos veces (Stripe manda checkout.* y
-  // payment_intent.* por el mismo pago); correo-alta-aviso además es idempotente
-  // por su cuenta (aviso_enviado_en), como segunda red.
+  // --- Aviso a administración (Isa) cuando entra un alta de socio ---
+  // Se dispara AQUÍ, en el servidor (webhook firmado por Stripe), nunca desde el
+  // navegador: así nadie lo provoca con un ?pago=hecho falso sin haber pagado.
+  // Con SEPA el adeudo tarda DÍAS en cobrarse, pero el mandato se AUTORIZA al
+  // terminar la pasarela (checkout.session.completed). Se avisa a Isa YA, al
+  // DARSE DE ALTA (no se espera al cobro) para que tenga sus datos + IBAN para la
+  // renovación; y también al confirmarse el cobro (efecto=aplicado).
+  // correo-alta-aviso es idempotente (aviso_enviado_en), así que aunque lleguen
+  // los dos, solo sale UN correo.
   const r = resultado as Record<string, any> | null;
-  if (r && r.ok === true && r.repetido !== true && r.tipo === "alta_socio" && r.efecto === "aplicado") {
-    const altaRef = objeto?.metadata?.alta_ref
-      ?? objeto?.payment_intent?.metadata?.alta_ref
-      ?? null;
-    if (altaRef) {
-      try {
-        await fetch(`${SUPABASE_URL}/functions/v1/correo-alta-aviso`, {
-          method: "POST",
-          headers: {
-            apikey: SERVICE_KEY,
-            Authorization: `Bearer ${SERVICE_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ referencia: altaRef }),
-        });
-      } catch (e) {
-        // El pago ya quedó marcado; el correo es un extra. Si falla, no se
-        // reintenta el webhook por esto (a Stripe se le contesta 200 igual).
-        console.error("Alta de socio pagada, pero falló el aviso por correo:", e);
-      }
-    } else {
-      console.error("Alta de socio pagada sin alta_ref en el aviso de Stripe (no se puede avisar).");
+  const altaRef = objeto?.metadata?.alta_ref
+    ?? objeto?.payment_intent?.metadata?.alta_ref
+    ?? null;
+  const altaAplicada = !!(r && r.ok === true && r.repetido !== true && r.tipo === "alta_socio" && r.efecto === "aplicado");
+  const altaAutorizada = !!altaRef && tipo === "checkout.session.completed";   // mandato SEPA firmado (aún sin cobrar)
+  if (altaRef && (altaAplicada || altaAutorizada)) {
+    try {
+      await fetch(`${SUPABASE_URL}/functions/v1/correo-alta-aviso`, {
+        method: "POST",
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ referencia: altaRef }),
+      });
+    } catch (e) {
+      // El aviso es un extra; si falla, no se reintenta el webhook por esto
+      // (a Stripe se le contesta 200 igual).
+      console.error("Alta de socio: falló el aviso por correo:", e);
     }
     // Toque a los móviles del club («hay una nueva alta, mira el panel»). No
     // lleva ni un dato de la persona: la base decide si toca o sería ruido. Va
