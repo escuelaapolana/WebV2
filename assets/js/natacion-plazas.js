@@ -38,11 +38,30 @@
       '.nat-grupo{font-size:13px;color:var(--texto-suave,#6E6656);min-width:96px}' +
       '.nat-niveles{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}' +
       '.nat-nivel{font-size:12px;font-weight:600;color:var(--navy,#26374B);background:var(--crema,#F4EEE1);border-radius:999px;padding:2px 9px}' +
-      '.nat-nota{margin-top:14px;font-size:13.5px;color:var(--texto-suave,#6E6656)}';
+      '.nat-nota{margin-top:14px;font-size:13.5px;color:var(--texto-suave,#6E6656)}' +
+      '.nat-espera-wrap{flex-basis:100%;margin-top:2px}' +
+      '.nat-espera{display:inline-flex;align-items:center;gap:7px;border:none;cursor:pointer;background:var(--navy,#26374B);color:#fff;font-size:13px;font-weight:600;border-radius:999px;padding:8px 14px;width:auto}' +
+      '.nat-espera.en{background:#E7F4E8;color:#2E7D32}' +
+      '.nat-espera[disabled]{opacity:.6;cursor:default}' +
+      '.nat-espera-hint{flex-basis:100%;margin-top:2px;font-size:12.5px;color:var(--texto-suave,#6E6656)}';
     document.head.appendChild(css);
   }
 
-  function pintar(cont, filas, filtro) {
+  function botonEspera(f, ctx) {
+    // Solo en franjas sin hueco claro (completo / consultar) y con id.
+    if (!f.id || (f.semaforo !== 'rojo' && f.semaforo !== 'ambar')) return '';
+    if (!ctx.logueado) {
+      return '<span class="nat-espera-hint">¿Sin hueco? Entra a tu cuenta y te avisamos si se libera uno.</span>';
+    }
+    var e = ctx.esperas[f.id];
+    if (e) {
+      return '<div class="nat-espera-wrap"><button type="button" class="nat-espera en" data-quitar="' + esc(e) + '">✓ En lista de espera · quitarme</button></div>';
+    }
+    return '<div class="nat-espera-wrap"><button type="button" class="nat-espera" data-apuntar="' + esc(f.id) + '">🔔 Avísame si se libera</button></div>';
+  }
+
+  function pintar(cont, filas, filtro, ctx) {
+    ctx = ctx || { logueado: false, esperas: {} };
     if (!filas.length) { cont.innerHTML = ''; return; }
     estilos();
     var porDia = {};
@@ -72,6 +91,7 @@
           '<span class="nat-grupo">' + esc(f.grupo) + '</span>' +
           '<span class="nat-pill ' + s.c + '">' + esc(s.t) + '</span>' +
           '<span class="nat-niveles">' + niveles + '</span>' +
+          botonEspera(f, ctx) +
           '</li>');
       });
       out.push('</ul></div>');
@@ -107,14 +127,57 @@
     var filtro = (cont.getAttribute('data-filtro') || '').toLowerCase();
     var db = window.APOLANA_DB;
     if (!db) { return setTimeout(init, 80); }  // esperar a db.js (defer)
-    db.from('natacion_vacantes')
-      .select('dia,hora,grupo,calles,tiene_vaso,semaforo,admite_niveles,criterio')
-      .order('dia', { ascending: true }).order('hora', { ascending: true })
-      .then(function (res) {
-        if (res.error || !res.data) { cont.innerHTML = ''; return; }
-        pintar(cont, filtrar(res.data, filtro), filtro);
-      })
-      .catch(function () { cont.innerHTML = ''; });
+    var ctx = { logueado: false, esperas: {} };
+
+    function render() {
+      db.from('natacion_vacantes')
+        .select('dia,hora,grupo,calles,tiene_vaso,semaforo,admite_niveles,criterio,id')
+        .order('dia', { ascending: true }).order('hora', { ascending: true })
+        .then(function (res) {
+          if (res.error || !res.data) { cont.innerHTML = ''; return; }
+          pintar(cont, filtrar(res.data, filtro), filtro, ctx);
+        })
+        .catch(function () { cont.innerHTML = ''; });
+    }
+
+    /* Si hay sesión, se cargan «mis esperas» para pintar el estado (en lista /
+       apuntarme). Sin sesión, solo se ofrece entrar. */
+    function cargarEsperas(cb) {
+      Promise.resolve(db.auth.getSession()).then(function (s) {
+        var ses = s && s.data && s.data.session;
+        ctx.logueado = !!ses; ctx.esperas = {};
+        if (!ses) return cb();
+        db.rpc('natacion_espera_mias').then(function (r) {
+          if (r && !r.error && Array.isArray(r.data)) {
+            r.data.forEach(function (e) { ctx.esperas[e.franja_id] = e.id; });
+          }
+          cb();
+        }, cb);
+      }, cb);
+    }
+
+    cont.addEventListener('click', function (ev) {
+      var a = ev.target.closest && ev.target.closest('[data-apuntar]');
+      var q = ev.target.closest && ev.target.closest('[data-quitar]');
+      if (!a && !q) return;
+      var btn = a || q, t = btn.textContent;
+      btn.disabled = true; btn.textContent = a ? 'Apuntando…' : 'Quitando…';
+      var pet = a
+        ? db.rpc('natacion_espera_apuntarse', { p_franja: a.getAttribute('data-apuntar') })
+        : db.rpc('natacion_espera_quitarse', { p_id: q.getAttribute('data-quitar') });
+      Promise.resolve(pet).then(function (r) {
+        if (a && !(r && !r.error && r.data && r.data.ok)) {
+          btn.disabled = false; btn.textContent = t;
+          alert('No se ha podido apuntar. Inténtalo de nuevo.'); return;
+        }
+        cargarEsperas(render);  // repinta con el estado nuevo
+      }, function () {
+        btn.disabled = false; btn.textContent = t;
+        alert('No hay conexión. Inténtalo en un rato.');
+      });
+    });
+
+    cargarEsperas(render);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
