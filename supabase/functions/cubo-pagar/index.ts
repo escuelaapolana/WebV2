@@ -69,6 +69,18 @@ function proximoDia5(): number {
   return Math.floor(cand.getTime() / 1000);
 }
 
+// Día 5 del MES SIGUIENTE (a las 09:00 UTC), en segundos unix.
+// Al activar se cobra la cuota de ESTE mes (el primer pago), así que la cuota
+// recurrente NO debe empezar el día 5 de este mes (sería cobrar dos veces si el
+// 5 está cerca): empieza el día 5 del mes que viene.
+function dia5MesSiguiente(): number {
+  const ahora = new Date();
+  const y = ahora.getUTCFullYear();
+  const m = ahora.getUTCMonth();
+  const cand = new Date(Date.UTC(y, m + 1, DIA_COBRO, 9, 0, 0));
+  return Math.floor(cand.getTime() / 1000);
+}
+
 function vuelta(resultado: "hecho" | "cancelado"): string {
   return `${URL_BASE}portal/cubo-atleta/?cuota=${resultado}`;
 }
@@ -183,21 +195,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   const importeMesCent = precioMes * 100;
 
-  // Primer pago (entrada): lo puso el club por persona; si no, 10 € por defecto.
+  // Lo que paga ESTE mes al activar: lo puso el club por persona (su cuota
+  // entera en lo normal, o un importe menor si entra a mitad de mes). Si no hay
+  // nada puesto, por defecto su CUOTA ENTERA (el primer mes es normal, sin
+  // entrada reducida).
   const primerPagoCent = Number.isFinite(Number(alta.primer_pago_cent)) && Number(alta.primer_pago_cent) > 0
     ? Math.round(Number(alta.primer_pago_cent))
-    : PRIMER_PAGO_DEFECTO_CENT;
-  // Stripe no cobra menos de 0,50 €: por debajo, no hay primer pago (solo se
-  // guarda la tarjeta con prueba hasta el día 5).
+    : importeMesCent;
+  // Stripe no cobra menos de 0,50 €: por debajo, no hay pago hoy (solo se
+  // guarda la tarjeta hasta el primer día 5).
   const cobraPrimerPago = primerPagoCent >= 50;
 
   // La referencia con la que casaremos el aviso de Stripe en el webhook.
   const referencia = `cubo-${alta.id}`;
 
-  // ---- 4 · La sesión de Stripe (suscripción anclada al día 5) ----
-  // La cuota entera se ancla al próximo día 5 y NO se prorratea (no se cobra
-  // hoy). Lo que sí se cobra hoy es el primer pago (artículo de una vez).
-  const anclaDia5 = proximoDia5();
+  // ---- 4 · La sesión de Stripe (suscripción, cuota cada día 5) ----
+  // HOY se cobra la cuota de este mes (el primer pago, artículo de una vez). La
+  // cuota recurrente empieza el día 5 del MES SIGUIENTE, para no cobrar dos
+  // veces si el día 5 de este mes está a la vuelta de la esquina.
+  const anclaDia5 = dia5MesSiguiente();
 
   const params = new URLSearchParams();
   params.set("mode", "subscription");
@@ -208,25 +224,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("cancel_url", vuelta("cancelado"));
 
   // [0] Cuota mensual recurrente (tarifa entera de la base). Su primer cobro
-  // será el día 5 (por el ancla), no hoy.
+  // será el día 5 del mes que viene (por el ancla), no hoy.
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", "eur");
   params.set("line_items[0][price_data][unit_amount]", String(importeMesCent));
   params.set("line_items[0][price_data][recurring][interval]", "month");
   params.set("line_items[0][price_data][product_data][name]", "Cuota mensual · El Cubo");
 
-  // [1] Primer pago (entrada), de una vez: se cobra HOY, en la primera factura.
+  // [1] Cuota de ESTE mes, de una vez: se cobra HOY, en la primera factura.
   if (cobraPrimerPago) {
     params.set("line_items[1][quantity]", "1");
     params.set("line_items[1][price_data][currency]", "eur");
     params.set("line_items[1][price_data][unit_amount]", String(primerPagoCent));
-    params.set("line_items[1][price_data][product_data][name]", "Primer pago · El Cubo (entrada)");
+    params.set("line_items[1][price_data][product_data][name]", "Cuota de este mes · El Cubo");
   }
 
-  // La cuota entera no entra hasta el día 5: se pone «prueba» hasta esa fecha.
-  // Así HOY solo se cobra el primer pago (artículo de una vez), y el primer
-  // recibo de la cuota es el día 5. El fin de la prueba fija el día de cobro,
-  // por lo que a partir de ahí se cobra cada día 5. (No se usa
+  // La cuota recurrente no entra hasta el día 5 del MES SIGUIENTE: se pone
+  // «prueba» hasta esa fecha. Así HOY solo se cobra la cuota de este mes (el
+  // artículo de una vez) y el primer recibo de la cuota recurrente es el día 5
+  // del mes que viene; a partir de ahí, cada día 5. (No se usa
   // billing_cycle_anchor + proration_behavior=none porque Stripe no lo permite
   // junto con un precio de una vez.)
   params.set("subscription_data[trial_end]", String(anclaDia5));
