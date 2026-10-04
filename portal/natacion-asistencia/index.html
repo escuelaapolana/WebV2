@@ -54,6 +54,14 @@
               background:var(--navy,#26374B); color:#fff; font-size:14px; padding:10px 16px; border-radius:999px; z-index:60; }
   .na-toast.ver { opacity:1; transform:translate(-50%,0); }
   .na-toast.err { background:#B23B3B; }
+  .na-cancelar { margin-left:auto; border:1px solid #D9B38C; background:#fff; color:#9A5B23; font-size:13px; font-weight:600; border-radius:9px; padding:8px 12px; cursor:pointer; }
+  .na-cancelar:hover { background:#FBF3E8; }
+  .na-cancel { text-align:center; background:#FBEDEA; border:1px solid #E7C3BB; border-radius:14px; padding:26px 18px; margin-top:14px; }
+  .na-cancel .nc-ic { font-size:34px; line-height:1; margin-bottom:8px; }
+  .na-cancel h2 { margin:0 0 4px; color:#9A3B3B; font-size:18px; }
+  .na-cancel p { margin:0 0 16px; color:#7A4A44; }
+  .na-reactivar { border:none; background:#26374B; color:#fff; font-size:14px; font-weight:600; border-radius:10px; padding:10px 16px; cursor:pointer; }
+  .na-reactivar:hover { background:#1c2a3b; }
 </style>
 </head>
 <body>
@@ -64,7 +72,7 @@
 APOLANA_PORTAL.listo(async function (sb, perfil) {
   var wrap = document.getElementById('na');
   var UI = window.APOLANA_UI;
-  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, cargado = false;
+  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, cargado = false, CANCEL = {cancelado:false};
   // ?tipo=Escuela | Máster (viene de la tarjeta del hub). Sin él, todo.
   var TIPO = new URLSearchParams(location.search).get('tipo');
   if (TIPO !== 'Escuela' && TIPO !== 'Máster') TIPO = null;
@@ -82,7 +90,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); },2200); }
 
   async function cargar(){
-    FRANJAS = []; INSCR = []; AUS = {};
+    FRANJAS = []; INSCR = []; AUS = {}; CANCEL = {cancelado:false};
+    try { var rc = await sb.rpc('natacion_dia_cancelado', { p_fecha: fecha }); if (rc && !rc.error && rc.data) CANCEL = rc.data; } catch(e){}
     var dia = diaDe(fecha);
     if (dia >= 1 && dia <= 6){
       var f = await sb.from('natacion_franjas').select('id,dia,hora,grupo,monitores').eq('dia', dia).eq('activa', true).order('hora');
@@ -135,7 +144,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // no todas las del día: si no, con el filtro escuela/adultos el total se inflaba.
     var totalFaltan = INSCR.filter(esAusente).length;
     var cuerpo;
-    if (dia === 0){
+    if (CANCEL && CANCEL.cancelado){
+      cuerpo = '<div class="na-cancel"><div class="nc-ic">🚫</div>'+
+        '<h2>Natación cancelada este día</h2>'+
+        '<p>'+esc(CANCEL.motivo||'Festivo')+'</p>'+
+        '<button type="button" class="na-reactivar" id="na-reactivar">Reactivar este día</button></div>';
+    } else if (dia === 0){
       cuerpo = '<p class="na-vacio">El domingo no hay natación.</p>';
     } else if (!FRANJAS.length){
       cuerpo = '<p class="na-vacio">No hay franjas de natación este día. (Si no ves nada y deberías, quizá no tienes permiso.)</p>';
@@ -173,7 +187,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '</div>'+
       '<div class="na-barra">'+
         '<input type="date" id="na-fecha" value="'+esc(fecha)+'">'+
-        '<span class="cont">'+esc(fechaLarga(fecha))+' · <b>'+totalFaltan+'</b> no vienen</span>'+
+        (CANCEL.cancelado
+          ? '<span class="cont">'+esc(fechaLarga(fecha))+' · cancelado</span>'
+          : '<span class="cont">'+esc(fechaLarga(fecha))+' · <b>'+totalFaltan+'</b> no vienen</span>')+
+        (!CANCEL.cancelado && dia>=1 && dia<=6 && FRANJAS.length
+          ? '<button type="button" class="na-cancelar" id="na-cancelar">Cancelar este día</button>' : '')+
       '</div>'+ cuerpo;
   }
 
@@ -183,9 +201,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     pintar();
   }
 
+  async function cancelarDia(){
+    var motivo = window.prompt('Motivo de la cancelación (se verá ese día):', 'Festivo');
+    if (motivo === null) return;  // pulsó Cancelar en el aviso
+    var r = await sb.rpc('natacion_cancelar_dia', { p_fecha: fecha, p_motivo: motivo || 'Festivo' });
+    if (r.error || (r.data && r.data.ok === false)){ toast((r.data && r.data.msg) || 'No se pudo cancelar', 'err'); return; }
+    toast('Día cancelado'); pintarTodo();
+  }
+  async function reactivarDia(){
+    var r = await sb.rpc('natacion_reactivar_dia', { p_fecha: fecha });
+    if (r.error || (r.data && r.data.ok === false)){ toast((r.data && r.data.msg) || 'No se pudo reactivar', 'err'); return; }
+    toast('Día reactivado'); pintarTodo();
+  }
+
   wrap.addEventListener('click', function(ev){
     var tp = ev.target.closest ? ev.target.closest('.na-tipo') : null;
     if (tp){ TIPO = tp.getAttribute('data-tipo') || null; pintarTodo(); return; }
+    if (ev.target.closest && ev.target.closest('#na-cancelar')){ cancelarDia(); return; }
+    if (ev.target.closest && ev.target.closest('#na-reactivar')){ reactivarDia(); return; }
     var fi = ev.target.closest ? ev.target.closest('.na-fila[data-m]') : null;
     if (fi){ toggle(fi.getAttribute('data-m')); return; }
   });
