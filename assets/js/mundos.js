@@ -94,6 +94,7 @@
       frase:'Los peques del agua: franjas, cupos, asistencia y familias.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-natacion/'},
+        {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-nat'},
         {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
         {t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
         {t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/?tipo=Escuela', d:'Quién viene a cada sesión.'},
@@ -115,6 +116,7 @@
       frase:'La pista, con la Academia AC98 dentro: atletas, grupos, tests y competición.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/pista/'},
+        {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=pista'},
         {t:'Atletas',          i:'people',    url:B+'admin/atletas/?seccion=competicion', d:'Los atletas de pista.'},
         {t:'Grupos',           i:'people',    url:B+'admin/grupos/?seccion=competicion',  d:'Grupos de entreno, incl. Academia AC98.'},
         {t:'Tests y pruebas',  i:'clipboard', url:B+'admin/tests/',        d:'Batería de tests y marcas.'},
@@ -126,6 +128,7 @@
       frase:'Los peques de la pista: grupos, altas de familias y reparto.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-atletismo/'},
+        {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-atl'},
         {t:'Niños y niñas',     i:'people',   url:B+'admin/atletas/?seccion=escuela', d:'Los peques inscritos.'},
         {t:'Grupos',            i:'people',   url:B+'admin/grupos/?seccion=escuela',  d:'Grupos por edad.'},
         {t:'Altas de familias', i:'userplus', url:B+'admin/altas/?tipo=escuela',      d:'Solicitudes nuevas de las familias.'},
@@ -136,6 +139,7 @@
       frase:'De momento, solo agrupa a las personas de running.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/running/'},
+        {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=running'},
         {t:'Corredores', i:'run', url:B+'admin/atletas/?seccion=running', d:'Las personas del grupo de running.'}
       ] },
     { key:'comunicacion', nombre:'Comunicación', dot:'#6E5AA6', home:B+'portal/comunicacion/',

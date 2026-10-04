@@ -353,18 +353,32 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var AUS = {};
       try { var raus = await sb.rpc('cubo_mis_ausencias'); if (raus && !raus.error && Array.isArray(raus.data)) raus.data.forEach(function (a) { AUS[(a.grupo_id || '') + '|' + a.fecha] = true; }); } catch (e) {}
       function isoDe(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+      // Días cancelados (festivos/cierres) de esas fechas, para no pedir «no voy» a algo que no hay.
+      var CANC = {};
+      try {
+        var isos = {}; prox.forEach(function (p) { isos[isoDe(p.fecha)] = 1; });
+        await Promise.all(Object.keys(isos).map(function (iso) {
+          return sb.rpc('dia_cancelado', { p_fecha: iso, p_seccion: 'cubo' })
+            .then(function (r) { if (r && !r.error && r.data && r.data.cancelado) CANC[iso] = r.data.motivo || 'Festivo'; })
+            .catch(function () {});
+        }));
+      } catch (e) {}
       var cab = '<p class="rotulo cb-grupo">Tus próximos entrenamientos</p>';
       caja.innerHTML = cab + (prox.length
         ? '<div class="hor">' + prox.map(function (p) {
             var x = p.h, iso = isoDe(p.fecha), noVoy = !!AUS[(x.grupo_id || '') + '|' + iso];
+            var canc = CANC[iso];
             var rango = hhmm(x.hora_inicio) + (x.hora_fin ? '–' + hhmm(x.hora_fin) : '');
-            return '<div class="fila' + (noVoy ? ' novoy' : '') + '">' +
+            return '<div class="fila' + (canc ? ' novoy' : (noVoy ? ' novoy' : '')) + '">' +
               '<span class="dia">' + esc(diaFecha(p.fecha)) + '</span>' +
-              '<span class="det"><span class="hh">' + esc(rango) + '</span>' +
-                (x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
-                (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : '') +
+              '<span class="det"><span class="hh"' + (canc ? ' style="text-decoration:line-through"' : '') + '>' + esc(rango) + '</span>' +
+                (canc ? '<span class="lugar" style="color:#B23B3B;font-weight:600">🚫 ' + esc(canc) + '</span>'
+                      : ((x.lugar ? '<span class="lugar">' + esc(x.lugar) + '</span>' : '') +
+                         (x.nota ? '<span class="lugar">' + esc(x.nota) + '</span>' : ''))) +
               '</span>' +
-              '<button type="button" class="cb-novoy' + (noVoy ? ' off' : '') + '" data-grupo="' + esc(x.grupo_id || '') + '" data-fecha="' + iso + '">' + (noVoy ? '✓ Avisado' : 'No voy') + '</button>' +
+              (canc
+                ? '<span style="color:#B23B3B;font-weight:700;font-size:13px;white-space:nowrap">Cancelado</span>'
+                : '<button type="button" class="cb-novoy' + (noVoy ? ' off' : '') + '" data-grupo="' + esc(x.grupo_id || '') + '" data-fecha="' + iso + '">' + (noVoy ? '✓ Avisado' : 'No voy') + '</button>') +
               '</div>';
           }).join('') + '</div>'
         : APOLANA_UI.vacio('Sin entrenamientos próximos', 'Tus clases empiezan pronto; aquí verás las fechas en cuanto lleguen.'));
