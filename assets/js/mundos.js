@@ -66,6 +66,7 @@
       frase:'El club por dentro: personas, socios, dinero, la web y los avisos que se envían.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/general/'},
+        {key:'calendario', t:'Calendario del club', i:'calendar', url:B+'portal/calendario-club/', d:'Todas las sesiones por día, con apuntados; cancelar festivos y cierres.'},
         {t:'Personas',        i:'people',    url:B+'admin/atletas/',     d:'Todas las fichas del club, en un sitio.'},
         {t:'Socios',          i:'user',      url:B+'admin/socios/',      d:'Altas, cuotas y estado de cada socio.'},
         {t:'Dinero',          i:'euro',      url:B+'admin/cobros/',      d:'Cobros, recibos e impagados.'},
@@ -84,6 +85,7 @@
         {key:'franjas',    t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
         {key:'reservas',   t:'Reservas y abono', i:'ticket',   url:B+'portal/natacion-reservas/'},
+        {key:'calendario', t:'Calendario',       i:'calendar', url:B+'portal/calendario-club/?world=natacion'},
         {key:'plazas',     t:'Ver en la web',    i:'signal',   url:B+'natacion/', ext:true}
       ] },
     { key:'escuela-nat', nombre:'Escuela de natación', dot:'#2E8C86', home:B+'portal/escuela-natacion/',
@@ -99,6 +101,7 @@
       frase:'Socios que entrenan: grupos fijos, cuotas y asistencia.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/cubo/'},
+        {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=cubo', d:'Las sesiones del Cubo por día; cancelar festivos.'},
         {t:'Integrantes',     i:'people',   url:B+'admin/atletas/?seccion=cubo', d:'Quién entrena en el Cubo.'},
         {t:'Grupos y turnos', i:'calendar', url:B+'admin/grupos/?seccion=cubo',  d:'Grupos fijos y sus días.'},
         {t:'Cuotas y pagos',  i:'ticket',   url:B+'admin/cubo-altas/',           d:'Cuotas mensuales, cobros y altas.'},
