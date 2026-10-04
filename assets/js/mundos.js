@@ -71,6 +71,7 @@
         {t:'Socios',          i:'user',      url:B+'admin/socios/',      d:'Altas, cuotas y estado de cada socio.'},
         {t:'Dinero',          i:'euro',      url:B+'admin/cobros/',      d:'Cobros, recibos e impagados.'},
         {key:'pagos', t:'Resumen de pagos', i:'chart', url:B+'portal/pagos-resumen/', d:'Cuánto entra: Cubo, cobros online, recibos y socios.'},
+        {t:'Pedidos de la tienda', i:'box', url:B+'admin/pedidos/', d:'Los pedidos de ropa y su estado.'},
         {t:'Avisos al móvil', i:'bell',      url:B+'admin/avisos-push/', d:'Las notificaciones que se envían a la gente.', pill:'Notificar'},
         {t:'Buzón',           i:'inbox',     url:B+'admin/buzon/',       d:'Los mensajes que llegan de contacto.'},
         {t:'La web',          i:'globe',     url:B+'admin/paginas/',     d:'Páginas, textos y fotos de la web.'},
