@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pagos del club · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";
+  window.APOLANA_MUNDO = { world:'general', screen:'pagos', contentSel:'#pg' };</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/mundos.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',monospace); }
+  body { background:var(--crema,#FBF9F4); }
+  .pg-wrap { max-width:820px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(12px,4vw,26px) 48px; }
+  .pg-h1 { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; letter-spacing:-.01em;
+           font-size:clamp(23px,5.2vw,32px); line-height:1.02; color:var(--navy,#26374B); margin:2px 0 2px; }
+  .pg-sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 18px; }
+  .pg-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:11px; margin-bottom:20px; }
+  .pg-kpi { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:15px 16px; }
+  .pg-kpi .k { font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:var(--texto-suave,#8A816E); margin:0 0 7px; }
+  .pg-kpi .v { font-family:var(--dato); font-size:27px; font-weight:700; color:var(--navy,#26374B); line-height:1; }
+  .pg-kpi .d { font-size:12.5px; color:var(--texto-suave,#8A816E); margin-top:6px; }
+  .pg-kpi.verde .v { color:#1E7A3D; }
+  .pg-sec { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:16px 17px; margin-bottom:14px; }
+  .pg-sec h2 { font-family:var(--ap-titulo); font-size:17px; color:var(--navy); margin:0 0 3px; }
+  .pg-sec .note { font-size:12.5px; color:var(--texto-suave,#8A816E); margin:0 0 12px; }
+  .pg-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid var(--linea,#F0EADD); }
+  .pg-row:first-of-type { border-top:none; }
+  .pg-row .l { font-size:14px; color:var(--texto,#333); }
+  .pg-row .l small { color:var(--texto-suave,#8A816E); }
+  .pg-row .r { font-family:var(--dato); font-size:15px; font-weight:600; color:var(--navy); white-space:nowrap; }
+  .pg-row .r small { font-weight:400; color:var(--texto-suave,#8A816E); }
+  .pg-pill { display:inline-block; font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; vertical-align:middle; }
+  .pill-ok { background:#E6F4EA; color:#1E7A3D; } .pill-cur { background:#FBF0DD; color:#9A6B16; } .pill-no { background:#F3E4E2; color:#9A3B3B; }
+  .pg-aviso { background:#F1EADC; border-radius:12px; padding:12px 14px; font-size:13px; color:#6E5A2E; line-height:1.5; margin-top:4px; }
+  .pg-vacio { color:var(--texto-suave,#8A816E); text-align:center; padding:34px 10px; }
+</style>
+</head>
+<body>
+  <div class="pg-wrap" id="pg"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('pg');
+  function eur(n){ n = Number(n||0); return n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function fFecha(s){ if(!s) return '—'; var p=String(s).split('-'); var M=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return (+p[2])+' '+M[(+p[1])-1]; }
+  var ETIQ = { alta_socio:'Alta de socio', ropa:'Tienda / ropa', cubo:'Cuota El Cubo', recibo:'Recibo' };
+  var EST = { pagado:['pill-ok','cobrado'], iniciado:['pill-cur','en curso'], cancelado:['pill-no','cancelado'], fallido:['pill-no','fallido'], reembolsado:['pill-no','devuelto'] };
+
+  var r = await sb.rpc('pagos_resumen');
+  var d = (r && !r.error) ? r.data : null;
+  if (!d || d.ok === false){
+    wrap.innerHTML = '<h1 class="pg-h1">Pagos del club</h1><div class="pg-vacio">Esta pantalla es solo para administración.</div>';
+    return;
+  }
+
+  var cubo = d.cubo||{}, online = d.online||[], rec = d.recibos||{}, socios = d.socios||0, precioAlta = d.precio_alta_socio_eur||0;
+
+  // Online: total cobrado y agrupado
+  var onlineCobrado = 0, onlineEnCurso = 0;
+  online.forEach(function(x){ if(x.estado==='pagado') onlineCobrado += Number(x.eur||0); if(x.estado==='iniciado') onlineEnCurso += Number(x.eur||0); });
+
+  // KPIs
+  var kpis =
+    '<div class="pg-kpi"><p class="k">Cuotas del Cubo / mes</p><p class="v">'+eur(cubo.mensual_eur)+'</p><p class="d">'+(cubo.activas||0)+' suscripciones activas</p></div>'+
+    '<div class="pg-kpi verde"><p class="k">Cobrado online</p><p class="v">'+eur(onlineCobrado)+'</p><p class="d">tarjeta (Stripe)'+(onlineEnCurso?' · '+eur(onlineEnCurso)+' en curso':'')+'</p></div>'+
+    '<div class="pg-kpi"><p class="k">Socios</p><p class="v">'+socios+'</p><p class="d">cuota por banco (Isa)</p></div>';
+
+  // El Cubo
+  var cuboSec =
+    '<div class="pg-sec"><h2>El Cubo</h2><p class="note">Suscripciones con tarjeta (Stripe). El cargo se repite el día 5 de cada mes.</p>'+
+    '<div class="pg-row"><span class="l">Suscripciones activas</span><span class="r">'+(cubo.activas||0)+'</span></div>'+
+    '<div class="pg-row"><span class="l">Cuota mensual (suma)</span><span class="r">'+eur(cubo.mensual_eur)+'</span></div>'+
+    '<div class="pg-row"><span class="l">Último cobro</span><span class="r">'+fFecha(cubo.ultimo_cobro)+'</span></div>'+
+    '<div class="pg-row"><span class="l">Próximo cobro</span><span class="r">'+fFecha(cubo.proximo_cobro)+'</span></div>'+
+    (cubo.bajas ? '<div class="pg-row"><span class="l">Bajas solicitadas</span><span class="r">'+cubo.bajas+'</span></div>' : '')+
+    '</div>';
+
+  // Online (Stripe) por concepto
+  var filasOn = online.length ? online.map(function(x){
+    var e = EST[x.estado] || ['pill-cur', x.estado];
+    return '<div class="pg-row"><span class="l">'+esc(ETIQ[x.tipo]||x.tipo)+' <span class="pg-pill '+e[0]+'">'+esc(e[1])+'</span></span>'+
+      '<span class="r">'+eur(x.eur)+' <small>· '+x.n+'</small></span></div>';
+  }).join('') : '<p class="note">Todavía no hay cobros online.</p>';
+  var onlineSec = '<div class="pg-sec"><h2>Cobros online · tarjeta</h2><p class="note">Pagos con tarjeta por Stripe (altas de socio, tienda, Cubo).</p>'+filasOn+'</div>';
+
+  // Recibos
+  var hayRec = (rec.pagado_n||0)+(rec.pendiente_n||0)+(rec.impagado_n||0) > 0;
+  var recSec = '<div class="pg-sec"><h2>Recibos</h2><p class="note">Los que emites en «Dinero» (cobros a personas y grupos).</p>'+
+    (hayRec
+      ? '<div class="pg-row"><span class="l">Cobrados</span><span class="r">'+eur(rec.pagado_eur)+' <small>· '+rec.pagado_n+'</small></span></div>'+
+        '<div class="pg-row"><span class="l">Pendientes</span><span class="r">'+eur(rec.pendiente_eur)+' <small>· '+rec.pendiente_n+'</small></span></div>'+
+        '<div class="pg-row"><span class="l">Vencidos / impagados</span><span class="r">'+eur(rec.impagado_eur)+' <small>· '+rec.impagado_n+'</small></span></div>'
+      : '<p class="note">Aún no has emitido recibos. Cuando cobres a alguien o a un grupo, aparecerán aquí.</p>')+
+    '</div>';
+
+  wrap.innerHTML =
+    '<h1 class="pg-h1">Pagos del club</h1>'+
+    '<p class="pg-sub">Lo que entra por la app. Se va llenando según pasen cobros por aquí.</p>'+
+    '<div class="pg-kpis">'+kpis+'</div>'+
+    cuboSec + onlineSec + recSec +
+    '<div class="pg-aviso">💡 Las <b>cuotas de socio</b> se cobran por <b>domiciliación bancaria</b> (las lleva Isa), así que no salen aquí — solo el número de socios ('+socios+'). El alta de socio nuevo sí pasa por la app ('+eur(precioAlta)+' por SEPA).</div>';
+});
+</script>
+</body>
+</html>

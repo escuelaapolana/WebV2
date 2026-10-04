@@ -70,6 +70,7 @@
         {t:'Personas',        i:'people',    url:B+'admin/atletas/',     d:'Todas las fichas del club, en un sitio.'},
         {t:'Socios',          i:'user',      url:B+'admin/socios/',      d:'Altas, cuotas y estado de cada socio.'},
         {t:'Dinero',          i:'euro',      url:B+'admin/cobros/',      d:'Cobros, recibos e impagados.'},
+        {key:'pagos', t:'Resumen de pagos', i:'chart', url:B+'portal/pagos-resumen/', d:'Cuánto entra: Cubo, cobros online, recibos y socios.'},
         {t:'Avisos al móvil', i:'bell',      url:B+'admin/avisos-push/', d:'Las notificaciones que se envían a la gente.', pill:'Notificar'},
         {t:'Buzón',           i:'inbox',     url:B+'admin/buzon/',       d:'Los mensajes que llegan de contacto.'},
         {t:'La web',          i:'globe',     url:B+'admin/paginas/',     d:'Páginas, textos y fotos de la web.'},
