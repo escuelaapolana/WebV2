@@ -281,6 +281,41 @@ APOLANA_ADMIN.listo(function (sb) {
   // ---- Abrir/cerrar el cobro POR PERSONA ----
   // No cobra nada: solo hace que a esa persona le aparezca (o no) «Pagar la
   // cuota» en su portal. Los que quedan cerrados están «de prueba».
+  // Cobro en lote de los pendientes «de antes» (alta < 30-sep, aún sin suscripción):
+  // septiembre 10€ (entrada) + octubre su cuota, unificado en el primer pago; luego
+  // la cuota normal el día 5. Abre el cobro y manda el correo a cada uno.
+  async function cobrarSepOct(btn){
+    var lista=ALTAS.filter(function(a){
+      return a.estado==='aprobada' && a.suscripcion_estado!=='activa' && !a.lista_espera
+        && a.created_at && String(a.created_at).slice(0,10) < '2026-09-30';
+    });
+    if(!lista.length){ toast('No hay pendientes de antes del 30-sep.'); return; }
+    var total=lista.reduce(function(s,a){ return s + (10 + (a.precio_mes>0?a.precio_mes:30)); }, 0);
+    var nombres=lista.slice(0,6).map(function(a){ return (a.nombre||'')+' '+(a.apellidos||''); }).join(', ');
+    var ok=confirm('Vas a abrir el cobro a '+lista.length+' personas (alta antes del 30-sep, aún sin pagar):\n'+
+      nombres+(lista.length>6?'…':'')+'\n\n'+
+      'Primer pago = SEPTIEMBRE 10€ + OCTUBRE su cuota (unificado). Total aprox: '+total+'€.\n'+
+      'Luego su cuota le saldrá sola el día 5 de cada mes.\n'+
+      'Se les ENVIARÁ EL CORREO para pagar.\n\n¿Seguir?');
+    if(!ok) return;
+    btn.disabled=true; var txt=btn.textContent; btn.textContent='Enviando…';
+    var hechos=0, fallos=0, sinCorreo=0;
+    for(var i=0;i<lista.length;i++){
+      var a=lista[i];
+      var euros = 10 + (a.precio_mes>0?a.precio_mes:30);
+      var rp = await sb.rpc('cubo_primer_pago_set', { p_alta_id:a.id, p_euros:euros });
+      if(rp.error){ fallos++; continue; }
+      var r = await sb.rpc('cubo_cobro_abrir', { p_id:a.id, p_abierto:true });
+      if(r.error){ fallos++; continue; }
+      a.cobro_abierto=true; a.primer_pago_cent=Math.round(euros*100);
+      var av = await sb.functions.invoke('cubo-cobro-aviso', { body:{ alta_id:a.id } }).catch(function(){ return null; });
+      if(!(av && av.data && av.data.ok)) sinCorreo++;
+      hechos++;
+    }
+    btn.textContent=txt; btn.disabled=false; pintar();
+    toast('Cobro abierto a '+hechos+' personas'+(fallos?' · '+fallos+' fallaron':'')+(sinCorreo?' · '+sinCorreo+' sin correo (avísales por WhatsApp)':' · correos enviados'), (fallos||sinCorreo)?'error':'ok');
+  }
+
   async function abrirCobro(id, estabaAbierto, btn){
     var nuevo=!estabaAbierto;
     var a=null; ALTAS.forEach(function(x){ if(x.id===id) a=x; });
@@ -442,10 +477,15 @@ APOLANA_ADMIN.listo(function (sb) {
     var aprob=ALTAS.filter(function(a){ return (a.estado==='aprobada') && a.suscripcion_estado!=='activa'; });
     var abiertos=aprob.filter(function(a){ return a.cobro_abierto; }).length;
     var prueba=aprob.length-abiertos;
+    // Pendientes «de antes»: alta anterior al 30-sep y aún sin suscripción.
+    // A estos se les cobra septiembre (10€ de entrada) + octubre (su cuota).
+    var septoct=aprob.filter(function(a){ return !a.lista_espera && a.created_at && String(a.created_at).slice(0,10) < '2026-09-30'; });
+    var septoctTotal=septoct.reduce(function(s,a){ return s + (10 + (a.precio_mes>0?a.precio_mes:30)); }, 0);
     caja.className='ca-cobro'+(abiertos>0?' abierto':'');
     caja.innerHTML='<div class="tx"><b>Cobro por persona</b>'+
       '<small><b>'+abiertos+'</b> con cobro abierto · <b>'+prueba+'</b> de prueba (no les sale pagar). '+
       'Abre el cobro a cada uno en su tarjeta, o a todos los de prueba de golpe.</small></div>'+
+      (septoct.length?'<button type="button" class="b abrir" id="ca-cobrar-septoct" style="background:#1E7A3D">Cobrar sep+oct a '+septoct.length+' pendientes (alta &lt; 30-sep) · ~'+septoctTotal+'€</button>':'')+
       (prueba>0?'<button type="button" class="b abrir" id="ca-abrir-todos">Abrir cobro a los '+prueba+' de prueba</button>':'')+
       aforoHTML();
   }
@@ -587,6 +627,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(cp){ cancelarPago(cp.getAttribute('data-cancelar-pago'), cp); return; }
     var at=ev.target.closest?ev.target.closest('#ca-abrir-todos'):null;
     if(at){ abrirCobroTodos(at); return; }
+    var so=ev.target.closest?ev.target.closest('#ca-cobrar-septoct'):null;
+    if(so){ cobrarSepOct(so); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
     if(f){ filtro=f.getAttribute('data-f'); pintar(); return; }
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;
