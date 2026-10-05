@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payouts de Stripe · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";
+  window.APOLANA_MUNDO = { world:'general', screen:'payouts', contentSel:'#py' };</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/portal-auth.js"></script>
+<script src="../../assets/js/portal-tabbar.js" defer></script>
+<script src="../../assets/js/mundos.js" defer></script>
+<script src="../../assets/js/panel-piezas.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',monospace); }
+  body { background:var(--crema,#FBF9F4); }
+  .py-wrap { max-width:860px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(12px,4vw,26px) 48px; }
+  .py-h1 { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; letter-spacing:-.01em;
+           font-size:clamp(23px,5.2vw,32px); line-height:1.02; color:var(--navy,#26374B); margin:2px 0 2px; }
+  .py-sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 18px; }
+  .py-lista { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+  .py-po { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB);
+           border-radius:12px; padding:13px 15px; cursor:pointer; text-align:left; font:inherit; }
+  .py-po.on { border-color:#26374B; box-shadow:0 0 0 1px #26374B inset; }
+  .py-po .imp { font-family:var(--dato); font-size:19px; font-weight:700; color:var(--navy); min-width:96px; }
+  .py-po .meta { flex:1 1 auto; font-size:13px; color:var(--texto-suave,#6E6656); }
+  .py-po .meta b { color:var(--texto,#333); }
+  .py-pill { font-size:11px; font-weight:700; border-radius:999px; padding:2px 9px; }
+  .pill-ok { background:#E6F4EA; color:#1E7A3D; } .pill-cur { background:#FBF0DD; color:#9A6B16; }
+  .py-det { background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:15px 16px; margin-top:6px; }
+  .py-det h2 { font-family:var(--ap-titulo); font-size:17px; color:var(--navy); margin:0 0 3px; }
+  .py-tot { font-size:13px; color:var(--texto-suave,#6E6656); margin:0 0 12px; }
+  .py-tabla { width:100%; border-collapse:collapse; font-size:13px; }
+  .py-tabla th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--texto-suave,#8A816E); padding:6px 8px; border-bottom:1px solid var(--linea,#EDE6D7); }
+  .py-tabla td { padding:7px 8px; border-bottom:1px solid var(--linea,#F3EEE2); color:var(--texto,#333); }
+  .py-tabla td.num { font-family:var(--dato); text-align:right; white-space:nowrap; }
+  .py-tabla .neto { color:#1E7A3D; font-weight:600; }
+  .py-dl { margin-top:14px; border:none; border-radius:10px; min-height:44px; padding:0 18px; font:inherit; font-weight:700;
+           font-size:14px; background:#1E7A3D; color:#fff; cursor:pointer; }
+  .py-dl[disabled]{ opacity:.5; cursor:default; }
+  .py-vacio { color:var(--texto-suave,#8A816E); text-align:center; padding:30px 10px; }
+  .py-toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%,10px); background:#26374B; color:#fff; padding:11px 18px; border-radius:11px; font-size:14px; opacity:0; transition:.22s; z-index:70; }
+  .py-toast.ver { opacity:1; transform:translate(-50%,0); } .py-toast.err { background:#B23B3B; }
+</style>
+</head>
+<body>
+  <div class="py-wrap" id="py"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('py');
+  function eur(n){ return Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function toast(m,t){ var e=document.createElement('div'); e.className='py-toast'+(t==='err'?' err':''); e.textContent=m; document.body.appendChild(e);
+    requestAnimationFrame(function(){ e.classList.add('ver'); }); setTimeout(function(){ e.classList.remove('ver'); setTimeout(function(){ e.remove(); },240); },2600); }
+  var ESTADO = { paid:['pill-ok','pagado'], in_transit:['pill-cur','en camino'], pending:['pill-cur','pendiente'], canceled:['pill-err','cancelado'], failed:['pill-err','fallido'] };
+
+  var POS = [], sel = null, DET = null;
+
+  async function cargarLista(){
+    wrap.innerHTML = '<h1 class="py-h1">Payouts de Stripe</h1><p class="py-sub">Las transferencias de Stripe al banco del club, con el desglose de qué incluye cada una. Para cuadrar con Isa.</p><div class="py-vacio">Cargando payouts…</div>';
+    var r = await sb.functions.invoke('stripe-payout-export', { body:{ accion:'lista' } });
+    if (r.error || !r.data || r.data.ok===false){
+      var d=null; try{ if(r.error&&r.error.context&&r.error.context.json) d=await r.error.context.json(); }catch(e){}
+      var msg=(d&&(d.msg||d.error))||(r.data&&r.data.msg)||'No se pudo cargar.';
+      wrap.innerHTML = '<h1 class="py-h1">Payouts de Stripe</h1><div class="py-vacio">'+esc(msg==='Solo administración.'?'Esta pantalla es solo para administración.':msg)+'</div>';
+      return;
+    }
+    POS = r.data.payouts || [];
+    pintar();
+  }
+
+  function pintar(){
+    var lista = POS.length ? POS.map(function(p){
+      var e = ESTADO[p.estado] || ['pill-cur', p.estado];
+      return '<button type="button" class="py-po'+(sel===p.id?' on':'')+'" data-po="'+esc(p.id)+'">'+
+        '<span class="imp">'+eur(p.importe)+'</span>'+
+        '<span class="meta">Llega el <b>'+esc(p.fecha_llegada||p.creado||'')+'</b>'+(p.banco?' · '+esc(p.banco):'')+'</span>'+
+        '<span class="py-pill '+e[0]+'">'+esc(e[1])+'</span></button>';
+    }).join('') : '<div class="py-vacio">No hay payouts todavía.</div>';
+
+    var det = '';
+    if (sel && DET){
+      var t = DET.totales||{};
+      var filas = (DET.lineas||[]).map(function(l){
+        return '<tr><td><b>'+esc(l.nombre||'—')+'</b>'+(l.seccion?'<br><small style="color:#8A816E">'+esc(l.seccion)+'</small>':'')+'</td>'+
+          '<td>'+esc(l.concepto||'')+'</td>'+
+          '<td class="num">'+eur(l.importe)+'</td><td class="num">'+eur(l.comision)+'</td>'+
+          '<td class="num neto">'+eur(l.neto)+'</td><td class="num">'+esc(l.fecha_cargo||'')+'</td></tr>';
+      }).join('');
+      det = '<div class="py-det"><h2>Desglose del payout</h2>'+
+        '<p class="py-tot"><b>'+(t.lineas||0)+'</b> cobros · Bruto '+eur(t.importe)+' · Comisión '+eur(t.comision)+' · <b>Neto '+eur(t.neto)+'</b> · llega al banco el <b>'+esc(DET.fecha_llegada||'')+'</b></p>'+
+        (filas ? '<table class="py-tabla"><thead><tr><th>Quién</th><th>Concepto</th><th>Importe</th><th>Comisión</th><th>Neto</th><th>Pagado el día</th></tr></thead><tbody>'+filas+'</tbody></table>'
+               : '<p class="py-vacio">Este payout no tiene cobros detallados (puede ser un ajuste).</p>')+
+        '<button type="button" class="py-dl" id="py-dl"'+(filas?'':' disabled')+'>⬇ Descargar Excel para Isa</button></div>';
+    } else if (sel){
+      det = '<div class="py-det"><div class="py-vacio">Cargando desglose…</div></div>';
+    }
+
+    wrap.innerHTML =
+      '<h1 class="py-h1">Payouts de Stripe</h1>'+
+      '<p class="py-sub">Las transferencias de Stripe al banco del club, con el desglose de qué incluye cada una. Para cuadrar con Isa.</p>'+
+      '<div class="py-lista">'+lista+'</div>'+ det;
+  }
+
+  async function verDetalle(id){
+    sel = id; DET = null; pintar();
+    var r = await sb.functions.invoke('stripe-payout-export', { body:{ accion:'detalle', payout:id } });
+    if (r.error || !r.data || r.data.ok===false){ toast((r.data&&r.data.msg)||'No se pudo cargar el desglose.','err'); return; }
+    DET = r.data; pintar();
+  }
+
+  function descargar(){
+    if (!DET || !window.XLSX){ toast('Aún cargando…','err'); return; }
+    var po = POS.filter(function(p){return p.id===sel;})[0] || {};
+    var fechaPayout = DET.fecha_llegada || po.fecha_llegada || po.creado || '';
+    var aoa = [['Nombre','Teléfono','Correo','DNI','Sección / Equipo','Concepto','Importe','Comisión','Total (neto)','Pagado el día','Llegó al banco']];
+    (DET.lineas||[]).forEach(function(l){
+      aoa.push([l.nombre||'', l.telefono||'', l.email||'', l.dni||'', l.seccion||'', l.concepto||'',
+                l.importe, l.comision, l.neto, l.fecha_cargo||'', l.fecha_llegada||fechaPayout]);
+    });
+    var t = DET.totales||{};
+    aoa.push([]); aoa.push(['TOTAL','','','','', (t.lineas||0)+' cobros', t.importe, t.comision, t.neto, '', fechaPayout]);
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:26},{wch:14},{wch:26},{wch:12},{wch:22},{wch:30},{wch:10},{wch:10},{wch:11},{wch:13},{wch:13}];
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Payout');
+    XLSX.writeFile(wb, 'payout-'+(fechaPayout||'stripe')+'.xlsx');
+  }
+
+  wrap.addEventListener('click', function(ev){
+    var po = ev.target.closest ? ev.target.closest('[data-po]') : null;
+    if (po){ verDetalle(po.getAttribute('data-po')); return; }
+    if (ev.target.closest && ev.target.closest('#py-dl')){ descargar(); return; }
+  });
+
+  await cargarLista();
+});
+</script>
+</body>
+</html>
