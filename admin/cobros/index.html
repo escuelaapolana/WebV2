@@ -308,6 +308,7 @@
           <select id="f-atleta" aria-label="Atleta"><option value="">Todos los atletas</option></select>
           <select id="f-periodo" aria-label="Periodo"><option value="">Todos los periodos</option></select>
           <span class="cuenta" id="f-cuenta" aria-live="polite"></span>
+          <button type="button" id="avisar-pendientes" style="border:none;background:#2F6FA8;color:#fff;border-radius:10px;padding:9px 14px;font:inherit;font-weight:600;font-size:13.5px;cursor:pointer;margin-left:auto">✉ Avisar a los pendientes</button>
         </div>
       </div>
     </div>
@@ -1038,6 +1039,27 @@ APOLANA_ADMIN.listo(function (sb) {
     $(id).addEventListener('input', function () { TOPE_RESOLVER = 8; pintar(); });
     $(id).addEventListener('change', function () { TOPE_RESOLVER = 8; pintar(); });
   });
+
+  // Avisar por correo a los recibos PENDIENTES de la vista actual (cuota por pagar).
+  async function avisarPendientesRecibos(btn) {
+    var pend = filtrada().filter(function (p) { return p.estado === 'pendiente' && !p.anulado; });
+    if (!pend.length) { window.alert('No hay recibos pendientes en la vista actual (ajusta los filtros).'); return; }
+    if (!window.confirm('Se enviará un correo de aviso de pago a ' + pend.length + ' recibo(s) pendiente(s) de la vista actual. Cada persona recibe el suyo con su concepto e importe. ¿Enviar ahora?')) return;
+    var txt = btn.textContent; btn.disabled = true;
+    var ok = 0, err = 0, sinc = 0;
+    for (var i = 0; i < pend.length; i++) {
+      btn.textContent = 'Enviando ' + (i + 1) + '/' + pend.length + '…';
+      try {
+        var r = await sb.functions.invoke('recibo-aviso', { body: { pago_id: pend[i].id } });
+        if (r && r.error) err++;
+        else if (r && r.data && r.data.ok) ok++;
+        else sinc++;
+      } catch (e) { err++; }
+    }
+    btn.disabled = false; btn.textContent = txt;
+    window.alert('Correos enviados: ' + ok + (sinc ? (' · ' + sinc + ' sin correo') : '') + (err ? (' · ' + err + ' fallaron') : '') + '.');
+  }
+  (function () { var ap = $('avisar-pendientes'); if (ap) ap.addEventListener('click', function () { avisarPendientesRecibos(ap); }); })();
 
   /* ---------- la ficha del recibo, encima de la lista ---------- */
   var focoPrevio = null;
