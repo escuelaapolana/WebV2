@@ -48,6 +48,10 @@ drop policy if exists "admin gestiona cuotas entreno" on public.cuotas_entreno;
 create policy "admin gestiona cuotas entreno" on public.cuotas_entreno
   to authenticated using (es_admin() or es_staff()) with check (es_admin() or es_staff());
 
+-- La RLS filtra filas, pero el rol necesita permiso de tabla (las tablas nuevas
+-- no lo heredan solo). Sin esto: «permission denied for table cuotas_entreno».
+grant select, insert, update, delete on public.cuotas_entreno to authenticated;
+
 -- --- Siembra de los 6 (Bella NO: su pago es único, se queda como recibo) ---
 -- El token es dos uuid pegados sin guiones (64 hex, imposible de adivinar).
 insert into public.cuotas_entreno (atleta_id, perfil_id, nombre, apellidos, email, concepto, importe_cent, token)
