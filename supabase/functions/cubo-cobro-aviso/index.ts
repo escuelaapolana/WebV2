@@ -73,23 +73,30 @@ async function comoUsuario(rpc: string, jwt: string): Promise<boolean> {
   try { return (await r.json()) === true; } catch { return false; }
 }
 
-function correoHtml(nombre: string, precioMes: number, primer: number): string {
+function correoHtml(nombre: string, precioMes: number, primer: number, nota = ""): string {
   const hola = nombre ? `¡Hola, ${nombre}!` : "¡Hola!";
   const cuotaLinea = precioMes > 0
     ? `luego, tu cuota de <b>${precioMes} €/mes</b>`
     : `luego, tu cuota mensual`;
   const enlace = `${URL_BASE}portal/`;
+  const notaHtml = nota
+    ? `<tr><td style="padding:2px 24px 10px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">
+          <tr><td style="padding:13px 16px;color:#5C4A1E;font-size:14px;line-height:1.55">${nota.replace(/[<>]/g, "")}</td></tr>
+        </table></td></tr>`
+    : "";
   // Estructura con TABLAS + bgcolor (atributo, no solo CSS): así los fondos de
   // color se ven en Gmail/Outlook y el texto blanco no queda sobre blanco.
   return `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
-    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
       <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">El Cubo · Club Atletismo Apolana</td></tr>
       <tr><td style="padding:24px 24px 6px 24px">
         <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">${hola}</p>
         <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">¡Bienvenido/a a <b>El Cubo</b>! 💪 Ya has empezado a entrenar con nosotros, así que <b>ya puedes dejar lista tu cuota</b> y olvidarte del tema.</p>
-        <p style="margin:0 0 20px;color:#3f3f46;line-height:1.6">Es muy fácil: entra en tu espacio y pulsa <b>«Pagar la cuota»</b>. Hoy solo pagas <b>${primer} €</b> (el primer pago) y tu tarjeta queda guardada; ${cuotaLinea} se cobra sola cada <b>día 5</b>, sin que tengas que hacer nada.</p>
+        <p style="margin:0 0 20px;color:#3f3f46;line-height:1.6">Es muy fácil: entra en tu espacio y pulsa <b>«Pagar la cuota»</b>. Hoy pagas <b>${primer} €</b> (el primer pago) y tu tarjeta queda guardada; ${cuotaLinea} se cobra sola cada <b>día 5</b>, sin que tengas que hacer nada.</p>
       </td></tr>
+      ${notaHtml}
       <tr><td align="center" style="padding:4px 24px 6px 24px">
         <table role="presentation" cellpadding="0" cellspacing="0"><tr>
           <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
@@ -133,7 +140,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!altaId) return responder({ error: "falta_alta" }, 400, origen);
 
   // 3 · El correo sale de la base (perfil del alta), no del navegador.
-  const rAlta = await consulta(`cubo_altas?select=nombre,perfil_id,precio_mes,primer_pago_cent&id=eq.${encodeURIComponent(altaId)}&limit=1`);
+  const rAlta = await consulta(`cubo_altas?select=nombre,perfil_id,precio_mes,primer_pago_cent,nota_cobro&id=eq.${encodeURIComponent(altaId)}&limit=1`);
   const alta = Array.isArray(rAlta.datos) ? rAlta.datos[0] : null;
   if (!alta || !alta.perfil_id) return responder({ ok: false, motivo: "sin-perfil" }, 200, origen);
   const rP = await consulta(`perfiles?select=email,nombre&id=eq.${encodeURIComponent(String(alta.perfil_id))}&limit=1`);
@@ -146,6 +153,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ? Math.round(Number(alta.primer_pago_cent) / 100)
     : 10;
   const cuotaTxt = precioMes > 0 ? `luego, tu cuota de ${precioMes} €/mes` : "luego, tu cuota mensual";
+  const nota = String(alta.nota_cobro ?? "").trim();
 
   // 4 · Enviar por Brevo
   let resp: Response;
@@ -158,8 +166,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         replyTo: { name: REMITENTE_NOMBRE, email: RESPUESTAS_EMAIL },
         to: [{ email: destino }],
         subject: "Ya puedes activar tu cuota de El Cubo",
-        htmlContent: correoHtml(nombre, precioMes, primer),
-        textContent: `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\n¡Bienvenido/a a El Cubo! Ya puedes dejar lista tu cuota. Entra en ${URL_BASE}portal/ con este mismo correo y pulsa «Pagar la cuota»: hoy solo pagas ${primer} € (el primer pago) y tu tarjeta queda guardada; ${cuotaTxt} se cobra sola cada día 5.\n\n¿Dudas? Contesta a este mensaje y te ayudamos.`,
+        htmlContent: correoHtml(nombre, precioMes, primer, nota),
+        textContent: `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\n¡Bienvenido/a a El Cubo! Ya puedes dejar lista tu cuota. Entra en ${URL_BASE}portal/ con este mismo correo y pulsa «Pagar la cuota»: hoy pagas ${primer} € (el primer pago)${nota ? " — " + nota : ""} y tu tarjeta queda guardada; ${cuotaTxt} se cobra sola cada día 5.\n\n¿Dudas? Contesta a este mensaje y te ayudamos.`,
       }),
     });
   } catch (e) {
