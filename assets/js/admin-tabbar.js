@@ -451,7 +451,7 @@
         { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
         { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
         { txt: 'Pagos con tarjeta', url: r + 'pagos-online/', desc: 'lo que se cobra por internet' },
-        { txt: 'Pagos de El Cubo',  url: r + 'cubo-pagos/',   desc: 'quién ha pagado la cuota del Cubo y export para la contable' },
+        { txt: 'Pagos de El Cubo',  url: r + 'cubo-altas/',   desc: 'quién ha pagado la cuota del Cubo y export para la contable' },
         { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' }
       ] },
       { t: 'Comunicación', enlaces: [

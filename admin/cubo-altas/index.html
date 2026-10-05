@@ -91,6 +91,22 @@
   .ca-vacio h2 { font-family:var(--ap-titulo); color:var(--navy,#26374B); font-size:20px; margin:0 0 6px; text-transform:uppercase; }
   .ca-toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--navy,#26374B); color:#fff; padding:11px 18px; border-radius:999px; font-size:14.5px; box-shadow:0 10px 26px -8px rgba(30,45,65,.5); z-index:9000; opacity:0; transition:opacity .2s; }
   .ca-toast.ver { opacity:1; } .ca-toast.err { background:#9A3B3B; }
+  /* Lista para la contabilidad (fusionada desde Pagos del Cubo) */
+  .cx-chips { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }
+  .cx-chip { border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy,#26374B); border-radius:999px; padding:7px 14px; font:inherit; font-size:14px; cursor:pointer; }
+  .cx-chip.on { background:var(--navy,#26374B); color:#fff; border-color:var(--navy,#26374B); }
+  .cx-chip b { font-family:var(--fuente-dato,monospace); font-weight:600; opacity:.8; margin-left:4px; }
+  .cx-barra { display:flex; flex-wrap:wrap; gap:9px; align-items:center; margin-bottom:12px; }
+  .cx-barra input { flex:1 1 220px; min-width:180px; font:inherit; font-size:14px; border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:10px 12px; }
+  .cx-btn { border:none; color:#fff; border-radius:10px; padding:10px 14px; font:inherit; font-weight:600; font-size:13.5px; cursor:pointer; }
+  .cx-btn[disabled]{ opacity:.6; cursor:default; }
+  .cx-tabla { overflow-x:auto; border:1px solid var(--linea,#EDE6D7); border-radius:12px; }
+  .cx-tabla table { border-collapse:collapse; width:100%; font-size:13px; background:#fff; }
+  .cx-tabla th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--texto-suave,#8A816E); padding:8px 10px; border-bottom:1px solid var(--linea,#EDE6D7); white-space:nowrap; }
+  .cx-tabla td { padding:8px 10px; border-bottom:1px solid var(--linea,#F3EEE2); color:var(--texto,#333); white-space:nowrap; }
+  .cx-tabla .cx-num { font-family:var(--fuente-dato,monospace); text-align:right; }
+  .cx-tabla .cx-mono { font-family:var(--fuente-dato,monospace); font-size:11.5px; color:var(--texto-suave,#8A816E); }
+  .cx-si { color:#1E7A3D; font-weight:700; } .cx-no { color:#B0563A; }
 </style>
 </head>
 <body>
@@ -99,13 +115,13 @@
   <div class="ca-wrap">
     <a class="volver" href="../">← Volver al panel</a>
     <h1 class="saludo">El Cubo · socios y cuotas</h1>
-    <p class="sub">Los grupos y su ocupación, el cobro, y quién se ha apuntado.</p>
-    <p class="sub" style="margin-top:-4px"><a href="../cubo-pagos/" style="color:var(--azul,#2F6FA8);text-decoration:underline">📊 Exportar pagos (Excel para la contable)</a></p>
+    <p class="sub">Todo el dinero del Cubo en un sitio: grupos y ocupación, cobros, altas y la lista para la contabilidad.</p>
     <div id="ca-cobro"></div>
     <div id="ca-grupos"></div>
     <p class="ca-rot">Quién se ha apuntado</p>
     <div class="chips" id="ca-chips" hidden></div>
     <div id="ca-lista" class="ca-cargando">Cargando…</div>
+    <div id="ca-contab"></div>
   </div>
 </div>
 
@@ -128,7 +144,16 @@ APOLANA_ADMIN.listo(function (sb) {
     if(r.error){ fallo=r.error.message; ALTAS=[]; return; }
     ALTAS = r.data||[];
     await cargarCobros();
+    await cargarEmails();
     indexarDuplicados();
+  }
+  var EMAIL = {};
+  async function cargarEmails(){
+    EMAIL = {};
+    var ids = ALTAS.map(function(a){ return a.perfil_id; }).filter(Boolean);
+    if(!ids.length) return;
+    var r = await sb.from('perfiles').select('id,email').in('id', ids);
+    if(!r.error && r.data) r.data.forEach(function(p){ EMAIL[p.id]=p.email||''; });
   }
   async function cargarCobros(){
     COBROS = {};
@@ -259,6 +284,7 @@ APOLANA_ADMIN.listo(function (sb) {
     pintarChips();
     pintarCobro();
     pintarGrupos();
+    pintarContab();
     var caja=$('ca-lista'); caja.className='';
     if(fallo){ caja.innerHTML=vacioHTML('No hemos podido traer las altas','Puede ser la conexión. Recarga la página.'); return; }
     if(!ALTAS.length){ caja.innerHTML=vacioHTML('Todavía no hay altas','Cuando alguien se apunte en la web de El Cubo, aparecerá aquí.'); return; }
@@ -281,6 +307,87 @@ APOLANA_ADMIN.listo(function (sb) {
   // ---- Abrir/cerrar el cobro POR PERSONA ----
   // No cobra nada: solo hace que a esa persona le aparezca (o no) «Pagar la
   // cuota» en su portal. Los que quedan cerrados están «de prueba».
+  // ====== LISTA PARA LA CONTABILIDAD (fusionado desde «Pagos del Cubo») ======
+  var contabFiltro='todos', contabQ='';
+  function eurC(n){ return (Number(n)||0).toFixed(2).replace('.',',')+' €'; }
+  function emailDe(a){ return EMAIL[a.perfil_id]||''; }
+  function primerPagoC(a){ return (a.primer_pago_cent!=null && Number(a.primer_pago_cent)>0) ? Number(a.primer_pago_cent)/100 : 10; }
+  function estadoCuota(a){ var e=a.suscripcion_estado;
+    if(e==='activa') return 'Cuota activa'; if(e==='impago') return 'Impagada';
+    if(e==='pausada') return 'En pausa'; if(e==='cancelada') return 'De baja';
+    return a.cobro_abierto ? 'Cobro abierto (sin pagar)' : 'Sin activar'; }
+  function esPagadoC(a){ return a.suscripcion_estado==='activa'; }
+  function esPendienteC(a){ return a.cobro_abierto && a.suscripcion_estado!=='activa'; }
+  function contabVisibles(){
+    return ALTAS.filter(function(a){
+      if((a.estado||'')==='rechazada') return false;
+      if(contabFiltro==='pagados' && !esPagadoC(a)) return false;
+      if(contabFiltro==='pendientes' && !esPendienteC(a)) return false;
+      if(contabQ){ var s=((a.nombre||'')+' '+(a.apellidos||'')+' '+emailDe(a)+' '+(a.telefono||'')).toLowerCase(); if(s.indexOf(contabQ)===-1) return false; }
+      return true;
+    });
+  }
+  function pintarContab(){
+    var caja=$('ca-contab'); if(!caja) return;
+    var todos=ALTAS.filter(function(a){ return (a.estado||'')!=='rechazada'; });
+    if(!todos.length){ caja.innerHTML=''; return; }
+    var pag=todos.filter(esPagadoC).length, pen=todos.filter(esPendienteC).length;
+    var vis=contabVisibles();
+    var filas=vis.map(function(a){
+      return '<tr>'+
+        '<td><b>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</b></td>'+
+        '<td>'+esc(emailDe(a))+'</td><td>'+esc(a.telefono||'')+'</td><td>'+esc(a.horario||'')+'</td>'+
+        '<td class="cx-num">'+eurC(a.precio_mes)+'</td><td class="cx-num">'+eurC(primerPagoC(a))+'</td>'+
+        '<td>'+(a.cobro_abierto?'<span class="cx-si">Sí</span>':'<span class="cx-no">No</span>')+'</td>'+
+        '<td>'+esc(estadoCuota(a))+'</td>'+
+        '<td class="cx-mono">'+esc(a.stripe_customer_id||'—')+'</td><td class="cx-mono">'+esc(a.stripe_subscription_id||'—')+'</td>'+
+        '<td>'+esc(fecha(a.ultimo_cobro))+'</td><td>'+esc(fecha(a.proximo_cobro))+'</td></tr>';
+    }).join('');
+    caja.innerHTML=
+      '<p class="ca-rot" style="margin-top:30px">Lista para la contabilidad</p>'+
+      '<p class="sub" style="margin-top:-4px">Cada persona con su cuota, primer pago e identificadores de Stripe (para cruzar con los payouts). Exporta a Excel o avisa a los pendientes.</p>'+
+      '<div class="cx-chips">'+[['todos','Todos',todos.length],['pagados','Han pagado',pag],['pendientes','Pendientes',pen]].map(function(c){ return '<button type="button" class="cx-chip'+(contabFiltro===c[0]?' on':'')+'" data-cf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+'</div>'+
+      '<div class="cx-barra">'+
+        '<input type="search" id="cx-buscar" placeholder="Buscar nombre, email o teléfono…" value="'+esc(contabQ)+'">'+
+        '<button type="button" class="cx-btn" id="cx-avisar" style="background:#2F6FA8">✉ Avisar a pendientes</button>'+
+        '<button type="button" class="cx-btn" id="cx-resync" style="background:#5E7D3A">↻ Re-sincronizar Stripe</button>'+
+        '<button type="button" class="cx-btn" id="cx-export" style="background:#26374B">⬇ Exportar Excel (CSV)</button>'+
+      '</div>'+
+      '<div class="cx-tabla"><table><thead><tr><th>Persona</th><th>Email</th><th>Tel</th><th>Grupo</th><th>Cuota</th><th>1er pago</th><th>Cobro</th><th>Estado cuota</th><th>Cliente Stripe</th><th>Suscripción Stripe</th><th>Últ. cobro</th><th>Próx. cobro</th></tr></thead><tbody>'+filas+'</tbody></table></div>';
+  }
+  function csvCampo(v){ v=(v==null?'':String(v)); return '"'+v.replace(/"/g,'""')+'"'; }
+  function exportarPagos(){
+    var cols=['Nombre','Apellidos','Email','Teléfono','Grupo','Días/sem','Cuota (€/mes)','Primer pago (€)','Estado alta','Cobro abierto','Estado cuota','ID cliente Stripe','ID suscripción Stripe','Último cobro','Próximo cobro'];
+    var lineas=[cols.map(csvCampo).join(';')];
+    contabVisibles().forEach(function(a){
+      lineas.push([a.nombre||'',a.apellidos||'',emailDe(a),a.telefono||'',a.horario||'',(a.dias||''),
+        String(Number(a.precio_mes)||0).replace('.',','),String(primerPagoC(a)).replace('.',','),
+        a.estado||'',(a.cobro_abierto?'Sí':'No'),estadoCuota(a),a.stripe_customer_id||'',a.stripe_subscription_id||'',
+        fecha(a.ultimo_cobro),fecha(a.proximo_cobro)].map(csvCampo).join(';'));
+    });
+    var blob=new Blob(['﻿'+lineas.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+    var h=new Date(), nombre='pagos-cubo-'+h.getFullYear()+('0'+(h.getMonth()+1)).slice(-2)+('0'+h.getDate()).slice(-2)+'.csv';
+    var url=URL.createObjectURL(blob); var el=document.createElement('a'); el.href=url; el.download=nombre; document.body.appendChild(el); el.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); el.remove(); },400);
+  }
+  async function avisarPendientes(btn){
+    var pend=ALTAS.filter(function(a){ return (a.estado||'')!=='rechazada' && a.cobro_abierto && a.suscripcion_estado!=='activa'; });
+    if(!pend.length){ toast('No hay nadie con el cobro abierto pendiente de pagar.'); return; }
+    if(!confirm('Se enviará el correo «Ya puedes activar tu cuota de El Cubo» a '+pend.length+' persona(s) con el cobro abierto y sin pagar. ¿Enviar?')) return;
+    btn.disabled=true; var ok=0,err=0;
+    for(var i=0;i<pend.length;i++){ btn.textContent='Enviando '+(i+1)+'/'+pend.length+'…';
+      try{ var r=await sb.functions.invoke('cubo-cobro-aviso',{body:{alta_id:pend[i].id}}); if(r&&r.error) err++; else ok++; }catch(e){ err++; } }
+    btn.disabled=false; btn.textContent='✉ Avisar a pendientes';
+    toast('Correos enviados: '+ok+(err?(' · fallaron '+err):''), err?'error':'ok');
+  }
+  async function resyncStripe(btn){
+    btn.disabled=true; var txt=btn.textContent; btn.textContent='Preguntando a Stripe…';
+    try{ var r=await sb.functions.invoke('cubo-resync',{body:{}}); if(r&&r.error) throw new Error((r.error&&r.error.message)||'error');
+      var d=(r&&r.data)||{}; await cargar(); pintar(); toast('Re-sincronizadas '+(d.actualizadas||0)+' de '+(d.revisadas||0)+' con Stripe','ok'); }
+    catch(e){ toast('No se pudo re-sincronizar: '+((e&&e.message)||e),'error'); }
+    btn.disabled=false; btn.textContent=txt;
+  }
+
   // Cobro en lote de los pendientes «de antes» (alta < 30-sep, aún sin suscripción):
   // septiembre 10€ (entrada) + octubre su cuota, unificado en el primer pago; luego
   // la cuota normal el día 5. Abre el cobro y manda el correo a cada uno.
@@ -598,6 +705,10 @@ APOLANA_ADMIN.listo(function (sb) {
     LIMITE=n; pintarCobro(); pintarGrupos(); toast('Aforo: '+n+' por grupo');
   }
 
+  $('admin-contenido').addEventListener('input', function(ev){
+    if(ev.target && ev.target.id==='cx-buscar'){ contabQ=(ev.target.value||'').trim().toLowerCase(); pintarContab();
+      var inp=document.getElementById('cx-buscar'); if(inp){ inp.focus(); var v=inp.value; inp.value=''; inp.value=v; } }
+  });
   $('admin-contenido').addEventListener('click', function(ev){
     var t=ev.target.closest?ev.target.closest('#ca-cobro-btn'):null;
     if(t){ toggleCobro(t); return; }
@@ -631,6 +742,13 @@ APOLANA_ADMIN.listo(function (sb) {
     if(at){ abrirCobroTodos(at); return; }
     var so=ev.target.closest?ev.target.closest('#ca-cobrar-septoct'):null;
     if(so){ cobrarSepOct(so); return; }
+    var cf=ev.target.closest?ev.target.closest('[data-cf]'):null;
+    if(cf){ contabFiltro=cf.getAttribute('data-cf'); pintarContab(); return; }
+    if(ev.target.closest&&ev.target.closest('#cx-export')){ exportarPagos(); return; }
+    var cav=ev.target.closest?ev.target.closest('#cx-avisar'):null;
+    if(cav){ avisarPendientes(cav); return; }
+    var crs=ev.target.closest?ev.target.closest('#cx-resync'):null;
+    if(crs){ resyncStripe(crs); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
     if(f){ filtro=f.getAttribute('data-f'); pintar(); return; }
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;
