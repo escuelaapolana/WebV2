@@ -236,7 +236,19 @@ APOLANA_ADMIN.listo(function (sb) {
     // Abrir/cerrar el cobro POR PERSONA (solo aprobadas que aún no pagan).
     // Mientras esté cerrado, a esa persona NO le sale «Pagar la cuota» (prueba).
     if(est==='aprobada' && a.suscripcion_estado!=='activa'){
-      acc+='<button type="button" class="b '+(a.cobro_abierto?'b-cerrar-cobro':'b-abrir-cobro')+'" data-cobro="'+esc(a.id)+'" data-abierto="'+(a.cobro_abierto?'1':'0')+'">'+(a.cobro_abierto?'Cerrar cobro':'Abrir cobro')+'</button>';
+      // El botón de cobro de la app solo si paga POR la app (no en efectivo/transf.)
+      if(!a.pago_externo)
+        acc+='<button type="button" class="b '+(a.cobro_abierto?'b-cerrar-cobro':'b-abrir-cobro')+'" data-cobro="'+esc(a.id)+'" data-abierto="'+(a.cobro_abierto?'1':'0')+'">'+(a.cobro_abierto?'Cerrar cobro':'Abrir cobro')+'</button>';
+      // Cómo paga: por la app (Stripe) o fuera (efectivo/transferencia). Al elegir
+      // un método externo se cierra el cobro de la app y deja de salir «de prueba».
+      var ME=a.pago_externo||'';
+      acc+='<label class="b b-comopaga" style="display:inline-flex;align-items:center;gap:6px;cursor:default">Paga: '+
+        '<select data-pagoext="'+esc(a.id)+'" style="font:inherit;border:0;background:transparent;cursor:pointer;color:inherit">'+
+          '<option value=""'+(ME===''?' selected':'')+'>Por la app</option>'+
+          '<option value="efectivo"'+(ME==='efectivo'?' selected':'')+'>Efectivo</option>'+
+          '<option value="transferencia"'+(ME==='transferencia'?' selected':'')+'>Transferencia</option>'+
+          '<option value="otro"'+(ME==='otro'?' selected':'')+'>Otro (manual)</option>'+
+        '</select></label>';
     }
     if(a.suscripcion_estado==='activa' || a.suscripcion_estado==='pausada'){
       if(a.suscripcion_estado==='pausada')
@@ -271,10 +283,12 @@ APOLANA_ADMIN.listo(function (sb) {
         '<span class="precio">'+esc(a.precio_mes||'')+' €/mes</span>'+
         '<span class="est '+esc(est)+'">'+esc(NOMBRE_EST[est]||est)+'</span>'+
         (est==='aprobada' && a.suscripcion_estado!=='activa'
-          ? '<span class="est '+(a.cobro_abierto?'aprobada':'pendiente')+'">'+
-              (a.cobro_abierto
-                ? 'Cobro abierto'+(a.primer_pago_cent>0?' · 1er pago '+eurCent(a.primer_pago_cent):'')
-                : 'En prueba (no cobra)')+'</span>'
+          ? (a.pago_externo
+              ? '<span class="est activa">Paga '+(PAGO_EXT[a.pago_externo]||'(manual)')+'</span>'
+              : '<span class="est '+(a.cobro_abierto?'aprobada':'pendiente')+'">'+
+                  (a.cobro_abierto
+                    ? 'Cobro abierto'+(a.primer_pago_cent>0?' · 1er pago '+eurCent(a.primer_pago_cent):'')
+                    : 'En prueba (no cobra)')+'</span>')
           : '')+
       '</div>'+
       '<div class="alta-acc">'+acc+'</div>'+
@@ -313,7 +327,9 @@ APOLANA_ADMIN.listo(function (sb) {
   function eurC(n){ return (Number(n)||0).toFixed(2).replace('.',',')+' €'; }
   function emailDe(a){ return EMAIL[a.perfil_id]||''; }
   function primerPagoC(a){ return (a.primer_pago_cent!=null && Number(a.primer_pago_cent)>0) ? Number(a.primer_pago_cent)/100 : 10; }
+  var PAGO_EXT={efectivo:'en efectivo',transferencia:'por transferencia',otro:'(manual)'};
   function estadoCuota(a){ var e=a.suscripcion_estado;
+    if(a.pago_externo) return 'Paga '+(PAGO_EXT[a.pago_externo]||'(manual)')+' · fuera de la app';
     if(e==='activa') return 'Cuota activa'; if(e==='impago') return 'Impagada';
     if(e==='pausada') return 'En pausa'; if(e==='cancelada') return 'De baja';
     if(a.cobro_abierto) return 'Cobro abierto (sin pagar)';
@@ -324,7 +340,7 @@ APOLANA_ADMIN.listo(function (sb) {
     return 'Sin activar'; }
   function esPagadoC(a){ return a.suscripcion_estado==='activa'; }
   function esPendienteC(a){ return a.cobro_abierto && a.suscripcion_estado!=='activa'; }
-  function esPruebaC(a){ return a.estado==='aprobada' && a.suscripcion_estado!=='activa' && !a.cobro_abierto && !a.lista_espera; }
+  function esPruebaC(a){ return a.estado==='aprobada' && a.suscripcion_estado!=='activa' && !a.cobro_abierto && !a.lista_espera && !a.pago_externo; }
   function contabVisibles(){
     return ALTAS.filter(function(a){
       if((a.estado||'')==='rechazada') return false;
@@ -762,6 +778,21 @@ APOLANA_ADMIN.listo(function (sb) {
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;
     if(b) marcar(b.getAttribute('data-id'), b.getAttribute('data-e'), b);
   });
+
+  // Selector «Cómo paga» (por la app / efectivo / transferencia / otro).
+  $('admin-contenido').addEventListener('change', function(ev){
+    var sel=ev.target.closest?ev.target.closest('select[data-pagoext]'):null;
+    if(sel) ponerComoPaga(sel.getAttribute('data-pagoext'), sel.value, sel);
+  });
+  async function ponerComoPaga(id, metodo, sel){
+    if(sel) sel.disabled=true;
+    var r=await sb.rpc('cubo_pago_externo_set',{ p_id:id, p_metodo:(metodo||null) });
+    if(sel) sel.disabled=false;
+    if(r.error){ toast('No se pudo guardar: '+r.error.message); return; }
+    ALTAS.forEach(function(x){ if(x.id===id){ x.pago_externo=metodo||null; if(metodo) x.cobro_abierto=false; } });
+    toast(metodo ? 'Marcado: paga '+(PAGO_EXT[metodo]||'(manual)') : 'Vuelve a pagar por la app');
+    pintar();
+  }
 
   refrescar();
   cargarCobro();

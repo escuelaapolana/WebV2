@@ -945,10 +945,17 @@ APOLANA_ADMIN.listo(function (sb) {
       (s.medio || '') + ' ' + (s.origen || ''));
   }
 
+  // Distingue las «solicitudes de prueba» de la web (su comentario empieza por
+  // «SOLICITUD DE PRUEBA»): esas van por WhatsApp al responsable, aquí son respaldo.
+  function esPruebaSol(s) { return /^SOLICITUD DE PRUEBA/i.test((s && s.comentario) || ''); }
+
   function pintarSolic() {
     var caja = $('sol-bandeja');
     /* Recuento propio: solo lo que falta por atender, nunca las ya atendidas. */
-    var sinAtender = SOLIC.filter(function (s) { return !s.atendida; }).length;
+    /* Las SOLICITUDES DE PRUEBA de la web ya van por WhatsApp al responsable de
+       cada sección; aquí se quedan solo de RESPALDO, en un grupo aparte, y NO
+       cuentan en el número (para que no avisen como trabajo pendiente). */
+    var sinAtender = SOLIC.filter(function (s) { return !s.atendida && !esPruebaSol(s); }).length;
     // El número vive solo en la pestaña de arriba, no repetido aquí abajo.
     $('sol-n').textContent = sinAtender ? sinAtender : '';
 
@@ -969,13 +976,21 @@ APOLANA_ADMIN.listo(function (sb) {
 
     /* Igual que los mensajes: primero lo que falta por atender, y de eso lo
        que lleva más tiempo esperando. */
-    var sin = lista.filter(function (s) { return !s.atendida; })
+    var sin = lista.filter(function (s) { return !s.atendida && !esPruebaSol(s); })
       .sort(function (a, b) { return (a.created_at || '') < (b.created_at || '') ? -1 : 1; });
+    var pruebas = lista.filter(function (s) { return !s.atendida && esPruebaSol(s); })
+      .sort(function (a, b) { return (a.created_at || '') > (b.created_at || '') ? -1 : 1; });
     var hechas = lista.filter(function (s) { return s.atendida; })
       .sort(function (a, b) { return (a.created_at || '') > (b.created_at || '') ? -1 : 1; });
 
     var html = '';
     if (sin.length) html += '<div class="bz-bandeja">' + sin.map(fichaSolic).join('') + '</div>';
+    if (pruebas.length) {
+      html += '<p class="bz-grupo">' + pruebas.length + ' de prueba · van por WhatsApp al responsable (solo respaldo)</p>' +
+        '<div class="bz-bandeja">' + pruebas.map(function (s) {
+          return solDesplegadas[s.id] ? fichaSolic(s) : filaSolicCerrada(s);
+        }).join('') + '</div>';
+    }
     if (hechas.length) {
       html += '<p class="bz-grupo">' + hechas.length +
         (hechas.length === 1 ? ' ya atendida' : ' ya atendidas') + '</p>' +
