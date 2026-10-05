@@ -62,6 +62,8 @@ async function db(ruta: string): Promise<any[]> {
 }
 const eur = (cent: number) => Math.round(cent) / 100;
 const fISO = (unix: number) => unix ? new Date(unix * 1000).toISOString().slice(0, 10) : null;
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const mesAno = (iso: string | null) => { if (!iso) return ""; const p = iso.split("-"); return (MESES[(+p[1]) - 1] || "") + " " + p[0]; };
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
@@ -132,8 +134,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         let nombre = m ? [m.nombre, m.apellidos].filter(Boolean).join(" ").trim() : (bd.name || "");
         let seccion = (mCubo && mCubo.horario) || "";
 
-        if (mCubo) {                                   // cobro del Cubo
-          if (/subscription|invoice/i.test(concepto)) concepto = "Cuota El Cubo";
+        const esSub = mCubo || /subscription|invoice/i.test(concepto);
+        if (esSub) {                                   // cuota del Cubo (suscripción)
+          concepto = "Cuota entrenamiento Cubo · " + mesAno(fISO(t.created));
           if (!seccion) seccion = "El Cubo";
         } else if (!m && !esCargo) {                   // comisión/ajuste de Stripe, no es una persona
           nombre = "Stripe";
