@@ -33,3 +33,7 @@ begin
   return coalesce(v_cent, 0);
 end;
 $function$;
+
+-- OJO: al recrear la función (DROP+CREATE con firma nueva) se pierde el GRANT,
+-- así que hay que volver a concederlo o la app (authenticated) no puede llamarla.
+grant execute on function public.cubo_primer_pago_set(uuid, numeric, text) to authenticated;
