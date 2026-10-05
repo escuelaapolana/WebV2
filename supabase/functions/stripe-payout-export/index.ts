@@ -125,9 +125,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const s = t.source || {};
         const bd = s.billing_details || {};
         const em = (bd.email || s.receipt_email || "").toLowerCase().trim();
-        const m = (typeof s.customer === "string" && porCustomer[s.customer]) || (em && porEmail[em]) || null;
-        const nombre = m ? [m.nombre, m.apellidos].filter(Boolean).join(" ").trim() : (bd.name || "");
-        const concepto = s.description || s.calculated_statement_descriptor || t.description || t.type;
+        const mCubo = (typeof s.customer === "string" && porCustomer[s.customer]) || null;
+        const m = mCubo || (em && porEmail[em]) || null;
+        const esCargo = t.type === "charge" || t.type === "payment";
+        let concepto = s.description || s.calculated_statement_descriptor || t.description || t.type;
+        let nombre = m ? [m.nombre, m.apellidos].filter(Boolean).join(" ").trim() : (bd.name || "");
+        let seccion = (mCubo && mCubo.horario) || "";
+
+        if (mCubo) {                                   // cobro del Cubo
+          if (/subscription|invoice/i.test(concepto)) concepto = "Cuota El Cubo";
+          if (!seccion) seccion = "El Cubo";
+        } else if (!m && !esCargo) {                   // comisión/ajuste de Stripe, no es una persona
+          nombre = "Stripe";
+          seccion = "Comisión de facturación";
+        }
+
         lineas.push({
           importe: eur(t.amount), comision: eur(t.fee), neto: eur(t.net),
           concepto,
@@ -135,7 +147,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           telefono: (m && m.telefono) || bd.phone || "",
           email: (m && m.email) || bd.email || s.receipt_email || "",
           dni: (m && m.dni) || "",
-          seccion: (m && m.horario) || "",
+          seccion,
           fecha_cargo: fISO(t.created),
           fecha_llegada: fechaLlegada,
           tipo: t.type,
