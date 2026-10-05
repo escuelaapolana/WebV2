@@ -107,6 +107,7 @@
   .cx-tabla .cx-num { font-family:var(--fuente-dato,monospace); text-align:right; }
   .cx-tabla .cx-mono { font-family:var(--fuente-dato,monospace); font-size:11.5px; color:var(--texto-suave,#8A816E); }
   .cx-si { color:#1E7A3D; font-weight:700; } .cx-no { color:#B0563A; }
+  .cx-chip-prueba.on { background:#9A6B16; border-color:#9A6B16; }
 </style>
 </head>
 <body>
@@ -315,14 +316,21 @@ APOLANA_ADMIN.listo(function (sb) {
   function estadoCuota(a){ var e=a.suscripcion_estado;
     if(e==='activa') return 'Cuota activa'; if(e==='impago') return 'Impagada';
     if(e==='pausada') return 'En pausa'; if(e==='cancelada') return 'De baja';
-    return a.cobro_abierto ? 'Cobro abierto (sin pagar)' : 'Sin activar'; }
+    if(a.cobro_abierto) return 'Cobro abierto (sin pagar)';
+    if(a.estado==='aprobada' && !a.lista_espera){
+      var dias = a.created_at ? Math.floor((Date.now()-new Date(a.created_at).getTime())/86400000) : null;
+      return 'De prueba'+(dias!=null && dias>=0 ? ' · '+dias+' día'+(dias===1?'':'s') : '');
+    }
+    return 'Sin activar'; }
   function esPagadoC(a){ return a.suscripcion_estado==='activa'; }
   function esPendienteC(a){ return a.cobro_abierto && a.suscripcion_estado!=='activa'; }
+  function esPruebaC(a){ return a.estado==='aprobada' && a.suscripcion_estado!=='activa' && !a.cobro_abierto && !a.lista_espera; }
   function contabVisibles(){
     return ALTAS.filter(function(a){
       if((a.estado||'')==='rechazada') return false;
       if(contabFiltro==='pagados' && !esPagadoC(a)) return false;
       if(contabFiltro==='pendientes' && !esPendienteC(a)) return false;
+      if(contabFiltro==='prueba' && !esPruebaC(a)) return false;
       if(contabQ){ var s=((a.nombre||'')+' '+(a.apellidos||'')+' '+emailDe(a)+' '+(a.telefono||'')).toLowerCase(); if(s.indexOf(contabQ)===-1) return false; }
       return true;
     });
@@ -331,7 +339,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var caja=$('ca-contab'); if(!caja) return;
     var todos=ALTAS.filter(function(a){ return (a.estado||'')!=='rechazada'; });
     if(!todos.length){ caja.innerHTML=''; return; }
-    var pag=todos.filter(esPagadoC).length, pen=todos.filter(esPendienteC).length;
+    var pag=todos.filter(esPagadoC).length, pen=todos.filter(esPendienteC).length, prb=todos.filter(esPruebaC).length;
     var vis=contabVisibles();
     var filas=vis.map(function(a){
       return '<tr>'+
@@ -346,7 +354,7 @@ APOLANA_ADMIN.listo(function (sb) {
     caja.innerHTML=
       '<p class="ca-rot" style="margin-top:30px">Lista para la contabilidad</p>'+
       '<p class="sub" style="margin-top:-4px">Cada persona con su cuota, primer pago e identificadores de Stripe (para cruzar con los payouts). Exporta a Excel o avisa a los pendientes.</p>'+
-      '<div class="cx-chips">'+[['todos','Todos',todos.length],['pagados','Han pagado',pag],['pendientes','Pendientes',pen]].map(function(c){ return '<button type="button" class="cx-chip'+(contabFiltro===c[0]?' on':'')+'" data-cf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+'</div>'+
+      '<div class="cx-chips">'+[['todos','Todos',todos.length],['pagados','Han pagado',pag],['pendientes','Cobro abierto',pen],['prueba','De prueba',prb]].map(function(c){ return '<button type="button" class="cx-chip'+(contabFiltro===c[0]?' on':'')+(c[0]==='prueba'?' cx-chip-prueba':'')+'" data-cf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+'</div>'+
       '<div class="cx-barra">'+
         '<input type="search" id="cx-buscar" placeholder="Buscar nombre, email o teléfono…" value="'+esc(contabQ)+'">'+
         '<button type="button" class="cx-btn" id="cx-avisar" style="background:#2F6FA8">✉ Avisar a pendientes</button>'+
