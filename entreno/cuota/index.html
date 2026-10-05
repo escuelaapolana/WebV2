@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuota de entrenamiento · Club Atletismo Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<style>
+  body{ background:var(--crema,#FBF9F4); margin:0; font-family:var(--fuente-texto,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif); color:var(--navy,#2E4256); }
+  .wrap{ max-width:560px; margin:0 auto; padding:34px 18px 60px; }
+  .cab{ display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+  .cab img{ height:46px; width:auto; }
+  .cab b{ font-family:var(--fuente-titulo); font-weight:700; font-size:18px; }
+  .caja{ background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:18px;
+    box-shadow:0 18px 40px -26px rgba(46,66,86,.5); padding:26px 24px; }
+  h1{ font-family:var(--fuente-titulo); font-size:clamp(22px,5vw,28px); margin:0 0 10px; }
+  p{ line-height:1.6; color:#3f3f46; margin:0 0 14px; }
+  .dato{ background:#F1EADC; border-radius:12px; padding:14px 16px; color:#5C4A1E; font-size:14.5px; line-height:1.6; margin:4px 0 18px; }
+  .dato ul{ margin:8px 0 0; padding-left:20px; }
+  .btn{ display:inline-block; background:#2F6FA8; color:#fff; border:0; text-decoration:none;
+    padding:15px 30px; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:inherit; }
+  .btn[disabled]{ opacity:.6; cursor:default; }
+  .fina{ font-size:13px; color:var(--texto-suave,#6E6656); margin-top:16px; }
+  .err{ color:#B3261E; font-size:14px; margin-top:12px; min-height:1.2em; }
+  .ok{ background:#EAF3E3; color:#2E6B3A; border-radius:12px; padding:16px 18px; line-height:1.6; }
+  .mal{ background:#FBEAE8; color:#B3261E; border-radius:12px; padding:16px 18px; line-height:1.6; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="cab">
+      <img src="../../assets/img/favicon-escudo.png" alt="Escudo Apolana">
+      <b>Club Atletismo Apolana</b>
+    </div>
+    <div class="caja" id="caja"><p>Cargando…</p></div>
+  </div>
+<script>
+(function () {
+  var caja = document.getElementById('caja');
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var qs = new URLSearchParams(location.search);
+  var token = (qs.get('t') || '').trim();
+  var pago = qs.get('pago');
+
+  if (pago === 'hecho') {
+    caja.innerHTML =
+      '<h1>¡Domiciliación recibida! 🎉</h1>' +
+      '<div class="ok">Ya hemos guardado tu mandato SEPA. El <b>primer cargo</b> se te pasará al banco en unos días, y los siguientes trimestres (<b>enero y abril</b>) se cobrarán <b>solos</b>. Tras abril ya no se te pasa nada más esta temporada.</div>' +
+      '<p class="fina">Si algún dato no cuadra, contesta al correo del club y lo miramos. ¡Gracias!</p>';
+    return;
+  }
+  if (pago === 'cancelado') {
+    caja.innerHTML =
+      '<h1>No se completó</h1>' +
+      '<div class="mal">No llegaste a terminar la domiciliación. No pasa nada: puedes volver a intentarlo cuando quieras.</div>' +
+      (token ? '<p style="margin-top:16px"><button class="btn" id="reintentar">Volver a intentarlo →</button></p>' : '') +
+      '<p class="err" id="err"></p>';
+    if (token) document.getElementById('reintentar').addEventListener('click', irAPagar);
+    return;
+  }
+  if (!token || token.length < 20) {
+    caja.innerHTML = '<h1>Enlace no válido</h1><div class="mal">Este enlace no es correcto o ha caducado. Escríbenos y te mandamos uno nuevo.</div>';
+    return;
+  }
+
+  caja.innerHTML =
+    '<h1>Domicilia tu cuota de entrenamiento</h1>' +
+    '<p>Para no tener que ocuparte cada trimestre, tu cuota de entrenamiento pasa a <b>domiciliación bancaria (SEPA)</b>: metes tu IBAN una vez y se cobra solo.</p>' +
+    '<div class="dato">Cómo funciona:' +
+      '<ul>' +
+        '<li>Se cobra <b>por trimestres</b>: ahora (octubre), enero y abril.</li>' +
+        '<li>Tras el cargo de abril <b>se para solo</b> — en junio no se te pasa nada.</li>' +
+        '<li>El IBAN se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.</li>' +
+      '</ul>' +
+    '</div>' +
+    '<button class="btn" id="domiciliar">Domiciliar mi cuota →</button>' +
+    '<p class="err" id="err"></p>' +
+    '<p class="fina">Si ya la domiciliaste, puedes ignorar este mensaje: no se cobra dos veces.</p>';
+  document.getElementById('domiciliar').addEventListener('click', irAPagar);
+
+  function irAPagar() {
+    var btn = document.getElementById('domiciliar') || document.getElementById('reintentar');
+    var err = document.getElementById('err');
+    if (err) err.textContent = '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Abriendo…'; }
+    esperarDB(function (db) {
+      if (!db || !db.functions) { if (err) err.textContent = 'No se pudo conectar. Recarga la página.'; if (btn){ btn.disabled=false; btn.textContent='Domiciliar mi cuota →'; } return; }
+      db.functions.invoke('entreno-pagar', { body: { token: token } }).then(function (r) {
+        var d = r && r.data;
+        if (d && d.url) { location.href = d.url; return; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Domiciliar mi cuota →'; }
+        if (err) err.textContent = (d && d.mensaje) || 'No se pudo abrir el pago. Inténtalo en un minuto.';
+      }).catch(function () {
+        if (btn) { btn.disabled = false; btn.textContent = 'Domiciliar mi cuota →'; }
+        if (err) err.textContent = 'No se pudo abrir el pago. Inténtalo en un minuto.';
+      });
+    });
+  }
+
+  // db.js se carga con defer: esperamos a que APOLANA_DB esté listo.
+  function esperarDB(cb, intentos) {
+    intentos = intentos == null ? 50 : intentos;
+    if (window.APOLANA_DB && window.APOLANA_DB.functions) return cb(window.APOLANA_DB);
+    if (intentos <= 0) return cb(null);
+    setTimeout(function () { esperarDB(cb, intentos - 1); }, 100);
+  }
+})();
+</script>
+</body>
+</html>

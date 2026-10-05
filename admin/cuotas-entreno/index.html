@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuotas de entreno (SEPA) · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  body { background: var(--crema-media,#F1EADC); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px) 60px; }
+  h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(24px,5vw,32px); color: var(--navy); margin: 0 0 4px; }
+  .sub { font-size: 15px; color: var(--texto-suave); margin: 0 0 20px; max-width: 70ch; line-height: 1.6; }
+  .barra { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+  .barra button { min-height:42px; padding:10px 18px; border-radius:999px; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer;
+    border:1px solid var(--azul-filete,#3B85C0); background:var(--navy,#2E4256); color:#fff; }
+  .barra button:hover { filter:brightness(1.08); }
+  .barra button[disabled]{ opacity:.6; cursor:default; }
+  .resumen { font-size:13.5px; color:var(--texto-suave); }
+  .lista { display:flex; flex-direction:column; gap:12px; }
+  .card { background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));
+    padding:15px 18px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .card .quien { flex:1 1 240px; min-width:0; }
+  .card .quien b { font-size:16px; color:var(--navy); }
+  .card .quien span { display:block; font-size:13.5px; color:var(--texto-suave); margin-top:2px; }
+  .badge { display:inline-block; font-size:12.5px; font-weight:700; padding:3px 10px; border-radius:999px; }
+  .b-pend { background:#FDF6E9; color:#8A5307; }
+  .b-act  { background:#EAF3E3; color:#2E6B3A; }
+  .b-imp  { background:#FBEAE8; color:#B3261E; }
+  .b-can  { background:#eee; color:#555; }
+  .acc { display:flex; gap:8px; flex:0 0 auto; flex-wrap:wrap; }
+  .acc button, .acc a { min-height:40px; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
+    padding:9px 15px; border-radius:999px; font-size:13.5px; font-family:inherit; cursor:pointer; text-decoration:none; white-space:nowrap; border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy); }
+  .acc button.prim { background:var(--navy,#2E4256); color:#fff; border-color:var(--navy); font-weight:600; }
+  .acc button.ok { background:#1e7a3d; color:#fff; border-color:#1e7a3d; }
+  .acc button:hover, .acc a:hover { filter:brightness(1.03); }
+  .msg { font-size:13px; margin-top:6px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Cuotas de entreno · SEPA</h1>
+    <p class="sub">Adultos de Velocidad/Academia que pagan el entrenamiento por <b>domiciliación trimestral</b> (octubre, enero y abril; tras abril se para solo). Cada uno recibe un enlace para meter su IBAN una vez; luego se cobra solo. Los cobros liquidados aparecen también en <b>Cobros</b>.</p>
+    <div class="barra">
+      <button id="enviar-todos">✉ Enviar enlace a los que faltan</button>
+      <span class="resumen" id="resumen"></span>
+    </div>
+    <div class="lista" id="lista"><p class="sub">Cargando…</p></div>
+  </div>
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var lista = document.getElementById('lista');
+  var B = window.APOLANA_BASE || '../../';
+  var FILAS = [];
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var eur = function(n){ return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0})+' €'; };
+  function fecha(s){ if(!s) return '—'; try{ return new Date(s).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return '—'; } }
+
+  function badge(est){
+    if(est==='activa') return '<span class="badge b-act">Domiciliada</span>';
+    if(est==='impago') return '<span class="badge b-imp">Impago</span>';
+    if(est==='cancelada') return '<span class="badge b-can">Cancelada</span>';
+    return '<span class="badge b-pend">Sin domiciliar</span>';
+  }
+
+  async function cargar(){
+    var r = await sb.from('cuotas_entreno')
+      .select('id,nombre,apellidos,email,importe_cent,token,suscripcion_estado,ultimo_cobro,proximo_cobro')
+      .order('apellidos');
+    if (r.error) { lista.innerHTML = '<p class="sub">No se pudo cargar: '+esc(r.error.message)+'</p>'; return; }
+    FILAS = r.data || [];
+    pintar();
+  }
+
+  function pintar(){
+    var pend = FILAS.filter(function(f){ return f.suscripcion_estado!=='activa'; }).length;
+    document.getElementById('resumen').textContent =
+      FILAS.length + ' atletas · ' + (FILAS.length-pend) + ' domiciliados · ' + pend + ' por domiciliar';
+    document.getElementById('enviar-todos').disabled = (pend===0);
+    lista.innerHTML = FILAS.map(function(f){
+      var enlace = B.replace(/\/*$/,'/') ;
+      var url = 'https://atletismoapolana.com/entreno/cuota/?t=' + encodeURIComponent(f.token);
+      return '<div class="card" data-id="'+f.id+'">'+
+        '<div class="quien"><b>'+esc(f.nombre)+' '+esc(f.apellidos||'')+'</b>'+
+          '<span>'+eur(f.importe_cent/100)+' / trimestre · '+esc(f.email||'—')+'</span>'+
+          '<span>'+badge(f.suscripcion_estado)+
+            (f.ultimo_cobro?(' · último cobro '+fecha(f.ultimo_cobro)):'')+
+            (f.proximo_cobro&&f.suscripcion_estado==='activa'?(' · próximo '+fecha(f.proximo_cobro)):'')+
+          '</span>'+
+        '</div>'+
+        '<div class="acc">'+
+          '<button class="prim" data-env="'+f.id+'">✉ Enviar enlace</button>'+
+          '<button data-cop="'+esc(url)+'">Copiar enlace</button>'+
+        '</div>'+
+        '<div class="msg" data-msg="'+f.id+'" style="flex:1 1 100%"></div>'+
+      '</div>';
+    }).join('');
+  }
+
+  async function enviar(id, btn){
+    var msg = lista.querySelector('[data-msg="'+id+'"]');
+    if (btn){ btn.disabled=true; var t0=btn.textContent; btn.textContent='Enviando…'; }
+    if (msg) msg.textContent='';
+    try {
+      var r = await sb.functions.invoke('entreno-enlace', { body: { cuota_id: id } });
+      var d = r && r.data;
+      if (d && d.ok){ if(btn){ btn.classList.add('ok'); btn.textContent='✓ Enviado'; } if(msg){ msg.style.color='#2E6B3A'; msg.textContent='Enviado a '+(d.destino||'su correo')+'.'; } }
+      else { if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Enviar enlace'; } if(msg){ msg.style.color='#B3261E'; msg.textContent='No se pudo enviar'+(d&&d.motivo?(' ('+d.motivo+')'):'')+'.'; } }
+    } catch(e){ if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Enviar enlace'; } if(msg){ msg.style.color='#B3261E'; msg.textContent='No se pudo enviar.'; } }
+  }
+
+  lista.addEventListener('click', function(e){
+    var env = e.target.closest('[data-env]');
+    if (env){ enviar(env.getAttribute('data-env'), env); return; }
+    var cop = e.target.closest('[data-cop]');
+    if (cop){
+      var url = cop.getAttribute('data-cop');
+      navigator.clipboard.writeText(url).then(function(){ var t=cop.textContent; cop.textContent='✓ Copiado'; setTimeout(function(){ cop.textContent=t; },1400); }).catch(function(){});
+    }
+  });
+
+  document.getElementById('enviar-todos').addEventListener('click', async function(){
+    var btn = this; btn.disabled=true; var t0=btn.textContent; btn.textContent='Enviando…';
+    var pend = FILAS.filter(function(f){ return f.suscripcion_estado!=='activa'; });
+    for (var i=0;i<pend.length;i++){
+      var b = lista.querySelector('[data-env="'+pend[i].id+'"]');
+      await enviar(pend[i].id, b);
+    }
+    btn.textContent='✓ Enviados ('+pend.length+')';
+  });
+
+  cargar();
+});
+</script>
+</body>
+</html>

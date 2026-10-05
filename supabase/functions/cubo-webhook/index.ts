@@ -33,8 +33,16 @@ const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET_APOLANA") ?? "";
    verifica también los avisos de test (para probar el cobro del alta de socio en
    test sin romper el real). Si no está, solo funciona el real. */
 const WEBHOOK_SECRET_TEST = Deno.env.get("STRIPE_WEBHOOK_SECRET_APOLANA_TEST") ?? "";
+// Claves Stripe (para programar la cancelación de la suscripción de entreno tras
+// el cargo de abril). Se elige por livemode del evento.
+const SK_LIVE = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
+const SK_TEST = Deno.env.get("STRIPE_SECRET_KEY_APOLANA_TEST") ?? "";
 
 const TOLERANCIA_SEGUNDOS = 60 * 5;
+
+// La cuota de entreno se cancela sola tras ABRIL: cancel_at a primeros de mayo
+// de 2027 (el cargo de abril ya ha pasado; el de julio no llega). En segundos.
+const ENTRENO_CANCEL_AT = Math.floor(Date.UTC(2027, 4, 6, 9, 0, 0) / 1000);
 
 // ---- Firma de Stripe (HMAC-SHA256, sin librerías) ----
 function hexABytes(hex: string): Uint8Array {
@@ -145,6 +153,171 @@ async function modoEfectivo(): Promise<string> {
 const idDe = (v: unknown): string | null =>
   typeof v === "string" ? v : ((v as { id?: string } | null)?.id ?? null);
 
+// ============================================================
+// CUOTA DE ENTRENO (suscripción SEPA trimestral) — bloque aditivo.
+// El mismo endpoint recibe los eventos de entreno (misma cuenta Stripe que el
+// Cubo). Se reconocen por la referencia `entreno-<id de cuotas_entreno>`.
+// ============================================================
+
+// Referencia que viaja en el evento (checkout, invoice o subscription).
+function refDe(objeto: Record<string, any>): string | null {
+  return (
+    (typeof objeto.client_reference_id === "string" ? objeto.client_reference_id : null) ??
+    objeto.metadata?.referencia ??
+    objeto.subscription_details?.metadata?.referencia ??
+    objeto.lines?.data?.[0]?.metadata?.referencia ??
+    null
+  );
+}
+
+async function patchEntreno(filtro: string, cambios: Record<string, unknown>) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/cuotas_entreno?${filtro}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json", Prefer: "return=minimal",
+    },
+    body: JSON.stringify(cambios),
+  });
+  if (!r.ok) console.error("PATCH cuotas_entreno falló:", r.status, await r.text().catch(() => ""));
+  return r.ok;
+}
+
+async function getEntreno(id: string): Promise<Record<string, any> | null> {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id&id=eq.${encodeURIComponent(id)}&limit=1`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+  );
+  if (!r.ok) return null;
+  const filas = await r.json().catch(() => []);
+  return Array.isArray(filas) ? (filas[0] ?? null) : null;
+}
+
+// Programa la cancelación de la suscripción tras el cargo de abril (cancel_at).
+// Se hace una sola vez (cancel_programado). Elige la clave por livemode.
+async function programarCancelEntreno(subId: string, livemode: boolean) {
+  const key = livemode ? SK_LIVE : SK_TEST;
+  if (!key || !subId) return;
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: `cancel_at=${ENTRENO_CANCEL_AT}`,
+  });
+  if (!r.ok) console.error("No se pudo programar cancel_at de entreno:", r.status, await r.text().catch(() => ""));
+  return r.ok;
+}
+
+// Registra un cobro liquidado de entreno como recibo PAGADO en `pagos`.
+// Idempotente: no inserta si ya hay un recibo con la misma factura de Stripe
+// (se guarda su id en `notas`). El trimestre sale del mes del periodo.
+async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<string, any>) {
+  const invId = String(objeto.id ?? "");
+  if (!invId) return;
+  const marca = `stripe:${invId}`;
+  const yaR = await fetch(
+    `${SUPABASE_URL}/rest/v1/pagos?select=id&notas=eq.${encodeURIComponent(marca)}&limit=1`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+  );
+  if (yaR.ok) { const f = await yaR.json().catch(() => []); if (Array.isArray(f) && f.length) return; }
+
+  const inicio = Number(objeto.lines?.data?.[0]?.period?.start ?? objeto.created ?? 0);
+  const d = inicio > 0 ? new Date(inicio * 1000) : new Date();
+  const mes = d.getUTCMonth() + 1;   // 1..12
+  const ano = d.getUTCFullYear();
+  let etq = "trimestre";
+  if (mes >= 10) etq = `1er trimestre (oct-dic ${ano})`;
+  else if (mes <= 3) etq = `2º trimestre (ene-mar ${ano})`;
+  else if (mes <= 6) etq = `3er trimestre (abr-jun ${ano})`;
+  const periodo = `${ano}-${String(mes).padStart(2, "0")}`;
+  const importe = (Number(objeto.amount_paid ?? cuota.importe_cent ?? 0) || 0) / 100;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/pagos`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json", Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      atleta_id: cuota.atleta_id,
+      concepto: `Cuota de entrenamiento · ${etq}`,
+      importe,
+      estado: "pagado",
+      fecha_pago: hoy,
+      metodo: "domiciliado",
+      cuenta: "club",
+      periodo,
+      notas: marca,
+    }),
+  });
+  if (!r.ok) console.error("INSERT pago de entreno falló:", r.status, await r.text().catch(() => ""));
+}
+
+// Devuelve true si el evento era de ENTRENO y ya se ha gestionado aquí.
+async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemode: boolean): Promise<boolean> {
+  const ref = refDe(objeto);
+  if (typeof ref !== "string" || !ref.startsWith("entreno-")) return false;
+  const cuotaId = ref.slice("entreno-".length);
+
+  switch (tipo) {
+    case "checkout.session.completed": {
+      if (objeto.mode === "subscription") {
+        const subId = idDe(objeto.subscription);
+        await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
+          stripe_customer_id: idDe(objeto.customer),
+          stripe_subscription_id: subId,
+          suscripcion_estado: "activa",
+        });
+        // Programar la cancelación tras abril (una sola vez).
+        const cuota = await getEntreno(cuotaId);
+        if (subId && cuota && cuota.cancel_programado !== true) {
+          await programarCancelEntreno(subId, livemode);
+          await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { cancel_programado: true });
+        }
+      }
+      break;
+    }
+    case "invoice.paid":
+    case "invoice.payment_succeeded": {
+      const finPeriodo = objeto.lines?.data?.[0]?.period?.end ?? objeto.period_end;
+      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
+        suscripcion_estado: "activa",
+        stripe_customer_id: idDe(objeto.customer),
+        stripe_subscription_id: idDe(objeto.subscription),
+        ultimo_cobro: aFecha(objeto.status_transitions?.paid_at) ?? new Date().toISOString(),
+        proximo_cobro: aFecha(finPeriodo),
+      });
+      const cuota = await getEntreno(cuotaId);
+      if (cuota) await registrarCobroEntreno(objeto, cuota);
+      break;
+    }
+    case "invoice.payment_failed": {
+      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { suscripcion_estado: "impago" });
+      break;
+    }
+    case "customer.subscription.created":
+    case "customer.subscription.updated": {
+      const est = estadoDe(String(objeto.status ?? ""));
+      const proximo = aFecha(objeto.current_period_end) ?? aFecha(objeto.trial_end);
+      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
+        stripe_subscription_id: objeto.id,
+        stripe_customer_id: idDe(objeto.customer),
+        ...(est ? { suscripcion_estado: est } : {}),
+        ...(proximo ? { proximo_cobro: proximo } : {}),
+      });
+      break;
+    }
+    case "customer.subscription.deleted": {
+      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { suscripcion_estado: "cancelada" });
+      break;
+    }
+    default:
+      // otros eventos de entreno: nada que hacer, pero ya está «gestionado».
+      break;
+  }
+  return true;
+}
+
 // ¿A qué fila casamos el aviso? Por referencia (cubo-<id de alta>), o por
 // la suscripción, o por el cliente de Stripe. Devuelve el filtro PostgREST.
 function filtroDe(objeto: Record<string, any>): string | null {
@@ -226,6 +399,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
     return new Response(JSON.stringify({ recibido: true, socio: true }), { status: 200 });
+  }
+
+  // --- CUOTA DE ENTRENO (suscripción SEPA trimestral, referencia entreno-<id>) ---
+  if (await manejarEntreno(tipo, objeto, evento.livemode !== false)) {
+    return new Response(JSON.stringify({ recibido: true, entreno: true }), { status: 200 });
   }
 
   const filtro = filtroDe(objeto);

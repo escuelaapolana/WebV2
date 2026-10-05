@@ -120,6 +120,7 @@
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=pista'},
         {t:'Atletas',          i:'people',    url:B+'admin/atletas/?seccion=competicion', d:'Los atletas de pista.'},
         {t:'Grupos',           i:'people',    url:B+'admin/grupos/?seccion=competicion',  d:'Grupos de entreno, incl. Academia AC98.'},
+        {t:'Cuotas de entreno', i:'euro',     url:B+'admin/cuotas-entreno/', d:'Domiciliación trimestral (SEPA) de los adultos de Velocidad/Academia.'},
         {t:'Tests y pruebas',  i:'clipboard', url:B+'admin/tests/',        d:'Batería de tests y marcas.'},
         {t:'Competiciones',    i:'flag',      url:B+'admin/competiciones/', d:'Carreras e inscripciones.'},
         {t:'Quién va a ir',    i:'check',     url:B+'admin/confirmaciones/', d:'Confirmaciones para cada carrera.'},
@@ -429,7 +430,7 @@
     grupos:'general', mundos:'general', campo:'general', buzon:'general', automatizaciones:'general',
     cubo:'cubo', 'cubo-altas':'cubo', 'cubo-prueba':'cubo', asistencia:'cubo',
     natacion:'natacion',
-    tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista',
+    tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista', 'cuotas-entreno':'pista',
     repartir:'escuela-atl', historico:'escuela-atl', altas:'general',
     eventos:'comunicacion', enlaces:'general', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
   };
