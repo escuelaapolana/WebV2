@@ -139,6 +139,15 @@
   .cx-novino { font-size:11.5px; font-weight:700; color:#B0563A; margin-top:2px; }
   .cx-chk { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--texto-suave,#8A816E); cursor:pointer; margin-left:4px; }
   .cx-chk input { width:17px; height:17px; accent-color:#1E7A3D; cursor:pointer; }
+  .cx-det { margin-top:30px; border-top:1px solid var(--linea,#EDE6D7); padding-top:14px; }
+  .cx-sum { cursor:pointer; list-style:none; display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; font-family:var(--fuente-titulo,inherit); text-transform:uppercase; font-size:16px; font-weight:700; color:var(--navy,#26374B); }
+  .cx-sum::-webkit-details-marker { display:none; }
+  .cx-sum::before { content:'▸'; color:var(--texto-suave,#8A816E); font-size:13px; }
+  details[open] .cx-sum::before { content:'▾'; }
+  .cx-sum-n { font-family:var(--fuente-dato,monospace); text-transform:none; font-size:12.5px; font-weight:600; color:var(--texto-suave,#8A816E); }
+  .cx-hint { background:#FBF1D9; border:1px solid #E6C877; color:#8A5307; border-radius:10px; padding:10px 13px; font-size:13.5px; margin:0 0 12px; }
+  .cx-watel { color:#1E7A3D; text-decoration:none; font-weight:600; }
+  .cx-watel:hover { text-decoration:underline; }
 </style>
 </head>
 <body>
@@ -428,7 +437,9 @@ APOLANA_ADMIN.listo(function (sb) {
   // No cobra nada: solo hace que a esa persona le aparezca (o no) «Pagar la
   // cuota» en su portal. Los que quedan cerrados están «de prueba».
   // ====== LISTA PARA LA CONTABILIDAD (fusionado desde «Pagos del Cubo») ======
-  var contabFiltro='todos', contabQ='', contabWA='todos', contabGrupo='', contabSoloVino=false;
+  var contabFiltro='todos', contabQ='', contabWA='todos', contabGrupo='', contabSoloVino=false, contabAbierto=false;
+  // Teléfono → número para wa.me (solo dígitos, con prefijo país; España por defecto).
+  function waNum(tel){ var t=String(tel||'').replace(/[^\d+]/g,''); if(t.charAt(0)==='+') t=t.slice(1); else if(t.slice(0,2)==='00') t=t.slice(2); else if(t.length===9) t='34'+t; return t; }
   function eurC(n){ return (Number(n)||0).toFixed(2).replace('.',',')+' €'; }
   function emailDe(a){ return EMAIL[a.perfil_id]||''; }
   function primerPagoC(a){ return (a.primer_pago_cent!=null && Number(a.primer_pago_cent)>0) ? Number(a.primer_pago_cent)/100 : 10; }
@@ -487,7 +498,7 @@ APOLANA_ADMIN.listo(function (sb) {
           (DIAS[a.id]>0 ? '<div class="cx-vino">✓ vino '+DIAS[a.id]+' día'+(DIAS[a.id]===1?'':'s')+'</div>'
                         : '<div class="cx-novino">⚠️ aún no ha venido</div>')+'</td>'+
         '<td><button type="button" class="cx-wa '+(a.en_whatsapp?'on':'off')+'" data-wa="'+esc(a.id)+'">'+(a.en_whatsapp?'✓ En grupo':'＋ Añadir')+'</button></td>'+
-        '<td>'+esc(emailDe(a))+'</td><td>'+esc(a.telefono||'')+'</td><td>'+esc(a.horario||'')+'</td>'+
+        '<td>'+esc(emailDe(a))+'</td><td>'+(a.telefono?'<a class="cx-watel" href="https://wa.me/'+esc(waNum(a.telefono))+'" target="_blank" rel="noopener" title="Escribir por WhatsApp">'+esc(a.telefono)+'</a>':'—')+'</td><td>'+esc(a.horario||'')+'</td>'+
         '<td class="cx-num">'+eurC(a.precio_mes)+'</td><td class="cx-num">'+eurC(primerPagoC(a))+'</td>'+
         '<td>'+(a.cobro_abierto?'<span class="cx-si">Sí</span>':'<span class="cx-no">No</span>')+'</td>'+
         '<td>'+esc(estadoCuota(a))+'</td>'+
@@ -495,8 +506,10 @@ APOLANA_ADMIN.listo(function (sb) {
         '<td>'+esc(fecha(a.ultimo_cobro))+'</td><td>'+esc(fecha(a.proximo_cobro))+'</td></tr>';
     }).join('');
     caja.innerHTML=
-      '<p class="ca-rot" style="margin-top:30px">Lista para la contabilidad</p>'+
-      '<p class="sub" style="margin-top:-4px">Cada persona con su cuota, primer pago e identificadores de Stripe (para cruzar con los payouts). Exporta a Excel o avisa a los pendientes.</p>'+
+      '<details id="ca-contab-det" class="cx-det"'+(contabAbierto?' open':'')+'>'+
+      '<summary class="cx-sum">Contabilidad y recordatorios de pago'+
+        '<span class="cx-sum-n">'+pag+' pagados · '+pen+' sin pagar · '+prb+' de prueba</span></summary>'+
+      '<p class="sub" style="margin-top:8px">Cada persona con su cuota, primer pago e identificadores de Stripe (para cruzar con los payouts). Exporta a Excel, avisa por correo o escribe por WhatsApp (toca el teléfono).</p>'+
       '<div class="cx-chips">'+[['todos','Todos',todos.length],['pagados','Han pagado',pag],['pendientes','Cobro abierto',pen],['prueba','De prueba',prb]].map(function(c){ return '<button type="button" class="cx-chip'+(contabFiltro===c[0]?' on':'')+(c[0]==='prueba'?' cx-chip-prueba':'')+'" data-cf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+'</div>'+
       '<div class="cx-chips cx-chips2">'+
         [['todos','WhatsApp: todos',todos.length],['si','En el grupo',wsi],['no','Falta WhatsApp',wno]].map(function(c){ return '<button type="button" class="cx-chip'+(contabWA===c[0]?' on':'')+(c[0]==='no'?' cx-chip-falta':'')+'" data-wf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+
@@ -511,7 +524,11 @@ APOLANA_ADMIN.listo(function (sb) {
         '<button type="button" class="cx-btn" id="cx-resync" style="background:#5E7D3A">↻ Re-sincronizar Stripe</button>'+
         '<button type="button" class="cx-btn" id="cx-export" style="background:#26374B">⬇ Exportar Excel (CSV)</button>'+
       '</div>'+
-      '<div class="cx-tabla"><table><thead><tr><th>Persona</th><th>WhatsApp</th><th>Email</th><th>Tel</th><th>Grupo</th><th>Cuota</th><th>1er pago</th><th>Cobro</th><th>Estado cuota</th><th>Cliente Stripe</th><th>Suscripción Stripe</th><th>Últ. cobro</th><th>Próx. cobro</th></tr></thead><tbody>'+filas+'</tbody></table></div>';
+      (contabFiltro==='pendientes' ? '<div class="cx-hint">Estos tienen el cobro abierto y <b>aún no han pagado</b>. Toca su teléfono para escribirles por <b>WhatsApp</b> y recordarles que hagan el pago.</div>' : '')+
+      '<div class="cx-tabla"><table><thead><tr><th>Persona</th><th>WhatsApp</th><th>Email</th><th>Tel</th><th>Grupo</th><th>Cuota</th><th>1er pago</th><th>Cobro</th><th>Estado cuota</th><th>Cliente Stripe</th><th>Suscripción Stripe</th><th>Últ. cobro</th><th>Próx. cobro</th></tr></thead><tbody>'+filas+'</tbody></table></div>'+
+      '</details>';
+    var det=document.getElementById('ca-contab-det');
+    if(det) det.addEventListener('toggle', function(){ contabAbierto=det.open; });
   }
   function csvCampo(v){ v=(v==null?'':String(v)); return '"'+v.replace(/"/g,'""')+'"'; }
   function exportarPagos(){
