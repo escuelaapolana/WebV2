@@ -4207,6 +4207,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     for(var i=0;i<14;i++){ var wd=d.getDay(); wd=(wd===0?7:wd); if(wd===dia) return isoDe(d); d.setDate(d.getDate()+1); }
     return todayISO;
   }
+  // Las próximas N fechas (una por semana) de ese día de la semana, desde hoy.
+  // Así quien viene cada dos semanas puede avisar de varias a la vez, no solo la próxima.
+  function _proxVarios(dia, n){
+    var out=[], d=new Date(todayISO+'T00:00:00'), guard=0;
+    while(out.length<n && guard++<400){
+      var wd=d.getDay(); wd=(wd===0?7:wd);
+      if(wd===dia){ out.push(isoDe(d)); d.setDate(d.getDate()+7); }
+      else d.setDate(d.getDate()+1);
+    }
+    return out;
+  }
   function _fCorta(iso){ var d=new Date(iso+'T00:00:00'); var D=['dom','lun','mar','mié','jue','vie','sáb']; return D[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1); }
   function _calN(c){ return String(c||'').replace(/^C/i,''); }
   function bonosCardHTML(){
@@ -4237,8 +4248,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var vis={}, arr=[];
     MIS_NAT.forEach(function(p){ if(p.franja_id && !vis[p.franja_id]){ vis[p.franja_id]=1; arr.push(p); } });
     if(!arr.length) return '<div class="bonos-panel">No encontramos tus sesiones fijas.</div>';
+    // Ya avisadas: no se vuelven a ofrecer (salen abajo con «Sí voy»).
+    var ya={}; ((MASTER_BONOS&&MASTER_BONOS.no_voy)||[]).forEach(function(n){ ya[n.franja_id+'|'+n.fecha]=1; });
+    // Varias semanas por franja, todas juntas y ordenadas por fecha.
+    var ops=[];
+    arr.forEach(function(p){
+      _proxVarios(Number(p.dia), 6).forEach(function(iso){
+        if(ya[p.franja_id+'|'+iso]) return;
+        ops.push({ iso:iso, html:'<button type="button" class="bp-op" data-novoy="'+esc(p.franja_id)+'|'+iso+'">'+esc(_fCorta(iso))+' · '+esc(p.hora)+' · '+esc(p.grupo||'')+'</button>' });
+      });
+    });
+    ops.sort(function(a,c){ return a.iso<c.iso?-1:(a.iso>c.iso?1:0); });
+    if(!ops.length) return '<div class="bonos-panel">Ya has avisado de todas tus próximas sesiones.</div>';
     return '<div class="bonos-panel"><div class="bp-tit">¿Qué día no puedes ir?</div>'+
-      arr.map(function(p){ var iso=_isoProx(Number(p.dia)); return '<button type="button" class="bp-op" data-novoy="'+esc(p.franja_id)+'|'+iso+'">'+esc(_fCorta(iso))+' · '+esc(p.hora)+' · '+esc(p.grupo||'')+'</button>'; }).join('')+'</div>';
+      '<p class="bonos-sub" style="margin:0 0 2px">Puedes avisar de varias semanas de golpe.</p>'+
+      ops.map(function(o){ return o.html; }).join('')+'</div>';
   }
   function panelUsar(){
     // Regla de Mario (mig 261): la recuperación es solo dentro de este mes.
