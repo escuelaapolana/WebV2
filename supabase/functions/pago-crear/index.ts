@@ -42,7 +42,13 @@ const SERVICE_KEY =
 const ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY") ??
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
-const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+// Claves de Apolana (live / test), igual que cubo-pagar / socio-pagar. Se elige
+// por `pagos_config.modo`. Antes se usaba una clave genérica STRIPE_SECRET_KEY que
+// estaba en modo PRUEBA → ningún recibo se podía pagar con tarjeta real (a la gente
+// le salía la pantalla de test y le rechazaba las tarjetas). Se deja como último
+// recurso por compatibilidad, pero manda la de Apolana.
+const SK_LIVE = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+const SK_TEST = Deno.env.get("STRIPE_SECRET_KEY_APOLANA_TEST") ?? "";
 
 // A dónde vuelve la persona desde Stripe. Si es un bono de El Cubo,
 // a su pantalla del bono: es donde están los usos que acaba de
@@ -115,10 +121,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     return responder({ error: "config", mensaje: "El pago con tarjeta no está configurado." }, 503, origen);
   }
+
+  // Modo (test/real) SIEMPRE de la base, y se elige la clave de Apolana en
+  // consecuencia. En 'prueba' solo se usa la de test (nunca se cae a la live:
+  // así quien prueba no hace un cargo real sin querer).
+  const rCfg = await consulta(`pagos_config?select=modo&id=eq.1&limit=1`);
+  const modo = String((Array.isArray(rCfg.datos) ? rCfg.datos[0]?.modo : "") ?? "prueba").toLowerCase();
+  const STRIPE_KEY = modo === "real" ? SK_LIVE : SK_TEST;
   if (!STRIPE_KEY) {
     return responder({
       error: "no_activado",
-      mensaje: "El pago con tarjeta todavía no está activado. Escríbenos y te decimos cómo pagarlo.",
+      mensaje: modo === "real"
+        ? "El pago con tarjeta todavía no está activado. Escríbenos y te decimos cómo pagarlo."
+        : "El pago en modo prueba aún no está listo (falta la clave de test de Stripe).",
     }, 503, origen);
   }
 
