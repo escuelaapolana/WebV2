@@ -108,6 +108,24 @@
   .cx-tabla .cx-mono { font-family:var(--fuente-dato,monospace); font-size:11.5px; color:var(--texto-suave,#8A816E); }
   .cx-si { color:#1E7A3D; font-weight:700; } .cx-no { color:#B0563A; }
   .cx-chip-prueba.on { background:#9A6B16; border-color:#9A6B16; }
+  /* Tracker de prueba */
+  .pr-wrap { margin:4px 0 20px; border:1px solid var(--linea,#EDE6D7); border-radius:14px; background:linear-gradient(180deg,#FFFDF8,#FBF7EE); padding:14px 14px 8px; }
+  .pr-cab { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; }
+  .pr-cab b { font-size:15.5px; }
+  .pr-res { font-size:12.5px; color:var(--texto-suave,#8A816E); font-weight:600; }
+  .pr-sub { font-size:12.5px; color:var(--texto-suave,#8A816E); margin:2px 0 10px; }
+  .pr-fila { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:10px 2px; border-top:1px solid var(--linea,#F3EEE2); }
+  .pr-fila.pr-ojo { background:#FFF7E6; border-radius:10px; padding-left:8px; padding-right:8px; }
+  .pr-quien { display:flex; flex-direction:column; min-width:160px; }
+  .pr-quien b { font-size:14.5px; }
+  .pr-quien small { font-size:12px; color:var(--texto-suave,#8A816E); }
+  .pr-pasos { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+  .pr-chip { font:inherit; font-size:13px; font-weight:700; border-radius:999px; padding:7px 13px; cursor:pointer; border:1.5px solid; line-height:1; }
+  .pr-chip.on { background:#1E7A3D; border-color:#1E7A3D; color:#fff; }
+  .pr-chip.off { background:#fff; border-color:#C9C0AE; color:#6B6354; }
+  .pr-chip.off:hover { border-color:#9A6B16; color:#9A6B16; }
+  .pr-chip[disabled]{ opacity:.55; cursor:default; }
+  .pr-fin { font-size:12px; font-weight:700; color:#1E7A3D; align-self:center; margin-left:2px; }
 </style>
 </head>
 <body>
@@ -121,6 +139,7 @@
     <div id="ca-grupos"></div>
     <p class="ca-rot">Quién se ha apuntado</p>
     <div class="chips" id="ca-chips" hidden></div>
+    <div id="ca-pruebas"></div>
     <div id="ca-lista" class="ca-cargando">Cargando…</div>
     <div id="ca-contab"></div>
   </div>
@@ -146,7 +165,25 @@ APOLANA_ADMIN.listo(function (sb) {
     ALTAS = r.data||[];
     await cargarCobros();
     await cargarEmails();
+    await cargarDias();
     indexarDuplicados();
+  }
+  var DIAS = {};   // alta_id -> nº de días distintos que ha venido (desde su alta)
+  async function cargarDias(){
+    DIAS = {};
+    var conAtleta = ALTAS.filter(function(a){ return a.atleta_id; });
+    var ids = conAtleta.map(function(a){ return a.atleta_id; });
+    if(!ids.length) return;
+    var r = await sb.from('asistencia').select('atleta_id,fecha,presente').in('atleta_id', ids).eq('presente', true);
+    if(r.error || !r.data) return;
+    var porAtleta = {};
+    r.data.forEach(function(x){ (porAtleta[x.atleta_id]=porAtleta[x.atleta_id]||[]).push(String(x.fecha||'')); });
+    conAtleta.forEach(function(a){
+      var desde = a.created_at ? String(a.created_at).slice(0,10) : '';
+      var set={};
+      (porAtleta[a.atleta_id]||[]).forEach(function(f){ if(f && (!desde || f>=desde)) set[f]=1; });
+      DIAS[a.id] = Object.keys(set).length;
+    });
   }
   var EMAIL = {};
   async function cargarEmails(){
@@ -279,6 +316,7 @@ APOLANA_ADMIN.listo(function (sb) {
           (DUP[a.id] && est!=='rechazada' ? '<small class="dup-aviso" style="color:#9A3B3B;font-weight:700">⚠️ Posible duplicado · ya hay otra alta de esta persona</small>' : '')+
           pagoHTML(a)+
           pagosPuntualesHTML(a)+
+          badgesPruebaHTML(a)+
         '</span>'+
         '<span class="precio">'+esc(a.precio_mes||'')+' €/mes</span>'+
         '<span class="est '+esc(est)+'">'+esc(NOMBRE_EST[est]||est)+'</span>'+
@@ -297,6 +335,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   function pintar(){
     pintarChips();
+    pintarPruebas();
     pintarCobro();
     pintarGrupos();
     pintarContab();
@@ -306,6 +345,59 @@ APOLANA_ADMIN.listo(function (sb) {
     var lista=visibles();
     if(!lista.length){ caja.innerHTML=vacioHTML('Nada con este filtro','Prueba con otro estado.'); return; }
     caja.innerHTML=lista.map(tarjeta).join('');
+  }
+
+  // ====== TRACKER DE PRUEBA: quién está probando y por dónde va cada uno ======
+  // Los pasos que Andrés lleva a mano: ¿confirmó que se queda? ¿lo metí al
+  // WhatsApp? ¿le abrí el cobro? El que paga desaparece de aquí (ya es socio).
+  function pintarPruebas(){
+    var caja=$('ca-pruebas'); if(!caja) return;
+    var lista=ALTAS.filter(enPruebaJourney).sort(function(a,b){
+      var da=DIAS[a.id]||0, db=DIAS[b.id]||0; if(db!==da) return db-da;
+      return ((a.nombre||'')+(a.apellidos||'')).localeCompare((b.nombre||'')+(b.apellidos||''));
+    });
+    if(!lista.length){ caja.innerHTML=''; return; }
+    var conf=lista.filter(function(a){ return a.confirmado_sigue; }).length;
+    var listos=lista.filter(function(a){ return a.confirmado_sigue && a.en_whatsapp && a.cobro_abierto; }).length;
+    function chip(id,paso,on,txtOn,txtOff){
+      return '<button type="button" class="pr-chip '+(on?'on':'off')+'" data-paso="'+paso+'" data-id="'+esc(id)+'" data-on="'+(on?'1':'0')+'">'+
+        (on?'✓ ':'')+esc(on?txtOn:txtOff)+'</button>';
+    }
+    var filas=lista.map(function(a){
+      var nom=((a.nombre||'')+' '+(a.apellidos||'')).trim();
+      var v=DIAS[a.id]; var vino = v!=null ? ('vino '+v+' día'+(v===1?'':'s')) : 'sin lista aún';
+      var alerta = (v>=2 && !a.confirmado_sigue) ? ' pr-ojo' : '';
+      // Cobro: si está abierto es verde (estado); si no, botón para abrirlo (pregunta importe).
+      var cobroChip = a.cobro_abierto
+        ? '<span class="pr-chip on">✓ Cobro abierto</span>'
+        : '<button type="button" class="pr-chip off" data-cobrochip="'+esc(a.id)+'">Abrir cobro</button>';
+      var fin = (a.confirmado_sigue && a.en_whatsapp && a.cobro_abierto)
+        ? '<span class="pr-fin">Todo listo · esperando pago</span>' : '';
+      return '<div class="pr-fila'+alerta+'">'+
+        '<div class="pr-quien"><b>'+esc(nom)+'</b><small>'+esc(a.horario||'')+' · '+esc(vino)+'</small></div>'+
+        '<div class="pr-pasos">'+
+          chip(a.id,'confirmado',!!a.confirmado_sigue,'Se queda','¿Se queda?')+
+          chip(a.id,'whatsapp',!!a.en_whatsapp,'En WhatsApp','Falta WhatsApp')+
+          cobroChip+ fin+
+        '</div>'+
+      '</div>';
+    }).join('');
+    caja.innerHTML=
+      '<div class="pr-wrap">'+
+        '<div class="pr-cab"><b>🧪 Pruebas en marcha</b> <span class="pr-res">'+lista.length+' de prueba'+
+          (conf?' · '+conf+' confirmados':'')+(listos?' · '+listos+' listos para pagar':'')+'</span></div>'+
+        '<div class="pr-sub">Marca según avanzas con cada uno. Pagar es lo que lo convierte en socio del Cubo (desaparece de aquí).</div>'+
+        filas+
+      '</div>';
+  }
+  async function marcarPaso(id, paso, on, chip){
+    if(chip) chip.disabled=true;
+    var r=await sb.rpc('cubo_prueba_paso',{ p_id:id, p_paso:paso, p_on:on });
+    if(chip) chip.disabled=false;
+    if(r.error || (r.data && r.data.ok===false)){ toast((r.error&&r.error.message)||(r.data&&r.data.error)||'No se ha podido.','error'); return; }
+    ALTAS.forEach(function(a){ if(a.id===id){ if(paso==='confirmado') a.confirmado_sigue = on?new Date().toISOString():null; else if(paso==='whatsapp') a.en_whatsapp=on; } });
+    pintar();
+    toast(paso==='confirmado'?(on?'Marcado: se queda':'Desmarcado'):(on?'Marcado: en WhatsApp':'Quitado de WhatsApp'));
   }
 
   async function refrescar(){ $('ca-lista').className='ca-cargando'; $('ca-lista').textContent='Cargando…'; await cargar(); pintar(); }
@@ -334,10 +426,20 @@ APOLANA_ADMIN.listo(function (sb) {
     if(e==='pausada') return 'En pausa'; if(e==='cancelada') return 'De baja';
     if(a.cobro_abierto) return 'Cobro abierto (sin pagar)';
     if(a.estado==='aprobada' && !a.lista_espera){
-      var dias = a.created_at ? Math.floor((Date.now()-new Date(a.created_at).getTime())/86400000) : null;
-      return 'De prueba'+(dias!=null && dias>=0 ? ' · '+dias+' día'+(dias===1?'':'s') : '');
+      var v = DIAS[a.id];
+      return 'De prueba'+(v!=null ? ' · vino '+v+' día'+(v===1?'':'s') : '');
     }
     return 'Sin activar'; }
+  // ¿Está en el camino prueba → pago? (aprobada, aún no paga, no en espera, paga por la app)
+  function enPruebaJourney(a){ return a.estado==='aprobada' && a.suscripcion_estado!=='activa' && !a.lista_espera && !a.pago_externo; }
+  function badgesPruebaHTML(a){
+    if(!enPruebaJourney(a)) return '';
+    var b=[];
+    if(a.confirmado_sigue) b.push('<span class="cuota-est activa">✓ Se queda</span>');
+    if(a.en_whatsapp) b.push('<span class="cuota-est activa">✓ WhatsApp</span>');
+    if(!b.length) return '';
+    return '<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px">'+b.join('')+'</div>';
+  }
   function esPagadoC(a){ return a.suscripcion_estado==='activa'; }
   function esPendienteC(a){ return a.cobro_abierto && a.suscripcion_estado!=='activa'; }
   function esPruebaC(a){ return a.estado==='aprobada' && a.suscripcion_estado!=='activa' && !a.cobro_abierto && !a.lista_espera && !a.pago_externo; }
@@ -754,6 +856,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if(pc){ pagoCargo(pc.getAttribute('data-pago-cargo'), pc); return; }
     var pq=ev.target.closest?ev.target.closest('[data-pago-cuota]'):null;
     if(pq){ pagoCuota(pq.getAttribute('data-pago-cuota'), pq); return; }
+    var prp=ev.target.closest?ev.target.closest('.pr-chip[data-paso]'):null;
+    if(prp){ marcarPaso(prp.getAttribute('data-id'), prp.getAttribute('data-paso'), prp.getAttribute('data-on')!=='1', prp); return; }
+    var prc=ev.target.closest?ev.target.closest('[data-cobrochip]'):null;
+    if(prc){ abrirCobro(prc.getAttribute('data-cobrochip'), false, prc); return; }
     var cb=ev.target.closest?ev.target.closest('[data-cobro]'):null;
     if(cb){ abrirCobro(cb.getAttribute('data-cobro'), cb.getAttribute('data-abierto')==='1', cb); return; }
     var elim=ev.target.closest?ev.target.closest('[data-eliminar]'):null;
