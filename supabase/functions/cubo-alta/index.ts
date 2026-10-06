@@ -334,6 +334,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     atletaId = (creada as { id?: string } | null)?.id ?? null;
   }
 
+  // Enganche AL GRUPO DEL TURNO, siempre y aparte del grupo_id de la ficha.
+  // La ficha solo tiene un `grupo_id` (su grupo «principal»); si la persona
+  // ya tenía ficha con grupo (p.ej. probó la FUERZA GRATIS del finde), el
+  // bloque de arriba NO le tocaba grupo_id y el grupo del Cubo nunca llegaba
+  // a `atleta_grupos` → no le aparecía en la app. Aquí lo añadimos directo
+  // (ignora duplicados), que es lo que hace que salga en su calendario.
+  // No para lista de espera: todavía no entrena.
+  if (atletaId && grupoId && !enListaEspera) {
+    await rest("atleta_grupos", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates" },
+      body: JSON.stringify({ atleta_id: atletaId, grupo_id: grupoId, principal: false }),
+    });
+  }
+
   // ---- 7 · Registro del alta (para la lista del club), enlazado a la cuenta ----
   await rest("cubo_altas", {
     method: "POST",
