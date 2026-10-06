@@ -954,6 +954,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     //        SOLO lo tuyo y lo de tus hijos, así que funciona en cualquier rol.
     //        Es tuyo: se resalta. ---
     var misNatDH = {};   // día|hora de MIS franjas, para que 6d no las duplique
+    // Si soy máster: los días que marqué «no voy» NO deben pintarse como clase, y
+    // los que reservé a cambio SÍ. Lo trae natacion_master_estado (no_voy + reservas).
+    var noVoyN = {}, reservasN = [];
+    try {
+      var rme = await sb.rpc('natacion_master_estado');
+      var me = (rme && !rme.error) ? rme.data : null;
+      if (me && me.es_master !== false) {
+        (me.no_voy || []).forEach(function (x) { noVoyN[x.franja_id + '|' + x.fecha] = true; });
+        reservasN = me.reservas || [];
+      }
+    } catch (e) { /* sin estado máster: se pinta todo como antes */ }
     try {
       var rmp = await sb.rpc('natacion_mis_plazas');
       var plazas = (rmp && !rmp.error && Array.isArray(rmp.data)) ? rmp.data : [];
@@ -973,7 +984,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           while (d <= d1n) {
             if (d.getDay() === dowJs) {
               var fe = iso(d), keyN = p.franja_id + '|' + (p.atleta_id || '') + '|' + fe;
-              if (fe >= NAT_INICIO && !vistoN[keyN]) {
+              // Si ese día dije «no voy» a esta franja, no lo pinto como clase mía.
+              if (fe >= NAT_INICIO && !vistoN[keyN] && !noVoyN[p.franja_id + '|' + fe]) {
                 vistoN[keyN] = true;
                 var quien = (hayVariosN && p.de) ? String(p.de).split(/\s+/)[0] : '';
                 acts.push({
@@ -990,6 +1002,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         });
       }
     } catch (e) { /* si falla, el resto del calendario sigue */ }
+
+    // --- 6c) RESERVAS de máster: los días que reservó a cambio de un «no voy».
+    //         Van como clase suya en esa fecha concreta. ---
+    reservasN.forEach(function (r) {
+      if (!r || !r.fecha || r.fecha < desde || r.fecha > hasta || r.fecha < '2026-10-01') return;
+      acts.push({
+        fuente: 'natacion', id: 'natres-' + r.id, fecha: r.fecha,
+        hora: r.hora, horaFin: '', titulo: 'Natación · cambio de día',
+        tipoTexto: 'Natación', mio: true, lugar: '',
+        grupo: [r.grupo, (r.calle ? 'Calle ' + r.calle : '')].filter(Boolean).join(' · '),
+        companeros: []
+      });
+    });
 
     // --- 6d) NATACIÓN del CLUB (para «Todo el club»): las franjas públicas
     //        (vista `natacion_vacantes`, que la lee cualquiera; `natacion_franjas`
