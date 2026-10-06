@@ -253,6 +253,60 @@ async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<
   if (!r.ok) console.error("INSERT pago de entreno falló:", r.status, await r.text().catch(() => ""));
 }
 
+// ============================================================
+// RECIBOS y BONOS (pago-crear) — bloque aditivo.
+// pago-crear cobra en la cuenta de Apolana, así que el aviso llega a ESTE
+// webhook. La referencia de un recibo/bono vive en `pagos_online` (no empieza
+// por cubo-/socio-/entreno-). Se confirma llamando a pagos_confirmar, igual que
+// hace pago-webhook. Así un recibo pagado con tarjeta queda PAGADO solo.
+// ============================================================
+async function rpcServicio(nombre: string, cuerpo: Record<string, unknown>): Promise<boolean> {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${nombre}`, {
+    method: "POST",
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo),
+  });
+  if (!r.ok) console.error(`RPC ${nombre} falló:`, r.status, await r.text().catch(() => ""));
+  return r.ok;
+}
+async function esReferenciaDePago(ref: string): Promise<boolean> {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/pagos_online?select=referencia&referencia=eq.${encodeURIComponent(ref)}&limit=1`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+  );
+  if (!r.ok) return false;
+  const filas = await r.json().catch(() => []);
+  return Array.isArray(filas) && filas.length > 0;
+}
+// Devuelve true si era un recibo/bono y ya se ha gestionado aquí.
+async function manejarRecibo(tipo: string, objeto: Record<string, any>, eventoId: string): Promise<boolean> {
+  const ref = refDe(objeto);
+  if (!ref || ref.startsWith("cubo-") || ref.startsWith("socio-") || ref.startsWith("entreno-")) return false;
+  if (!(await esReferenciaDePago(ref))) return false;
+  const ses = (objeto?.id as string | undefined) ?? null;
+  switch (tipo) {
+    case "checkout.session.completed":
+      if (objeto?.payment_status === "paid")
+        await rpcServicio("pagos_confirmar", { p_referencia: ref, p_session: ses, p_evento: eventoId });
+      break;
+    case "checkout.session.async_payment_succeeded":
+      await rpcServicio("pagos_confirmar", { p_referencia: ref, p_session: ses, p_evento: eventoId });
+      break;
+    case "payment_intent.succeeded":
+      await rpcServicio("pagos_confirmar", { p_referencia: ref, p_intent: idDe(objeto), p_evento: eventoId });
+      break;
+    case "checkout.session.async_payment_failed":
+      await rpcServicio("pagos_marcar", { p_referencia: ref, p_estado: "fallido", p_evento: eventoId });
+      break;
+    case "checkout.session.expired":
+      await rpcServicio("pagos_marcar", { p_referencia: ref, p_estado: "cancelado", p_evento: eventoId });
+      break;
+    default:
+      break;
+  }
+  return true;
+}
+
 // Devuelve true si el evento era de ENTRENO y ya se ha gestionado aquí.
 async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemode: boolean): Promise<boolean> {
   const ref = refDe(objeto);
@@ -404,6 +458,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- CUOTA DE ENTRENO (suscripción SEPA trimestral, referencia entreno-<id>) ---
   if (await manejarEntreno(tipo, objeto, evento.livemode !== false)) {
     return new Response(JSON.stringify({ recibido: true, entreno: true }), { status: 200 });
+  }
+
+  // --- RECIBOS / BONOS (pago-crear; referencia en pagos_online) ---
+  if (await manejarRecibo(tipo, objeto, evento.id ?? "")) {
+    return new Response(JSON.stringify({ recibido: true, recibo: true }), { status: 200 });
   }
 
   const filtro = filtroDe(objeto);
