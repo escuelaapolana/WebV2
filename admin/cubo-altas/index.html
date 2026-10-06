@@ -131,6 +131,10 @@
   .cx-wa.off { background:#fff; border-color:#C9C0AE; color:#8A816E; }
   .cx-wa.off:hover { border-color:#1E7A3D; color:#1E7A3D; }
   .cx-wa[disabled] { opacity:.55; cursor:default; }
+  .cx-chips2 { margin-top:-4px; align-items:center; }
+  .cx-chip-falta.on { background:#B0563A; border-color:#B0563A; }
+  .cx-sel { font-size:13px; color:var(--texto-suave,#8A816E); font-weight:600; display:inline-flex; align-items:center; gap:6px; margin-left:4px; }
+  .cx-sel select { font:inherit; font-size:13px; border:1px solid var(--linea-borde,#C9C0AE); border-radius:9px; padding:7px 9px; background:#fff; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -420,7 +424,7 @@ APOLANA_ADMIN.listo(function (sb) {
   // No cobra nada: solo hace que a esa persona le aparezca (o no) «Pagar la
   // cuota» en su portal. Los que quedan cerrados están «de prueba».
   // ====== LISTA PARA LA CONTABILIDAD (fusionado desde «Pagos del Cubo») ======
-  var contabFiltro='todos', contabQ='';
+  var contabFiltro='todos', contabQ='', contabWA='todos', contabGrupo='';
   function eurC(n){ return (Number(n)||0).toFixed(2).replace('.',',')+' €'; }
   function emailDe(a){ return EMAIL[a.perfil_id]||''; }
   function primerPagoC(a){ return (a.primer_pago_cent!=null && Number(a.primer_pago_cent)>0) ? Number(a.primer_pago_cent)/100 : 10; }
@@ -454,15 +458,23 @@ APOLANA_ADMIN.listo(function (sb) {
       if(contabFiltro==='pagados' && !esPagadoC(a)) return false;
       if(contabFiltro==='pendientes' && !esPendienteC(a)) return false;
       if(contabFiltro==='prueba' && !esPruebaC(a)) return false;
+      if(contabWA==='si' && !a.en_whatsapp) return false;
+      if(contabWA==='no' && a.en_whatsapp) return false;
+      if(contabGrupo && (a.horario||'')!==contabGrupo) return false;
       if(contabQ){ var s=((a.nombre||'')+' '+(a.apellidos||'')+' '+emailDe(a)+' '+(a.telefono||'')).toLowerCase(); if(s.indexOf(contabQ)===-1) return false; }
       return true;
     });
+  }
+  function gruposContab(){
+    var set={}; ALTAS.forEach(function(a){ if((a.estado||'')!=='rechazada' && a.horario) set[a.horario]=1; });
+    return Object.keys(set).sort();
   }
   function pintarContab(){
     var caja=$('ca-contab'); if(!caja) return;
     var todos=ALTAS.filter(function(a){ return (a.estado||'')!=='rechazada'; });
     if(!todos.length){ caja.innerHTML=''; return; }
     var pag=todos.filter(esPagadoC).length, pen=todos.filter(esPendienteC).length, prb=todos.filter(esPruebaC).length;
+    var wsi=todos.filter(function(a){ return a.en_whatsapp; }).length, wno=todos.length-wsi;
     var vis=contabVisibles();
     var filas=vis.map(function(a){
       return '<tr>'+
@@ -479,6 +491,12 @@ APOLANA_ADMIN.listo(function (sb) {
       '<p class="ca-rot" style="margin-top:30px">Lista para la contabilidad</p>'+
       '<p class="sub" style="margin-top:-4px">Cada persona con su cuota, primer pago e identificadores de Stripe (para cruzar con los payouts). Exporta a Excel o avisa a los pendientes.</p>'+
       '<div class="cx-chips">'+[['todos','Todos',todos.length],['pagados','Han pagado',pag],['pendientes','Cobro abierto',pen],['prueba','De prueba',prb]].map(function(c){ return '<button type="button" class="cx-chip'+(contabFiltro===c[0]?' on':'')+(c[0]==='prueba'?' cx-chip-prueba':'')+'" data-cf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+'</div>'+
+      '<div class="cx-chips cx-chips2">'+
+        [['todos','WhatsApp: todos',todos.length],['si','En el grupo',wsi],['no','Falta WhatsApp',wno]].map(function(c){ return '<button type="button" class="cx-chip'+(contabWA===c[0]?' on':'')+(c[0]==='no'?' cx-chip-falta':'')+'" data-wf="'+c[0]+'">'+c[1]+' <b>'+c[2]+'</b></button>'; }).join('')+
+        '<label class="cx-sel">Grupo: <select id="cx-grupo"><option value=""'+(contabGrupo?'':' selected')+'>Todos los turnos</option>'+
+          gruposContab().map(function(h){ return '<option value="'+esc(h)+'"'+(contabGrupo===h?' selected':'')+'>'+esc(h.replace('El Cubo · ',''))+'</option>'; }).join('')+
+        '</select></label>'+
+      '</div>'+
       '<div class="cx-barra">'+
         '<input type="search" id="cx-buscar" placeholder="Buscar nombre, email o teléfono…" value="'+esc(contabQ)+'">'+
         '<button type="button" class="cx-btn" id="cx-avisar" style="background:#2F6FA8">✉ Avisar a pendientes</button>'+
@@ -882,6 +900,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(wa){ marcarPaso(wa.getAttribute('data-wa'),'whatsapp',!wa.classList.contains('on'),wa); return; }
     var cf=ev.target.closest?ev.target.closest('[data-cf]'):null;
     if(cf){ contabFiltro=cf.getAttribute('data-cf'); pintarContab(); return; }
+    var wf=ev.target.closest?ev.target.closest('[data-wf]'):null;
+    if(wf){ contabWA=wf.getAttribute('data-wf'); pintarContab(); return; }
     if(ev.target.closest&&ev.target.closest('#cx-export')){ exportarPagos(); return; }
     var cav=ev.target.closest?ev.target.closest('#cx-avisar'):null;
     if(cav){ avisarPendientes(cav); return; }
@@ -895,6 +915,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   // Selector «Cómo paga» (por la app / efectivo / transferencia / otro).
   $('admin-contenido').addEventListener('change', function(ev){
+    if(ev.target && ev.target.id==='cx-grupo'){ contabGrupo=ev.target.value||''; pintarContab(); return; }
     var sel=ev.target.closest?ev.target.closest('select[data-pagoext]'):null;
     if(sel) ponerComoPaga(sel.getAttribute('data-pagoext'), sel.value, sel);
   });
