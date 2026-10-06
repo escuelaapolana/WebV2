@@ -119,6 +119,7 @@
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/pista/'},
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=pista'},
         {t:'Atletas',          i:'people',    url:B+'admin/atletas/?seccion=competicion', d:'Los atletas de pista.'},
+        {t:'Pruebas de pista', i:'sparkle',   url:B+'admin/pista-pruebas/', d:'Quién pide venir a probar y su seguimiento.'},
         {t:'Grupos',           i:'people',    url:B+'admin/grupos/?seccion=competicion',  d:'Grupos de entreno, incl. Academia AC98.'},
         {t:'Cuotas de entreno', i:'euro',     url:B+'admin/cuotas-entreno/', d:'Domiciliación trimestral (SEPA) de los adultos de Velocidad/Academia.'},
         {t:'Tests y pruebas',  i:'clipboard', url:B+'admin/tests/',        d:'Batería de tests y marcas.'},
@@ -134,6 +135,7 @@
         {t:'Niños y niñas',     i:'people',   url:B+'admin/atletas/?seccion=escuela', d:'Los peques inscritos.'},
         {t:'Grupos',            i:'people',   url:B+'admin/grupos/?seccion=escuela',  d:'Grupos por edad.'},
         {t:'Altas de familias', i:'userplus', url:B+'admin/altas/?tipo=escuela',      d:'Solicitudes nuevas de las familias.'},
+        {t:'Pruebas de pista',  i:'sparkle',  url:B+'admin/pista-pruebas/',           d:'Peques (y adultos) que piden venir a probar.'},
         {t:'Repartir',          i:'shuffle',  url:B+'admin/repartir/',                d:'Colocar a cada peque en su grupo.'},
         {t:'Histórico',         i:'clock',    url:B+'admin/historico/',               d:'Temporadas anteriores.'}
       ] },
