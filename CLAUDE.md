@@ -11,7 +11,7 @@ Web pública + portal/app del **Club Atletismo Apolana** (Alicante). Sitio
 
 ## Cómo se despliega
 - **La web se publica con `git push` a `main`** (GitHub Pages). No hay build.
-- **Hoy la web vive en `escuelaapolana.github.io/WebV2/` y está en `noindex` A PROPÓSITO** hasta migrar de dominio (a `atletismoapolana.com`). El SEO/noindex lo maneja `herramientas/seo.py` (un comando el día del cambio). Ver memoria de migración de dominio.
+- **La web vive en `https://atletismoapolana.com/`** (GitHub Pages con dominio propio; el repo tiene `CNAME`). **YA MIGRADA e INDEXABLE** (sep 2026): la home va con `robots: index, follow` y los `canonical`/`og` apuntan a `atletismoapolana.com`. Para compartir enlaces usar SIEMPRE `https://atletismoapolana.com/...` (NO el viejo `escuelaapolana.github.io/WebV2/`). El SEO lo centraliza `herramientas/seo.py` (`--base https://atletismoapolana.com/ --canonical --indexable`).
 - **Edge Functions de Supabase**: `supabase functions deploy <n> --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb` (CLI ya autenticado; el aviso de Docker es inofensivo). NO se despliegan con git.
 
 ## Base de datos (Supabase)
