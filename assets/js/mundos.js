@@ -436,18 +436,34 @@
     repartir:'escuela-atl', historico:'escuela-atl', altas:'general',
     eventos:'comunicacion', enlaces:'general', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
   };
+  // Mundo «pegajoso»: una vez dentro de un mundo, moverte por sus páginas NO
+  // debe cambiar la barra, aunque una página compartida (atletas, grupos) pierda
+  // el ?seccion. Se recuerda el último mundo resuelto y se usa de respaldo en
+  // esas páginas compartidas cuando la URL no dice de qué mundo vienen.
+  var SHARED = { atletas: 1, grupos: 1 };
+  function guardarMundo(w) { try { if (w) sessionStorage.setItem('apo-mundo', w); } catch (e) {} }
+  function mundoGuardado() { try { return sessionStorage.getItem('apo-mundo') || ''; } catch (e) { return ''; } }
   function resolverURL() {
     if (location.pathname.indexOf('/admin/') === -1) return null;
     var cur = folderKey(location.pathname + location.search);
     var map = urlIndex();
-    if (cur && map[cur]) return { world: map[cur].world, screenIdx: map[cur].idx };
-    var folderOnly = cur.split('?')[0];
-    if (folderOnly && map[folderOnly]) return { world: map[folderOnly].world, screenIdx: map[folderOnly].idx };
-    var sec = '';
-    try { sec = (new URLSearchParams(location.search).get('seccion') || '').toLowerCase(); } catch (e) {}
-    var bySec = { cubo:'cubo', escuela:'escuela-atl', competicion:'pista', running:'running' };
-    if (bySec[sec]) return { world: bySec[sec], screenIdx: -1 };
-    return { world: (COARSE[folderOnly] || 'general'), screenIdx: -1 };
+    var res = null;
+    if (cur && map[cur]) res = { world: map[cur].world, screenIdx: map[cur].idx };
+    if (!res) {
+      var folderOnly = cur.split('?')[0];
+      if (folderOnly && map[folderOnly]) res = { world: map[folderOnly].world, screenIdx: map[folderOnly].idx };
+      else {
+        var sec = '';
+        try { sec = (new URLSearchParams(location.search).get('seccion') || '').toLowerCase(); } catch (e) {}
+        var bySec = { cubo:'cubo', escuela:'escuela-atl', competicion:'pista', running:'running' };
+        if (bySec[sec]) res = { world: bySec[sec], screenIdx: -1 };
+        // Página compartida sin seccion → mantén el mundo donde estabas.
+        else if (SHARED[folderOnly]) res = { world: (mundoGuardado() || 'general'), screenIdx: -1 };
+        else res = { world: (COARSE[folderOnly] || mundoGuardado() || 'general'), screenIdx: -1 };
+      }
+    }
+    if (res) guardarMundo(res.world);
+    return res;
   }
 
   /* ============================================================
@@ -486,6 +502,9 @@
   if (!CFG || !CFG.world) return;              // panel: solo exponemos la API
   var M = mundoPorClave(CFG.world);
   if (!M) return;
+  // Las páginas de portal declaran su mundo: lo recordamos para que, al volver
+  // a una página compartida del admin, la barra conserve el mundo.
+  guardarMundo(CFG.world);
 
   injectCSS();
   injectPrefetch();
