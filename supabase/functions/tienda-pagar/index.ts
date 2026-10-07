@@ -173,6 +173,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ---------------------------------------------------------------
+  // 2b · ¿El pago online de la TIENDA está desactivado? → pedido en EFECTIVO
+  //      (se recoge y se paga en la oficina; el pedido llega igual a admin).
+  // ---------------------------------------------------------------
+  const rCfg = await consulta("pagos_config?select=tienda_pago_online&id=eq.1&limit=1");
+  const cfg = Array.isArray(rCfg.datos) ? rCfg.datos[0] : null;
+  const pagoOnlineTienda = cfg ? cfg.tienda_pago_online !== false : true;
+  if (!pagoOnlineTienda) {
+    const rPed = await consulta("rpc/tienda_pedido_efectivo", {
+      method: "POST",
+      body: JSON.stringify({ p_items: items, p_contacto: contacto, p_perfil: perfilId }),
+    });
+    if (!rPed.ok) {
+      const msg = (rPed.datos as { message?: string } | null)?.message ?? "";
+      return responder({ error: "no_se_puede", mensaje: msg || "No se ha podido registrar el pedido." }, 400, origen);
+    }
+    const ped = (Array.isArray(rPed.datos) ? rPed.datos[0] : rPed.datos) as Record<string, any> | null;
+    return responder({ ok: true, efectivo: true, total: Number(ped?.total ?? 0) }, 200, origen);
+  }
+
+  // ---------------------------------------------------------------
   // 3 · Abrir el pago EN LA BASE · aquí nacen el pedido y el importe
   // ---------------------------------------------------------------
   const rPago = await consulta("rpc/tienda_pago_iniciar", {

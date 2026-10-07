@@ -289,12 +289,15 @@
      · La cesta vive solo en este navegador (localStorage), así que
        se conserva al recargar la página. Hasta que no se confirma,
        el club no se entera de nada.
-     · Al pulsar «Pagar», la función `tienda-pagar` mira EN LA BASE
-       cuánto vale cada prenda (nunca se fía del navegador), crea el
-       pedido + sus líneas y abre la pasarela de Stripe. El pedido se
-       marca «pagado» solo cuando Stripe avisa (webhook firmado).
+     · Al pulsar «Hacer pedido», la función `tienda-pagar` mira EN LA BASE
+       cuánto vale cada prenda (nunca se fía del navegador) y crea el
+       pedido + sus líneas. HOY el pago online de la tienda está DESACTIVADO
+       (pagos_config.tienda_pago_online=false): el pedido nace «pendiente»
+       y se PAGA EN EFECTIVO al recoger en la oficina; la función devuelve
+       {efectivo:true}. Si algún día se reactiva el pago con tarjeta, la
+       misma función abre la pasarela de Stripe y devuelve {url}.
      · Compra el socio con sesión (va a su ficha) o un invitado (que
-       deja nombre y contacto). La tarjeta se teclea en Stripe, nunca aquí.
+       deja nombre y contacto), para avisarle cuando esté listo.
      ============================================================ -->
 <script>
 (function () {
@@ -451,10 +454,10 @@
 
   /* ---------- la cesta en pantalla ---------- */
   var AVISO_PAGO =
-    '<div class="caja-aviso"><b>Pago seguro y recogida</b>' +
-    'Pagas con tarjeta en la página de Stripe: nosotros no vemos tu tarjeta. ' +
-    'Cuando esté listo, se recoge en la oficina del club (oficina Nº 1), en el Estadio de Atletismo, ' +
-    'martes y jueves de 18:00 a 20:00. ' +
+    '<div class="caja-aviso"><b>Pago y recogida</b>' +
+    'Haces el pedido aquí y <b>pagas en efectivo al recogerlo</b> en la oficina del club (oficina Nº 1), ' +
+    'en el Estadio de Atletismo, martes y jueves de 18:00 a 20:00. ' +
+    'Te avisaremos cuando esté listo. ' +
     '¿Dudas con una talla? Tienes <b>14 días para devolver</b> en mano — <a href="../legal/devoluciones/">política de devoluciones</a>.</div>';
 
   function pintarCesta() {
@@ -462,9 +465,9 @@
 
     if (enviado) {
       elPedido.innerHTML =
-        '<div class="caja-ok" role="status"><b>¡Pago recibido!</b>' +
-        'Gracias. El club ya tiene tu pedido apuntado y pagado. Te avisaremos cuando esté listo para recoger en la oficina del club (oficina Nº 1), ' +
-        'en el Estadio de Atletismo, los martes y jueves de 18:00 a 20:00.</div>' +
+        '<div class="caja-ok" role="status"><b>¡Pedido hecho!</b>' +
+        'Gracias. El club ya tiene tu pedido apuntado. <b>Lo pagas en efectivo</b> cuando lo recojas en la oficina del club (oficina Nº 1), ' +
+        'en el Estadio de Atletismo, los martes y jueves de 18:00 a 20:00. Te avisaremos cuando esté listo.</div>' +
         '<button type="button" class="btn btn--fantasma" id="otro-pedido" style="width:100%;">Hacer otro pedido</button>';
       return;
     }
@@ -511,7 +514,7 @@
         datos = '<p class="nota">Compras como <b>' + esc(((perfil.nombre || '') + ' ' + (perfil.apellidos || '')).trim()) + '</b>.</p>';
       }
       accion = datos +
-        '<button type="button" class="btn btn--primario" id="pagar" style="width:100%;">Pagar · ' + eur(totalCesta()) + '</button>';
+        '<button type="button" class="btn btn--primario" id="pagar" style="width:100%;">Hacer pedido · ' + eur(totalCesta()) + '</button>';
     }
 
     elPedido.innerHTML =
@@ -578,9 +581,9 @@
       }
     }
 
-    var textoBoton = 'Pagar · ' + eur(totalCesta());
+    var textoBoton = 'Hacer pedido · ' + eur(totalCesta());
     boton.disabled = true;
-    boton.textContent = 'Abriendo el pago…';
+    boton.textContent = 'Haciendo el pedido…';
     mensaje('');
 
     var reponer = function (msg) {
@@ -597,12 +600,20 @@
             .catch(function () { return null; })
             .then(function (d) { reponer((d && d.mensaje) || 'No hemos podido abrir el pago. Inténtalo de nuevo en un minuto.'); });
         }
-        if (!r.data || !r.data.url) { reponer('No hemos podido abrir el pago. Inténtalo de nuevo.'); return; }
+        // Pedido en efectivo (pago online de la tienda desactivado): no hay pasarela.
+        if (r.data && r.data.efectivo) {
+          cesta = [];
+          guardarCesta();
+          enviado = true;
+          pintarCesta();
+          return;
+        }
+        if (!r.data || !r.data.url) { reponer('No hemos podido registrar el pedido. Inténtalo de nuevo.'); return; }
         // A la pasarela de Stripe. La cesta se queda por si el pago se cancela.
         window.location.href = r.data.url;
       })
       .catch(function (e) {
-        reponer('No hemos podido conectar con la pasarela de pago. Inténtalo en un minuto.');
+        reponer('No hemos podido conectar con el club. Inténtalo en un minuto.');
         console.warn('[Apolana] tienda-pagar:', e && e.message ? e.message : e);
       });
   }
