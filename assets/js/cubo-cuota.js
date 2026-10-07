@@ -55,8 +55,8 @@
 
     if (!abierto && estado !== 'activa') {
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
-        '<p>Tu cuota será de <b>' + esc(precio) + ' € al mes</b>. ' +
-        'El pago con tarjeta se <b>abrirá muy pronto</b>; te avisaremos cuando puedas activarlo. ' +
+        '<p>Tu cuota será de <b>' + esc(precio) + ' € al mes</b>, <b>con tarjeta</b> (no por domiciliación). ' +
+        'El pago se <b>abrirá muy pronto</b>; te avisaremos cuando puedas activarlo. ' +
         'No tienes que hacer nada todavía.</p></div>';
     }
 
@@ -91,7 +91,7 @@
       '<button type="button" class="btn activo" id="cb-pagar">' +
         (estado === 'impago' ? 'Reactivar la cuota' : 'Pagar la cuota') + '</button>' +
       '<p class="pago-msg" id="cb-pago-msg" hidden></p>' +
-      '<p class="fina">La tarjeta se teclea en la página segura de Stripe; el club no la ve.</p>' +
+      '<p class="fina"><b>El Cubo se paga con tarjeta, aquí mismo</b> — no hace falta domiciliación bancaria. La tarjeta se teclea en la página segura de Stripe; el club no la ve.</p>' +
     '</div>';
   }
 
