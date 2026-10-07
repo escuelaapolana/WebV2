@@ -287,7 +287,12 @@
            la barra quede en el mismo sitio en TODAS las pantallas. NO se toca
            el ancho del contenido (ni max-width ni el lado derecho), así no se
            estruja ninguna tabla ni se solapa nada. */
-        'margin-left:0 !important;padding-left:clamp(14px,2vw,26px) !important}' +
+        'margin-left:0 !important;padding-left:clamp(14px,2vw,26px) !important;' +
+        /* También se estandariza el hueco de ARRIBA: cada página traía su propio
+           padding-top (unas 0, otras ~40px) → la barra lateral empezaba a distinta
+           altura. Con esto, el hueco entre la barra navy y el lateral es el mismo
+           en todas (16px, igual que el sticky top del lateral). */
+        'padding-top:16px !important}' +
       '.at-tabbar{display:none !important}' +
       'body.at-con-tabbar{padding-bottom:24px}' +
       '.at-side{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:2px;' +
