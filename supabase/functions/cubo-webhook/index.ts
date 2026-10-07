@@ -479,10 +479,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // hasta el 21: 'trialing' cuenta como activa para nosotros).
     case "checkout.session.completed": {
       if (objeto.mode === "subscription") {
+        // Guardamos SIEMPRE cliente y suscripción, pero solo damos por «activa»
+        // si Stripe confirma que el primer pago se cobró (payment_status 'paid',
+        // o 'no_payment_required' en prueba sin cargo). Si queda 'unpaid' (la
+        // tarjeta falló o quedó pendiente), NO la marcamos activa: ya lo hará
+        // `invoice.paid` cuando el cobro entre de verdad, o `subscription.updated`
+        // la dejará en impago. Así no cuenta como pagado a quien no lo está
+        // (le pasó a una persona: activa sin ningún cobro).
+        const pagado = objeto.payment_status === "paid" || objeto.payment_status === "no_payment_required";
         hecho = {
           stripe_customer_id: idDe(objeto.customer),
           stripe_subscription_id: idDe(objeto.subscription),
-          suscripcion_estado: "activa",
+          ...(pagado ? { suscripcion_estado: "activa" } : {}),
         };
       } else if (objeto.mode === "payment") {
         // Pago puntual («ponle un pago»): marcar el cobro como cobrado.
