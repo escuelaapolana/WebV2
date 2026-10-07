@@ -188,6 +188,10 @@
         'body.mm-on.pt-con-tabbar{padding-bottom:24px !important}' +
         '.mm-side{display:block;position:sticky;top:16px;align-self:start;view-transition-name:mm-lateral}' +
         '.mm-isla{background:#fff;border-radius:var(--radio,14px);box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5));padding:16px 12px}' +
+        '.mm-buscar{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;min-height:42px;margin:0 0 10px;padding:9px 12px;border:1px solid var(--linea-borde,#D4CBB9);border-radius:11px;background:var(--crema,#FBF9F4);cursor:pointer;font-family:inherit;font-size:14px;color:var(--texto-suave,#6E6656);text-align:left}' +
+        '.mm-buscar:hover{background:#fff;border-color:var(--azul-filete,#3B85C0);color:var(--navy,#2E4256)}' +
+        '.mm-buscar svg{flex:0 0 17px;width:17px;height:17px}' +
+        '.mm-buscar span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
         '.mm-rotulo{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--texto-suave,#6E6656);padding:2px 8px 8px;display:flex;gap:8px;align-items:center}' +
         '.mm-rotulo .q{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--texto-tenue,#6E6656);font-size:11px}' +
         '.mm-worlds{display:flex;flex-direction:column;gap:2px}' +
@@ -509,6 +513,10 @@
   injectCSS();
   injectPrefetch();
 
+  // La hoja de «Secciones» (la monta montarBarraMovil) sirve para buscar/ir a
+  // una pantalla; aquí la reutiliza el botón «Buscar» del lateral en escritorio.
+  var _abrirSecciones = null;
+
   function montar() {
     var content = CFG.contentSel ? document.querySelector(CFG.contentSel) : null;
     if (!content) return;
@@ -527,7 +535,11 @@
     var esActivo = function (s) { return s.key === (CFG.screen || 'resumen'); };
     var cache = leerCache();
     var initKeys = (cache === undefined) ? [M.key] : cache;
-    side.innerHTML = '<div class="mm-isla">' + sideInnerHtml(M, esActivo, initKeys) + '</div>';
+    side.innerHTML = '<div class="mm-isla">' +
+      '<button type="button" class="mm-buscar" id="mm-buscar-btn" aria-haspopup="dialog">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+        '<span>Buscar una pantalla…</span></button>' +
+      sideInnerHtml(M, esActivo, initKeys) + '</div>';
 
     var layout = document.createElement('div');
     layout.className = 'mm-layout';
@@ -543,6 +555,10 @@
     cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, M.key); });
 
     montarBarraMovil(M);   // en móvil, la barra de navegación del mundo
+
+    // El botón «Buscar» del lateral (escritorio) abre la hoja de secciones.
+    var bq = side.querySelector('#mm-buscar-btn');
+    if (bq) bq.addEventListener('click', function () { if (_abrirSecciones) _abrirSecciones(); });
   }
 
   /* ---------- barra de mundo para MÓVIL (<900px) ----------
@@ -620,6 +636,7 @@
       setTimeout(function () { bg.style.display = 'none'; }, 220);
     }
     bar.querySelector('.mm-menu').addEventListener('click', abrir);
+    _abrirSecciones = abrir;   // para el botón «Buscar» del lateral en escritorio
     bg.addEventListener('click', cerrar);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
   }
