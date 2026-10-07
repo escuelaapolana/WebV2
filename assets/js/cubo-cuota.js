@@ -152,11 +152,12 @@
       .order('created_at', { ascending: false })
       .limit(1);
     var alta = (r && r.data && r.data[0]) || null;
-    var abierto = false;
-    try {
-      var rc = await sb.from('cubo_config').select('cobro_abierto').eq('id', 1).maybeSingle();
-      abierto = !!(rc && rc.data && rc.data.cobro_abierto);
-    } catch (e) { /* si no se lee la config, se trata como no abierto */ }
+    // El cobro del Cubo es POR PERSONA: cada quien puede pagar cuando el club
+    // le ha abierto SU cobro (cubo_altas.cobro_abierto), NO un interruptor
+    // global. Antes esto miraba cubo_config.cobro_abierto (global); estando en
+    // OFF, nadie veía «Pagar la cuota» aunque tuviera el cobro abierto en el
+    // panel → no podían pagar. Ahora manda el cobro de su propia alta.
+    var abierto = !!(alta && alta.cobro_abierto);
     return { alta: alta, abierto: abierto };
   }
 
