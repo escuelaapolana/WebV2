@@ -149,9 +149,15 @@
     var r = await sb.from('cubo_altas')
       .select('id,precio_mes,primer_pago_cent,suscripcion_estado,proximo_cobro,ultimo_cobro,baja_solicitada,lista_espera,cobro_abierto')
       .eq('perfil_id', perfil.id)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    var alta = (r && r.data && r.data[0]) || null;
+      .order('created_at', { ascending: false });
+    var filas = (r && r.data) || [];
+    // Se queda con la alta que DE VERDAD manda: la que ya paga (activa) > la que
+    // tiene el cobro abierto > la más reciente. Así una alta DUPLICADA reciente
+    // y vacía (p.ej. quien se reapunta por error tras haber pagado) no hace que
+    // le salga «sin pagar».
+    var alta = filas.filter(function (a) { return a.suscripcion_estado === 'activa'; })[0]
+            || filas.filter(function (a) { return a.cobro_abierto; })[0]
+            || filas[0] || null;
     // El cobro del Cubo es POR PERSONA: cada quien puede pagar cuando el club
     // le ha abierto SU cobro (cubo_altas.cobro_abierto), NO un interruptor
     // global. Antes esto miraba cubo_config.cobro_abierto (global); estando en

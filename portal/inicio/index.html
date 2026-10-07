@@ -151,6 +151,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<div class="in-pagar"><h2>Por pagar</h2>' + filas + '</div>';
   }
 
+  // Cuota de entrenamiento (SEPA) pendiente de domiciliar: antes solo se podía
+  // por el enlace del correo; aquí sale en su Inicio para domiciliar sin más.
+  async function cuotaEntreno() {
+    try { var r = await sb.rpc('mi_cuota_entreno'); return (r && r.data && r.data[0]) || null; }
+    catch (e) { return null; }
+  }
+  function entrenoHTML(ce) {
+    if (!ce || !ce.token) return '';
+    var imp = (Number(ce.importe_cent || 0) / 100).toFixed(0);
+    return '<div class="in-pagar"><h2>Cuota de entrenamiento</h2>' +
+      '<div class="rec"><div class="info"><div class="con">' + esc(ce.concepto || 'Cuota de entrenamiento') + '</div>' +
+        '<div class="met">Pendiente de domiciliar · ' + esc(imp) + ' € / trimestre (domiciliación SEPA)</div></div>' +
+        '<a class="btn" href="' + b + 'entreno/cuota/?t=' + encodeURIComponent(ce.token) + '">Domiciliar mi cuota</a></div>';
+  }
+
   async function pagar(pagoId, btn) {
     var txt = btn.textContent; btn.disabled = true; btn.textContent = 'Abriendo el pago…';
     var fin = function (msg) { btn.disabled = false; btn.textContent = txt; if (msg) alert(msg); };
@@ -236,13 +251,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     else if (qp === 'cancelado') cav.outerHTML = '<div class="in-aviso-pago ko" id="in-aviso-pago">Has salido sin pagar. Puedes intentarlo cuando quieras.</div>';
   } catch (e) {}
 
-  var res = await Promise.all([actividades(), noticias(), entrenoDeHoy(), recibosPorPagar()]);
-  var act = res[0], noti = res[1], hoy = res[2], recibos = res[3];
+  var res = await Promise.all([actividades(), noticias(), entrenoDeHoy(), recibosPorPagar(), cuotaEntreno()]);
+  var act = res[0], noti = res[1], hoy = res[2], recibos = res[3], cuotaEnt = res[4];
 
-  // Recibos por pagar (solo si hay)
+  // Recibos por pagar + cuota de entreno pendiente de domiciliar (solo si hay)
   var cP = document.getElementById('in-pagar');
   if (cP) {
-    cP.innerHTML = pagarHTML(recibos);
+    cP.innerHTML = entrenoHTML(cuotaEnt) + pagarHTML(recibos);
     cP.addEventListener('click', function (e) {
       var btn = e.target && e.target.closest ? e.target.closest('.btn[data-pago]') : null;
       if (btn) pagar(btn.getAttribute('data-pago'), btn);
