@@ -94,6 +94,13 @@
   .mp .det { font-size:13px; color: var(--texto-suave); margin-top:3px; }
   .mp .pts { font-family: var(--fuente-dato); font-weight:700; font-size:21px; color:#8A5307; white-space:nowrap; }
   .mp .motivo { font-size:13px; color:#8E3A35; margin-top:7px; background:#FCF1F0; border-radius:10px; padding:8px 10px; }
+  .mp-fix { margin-top:9px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .mp-fix-hint { width:100%; font-size:13px; color:var(--texto-suave,#6E6656); }
+  .mp-fix .mp-enlace { flex:1 1 220px; min-width:0; box-sizing:border-box; min-height:42px; padding:9px 12px; font:inherit; font-size:14px; border:1px solid var(--linea-borde,#D8CFBC); border-radius:11px; background:#fff; }
+  .mp-fix .ap-btn { white-space:nowrap; }
+  .mp-msg { width:100%; font-size:13px; }
+  .mp-msg.err { color:#A8453F; }
+  .mp-msg.ok { color:#4C7A28; font-weight:600; }
   .pill { display:inline-block; font-size:13px; padding:3px 10px; border-radius:999px; margin-top:6px; }
   .pill-ok   { background:#E9F2E0; color:#3D6220; }
   .pill-pend { background:#FDF3DD; color:#8A5507; }
@@ -635,9 +642,39 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
            en qué estado está, y un guion en la columna no aporta nada. */
         '</div>' + (p.estado === 'validada' ? '<div class="pts">+' + (p.puntos_aplicados || 0) + '</div>' : '') + '</div>' +
         (p.motivo_no_validada ? '<div class="motivo">' + esc(p.motivo_no_validada) + '</div>' : '') +
+        // Pendiente o no validada: el propio atleta añade/corrige el enlace de la
+        // clasificación y la prueba vuelve a revisión (ya no hay que avisarle a mano).
+        ((p.estado === 'pendiente' || p.estado === 'no_validada')
+          ? '<div class="mp-fix">' +
+              '<div class="mp-fix-hint">Añade el <b>enlace a la clasificación oficial</b> y el club la revisa.</div>' +
+              '<input type="url" class="mp-enlace" value="' + esc(p.enlace_clasificacion || '') + '" placeholder="https://… (resultados/clasificación)">' +
+              '<button type="button" class="ap-btn mp-guardar" data-id="' + esc(p.id) + '">' + (p.enlace_clasificacion ? 'Actualizar enlace' : 'Añadir enlace') + '</button>' +
+              '<div class="mp-msg"></div>' +
+            '</div>'
+          : '') +
       '</div>';
     }).join('');
   }
+
+  // El atleta completa/corrige su prueba desde «Mis pruebas» (añade el enlace).
+  $('mis-pruebas').addEventListener('click', async function (ev) {
+    var b = ev.target.closest ? ev.target.closest('.mp-guardar[data-id]') : null;
+    if (!b) return;
+    var mp = b.closest('.mp');
+    var inp = mp ? mp.querySelector('.mp-enlace') : null;
+    var msg = mp ? mp.querySelector('.mp-msg') : null;
+    var enlace = inp ? inp.value.trim() : '';
+    if (!enlace) { if (msg) { msg.textContent = 'Pega el enlace de la clasificación.'; msg.className = 'mp-msg err'; } return; }
+    b.disabled = true; var t = b.textContent; b.textContent = 'Guardando…';
+    var r = await sb.rpc('liga_completar_prueba', { p_id: b.getAttribute('data-id'), p_enlace: enlace });
+    if (r.error || (r.data && r.data.ok === false)) {
+      b.disabled = false; b.textContent = t;
+      if (msg) { msg.textContent = (r.data && r.data.error) || (r.error && r.error.message) || 'No se ha podido. Inténtalo de nuevo.'; msg.className = 'mp-msg err'; }
+      return;
+    }
+    if (msg) { msg.textContent = '¡Enviado! El club lo revisará.'; msg.className = 'mp-msg ok'; }
+    await cargar();
+  });
 
   /* ---------- propuestas ---------- */
   $('form-propuesta').addEventListener('submit', async function (e) {
