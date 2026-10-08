@@ -7124,7 +7124,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ---------- PAGOS ----------
   (async function cargarPagos(){
     var cont=$('pagos-cont');
-    var p=await sb.from('pagos').select('concepto,importe,estado,fecha_vencimiento').eq('atleta_id',at.id).order('fecha_vencimiento',{ascending:false}).limit(40);
+    var p=await sb.from('pagos').select('concepto,importe,estado,fecha_vencimiento,cuenta,metodo').eq('atleta_id',at.id).order('fecha_vencimiento',{ascending:false}).limit(40);
     if(p.error){
       /* «Sin recibos por ahora» con un recibo devuelto de por medio es una
          multa: aquí se dice que no se ha podido mirar, y se vuelve a mirar. */
@@ -7132,7 +7132,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         'Puede ser tu conexión. Nada se ha cobrado ni se ha perdido: solo hay que volver a pedir la lista.', cargarPagos);
       return;
     }
-    PAGOS = p.data || [];
+    // Los recibos DOMICILIADOS los cobra el club por el banco (remesa SEPA:
+    // escuela de atletismo de menores, municipales…). La familia no paga ni
+    // hace nada aquí, así que NO se muestran: ni recibo, ni aviso de deuda en
+    // «Hoy», ni «cómo se paga». Los menores de escuela no ven nada de dinero.
+    PAGOS = (p.data || []).filter(function(x){ return !(x.cuenta || x.metodo === 'domiciliado'); });
     if(hoyPintado) pintarHoy();   // ya podemos avisar de un recibo vencido en «Hoy»
 
     var lista;
@@ -7159,7 +7163,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // Antes aquí se veía el importe y ya está: nadie decía dónde pagarlo.
     // El bloque sale debajo de los recibos, con la cuenta que le toca a
     // esta persona (escuela o club) y a quién preguntar si algo falla.
-    if(window.APOLANA_INFO_PAGOS){
+    if(window.APOLANA_INFO_PAGOS && PAGOS.length){
       try {
         await APOLANA_INFO_PAGOS.cargar(sb);
         var pend = PAGOS.filter(function(x){ var e=(x.estado||'').toLowerCase(); return e==='pendiente'||e==='impagado'; });
