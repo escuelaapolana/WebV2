@@ -177,5 +177,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let datos: unknown = null; try { datos = await resp.json(); } catch { /* */ }
     return responder({ ok: false, motivo: "brevo-rechazo", estado: resp.status, brevo: datos }, 200, origen);
   }
+  // Sellar que a esta alta ya se le avisó del cobro: así el botón «avisar solo a
+  // los nuevos» (admin) sabe quién falta. Es un extra; si falla, el correo ya salió.
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/cubo_altas?id=eq.${encodeURIComponent(altaId)}`, {
+      method: "PATCH",
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ cobro_avisado_en: new Date().toISOString() }),
+    });
+  } catch (_e) { /* no pasa nada: el aviso ya se envió */ }
   return responder({ ok: true, destino }, 200, origen);
 });

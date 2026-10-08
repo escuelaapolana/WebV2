@@ -406,11 +406,14 @@ APOLANA_ADMIN.listo(function (sb) {
         '</div>'+
       '</div>';
     }).join('');
+    // «Nuevos sin avisar» = cobro abierto y aún no se les ha mandado el correo.
+    var nuevos=lista.filter(function(a){ return a.cobro_abierto && !a.cobro_avisado_en; });
     caja.innerHTML=
       '<div class="pr-wrap">'+
         '<div class="pr-cab"><b>🧪 Pruebas en marcha</b> <span class="pr-res">'+lista.length+' de prueba'+
           (conf?' · '+conf+' confirmados':'')+(listos?' · '+listos+' listos para pagar':'')+'</span></div>'+
         '<div class="pr-sub">Marca según avanzas con cada uno. Pagar es lo que lo convierte en socio del Cubo (desaparece de aquí).</div>'+
+        (nuevos.length?'<div style="margin:2px 0 12px"><button type="button" class="cx-btn" id="pr-avisar-nuevos" style="background:#2F6FA8">✉ Avisar a los nuevos ('+nuevos.length+')</button> <span style="font-size:12.5px;color:var(--texto-suave,#6E6656);margin-left:8px">Les llega «Ya puedes activar tu cuota» solo a los que aún no se les ha avisado.</span></div>':'')+
         filas+
       '</div>';
   }
@@ -568,6 +571,24 @@ APOLANA_ADMIN.listo(function (sb) {
       try{ var r=await sb.functions.invoke('cubo-cobro-aviso',{body:{alta_id:pend[i].id}}); if(r&&r.error) err++; else ok++; }catch(e){ err++; } }
     btn.disabled=false; btn.textContent='✉ Avisar a pendientes';
     toast('Correos enviados: '+ok+(err?(' · fallaron '+err):''), err?'error':'ok');
+  }
+  // Avisar SOLO a los nuevos: cobro abierto y que aún no han recibido el correo
+  // (cobro_avisado_en vacío). La Edge sella cada uno al enviarse.
+  async function avisarNuevos(btn){
+    // Mismo conjunto que el contador del tracker: de prueba (enPruebaJourney),
+    // con el cobro abierto y aún sin avisar.
+    var nuevos=ALTAS.filter(enPruebaJourney).filter(function(a){ return a.cobro_abierto && !a.cobro_avisado_en; });
+    if(!nuevos.length){ toast('No hay nadie nuevo sin avisar.'); return; }
+    var nombres=nuevos.slice(0,6).map(function(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }).join(', ');
+    if(!confirm('Se enviará «Ya puedes activar tu cuota de El Cubo» a '+nuevos.length+' persona(s) NUEVAS (cobro abierto y aún sin avisar):\n'+nombres+(nuevos.length>6?'…':'')+'\n\n¿Enviar?')) return;
+    btn.disabled=true; var ok=0,err=0;
+    for(var i=0;i<nuevos.length;i++){ btn.textContent='Enviando '+(i+1)+'/'+nuevos.length+'…';
+      try{ var r=await sb.functions.invoke('cubo-cobro-aviso',{body:{alta_id:nuevos[i].id}});
+        if(r&&!r.error&&r.data&&r.data.ok){ ok++; nuevos[i].cobro_avisado_en=new Date().toISOString(); } else err++;
+      }catch(e){ err++; } }
+    btn.disabled=false;
+    toast('Avisados: '+ok+(err?(' · '+err+' no salieron'):''), err?'error':'ok');
+    pintarPruebas();   // se actualiza el botón (desaparece si ya no quedan nuevos)
   }
   async function resyncStripe(btn){
     btn.disabled=true; var txt=btn.textContent; btn.textContent='Preguntando a Stripe…';
@@ -948,6 +969,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(ev.target.closest&&ev.target.closest('#cx-export')){ exportarPagos(); return; }
     var cav=ev.target.closest?ev.target.closest('#cx-avisar'):null;
     if(cav){ avisarPendientes(cav); return; }
+    var cnv=ev.target.closest?ev.target.closest('#pr-avisar-nuevos'):null;
+    if(cnv){ avisarNuevos(cnv); return; }
     var crs=ev.target.closest?ev.target.closest('#cx-resync, #ca-resync-top'):null;
     if(crs){ resyncStripe(crs); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
