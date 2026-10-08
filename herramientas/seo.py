@@ -490,12 +490,42 @@ FAQ_ESCUELA = [
      "Desde la web, en la página de la escuela, o escribiendo al club. Te informamos de los grupos por edad, los horarios y la cuota."),
 ]
 
-# Cada pagina publica con su lista de preguntas (la ruta es la publica).
+FAQ_COMPETICION = [
+    ("¿A qué nivel compite el Club Apolana en atletismo?",
+     "A nivel nacional e internacional. En 2026, Sergio Redondo del Río fue campeón de España sub-18 en 800 m y subcampeón de Europa sub-18, y varios atletas del club compiten en los Campeonatos de España."),
+    ("¿Dónde entrena el grupo de competición en pista?",
+     "En el Estadio Joaquín Villar de Alicante, con pista, gimnasio, vestuarios y material."),
+    ("¿Qué es la Academia AC98?",
+     "Es el grupo de alto rendimiento del club en pista, al que se entra por selección. El resto de grupos de competición están abiertos a atletas federados que compiten de forma regular."),
+    ("¿Tengo que federarme para competir en pista?",
+     "Para entrenar, la licencia es opcional; pero para competir oficialmente en pista, ruta o cross sí hace falta federarse. La recomendamos."),
+    ("¿Puedo probar antes de apuntarme a competición?",
+     "Sí, puedes probar cuatro entrenamientos gratis antes de hacerte socio y elegir grupo."),
+]
+
+FAQ_HOME = [
+    ("¿Qué es y dónde está el Club Apolana?",
+     "El Club Atletismo Apolana es un club de atletismo de Alicante fundado en 1988. Entrena en el Estadio Joaquín Villar y tiene secciones de atletismo en pista, running, natación, montaña, triatlón, escuela para niños y entrenamiento funcional (El Cubo)."),
+    ("¿Cómo me apunto al club?",
+     "Haciéndote socio: una sola alta sirve para entrenar en cualquier sección. Y antes de decidirte puedes probar cuatro entrenamientos gratis."),
+    ("¿Cuánto cuesta ser socio del club?",
+     "La cuota anual de socio es de 125 € el primer año y 110 € a partir del segundo. El entrenamiento se paga aparte, cada mes, según el grupo."),
+    ("¿Hay atletismo para niños en el club?",
+     "Sí. La escuela de atletismo es para niños y niñas de 3 a 17 años, por grupos de edad, en el Estadio Joaquín Villar de Alicante."),
+    ("¿El Club Apolana compite y a qué nivel?",
+     "Sí, con atletas de nivel nacional e internacional. En 2026, Sergio Redondo del Río fue campeón de España sub-18 en 800 m y subcampeón de Europa sub-18."),
+    ("¿Dónde entrena el club?",
+     "La sede principal es el Estadio Joaquín Villar de Alicante. La sección de natación entrena en la piscina de la Vía Parque."),
+]
+
+# Cada pagina publica con su lista de preguntas (la ruta es la publica; "" = portada).
 FAQS = {
+    "": FAQ_HOME,
     "socio/": FAQ_SOCIO,
     "natacion/": FAQ_NATACION,
     "running/": FAQ_RUNNING,
     "escuela-atletismo/": FAQ_ESCUELA,
+    "competicion/": FAQ_COMPETICION,
 }
 
 
