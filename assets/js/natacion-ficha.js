@@ -76,7 +76,9 @@
     var ins = (ri && !ri.error && ri.data) ? ri.data : [];
     ins.sort(function(a,b){ var fa=FR[a.franja_id]||{}, fb=FR[b.franja_id]||{}; return ((fa.dia||0)-(fb.dia||0)) || (hhmm(fa.hora)<hhmm(fb.hora)?-1:1); });
     var tipo = ins.some(function(x){ return x.tipo==='Máster'; }) ? 'Máster' : 'Escuela';
-    return { codigo:codigo, nombre:acc.nombre, acceso_id:acc.id, atleta_id:acc.atleta_id, ins:ins, tipo:tipo };
+    var dir = null;
+    if (acc.atleta_id){ try { var rd = await sb.rpc('natacion_get_direccion', { p_atleta: acc.atleta_id }); if (rd && !rd.error) dir = rd.data || null; } catch(e){} }
+    return { codigo:codigo, nombre:acc.nombre, acceso_id:acc.id, atleta_id:acc.atleta_id, ins:ins, tipo:tipo, direccion:dir };
   }
 
   function msg(t, err){ var m = bg && bg.querySelector('.nfi-msg'); if (m){ m.textContent = t||''; m.className = 'nfi-msg'+(err?' err':''); } }
@@ -108,6 +110,8 @@
       '<div class="nfi-cab"><div><h2>'+esc(e.nombre||'Nadador')+'</h2>' +
         (e.codigo?'<span class="nfi-cod">'+esc(e.codigo)+' · '+esc(e.tipo)+'</span>':'') + '</div>' +
         '<button type="button" class="nfi-x" aria-label="Cerrar">✕</button></div>' +
+      '<div style="margin:14px 0 2px"><label style="display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-tenue,#9A927F);font-weight:700;margin-bottom:6px">Dirección (opcional)</label>' +
+        '<input type="text" class="nfi-dir-in" value="'+esc(e.direccion||'')+'" placeholder="Calle, nº, CP y localidad"'+(e.atleta_id?'':' disabled')+' style="width:100%;font:inherit;font-size:14px;color:var(--navy,#26374B);border:1px solid var(--linea-borde,#C9C0AE);border-radius:9px;padding:9px 11px;box-sizing:border-box"></div>' +
       '<div class="nfi-rot">Sus franjas</div>' + filas + add +
       '<button type="button" class="nfi-enviar">✉ Enviar acceso a la familia</button>' +
       '<button type="button" class="nfi-baja">Dar de baja de natación (ya no nada)</button>' +
@@ -196,6 +200,14 @@
       if (t.classList.contains('nfi-nivel')){ guardar(sb.from('natacion_inscripciones').update({ nivel: t.value }).eq('id', t.getAttribute('data-id')), 'Nivel guardado'); return; }
       if (t.classList.contains('nfi-calle')){ guardar(sb.from('natacion_inscripciones').update({ calle: t.value }).eq('id', t.getAttribute('data-id')), 'Calle guardada'); return; }
       if (t.classList.contains('nfi-mover') && t.value){ guardar(sb.from('natacion_inscripciones').update({ franja_id: t.value }).eq('id', t.getAttribute('data-id')), 'Movida de día'); return; }
+      if (t.classList.contains('nfi-dir-in')){
+        if (!estado.atleta_id){ msg('Esta ficha aún no está enlazada a una cuenta', true); return; }
+        estado.direccion = t.value;
+        msg('Guardando…');
+        sb.rpc('natacion_set_direccion', { p_atleta: estado.atleta_id, p_direccion: t.value })
+          .then(function(r){ msg(r && r.error ? 'No se pudo guardar la dirección' : 'Dirección guardada', !!(r && r.error)); });
+        return;
+      }
     });
     document.addEventListener('keydown', function(ev){ if (ev.key==='Escape' && bg) cerrar(); });
     document.body.appendChild(bg);
