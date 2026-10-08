@@ -447,8 +447,61 @@ FAQ_SOCIO = [
 ]
 
 
+# Preguntas frecuentes por pagina (natacion, running, escuela). Como las de
+# socio, estan escritas tambien, visibles, en el HTML de cada pagina; aqui se
+# repiten para que salgan como FAQ en Google y para que las IA las lean. Solo
+# datos verificados del club: nada inventado.
+FAQ_NATACION = [
+    ("¿Dónde entrena la sección de natación del Club Apolana?",
+     "En la piscina de la Vía Parque, en Alicante. Es la sección de natación del Club Atletismo Apolana, una de las más recientes del club."),
+    ("¿Hay que federarse para nadar en el club?",
+     "No es obligatorio. En natación la licencia federativa es opcional, aunque la recomendamos si quieres competir."),
+    ("¿Se puede probar antes de apuntarse a natación?",
+     "Sí. Puedes probar entrenamientos gratis antes de hacerte socio y decidir con calma."),
+    ("¿Cómo me apunto a la natación del club?",
+     "Con una sola alta de socio puedes entrenar en natación o en cualquier otra sección del club. Desde la web puedes hacerte socio o escribirnos para que te orientemos con el grupo y el horario."),
+    ("¿Desde cuándo tiene el Club Apolana sección de natación?",
+     "La natación es una de las secciones más nuevas del club, en marcha desde 2024."),
+]
+
+FAQ_RUNNING = [
+    ("¿Para qué nivel es el grupo de running del Club Apolana?",
+     "Para corredores y corredoras populares y de fondo: desde quien empieza en pruebas de 5 y 10 km hasta quien prepara medias maratones y maratones."),
+    ("¿Tengo que federarme para entrenar running con el club?",
+     "No es obligatorio. En atletismo y running la licencia federativa es opcional, aunque la recomendamos para competir con todas las ventajas."),
+    ("¿Dónde entrena el Club Apolana?",
+     "La sede oficial es el Estadio Joaquín Villar de Alicante, con pista, gimnasio y vestuarios."),
+    ("¿Cuánto cuesta entrenar running con el club?",
+     "Se paga la cuota anual de socio (125 € el primer año y 110 € a partir del segundo) y, aparte, la cuota mensual del grupo de entrenamiento según el nivel."),
+    ("¿Puedo probar antes de apuntarme al running?",
+     "Sí, puedes probar cuatro entrenamientos gratis antes de hacerte socio."),
+]
+
+FAQ_ESCUELA = [
+    ("¿Desde qué edad pueden ir los niños a la escuela de atletismo?",
+     "La escuela de atletismo del Club Apolana es para niños y niñas de 3 a 17 años, organizados por grupos de edad."),
+    ("¿Dónde y cómo son los entrenamientos de la escuela?",
+     "En el Estadio Joaquín Villar de Alicante. Se trabaja la iniciación al atletismo —correr, saltar y lanzar— de forma lúdica y adaptada a cada edad."),
+    ("¿Hace falta experiencia previa para apuntarse?",
+     "No. La escuela es de iniciación: se puede empezar desde cero. El objetivo es que los peques disfruten del atletismo y mejoren a su ritmo."),
+    ("¿Se puede probar antes de apuntarse a la escuela?",
+     "Sí, hay cuatro días de prueba gratis antes de formalizar la inscripción."),
+    ("¿Cómo apunto a mi hijo o hija a la escuela de atletismo?",
+     "Desde la web, en la página de la escuela, o escribiendo al club. Te informamos de los grupos por edad, los horarios y la cuota."),
+]
+
+# Cada pagina publica con su lista de preguntas (la ruta es la publica).
+FAQS = {
+    "socio/": FAQ_SOCIO,
+    "natacion/": FAQ_NATACION,
+    "running/": FAQ_RUNNING,
+    "escuela-atletismo/": FAQ_ESCUELA,
+}
+
+
 def faqpage(ruta_publica):
-    if ruta_publica != "socio/":
+    preguntas = FAQS.get(ruta_publica)
+    if not preguntas:
         return None
     return {
         "@context": "https://schema.org",
@@ -456,7 +509,7 @@ def faqpage(ruta_publica):
         "mainEntity": [
             {"@type": "Question", "name": q,
              "acceptedAnswer": {"@type": "Answer", "text": a}}
-            for q, a in FAQ_SOCIO
+            for q, a in preguntas
         ],
     }
 
