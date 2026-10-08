@@ -263,6 +263,12 @@
         'box-shadow:0 -20px 44px -22px rgba(46,66,86,.55);transform:translateY(100%);transition:transform .22s ease;' +
         'padding:16px 16px calc(20px + env(safe-area-inset-bottom))}' +
       '.mm-sheet.ver{transform:none}' +
+      '.mm-busca{position:relative;margin:6px 0 10px}' +
+      '.mm-busca svg{position:absolute;left:13px;top:50%;margin-top:-9px;width:18px;height:18px;color:var(--texto-suave,#6E6656);pointer-events:none}' +
+      '.mm-busca-inp{box-sizing:border-box;width:100%;min-height:46px;padding:12px 14px 12px 40px;border:1px solid var(--linea-borde,#D4CBB9);border-radius:12px;background:#fff;font-family:inherit;font-size:15px;color:var(--navy,#2E4256)}' +
+      '.mm-busca-inp:focus{outline:2px solid var(--azul-filete,#3B85C0);border-color:var(--azul-filete,#3B85C0)}' +
+      '.mm-row .mm-rt small{display:block;font-size:12px;font-weight:400;color:var(--texto-suave,#6E6656);margin-top:1px}' +
+      '.mm-pers,.mm-nada-busca{padding:11px 13px;font-size:13.5px;color:var(--texto-suave,#6E6656)}' +
       '.mm-sheet-cab{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:2px}' +
       '.mm-sheet-cab h2{margin:0;font-family:var(--fuente-titulo,inherit);text-transform:uppercase;font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
       '.mm-sheet-x{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:1px solid var(--linea-borde,#D4CBB9);background:#fff;color:var(--texto-suave,#6E6656);font-family:inherit;font-size:16px;line-height:1;cursor:pointer}' +
@@ -613,14 +619,82 @@
           '<span class="pt"></span><span class="mm-rt">' + esc(w.nombre) + '</span></a>';
       }).join('');
     }
+    // ---- buscador de la hoja: páginas (de TODOS los mundos) + personas ----
+    function norm(s){ return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    var _pant = null, _personas = null, _personasW = null;
+    function flatPantallas(){
+      var out = [];
+      MUNDOS.forEach(function (w) {
+        var mundo = w.nombre.replace(/\s*·\s*Club$/, '');
+        (w.screens || []).forEach(function (s) {
+          if (!s.t || !s.url) return;
+          out.push({ t: s.t, url: s.url, i: s.i, ext: s.ext, mundo: mundo, k: norm(s.t + ' ' + (s.d || '') + ' ' + mundo) });
+        });
+      });
+      return out;
+    }
+    function cargarPersonas(cb){
+      if (_personas) { cb(_personas); return; }
+      if (_personasW) { _personasW.push(cb); return; }
+      _personasW = [cb];
+      var fin = function (lista) { _personas = lista || []; var ws = _personasW; _personasW = null; ws.forEach(function (f) { f(_personas); }); };
+      var c = window.APOLANA_DB;
+      if (!c || !c.from) { fin([]); return; }
+      try {
+        c.from('atletas').select('id,nombre,apellidos').limit(3000).then(
+          function (r) { fin((r && !r.error && r.data) ? r.data : []); },
+          function () { fin([]); }
+        );
+      } catch (e) { fin([]); }
+    }
+    function filaPersona(a){
+      var nom = ((a.nombre || '') + ' ' + (a.apellidos || '')).trim();
+      return '<a class="mm-row" href="' + esc(B + 'admin/atletas/?ficha=' + encodeURIComponent(a.id)) + '">' +
+        '<span class="mm-ic">' + ico('user') + '</span><span class="mm-rt">' + esc(nom) + '</span></a>';
+    }
+    function buscar(q){
+      var res = sheet.querySelector('.mm-res'), def = sheet.querySelector('.mm-def');
+      if (!res || !def) return;
+      var nq = norm(q).trim();
+      if (!nq) { res.hidden = true; res.innerHTML = ''; def.hidden = false; return; }
+      def.hidden = true; res.hidden = false;
+      if (!_pant) _pant = flatPantallas();
+      var pags = _pant.filter(function (p) { return p.k.indexOf(nq) !== -1; }).slice(0, 8);
+      var htmlP = pags.map(function (p) {
+        return '<a class="mm-row" href="' + esc(p.url) + '"' + (p.ext ? ' target="_blank" rel="noopener"' : '') + '>' +
+          '<span class="mm-ic">' + ico(p.i) + '</span>' +
+          '<span class="mm-rt">' + esc(p.t) + '<small>' + esc(p.mundo) + '</small></span></a>';
+      }).join('');
+      res.innerHTML =
+        (htmlP ? '<div class="mm-srot">Páginas</div>' + htmlP : '') +
+        '<div class="mm-srot">Personas</div><div class="mm-pers">Buscando…</div>';
+      cargarPersonas(function (lista) {
+        var inp = sheet.querySelector('.mm-busca-inp');
+        if (inp && norm(inp.value).trim() !== nq) return;   // el texto ya cambió
+        var box = res.querySelector('.mm-pers'); if (!box) return;
+        var pers = lista.filter(function (a) {
+          return norm((a.nombre || '') + ' ' + (a.apellidos || '')).indexOf(nq) !== -1;
+        }).slice(0, 10);
+        box.outerHTML = pers.length ? pers.map(filaPersona).join('') : '<div class="mm-nada-busca">Nadie con ese nombre.</div>';
+      });
+    }
+
     function pinta(keys) {
       sheet.innerHTML =
         '<div class="mm-sheet-cab"><h2>' + esc(M.nombre.replace(/\s*·\s*Club$/, '')) + '</h2>' +
           '<button type="button" class="mm-sheet-x" aria-label="Cerrar">✕</button></div>' +
-        '<div class="mm-srot">Secciones</div>' + screensSheet() +
-        '<div class="mm-srot">Cambiar de mundo</div>' + worldsSheet(keys) +
-        '<a class="mm-salir" href="' + esc(salir) + '">Salir a mi portal</a>';
+        '<div class="mm-busca">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+          '<input type="search" class="mm-busca-inp" placeholder="Buscar páginas o personas…" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar"></div>' +
+        '<div class="mm-res" hidden></div>' +
+        '<div class="mm-def">' +
+          '<div class="mm-srot">Secciones</div>' + screensSheet() +
+          '<div class="mm-srot">Cambiar de mundo</div>' + worldsSheet(keys) +
+          '<a class="mm-salir" href="' + esc(salir) + '">Salir a mi portal</a>' +
+        '</div>';
       var x = sheet.querySelector('.mm-sheet-x'); if (x) x.addEventListener('click', cerrar);
+      var inp = sheet.querySelector('.mm-busca-inp');
+      if (inp) inp.addEventListener('input', function () { buscar(inp.value); });
     }
     var cache = leerCache();
     pinta(cache === undefined ? [M.key] : cache);
@@ -634,6 +708,12 @@
       void bg.offsetWidth;                       // fuerza el reflow para que la transición se vea
       bg.classList.add('ver'); sheet.classList.add('ver');
       document.body.style.overflow = 'hidden';
+      // En escritorio, el foco al buscador para poder escribir ya mismo (en
+      // móvil no, para no abrir el teclado de golpe al mirar las secciones).
+      if (window.innerWidth >= 900) {
+        var _i = sheet.querySelector('.mm-busca-inp');
+        if (_i) setTimeout(function () { try { _i.focus(); } catch (e) {} }, 80);
+      }
     }
     function cerrar() {
       bg.classList.remove('ver'); sheet.classList.remove('ver');
