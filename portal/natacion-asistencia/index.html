@@ -74,7 +74,7 @@
 APOLANA_PORTAL.listo(async function (sb, perfil) {
   var wrap = document.getElementById('na');
   var UI = window.APOLANA_UI;
-  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, cargado = false, CANCEL = {cancelado:false};
+  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, LISTA = {}, cargado = false, CANCEL = {cancelado:false};
   // ?tipo=Escuela | Máster (viene de la tarjeta del hub). Sin él, todo.
   var TIPO = new URLSearchParams(location.search).get('tipo');
   if (TIPO !== 'Escuela' && TIPO !== 'Máster') TIPO = null;
@@ -92,7 +92,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); },2200); }
 
   async function cargar(){
-    FRANJAS = []; INSCR = []; AUS = {}; CANCEL = {cancelado:false};
+    FRANJAS = []; INSCR = []; AUS = {}; LISTA = {}; CANCEL = {cancelado:false};
     try { var rc = await sb.rpc('natacion_dia_cancelado', { p_fecha: fecha }); if (rc && !rc.error && rc.data) CANCEL = rc.data; } catch(e){}
     var dia = diaDe(fecha);
     if (dia >= 1 && dia <= 6){
@@ -117,10 +117,39 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }
       }
     }
+    // Estado de «lista pasada» por franja de este día (quién y cuándo).
+    try {
+      var rl = await sb.rpc('natacion_lista_dia', { p_fecha: fecha });
+      if (rl && !rl.error && Array.isArray(rl.data)) rl.data.forEach(function(x){ LISTA[x.franja_id] = x; });
+    } catch(e){}
     cargado = true;
   }
 
   function esAusente(m){ return !!AUS[m.acceso_id+'|'+m.franja_id]; }
+
+  // Pie de cada franja: botón «pasar lista» o, si ya se pasó, quién y cuándo.
+  function footerLista(f, faltan){
+    var L = LISTA[f.id];
+    if (L && L.pasada){
+      var cuando = L.pasada_en ? (' · '+String(L.pasada_en).slice(11,16)) : '';
+      var quien  = L.pasada_por ? (' por '+esc(L.pasada_por)) : '';
+      var det    = L.todos_presentes ? 'todos presentes' : ((L.no_vienen!=null?L.no_vienen:faltan)+' no vinieron');
+      return '<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#E8F3EC;border:1px solid #BFDCC9;color:#1E5631;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">'+
+        '<span>✓ Lista pasada'+quien+cuando+' · '+det+'</span>'+
+        '<button type="button" class="na-relista" data-lista="'+esc(f.id)+'" data-faltan="'+faltan+'" style="background:none;border:0;color:#2F6FA8;font-weight:700;cursor:pointer;font-size:13px">Rehacer</button></div>';
+    }
+    var verde = faltan===0;
+    return '<button type="button" class="na-pasar" data-lista="'+esc(f.id)+'" data-faltan="'+faltan+'" '+
+      'style="margin-top:12px;width:100%;min-height:48px;border:0;border-radius:12px;color:#fff;font-weight:700;font-size:15px;cursor:pointer;background:'+(verde?'#2E7D46':'#B9762A')+'">'+
+      (verde ? '✓ Todos presentes' : ('Confirmar lista · '+faltan+' no vienen'))+'</button>';
+  }
+
+  async function pasarLista(franjaId, faltan){
+    var r = await sb.rpc('natacion_pasar_lista', { p_franja: franjaId, p_fecha: fecha, p_todos_presentes: (faltan===0), p_no_vienen: faltan });
+    if (r.error || (r.data && r.data.ok === false)){ toast((r.error && r.error.message) || (r.data && r.data.motivo) || 'No se pudo pasar lista', 'err'); return; }
+    LISTA[franjaId] = { franja_id: franjaId, pasada: true, pasada_por: (r.data && r.data.pasada_por) || '', pasada_en: (r.data && r.data.pasada_en) || null, todos_presentes: (faltan===0), no_vienen: faltan };
+    toast(faltan>0 ? 'Lista pasada ✓' : 'Todos presentes ✓'); pintar();
+  }
 
   async function enlazar(m){
     var ok = window.confirm('La ficha de ' + (m.nombre || 'esta persona') + ' no está enlazada (sin código de acceso), por eso no se le puede marcar falta. ¿La enlazo ahora?');
@@ -189,7 +218,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         return '<div class="na-fr">'+
           '<h2>'+esc(DIAS[f.dia])+' · '+esc(String(f.hora).slice(0,5))+'</h2>'+
           '<p class="fmeta">'+esc(f.grupo)+' · '+suyos.length+' nadadores'+(faltan?' · <b>'+faltan+' no vienen</b>':'')+(f.monitores?' · '+esc(f.monitores):'')+'</p>'+
-          bloques+'</div>';
+          bloques+footerLista(f, faltan)+'</div>';
       }).join('');
     }
     var titulo = TIPO==='Escuela' ? 'Asistencia · escuela' : TIPO==='Máster' ? 'Asistencia · adultos' : 'Asistencia de natación';
@@ -235,6 +264,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (tp){ TIPO = tp.getAttribute('data-tipo') || null; pintarTodo(); return; }
     if (ev.target.closest && ev.target.closest('#na-cancelar')){ cancelarDia(); return; }
     if (ev.target.closest && ev.target.closest('#na-reactivar')){ reactivarDia(); return; }
+    var pl = ev.target.closest ? ev.target.closest('.na-pasar, .na-relista') : null;
+    if (pl){ pasarLista(pl.getAttribute('data-lista'), parseInt(pl.getAttribute('data-faltan'),10)||0); return; }
     var fi = ev.target.closest ? ev.target.closest('.na-fila[data-m]') : null;
     if (fi){ toggle(fi.getAttribute('data-m')); return; }
   });
