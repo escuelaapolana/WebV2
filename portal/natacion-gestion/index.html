@@ -195,6 +195,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<select class="ng-sel-nivel" data-id="'+esc(m.id)+'" title="Nivel">'+opciones(NIVELES, m.nivel)+'</select>' +
             '<select class="ng-sel-calle" data-id="'+esc(m.id)+'" title="Calle">'+opciones(calles, m.calle)+'</select>' +
             '<select class="ng-sel-mover" data-id="'+esc(m.id)+'" title="Mover"><option value="">Mover a…</option>'+moverOpts+'</select>' +
+            (m.acceso_id ? '<button type="button" class="ng-acceso" data-acceso="'+esc(m.acceso_id)+'" title="Reenviar a la familia el correo de acceso a la web/app" style="font:inherit;font-size:12.5px;color:#2F6FA8;background:#EAF2FA;border:1px solid #CFE0F0;border-radius:9px;padding:6px 10px;cursor:pointer">✉ Acceso</button>' : '') +
             '<button type="button" class="ng-quitar" data-id="'+esc(m.id)+'">Quitar</button>' +
           '</div></div>';
       }).join('');
@@ -304,6 +305,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (vac) vac.innerHTML = ct
       ? ('Vacantes: <b class="'+(libres<=0?'rojo':libres<=2?'ambar':'verde')+'">'+Math.max(0,libres)+'</b> de '+ct)
       : 'Pon el cupo de cada calle para calcular las vacantes solas.';
+  }
+
+  // Reenviar a la familia el correo de acceso de un nadador ya dado de alta.
+  // Igual que el alta: invitación si aún no tiene cuenta, horarios si ya la tiene.
+  async function reenviarAcceso(accesoId, btn){
+    var t0 = btn ? btn.textContent : '';
+    if (btn){ btn.disabled = true; btn.textContent = 'Enviando…'; }
+    try {
+      var r = await sb.rpc('natacion_acceso_de', { p_acceso: accesoId });
+      var d = (r && !r.error && r.data && r.data[0]) || null;
+      if (!d || !d.email){ toast('No se pudo leer el acceso', 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } return; }
+      var rc;
+      if (d.ya_tiene_cuenta){
+        rc = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: d.codigo } });
+      } else {
+        rc = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: d.publico, solo_a: d.email, forzar:true, confirmar:true } });
+      }
+      var ok = !(rc && rc.error) && !(rc && rc.data && rc.data.ok === false);
+      if (ok){ toast('Acceso enviado a ' + d.email + ' ✓'); if(btn){ btn.textContent = '✓ Enviado'; } }
+      else { toast('No se pudo enviar el correo', 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } }
+    } catch(e){ toast('No se pudo enviar el correo', 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } }
   }
 
   // Guardar los cupos de una franja (todos sus inputs) SIN repintar todo.
@@ -476,6 +498,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (cab){ var id = cab.getAttribute('data-abrir'); abierta = (abierta===id) ? null : id; pintar(); return; }
     var q = ev.target.closest ? ev.target.closest('.ng-quitar') : null;
     if (q){ if (confirm('¿Quitar a este nadador de la franja?')) mut(sb.from('natacion_inscripciones').update({ activa:false }).eq('id', q.getAttribute('data-id')), 'Quitado'); return; }
+    var ac = ev.target.closest ? ev.target.closest('.ng-acceso') : null;
+    if (ac){ reenviarAcceso(ac.getAttribute('data-acceso'), ac); return; }
     var a = ev.target.closest ? ev.target.closest('.ng-anadir') : null;
     if (a){ anadir(a.getAttribute('data-franja')); return; }
   });
