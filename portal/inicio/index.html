@@ -68,6 +68,7 @@
   .in-pagar .rec .btn{ display:inline-flex; align-items:center; min-height:38px; padding:0 15px; border-radius:999px;
                        background:var(--navy,#26374B); color:#fff; font-size:13px; font-weight:600; border:none; cursor:pointer; white-space:nowrap; }
   .in-pagar .rec .btn[disabled]{ opacity:.6; cursor:default; }
+  .in-pagar .rec .dom{ max-width:210px; text-align:right; font-size:12.5px; font-weight:600; line-height:1.3; color:var(--texto-suave,#6E6656); }
   .in-aviso-pago{ border-radius:12px; padding:11px 14px; font-size:14px; margin:12px 0 2px; }
   .in-aviso-pago.ok{ background:#E8F3EC; border:1px solid #BFDCC9; color:#1E5631; }
   .in-aviso-pago.ko{ background:#FBF0E6; border:1px solid #EAD6BE; color:#8A5307; }
@@ -125,7 +126,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var nombres = {};
       fichas.forEach(function (a) { nombres[a.id] = ((a.nombre || '') + ' ' + (a.apellidos || '')).trim(); });
       var r = await sb.from('pagos')
-        .select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,periodo,metodo,anulado')
+        .select('id,atleta_id,concepto,importe,estado,fecha_vencimiento,periodo,metodo,cuenta,anulado')
         .in('atleta_id', aids)
         .order('fecha_vencimiento', { ascending: true, nullsFirst: false });
       if (r.error) return { data: [], nombres: nombres, varios: aids.length > 1 };
@@ -143,10 +144,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (info.varios && info.nombres[p.atleta_id]) met.push(info.nombres[p.atleta_id]);
       if (p.periodo) met.push(periodoTexto(p.periodo));
       else if (p.fecha_vencimiento) met.push('vence el ' + fechaLarga(p.fecha_vencimiento));
+      // Si el recibo tiene cuenta (IBAN) o ya está marcado domiciliado, lo cobra
+      // el club por el banco (adeudo SEPA): NO se paga con tarjeta aquí, para que
+      // nadie pague dos veces. Solo los recibos sin domiciliación ofrecen tarjeta.
+      var domiciliado = !!p.cuenta || p.metodo === 'domiciliado';
+      var accion = domiciliado
+        ? '<div class="dom">Se cobra por domiciliación bancaria · no hace falta pagar aquí</div>'
+        : '<button type="button" class="btn" data-pago="' + esc(p.id) + '">Pagar con tarjeta</button>';
       return '<div class="rec"><div class="info"><div class="con">' + esc(p.concepto || 'Recibo') + '</div>' +
         (met.length ? '<div class="met">' + esc(met.join(' · ')) + '</div>' : '') + '</div>' +
-        '<div class="imp">' + eur(p.importe) + '</div>' +
-        '<button type="button" class="btn" data-pago="' + esc(p.id) + '">Pagar con tarjeta</button></div>';
+        '<div class="imp">' + eur(p.importe) + '</div>' + accion + '</div>';
     }).join('');
     return '<div class="in-pagar"><h2>Por pagar</h2>' + filas + '</div>';
   }
