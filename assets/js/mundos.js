@@ -295,7 +295,12 @@
         '.mm-tab .mm-tb span:not(.mm-ti){font-size:10.5px;font-weight:600;line-height:1.1}' +
         '.mm-tab .mm-tb.act{background:var(--mm-acento,#2E4256);color:#fff}' +
       '}' +
-      '@media (min-width:900px){.mm-tab,.mm-sheet,.mm-sheet-bg{display:none !important}}';
+      // En escritorio la barra de pestañas de móvil (.mm-tab) no va; pero la HOJA
+      // de secciones sí debe poder abrirse (es lo que abre el botón «Buscar» del
+      // lateral). Antes se ocultaba también la hoja, y por eso el buscador del
+      // lateral no hacía nada en PC. Cerrada, la hoja ya queda fuera (transform)
+      // y su fondo en display:none, así que no estorba.
+      '@media (min-width:900px){.mm-tab{display:none !important}}';
     document.head.appendChild(css);
   }
 
