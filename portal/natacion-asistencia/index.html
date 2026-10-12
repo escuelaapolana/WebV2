@@ -64,6 +64,9 @@
   .na-reactivar:hover { background:#1c2a3b; }
   .na-fila.sinlink { border-color:#E7C3BB; background:#FBF3EF; }
   .na-fila.sinlink .est.link { color:#9A5B23; font-weight:600; }
+  .na-fila.res { background:#F2F8FD; border:1px solid #D4E6F5; cursor:default; }
+  .bono { color:#2F6FA8; font-weight:600; }
+  .fmeta b.bono { font-weight:700; }
 </style>
 </head>
 <body>
@@ -74,7 +77,7 @@
 APOLANA_PORTAL.listo(async function (sb, perfil) {
   var wrap = document.getElementById('na');
   var UI = window.APOLANA_UI;
-  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, LISTA = {}, cargado = false, CANCEL = {cancelado:false};
+  var fecha = hoyISO(), FRANJAS = [], INSCR = [], AUS = {}, LISTA = {}, RES = {}, HUE = {}, cargado = false, CANCEL = {cancelado:false};
   // ?tipo=Escuela | Máster (viene de la tarjeta del hub). Sin él, todo.
   var TIPO = new URLSearchParams(location.search).get('tipo');
   if (TIPO !== 'Escuela' && TIPO !== 'Máster') TIPO = null;
@@ -92,7 +95,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); },2200); }
 
   async function cargar(){
-    FRANJAS = []; INSCR = []; AUS = {}; LISTA = {}; CANCEL = {cancelado:false};
+    FRANJAS = []; INSCR = []; AUS = {}; LISTA = {}; RES = {}; HUE = {}; CANCEL = {cancelado:false};
     try { var rc = await sb.rpc('natacion_dia_cancelado', { p_fecha: fecha }); if (rc && !rc.error && rc.data) CANCEL = rc.data; } catch(e){}
     var dia = diaDe(fecha);
     if (dia >= 1 && dia <= 6){
@@ -115,6 +118,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           var idsT = FRANJAS.map(function(x){ return x.id; });
           INSCR = INSCR.filter(function(m){ return m.tipo===TIPO && idsT.indexOf(m.franja_id)!==-1; });
         }
+        // Incorporaciones del día (bono/cambio de horario) + huecos por franja.
+        // natacion_reservas solo la lee un gestor (RLS); por eso van por RPC
+        // SECURITY DEFINER con el mismo permiso que pasar lista (incluye monitor).
+        try {
+          var rr = await sb.rpc('natacion_reservas_dia', { p_fecha: fecha });
+          if (rr && !rr.error && Array.isArray(rr.data)) rr.data.forEach(function(r){ (RES[r.franja_id]=RES[r.franja_id]||[]).push(r); });
+        } catch(e){}
+        try {
+          var rhu = await sb.rpc('natacion_huecos', { p_fecha: fecha });
+          if (rhu && !rhu.error && Array.isArray(rhu.data)) rhu.data.forEach(function(h){ HUE[h.franja_id]=h; });
+        } catch(e){}
       }
     }
     // Estado de «lista pasada» por franja de este día (quién y cuándo).
@@ -197,12 +211,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       cuerpo = FRANJAS.map(function(f){
         var suyos = INSCR.filter(function(m){ return m.franja_id===f.id; });
         var faltan = suyos.filter(esAusente).length;
+        var reservasF = RES[f.id] || [];
+        var hue = HUE[f.id] ? HUE[f.id].huecos : null;
         var porCalle = {};
         suyos.forEach(function(m){ (porCalle[m.calle]=porCalle[m.calle]||[]).push(m); });
+        // Las incorporaciones por bono/cambio se suman a su calle, marcadas aparte.
+        reservasF.forEach(function(r){ (porCalle[r.calle||'—']=porCalle[r.calle||'—']||[]).push({ __res:true, nombre:r.nombre, calle:r.calle }); });
         var calles = Object.keys(porCalle).sort(function(a,b){ return (ORDEN_CALLE[a]||9)-(ORDEN_CALLE[b]||9); });
         var bloques = calles.map(function(c){
           var filas = porCalle[c].sort(function(a,b){ return (a.nombre||'').toLowerCase() < (b.nombre||'').toLowerCase() ? -1 : 1; })
             .map(function(m){
+              if (m.__res){
+                return '<div class="na-fila res">'+
+                  '<span class="nom">'+esc(m.nombre)+' <span class="nivel bono">★ por bono</span></span>'+
+                  '<span class="est bono">Viene</span></div>';
+              }
               if (!m.acceso_id){
                 return '<button type="button" class="na-fila sinlink" data-m="'+esc(m.id)+'">'+
                   '<span class="nom">'+esc(m.nombre)+(m.nivel?' <span class="nivel">· '+esc(m.nivel)+'</span>':'')+'</span>'+
@@ -217,7 +240,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }).join('');
         return '<div class="na-fr">'+
           '<h2>'+esc(DIAS[f.dia])+' · '+esc(String(f.hora).slice(0,5))+'</h2>'+
-          '<p class="fmeta">'+esc(f.grupo)+' · '+suyos.length+' nadadores'+(faltan?' · <b>'+faltan+' no vienen</b>':'')+(f.monitores?' · '+esc(f.monitores):'')+'</p>'+
+          '<p class="fmeta">'+esc(f.grupo)+' · '+suyos.length+' nadadores'+(faltan?' · <b>'+faltan+' no vienen</b>':'')+(reservasF.length?' · <b class="bono">+'+reservasF.length+' por bono</b>':'')+(hue!=null?' · '+(hue>0?hue+' '+(hue===1?'hueco':'huecos'):'completo'):'')+(f.monitores?' · '+esc(f.monitores):'')+'</p>'+
           bloques+footerLista(f, faltan)+'</div>';
       }).join('');
     }
