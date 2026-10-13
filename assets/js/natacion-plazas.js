@@ -38,6 +38,10 @@
       '.nat-grupo{font-size:13px;color:var(--texto-suave,#6E6656);min-width:96px}' +
       '.nat-niveles{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}' +
       '.nat-nivel{font-size:12px;font-weight:600;color:var(--navy,#26374B);background:var(--crema,#F4EEE1);border-radius:999px;padding:2px 9px}' +
+      '.nat-nivel.verde,.nat-nivel.ambar,.nat-nivel.rojo{display:inline-flex;align-items:center;gap:5px}' +
+      '.nat-nivel.verde::before,.nat-nivel.ambar::before,.nat-nivel.rojo::before{content:"";width:7px;height:7px;border-radius:50%;display:inline-block}' +
+      '.nat-nivel.verde::before{background:#2E7D32}.nat-nivel.ambar::before{background:#B26A00}.nat-nivel.rojo::before{background:#B3261E}' +
+      '.nat-nivel small{font-weight:500;color:var(--texto-suave,#6E6656)}' +
       '.nat-nota{margin-top:14px;font-size:13.5px;color:var(--texto-suave,#6E6656)}' +
       '.nat-espera-wrap{flex-basis:100%;margin-top:2px}' +
       '.nat-espera{display:inline-flex;align-items:center;gap:7px;border:none;cursor:pointer;background:var(--navy,#26374B);color:#fff;font-size:13px;font-weight:600;border-radius:999px;padding:8px 14px;width:auto}' +
@@ -47,9 +51,19 @@
     document.head.appendChild(css);
   }
 
+  /* Semáforo por nivel (mig 331): sale de la base, ya respeta el forzado.
+     Si la vista aún no lo trae, se pintan los niveles sin color, como antes. */
+  function nivelesDe(f) {
+    if (Array.isArray(f.niveles) && f.niveles.length) return f.niveles;
+    return (f.admite_niveles || []).map(function (n) { return { nivel: n, semaforo: null }; });
+  }
+  function algunNivelSinHueco(f) {
+    return nivelesDe(f).some(function (n) { return n.semaforo === 'rojo' || n.semaforo === 'ambar'; });
+  }
+
   function botonEspera(f, ctx) {
-    // Solo en franjas sin hueco claro (completo / consultar) y con id.
-    if (!f.id || (f.semaforo !== 'rojo' && f.semaforo !== 'ambar')) return '';
+    // Solo en franjas (o niveles) sin hueco claro (completo / consultar) y con id.
+    if (!f.id || (f.semaforo !== 'rojo' && f.semaforo !== 'ambar' && !algunNivelSinHueco(f))) return '';
     if (!ctx.logueado) {
       return '<span class="nat-espera-hint">¿Sin hueco? Entra a tu cuenta y te avisamos si se libera uno.</span>';
     }
@@ -83,8 +97,12 @@
       out.push('<div class="nat-dia"><h3>' + esc(DIAS[d] || '') + '</h3><ul>');
       porDia[d].forEach(function (f) {
         var s = SEM[f.semaforo] || { t: f.semaforo || '—', c: '' };
-        var niveles = (f.admite_niveles || []).map(function (n) {
-          return '<span class="nat-nivel">' + esc(n) + '</span>';
+        var niveles = nivelesDe(f).map(function (n) {
+          var sn = SEM[n.semaforo];
+          if (!sn) return '<span class="nat-nivel">' + esc(n.nivel) + '</span>';
+          var extra = n.semaforo === 'verde' ? '' : ' <small>· ' + esc(sn.t.toLowerCase()) + '</small>';
+          return '<span class="nat-nivel ' + sn.c + '" title="' + esc(n.nivel + ': ' + sn.t) + '">' +
+            esc(n.nivel) + extra + '</span>';
         }).join('');
         out.push('<li>' +
           '<span class="nat-hora">' + esc(hhmm(f.hora)) + '</span>' +
@@ -104,7 +122,11 @@
     cont.innerHTML = out.join('');
   }
 
-  /* Filtra las franjas según el data-filtro del contenedor:
+  /* Filtra las franjas según el data-filtro del contenedor.
+     Desde la mig 330 la vista trae es_escuela / es_master (la MISMA regla que
+     el calendario del club: escuela = «escuela» o «perfeccion» en el nombre;
+     adultos = admite máster o «máster» en el nombre). Si aún no los trae, se
+     usa la regla antigua por nombre:
        'escuela' → franjas de la escuela (grupo con "Escuela")
        'master'  → franjas de adultos (grupo con "Máster"; incluye las mixtas
                    "Escuela + Máster" y "Perfeccionamiento / Máster", pero NO la
@@ -116,8 +138,12 @@
      las que llevan "Escuela": basta con que el grupo mencione máster o
      perfeccionamiento. */
   function filtrar(filas, filtro) {
-    if (filtro === 'escuela') return filas.filter(function (f) { return /escuela/i.test(f.grupo || ''); });
-    if (filtro === 'master')  return filas.filter(function (f) { return /m[aá]ster/i.test(f.grupo || ''); });
+    if (filtro === 'escuela') return filas.filter(function (f) {
+      return typeof f.es_escuela === 'boolean' ? f.es_escuela : /escuela/i.test(f.grupo || '');
+    });
+    if (filtro === 'master') return filas.filter(function (f) {
+      return typeof f.es_master === 'boolean' ? f.es_master : /m[aá]ster/i.test(f.grupo || '');
+    });
     return filas;
   }
 
@@ -131,7 +157,7 @@
 
     function render() {
       db.from('natacion_vacantes')
-        .select('dia,hora,grupo,calles,tiene_vaso,semaforo,admite_niveles,criterio,id')
+        .select('*')   // vista pública: solo columnas agregadas (ver mig 224/331)
         .order('dia', { ascending: true }).order('hora', { ascending: true })
         .then(function (res) {
           if (res.error || !res.data) { cont.innerHTML = ''; return; }

@@ -146,9 +146,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function enTipo(f){ return !TIPO || !!tiposDe(f)[TIPO]; }
   function cupoTotal(f){ var c=f.cupos||{}, s=0; for (var k in c){ var n=parseInt(c[k],10); if(!isNaN(n)) s+=n; } return s; }
+  // Vacantes y su color salen de la BASE (natacion_franjas.semaforo_detalle,
+  // mig 331): la misma cuenta que el semáforo de la web, por calle, y respeta
+  // el semáforo forzado. Si la base aún no lo trae, se cuenta como antes.
+  var NOMSEM = { verde:'🟢', ambar:'🟠', rojo:'🔴' };
+  function vacantesHtml(f){
+    var d = f.semaforo_detalle;
+    if (d && d.cupo){
+      var sem = f.semaforo || d.semaforo;
+      var cls = sem==='rojo'?'rojo':sem==='ambar'?'ambar':'verde';
+      var txt = 'Vacantes: <b class="'+cls+'">'+Math.max(0, d.libres||0)+'</b> de '+d.cupo;
+      if (d.forzado && d.auto && d.auto !== d.forzado) txt += ' · forzado (el automático diría '+(NOMSEM[d.auto]||d.auto)+')';
+      var sobre = (d.calles||[]).filter(function(c){ return !c.en_cupos || c.libres < 0; }).map(function(c){
+        return esc(c.calle)+' (+'+(c.en_cupos ? -c.libres : c.fijos)+(c.en_cupos ? '' : ', sin cupo')+')';
+      });
+      if (sobre.length) txt += '<br><small>Por encima de su cupo: '+sobre.join(' · ')+'</small>';
+      return txt;
+    }
+    var ct = cupoTotal(f), libres = ct - insDe(f).length;
+    return ct
+      ? ('Vacantes: <b class="'+(libres<=0?'rojo':libres<=2?'ambar':'verde')+'">'+Math.max(0,libres)+'</b> de '+ct)
+      : 'Pon el cupo de cada calle para calcular las vacantes solas.';
+  }
 
   async function cargar(){
-    var f = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,semaforo_forzado,cupos,admite_niveles,criterio').order('dia').order('hora');
+    var f = await sb.from('natacion_franjas').select('*').order('dia').order('hora');
     FR = f.error ? [] : (f.data || []);
     await recargarIns();
     cargado = true;
@@ -161,7 +183,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var r = await prom;
     if (r && r.error){ toast('No se pudo guardar: ' + r.error.message, 'err'); return false; }
     if (msgOk) toast(msgOk);
-    var f = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,semaforo_forzado,cupos,admite_niveles,criterio').order('dia').order('hora');
+    var f = await sb.from('natacion_franjas').select('*').order('dia').order('hora');
     FR = f.error ? FR : (f.data || []);
     await recargarIns(); pintar(); return true;
   }
@@ -178,7 +200,6 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // las VACANTES cuentan a TODOS (las calles son físicas y compartidas).
     var suyos = TIPO ? todos.filter(function(m){ return m.tipo === TIPO; }) : todos;
     var ct = cupoTotal(f);
-    var libres = ct - todos.length;
     var semClass = f.semaforo==='verde'?'sem-verde':f.semaforo==='ambar'?'sem-ambar':f.semaforo==='rojo'?'sem-rojo':'sem-gris';
     var resumen = todos.length + (ct? ' / '+ct : '') + ' nadadores' + (f.semaforo_forzado? ' · forzado' : '');
     var abierto = (abierta === f.id);
@@ -212,9 +233,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             var v = (f.cupos && f.cupos[c]!=null) ? f.cupos[c] : '';
             return '<label class="ng-cupo">'+esc(c)+' <input type="number" min="0" max="30" class="ng-cupo-in" data-franja="'+esc(f.id)+'" data-calle="'+esc(c)+'" value="'+esc(v)+'"></label>';
           }).join('') + '</div>' +
-          '<div class="ng-vac">' + (ct
-              ? ('Vacantes: <b class="'+(libres<=0?'rojo':libres<=2?'ambar':'verde')+'">'+Math.max(0,libres)+'</b> de '+ct)
-              : 'Pon el cupo de cada calle para calcular las vacantes solas.') + '</div>' +
+          '<div class="ng-vac">' + vacantesHtml(f) + '</div>' +
         '</div>' +
         '<div class="ng-blq">' +
           '<h4>Semáforo de la web</h4>' +
@@ -298,13 +317,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cab = document.querySelector('[data-abrir="'+f.id+'"]');
     if (!cab) return;
     var acc = cab.closest('.ng-acc');
-    var ct = cupoTotal(f), libres = ct - insDe(f).length;
+    var ct = cupoTotal(f);
     var sem = cab.querySelector('.sem'); if (sem) sem.className = semClaseDe(f.semaforo);
     var info = cab.querySelector('.info span'); if (info) info.textContent = insDe(f).length + (ct? ' / '+ct : '') + ' nadadores' + (f.semaforo_forzado? ' · forzado' : '');
     var vac = acc && acc.querySelector('.ng-vac');
-    if (vac) vac.innerHTML = ct
-      ? ('Vacantes: <b class="'+(libres<=0?'rojo':libres<=2?'ambar':'verde')+'">'+Math.max(0,libres)+'</b> de '+ct)
-      : 'Pon el cupo de cada calle para calcular las vacantes solas.';
+    if (vac) vac.innerHTML = vacantesHtml(f);
   }
 
   // Reenviar a la familia el correo de acceso de un nadador ya dado de alta.
@@ -337,7 +354,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (r && r.error){ toast('No se pudo guardar: '+r.error.message,'err'); return; }
     toast('Plazas guardadas');
     // El trigger recalculó el semáforo: releo SOLO esta franja y refresco en sitio.
-    var rf = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,semaforo_forzado,cupos,admite_niveles,criterio').eq('id', franjaId).maybeSingle();
+    var rf = await sb.from('natacion_franjas').select('*').eq('id', franjaId).maybeSingle();
     if (rf && !rf.error && rf.data){
       for (var i=0;i<FR.length;i++){ if (FR[i].id===franjaId){ FR[i]=rf.data; break; } }
       refrescarFranja(rf.data);
@@ -491,7 +508,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     else toast(nombre.split(' ')[0] + ' creada · ⚠ el correo no salió, reintenta con «Horarios»', 'err');
 
     await recargarIns();
-    var f2 = await sb.from('natacion_franjas').select('id,dia,hora,orden,grupo,calles,tiene_vaso,semaforo,semaforo_forzado,cupos,admite_niveles,criterio').order('dia').order('hora');
+    var f2 = await sb.from('natacion_franjas').select('*').order('dia').order('hora');
     if (!f2.error) FR = f2.data || FR;
     pintar();
   }
