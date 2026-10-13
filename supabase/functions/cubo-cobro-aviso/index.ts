@@ -94,7 +94,7 @@ function correoHtml(nombre: string, precioMes: number, primer: number, nota = ""
       <tr><td style="padding:24px 24px 6px 24px">
         <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">${hola}</p>
         <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">¡Bienvenido/a a <b>El Cubo</b>! 💪 Ya has empezado a entrenar con nosotros, así que <b>ya puedes dejar lista tu cuota</b> y olvidarte del tema.</p>
-        <p style="margin:0 0 20px;color:#3f3f46;line-height:1.6">Es muy fácil: entra en tu espacio y pulsa <b>«Pagar la cuota»</b>. Hoy pagas <b>${primer} €</b> (el primer pago) y tu tarjeta queda guardada; ${cuotaLinea} se cobra sola cada <b>día 5</b>, sin que tengas que hacer nada.</p>
+        <p style="margin:0 0 20px;color:#3f3f46;line-height:1.6">Para activar tu cuota de <b>${precioMes > 0 ? precioMes + " €/mes" : "El Cubo"}</b>, entra en tu espacio y pulsa <b>«Pagar la cuota»</b>: hoy pagas <b>${primer} €</b> (el primer mes) y tu tarjeta queda guardada; a partir de ahí se cobra sola cada <b>día 5</b>, sin que tengas que hacer nada.</p>
       </td></tr>
       ${notaHtml}
       <tr><td align="center" style="padding:4px 24px 6px 24px">
@@ -151,7 +151,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const precioMes = Math.round(Number(alta.precio_mes) || 0);
   const primer = (alta.primer_pago_cent != null && Number(alta.primer_pago_cent) > 0)
     ? Math.round(Number(alta.primer_pago_cent) / 100)
-    : 10;
+    : precioMes;
   const cuotaTxt = precioMes > 0 ? `luego, tu cuota de ${precioMes} €/mes` : "luego, tu cuota mensual";
   const nota = String(alta.nota_cobro ?? "").trim();
 
@@ -167,7 +167,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         to: [{ email: destino }],
         subject: "Ya puedes activar tu cuota de El Cubo",
         htmlContent: correoHtml(nombre, precioMes, primer, nota),
-        textContent: `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\n¡Bienvenido/a a El Cubo! Ya puedes dejar lista tu cuota. Entra en ${URL_BASE}portal/ con este mismo correo y pulsa «Pagar la cuota»: hoy pagas ${primer} € (el primer pago)${nota ? " — " + nota : ""} y tu tarjeta queda guardada; ${cuotaTxt} se cobra sola cada día 5.\n\n¿Dudas? Contesta a este mensaje y te ayudamos.`,
+        textContent: `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\n¡Bienvenido/a a El Cubo! Para activar tu cuota de ${precioMes > 0 ? precioMes + " €/mes" : "El Cubo"}, entra en ${URL_BASE}portal/ con este mismo correo y pulsa «Pagar la cuota»: hoy pagas ${primer} € (el primer mes)${nota ? " — " + nota : ""} y tu tarjeta queda guardada; a partir de ahí se cobra sola cada día 5.\n\n¿Dudas? Contesta a este mensaje y te ayudamos.`,
       }),
     });
   } catch (e) {

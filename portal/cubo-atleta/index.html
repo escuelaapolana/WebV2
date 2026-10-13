@@ -591,7 +591,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var baja = alta.baja_solicitada
         ? '<p class="fina">Has pedido la baja. El club la tramitará y dejará de cobrarte. Si fue un error, escríbenos.</p>'
         : '<p class="fina">¿Cambiar de tarjeta? Escríbenos. ¿Quieres darte de baja? Pídela con al menos <b>15 días de antelación</b> al siguiente cobro y el club la tramita. ' +
-          '<button type="button" class="enlace" id="cb-baja">Solicitar la baja</button></p>' +
+          '<button type="button" class="enlace" id="cb-baja" data-activa="1">Solicitar la baja</button></p>' +
           '<p class="pago-msg" id="cb-baja-msg" hidden></p>';
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
         '<p><b>Cuota activa.</b> ' + esc(precio) + ' € al mes. ' +
@@ -615,6 +615,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (estado === 'impago' ? 'Reactivar la cuota' : 'Pagar la cuota') + '</button>' +
       '<p class="pago-msg" id="cb-pago-msg" hidden></p>' +
       '<p class="fina">La tarjeta se teclea en la página segura de Stripe; el club no la ve.</p>' +
+      (alta.baja_solicitada
+        ? '<p class="fina">Has pedido darte de baja. El club lo tramita; no tienes que pagar nada.</p>'
+        : '<p class="fina">¿No vas a seguir en El Cubo? <button type="button" class="enlace" id="cb-baja" data-activa="0">No quiero seguir · darme de baja</button></p>' +
+          '<p class="pago-msg" id="cb-baja-msg" hidden></p>') +
     '</div>';
   }
 
@@ -650,19 +654,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function engancharBaja() {
     var b = $('cb-baja');
     if (!b) return;
+    var t0 = b.textContent;
+    var activa = b.getAttribute('data-activa') === '1';
     b.addEventListener('click', function () {
-      if (!confirm('¿Seguro que quieres solicitar la baja de tu cuota? Es una SOLICITUD: el club la tramita. Recuerda pedirla con al menos 15 días de antelación al siguiente cobro; si no, puede entrarte el próximo recibo.')) return;
+      var aviso = activa
+        ? '¿Seguro que quieres solicitar la baja de tu cuota? Es una SOLICITUD: el club la tramita. Recuerda pedirla con al menos 15 días de antelación al siguiente cobro; si no, puede entrarte el próximo recibo.'
+        : '¿Seguro que no quieres seguir en El Cubo? Se lo comunicamos al club y no se te cobrará nada.';
+      if (!confirm(aviso)) return;
       var msg = $('cb-baja-msg');
       b.disabled = true; b.textContent = 'Enviando…';
       sb.rpc('cubo_baja_solicitar').then(function (r) {
         if (r.error || (r.data && r.data.ok === false)) {
-          b.disabled = false; b.textContent = 'Solicitar la baja';
+          b.disabled = false; b.textContent = t0;
           if (msg) { msg.hidden = false; msg.textContent = 'No se ha podido. Vuelve a intentarlo o escríbenos.'; }
           return;
         }
         _cuota = null; pintarMas();
       }).catch(function () {
-        b.disabled = false; b.textContent = 'Solicitar la baja';
+        b.disabled = false; b.textContent = t0;
         if (msg) { msg.hidden = false; msg.textContent = 'No se ha podido conectar. Inténtalo de nuevo.'; }
       });
     });
