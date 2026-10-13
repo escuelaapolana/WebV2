@@ -34,6 +34,7 @@ Web pública + portal/app del **Club Atletismo Apolana** (Alicante). Sitio
 - Truco de caché para ver cambios en el navegador: `?n=` en la URL.
 - Los **documentos legales** (`legal/*`) son **borradores pendientes de asesoría** — no darlos por validados.
 - Commits: mensajes en español, estilo «Área · qué se hizo». Push solo cuando Andrés lo pida (o cuando algo tiene que estar live para que funcione, avisándole).
+- **Diario de trabajo:** al cerrar cada tanda, anota en `DIARIO.md` (raíz, privado vía `.gitignore`) qué se hizo / qué quedó pendiente (y de quién) / decisiones. Es la bitácora cronológica, también de lo **operativo** que el `git log` no ve (correos, psql, cobros, decisiones). Al empezar sesión, ojea las últimas entradas. Lo último, arriba.
 
 ## Idioma
 Todo (UI, commits, respuestas) en **español**.
