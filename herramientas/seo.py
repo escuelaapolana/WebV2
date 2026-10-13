@@ -518,6 +518,35 @@ FAQ_HOME = [
      "La sede principal es el Estadio Joaquín Villar de Alicante. La sección de natación entrena en la piscina de la Vía Parque."),
 ]
 
+# Escuela de natacion: copia de la FAQ visible de escuela-natacion/index.html
+# (seccion 8b). Si cambias una, cambia la otra.
+FAQ_ESCUELA_NATACION = [
+    ('¿Cuándo empiezan las clases y cuándo acaban?',
+     'Los entrenamientos empiezan en octubre y terminan a finales de junio. La fecha exacta de inicio y de final varía según las instrucciones de la Concejalía de Deportes de Alicante.'),
+    ('¿Qué tiene que traer mi hijo/a a los entrenamientos?',
+     'Lo básico: bañador, gorro, gafas y toalla o albornoz.'),
+    ('¿Qué incluye la cuota?',
+     'Nueva matrícula: camiseta de manga corta, sudadera, licencia y seguro, acceso a la piscina, vestuarios y duchas, uso del material y, lo más importante, entrenamientos dirigidos por entrenadores titulados. Renovación: lo mismo, sin la sudadera.'),
+    ('¿Cómo se realizan los pagos?',
+     'La cuota se abona desde la aplicación SportMember. En temporada de invierno se hace en tres plazos, y el precio varía según el número de días de clase a la semana (ver tabla de cuotas). En verano los cargos son mensuales. Tanto en matrículas nuevas como en renovaciones: un primer pago entre el 1 y el 5 de octubre (octubre a diciembre), un segundo entre el 1 y el 5 de enero (enero a marzo), y un tercero entre el 1 y el 5 de abril (abril a junio).'),
+    ('¿Puedo pagar la cuota “en mano”?',
+     'Sí, siempre que el total de la cuota anual se abone antes de diciembre. Consulta las condiciones para las fechas de esta modalidad.'),
+    ('¿Qué pasa si me doy de baja a mitad de temporada?',
+     'Hay que avisar con un mes de antelación al cobro del recibo, abonando la parte proporcional de los entrenamientos ya disfrutados. Si no se cumple ese plazo, se cobra el recibo completo.'),
+    ('¿Cómo están organizados los grupos?',
+     'Por franja de edad y por nivel, para que cada grupo esté lo más equilibrado posible.'),
+    ('¿Desde qué edad pueden empezar a entrenar?',
+     'Hay grupos desde los 6 hasta los 15 años. A partir de los 16, adaptamos los entrenamientos a la edad de cada nadador.'),
+    ('¿Desde qué edad se compite? ¿Es obligatorio?',
+     'Se puede empezar a competir en controles a partir de los 8 años. No es obligatorio, pero sí recomendable: la competición es el objetivo del entrenamiento y en ella se aprenden valores y cosas que no se adquieren solo entrenando. Suelen ser sábados por la mañana o tarde, y a veces domingos por la mañana, con una o dos competiciones al mes.'),
+    ('¿Hacéis actividades más allá de los entrenamientos?',
+     'Sí. Para nosotros lo importante es que todos nos conozcamos y hagamos grupo más allá de la piscina, así que cada trimestre organizamos una actividad de convivencia para nadadores, padres, madres y familiares.'),
+    ('¿Me puedo apuntar a mitad de temporada?',
+     'Sí, siempre que queden plazas libres.'),
+    ('¿Hay descuento por hermanos/as?',
+     'Sí. El primero paga la cuota completa, el segundo tiene un 20 % de descuento y el tercero y siguientes, un 40 %.'),
+]
+
 # Cada pagina publica con su lista de preguntas (la ruta es la publica; "" = portada).
 FAQS = {
     "": FAQ_HOME,
@@ -526,6 +555,7 @@ FAQS = {
     "running/": FAQ_RUNNING,
     "escuela-atletismo/": FAQ_ESCUELA,
     "competicion/": FAQ_COMPETICION,
+    "escuela-natacion/": FAQ_ESCUELA_NATACION,
 }
 
 
