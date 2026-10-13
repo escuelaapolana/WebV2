@@ -941,10 +941,28 @@ APOLANA_ADMIN.listo(function (sb) {
 
   // ---- Interruptor: abrir/cerrar el cobro de la cuota (tabla cubo_config) ----
   var COBRO = null, LIMITE = null;
+  // Aforo de CADA grupo, de la misma regla que usan el formulario y el portal
+  // (cubo_aforos → cubo_aforo, mig 340). Si la función no responde, se cae
+  // al límite global de cubo_config como antes.
+  var AFORO = {}, AFORO_POR_GRUPO = false;
+  async function cargarAforos(){
+    try{
+      var r = await sb.rpc('cubo_aforos');
+      AFORO = {}; AFORO_POR_GRUPO = false;
+      if(!r.error && Array.isArray(r.data)){
+        r.data.forEach(function(x){ AFORO[x.grupo_id] = x.aforo; if(x.por_grupo) AFORO_POR_GRUPO = true; });
+      }
+    }catch(e){ AFORO = {}; AFORO_POR_GRUPO = false; }
+  }
+  function aforoDe(gid){
+    var v = AFORO[gid];
+    return (v!=null && v>0) ? v : (LIMITE!=null ? LIMITE : 20);
+  }
   async function cargarCobro(){
     var r = await sb.from('cubo_config').select('cobro_abierto,limite_grupo').eq('id',1).maybeSingle();
     COBRO = r.error ? null : !!(r.data && r.data.cobro_abierto);
     LIMITE = (r.data && r.data.limite_grupo!=null) ? r.data.limite_grupo : 20;
+    await cargarAforos();
     pintarCobro();
     pintarGrupos();
   }
@@ -966,10 +984,10 @@ APOLANA_ADMIN.listo(function (sb) {
   function pintarGrupos(){
     var caja=$('ca-grupos'); if(!caja || !GRUPOS_CUBO) return;
     if(!GRUPOS_CUBO.length){ caja.innerHTML=''; return; }
-    var lim = LIMITE!=null ? LIMITE : 20;
     var DIAS_SEM = {1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo'};
     caja.innerHTML = '<p class="ca-rot">Grupos del Cubo</p><div class="cg-grid">' + GRUPOS_CUBO.map(function(g){
       var espera = ALTAS.filter(function(a){ return a.horario===g.nombre && a.lista_espera; }).length;
+      var lim = aforoDe(g.id);
       var nombre = String(g.nombre||'').replace(/^El Cubo\s*·\s*/i,'');
       // Altas aprobadas y activas de este grupo (cubo_altas es donde vive dias_semana).
       var altasG = ALTAS.filter(function(a){ return a.horario===g.nombre && (a.estado==='aprobada') && !a.lista_espera; });
@@ -1006,6 +1024,10 @@ APOLANA_ADMIN.listo(function (sb) {
     }).join('') + '</div>';
   }
   function aforoHTML(){
+    if(AFORO_POR_GRUPO){
+      return '<div class="ca-aforo">Aforo: <b>el de cada grupo</b> (sus plazas, en Grupos)'+
+        '<small>Cuando un grupo se llena, las altas nuevas entran en lista de espera.</small></div>';
+    }
     return '<div class="ca-aforo">Aforo por grupo: <b>'+esc(LIMITE)+' plazas</b> · '+
       '<button type="button" class="aforo-link" id="ca-limite">Cambiar</button>'+
       '<small>Cuando un grupo se llena, las altas nuevas entran en lista de espera.</small></div>';
@@ -1140,7 +1162,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(!n || n<1){ toast('Pon un número válido.','error'); return; }
     var r=await sb.from('cubo_config').update({ limite_grupo:n }).eq('id',1);
     if(r.error){ toast('No se ha podido: '+r.error.message,'error'); return; }
-    LIMITE=n; pintarCobro(); pintarGrupos(); toast('Aforo: '+n+' por grupo');
+    LIMITE=n; await cargarAforos(); pintarCobro(); pintarGrupos(); toast('Aforo: '+n+' por grupo');
   }
 
   $('admin-contenido').addEventListener('input', function(ev){

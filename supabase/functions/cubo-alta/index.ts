@@ -13,8 +13,11 @@
 //   ANTES de crear la cuenta, dejamos una invitación con rol `cubo-atleta`
 //   y el nombre de verdad, y el perfil nace ya correcto (sin carreras).
 //
-//   El precio (escuela 20/30 · fuera 30/40) lo calcula el servidor a
-//   partir de escuela + días, nunca el navegador.
+//   El precio lo calcula el servidor a partir de escuela/socio + días,
+//   nunca el navegador. Sale de la tabla `tarifas` vía la función SQL
+//   `cubo_precio(p_dias, p_reducido)` (mig 340): UNA sola fuente para la
+//   web, el formulario, esta función y el portal. El aforo, igual:
+//   `cubo_turno_lleno(p_horario)`.
 //
 //   Si el correo YA tiene cuenta, no se rompe: se le añade el papel del
 //   Cubo y entra con su contraseña de siempre.
@@ -238,7 +241,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return responder({ error: "correo", mensaje: "Ese correo no parece válido." }, 400, origen);
   if (password.length < 8) return responder({ error: "clave", mensaje: "La contraseña necesita al menos 8 caracteres." }, 400, origen);
 
-  const precio = reducido ? (dias === 1 ? 20 : 30) : (dias === 1 ? 30 : 40);
+  // Precio: de la tabla `tarifas` (cubo_precio, mig 340). Si no hay tarifa
+  // vigente NO nos inventamos uno: se para el alta antes de crear nada.
+  const rPrecio = await rest(`rpc/cubo_precio`, {
+    method: "POST",
+    body: JSON.stringify({ p_dias: dias, p_reducido: reducido }),
+  });
+  const precio = Number(rPrecio.datos);
+  if (!rPrecio.ok || rPrecio.datos === null || !Number.isFinite(precio) || precio <= 0) {
+    console.error("[cubo-alta] sin precio:", rPrecio.estado, rPrecio.datos);
+    return responder({ error: "precio", mensaje: "Ahora mismo no podemos calcular la cuota. Escríbenos y te apuntamos." }, 503, origen);
+  }
 
   // ---- 2 · Grupo del turno ----
   const rGrupo = await rest(`grupos?select=id,nombre,horario&seccion=eq.cubo&nombre=eq.${encodeURIComponent(SLOT_A_GRUPO[slot])}&limit=1`);
@@ -246,17 +259,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const grupoId: string | null = grupo?.id ?? null;
 
   // ---- 2b · Aforo: si el turno está lleno, esta alta va a lista de espera.
-  //          El límite (por defecto 20) vive en cubo_config; solo cuentan las
-  //          altas con plaza (no lista de espera, no rechazadas). ----
-  let enListaEspera = false;
-  const rLim = await rest(`cubo_config?select=limite_grupo&id=eq.1&limit=1`);
-  const limite = Number((Array.isArray(rLim.datos) ? rLim.datos[0] : null)?.limite_grupo ?? 20);
-  const rCuenta = await rest(
-    `cubo_altas?select=id&horario=eq.${encodeURIComponent(SLOT_A_GRUPO[slot])}` +
-    `&lista_espera=eq.false&estado=neq.rechazada`,
-  );
-  const ocupadas = Array.isArray(rCuenta.datos) ? rCuenta.datos.length : 0;
-  if (Number.isFinite(limite) && limite > 0 && ocupadas >= limite) enListaEspera = true;
+  //          La regla vive en SQL (`cubo_turno_lleno`, mig 340), la misma
+  //          que usa el portal: aforo de `cubo_aforo()` (cubo_config) y solo
+  //          cuentan las altas con plaza (no lista de espera, no rechazadas). ----
+  const rLleno = await rest(`rpc/cubo_turno_lleno`, {
+    method: "POST",
+    body: JSON.stringify({ p_horario: SLOT_A_GRUPO[slot] }),
+  });
+  if (!rLleno.ok) console.error("[cubo-alta] aforo:", rLleno.estado, rLleno.datos);
+  const enListaEspera = rLleno.ok && rLleno.datos === true;
 
   // ---- 3 · Crear la cuenta. Un trigger crea el perfil (rol 'atleta' por
   //          defecto); justo después lo dejamos como 'cubo-atleta'. ----

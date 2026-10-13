@@ -147,10 +147,22 @@
     // Familias de la escuela y socios del club pagan lo mismo (precio reducido).
     function esReducido() { return esEscuela() || esSocio(); }
 
-    // Precio en dos tramos: reducido 20/30 · general 30/40 (1/2 días).
+    // Precio: sale de la tabla `tarifas` (Panel → Tarifas) vía la función
+    // cubo_precios() (mig 340), la MISMA que usa el servidor al crear la
+    // cuenta. Aquí solo se enseña; el que vale es el que calcula el servidor.
+    var PRECIOS = null, pidiendoPrecios = false;
+    function cargarPrecios() {
+      if (PRECIOS || pidiendoPrecios || !db() || !db().rpc) return;
+      pidiendoPrecios = true;
+      db().rpc('cubo_precios').then(function (r) {
+        pidiendoPrecios = false;
+        if (r && !r.error && r.data) { PRECIOS = r.data; refrescar(); }
+      }, function () { pidiendoPrecios = false; });
+    }
     function precio(reducido, dias) {
-      if (reducido) return dias === 1 ? 20 : 30;
-      return dias === 1 ? 30 : 40;
+      var tramo = PRECIOS && PRECIOS[reducido ? 'reducido' : 'general'];
+      var v = tramo ? tramo[String(dias)] : null;
+      return (v == null) ? null : v;
     }
 
     // Enseña el campo del hijo solo si es familia de la escuela, y refresca la cuota.
@@ -159,10 +171,12 @@
       document.getElementById('campo-hijo').hidden = (t !== 'escuela');
       var d = parseInt(radio('dias'), 10);
       var cuota = document.getElementById('cuota');
-      if (t && d) {
-        document.getElementById('cuota-num').textContent = precio(esReducido(), d) + ' €/mes';
+      var pr = (t && d) ? precio(esReducido(), d) : null;
+      if (t && d && pr != null) {
+        document.getElementById('cuota-num').textContent = pr + ' €/mes';
         cuota.hidden = false;
       } else {
+        if (t && d) cargarPrecios();   // aún no han llegado: se pinta al llegar
         cuota.hidden = true;
       }
 
@@ -185,6 +199,7 @@
         fsDia.hidden = true; cont.innerHTML = ''; cont.removeAttribute('data-slot');
       }
     }
+    cargarPrecios();
     f.addEventListener('change', function (ev) {
       if (ev.target && (ev.target.name === 'tarifa' || ev.target.name === 'dias' || ev.target.name === 'slot')) refrescar();
     });
