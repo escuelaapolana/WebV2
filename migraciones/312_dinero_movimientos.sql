@@ -20,7 +20,8 @@
 --   devuelto   se cobró y se reembolsó (tienda/bonos)          → solo «Ojo»
 --
 -- CRITERIOS (para no engañar)
---   · REMESA = recibo pendiente con metodo 'domiciliado' o con «remesa» en las
+--   · REMESA = recibo pendiente con metodo 'domiciliado', con «remesa» en las notas
+--     o de escuela MUNICIPAL (las cobra Isa también). Antes: metodo 'domiciliado' o con «remesa» en las
 --     notas (así se importaron los 219 de la escuela: «se confirma con la remesa
 --     de Isa»). NO se usa `cuenta`: `cuenta` es a qué banco va el dinero
 --     (escuela/club), la llevan TODOS los recibos, y con ella todo saldría remesa.
@@ -90,7 +91,8 @@ begin
       p.importe::numeric                                             as importe,
       case when p.estado = 'pagado' then 'pagado'
            when p.estado = 'impagado' then 'fallido'
-           when p.metodo = 'domiciliado' or coalesce(p.notas,'') ilike '%remesa%' then 'remesa'
+           when p.metodo = 'domiciliado' or coalesce(p.notas,'') ilike '%remesa%'
+                or p.concepto ilike '%municipal%' then 'remesa'   -- las municipales también las pasa Isa (Andrés, 13-oct)
            else 'pendiente' end                                      as estado,
       case when p.estado = 'pagado' then p.fecha_pago end            as cobrado_en,
       coalesce(p.fecha_pago::timestamptz, p.fecha_vencimiento::timestamptz, p.created_at) as fecha,
