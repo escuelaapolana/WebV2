@@ -55,6 +55,7 @@
 <script src="../assets/js/imagenes-web.js" defer></script>
 <script src="../assets/js/textos-web.js" defer></script>
 <script src="../assets/js/editar-en-vivo.js" defer></script>
+<script src="../assets/js/festivos.js" defer></script>
 <script src="../assets/js/horarios.js" defer></script>
 <style>
   /* ===========================================================
@@ -957,6 +958,34 @@
   var disciplinasConDatos = {};
   var clasesConDatos = {};
   var fTipos = {}, fSecs = {};   // filtros activos (vacío = todo)
+  var FEST = null;               // festivos y cierres (assets/js/festivos.js)
+
+  /* Qué se cae ese día, dicho para una familia: «Festivo · Día de la
+     Comunitat Valenciana», o «Natación: festivo · Puente» si solo es de una
+     sección. Si cierra todo el club, no se repite sección por sección. */
+  function textosFestivo(clave) {
+    if (!FEST || !window.APOLANA_FESTIVOS) return [];
+    var l = FEST.delDia(clave);
+    if (!l.length) return [];
+    var club = l.filter(function (e) { return !e.seccion && !e.grupo_id && !e.lugar; });
+    var out = [], vistos = {};
+    (club.length ? [club[0]] : l).forEach(function (e) {
+      var m = window.APOLANA_FESTIVOS.motivo(e);
+      var que = e.tipo === 'cierre' ? 'cierre' : 'festivo';
+      var quien = e.grupo_id ? (GRUPOS[e.grupo_id] ? nombreDeGrupo(GRUPOS[e.grupo_id]) : '')
+                             : (e.seccion ? seccionNombre(e.seccion) : '');
+      var t = quien ? quien + ': ' + que : conMayuscula(que);
+      if (m) t += ' · ' + m;
+      if (e.lugar) t += ' (' + e.lugar + ')';
+      if (!vistos[t]) { vistos[t] = true; out.push(t); }
+    });
+    return out;
+  }
+  function htmlFestivoDia(clave) {
+    var t = textosFestivo(clave);
+    if (!t.length) return '';
+    return '<div class="apo-fest-dia"><b>Sin entrenos</b><span>' + t.map(esc).join(' · ') + '</span></div>';
+  }
   var ultimoFoco = null;
   var diaAbierto = null;     // día que se está mirando en la ventana emergente
 
@@ -1465,6 +1494,17 @@
       });
     } catch (e) { console.warn('[Apolana] Google Calendar (excepción):', e); }
 
+    /* Festivos y cierres (mig 320): se leen de una vez para el año que se
+       puede mirar y se pintan como etiqueta del día. Si falla, nada cambia. */
+    try {
+      if (window.APOLANA_FESTIVOS) {
+        var _h = new Date();
+        FEST = await window.APOLANA_FESTIVOS.cargar(sb,
+          claveDe(new Date(_h.getFullYear(), _h.getMonth() - 2, 1)),
+          claveDe(new Date(_h.getFullYear(), _h.getMonth() + 10, 0)));
+      }
+    } catch (e) { FEST = null; }
+
     juntarEntrenos();
     fundirCompeticiones();
     COMPES.sort(function (a, b) { return a.c.fecha_inicio < b.c.fecha_inicio ? -1 : (a.c.fecha_inicio > b.c.fecha_inicio ? 1 : 0); });
@@ -1771,6 +1811,12 @@
         vistos[k] = true; puntos += '<i class="p-' + k + '"></i>';
       });
 
+      var fest = textosFestivo(clave);
+      if (fest.length) {
+        etiquetas = '<span class="et" style="background:#FCEBD3;border-left-color:#D98A2B;color:#6B3C0E" title="' + esc(fest.join(' · ')) + '">' +
+          esc(fest.length === 1 ? fest[0] : 'Festivos y cierres') + '</span>' + etiquetas;
+        puntos = '<i style="background:#D98A2B"></i>' + puntos;
+      }
       h += '<button type="button" class="dia' + (clave === hoyKey ? ' hoy' : '') +
         (hayClub ? ' del-club' : '') + '" data-dia="' + clave + '" ' +
         'aria-label="' + esc(conMayuscula(fechaLarga(clave)) + ': ' + (lista.length ? lista.length + ' actividades' : 'sin actividades')) + '">' +
@@ -1812,7 +1858,8 @@
     var titulo = conMayuscula(DIAS[d.getDay()]) + ' ' + d.getDate() +
       (conFecha ? ' ' + MESES_CORTO[d.getMonth()] : ' de ' + MESES[d.getMonth()]);
     var h = '<div class="col-dia' + (clave === hoyKey ? ' es-hoy' : '') + '">' +
-      '<h3>' + esc(titulo) + (clave === hoyKey ? ' <span class="cuando">hoy</span>' : '') + '</h3>';
+      '<h3>' + esc(titulo) + (clave === hoyKey ? ' <span class="cuando">hoy</span>' : '') + '</h3>' +
+      htmlFestivoDia(clave);
     if (!lista.length) {
       h += '<p class="nada">Nada programado' + (numFiltros() ? ' con estos filtros' : '') + '.</p>';
     } else {
@@ -2072,7 +2119,7 @@
       '<h2 id="modal-act-titulo">' + esc(conMayuscula(fechaLarga(clave))) + '</h2></div>' +
       '<button type="button" class="modal-cerrar" data-cerrar aria-label="Cerrar">×</button></div>';
 
-    h += '<div class="modal-dia">';
+    h += '<div class="modal-dia">' + htmlFestivoDia(clave);
     if (!lista.length) {
       h += '<p class="nada">Nada programado' + (numFiltros() ? ' con estos filtros' : ' este día') + '.</p>';
     } else {

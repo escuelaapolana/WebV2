@@ -11,6 +11,7 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/festivos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <!-- FLUIDEZ: blocking="render" = el primer fotograma espera a que la barra de abajo
      se haya pintado (con la de arriba «de antemano»), para que la transición entre
@@ -152,13 +153,45 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var gCubo = gids.filter(function (id) { return GRUPOS[id] && GRUPOS[id].seccion === 'cubo'; });
   var gAtl  = gids.filter(function (id) { return GRUPOS[id] && SEC_ATL.indexOf(GRUPOS[id].seccion) >= 0; });
 
-  // ---- horarios del Cubo (para mostrar los días) ----
-  var cuboHoras = [];
-  if (gCubo.length) {
+  // ---- horarios del Cubo (para mostrar los días) y de atletismo (festivos) ----
+  var cuboHoras = [], atlHoras = [];
+  if (gCubo.length || gAtl.length) {
     try {
-      var rgh = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,lugar').in('grupo_id', gCubo).eq('activo', true);
-      if (rgh && !rgh.error && rgh.data) cuboHoras = rgh.data;
+      var rgh = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,lugar').in('grupo_id', gCubo.concat(gAtl)).eq('activo', true);
+      if (rgh && !rgh.error && rgh.data) {
+        cuboHoras = rgh.data.filter(function (h) { return gCubo.indexOf(h.grupo_id) >= 0; });
+        atlHoras  = rgh.data.filter(function (h) { return gAtl.indexOf(h.grupo_id) >= 0; });
+      }
     } catch (e) {}
+  }
+
+  // ---- festivos y cierres de las próximas dos semanas (mig 320) ----
+  //  Un festivo no se nota en el horario fijo de abajo: se dice aparte, con su
+  //  día, en el bloque al que afecta. Si la consulta falla, no sale nada.
+  var FEST = null;
+  try {
+    var _f2 = new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + 13);
+    if (window.APOLANA_FESTIVOS) FEST = await APOLANA_FESTIVOS.cargar(sb, HOY_ISO, _f2.getFullYear()+'-'+pad(_f2.getMonth()+1)+'-'+pad(_f2.getDate()));
+  } catch (e) {}
+  /* items: [{ dia: 1..7, ctx: {seccion, grupo_id, lugar} }] → líneas «Lun 12 · Festivo · sin entreno». */
+  function lineasFestivo(items) {
+    if (!FEST || !items.length) return [];
+    var out = [], visto = {};
+    for (var i = 0; i < 14; i++) {
+      var d = new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + i);
+      var f = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+      var dow = d.getDay() === 0 ? 7 : d.getDay();
+      for (var j = 0; j < items.length; j++) {
+        if (Number(items[j].dia) !== dow || visto[f]) continue;
+        var e = FEST.de(f, items[j].ctx);
+        if (!e) continue;
+        visto[f] = true;
+        var m = APOLANA_FESTIVOS.motivo(e);
+        out.push({ dd: (i === 0 ? 'Hoy' : DIA_CORTO[dow]) + ' ' + d.getDate(),
+                   qq: APOLANA_FESTIVOS.rotulo(e) + (m ? ' · ' + m : ''), fest: true });
+      }
+    }
+    return out;
   }
 
   // ---- natación (lanzada arriba, en paralelo) ----
@@ -203,7 +236,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function bloque(color, icon, titulo, sub, lineas, acciones) {
     var lin = lineas.map(function (l) {
-      return '<div class="lm-linea"><span class="dd">' + esc(l.dd) + '</span><span class="qq">' + esc(l.qq) + '</span></div>';
+      return '<div class="lm-linea"><span class="dd">' + esc(l.dd) + '</span>' +
+        (l.fest ? '<span class="apo-fest">' + esc(l.qq) + '</span>' : '<span class="qq">' + esc(l.qq) + '</span>') + '</div>';
     }).join('');
     var acc = acciones.map(function (a) {
       return '<a class="lm-btn' + (a.ghost ? ' ghost' : '') + '" href="' + esc(a.href) + '">' + esc(a.txt) + '</a>';
@@ -243,7 +277,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        un «Abrir El Cubo» que salte a otra zona. Su cuota/baja vivirán en «Más»
        del mismo portal cuando se absorba la zona cubo-atleta (renovación). */
     html += bloque('var(--lm-cubo)', IC.cubo, 'El Cubo', nombreCubo || 'Tus clases de fuerza',
-      resumenHoras(cuboHoras),
+      resumenHoras(cuboHoras).concat(lineasFestivo(cuboHoras.map(function (h) {
+        return { dia: h.dia_semana, ctx: { seccion: 'cubo', grupo_id: h.grupo_id, lugar: h.lugar || '' } };
+      }))),
       [ { txt: 'En el calendario', href: b + 'portal/calendario/', ghost: true } ]);
   }
 
@@ -263,6 +299,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var accNat = [];
     if (esMaster) accNat.push({ txt: '🔁 Cambiar de sesión', href: b + 'portal/atleta/' });
     accNat.push({ txt: 'En el calendario', href: b + 'portal/calendario/', ghost: true });
+    lineasNat = lineasNat.concat(lineasFestivo(plazas.map(function (p) {
+      return { dia: p.dia, ctx: { seccion: /^escuela/i.test(p.tipo || '') ? 'escuela-natacion' : 'natacion' } };
+    })));
     html += bloque('var(--lm-natacion)', IC.agua, 'Natación', 'Tus franjas', lineasNat, accNat);
   }
 
@@ -271,7 +310,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     hayAlgo = true;
     var nombresAtl = gAtl.map(function (id) { return GRUPOS[id] && GRUPOS[id].nombre; }).filter(Boolean).join(' · ');
     html += bloque('var(--lm-atletismo)', IC.correr, 'Atletismo', nombresAtl || 'Tu grupo',
-      [],
+      lineasFestivo(atlHoras.map(function (h) {
+        return { dia: h.dia_semana, ctx: { seccion: GRUPOS[h.grupo_id] && GRUPOS[h.grupo_id].seccion, grupo_id: h.grupo_id, lugar: h.lugar || '' } };
+      })),
       [ { txt: 'Tu entreno', href: b + 'portal/atleta/' },
         { txt: 'Tus marcas', href: b + 'portal/atleta/#marcas', ghost: true } ]);
   }

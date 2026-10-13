@@ -11,6 +11,7 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/festivos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <!-- FLUIDEZ: blocking="render" = el primer fotograma espera a que la barra de abajo
      se haya pintado (con la de arriba «de antemano»), para que la transición entre
@@ -994,7 +995,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                 acts.push({
                   fuente: 'natacion', id: 'nat-' + p.franja_id + '-' + (p.atleta_id || '') + '-' + fe, fecha: fe,
                   hora: p.hora, horaFin: '', titulo: quien ? 'Natación · ' + quien : 'Natación',
-                  tipoTexto: 'Natación', mio: true, lugar: '',
+                  tipoTexto: 'Natación', mio: true, lugar: '', natTipo: p.tipo || '',
                   grupo: [p.grupo, p.calle, p.nivel].filter(Boolean).join(' · '),
                   companeros: p.companeros || [],
                   incorporaciones: (p.incorporaciones || []).filter(function (x) { return x.fecha === fe; }).map(function (x) { return x.nombre; })
@@ -1053,6 +1054,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     } catch (e) { /* si falla, el resto del calendario sigue */ }
 
+    // --- 7) FESTIVOS Y CIERRES (mig 320 · calendario_excepciones). Lo que se
+    //        proyecta del horario fijo (grupos, El Cubo, natación) se marca como
+    //        «Festivo · sin entreno» si ese día se cae para su sección/grupo/lugar.
+    //        Las sesiones con fecha que alguien publicó a mano se respetan: si
+    //        están, es que se entrena. Si la consulta falla, no se cae nada. ---
+    FEST = null;
+    try {
+      if (window.APOLANA_FESTIVOS) {
+        FEST = await APOLANA_FESTIVOS.cargar(sb, desde, hasta);
+        acts.forEach(function (a) {
+          if (a.fuente !== 'entreno' && a.fuente !== 'cubo' && a.fuente !== 'natacion') return;
+          if (a.fuente === 'entreno' && !/^(horario|club)-/.test(String(a.id))) return;   // sesión real
+          var ctx;
+          if (a.fuente === 'natacion') ctx = { seccion: /^escuela/i.test(a.natTipo || '') ? 'escuela-natacion' : 'natacion' };
+          else if (a.fuente === 'cubo') ctx = { seccion: 'cubo', grupo_id: String(a.id).replace(/^(clase|club)-/, '').slice(0, 36), lugar: a.lugar };
+          else ctx = { seccion: a.seccion, grupo_id: a.grupoId, lugar: a.lugar };
+          var e = FEST.de(a.fecha, ctx);
+          if (e) marcarFestivo(a, e);
+        });
+      }
+    } catch (e) { /* sin festivos: se pinta como siempre */ }
+
     ACTIVIDADES = juntarEntrenos(acts);
     ACTIVIDADES.forEach(function (a, i) { a.i = i; a.clave = a.fuente + '|' + a.id + '|' + a.fecha; });
     fundirCompeticiones();
@@ -1078,6 +1101,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   var JUNTAR_DESDE = 3;
 
+  /* Festivos (mig 320): la actividad se queda, tachada y con su etiqueta. */
+  var FEST = null;
+  function marcarFestivo(a, e) {
+    a.festivo = e;
+    a.estado = APOLANA_FESTIVOS.rotulo(e);
+    a.pillClase = 'no';
+    var m = APOLANA_FESTIVOS.motivo(e);
+    if (m) a.nota = m + (a.nota ? ' · ' + a.nota : '');
+  }
+  function pildoraFestivo(a) {
+    return a.festivo ? ' <span class="apo-fest">' + esc(APOLANA_FESTIVOS.rotulo(a.festivo)) + '</span>' : '';
+  }
+  /* Etiqueta del día cuando el club entero cierra (sin sección ni grupo). */
+  function festivoDelDia(f) {
+    var e = FEST ? FEST.delClub(f) : null;
+    if (!e) return '';
+    var m = APOLANA_FESTIVOS.motivo(e);
+    return ' <span class="apo-fest">' + esc((e.tipo === 'cierre' ? 'Cierre' : 'Festivo') + (m ? ' · ' + m : '')) + '</span>';
+  }
+
   function juntarEntrenos(acts) {
     var lotes = {}, orden = [];
     acts.forEach(function (a) {
@@ -1087,7 +1130,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          demás, el «no hay plaza para ti» desaparecería del calendario y
          nadie se enteraría de que le han contestado. */
       if (a.mio || a.accion || a.miEstado) return;
-      var k = a.fecha + '|' + a.seccion + '|' + (a.hora || '');
+      var k = a.fecha + '|' + a.seccion + '|' + (a.hora || '') + (a.festivo ? '|F' : '');
       if (!lotes[k]) { lotes[k] = []; orden.push(k); }
       lotes[k].push(a);
     });
@@ -1113,6 +1156,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         pillClase: '', nota: '', accion: null,
         contacto: { href: '../mensajes/', texto: 'Escribir a tu entrenador' }
       });
+      if (uno.festivo) marcarFestivo(juntados[juntados.length - 1], uno.festivo);
     });
 
     return acts.filter(function (a) { return !fuera[a.fuente + '|' + a.id]; }).concat(juntados);
@@ -1353,6 +1397,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function tarjeta(a) {
     var clases = ['tarj', 'k-' + a.fuente];
     if (a.mio && a.fuente !== 'cierre') clases.push('mia');
+    if (a.festivo) clases.push('apo-fest-off');
     var sub = subtitulo(a);
     var subHtml = '';
     if (a.fuente === 'cierre') {
@@ -1365,7 +1410,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        alineación se mantiene igual, que es para lo que está la columna. */
     return '<button type="button" class="' + clases.join(' ') + '" data-act="' + a.i + '">' +
       '<span class="hh">' + esc(a.hora || '') + '</span>' +
-      '<span class="med"><span class="tit">' + esc(etiquetaCorta(a)) + '</span>' + subHtml + '</span>' +
+      '<span class="med"><span class="tit">' + esc(etiquetaCorta(a)) + '</span>' + subHtml + pildoraFestivo(a) + '</span>' +
       '<span class="chev" aria-hidden="true">›</span></button>';
   }
 
@@ -1388,7 +1433,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     claves.forEach(function (k) {
       var esHoy = (k === HOY_ISO);
       h += '<div class="sep-dia' + (esHoy ? ' hoy' : '') + '">' +
-        '<span class="txt">' + esc(esHoy ? 'Hoy · ' + fechaCorta(k) : mayus(fechaCorta(k))) + '</span>' +
+        '<span class="txt">' + esc(esHoy ? 'Hoy · ' + fechaCorta(k) : mayus(fechaCorta(k))) + festivoDelDia(k) + '</span>' +
         '<span class="raya"></span></div>';
       h += mapa[k].map(tarjeta).join('');
     });
@@ -1405,17 +1450,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var esHoy = (f === HOY_ISO);
       h += '<div class="fila-dia' + (esHoy ? ' hoy' : '') + '">' +
         '<div class="cual"><span class="dd">' + esc(esHoy ? 'Hoy' : mayus(DIAS_CORTO[d.getDay()])) + '</span>' +
-        '<span class="nn">' + d.getDate() + '</span></div><div class="lista">';
+        '<span class="nn">' + d.getDate() + '</span></div><div class="lista">' + festivoDelDia(f);
       if (!lista.length) {
         h += '<span class="nada">Nada programado' + (numFiltros() ? ' con estos filtros' : '') + '.</span>';
       } else {
         h += lista.map(function (a) {
           var sub = subtitulo(a);
           var badge = (a.mio && a.fuente !== 'cierre') ? '<span class="tu-badge">Tú</span>' : '';
-          return '<button type="button" class="lin k-' + a.fuente + (a.mio ? ' mia' : '') + '" data-act="' + a.i + '">' +
+          return '<button type="button" class="lin k-' + a.fuente + (a.mio ? ' mia' : '') + (a.festivo ? ' apo-fest-off' : '') + '" data-act="' + a.i + '">' +
             '<span class="hh">' + esc(a.hora || '') + '</span>' +
             '<span class="tt"><b>' + esc(etiquetaCorta(a)) + '</b>' + badge +
-            (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></button>';
+            (sub ? '<small>' + esc(sub) + '</small>' : '') + pildoraFestivo(a) + '</span></button>';
         }).join('');
       }
       h += '</div></div>';
@@ -1474,7 +1519,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       claves.forEach(function (k) {
         var esHoy = (k === HOY_ISO);
         h += '<div class="sep-dia' + (esHoy ? ' hoy' : '') + '">' +
-          '<span class="txt">' + esc(esHoy ? 'Hoy · ' + fechaCorta(k) : mayus(fechaCorta(k))) + '</span>' +
+          '<span class="txt">' + esc(esHoy ? 'Hoy · ' + fechaCorta(k) : mayus(fechaCorta(k))) + festivoDelDia(k) + '</span>' +
           '<span class="raya"></span></div>';
         h += mapa[k].map(tarjeta).join('');
       });

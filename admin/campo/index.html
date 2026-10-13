@@ -11,6 +11,7 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/festivos.js" defer></script>
 <script src="../../assets/js/admin-auth.js"></script>
 <script src="../../assets/js/admin-tabbar.js" defer></script>
 <style>
@@ -567,10 +568,24 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (ahora <= masMinutos(f.fin, CORTESIA)) return 'ahora';
     return 'despues';
   }
+  /* Festivos y cierres (mig 320, assets/js/festivos.js): un grupo con el día
+     cancelado NO entrena ese día aunque su horario diga que sí. */
+  var FEST = null;
+  function festivoGrupo(gid, fecha) {
+    if (!FEST) return null;
+    var g = GMAP[gid] || {};
+    var dow = dowDe(fecha);
+    var h = horariosDe(gid).filter(function (x) { return x.dia_semana === dow; })[0];
+    return FEST.de(fecha, { seccion: g.seccion, grupo_id: gid, lugar: h ? (h.lugar || '') : '' });
+  }
+  function textoFestivo(e) {
+    var m = window.APOLANA_FESTIVOS.motivo(e);
+    return window.APOLANA_FESTIVOS.rotulo(e) + (m ? ' · ' + m : '');
+  }
   function gruposConAtletas() { return GRUPOS.filter(function (g) { return atletasDeGrupo(g.id).length > 0; }); }
   function gruposDeHoy() {
     var dow = dowDe(fechaHoy());
-    return GRUPOS.filter(function (g) { return entrenaDia(g.id, dow); })
+    return GRUPOS.filter(function (g) { return entrenaDia(g.id, dow) && !festivoGrupo(g.id, fechaHoy()); })
       .sort(function (a, b) { return (horaDelDia(a.id, dow) || '99') < (horaDelDia(b.id, dow) || '99') ? -1 : 1; });
   }
 
@@ -595,6 +610,16 @@ window.APOLANA_ADMIN.listo(function (sb) {
       var h = await sb.from('grupo_horarios').select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar').eq('activo', true);
       if (!h.error && h.data) h.data.forEach(function (x) { (HOR[x.grupo_id] = HOR[x.grupo_id] || []).push(x); });
     } catch (e) {}
+    /* Festivos de los dos últimos meses y las dos próximas semanas: lo que
+       abarcan la lista, la rejilla semanal y el recuento del mes. */
+    try {
+      if (window.APOLANA_FESTIVOS) {
+        var _d = deISO(fechaHoy());
+        FEST = await window.APOLANA_FESTIVOS.cargar(sb,
+          iso(new Date(_d.getFullYear(), _d.getMonth() - 2, 1)),
+          iso(new Date(_d.getFullYear(), _d.getMonth(), _d.getDate() + 14)));
+      }
+    } catch (e) { FEST = null; }
 
     var a = await sb.from('atletas')
       /* El permiso de imagen entra aquí desde la 135: esta pantalla se usa
@@ -1189,9 +1214,12 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (abierto) {
       var c = cuentaGrupo(abierto.id);
       var hora = horaDelDia(abierto.id, dowDe(LST.fecha || fechaHoy()));
+      var festAb = festivoGrupo(abierto.id, LST.fecha || fechaHoy());
       h += '<div class="g-abierto"><div class="g-cab"><h2>' + esc(abierto.nombre) + '</h2>' +
         (hora ? '<span class="g-hora">' + esc(hora) + '</span>' : '') +
-        '<span class="g-cuenta">' + (c.total ? marcadosDe(c) : 'sin atletas') + '</span></div>';
+        '<span class="g-cuenta">' + (c.total ? marcadosDe(c) : 'sin atletas') + '</span></div>' +
+        (festAb ? '<div class="apo-fest-dia"><b>Ese día no se entrena</b><span>' + esc(textoFestivo(festAb)) +
+          '. Si al final hubo entreno, puedes pasar lista igual.</span></div>' : '');
       var atls = atletasDeGrupo(abierto.id);
       if (LST.cargando) {
         h += esqueleto(Math.min(atls.length || 3, 6));
@@ -1215,6 +1243,15 @@ window.APOLANA_ADMIN.listo(function (sb) {
     var restoHoy = hoyG.filter(function (g) { return g.id !== LST.grupo && conGente(g); });
     var otros = GRUPOS.filter(function (g) { return g.id !== LST.grupo && hoyG.indexOf(g) === -1 && conGente(g); });
 
+    var festHoy = null;
+    GRUPOS.some(function (g) {
+      if (!conGente(g) || !entrenaDia(g.id, dowDe(fechaHoy()))) return false;
+      festHoy = festivoGrupo(g.id, fechaHoy());
+      return !!festHoy;
+    });
+    if (festHoy && !abierto) {
+      h += '<div class="apo-fest-dia"><b>Hoy no se entrena</b><span>' + esc(textoFestivo(festHoy)) + '</span></div>';
+    }
     if (restoHoy.length) {
       h += '<div class="g-plegados"><span class="g-et">' +
         (abierto ? 'También entrenan hoy' : 'Entrenan hoy') + '</span>' +
@@ -1223,7 +1260,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (!abierto) {
       var hoyConGente = hoyG.filter(conGente);
       if (!hoyConGente.length) {
-        h += '<p class="p-vacio">Hoy no tiene entrenamiento ningún grupo tuyo con horario fijo. Abre abajo el que necesites.</p>';
+        h += '<p class="p-vacio">' + (festHoy ? 'Hoy no entrena ningún grupo tuyo.' : 'Hoy no tiene entrenamiento ningún grupo tuyo con horario fijo.') + ' Abre abajo el que necesites.</p>';
       } else if (!hoyConGente.some(function (g) { return cuentaGrupo(g.id).sinMarcar > 0; })) {
         /* No se abre ninguno a propósito: abrir un entreno terminado no aporta
            nada y hace dudar de si falta algo. */
@@ -1254,6 +1291,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
     if (!esHoy) {
       /* Hoy no le toca: decir cuándo entrena es más útil que «sin empezar». */
       estado = c.total === 0 ? 'sin atletas' : (diasDeGrupo(g.id) || 'sin horario fijo');
+      if (c.total && entrenaDia(g.id, dowDe(fechaHoy())) && festivoGrupo(g.id, fechaHoy())) estado = (festivoGrupo(g.id, fechaHoy()).tipo === 'cierre' ? 'cierre' : 'festivo') + ' hoy · no entrena';
     } else if (c.total === 0) {
       estado = 'sin atletas';
     } else if (c.marcados === c.total) {
@@ -1461,6 +1499,7 @@ window.APOLANA_ADMIN.listo(function (sb) {
        grupo y de una semana. Con su grupo principal se decía que no tocaba
        en la lista del segundo grupo, donde sí tocaba. */
     if (!entrenaDia(LST.grupo || a.grupo_id, dowDe(fecha))) return { c: 'pt--nada', t: 'no contaba · ese día no le toca' };
+    if (festivoGrupo(LST.grupo || a.grupo_id, fecha)) return { c: 'pt--nada', t: 'no contaba · ' + (festivoGrupo(LST.grupo || a.grupo_id, fecha).tipo === 'cierre' ? 'cierre' : 'festivo') };
     return { c: 'pt--sin', t: 'aún sin dato · no se pasó lista' };
   }
 

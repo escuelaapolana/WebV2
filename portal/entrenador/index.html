@@ -17,6 +17,7 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/festivos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/descansos.js"></script>
 <script src="../../assets/js/estadisticas.js" defer></script>
@@ -1552,6 +1553,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function plantillaIA(grupoId){ return PLANTILLA_IA[seccionDeGrupo(grupoId)] || null; }
   // Sitio habitual del grupo, sacado de su horario ('… · Pista municipal')
   function lugarDeGrupo(id){ var g = grupoPorId(id); return g ? lugarDeHorario(g.horario) : ''; }
+  /* Festivos y cierres (mig 320, assets/js/festivos.js). Se cargan con el
+     inicio (dos meses atrás y un mes adelante); si fallan, nada se cae. */
+  var FEST = null;
+  function festivoDeGrupo(id, fecha){
+    if(!FEST) return null;
+    var g = grupoPorId(id) || {};
+    return FEST.de(fecha, { seccion: g.seccion, grupo_id: id, lugar: lugarDeGrupo(id) });
+  }
+  function festivoDeMisGrupos(fecha){
+    for(var i=0;i<MIS_GRUPOS.length;i++){ var e = festivoDeGrupo(MIS_GRUPOS[i].id, fecha); if(e) return e; }
+    return null;
+  }
+  function textoFestivo(e){
+    var m = window.APOLANA_FESTIVOS.motivo(e);
+    return (e.tipo==='cierre' ? 'Cierre' : 'Festivo') + (m ? ' · '+m : '');
+  }
   // ¿El grupo entrena en el agua? Se mira la sección del grupo (natacion,
   // escuela-natacion, triatlon) y, si no, su nombre. Solo sirve para DEJAR
   // MARCADA por defecto la casilla de material: el entrenador siempre puede
@@ -2158,6 +2175,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargarHoy(){
     HOY.sesiones = []; HOY.siguiente = null; HOY.semana = []; HOY.apuntados = {};
     if(!MIS_GRUPOS.length) return;
+    try {
+      if(window.APOLANA_FESTIVOS) FEST = await window.APOLANA_FESTIVOS.cargar(sb, addDias(todayISO,-62), addDias(todayISO,31));
+    } catch(e){ FEST = null; }
     var ids = MIS_GRUPOS.map(function(g){ return g.id; });
     /* La semana entera, para la tira del inicio. Es UNA consulta más y evita
        que el entrenador tenga que entrar en el planificador solo para ver qué
@@ -2242,12 +2262,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var ses = HOY.semana.filter(function(x){ return x.fecha===iso; });
       var d = new Date(iso+'T00:00:00');
       var ap = ses.reduce(function(a,x){ return a+(HOY.apuntados[x.id]||0); }, 0);
+      var fx = festivoDeMisGrupos(iso);
       var cls = 'te-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'')+(iso===(ENT_OJEO||todayISO)?' sel':'');
       h += '<button type="button" class="'+cls+'" data-ojear-ent="'+iso+'" '+
-           'title="'+esc(formatFecha(iso)+(ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento'))+'">'+
+           'title="'+esc(formatFecha(iso)+(ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento')+(fx?' · '+textoFestivo(fx):''))+'">'+
            '<span class="te-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
            '<span class="te-num">'+d.getDate()+'</span>'+
-           '<span class="te-et">'+esc(ses.length?(nombreDeporte(ses[0].deporte)||tipoNombre(ses[0].tipo)||'entreno'):'libre')+'</span>'+
+           '<span class="te-et">'+esc(ses.length?(nombreDeporte(ses[0].deporte)||tipoNombre(ses[0].tipo)||'entreno'):(fx?(fx.tipo==='cierre'?'cierre':'festivo'):'libre'))+'</span>'+
            (ap?'<span class="te-ap">'+ap+'</span>':'')+'</button>';
     }
     return '<div class="te-semana">'+h+'</div>';
@@ -2311,9 +2332,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         : (HOY.siguiente
             ? 'La siguiente es el '+formatFecha(HOY.siguiente.fecha)+(HOY.siguiente.titulo ? ' · '+HOY.siguiente.titulo : '')+'.'
             : 'No hay nada en el calendario de tus grupos.');
+      var fxDia = festivoDeMisGrupos(diaVer);
       cont.innerHTML = TIRA + '<div class="hoy-e-no">'+
         '<div class="hn-ic">'+icVacCal+'</div>'+
-        '<div class="hn-txt"><b>Hoy no hay entrenamiento programado</b><span>'+esc(txt)+'</span></div>'+
+        (fxDia
+          ? '<div class="hn-txt"><b>'+(diaVer===todayISO?'Hoy':'Ese día')+' no se entrena</b><span>'+esc(textoFestivo(fxDia))+'</span></div>'
+          : '<div class="hn-txt"><b>Hoy no hay entrenamiento programado</b><span>'+esc(txt)+'</span></div>')+
         '<button type="button" data-planificar>Planificar</button>'+
       '</div>';
     } else {
@@ -2353,6 +2377,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             (det.length ? '<div class="he-det">'+det.join('')+'</div>' : '')+
           '</div>'+
           (!s.publicada ? '<p class="he-aviso">Está en borrador: todavía no lo ven tus atletas.</p>' : '')+
+          (festivoDeGrupo(s.grupo_id, diaVer) ? '<p class="he-aviso">Día marcado en el calendario del club: '+esc(textoFestivo(festivoDeGrupo(s.grupo_id, diaVer)))+'. Confirma con tus atletas que se entrena.</p>' : '')+
           lineaFoto+
           '<div class="he-btns">'+
             '<button type="button" class="he-lista" data-lista="'+escAttr(s.grupo_id)+'">Pasar lista</button>'+
@@ -2764,6 +2789,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var ctx = [formatFecha(LST.fecha), (gr && gr.horario ? gr.horario : ''), (gr ? gr.nombre : '')].filter(Boolean).join(' · ');
     var cab = '<div class="lst-cab"><div><span class="lst-ctx">'+marcarNombres(esc(ctx))+'</span><span class="lst-tit">Pasar lista</span></div>'+
       '<span class="lst-contador'+(c.presentes?'':' cero')+'">'+c.presentes+'/'+c.total+'</span></div>';
+    var fxL = festivoDeGrupo(LST.grupo, LST.fecha);
+    if(fxL) cab += '<div class="apo-fest-dia"><b>Ese día no se entrena</b><span>'+esc(textoFestivo(fxL))+'. Si al final hubo entreno, pasa lista igual.</span></div>';
 
     /* A estos les falta el entrenador en su ficha. La lista se les pasa con
        normalidad —eso ya no depende de la ficha, sino del grupo—, pero todo

@@ -11,6 +11,7 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/festivos.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
 <script src="../../assets/js/portal-tabbar.js" defer></script>
 <style>
@@ -128,6 +129,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var HIJOS = Object.keys(porHijo).map(function(k){ return porHijo[k]; });
   HIJOS.forEach(function(h){ h.franjas.sort(function(a,b){ return a.dia!==b.dia?a.dia-b.dia:(a.hora<b.hora?-1:1); }); });
 
+  // Festivos y cierres de las próximas 5 semanas (mig 320): ese día no hay clase
+  // y no se ofrece «no viene». Si la consulta falla, se pinta como siempre.
+  var FEST = null;
+  try {
+    var _h = new Date(), _f = new Date(_h.getFullYear(), _h.getMonth(), _h.getDate() + 35);
+    if (window.APOLANA_FESTIVOS) FEST = await APOLANA_FESTIVOS.cargar(sb, iso(_h), iso(_f));
+  } catch(e){}
+  function festivoNat(p, fe){
+    if (!FEST) return null;
+    return FEST.de(fe, { seccion: /^escuela/i.test(p.tipo||'') ? 'escuela-natacion' : 'natacion' });
+  }
+
   // Fichas (para la ficha editable)
   var FICHA = {};
   var ids = HIJOS.map(function(h){ return h.id; }).filter(Boolean);
@@ -161,7 +174,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<span class="qq"><b>Natación</b><span>'+esc(detalle)+'</span></span><span class="chev">›</span></button>'+
       '<div class="fa-ent-cuerpo">'+
         '<div class="fa-sub">¿Algún día no viene?</div>'+
-        '<div class="fa-faltas">'+ fechas.map(function(fe){ return faltaChip(h.id, p.franja_id, fe, !!faltasSet[fe]); }).join('') +'</div>'+
+        '<div class="fa-faltas">'+ fechas.map(function(fe){
+          var fx = festivoNat(p, fe);
+          if (fx) {
+            var mo = APOLANA_FESTIVOS.motivo(fx);
+            return '<span class="fa-falta" style="cursor:default" title="'+esc(APOLANA_FESTIVOS.rotulo(fx, 'clase')+(mo?' · '+mo:''))+'">'+
+              esc(fechaCorta(fe))+'<small class="apo-fest" style="margin:0">'+(fx.tipo==='cierre'?'Cierre':'Festivo')+'</small></span>';
+          }
+          return faltaChip(h.id, p.franja_id, fe, !!faltasSet[fe]);
+        }).join('') +'</div>'+
         (comps.length ? '<div class="fa-sub">Compañeros de esa franja</div><div class="fa-comp">'+comps.map(function(c){ return '<span>'+esc(c)+'</span>'; }).join('')+'</div>' : '')+
         (incs.length ? '<div class="fa-sub">Se incorporan (por bono)</div><div class="fa-comp">'+incs.map(function(x){ return '<span style="color:#2F6FA8">★ '+esc(x.nombre)+' · '+esc(fechaCorta(x.fecha))+'</span>'; }).join('')+'</div>' : '')+
       '</div>'+

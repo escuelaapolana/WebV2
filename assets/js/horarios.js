@@ -162,6 +162,7 @@
   var entrenos = [];      // { dia, inicio, fin, nombre, lugar, nota, familia, crudo }
   var otros = [];         // grupos cuyo horario no se ha podido colocar
   var filtro = 'todos';
+  var FEST = null;        // festivos y cierres de esta semana (assets/js/festivos.js, mig 320)
 
   /* ---------- Fechas ---------- */
   function hoy() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
@@ -212,7 +213,8 @@
           entrenos.push({
             dia: d, inicio: f.inicio, fin: f.fin,
             nombre: g.nombre, lugar: r.lugar, nota: f.nota || r.matiz,
-            entrenador: g.entrenador || '', familia: fam, crudo: crudo
+            entrenador: g.entrenador || '', familia: fam, crudo: crudo,
+            grupo_id: g.id, seccion: g.seccion
           });
         });
       });
@@ -269,9 +271,42 @@
     return out;
   }
 
+  /* ---------- Festivos y cierres ----------
+     La parrilla es la semana EN CURSO, con su fecha: si ese día es festivo
+     (o se cierra la sección, el grupo o la instalación) sus entrenos no se
+     pintan y el día lo dice. Misma regla que la base: APOLANA_FESTIVOS. */
+  function claveDia(d) {
+    var f = diasDeLaSemana()[d];
+    return f.getFullYear() + '-' + (f.getMonth() < 9 ? '0' : '') + (f.getMonth() + 1) + '-' + (f.getDate() < 10 ? '0' : '') + f.getDate();
+  }
+  function festivoDe(e, d) {
+    return FEST ? FEST.de(claveDia(d), { seccion: e.seccion, grupo_id: e.grupo_id, lugar: e.lugar }) : null;
+  }
+  /* Aviso del día: qué se cae y por qué. Vacío si no se cae nada. */
+  function notaFestivo(d) {
+    if (!FEST) return '';
+    var todos = entrenos.filter(function (e) { return e.dia === d && (filtro === 'todos' || e.familia.clave === filtro); });
+    var caidos = [], motivos = [], vistos = {};
+    todos.forEach(function (e) {
+      var x = festivoDe(e, d);
+      if (!x) return;
+      caidos.push(e);
+      var m = window.APOLANA_FESTIVOS.motivo(x);
+      var que = x.tipo === 'cierre' ? 'cierre' : 'festivo';
+      var quien = x.grupo_id ? e.nombre : (x.seccion ? familiaDe(x.seccion).etiqueta : '');
+      var t = (quien ? quien + ': ' + que : que.charAt(0).toUpperCase() + que.slice(1)) + (m ? ' · ' + m : '');
+      if (x.lugar) t += ' (' + x.lugar + ')';
+      if (!vistos[t]) { vistos[t] = true; motivos.push(t); }
+    });
+    if (!caidos.length) return '';
+    var todosCaen = caidos.length === todos.length;
+    return '<div class="apo-fest-dia"><b>' + (todosCaen ? 'Sin entrenos' : 'Algunos no entrenan') + '</b><span>' +
+           esc(motivos.join(' · ')) + '</span></div>';
+  }
+
   function entrenosDelDia(d) {
     var lista = entrenos.filter(function (e) {
-      return e.dia === d && (filtro === 'todos' || e.familia.clave === filtro);
+      return e.dia === d && (filtro === 'todos' || e.familia.clave === filtro) && !festivoDe(e, d);
     }).sort(function (a, b) {
       var x = minutos(a.inicio) - minutos(b.inicio);
       return x !== 0 ? x : a.nombre.localeCompare(b.nombre, 'es');
@@ -321,7 +356,8 @@
                   '<span class="dia">' + (esHoy ? 'Hoy' : DIAS_CORTO[d]) + '</span>' +
                   '<span class="num">' + (fechas[d].getDate() < 10 ? '0' : '') + fechas[d].getDate() + '</span>' +
                 '</div>' +
-                (lista.length ? lista.map(function (x) { return htmlTarjeta(x, true); }).join('') : '<div class="hor-vacio">Sin entrenos</div>') +
+                notaFestivo(d) +
+                (lista.length ? lista.map(function (x) { return htmlTarjeta(x, true); }).join('') : (notaFestivo(d) ? '' : '<div class="hor-vacio">Sin entrenos</div>')) +
               '</div>';
     }
     document.getElementById('hor-parrilla').innerHTML = html;
@@ -333,7 +369,8 @@
     for (var d = 0; d < 7; d++) {
       var lista = entrenosDelDia(d);
       var esHoy = (d === indiceHoy);
-      var cuenta = lista.length ? (lista.length + (lista.length === 1 ? ' entreno' : ' entrenos')) : 'Sin entrenos';
+      var nf = notaFestivo(d);
+      var cuenta = lista.length ? (lista.length + (lista.length === 1 ? ' entreno' : ' entrenos')) : (nf ? 'Festivo' : 'Sin entrenos');
       html += '<details class="' + (esHoy ? 'hoy' : '') + '"' + (d === abiertoPorDefecto ? ' open' : '') + '>' +
                 '<summary>' +
                   '<span class="dia">' + (esHoy ? 'Hoy' : DIAS_LARGO[d]) + '</span>' +
@@ -341,8 +378,8 @@
                   '<span class="cuenta">' + cuenta + '</span>' +
                   '<span class="caret" aria-hidden="true"></span>' +
                 '</summary>' +
-                '<div class="cuerpo-dia">' +
-                  (lista.length ? lista.map(htmlTarjeta).join('') : '<div class="hor-vacio">Sin entrenos</div>') +
+                '<div class="cuerpo-dia">' + nf +
+                  (lista.length ? lista.map(htmlTarjeta).join('') : (nf ? '' : '<div class="hor-vacio">Sin entrenos</div>')) +
                 '</div>' +
               '</details>';
     }
@@ -461,6 +498,14 @@
               r2.data.forEach(function (e) { porId[e.id] = e.nombre; });
               grupos.forEach(function (g) { g.entrenador = porId[g.entrenador_id] || ''; });
             }
+          })
+          .catch(function () {})
+          /* Festivos de la semana en curso: si no llegan, la parrilla sale igual. */
+          .then(function () {
+            if (!window.APOLANA_FESTIVOS) return;
+            var f = diasDeLaSemana();
+            var k = function (x) { return x.getFullYear() + '-' + (x.getMonth() < 9 ? '0' : '') + (x.getMonth() + 1) + '-' + (x.getDate() < 10 ? '0' : '') + x.getDate(); };
+            return window.APOLANA_FESTIVOS.cargar(window.APOLANA_DB, k(f[0]), k(f[6])).then(function (F) { FEST = F; });
           })
           .catch(function () {})
           .then(function () {
