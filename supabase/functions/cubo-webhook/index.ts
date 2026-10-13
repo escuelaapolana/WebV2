@@ -186,7 +186,7 @@ async function patchEntreno(filtro: string, cambios: Record<string, unknown>) {
 
 async function getEntreno(id: string): Promise<Record<string, any> | null> {
   const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id&id=eq.${encodeURIComponent(id)}&limit=1`,
+    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id,fin&id=eq.${encodeURIComponent(id)}&limit=1`,
     { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
   );
   if (!r.ok) return null;
@@ -196,13 +196,15 @@ async function getEntreno(id: string): Promise<Record<string, any> | null> {
 
 // Programa la cancelación de la suscripción tras el cargo de abril (cancel_at).
 // Se hace una sola vez (cancel_programado). Elige la clave por livemode.
-async function programarCancelEntreno(subId: string, livemode: boolean) {
+async function programarCancelEntreno(subId: string, livemode: boolean, fin?: string | null) {
   const key = livemode ? SK_LIVE : SK_TEST;
   if (!key || !subId) return;
   const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: `cancel_at=${ENTRENO_CANCEL_AT}`,
+    // Cuota con `fin` (mig 313, p. ej. la mensual de natación hasta el 30-jun):
+    // se para al FINAL de ese día. Sin `fin`: la regla de la trimestral (tras abril).
+    body: `cancel_at=${fin ? Math.floor(Date.parse(`${fin}T21:00:00Z`) / 1000) : ENTRENO_CANCEL_AT}`,
   });
   if (!r.ok) console.error("No se pudo programar cancel_at de entreno:", r.status, await r.text().catch(() => ""));
   return r.ok;
@@ -346,7 +348,7 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
         // Programar la cancelación tras abril (una sola vez).
         const cuota = await getEntreno(cuotaId);
         if (subId && cuota && cuota.cancel_programado !== true) {
-          await programarCancelEntreno(subId, livemode);
+          await programarCancelEntreno(subId, livemode, cuota.fin);
           await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { cancel_programado: true });
         }
       }

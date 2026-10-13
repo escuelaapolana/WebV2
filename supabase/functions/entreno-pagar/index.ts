@@ -34,8 +34,8 @@ const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
 
-function vuelta(resultado: "hecho" | "cancelado", token: string): string {
-  return `${URL_BASE}entreno/cuota/?pago=${resultado}&t=${encodeURIComponent(token)}`;
+function vuelta(resultado: "hecho" | "cancelado", token: string, mensual = false): string {
+  return `${URL_BASE}entreno/cuota/?pago=${resultado}&t=${encodeURIComponent(token)}${mensual ? "&m=1" : ""}`;
 }
 
 function cors(origen: string | null): Record<string, string> {
@@ -124,12 +124,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // --- La fila de la cuota, por su token ---
   const rC = await rest(
-    `cuotas_entreno?select=id,atleta_id,perfil_id,nombre,apellidos,email,concepto,importe_cent,cobro_abierto,stripe_subscription_id,suscripcion_estado&token=eq.${encodeURIComponent(token)}&limit=1`,
+    `cuotas_entreno?select=id,atleta_id,perfil_id,nombre,apellidos,email,concepto,importe_cent,cobro_abierto,stripe_subscription_id,suscripcion_estado,periodicidad,fin&token=eq.${encodeURIComponent(token)}&limit=1`,
   );
   const c = Array.isArray(rC.datos) ? rC.datos[0] as {
     id: string; atleta_id: string; perfil_id: string | null; nombre: string; apellidos: string;
     email: string; concepto: string; importe_cent: number; cobro_abierto: boolean;
     stripe_subscription_id: string | null; suscripcion_estado: string;
+    periodicidad: string | null; fin: string | null;
   } : null;
   if (!c) return responder({ error: "no_existe", mensaje: "No encontramos tu cuota. Escríbenos y lo miramos." }, 404, origen);
 
@@ -137,7 +138,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "cerrado", mensaje: "Tu cuota no está abierta ahora mismo. El club te avisará." }, 409, origen);
   }
   if (c.stripe_subscription_id && c.suscripcion_estado === "activa") {
-    return responder({ error: "ya_activa", mensaje: "Tu cuota ya está domiciliada y se cobra sola cada trimestre. No hace falta hacer nada más." }, 409, origen);
+    return responder({ error: "ya_activa", mensaje: "Tu cuota ya está domiciliada y se cobra sola. No hace falta hacer nada más." }, 409, origen);
   }
   // Mandato ya firmado y primer adeudo en camino (mig 311): no abrir otra
   // suscripción, que se cobraría dos veces.
@@ -160,8 +161,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("payment_method_types[0]", "sepa_debit");
   params.set("client_reference_id", referencia);
   if (c.email) params.set("customer_email", c.email);
-  params.set("success_url", vuelta("hecho", token));
-  params.set("cancel_url", vuelta("cancelado", token));
+  const mensual = c.periodicidad === "mensual";
+  params.set("success_url", vuelta("hecho", token, mensual));
+  params.set("cancel_url", vuelta("cancelado", token, mensual));
 
   // Cuota trimestral: se cobra HOY (octubre) y cada 3 meses (ene, abr). El
   // webhook programará la cancelación tras abril (en junio no se pasa nada).
@@ -169,8 +171,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("line_items[0][price_data][currency]", "eur");
   params.set("line_items[0][price_data][unit_amount]", String(importeCent));
   params.set("line_items[0][price_data][recurring][interval]", "month");
-  params.set("line_items[0][price_data][recurring][interval_count]", "3");
-  params.set("line_items[0][price_data][product_data][name]", "Cuota de entrenamiento (trimestral) · Club Atletismo Apolana");
+  params.set("line_items[0][price_data][recurring][interval_count]", mensual ? "1" : "3");
+  params.set("line_items[0][price_data][product_data][name]",
+    mensual ? `${c.concepto || "Cuota mensual"} · Club Atletismo Apolana`
+            : "Cuota de entrenamiento (trimestral) · Club Atletismo Apolana");
+  if (mensual) {
+    // MENSUAL (mig 313): se cobra el DÍA 1 de cada mes. El mes en curso va
+    // como cargo único al domiciliar (línea 1) y la cuota recurrente arranca
+    // el 1 del mes que viene sin prorratear. La parada (cancel_at = `fin`) la
+    // programa el webhook al nacer la suscripción.
+    const hoy = new Date();
+    const anclaje = Math.floor(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1, 1, 9, 0, 0) / 1000);
+    params.set("subscription_data[billing_cycle_anchor]", String(anclaje));
+    params.set("subscription_data[proration_behavior]", "none");
+    const mesActual = hoy.toLocaleDateString("es-ES", { month: "long", year: "numeric", timeZone: "Europe/Madrid" });
+    params.set("line_items[1][quantity]", "1");
+    params.set("line_items[1][price_data][currency]", "eur");
+    params.set("line_items[1][price_data][unit_amount]", String(importeCent));
+    params.set("line_items[1][price_data][product_data][name]", `${c.concepto || "Cuota"} · ${mesActual}`);
+  }
 
   // Etiquetas para que el webhook case el cobro y el export de Stripe sepa quién es.
   params.set("subscription_data[metadata][referencia]", referencia);
