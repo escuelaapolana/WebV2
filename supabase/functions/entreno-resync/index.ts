@@ -140,7 +140,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       aFecha(s.items?.data?.[0]?.current_period_end) ??
       aFecha(s.trial_end);
     const inv: any = s.latest_invoice;
-    const pi: any = inv?.payment_intent;
+    let pi: any = inv?.payment_intent;
+    // En las versiones nuevas de la API la factura ya no trae
+    // `payment_intent`: los pagos van en `invoice_payments`. Sin esto no se
+    // distingue «en proceso (SEPA)» de «pendiente» (todo salía pendiente).
+    if ((!pi || typeof pi === "string") && inv?.id && inv.status !== "paid") {
+      const rP = await stripeGet(`invoice_payments?invoice=${encodeURIComponent(inv.id)}&limit=5&expand[]=data.payment.payment_intent`);
+      const pagos: any[] = Array.isArray(rP.datos?.data) ? rP.datos.data : [];
+      const pago = pagos.find((x) => x?.payment?.payment_intent) ?? null;
+      const cand = pago?.payment?.payment_intent ?? pi;
+      if (cand && typeof cand === "object") pi = cand;
+      else if (typeof cand === "string") {
+        const rPi = await stripeGet(`payment_intents/${encodeURIComponent(cand)}`);
+        if (rPi.ok && rPi.datos && !rPi.datos.error) pi = rPi.datos;
+      }
+    }
     const facturaEstado = inv ? String(inv.status ?? "") : null;
     const piEstado = pi ? String(pi.status ?? "") : null;
     // Último cobro = fecha de pago de la última factura, si está pagada.
@@ -154,9 +168,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (inv) {
       if (inv.status === "paid") cobro = "cobrado";
       else if (piEstado === "processing") cobro = "en proceso (SEPA)";
-      else if (inv.status === "open") cobro = "pendiente de cobro";
       else if (inv.status === "void" || inv.status === "uncollectible") cobro = "anulada/incobrable";
-      else if (piEstado === "requires_payment_method" || piEstado === "canceled") cobro = "falló / sin método";
+      // Un adeudo devuelto deja la factura «open» con el pago sin método:
+      // hay que mirarlo ANTES que «open» o nunca se vería.
+      else if (inv.attempted && (piEstado === "requires_payment_method" || piEstado === "canceled")) cobro = "falló / sin método";
+      else if (inv.status === "open") cobro = "pendiente de cobro";
       else cobro = inv.status || "desconocido";
     }
     const facturaImporte = inv && Number.isFinite(Number(inv.total)) ? Number(inv.total) / 100 : null;
