@@ -12,7 +12,10 @@
 <script src="../../assets/js/supabase.js" defer></script>
 <script src="../../assets/js/db.js" defer></script>
 <script src="../../assets/js/portal-auth.js"></script>
-<script src="../../assets/js/portal-tabbar.js" defer></script>
+<!-- FLUIDEZ: blocking="render" = el primer fotograma espera a que la barra de abajo
+     se haya pintado (con la de arriba «de antemano»), para que la transición entre
+     pestañas las deje quietas en vez de hacerlas parpadear. Navegadores sin soporte lo ignoran. -->
+<script src="../../assets/js/portal-tabbar.js" defer blocking="render"></script>
 <script src="../../assets/js/cubo-cuota.js" defer></script>
 <style>
   :root{ --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif;
@@ -86,6 +89,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="chev" aria-hidden="true">›</span></a>';
   }
 
+  // FLUIDEZ: la consulta de la domiciliación no depende de nada → se lanza YA,
+  // en paralelo con lo de abajo (antes iba detrás, en fila).
+  var pSepa = Promise.resolve(sb.from('sepa_mandato_texto').select('id').eq('activo', true).limit(1))
+    .then(function (r) { return r; }, function () { return null; });
+
   // ¿Es atleta (algún grupo NO-Cubo)? ¿Academia? → para mostrar sus cosas en «Más»
   var esAtleta = false, esAcademia = false;
   try {
@@ -98,8 +106,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (rag && !rag.error && rag.data) rag.data.forEach(function (x) { gids.push(x.grupo_id); });
     }
     if (gids.length) {
-      var rg = await sb.from('grupos').select('id,nombre,seccion').in('id', gids);
-      if (rg && !rg.error && rg.data) rg.data.forEach(function (g) {
+      // FLUIDEZ: los grupos ya los trae (y guarda) portal-auth.js con nombre y
+      // sección; se miran ahí sin otra petición. Si no estuvieran, a la base.
+      var todos = null;
+      try {
+        var gAll = APOLANA_PORTAL.grupos ? await APOLANA_PORTAL.grupos() : null;
+        if (gAll && !gAll.error && gAll.data && gAll.data.length) todos = gAll.data;
+      } catch (e) { todos = null; }
+      var rgData = null;
+      if (todos) {
+        rgData = todos.filter(function (g) { return gids.indexOf(g.id) !== -1; });
+        var vistos = rgData.map(function (g) { return g.id; });
+        // Si falta alguno (grupo recién creado), mejor preguntar a la base.
+        if (gids.some(function (id) { return vistos.indexOf(id) === -1; })) rgData = null;
+      }
+      if (!rgData) {
+        var rg = await sb.from('grupos').select('id,nombre,seccion').in('id', gids);
+        if (rg && !rg.error && rg.data) rgData = rg.data;
+      }
+      (rgData || []).forEach(function (g) {
         if (g.seccion && g.seccion !== 'cubo') esAtleta = true;
         if (g.nombre && /academia|ac98/i.test(g.nombre)) esAcademia = true;
       });
@@ -110,7 +135,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // entonces se ofrece «Domiciliación bancaria»: si no, llevaría a un callejón.
   var sepaActiva = false;
   try {
-    var rsep = await sb.from('sepa_mandato_texto').select('id').eq('activo', true).limit(1);
+    var rsep = await pSepa;
     sepaActiva = !!(rsep && rsep.data && rsep.data.length);
   } catch (e) {}
   // ¿Es socio? La domiciliación es de SOCIOS (cuota anual) y cuotas de pista/

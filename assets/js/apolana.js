@@ -738,7 +738,17 @@ document.addEventListener('DOMContentLoaded', async function () {
       try {
         if (location.pathname.indexOf('/portal/') === -1) {
           var rcc = await db.rpc('debo_cambiar_clave');
-          if (rcc && rcc.data === true) { location.replace(location.origin + '/portal/'); return; }
+          if (rcc && rcc.data === true) {
+            /* El portal guarda unos minutos «no hay que cambiarla» (apo-clave-*):
+               se borra para que allí se vuelva a preguntar y salga la pantalla. */
+            try {
+              for (var ic = sessionStorage.length - 1; ic >= 0; ic--) {
+                var kc = sessionStorage.key(ic);
+                if (kc && kc.indexOf('apo-clave-') === 0) sessionStorage.removeItem(kc);
+              }
+            } catch (e) { /* sin sessionStorage, no hay nada guardado */ }
+            location.replace(location.origin + '/portal/'); return;
+          }
         }
       } catch (e) { /* si falla, se sigue como siempre */ }
       var correo = (s.user && s.user.email) || '';

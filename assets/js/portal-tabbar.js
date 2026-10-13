@@ -287,6 +287,46 @@
       document.body.classList.add('pt-con-tabbar');
     }
     nodo.innerHTML = html;
+    precargar(tabs);
+  }
+
+  /* ---------- FLUIDEZ · precarga de las pestañas ----------
+     portal-auth.js ya precarga Inicio · Lo mío · Calendario · Más. Aquí se
+     añaden las pestañas REALES de esta barra (p. ej. la zona del Cubo o de la
+     familia), con el mismo patrón que mundos.js: «speculation rules» (solo
+     prefetch: trae el HTML, no ejecuta la página) y, si el navegador no las
+     entiende, el <link rel=prefetch> de siempre. Una vez por página. */
+  var _precargado = {};
+  function precargar(tabs) {
+    try {
+      var urls = [];
+      tabs.forEach(function (t) {
+        var u = String(t.url || '').split('#')[0];
+        if (!u || _precargado[u]) return;
+        var abs;
+        try { abs = new URL(u, location.href); } catch (e) { return; }
+        if (abs.origin !== location.origin || abs.pathname === location.pathname) return;
+        /* Las cuatro comunes ya las precarga portal-auth.js: no repetir. */
+        if (/\/portal\/(inicio|lo-mio|calendario|mas)\/(index\.html)?$/.test(abs.pathname)) return;
+        _precargado[u] = true;
+        urls.push(u);
+      });
+      if (!urls.length) return;
+      var reglas = false;
+      try { reglas = !!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')); } catch (e) {}
+      if (reglas) {
+        var sr = document.createElement('script');
+        sr.type = 'speculationrules';
+        sr.textContent = JSON.stringify({ prefetch: [{ source: 'list', urls: urls, eagerness: 'moderate' }] });
+        document.head.appendChild(sr);
+      } else {
+        urls.forEach(function (u) {
+          var l = document.createElement('link');
+          l.rel = 'prefetch'; l.href = u;
+          document.head.appendChild(l);
+        });
+      }
+    } catch (e) { /* sin precarga, la barra sigue igual */ }
   }
   function quitar() {
     if (nodo && nodo.parentNode) nodo.parentNode.removeChild(nodo);
@@ -297,37 +337,105 @@
   /* ---------- arranque ----------
      La barra solo aparece con la sesión abierta: la señal es la barra
      superior que pinta portal-auth.js cuando ya hay usuario. */
+  /* La barra de arriba puede ser la REAL (.pt-top) o la copia «de antemano»
+     (.pt-top.pt-previa, que pinta portal-auth.js desde la caché antes del
+     primer fotograma, cuando ya hubo sesión en esta pestaña). Con la copia
+     basta para pintar ya la barra de abajo con la zona recordada: así las dos
+     barras están en la página nueva desde el principio y la transición entre
+     pestañas las deja quietas. Lo que depende de los papeles espera a la
+     sesión de verdad. */
+  function hayBarraReal() { return !!document.querySelector('.pt-top:not(.pt-previa)'); }
   function esperarSesion(cb) {
-    var t0 = Date.now();
+    var t0 = Date.now(), hecho = false;
+    function ya() {
+      if (hecho) return;
+      hecho = true;
+      document.removeEventListener('apolana:pt-top', ya);
+      cb();
+    }
+    /* portal-auth.js avisa en cuanto pinta una barra: sin esperar al sondeo. */
+    document.addEventListener('apolana:pt-top', ya);
     (function mira() {
-      if (document.querySelector('.pt-top')) { cb(); return; }
-      if (Date.now() - t0 > 20000) return;      /* sin sesión: no se pinta nada */
+      if (hecho) return;
+      if (document.querySelector('.pt-top')) { ya(); return; }
+      if (Date.now() - t0 > 20000) { document.removeEventListener('apolana:pt-top', ya); return; }      /* sin sesión: no se pinta nada */
       setTimeout(mira, 120);
     })();
   }
   function esperarPapeles(cb) {
-    var t0 = Date.now();
-    (function mira() {
+    var t0 = Date.now(), hecho = false;
+    function listo() {
       var P = window.APOLANA_PORTAL;
-      if (P && typeof P.papeles === 'function') {
-        P.papeles().then(function (l) { cb(l || []); }, function () { cb([]); });
+      if (hecho || !(P && typeof P.papeles === 'function')) return false;
+      hecho = true;
+      document.removeEventListener('apolana:papeles', listo);
+      P.papeles().then(function (l) { cb(l || []); }, function () { cb([]); });
+      return true;
+    }
+    /* portal-auth.js avisa en cuanto los papeles están de camino. */
+    document.addEventListener('apolana:papeles', listo);
+    (function mira() {
+      if (hecho || listo()) return;
+      if (Date.now() - t0 > 20000) {
+        hecho = true;
+        document.removeEventListener('apolana:papeles', listo);
+        /* Sin papeles a los 20 s: solo se pinta si de verdad hay sesión (barra
+           real). Si lo que había era la copia de antemano y no llegó a haber
+           sesión, la barra de abajo se retira. */
+        if (hayBarraReal()) cb([]); else quitar();
         return;
       }
-      if (Date.now() - t0 > 20000) { cb([]); return; }
       setTimeout(mira, 120);
     })();
+  }
+  /* No había sesión (sale el login o «ponte una contraseña»): portal-auth.js
+     retira la barra de antemano y avisa; la de abajo se va con ella. */
+  document.addEventListener('apolana:sin-barra', function () {
+    if (!hayBarraReal()) quitar();
+  });
+
+  /* FLUIDEZ · Las claves (papeles) con las que se pintó la barra la última vez
+     en esta pestaña. Solo para PINTAR antes: en cuanto llegan los papeles de
+     verdad, se repinta con ellos. portal-auth.js las borra al cerrar sesión o
+     cambiar de vista (prefijo 'apo-barra'). */
+  var CLAVE_CLAVES = 'apo-barra-claves';
+  /* Atadas a la persona: solo valen si el correo de la sesión guardada en el
+     aparato es el mismo con el que se guardaron. */
+  function correoActual() {
+    try {
+      var P = window.APOLANA_PORTAL;
+      return (P && typeof P.correoDelAparato === 'function') ? (P.correoDelAparato() || '') : '';
+    } catch (e) { return ''; }
+  }
+  function clavesGuardadas() {
+    try {
+      var o = JSON.parse(sessionStorage.getItem(CLAVE_CLAVES) || 'null');
+      var yo = correoActual();
+      if (!o || !yo || o.email !== yo || !Array.isArray(o.claves) || !o.claves.length) return null;
+      return o.claves.filter(function (x) { return typeof x === 'string'; });
+    } catch (e) { return null; }
+  }
+  function guardarClaves(l) {
+    try {
+      var yo = correoActual();
+      if (l && l.length && yo) sessionStorage.setItem(CLAVE_CLAVES, JSON.stringify({ email: yo, claves: l }));
+    } catch (e) {}
   }
 
   function arrancar() {
     esperarSesion(function () {
-      /* Pintado inmediato con la zona que ya se venía usando, para que la
-         barra no aparezca de golpe a mitad de lectura. */
+      /* Pintado inmediato con lo que ya se venía usando (las claves de la
+         última vez o, si no, la zona recordada), para que la barra no aparezca
+         de golpe a mitad de lectura. */
+      var guardadas = clavesGuardadas();
       var previa = recordada();
-      if (previa) pintar(resolverZona([previa]), [previa]);
+      if (guardadas) pintar(resolverZona(guardadas), guardadas);
+      else if (previa) pintar(resolverZona([previa]), [previa]);
 
       esperarPapeles(function (lista) {
         var claves = (lista || []).map(function (p) { return p.clave; });
         pintar(resolverZona(claves), claves);
+        if (hayBarraReal()) guardarClaves(claves);
       });
     });
   }

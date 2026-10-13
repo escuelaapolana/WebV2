@@ -33,13 +33,35 @@
   try {
     var _vt = document.createElement('style');
     _vt.setAttribute('data-piel', 'fluidez');
-    /* Crossfade de la página ENTERA (sin nombrar las barras): las barras se
-       pintan con un pequeño retardo (tras sesión+perfil), así que nombrarlas y
-       congelarlas (animation:none) las haría «desaparecer» de golpe en cada
-       salto. El crossfade de toda la página es suave pase lo que pase y, sobre
-       todo, quita el «fogonazo blanco» de recarga. */
-    _vt.textContent = '@view-transition{navigation:auto}';
+    /* Crossfade de la página ENTERA y, además, las dos barras con NOMBRE propio
+       (pt-top arriba, pt-tabbar abajo). Con nombre, si la barra está en las dos
+       páginas, el navegador la deja QUIETA en su sitio en vez de fundirla con el
+       resto: no parpadea. Para que esté en la página nueva desde el primer
+       fotograma, la barra se pinta «de antemano» desde la caché (ver «BARRA DE
+       ANTEMANO» más abajo). Si en algún caso no llega a tiempo, el navegador la
+       funde como al resto (sin animation:none, a propósito: así nunca
+       «desaparece de golpe»).
+       · Solo con prefers-reduced-motion: no-preference (quien pide menos
+         movimiento navega como siempre, sin animación).
+       · html.pt-vt-sin-top: si la página vieja estaba desplazada (la barra de
+         arriba fuera de la vista) se le quita el nombre, para que no «baje»
+         deslizándose desde arriba al cambiar. Lo pone el evento pageswap. */
+    _vt.textContent =
+      '@media (prefers-reduced-motion:no-preference){' +
+        '@view-transition{navigation:auto}' +
+        '.pt-top{view-transition-name:pt-top}' +
+        '.pt-tabbar{view-transition-name:pt-tabbar}' +
+        'html.pt-vt-sin-top .pt-top{view-transition-name:none}' +
+        '::view-transition-group(root){animation-duration:.2s}' +
+      '}';
     (document.head || document.documentElement).appendChild(_vt);
+    window.addEventListener('pageswap', function () {
+      try {
+        var t = document.querySelector('.pt-top');
+        var fuera = !t || t.getBoundingClientRect().bottom <= 0;
+        document.documentElement.classList.toggle('pt-vt-sin-top', fuera);
+      } catch (e) { /* nada */ }
+    });
   } catch (e) { /* sin transiciones, la app sigue igual */ }
 
   /* FLUIDEZ · Prefetch de las 4 páginas del portal unificado: cuando se toca la
@@ -48,21 +70,69 @@
      ignora. Solo lista estática, nada de prerender (no ejecuta las páginas). */
   try {
     var _b = (window.APOLANA_BASE || '../../');
-    var _sr = document.createElement('script');
-    _sr.type = 'speculationrules';
-    _sr.textContent = JSON.stringify({
-      prefetch: [{ source: 'list', urls: [
-        _b + 'portal/inicio/', _b + 'portal/lo-mio/',
-        _b + 'portal/calendario/', _b + 'portal/mas/'
-      ] }]
-    });
-    (document.head || document.documentElement).appendChild(_sr);
+    /* Las cuatro, menos la página en la que ya estamos. */
+    var _urls = ['portal/inicio/', 'portal/lo-mio/', 'portal/calendario/', 'portal/mas/']
+      .filter(function (u) { return location.pathname.indexOf('/' + u) === -1; })
+      .map(function (u) { return _b + u; });
+    var _hayReglas = false;
+    try { _hayReglas = !!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')); } catch (e) {}
+    if (_hayReglas) {
+      var _sr = document.createElement('script');
+      _sr.type = 'speculationrules';
+      _sr.textContent = JSON.stringify({ prefetch: [{ source: 'list', urls: _urls }] });
+      (document.head || document.documentElement).appendChild(_sr);
+    } else if (location.pathname.indexOf('/portal/') !== -1) {
+      /* Respaldo para navegadores sin «speculation rules» (Firefox…): el
+         <link rel=prefetch> de toda la vida. Safari lo ignora: no pasa nada. */
+      _urls.forEach(function (u) {
+        var l = document.createElement('link');
+        l.rel = 'prefetch'; l.href = u;
+        (document.head || document.documentElement).appendChild(l);
+      });
+    }
   } catch (e) { /* sin prefetch, la app sigue igual */ }
+
+  /* ------------------------------------------------------------
+     CACHÉ DEL PORTAL (sessionStorage, solo esta pestaña)
+     ------------------------------------------------------------
+     Claves que guarda este archivo para pintar antes (perfil, fichas,
+     grupos, la barra, la foto, «no hay que cambiar la contraseña»).
+     SOLO sirven para PINTAR antes: los permisos los decide siempre la
+     base (RLS). Se borran al cerrar sesión y al cambiar de vista.
+     OJO: no se toca ninguna otra clave (p. ej. 'apo-mundo' es de mundos.js). */
+  var CACHE_PREFIJOS = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-'];
+  function limpiarCachePortal() {
+    try {
+      var borrar = [];
+      for (var i = 0; i < sessionStorage.length; i++) {
+        var k = sessionStorage.key(i);
+        if (!k) continue;
+        for (var j = 0; j < CACHE_PREFIJOS.length; j++) {
+          if (k.indexOf(CACHE_PREFIJOS[j]) === 0) { borrar.push(k); break; }
+        }
+      }
+      borrar.forEach(function (k) { sessionStorage.removeItem(k); });
+    } catch (e) { /* sin sessionStorage, no hay nada que limpiar */ }
+  }
+  /* Cambio de vista (papeles.js deja 'apolana.cambiando' antes de saltar): lo
+     que se guardó con la vista anterior no vale. Se limpia YA, antes de que
+     nadie lo lea (ni la barra de antemano ni el arranque). */
+  /* Se apunta aquí, al cargar: el watchdog la borra antes de que arranque()
+     llegue a leerla (va detrás de un await). */
+  var _veniaDeCambio = false;
+  try { _veniaDeCambio = !!sessionStorage.getItem('apolana.cambiando'); } catch (e) {}
+  if (_veniaDeCambio) limpiarCachePortal();
 
   var _cb = null;
   var _papeles = null;      // promesa cacheada con los papeles del usuario
   window.APOLANA_PORTAL = {
-    listo: function (cb) { _cb = cb; }
+    listo: function (cb) { _cb = cb; },
+    /* Vacía la caché de pintado del portal (perfil, barra, foto…). Para las
+       pantallas que cambian el perfil (nombre, foto): ver portal/perfil/. */
+    olvidarCache: function () { limpiarCachePortal(); },
+    /* Correo de la sesión guardada en el aparato (o ''): ata las cachés de
+       pintado a la persona, por si en la pestaña ha entrado otra. */
+    correoDelAparato: function () { return correoDelToken(); }
     /* Cuando ya hay sesión se añaden aquí abajo, y las pantallas del
        portal pueden usarlas para NO volver a pedir lo que esta
        pantalla de acceso ya ha pedido:
@@ -118,6 +188,153 @@
      (flujo implícito) o como ?code= (flujo PKCE). Si está, en cuanto haya
      sesión se enseña «Ponte una contraseña». */
   try { if (new URLSearchParams(location.search).get('recuperar') === '1') _forzarClave = true; } catch (e) {}
+
+  /* --------------------------------------------------------------
+     FLUIDEZ · BARRA DE ANTEMANO
+     --------------------------------------------------------------
+     Al cambiar de pestaña, la barra navy de arriba tardaba en salir:
+     se pinta cuando ya hay sesión y perfil, y eso es después del
+     primer fotograma. Resultado: un salto en blanco sin barra y luego
+     la barra «de golpe».
+
+     Ahora, si esta pestaña ya pintó la barra antes (lo guarda barra()
+     en sessionStorage) y hay sesión guardada en el aparato, se pinta
+     una COPIA idéntica nada más terminar de leer el HTML (antes del
+     primer fotograma). Es solo un dibujo: no se puede pulsar (inert) y
+     no decide nada. En cuanto arranque() comprueba la sesión de verdad,
+     barra() la sustituye por la real en el mismo sitio. Si resulta que
+     NO hay sesión (o hay que ponerse contraseña), se retira y sale el
+     login como siempre.
+
+     No se pinta si se llega de un enlace del correo, de «recuperar» o
+     sin rastro de sesión: ahí manda el flujo de siempre.
+     -------------------------------------------------------------- */
+  function hayTokenEnAparato() {
+    function busca(st) {
+      try {
+        if (!st) return false;
+        for (var i = 0; i < st.length; i++) {
+          var k = st.key(i);
+          if (k && /-auth-token(\.\d+)?$/.test(k) && st.getItem(k)) return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+    try { return busca(window.localStorage) || busca(window.sessionStorage); } catch (e) { return false; }
+  }
+  /* El correo de la sesión que Supabase guarda en el aparato (clave
+     «sb-…-auth-token», JSON con user.email). Si no se puede leer (no hay,
+     va troceada…), '' → no se pinta nada de antemano. */
+  function correoDelToken() {
+    function busca(st) {
+      try {
+        if (!st) return '';
+        for (var i = 0; i < st.length; i++) {
+          var k = st.key(i);
+          if (!k || !/-auth-token$/.test(k)) continue;
+          var o = JSON.parse(st.getItem(k) || 'null');
+          var u = o && (o.user || (o.currentSession && o.currentSession.user));
+          if (u && u.email) return String(u.email).toLowerCase();
+        }
+      } catch (e) {}
+      return '';
+    }
+    try { return busca(window.localStorage) || busca(window.sessionStorage); } catch (e) { return ''; }
+  }
+  function fotoCacheada(ruta, email) {
+    if (!ruta) return '';
+    if (/^(https?:|data:)/.test(ruta)) return ruta;
+    try {
+      var o = JSON.parse(sessionStorage.getItem('apo-foto') || 'null');
+      /* La URL firmada dura 1 h: se reaprovecha solo los primeros 50 min, y
+         solo para la MISMA persona. */
+      if (o && o.ruta === ruta && o.url && email && String(o.email || '').toLowerCase() === String(email).toLowerCase() &&
+          (Date.now() - o.t) < 50 * 60000) return o.url;
+    } catch (e) {}
+    return '';
+  }
+  function pintarFotoEn(boton, url) {
+    if (!boton || !url) return;
+    var hueco = boton.querySelector('span');
+    if (!hueco) return;
+    hueco.style.backgroundImage = 'url("' + String(url).replace(/"/g, '\\"') + '")';
+    hueco.style.backgroundSize = 'cover';
+    hueco.style.backgroundPosition = 'center';
+    hueco.textContent = '';
+  }
+  function avisarBarra(nombre) {
+    try { document.dispatchEvent(new CustomEvent(nombre)); } catch (e) { /* navegador muy viejo: el sondeo de la barra de abajo sigue funcionando */ }
+  }
+  function quitarBarraPrevia() {
+    try {
+      var p = document.querySelector('.pt-top.pt-previa');
+      if (p && p.parentNode) p.parentNode.removeChild(p);
+      if (p && !document.querySelector('.pt-top')) avisarBarra('apolana:sin-barra');
+    } catch (e) {}
+  }
+  function pintarBarraPrevia() {
+    try {
+      if (location.pathname.indexOf('/portal/') === -1) return;
+      if (!document.body || document.querySelector('.pt-top')) return;
+      if (_acabaDeEntrar || _delEnlace || _forzarClave) return;
+      if (/[?&]code=/.test(location.search)) return;
+      if (!hayTokenEnAparato()) return;
+      var d = JSON.parse(sessionStorage.getItem('apo-barra') || 'null');
+      if (!d || !d.email || (Date.now() - (d.t || 0)) > 12 * 3600000) return;
+      /* Solo si la sesión guardada es de la MISMA persona (si en esta pestaña
+         se cerró sesión desde el panel y ha entrado otra, no se pinta). */
+      if (correoDelToken() !== String(d.email).toLowerCase()) return;
+      var nombre = d.nombre || d.email;
+      var primerNom = String(nombre).trim().split(/\s+/)[0] || nombre;
+      var ini = ((String(d.nombre || d.email).charAt(0) || '') + (String(d.apellidos || '').charAt(0) || ''));
+      ini = (ini || String(nombre).substring(0, 2)).toUpperCase();
+      var bb = base();
+      var top = document.createElement('div');
+      top.className = 'pt-top pt-previa';
+      top.setAttribute('aria-hidden', 'true');
+      top.setAttribute('inert', '');
+      top.innerHTML =
+        '<div class="izq">' +
+          '<img class="escudo" src="' + bb + 'assets/img/logo.png" alt="">' +
+          '<span class="marca">Apolana</span>' +
+        '</div>' +
+        '<div class="der">' +
+          /* Mismas etiquetas que la barra real (a/button) para que la copia
+             mida y se vea igual al píxel; «inert» las deja sin efecto. */
+          '<a class="pt-web" href="' + bb + '" tabindex="-1">' +
+            '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+              '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>' +
+            '<span>Web</span></a>' +
+          (d.staff ? '<button type="button" class="ver-como" tabindex="-1"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><span>Ver como…</span></button>' : '') +
+          '<button type="button" class="pt-avatar" tabindex="-1">' +
+            '<span>' + esc(ini) + '</span>' +
+            '<span class="pt-nom">' + esc(primerNom) + '</span>' +
+            '<span class="pt-rol"></span>' +
+          '</button>' +
+        '</div>';
+      document.body.insertBefore(top, document.body.firstChild);
+      pintarFotoEn(top.querySelector('.pt-avatar'), fotoCacheada(d.foto_ruta, d.email));
+      avisarBarra('apolana:pt-top');
+    } catch (e) { /* sin barra de antemano: sale la de siempre, un poco después */ }
+  }
+  /* «interactive» = el HTML ya está leído entero y los scripts defer aún no
+     han corrido: es el último momento antes del primer fotograma en el que ya
+     existe <body>. Además se esconde ya el contenido (lo mismo que hace el
+     arranque en DOMContentLoaded), para que no asome un instante sin datos. */
+  function alTerminarHTML() {
+    try {
+      var c = document.getElementById('portal-contenido');
+      if (c && hayTokenEnAparato()) c.style.display = 'none';
+    } catch (e) {}
+    pintarBarraPrevia();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('readystatechange', function una() {
+      if (document.readyState === 'loading') return;
+      document.removeEventListener('readystatechange', una);
+      alTerminarHTML();
+    });
+  }
 
   /* Lo que se le dice a alguien cuyo enlace ya no vale. En cristiano
      y sin una palabra en inglés: el enlace caduca a la hora y solo
@@ -835,11 +1052,18 @@
         '<a href="' + b + 'inscripcion/">Inscribirme</a>' +
       '</div>';
     document.body.insertBefore(login, document.body.firstChild);
+    /* Por si el aviso de «HTML leído» no llegó (raro): se intenta aquí. Si ya
+       hay barra (de antemano o real), no hace nada. */
+    pintarBarraPrevia();
 
     function barra(perfil, email) {
       /* Nunca dos barras: si ya hay una pintada, no se pinta otra. Esto
          evita el «barra, franja, barra» que salía al entrar en algunas
          pantallas (la función se llamaba más de una vez). */
+      /* La copia «de antemano» (ver BARRA DE ANTEMANO) se sustituye aquí por
+         la de verdad, en el mismo sitio y en el mismo instante. */
+      var _previa = document.querySelector('.pt-top.pt-previa');
+      if (_previa && _previa.parentNode) _previa.parentNode.removeChild(_previa);
       if (document.querySelector('.pt-top')) return;
       var nombre = (perfil && perfil.nombre) ? perfil.nombre : email;
       var primerNom = String(nombre).trim().split(/\s+/)[0] || nombre;
@@ -883,6 +1107,15 @@
           '</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
+      /* Lo justo para pintar la copia de antemano en la próxima pestaña. */
+      try {
+        sessionStorage.setItem('apo-barra', JSON.stringify({
+          t: Date.now(), email: email,
+          nombre: (perfil && perfil.nombre) || '', apellidos: (perfil && perfil.apellidos) || '',
+          staff: _staff, foto_ruta: (perfil && perfil.foto_ruta) || ''
+        }));
+      } catch (e) { /* sin caché: la próxima pestaña pinta la barra como siempre */ }
+      avisarBarra('apolana:pt-top');
 
       /* «Ver como…» (solo admin/staff): abre cada vista de rol en una pestaña
          nueva para revisar cómo queda la app desde cada papel. Solo mirar; no
@@ -938,9 +1171,16 @@
           hueco.textContent = '';            /* la foto sustituye a las letras */
         };
         if (/^(https?:|data:)/.test(ruta)) { pintar(ruta); return; }
+        /* Enlace firmado ya pedido en otra pestaña (< 50 min): se reutiliza y
+           la foto sale al instante, sin parpadeo de iniciales → foto. */
+        var yaFirmada = fotoCacheada(ruta, email);
+        if (yaFirmada) { pintar(yaFirmada); return; }
         try {
           sb.storage.from('fotos-perfil').createSignedUrl(ruta, 3600).then(function (r) {
-            if (r && !r.error && r.data && r.data.signedUrl) pintar(r.data.signedUrl);
+            if (r && !r.error && r.data && r.data.signedUrl) {
+              pintar(r.data.signedUrl);
+              try { sessionStorage.setItem('apo-foto', JSON.stringify({ t: Date.now(), email: email, ruta: ruta, url: r.data.signedUrl })); } catch (e) {}
+            }
           }, function () { /* sin foto, las iniciales */ });
         } catch (e) { /* igual */ }
       })();
@@ -1059,6 +1299,8 @@
     }
 
     function mostrarLogin(m) {
+      quitarBarraPrevia();
+      limpiarCachePortal();   /* sin sesión: nada de lo guardado vale */
       login.style.display = '';
       var elC = document.getElementById('pt-clave');
       if (elC) elC.hidden = true;
@@ -1442,6 +1684,7 @@
     }
 
     function pedirClave(email) {
+      quitarBarraPrevia();
       login.style.display = '';
       elForm.hidden = true;
       elEspera.hidden = true;
@@ -1566,6 +1809,7 @@
       _forzarClave = false;
       _poniendoClave = false;
       try { await sb.rpc('cambio_clave_hecho'); } catch (e) {}   // no volver a forzar
+      limpiarCachePortal();
       try { await sb.auth.signOut(); } catch (e) {}
       // Quitar ?recuperar=1 de la URL para que un login normal no re-fuerce.
       try { var u = new URL(location.href); u.searchParams.delete('recuperar'); location.replace(u.href); return; } catch (e) {}
@@ -1655,9 +1899,9 @@
     /* Caché ligera en sessionStorage para no volver a pedir a la red, en CADA
        cambio de pestaña de la barra, cosas que no cambian entre toques (tus
        fichas y los grupos del club). Antes cada pestaña era una página nueva que
-       repetía estas consultas → se notaba la espera. El perfil (con el rol
-       activo) NO se cachea: se lee siempre fresco para que el cambio de vista
-       funcione. TTL corto: si algo cambia, se refresca solo al poco. */
+       repetía estas consultas → se notaba la espera. El perfil también se
+       cachea (ver «FLUIDEZ» en arranque()), pero se vacía al cambiar de vista
+       y al cerrar sesión. TTL corto: si algo cambia, se refresca solo al poco. */
     function deCache(clave, ttlMs) {
       try {
         var raw = sessionStorage.getItem(clave);
@@ -1670,24 +1914,46 @@
     function aCache(clave, v) {
       try { sessionStorage.setItem(clave, JSON.stringify({ t: Date.now(), v: v })); } catch (e) {}
     }
+    /* «Viejo pero válido» (stale-while-revalidate): si lo guardado tiene menos
+       de `frescoMs` se usa tal cual; si tiene menos de `maxMs` se usa YA para
+       pintar y quien llama lo refresca por detrás. Devuelve { v, viejo } o null. */
+    function deCacheSWR(clave, frescoMs, maxMs) {
+      try {
+        var raw = sessionStorage.getItem(clave);
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (!o || typeof o.t !== 'number') return null;
+        var edad = Date.now() - o.t;
+        if (edad > maxMs) return null;
+        return { v: o.v, viejo: edad > frescoMs };
+      } catch (e) { return null; }
+    }
 
     function misAtletas(id) {
       if (_atletasProm) return _atletasProm;
       _atletasProm = (async function () {
         if (!id) return { error: false, data: [] };
         var ck = 'apo-atletas-' + id;
-        var c = deCache(ck, 180000);                 // 3 min
-        if (c) return { error: false, data: c };
-        try {
-          var r = await conTiempo(sb.from('atletas')
-            .select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia,especialidades,perfil_id,perfil_padre_id,entrenador_id')
-            .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id)
-            .order('nombre'));
-          if (r && r.error) return { error: true, data: [] };
-          var data = (r && r.data) || [];
-          aCache(ck, data);
-          return { error: false, data: data };
-        } catch (e) { return { error: true, data: [] }; }
+        async function pedir() {
+          try {
+            var r = await conTiempo(sb.from('atletas')
+              .select('id,nombre,apellidos,categoria,estado,grupo_id,fecha_nacimiento,tipo_membresia,especialidades,perfil_id,perfil_padre_id,entrenador_id')
+              .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id)
+              .order('nombre'));
+            if (r && r.error) return { error: true, data: [] };
+            var data = (r && r.data) || [];
+            aCache(ck, data);
+            return { error: false, data: data };
+          } catch (e) { return { error: true, data: [] }; }
+        }
+        /* Fresco < 3 min: tal cual. Hasta 15 min: se pinta con lo guardado y se
+           refresca por detrás para la próxima pantalla. */
+        var c = deCacheSWR(ck, 180000, 900000);
+        if (c && Array.isArray(c.v)) {
+          if (c.viejo) pedir();
+          return { error: false, data: c.v };
+        }
+        return pedir();
       })();
       return _atletasProm;
     }
@@ -1699,16 +1965,23 @@
     function grupos() {
       if (_gruposProm) return _gruposProm;
       _gruposProm = (async function () {
-        var c = deCache('apo-grupos', 300000);       // 5 min (público y estable)
-        if (c) return { error: false, data: c };
-        try {
-          var r = await conTiempo(sb.from('grupos')
-            .select('id,nombre,horario,turno,seccion,entrenador_id'));
-          if (r && r.error) return { error: true, data: [] };
-          var data = (r && r.data) || [];
-          aCache('apo-grupos', data);
-          return { error: false, data: data };
-        } catch (e) { return { error: true, data: [] }; }
+        async function pedir() {
+          try {
+            var r = await conTiempo(sb.from('grupos')
+              .select('id,nombre,horario,turno,seccion,entrenador_id'));
+            if (r && r.error) return { error: true, data: [] };
+            var data = (r && r.data) || [];
+            aCache('apo-grupos', data);
+            return { error: false, data: data };
+          } catch (e) { return { error: true, data: [] }; }
+        }
+        /* Fresco < 5 min (público y estable); hasta 30 min se usa y se refresca detrás. */
+        var c = deCacheSWR('apo-grupos', 300000, 1800000);
+        if (c && Array.isArray(c.v)) {
+          if (c.viejo) pedir();
+          return { error: false, data: c.v };
+        }
+        return pedir();
       })();
       return _gruposProm;
     }
@@ -1867,6 +2140,7 @@
       hoja.addEventListener('click', function (ev) { if (ev.target === hoja) cerrar(); });
       document.getElementById('pt-hoja-cerrar').addEventListener('click', cerrar);
       document.getElementById('pt-hoja-salir').addEventListener('click', async function () {
+        limpiarCachePortal();
         await sb.auth.signOut(); location.reload();
       });
       document.getElementById('pt-hoja-pass').addEventListener('click', async function () {
@@ -1956,6 +2230,34 @@
         try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       }
 
+      /* FLUIDEZ · El perfil se empieza a traer YA, en paralelo con la
+         comprobación de la contraseña de abajo (antes iban en fila: una
+         petición detrás de otra en CADA cambio de pestaña).
+         Caché en sessionStorage (stale-while-revalidate):
+           · < 60 s → se usa tal cual;
+           · < 15 min → se usa para pintar YA y se revalida por detrás; si el
+             papel ha cambiado (rol/rol_activo/roles), se recarga una vez.
+         Se SALTA cuando venimos de recién entrar por el enlace (recienLlegado)
+         o de «cambiar de vista» (la caché ya se vació al cargar el archivo).
+         La caché solo sirve para pintar: lo que cada uno puede ver lo sigue
+         decidiendo la base (RLS) en cada consulta. */
+      var ckPerfil = 'apo-perfil-' + email;
+      var forzarPerfilFresco = recienLlegado || _veniaDeCambio;
+      function pedirPerfil() {
+        return conLimite(sb.from('perfiles')
+          .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta')
+          .eq('email', email).maybeSingle(), 8000, { error: true, data: null })
+          .then(function (r) {
+            if (r && !r.error && r.data) { aCache(ckPerfil, r.data); return r.data; }
+            return null;
+          }, function () { return null; /* si aún no hay permisos de lectura, perfil queda null */ });
+      }
+      var perfilViejo = false;
+      var cPerfil = forzarPerfilFresco ? null : deCacheSWR(ckPerfil, 60000, 15 * 60000);
+      var pPerfil;
+      if (cPerfil && cPerfil.v && cPerfil.v.id) { perfilViejo = cPerfil.viejo; pPerfil = Promise.resolve(cPerfil.v); }
+      else pPerfil = pedirPerfil();
+
       /* ¿Pidió «cambiar la contraseña»? La intención viaja por la base
          (marcar_cambio_clave en acceso-enlace). Se pregunta al entrar: si hay
          una petición reciente, se gasta (la RPC la borra) y se enseña «Ponte
@@ -1963,8 +2265,18 @@
          el redirect del correo. La marca vieja ?recuperar=1 también vale. */
       if (!_claveRecienPuesta) {
         var debeClave = _forzarClave;
-        if (!debeClave) {
-          try { var rc = await sb.rpc('debo_cambiar_clave'); debeClave = !!(rc && rc.data === true); }
+        /* FLUIDEZ · Si en esta pestaña ya se preguntó hace < 10 min y la base
+           dijo «no», no se vuelve a preguntar en cada pestaña. NUNCA se fía de
+           eso quien llega de un enlace del correo (recienLlegado o ?code=): ahí
+           se pregunta siempre. La caché se vacía al cerrar sesión. */
+        var ckClave = 'apo-clave-' + email;
+        var fiarse = !recienLlegado && !/[?&]code=/.test(location.search) && deCache(ckClave, 10 * 60000) === 'no';
+        if (!debeClave && !fiarse) {
+          try {
+            var rc = await sb.rpc('debo_cambiar_clave');
+            debeClave = !!(rc && rc.data === true);
+            if (rc && !rc.error && rc.data === false) aCache(ckClave, 'no');
+          }
           catch (e) { /* si falla, no forzamos */ }
         }
         if (debeClave) {
@@ -1998,24 +2310,9 @@
          sobre todo en la app instalada. Ahora se entra por el hub, que se pinta
          al instante, y desde ahí se elige. */
 
+      /* El perfil ya venía de camino (ver «FLUIDEZ» arriba): aquí solo se recoge. */
       var perfil = null;
-      /* El perfil se cachea en sessionStorage para no repedirlo a la red en cada
-         cambio de pestaña de la barra. Se SALTA el caché cuando venimos de
-         «cambiar de vista» (apolana.cambiando) o de recién entrar por el enlace
-         (recienLlegado): ahí el rol_activo puede haber cambiado y hay que leerlo
-         fresco. TTL corto (60 s) por si algo del perfil cambia. */
-      var ckPerfil = 'apo-perfil-' + email;
-      var forzarPerfilFresco = recienLlegado;
-      try { if (sessionStorage.getItem('apolana.cambiando')) forzarPerfilFresco = true; } catch (e) {}
-      if (!forzarPerfilFresco) perfil = deCache(ckPerfil, 60000);
-      if (!perfil) {
-        try {
-          var r = await conLimite(sb.from('perfiles')
-            .select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta')
-            .eq('email', email).maybeSingle(), 8000, { error: true, data: null });
-          if (!r.error && r.data) { perfil = r.data; aCache(ckPerfil, perfil); }
-        } catch (e) { /* si aún no hay permisos de lectura, perfil queda null */ }
-      }
+      try { perfil = await pPerfil; } catch (e) { perfil = null; }
 
       /* Hay sesión pero la ficha no ha cargado (la consulta se cortó por tiempo
          o falló). Sin ficha, ni la barra ni las pantallas pueden pintarse: en
@@ -2023,6 +2320,7 @@
          Antes esto dejaba la app colgada al volver de la web con la sesión en
          mitad de un refresco de token. */
       if (!perfil) {
+        quitarBarraPrevia();
         login.style.display = 'none';
         var ovF = document.createElement('div');
         ovF.setAttribute('role', 'alert');
@@ -2055,6 +2353,7 @@
          desde el primer momento, pero no retrasa el pintado de la página. */
       _papeles = calcularPapeles(perfil);
       window.APOLANA_PORTAL.papeles = function () { return _papeles; };
+      avisarBarra('apolana:papeles');   /* la barra de abajo deja de esperar por sondeo */
 
       /* Auto-arreglo del «salto directo a tu zona» (portal/index.html): si
          resulta que tienes VARIOS papeles, se borra el recuerdo de zona
@@ -2068,6 +2367,28 @@
       }).catch(function () {});
 
       if (_cb) _cb(sb, perfil);
+
+      /* Revalidación del perfil cacheado (si era «viejo»). Si el papel ha
+         cambiado entretanto (otra pestaña, o el club le ha cambiado los
+         permisos), se recarga UNA vez con lo bueno —solo si la página acaba de
+         abrirse, para no pisar a nadie a mitad de rellenar algo—. Tras la
+         recarga la caché ya es fresca, así que no puede entrar en bucle. */
+      if (perfilViejo) {
+        var tCarga = Date.now();
+        pedirPerfil().then(function (nuevo) {
+          if (!nuevo) return;
+          function firma(p) { return JSON.stringify([p.id, p.rol || null, p.rol_activo || null, p.roles || null]); }
+          if (firma(nuevo) === firma(perfil)) return;
+          if (_poniendoClave || (Date.now() - tCarga) > 8000) return;   /* la próxima pestaña ya irá bien */
+          /* Freno: como mucho UNA recarga automática cada 5 min por pestaña. */
+          try {
+            var ultima = Number(sessionStorage.getItem('apo-perfil-recargado') || 0);
+            if (ultima && (Date.now() - ultima) < 5 * 60000) return;
+            sessionStorage.setItem('apo-perfil-recargado', String(Date.now()));
+          } catch (e) { return; /* sin sessionStorage no hay freno: mejor no recargar */ }
+          location.reload();
+        }, function () {});
+      }
 
       /* ------------------------------------------------------------
          LLEVAR LOS RECADOS QUE HAYAN QUEDADO SIN MANDAR
@@ -2261,6 +2582,9 @@
        perdido. Con esto y con ?recuperar=1, una de las dos siempre pilla. */
     try {
       sb.auth.onAuthStateChange(function (evento) {
+        /* Se cierra la sesión (desde cualquier botón «Cerrar sesión» del
+           portal, que todos pasan por signOut): fuera la caché del portal. */
+        if (evento === 'SIGNED_OUT') { limpiarCachePortal(); return; }
         if (evento === 'PASSWORD_RECOVERY') { _forzarClave = true; if (_poniendoClave) return; arranque(); }
       });
     } catch (e) { /* sin evento, queda la marca de la URL */ }

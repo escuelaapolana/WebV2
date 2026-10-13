@@ -401,6 +401,15 @@
     var elSalir = fondo.querySelector('[data-salir]');
     if (elSalir) elSalir.addEventListener('click', function () {
       elSalir.disabled = true; elSalir.textContent = 'Saliendo…';
+      /* Fuera la caché de pintado del portal (solo esas claves; ver portal-auth.js). */
+      try {
+        var PREF = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-'], borrar = [];
+        for (var i = 0; i < sessionStorage.length; i++) {
+          var k = sessionStorage.key(i);
+          if (k && PREF.some(function (p) { return k.indexOf(p) === 0; })) borrar.push(k);
+        }
+        borrar.forEach(function (k) { sessionStorage.removeItem(k); });
+      } catch (e) { /* sin sessionStorage, nada que limpiar */ }
       try { sb().auth.signOut().then(function () { location.href = base(); }, function () { location.href = base(); }); }
       catch (e) { location.href = base(); }
     });
