@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dinero · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css">
+<link rel="stylesheet" href="../../assets/css/panel-piezas.css">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js" defer></script>
+<script src="../../assets/js/db.js" defer></script>
+<script src="../../assets/js/admin-auth.js"></script>
+<script src="../../assets/js/admin-tabbar.js" defer></script>
+<style>
+  /* ============================================================
+     DINERO · todo el dinero del club en UNA pantalla
+     ------------------------------------------------------------
+     Nace de «nunca sé dónde están los pagos». Las cifras salen de
+     la base (dinero_resumen / dinero_movimientos, mig 312), no de
+     cuentas sueltas aquí: esta página solo PINTA.
+     Las pantallas de detalle (Cobros, Cubo, Cuotas de entreno…)
+     siguen existiendo; desde aquí se llega a cada una.
+     ============================================================ */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .di-wrap { max-width: 1080px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(16px,4vw,26px) 70px; }
+
+  .di-cab h1 { font-family: var(--fuente-titulo); font-weight: 700; text-transform: uppercase; letter-spacing: -0.01em;
+    font-size: clamp(26px,5vw,34px); color: var(--navy); margin: 2px 0 4px; }
+  .di-cab p { color: var(--texto-suave); font-size: 15px; margin: 0; max-width: 70ch; line-height: 1.5; }
+  .migas { font-size: 14px; color: var(--texto-suave); }
+  .migas a { color: var(--texto-suave); text-decoration: none; }
+  .migas a:hover { color: var(--navy); }
+
+  /* --- Tarjeta: blanca, flotante (sombra) y con franja crema arriba --- */
+  .di-tar { background: #fff; border: 1px solid var(--linea-marcada); border-radius: 16px;
+    box-shadow: var(--sombra-suave); overflow: hidden; }
+  .di-tar > header { background: var(--crema-banda); border-bottom: 1px solid var(--crema-media);
+    padding: 11px 16px; display: flex; align-items: center; gap: 10px; }
+  .di-tar > header h2 { margin: 0; font-family: var(--fuente-texto); font-size: 14px; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--texto-suave); }
+  .di-tar > header .n { margin-left: auto; font-size: 13.5px; color: var(--texto-suave); }
+  .di-cuerpo { padding: 14px 16px; }
+
+  /* --- Las tres cifras --- */
+  .di-cifras { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin: 20px 0 14px; }
+  .di-cifra .di-cuerpo { padding: 16px 16px 15px; }
+  .di-cifra .num { font-family: var(--fuente-dato); font-weight: 700; font-size: clamp(26px,4.2vw,32px);
+    line-height: 1.05; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .di-cifra .que { font-size: 14px; color: var(--texto-suave); margin-top: 6px; line-height: 1.45; }
+  .di-cifra header .punto { width: 10px; height: 10px; border-radius: 999px; flex: 0 0 10px; }
+  .di-cifra.deben  .num { color: #8A5207; }   .di-cifra.deben  .punto { background: #C98A1E; }
+  .di-cifra.entra  .num { color: var(--verde); } .di-cifra.entra .punto { background: var(--verde); }
+  .di-cifra.camino .num { color: var(--azul-hover); } .di-cifra.camino .punto { background: var(--azul); }
+  .di-cifra .nota { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--crema-media); line-height: 1.45; }
+
+  /* --- Remesa de Isa: informativa, NO deuda --- */
+  .di-remesa { display: flex; align-items: center; gap: 14px 22px; flex-wrap: wrap; margin: 0 0 22px; }
+  .di-remesa .num { font-family: var(--fuente-dato); font-weight: 700; font-size: 22px; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .di-remesa .txt { flex: 1 1 280px; font-size: 14.5px; color: var(--texto); line-height: 1.5; }
+  .di-remesa .txt b { color: var(--navy); }
+  .di-etq { display: inline-block; font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    background: var(--crema-media); color: var(--texto-suave); }
+
+  /* --- Buscador «¿Ha pagado…?» --- */
+  .di-busca-caja { margin: 0 0 22px; }
+  .di-busca { display: flex; gap: 10px; align-items: center; }
+  .di-busca input { flex: 1 1 auto; min-width: 0; min-height: 52px; box-sizing: border-box; padding: 12px 16px 12px 44px;
+    border: 1px solid var(--pz-borde, #C6BEAE); border-radius: 12px; font: inherit; font-size: 16px; color: var(--navy);
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%236E6656' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") no-repeat 14px center; }
+  .di-busca input:focus { outline: 2px solid var(--azul); outline-offset: 1px; border-color: var(--azul); }
+  .di-ayuda { font-size: 13.5px; color: var(--texto-suave); margin: 8px 2px 0; }
+  .di-res { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+  .di-persona { border: 1px solid var(--linea-marcada); border-radius: 14px; overflow: hidden; background: #fff; }
+  .di-persona > .cab { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--crema-banda);
+    border-bottom: 1px solid var(--crema-media); }
+  .avatar { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; background: var(--azul-suave); color: var(--azul);
+    display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 700; }
+  .di-persona .nom { font-weight: 600; color: var(--navy); font-size: 16px; }
+  .di-persona .resu { font-size: 13.5px; color: var(--texto-suave); }
+
+  /* Una línea de dinero (persona, origen, ojo…) */
+  .di-linea { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 4px 14px; align-items: center;
+    padding: 11px 14px; border-bottom: 1px solid var(--crema-media); }
+  .di-linea:last-child { border-bottom: 0; }
+  .di-linea .c { min-width: 0; }
+  .di-linea .c b { display: block; font-size: 15px; font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+  .di-linea .c span { display: block; font-size: 13.5px; color: var(--texto-suave); margin-top: 2px; overflow-wrap: anywhere; line-height: 1.4; }
+  .di-linea .imp { font-family: var(--fuente-dato); font-weight: 700; font-size: 15px; color: var(--navy);
+    font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .di-linea a.ir { font-size: 14px; color: var(--azul); text-decoration: none; font-weight: 600; white-space: nowrap;
+    min-height: 44px; display: inline-flex; align-items: center; }
+  .di-linea a.ir:hover { color: var(--azul-hover); text-decoration: underline; }
+  @media (max-width: 560px) {
+    .di-linea { grid-template-columns: minmax(0,1fr) auto; }
+    .di-linea > .est-celda { grid-column: 1 / -1; }
+  }
+
+  /* Estados (mismo lenguaje que .pz-estado) */
+  .est { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px;
+    font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
+  .est.pagado    { background: var(--verde-fondo); border-color: var(--verde-borde); color: var(--verde); }
+  .est.registro  { background: #F4F1EA; border-color: var(--linea-marcada); color: var(--texto-suave); }
+  .est.en_camino { background: var(--azul-suave); border-color: #CFE0EE; color: var(--azul-hover); }
+  .est.pendiente { background: #FDF6EA; border-color: #EBD9B8; color: #8A5207; }
+  .est.remesa    { background: #F4F1EA; border-color: var(--linea-marcada); color: var(--texto); }
+  .est.fallido, .est.devuelto { background: #FBF0ED; border-color: #EBD2CB; color: var(--rojo); }
+
+  /* --- Dos columnas: pendiente por origen · ojo --- */
+  .di-dos { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin: 0 0 22px; align-items: start; }
+  .di-dos .di-tar .di-cuerpo { padding: 0; }
+  .di-vacio { padding: 16px; font-size: 14.5px; color: var(--texto-suave); }
+  .di-ojo-ico { width: 22px; height: 22px; flex: 0 0 22px; color: #8A5207; }
+
+  /* --- Ha entrado: desglose --- */
+  .di-desglose .di-cuerpo { padding: 0; }
+  .di-pie { font-size: 13.5px; color: var(--texto-suave); padding: 12px 14px; line-height: 1.5; background: #FDFCF9;
+    border-top: 1px solid var(--crema-media); }
+
+  /* --- Más detalle --- */
+  .di-mas { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .di-mas a { display: block; padding: 12px 14px; border: 1px solid var(--linea-marcada); border-radius: 12px; background: #fff;
+    text-decoration: none; color: var(--navy); min-height: 44px; box-sizing: border-box; box-shadow: 0 1px 2px rgba(30,45,65,.05); }
+  .di-mas a:hover { border-color: var(--azul-filete); }
+  .di-mas a b { display: block; font-size: 15px; }
+  .di-mas a span { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 2px; }
+  .di-sec-tit { font-family: var(--fuente-texto); font-size: 14px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--texto-suave); margin: 26px 0 10px; }
+
+  .di-error { background: #FBF0ED; border: 1px solid #EBD2CB; color: var(--rojo); border-radius: 14px; padding: 14px 16px; margin-top: 18px; }
+
+  @media (max-width: 860px) {
+    .di-cifras { grid-template-columns: 1fr; }
+    .di-dos { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body class="adm-piel">
+
+<div class="admin-wrap">
+  <div class="di-wrap" id="di">
+    <div class="di-cab">
+      <div class="migas"><a href="../../portal/general/">General</a> · Dinero</div>
+      <h1>Dinero</h1>
+      <p>Cargando…</p>
+    </div>
+  </div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var B = (window.APOLANA_BASE || '../../');
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  var eur = function (n) {
+    var v = Number(n) || 0;
+    var dec = Math.round(v * 100) % 100 !== 0;
+    return v.toLocaleString('es-ES', { minimumFractionDigits: dec ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
+  };
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fecha(s) {
+    if (!s) return '';
+    var d = new Date(String(s).length === 10 ? s + 'T12:00:00' : s);
+    if (isNaN(d)) return '';
+    return d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3) + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+  }
+  function sinTildes(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function iniciales(n) {
+    var p = String(n || '').trim().split(/\s+/).filter(Boolean);
+    return ((p[0] || '?')[0] + (p[1] ? p[1][0] : '')).toUpperCase();
+  }
+
+  var ORIGEN = {
+    recibo:     { t: 'Recibos',            d: 'Cuotas y recibos del libro de cobros',        url: 'admin/cobros/' },
+    cubo:       { t: 'El Cubo',            d: 'Cuota mensual con tarjeta',                    url: 'admin/cubo-altas/' },
+    entreno:    { t: 'Cuotas de entreno',  d: 'Domiciliación trimestral (SEPA) de adultos',   url: 'admin/cuotas-entreno/' },
+    alta_socio: { t: 'Altas de socio',     d: 'Primera cuota de 35 € por SEPA',               url: 'admin/altas/?tipo=socio' },
+    tienda:     { t: 'Tienda',             d: 'Ropa pagada con tarjeta',                      url: 'admin/pedidos/' },
+    bono:       { t: 'Bonos',              d: 'Bonos del Cubo pagados con tarjeta',           url: 'admin/pagos-online/' },
+    online:     { t: 'Pagos online',       d: 'Otros pagos con tarjeta',                      url: 'admin/pagos-online/' }
+  };
+  var ESTADO = {
+    pagado:    'Pagado',
+    en_camino: 'En camino (SEPA)',
+    pendiente: 'Pendiente',
+    remesa:    'Remesa de Isa',
+    fallido:   'Falló',
+    devuelto:  'Devuelto'
+  };
+  function chip(m) {
+    if (m.estado === 'pagado' && m.importado) return '<span class="est registro" title="Registrado sin forma de cobro (importación o marcado a mano): no suma en «Ha entrado»">Pagado (registro)</span>';
+    return '<span class="est ' + esc(m.estado) + '">' + esc(ESTADO[m.estado] || m.estado) + '</span>';
+  }
+  function enlace(u) { return u ? B + String(u).replace(/^\/+/, '') : '#'; }
+
+  var RES = null, MOVS = [];
+
+  async function cargar() {
+    var r1 = sb.rpc('dinero_resumen');
+    var r2 = sb.rpc('dinero_movimientos');
+    var a = await r1, b = await r2;
+    if (a.error) throw a.error;
+    if (b.error) throw b.error;
+    RES = a.data || {};
+    MOVS = (b.data || []).map(function (m) { m._q = sinTildes(m.persona + ' ' + m.concepto); return m; });
+  }
+
+  function cabecera() {
+    return '<div class="di-cab">' +
+      '<div class="migas"><a href="' + B + 'portal/general/">General</a> · Dinero</div>' +
+      '<h1>Dinero</h1>' +
+      '<p>Todo el dinero del club en un sitio: lo que te deben, lo que ha entrado de verdad y lo que está en camino por el banco.</p>' +
+    '</div>';
+  }
+
+  function cifras() {
+    var td = RES.te_deben || {}, en = RES.entrado_mes || {}, ec = RES.en_camino || {};
+    var mesTxt = MESES[(Number(String(RES.mes || '').slice(5, 7)) || (new Date().getMonth() + 1)) - 1];
+    var notaEntra = [];
+    if (Number(en.importado_n) > 0)
+      notaEntra.push('No cuenta ' + en.importado_n + ' registros importados o sin forma de cobro (' + eur(en.importado_total) + ').');
+    if (Number(en.aproximado) > 0)
+      notaEntra.push(eur(en.aproximado) + ' del Cubo con importe deducido del último cobro de Stripe.');
+    return '<div class="di-cifras">' +
+      '<section class="di-tar di-cifra deben"><header><span class="punto"></span><h2>Te deben</h2><span class="n">' + (td.n || 0) + '</span></header>' +
+        '<div class="di-cuerpo"><div class="num">' + eur(td.total) + '</div>' +
+        '<div class="que">Se puede cobrar por la app o Stripe: Cubo sin pagar, cuotas de entreno sin domiciliar, recibos pendientes que no van por remesa y cobros que fallaron.</div></div></section>' +
+      '<section class="di-tar di-cifra entra"><header><span class="punto"></span><h2>Ha entrado en ' + esc(mesTxt) + '</h2><span class="n">' + (en.n || 0) + '</span></header>' +
+        '<div class="di-cuerpo"><div class="num">' + eur(en.total) + '</div>' +
+        '<div class="que">Dinero cobrado de verdad este mes, por la fecha real del cobro.</div>' +
+        (notaEntra.length ? '<span class="nota">' + esc(notaEntra.join(' ')) + '</span>' : '') +
+        '</div></section>' +
+      '<section class="di-tar di-cifra camino"><header><span class="punto"></span><h2>En camino (SEPA)</h2><span class="n">' + (ec.n || 0) + '</span></header>' +
+        '<div class="di-cuerpo"><div class="num">' + eur(ec.total) + '</div>' +
+        '<div class="que">Mandato firmado, adeudo aún sin liquidar. El primer adeudo de un mandato nuevo tarda unos 5 días hábiles (a veces hasta 14).</div></div></section>' +
+    '</div>';
+  }
+
+  function remesa() {
+    var rm = RES.remesa || {};
+    return '<section class="di-tar" style="margin-bottom:22px"><header><h2>Previsto por la remesa de Isa</h2><span class="di-etq" style="margin-left:auto">Informativo · no es deuda</span></header>' +
+      '<div class="di-cuerpo di-remesa">' +
+        '<div class="num">' + eur(rm.total) + '</div>' +
+        '<div class="txt"><b>' + (rm.n || 0) + ' recibos domiciliados</b> que Isa pasa por el banco (escuela y cuotas con domiciliación). Es cosa suya: aquí solo está para saber cuánto dinero será al final. Cuando el banco los cobra, se marcan pagados en Cobros.</div>' +
+        '<a class="pz-btn pz-btn--borde" href="' + B + 'admin/cobros/">Ver recibos</a>' +
+      '</div></section>';
+  }
+
+  function buscador() {
+    return '<section class="di-tar di-busca-caja"><header><h2>¿Ha pagado…?</h2></header><div class="di-cuerpo">' +
+      '<div class="di-busca"><input type="search" id="di-q" autocomplete="off" placeholder="Escribe un nombre: Gabriel, Marta García…" aria-label="Buscar a una persona"></div>' +
+      '<p class="di-ayuda">Sale todo lo de esa persona, venga de donde venga: recibos, Cubo, cuotas de entreno, alta de socio y pagos con tarjeta.</p>' +
+      '<div class="di-res" id="di-res"></div>' +
+    '</div></section>';
+  }
+
+  function lineaMov(m, conPersona) {
+    var sub = [];
+    if (conPersona) sub.push(esc(m.persona));
+    var o = ORIGEN[m.origen]; if (o) sub.push(esc(o.t));
+    if (m.estado === 'pagado' && m.cobrado_en) sub.push('cobrado el ' + fecha(m.cobrado_en));
+    if (m.detalle) sub.push(esc(m.detalle));
+    return '<div class="di-linea">' +
+      '<div class="c"><b>' + esc(m.concepto || '—') + '</b><span>' + sub.join(' · ') + '</span></div>' +
+      '<div class="imp">' + eur(m.importe) + (m.aproximado ? '<span title="Importe deducido" style="color:var(--texto-suave)">*</span>' : '') + '</div>' +
+      '<div class="est-celda">' + chip(m) + ' <a class="ir" href="' + esc(enlace(m.enlace)) + '">Ver →</a></div>' +
+    '</div>';
+  }
+
+  function pintarBusqueda() {
+    var caja = $('di-res'); if (!caja) return;
+    var q = sinTildes(($('di-q') || {}).value || '').trim();
+    if (q.length < 2) { caja.innerHTML = ''; return; }
+    var palabras = q.split(/\s+/);
+    var hits = MOVS.filter(function (m) { return palabras.every(function (w) { return m._q.indexOf(w) >= 0; }); });
+    if (!hits.length) { caja.innerHTML = '<p class="di-vacio" style="padding:4px 2px">Nadie con «' + esc(q) + '» en el dinero del club.</p>'; return; }
+    var por = {}, orden = [];
+    hits.forEach(function (m) {
+      var k = (m.atleta_id || '') + '|' + sinTildes(m.persona);
+      if (!por[k]) { por[k] = []; orden.push(k); }
+      por[k].push(m);
+    });
+    var PRIO = { fallido: 0, pendiente: 1, en_camino: 2, remesa: 3, devuelto: 4, pagado: 5 };
+    caja.innerHTML = orden.slice(0, 12).map(function (k) {
+      var ls = por[k].sort(function (a, b) {
+        return (PRIO[a.estado] - PRIO[b.estado]) || (String(b.fecha || '').localeCompare(String(a.fecha || '')));
+      });
+      var nombre = ls[0].persona;
+      var debe = ls.filter(function (m) { return m.estado === 'pendiente' || m.estado === 'fallido'; })
+                   .reduce(function (s, m) { return s + Number(m.importe || 0); }, 0);
+      var camino = ls.filter(function (m) { return m.estado === 'en_camino'; }).length;
+      var remesa = ls.filter(function (m) { return m.estado === 'remesa'; })
+                     .reduce(function (s, m) { return s + Number(m.importe || 0); }, 0);
+      var resu = debe > 0 ? 'Debe ' + eur(debe)
+               : camino ? 'Tiene un cobro en camino (SEPA)'
+               : remesa > 0 ? 'Le toca por la remesa de Isa: ' + eur(remesa)
+               : 'Al día';
+      return '<div class="di-persona"><div class="cab"><div class="avatar">' + esc(iniciales(nombre)) + '</div>' +
+        '<div><div class="nom">' + esc(nombre) + '</div><div class="resu">' + esc(resu) + ' · ' + ls.length + (ls.length === 1 ? ' línea' : ' líneas') + '</div></div></div>' +
+        ls.slice(0, 25).map(function (m) { return lineaMov(m, false); }).join('') +
+      '</div>';
+    }).join('') + (orden.length > 12 ? '<p class="di-ayuda">Hay más personas: afina el nombre.</p>' : '');
+  }
+
+  function porOrigen() {
+    var lista = RES.por_origen || [];
+    var cuerpo = lista.length ? lista.map(function (o) {
+      var info = ORIGEN[o.origen] || { t: o.origen, d: '' };
+      return '<div class="di-linea">' +
+        '<div class="c"><b>' + esc(info.t) + '</b><span>' + o.n + (o.n === 1 ? ' pendiente' : ' pendientes') + ' · ' + esc(info.d) + '</span></div>' +
+        '<div class="imp">' + eur(o.total) + '</div>' +
+        '<div class="est-celda"><a class="ir" href="' + esc(enlace(o.enlace || info.url)) + '">Ver detalle →</a></div>' +
+      '</div>';
+    }).join('') : '<p class="di-vacio">Nadie debe nada que se pueda cobrar por la app.</p>';
+    return '<section class="di-tar"><header><h2>Pendiente por origen</h2><span class="n">' + eur((RES.te_deben || {}).total) + '</span></header><div class="di-cuerpo">' + cuerpo + '</div></section>';
+  }
+
+  var ICO_OJO = '<svg class="di-ojo-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17h.01"/></svg>';
+  function ojo() {
+    var lista = RES.ojo || [];
+    var TIT = { intento: 'Intento de pago atascado', fallido: 'Falló / devuelto', sepa_lento: 'SEPA que tarda' };
+    var cuerpo = lista.length ? lista.slice(0, 20).map(function (o) {
+      return '<div class="di-linea">' +
+        '<div class="c"><b>' + esc(o.persona) + '</b><span>' + esc(TIT[o.tipo] || '') + ' · ' + esc(o.concepto || '') + '<br>' + esc(o.texto || '') + '</span></div>' +
+        '<div class="imp">' + (o.importe != null ? eur(o.importe) : '') + '</div>' +
+        '<div class="est-celda"><a class="ir" href="' + esc(enlace(o.enlace)) + '">Ver →</a></div>' +
+      '</div>';
+    }).join('') : '<p class="di-vacio">Nada raro: ni pagos atascados, ni adeudos devueltos, ni SEPA que tarde de más.</p>';
+    return '<section class="di-tar"><header>' + (lista.length ? ICO_OJO : '') + '<h2>Ojo</h2><span class="n">' + lista.length + '</span></header><div class="di-cuerpo">' + cuerpo + '</div></section>';
+  }
+
+  function desglose() {
+    var en = RES.entrado_mes || {};
+    var po = en.por_origen || [];
+    var mesTxt = MESES[(Number(String(RES.mes || '').slice(5, 7)) || (new Date().getMonth() + 1)) - 1];
+    var ult = MOVS.filter(function (m) { return m.estado === 'pagado' && !m.importado && m.cobrado_en; })
+      .sort(function (a, b) { return String(b.cobrado_en).localeCompare(String(a.cobrado_en)) || String(b.fecha).localeCompare(String(a.fecha)); })
+      .slice(0, 8);
+    return '<section class="di-tar di-desglose" style="margin-bottom:22px"><header><h2>Lo que ha entrado en ' + esc(mesTxt) + '</h2><span class="n">' + eur(en.total) + '</span></header><div class="di-cuerpo">' +
+      (po.length ? po.map(function (o) {
+        var info = ORIGEN[o.origen] || { t: o.origen, url: '' };
+        return '<div class="di-linea"><div class="c"><b>' + esc(info.t) + '</b><span>' + o.n + (o.n === 1 ? ' cobro' : ' cobros') + '</span></div>' +
+          '<div class="imp">' + eur(o.total) + '</div><div class="est-celda"><a class="ir" href="' + esc(enlace(info.url)) + '">Ver →</a></div></div>';
+      }).join('') : '<p class="di-vacio">Este mes todavía no ha entrado nada.</p>') +
+      (ult.length ? '<div class="di-pie"><b style="color:var(--navy)">Últimos cobros</b></div>' + ult.map(function (m) { return lineaMov(m, true); }).join('') : '') +
+      '<div class="di-pie">Cuenta por la <b>fecha real del cobro</b>. No suman los recibos «pagados» sin forma de cobro (los que se importaron ya pagados, como la cuota de socio 2026, o se marcaron a mano sin decir cómo): ponles la forma de cobro en Cobros y cuentan. ' +
+      'Los cobros del Cubo con asterisco (*) llevan el importe deducido del último cobro de Stripe; desde ahora cada recibo del Cubo y de entreno deja su propia línea.</div>' +
+    '</div></section>';
+  }
+
+  function masDetalle() {
+    var P = [
+      ['admin/cobros/', 'Cobros y recibos', 'Recibos, remesas, devueltos e impagados'],
+      ['admin/cubo-altas/', 'Pagos de El Cubo', 'Cuotas mensuales y export para la contable'],
+      ['admin/cuotas-entreno/', 'Cuotas de entreno', 'Domiciliación SEPA trimestral de adultos'],
+      ['admin/altas/?tipo=socio', 'Altas de socio', 'Las altas nuevas y su primera cuota'],
+      ['admin/pagos-online/', 'Pagos con tarjeta', 'Todo lo que se cobra por internet'],
+      ['admin/tarifas/', 'Tarifas', 'Los precios de cada cuota'],
+      ['portal/pagos-resumen/', 'Resumen de pagos', 'Cuánto entra cada mes, por origen'],
+      ['portal/payouts/', 'Payouts de Stripe', 'Transferencias de Stripe al banco (para Isa)']
+    ];
+    return '<h2 class="di-sec-tit">Más detalle</h2><div class="di-mas">' + P.map(function (p) {
+      return '<a href="' + B + p[0] + '"><b>' + esc(p[1]) + '</b><span>' + esc(p[2]) + '</span></a>';
+    }).join('') + '</div>';
+  }
+
+  function pintar() {
+    $('di').innerHTML = cabecera() + cifras() + remesa() + buscador() +
+      '<div class="di-dos">' + porOrigen() + ojo() + '</div>' +
+      desglose() + masDetalle();
+    var q = $('di-q');
+    if (q) {
+      q.addEventListener('input', pintarBusqueda);
+      try { var pq = new URLSearchParams(location.search).get('q'); if (pq) { q.value = pq; pintarBusqueda(); } } catch (e) {}
+    }
+  }
+
+  cargar().then(pintar).catch(function (e) {
+    var msg = (e && (e.message || e.details)) || String(e);
+    var falta = /dinero_(resumen|movimientos)|function|does not exist|schema cache/i.test(msg);
+    $('di').innerHTML = cabecera() + '<div class="di-error">' +
+      (falta ? 'Esta pantalla necesita la migración <b>312</b> (dinero_movimientos) aplicada en la base.'
+             : /42501|Solo administraci/.test(msg) ? 'El dinero solo lo ven administración, tesorería, contabilidad y junta.'
+             : 'No se ha podido cargar: ' + esc(msg)) +
+      '</div>' + masDetalle();
+  });
+});
+</script>
+
+</body>
+</html>

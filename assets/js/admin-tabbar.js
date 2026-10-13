@@ -74,7 +74,7 @@
     importar: svg('<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'),
     confirmaciones: svg('<path d="M4 12.5l5 5L20 6.5"/>'),
     altas: svg('<path d="M3 13l3-8h12l3 8"/><path d="M3 13v5h18v-5h-6a3 3 0 0 1-6 0z"/>'),
-    cobros: IC.dinero, 'pagos-online': IC.dinero, tarifas: IC.dinero,
+    dinero: IC.dinero, cobros: IC.dinero, 'pagos-online': IC.dinero, tarifas: IC.dinero, 'cuotas-entreno': IC.dinero,
     pedidos: _caja, cubo: _caja, 'cubo-altas': _caja,
     eventos: svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
     competiciones: _trofeo, liga: _trofeo, retos: _trofeo, records: _trofeo,
@@ -453,10 +453,14 @@
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
       { t: 'Dinero', enlaces: [
+        { txt: 'Dinero · todo',     url: r + 'dinero/',       desc: 'te deben, ha entrado este mes, en camino (SEPA) y «¿ha pagado…?»' },
         { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
+        { txt: 'Cuotas de entreno', url: r + 'cuotas-entreno/', desc: 'domiciliación SEPA trimestral de adultos (Velocidad/Academia)' },
         { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
         { txt: 'Pagos con tarjeta', url: r + 'pagos-online/', desc: 'lo que se cobra por internet' },
         { txt: 'Pagos de El Cubo',  url: r + 'cubo-altas/',   desc: 'quién ha pagado la cuota del Cubo y export para la contable' },
+        { txt: 'Resumen de pagos',  url: base() + 'portal/pagos-resumen/', desc: 'cuánto entra cada mes, por origen' },
+        { txt: 'Payouts de Stripe', url: base() + 'portal/payouts/',       desc: 'las transferencias de Stripe al banco (para Isa)' },
         { txt: 'Pedidos de ropa',   url: r + 'pedidos/',      desc: 'equipación pedida y entregada' }
       ] },
       { t: 'Comunicación', enlaces: [
@@ -597,7 +601,7 @@
   /* Las cuatro de arriba. Al principio no hay historial, así que se
      arranca con cuatro sensatas y se dice que van a cambiar solas:
      una rejilla vacía no le sirve a nadie el primer día. */
-  var PRIMERAS = ['atletas', 'cobros', 'buzon', 'liga'];
+  var PRIMERAS = ['atletas', 'dinero', 'buzon', 'liga'];
   function masUsadas() {
     var u = uso(), todas = plano();
     var con = todas.filter(function (e) { return e.clave !== '' && u[e.clave] > 0; })
@@ -632,7 +636,11 @@
     'tienda':                 'ropa productos venta equipacion',
     'altas que entran':       'altas inscripciones apuntarse matricula formulario socios escuela ' +
                               'familias nuevas revisar pendientes solicitudes renovar domiciliacion sepa',
+    'dinero · todo':          'dinero pagos cobros quien ha pagado debe deuda deben entrado sepa en camino remesa isa stripe',
     'cobros y recibos':       'dinero pagos recibos domiciliacion remesas banco impagados devueltos',
+    'cuotas de entreno':      'sepa domiciliacion trimestral velocidad academia adultos dinero',
+    'resumen de pagos':       'dinero cuanto entra mes ingresos',
+    'payouts de stripe':      'transferencias banco stripe isa dinero',
     'tarifas':                'precios cuotas dinero',
     'pagos con tarjeta':      'stripe tarjeta online dinero',
     'pedidos de ropa':        'tienda equipacion camiseta ropa',

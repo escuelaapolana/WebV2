@@ -159,6 +159,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (alta.pago_estado === "pagado") {
     return responder({ error: "ya_pagado", mensaje: "Tu alta ya está pagada. No hace falta volver a pagar." }, 409, origen);
   }
+  // Mandato SEPA firmado y adeudo en camino (mig 311): no se abre otro cobro.
+  // Si el adeudo falla, el estado pasa a 'fallido' y aquí se deja reintentar.
+  if (alta.pago_estado === "en_camino") {
+    return responder({ error: "ya_pagado", mensaje: "Ya has domiciliado el pago de tu alta: el cobro está en camino (el banco tarda unos 5 días hábiles). No hace falta volver a pagar." }, 409, origen);
+  }
 
   // El sí/no de familiar (informativo para Isa, de cara a diciembre) NO se toca
   // aquí: este endpoint es público y solo debe crear la sesión de pago, nunca

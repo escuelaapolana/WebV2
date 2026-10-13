@@ -114,10 +114,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cuotaId = String((cuerpo.cuota_id ?? "")).trim();
 
   const filtro = cuotaId
-    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id&id=eq.${encodeURIComponent(cuotaId)}`
-    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
+    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro&id=eq.${encodeURIComponent(cuotaId)}`
+    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
   const rA = await rest(filtro);
-  const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string }> =
+  const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string; atleta_id: string | null; ultimo_cobro: string | null }> =
     Array.isArray(rA.datos) ? rA.datos : [];
   if (!cuotas.length) return responder({ ok: true, revisadas: 0, actualizadas: 0, detalle: [] }, 200, origen);
 
@@ -178,8 +178,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const facturaImporte = inv && Number.isFinite(Number(inv.total)) ? Number(inv.total) / 100 : null;
     const facturaFecha = inv ? aFecha(inv.created) : null;
 
+    // (mig 311) Firmar el mandato no es cobrar: Stripe pone la suscripción
+    // «active» (o «incomplete») mientras el PRIMER adeudo SEPA se procesa. Sin
+    // ningún cobro confirmado todavía, eso es «en_camino», no «activa».
+    let estadoFinal: string | null = estado;
+    const yaCobrado = !!(ultimo || a.ultimo_cobro);
+    if (cobro === "falló / sin método") estadoFinal = "impago";
+    else if (!yaCobrado && (estado === "activa" || String(s.status ?? "") === "incomplete")) estadoFinal = "en_camino";
+
+    // Si la última factura está pagada y el webhook no dejó su fila en `pagos`,
+    // se deja ahora (idempotente por id de factura: no duplica).
+    if (inv && inv.status === "paid" && String(inv.id ?? "").startsWith("in_") && Number(inv.amount_paid ?? 0) > 0) {
+      const ini = Number(inv.lines?.data?.[0]?.period?.start ?? inv.created ?? 0);
+      const d = ini > 0 ? new Date(ini * 1000) : new Date();
+      const mes = d.getUTCMonth() + 1, ano = d.getUTCFullYear();
+      const etq = mes >= 10 ? `1er trimestre (oct-dic ${ano})`
+        : mes <= 3 ? `2º trimestre (ene-mar ${ano})`
+        : mes <= 6 ? `3er trimestre (abr-jun ${ano})` : "trimestre";
+      const pagadoEn = new Date(Number(inv.status_transitions?.paid_at ?? inv.created) * 1000);
+      const fecha = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(pagadoEn);
+      await rest(`rpc/dinero_registrar_cobro_stripe`, {
+        method: "POST",
+        body: JSON.stringify({
+          p_factura: String(inv.id), p_atleta: a.atleta_id ?? null,
+          p_concepto: `Cuota de entrenamiento · ${etq}`, p_importe: Number(inv.amount_paid) / 100,
+          p_fecha: fecha, p_metodo: "domiciliado", p_periodo: `${ano}-${String(mes).padStart(2, "0")}`,
+        }),
+      });
+    }
+
     const cambios: Record<string, unknown> = {};
-    if (estado) cambios.suscripcion_estado = estado;
+    if (estadoFinal) cambios.suscripcion_estado = estadoFinal;
     if (proximo) cambios.proximo_cobro = proximo;
     if (ultimo) cambios.ultimo_cobro = ultimo;
     if (cobro) cambios.factura_cobro = cobro;
@@ -195,7 +224,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     detalle.push({
       id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(),
-      estado, factura: facturaEstado, cobro, factura_importe: facturaImporte,
+      estado: estadoFinal, factura: facturaEstado, cobro, factura_importe: facturaImporte,
       factura_fecha: facturaFecha, ultimo_cobro: ultimo, proximo_cobro: proximo,
     });
   }

@@ -69,7 +69,12 @@
         {key:'calendario', t:'Calendario del club', i:'calendar', url:B+'portal/calendario-club/', d:'Todas las sesiones por día, con apuntados; cancelar festivos y cierres.'},
         {t:'Personas',        i:'people',    url:B+'admin/atletas/',     d:'Todas las fichas del club, en un sitio.'},
         {t:'Socios',          i:'user',      url:B+'admin/socios/',      d:'Altas, cuotas y estado de cada socio.'},
-        {t:'Dinero',          i:'euro',      url:B+'admin/cobros/',      d:'Cobros, recibos e impagados.'},
+        {t:'Dinero',          i:'euro',      url:B+'admin/dinero/',      d:'Todo el dinero en un sitio: te deben, ha entrado, en camino y «¿ha pagado…?».', pill:'Empieza aquí'},
+        {t:'Cobros y recibos', i:'euro',     url:B+'admin/cobros/',      d:'Recibos, remesas, devueltos e impagados.'},
+        // ?tipo=dinero: desde General se queda en General (sin él, Cuotas de entreno es de Pista).
+        {t:'Cuotas de entreno', i:'euro',    url:B+'admin/cuotas-entreno/?tipo=dinero', d:'Domiciliación SEPA trimestral de los adultos de Velocidad/Academia.'},
+        {t:'Pagos con tarjeta', i:'ticket',  url:B+'admin/pagos-online/', d:'Todo lo que se cobra por internet (tienda, recibos, bonos).'},
+        {t:'Tarifas',         i:'clipboard', url:B+'admin/tarifas/',     d:'Los precios de cada cuota.'},
         {key:'pagos', t:'Resumen de pagos', i:'chart', url:B+'portal/pagos-resumen/', d:'Cuánto entra: Cubo, cobros online, recibos y socios.'},
         {key:'payouts', t:'Payouts de Stripe', i:'bank', url:B+'portal/payouts/', d:'Las transferencias de Stripe al banco y su desglose (para Isa).'},
         {t:'Pedidos de la tienda', i:'box', url:B+'admin/pedidos/', d:'Los pedidos de ropa y su estado.'},
@@ -441,7 +446,7 @@
     return _idx;
   }
   var COARSE = {
-    atletas:'general', socios:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', 'cubo-pagos':'general', pedidos:'general',
+    atletas:'general', socios:'general', dinero:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', 'cubo-pagos':'general', pedidos:'general',
     paginas:'general', contenido:'general', imagenes:'general', biblioteca:'general', colaboradores:'general', mapa:'general',
     documentos:'general', estadisticas:'general', informes:'general', usuarios:'general', importar:'general', contactos:'general',
     grupos:'general', mundos:'general', campo:'general', buzon:'general', automatizaciones:'general',

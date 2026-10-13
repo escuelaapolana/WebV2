@@ -118,10 +118,11 @@ async function patchCobro(cobroId: string, cambios: Record<string, unknown>) {
   return r.ok;
 }
 
-// Marca un ALTA DE SOCIO como pagada. Solo si no lo estaba ya (idempotente).
-async function patchAltaSocio(altaId: string, cambios: Record<string, unknown>) {
+// Cambia el estado de pago de un ALTA DE SOCIO. El filtro decide desde qué
+// estados se puede pasar (así un aviso que llega tarde nunca baja un «pagado»).
+async function patchAltaSocioFiltro(filtro: string, cambios: Record<string, unknown>) {
   const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/altas_socio?id=eq.${encodeURIComponent(altaId)}&pago_estado=neq.pagado`,
+    `${SUPABASE_URL}/rest/v1/altas_socio?${filtro}`,
     {
       method: "PATCH",
       headers: {
@@ -207,19 +208,38 @@ async function programarCancelEntreno(subId: string, livemode: boolean) {
   return r.ok;
 }
 
-// Registra un cobro liquidado de entreno como recibo PAGADO en `pagos`.
-// Idempotente: no inserta si ya hay un recibo con la misma factura de Stripe
-// (se guarda su id en `notas`). El trimestre sale del mes del periodo.
-async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<string, any>) {
-  const invId = String(objeto.id ?? "");
-  if (!invId) return;
-  const marca = `stripe:${invId}`;
-  const yaR = await fetch(
-    `${SUPABASE_URL}/rest/v1/pagos?select=id&notas=eq.${encodeURIComponent(marca)}&limit=1`,
-    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
-  );
-  if (yaR.ok) { const f = await yaR.json().catch(() => []); if (Array.isArray(f) && f.length) return; }
+// Registra un cobro LIQUIDADO de Stripe como recibo PAGADO en `pagos` (histórico).
+// Una factura = una fila: la idempotencia la pone la base (índice único sobre
+// notas='stripe:in_…', mig 311) dentro de dinero_registrar_cobro_stripe(), así
+// que da igual que lleguen invoice.paid e invoice.payment_succeeded a la vez.
+// Fecha = la REAL del cobro (paid_at), sin `cuenta` (no es un recibo de remesa).
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+  "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function fechaCobro(objeto: Record<string, any>): Date {
+  const ts = Number(objeto.status_transitions?.paid_at ?? objeto.created ?? 0);
+  return ts > 0 ? new Date(ts * 1000) : new Date();
+}
+const fechaMadrid = (d: Date): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
+async function registrarCobroStripe(
+  objeto: Record<string, any>, atletaId: string | null, concepto: string, metodo: "tarjeta" | "domiciliado", periodo: string | null,
+) {
+  const invId = String(objeto.id ?? "");
+  const importe = (Number(objeto.amount_paid ?? 0) || 0) / 100;
+  if (!invId.startsWith("in_") || importe <= 0) return;   // factura de 0 € (prueba gratis): no es dinero
+  await rpcServicio("dinero_registrar_cobro_stripe", {
+    p_factura: invId,
+    p_atleta: atletaId,
+    p_concepto: concepto,
+    p_importe: importe,
+    p_fecha: fechaMadrid(fechaCobro(objeto)),
+    p_metodo: metodo,
+    p_periodo: periodo,
+  });
+}
+
+async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<string, any>) {
   const inicio = Number(objeto.lines?.data?.[0]?.period?.start ?? objeto.created ?? 0);
   const d = inicio > 0 ? new Date(inicio * 1000) : new Date();
   const mes = d.getUTCMonth() + 1;   // 1..12
@@ -229,28 +249,22 @@ async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<
   else if (mes <= 3) etq = `2º trimestre (ene-mar ${ano})`;
   else if (mes <= 6) etq = `3er trimestre (abr-jun ${ano})`;
   const periodo = `${ano}-${String(mes).padStart(2, "0")}`;
-  const importe = (Number(objeto.amount_paid ?? cuota.importe_cent ?? 0) || 0) / 100;
-  const hoy = new Date().toISOString().slice(0, 10);
+  await registrarCobroStripe(objeto, cuota.atleta_id ?? null, `Cuota de entrenamiento · ${etq}`, "domiciliado", periodo);
+}
 
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/pagos`, {
-    method: "POST",
-    headers: {
-      apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`,
-      "Content-Type": "application/json", Prefer: "return=minimal",
-    },
-    body: JSON.stringify({
-      atleta_id: cuota.atleta_id,
-      concepto: `Cuota de entrenamiento · ${etq}`,
-      importe,
-      estado: "pagado",
-      fecha_pago: hoy,
-      metodo: "domiciliado",
-      cuenta: "club",
-      periodo,
-      notas: marca,
-    }),
+// Cubo: cada recibo cobrado de la suscripción deja su fila en `pagos`.
+async function registrarCobroCubo(objeto: Record<string, any>, filtro: string) {
+  if (!(Number(objeto.amount_paid ?? 0) > 0)) return;
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/cubo_altas?select=id,atleta_id&${filtro}&limit=1`, {
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
   });
-  if (!r.ok) console.error("INSERT pago de entreno falló:", r.status, await r.text().catch(() => ""));
+  const filas = r.ok ? await r.json().catch(() => []) : [];
+  const alta = Array.isArray(filas) ? filas[0] : null;
+  if (!alta) { console.warn("Cobro del Cubo sin alta casada:", objeto.id); return; }
+  const d = fechaCobro(objeto);
+  const [ano, mes] = fechaMadrid(d).split("-");
+  await registrarCobroStripe(objeto, alta.atleta_id ?? null,
+    `Cuota El Cubo · ${MESES[Number(mes) - 1]} ${ano}`, "tarjeta", `${ano}-${mes}`);
 }
 
 // ============================================================
@@ -317,11 +331,18 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
     case "checkout.session.completed": {
       if (objeto.mode === "subscription") {
         const subId = idDe(objeto.subscription);
+        // SEPA: terminar la pasarela = MANDATO FIRMADO, no cobro. El primer
+        // adeudo tarda ~5 días hábiles (hasta 14). Hasta que llegue
+        // invoice.paid queda «en_camino»; solo si Stripe dice 'paid' ya, activa.
+        const pagado = objeto.payment_status === "paid";
         await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
           stripe_customer_id: idDe(objeto.customer),
           stripe_subscription_id: subId,
-          suscripcion_estado: "activa",
         });
+        await patchEntreno(
+          `id=eq.${encodeURIComponent(cuotaId)}` + (pagado ? "" : "&ultimo_cobro=is.null"),
+          { suscripcion_estado: pagado ? "activa" : "en_camino" },
+        );
         // Programar la cancelación tras abril (una sola vez).
         const cuota = await getEntreno(cuotaId);
         if (subId && cuota && cuota.cancel_programado !== true) {
@@ -345,20 +366,37 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
       if (cuota) await registrarCobroEntreno(objeto, cuota);
       break;
     }
+    case "checkout.session.async_payment_succeeded": {
+      // El primer adeudo SEPA se liquidó. (invoice.paid también llega y es el
+      // que deja la fila en `pagos`; esto solo adelanta el estado.)
+      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { suscripcion_estado: "activa" });
+      break;
+    }
+    case "checkout.session.async_payment_failed":
     case "invoice.payment_failed": {
+      // Adeudo rechazado o devuelto: deshace el «en camino».
       await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { suscripcion_estado: "impago" });
       break;
     }
     case "customer.subscription.created":
     case "customer.subscription.updated": {
-      const est = estadoDe(String(objeto.status ?? ""));
+      const st = String(objeto.status ?? "");
+      // 'incomplete' = el primer pago aún se está procesando (SEPA): no es impago.
+      const est = st === "incomplete" ? null : estadoDe(st);
       const proximo = aFecha(objeto.current_period_end) ?? aFecha(objeto.trial_end);
       await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
         stripe_subscription_id: objeto.id,
         stripe_customer_id: idDe(objeto.customer),
-        ...(est ? { suscripcion_estado: est } : {}),
         ...(proximo ? { proximo_cobro: proximo } : {}),
       });
+      // Stripe pone la suscripción «active» mientras el adeudo SEPA se procesa:
+      // eso NO convierte un «en_camino» en «activa» (lo hace invoice.paid).
+      if (est) {
+        await patchEntreno(
+          `id=eq.${encodeURIComponent(cuotaId)}` + (est === "activa" ? "&suscripcion_estado=neq.en_camino" : ""),
+          { suscripcion_estado: est },
+        );
+      }
       break;
     }
     case "customer.subscription.deleted": {
@@ -438,21 +476,75 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!objeto) return new Response(JSON.stringify({ recibido: true }), { status: 200 });
 
   // --- ALTA DE SOCIO pagada por SEPA (referencia socio-<id de alta>) ---
-  // El adeudo SEPA es de cobro diferido: al completar el checkout se acepta el
-  // mandato (el dinero entra en unos días). Damos el alta por pagada aquí, al
-  // aceptar el mandato, que es lo acordado; si luego se devuelve, lo ve el club.
+  // El adeudo SEPA es de cobro DIFERIDO: al completar el checkout solo se FIRMA
+  // el mandato (payment_status 'unpaid'); el dinero entra días después (~5 días
+  // hábiles el primer adeudo de un mandato nuevo, a veces hasta 14) o se
+  // rechaza. Por eso (mig 311):
+  //   completed sin pagar  → pago_estado 'en_camino' (+ mandato_firmado_en)
+  //   async_payment_succeeded / completed 'paid' → pagos_confirmar → 'pagado'
+  //       (pagos_aplicar_efecto pone pago_estado y pagado_en = fecha real)
+  //   async_payment_failed → 'fallido' (y pagos_online 'fallido')
+  //   charge.refunded / charge.dispute.created → 'devuelto'
+  // pagos_confirmar/pagos_marcar son idempotentes por id de evento, así que no
+  // pasa nada si pago-webhook recibe el mismo aviso y lo atiende también.
   const refSocio: string | null =
     (typeof objeto.client_reference_id === "string" ? objeto.client_reference_id : null) ??
     (typeof objeto.metadata?.referencia === "string" ? objeto.metadata.referencia : null);
   if (typeof refSocio === "string" && refSocio.startsWith("socio-")) {
-    if (tipo === "checkout.session.completed") {
-      await patchAltaSocio(refSocio.slice("socio-".length), {
-        pago_estado: "pagado",
-        pagado_en: new Date().toISOString(),
-        stripe_pago_ref: idDe(objeto.payment_intent),
-      });
+    const altaId = refSocio.slice("socio-".length);
+    const ses = typeof objeto.id === "string" && objeto.id.startsWith("cs_") ? objeto.id : null;
+    const eventoId = String(evento.id ?? "");
+    switch (tipo) {
+      case "checkout.session.completed": {
+        const pi = idDe(objeto.payment_intent);
+        if (objeto.payment_status === "paid") {
+          await rpcServicio("pagos_confirmar", { p_referencia: refSocio, p_session: ses, p_intent: pi, p_evento: eventoId });
+          if (pi) await patchAltaSocioFiltro(`id=eq.${encodeURIComponent(altaId)}`, { stripe_pago_ref: pi });
+        } else {
+          await patchAltaSocioFiltro(
+            `id=eq.${encodeURIComponent(altaId)}&pago_estado=in.(pendiente,fallido)`,
+            { pago_estado: "en_camino", mandato_firmado_en: new Date().toISOString(), pagado_en: null, stripe_pago_ref: pi },
+          );
+        }
+        break;
+      }
+      case "checkout.session.async_payment_succeeded": {
+        await rpcServicio("pagos_confirmar", { p_referencia: refSocio, p_session: ses, p_evento: eventoId });
+        break;
+      }
+      case "checkout.session.async_payment_failed": {
+        await rpcServicio("pagos_marcar", { p_referencia: refSocio, p_estado: "fallido", p_evento: eventoId });
+        await patchAltaSocioFiltro(
+          `id=eq.${encodeURIComponent(altaId)}&pago_estado=in.(pendiente,en_camino)`,
+          { pago_estado: "fallido" },
+        );
+        break;
+      }
+      default:
+        break;
     }
     return new Response(JSON.stringify({ recibido: true, socio: true }), { status: 200 });
+  }
+
+  // --- ALTA DE SOCIO: adeudo DEVUELTO después de cobrado (reembolso o
+  //     devolución del banco). El cargo no siempre trae la referencia, así que se
+  //     casa por el payment_intent guardado en altas_socio.stripe_pago_ref. ---
+  if (tipo === "charge.refunded" || tipo === "charge.dispute.created") {
+    const pi = idDe(objeto.payment_intent);
+    const completo = tipo === "charge.dispute.created" || objeto.refunded === true;
+    if (pi && completo) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/altas_socio?select=id&stripe_pago_ref=eq.${encodeURIComponent(pi)}&limit=1`,
+        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+      );
+      const filas = r.ok ? await r.json().catch(() => []) : [];
+      const alta = Array.isArray(filas) ? filas[0] : null;
+      if (alta?.id) {
+        await rpcServicio("pagos_marcar", { p_referencia: `socio-${alta.id}`, p_estado: "reembolsado", p_evento: String(evento.id ?? "") });
+        await patchAltaSocioFiltro(`id=eq.${encodeURIComponent(alta.id)}`, { pago_estado: "devuelto" });
+        return new Response(JSON.stringify({ recibido: true, socio: true, devuelto: true }), { status: 200 });
+      }
+    }
   }
 
   // --- CUOTA DE ENTRENO (suscripción SEPA trimestral, referencia entreno-<id>) ---
@@ -526,6 +618,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ultimo_cobro: aFecha(objeto.status_transitions?.paid_at) ?? new Date().toISOString(),
         proximo_cobro: aFecha(finPeriodo),
       };
+      // Histórico: UNA fila en `pagos` por recibo cobrado (idempotente por factura).
+      await registrarCobroCubo(objeto, filtro);
       break;
     }
 

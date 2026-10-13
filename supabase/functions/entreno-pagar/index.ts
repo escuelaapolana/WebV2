@@ -139,6 +139,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (c.stripe_subscription_id && c.suscripcion_estado === "activa") {
     return responder({ error: "ya_activa", mensaje: "Tu cuota ya está domiciliada y se cobra sola cada trimestre. No hace falta hacer nada más." }, 409, origen);
   }
+  // Mandato ya firmado y primer adeudo en camino (mig 311): no abrir otra
+  // suscripción, que se cobraría dos veces.
+  if (c.stripe_subscription_id && c.suscripcion_estado === "en_camino") {
+    return responder({ error: "ya_activa", mensaje: "Ya has domiciliado tu cuota: el primer cobro está en camino (el banco tarda unos 5 días hábiles). No hace falta hacer nada más." }, 409, origen);
+  }
 
   const importeCent = Math.round(Number(c.importe_cent));
   if (!Number.isFinite(importeCent) || importeCent < 50) {
