@@ -166,6 +166,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (estado) cambios.suscripcion_estado = estado;
     if (proximo) cambios.proximo_cobro = proximo;
     if (ultimo) cambios.ultimo_cobro = ultimo;
+    if (cobro) cambios.factura_cobro = cobro;
+    if (facturaFecha) cambios.factura_fecha = facturaFecha;
 
     if (Object.keys(cambios).length) {
       const rW = await rest(`cuotas_entreno?id=eq.${encodeURIComponent(a.id)}`, {
