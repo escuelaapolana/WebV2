@@ -235,12 +235,32 @@ as $$
       select count(*) as n from public.natacion_inscripciones i
        where i.acceso_id = p_acceso and i.activa and i.calle = o.calle) s
    where o.en_cupos and o.huecos > 0
-     and (s.n > 0 or (mio.maxnum is not null and public._num_calle(o.calle) <= mio.maxnum))
+     and (s.n > 0 or public._num_calle(o.calle) <= coalesce(mio.maxnum, 1))
    order by (s.n > 0) desc, s.n desc, public._num_calle(o.calle) desc nulls last
    limit 1;
 $$;
 
 revoke all on function public._natacion_calle_para(uuid, uuid, date) from public, anon, authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 5b · REGLA DE NIVEL (Andrés, 13-oct): con bono solo se va a tu calle o a
+--      una de MENOS nivel. C1 → solo C1; C2 → C2 y C1; C3 → C3, C2 y C1.
+--      Una calle en la que ya nada como fijo siempre vale (p. ej. el Vaso).
+--      Sin calle fija conocida, se le trata como C1.
+-- ─────────────────────────────────────────────────────────────────────────
+create or replace function public._natacion_puede_calle(p_acceso uuid, p_calle text)
+returns boolean
+language sql stable
+set search_path to 'public'
+as $$
+  select exists (select 1 from public.natacion_inscripciones i
+                  where i.acceso_id = p_acceso and i.activa and i.calle = p_calle)
+      or coalesce(public._num_calle(p_calle) <=
+           coalesce((select max(public._num_calle(i.calle)) from public.natacion_inscripciones i
+                      where i.acceso_id = p_acceso and i.activa), 1), false);
+$$;
+
+revoke all on function public._natacion_puede_calle(uuid, text) from public, anon, authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- 6 · natacion_reservar (misma firma): ahora mira el hueco de la CALLE
@@ -287,6 +307,9 @@ begin
      where o.en_cupos and o.calle = p_calle;
     if not found then
       return jsonb_build_object('ok', false, 'msg', 'Esa calle no existe en esa franja.'); end if;
+    if not public._natacion_puede_calle(p_acceso_id, p_calle) then
+      return jsonb_build_object('ok', false, 'msg',
+        'Por su nivel no puede ir a la calle ' || p_calle || ': con bono solo a su calle o a una de menos nivel.'); end if;
     if v_h <= 0 then
       return jsonb_build_object('ok', false, 'msg', 'La calle ' || p_calle || ' está completa ese día.'); end if;
     v_calle := p_calle;
@@ -350,11 +373,14 @@ begin
   if coalesce(v_saldo, 0) > 0 then
     update public.natacion_abonos set saldo = saldo - 1, updated_at = now() where acceso_id = p_acceso_id;
   end if;
+  if v_calle is not null and not public._natacion_puede_calle(p_acceso_id, v_calle) then
+    v_aviso := ' Ojo: la calle ' || v_calle || ' es de más nivel que la suya.';
+  end if;
   if v_calle is not null then
     select o.cupo, o.ocupados, o.en_cupos into v_o
       from public.natacion_ocupacion(p_fecha, p_franja) o where o.calle = v_calle;
     if found and (not v_o.en_cupos or v_o.ocupados > v_o.cupo) then
-      v_aviso := ' Ojo: la calle ' || v_calle || ' queda por encima de su cupo ese día (' ||
+      v_aviso := v_aviso || ' Ojo: la calle ' || v_calle || ' queda por encima de su cupo ese día (' ||
                  v_o.ocupados || ' de ' || v_o.cupo || ').';
     end if;
   end if;
