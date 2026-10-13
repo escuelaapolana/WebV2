@@ -130,6 +130,9 @@
   .di-sec-tit { font-family: var(--fuente-texto); font-size: 14px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
     color: var(--texto-suave); margin: 26px 0 10px; }
 
+  .di-acc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 12px; }
+  .di-stripe-res { font-size: 14px; line-height: 1.6; color: var(--texto); margin-top: 8px; }
+  .di-stripe-res:empty { display: none; }
   .di-error { background: #FBF0ED; border: 1px solid #EBD2CB; color: var(--rojo); border-radius: 14px; padding: 14px 16px; margin-top: 18px; }
 
   @media (max-width: 860px) {
@@ -198,14 +201,55 @@ APOLANA_ADMIN.listo(function (sb) {
 
   var RES = null, MOVS = [];
 
+  /* Los movimientos se traen por páginas de 1000 (el tope de filas de la API):
+     si un día pasan de 1000, el buscador no se queda corto sin avisar. */
+  var PAG = 1000;
+  async function todosLosMovimientos() {
+    var out = [];
+    for (var desde = 0; desde < 50 * PAG; desde += PAG) {
+      var r = await sb.rpc('dinero_movimientos').range(desde, desde + PAG - 1);
+      if (r.error) throw r.error;
+      var filas = r.data || [];
+      out = out.concat(filas);
+      if (filas.length < PAG) break;
+    }
+    return out;
+  }
+
   async function cargar() {
     var r1 = sb.rpc('dinero_resumen');
-    var r2 = sb.rpc('dinero_movimientos');
-    var a = await r1, b = await r2;
+    var r2 = todosLosMovimientos();
+    var a = await r1;
     if (a.error) throw a.error;
-    if (b.error) throw b.error;
+    var b = await r2;
     RES = a.data || {};
-    MOVS = (b.data || []).map(function (m) { m._q = sinTildes(m.persona + ' ' + m.concepto); return m; });
+    MOVS = b.map(function (m) { m._q = sinTildes(m.persona + ' ' + m.concepto); return m; });
+  }
+
+  /* «Comprobar con Stripe»: el mismo re-sync de Cuotas de entreno, que además
+     repasa las altas de socio con el adeudo SEPA en camino (las que el webhook
+     viejo dejó sin confirmar). Luego se recarga todo. */
+  async function comprobarStripe(btn) {
+    var caja = $('di-stripe-res');
+    var t0 = btn.textContent; btn.disabled = true; btn.textContent = 'Preguntando a Stripe…';
+    try {
+      var r = await sb.functions.invoke('entreno-resync', { body: {} });
+      if (r && r.error) throw r.error;
+      var d = (r && r.data) || {};
+      var lin = [];
+      (d.detalle || []).forEach(function (x) {
+        lin.push(esc(x.nombre) + ': ' + (x.error ? '⚠ ' + esc(x.error) : esc(x.cobro || '—') + ' (' + esc(x.estado || '—') + ')'));
+      });
+      (d.socio || []).forEach(function (x) {
+        lin.push('Alta de socio ' + esc(x.nombre || '') + ': ' + (x.error ? '⚠ ' + esc(x.error) : '<b>' + esc(x.resultado || '—') + '</b>' + (x.cobrado_en ? ' el ' + fecha(x.cobrado_en) : '')));
+      });
+      await cargar(); pintar();
+      caja = $('di-stripe-res');
+      if (caja) caja.innerHTML = '<b>Comprobado con Stripe</b> · ' + (lin.length ? lin.join('<br>') : 'nada que comprobar.');
+    } catch (e) {
+      if (caja) caja.textContent = 'No se pudo comprobar con Stripe: ' + ((e && e.message) || e);
+      btn.disabled = false; btn.textContent = t0;
+    }
   }
 
   function cabecera() {
@@ -213,6 +257,9 @@ APOLANA_ADMIN.listo(function (sb) {
       '<div class="migas"><a href="' + B + 'portal/general/">General</a> · Dinero</div>' +
       '<h1>Dinero</h1>' +
       '<p>Todo el dinero del club en un sitio: lo que te deben, lo que ha entrado de verdad y lo que está en camino por el banco.</p>' +
+      '<div class="di-acc"><button type="button" class="pz-btn pz-btn--borde" id="di-stripe">↻ Comprobar con Stripe</button>' +
+      '<span class="di-ayuda" style="margin:0">Pregunta a Stripe por las cuotas de entreno y las altas de socio en camino.</span></div>' +
+      '<div class="di-stripe-res" id="di-stripe-res"></div>' +
     '</div>';
   }
 
@@ -371,6 +418,8 @@ APOLANA_ADMIN.listo(function (sb) {
     $('di').innerHTML = cabecera() + cifras() + remesa() + buscador() +
       '<div class="di-dos">' + porOrigen() + ojo() + '</div>' +
       desglose() + masDetalle();
+    var bs = $('di-stripe');
+    if (bs) bs.addEventListener('click', function () { comprobarStripe(bs); });
     var q = $('di-q');
     if (q) {
       q.addEventListener('input', pintarBusqueda);
@@ -383,7 +432,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var falta = /dinero_(resumen|movimientos)|function|does not exist|schema cache/i.test(msg);
     $('di').innerHTML = cabecera() + '<div class="di-error">' +
       (falta ? 'Esta pantalla necesita la migración <b>312</b> (dinero_movimientos) aplicada en la base.'
-             : /42501|Solo administraci/.test(msg) ? 'El dinero solo lo ven administración, tesorería, contabilidad y junta.'
+             : /42501|Solo administraci/.test(msg) ? 'El dinero solo lo ven administración, tesorería y contabilidad.'
              : 'No se ha podido cargar: ' + esc(msg)) +
       '</div>' + masDetalle();
   });

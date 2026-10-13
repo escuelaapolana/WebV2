@@ -65,6 +65,27 @@ update public.cuotas_entreno
    and ultimo_cobro is null
    and stripe_subscription_id is not null;
 
+-- 2b · mi_cuota_entreno (portal/inicio): con el mandato firmado ya NO es
+--      «pendiente de domiciliar». La fila en_camino se sigue devolviendo para que
+--      el Inicio diga «Domiciliada · primer cobro en camino», pero SIN token: así
+--      ni el portal viejo (que pinta el botón solo si hay token) ni nadie puede
+--      abrir una segunda suscripción desde ahí. Antes: solo excluía 'activa'.
+create or replace function public.mi_cuota_entreno()
+ returns table(token text, importe_cent integer, concepto text, suscripcion_estado text)
+ language sql
+ stable security definer
+ set search_path to 'public'
+as $function$
+  select case when ce.suscripcion_estado = 'en_camino' then null else ce.token end,
+         ce.importe_cent, ce.concepto, ce.suscripcion_estado
+  from public.cuotas_entreno ce
+  where ce.perfil_id = public.mi_perfil_id()
+    and ce.cobro_abierto
+    and coalesce(ce.suscripcion_estado, '') <> 'activa'
+  order by ce.created_at desc
+  limit 1;
+$function$;
+
 -- 3 · pagos_aplicar_efecto: el alta de socio guarda la fecha real de cobro --
 create or replace function public.pagos_aplicar_efecto(p_pago uuid)
  returns text
@@ -174,11 +195,18 @@ begin
 
   -- (311) Alta de socio: el adeudo SEPA falló o se devolvió → el alta deja de
   -- estar «en camino»/«pagada». 'cancelado' (pasarela abandonada) no toca nada.
-  if v_pago.tipo = 'alta_socio' and p_estado in ('fallido','reembolsado') then
+  -- 'fallido' solo baja desde pendiente/en_camino (nunca un «pagado»);
+  -- 'reembolsado' (devolución) sí desde pagado/en_camino.
+  if v_pago.tipo = 'alta_socio' and p_estado = 'fallido' then
     update public.altas_socio
-       set pago_estado = case when p_estado = 'fallido' then 'fallido' else 'devuelto' end
+       set pago_estado = 'fallido'
      where id = nullif(v_pago.metadatos ->> 'alta_id','')::uuid
-       and pago_estado in ('pendiente','en_camino','pagado');
+       and pago_estado in ('pendiente','en_camino');
+  elsif v_pago.tipo = 'alta_socio' and p_estado = 'reembolsado' then
+    update public.altas_socio
+       set pago_estado = 'devuelto'
+     where id = nullif(v_pago.metadatos ->> 'alta_id','')::uuid
+       and pago_estado in ('pagado','en_camino');
   end if;
 
   if p_evento is not null then

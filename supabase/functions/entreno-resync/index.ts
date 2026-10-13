@@ -83,6 +83,62 @@ function estadoDe(s: string): "activa" | "impago" | "cancelada" | null {
   return null;
 }
 
+// ============================================================
+// ALTAS DE SOCIO «en camino» (mig 311) — pasada extra
+// El webhook viejo daba el alta por pagada al firmar el mandato e ignoraba
+// `checkout.session.async_payment_succeeded`, y Stripe no repite ese aviso. Las
+// altas que pasaron a «en_camino» podrían quedarse así para siempre. Aquí se
+// pregunta a Stripe por su PaymentIntent (stripe_pago_ref):
+//   succeeded                       → pagos_confirmar (pagado), con pagado_en =
+//                                     fecha REAL del cargo (charge.created), no hoy
+//   requires_payment_method/canceled → pagos_marcar 'fallido'
+//   processing                       → sigue en camino
+// ============================================================
+async function revisarAltasSocio(): Promise<Array<Record<string, unknown>>> {
+  const salida: Array<Record<string, unknown>> = [];
+  const rA = await rest(`altas_socio?select=id,referencia,nombre,apellidos,stripe_pago_ref,mandato_firmado_en&pago_estado=eq.en_camino&stripe_pago_ref=not.is.null`);
+  const altas: Array<{ id: string; referencia: string; nombre: string; apellidos: string | null; stripe_pago_ref: string }> =
+    Array.isArray(rA.datos) ? rA.datos : [];
+  for (const a of altas) {
+    const nombre = `${a.nombre} ${a.apellidos ?? ""}`.trim();
+    const refPago = `socio-${a.id}`;
+    const rPi = await stripeGet(`payment_intents/${encodeURIComponent(a.stripe_pago_ref)}?expand[]=latest_charge`);
+    if (!rPi.ok || !rPi.datos || rPi.datos.error) {
+      salida.push({ id: a.id, nombre, referencia: a.referencia, error: rPi.datos?.error?.message ?? `Stripe ${rPi.estado}` });
+      continue;
+    }
+    const pi: any = rPi.datos;
+    const est = String(pi.status ?? "");
+    if (est === "succeeded") {
+      const cargo: any = typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+      const ts = Number(cargo?.created ?? pi.created ?? 0);
+      const fechaCargo = ts > 0 ? new Date(ts * 1000).toISOString() : null;
+      // La fecha real va primero en pagos_online (pagos_confirmar respeta la que
+      // haya) y de ahí la copia pagos_aplicar_efecto al alta.
+      if (fechaCargo) {
+        await rest(`pagos_online?referencia=eq.${encodeURIComponent(refPago)}&estado=neq.pagado`, {
+          method: "PATCH", headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ pagado_en: fechaCargo, stripe_payment_intent: pi.id }),
+        });
+      }
+      const rC = await rest(`rpc/pagos_confirmar`, {
+        method: "POST",
+        body: JSON.stringify({ p_referencia: refPago, p_intent: pi.id }),
+      });
+      salida.push({ id: a.id, nombre, referencia: a.referencia, resultado: rC.ok ? "pagado" : "error al confirmar", cobrado_en: fechaCargo });
+    } else if (est === "requires_payment_method" || est === "canceled") {
+      const rM = await rest(`rpc/pagos_marcar`, {
+        method: "POST",
+        body: JSON.stringify({ p_referencia: refPago, p_estado: "fallido" }),
+      });
+      salida.push({ id: a.id, nombre, referencia: a.referencia, resultado: rM.ok ? "falló" : "error al marcar", stripe: est });
+    } else {
+      salida.push({ id: a.id, nombre, referencia: a.referencia, resultado: "sigue en camino", stripe: est });
+    }
+  }
+  return salida;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -119,7 +175,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const rA = await rest(filtro);
   const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string; atleta_id: string | null; ultimo_cobro: string | null }> =
     Array.isArray(rA.datos) ? rA.datos : [];
-  if (!cuotas.length) return responder({ ok: true, revisadas: 0, actualizadas: 0, detalle: [] }, 200, origen);
+  // Pasada extra: altas de socio con el adeudo SEPA en camino (solo en la
+  // revisión general, no al revisar una cuota suelta).
+  let socio: Array<Record<string, unknown>> = [];
+  if (!cuotaId) {
+    try { socio = await revisarAltasSocio(); }
+    catch (e) { socio = [{ error: String((e as Error)?.message ?? e) }]; }
+  }
+  if (!cuotas.length) return responder({ ok: true, revisadas: 0, actualizadas: 0, detalle: [], socio }, 200, origen);
 
   const detalle: Array<Record<string, unknown>> = [];
   let actualizadas = 0;
@@ -229,5 +292,5 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  return responder({ ok: true, revisadas: cuotas.length, actualizadas, detalle }, 200, origen);
+  return responder({ ok: true, revisadas: cuotas.length, actualizadas, detalle, socio }, 200, origen);
 });

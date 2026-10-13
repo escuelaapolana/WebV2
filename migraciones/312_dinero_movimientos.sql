@@ -40,7 +40,9 @@ begin;
 
 create or replace function public.dinero_puede_ver()
 returns boolean language sql stable security definer set search_path to 'public' as $$
-  select public.es_admin() or public.es_tesoreria() or public.es_contabilidad() or public.es_junta();
+  -- Igual que la RLS de `pagos` (admin + ve_dinero = tesorería o contabilidad).
+  -- Junta NO: ve_dinero() no la incluye, y esta vista no debe ver más que la RLS.
+  select public.es_admin() or public.ve_dinero();
 $$;
 revoke all on function public.dinero_puede_ver() from public, anon;
 grant execute on function public.dinero_puede_ver() to authenticated, service_role;
@@ -65,7 +67,7 @@ returns table (
 language plpgsql stable security definer set search_path to 'public' as $function$
 begin
   if not public.dinero_puede_ver() then
-    raise exception 'Solo administración, tesorería, contabilidad o junta ven el dinero.' using errcode = '42501';
+    raise exception 'Solo administración, tesorería o contabilidad ven el dinero.' using errcode = '42501';
   end if;
 
   return query
@@ -297,7 +299,7 @@ declare
   v_res   jsonb;
 begin
   if not public.dinero_puede_ver() then
-    raise exception 'Solo administración, tesorería, contabilidad o junta ven el dinero.' using errcode = '42501';
+    raise exception 'Solo administración, tesorería o contabilidad ven el dinero.' using errcode = '42501';
   end if;
 
   with m as (select * from public.dinero_movimientos()),

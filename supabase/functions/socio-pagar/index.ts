@@ -159,6 +159,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (alta.pago_estado === "pagado") {
     return responder({ error: "ya_pagado", mensaje: "Tu alta ya está pagada. No hace falta volver a pagar." }, 409, origen);
   }
+  // Adeudo devuelto por el banco o reembolsado: no se reabre la pasarela sola;
+  // lo resuelve el club con la persona.
+  if (alta.pago_estado === "devuelto") {
+    return responder({ error: "devuelto", mensaje: "Tu pago fue devuelto. Contacta con el club y lo resolvemos." }, 409, origen);
+  }
   // Mandato SEPA firmado y adeudo en camino (mig 311): no se abre otro cobro.
   // Si el adeudo falla, el estado pasa a 'fallido' y aquí se deja reintentar.
   if (alta.pago_estado === "en_camino") {

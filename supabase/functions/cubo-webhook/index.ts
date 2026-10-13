@@ -475,6 +475,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const objeto = evento.data?.object ?? null;
   if (!objeto) return new Response(JSON.stringify({ recibido: true }), { status: 200 });
 
+  // --- ALTA DE SOCIO: adeudo DEVUELTO después de cobrado (reembolso o
+  //     devolución del banco). Va ANTES de la rama de socio: el cargo suele traer
+  //     metadata.referencia='socio-…' y allí saldría por `default` sin hacer nada.
+  //     Se casa por el payment_intent guardado en altas_socio.stripe_pago_ref
+  //     (la disputa no trae metadata). Si no es de un alta, sigue su camino. ---
+  if (tipo === "charge.refunded" || tipo === "charge.dispute.created") {
+    const pi = idDe(objeto.payment_intent);
+    const completo = tipo === "charge.dispute.created" || objeto.refunded === true;
+    const refMeta = typeof objeto.metadata?.referencia === "string" && objeto.metadata.referencia.startsWith("socio-")
+      ? objeto.metadata.referencia.slice("socio-".length) : null;
+    if ((pi || refMeta) && completo) {
+      let altaId: string | null = null;
+      if (pi) {
+        const r = await fetch(
+          `${SUPABASE_URL}/rest/v1/altas_socio?select=id&stripe_pago_ref=eq.${encodeURIComponent(pi)}&limit=1`,
+          { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+        );
+        const filas = r.ok ? await r.json().catch(() => []) : [];
+        altaId = (Array.isArray(filas) ? filas[0]?.id : null) ?? null;
+      }
+      altaId = altaId ?? refMeta;
+      if (altaId) {
+        await rpcServicio("pagos_marcar", { p_referencia: `socio-${altaId}`, p_estado: "reembolsado", p_evento: String(evento.id ?? "") });
+        await patchAltaSocioFiltro(`id=eq.${encodeURIComponent(altaId)}`, { pago_estado: "devuelto" });
+        return new Response(JSON.stringify({ recibido: true, socio: true, devuelto: true }), { status: 200 });
+      }
+    }
+  }
+
   // --- ALTA DE SOCIO pagada por SEPA (referencia socio-<id de alta>) ---
   // El adeudo SEPA es de cobro DIFERIDO: al completar el checkout solo se FIRMA
   // el mandato (payment_status 'unpaid'); el dinero entra días después (~5 días
@@ -524,27 +553,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
         break;
     }
     return new Response(JSON.stringify({ recibido: true, socio: true }), { status: 200 });
-  }
-
-  // --- ALTA DE SOCIO: adeudo DEVUELTO después de cobrado (reembolso o
-  //     devolución del banco). El cargo no siempre trae la referencia, así que se
-  //     casa por el payment_intent guardado en altas_socio.stripe_pago_ref. ---
-  if (tipo === "charge.refunded" || tipo === "charge.dispute.created") {
-    const pi = idDe(objeto.payment_intent);
-    const completo = tipo === "charge.dispute.created" || objeto.refunded === true;
-    if (pi && completo) {
-      const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/altas_socio?select=id&stripe_pago_ref=eq.${encodeURIComponent(pi)}&limit=1`,
-        { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
-      );
-      const filas = r.ok ? await r.json().catch(() => []) : [];
-      const alta = Array.isArray(filas) ? filas[0] : null;
-      if (alta?.id) {
-        await rpcServicio("pagos_marcar", { p_referencia: `socio-${alta.id}`, p_estado: "reembolsado", p_evento: String(evento.id ?? "") });
-        await patchAltaSocioFiltro(`id=eq.${encodeURIComponent(alta.id)}`, { pago_estado: "devuelto" });
-        return new Response(JSON.stringify({ recibido: true, socio: true, devuelto: true }), { status: 200 });
-      }
-    }
   }
 
   // --- CUOTA DE ENTRENO (suscripción SEPA trimestral, referencia entreno-<id>) ---
@@ -619,7 +627,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         proximo_cobro: aFecha(finPeriodo),
       };
       // Histórico: UNA fila en `pagos` por recibo cobrado (idempotente por factura).
-      await registrarCobroCubo(objeto, filtro);
+      // Si falla (red, base), se apunta en el log y se sigue: lo importante es
+      // que la cuota quede al día (patchAlta, más abajo). El resync no lo rehace
+      // para el Cubo, así que el log es la pista.
+      try { await registrarCobroCubo(objeto, filtro); }
+      catch (e) { console.error("No se pudo registrar el cobro del Cubo en pagos:", objeto.id, e); }
       break;
     }
 

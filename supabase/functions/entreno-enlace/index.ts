@@ -105,9 +105,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cuotaId = String(cuerpo.cuota_id ?? "").trim();
   if (!cuotaId) return responder({ error: "falta_cuota" }, 400, origen);
 
-  const rC = await consulta(`cuotas_entreno?select=nombre,email,importe_cent,token&id=eq.${encodeURIComponent(cuotaId)}&limit=1`);
-  const c = Array.isArray(rC.datos) ? rC.datos[0] as { nombre: string; email: string; importe_cent: number; token: string } : null;
+  const rC = await consulta(`cuotas_entreno?select=nombre,email,importe_cent,token,suscripcion_estado&id=eq.${encodeURIComponent(cuotaId)}&limit=1`);
+  const c = Array.isArray(rC.datos) ? rC.datos[0] as { nombre: string; email: string; importe_cent: number; token: string; suscripcion_estado: string | null } : null;
   if (!c) return responder({ ok: false, motivo: "no-existe" }, 200, origen);
+  // Ya domiciliada (o con el mandato firmado y el 1er adeudo en camino, mig 311):
+  // no se manda el enlace, que abriría otra suscripción y cobraría dos veces.
+  if (c.suscripcion_estado === "activa" || c.suscripcion_estado === "en_camino") {
+    return responder({ ok: false, motivo: "ya domiciliada" }, 200, origen);
+  }
   const destino = String(c.email ?? "").trim();
   if (!destino) return responder({ ok: false, motivo: "sin-correo" }, 200, origen);
 
