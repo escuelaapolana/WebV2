@@ -1526,34 +1526,46 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
-    // --- El Cubo: inscripciones NUEVAS a la fuerza gratis (desde la última vez que se miró) ---
-    // Solo las de los últimos 7 días: el «visto» vive en este navegador, así
-    // que desde otro aparato (o sin haber abierto nunca la lista) salían TODAS
-    // y el aviso se quedaba encendido para siempre. Si no entra nadie en una
-    // semana, el aviso se apaga solo.
-    var vistoCubo = null;
-    try { vistoCubo = localStorage.getItem('apo-cubo-visto'); } catch (e) {}
-    var hace7Cubo = new Date(Date.now() - 7 * 86400000).toISOString();
-    if (!vistoCubo || vistoCubo < hace7Cubo) vistoCubo = hace7Cubo;
-    var rCubo = await sb.from('cubo_prueba')
-      .select('id,nombre,apellidos,created_at').neq('estado', 'cancelado')
-      .order('created_at', { ascending: false });
-    if (rCubo.error) FALLOS.push('las inscripciones de la fuerza gratis');
+    // --- El Cubo: quien está DE PRUEBA y ya ha venido 2 días → toca escribirle ---
+    // La Fuerza gratis (viernes/sábado/domingo) NO avisa: esas personas están
+    // en sus grupos de esos días. El aviso es solo para la prueba de verdad
+    // (alta aprobada, aún sin pagar) que ya ha gastado sus 2 entrenamientos y a
+    // la que todavía no se le ha marcado «Se queda» en El Cubo · Altas.
+    var rPr = await sb.from('cubo_altas')
+      .select('id,nombre,apellidos,horario,atleta_id,created_at,suscripcion_estado,lista_espera,pago_externo,confirmado_sigue')
+      .eq('estado', 'aprobada').is('confirmado_sigue', null);
+    if (rPr.error) FALLOS.push('las pruebas de El Cubo');
     else {
-      var nuevasCubo = (rCubo.data || []).filter(function (a) {
-        return !vistoCubo || (a.created_at && a.created_at > vistoCubo);
+      var enPr = (rPr.data || []).filter(function (a) {
+        return a.atleta_id && a.suscripcion_estado !== 'activa' && !a.lista_espera && !a.pago_externo;
       });
-      if (nuevasCubo.length) {
-        var cu0 = nuevasCubo[0];
+      var listosPr = [];
+      if (enPr.length) {
+        var rAs = await sb.from('asistencia').select('atleta_id,fecha')
+          .in('atleta_id', enPr.map(function (a) { return a.atleta_id; })).eq('presente', true);
+        if (rAs.error) FALLOS.push('las asistencias de El Cubo');
+        else {
+          enPr.forEach(function (a) {
+            var desde = a.created_at ? String(a.created_at).slice(0, 10) : '', dias = {};
+            (rAs.data || []).forEach(function (x) {
+              var f = String(x.fecha || '');
+              if (x.atleta_id === a.atleta_id && f && (!desde || f >= desde)) dias[f] = 1;
+            });
+            if (Object.keys(dias).length >= 2) listosPr.push(a);
+          });
+        }
+      }
+      if (listosPr.length) {
+        var pr0 = listosPr[0];
         alertas.push({
           tipo: 'CUBO',
-          texto: nuevasCubo.length === 1
-            ? 'Una inscripción nueva a la Fuerza gratis del Cubo'
-            : nuevasCubo.length + ' inscripciones nuevas a la Fuerza gratis del Cubo',
-          sub: (((cu0.nombre || '') + ' ' + (cu0.apellidos || '')).trim() || 'Alguien') +
-               (nuevasCubo.length > 1 ? ' y ' + (nuevasCubo.length - 1) + ' más' : '') +
-               (cu0.created_at ? ' · ' + fechaCorta(cu0.created_at) : ''),
-          accion: 'Ver', href: 'cubo-prueba/', azul: true
+          texto: listosPr.length === 1
+            ? 'Ha terminado sus 2 entrenamientos de prueba en El Cubo'
+            : listosPr.length + ' han terminado sus 2 entrenamientos de prueba en El Cubo',
+          sub: (((pr0.nombre || '') + ' ' + (pr0.apellidos || '')).trim() || 'Alguien') +
+               (listosPr.length > 1 ? ' y ' + (listosPr.length - 1) + ' más' : '') +
+               ' · escríbele para ver si se queda',
+          accion: 'Ver', href: 'cubo-altas/', azul: true
         });
       }
     }
