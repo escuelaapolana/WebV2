@@ -54,7 +54,8 @@ const eur = (n: number) => (Number(n) || 0).toLocaleString("es-ES", { minimumFra
 // Cuota MENSUAL (mig 313, p. ej. natación): correo propio, sin el «perdona
 // por el lío» que era solo para los 6 adultos de entreno.
 function correoMensualHtml(nombre: string, importe: number, enlace: string, concepto: string): string {
-  const hola = nombre ? `¡Hola, ${esc(nombre)}!` : "¡Hola!";
+  // Lo lee la familia (el nadador suele ser un niño): «familia de …».
+  const hola = nombre ? `¡Hola, familia de ${esc(nombre)}!` : "¡Hola!";
   return `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
@@ -169,7 +170,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         subject: mensual ? "Domicilia tu cuota mensual · Club Atletismo Apolana" : "Domicilia tu cuota de entrenamiento (ignora el correo anterior)",
         htmlContent: mensual ? correoMensualHtml(nombre, importe, enlace, String(c.concepto ?? "")) : correoHtml(nombre, importe, enlace),
         textContent: mensual
-          ? `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\nComo nos pedisteis, la cuota (${eur(importe)} al mes) pasa a domiciliación bancaria (SEPA): metéis el IBAN una vez y se cobra sola el día 1 de cada mes (el mes en curso, al domiciliar). Tras junio se para sola.\n\nDomiciliad la cuota aquí: ${enlace}\n\n¿Dudas? Contestad a este mensaje.`
+          ? `${nombre ? "¡Hola, familia de " + nombre + "!" : "¡Hola!"}\n\nComo nos pedisteis, la cuota (${eur(importe)} al mes) pasa a domiciliación bancaria (SEPA): metéis el IBAN una vez y se cobra sola el día 1 de cada mes (el mes en curso, al domiciliar). Tras junio se para sola.\n\nDomiciliad la cuota aquí: ${enlace}\n\n¿Dudas? Contestad a este mensaje.`
           : `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\nPerdona: el correo anterior pedía pagar con tarjeta y fue un error. Ignóralo.\n\nLa forma correcta es por domiciliación (SEPA): metes tu IBAN una vez y la cuota (${eur(importe)} por trimestre) se cobra sola en octubre, enero y abril. Tras abril se para solo.\n\nDomicilia tu cuota aquí: ${enlace}\n\n¿Dudas? Contesta a este mensaje.`,
       }),
     });
