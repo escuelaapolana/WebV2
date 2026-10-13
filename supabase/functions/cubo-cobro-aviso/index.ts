@@ -73,8 +73,11 @@ async function comoUsuario(rpc: string, jwt: string): Promise<boolean> {
   try { return (await r.json()) === true; } catch { return false; }
 }
 
-function correoHtml(nombre: string, precioMes: number, primer: number, nota = ""): string {
+function correoHtml(nombre: string, precioMes: number, primer: number, nota = "", correccion = false): string {
   const hola = nombre ? `¡Hola, ${nombre}!` : "¡Hola!";
+  const intro = correccion
+    ? '🙏 <b>Perdona el lío:</b> en el correo anterior ponía <b>10 €</b> por error. Estos son los datos correctos de tu cuota de El Cubo.'
+    : '¡Bienvenido/a a <b>El Cubo</b>! 💪 Ya has empezado a entrenar con nosotros, así que <b>ya puedes dejar lista tu cuota</b> y olvidarte del tema.';
   const cuotaLinea = precioMes > 0
     ? `luego, tu cuota de <b>${precioMes} €/mes</b>`
     : `luego, tu cuota mensual`;
@@ -93,7 +96,7 @@ function correoHtml(nombre: string, precioMes: number, primer: number, nota = ""
       <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">El Cubo · Club Atletismo Apolana</td></tr>
       <tr><td style="padding:24px 24px 6px 24px">
         <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">${hola}</p>
-        <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">¡Bienvenido/a a <b>El Cubo</b>! 💪 Ya has empezado a entrenar con nosotros, así que <b>ya puedes dejar lista tu cuota</b> y olvidarte del tema.</p>
+        <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">${intro}</p>
         <p style="margin:0 0 20px;color:#3f3f46;line-height:1.6">Para activar tu cuota de <b>${precioMes > 0 ? precioMes + " €/mes" : "El Cubo"}</b>, entra en tu espacio y pulsa <b>«Pagar la cuota»</b>: hoy pagas <b>${primer} €</b> (el primer mes) y tu tarjeta queda guardada; a partir de ahí se cobra sola cada <b>día 5</b>, sin que tengas que hacer nada.</p>
       </td></tr>
       ${notaHtml}
@@ -137,6 +140,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
   const altaId = String(cuerpo.alta_id ?? "").trim();
+  const correccion = cuerpo.correccion === true;
   if (!altaId) return responder({ error: "falta_alta" }, 400, origen);
 
   // 3 · El correo sale de la base (perfil del alta), no del navegador.
@@ -165,9 +169,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
         replyTo: { name: REMITENTE_NOMBRE, email: RESPUESTAS_EMAIL },
         to: [{ email: destino }],
-        subject: "Ya puedes activar tu cuota de El Cubo",
-        htmlContent: correoHtml(nombre, precioMes, primer, nota),
-        textContent: `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\n¡Bienvenido/a a El Cubo! Para activar tu cuota de ${precioMes > 0 ? precioMes + " €/mes" : "El Cubo"}, entra en ${URL_BASE}portal/ con este mismo correo y pulsa «Pagar la cuota»: hoy pagas ${primer} € (el primer mes)${nota ? " — " + nota : ""} y tu tarjeta queda guardada; a partir de ahí se cobra sola cada día 5.\n\n¿Dudas? Contesta a este mensaje y te ayudamos.`,
+        subject: correccion ? "Corrección · tu cuota de El Cubo" : "Ya puedes activar tu cuota de El Cubo",
+        htmlContent: correoHtml(nombre, precioMes, primer, nota, correccion),
+        textContent: `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\n${correccion ? "Perdona el lío: en el correo anterior ponía 10 € por error. Estos son los datos correctos. " : "¡Bienvenido/a a El Cubo! "}Para activar tu cuota de ${precioMes > 0 ? precioMes + " €/mes" : "El Cubo"}, entra en ${URL_BASE}portal/ con este mismo correo y pulsa «Pagar la cuota»: hoy pagas ${primer} € (el primer mes)${nota ? " — " + nota : ""} y tu tarjeta queda guardada; a partir de ahí se cobra sola cada día 5.\n\n¿Dudas? Contesta a este mensaje y te ayudamos.`,
       }),
     });
   } catch (e) {

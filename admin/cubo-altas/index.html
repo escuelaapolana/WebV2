@@ -921,6 +921,23 @@ APOLANA_ADMIN.listo(function (sb) {
     toast('Cobro abierto a '+(r.data||0)+' personas');
   }
 
+  // Reenviar un correo de CORRECCIÓN (el anterior ponía 10 € por error) a los
+  // que se avisaron HOY. Les llega con su cuota correcta.
+  async function reenviarCorreccion(btn){
+    var hoy=new Date().toISOString().slice(0,10);
+    var lista=ALTAS.filter(function(a){ return a.cobro_abierto && a.cobro_avisado_en && String(a.cobro_avisado_en).slice(0,10)===hoy; });
+    if(!lista.length){ toast('No hay nadie avisado hoy.'); return; }
+    var nombres=lista.slice(0,8).map(function(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }).join(', ');
+    if(!confirm('Reenviar correo de CORRECCIÓN a '+lista.length+' persona(s) (el anterior ponía 10 € por error):\n'+nombres+(lista.length>8?'…':'')+'\n\nLes llegará con su cuota correcta. ¿Enviar?')) return;
+    btn.disabled=true; var t0=btn.textContent; var ok=0,err=0;
+    for(var i=0;i<lista.length;i++){ btn.textContent='Enviando '+(i+1)+'/'+lista.length+'…';
+      try{ var r=await sb.functions.invoke('cubo-cobro-aviso',{body:{alta_id:lista[i].id, correccion:true}});
+        if(r&&!r.error&&r.data&&r.data.ok) ok++; else err++;
+      }catch(e){ err++; } }
+    btn.disabled=false; btn.textContent=t0;
+    toast('Corrección enviada a '+ok+(err?(' · '+err+' no salieron'):''), err?'error':'ok');
+  }
+
   // ---- Interruptor: abrir/cerrar el cobro de la cuota (tabla cubo_config) ----
   var COBRO = null, LIMITE = null;
   async function cargarCobro(){
@@ -1006,6 +1023,8 @@ APOLANA_ADMIN.listo(function (sb) {
     // lo tiene, ya se le avisó → no reenviar) y que pague por la app (no efectivo).
     var septoct=aprob.filter(function(a){ return !a.lista_espera && !a.cobro_abierto && !a.pago_externo && a.created_at && String(a.created_at).slice(0,10) < '2026-09-30'; });
     var septoctTotal=septoct.reduce(function(s,a){ return s + (10 + (a.precio_mes>0?a.precio_mes:30)); }, 0);
+    var _hoy=new Date().toISOString().slice(0,10);
+    var corrHoy=ALTAS.filter(function(a){ return a.cobro_abierto && a.cobro_avisado_en && String(a.cobro_avisado_en).slice(0,10)===_hoy; }).length;
     caja.className='ca-cobro'+(abiertos>0?' abierto':'');
     caja.innerHTML='<div class="tx"><b>Cobro por persona</b>'+
       '<small><b>'+abiertos+'</b> con cobro abierto · <b>'+prueba+'</b> de prueba (no les sale pagar). '+
@@ -1013,6 +1032,7 @@ APOLANA_ADMIN.listo(function (sb) {
       (septoct.length?'<button type="button" class="b abrir" id="ca-cobrar-septoct" style="background:#1E7A3D">Cobrar sep+oct a '+septoct.length+' pendientes (alta &lt; 30-sep) · ~'+septoctTotal+'€</button>':'')+
       (prueba>0?'<button type="button" class="b abrir" id="ca-abrir-todos">Abrir cobro a los '+prueba+' de prueba</button>':'')+
       '<button type="button" class="b" id="ca-resync-top" style="background:#5E7D3A;color:#fff;border-color:#5E7D3A">↻ Re-sincronizar Stripe</button>'+
+      (corrHoy>0?'<button type="button" class="b" id="ca-corregir" style="background:#9A5B23;color:#fff;border-color:#9A5B23">✉ Reenviar corrección a los avisados hoy ('+corrHoy+')</button>':'')+
       aforoHTML();
   }
   async function toggleCobro(btn){
@@ -1184,6 +1204,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(cnv){ avisarNuevos(cnv); return; }
     var crs=ev.target.closest?ev.target.closest('#cx-resync, #ca-resync-top'):null;
     if(crs){ resyncStripe(crs); return; }
+    var ccr=ev.target.closest?ev.target.closest('#ca-corregir'):null;
+    if(ccr){ reenviarCorreccion(ccr); return; }
     var f=ev.target.closest?ev.target.closest('.chip[data-f]'):null;
     if(f){ filtro=f.getAttribute('data-f'); pintar(); return; }
     var b=ev.target.closest?ev.target.closest('.b[data-id]'):null;
