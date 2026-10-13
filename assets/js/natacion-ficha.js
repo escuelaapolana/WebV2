@@ -23,6 +23,21 @@
   function hhmm(h){ return String(h==null?'':h).slice(0,5); }
   function callesDe(f){ var c=[]; for (var k=1;k<=((f&&f.calles)||1);k++) c.push('C'+k); if (f&&f.tiene_vaso) c.push('Vaso'); return c; }
   function opciones(lista, val){ return lista.map(function(o){ return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join(''); }
+  // Errores en cristiano (nunca «permission denied», «RLS», «Supabase»…).
+  function humano(e, accion){
+    var m = String((e && (e.message || e.msg || e.mensaje)) || e || '');
+    if (/JWT expired|jwt|sin_sesion/i.test(m)) return 'Tu sesión ha caducado. Sal y vuelve a entrar.';
+    if (/^(Solo |No encuentro|Falta|Nivel no|Ese correo|El correo|Este nadador|No hay ning)/.test(m)) return m;
+    if ((e && e.code === '42501') || /permission denied|row-level security|sin_permiso|no_permiso|not allowed/i.test(m))
+      return 'No tienes permiso para ' + (accion || 'hacer esto') + '. Si crees que deberías poder, díselo a Andrés.';
+    if (/Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m)) return 'Sin conexión. Revisa internet y vuelve a intentarlo.';
+    if (/non-2xx|Edge Function|FunctionsHttpError|FunctionsFetchError/i.test(m)) return 'El correo no ha salido. Vuelve a intentarlo en un rato.';
+    if (/duplicate key|already exists/i.test(m)) return 'Eso ya estaba guardado.';
+    if (/check constraint/i.test(m)) return 'Algún dato no es válido (revisa nivel o calle).';
+    if (/supabase|postgres|PGRST|relation |column |does not exist|syntax|no lo lleva el entrenador/i.test(m))
+      return 'Algo ha fallado al guardar. Recarga la página y vuelve a intentarlo; si sigue, avisa a Andrés.';
+    return m || 'No se pudo hacer. Vuelve a intentarlo.';
+  }
   function franjaLabel(f){ return f ? (DIAS[f.dia]+' '+hhmm(f.hora)+(f.grupo?' · '+f.grupo:'')) : '—'; }
 
   var cssHecho = false;
@@ -57,7 +72,12 @@
       '.nfi-enviar.ok{background:#E6F4EA;color:#1E7A3D;border:1px solid #BfE3C8}' +
       '.nfi-baja{display:block;width:100%;margin-top:10px;background:none;border:0;color:#B23B3B;font:inherit;font-size:13px;cursor:pointer;text-decoration:underline}' +
       '.nfi-msg{font-size:13px;color:var(--texto-suave,#6E6656);margin:10px 2px 0;min-height:1em}' +
-      '.nfi-msg.err{color:#B23B3B}';
+      '.nfi-msg.err{color:#B23B3B}' +
+      '.nfi-cto{display:grid;grid-template-columns:1fr 1fr;gap:9px}' +
+      '.nfi-cto label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--texto-suave,#6E6656);font-weight:600;min-width:0}' +
+      '.nfi-cto label.ancho{grid-column:1/-1}' +
+      '.nfi-cto input{font:inherit;font-size:14px;color:var(--navy,#26374B);border:1px solid var(--linea-borde,#C9C0AE);border-radius:9px;padding:8px 10px;box-sizing:border-box;width:100%}' +
+      '.nfi-nota{font-size:12.5px;color:var(--texto-suave,#6E6656);margin:6px 0 0}';
     document.head.appendChild(s);
   }
 
@@ -76,9 +96,12 @@
     var ins = (ri && !ri.error && ri.data) ? ri.data : [];
     ins.sort(function(a,b){ var fa=FR[a.franja_id]||{}, fb=FR[b.franja_id]||{}; return ((fa.dia||0)-(fb.dia||0)) || (hhmm(fa.hora)<hhmm(fb.hora)?-1:1); });
     var tipo = ins.some(function(x){ return x.tipo==='Máster'; }) ? 'Máster' : 'Escuela';
-    var dir = null;
-    if (acc.atleta_id){ try { var rd = await sb.rpc('natacion_get_direccion', { p_atleta: acc.atleta_id }); if (rd && !rd.error) dir = rd.data || null; } catch(e){} }
-    return { codigo:codigo, nombre:acc.nombre, acceso_id:acc.id, atleta_id:acc.atleta_id, ins:ins, tipo:tipo, direccion:dir };
+    var cto = null;
+    if (acc.atleta_id){
+      try { var rc = await sb.rpc('natacion_contacto_de', { p_atleta: acc.atleta_id }); if (rc && !rc.error && rc.data && rc.data[0]) cto = rc.data[0]; } catch(e){}
+    }
+    return { codigo:codigo, nombre:acc.nombre, acceso_id:acc.id, atleta_id:acc.atleta_id, ins:ins, tipo:tipo,
+             direccion: cto ? cto.direccion : null, cto: cto };
   }
 
   function msg(t, err){ var m = bg && bg.querySelector('.nfi-msg'); if (m){ m.textContent = t||''; m.className = 'nfi-msg'+(err?' err':''); } }
@@ -110,8 +133,7 @@
       '<div class="nfi-cab"><div><h2>'+esc(e.nombre||'Nadador')+'</h2>' +
         (e.codigo?'<span class="nfi-cod">'+esc(e.codigo)+' · '+esc(e.tipo)+'</span>':'') + '</div>' +
         '<button type="button" class="nfi-x" aria-label="Cerrar">✕</button></div>' +
-      '<div style="margin:14px 0 2px"><label style="display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-tenue,#9A927F);font-weight:700;margin-bottom:6px">Dirección (opcional)</label>' +
-        '<input type="text" class="nfi-dir-in" value="'+esc(e.direccion||'')+'" placeholder="Calle, nº, CP y localidad"'+(e.atleta_id?'':' disabled')+' style="width:100%;font:inherit;font-size:14px;color:var(--navy,#26374B);border:1px solid var(--linea-borde,#C9C0AE);border-radius:9px;padding:9px 11px;box-sizing:border-box"></div>' +
+      contactoHtml(e) +
       '<div class="nfi-rot">Sus franjas</div>' + filas + add +
       '<button type="button" class="nfi-enviar">✉ Enviar acceso a la familia</button>' +
       '<button type="button" class="nfi-baja">Dar de baja de natación (ya no nada)</button>' +
@@ -119,12 +141,30 @@
     '</div>';
   }
 
+  // Datos de contacto (se guardan al salir de cada casilla). Escuela: los del
+  // tutor; máster: los del propio nadador. Sin ficha unida no hay dónde guardar.
+  function contactoHtml(e){
+    var c = e.cto || {};
+    var dis = e.atleta_id ? '' : ' disabled';
+    function campo(k, lab, val, tipo, ancho){
+      return '<label'+(ancho?' class="ancho"':'')+'>'+esc(lab)+'<input type="'+(tipo||'text')+'" class="nfi-cto-in" data-k="'+k+'" value="'+esc(val||'')+'"'+dis+'></label>';
+    }
+    var campos = e.tipo === 'Máster'
+      ? campo('p_email', 'Correo', c.email, 'email') + campo('p_telefono', 'Teléfono', c.telefono, 'tel')
+      : campo('p_nombre_tutor', 'Tutor/a', c.nombre_tutor) + campo('p_telefono_tutor', 'Teléfono del tutor', c.telefono_tutor, 'tel') +
+        campo('p_email_tutor', 'Correo del tutor', c.email_tutor, 'email', true);
+    campos += campo('p_direccion', 'Dirección (opcional)', c.direccion, 'text', true);
+    return '<div class="nfi-rot">Contacto</div><div class="nfi-cto">' + campos + '</div>' +
+      (e.atleta_id ? (c.familia_con_cuenta ? '<p class="nfi-nota">La familia ya tiene cuenta en la app.</p>' : '<p class="nfi-nota">La familia aún no tiene cuenta: «Enviar acceso» le manda el enlace para crearla.</p>')
+                   : '<p class="nfi-nota">Esta persona no está unida a su ficha: únela desde Natación › Franjas y cupos («🔗 Unir a su ficha»).</p>');
+  }
+
   async function recargar(){ estado = await cargar(estado.codigo) || estado; render(); if (onCambio) { try { onCambio(); } catch(e){} } }
 
   async function guardar(prom, ok){
     msg('Guardando…');
     var r = await prom;
-    if (r && r.error){ msg('No se pudo guardar: '+r.error.message, true); return false; }
+    if (r && r.error){ msg(humano(r.error, 'cambiar esto'), true); return false; }
     await recargar(); msg(ok||'');
     return true;
   }
@@ -149,20 +189,26 @@
       btn.classList.add('ok');
     } catch(e){
       btn.disabled = false; btn.textContent = t;
-      msg((e && e.message) || 'No se pudo enviar. Comprueba que tenga correo guardado.', true);
+      msg(humano(e, 'enviar correos') || 'No se pudo enviar. Comprueba que tenga correo guardado.', true);
     }
   }
 
   async function darDeBaja(){
     if (!confirm('¿Dar de baja a ' + (estado.nombre || 'esta persona') + ' de natación?\n\n' +
-      'Se quitará de TODAS sus franjas y dejará de aparecer en las listas. Se puede volver a dar de alta más adelante.')) return;
+      'Se quitará de TODAS sus franjas, su código de acceso dejará de valer y se anulan sus reservas futuras. ' +
+      'Si no está en nada más del club, su ficha queda «de baja». Se puede volver a dar de alta más adelante.')) return;
     msg('Dando de baja…');
-    var r = await sb.from('natacion_inscripciones').update({ activa:false }).eq('acceso_id', estado.acceso_id).eq('activa', true);
-    if (r && r.error){ msg('No se pudo dar de baja: '+r.error.message, true); return; }
-    // por si quedara alguna fila atada solo por ficha (sin código)
-    if (estado.atleta_id){ try { await sb.from('natacion_inscripciones').update({ activa:false }).eq('atleta_id', estado.atleta_id).eq('activa', true); } catch(e){} }
+    // Baja COMPLETA en la base (franjas + código + reservas + lista de espera
+    // + ficha si no está en otra cosa). Antes solo se apagaban las franjas y
+    // el código seguía vivo (caso Mounir).
+    var r = await sb.rpc('natacion_dar_baja', { p_acceso: estado.acceso_id, p_atleta: estado.atleta_id || null });
+    if (r && r.error){ msg(humano(r.error, 'dar bajas'), true); return; }
+    var d = (r && r.data) || {};
+    var txt = (estado.nombre || 'Baja') + ' dado/a de baja de natación.' +
+      (d.sigue_en ? ' Su ficha sigue activa porque también está en: ' + d.sigue_en + '.' : '');
     if (onCambio){ try { await onCambio(); } catch(e){} }
     cerrar();
+    try { alert(txt); } catch(e){}
   }
 
   function cerrar(){ if (bg){ bg.remove(); bg = null; } estado = null; }
@@ -200,12 +246,16 @@
       if (t.classList.contains('nfi-nivel')){ guardar(sb.from('natacion_inscripciones').update({ nivel: t.value }).eq('id', t.getAttribute('data-id')), 'Nivel guardado'); return; }
       if (t.classList.contains('nfi-calle')){ guardar(sb.from('natacion_inscripciones').update({ calle: t.value }).eq('id', t.getAttribute('data-id')), 'Calle guardada'); return; }
       if (t.classList.contains('nfi-mover') && t.value){ guardar(sb.from('natacion_inscripciones').update({ franja_id: t.value }).eq('id', t.getAttribute('data-id')), 'Movida de día'); return; }
-      if (t.classList.contains('nfi-dir-in')){
-        if (!estado.atleta_id){ msg('Esta ficha aún no está enlazada a una cuenta', true); return; }
-        estado.direccion = t.value;
+      if (t.classList.contains('nfi-cto-in')){
+        if (!estado.atleta_id){ msg('Esta persona no está unida a su ficha: únela desde Franjas y cupos', true); return; }
+        var k = t.getAttribute('data-k'), args = { p_atleta: estado.atleta_id };
+        args[k] = t.value.trim();          // '' = borrar ese dato
         msg('Guardando…');
-        sb.rpc('natacion_set_direccion', { p_atleta: estado.atleta_id, p_direccion: t.value })
-          .then(function(r){ msg(r && r.error ? 'No se pudo guardar la dirección' : 'Dirección guardada', !!(r && r.error)); });
+        sb.rpc('natacion_guardar_contacto', args).then(function(r){
+          if (r && r.error){ msg(humano(r.error, 'cambiar los datos de contacto'), true); return; }
+          if (estado.cto) estado.cto[k.replace(/^p_/, '')] = t.value.trim();
+          msg('Guardado ✓');
+        });
         return;
       }
     });

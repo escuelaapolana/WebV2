@@ -100,6 +100,21 @@
   .nf-cancelar { flex:1; font:inherit; font-weight:600; font-size:14px; background:var(--crema-media,#EFE9DC);
                  color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:9px 15px; cursor:pointer; }
   .nf-req { color:#B23B3B; }
+  /* buscador de fichas que YA existen (alta de alguien que ya está en el club) */
+  .nf-busca { background:#F3F8FC; border:1px solid #D6E6F3; border-radius:12px; padding:11px 12px; margin:0 0 14px; }
+  .nf-busca label { font-size:12.5px; font-weight:700; color:var(--navy,#26374B); display:block; margin-bottom:6px; }
+  .nf-busca input { width:100%; box-sizing:border-box; }
+  .nf-res { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .nf-res button { text-align:left; font:inherit; font-size:14px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB);
+                   border-radius:10px; padding:8px 10px; cursor:pointer; color:var(--navy,#26374B); }
+  .nf-res button small { display:block; font-size:12px; color:var(--texto-suave,#6E6656); }
+  .nf-res button[disabled] { opacity:.55; cursor:default; }
+  .nf-elegida { display:flex; align-items:center; gap:10px; background:#E6F4EA; border:1px solid #BFE3C8; border-radius:10px; padding:9px 11px; font-size:14px; color:#1E5E34; }
+  .nf-elegida b { flex:1; }
+  .nf-elegida button { font:inherit; font-size:12.5px; background:none; border:0; color:#1E5E34; text-decoration:underline; cursor:pointer; }
+  .nf-aviso { font-size:13px; color:#8A5A00; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:10px; padding:8px 10px; margin-top:8px; }
+  .ng-suelta { font:inherit; font-size:12.5px; color:#8A5A00; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:9px; padding:6px 10px; cursor:pointer; }
+  .ng-fila .tag.suelta { background:#FFF0CC; color:#8A5A00; }
 </style>
 </head>
 <body>
@@ -128,7 +143,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function toast(msg, tipo){ var t=document.createElement('div'); t.className='ng-toast'+(tipo==='err'?' err':''); t.textContent=msg;
     document.body.appendChild(t); requestAnimationFrame(function(){ t.classList.add('ver'); });
-    setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); }, 2000); }
+    setTimeout(function(){ t.classList.remove('ver'); setTimeout(function(){ t.remove(); },260); }, Math.min(7000, 2000 + 35*String(msg||'').length)); }
+  // Errores en cristiano: nunca «Supabase», «RLS» ni «permission denied» a pelo.
+  // Los mensajes que ya escribimos en la base (en español) pasan tal cual.
+  function humano(e, accion){
+    var m = String((e && (e.message || e.msg || e.mensaje)) || e || '');
+    if (/JWT expired|jwt|sesi[oó]n caducada|sin_sesion/i.test(m)) return 'Tu sesión ha caducado. Sal y vuelve a entrar.';
+    if (/^(Solo |No encuentro|Falta|Nivel no|Ese correo|El correo|Este nadador|No hay ning)/.test(m)) return m;
+    if ((e && e.code === '42501') || /permission denied|row-level security|violates row-level|sin_permiso|no_permiso|not allowed/i.test(m))
+      return 'No tienes permiso para ' + (accion || 'hacer esto') + '. Si crees que deberías poder, díselo a Andrés.';
+    if (/Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m)) return 'Sin conexión. Revisa internet y vuelve a intentarlo.';
+    if (/non-2xx|Edge Function|FunctionsHttpError|FunctionsFetchError/i.test(m)) return 'El correo no ha salido. Vuelve a intentarlo en un rato (botón ✉).';
+    if (/duplicate key|already exists/i.test(m)) return 'Eso ya estaba guardado.';
+    if (/check constraint/i.test(m)) return 'Algún dato no es válido (revisa nivel, calle o tipo).';
+    if (/foreign key/i.test(m)) return 'Esa franja o persona ya no existe. Recarga la página.';
+    if (/supabase|postgres|PGRST|relation |column |function .*does not exist|syntax/i.test(m))
+      return 'Algo ha fallado al guardar. Recarga la página y vuelve a intentarlo; si sigue, avisa a Andrés.';
+    return m || 'No se pudo hacer. Vuelve a intentarlo.';
+  }
   function hhmm(h){ return String(h).slice(0,5); }
   function opciones(lista, val){ return lista.map(function(o){ return '<option value="'+esc(o)+'"'+(o===val?' selected':'')+'>'+esc(o)+'</option>'; }).join(''); }
   function callesDe(f){ var c=[]; for (var k=1; k<=(f.calles||1); k++) c.push('C'+k); if (f.tiene_vaso) c.push('Vaso'); return c; }
@@ -181,7 +213,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   async function mut(prom, msgOk){
     var r = await prom;
-    if (r && r.error){ toast('No se pudo guardar: ' + r.error.message, 'err'); return false; }
+    if (r && r.error){ toast(humano(r.error, 'cambiar esto'), 'err'); return false; }
     if (msgOk) toast(msgOk);
     var f = await sb.from('natacion_franjas').select('*').order('dia').order('hora');
     FR = f.error ? FR : (f.data || []);
@@ -210,12 +242,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var moverOpts = FR.filter(function(x){ return x.id!==f.id; }).map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(DIAS[x.dia]+' '+hhmm(x.hora))+'</option>'; }).join('');
     var roster = callesOrden.length ? callesOrden.map(function(c){
       var filas = porCalle[c].sort(function(a,b){ return (a.nombre||'').toLowerCase()<(b.nombre||'').toLowerCase()?-1:1; }).map(function(m){
+        var suelta = !m.acceso_id;
         return '<div class="ng-fila">' +
           '<span class="nom">'+esc(m.nombre)+'</span><span class="tag">'+esc(m.tipo)+'</span>' +
+          (suelta ? '<span class="tag suelta" title="Esta fila se metió escribiendo el nombre: no está unida a su ficha ni tiene código, por eso no se agrupa ni le llegan correos">sin ficha</span>' : '') +
           '<div class="ctrl">' +
             '<select class="ng-sel-nivel" data-id="'+esc(m.id)+'" title="Nivel">'+opciones(NIVELES, m.nivel)+'</select>' +
             '<select class="ng-sel-calle" data-id="'+esc(m.id)+'" title="Calle">'+opciones(calles, m.calle)+'</select>' +
             '<select class="ng-sel-mover" data-id="'+esc(m.id)+'" title="Mover"><option value="">Mover a…</option>'+moverOpts+'</select>' +
+            (suelta ? '<button type="button" class="ng-suelta" data-ins="'+esc(m.id)+'" data-nom="'+esc(m.nombre)+'" data-tipo="'+esc(m.tipo)+'">🔗 Unir a su ficha</button>' : '') +
             (m.acceso_id ? '<button type="button" class="ng-acceso" data-acceso="'+esc(m.acceso_id)+'" title="Reenviar a la familia el correo de acceso a la web/app" style="font:inherit;font-size:12.5px;color:#2F6FA8;background:#EAF2FA;border:1px solid #CFE0F0;border-radius:9px;padding:6px 10px;cursor:pointer">✉ Acceso</button>' : '') +
             '<button type="button" class="ng-quitar" data-id="'+esc(m.id)+'">Quitar</button>' +
           '</div></div>';
@@ -337,12 +372,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (d.ya_tiene_cuenta){
         rc = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: d.codigo } });
       } else {
-        rc = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: d.publico, solo_a: d.email, forzar:true, confirmar:true } });
+        // Sin cuenta: hace falta el enlace de invitación (token). Si la familia
+        // aún no lo tenía, natacion_familia_preparar lo crea; sin él, la
+        // invitación no salía («No se pudo enviar el correo»).
+        var pr = await sb.rpc('natacion_familia_preparar', { p_codigo: d.codigo });
+        if (pr && pr.error) throw pr.error;
+        var pub = (pr && pr.data && pr.data.tipo === 'Máster') ? 'master' : 'familia';
+        rc = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: pub, solo_a: d.email, forzar:true, confirmar:true } });
       }
       var ok = !(rc && rc.error) && !(rc && rc.data && rc.data.ok === false);
       if (ok){ toast('Acceso enviado a ' + d.email + ' ✓'); if(btn){ btn.textContent = '✓ Enviado'; } }
-      else { toast('No se pudo enviar el correo', 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } }
-    } catch(e){ toast('No se pudo enviar el correo', 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } }
+      else { toast(humano((rc && rc.data && (rc.data.msg || rc.data.mensaje)) || (rc && rc.error) || 'El correo no ha salido.', 'enviar correos'), 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } }
+    } catch(e){ toast(humano(e, 'enviar correos'), 'err'); if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Acceso'; } }
   }
 
   // Guardar los cupos de una franja (todos sus inputs) SIN repintar todo.
@@ -351,7 +392,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cupos = {};
     [].forEach.call(ins, function(el){ var v=el.value.trim(); if (v!=='' && !isNaN(parseInt(v,10))) cupos[el.getAttribute('data-calle')] = parseInt(v,10); });
     var r = await sb.from('natacion_franjas').update({ cupos: cupos }).eq('id', franjaId);
-    if (r && r.error){ toast('No se pudo guardar: '+r.error.message,'err'); return; }
+    if (r && r.error){ toast(humano(r.error, 'cambiar las plazas'),'err'); return; }
     toast('Plazas guardadas');
     // El trigger recalculó el semáforo: releo SOLO esta franja y refresco en sitio.
     var rf = await sb.from('natacion_franjas').select('*').eq('id', franjaId).maybeSingle();
@@ -386,9 +427,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var tipo = acc.querySelector('.ng-add-tipo').value;
     var nivel = acc.querySelector('.ng-add-nivel').value;
     var calle = acc.querySelector('.ng-add-calle').value;
-    var fila = { franja_id: franjaId, nombre: nombre, tipo: tipo, nivel: nivel, calle: calle, activa: true };
-    var id = fichaDe(nombre);   // si ya existe, se reutilizan su código y su ficha
-    if (id){ if (id.acceso_id) fila.acceso_id = id.acceso_id; if (id.atleta_id) fila.atleta_id = id.atleta_id; }
+    var id = fichaDe(nombre);   // si ya está en natación, se reutilizan su código y su ficha
+    if (!id || !id.acceso_id){
+      // NO se mete una fila suelta (sin ficha ni código): era lo que pasó con
+      // Ian — «lo pongo en la franja pero no se agrupa» y a la familia no le
+      // llega nada. Se abre el alta con el nombre ya puesto para buscar su
+      // ficha (o crearla) y esta franja ya marcada.
+      abrirForm({ nombre: nombre, franja: franjaId, tipo: tipo, nivel: nivel, calle: calle });
+      return;
+    }
+    var fila = { franja_id: franjaId, nombre: nombre, tipo: tipo, nivel: nivel, calle: calle, activa: true,
+                 acceso_id: id.acceso_id };
+    if (id.atleta_id) fila.atleta_id = id.atleta_id;
     await mut(sb.from('natacion_inscripciones').insert(fila), 'Añadido');
   }
 
@@ -403,109 +453,230 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ============================================================
   function franjaLabel(f){ return DIAS[f.dia] + ' ' + hhmm(f.hora) + ' · ' + (f.grupo || ''); }
 
-  function abrirForm(){
+  // Estado del formulario: ficha elegida en el buscador (si la persona YA
+  // está en el club), filas sueltas a unir, y si ya se avisó de un posible
+  // duplicado (al 2º «Crear» se crea igual).
+  var FORM = { ficha:null, adoptar:[], avisadoDup:false, modo:'alta' };
+  function norm(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
+
+  function abrirForm(opts){
+    opts = opts || {};
+    cerrarForm();
+    FORM = { ficha:null, adoptar:(opts.adoptar||[]).slice(), avisadoDup:false, modo:(opts.modo==='unir'?'unir':'alta') };
+    var unir = FORM.modo === 'unir';
     var frOrden = FR.slice().sort(function(a,b){ return (a.dia-b.dia) || (hhmm(a.hora)<hhmm(b.hora)?-1:1); });
     var checks = frOrden.map(function(f){
-      return '<label class="nf-fr"><input type="checkbox" class="nf-fr-in" value="'+esc(f.id)+'"> '+esc(franjaLabel(f))+'</label>';
+      return '<label class="nf-fr"><input type="checkbox" class="nf-fr-in" value="'+esc(f.id)+'"'+(opts.franja===f.id?' checked':'')+'> '+esc(franjaLabel(f))+'</label>';
     }).join('') || '<span class="sub">No hay franjas creadas.</span>';
     var bg = document.createElement('div'); bg.className = 'nf-bg'; bg.id = 'nf-bg';
     bg.innerHTML =
       '<div class="nf-caja">' +
-        '<h2>Nuevo nadador</h2>' +
-        '<p class="ayuda">Se crea su ficha, su código de acceso y sus franjas. Y le llega un correo a la familia: ' +
-          'si no tiene cuenta, el enlace para crearla; si ya la tiene, sus horarios.</p>' +
+        '<h2>'+(unir ? 'Unir a su ficha' : 'Nuevo nadador')+'</h2>' +
+        '<p class="ayuda">'+(unir
+          ? '«'+esc(opts.nombre||'')+'» se metió escribiendo el nombre: no está unido a su ficha ni tiene código, por eso no se agrupa y a la familia no le llega nada. Búscalo y tócalo para unirlo.'
+          : 'Se crea su código de acceso y sus franjas (y su ficha, si aún no la tiene). Y le llega un correo a la familia: si no tiene cuenta, el enlace para crearla; si ya la tiene, sus horarios.')+'</p>' +
+        '<div class="nf-busca">' +
+          '<label for="nf-busca">¿Ya está en el club? Búscalo antes de crear nada</label>' +
+          '<input type="text" id="nf-busca" autocomplete="off" placeholder="Nombre y apellidos (mín. 3 letras)" value="'+esc(opts.nombre||'')+'">' +
+          '<div class="nf-res" id="nf-res"></div>' +
+        '</div>' +
         '<div class="nf-grid">' +
           '<div class="nf-campo ancho"><label>Tipo</label><select id="nf-tipo">' +
             '<option value="Escuela">Escuela de natación (menor)</option>' +
             '<option value="Máster">Máster (adulto)</option></select></div>' +
+        '</div>' +
+        '<div class="nf-grid" id="nf-datos" style="margin-top:10px">' +
           '<div class="nf-campo"><label>Nombre <span class="nf-req">*</span></label><input type="text" id="nf-nombre" autocomplete="off"></div>' +
           '<div class="nf-campo"><label>Apellidos</label><input type="text" id="nf-apellidos" autocomplete="off"></div>' +
           '<div class="nf-campo"><label>DNI</label><input type="text" id="nf-dni" autocomplete="off"></div>' +
           '<div class="nf-campo"><label>Fecha de nacimiento</label><input type="date" id="nf-nac"></div>' +
-          '<div class="nf-campo ancho"><label id="nf-email-lab">Correo del tutor <span class="nf-req">*</span></label><input type="text" id="nf-email" inputmode="email" autocomplete="off" placeholder="correo@ejemplo.com"></div>' +
           '<div class="nf-campo" id="nf-campo-tutor"><label>Nombre del tutor</label><input type="text" id="nf-tutor" autocomplete="off"></div>' +
           '<div class="nf-campo"><label>Teléfono</label><input type="text" id="nf-tel" inputmode="tel" autocomplete="off"></div>' +
           '<div class="nf-campo ancho"><label>Dirección</label><input type="text" id="nf-direccion" autocomplete="off" placeholder="Calle, nº, CP y localidad (opcional)"></div>' +
-          '<div class="nf-campo"><label>Nivel</label><select id="nf-nivel">'+opciones(NIVELES, NIVELES[2])+'</select></div>' +
-          '<div class="nf-campo"><label>Calle</label><select id="nf-calle">'+opciones(['C1','C2','C3','C4'],'C1')+'</select></div>' +
-          '<div class="nf-campo ancho"><label>Franjas <span class="nf-req">*</span></label><div class="nf-franjas">'+checks+'</div></div>' +
+        '</div>' +
+        '<div class="nf-grid" style="margin-top:10px">' +
+          '<div class="nf-campo ancho" id="nf-campo-email"><label id="nf-email-lab">Correo del tutor <span class="nf-req">*</span></label><input type="text" id="nf-email" inputmode="email" autocomplete="off" placeholder="correo@ejemplo.com"></div>' +
+          (unir ? '' :
+          '<div class="nf-campo"><label>Nivel</label><select id="nf-nivel">'+opciones(NIVELES, opts.nivel || NIVELES[2])+'</select></div>' +
+          '<div class="nf-campo"><label>Calle</label><select id="nf-calle">'+opciones(['C1','C2','C3','C4','Vaso'], opts.calle || 'C1')+'</select></div>' +
+          '<div class="nf-campo ancho"><label>Franjas <span class="nf-req">*</span></label><div class="nf-franjas">'+checks+'</div></div>') +
         '</div>' +
         '<div class="nf-acc">' +
           '<button type="button" class="nf-cancelar" id="nf-cancelar">Cancelar</button>' +
-          '<button type="button" class="ng-btn" id="nf-crear">Crear y avisar</button>' +
+          '<button type="button" class="ng-btn" id="nf-crear">'+(unir ? 'Crear su ficha y unir' : 'Crear y avisar')+'</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(bg);
-    bg.addEventListener('click', function(e){ if (e.target===bg) cerrarForm(); });
+    bg.addEventListener('click', function(e){
+      if (e.target===bg){ cerrarForm(); return; }
+      var r = e.target.closest ? e.target.closest('[data-ficha-i]') : null;
+      if (r && !r.disabled){ elegirFicha(BUSCA_RES[parseInt(r.getAttribute('data-ficha-i'),10)]); return; }
+      if (e.target.closest && e.target.closest('.nf-quitar-ficha')){ elegirFicha(null); return; }
+    });
     document.getElementById('nf-cancelar').addEventListener('click', cerrarForm);
     document.getElementById('nf-crear').addEventListener('click', crearNadador);
+
+    // nombre escrito en «Añadir» → se precarga también abajo, por si es nuevo
+    if (opts.nombre){
+      var partes = String(opts.nombre).trim().split(/\s+/);
+      document.getElementById('nf-nombre').value = partes.shift() || '';
+      document.getElementById('nf-apellidos').value = partes.join(' ');
+    }
 
     // Escuela vs Máster: en máster el correo es el del PROPIO nadador (adulto,
     // sin tutor) y la calle suele ser C2. Se precarga según el filtro de arriba.
     var selTipo = document.getElementById('nf-tipo');
-    if (selTipo){
-      selTipo.value = (TIPO === 'Máster') ? 'Máster' : 'Escuela';
-      var ajustar = function(){
-        var esMas = selTipo.value === 'Máster';
-        var lab = document.getElementById('nf-email-lab');
-        if (lab) lab.innerHTML = (esMas ? 'Correo del nadador' : 'Correo del tutor') + ' <span class="nf-req">*</span>';
-        var ct = document.getElementById('nf-campo-tutor');
-        if (ct) ct.style.display = esMas ? 'none' : '';
-        var cal = document.getElementById('nf-calle');
-        if (cal && esMas && cal.value === 'C1') cal.value = 'C2';
-        if (cal && !esMas && cal.value === 'C2') cal.value = 'C1';
-      };
-      selTipo.addEventListener('change', ajustar);
-      ajustar();
-    }
+    selTipo.value = opts.tipo === 'Máster' || opts.tipo === 'Escuela' ? opts.tipo : ((TIPO === 'Máster') ? 'Máster' : 'Escuela');
+    selTipo.addEventListener('change', ajustarForm);
 
-    var n = document.getElementById('nf-nombre'); if (n) n.focus();
+    var busca = document.getElementById('nf-busca');
+    var tmr = null;
+    busca.addEventListener('input', function(){ clearTimeout(tmr); tmr = setTimeout(function(){ buscarFichas(busca.value); }, 280); });
+    ajustarForm();
+    if (opts.nombre) buscarFichas(opts.nombre);
+    busca.focus();
   }
-  function cerrarForm(){ var bg = document.getElementById('nf-bg'); if (bg) bg.remove(); }
 
-  async function crearNadador(){
-    var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
-    var nombre = g('nf-nombre'), email = g('nf-email').toLowerCase();
-    var tipo = g('nf-tipo') || 'Escuela';
-    var esMas = tipo === 'Máster';
-    var franjas = [].map.call(document.querySelectorAll('.nf-fr-in:checked'), function(c){ return c.value; });
-    if (!nombre){ toast('Pon el nombre', 'err'); return; }
-    if (!email || email.indexOf('@') < 1){ toast(esMas ? 'Pon el correo del nadador' : 'Pon el correo del tutor', 'err'); return; }
-    if (!franjas.length){ toast('Elige al menos una franja', 'err'); return; }
-    var btn = document.getElementById('nf-crear'); if (btn){ btn.disabled = true; btn.textContent = 'Creando…'; }
+  function ajustarForm(){
+    var selTipo = document.getElementById('nf-tipo'); if (!selTipo) return;
+    var esMas = selTipo.value === 'Máster';
+    var conFicha = !!FORM.ficha;
+    var lab = document.getElementById('nf-email-lab');
+    if (lab) lab.innerHTML = (esMas ? 'Correo del nadador' : 'Correo del tutor') + (conFicha ? ' (su ficha no tiene; ponlo para poder avisarle)' : ' <span class="nf-req">*</span>');
+    var ct = document.getElementById('nf-campo-tutor'); if (ct) ct.style.display = esMas ? 'none' : '';
+    // con ficha elegida, los datos personales ya están en el club: no se piden
+    var datos = document.getElementById('nf-datos'); if (datos) datos.style.display = conFicha ? 'none' : '';
+    var ce = document.getElementById('nf-campo-email'); if (ce) ce.style.display = (conFicha && FORM.ficha.tiene_correo) ? 'none' : '';
+    var cal = document.getElementById('nf-calle');
+    if (cal && esMas && cal.value === 'C1') cal.value = 'C2';
+    if (cal && !esMas && cal.value === 'C2') cal.value = 'C1';
+    var b = document.getElementById('nf-crear');
+    if (b) b.textContent = FORM.modo === 'unir' ? (conFicha ? 'Unir a esta ficha' : 'Crear su ficha y unir') : (conFicha ? 'Darle de alta y avisar' : 'Crear y avisar');
+  }
 
-    var r = await sb.rpc('natacion_crear_nadador', {
-      p_nombre: nombre, p_apellidos: g('nf-apellidos') || null, p_dni: g('nf-dni') || null,
-      p_fecha_nac: g('nf-nac') || null, p_email_tutor: email, p_nombre_tutor: esMas ? null : (g('nf-tutor') || null),
-      p_telefono_tutor: g('nf-tel') || null, p_franjas: franjas, p_nivel: g('nf-nivel'),
-      p_calle: g('nf-calle') || (esMas ? 'C2' : 'C1'), p_tipo: tipo
-    });
-    if (r.error){
-      toast('No se pudo crear: ' + r.error.message, 'err');
-      if (btn){ btn.disabled = false; btn.textContent = 'Crear y avisar'; }
+  var BUSCA_RES = [], buscaN = 0;
+  async function buscarFichas(texto, aviso){
+    var cont = document.getElementById('nf-res'); if (!cont) return;
+    if (FORM.ficha) return;
+    var q = String(texto||'').trim();
+    if (q.length < 3){ cont.innerHTML = ''; BUSCA_RES = []; return; }
+    var n = ++buscaN;
+    var r = await sb.rpc('natacion_buscar_fichas', { p_texto: q });
+    if (n !== buscaN) return;   // llegó tarde: hay una búsqueda más nueva
+    if (r.error){ cont.innerHTML = '<div class="nf-aviso">'+esc(humano(r.error, 'buscar fichas'))+'</div>'; return; }
+    BUSCA_RES = r.data || [];
+    if (!BUSCA_RES.length){
+      cont.innerHTML = '<small class="sub" style="margin:0">No hay nadie con ese nombre en el club. Rellena sus datos abajo y se crea su ficha.</small>';
       return;
     }
-    var res = r.data || {};
+    cont.innerHTML = (aviso ? '<div class="nf-aviso">'+esc(aviso)+'</div>' : '') + BUSCA_RES.map(function(x, i){
+      var det = [x.anio ? 'nacido/a en '+x.anio : null, x.donde, x.correo ? 'correo '+x.correo : 'sin correo',
+                 x.estado === 'baja' ? 'de baja (se reactiva)' : null,
+                 x.acceso_activo ? 'ya en natación · código '+x.codigo : null].filter(Boolean).join(' · ');
+      return '<button type="button" data-ficha-i="'+i+'"><b>'+esc(x.nombre)+'</b><small>'+esc(det)+'</small></button>';
+    }).join('');
+  }
 
-    // Dirección (opcional): se guarda aparte, sin ensuciar la función de alta.
-    var dir = g('nf-direccion');
-    if (dir && res.atleta_id){ try { await sb.rpc('natacion_set_direccion', { p_atleta: res.atleta_id, p_direccion: dir }); } catch(e){} }
+  function elegirFicha(x){
+    FORM.ficha = x || null;
+    var cont = document.getElementById('nf-res'); if (!cont) return;
+    var busca = document.getElementById('nf-busca');
+    if (x){
+      cont.innerHTML = '<div class="nf-elegida"><b>✓ '+esc(x.nombre)+(x.anio?' ('+x.anio+')':'')+'</b><button type="button" class="nf-quitar-ficha">cambiar</button></div>';
+      if (busca) busca.style.display = 'none';
+    } else {
+      if (busca){ busca.style.display = ''; buscarFichas(busca.value); busca.focus(); }
+    }
+    ajustarForm();
+  }
 
-    // Correo SIEMPRE: invitación si no tiene cuenta, horarios si ya la tiene.
-    var correoOk = false, correoMsg = '';
+  function cerrarForm(){ var bg = document.getElementById('nf-bg'); if (bg) bg.remove(); }
+
+  // Correo tras el alta: invitación si no tiene cuenta, horarios si ya la tiene.
+  async function avisarFamilia(res, esMas){
     try {
       if (res.ya_tiene_cuenta){
         var rc = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: res.codigo } });
-        correoOk = !(rc && rc.error); correoMsg = 'horarios';
-      } else {
-        var ri = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: esMas ? 'master' : 'familia', solo_a: res.email_tutor, forzar:true, confirmar:true } });
-        correoOk = !!(ri && !ri.error && ri.data && ri.data.ok); correoMsg = 'invitación para crear cuenta';
+        return { ok: !(rc && rc.error) && !(rc && rc.data && rc.data.ok === false), que:'horarios' };
       }
-    } catch (e){ correoOk = false; }
+      if (!res.email_tutor) return { ok:false, sinCorreo:true };
+      var ri = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: esMas ? 'master' : 'familia', solo_a: res.email_tutor, forzar:true, confirmar:true } });
+      return { ok: !!(ri && !ri.error && ri.data && ri.data.ok), que:'invitación para crear cuenta' };
+    } catch (e){ return { ok:false }; }
+  }
 
+  async function crearNadador(){
+    var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    var unir = FORM.modo === 'unir';
+    var tipo = g('nf-tipo') || 'Escuela';
+    var esMas = tipo === 'Máster';
+    var email = g('nf-email').toLowerCase();
+    var franjas = [].map.call(document.querySelectorAll('.nf-fr-in:checked'), function(c){ return c.value; });
+    var nivel = g('nf-nivel') || null, calle = g('nf-calle') || (esMas ? 'C2' : 'C1');
+    var btn = document.getElementById('nf-crear');
+    var txtBtn = btn ? btn.textContent : '';
+    function soltar(){ if (btn){ btn.disabled = false; btn.textContent = txtBtn; } }
+    if (!unir && !franjas.length){ toast('Elige al menos una franja', 'err'); return; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('Ese correo no parece válido', 'err'); return; }
+
+    var res, nombreToast;
+    if (FORM.ficha){
+      // ---- alta sobre una ficha que YA existe (caso Ian) ----
+      if (btn){ btn.disabled = true; btn.textContent = 'Guardando…'; }
+      var ra = await sb.rpc('natacion_alta_desde_ficha', {
+        p_atleta: FORM.ficha.atleta_id, p_franjas: franjas, p_nivel: nivel, p_calle: calle,
+        p_tipo: tipo, p_email: email || null, p_adoptar: FORM.adoptar
+      });
+      if (ra.error){ toast(humano(ra.error, 'dar altas en natación'), 'err'); soltar(); return; }
+      res = ra.data || {};
+      nombreToast = FORM.ficha.nombre;
+    } else {
+      // ---- alguien NUEVO de verdad ----
+      var nombre = g('nf-nombre');
+      if (!nombre){ toast('Pon el nombre', 'err'); return; }
+      if (!email){ toast(esMas ? 'Pon el correo del nadador' : 'Pon el correo del tutor', 'err'); return; }
+      // ¿Seguro que no está ya? Si hay fichas con ese nombre, se enseñan
+      // antes de crear otra (así no se duplican). Al 2º clic se crea igual.
+      if (!FORM.avisadoDup){
+        FORM.avisadoDup = true;
+        var completo = (nombre + ' ' + g('nf-apellidos')).trim();
+        var rb = await sb.rpc('natacion_buscar_fichas', { p_texto: completo });
+        var hay = (!rb.error && rb.data || []).filter(function(x){ return norm(x.nombre) === norm(completo); });
+        if (hay.length){
+          var bu = document.getElementById('nf-busca'); if (bu) bu.value = completo;
+          await buscarFichas(completo, 'Ya hay una ficha con este nombre. Si es esta persona, tócala. Si es otra distinta, pulsa otra vez «Crear».');
+          return;
+        }
+      }
+      if (btn){ btn.disabled = true; btn.textContent = 'Creando…'; }
+      var r = await sb.rpc('natacion_crear_nadador', {
+        p_nombre: nombre, p_apellidos: g('nf-apellidos') || null, p_dni: g('nf-dni') || null,
+        p_fecha_nac: g('nf-nac') || null, p_email_tutor: email, p_nombre_tutor: esMas ? null : (g('nf-tutor') || null),
+        p_telefono_tutor: g('nf-tel') || null, p_franjas: franjas, p_nivel: nivel || NIVELES[0],
+        p_calle: calle, p_tipo: tipo
+      });
+      if (r.error){ toast(humano(r.error, 'dar altas en natación'), 'err'); soltar(); return; }
+      res = r.data || {};
+      nombreToast = nombre;
+      // fila suelta que venía a unirse → a la ficha recién creada
+      if (FORM.adoptar.length && res.atleta_id){
+        var rj = await sb.rpc('natacion_alta_desde_ficha', { p_atleta: res.atleta_id, p_franjas: [], p_tipo: tipo, p_adoptar: FORM.adoptar });
+        if (rj.error) toast(humano(rj.error, 'unir la fila'), 'err');
+      }
+      // Dirección (opcional): se guarda aparte, sin ensuciar la función de alta.
+      var dir = g('nf-direccion');
+      if (dir && res.atleta_id){
+        var rd = await sb.rpc('natacion_set_direccion', { p_atleta: res.atleta_id, p_direccion: dir });
+        if (rd && rd.error) toast('Alta hecha, pero la dirección no se guardó: ' + humano(rd.error, 'cambiar la ficha'), 'err');
+      }
+    }
+
+    var c = await avisarFamilia(res, esMas);
     cerrarForm();
-    if (correoOk) toast(nombre.split(' ')[0] + ' creada · correo enviado (' + correoMsg + ')');
-    else toast(nombre.split(' ')[0] + ' creada · ⚠ el correo no salió, reintenta con «Horarios»', 'err');
+    var quien = String(nombreToast || '').split(' ')[0];
+    if (c.ok) toast(quien + ' dado/a de alta · correo enviado (' + c.que + ')');
+    else if (c.sinCorreo) toast(quien + ' dado/a de alta · sin correo: añádelo en su ficha (Niños y niñas / Nadadores) y pulsa ✉', 'err');
+    else toast(quien + ' dado/a de alta · ⚠ el correo no salió, reintenta con «✉ Acceso»', 'err');
 
     await recargarIns();
     var f2 = await sb.from('natacion_franjas').select('*').order('dia').order('hora');
@@ -520,6 +691,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (cab){ var id = cab.getAttribute('data-abrir'); abierta = (abierta===id) ? null : id; pintar(); return; }
     var q = ev.target.closest ? ev.target.closest('.ng-quitar') : null;
     if (q){ if (confirm('¿Quitar a este nadador de la franja?')) mut(sb.from('natacion_inscripciones').update({ activa:false }).eq('id', q.getAttribute('data-id')), 'Quitado'); return; }
+    var su = ev.target.closest ? ev.target.closest('.ng-suelta') : null;
+    if (su){ abrirForm({ modo:'unir', adoptar:[su.getAttribute('data-ins')], nombre: su.getAttribute('data-nom'), tipo: su.getAttribute('data-tipo') }); return; }
     var ac = ev.target.closest ? ev.target.closest('.ng-acceso') : null;
     if (ac){ reenviarAcceso(ac.getAttribute('data-acceso'), ac); return; }
     var a = ev.target.closest ? ev.target.closest('.ng-anadir') : null;
@@ -546,6 +719,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var prim = FR.filter(function(f){ return f.dia===diaSel && enTipo(f); }).sort(function(a,b){ return hhmm(a.hora)<hhmm(b.hora)?-1:1; })[0];
   if (prim) abierta = prim.id;
   pintar();
+  // ?nuevo=1 (viene de «Personas» del panel): abre directamente el alta.
+  if (params.get('nuevo')) abrirForm();
 });
 </script>
 </body>

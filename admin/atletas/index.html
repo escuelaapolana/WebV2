@@ -286,6 +286,15 @@
       </div>
     </div>
 
+    <!-- Aviso para quien gestiona natación sin ser administración (Mario):
+         aquí no se dan altas de nadadores; se le lleva a su pantalla. -->
+    <div class="lados centro" id="aviso-natacion" hidden>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;background:#EAF2FA;border:1px solid #CFE0F0;border-radius:14px;padding:13px 16px;margin:4px 0 14px;color:#26374B;font-size:14.5px;line-height:1.4">
+        <span style="flex:1 1 280px"><b>¿Vienes a dar de alta, cambiar o dar de baja a un nadador?</b> Eso se hace en <b>Natación › Franjas y cupos</b>: buscas su ficha (o la creas), le pone su código y sus franjas, y avisa a la familia por correo.</span>
+        <a class="btn btn--primario btn--mini" href="../../portal/natacion-gestion/?nuevo=1" style="text-decoration:none">Ir a Natación › Alta de nadador →</a>
+      </div>
+    </div>
+
     <!-- ===== BANDA DE FILTROS (a sangre) ===== -->
     <div class="banda">
       <div class="lados centro">
@@ -485,6 +494,36 @@
 <script>
 APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
+  /* Errores en cristiano: nunca «permission denied», «row-level security»
+     ni «Supabase» a pelo; se dice qué hacer. */
+  function humanoErr(e) {
+    var m = String((e && (e.message || e.msg)) || e || '');
+    if (/JWT expired|jwt/i.test(m)) return 'Tu sesión ha caducado. Sal y vuelve a entrar.';
+    if ((e && e.code === '42501') || /permission denied|row-level security|not allowed/i.test(m))
+      return GESTOR_NAT
+        ? 'Esta pantalla es de administración. Para nadadores ve a Natación › Franjas y cupos (botón azul de arriba).'
+        : 'No tienes permiso para esto. Si crees que deberías poder, díselo a Andrés.';
+    if (/Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m)) return 'Sin conexión. Revisa internet y vuelve a intentarlo.';
+    if (/duplicate key|already exists/i.test(m)) return 'Eso ya estaba guardado.';
+    if (/check constraint/i.test(m)) return 'Algún dato no es válido. Revísalo.';
+    if (/supabase|postgres|PGRST|relation |column |does not exist|syntax/i.test(m))
+      return 'Algo ha fallado. Recarga la página y vuelve a intentarlo; si sigue, avisa a Andrés.';
+    return m || 'No se pudo hacer. Vuelve a intentarlo.';
+  }
+  /* ¿Quien entra gestiona natación pero NO es administración (Mario)? Se le
+     enseña el atajo a su pantalla y «+ Nuevo atleta» le lleva allí. */
+  var GESTOR_NAT = false;
+  (async function () {
+    try {
+      var ad = await sb.rpc('es_admin');
+      if (ad.error || ad.data) return;
+      var gn = await sb.rpc('soy_gestor_natacion');
+      if (!gn.error && gn.data) {
+        GESTOR_NAT = true;
+        var av = document.getElementById('aviso-natacion'); if (av) av.hidden = false;
+      }
+    } catch (e) {}
+  })();
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   var COLS = 4;
@@ -959,7 +998,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('atletas')
       .select('id,nombre,apellidos,categoria,estado,grupo_id,perfil_id,fecha_nacimiento,tipo_membresia,fecha_prueba_fin,permiso_imagen,telefono,numero_socio,secciones')
       .order('apellidos');
-    if (r.error) { tb.innerHTML = ADM.filaError(COLS, r.error.message, cargar); return; }
+    if (r.error) { tb.innerHTML = ADM.filaError(COLS, humanoErr(r.error), cargar); return; }
     TODOS = r.data || [];
 
     /* En qué grupos entrena cada uno. Va aparte de la ficha porque desde
@@ -1087,7 +1126,7 @@ APOLANA_ADMIN.listo(function (sb) {
         confirmar: aBaja ? 'Dar de baja' : 'Reactivar'
       })) return;
       var r = await sb.from('atletas').update({ estado: nuevo }).eq('id', a.id).select('id');
-      if (r.error) { apoToast('No se ha podido: ' + r.error.message, 'error'); return; }
+      if (r.error) { apoToast(humanoErr(r.error), 'error'); return; }
       a.estado = nuevo;
       apoToast(nombreCompleto(a) + (aBaja ? ' · dado de baja.' : ' · reactivado.'));
       mostrarVista(a);
@@ -1097,7 +1136,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (c) c.onclick = async function () {
       if (!await apoConfirm({ titulo: 'Confirmar plaza', texto: 'Vas a confirmar a ' + nombreCompleto(a) + ': deja de estar «en prueba» y pasa a Activo.', confirmar: 'Confirmar' })) return;
       var r = await sb.from('atletas').update({ estado: 'activo' }).eq('id', a.id).select('id');
-      if (r.error) { apoToast('No se ha podido: ' + r.error.message, 'error'); return; }
+      if (r.error) { apoToast(humanoErr(r.error), 'error'); return; }
       a.estado = 'activo';
       apoToast('Plaza confirmada · Activo.');
       mostrarVista(a);
@@ -1165,7 +1204,10 @@ APOLANA_ADMIN.listo(function (sb) {
     if (focoPrevio && focoPrevio.focus) { try { focoPrevio.focus(); } catch (e) {} }
   }
 
-  $('nuevo').addEventListener('click', function () { abrir(); });
+  $('nuevo').addEventListener('click', function () {
+    if (GESTOR_NAT) { location.href = '../../portal/natacion-gestion/?nuevo=1'; return; }
+    abrir();
+  });
   $('cancelar').addEventListener('click', cerrarForm);
   $('panel-form').addEventListener('click', function (e) { if (e.target === this) cerrarForm(); });
   document.addEventListener('keydown', function (e) {
@@ -1211,7 +1253,7 @@ APOLANA_ADMIN.listo(function (sb) {
                              : 'Vas a marcar ' + ids.length + ' atletas como ' + palabra + '.';
     if (!await apoConfirm({ titulo: 'Confirmar en lote', texto: q + ' ¿Seguimos?', confirmar: palabra })) return;
     var r = await sb.from('atletas').update({ estado: nuevoEstado }).in('id', ids).select('id');
-    if (r.error) { apoToast('No se ha podido: ' + r.error.message, 'error'); return; }
+    if (r.error) { apoToast(humanoErr(r.error), 'error'); return; }
     var hechos = r.data ? r.data.length : ids.length;
     SELECT_LOTE.clear();
     apoToast(hechos + (hechos === 1 ? ' ficha' : ' fichas') + ' → ' + palabra + '.');
@@ -1264,7 +1306,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var fila = e.target.closest('tr[data-ed]');
     if (!fila) return;
     var r = await sb.from('atletas').select('*').eq('id', fila.getAttribute('data-ed')).single();
-    if (r.error) { apoToast('No se pudo abrir la ficha: ' + r.error.message, 'error'); return; }
+    if (r.error) { apoToast('No se pudo abrir la ficha: ' + humanoErr(r.error), 'error'); return; }
     abrir(r.data);
   });
   /* Al elegir en el selector de grupo de una fila: se confirma y se mueve
@@ -1289,7 +1331,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var otros = actuales.slice(1).filter(function (id) { return id !== nuevo; });
     var todos = (nuevo ? [nuevo] : []).concat(otros);
     var rr = await sb.rpc('apo_grupos_de_atleta', { p_atleta: atletaId, p_grupos: todos, p_principal: nuevo || null });
-    if (rr && rr.error) { apoToast('No se ha podido cambiar de grupo: ' + rr.error.message, 'error'); pintar(); return; }
+    if (rr && rr.error) { apoToast('No se ha podido cambiar de grupo: ' + humanoErr(rr.error), 'error'); pintar(); return; }
     MIEMBROS[atletaId] = todos.map(function (id) { return { grupo_id: id, principal: id === (nuevo || null) }; });
     a.grupo_id = nuevo || null;
     apoToast('Grupo cambiado', 'ok');
@@ -1324,7 +1366,7 @@ APOLANA_ADMIN.listo(function (sb) {
     });
     if (!ok) return;
     var d = await sb.from('atletas').delete().eq('id', id);
-    if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
+    if (d.error) { apoToast('No se pudo borrar: ' + humanoErr(d.error), 'error'); return; }
     cerrarForm();
     apoToast('Ficha borrada', 'ok');
     cargar();
@@ -1341,9 +1383,10 @@ APOLANA_ADMIN.listo(function (sb) {
        al crear la cuenta en Supabase). */
     if (email) {
       var pr = await sb.from('perfiles').select('id,rol').eq('email', email).maybeSingle();
-      if (pr.error) { $('msg').textContent = 'Error buscando la cuenta: ' + pr.error.message; $('msg').className = 'msg error'; return; }
+      if (pr.error) { $('msg').textContent = humanoErr(pr.error); $('msg').className = 'msg error'; return; }
       if (!pr.data) {
-        $('msg').textContent = 'Esta persona todavía no tiene cuenta. Para dar de alta a alguien NUEVO, hazlo desde la pantalla de altas de su sección —en natación: Natación › Gestión—, que crea la ficha, el código de acceso y avisa a la familia por correo. Esta pantalla solo completa fichas de quien ya tiene cuenta.';
+        $('msg').innerHTML = 'Esta pantalla solo completa fichas de quien ya tiene cuenta. Para dar de alta a alguien NUEVO usa la pantalla de altas de su sección. ' +
+          '<a href="../../portal/natacion-gestion/?nuevo=1" style="display:inline-block;margin-top:6px;font-weight:700;color:#2F6FA8">Nadadores → Natación › Alta de nadador</a>';
         $('msg').className = 'msg error'; return;
       }
       perfilId = pr.data.id;
@@ -1378,7 +1421,7 @@ APOLANA_ADMIN.listo(function (sb) {
       var d2 = Object.assign({}, datos); delete d2.fecha_nacimiento;
       r = await guardar(d2);
     }
-    if (r.error) { $('msg').textContent = 'Error: ' + r.error.message; $('msg').className = 'msg error'; return; }
+    if (r.error) { $('msg').textContent = humanoErr(r.error); $('msg').className = 'msg error'; return; }
 
     /* ---------- los grupos, después de la ficha ----------
        Se manda la lista ENTERA de una vez (la base se encarga de meter
@@ -1404,7 +1447,7 @@ APOLANA_ADMIN.listo(function (sb) {
         p_atleta: atletaId, p_grupos: todos, p_principal: principal
       });
       if (rg.error) {
-        $('msg').textContent = 'La ficha se ha guardado, pero los grupos no: ' + rg.error.message;
+        $('msg').textContent = 'La ficha se ha guardado, pero los grupos no: ' + humanoErr(rg.error);
         $('msg').className = 'msg error';
         cargar();
         return;
@@ -1448,7 +1491,7 @@ APOLANA_ADMIN.listo(function (sb) {
      DNIs y cuentas. Son los niños de escuela ya confirmados (fichas activas). */
   $('domiciliaciones').addEventListener('click', async function () {
     var r = await sb.rpc('domiciliaciones_escuela');
-    if (r.error) { apoToast('No se ha podido: ' + r.error.message, 'error'); return; }
+    if (r.error) { apoToast(humanoErr(r.error), 'error'); return; }
     var filas = r.data || [];
     if (!filas.length) {
       apoToast('Todavía no hay domiciliaciones: no hay familias de escuela confirmadas con sus datos.', 'error');
