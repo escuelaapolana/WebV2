@@ -128,7 +128,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const sub = a.stripe_subscription_id;
     if (!sub) continue;
     // Traemos la suscripción con su última factura expandida.
-    const rS = await stripeGet(`subscriptions/${encodeURIComponent(sub)}?expand[]=latest_invoice`);
+    const rS = await stripeGet(`subscriptions/${encodeURIComponent(sub)}?expand[]=latest_invoice.payment_intent`);
     if (!rS.ok || !rS.datos || rS.datos.error) {
       detalle.push({ id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(), error: rS.datos?.error?.message ?? `Stripe ${rS.estado}` });
       continue;
@@ -139,15 +139,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
       aFecha(s.current_period_end) ??
       aFecha(s.items?.data?.[0]?.current_period_end) ??
       aFecha(s.trial_end);
-    // Último cobro = fecha de pago de la última factura, si está pagada.
     const inv: any = s.latest_invoice;
+    const pi: any = inv?.payment_intent;
+    const facturaEstado = inv ? String(inv.status ?? "") : null;
+    const piEstado = pi ? String(pi.status ?? "") : null;
+    // Último cobro = fecha de pago de la última factura, si está pagada.
     const ultimo =
       inv && inv.status === "paid"
         ? (aFecha(inv.status_transitions?.paid_at) ?? aFecha(inv.created))
         : null;
     const estado = estadoDe(String(s.status ?? ""));
-    // Estado de la última factura (para informar: paid / open / draft / void…).
-    const facturaEstado = inv ? String(inv.status ?? "") : null;
+    // Etiqueta humana del cobro de ESTE periodo (el primero = octubre).
+    let cobro = "sin factura";
+    if (inv) {
+      if (inv.status === "paid") cobro = "cobrado";
+      else if (piEstado === "processing") cobro = "en proceso (SEPA)";
+      else if (inv.status === "open") cobro = "pendiente de cobro";
+      else if (inv.status === "void" || inv.status === "uncollectible") cobro = "anulada/incobrable";
+      else if (piEstado === "requires_payment_method" || piEstado === "canceled") cobro = "falló / sin método";
+      else cobro = inv.status || "desconocido";
+    }
+    const facturaImporte = inv && Number.isFinite(Number(inv.total)) ? Number(inv.total) / 100 : null;
+    const facturaFecha = inv ? aFecha(inv.created) : null;
 
     const cambios: Record<string, unknown> = {};
     if (estado) cambios.suscripcion_estado = estado;
@@ -161,13 +174,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         body: JSON.stringify(cambios),
       });
       if (rW.ok) actualizadas++;
-      detalle.push({
-        id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(),
-        estado, factura: facturaEstado, ultimo_cobro: ultimo, proximo_cobro: proximo, guardado: rW.ok,
-      });
-    } else {
-      detalle.push({ id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(), estado, factura: facturaEstado, sin_cambios: true });
     }
+    detalle.push({
+      id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(),
+      estado, factura: facturaEstado, cobro, factura_importe: facturaImporte,
+      factura_fecha: facturaFecha, ultimo_cobro: ultimo, proximo_cobro: proximo,
+    });
   }
 
   return responder({ ok: true, revisadas: cuotas.length, actualizadas, detalle }, 200, origen);
