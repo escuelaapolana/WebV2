@@ -455,7 +455,7 @@
       { t: 'Dinero', enlaces: [
         { txt: 'Dinero · todo',     url: r + 'dinero/',       desc: 'te deben, ha entrado este mes, en camino (SEPA) y «¿ha pagado…?»' },
         { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
-        { txt: 'Cuotas de entreno', url: r + 'cuotas-entreno/', desc: 'domiciliación SEPA trimestral de adultos (Velocidad/Academia)' },
+        { txt: 'Cuotas domiciliadas', url: r + 'cuotas-entreno/', desc: 'domiciliación SEPA: trimestral de adultos y mensuales (natación)' },
         { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
         { txt: 'Pagos con tarjeta', url: r + 'pagos-online/', desc: 'lo que se cobra por internet' },
         { txt: 'Pagos de El Cubo',  url: r + 'cubo-altas/',   desc: 'quién ha pagado la cuota del Cubo y export para la contable' },

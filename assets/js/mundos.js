@@ -72,7 +72,7 @@
         {t:'Dinero',          i:'euro',      url:B+'admin/dinero/',      d:'Todo el dinero en un sitio: te deben, ha entrado, en camino y «¿ha pagado…?».', pill:'Empieza aquí'},
         {t:'Cobros y recibos', i:'euro',     url:B+'admin/cobros/',      d:'Recibos, remesas, devueltos e impagados.'},
         // ?tipo=dinero: desde General se queda en General (sin él, Cuotas de entreno es de Pista).
-        {t:'Cuotas de entreno', i:'euro',    url:B+'admin/cuotas-entreno/?tipo=dinero', d:'Domiciliación SEPA trimestral de los adultos de Velocidad/Academia.'},
+        {t:'Cuotas domiciliadas', i:'euro',    url:B+'admin/cuotas-entreno/?tipo=dinero', d:'Cuotas por domiciliación SEPA (entreno trimestral y casos mensuales, como natación). Antes: Velocidad/Academia.'},
         {t:'Pagos con tarjeta', i:'ticket',  url:B+'admin/pagos-online/', d:'Todo lo que se cobra por internet (tienda, recibos, bonos).'},
         {t:'Tarifas',         i:'clipboard', url:B+'admin/tarifas/',     d:'Los precios de cada cuota.'},
         {key:'pagos', t:'Resumen de pagos', i:'chart', url:B+'portal/pagos-resumen/', d:'Cuánto entra: Cubo, cobros online, recibos y socios.'},
@@ -126,7 +126,7 @@
         {t:'Atletas',          i:'people',    url:B+'admin/atletas/?seccion=competicion', d:'Los atletas de pista.'},
         {t:'Pruebas de pista', i:'sparkle',   url:B+'admin/pista-pruebas/', d:'Quién pide venir a probar y su seguimiento.'},
         {t:'Grupos',           i:'people',    url:B+'admin/grupos/?seccion=competicion',  d:'Grupos de entreno, incl. Academia AC98.'},
-        {t:'Cuotas de entreno', i:'euro',     url:B+'admin/cuotas-entreno/', d:'Domiciliación trimestral (SEPA) de los adultos de Velocidad/Academia.'},
+        {t:'Cuotas domiciliadas', i:'euro',     url:B+'admin/cuotas-entreno/', d:'Cuotas por domiciliación SEPA: trimestral de Velocidad/Academia y mensuales (natación).'},
         {t:'Tests y pruebas',  i:'clipboard', url:B+'admin/tests/',        d:'Batería de tests y marcas.'},
         {t:'Competiciones',    i:'flag',      url:B+'admin/competiciones/', d:'Carreras e inscripciones.'},
         {t:'Quién va a ir',    i:'check',     url:B+'admin/confirmaciones/', d:'Confirmaciones para cada carrera.'},
