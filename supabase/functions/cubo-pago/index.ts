@@ -9,6 +9,9 @@
 //                     material…). `importe` en €, `concepto` es el texto.
 //     · descuento   → resta un importe del próximo recibo.
 //     · cuota       → cambia su cuota mensual a `importe` € (de ahí en adelante).
+//     · reanudar    → quita una pausa INDEFINIDA vieja de Stripe (el botón
+//                     «Pausar pagos» se retiró el 14-oct; ahora es «Pausar un
+//                     mes», Edge cubo-pausa). `pausar` ya no existe (410).
 //   «Aplazar/juntar dos meses» = saltar_mes este mes + cargo del importe el mes
 //   siguiente (lo hace el club con los dos botones).
 //
@@ -127,6 +130,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // 3 · La acción
   if (accion === "saltar_mes" || accion === "cargo" || accion === "descuento") {
+    // [360] Con una «pausa de un mes» en Stripe, el próximo recibo se ANULA:
+    // un cargo/descuento suelto se perdería con él.
+    const rPz = await rest(`cubo_pausas?select=mes,stripe_resumes_at&alta_id=eq.${encodeURIComponent(altaId)}&estado=eq.aprobada&stripe_aplicada_en=not.is.null&stripe_resumes_at=gt.${encodeURIComponent(new Date().toISOString())}&limit=1`);
+    if (Array.isArray(rPz.datos) && rPz.datos.length) {
+      return responder({ error: "en_pausa", mensaje: "Tiene la cuota en pausa este mes: el próximo recibo se anula y el cargo se perdería. Hazlo a partir del día 6." }, 409, origen);
+    }
     // Recibo-item que cae en el PRÓXIMO recibo de la suscripción.
     let cents = 0, texto = concepto;
     if (accion === "saltar_mes") {
@@ -178,22 +187,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ ok: true, accion, precio_mes: Math.round(Math.abs(importe) / 100) }, 200, origen);
   }
 
-  // Pausar / reanudar los cobros (hasta que el club lo reactive). No es baja:
-  // la suscripción sigue viva, pero Stripe NO cobra mientras esté pausada
-  // (pause_collection = void). Reanudar la deja como estaba.
-  if (accion === "pausar" || accion === "reanudar") {
-    const pausar = accion === "pausar";
-    const rUpd = await stripe(`subscriptions/${encodeURIComponent(sub)}`, "POST",
-      pausar ? { "pause_collection[behavior]": "void" } : { "pause_collection": "" });
+  // «Pausar pagos» indefinido: RETIRADO (14-oct, mig 360). Pausaba en Stripe sin
+  // fecha de fin y guardaba suscripcion_estado='pausada', que el CHECK de
+  // cubo_altas no admite (el panel seguía diciendo «activa» sin cobrar). Para
+  // no cobrar UN mes está «Pausar un mes» (Edge cubo-pausa, con fin y aviso).
+  if (accion === "pausar") {
+    return responder({ error: "retirada", mensaje: "«Pausar pagos» ya no existe: usa «Pausar un mes» (lo pide la persona y lo apruebas en Pausas)." }, 410, origen);
+  }
+  // Reanudar: quita CUALQUIER pausa indefinida que dejara el botón viejo. No
+  // toca una pausa de un mes en curso (esa se deshace desde su fila, para que
+  // quede apuntado en cubo_pausas).
+  if (accion === "reanudar") {
+    const rS = await stripe(`subscriptions/${encodeURIComponent(sub)}`, "GET");
+    if (!rS.ok) return responder({ error: "pasarela", mensaje: "No se ha podido leer la suscripción en Stripe." }, 502, origen);
+    const pc = rS.datos?.pause_collection;
+    if (!pc) return responder({ ok: true, accion, estado: "activa", mensaje: "No tenía los cobros en pausa: nada que reanudar." }, 200, origen);
+    if (pc.resumes_at) {
+      const rPz = await rest(`cubo_pausas?select=id&alta_id=eq.${encodeURIComponent(altaId)}&estado=eq.aprobada&stripe_resumes_at=eq.${encodeURIComponent(new Date(Number(pc.resumes_at) * 1000).toISOString())}&limit=1`);
+      if (Array.isArray(rPz.datos) && rPz.datos.length) {
+        return responder({ error: "pausa_mes", mensaje: "Es una «pausa de un mes» aprobada: deshazla desde su fila en «Pausar un mes»." }, 409, origen);
+      }
+    }
+    const rUpd = await stripe(`subscriptions/${encodeURIComponent(sub)}`, "POST", { "pause_collection": "" });
     if (!rUpd.ok) {
-      console.error("Stripe pausa:", rUpd.datos?.error?.message ?? rUpd.estado);
+      console.error("Stripe reanudar:", rUpd.datos?.error?.message ?? rUpd.estado);
       return responder({ error: "pasarela", mensaje: "Stripe no lo aceptó: " + (rUpd.datos?.error?.message ?? "inténtalo otra vez") }, 502, origen);
     }
-    await rest(`cubo_altas?id=eq.${encodeURIComponent(altaId)}`, {
-      method: "PATCH", headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ suscripcion_estado: pausar ? "pausada" : "activa" }),
-    });
-    return responder({ ok: true, accion, estado: pausar ? "pausada" : "activa" }, 200, origen);
+    return responder({ ok: true, accion, estado: "activa" }, 200, origen);
   }
 
   return responder({ error: "accion", mensaje: "Acción no reconocida." }, 400, origen);

@@ -18,9 +18,17 @@
 //     4) Manda el correo de confirmación (Brevo, diseño de cubo-cobro-aviso).
 //
 //   Acciones (cuerpo JSON):
-//     { accion: "aprobar", pausa_id }  → todo lo de arriba
+//     { accion: "aprobar", pausa_id }  → todo lo de arriba. Si tiene cargos o
+//                                        descuentos sueltos pendientes (cubo-pago)
+//                                        que caerían en el recibo anulado, PARA y
+//                                        lo explica (se perderían).
 //     { accion: "aplicar", pausa_id }  → solo el paso 2-3 de una ya aprobada
 //                                        (reserva por si el webhook no llegó)
+//     { accion: "deshacer", pausa_id } → quita NUESTRA pause_collection (si ya
+//                                        estaba en Stripe) y la deja «anulada»;
+//                                        solo hasta el día 4 del mes pausado.
+//   La regla de qué hacer en Stripe vive en ../_shared/cubo-pausa.ts (la
+//   misma que usa cubo-webhook).
 //   Rechazar NO pasa por aquí: es la RPC cubo_pausa_rechazar (no toca Stripe).
 //
 // CLAVES (secretos de Supabase; aquí no hay ninguna)
@@ -31,6 +39,8 @@
 //
 //   supabase functions deploy cubo-pausa --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
+
+import { MESES, planificar, cargosPendientes, textoCargos } from "../_shared/cubo-pausa.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -116,58 +126,6 @@ async function stripe(key: string, ruta: string, metodo: "GET" | "POST", campos?
   return { ok: r.ok, estado: r.status, datos: d as any };
 }
 
-const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
-  "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-// "2026-11-05" (fecha en Madrid) de un instante unix
-const isoMadrid = (unix: number): string =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(new Date(unix * 1000));
-
-type Plan =
-  | { tipo: "aplicar"; resumes: number; diaCobro: number }
-  | { tipo: "programar"; diaCobro: number }
-  | { tipo: "ya"; resumes: number; diaCobro: number }
-  | { tipo: "error"; codigo: string; mensaje: string; http: number };
-
-// Decide qué hacer con la suscripción para pausar el recibo del mes `mes`
-// ("YYYY-MM-01"). `resumesBase` = día 6 12:00 Madrid de ese mes (unix).
-function planificar(s: any, mes: string, resumesBase: number): Plan {
-  const st = String(s?.status ?? "");
-  if (st !== "active" && st !== "trialing") {
-    return { tipo: "error", codigo: "sub_no_activa", http: 409, mensaje: `La suscripción no está activa en Stripe (${st || "sin estado"}).` };
-  }
-  // Próximo recibo = fin del periodo actual (en APIs nuevas vive en el item).
-  const fin = Number(s.current_period_end ?? s.items?.data?.[0]?.current_period_end ?? 0);
-  if (!fin) return { tipo: "error", codigo: "sin_periodo", http: 502, mensaje: "Stripe no dice cuándo es el próximo cobro." };
-  const finIso = isoMadrid(fin);              // p. ej. 2026-11-05
-  const mesRenov = finIso.slice(0, 7);        // 2026-11
-  const mesPausa = mes.slice(0, 7);
-  const diaCobro = Number(finIso.slice(8, 10)) || 5;
-  // Nunca quitar la pausa ANTES del recibo (por si un día el ancla no es el 5).
-  const resumes = Math.max(resumesBase, fin + 24 * 3600);
-
-  const pc = s.pause_collection;
-  if (pc) {
-    // Ya pausada: si es la nuestra (misma vuelta), nada que hacer. Si es otra
-    // (p. ej. «Pausar pagos» indefinido de cubo-pago) NO la pisamos.
-    if (pc.behavior === "void" && Number(pc.resumes_at ?? 0) >= fin && mesRenov === mesPausa) {
-      return { tipo: "ya", resumes: Number(pc.resumes_at), diaCobro };
-    }
-    return { tipo: "error", codigo: "ya_pausada", http: 409, mensaje: "Esta suscripción ya tiene los cobros en pausa en Stripe (otra pausa). Revísalo antes." };
-  }
-  if (mesRenov === mesPausa) {
-    // Recibo del mes anterior aún en borrador (justo en la renovación): esperar,
-    // no vaya a anularse un recibo que sí toca cobrar.
-    const inv = s.latest_invoice;
-    if (inv && typeof inv === "object" && inv.status === "draft") {
-      return { tipo: "error", codigo: "espera", http: 409, mensaje: "Stripe está generando el recibo de este mes; vuelve a intentarlo en un par de horas." };
-    }
-    return { tipo: "aplicar", resumes, diaCobro };
-  }
-  if (mesRenov < mesPausa) return { tipo: "programar", diaCobro };
-  return { tipo: "error", codigo: "tarde", http: 409, mensaje: `El recibo de ${MESES[Number(mesPausa.slice(5, 7)) - 1]} ya se ha generado: no se puede pausar.` };
-}
-
 function correoHtml(nombre: string, mesTxt: string, sigTxt: string, horario: string): string {
   const hola = nombre ? `¡Hola, ${nombre}!` : "¡Hola!";
   const enlace = `${URL_BASE}portal/`;
@@ -229,37 +187,68 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const pausaId = String(cuerpo.pausa_id ?? "").trim();
   const accion = String(cuerpo.accion ?? "aprobar").trim();
   if (!pausaId) return responder({ error: "datos", mensaje: "Falta la solicitud." }, 400, origen);
-  if (accion !== "aprobar" && accion !== "aplicar") return responder({ error: "accion", mensaje: "Acción no reconocida." }, 400, origen);
+  if (!["aprobar", "aplicar", "deshacer"].includes(accion)) return responder({ error: "accion", mensaje: "Acción no reconocida." }, 400, origen);
 
   const rD = await rpc("cubo_pausa_para_aprobar", { p_id: pausaId }, jwt);
   if (!rD.ok) {
     const no = rD.estado === 403 || String(rD.datos?.code ?? "") === "42501";
-    return responder({ error: no ? "no_admin" : "base", mensaje: no ? "Solo el club puede aprobar pausas." : "No se ha podido leer la solicitud." }, no ? 403 : 500, origen);
+    return responder({ error: no ? "no_admin" : "base", mensaje: no ? "Solo el club puede gestionar pausas." : "No se ha podido leer la solicitud." }, no ? 403 : 500, origen);
   }
   const d = rD.datos ?? {};
   if (d.ok === false) return responder({ error: "no_existe", mensaje: d.error ?? "Esa solicitud ya no está." }, 404, origen);
   if (accion === "aprobar" && d.estado !== "solicitada" && d.estado !== "aprobada") {
     return responder({ error: "estado", mensaje: `Esa solicitud está ${d.estado}.` }, 409, origen);
   }
-  if (accion === "aplicar" && d.estado !== "aprobada") {
-    return responder({ error: "estado", mensaje: "Solo se aplica en Stripe una pausa ya aprobada." }, 409, origen);
+  if ((accion === "aplicar" || accion === "deshacer") && d.estado !== "aprobada") {
+    return responder({ error: "estado", mensaje: "Eso solo vale para una pausa ya aprobada." }, 409, origen);
   }
   if (!d.a_tiempo) {
-    return responder({ error: "tarde", mensaje: "Ya ha pasado el día 4: el recibo de ese mes se genera el día 5 y no se puede pausar." }, 409, origen);
+    return responder({ error: "tarde", mensaje: accion === "deshacer"
+      ? "El recibo de ese mes ya se generó (y se anuló): ya no se puede deshacer. Si hay que cobrarlo, usa «Cargo / descuento»."
+      : "Ya ha pasado el día 4: el recibo de ese mes se genera el día 5 y no se puede pausar." }, 409, origen);
   }
   const sub = String(d.stripe_subscription_id ?? "");
-  if (!sub || d.suscripcion_estado !== "activa") {
+  const cliente = String(d.stripe_customer_id ?? "");
+  const aplicadaYa = !!d.stripe_aplicada_en;
+  // Deshacer una pausa solo PROGRAMADA (aún no está en Stripe): solo base.
+  const necesitaStripe = accion !== "deshacer" || aplicadaYa;
+  if (necesitaStripe && (!sub || d.suscripcion_estado !== "activa")) {
     return responder({ error: "sin_sub", mensaje: "Esta persona no tiene la cuota activa con tarjeta." }, 409, origen);
   }
 
   // 2 · Stripe (clave de Apolana según el modo; nunca la genérica)
   const modo = await modoPagos();
   const KEY = modo === "real" ? SK_LIVE : SK_TEST;
-  if (!KEY) return responder({ error: "config", mensaje: `Falta la clave de Stripe de Apolana (${modo}).` }, 503, origen);
-
+  if (necesitaStripe && !KEY) return responder({ error: "config", mensaje: `Falta la clave de Stripe de Apolana (${modo}).` }, 503, origen);
   const mes = String(d.mes);                       // "2026-11-01"
+
+  // ---- DESHACER ----
+  if (accion === "deshacer") {
+    if (aplicadaYa) {
+      const rS = await stripe(KEY, `subscriptions/${encodeURIComponent(sub)}`, "GET");
+      if (!rS.ok) return responder({ error: "pasarela", mensaje: "No se ha podido leer la suscripción en Stripe." }, 502, origen);
+      const pc = rS.datos?.pause_collection;
+      const nuestra = d.stripe_resumes_at ? Math.floor(Date.parse(String(d.stripe_resumes_at)) / 1000) : 0;
+      if (pc) {
+        // Solo se quita si es NUESTRA pausa (mismo fin); una ajena no se toca.
+        if (Number(pc.resumes_at ?? 0) !== nuestra) {
+          return responder({ error: "ajena", mensaje: "La pausa que hay en Stripe no es esta (otra pausa). Revísalo en Stripe." }, 409, origen);
+        }
+        const rP = await stripe(KEY, `subscriptions/${encodeURIComponent(sub)}`, "POST", { pause_collection: "" });
+        if (!rP.ok) return responder({ error: "pasarela", mensaje: "Stripe no quitó la pausa: " + (rP.datos?.error?.message ?? "inténtalo otra vez") }, 502, origen);
+      }
+    }
+    const rX = await rpc("cubo_pausa_deshacer_registrar", { p_id: pausaId, p_por_email: correoAdmin || null });
+    if (!rX.ok || rX.datos?.ok === false) {
+      console.error("cubo_pausa_deshacer_registrar:", rX.estado, JSON.stringify(rX.datos));
+      return responder({ error: "base", mensaje: "Stripe está bien, pero no se pudo guardar en el panel. Vuelve a pulsar." }, 500, origen);
+    }
+    return responder({ ok: true, accion, mes, stripe: aplicadaYa ? "reanudada" : "sin_tocar" }, 200, origen);
+  }
+
+  // ---- APROBAR / APLICAR ----
   let diaCobro = 5;
-  let aplicada = !!d.stripe_aplicada_en;
+  let aplicada = aplicadaYa;
   let resumesGuardar: number | null = null;
   if (!aplicada) {
     const rS = await stripe(KEY, `subscriptions/${encodeURIComponent(sub)}?expand[]=latest_invoice`, "GET");
@@ -267,16 +256,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.error("Stripe GET sub:", rS.datos?.error?.message ?? rS.estado);
       return responder({ error: "pasarela", mensaje: "No se ha podido leer la suscripción en Stripe." }, 502, origen);
     }
-    const plan = planificar(rS.datos, mes, Number(d.resumes_at));
-    if (plan.tipo === "error") {
-      // En «aprobar», un mes futuro que aún no toca NO es error (se programa).
-      return responder({ error: plan.codigo, mensaje: plan.mensaje }, plan.http, origen);
-    }
+    const plan = planificar(rS.datos, mes);
+    if (plan.tipo === "error") return responder({ error: plan.codigo, mensaje: plan.mensaje }, plan.http, origen);
     diaCobro = plan.diaCobro;
     if (plan.tipo === "programar" && accion === "aplicar") {
       return responder({ error: "aun_no", mensaje: "Aún no toca: se aplica en Stripe después del cobro del mes anterior." }, 409, origen);
     }
     if (plan.tipo === "aplicar") {
+      // Cargos/descuentos sueltos pendientes irían al recibo que se va a anular
+      // y se perderían: se para y se explica (el club decide).
+      const cp = await cargosPendientes(KEY, cliente || String(rS.datos?.customer ?? ""));
+      if (!cp.ok) return responder({ error: "pasarela", mensaje: "No se han podido revisar sus cargos pendientes en Stripe. Inténtalo otra vez." }, 502, origen);
+      if (cp.items.length) {
+        return responder({ error: "cargos_pendientes", mensaje:
+          `Tiene ${cp.items.length === 1 ? "un cargo/descuento pendiente" : cp.items.length + " cargos/descuentos pendientes"} para el próximo recibo: ${textoCargos(cp.items)}. ` +
+          "Con la pausa ese recibo se anula y se perderían. Quítalo en Stripe (o pásalo al mes siguiente) y vuelve a aprobar." }, 409, origen);
+      }
       const rP = await stripe(KEY, `subscriptions/${encodeURIComponent(sub)}`, "POST", {
         "pause_collection[behavior]": "void",
         "pause_collection[resumes_at]": String(plan.resumes),
@@ -305,7 +300,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // 4 · Correo (solo al aprobar y una vez). Si falla, la pausa ya está hecha.
-  let correo: string = "no";
+  let correo = "no";
   if (accion === "aprobar" && !d.correo_enviado_en && d.email && BREVO_API_KEY) {
     const nM = Number(mes.slice(5, 7));            // 1..12
     const mesTxt = MESES[nM - 1];

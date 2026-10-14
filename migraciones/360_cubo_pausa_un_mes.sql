@@ -21,6 +21,16 @@
 --      `cubo-webhook` al llegar ese invoice.paid (y, de reserva, el botón
 --      «Aplicar en Stripe» del panel). Ver `stripe_aplicada_en`.
 --   6) Correo de confirmación (Brevo) al aprobar: lo manda la Edge.
+--   7) Caducan solas (estado 'caducada', cubo_pausas_caducar): la solicitud
+--      que nadie decidió antes del día 5 del mes (no bloquea la temporada) y
+--      la aprobada que nunca llegó a Stripe (ese mes SÍ se cobró: no sale «en
+--      pausa» ni deja avisos eternos). Además, todas las lecturas usan la
+--      regla «en vigor» aunque la limpieza no haya corrido.
+--   8) El club puede DESHACER una aprobada hasta el día 4 (Edge cubo-pausa,
+--      acción deshacer → cubo_pausa_deshacer_registrar).
+--   9) De paso (bug desde el 17-sep): «Dar plaza» y «Cambiar de grupo» del
+--      panel hacían UPDATE directo en cubo_altas, que es solo lectura →
+--      permission denied. Ahora: cubo_alta_dar_plaza / cubo_alta_cambiar_grupo.
 --
 -- QUÉ NO TOCA
 --   · cubo_altas.suscripcion_estado sigue 'activa' durante la pausa (la
@@ -28,9 +38,9 @@
 --   · cubo_turno_lleno / cubo_aforo / cubo_aforos: sin cambios (la plaza
 --     se mantiene).
 --
--- ORDEN DE DESPLIEGUE: esta migración → Edge cubo-pausa → cubo-webhook →
--- web (cubo-cuota.js, admin/cubo-altas, admin/index, portal/general,
--- portal/cubo-lista).
+-- ORDEN DE DESPLIEGUE: esta migración → Edges cubo-pausa, cubo-webhook,
+-- cubo-pago (las dos primeras llevan _shared/cubo-pausa.ts) → web
+-- (cubo-cuota.js, admin/cubo-altas, admin/index, portal/general, portal/cubo-lista).
 -- ============================================================
 begin;
 
@@ -54,7 +64,7 @@ create table if not exists public.cubo_pausas (
   correo_enviado_en  timestamptz,
   constraint cubo_pausas_mes_dia1 check (extract(day from mes) = 1),
   constraint cubo_pausas_estado_check
-    check (estado in ('solicitada', 'aprobada', 'rechazada', 'anulada'))
+    check (estado in ('solicitada', 'aprobada', 'rechazada', 'anulada', 'caducada'))
 );
 
 comment on table public.cubo_pausas is
@@ -86,6 +96,30 @@ returns date language sql immutable as $$
   select (date_trunc('month', p_mes) - interval '1 month')::date + 19;
 $$;
 
+-- Hoy en Madrid (todas las reglas de plazo cuentan en hora de Madrid).
+create or replace function public.cubo_pausa_hoy()
+returns date language sql stable as $$
+  select (now() at time zone 'Europe/Madrid')::date;
+$$;
+
+-- Limpieza (idempotente, sin cron: la llaman cubo_pausa_mia/solicitar y el
+-- panel al cargar). Desde el día 5 del mes pausado:
+--   · solicitada sin decidir         → caducada (ya no bloquea la temporada)
+--   · aprobada que no llegó a Stripe → caducada (ese recibo sí se cobró)
+create or replace function public.cubo_pausas_caducar()
+returns integer
+language plpgsql security definer set search_path to 'public' as $$
+declare n int;
+begin
+  update public.cubo_pausas
+     set estado = 'caducada', decidida_en = coalesce(decidida_en, now())
+   where public.cubo_pausa_hoy() >= mes + 4
+     and (estado = 'solicitada' or (estado = 'aprobada' and stripe_aplicada_en is null));
+  get diagnostics n = row_count;
+  return n;
+end; $$;
+grant execute on function public.cubo_pausas_caducar() to authenticated;
+
 -- Meses que esta cuota puede pedir HOY: los 2 próximos cobros que aún
 -- están a tiempo (≥ 15 días), quitando los de una temporada ya usada.
 create or replace function public.cubo_pausa_meses(p_alta uuid)
@@ -104,6 +138,8 @@ language sql stable security definer set search_path to 'public' as $$
    where not exists (
      select 1 from public.cubo_pausas p
       where p.alta_id = p_alta and p.estado in ('solicitada', 'aprobada')
+        and (p.estado = 'aprobada' and p.stripe_aplicada_en is not null
+             or public.cubo_pausa_hoy() < p.mes + 4)          -- ni caducadas de hecho
         and p.temporada = extract(year from c.m)::int
                           - case when extract(month from c.m) < 9 then 1 else 0 end)
    order by 1;
@@ -128,13 +164,14 @@ revoke all on function public.cubo_pausa_mi_alta() from public, anon, authentica
 -- { ok, puede, meses:[{mes, limite}], pausas:[{id, mes, estado, ...}], motivo }
 create or replace function public.cubo_pausa_mia()
 returns jsonb
-language plpgsql stable security definer set search_path to 'public' as $$
+language plpgsql security definer set search_path to 'public' as $$
 declare
   v_alta uuid := public.cubo_pausa_mi_alta();
   v_baja timestamptz;
   v_meses jsonb;
   v_pausas jsonb;
 begin
+  perform public.cubo_pausas_caducar();
   if v_alta is null then
     return jsonb_build_object('ok', true, 'puede', false, 'motivo', 'sin_cuota_activa',
                               'meses', '[]'::jsonb, 'pausas', '[]'::jsonb);
@@ -175,6 +212,7 @@ declare
   v_mes    date := date_trunc('month', p_mes)::date;
   v_id     uuid;
 begin
+  perform public.cubo_pausas_caducar();
   if v_perfil is null then
     return jsonb_build_object('ok', false, 'motivo', 'sin_sesion', 'error', 'Entra en tu cuenta.');
   end if;
@@ -263,6 +301,8 @@ begin
     'precio_mes', a.precio_mes,
     'suscripcion_estado', a.suscripcion_estado,
     'stripe_subscription_id', a.stripe_subscription_id,
+    'stripe_customer_id', a.stripe_customer_id,
+    'stripe_resumes_at', p.stripe_resumes_at,
     'email', v_email,
     -- Aún a tiempo de que Stripe no cobre: hasta el día 4 (incluido).
     'a_tiempo', v_hoy < p.mes + 4,
@@ -309,6 +349,23 @@ end; $$;
 revoke all on function public.cubo_pausa_registrar(uuid, boolean, text, timestamptz) from public, anon, authenticated;
 grant execute on function public.cubo_pausa_registrar(uuid, boolean, text, timestamptz) to service_role;
 
+-- Deshacer una aprobada (la Edge ya quitó la pause_collection si estaba).
+create or replace function public.cubo_pausa_deshacer_registrar(p_id uuid, p_por_email text default null)
+returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+begin
+  update public.cubo_pausas
+     set estado = 'anulada', decidida_en = now(),
+         decidida_por = coalesce((select id from public.perfiles where lower(email) = lower(p_por_email) limit 1), decidida_por),
+         motivo_rechazo = 'Deshecha por el club',
+         stripe_resumes_at = null
+   where id = p_id and estado = 'aprobada';
+  if not found then return jsonb_build_object('ok', false, 'error', 'no_aprobada'); end if;
+  return jsonb_build_object('ok', true);
+end; $$;
+revoke all on function public.cubo_pausa_deshacer_registrar(uuid, text) from public, anon, authenticated;
+grant execute on function public.cubo_pausa_deshacer_registrar(uuid, text) to service_role;
+
 -- ---------- 6 · Apuntados del día: el que está en pausa ese mes no viene ----------
 -- (copia de la 332 + la condición de la pausa; la Fuerza gratis no cambia)
 create or replace function public.cubo_apuntados_dia(p_grupo uuid, p_fecha date)
@@ -337,7 +394,10 @@ language sql stable security definer set search_path to 'public' as $$
           -- [360] en pausa ese mes: guarda la plaza pero no viene
           and not exists (select 1 from public.cubo_pausas cp
                            where cp.alta_id = a.id and cp.estado = 'aprobada'
-                             and cp.mes = date_trunc('month', p_fecha)::date))
+                             and cp.mes = date_trunc('month', p_fecha)::date
+                             -- en vigor: ya en Stripe, o aún a tiempo de ponerla
+                             and (cp.stripe_aplicada_en is not null
+                                  or public.cubo_pausa_hoy() < cp.mes + 4)))
   end::int;
 $$;
 
@@ -364,7 +424,8 @@ language sql stable security definer set search_path to 'public' as $$
          and (select count(*) from asistencia a
                 join grupos g on g.id = a.grupo_id and g.seccion = 'cubo'
               where a.atleta_id = ca.atleta_id and a.presente = true) >= 2),
-    'cubo_pausas',   (select count(*) from cubo_pausas where estado = 'solicitada'),
+    'cubo_pausas',   (select count(*) from cubo_pausas
+                       where estado = 'solicitada' and public.cubo_pausa_hoy() < mes + 4),
     'buzon',         (select count(*) from buzon_bandeja where atendido is not true),
     'solicitudes',   (select count(*) from solicitudes_inscripcion
                        where atendida is not true
@@ -372,5 +433,84 @@ language sql stable security definer set search_path to 'public' as $$
     'liga_validar',  (select count(*) from liga_participaciones where estado = 'pendiente')
   ) end
 $$;
+
+-- ---------- 8 · Bug previo: «Dar plaza» y «Cambiar de grupo» (panel) ----------
+-- cubo_altas no tiene policy UPDATE (solo lectura para authenticated): el
+-- panel hacía update directo → permission denied desde el 17-sep. RPC de admin.
+create or replace function public.cubo_alta_dar_plaza(p_id uuid)
+returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare
+  v public.cubo_altas;
+  v_grupo uuid;
+begin
+  if not public.es_admin() then
+    raise exception 'Solo el club puede dar plaza en El Cubo.' using errcode = '42501';
+  end if;
+  update public.cubo_altas set lista_espera = false where id = p_id returning * into v;
+  if not found then return jsonb_build_object('ok', false, 'error', 'Esa alta ya no está.'); end if;
+  -- Enganche al grupo (en lista de espera no se hizo al apuntarse).
+  select id into v_grupo from public.grupos where seccion = 'cubo' and nombre = v.horario limit 1;
+  if v.atleta_id is not null and v_grupo is not null then
+    insert into public.atleta_grupos (atleta_id, grupo_id, principal)
+    values (v.atleta_id, v_grupo, false)
+    on conflict (atleta_id, grupo_id) do nothing;
+    update public.atletas set grupo_id = v_grupo where id = v.atleta_id and grupo_id is null;
+  end if;
+  return jsonb_build_object('ok', true);
+end; $$;
+grant execute on function public.cubo_alta_dar_plaza(uuid) to authenticated;
+
+create or replace function public.cubo_alta_cambiar_grupo(p_id uuid, p_grupo uuid)
+returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare
+  v        public.cubo_altas;
+  v_nuevo  public.grupos;
+  v_viejo  uuid;
+  v_dias   smallint[];
+  v_diasem smallint[];
+  v_princ  boolean := false;
+begin
+  if not public.es_admin() then
+    raise exception 'Solo el club puede cambiar de grupo en El Cubo.' using errcode = '42501';
+  end if;
+  select * into v from public.cubo_altas where id = p_id;
+  if not found then return jsonb_build_object('ok', false, 'error', 'Esa alta ya no está.'); end if;
+  select * into v_nuevo from public.grupos where id = p_grupo and seccion = 'cubo' and coalesce(activo, true);
+  if not found then return jsonb_build_object('ok', false, 'error', 'Ese grupo del Cubo no existe o no está activo.'); end if;
+  if v_nuevo.nombre = v.horario then return jsonb_build_object('ok', true, 'sin_cambios', true); end if;
+
+  -- Días del grupo nuevo (sus horarios activos).
+  select array_agg(distinct h.dia_semana::smallint order by h.dia_semana::smallint) into v_dias
+    from public.grupo_horarios h where h.grupo_id = p_grupo and coalesce(h.activo, true);
+  -- 2 días → los del grupo; 1 día → el mismo si existe en el nuevo; si no,
+  -- vacío (Claudia le ve todos los días del turno hasta marcarlo).
+  v_diasem := case
+    when v.dias = 2 then v_dias
+    when cardinality(coalesce(v.dias_semana, '{}')) = 1 and v.dias_semana[1] = any(coalesce(v_dias, '{}')) then v.dias_semana
+    else null end;
+
+  update public.cubo_altas set horario = v_nuevo.nombre, dias_semana = v_diasem where id = p_id;
+
+  if v.atleta_id is not null then
+    select id into v_viejo from public.grupos where seccion = 'cubo' and nombre = v.horario limit 1;
+    if v_viejo is not null then
+      select coalesce(bool_or(ag.principal), false)
+             or exists (select 1 from public.atletas a where a.id = v.atleta_id and a.grupo_id = v_viejo)
+        into v_princ
+        from public.atleta_grupos ag where ag.atleta_id = v.atleta_id and ag.grupo_id = v_viejo;
+      delete from public.atleta_grupos where atleta_id = v.atleta_id and grupo_id = v_viejo;
+    end if;
+    if not coalesce(v.lista_espera, false) then
+      insert into public.atleta_grupos (atleta_id, grupo_id, principal)
+      values (v.atleta_id, p_grupo, v_princ)
+      on conflict (atleta_id, grupo_id) do update set principal = atleta_grupos.principal or excluded.principal;
+      update public.atletas set grupo_id = p_grupo where id = v.atleta_id and grupo_id is null;
+    end if;
+  end if;
+  return jsonb_build_object('ok', true, 'grupo', v_nuevo.nombre, 'dias_semana', v_diasem);
+end; $$;
+grant execute on function public.cubo_alta_cambiar_grupo(uuid, uuid) to authenticated;
 
 commit;

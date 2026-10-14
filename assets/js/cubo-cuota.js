@@ -114,8 +114,12 @@
   }
   function nombreMes(iso) { return MESES[(+String(iso).slice(5, 7)) - 1] || ''; }
   function hoyMes() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1); }
+  function hoyISO() { var d = new Date(); return hoyMes() + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate(); }
+  // Antes del recibo del día 5 de ese mes.
+  function aTiempo(x) { return hoyISO() < String(x.mes).slice(0, 7) + '-05'; }
   function pausaAprobada(pausa) {
     var l = (pausa && pausa.pausas) || [];
+    // La base ya pasa a «caducada» la que no llegó a Stripe a tiempo.
     return l.filter(function (x) { return x.estado === 'aprobada' && String(x.mes).slice(0, 7) >= hoyMes(); })[0] || null;
   }
   function estiloPausa() {
@@ -141,17 +145,20 @@
       return '<div class="cb-pausa ok">⏸️ <b>Cuota de ' + esc(nombreMes(ap.mes)) + ' en pausa.</b> Ese mes no se te cobra y ' +
         '<b>tu plaza se mantiene</b>. El <b>5 de ' + esc(nombreMes(mesMas(ap.mes, 1))) + '</b> se vuelve a cobrar solo.</div>';
     }
-    var sol = l.filter(function (x) { return x.estado === 'solicitada'; })[0];
+    var sol = l.filter(function (x) { return x.estado === 'solicitada' && aTiempo(x); })[0];
     if (sol) {
       return '<div class="cb-pausa">Has pedido <b>pausar ' + esc(nombreMes(sol.mes)) + '</b>. El club la revisará y te llegará un correo. ' +
         '<button type="button" class="enlace" id="cb-pausa-anular" data-id="' + esc(sol.id) + '">Retirar la solicitud</button></div>' +
         '<p class="pago-msg" id="cb-pausa-msg" hidden></p>';
     }
     var rech = l.filter(function (x) { return x.estado === 'rechazada' && String(x.mes).slice(0, 7) >= hoyMes(); })[0];
+    var cad = l.filter(function (x) { return x.estado === 'caducada' && String(x.mes).slice(0, 7) >= hoyMes(); })[0];
     var avisoRech = rech
       ? '<div class="cb-pausa no">El club no ha podido aprobar la pausa de <b>' + esc(nombreMes(rech.mes)) + '</b>' +
           (rech.motivo_rechazo ? ': ' + esc(rech.motivo_rechazo) : '') + '. Si quieres, escríbenos.</div>'
-      : '';
+      : (cad
+        ? '<div class="cb-pausa no">Tu pausa de <b>' + esc(nombreMes(cad.mes)) + '</b> no se pudo tramitar a tiempo, así que ese mes se cobra con normalidad. Si es un error, escríbenos.</div>'
+        : '');
     if (!pausa.puede) return avisoRech;
     var opciones = (pausa.meses || []).map(function (m, i) {
       return '<label><input type="radio" name="cb-pausa-mes" value="' + esc(m.mes) + '"' + (i === 0 ? ' checked' : '') + '>' +

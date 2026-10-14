@@ -324,6 +324,8 @@ APOLANA_ADMIN.listo(function (sb) {
   async function cargarPausas(){
     PAUSAS = {};
     try{
+      // Primero la limpieza: lo no decidido / no aplicado a tiempo pasa a «caducada».
+      try{ await sb.rpc('cubo_pausas_caducar'); }catch(e){}
       var r = await sb.from('cubo_pausas').select('id,alta_id,mes,estado,solicitada_en,stripe_aplicada_en,correo_enviado_en').in('estado',['solicitada','aprobada']).order('mes');
       if(!r.error && r.data) r.data.forEach(function(p){ (PAUSAS[p.alta_id]=PAUSAS[p.alta_id]||[]).push(p); });
     }catch(e){}
@@ -331,18 +333,22 @@ APOLANA_ADMIN.listo(function (sb) {
   var MES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   function mesNombre(iso){ return MES_L[(+String(iso).slice(5,7))-1]||''; }
   function mesHoy(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1); }
+  function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate(); }
+  // Aún a tiempo (antes del recibo del día 5 de ese mes): se puede aprobar/deshacer.
+  function aTiempo(p){ return hoyISO() < String(p.mes).slice(0,7)+'-05'; }
+  // En vigor = no se le cobra ese mes: ya está en Stripe, o aún da tiempo a ponerla.
+  function enVigor(p){ return p.estado==='aprobada' && (!!p.stripe_aplicada_en || aTiempo(p)); }
   function mesAntes(iso){ var y=+String(iso).slice(0,4), m=+String(iso).slice(5,7)-1; if(m<1){ m=12; y--; } return y+'-'+(m<10?'0':'')+m; }
   // La pausa que importa de esta alta: la aprobada vigente o la pedida.
   function pausaDe(a){
     var l=(PAUSAS[a.id]||[]), hoy=mesHoy();
-    return { ap: l.filter(function(p){ return p.estado==='aprobada' && String(p.mes).slice(0,7)>=hoy; })[0]||null,
-             sol: l.filter(function(p){ return p.estado==='solicitada'; })[0]||null };
+    return { ap: l.filter(function(p){ return enVigor(p) && String(p.mes).slice(0,7)>=hoy; })[0]||null,
+             sol: l.filter(function(p){ return p.estado==='solicitada' && aTiempo(p); })[0]||null };
   }
   // Aprobada pero aún sin poner en Stripe, y YA debería estar (pasó el cobro del mes anterior).
   function faltaStripe(p){
-    if(!p || p.stripe_aplicada_en) return false;
-    var d=new Date(), hoy=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate();
-    return hoy >= mesAntes(p.mes)+'-06';
+    if(!p || p.estado!=='aprobada' || p.stripe_aplicada_en || !aTiempo(p)) return false;
+    return hoyISO() >= mesAntes(p.mes)+'-06';
   }
   function pillPausa(a){
     var P=pausaDe(a);
@@ -447,10 +453,9 @@ APOLANA_ADMIN.listo(function (sb) {
         '</select></label>';
     }
     if(a.suscripcion_estado==='activa' || a.suscripcion_estado==='pausada'){
-      if(a.suscripcion_estado==='pausada')
-        acc+='<button type="button" class="b b-si" data-pago-reanudar="'+esc(a.id)+'">Reanudar pagos</button>';
-      else
-        acc+='<button type="button" class="b b-pago" data-pago-pausar="'+esc(a.id)+'">Pausar pagos</button>';
+      // «Pausar pagos» (indefinido) se retiró el 14-oct: ahora es «Pausar un mes».
+      // «Reanudar pagos» se queda para quitar cualquier pausa vieja de Stripe.
+      acc+='<button type="button" class="b b-pago" data-pago-reanudar="'+esc(a.id)+'">Reanudar pagos</button>';
       acc+='<button type="button" class="b b-pago" data-pago-saltar="'+esc(a.id)+'">Saltar/aplazar mes</button>';
       acc+='<button type="button" class="b b-pago" data-pago-cargo="'+esc(a.id)+'">Cargo / descuento</button>';
       acc+='<button type="button" class="b b-pago" data-pago-cuota="'+esc(a.id)+'">Cambiar cuota</button>';
@@ -602,21 +607,24 @@ APOLANA_ADMIN.listo(function (sb) {
       var a=porId[aid]; if(!a) return;
       PAUSAS[aid].forEach(function(p){
         var nom=((a.nombre||'')+' '+(a.apellidos||'')).trim(), hor=esc(cqHorario(a)), m=esc(mesNombre(p.mes));
-        if(p.estado==='solicitada'){
+        if(p.estado==='solicitada' && aTiempo(p)){
           filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>pide pausar <b>'+m+'</b><span class="dot">·</span>pedida el '+esc(fecha(p.solicitada_en))+'</small></div>'+
             '<div class="cq-acc"><button type="button" class="pz-btn-azul" data-pausa-aprobar="'+esc(p.id)+'" data-mes="'+m+'" data-nom="'+esc(nom)+'">Aprobar</button>'+
             '<button type="button" class="pz-btn-no" data-pausa-rechazar="'+esc(p.id)+'">Rechazar</button></div>'+
             '<span class="cq-pill p-pidepausa">Pide pausa · '+m+'</span></div>');
-        } else if(faltaStripe(p)){
-          filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span><span class="cq-stripe-falta">⚠ Aprobada, falta ponerla en Stripe</span></small></div>'+
-            '<div class="cq-acc"><button type="button" class="pz-btn-azul" data-pausa-aplicar="'+esc(p.id)+'">Aplicar en Stripe</button></div>'+
+        } else if(enVigor(p)){
+          var deshacer = aTiempo(p) ? '<button type="button" class="pz-btn-no" data-pausa-deshacer="'+esc(p.id)+'" data-mes="'+m+'" data-nom="'+esc(nom)+'">Deshacer</button>' : '';
+          var nota = faltaStripe(p) ? '<span class="cq-stripe-falta">⚠ Aprobada, falta ponerla en Stripe</span>'
+                   : (p.stripe_aplicada_en ? 'Stripe no cobrará '+m : 'se pondrá en Stripe tras el cobro de '+esc(mesNombre(mesAntes(p.mes)+'-01')));
+          filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>'+nota+'</small></div>'+
+            '<div class="cq-acc">'+(faltaStripe(p)?'<button type="button" class="pz-btn-azul" data-pausa-aplicar="'+esc(p.id)+'">Aplicar en Stripe</button>':'')+deshacer+'</div>'+
             '<span class="cq-pill p-pausa">En pausa · '+m+'</span></div>');
         }
       });
     });
     if(!filas.length) return '';
     return '<div class="cq-sec s-pausa"><div class="cq-sec-cab"><span class="cq-ic">⏸</span><h2>Pausar un mes</h2><span class="cq-cnt">'+filas.length+'</span>'+
-      '<p class="cq-desc">Piden no pagar un mes (uno por temporada, con 15 días de antelación). Al aprobar, Stripe no cobra ese mes, le llega un correo y se le guarda la plaza.</p></div>'+
+      '<p class="cq-desc">Piden no pagar un mes (uno por temporada, con 15 días de antelación). Al aprobar, Stripe no cobra ese mes, le llega un correo y se le guarda la plaza. Hasta el día 4 de ese mes se puede deshacer.</p></div>'+
       filas.join('')+'</div>';
   }
   async function pausaInvocar(cuerpo, btn){
@@ -637,6 +645,11 @@ APOLANA_ADMIN.listo(function (sb) {
   async function pausaAplicar(id, btn){
     var d=await pausaInvocar({ accion:'aplicar', pausa_id:id }, btn); if(!d) return;
     await cargarPausas(); pintar(); toast('Pausa puesta en Stripe');
+  }
+  async function pausaDeshacer(id, btn){
+    if(!confirm('¿Deshacer la pausa de '+(btn.getAttribute('data-nom')||'esta persona')+' ('+(btn.getAttribute('data-mes')||'')+')?\n\nSe le volverá a cobrar ese mes con normalidad. No se le manda correo: avísale tú.')) return;
+    var d=await pausaInvocar({ accion:'deshacer', pausa_id:id }, btn); if(!d) return;
+    await cargarPausas(); pintar(); toast('Pausa deshecha · ese mes se cobra normal');
   }
   async function pausaRechazar(id, btn){
     var motivo=prompt('¿Rechazar la pausa? Si quieres, pon el motivo (lo verá en su app):','');
@@ -1195,15 +1208,11 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if(extra.accion==='cuota' && r.data.precio_mes){ ALTAS.forEach(function(a){ if(a.id===id) a.precio_mes=r.data.precio_mes; }); pintar(); }
     if(r.data.estado){ ALTAS.forEach(function(a){ if(a.id===id) a.suscripcion_estado=r.data.estado; }); pintar(); }
-    toast(okMsg);
-  }
-  async function pagoPausar(id, btn){
-    if(!confirm('¿Pausar los pagos de esta persona?\n\nNo se le cobrará nada hasta que le des a «Reanudar pagos». No es una baja: sigue en el Cubo.')) return;
-    await invocarPago(id, { accion:'pausar' }, btn, 'Pagos en pausa · no se le cobrará hasta reanudar');
+    toast(r.data.mensaje || okMsg);
   }
   async function pagoReanudar(id, btn){
-    if(!confirm('¿Reanudar los pagos de esta persona? Se le volverá a cobrar su cuota cada mes.')) return;
-    await invocarPago(id, { accion:'reanudar' }, btn, 'Pagos reanudados');
+    if(!confirm('¿Reanudar los pagos de esta persona?\n\nQuita en Stripe cualquier pausa indefinida que le quedara del antiguo «Pausar pagos». Si no tenía ninguna, no cambia nada. (Una «pausa de un mes» se deshace desde su fila.)')) return;
+    await invocarPago(id, { accion:'reanudar' }, btn, 'Hecho · se le cobra cada mes con normalidad');
   }
   async function pagoSaltar(id, btn){
     if(!confirm('¿Saltar el próximo cobro de esta persona?\n\nEste mes no se le pasa el recibo (se le abona su cuota). Para APLAZAR y juntarlo con el mes que viene, dale luego a «Cargo / descuento» con el importe el mes siguiente.')) return;
@@ -1229,8 +1238,8 @@ APOLANA_ADMIN.listo(function (sb) {
 
   async function darPlaza(id, btn){
     btn.disabled=true;
-    var r=await sb.from('cubo_altas').update({ lista_espera:false }).eq('id', id).select('id');
-    if(r.error){ toast('No se ha podido: '+r.error.message,'error'); btn.disabled=false; return; }
+    var r=await sb.rpc('cubo_alta_dar_plaza',{ p_id:id });
+    if(r.error || (r.data && r.data.ok===false)){ toast('No se ha podido: '+((r.error&&r.error.message)||(r.data&&r.data.error)||''),'error'); btn.disabled=false; return; }
     ALTAS.forEach(function(a){ if(a.id===id) a.lista_espera=false; });
     pintar(); toast('Plaza dada · ya puede pagar la cuota');
   }
@@ -1245,13 +1254,12 @@ APOLANA_ADMIN.listo(function (sb) {
     if(!n || n<1 || n>GRUPOS_CUBO.length){ toast('Elige un número de la lista.','error'); return; }
     var g = GRUPOS_CUBO[n-1];
     if(g.nombre===a.horario){ toast('Ya está en ese grupo.'); return; }
-    var r = await sb.from('cubo_altas').update({ horario:g.nombre }).eq('id', id).select('id');
-    if(r.error){ toast('No se ha podido: '+r.error.message,'error'); return; }
-    if(a.atleta_id){
-      var r2 = await sb.from('atletas').update({ grupo_id:g.id }).eq('id', a.atleta_id);
-      if(r2.error){ toast('Movido en la lista, pero su ficha no: '+r2.error.message,'error'); }
-    }
+    // RPC (cubo_altas es solo lectura): cambia horario y días del alta y su
+    // grupo del Cubo en la ficha (atleta_grupos), conservando si era el principal.
+    var r = await sb.rpc('cubo_alta_cambiar_grupo',{ p_id:id, p_grupo:g.id });
+    if(r.error || (r.data && r.data.ok===false)){ toast('No se ha podido: '+((r.error&&r.error.message)||(r.data&&r.data.error)||''),'error'); return; }
     a.horario = g.nombre;
+    if(r.data && 'dias_semana' in r.data) a.dias_semana = r.data.dias_semana;
     pintar();
     toast('Movido a '+String(g.nombre||'').replace(/^El Cubo\s*·\s*/i,''));
   }
@@ -1281,6 +1289,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(pza){ pausaAprobar(pza.getAttribute('data-pausa-aprobar'), pza); return; }
     var pzr=ev.target.closest?ev.target.closest('[data-pausa-rechazar]'):null;
     if(pzr){ pausaRechazar(pzr.getAttribute('data-pausa-rechazar'), pzr); return; }
+    var pzd=ev.target.closest?ev.target.closest('[data-pausa-deshacer]'):null;
+    if(pzd){ pausaDeshacer(pzd.getAttribute('data-pausa-deshacer'), pzd); return; }
     var pzs=ev.target.closest?ev.target.closest('[data-pausa-aplicar]'):null;
     if(pzs){ pausaAplicar(pzs.getAttribute('data-pausa-aplicar'), pzs); return; }
     var au=ev.target.closest?ev.target.closest('[data-avisauno]'):null;
@@ -1295,8 +1305,6 @@ APOLANA_ADMIN.listo(function (sb) {
     if(lim){ cambiarLimite(); return; }
     var bb=ev.target.closest?ev.target.closest('.b-baja[data-baja]'):null;
     if(bb){ darBaja(bb.getAttribute('data-baja'), bb); return; }
-    var pp=ev.target.closest?ev.target.closest('[data-pago-pausar]'):null;
-    if(pp){ pagoPausar(pp.getAttribute('data-pago-pausar'), pp); return; }
     var pr=ev.target.closest?ev.target.closest('[data-pago-reanudar]'):null;
     if(pr){ pagoReanudar(pr.getAttribute('data-pago-reanudar'), pr); return; }
     var ps=ev.target.closest?ev.target.closest('[data-pago-saltar]'):null;
