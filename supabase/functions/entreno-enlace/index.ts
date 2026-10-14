@@ -5,6 +5,11 @@
 //
 //   · POST con JWT de admin/staff/tesorería.
 //   · body { cuota_id }  → manda el correo al atleta de esa cuota de entreno.
+//   · body { cuota_id, recordatorio: true } (370 · admin/dinero «Recordar»):
+//     el mismo enlace, pero con un texto neutro de recordatorio (sin el
+//     «perdona, el correo anterior fue un error», que era solo para el 1er envío).
+//   · body { ping: true } → { ok, recordatorio: true }: así la pantalla Dinero
+//     sabe que esta versión ya está desplegada antes de mandar recordatorios.
 //
 //   Variables (ya existen, las usa cubo-cobro-aviso / recibo-aviso):
 //     BREVO_API_KEY, CORREO_REMITENTE, CORREO_REMITENTE_NOMBRE, CORREO_RESPUESTAS,
@@ -125,6 +130,43 @@ function correoHtml(nombre: string, importe: number, enlace: string): string {
   </body></html>`;
 }
 
+// 370 · Recordatorio (admin/dinero): el mismo correo sin el «perdona por el lío».
+function correoRecordatorioHtml(nombre: string, importe: number, enlace: string): string {
+  const hola = nombre ? `¡Hola, ${esc(nombre)}!` : "¡Hola!";
+  return `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana</td></tr>
+      <tr><td style="padding:24px 24px 6px 24px">
+        <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">${hola}</p>
+        <p style="margin:0 0 12px;color:#3f3f46;line-height:1.6">Te recordamos que tu <b>cuota de entrenamiento</b> sigue <b>sin domiciliar</b>.</p>
+        <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">Se hace por <b>domiciliación bancaria (SEPA)</b>: metes tu IBAN <b>una sola vez</b> y la cuota se cobra sola cada trimestre.</p>
+      </td></tr>
+      <tr><td style="padding:2px 24px 10px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">
+          <tr><td style="padding:14px 18px;color:#5C4A1E;font-size:15px;line-height:1.7">
+            <b>Cuota de entrenamiento</b><br>
+            <span style="font-size:20px;font-weight:700">${eur(importe)}</span> cada trimestre<br>
+            <span style="font-size:13.5px">Se cobra en octubre, enero y abril. <b>Tras abril se para solo</b>: en junio no se te pasa nada.</span>
+          </td></tr>
+        </table></td></tr>
+      <tr><td align="center" style="padding:6px 24px 6px 24px">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
+            <a href="${enlace}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">Domiciliar mi cuota →</a>
+          </td>
+        </tr></table></td></tr>
+      <tr><td align="center" style="padding:0 24px 18px 24px">
+        <p style="margin:0;color:#71717a;font-size:13px">El IBAN se teclea en la pantalla segura de Stripe, nunca en nuestra web.</p>
+      </td></tr>
+      <tr><td style="padding:0 24px 24px 24px;border-top:1px solid #ececec">
+        <p style="margin:16px 0 0 0;color:#71717a;font-size:13px;line-height:1.5">¿Alguna duda? Contéstanos a este mensaje. 😊</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+  </body></html>`;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -140,6 +182,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
+  if (cuerpo.ping === true) return responder({ ok: true, recordatorio: true }, 200, origen);
+  const recordatorio = cuerpo.recordatorio === true;
   const cuotaId = String(cuerpo.cuota_id ?? "").trim();
   if (!cuotaId) return responder({ error: "falta_cuota" }, 400, origen);
 
@@ -167,10 +211,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
         sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
         replyTo: { name: REMITENTE_NOMBRE, email: RESPUESTAS_EMAIL },
         to: [{ email: destino }],
-        subject: mensual ? "Domicilia tu cuota mensual · Club Atletismo Apolana" : "Domicilia tu cuota de entrenamiento (ignora el correo anterior)",
-        htmlContent: mensual ? correoMensualHtml(nombre, importe, enlace, String(c.concepto ?? "")) : correoHtml(nombre, importe, enlace),
+        subject: mensual ? "Domicilia tu cuota mensual · Club Atletismo Apolana"
+          : recordatorio ? "Recordatorio: domicilia tu cuota de entrenamiento · Club Atletismo Apolana"
+          : "Domicilia tu cuota de entrenamiento (ignora el correo anterior)",
+        htmlContent: mensual ? correoMensualHtml(nombre, importe, enlace, String(c.concepto ?? ""))
+          : recordatorio ? correoRecordatorioHtml(nombre, importe, enlace)
+          : correoHtml(nombre, importe, enlace),
         textContent: mensual
           ? `${nombre ? "¡Hola, familia de " + nombre + "!" : "¡Hola!"}\n\nComo nos pedisteis, la cuota (${eur(importe)} al mes) pasa a domiciliación bancaria (SEPA): metéis el IBAN una vez y se cobra sola cada mes (el mes en curso al domiciliar y luego en esa misma fecha). Tras junio se para sola.\n\nDomiciliad la cuota aquí: ${enlace}\n\n¿Dudas? Contestad a este mensaje.`
+          : recordatorio
+          ? `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\nTe recordamos que tu cuota de entrenamiento (${eur(importe)} por trimestre) sigue sin domiciliar. Metes tu IBAN una vez y se cobra sola en octubre, enero y abril; tras abril se para sola.\n\nDomicilia tu cuota aquí: ${enlace}\n\n¿Dudas? Contesta a este mensaje.`
           : `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\nPerdona: el correo anterior pedía pagar con tarjeta y fue un error. Ignóralo.\n\nLa forma correcta es por domiciliación (SEPA): metes tu IBAN una vez y la cuota (${eur(importe)} por trimestre) se cobra sola en octubre, enero y abril. Tras abril se para solo.\n\nDomicilia tu cuota aquí: ${enlace}\n\n¿Dudas? Contesta a este mensaje.`,
       }),
     });

@@ -17,7 +17,7 @@
 <script src="../../assets/js/portal-tabbar.js" defer></script>
 <script src="../../assets/js/mundos.js" defer></script>
 <script src="../../assets/js/panel-piezas.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="../../assets/js/stripe-payouts.js" defer></script>
 <style>
   :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',monospace); }
   body { background:var(--crema,#FBF9F4); }
@@ -53,93 +53,16 @@
 <body>
   <div class="py-wrap" id="py"></div>
 <script>
+/* La lista, el desglose y el Excel salen de assets/js/stripe-payouts.js
+   (la misma pieza que la pestaña «Al banco» de admin/dinero). */
 APOLANA_PORTAL.listo(async function (sb, perfil) {
   var wrap = document.getElementById('py');
-  function eur(n){ return Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'; }
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-  function toast(m,t){ var e=document.createElement('div'); e.className='py-toast'+(t==='err'?' err':''); e.textContent=m; document.body.appendChild(e);
+  function toast(m,t){ var e=document.createElement('div'); e.className='py-toast'+(t==='error'?' err':''); e.textContent=m; document.body.appendChild(e);
     requestAnimationFrame(function(){ e.classList.add('ver'); }); setTimeout(function(){ e.classList.remove('ver'); setTimeout(function(){ e.remove(); },240); },2600); }
-  var ESTADO = { paid:['pill-ok','pagado'], in_transit:['pill-cur','en camino'], pending:['pill-cur','pendiente'], canceled:['pill-err','cancelado'], failed:['pill-err','fallido'] };
-
-  var POS = [], sel = null, DET = null;
-
-  async function cargarLista(){
-    wrap.innerHTML = '<h1 class="py-h1">Payouts de Stripe</h1><p class="py-sub">Las transferencias de Stripe al banco del club, con el desglose de qué incluye cada una. Para cuadrar con Isa.</p><div class="py-vacio">Cargando payouts…</div>';
-    var r = await sb.functions.invoke('stripe-payout-export', { body:{ accion:'lista' } });
-    if (r.error || !r.data || r.data.ok===false){
-      var d=null; try{ if(r.error&&r.error.context&&r.error.context.json) d=await r.error.context.json(); }catch(e){}
-      var msg=(d&&(d.msg||d.error))||(r.data&&r.data.msg)||'No se pudo cargar.';
-      wrap.innerHTML = '<h1 class="py-h1">Payouts de Stripe</h1><div class="py-vacio">'+esc(msg==='Solo administración.'?'Esta pantalla es solo para administración.':msg)+'</div>';
-      return;
-    }
-    POS = r.data.payouts || [];
-    pintar();
-  }
-
-  function pintar(){
-    var lista = POS.length ? POS.map(function(p){
-      var e = ESTADO[p.estado] || ['pill-cur', p.estado];
-      return '<button type="button" class="py-po'+(sel===p.id?' on':'')+'" data-po="'+esc(p.id)+'">'+
-        '<span class="imp">'+eur(p.importe)+'</span>'+
-        '<span class="meta">Llega el <b>'+esc(p.fecha_llegada||p.creado||'')+'</b>'+(p.banco?' · '+esc(p.banco):'')+'</span>'+
-        '<span class="py-pill '+e[0]+'">'+esc(e[1])+'</span></button>';
-    }).join('') : '<div class="py-vacio">No hay payouts todavía.</div>';
-
-    var det = '';
-    if (sel && DET){
-      var t = DET.totales||{};
-      var filas = (DET.lineas||[]).map(function(l){
-        return '<tr><td><b>'+esc(l.nombre||'—')+'</b>'+(l.seccion?'<br><small style="color:#8A816E">'+esc(l.seccion)+'</small>':'')+'</td>'+
-          '<td>'+esc(l.concepto||'')+'</td>'+
-          '<td class="num">'+eur(l.importe)+'</td><td class="num">'+eur(l.comision)+'</td>'+
-          '<td class="num neto">'+eur(l.neto)+'</td><td class="num">'+esc(l.fecha_cargo||'')+'</td></tr>';
-      }).join('');
-      det = '<div class="py-det"><h2>Desglose del payout</h2>'+
-        '<p class="py-tot"><b>'+(t.lineas||0)+'</b> cobros · Bruto '+eur(t.importe)+' · Comisión '+eur(t.comision)+' · <b>Neto '+eur(t.neto)+'</b> · llega al banco el <b>'+esc(DET.fecha_llegada||'')+'</b></p>'+
-        (filas ? '<table class="py-tabla"><thead><tr><th>Quién</th><th>Concepto</th><th>Importe</th><th>Comisión</th><th>Neto</th><th>Pagado el día</th></tr></thead><tbody>'+filas+'</tbody></table>'
-               : '<p class="py-vacio">Este payout no tiene cobros detallados (puede ser un ajuste).</p>')+
-        '<button type="button" class="py-dl" id="py-dl"'+(filas?'':' disabled')+'>⬇ Descargar Excel para Isa</button></div>';
-    } else if (sel){
-      det = '<div class="py-det"><div class="py-vacio">Cargando desglose…</div></div>';
-    }
-
-    wrap.innerHTML =
-      '<h1 class="py-h1">Payouts de Stripe</h1>'+
-      '<p class="py-sub">Las transferencias de Stripe al banco del club, con el desglose de qué incluye cada una. Para cuadrar con Isa.</p>'+
-      '<div class="py-lista">'+lista+'</div>'+ det;
-  }
-
-  async function verDetalle(id){
-    sel = id; DET = null; pintar();
-    var r = await sb.functions.invoke('stripe-payout-export', { body:{ accion:'detalle', payout:id } });
-    if (r.error || !r.data || r.data.ok===false){ toast((r.data&&r.data.msg)||'No se pudo cargar el desglose.','err'); return; }
-    DET = r.data; pintar();
-  }
-
-  function descargar(){
-    if (!DET || !window.XLSX){ toast('Aún cargando…','err'); return; }
-    var po = POS.filter(function(p){return p.id===sel;})[0] || {};
-    var fechaPayout = DET.fecha_llegada || po.fecha_llegada || po.creado || '';
-    var aoa = [['Nombre','Teléfono','Correo','DNI','Sección / Equipo','Concepto','Importe','Comisión','Total (neto)','Pagado el día','Llegó al banco']];
-    (DET.lineas||[]).forEach(function(l){
-      aoa.push([l.nombre||'', l.telefono||'', l.email||'', l.dni||'', l.seccion||'', l.concepto||'',
-                l.importe, l.comision, l.neto, l.fecha_cargo||'', l.fecha_llegada||fechaPayout]);
-    });
-    var t = DET.totales||{};
-    aoa.push([]); aoa.push(['TOTAL','','','','', (t.lineas||0)+' cobros', t.importe, t.comision, t.neto, '', fechaPayout]);
-    var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:26},{wch:14},{wch:26},{wch:12},{wch:22},{wch:30},{wch:10},{wch:10},{wch:11},{wch:13},{wch:13}];
-    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Payout');
-    XLSX.writeFile(wb, 'payout-'+(fechaPayout||'stripe')+'.xlsx');
-  }
-
-  wrap.addEventListener('click', function(ev){
-    var po = ev.target.closest ? ev.target.closest('[data-po]') : null;
-    if (po){ verDetalle(po.getAttribute('data-po')); return; }
-    if (ev.target.closest && ev.target.closest('#py-dl')){ descargar(); return; }
-  });
-
-  await cargarLista();
+  wrap.innerHTML = '<h1 class="py-h1">Payouts de Stripe</h1>'+
+    '<p class="py-sub">Las transferencias de Stripe al banco del club, con el desglose de qué incluye cada una. Para cuadrar con Isa.</p>'+
+    '<div id="py-lista"></div>';
+  await window.APOLANA_PAYOUTS.montar(document.getElementById('py-lista'), sb, { avisar: toast });
 });
 </script>
 </body>
