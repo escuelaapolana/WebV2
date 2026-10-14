@@ -270,6 +270,45 @@ async function registrarCobroCubo(objeto: Record<string, any>, filtro: string) {
 }
 
 // ============================================================
+// PAUSA DE UN MES (mig 360) — bloque aditivo.
+// Si el club aprobó pausar un mes que NO era el próximo recibo (p. ej. en
+// octubre la de diciembre), la Edge cubo-pausa no pudo poner aún la pausa en
+// Stripe (pausar ya habría anulado también noviembre). Aquí, al cobrarse el
+// mes ANTERIOR (invoice.paid), si el siguiente recibo es el del mes pausado,
+// se pone pause_collection (void, hasta el día 6 a mediodía). Nunca lanza:
+// cualquier fallo queda en el log y el panel enseña «Aplicar en Stripe».
+// ============================================================
+async function aplicarPausaPendiente(filtro: string, objeto: Record<string, any>, livemode: boolean) {
+  const subId = idDe(objeto.subscription) ?? idDe(objeto.parent?.subscription_details?.subscription);
+  const fin = Number(objeto.lines?.data?.[0]?.period?.end ?? objeto.period_end ?? 0);   // próximo recibo
+  const key = livemode ? SK_LIVE : SK_TEST;
+  if (!subId || !fin || !key) return;
+  const h = { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
+  const rA = await fetch(`${SUPABASE_URL}/rest/v1/cubo_altas?select=id&${filtro}&limit=1`, { headers: h });
+  const alta = rA.ok ? (await rA.json().catch(() => []))?.[0] : null;
+  if (!alta?.id) return;
+  const rP = await fetch(
+    `${SUPABASE_URL}/rest/v1/cubo_pausas?select=id,mes&alta_id=eq.${encodeURIComponent(alta.id)}` +
+    `&estado=eq.aprobada&stripe_aplicada_en=is.null&order=mes.asc&limit=1`, { headers: h });
+  const pausa = rP.ok ? (await rP.json().catch(() => []))?.[0] : null;
+  if (!pausa?.mes) return;
+  // ¿El próximo recibo cae en el mes pausado? (fecha de Madrid)
+  if (fechaMadrid(new Date(fin * 1000)).slice(0, 7) !== String(pausa.mes).slice(0, 7)) return;
+  const [y, m] = String(pausa.mes).split("-").map(Number);
+  // Día 6 a las 12:00 (11:00 UTC = mediodía en invierno) y nunca antes de 24 h tras el recibo.
+  const resumes = Math.max(Math.floor(Date.UTC(y, m - 1, 6, 11, 0, 0) / 1000), fin + 24 * 3600);
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ "pause_collection[behavior]": "void", "pause_collection[resumes_at]": String(resumes) }).toString(),
+  });
+  if (!r.ok) { console.error("Pausa del Cubo: Stripe no la aceptó:", r.status, await r.text().catch(() => "")); return; }
+  await rpcServicio("cubo_pausa_registrar", {
+    p_id: pausa.id, p_aprobar: false, p_por_email: null, p_resumes: new Date(resumes * 1000).toISOString(),
+  });
+}
+
+// ============================================================
 // RECIBOS y BONOS (pago-crear) — bloque aditivo.
 // pago-crear cobra en la cuenta de Apolana, así que el aviso llega a ESTE
 // webhook. La referencia de un recibo/bono vive en `pagos_online` (no empieza
@@ -634,6 +673,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // para el Cubo, así que el log es la pista.
       try { await registrarCobroCubo(objeto, filtro); }
       catch (e) { console.error("No se pudo registrar el cobro del Cubo en pagos:", objeto.id, e); }
+      // [360] ¿Había una pausa de un mes aprobada esperando a este cobro?
+      try { await aplicarPausaPendiente(filtro, objeto, evento.livemode !== false); }
+      catch (e) { console.error("Pausa del Cubo pendiente sin aplicar:", objeto.id, e); }
       break;
     }
 

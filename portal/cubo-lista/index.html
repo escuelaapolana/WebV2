@@ -85,7 +85,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var b = window.APOLANA_BASE || '../../';
   var UI = window.APOLANA_UI;
 
-  var GRUPOS = [], ALTAS = [], PRUEBA = [], sel = null, fecha = hoyISO(), ASIS = {}, AUSF = {}, cargado = false, CANCEL = {cancelado:false};
+  var GRUPOS = [], ALTAS = [], PRUEBA = [], sel = null, fecha = hoyISO(), ASIS = {}, AUSF = {}, PAUSA = {}, cargado = false, CANCEL = {cancelado:false};
 
   function pad(n){ return (n<10?'0':'')+n; }
   function hoyISO(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
@@ -125,7 +125,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function cuenta(g){
     if(esGratis(g)){ var t=turnoDe(g); return PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1 && !AUSF[p.perfil_id]; }).length; }
     var D=diaSemFecha();
-    return ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && vieneEseDia(a,D,g) && !AUSF[a.perfil_id]; }).length;
+    return ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && vieneEseDia(a,D,g) && !AUSF[a.perfil_id] && !PAUSA[a.id]; }).length;
   }
   function toast(msg,tipo){ var t=document.createElement('div'); t.className='cl-toast'+(tipo==='err'?' err':''); t.textContent=msg;
     document.body.appendChild(t); requestAnimationFrame(function(){ t.classList.add('ver'); });
@@ -143,8 +143,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   async function cargarAsis(){
-    ASIS = {}; AUSF = {};
+    ASIS = {}; AUSF = {}; PAUSA = {};
     CANCEL = {cancelado:false};
+    /* [360] Quién tiene la cuota EN PAUSA el mes de la fecha elegida: guarda
+       su plaza (sale en la lista) pero no viene ese mes. */
+    try {
+      var rz = await sb.from('cubo_pausas').select('alta_id').eq('estado','aprobada').eq('mes', String(fecha).slice(0,7)+'-01');
+      if(rz && !rz.error) (rz.data||[]).forEach(function(x){ if(x.alta_id) PAUSA[x.alta_id] = true; });
+    } catch(e){}
     try { var rc = await sb.rpc('dia_cancelado', { p_fecha: fecha, p_seccion: 'cubo' }); if(rc && !rc.error && rc.data) CANCEL = rc.data; } catch(e){}
     if(!sel) return;
     /* Quién ha avisado que NO viene ESE día (por perfil). El staff del Cubo
@@ -179,7 +185,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } else {
       var D=diaSemFecha();
       arr = ALTAS.filter(function(a){ return a.horario===g.nombre && !a.lista_espera && vieneEseDia(a,D,g); }).map(function(a){
-        return { id:a.id, nombre:a.nombre, apellidos:a.apellidos, key:a.atleta_id, gratis:false, sinFicha:!a.atleta_id, noViene:!!AUSF[a.perfil_id] };
+        return { id:a.id, nombre:a.nombre, apellidos:a.apellidos, key:a.atleta_id, gratis:false, sinFicha:!a.atleta_id,
+                 noViene:!!AUSF[a.perfil_id] || !!PAUSA[a.id], pausa:!!PAUSA[a.id] };
       });
     }
     return arr.sort(function(x,y){
@@ -245,8 +252,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var filas = lst.length ? lst.map(function(a){
       var vino = !!ASIS[a.key];
       var sinFicha = a.sinFicha;
-      var est = vino ? 'Vino' : (a.noViene ? 'No viene' : '—');
-      var sub = a.noViene ? '<small>avisó que no viene</small>' : (sinFicha ? '<small>ficha sin enlazar</small>' : '');
+      var est = vino ? 'Vino' : (a.pausa ? 'En pausa' : (a.noViene ? 'No viene' : '—'));
+      var sub = a.pausa ? '<small>en pausa · '+esc(MESES[+String(fecha).slice(5,7)-1])+' (guarda su plaza, no viene este mes)</small>'
+              : (a.noViene ? '<small>avisó que no viene</small>' : (sinFicha ? '<small>ficha sin enlazar</small>' : ''));
       return '<button type="button" class="cl-fila'+(vino?' vino':'')+(a.noViene?' novoy':'')+'" data-a="'+esc(a.id)+'"'+(sinFicha?' disabled':'')+'>'+
         '<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>'+
         '<span class="nom"><b>'+esc(((a.nombre||'')+' '+(a.apellidos||'')).trim())+'</b>'+sub+'</span>'+

@@ -199,6 +199,18 @@
   .cq-okbadge{ font-size:12.5px; font-weight:600; color:#2E7D46; display:inline-flex; align-items:center; }
   .cq-vermas{ display:block; width:100%; text-align:center; padding:11px; background:var(--crema,#FBF9F4); border:none; border-top:1px solid var(--linea,#E8E1D3); color:var(--navy,#2E4256); font-weight:600; font-size:13.5px; cursor:pointer; font:inherit; }
   .cq-vermas:hover{ background:#F1ECE1; }
+  /* [360] Pausar un mes: sección de solicitudes (cabecera con franja crema) y etiquetas */
+  .cq-sec.s-pausa{ --b:#2F6FA8; }
+  .cq-sec.s-pausa .cq-sec-cab{ background:#F6F0E4; border-bottom:1px solid var(--linea,#E8E1D3); }
+  .cq-sec.s-pausa .cq-ic{ background:#fff; }
+  .cq-sec.s-pausa .cq-fila:first-of-type{ border-top:0; }
+  .cq-pill.p-pausa{ background:#F4EAD6; color:#8A5307; border:1px solid #E6D6A6; }
+  .cq-pill.p-pidepausa{ background:#E7F1F9; color:#2F6FA8; border:1px solid #CFE0EF; }
+  .pz-btn-azul{ min-height:38px; padding:0 16px; border-radius:999px; border:1px solid #2F6FA8; background:#2F6FA8; color:#fff; font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; }
+  .pz-btn-azul:hover{ background:#1E4E78; }
+  .pz-btn-no{ min-height:38px; padding:0 14px; border-radius:999px; border:1px solid #e0b4b0; background:#fff; color:#9A3B3B; font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; }
+  .pz-btn-azul[disabled], .pz-btn-no[disabled]{ opacity:.55; cursor:progress; }
+  .cq-stripe-falta{ font-size:12px; font-weight:700; color:#9A4A2E; }
 
   /* ---- Unificar Grupos · Altas · Contabilidad con el aspecto de Personas ---- */
   .alta, .ca-cobro, .cg-card, .cx-tabla{ box-shadow:var(--sombra-suave,0 12px 30px -20px rgba(46,66,86,.55)); }
@@ -264,6 +276,7 @@ APOLANA_ADMIN.listo(function (sb) {
   var esc = function (s) { return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
   var ALTAS = [], filtro = 'pendiente', fallo = '';
   var COBROS = {};   // alta_id -> [pagos puntuales pendientes]
+  var PAUSAS = {};   // [360] alta_id -> [pausas de un mes solicitadas/aprobadas]
 
   var MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   function fecha(iso){ if(!iso) return ''; var d=new Date(iso); return d.getDate()+' '+MESES[d.getMonth()]; }
@@ -277,6 +290,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(r.error){ fallo=r.error.message; ALTAS=[]; return; }
     ALTAS = r.data||[];
     await cargarCobros();
+    await cargarPausas();
     await cargarEmails();
     await cargarDias();
     indexarDuplicados();
@@ -305,6 +319,36 @@ APOLANA_ADMIN.listo(function (sb) {
     if(!ids.length) return;
     var r = await sb.from('perfiles').select('id,email').in('id', ids);
     if(!r.error && r.data) r.data.forEach(function(p){ EMAIL[p.id]=p.email||''; });
+  }
+  // [360] Pausas de un mes (si la tabla aún no existe, no se pinta nada).
+  async function cargarPausas(){
+    PAUSAS = {};
+    try{
+      var r = await sb.from('cubo_pausas').select('id,alta_id,mes,estado,solicitada_en,stripe_aplicada_en,correo_enviado_en').in('estado',['solicitada','aprobada']).order('mes');
+      if(!r.error && r.data) r.data.forEach(function(p){ (PAUSAS[p.alta_id]=PAUSAS[p.alta_id]||[]).push(p); });
+    }catch(e){}
+  }
+  var MES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function mesNombre(iso){ return MES_L[(+String(iso).slice(5,7))-1]||''; }
+  function mesHoy(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1); }
+  function mesAntes(iso){ var y=+String(iso).slice(0,4), m=+String(iso).slice(5,7)-1; if(m<1){ m=12; y--; } return y+'-'+(m<10?'0':'')+m; }
+  // La pausa que importa de esta alta: la aprobada vigente o la pedida.
+  function pausaDe(a){
+    var l=(PAUSAS[a.id]||[]), hoy=mesHoy();
+    return { ap: l.filter(function(p){ return p.estado==='aprobada' && String(p.mes).slice(0,7)>=hoy; })[0]||null,
+             sol: l.filter(function(p){ return p.estado==='solicitada'; })[0]||null };
+  }
+  // Aprobada pero aún sin poner en Stripe, y YA debería estar (pasó el cobro del mes anterior).
+  function faltaStripe(p){
+    if(!p || p.stripe_aplicada_en) return false;
+    var d=new Date(), hoy=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate();
+    return hoy >= mesAntes(p.mes)+'-06';
+  }
+  function pillPausa(a){
+    var P=pausaDe(a);
+    if(P.ap) return '<span class="cq-pill p-pausa">En pausa · '+esc(mesNombre(P.ap.mes))+'</span>';
+    if(P.sol) return '<span class="cq-pill p-pidepausa">Pide pausa · '+esc(mesNombre(P.sol.mes))+'</span>';
+    return '';
   }
   async function cargarCobros(){
     COBROS = {};
@@ -352,7 +396,9 @@ APOLANA_ADMIN.listo(function (sb) {
     var e=a.suscripcion_estado, baja='';
     if(a.baja_solicitada) baja=' <span class="cuota-est baja">Baja solicitada</span>';
     var esp = a.lista_espera ? ' <span class="cuota-est espera">Lista de espera</span>' : '';
-    if(e==='activa'){ var px=a.proximo_cobro?(' · próx. cobro '+fecha(a.proximo_cobro)):''; return '<span class="cuota-est activa">Cuota activa'+esc(px)+'</span>'+baja; }
+    if(e==='activa'){ var px=a.proximo_cobro?(' · próx. cobro '+fecha(a.proximo_cobro)):''; var PP=pausaDe(a);
+      var pz = PP.ap ? ' <span class="cuota-est pausa">En pausa · '+esc(mesNombre(PP.ap.mes))+'</span>' : (PP.sol ? ' <span class="cuota-est espera">Pide pausa · '+esc(mesNombre(PP.sol.mes))+'</span>' : '');
+      return '<span class="cuota-est activa">Cuota activa'+esc(px)+'</span>'+pz+baja; }
     if(e==='impago') return '<span class="cuota-est impago">Cuota impagada</span>'+baja;
     if(e==='pausada') return '<span class="cuota-est pausa">Pagos en pausa</span>'+baja;
     if(e==='cancelada') return '<span class="cuota-est cancelada">Cuota dada de baja</span>';
@@ -497,7 +543,8 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if(estado==='pagado'){
       var ult=a.ultimo_cobro?('<span class="dot">·</span>último cobro '+esc(fecha(a.ultimo_cobro))):'';
-      return base(hor+ult, '', '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', '<span class="cq-pill p-pagado">Pagado · socio</span>');
+      var pz=pillPausa(a);
+      return base(hor+ult, '', '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', (pz?pz+' ':'')+'<span class="cq-pill p-pagado">Pagado · socio</span>');
     }
     if(estado==='impago'){
       return base(sub, '', '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', '<span class="cq-pill p-impago">Impago</span>');
@@ -529,7 +576,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var tp=$('cq-tn-personas'); if(tp) tp.textContent=total;
     var ta=$('cq-tn-altas'); if(ta) ta.textContent=ALTAS.filter(function(a){ return (a.estado||'pendiente')==='pendiente'; }).length;
 
-    var html='';
+    var html=seccionPausas();
     CQ_SEC.forEach(function(s){
       if(personasFiltro && personasFiltro!==s.k) return;
       var gente=G[s.k]; if(!gente.length) return;
@@ -546,6 +593,60 @@ APOLANA_ADMIN.listo(function (sb) {
     });
     caja.innerHTML = html || vacioHTML('Nadie por aquí todavía','Cuando alguien se apunte al Cubo aparecerá en su sitio.');
   }
+  // [360] «Pausar un mes»: lo que pide la gente (aprobar/rechazar con un clic)
+  // y las aprobadas que aún falta poner en Stripe (normalmente lo hace solo el webhook).
+  function seccionPausas(){
+    var porId={}; ALTAS.forEach(function(a){ porId[a.id]=a; });
+    var filas=[];
+    Object.keys(PAUSAS).forEach(function(aid){
+      var a=porId[aid]; if(!a) return;
+      PAUSAS[aid].forEach(function(p){
+        var nom=((a.nombre||'')+' '+(a.apellidos||'')).trim(), hor=esc(cqHorario(a)), m=esc(mesNombre(p.mes));
+        if(p.estado==='solicitada'){
+          filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>pide pausar <b>'+m+'</b><span class="dot">·</span>pedida el '+esc(fecha(p.solicitada_en))+'</small></div>'+
+            '<div class="cq-acc"><button type="button" class="pz-btn-azul" data-pausa-aprobar="'+esc(p.id)+'" data-mes="'+m+'" data-nom="'+esc(nom)+'">Aprobar</button>'+
+            '<button type="button" class="pz-btn-no" data-pausa-rechazar="'+esc(p.id)+'">Rechazar</button></div>'+
+            '<span class="cq-pill p-pidepausa">Pide pausa · '+m+'</span></div>');
+        } else if(faltaStripe(p)){
+          filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span><span class="cq-stripe-falta">⚠ Aprobada, falta ponerla en Stripe</span></small></div>'+
+            '<div class="cq-acc"><button type="button" class="pz-btn-azul" data-pausa-aplicar="'+esc(p.id)+'">Aplicar en Stripe</button></div>'+
+            '<span class="cq-pill p-pausa">En pausa · '+m+'</span></div>');
+        }
+      });
+    });
+    if(!filas.length) return '';
+    return '<div class="cq-sec s-pausa"><div class="cq-sec-cab"><span class="cq-ic">⏸</span><h2>Pausar un mes</h2><span class="cq-cnt">'+filas.length+'</span>'+
+      '<p class="cq-desc">Piden no pagar un mes (uno por temporada, con 15 días de antelación). Al aprobar, Stripe no cobra ese mes, le llega un correo y se le guarda la plaza.</p></div>'+
+      filas.join('')+'</div>';
+  }
+  async function pausaInvocar(cuerpo, btn){
+    var txt=btn.textContent; btn.disabled=true; btn.textContent='…';
+    var r=await sb.functions.invoke('cubo-pausa',{ body:cuerpo });
+    if(r.error || !(r.data && r.data.ok)){
+      var m=''; try{ var ctx=r.error&&r.error.context; if(ctx&&ctx.json){ var d=await ctx.json(); m=d&&d.mensaje; } }catch(e){}
+      btn.disabled=false; btn.textContent=txt; toast(m||'No se ha podido.','error'); return null;
+    }
+    return r.data;
+  }
+  async function pausaAprobar(id, btn){
+    if(!confirm('¿Aprobar que '+(btn.getAttribute('data-nom')||'esta persona')+' no pague '+(btn.getAttribute('data-mes')||'ese mes')+'?\n\nStripe no le cobrará ese mes, se le guarda la plaza y le llega un correo de confirmación.')) return;
+    var d=await pausaInvocar({ accion:'aprobar', pausa_id:id }, btn); if(!d) return;
+    await cargarPausas(); pintar();
+    toast(d.stripe==='pausada' ? 'Pausa aprobada · Stripe no cobrará ese mes' : 'Pausa aprobada · se pondrá en Stripe tras el cobro del mes anterior');
+  }
+  async function pausaAplicar(id, btn){
+    var d=await pausaInvocar({ accion:'aplicar', pausa_id:id }, btn); if(!d) return;
+    await cargarPausas(); pintar(); toast('Pausa puesta en Stripe');
+  }
+  async function pausaRechazar(id, btn){
+    var motivo=prompt('¿Rechazar la pausa? Si quieres, pon el motivo (lo verá en su app):','');
+    if(motivo===null) return;
+    btn.disabled=true;
+    var r=await sb.rpc('cubo_pausa_rechazar',{ p_id:id, p_motivo:motivo||null });
+    if(r.error || (r.data && r.data.ok===false)){ btn.disabled=false; toast((r.error&&r.error.message)||(r.data&&r.data.error)||'No se ha podido.','error'); return; }
+    await cargarPausas(); pintar(); toast('Pausa rechazada');
+  }
+
   // Cambiar de pestaña (Personas / Grupos / Altas / Contabilidad).
   function cambiarTab(tab){
     Array.prototype.forEach.call(document.querySelectorAll('.cq-tab'),function(x){ x.classList.toggle('on', x.getAttribute('data-tab')===tab); });
@@ -1176,6 +1277,12 @@ APOLANA_ADMIN.listo(function (sb) {
     if(kp){ var f=kp.getAttribute('data-f'); personasFiltro=(personasFiltro===f?null:f); pagadosAbierto=false; pintarPersonas(); return; }
     var vm=ev.target.closest?ev.target.closest('[data-vermas]'):null;
     if(vm){ pagadosAbierto=true; pintarPersonas(); return; }
+    var pza=ev.target.closest?ev.target.closest('[data-pausa-aprobar]'):null;
+    if(pza){ pausaAprobar(pza.getAttribute('data-pausa-aprobar'), pza); return; }
+    var pzr=ev.target.closest?ev.target.closest('[data-pausa-rechazar]'):null;
+    if(pzr){ pausaRechazar(pzr.getAttribute('data-pausa-rechazar'), pzr); return; }
+    var pzs=ev.target.closest?ev.target.closest('[data-pausa-aplicar]'):null;
+    if(pzs){ pausaAplicar(pzs.getAttribute('data-pausa-aplicar'), pzs); return; }
     var au=ev.target.closest?ev.target.closest('[data-avisauno]'):null;
     if(au){ avisarUno(au.getAttribute('data-avisauno'), au); return; }
     var t=ev.target.closest?ev.target.closest('#ca-cobro-btn'):null;
