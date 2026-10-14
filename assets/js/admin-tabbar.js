@@ -281,8 +281,11 @@
   css.textContent +=
     '.at-side{display:none}' +
     '@media (min-width:' + (CORTE + 1) + 'px){' +
-      '.admin-wrap{display:grid !important;grid-template-columns:238px minmax(0,1fr) !important;' +
-        'gap:26px;align-items:start;max-width:1340px;' +
+      /* Columna de la lateral en «auto»: la lateral (mundos.js) son DOS
+         columnas (tira de mundos 76px + panel 230px) y se puede plegar a solo
+         la tira; .at-side reserva ese ancho desde el primer pintado. */
+      '.admin-wrap{display:grid !important;grid-template-columns:auto minmax(0,1fr) !important;' +
+        'gap:24px;align-items:start;max-width:1420px;' +
         /* Solo se estandariza el LADO IZQUIERDO (alineación y hueco), para que
            la barra quede en el mismo sitio en TODAS las pantallas. NO se toca
            el ancho del contenido (ni max-width ni el lado derecho), así no se
@@ -295,42 +298,10 @@
         'padding-top:16px !important}' +
       '.at-tabbar{display:none !important}' +
       'body.at-con-tabbar{padding-bottom:24px}' +
-      '.at-side{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:2px;' +
-        'max-height:calc(100vh - 32px);overflow:auto;background:#fff;' +
-        'border:1px solid var(--linea-marcada,#E4DCCB);border-radius:16px;padding:10px;' +
-        'box-shadow:0 12px 26px -18px rgba(46,66,86,.5)}' +
-      '.at-side .buscar-btn{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;' +
-        'min-height:42px;margin-bottom:6px;padding:9px 12px;border:1px solid var(--linea-borde,#D4CBB9);' +
-        'border-radius:11px;background:var(--crema,#FBF9F4);cursor:pointer;font-family:inherit;' +
-        'font-size:14px;color:var(--texto-suave,#6E6656);text-align:left}' +
-      '.at-side .buscar-btn:hover{background:#fff;border-color:var(--azul-filete,#3B85C0);color:var(--navy,#2E4256)}' +
-      '.at-side .buscar-btn .lupa{flex:0 0 17px;width:17px;height:17px}' +
-      '.at-side .buscar-btn span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-      '.at-side .at-grupo{border:0 !important;background:transparent !important;box-shadow:none !important;border-radius:0 !important;padding:0 !important;margin:0 !important}' +
-      '.at-side a.dir,.at-side .at-grupo>summary{display:flex;align-items:center;gap:11px;min-height:42px;' +
-        'box-sizing:border-box;padding:9px 12px;border-radius:11px;text-decoration:none;' +
-        'color:var(--navy,#2E4256);font-size:14.5px;line-height:1.2}' +
-      '.at-side a.dir .ic,.at-side .at-grupo>summary .ic{flex:0 0 20px;width:20px;height:20px;color:var(--azul-oscuro,#2F6FA8)}' +
-      '.at-side a.dir:hover,.at-side .at-grupo>summary:hover{background:var(--crema-media,#EFE9DA)}' +
-      '.at-side a.aqui{background:var(--navy,#2E4256);color:#fff;font-weight:600}' +
-      '.at-side a.aqui .ic{color:#fff}' +
-      '.at-side .at-grupo{margin:0}' +
-      '.at-side .at-grupo>summary{font-weight:600;cursor:pointer;user-select:none;list-style:none}' +
-      '.at-side .at-grupo>summary::-webkit-details-marker{display:none}' +
-      '.at-side .at-grupo>summary .nom{flex:1 1 auto;min-width:0}' +
-      '.at-side .at-grupo>summary .fl{flex:0 0 auto;width:7px;height:7px;margin-right:2px;' +
-        'border-right:2px solid var(--texto-suave,#6E6656);border-bottom:2px solid var(--texto-suave,#6E6656);' +
-        'transform:rotate(45deg) translate(-2px,-2px);transition:transform .18s ease}' +
-      '.at-side .at-grupo[open]>summary .fl{transform:rotate(-135deg) translate(-2px,-2px)}' +
-      '.at-side .at-grupo>.sub{display:flex;flex-direction:column;gap:1px;padding:1px 0 6px}' +
-      '.at-side .at-grupo>.sub a{display:flex;align-items:center;gap:10px;min-height:38px;box-sizing:border-box;' +
-        'padding:8px 12px 8px 22px;border-radius:10px;text-decoration:none;color:var(--texto,#40484F);' +
-        'font-size:13.5px;line-height:1.25}' +
-      '.at-side .at-grupo>.sub a .ic{flex:0 0 17px;width:17px;height:17px;color:var(--azul-oscuro,#2F6FA8)}' +
-      '.at-side .at-grupo>.sub a:hover{background:var(--crema-media,#EFE9DA)}' +
-      '.at-side .at-grupo>.sub a.aqui{background:var(--navy,#2E4256);color:#fff;font-weight:600}' +
-      '.at-side .at-grupo>.sub a.aqui .ic{color:#fff}' +
-      '.at-side .sep{height:1px;background:var(--crema-media,#EFE9DA);margin:6px 8px}' +
+      /* La .at-side es solo el HUECO: lo de dentro (tira + panel, cada uno
+         su tarjeta blanca con sombra) lo pinta mundos.js. */
+      '.at-side{position:sticky;top:16px;align-self:start;display:block;width:316px;box-sizing:border-box}' +
+      '.at-side.mm-plegado{width:76px}' +
     '}' +
     /* Muchas pantallas del panel llevan por dentro un diseño de dos columnas
        «lista + panel lateral de ~320px». Con la barra puesta, el contenido se
@@ -454,6 +425,12 @@
       ] },
       { t: 'Dinero', enlaces: [
         { txt: 'Dinero · todo',     url: r + 'dinero/',       desc: 'te deben, ha entrado este mes, en camino (SEPA) y «¿ha pagado…?»' },
+        /* Las pestañas de Dinero (las mismas del apartado «Dinero» de la lateral, mundos.js). */
+        { txt: 'Dinero · cuotas',          url: r + 'dinero/?v=cuotas',   desc: 'las cuotas que se repiten' },
+        { txt: 'Dinero · cobros únicos',   url: r + 'dinero/?v=unicos',   desc: 'cobros de una sola vez' },
+        { txt: 'Dinero · todos los pagos', url: r + 'dinero/?v=pagos',    desc: 'cada pago, con su estado' },
+        { txt: 'Dinero · próximos',        url: r + 'dinero/?v=proximos', desc: 'lo que se va a cobrar' },
+        { txt: 'Dinero · al banco',        url: r + 'dinero/?v=banco',    desc: 'lo que llega al banco' },
         { txt: 'Cobros y recibos',  url: r + 'cobros/',       desc: 'remesas, devueltos e impagados' },
         { txt: 'Cuotas domiciliadas', url: r + 'cuotas-entreno/', desc: 'domiciliación SEPA: trimestral de adultos y mensuales (natación)' },
         { txt: 'Tarifas',           url: r + 'tarifas/',      desc: 'los precios de cada cuota' },
@@ -551,17 +528,19 @@
   function claveActual() {
     var base = carpeta();
     if (!base) return base;
-    var sec = '', tipo = '';
+    var sec = '', tipo = '', v = '';
     try {
       var p = new URLSearchParams(location.search);
       sec  = (p.get('seccion') || '').trim().toLowerCase();
       tipo = (p.get('tipo')    || '').trim().toLowerCase();
+      v    = (p.get('v')       || '').trim().toLowerCase();
     } catch (e) {}
     /* Mismo formato que clave(url): la carpeta más el único parámetro que
        separa dos entradas del menú que comparten página (atletas por
        sección, altas por tipo). Así ninguna página se marca en dos sitios. */
     if (sec)  return base + '/?seccion=' + sec;
     if (tipo) return base + '/?tipo=' + tipo;
+    if (v)    return base + '/?v=' + v;      /* pestañas (Dinero ?v=cuotas…) */
     return base;
   }
   function activa() {
@@ -1023,8 +1002,8 @@
   }
 
   /* ---------- la barra lateral de escritorio ----------
-     Se construye del mismo árbol que el menú (mapa()), así que nunca se
-     desincroniza. El contenido se mete en `.admin-main` para que el grid
+     La pinta mundos.js desde MUNDOS (la fuente de verdad de la lateral, en
+     portal y panel): tira de mundos + panel del mundo con apartados. El contenido se mete en `.admin-main` para que el grid
      coloque «lateral + contenido» sin descolocar los paneles del panel. */
   function pintarLateral() {
     var wrap = document.querySelector('.admin-wrap');
@@ -1047,22 +1026,20 @@
        (assets/js/mundos.js): así el panel viejo y los mundos son el mismo
        diseño. Aquí solo se crea la .at-side con el buscador + un hueco, y el
        shell la rellena con el mundo que toca según la URL. */
-    var side = document.createElement('nav');
+    var side = document.createElement('div');
     side.className = 'at-side';
-    side.setAttribute('aria-label', 'Mundos del panel');
-    side.innerHTML = '<button type="button" class="buscar-btn" aria-haspopup="dialog">' +
-      IC.lupa + '<span>Buscar una pantalla o una persona</span></button>' +
-      '<div class="at-mundos"></div>';
+    /* Plegada o no (lo recuerda mundos.js): se pone YA para reservar el ancho
+       justo y que el contenido no salte cuando llegue la lateral. */
+    try { if (localStorage.getItem('apo-mm-plegado') === '1') side.className += ' mm-plegado'; } catch (e) {}
+    side.innerHTML = '<div class="at-mundos"></div>';
     wrap.insertBefore(side, wrap.firstChild);
-
-    var bb = side.querySelector('.buscar-btn');
-    if (bb) bb.addEventListener('click', function () { abrir(true); });
 
     conShell(function (shell) {
       var caja = side.querySelector('.at-mundos');
       if (!caja) return;
       var r = shell.resolverURL() || { world: 'general', screenIdx: -1 };
-      shell.montarEn(caja, r.world, r.screenIdx);
+      /* «Buscar» de la tira abre la hoja de siempre (pantallas + personas). */
+      shell.montarEn(caja, r.world, r.screenIdx, { onBuscar: function () { abrir(true); } });
       caja.addEventListener('click', function (e) {
         var a = e.target.closest ? e.target.closest('a[href]') : null;
         if (a) anotar(clave(a.getAttribute('href')));
