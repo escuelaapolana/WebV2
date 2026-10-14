@@ -69,7 +69,7 @@ function correoMensualHtml(nombre: string, importe: number, enlace: string, conc
           <tr><td style="padding:14px 18px;color:#5C4A1E;font-size:15px;line-height:1.7">
             <b>${esc(concepto || "Cuota mensual")}</b><br>
             <span style="font-size:20px;font-weight:700">${eur(importe)}</span> al mes<br>
-            <span style="font-size:13.5px">El mes en curso se cobra al domiciliar y después <b>el día 1 de cada mes</b>. <b>Tras junio se para sola.</b></span>
+            <span style="font-size:13.5px">El mes en curso se cobra al domiciliar y después <b>cada mes en esa misma fecha</b>. <b>Tras junio se para sola.</b></span>
           </td></tr>
         </table></td></tr>
       <tr><td align="center" style="padding:6px 24px 6px 24px">
@@ -170,7 +170,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         subject: mensual ? "Domicilia tu cuota mensual · Club Atletismo Apolana" : "Domicilia tu cuota de entrenamiento (ignora el correo anterior)",
         htmlContent: mensual ? correoMensualHtml(nombre, importe, enlace, String(c.concepto ?? "")) : correoHtml(nombre, importe, enlace),
         textContent: mensual
-          ? `${nombre ? "¡Hola, familia de " + nombre + "!" : "¡Hola!"}\n\nComo nos pedisteis, la cuota (${eur(importe)} al mes) pasa a domiciliación bancaria (SEPA): metéis el IBAN una vez y se cobra sola el día 1 de cada mes (el mes en curso, al domiciliar). Tras junio se para sola.\n\nDomiciliad la cuota aquí: ${enlace}\n\n¿Dudas? Contestad a este mensaje.`
+          ? `${nombre ? "¡Hola, familia de " + nombre + "!" : "¡Hola!"}\n\nComo nos pedisteis, la cuota (${eur(importe)} al mes) pasa a domiciliación bancaria (SEPA): metéis el IBAN una vez y se cobra sola cada mes (el mes en curso al domiciliar y luego en esa misma fecha). Tras junio se para sola.\n\nDomiciliad la cuota aquí: ${enlace}\n\n¿Dudas? Contestad a este mensaje.`
           : `${nombre ? "¡Hola, " + nombre + "!" : "¡Hola!"}\n\nPerdona: el correo anterior pedía pagar con tarjeta y fue un error. Ignóralo.\n\nLa forma correcta es por domiciliación (SEPA): metes tu IBAN una vez y la cuota (${eur(importe)} por trimestre) se cobra sola en octubre, enero y abril. Tras abril se para solo.\n\nDomicilia tu cuota aquí: ${enlace}\n\n¿Dudas? Contesta a este mensaje.`,
       }),
     });

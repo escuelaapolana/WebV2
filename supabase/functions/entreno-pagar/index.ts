@@ -175,21 +175,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("line_items[0][price_data][product_data][name]",
     mensual ? `${c.concepto || "Cuota mensual"} · Club Atletismo Apolana`
             : "Cuota de entrenamiento (trimestral) · Club Atletismo Apolana");
-  if (mensual) {
-    // MENSUAL (mig 313): se cobra el DÍA 1 de cada mes. El mes en curso va
-    // como cargo único al domiciliar (línea 1) y la cuota recurrente arranca
-    // el 1 del mes que viene sin prorratear. La parada (cancel_at = `fin`) la
-    // programa el webhook al nacer la suscripción.
-    const hoy = new Date();
-    const anclaje = Math.floor(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1, 1, 9, 0, 0) / 1000);
-    params.set("subscription_data[billing_cycle_anchor]", String(anclaje));
-    params.set("subscription_data[proration_behavior]", "none");
-    const mesActual = hoy.toLocaleDateString("es-ES", { month: "long", year: "numeric", timeZone: "Europe/Madrid" });
-    params.set("line_items[1][quantity]", "1");
-    params.set("line_items[1][price_data][currency]", "eur");
-    params.set("line_items[1][price_data][unit_amount]", String(importeCent));
-    params.set("line_items[1][price_data][product_data][name]", `${c.concepto || "Cuota"} · ${mesActual}`);
-  }
+  // MENSUAL (mig 313): la suscripción arranca HOY (se cobra ya el mes en
+  // curso) y se repite cada mes en esa misma fecha; el webhook programa la
+  // parada en `fin`. (Stripe no admite cobro único + anclaje al día 1 sin
+  // prorrateo en la misma pasarela: se probó el 14-oct y lo rechaza.)
 
   // Etiquetas para que el webhook case el cobro y el export de Stripe sepa quién es.
   params.set("subscription_data[metadata][referencia]", referencia);
@@ -210,7 +199,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const sesion = await rStripe.json().catch(() => null);
   if (!rStripe.ok || !sesion?.url) {
     console.error("Stripe rechazó la sesión de entreno:", sesion?.error?.message ?? rStripe.status);
-    return responder({ error: "pasarela", mensaje: "La pasarela no ha respondido. Vuelve a intentarlo en un minuto." }, 502, origen);
+    return responder({ error: "pasarela", mensaje: "La pasarela no ha respondido. Vuelve a intentarlo en un minuto.", detalle: sesion?.error?.message ?? null }, 502, origen);
   }
 
   return responder({ url: sesion.url, referencia, importe_cent: importeCent, modo }, 200, origen);
