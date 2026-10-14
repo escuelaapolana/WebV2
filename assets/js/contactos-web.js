@@ -234,7 +234,15 @@
         /* En el pie el enlace pone «600 00 00 00 · socios»: se cambia
            el número y se respeta lo que iba detrás. */
         var nota = (actual && actual.nota) ? ' · ' + actual.nota : '';
-        if (!a.querySelector('*')) a.textContent = nuevo + (viejo && nota ? nota : '');
+        /* La coletilla « · escuela» es SOLO del pie. El mismo número sale
+           también en el texto de algunas páginas («Escuela: 636… · correo»)
+           y allí añadirla dejaba «636… · escuela · correo». Fuera del pie
+           solo se cambia el número y se respeta el resto del texto. */
+        var enPie = a.closest && a.closest('footer.pie, apolana-pie');
+        if (!a.querySelector('*')) {
+          if (enPie) a.textContent = nuevo + (viejo && nota ? nota : '');
+          else if (viejo && a.textContent.indexOf(viejo) !== -1) a.textContent = a.textContent.replace(viejo, nuevo);
+        }
       });
     });
   }

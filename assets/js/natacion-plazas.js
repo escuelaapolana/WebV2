@@ -97,10 +97,15 @@
       out.push('<div class="nat-dia"><h3>' + esc(DIAS[d] || '') + '</h3><ul>');
       porDia[d].forEach(function (f) {
         var s = SEM[f.semaforo] || { t: f.semaforo || '—', c: '' };
-        var niveles = nivelesDe(f).map(function (n) {
+        /* En verde no se escribe nada (basta el punto)… salvo si en la misma
+           franja hay niveles con estados distintos: «Desarrollo» a secas al lado
+           de «Perfeccionamiento · consultar» se leía como «sin estado». */
+        var nivs = nivelesDe(f);
+        var mezcla = nivs.some(function (n) { return n.semaforo && n.semaforo !== nivs[0].semaforo; });
+        var niveles = nivs.map(function (n) {
           var sn = SEM[n.semaforo];
           if (!sn) return '<span class="nat-nivel">' + esc(n.nivel) + '</span>';
-          var extra = n.semaforo === 'verde' ? '' : ' <small>· ' + esc(sn.t.toLowerCase()) + '</small>';
+          var extra = (n.semaforo === 'verde' && !mezcla) ? '' : ' <small>· ' + esc(sn.t.toLowerCase()) + '</small>';
           return '<span class="nat-nivel ' + sn.c + '" title="' + esc(n.nivel + ': ' + sn.t) + '">' +
             esc(n.nivel) + extra + '</span>';
         }).join('');

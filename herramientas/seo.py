@@ -79,7 +79,8 @@ PAGINAS = [
     ("inscripcion/index.html",                    "inscripcion/",                   "0.9",  True),
     ("prueba/index.html",                         "prueba/",                        "0.8",  True),
     ("encuentra-tu-grupo/index.html",             "encuentra-tu-grupo/",            "0.8",  True),
-    ("horarios/index.html",                       "horarios/",                      "0.8",  True),
+    # /horarios/ es solo un salto a /calendario/?vista=horarios: noindex y fuera del sitemap.
+    ("horarios/index.html",                       "horarios/",                      "0.8",  False),
     ("calendario/index.html",                     "calendario/",                    "0.7",  True),
     ("instalaciones/index.html",                  "instalaciones/",                 "0.8",  True),
     ("contacto/index.html",                       "contacto/",                      "0.8",  True),
@@ -199,7 +200,7 @@ SIN_CANONICAL = {"noticias/articulo/"}
 # Paginas que EXISTEN pero estan retiradas o en pausa: siguen accesibles por
 # URL directa, pero NO se indexan (van con noindex aunque la web sea indexable)
 # ni aparecen en el sitemap. Asi Google no las ofrece como resultado.
-NOINDEX = {"familias/", "instalaciones/"}
+NOINDEX = {"familias/", "instalaciones/", "horarios/"}
 
 # Paginas que apuntan su canonica a OTRA direccion (son un alias). Ejemplo:
 # /horarios/ es la misma tabla que la vista de horarios del calendario, asi que

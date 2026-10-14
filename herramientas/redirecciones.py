@@ -23,12 +23,19 @@ entienda. Hay dos formas, y NO valen lo mismo:
      admite las reglas con * (las de blog y las de /es/), asi que esas se
      pierden.
 
+  3) --404  (LO QUE FUNCIONA HOY EN GITHUB PAGES)
+     Rellena el mapa en JavaScript de `404.html`. GitHub Pages sirve esa
+     pagina para cualquier ruta que no existe, y el script salta a la nueva.
+     Admite las reglas con * (como prefijos). Hay que regenerarlo cada vez
+     que se toque redirecciones.txt.
+
 Uso:
-    python3 herramientas/redirecciones.py --redirects
+    python3 herramientas/redirecciones.py --redirects --404
     python3 herramientas/redirecciones.py --paginas
 """
 
 import argparse
+import json
 import os
 import re
 
@@ -115,20 +122,85 @@ def generar_paginas(pares):
             print("     ", s)
 
 
+MARCA_INI = "/* MAPA-REDIRECCIONES · lo genera herramientas/redirecciones.py --404 · no editar a mano */"
+MARCA_FIN = "/* /MAPA-REDIRECCIONES */"
+
+
+def destino_puente(ruta):
+    """Si `ruta` es una pagina puente (carpeta con location.replace), su destino."""
+    p = os.path.join(RAIZ, ruta.strip("/"), "index.html")
+    if not ruta.strip("/") or not os.path.exists(p):
+        return None
+    with open(p, encoding="utf-8") as f:
+        m = re.search(r'location\.replace\("([^"]+)"\)', f.read())
+    return m.group(1) if m else None
+
+
+def generar_404(pares):
+    """GitHub Pages ignora `_redirects`: sirve 404.html para toda ruta que no
+    existe. Volcamos el mismo mapa en un objeto JS dentro de 404.html (claves en
+    minusculas, sin barra final) para que las direcciones viejas salten igual.
+    Si el destino es a su vez una pagina puente, se apunta al destino final."""
+    mapa, prefijos, avisos = {}, [], []
+    for viejo, nuevo in pares:
+        # /es/* lo resuelve 404.html quitando el prefijo de idioma
+        if viejo.startswith("/es/"):
+            continue
+        final, saltos = nuevo, 0
+        while saltos < 5:
+            d = destino_puente(final)
+            if not d or d == final:
+                break
+            final, saltos = d, saltos + 1
+        if not os.path.exists(os.path.join(RAIZ, final.strip("/"), "index.html")):
+            avisos.append("%s -> %s (destino sin index.html)" % (viejo, final))
+        if viejo.endswith("/*"):
+            prefijos.append((viejo[:-1].lower(), final))
+            continue
+        clave = viejo.rstrip("/").lower()
+        if clave in mapa and mapa[clave] != final:
+            avisos.append("%s repetida con destinos distintos (%s / %s)" % (clave, mapa[clave], final))
+        mapa.setdefault(clave, final)
+    js = [MARCA_INI, "    var mapa = {"]
+    js += ["      %s: %s," % (json.dumps(k), json.dumps(v)) for k, v in sorted(mapa.items())]
+    js[-1] = js[-1].rstrip(",")
+    js += ["    };", "    var prefijos = ["]
+    js += ["      [%s, %s]," % (json.dumps(k), json.dumps(v)) for k, v in prefijos]
+    if prefijos:
+        js[-1] = js[-1].rstrip(",")
+    js += ["    ];", "    " + MARCA_FIN]
+    bloque = "\n".join(js)
+    ruta = os.path.join(RAIZ, "404.html")
+    with open(ruta, encoding="utf-8") as f:
+        s = f.read()
+    if MARCA_INI not in s or MARCA_FIN not in s:
+        print("  ERROR: 404.html no tiene las marcas del mapa")
+        return
+    s = re.sub(re.escape(MARCA_INI) + r".*?" + re.escape(MARCA_FIN), lambda _: bloque, s, flags=re.S)
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write(s)
+    print("  404.html con %d rutas y %d prefijos" % (len(mapa), len(prefijos)))
+    for a in avisos:
+        print("  aviso:", a)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--redirects", action="store_true")
     ap.add_argument("--paginas", action="store_true")
+    ap.add_argument("--404", dest="js404", action="store_true")
     args = ap.parse_args()
     pares = leer_mapa()
     print("Mapa leido: %d mudanzas" % len(pares))
-    if not args.redirects and not args.paginas:
+    if not args.redirects and not args.paginas and not args.js404:
         print("Nada que hacer. Pasa --redirects (lo bueno) o --paginas (el apaño).")
         return
     if args.redirects:
         generar_redirects(pares)
     if args.paginas:
         generar_paginas(pares)
+    if args.js404:
+        generar_404(pares)
 
 
 if __name__ == "__main__":

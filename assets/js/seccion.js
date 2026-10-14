@@ -1048,6 +1048,9 @@
     ]).then(function (res) {
       var rf = res[0], rg = res[1], rt = res[2], rp = res[3];
       if (rf.error || rg.error || rt.error) throw new Error('lectura');
+      /* «Fuerza gratis» (El Cubo) no es un grupo al que apuntarse: es la
+         prueba gratuita de octubre, con su propia página. Fuera de la lista. */
+      if (rg.data) rg.data = rg.data.filter(function (g) { return !/fuerza\s+gratis/i.test(g.nombre || ''); });
 
       var todas = rt.data || [];
       /* Igual que en la lista de grupos: la Academia AC98 (antes «Grupo A»)
