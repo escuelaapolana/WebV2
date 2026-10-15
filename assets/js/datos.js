@@ -74,7 +74,7 @@ window.APOLANA = {
   grupos: [
     { nombre: 'Atletismo pista',  desc: 'Federado, técnica y competición en pista, cross y ruta', dias: 'L · X · V', precio: '40-55€/mes', url: '/competicion/' },
     { nombre: 'Running',          desc: 'Madre Tierra para empezar, La Tribu para apretar',        dias: 'M · J · S', precio: '40-60€/mes', url: '/running/' },
-    { nombre: 'Natación adultos', desc: 'Técnica y series en la piscina del Monte Tossal',          dias: 'L a V',     precio: '35-55€/mes', url: '/natacion/' },
+    { nombre: 'Natación adultos', desc: 'Técnica y series: Vía Parque de octubre a mayo, Monte Tossal en verano', dias: 'L a V',     precio: '35-55€/mes', url: '/natacion/' },
     /* Estas dos no tienen cuota de entrenamiento porque no tienen entrenador
        asignado. Se escribe el motivo, nunca «Consultar»: «Consultar» parece un
        descuido y obliga a llamar para algo que se explica en una línea. */
@@ -87,7 +87,7 @@ window.APOLANA = {
     { hora: '17:30', que: 'Escuela · Benjamín', donde: 'Pista Joaquín Villar' },
     { hora: '19:00', que: 'Madre Tierra',       donde: 'Playa San Juan' },
     { hora: '19:30', que: 'La Tribu · series',  donde: 'Pista Joaquín Villar' },
-    { hora: '20:30', que: 'Natación adultos',   donde: 'Monte Tossal' },
+    { hora: '20:30', que: 'Natación adultos',   donde: 'Vía Parque' },
   ],
 
   /* --- Noticias (home + /noticias) --- */
@@ -100,7 +100,9 @@ window.APOLANA = {
   ],
 
   /* --- Cifras del club (/club) --- */
-  cifras: { fundacion: 1988, atletas: 420, socios: 175, secciones: 7, medallas: 64, anios: 38 },
+  /* atletas = más de 400 que han competido con el club en las últimas 20
+     temporadas (acumulado, fuente mundoatletismo: 418), NO activos. */
+  cifras: { fundacion: 1988, atletas: 400, socios: 180, secciones: 7, medallas: 64, anios: 38 },
 };
 
 /* ------------------------------------------------------------

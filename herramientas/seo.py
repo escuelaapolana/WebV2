@@ -156,7 +156,7 @@ KEYWORDS = {
     "natacion/":                    "natación Alicante, natación adultos Alicante, nadar en Alicante, clases de natación adultos, entrenamiento de natación",
     "montana/":                     "senderismo Alicante, trail Alicante, montaña Alicante, rutas de montaña Alicante, trail running Alicante, FEMECV",
     "triatlon/":                    "triatlón Alicante, club de triatlón Alicante, natación ciclismo carrera, entrenamiento de triatlón",
-    "cubo/":                        "sala de fuerza Alicante, entrenamiento de fuerza Alicante, gimnasio atletismo Alicante, core y prevención, bonos de fuerza",
+    "cubo/":                        "sala de fuerza Alicante, entrenamiento de fuerza Alicante, gimnasio atletismo Alicante, core y prevención, grupos de fuerza Alicante",
     "inscripcion/":                 "inscripción club atletismo Alicante, apuntarse a atletismo Alicante, alta socio Apolana, matrícula escuela de atletismo",
     "prueba/":                      "clase de prueba atletismo Alicante, probar atletismo gratis, entrenar de prueba, prueba gratis running Alicante, probar natación Alicante",
     "encuentra-tu-grupo/":          "encuentra tu grupo, grupos de entrenamiento Alicante, running natación pista montaña, elegir grupo atletismo Alicante",
@@ -373,14 +373,14 @@ def datos_estructurados(base):
             {
                 "@type": "Place",
                 "name": "Piscina Monte Tossal",
-                "description": "Piscina municipal donde entrena la escuela de natación y los adultos.",
+                "description": "Piscina municipal donde entrena la natación del club en verano.",
                 "address": {"@type": "PostalAddress", "streetAddress": "C/ Foguerer José Romeu Zarandieta",
                             "addressLocality": "Alicante", "addressCountry": "ES"},
             },
             {
                 "@type": "Place",
                 "name": "Piscina Vía Parque",
-                "description": "Sede de invierno de la escuela de natación y del sector de natación del triatlón.",
+                "description": "Piscina municipal donde entrena la natación del club de octubre a mayo, y sede del sector de natación del triatlón.",
                 "address": {"@type": "PostalAddress", "addressLocality": "Alicante", "addressCountry": "ES"},
             },
         ],
@@ -432,11 +432,11 @@ FAQ_SOCIO = [
     ("¿El alta de socio sirve para cualquier sección?",
      "Sí. Al hacerte socio o socia puedes entrenar en cualquier sección del club: atletismo en pista, running, natación, montaña o triatlón. El alta es una sola, para todo."),
     ("¿Cuándo y cuánto se paga la cuota de socio?",
-     "Una vez al año. El primer año son 125 € y, a partir del segundo, 110 € cada año. El entrenamiento se paga aparte, cada mes, según el grupo en el que entrenes."),
+     "Ahora el alta cuesta 35 € hasta diciembre, porque queda poco de año. Después, la cuota de siempre: 125 € al año (110 € a partir del segundo año), que se renueva cada diciembre. El entrenamiento se paga aparte, cada mes, según el grupo en el que entrenes."),
     ("¿Cuándo puedo empezar a entrenar?",
      "En cuanto el club confirma tu alta. Y antes de decidirte puedes probar cuatro entrenamientos gratis, sin ser socio todavía."),
     ("¿Dónde se entrena?",
-     "El sitio oficial es el Estadio Joaquín Villar de Alicante, con pista, gimnasio, vestuarios y material, en horario de mañana y de tarde. La natación es en la piscina de la Vía Parque y en el Monte Tossal cuando está habilitada."),
+     "El sitio oficial es el Estadio Joaquín Villar de Alicante, con pista, gimnasio, vestuarios y material, en horario de mañana y de tarde. La natación es en la piscina de la Vía Parque de octubre a mayo y en el Monte Tossal en verano."),
     ("¿Puedo entrenar por mi cuenta o tiene que ser con entrenador?",
      "Como quieras. Puedes entrenar por tu cuenta (solo con la cuota de socio), pedir un plan de entrenamiento o entrenar con un entrenador presencial. Los planes y el entrenamiento presencial llevan su cuota mensual, según el grupo y tu nivel."),
     ("¿Hay diferentes niveles y grupos?",
@@ -454,7 +454,7 @@ FAQ_SOCIO = [
 # datos verificados del club: nada inventado.
 FAQ_NATACION = [
     ("¿Dónde entrena la sección de natación del Club Apolana?",
-     "En la piscina de la Vía Parque, en Alicante. Es la sección de natación del Club Atletismo Apolana, una de las más recientes del club."),
+     "En la piscina de la Vía Parque, en Alicante, de octubre a mayo; en verano, en el Monte Tossal. Es la sección de natación del Club Atletismo Apolana, una de las más recientes del club."),
     ("¿Hay que federarse para nadar en el club?",
      "No es obligatorio. En natación la licencia federativa es opcional, aunque la recomendamos si quieres competir."),
     ("¿Se puede probar antes de apuntarse a natación?",
@@ -473,7 +473,7 @@ FAQ_RUNNING = [
     ("¿Dónde entrena el Club Apolana?",
      "La sede oficial es el Estadio Joaquín Villar de Alicante, con pista, gimnasio y vestuarios."),
     ("¿Cuánto cuesta entrenar running con el club?",
-     "Se paga la cuota anual de socio (125 € el primer año y 110 € a partir del segundo) y, aparte, la cuota mensual del grupo de entrenamiento según el nivel."),
+     "Se paga la cuota de socio (ahora el alta cuesta 35 € hasta diciembre; después, 125 € al año) y, aparte, la cuota mensual del grupo de entrenamiento según el nivel."),
     ("¿Puedo probar antes de apuntarme al running?",
      "Sí, puedes probar cuatro entrenamientos gratis antes de hacerte socio."),
 ]
@@ -510,13 +510,13 @@ FAQ_HOME = [
     ("¿Cómo me apunto al club?",
      "Haciéndote socio: una sola alta sirve para entrenar en cualquier sección. Y antes de decidirte puedes probar cuatro entrenamientos gratis."),
     ("¿Cuánto cuesta ser socio del club?",
-     "La cuota anual de socio es de 125 € el primer año y 110 € a partir del segundo. El entrenamiento se paga aparte, cada mes, según el grupo."),
+     "Ahora el alta de socio cuesta 35 € hasta diciembre, porque queda poco de año. Después, la cuota de siempre: 125 € al año. El entrenamiento se paga aparte, cada mes, según el grupo."),
     ("¿Hay atletismo para niños en el club?",
      "Sí. La escuela de atletismo es para niños y niñas de 3 a 17 años, por grupos de edad, en el Estadio Joaquín Villar de Alicante."),
     ("¿El Club Apolana compite y a qué nivel?",
      "Sí, con atletas de nivel nacional e internacional. En 2026, Sergio Redondo del Río fue campeón de España sub-18 en 800 m y subcampeón de Europa sub-18."),
     ("¿Dónde entrena el club?",
-     "La sede principal es el Estadio Joaquín Villar de Alicante. La sección de natación entrena en la piscina de la Vía Parque."),
+     "La sede principal es el Estadio Joaquín Villar de Alicante. La sección de natación entrena en la piscina de la Vía Parque de octubre a mayo, y en verano en el Monte Tossal."),
 ]
 
 # Escuela de natacion: copia de la FAQ visible de escuela-natacion/index.html
