@@ -165,6 +165,14 @@
     '.pap-salir{width:100%;box-sizing:border-box;min-height:44px;margin-top:14px;border:1px solid #E7CDC4;' +
       'border-radius:12px;background:#fff;font-family:inherit;font-size:15px;font-weight:600;color:#B0563A;cursor:pointer}' +
     '.pap-salir:hover{background:#FBF3F0}' +
+    '.pap-cuenta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;' +
+      'margin:-4px 0 12px;font-size:14px;color:var(--texto-suave,#6E6656)}' +
+    '.pap-cuenta[hidden]{display:none}' +
+    '.pap-cuenta span{min-width:0;overflow-wrap:anywhere}' +
+    '.pap-cuenta b{color:var(--navy,#2E4256);font-weight:600}' +
+    '.pap-otra{background:transparent;border:1px solid var(--linea-borde,#C9C0AE);border-radius:999px;min-height:36px;' +
+      'padding:0 13px;font-family:inherit;font-size:14px;font-weight:600;color:var(--azul-oscuro,#2F6FA8);cursor:pointer}' +
+    '.pap-otra:hover{background:var(--crema,#FBF9F4)}' +
     /* La fila en la que ya estás no se pulsa, pero se lee igual de bien:
        apagarla sería apagar justo la que contesta a la pregunta. */
     '.pap-op[disabled]:not([aria-current="true"]){opacity:.55}' +
@@ -343,6 +351,11 @@
           '<div><span class="pap-quien">' + esc(d.nombre || '') + '</span><h3>Cambiar de vista</h3></div>' +
           '<button type="button" class="pap-x" data-cerrar>Cerrar</button>' +
         '</div>' +
+        /* CON QUÉ CUENTA has entrado. Andrés abrió el panel con su otra cuenta
+           (la de atleta) y no había forma de verlo: los papeles cambian lo que
+           ves, pero la cuenta es otra cosa. El correo se rellena al abrir. */
+        '<div class="pap-cuenta" hidden><span>Has entrado como <b data-correo></b></span>' +
+          '<button type="button" class="pap-otra" data-otra-cuenta>Cambiar de cuenta</button></div>' +
         '<div id="pap-filas">' +
           roles.map(function (r) {
             var p = PAPEL[r] || { titulo: r, que: '' };
@@ -398,9 +411,7 @@
     fondo.querySelector('[data-cerrar]').addEventListener('click', cerrar);
     /* Cerrar sesión desde la hoja (antes había un botón «Salir» en la barra de
        arriba; la maqueta no lo lleva, así que la salida vive aquí). */
-    var elSalir = fondo.querySelector('[data-salir]');
-    if (elSalir) elSalir.addEventListener('click', function () {
-      elSalir.disabled = true; elSalir.textContent = 'Saliendo…';
+    function limpiarCache() {
       /* Fuera la caché de pintado del portal (solo esas claves; ver portal-auth.js). */
       try {
         var PREF = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-'], borrar = [];
@@ -410,6 +421,32 @@
         }
         borrar.forEach(function (k) { sessionStorage.removeItem(k); });
       } catch (e) { /* sin sessionStorage, nada que limpiar */ }
+    }
+    try {
+      sb().auth.getSession().then(function (r) {
+        var correo = r && r.data && r.data.session && r.data.session.user && r.data.session.user.email;
+        var caja = fondo.querySelector('.pap-cuenta');
+        if (!correo || !caja) return;
+        caja.querySelector('[data-correo]').textContent = correo;
+        caja.hidden = false;
+      }, function () {});
+    } catch (e) { /* sin correo, la hoja sigue igual que antes */ }
+    /* «Cambiar de cuenta»: cierra la sesión y vuelve a la puerta de entrar
+       de donde estés (el panel enseña su acceso; el portal, el suyo). */
+    var elOtra = fondo.querySelector('[data-otra-cuenta]');
+    if (elOtra) elOtra.addEventListener('click', function () {
+      elOtra.disabled = true; elOtra.textContent = 'Saliendo…';
+      limpiarCache();
+      var ir = function () {
+        if (location.pathname.indexOf('/admin/') !== -1) location.reload();
+        else location.href = base() + 'portal/';
+      };
+      try { sb().auth.signOut().then(ir, ir); } catch (e) { ir(); }
+    });
+    var elSalir = fondo.querySelector('[data-salir]');
+    if (elSalir) elSalir.addEventListener('click', function () {
+      elSalir.disabled = true; elSalir.textContent = 'Saliendo…';
+      limpiarCache();
       try { sb().auth.signOut().then(function () { location.href = base(); }, function () { location.href = base(); }); }
       catch (e) { location.href = base(); }
     });

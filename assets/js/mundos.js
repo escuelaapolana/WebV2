@@ -97,6 +97,7 @@
         {g:'Personas', t:'Altas de socio',  i:'userplus',  url:B+'admin/altas/?tipo=socio', d:'Las solicitudes de socio por revisar.', hub:false},
         {g:'Personas', t:'Entrenadores',    i:'user',      url:B+'admin/entrenadores/', d:'Los monitores: su ficha y a qué grupo llevan.', hub:false},
         {g:'Personas', t:'Importar personas', i:'upload',  url:B+'admin/importar/',    d:'Altas en bloque desde un archivo.', hub:false},
+        {g:'Personas', t:'Revisión de datos', i:'check',  url:B+'admin/revision-datos/', d:'Fichas con datos raros para limpiar antes de cobrar.', hub:false},
         // La tarjeta «Dinero» del Resumen; en la lateral manda el apartado Dinero (pestañas ?v=).
         {t:'Dinero',          i:'euro',      url:B+'admin/dinero/',      d:'Todo el dinero en un sitio: te deben, ha entrado, en camino y «¿ha pagado…?».', pill:'Empieza aquí', side:false},
         {g:'Dinero', t:'Resumen',         i:'chart',  url:B+'admin/dinero/?v=resumen',  d:'Dinero: te deben, ha entrado y en camino.', hub:false},

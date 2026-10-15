@@ -369,7 +369,7 @@
   function conPapeles(cuando) {
     if (window.APOLANA_PAPELES) { cuando(); return; }
     var s = document.createElement('script');
-    s.src = base() + 'assets/js/papeles.js?v=a1883633';
+    s.src = base() + 'assets/js/papeles.js?v=5b9903d7';
     s.async = true;
     s.addEventListener('load', cuando);
     s.addEventListener('error', function () { /* sin píldora, pero el portal sigue vivo */ });
@@ -1107,8 +1107,12 @@
           (_staff ? '<button type="button" class="ver-como" id="pt-ver-como" aria-haspopup="true" aria-expanded="false">' + OJO_VC + '<span>Ver como…</span></button>' : '') +
           /* La pastilla del nombre. Si solo tienes un papel no se pulsa (se le
              quita la flechita en unSoloPapel); con varios, abre la hoja. */
+          /* Con qué cuenta has entrado: al pasar el ratón por el nombre y,
+             con varios papeles, escrito arriba de la hoja «Cambiar de vista»
+             (papeles.js), junto a «Cambiar de cuenta». En Perfil ya sale. */
           '<button type="button" class="pt-avatar" id="pt-avatar" aria-haspopup="dialog" ' +
-            'aria-label="Cambiar de vista">' +
+            (email ? 'title="Has entrado como ' + esc(email) + '" ' : '') +
+            'aria-label="' + (email ? 'Has entrado como ' + esc(email) + '. ' : '') + 'Cambiar de vista">' +
             /* Las iniciales son el respaldo. Si la persona ha puesto foto en
                su perfil, se pinta encima en cuanto llega: se subía, se
                guardaba, se veía en el perfil y en los retos, y aquí seguían

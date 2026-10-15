@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revisión de datos · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=76807ff3">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/admin-auth.js?v=4b9794ba"></script>
+<script src="../../assets/js/admin-tabbar.js?v=54b863bc" defer></script>
+<style>
+  body { background: var(--crema); }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .rv-cab { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
+  .rv-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(26px,5vw,34px); color: var(--navy); margin: 0 0 4px; }
+  .rv-cab p { font-size: 15px; color: var(--texto-suave); margin: 0; max-width: 64ch; line-height: 1.6; }
+  .rv-recargar { min-height: 44px; padding: 10px 18px; border-radius: 999px; border: 1px solid var(--linea-borde, #C9C0AE);
+    background: #fff; color: var(--navy, #2E4256); font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .rv-recargar:hover { background: var(--crema-media, #F1EADC); }
+
+  /* Resumen: una tarjeta por comprobación con su número */
+  .rv-resumen { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 26px; }
+  .rv-tile { background: #fff; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 14px; box-shadow: var(--sombra-suave);
+    padding: 14px 16px; text-align: left; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; min-height: 92px; box-sizing: border-box; }
+  .rv-tile:hover { border-color: var(--linea-borde, #C9C0AE); }
+  .rv-tile .n { font-family: var(--fuente-titulo); font-size: 32px; font-weight: 700; line-height: 1; color: #B96F09; }
+  .rv-tile .t { font-size: 14px; color: var(--navy, #2E4256); font-weight: 600; line-height: 1.3; }
+  .rv-tile.cero { cursor: default; box-shadow: none; background: rgba(255,255,255,.6); }
+  .rv-tile.cero .n { color: #1E7A3D; }
+
+  /* Listas plegables por categoría: tarjeta con cabecera crema */
+  .rv-cat { background: #fff; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 14px; box-shadow: var(--sombra-suave);
+    overflow: hidden; margin-bottom: 14px; }
+  .rv-cat > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 13px 18px;
+    background: var(--crema-media, #F1EADC); border-bottom: 1px solid transparent; }
+  .rv-cat > summary::-webkit-details-marker { display: none; }
+  .rv-cat[open] > summary { border-bottom-color: var(--linea-marcada, #E4DCCB); }
+  .rv-cat > summary .tt { flex: 1; min-width: 0; }
+  .rv-cat > summary b { display: block; font-size: 16px; color: var(--navy, #2E4256); }
+  .rv-cat > summary small { display: block; font-size: 13.5px; color: var(--texto-suave); line-height: 1.45; margin-top: 2px; }
+  .rv-cat > summary .cuenta { flex: 0 0 auto; min-width: 30px; text-align: center; padding: 3px 10px; border-radius: 999px;
+    background: #FDF3E3; color: #8A5307; font-weight: 700; font-size: 14px; border: 1px solid #EBD9B8; }
+  .rv-cat > summary .fl { flex: 0 0 auto; color: var(--texto-suave); transition: transform .2s; }
+  .rv-cat[open] > summary .fl { transform: rotate(90deg); }
+  .rv-fila { display: flex; align-items: center; gap: 12px; padding: 11px 18px; border-top: 1px solid #F0EADD; flex-wrap: wrap; }
+  .rv-fila:first-child { border-top: 0; }
+  .rv-fila .txt { flex: 1 1 260px; min-width: 0; }
+  .rv-fila .txt a { font-weight: 600; color: var(--azul-oscuro, #2F6FA8); text-decoration: none; font-size: 15px; }
+  .rv-fila .txt a:hover { text-decoration: underline; }
+  .rv-fila .txt span { display: block; font-size: 13.5px; color: var(--texto-suave); line-height: 1.45; margin-top: 2px; overflow-wrap: anywhere; }
+  .rv-ign { flex: 0 0 auto; min-height: 40px; padding: 8px 15px; border-radius: 999px; border: 1px solid var(--linea-borde, #C9C0AE);
+    background: #fff; color: var(--texto, #4A4437); font: inherit; font-size: 14px; cursor: pointer; }
+  .rv-ign:hover { background: var(--crema, #FBF9F4); }
+  .rv-nota { flex: 1 1 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .rv-nota input { flex: 1 1 220px; min-width: 0; padding: 10px 12px; border: 1px solid #E0D8C8; border-radius: 10px; font: inherit; font-size: 14px; color: var(--navy); }
+  .rv-nota button { min-height: 40px; padding: 8px 15px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer; }
+  .rv-nota .si { border: 0; background: var(--navy, #2E4256); color: #fff; font-weight: 600; }
+  .rv-nota .no { border: 1px solid var(--linea-borde, #C9C0AE); background: #fff; color: var(--navy); }
+  .rv-vacio, .rv-estado { padding: 18px; font-size: 15px; color: var(--texto-suave); }
+  .rv-estado.error { color: #B3261E; }
+  .rv-todo-bien { background: #fff; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 14px; box-shadow: var(--sombra-suave);
+    padding: 22px; text-align: center; color: #1E7A3D; font-weight: 600; }
+  .rv-ignorados { margin-top: 26px; }
+  .rv-ignorados .rv-fila .txt span { font-style: italic; }
+</style>
+</head>
+<body class="adm-piel">
+<div id="admin-contenido">
+<div class="admin-wrap">
+  <div class="rv-cab">
+    <div>
+      <h1>Revisión de datos</h1>
+      <p>Fichas con algo raro, para limpiarlas <b>antes de que den guerra en los cobros</b>. Pulsa un nombre para abrir su ficha y corregirla. Si algo está bien así, pulsa «Ignorar» y no volverá a salir.
+        Las fichas municipales (lista del Ayuntamiento) no entran en las de contacto ni de tutor: vienen sin esos datos de origen.</p>
+    </div>
+    <button type="button" class="rv-recargar" id="rv-recargar">Volver a revisar</button>
+  </div>
+
+  <div class="rv-resumen" id="rv-resumen"></div>
+  <div id="rv-listas"><div class="rv-estado">Revisando las fichas…</div></div>
+
+  <details class="rv-cat rv-ignorados" id="rv-ignorados" hidden>
+    <summary><span class="tt"><b>Ignorados</b><small>Los que alguien marcó como «está bien así». Puedes volver a mostrarlos.</small></span>
+      <span class="cuenta" id="rv-ign-n">0</span><span class="fl" aria-hidden="true">›</span></summary>
+    <div id="rv-ign-lista"></div>
+  </details>
+</div>
+</div><!-- /admin-contenido -->
+
+<script>
+APOLANA_ADMIN.listo(function () {
+  var sb = window.APOLANA_DB;
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  function avisar(m, tipo, op) { if (window.apoToast) window.apoToast(m, tipo, op); }
+
+  /* Las comprobaciones, en el orden en que se enseñan. La clave es la que
+     devuelve revision_datos() (migración 392). */
+  var CATS = [
+    { k: 'recibo_cero',      t: 'Recibos a 0 €',              d: 'Recibos de esta temporada con importe 0 que no están anulados (como la cuota de Oliver).' },
+    { k: 'duplicado',        t: 'Posibles duplicados',        d: 'Mismo nombre, mismo DNI, o mismos apellidos y fecha de nacimiento con un nombre casi igual. Los hermanos que comparten el DNI del tutor salen aquí: si es eso, ignóralos.' },
+    { k: 'socio_numero',     t: 'Número de socio',            d: 'Socios sin número, o con un número que tiene otra ficha.' },
+    { k: 'menor_sin_tutor',  t: 'Menores sin tutor',          d: 'Menores de 18 sin nombre, correo ni teléfono del tutor, y sin cuenta de familia.' },
+    { k: 'sin_correo',       t: 'Sin correo',                 d: 'Ni correo en la ficha, ni del tutor, ni de su cuenta.' },
+    { k: 'sin_telefono',     t: 'Sin teléfono',               d: 'Ningún teléfono con al menos 9 cifras (ficha, tutor o cuenta).' },
+    { k: 'sin_grupo',        t: 'Sin grupo ni natación',      d: 'Fichas activas que no están en ningún grupo ni en natación. Los socios y los atletas que solo compiten no salen aquí.' },
+    { k: 'cubo_sin_ficha',   t: 'Altas del Cubo sin ficha',   d: 'Altas aprobadas del Cubo que no se han unido a ninguna ficha.' },
+    { k: 'fecha_nacimiento', t: 'Fecha de nacimiento rara',   d: 'El 1 de enero (suele ser una fecha puesta por defecto), una fecha futura o más de 100 años.' }
+  ];
+  var TIT = {}; CATS.forEach(function (c) { TIT[c.k] = c.t; });
+  var FILAS = [];
+
+  function enlace(f) {
+    if (f.atleta_id) return '../atletas/?ficha=' + encodeURIComponent(f.atleta_id);
+    if (f.categoria === 'cubo_sin_ficha') return '../cubo-altas/';
+    return null;
+  }
+
+  function filaHtml(f) {
+    var url = enlace(f);
+    var nom = esc(f.nombre || '(sin nombre)');
+    return '<div class="rv-fila" data-cat="' + esc(f.categoria) + '" data-ref="' + esc(f.ref) + '">' +
+      '<div class="txt">' + (url ? '<a href="' + esc(url) + '">' + nom + '</a>' : '<b>' + nom + '</b>') +
+        '<span>' + esc(f.detalle || '') + '</span></div>' +
+      '<button type="button" class="rv-ign" data-ignorar>Ignorar</button>' +
+    '</div>';
+  }
+
+  function pintar() {
+    var por = {};
+    FILAS.forEach(function (f) { (por[f.categoria] = por[f.categoria] || []).push(f); });
+
+    $('rv-resumen').innerHTML = CATS.map(function (c) {
+      var n = (por[c.k] || []).length;
+      return '<button type="button" class="rv-tile' + (n ? '' : ' cero') + '" data-ir="' + c.k + '"' + (n ? '' : ' disabled') + '>' +
+        '<span class="n">' + (n || '✓') + '</span><span class="t">' + esc(c.t) + '</span></button>';
+    }).join('');
+
+    var con = CATS.filter(function (c) { return (por[c.k] || []).length; });
+    if (!con.length) { $('rv-listas').innerHTML = '<div class="rv-todo-bien">Todo en orden: ninguna ficha con datos raros.</div>'; return; }
+    $('rv-listas').innerHTML = con.map(function (c) {
+      var lista = por[c.k];
+      return '<details class="rv-cat" id="cat-' + c.k + '">' +
+        '<summary><span class="tt"><b>' + esc(c.t) + '</b><small>' + esc(c.d) + '</small></span>' +
+          '<span class="cuenta">' + lista.length + '</span><span class="fl" aria-hidden="true">›</span></summary>' +
+        '<div>' + lista.map(filaHtml).join('') + '</div></details>';
+    }).join('');
+  }
+
+  async function cargar() {
+    $('rv-listas').innerHTML = '<div class="rv-estado">Revisando las fichas…</div>';
+    var r = await sb.rpc('revision_datos');
+    if (r.error) {
+      $('rv-resumen').innerHTML = '';
+      $('rv-listas').innerHTML = '<div class="rv-estado error">No se ha podido hacer la revisión: ' + esc(r.error.message) + '</div>';
+      return;
+    }
+    FILAS = r.data || [];
+    pintar();
+    cargarIgnorados();
+  }
+
+  /* --- Ignorados: se ven abajo y se pueden volver a mostrar --- */
+  async function cargarIgnorados() {
+    var r = await sb.from('revision_datos_ignorados').select('categoria,atleta_id,nota,cuando').order('cuando', { ascending: false });
+    var lista = (r && !r.error && r.data) || [];
+    $('rv-ignorados').hidden = !lista.length;
+    $('rv-ign-n').textContent = lista.length;
+    if (!lista.length) { $('rv-ign-lista').innerHTML = ''; return; }
+    /* Nombres: de la ficha y, si es un alta del Cubo, del alta. */
+    var ids = lista.map(function (x) { return x.atleta_id; });
+    var nombres = {};
+    try {
+      var a = await sb.from('atletas').select('id,nombre,apellidos').in('id', ids);
+      (a.data || []).forEach(function (x) { nombres[x.id] = ((x.nombre || '') + ' ' + (x.apellidos || '')).trim(); });
+      var c = await sb.from('cubo_altas').select('id,nombre,apellidos').in('id', ids);
+      (c.data || []).forEach(function (x) { nombres[x.id] = ((x.nombre || '') + ' ' + (x.apellidos || '')).trim(); });
+    } catch (e) { /* sin nombres, se enseña igual */ }
+    $('rv-ign-lista').innerHTML = lista.map(function (x) {
+      var fecha = x.cuando ? new Date(x.cuando).toLocaleDateString('es-ES') : '';
+      return '<div class="rv-fila" data-cat="' + esc(x.categoria) + '" data-ref="' + esc(x.atleta_id) + '">' +
+        '<div class="txt"><b>' + esc(nombres[x.atleta_id] || '(ficha no encontrada)') + '</b> · ' + esc(TIT[x.categoria] || x.categoria) +
+          '<span>' + esc(x.nota ? '«' + x.nota + '»' : 'Sin nota') + (fecha ? ' · ' + esc(fecha) : '') + '</span></div>' +
+        '<button type="button" class="rv-ign" data-mostrar>Volver a mostrar</button></div>';
+    }).join('');
+  }
+
+  /* --- Clics --- */
+  $('rv-resumen').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-ir]') : null;
+    if (!b) return;
+    var d = $('cat-' + b.getAttribute('data-ir'));
+    if (!d) return;
+    d.open = true;
+    try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e2) { d.scrollIntoView(); }
+  });
+
+  $('rv-listas').addEventListener('click', async function (e) {
+    var t = e.target;
+    if (!t.closest) return;
+    var fila = t.closest('.rv-fila');
+    if (!fila) return;
+
+    /* 1er paso: «Ignorar» abre una nota opcional en la propia fila. */
+    if (t.closest('[data-ignorar]')) {
+      if (fila.querySelector('.rv-nota')) return;
+      var n = document.createElement('div');
+      n.className = 'rv-nota';
+      n.innerHTML = '<input type="text" maxlength="200" placeholder="¿Por qué está bien así? (opcional)">' +
+        '<button type="button" class="si">Ignorar</button><button type="button" class="no">Cancelar</button>';
+      fila.appendChild(n);
+      t.closest('[data-ignorar]').hidden = true;
+      n.querySelector('input').focus();
+      n.querySelector('input').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') n.querySelector('.si').click(); });
+      return;
+    }
+    if (t.closest('.rv-nota .no')) {
+      var nn = fila.querySelector('.rv-nota'); if (nn) nn.remove();
+      var bi = fila.querySelector('[data-ignorar]'); if (bi) bi.hidden = false;
+      return;
+    }
+    /* 2º paso: confirmar → se guarda y la fila sale de la lista. */
+    if (t.closest('.rv-nota .si')) {
+      var btn = t.closest('.rv-nota .si');
+      var cat = fila.getAttribute('data-cat'), ref = fila.getAttribute('data-ref');
+      var nota = (fila.querySelector('.rv-nota input').value || '').trim() || null;
+      btn.disabled = true; btn.textContent = 'Guardando…';
+      var r = await sb.from('revision_datos_ignorados').insert({ categoria: cat, atleta_id: ref, nota: nota });
+      if (r.error) {
+        btn.disabled = false; btn.textContent = 'Ignorar';
+        avisar('No se ha podido guardar: ' + r.error.message, 'error');
+        return;
+      }
+      FILAS = FILAS.filter(function (f) { return !(f.categoria === cat && String(f.ref) === ref); });
+      var abiertas = Array.prototype.map.call(document.querySelectorAll('#rv-listas details[open]'), function (d) { return d.id; });
+      pintar();
+      abiertas.forEach(function (id) { var d = $(id); if (d) d.open = true; });
+      cargarIgnorados();
+      avisar('Ignorado. No volverá a salir en «' + (TIT[cat] || cat) + '».', 'ok', {
+        deshacer: function () { volverAMostrar(cat, ref); }
+      });
+    }
+  });
+
+  async function volverAMostrar(cat, ref) {
+    var r = await sb.from('revision_datos_ignorados').delete().eq('categoria', cat).eq('atleta_id', ref);
+    if (r.error) { avisar('No se ha podido deshacer: ' + r.error.message, 'error'); return; }
+    cargar();
+  }
+
+  $('rv-ign-lista').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-mostrar]') : null;
+    if (!b) return;
+    var fila = b.closest('.rv-fila');
+    b.disabled = true; b.textContent = 'Un momento…';
+    volverAMostrar(fila.getAttribute('data-cat'), fila.getAttribute('data-ref'));
+  });
+
+  $('rv-recargar').addEventListener('click', cargar);
+
+  cargar();
+});
+</script>
+</body>
+</html>

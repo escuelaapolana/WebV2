@@ -332,7 +332,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=b96b8760';
+      s.src = base() + 'assets/js/mundos.js?v=234f8632';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -421,6 +421,7 @@
         { txt: 'Grupos de entrenamiento', url: r + 'grupos/',         desc: 'todos los grupos: horarios, entrenador y cuota' },
         { txt: 'Entrenadores',            url: r + 'entrenadores/',   desc: 'los monitores: su ficha y a qué grupo llevan' },
         { txt: 'Importar personas',       url: r + 'importar/',       desc: 'altas en bloque desde un archivo' },
+        { txt: 'Revisión de datos',       url: r + 'revision-datos/', desc: 'fichas con datos raros para limpiar antes de cobrar' },
         { txt: 'Quién entra al panel',    url: r + 'usuarios/',       desc: 'cuentas, roles y permisos' }
       ] },
       { t: 'Dinero', enlaces: [
@@ -1088,7 +1089,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=b96b8760';
+      s.src = base() + 'assets/js/mundos.js?v=234f8632';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;

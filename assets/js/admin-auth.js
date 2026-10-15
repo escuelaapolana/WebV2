@@ -48,7 +48,7 @@
   function montarPapeles() {
     if (window.APOLANA_PAPELES) return;
     var s = document.createElement('script');
-    s.src = base() + 'assets/js/papeles.js?v=a1883633';
+    s.src = base() + 'assets/js/papeles.js?v=5b9903d7';
     s.async = true;
     s.addEventListener('error', function () { /* sin interruptor, pero la página entera sigue viva */ });
     document.head.appendChild(s);
@@ -111,6 +111,10 @@
     '.adm-papel-btns .btn{min-width:220px}' +
     '.adm-papel-salida{font-size:15px;color:#2F6FA8;text-decoration:none;min-height:44px;display:inline-flex;align-items:center}' +
     '.adm-papel-salida:hover{text-decoration:underline}' +
+    /* «Has entrado como …»: con qué cuenta, que no es lo mismo que el papel. */
+    '.adm-papel .adm-cuenta{margin:0 0 10px;text-align:center;font-size:15px;color:#5E5849;overflow-wrap:anywhere}' +
+    '.adm-papel .adm-cuenta b{color:#2E4256}' +
+    '.adm-papel-otra{background:none;border:0;padding:0 8px;font-family:inherit;cursor:pointer;margin-top:-8px}' +
     /* «Ver como…»: píldora en la cabecera del panel + menú para abrir cada vista de rol */
     '.adm-top .der .ver-como{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:8px 15px;border-radius:999px;color:#fff;font-size:14px;white-space:nowrap;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);cursor:pointer;font-family:inherit;box-sizing:border-box}' +
     '.adm-top .der .ver-como:hover{background:rgba(255,255,255,.2)}' +
@@ -163,7 +167,10 @@
         '<div class="der">' +
           '<a class="ir-web" href="' + base() + '">' + GLOBO + '<span>Web</span></a>' +
           '<button type="button" class="ver-como" id="ver-como" aria-haspopup="true" aria-expanded="false">' + OJO + '<span>Ver como…</span></button>' +
-          '<button type="button" class="adm-perfil" id="adm-perfil" aria-haspopup="dialog">' +
+          /* El correo de la cuenta, sin estorbar: al pasar el ratón por la
+             píldora, y escrito arriba de la hoja «Cambiar de vista» al abrirla. */
+          '<button type="button" class="adm-perfil" id="adm-perfil" aria-haspopup="dialog"' +
+            (email ? ' title="Has entrado como ' + esc(email) + '" aria-label="Has entrado como ' + esc(email) + '. Cambiar de vista"' : '') + '>' +
             '<span class="av">' + esc(_ini) + '</span><span class="rol">Administración</span></button>' +
         '</div>';   /* sin «Salir»: la salida vive en la hoja del perfil (calco) */
       document.body.insertBefore(top, document.body.firstChild);
@@ -235,20 +242,75 @@
        rechazo: es un cambio de sombrero, y por eso no se parece a la pantalla
        de entrar. Dos salidas, y la primera es la que casi siempre quiere:
        cambiarse de papel y quedarse donde estaba. */
-    function avisoDePapel() {
+    /* Papeles que, puestos, abren ESTA pantalla del panel y que se pueden
+       elegir en «Cambiar de vista». La familia de administración entra a
+       todo; el resto solo a sus pantallas de campo, del Cubo o de la Liga. */
+    function papelesQueAbren() {
+      var ok = ['admin', 'tesoreria', 'contabilidad', 'junta'];
+      if (DEL_EQUIPO.test(location.pathname)) ok = ok.concat(['entrenador']);
+      if (DEL_CUBO.test(location.pathname)) ok = ok.concat(['cubo']);
+      return ok;
+    }
+
+    /* Salir y volver a la puerta del panel (la recarga enseña el acceso). */
+    function entrarConOtra(btn) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Saliendo…'; }
+      var ir = function () { location.reload(); };
+      try { sb.auth.signOut().then(ir, ir); } catch (e) { ir(); }
+    }
+
+    /* «Estás dentro, pero con el papel que no es.» No es un error ni un
+       rechazo: es un cambio de sombrero, y por eso no se parece a la pantalla
+       de entrar. Pero puede que no sea el sombrero sino LA CUENTA: Andrés
+       abrió el panel desde el Mac con su otra cuenta (la de atleta) y el
+       «Cambiar de papel» no le servía de nada. Por eso ahora se dice con qué
+       cuenta has entrado y, si esa cuenta no tiene ningún papel que abra el
+       panel, el botón grande es «Entrar con otra cuenta». */
+    async function avisoDePapel(user) {
+      var email = (user && user.email) || '';
+      /* ¿Tiene esta cuenta algún papel que abra esto? Se mira en su perfil
+         (cada uno puede leer el suyo). Si no se puede leer, null = no se sabe,
+         y se queda como estaba: «Cambiar de papel» + «o entrar con otra cuenta». */
+      var tiene = null;
+      try {
+        var pr = await sb.from('perfiles').select('rol,roles').eq('id', user.id).maybeSingle();
+        if (!pr.error && pr.data) {
+          var mios = (pr.data.roles && pr.data.roles.length) ? pr.data.roles : [pr.data.rol];
+          var abren = papelesQueAbren();
+          tiene = mios.some(function (r) { return abren.indexOf(r) !== -1; });
+        }
+      } catch (e) { tiene = null; }
+
       var caja = document.createElement('div');
       caja.className = 'adm-login adm-papel';
-      caja.innerHTML =
-        '<img class="adm-logo" src="' + base() + 'assets/img/logo.png" alt="Club Apolana">' +
-        '<h1>Esto es del panel del club</h1>' +
-        '<p class="lema">Tu sesión está abierta, pero el papel que llevas puesto ahora mismo no entra aquí. ' +
-        'Pulsa «Cambiar de papel», elige Administración y vuelve a abrir esta página.</p>' +
-        '<div class="adm-papel-btns">' +
-          '<button type="button" class="btn btn--primario" id="adm-cambiar-papel">Cambiar de papel</button>' +
-          '<a class="adm-papel-salida" href="' + base() + 'portal/">Ir a mi zona</a>' +
-        '</div>';
+      var cuenta = email ? '<p class="adm-cuenta">Has entrado como <b>' + esc(email) + '</b></p>' : '';
+      if (tiene === false) {
+        caja.innerHTML =
+          '<img class="adm-logo" src="' + base() + 'assets/img/logo.png" alt="Club Apolana">' +
+          '<h1>Esto es del panel del club</h1>' + cuenta +
+          '<p class="lema">Esta cuenta no tiene ningún papel que abra el panel. ' +
+          'Si tienes otra cuenta con la que lo llevas, sal y entra con esa.</p>' +
+          '<div class="adm-papel-btns">' +
+            '<button type="button" class="btn btn--primario" id="adm-otra-cuenta">Entrar con otra cuenta</button>' +
+            '<a class="adm-papel-salida" href="' + base() + 'portal/">Ir a mi zona</a>' +
+          '</div>';
+      } else {
+        caja.innerHTML =
+          '<img class="adm-logo" src="' + base() + 'assets/img/logo.png" alt="Club Apolana">' +
+          '<h1>Esto es del panel del club</h1>' + cuenta +
+          '<p class="lema">Tu sesión está abierta, pero el papel que llevas puesto ahora mismo no entra aquí. ' +
+          'Pulsa «Cambiar de papel», elige Administración y vuelve a abrir esta página.</p>' +
+          '<div class="adm-papel-btns">' +
+            '<button type="button" class="btn btn--primario" id="adm-cambiar-papel">Cambiar de papel</button>' +
+            '<button type="button" class="adm-papel-salida adm-papel-otra" id="adm-otra-cuenta">o entrar con otra cuenta</button>' +
+            '<a class="adm-papel-salida" href="' + base() + 'portal/">Ir a mi zona</a>' +
+          '</div>';
+      }
       document.body.insertBefore(caja, document.body.firstChild);
-      document.getElementById('adm-cambiar-papel').addEventListener('click', function () {
+      var bOtra = document.getElementById('adm-otra-cuenta');
+      if (bOtra) bOtra.addEventListener('click', function () { entrarConOtra(bOtra); });
+      var bPapel = document.getElementById('adm-cambiar-papel');
+      if (bPapel) bPapel.addEventListener('click', function () {
         /* El interruptor lo pinta papeles.js arriba del todo; si aún no ha
            cargado, esto al menos lleva la vista hasta donde va a salir. */
         try { if (window.APOLANA_PAPELES && window.APOLANA_PAPELES.abrir) { window.APOLANA_PAPELES.abrir(); return; } } catch (e) {}
@@ -383,7 +445,7 @@
                es que la puerta explica por qué está cerrada y deja el
                interruptor de papeles a mano, que es justo lo que hacía falta. */
             montarPapeles();
-            avisoDePapel();
+            avisoDePapel(s.data.session.user);
             return;
           }
         }
