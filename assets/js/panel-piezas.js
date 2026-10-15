@@ -75,7 +75,7 @@
     if (ya) return;
     var yo = document.querySelector('script[src*="panel-piezas.js"]');
     var url = yo ? yo.getAttribute('src').replace(/js\/panel-piezas\.js.*$/, 'css/panel-piezas.css')
-                 : (window.APOLANA_BASE || '../../') + 'assets/css/panel-piezas.css';
+                 : (window.APOLANA_BASE || '../../') + 'assets/css/panel-piezas.css?v=3261f3f3';
     var l = document.createElement('link');
     l.rel = 'stylesheet';
     l.href = url;

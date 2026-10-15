@@ -122,7 +122,7 @@ window.APOLANA = {
   try {
     var yo = document.currentScript && document.currentScript.src;
     if (!yo) return;                                   // sin saber dónde estoy, no hago nada
-    var url = yo.replace(/datos\.js(\?.*)?$/, 'contactos-web.js');
+    var url = yo.replace(/datos\.js(\?.*)?$/, 'contactos-web.js?v=93c280b3');
     if (url === yo) return;                            // no era este archivo
     if (document.querySelector('script[src*="contactos-web.js"]')) return;   // ya está
     var s = document.createElement('script');

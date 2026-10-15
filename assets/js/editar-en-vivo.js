@@ -723,7 +723,7 @@
     return new Promise(function (resolve) {
       if (window.APOLANA_BIBLIO) return resolve(window.APOLANA_BIBLIO);
       var s = document.createElement('script');
-      s.src = (window.APOLANA_BASE || '../') + 'assets/js/biblioteca.js';
+      s.src = (window.APOLANA_BASE || '../') + 'assets/js/biblioteca.js?v=36c254f1';
       s.onload = function () { resolve(window.APOLANA_BIBLIO || null); };
       s.onerror = function () { resolve(null); };
       document.head.appendChild(s);

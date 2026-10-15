@@ -369,7 +369,7 @@
   function conPapeles(cuando) {
     if (window.APOLANA_PAPELES) { cuando(); return; }
     var s = document.createElement('script');
-    s.src = base() + 'assets/js/papeles.js';
+    s.src = base() + 'assets/js/papeles.js?v=a1883633';
     s.async = true;
     s.addEventListener('load', cuando);
     s.addEventListener('error', function () { /* sin píldora, pero el portal sigue vivo */ });
@@ -2440,7 +2440,7 @@
           }
           if (window.APOLANA_AVISOS && window.APOLANA_AVISOS.saludar) { saluda(); return; }
           var s = document.createElement('script');
-          s.src = b + 'assets/js/avisos.js';
+          s.src = b + 'assets/js/avisos.js?v=4b120346';
           s.onload = saluda;
           s.onerror = function () { /* sin avisos: la pantalla sigue igual */ };
           document.head.appendChild(s);
