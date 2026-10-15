@@ -861,7 +861,7 @@
       var c = window.APOLANA_DB;
       if (!c || !c.from) { fin([]); return; }
       try {
-        c.from('atletas').select('id,nombre,apellidos').limit(3000).then(
+        c.from('atletas').select('id,nombre,apellidos,telefono,telefono_tutor').limit(3000).then(
           function (r) { fin(((r && !r.error && r.data) ? r.data : []).filter(function (x) { return (x.nombre || '').indexOf('(duplicado)') === -1; })); },
           function () { fin([]); }
         );
@@ -913,10 +913,16 @@
         var inp = sheet.querySelector('.mm-busca-inp');
         if (inp && norm(inp.value).trim() !== nq) return;   // el texto ya cambió
         var box = res.querySelector('.mm-pers'); if (!box) return;
+        // Un teléfono («626 14 83 33», «+34…») busca por el móvil o el del tutor.
+        var cif = nq.replace(/[\s+]/g, '');
+        var porTel = /^\d{6,}$/.test(cif);
+        if (porTel && cif.length > 9) cif = cif.slice(-9);
+        var tel9 = function (s) { var d = String(s || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
         var pers = lista.filter(function (a) {
+          if (porTel) return (tel9(a.telefono) + ' ' + tel9(a.telefono_tutor)).indexOf(cif) !== -1;
           return norm((a.nombre || '') + ' ' + (a.apellidos || '')).indexOf(nq) !== -1;
         }).slice(0, 10);
-        box.outerHTML = pers.length ? pers.map(filaPersona).join('') : '<div class="mm-nada-busca">Nadie con ese nombre.</div>';
+        box.outerHTML = pers.length ? pers.map(filaPersona).join('') : '<div class="mm-nada-busca">' + (porTel ? 'Nadie con ese teléfono.' : 'Nadie con ese nombre.') + '</div>';
         if (pers.length) rellenarResumenes(pers.map(function (a) { return a.id; }));
       });
     }

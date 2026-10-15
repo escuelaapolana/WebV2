@@ -332,7 +332,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=b417b828';
+      s.src = base() + 'assets/js/mundos.js?v=f2628aa0';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -678,12 +678,13 @@
     var sb = window.APOLANA_DB;
     if (!sb || !sb.from) { GENTE = []; cuando(GENTE); return; }
     PIDIENDO = true;
-    sb.from('atletas').select('id,nombre,apellidos,categoria,estado').order('apellidos').limit(1200)
+    sb.from('atletas').select('id,nombre,apellidos,categoria,estado,telefono,telefono_tutor').order('apellidos').limit(1200)
       .then(function (r) {
         PIDIENDO = false;
         GENTE = (r && !r.error && r.data ? r.data : []).filter(function (a) { return (a.nombre || '').indexOf('(duplicado)') === -1; }).map(function (a) {
           var n = ((a.nombre || '') + ' ' + (a.apellidos || '')).replace(/\s+/g, ' ').trim();
-          return { id: a.id, nombre: n, cat: a.categoria || '', estado: a.estado || '', busca: sinTildes(n) };
+          return { id: a.id, nombre: n, cat: a.categoria || '', estado: a.estado || '', busca: sinTildes(n),
+                   tels: soloCifras(a.telefono) + ' ' + soloCifras(a.telefono_tutor) };
         });
         cuando(GENTE);
       }, function () { PIDIENDO = false; GENTE = []; cuando(GENTE); });
@@ -825,8 +826,16 @@
     }, function () { falta.forEach(function (id) { RESUMEN[id] = ''; }); cuando(); });
   }
 
+  /* Teléfono: «626 14 83 33», «+34 626…» o «626148333» encuentran a la persona
+     (por su móvil o el del tutor). Se comparan solo las cifras, sin el 34 delante. */
+  function soloCifras(s) { var d = String(s || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; }
   function coincidenPersonas(lista, trozos) {
     if (!lista || !lista.length) return [];
+    var junto = trozos.join('');
+    if (/^\+?[\d]{6,}$/.test(junto)) {
+      var cif = soloCifras(junto);
+      return lista.filter(function (p) { return (p.tels || '').indexOf(cif) !== -1; });
+    }
     return lista.filter(function (p) {
       return trozos.every(function (t) { return p.busca.indexOf(t) !== -1; });
     });
@@ -1078,7 +1087,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=b417b828';
+      s.src = base() + 'assets/js/mundos.js?v=f2628aa0';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
