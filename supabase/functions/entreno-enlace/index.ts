@@ -15,7 +15,16 @@
 //     BREVO_API_KEY, CORREO_REMITENTE, CORREO_REMITENTE_NOMBRE, CORREO_RESPUESTAS,
 //     SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, CORREO_ORIGENES
 //   supabase functions deploy entreno-enlace --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
+//
+// MIG 380 · cuotas del asistente «Nuevo cobro» (origen = 'asistente'): correo
+//   propio que se adapta a TARJETA o SEPA y a mensual / trimestral / anual, con
+//   su mes de inicio y su fecha de fin (_shared/cuota-entreno.ts). El enlace va
+//   sin parámetros: /entreno/cuota/ pide los datos de la cuota por el token.
+//   { ping: true } → también { generico: true } (el asistente lo comprueba antes
+//   de mandar nada, para no enviar nunca el texto viejo a una cuota nueva).
 // ============================================================
+
+import { esAsistente, textosCuota } from "../_shared/cuota-entreno.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
@@ -130,6 +139,48 @@ function correoHtml(nombre: string, importe: number, enlace: string): string {
   </body></html>`;
 }
 
+// 380 · Cuota creada con el asistente «Nuevo cobro»: un solo correo que vale
+// para tarjeta o SEPA y cualquier periodicidad. Lo puede leer la familia (el
+// atleta puede ser menor), así que nombra a la persona de la cuota.
+function correoAsistenteHtml(persona: string, importe: number, enlace: string, c: Record<string, any>, recordatorio: boolean): string {
+  const t = textosCuota(c);
+  const intro = recordatorio
+    ? `Te recordamos que la cuota${persona ? ` de <b>${esc(persona)}</b>` : ""} sigue <b>sin ${t.tarjeta ? "activar" : "domiciliar"}</b>.`
+    : `Te escribimos por la cuota${persona ? ` de <b>${esc(persona)}</b>` : ""}.`;
+  return `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana</td></tr>
+      <tr><td style="padding:24px 24px 6px 24px">
+        <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">¡Hola!</p>
+        <p style="margin:0 0 12px;color:#3f3f46;line-height:1.6">${intro}</p>
+        <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">Se paga ${t.como}.</p>
+      </td></tr>
+      <tr><td style="padding:2px 24px 10px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">
+          <tr><td style="padding:14px 18px;color:#5C4A1E;font-size:15px;line-height:1.7">
+            <b>${esc(String(c.concepto ?? "Cuota"))}</b><br>
+            <span style="font-size:20px;font-weight:700">${eur(importe)}</span> ${t.cada}<br>
+            <span style="font-size:13.5px">${esc(t.primero)}${t.fin ? ` <b>${esc(t.fin)}</b>` : ""}</span>
+          </td></tr>
+        </table></td></tr>
+      <tr><td align="center" style="padding:6px 24px 6px 24px">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
+            <a href="${enlace}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">${esc(t.boton)}</a>
+          </td>
+        </tr></table></td></tr>
+      <tr><td align="center" style="padding:0 24px 18px 24px">
+        <p style="margin:0;color:#71717a;font-size:13px">${esc(t.seguro)}</p>
+      </td></tr>
+      <tr><td style="padding:0 24px 24px 24px;border-top:1px solid #ececec">
+        <p style="margin:16px 0 0 0;color:#71717a;font-size:13px;line-height:1.5">¿Alguna duda? Contéstanos a este mensaje. 😊</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+  </body></html>`;
+}
+
 // 370 · Recordatorio (admin/dinero): el mismo correo sin el «perdona por el lío».
 function correoRecordatorioHtml(nombre: string, importe: number, enlace: string): string {
   const hola = nombre ? `¡Hola, ${esc(nombre)}!` : "¡Hola!";
@@ -182,13 +233,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
-  if (cuerpo.ping === true) return responder({ ok: true, recordatorio: true }, 200, origen);
+  if (cuerpo.ping === true) return responder({ ok: true, recordatorio: true, generico: true }, 200, origen);
   const recordatorio = cuerpo.recordatorio === true;
   const cuotaId = String(cuerpo.cuota_id ?? "").trim();
   if (!cuotaId) return responder({ error: "falta_cuota" }, 400, origen);
 
-  const rC = await consulta(`cuotas_entreno?select=nombre,email,importe_cent,token,suscripcion_estado,periodicidad,concepto&id=eq.${encodeURIComponent(cuotaId)}&limit=1`);
-  const c = Array.isArray(rC.datos) ? rC.datos[0] as { nombre: string; email: string; importe_cent: number; token: string; suscripcion_estado: string | null; periodicidad: string | null; concepto: string | null } : null;
+  const rC = await consulta(`cuotas_entreno?select=nombre,apellidos,email,importe_cent,token,suscripcion_estado,periodicidad,concepto,metodo,inicio,fin,origen,cobro_abierto&id=eq.${encodeURIComponent(cuotaId)}&limit=1`);
+  const c = Array.isArray(rC.datos) ? rC.datos[0] as { nombre: string; apellidos: string | null; email: string; importe_cent: number; token: string; suscripcion_estado: string | null; periodicidad: string | null; concepto: string | null;
+    metodo: string | null; inicio: string | null; fin: string | null; origen: string | null; cobro_abierto: boolean | null } : null;
   if (!c) return responder({ ok: false, motivo: "no-existe" }, 200, origen);
   // Ya domiciliada (o con el mandato firmado y el 1er adeudo en camino, mig 311):
   // no se manda el enlace, que abriría otra suscripción y cobraría dos veces.
@@ -197,6 +249,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   const destino = String(c.email ?? "").trim();
   if (!destino) return responder({ ok: false, motivo: "sin-correo" }, 200, origen);
+  // Cancelada o con el enlace cerrado: el enlace no serviría (entreno-pagar lo rechaza).
+  if (c.suscripcion_estado === "cancelada" || c.cobro_abierto === false) {
+    return responder({ ok: false, motivo: "cuota cerrada" }, 200, origen);
+  }
+
+  // 380 · Cuota del asistente: correo propio (tarjeta o SEPA, cualquier periodicidad).
+  if (esAsistente(c)) {
+    const persona = `${String(c.nombre ?? "").trim()} ${String(c.apellidos ?? "").trim()}`.trim();
+    const imp = (Number(c.importe_cent) || 0) / 100;
+    const link = `${URL_BASE}entreno/cuota/?t=${encodeURIComponent(c.token)}`;
+    const t = textosCuota(c);
+    try {
+      const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: { "api-key": BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
+          replyTo: { name: REMITENTE_NOMBRE, email: RESPUESTAS_EMAIL },
+          to: [{ email: destino }],
+          subject: (recordatorio ? "Recordatorio: " : "") +
+            (t.tarjeta ? "activa tu cuota con tarjeta" : "domicilia tu cuota") + ` · ${String(c.concepto ?? "Club Atletismo Apolana")}`,
+          htmlContent: correoAsistenteHtml(persona, imp, link, c, recordatorio),
+          textContent: `¡Hola!\n\n${recordatorio ? "Te recordamos que la cuota" : "Te escribimos por la cuota"}${persona ? " de " + persona : ""}: ${String(c.concepto ?? "")}, ${eur(imp)} ${t.cada}.\n\nSe paga ${t.comoTxt}. ${t.primero}${t.fin ? " " + t.fin : ""}\n\n${t.tarjeta ? "Actívala" : "Domicíliala"} aquí: ${link}\n\n${t.seguro}\n\n¿Dudas? Contesta a este mensaje.`,
+        }),
+      });
+      return responder({ ok: resp.ok, destino: resp.ok ? destino : undefined }, 200, origen);
+    } catch (e) {
+      return responder({ ok: false, motivo: String((e as Error).message || e) }, 200, origen);
+    }
+  }
 
   const nombre = String(c.nombre ?? "").trim().split(/\s+/)[0] ?? "";
   const importe = (Number(c.importe_cent) || 0) / 100;

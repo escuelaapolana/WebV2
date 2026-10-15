@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cuota de entrenamiento · Club Atletismo Apolana</title>
-<meta name="description" content="Resultado de la domiciliación de la cuota de entrenamiento del Club Atletismo Apolana.">
+<title>Tu cuota · Club Atletismo Apolana</title>
+<meta name="description" content="Activa o domicilia tu cuota del Club Atletismo Apolana.">
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
@@ -50,6 +50,66 @@
   var pago = qs.get('pago');
   var mensual = qs.get('m') === '1';   // cuota MENSUAL (mig 313), p. ej. natación
 
+  /* MIG 380 · Las cuotas del asistente «Nuevo cobro» (tarjeta o SEPA; mensual,
+     trimestral o anual; con mes de inicio y fin) se explican con SUS datos, que
+     se piden a la base por el token (cuota_entreno_publica: sin datos
+     personales). Las de antes (sin mes de inicio) siguen con los textos de
+     siempre, más abajo (legado()). */
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fechaLarga(iso) { if (!iso) return ''; var p = String(iso).slice(0, 10).split('-'); return (+p[2]) + ' de ' + MESES[(+p[1]) - 1] + ' de ' + p[0]; }
+  function eur(n) { var v = Number(n) || 0; return v.toLocaleString('es-ES', { minimumFractionDigits: Math.round(v * 100) % 100 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; }
+  var D = null;   // datos de la cuota (si es del asistente)
+  function txt() {
+    var tar = D.metodo === 'tarjeta';
+    var cada = D.periodicidad === 'mensual' ? 'al mes' : D.periodicidad === 'anual' ? 'al año' : 'cada 3 meses';
+    var repite = D.periodicidad === 'mensual' ? 'cada mes' : D.periodicidad === 'anual' ? 'cada año' : 'cada 3 meses';
+    var ini = D.inicio ? new Date(String(D.inicio).slice(0, 10) + 'T08:00:00Z') : null;
+    var diferido = ini && (ini - Date.now()) > 49 * 3600 * 1000;   // misma regla que entreno-pagar
+    return {
+      tar: tar, cada: cada,
+      boton: tar ? 'Pagar con tarjeta →' : 'Domiciliar mi cuota →',
+      primero: diferido ? 'El <b>primer cobro</b> será el <b>' + fechaLarga(D.inicio) + '</b>; hoy no se cobra nada. Después, ' + repite + ' en esa misma fecha.'
+                        : 'El <b>primer cobro</b> se hace ' + (tar ? 'al pagar' : 'al domiciliar (el adeudo tarda unos días)') + ' y después ' + repite + ' en esa misma fecha.',
+      fin: D.fin ? 'Se <b>para sola</b> el ' + fechaLarga(D.fin) + ': después no se cobra nada más.' : '',
+      seguro: tar ? 'La tarjeta se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.' : 'El IBAN se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.'
+    };
+  }
+  function generica() {
+    var t = txt();
+    if (pago === 'hecho') {
+      caja.innerHTML = '<h1>' + (t.tar ? '¡Cuota activada! 🎉' : '¡Domiciliación recibida! 🎉') + '</h1>' +
+        '<div class="ok">' + (t.tar ? 'Tu tarjeta ha quedado guardada para esta cuota.' : 'Ya hemos guardado tu mandato SEPA.') + ' ' + t.primero + ' ' + t.fin + '</div>' +
+        '<p class="fina">Si algún dato no cuadra, contesta al correo del club y lo miramos. ¡Gracias!</p>';
+      return;
+    }
+    if (pago === 'cancelado') {
+      caja.innerHTML = '<h1>No se completó</h1>' +
+        '<div class="mal">No llegaste a terminar. No pasa nada: puedes volver a intentarlo cuando quieras.</div>' +
+        '<p style="margin-top:16px"><button class="btn" id="reintentar">Volver a intentarlo →</button></p><p class="err" id="err"></p>';
+      document.getElementById('reintentar').addEventListener('click', irAPagar);
+      return;
+    }
+    caja.innerHTML = '<h1>' + (t.tar ? 'Activa tu cuota' : 'Domicilia tu cuota') + '</h1>' +
+      '<p>Se paga ' + (t.tar ? 'con <b>tarjeta</b>: la metes una vez y se cobra sola.' : 'por <b>domiciliación bancaria (SEPA)</b>: metes tu IBAN una vez y se cobra sola.') + '</p>' +
+      '<div class="dato"><b>' + esc(D.concepto || 'Cuota') + '</b><br><span style="font-size:20px;font-weight:700">' + eur(D.importe) + '</span> ' + t.cada +
+        '<ul><li>' + t.primero + '</li>' + (t.fin ? '<li>' + t.fin + '</li>' : '') + '<li>' + t.seguro + '</li></ul></div>' +
+      '<button class="btn" id="domiciliar">' + t.boton + '</button><p class="err" id="err"></p>' +
+      '<p class="fina">Si ya lo hiciste, puedes ignorar este mensaje: no se cobra dos veces.</p>';
+    document.getElementById('domiciliar').addEventListener('click', irAPagar);
+  }
+  function textoBoton() { return D ? txt().boton : 'Domiciliar mi cuota →'; }
+
+  if (!token || token.length < 20) { legado(); return; }
+  caja.innerHTML = '<p>Cargando…</p>';
+  esperarDB(function (db) {
+    if (!db || !db.rpc) { legado(); return; }
+    Promise.resolve(db.rpc('cuota_entreno_publica', { p_token: token })).then(function (r) {
+      var d = r && !r.error ? r.data : null;
+      if (d && d.inicio) { D = d; generica(); } else legado();
+    }).catch(function () { legado(); });
+  });
+
+  function legado() {
   if (pago === 'hecho') {
     caja.innerHTML =
       '<h1>¡Domiciliación recibida! 🎉</h1>' +
@@ -92,6 +152,7 @@
     '<p class="err" id="err"></p>' +
     '<p class="fina">Si ya la domiciliaste, puedes ignorar este mensaje: no se cobra dos veces.</p>';
   document.getElementById('domiciliar').addEventListener('click', irAPagar);
+  }   // fin de legado()
 
   function irAPagar() {
     var btn = document.getElementById('domiciliar') || document.getElementById('reintentar');
@@ -99,14 +160,14 @@
     if (err) err.textContent = '';
     if (btn) { btn.disabled = true; btn.textContent = 'Abriendo…'; }
     esperarDB(function (db) {
-      if (!db || !db.functions) { if (err) err.textContent = 'No se pudo conectar. Recarga la página.'; if (btn){ btn.disabled=false; btn.textContent='Domiciliar mi cuota →'; } return; }
+      if (!db || !db.functions) { if (err) err.textContent = 'No se pudo conectar. Recarga la página.'; if (btn){ btn.disabled=false; btn.textContent=textoBoton(); } return; }
       db.functions.invoke('entreno-pagar', { body: { token: token } }).then(function (r) {
         var d = r && r.data;
         if (d && d.url) { location.href = d.url; return; }
-        if (btn) { btn.disabled = false; btn.textContent = 'Domiciliar mi cuota →'; }
+        if (btn) { btn.disabled = false; btn.textContent = textoBoton(); }
         if (err) err.textContent = (d && d.mensaje) || 'No se pudo abrir el pago. Inténtalo en un minuto.';
       }).catch(function () {
-        if (btn) { btn.disabled = false; btn.textContent = 'Domiciliar mi cuota →'; }
+        if (btn) { btn.disabled = false; btn.textContent = textoBoton(); }
         if (err) err.textContent = 'No se pudo abrir el pago. Inténtalo en un minuto.';
       });
     });

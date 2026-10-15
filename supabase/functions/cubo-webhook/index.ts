@@ -25,6 +25,7 @@
 // ============================================================
 
 import { planificar, finPeriodo as finPeriodoSub, isoMadrid, cargosPendientes, textoCargos } from "../_shared/cubo-pausa.ts";
+import { cobroEnPagos } from "../_shared/cuota-entreno.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -188,7 +189,7 @@ async function patchEntreno(filtro: string, cambios: Record<string, unknown>) {
 
 async function getEntreno(id: string): Promise<Record<string, any> | null> {
   const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id,fin&id=eq.${encodeURIComponent(id)}&limit=1`,
+    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id,fin,periodicidad,metodo,origen,concepto,inicio&id=eq.${encodeURIComponent(id)}&limit=1`,
     { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
   );
   if (!r.ok) return null;
@@ -206,7 +207,9 @@ async function programarCancelEntreno(subId: string, livemode: boolean, fin?: st
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
     // Cuota con `fin` (mig 313, p. ej. la mensual de natación hasta el 30-jun):
     // se para al FINAL de ese día. Sin `fin`: la regla de la trimestral (tras abril).
-    body: `cancel_at=${fin ? Math.floor(Date.parse(`${fin}T21:00:00Z`) / 1000) : ENTRENO_CANCEL_AT}`,
+    // proration_behavior=none (mig 380): el último cobro va entero, sin prorrateos
+    // ni abonos raros si `fin` no cae justo en el cambio de periodo.
+    body: `cancel_at=${fin ? Math.floor(Date.parse(`${fin}T21:00:00Z`) / 1000) : ENTRENO_CANCEL_AT}&proration_behavior=none`,
   });
   if (!r.ok) console.error("No se pudo programar cancel_at de entreno:", r.status, await r.text().catch(() => ""));
   return r.ok;
@@ -244,16 +247,12 @@ async function registrarCobroStripe(
 }
 
 async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<string, any>) {
+  // Concepto/periodo/método: las cuotas viejas como siempre («Cuota de
+  // entrenamiento · 1er trimestre…», domiciliado); las del asistente «Nuevo
+  // cobro» (mig 380) con su concepto, su periodo real y tarjeta o domiciliado.
   const inicio = Number(objeto.lines?.data?.[0]?.period?.start ?? objeto.created ?? 0);
-  const d = inicio > 0 ? new Date(inicio * 1000) : new Date();
-  const mes = d.getUTCMonth() + 1;   // 1..12
-  const ano = d.getUTCFullYear();
-  let etq = "trimestre";
-  if (mes >= 10) etq = `1er trimestre (oct-dic ${ano})`;
-  else if (mes <= 3) etq = `2º trimestre (ene-mar ${ano})`;
-  else if (mes <= 6) etq = `3er trimestre (abr-jun ${ano})`;
-  const periodo = `${ano}-${String(mes).padStart(2, "0")}`;
-  await registrarCobroStripe(objeto, cuota.atleta_id ?? null, `Cuota de entrenamiento · ${etq}`, "domiciliado", periodo);
+  const x = cobroEnPagos(cuota, inicio);
+  await registrarCobroStripe(objeto, cuota.atleta_id ?? null, x.concepto, x.metodo, x.periodo);
 }
 
 // Cubo: cada recibo cobrado de la suscripción deja su fila en `pagos`.
@@ -403,7 +402,10 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
         // SEPA: terminar la pasarela = MANDATO FIRMADO, no cobro. El primer
         // adeudo tarda ~5 días hábiles (hasta 14). Hasta que llegue
         // invoice.paid queda «en_camino»; solo si Stripe dice 'paid' ya, activa.
-        const pagado = objeto.payment_status === "paid";
+        // 'no_payment_required' (mig 380) = cuota con mes de inicio futuro: la
+        // tarjeta/el mandato quedan guardados y el 1er cobro llega ese día →
+        // está «activa» (configurada), no «en camino».
+        const pagado = objeto.payment_status === "paid" || objeto.payment_status === "no_payment_required";
         await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
           stripe_customer_id: idDe(objeto.customer),
           stripe_subscription_id: subId,
@@ -424,6 +426,16 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
     case "invoice.paid":
     case "invoice.payment_succeeded": {
       const finPeriodo = objeto.lines?.data?.[0]?.period?.end ?? objeto.period_end;
+      // Factura de 0 € (arranque de una cuota con mes de inicio futuro, mig 380):
+      // no es un cobro → ni «último cobro» ni fila en `pagos`.
+      if (!(Number(objeto.amount_paid ?? 0) > 0)) {
+        await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
+          stripe_customer_id: idDe(objeto.customer),
+          stripe_subscription_id: idDe(objeto.subscription),
+          ...(aFecha(finPeriodo) ? { proximo_cobro: aFecha(finPeriodo) } : {}),
+        });
+        break;
+      }
       await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, {
         suscripcion_estado: "activa",
         stripe_customer_id: idDe(objeto.customer),

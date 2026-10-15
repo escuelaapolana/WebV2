@@ -15,6 +15,7 @@
 <script src="../../assets/js/admin-auth.js?v=327e060b"></script>
 <script src="../../assets/js/admin-tabbar.js?v=04ad3bf5" defer></script>
 <script src="../../assets/js/stripe-payouts.js?v=f09ef76c" defer></script>
+<script src="../../assets/js/dinero-nuevo-cobro.js?v=eb79fa8c" defer></script>
 <style>
   /* ============================================================
      DINERO v2 · todo el dinero del club, por pestañas (?v=…)
@@ -69,6 +70,10 @@
   /* --- Selector de mes --- */
   .di-mes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
   .di-mes label { font-size: 14px; color: var(--texto-suave); font-weight: 600; }
+  /* Fila de arriba de cada pestaña: mes a la izquierda, «Nuevo cobro» (mig 380) a la derecha. */
+  .di-fila-top { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin: 0 0 14px; }
+  .di-fila-top .di-mes { margin: 0; }
+  .di-fila-top .pz-btn { margin-left: auto; }
   select.di-sel, input.di-in { min-height: 44px; box-sizing: border-box; border: 1px solid var(--pz-borde, #C6BEAE); border-radius: 10px;
     background: #fff; font: inherit; font-size: 15px; color: var(--navy); padding: 8px 12px; }
   select.di-sel:focus, input.di-in:focus { outline: 2px solid var(--azul); outline-offset: 1px; border-color: var(--azul); }
@@ -304,7 +309,7 @@ APOLANA_ADMIN.listo(function (sb) {
 
   var TIPO = {
     cubo:   { t: 'El Cubo',              d: 'Cuota mensual con tarjeta (día 5)' },
-    cuota:  { t: 'Cuotas domiciliadas',  d: 'SEPA trimestral o mensual' },
+    cuota:  { t: 'Cuotas recurrentes',   d: 'SEPA o tarjeta · mensual, trimestral o anual' },
     unico:  { t: 'Cobros únicos',        d: 'Recibos, altas de socio, tienda' },
     remesa: { t: 'Remesa de Isa',        d: 'Informativo · la pasa Isa por el banco, no es deuda' }
   };
@@ -457,6 +462,19 @@ APOLANA_ADMIN.listo(function (sb) {
     s.addEventListener('change', function () { ir(url(v, { mes: s.value === MES_ACTUAL ? '' : s.value })); });
   }
 
+  /* ---- «Nuevo cobro» (mig 380): asistente en assets/js/dinero-nuevo-cobro.js ---- */
+  function botonNuevo() {
+    return '<button type="button" class="pz-btn" data-nuevo-cobro>+ Nuevo cobro</button>';
+  }
+  function filaTop(izq) { return '<div class="di-fila-top">' + (izq || '<span></span>') + botonNuevo() + '</div>'; }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-nuevo-cobro]');
+    if (!b) return;
+    e.preventDefault();
+    if (!window.APOLANA_NUEVO_COBRO) { toast('No se pudo cargar el asistente. Recarga la página.', 'error'); return; }
+    window.APOLANA_NUEVO_COBRO.abrir(sb, { alCrear: function () { olvidar(); render(); } });
+  });
+
   function errorHtml(e) {
     var msg = (e && (e.message || e.details)) || String(e);
     if (/dinero_(movimientos_v2|resumen_mes|cuotas|proximos)|does not exist|schema cache|Could not find the function/i.test(msg))
@@ -508,7 +526,7 @@ APOLANA_ADMIN.listo(function (sb) {
       '<span class="txt"><b>' + (ec.n || 0) + '</b> ' + ((ec.n === 1) ? 'adeudo firmado' : 'adeudos firmados') + ' que el banco aún no ha liquidado (unos 5 días hábiles, hasta 14). No es dinero cobrado todavía.</span>' +
       '<span class="ir">Ver →</span></a>';
 
-    el.innerHTML = selectorMes(R.meses, mes, 'di-mes-res') +
+    el.innerHTML = filaTop(selectorMes(R.meses, mes, 'di-mes-res')) +
       '<section class="di-tar"><header><h2>' + esc(mesTxt(mes)) + '</h2><span class="n">' + (R.es_mes_actual ? 'a día de hoy' : '') + '</span></header>' +
         cuerpo + '<div class="di-pie">' + notas.join('<br>') + '</div></section>' +
       ((ec.n || 0) ? franja : '') +
@@ -617,23 +635,25 @@ APOLANA_ADMIN.listo(function (sb) {
         'Se cobra con tarjeta cada día 5 (el primer mes, al activar). «Sin activar» = tiene el cobro abierto y aún no ha pagado. ' + esc(tarifas) +
         (C.cubo_sin_alta ? ' Hay ' + C.cubo_sin_alta + ' cobros del Cubo que no se han podido unir a su alta.' : '') + '</div></section>';
 
-    var EST_Q = { activa: ['pagado', 'Domiciliada'], en_camino: ['en_camino', 'En camino'], pendiente: ['pendiente', 'Sin IBAN'],
+    var EST_Q = { activa: ['pagado', 'Activa'], en_camino: ['en_camino', 'En camino'], pendiente: ['pendiente', 'Sin activar'],
                   impago: ['fuera', 'Impago'], cancelada: ['gris', 'Cancelada'] };
     var doms = C.domiciliadas || [];
-    var domHtml = '<section class="di-tar"><header><h2>Cuotas domiciliadas (SEPA)</h2>' +
-        '<div class="der"><a class="pz-btn" href="' + B + 'admin/cuotas-entreno/">+ Nueva cuota</a>' +
+    var domHtml = '<section class="di-tar"><header><h2>Cuotas recurrentes (SEPA o tarjeta)</h2>' +
+        '<div class="der"><a class="pz-btn pz-btn--borde" href="' + B + 'admin/cuotas-entreno/">Enlaces</a>' +
         '<a class="pz-btn pz-btn--borde" data-nav href="' + url('proximos') + '#cuota">Próximos</a></div></header>' +
       (doms.length ? doms.map(function (g) {
-        var mensual = g.periodicidad === 'mensual';
+        var mensual = g.periodicidad === 'mensual', anual = g.periodicidad === 'anual';  /* anual: mig 380 */
         var chips = [];
-        if (g.activa) chips.push('<span class="est pagado">' + g.activa + ' domiciliada' + (g.activa === 1 ? '' : 's') + '</span>');
+        if (g.activa) chips.push('<span class="est pagado">' + g.activa + ' activa' + (g.activa === 1 ? '' : 's') + '</span>');
         if (g.en_camino) chips.push('<span class="est en_camino">' + g.en_camino + ' en camino</span>');
-        if (g.sin_iban) chips.push('<a data-nav href="' + url('pagos', { tipo: 'cuota', estado: 'pendiente' }) + '" style="text-decoration:none"><span class="est pendiente">' + g.sin_iban + ' sin IBAN</span></a>');
+        if (g.sin_iban) chips.push('<a data-nav href="' + url('pagos', { tipo: 'cuota', estado: 'pendiente' }) + '" style="text-decoration:none"><span class="est pendiente">' + g.sin_iban + ' sin activar</span></a>');
         if (g.impago) chips.push('<span class="est fuera">' + g.impago + ' impago</span>');
         if (g.cancelada) chips.push('<span class="est gris">' + g.cancelada + ' cancelada' + (g.cancelada === 1 ? '' : 's') + '</span>');
         var gente = (g.personas || []).map(function (p) {
           var e = EST_Q[p.estado] || ['gris', p.estado];
           var sub = [];
+          sub.push(p.metodo === 'tarjeta' ? 'con tarjeta' : 'SEPA');
+          if (p.inicio && !p.ultimo_cobro && String(p.inicio).slice(0, 7) > MES_ACTUAL) sub.push('empieza en ' + mesTxt(String(p.inicio).slice(0, 7)));
           if (p.proximo_cobro) sub.push('próximo cobro ' + fecha(p.proximo_cobro));
           if (p.ultimo_cobro) sub.push('último ' + fecha(p.ultimo_cobro));
           if (p.fin) sub.push('hasta ' + fecha(p.fin));
@@ -642,17 +662,17 @@ APOLANA_ADMIN.listo(function (sb) {
             '<div class="imp">' + eur(p.importe) + '</div><div class="est-celda"><span class="est ' + e[0] + '">' + esc(e[1]) + '</span></div></div>';
         }).join('');
         return '<div class="di-plan">' +
-            '<div class="nom"><b>' + (mensual ? 'Mensual' : 'Trimestral') + '</b><span>' + (mensual ? 'Cada mes desde la fecha en que se domicilia, hasta su fin' : 'Octubre, enero y abril; tras abril se para sola') + '</span>' +
+            '<div class="nom"><b>' + (mensual ? 'Mensual' : anual ? 'Anual' : 'Trimestral') + '</b><span>' + (mensual ? 'Cada mes desde que se activa (o desde su mes de inicio), hasta su fin' : anual ? 'Una vez al año, hasta su fin' : 'Cada 3 meses hasta su fin (los adultos de pista: octubre, enero y abril)') + '</span>' +
               '<div class="di-chips">' + chips.join('') + '</div></div>' +
-            '<div><span class="k">Gente</span><span class="v">' + g.n + '</span><span class="s">' + eur(g.importe_periodo) + (mensual ? ' al mes' : ' por trimestre') + '</span></div>' +
+            '<div><span class="k">Gente</span><span class="v">' + g.n + '</span><span class="s">' + eur(g.importe_periodo) + (mensual ? ' al mes' : anual ? ' al año' : ' por trimestre') + '</span></div>' +
             '<div><span class="k">Pagado en ' + esc(mesCorto(mes)) + '</span><span class="v pag">' + eur((g.pagado || {}).total) + '</span><span class="s">' + ((g.pagado || {}).n || 0) + ' cobros</span></div>' +
-            '<div><span class="k">Pendiente</span><span class="v pen">' + eur((g.pendiente || {}).total) + '</span><span class="s">' + ((g.pendiente || {}).n || 0) + ' sin domiciliar o impago</span></div>' +
+            '<div><span class="k">Pendiente</span><span class="v pen">' + eur((g.pendiente || {}).total) + '</span><span class="s">' + ((g.pendiente || {}).n || 0) + ' sin activar o impago</span></div>' +
           '</div>' +
           '<details class="di-gente"><summary>' + (g.n === 1 ? 'Ver a la persona' : 'Ver a las ' + g.n + ' personas') + '</summary>' + gente + '</details>';
-      }).join('') : '<p class="di-vacio">Todavía no hay cuotas domiciliadas.</p>') +
-      '<div class="di-pie">«En camino» = mandato SEPA firmado y adeudo aún sin liquidar: <b>no es dinero cobrado</b> todavía. «Sin IBAN» = tiene el enlace para domiciliar y aún no lo ha hecho (se le puede recordar desde Todos los pagos).</div></section>';
+      }).join('') : '<p class="di-vacio">Todavía no hay cuotas recurrentes.</p>') +
+      '<div class="di-pie">«En camino» = mandato SEPA firmado y adeudo aún sin liquidar: <b>no es dinero cobrado</b> todavía. «Sin activar» = tiene el enlace para domiciliar o meter la tarjeta y aún no lo ha hecho (se le puede recordar desde Todos los pagos). «Activa» = se cobra sola (con mes de inicio futuro, el primer cobro llega ese día).</div></section>';
 
-    el.innerHTML = selectorMes(R.meses, mes, 'di-mes-cuo') + cuboHtml + domHtml;
+    el.innerHTML = filaTop(selectorMes(R.meses, mes, 'di-mes-cuo')) + cuboHtml + domHtml;
     engancharMes('di-mes-cuo', 'cuotas');
   }
 
@@ -708,7 +728,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }).join('');
 
     el.innerHTML = '<section class="di-tar"><header><h2>Cobros únicos</h2><span class="n">' + lista.length + ' cobros</span>' +
-        '<div class="der"><a class="pz-btn" href="' + B + 'admin/cobros/?nuevo=grupo">Crear un cobro</a></div></header>' +
+        '<div class="der">' + botonNuevo() + '</div></header>' +
       (lista.length ? '<div class="di-lote th"><div>Concepto</div><div>Pagos</div><div>Pagado</div><div>Pendiente</div><div></div></div>' + filas
                     : '<p class="di-vacio">Todavía no hay recibos.</p>') +
       '<div class="di-pie">Los recibos del libro de cobros, juntos por cobro («cobrar a un grupo») o por concepto y periodo. «Registro» = marcado pagado sin forma de cobro (importación): no cuenta como dinero que ha entrado. La remesa de Isa sale aparte en gris: es informativa, no deuda.</div></section>';

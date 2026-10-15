@@ -22,6 +22,8 @@
 //   supabase functions deploy entreno-resync --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
 
+import { cobroEnPagos } from "../_shared/cuota-entreno.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -170,10 +172,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cuotaId = String((cuerpo.cuota_id ?? "")).trim();
 
   const filtro = cuotaId
-    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro&id=eq.${encodeURIComponent(cuotaId)}`
-    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
+    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio&id=eq.${encodeURIComponent(cuotaId)}`
+    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
   const rA = await rest(filtro);
-  const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string; atleta_id: string | null; ultimo_cobro: string | null }> =
+  const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string; atleta_id: string | null; ultimo_cobro: string | null;
+    periodicidad: string | null; metodo: string | null; origen: string | null; concepto: string | null; inicio: string | null }> =
     Array.isArray(rA.datos) ? rA.datos : [];
   // Pasada extra: altas de socio con el adeudo SEPA en camino (solo en la
   // revisión general, no al revisar una cuota suelta).
@@ -222,7 +225,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const piEstado = pi ? String(pi.status ?? "") : null;
     // Último cobro = fecha de pago de la última factura, si está pagada.
     const ultimo =
-      inv && inv.status === "paid"
+      inv && inv.status === "paid" && Number(inv.amount_paid ?? 0) > 0   // 0 € = arranque, no cobro (mig 380)
         ? (aFecha(inv.status_transitions?.paid_at) ?? aFecha(inv.created))
         : null;
     const estado = estadoDe(String(s.status ?? ""));
@@ -247,25 +250,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let estadoFinal: string | null = estado;
     const yaCobrado = !!(ultimo || a.ultimo_cobro);
     if (cobro === "falló / sin método") estadoFinal = "impago";
-    else if (!yaCobrado && (estado === "activa" || String(s.status ?? "") === "incomplete")) estadoFinal = "en_camino";
+    // (mig 380) Con TARJETA no hay «en camino» (el cobro es al momento), y una
+    // cuota con mes de inicio futuro («trialing») está configurada, no en camino.
+    else if (a.metodo !== "tarjeta" && String(s.status ?? "") !== "trialing" &&
+             !yaCobrado && (estado === "activa" || String(s.status ?? "") === "incomplete")) estadoFinal = "en_camino";
 
     // Si la última factura está pagada y el webhook no dejó su fila en `pagos`,
     // se deja ahora (idempotente por id de factura: no duplica).
     if (inv && inv.status === "paid" && String(inv.id ?? "").startsWith("in_") && Number(inv.amount_paid ?? 0) > 0) {
       const ini = Number(inv.lines?.data?.[0]?.period?.start ?? inv.created ?? 0);
-      const d = ini > 0 ? new Date(ini * 1000) : new Date();
-      const mes = d.getUTCMonth() + 1, ano = d.getUTCFullYear();
-      const etq = mes >= 10 ? `1er trimestre (oct-dic ${ano})`
-        : mes <= 3 ? `2º trimestre (ene-mar ${ano})`
-        : mes <= 6 ? `3er trimestre (abr-jun ${ano})` : "trimestre";
+      // Misma regla que cubo-webhook (_shared/cuota-entreno.ts): las cuotas
+      // viejas, como siempre; las del asistente, con su concepto y su método.
+      const x = cobroEnPagos(a, ini);
       const pagadoEn = new Date(Number(inv.status_transitions?.paid_at ?? inv.created) * 1000);
       const fecha = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(pagadoEn);
       await rest(`rpc/dinero_registrar_cobro_stripe`, {
         method: "POST",
         body: JSON.stringify({
           p_factura: String(inv.id), p_atleta: a.atleta_id ?? null,
-          p_concepto: `Cuota de entrenamiento · ${etq}`, p_importe: Number(inv.amount_paid) / 100,
-          p_fecha: fecha, p_metodo: "domiciliado", p_periodo: `${ano}-${String(mes).padStart(2, "0")}`,
+          p_concepto: x.concepto, p_importe: Number(inv.amount_paid) / 100,
+          p_fecha: fecha, p_metodo: x.metodo, p_periodo: x.periodo,
         }),
       });
     }
