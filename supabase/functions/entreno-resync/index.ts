@@ -15,8 +15,18 @@
 //
 // Solo la puede llamar el club (admin/tesorería/contabilidad/junta).
 //
+// Mig 391 · MODO PROGRAMADO: pg_cron la llama cada mañana (7:00 de Madrid) con
+// la cabecera `x-cron-secret` = secreto CRON_SECRET (el mismo valor que está en
+// Vault como `cron_secret`). En ese modo no hace falta sesión y solo se hace la
+// re-sincronización general (se ignoran cuota_id / recolocar).
+// Si una cuota PASA a «impago» (adeudo rechazado/devuelto) o un alta de socio
+// pasa a «falló», se manda UN correo a CORREO_RESPUESTAS (Andrés) por Brevo.
+// Vale para los dos modos: el cambio de estado solo se ve una vez.
+//
 // CLAVES (secretos de Supabase): STRIPE_SECRET_KEY_APOLANA /
-//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY
+//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY /
+//   CRON_SECRET / BREVO_API_KEY / CORREO_REMITENTE / CORREO_REMITENTE_NOMBRE /
+//   CORREO_RESPUESTAS
 //
 // DESPLIEGUE:
 //   supabase functions deploy entreno-resync --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
@@ -32,6 +42,77 @@ const ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY") ??
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
+const CRON_SECRET = (Deno.env.get("CRON_SECRET") ?? "").trim();
+const BREVO_API_KEY = (Deno.env.get("BREVO_API_KEY") ?? "").trim();
+const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com").trim();
+const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
+const AVISOS_EMAIL = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
+
+// Comparación de secretos sin atajos (mismo tiempo acierte o no).
+function iguales(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a);
+  const eb = new TextEncoder().encode(b);
+  let dif = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) dif |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return dif === 0;
+}
+
+// ---- Aviso de cobros rechazados (mig 391) ----
+type Rechazo = { id?: string; nombre: string; que: string; importe?: number | null; motivo: string };
+function escH(s: unknown): string {
+  return String(s ?? "").replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m] as string));
+}
+async function avisarRechazos(lista: Rechazo[], modo: string): Promise<boolean> {
+  if (!lista.length || !BREVO_API_KEY) return false;
+  const eur = (n?: number | null) => n == null ? "" : (Number(n) || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+  const filas = lista.map((x) => `
+        <tr><td style="padding:10px 14px;border-bottom:1px solid #ececec;font-size:14px;line-height:1.5;color:#18181b">
+          <b>${escH(x.nombre)}</b>${x.importe != null ? ` · <b>${escH(eur(x.importe))}</b>` : ""}<br>
+          <span style="color:#52525b">${escH(x.que)}</span><br>
+          <span style="color:#B3261E;font-size:13px">${escH(x.motivo)}</span>
+        </td></tr>`).join("");
+  const enlace = "https://atletismoapolana.com/admin/cuotas-entreno/";
+  const html = `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana · Cobro rechazado</td></tr>
+      <tr><td style="padding:22px 24px 8px 24px">
+        <p style="margin:0 0 12px;font-size:16px;font-weight:700;color:#26374B">${lista.length === 1 ? "Un cobro domiciliado ha fallado" : `${lista.length} cobros domiciliados han fallado`}</p>
+        <p style="margin:0 0 6px;color:#3f3f46;line-height:1.6">Lo ha visto la re-sincronización con Stripe (${escH(modo)}). Hay que hablar con la persona para cobrarlo por otra vía o que cambie la cuenta.</p>
+      </td></tr>
+      <tr><td style="padding:6px 24px 12px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">${filas}
+        </table></td></tr>
+      <tr><td align="center" style="padding:6px 24px 24px 24px">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
+            <a href="${enlace}" style="display:inline-block;padding:13px 28px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px">Abrir Cuotas de entreno →</a>
+          </td></tr></table>
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+  const texto = `Cobros domiciliados rechazados (${modo}):\n\n` +
+    lista.map((x) => `- ${x.nombre}${x.importe != null ? " · " + eur(x.importe) : ""} · ${x.que} · ${x.motivo}`).join("\n") +
+    `\n\n${enlace}`;
+  try {
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
+        to: [{ email: AVISOS_EMAIL }],
+        subject: `Cobro rechazado · ${lista.length === 1 ? lista[0].nombre : lista.length + " cobros"} · Apolana`,
+        htmlContent: html,
+        textContent: texto,
+      }),
+    });
+    if (!r.ok) console.error("[entreno-resync] aviso Brevo:", r.status, await r.text().catch(() => ""));
+    return r.ok;
+  } catch (e) {
+    console.error("[entreno-resync] aviso:", e);
+    return false;
+  }
+}
 
 const ORIGENES_OK = [
   "https://escuelaapolana.github.io",
@@ -177,32 +258,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "config", mensaje: "No está configurado." }, 503, origen);
   }
 
+  // 0 · ¿Llamada programada? (pg_cron con x-cron-secret, mig 391). Sin
+  //     CRON_SECRET configurado este modo no existe.
+  const secretoCron = (req.headers.get("x-cron-secret") ?? "").trim();
+  const esCron = CRON_SECRET !== "" && secretoCron !== "" && iguales(secretoCron, CRON_SECRET);
+  if (secretoCron && !esCron) return responder({ error: "cron", mensaje: "Secreto no válido." }, 401, origen);
+
   // 1 · Sesión y que sea ADMIN (mismo criterio que cubo-resync)
-  const cab = req.headers.get("Authorization") ?? "";
-  const jwt = cab.toLowerCase().startsWith("bearer ") ? cab.slice(7).trim() : "";
-  if (!jwt) return responder({ error: "sesion" }, 401, origen);
-  const rU = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` } });
-  if (!rU.ok) return responder({ error: "sesion" }, 401, origen);
-  const correo: string = ((await rU.json().catch(() => null))?.email ?? "").toLowerCase();
-  if (!correo) return responder({ error: "sesion" }, 401, origen);
-  const rP = await rest(`perfiles?select=rol,rol_activo,roles&email=eq.${encodeURIComponent(correo)}&limit=1`);
-  const p = Array.isArray(rP.datos) ? rP.datos[0] : null;
-  const roles: string[] = [p?.rol, p?.rol_activo, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
-  const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad", "junta"].includes(r));
-  if (!esAdmin) return responder({ error: "no_admin", mensaje: "Solo el club puede re-sincronizar." }, 403, origen);
+  let roles: string[] = [];
+  if (!esCron) {
+    const cab = req.headers.get("Authorization") ?? "";
+    const jwt = cab.toLowerCase().startsWith("bearer ") ? cab.slice(7).trim() : "";
+    if (!jwt) return responder({ error: "sesion" }, 401, origen);
+    const rU = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` } });
+    if (!rU.ok) return responder({ error: "sesion" }, 401, origen);
+    const correo: string = ((await rU.json().catch(() => null))?.email ?? "").toLowerCase();
+    if (!correo) return responder({ error: "sesion" }, 401, origen);
+    const rP = await rest(`perfiles?select=rol,rol_activo,roles&email=eq.${encodeURIComponent(correo)}&limit=1`);
+    const p = Array.isArray(rP.datos) ? rP.datos[0] : null;
+    roles = [p?.rol, p?.rol_activo, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
+    const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad", "junta"].includes(r));
+    if (!esAdmin) return responder({ error: "no_admin", mensaje: "Solo el club puede re-sincronizar." }, 403, origen);
+  }
 
   // 2 · Qué cuotas: una (cuota_id) o todas las que tienen suscripción
+  //     (en modo programado, siempre todas y sin «recolocar»).
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
+  if (esCron) cuerpo = {};
+  const modoAviso = esCron ? "revisión automática de la mañana" : "re-sincronización desde el panel";
   const cuotaId = String((cuerpo.cuota_id ?? "")).trim();
 
   const filtro = cuotaId
-    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio,fin,cancel_programado,suscripcion_estado,importe_cent&id=eq.${encodeURIComponent(cuotaId)}`
-    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio,fin,cancel_programado,suscripcion_estado,importe_cent&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
+    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio,fin,cancel_programado,suscripcion_estado,importe_cent,impago_avisado_en&id=eq.${encodeURIComponent(cuotaId)}`
+    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio,fin,cancel_programado,suscripcion_estado,importe_cent,impago_avisado_en&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
   const rA = await rest(filtro);
   const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string; atleta_id: string | null; ultimo_cobro: string | null;
     periodicidad: string | null; metodo: string | null; origen: string | null; concepto: string | null; inicio: string | null;
-    fin: string | null; cancel_programado: boolean | null; suscripcion_estado: string | null; importe_cent: number | null }> =
+    fin: string | null; cancel_programado: boolean | null; suscripcion_estado: string | null; importe_cent: number | null;
+    impago_avisado_en?: string | null }> =
     Array.isArray(rA.datos) ? rA.datos : [];
 
   // --- Revisión 380 · RECOLOCAR LA PARADA de las suscripciones vivas ---
@@ -247,7 +341,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     try { socio = await revisarAltasSocio(); }
     catch (e) { socio = [{ error: String((e as Error)?.message ?? e) }]; }
   }
-  if (!cuotas.length) return responder({ ok: true, revisadas: 0, actualizadas: 0, detalle: [], socio }, 200, origen);
+  // Cobros que se acaban de descubrir rechazados → un correo a Andrés (mig 391).
+  const rechazos: Rechazo[] = socio
+    .filter((x) => x.resultado === "falló")
+    .map((x) => ({ nombre: String(x.nombre ?? ""), que: `Alta de socio ${String(x.referencia ?? "")}`, importe: null,
+                   motivo: `El adeudo SEPA no ha entrado (Stripe: ${String(x.stripe ?? "")})` }));
+  if (!cuotas.length) {
+    const avisado = await avisarRechazos(rechazos, modoAviso);
+    return responder({ ok: true, revisadas: 0, actualizadas: 0, detalle: [], socio, rechazos: rechazos.length, avisado }, 200, origen);
+  }
 
   const detalle: Array<Record<string, unknown>> = [];
   let actualizadas = 0;
@@ -357,6 +459,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
       if (rW.ok) actualizadas++;
     }
+    // (mig 391) Cuota en impago de la que todavía no se ha avisado (la haya
+    // marcado este resync o el webhook) → al correo. Se marca como avisada solo
+    // si el correo sale; si sale de impago, se limpia la marca para la próxima.
+    const estadoAhora = estadoFinal ?? a.suscripcion_estado;
+    if (estadoAhora === "impago" && !a.impago_avisado_en) {
+      rechazos.push({
+        id: a.id,
+        nombre: `${a.nombre ?? ""} ${a.apellidos ?? ""}`.trim(),
+        que: a.concepto || "Cuota de entreno",
+        importe: facturaImporte ?? ((Number(a.importe_cent) || 0) / 100),
+        motivo: `Cobro: ${cobro}${facturaFecha ? " · factura del " + new Date(facturaFecha).toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" }) : ""}`,
+      });
+    } else if (estadoAhora !== "impago" && a.impago_avisado_en) {
+      await rest(`cuotas_entreno?id=eq.${encodeURIComponent(a.id)}`, {
+        method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ impago_avisado_en: null }),
+      });
+    }
     detalle.push({
       id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(),
       estado: estadoFinal, factura: facturaEstado, cobro, factura_importe: facturaImporte,
@@ -365,5 +484,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  return responder({ ok: true, revisadas: cuotas.length, actualizadas, detalle, socio }, 200, origen);
+  const avisado = await avisarRechazos(rechazos, modoAviso);
+  const avisadas = rechazos.map((x) => x.id).filter(Boolean) as string[];
+  if (avisado && avisadas.length) {
+    await rest(`cuotas_entreno?id=in.(${avisadas.map(encodeURIComponent).join(",")})`, {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ impago_avisado_en: new Date().toISOString() }),
+    });
+  }
+  return responder({ ok: true, revisadas: cuotas.length, actualizadas, detalle, socio, rechazos: rechazos.length, avisado }, 200, origen);
 });
