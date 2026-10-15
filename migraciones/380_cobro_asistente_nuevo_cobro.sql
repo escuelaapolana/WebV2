@@ -33,6 +33,22 @@
 --     portal: «/ mes», «con tarjeta»…). Cambia el tipo → drop + create + grants.
 --   · cuota_entreno_publica(token): lo que /entreno/cuota/ necesita para
 --     explicar la cuota (sin datos personales).
+--
+-- REVISIÓN (antes de aplicar):
+--   · Nº de cobros de una cuota por Stripe = los que hará Stripe de verdad: el
+--     ancla es el mes de inicio (si es futuro) o HOY, y cada cobro cae en
+--     ancla + k·periodo mientras sea ≤ fin. La parada (cancel_at) se pone en el
+--     siguiente límite de periodo (cubo-webhook / entreno-resync): ningún
+--     cobro se prorratea.
+--   · Doble creación: índice único (atleta + concepto + inicio) en las cuotas
+--     del asistente vivas + candado de transacción en cobro_asistente_crear.
+--   · Recibos en EFECTIVO: no se pagan con tarjeta (pagos_iniciar_recibo los
+--     rechaza; portal/inicio dice «se paga en mano») ni se «recuerdan» con el
+--     correo de «págalo con tarjeta» (dinero_movimientos_v2).
+--   · mi_cuota_entreno no ofrece una cuota CANCELADA.
+--   · Dinero: un cobro de Stripe es del Cubo solo si su concepto es el que
+--     escribe el webhook del Cubo («Cuota El Cubo · …») y no es de una cuota
+--     del asistente (antes bastaba con que llevara «cubo» en el concepto).
 -- ---------------------------------------------------------------------------
 begin;
 
@@ -68,6 +84,12 @@ comment on column public.cuotas_entreno.lote is
   'Cuotas creadas a la vez con el asistente (mig 380).';
 
 create index if not exists idx_cuotas_entreno_lote on public.cuotas_entreno(lote) where lote is not null;
+
+-- Revisión: la misma cuota (persona + concepto + mes de inicio) no puede estar
+-- dos veces viva, aunque se pulse «Crear» dos veces a la vez.
+create unique index if not exists ux_cuotas_entreno_asistente_viva
+  on public.cuotas_entreno (atleta_id, lower(btrim(concepto)), inicio)
+  where origen = 'asistente' and suscripcion_estado <> 'cancelada';
 
 -- ===========================================================================
 -- 2 · Quién puede usar el asistente
@@ -289,10 +311,16 @@ declare
   v_periodo  text;
   v_cuenta_ok boolean;
   v_n        int;
+  v_ancla    date;
   i          int;
 begin
   if not public.cobro_asistente_puede() then
     raise exception 'Solo administración, tesorería o contabilidad pueden crear cobros.' using errcode = '42501';
+  end if;
+  -- Dos «Crear» a la vez (doble clic, dos pestañas): uno espera al otro, y el
+  -- segundo ya ve lo creado por el primero (duplicados → «ya lo tiene»).
+  if not v_simular then
+    perform pg_advisory_xact_lock(hashtext('cobro_asistente_crear'));
   end if;
 
   -- --- Qué ---
@@ -338,10 +366,23 @@ begin
       raise exception 'Con tarjeta o SEPA el mes de inicio no puede ser un mes pasado.' using errcode = 'P0001';
     end if;
     v_paso := case v_frec when 'mensual' then 1 when 'trimestral' then 3 else 12 end;
-    v_plazo := v_inicio;
+    -- Ancla de los cobros. Recibos: el día 1 de cada plazo desde el mes de
+    -- inicio. Stripe (SEPA/tarjeta): el mes de inicio si es futuro (a más de
+    -- 48 h: trial_end, igual que entreno-pagar) o HOY (se cobra al pagar), y
+    -- cada cobro en ancla + k·periodo mientras sea ≤ fin: lo mismo que hará
+    -- Stripe con la parada en el límite de periodo (sin prorrateos).
+    if v_metodo in ('sepa', 'tarjeta')
+       and not ((v_inicio::timestamp + interval '8 hours') at time zone 'UTC' > now() + interval '49 hours') then
+      v_ancla := v_hoy;
+    else
+      v_ancla := v_inicio;
+    end if;
+    i := 0;
+    v_plazo := v_ancla;
     while v_plazo <= v_fin loop
       v_plazos := v_plazos || v_plazo;
-      v_plazo := (v_plazo + make_interval(months => v_paso))::date;
+      i := i + 1;
+      v_plazo := (v_ancla + make_interval(months => v_paso * i))::date;
     end loop;
     if array_length(v_plazos, 1) > 36 then raise exception 'Demasiados plazos (máx. 36).' using errcode = 'P0001'; end if;
   end if;
@@ -468,16 +509,25 @@ begin
     v_total := v_total + (v_rec->>'importe')::numeric * v_n;
     if v_simular then continue; end if;
 
-    insert into public.cuotas_entreno
-      (atleta_id, perfil_id, nombre, apellidos, email, concepto, importe_cent,
-       periodicidad, inicio, fin, metodo, origen, lote, creado_por, token, cobro_abierto, nota)
-    values
-      (v_a.id, coalesce(v_a.perfil_id, v_a.perfil_padre_id), v_a.nombre, v_a.apellidos, v_email,
-       v_concepto, round((v_rec->>'importe')::numeric * 100)::int,
-       v_frec, v_inicio, v_fin, v_metodo, 'asistente', v_lote, public.mi_perfil_id(),
-       replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''),
-       true, v_notas)
-    returning id into v_id;
+    begin
+      insert into public.cuotas_entreno
+        (atleta_id, perfil_id, nombre, apellidos, email, concepto, importe_cent,
+         periodicidad, inicio, fin, metodo, origen, lote, creado_por, token, cobro_abierto, nota)
+      values
+        (v_a.id, coalesce(v_a.perfil_id, v_a.perfil_padre_id), v_a.nombre, v_a.apellidos, v_email,
+         v_concepto, round((v_rec->>'importe')::numeric * 100)::int,
+         v_frec, v_inicio, v_fin, v_metodo, 'asistente', v_lote, public.mi_perfil_id(),
+         replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''),
+         true, v_notas)
+      returning id into v_id;
+    exception when unique_violation then
+      v_creados := v_creados - 1;
+      v_total := v_total - (v_rec->>'importe')::numeric * v_n;
+      v_omit := v_omit + 1;
+      v_omit_det := v_omit_det || jsonb_build_array(jsonb_build_object(
+        'atleta_id', v_a.id, 'persona', v_nombre, 'motivo', 'ya tiene esa cuota'));
+      continue;
+    end;
     v_cuotas := v_cuotas || v_id;
 
     if v_guardar then
@@ -490,6 +540,7 @@ begin
     'modo', 'cuotas', 'simulado', v_simular, 'lote', case when v_simular then null else v_lote end,
     'creados', v_creados, 'omitidos', v_omit, 'omitidos_detalle', v_omit_det,
     'total', round(v_total, 2), 'plazos', (select jsonb_agg(to_char(x, 'YYYY-MM')) from unnest(v_plazos) x),
+    'fechas', (select jsonb_agg(x) from unnest(v_plazos) x), 'ancla', v_ancla,
     'pagos', '[]'::jsonb, 'cuotas', to_jsonb(v_cuotas), 'metodo', v_metodo);
 end;
 $$;
@@ -541,7 +592,7 @@ as $function$
   from public.cuotas_entreno ce
   where ce.perfil_id = public.mi_perfil_id()
     and ce.cobro_abierto
-    and coalesce(ce.suscripcion_estado, '') <> 'activa'
+    and coalesce(ce.suscripcion_estado, '') not in ('activa', 'cancelada')   -- revisión: nunca ofrecer una cancelada
   order by ce.created_at desc
   limit 1;
 $function$;
@@ -574,7 +625,9 @@ begin
   -- A · Recibos del libro de cobros (y las filas que deja Stripe: stripe:in_…)
   r as (
     select
-      case when p.notas like 'stripe:in_%' and p.concepto ilike '%cubo%' then 'cubo'
+      case when p.notas like 'stripe:in_%' and p.concepto like 'Cuota El Cubo ·%'   -- 380: lo que escribe el webhook del Cubo
+                and not exists (select 1 from public.cuotas_entreno qa where qa.origen = 'asistente' and qa.atleta_id = p.atleta_id
+                                   and p.concepto like qa.concepto || ' · %') then 'cubo'
            when p.notas like 'stripe:in_%' then 'entreno'
            else 'recibo' end                                         as origen,
       p.id                                                           as ref_id,
@@ -599,7 +652,9 @@ begin
            when p.estado = 'pendiente' and p.fecha_vencimiento is not null
              then 'Vence el ' || to_char(p.fecha_vencimiento, 'DD/MM/YYYY')
            else nullif(p.notas,'') end                               as detalle,
-      case when p.notas like 'stripe:in_%' and p.concepto ilike '%cubo%' then 'admin/cubo-altas/'
+      case when p.notas like 'stripe:in_%' and p.concepto like 'Cuota El Cubo ·%'   -- 380: lo que escribe el webhook del Cubo
+                and not exists (select 1 from public.cuotas_entreno qa where qa.origen = 'asistente' and qa.atleta_id = p.atleta_id
+                                   and p.concepto like qa.concepto || ' · %') then 'admin/cubo-altas/'
            when p.notas like 'stripe:in_%' then 'admin/cuotas-entreno/'
            else 'admin/cobros/' end                                  as enlace
     from public.pagos p
@@ -881,6 +936,245 @@ begin
 end;
 $function$;
 
--- (create or replace conserva los permisos de las dos de arriba)
+-- ===========================================================================
+-- 10 · pagos_iniciar_recibo(): copia VIVA + el efectivo no se paga con tarjeta.
+-- ===========================================================================
+CREATE OR REPLACE FUNCTION public.pagos_iniciar_recibo(p_pago_id uuid, p_perfil uuid)
+ RETURNS pagos_online
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_cfg    public.pagos_config;
+  v_recibo public.pagos;
+  v_suyo   boolean;
+  v_ref    text;
+  v_cent   integer;
+  v_pago   public.pagos_online;
+begin
+  select * into v_cfg from public.pagos_config where id = 1;
+  if not found or not v_cfg.activo then
+    raise exception 'El pago todavía no está activado.' using errcode = 'P0001';
+  end if;
+
+  select * into v_recibo from public.pagos where id = p_pago_id;
+  if not found then
+    raise exception 'Ese recibo no existe.' using errcode = 'P0001';
+  end if;
+  if v_recibo.anulado then
+    raise exception 'Ese recibo está anulado.' using errcode = 'P0001';
+  end if;
+  if v_recibo.estado = 'pagado' then
+    raise exception 'Ese recibo ya está pagado.' using errcode = 'P0001';
+  end if;
+  -- Domiciliado (adeudo SEPA): lo cobra el club por el banco (Isa). No se paga
+  -- por la app, para que nadie pague dos veces.
+  if nullif(btrim(coalesce(v_recibo.cuenta, '')), '') is not null or v_recibo.metodo = 'domiciliado' then
+    raise exception 'Esta cuota se cobra por domiciliación bancaria, no por la app.' using errcode = 'P0001';
+  end if;
+  -- 380 · Efectivo: se paga en mano al club, no con tarjeta por la app.
+  if v_recibo.metodo = 'efectivo' then
+    raise exception 'Este recibo se paga en mano (efectivo) al club, no por la app.' using errcode = 'P0001';
+  end if;
+  if v_recibo.importe is null or v_recibo.importe <= 0 then
+    raise exception 'Ese recibo no tiene importe.' using errcode = 'P0001';
+  end if;
+  if v_recibo.atleta_id is null then
+    raise exception 'Ese recibo no está asignado a nadie.' using errcode = 'P0001';
+  end if;
+
+  -- ¿El recibo es de un atleta de esta persona (suyo o de un hijo)?
+  select exists (
+    select 1 from public.atletas a
+    where a.id = v_recibo.atleta_id
+      and (a.perfil_id = p_perfil or a.perfil_padre_id = p_perfil)
+  ) into v_suyo;
+  if not v_suyo then
+    raise exception 'Ese recibo no es tuyo.' using errcode = 'P0001';
+  end if;
+
+  v_cent := round(v_recibo.importe * 100)::int;
+
+  v_ref := 'APO-' || to_char(now(), 'YYMMDD') || '-' ||
+           upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+
+  insert into public.pagos_online
+    (referencia, atleta_id, perfil_id, concepto, tipo, importe_centimos, metadatos)
+  values
+    (v_ref, v_recibo.atleta_id, p_perfil,
+     coalesce(nullif(btrim(v_recibo.concepto), ''), 'Recibo del club'),
+     'recibo', v_cent,
+     jsonb_build_object('pago_id', v_recibo.id, 'origen', 'portal'))
+  returning * into v_pago;
+
+  return v_pago;
+end;
+$function$;
+
+-- ===========================================================================
+-- 11 · dinero_movimientos_v2(): copia VIVA + sin «Recordar» (correo de pagar
+--      con tarjeta) para los recibos en efectivo.
+-- ===========================================================================
+CREATE OR REPLACE FUNCTION public.dinero_movimientos_v2()
+ RETURNS TABLE(origen text, ref_id uuid, persona text, atleta_id uuid, concepto text, importe numeric, estado text, cobrado_en date, fecha timestamp with time zone, metodo text, importado boolean, aproximado boolean, detalle text, enlace text, tipo text, seccion text, fecha_limite date, fuera_plazo boolean, mes_ref date, grupo_clave text, lote uuid, periodo text, numero_recibo text, aviso text, puede_marcar boolean, alta_id uuid)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_hoy date := (now() at time zone 'Europe/Madrid')::date;
+  v_mes date := date_trunc('month', (now() at time zone 'Europe/Madrid'))::date;
+begin
+  if not public.dinero_puede_ver() then
+    raise exception 'Solo administración, tesorería o contabilidad ven el dinero.' using errcode = '42501';
+  end if;
+
+  return query
+  with m as (select * from public.dinero_movimientos()),
+  x as (
+    select m.*,
+           p.fecha_vencimiento as p_venc, p.lote as p_lote, p.periodo as p_periodo,
+           p.numero_recibo as p_num, p.metodo as p_metodo, coalesce(p.notas,'') as p_notas,
+           ca.id as ca_id, ca.suscripcion_estado as ca_sus,
+           cc.alta_id as cc_alta,
+           q.suscripcion_estado as q_sus,
+           (select ca2.id from public.cubo_altas ca2
+             where m.origen = 'cubo' and ca2.atleta_id = m.atleta_id and ca2.estado = 'aprobada'
+             order by ca2.created_at desc limit 1) as ca_atleta,
+           (select g.seccion from public.atleta_grupos ag join public.grupos g on g.id = ag.grupo_id
+             where ag.atleta_id = m.atleta_id
+             order by ag.principal desc, ag.desde limit 1) as g_sec,
+           a.tipo_membresia
+      from m
+      left join public.pagos          p  on p.id  = m.ref_id and m.origen in ('recibo','cubo','entreno')
+      left join public.cubo_altas     ca on ca.id = m.ref_id and m.origen = 'cubo'
+      left join public.cubo_cobros    cc on cc.id = m.ref_id and m.origen = 'cubo'
+      left join public.cuotas_entreno q  on q.id  = m.ref_id and m.origen = 'entreno'
+      left join public.atletas        a  on a.id  = m.atleta_id
+  ),
+  y as (
+    select x.*,
+      case when x.estado = 'remesa' then 'remesa'
+           when x.origen = 'recibo' and x.estado = 'pagado' and x.p_metodo = 'domiciliado' then 'remesa'
+           when x.origen = 'cubo' then 'cubo'
+           when x.origen = 'entreno' then 'cuota'
+           else 'unico' end as c_tipo,
+      case when x.origen = 'recibo' then x.p_venc end as c_lim
+    from x
+  ),
+  z as (
+    select y.*,
+      (y.estado = 'fallido' or (y.estado = 'pendiente' and y.c_lim is not null and y.c_lim < v_hoy)) as c_fuera
+    from y
+  )
+  select z.origen, z.ref_id, z.persona, z.atleta_id, z.concepto, z.importe, z.estado,
+         z.cobrado_en, z.fecha, z.metodo, z.importado, z.aproximado, z.detalle, z.enlace,
+         z.c_tipo,
+         case when z.origen = 'cubo' then 'cubo'
+              when z.origen = 'alta_socio' then 'socios'
+              when z.origen = 'tienda' then 'tienda'
+              when z.origen = 'entreno' and z.concepto ilike '%nataci%' then 'natacion'
+              else coalesce(z.g_sec,
+                     case z.tipo_membresia when 'socio' then 'socios' when 'cubo' then 'cubo'
+                                           when 'escuela' then 'escuela' when 'municipal' then 'escuela' end)
+         end,
+         z.c_lim,
+         z.c_fuera,
+         case when z.estado = 'pagado' then date_trunc('month', coalesce(z.cobrado_en, (z.fecha at time zone 'Europe/Madrid')::date))::date
+              when z.c_lim is not null then date_trunc('month', z.c_lim)::date
+              when z.estado = 'devuelto' then date_trunc('month', (z.fecha at time zone 'Europe/Madrid')::date)::date
+              else v_mes end,
+         case when z.origen = 'recibo'
+              then coalesce('lote:' || z.p_lote::text,
+                            'c:' || lower(btrim(z.concepto)) || '|' || coalesce(z.p_periodo,''))
+              else z.origen end,
+         z.p_lote, z.p_periodo, z.p_num,
+         case when z.origen = 'recibo' and z.estado = 'pendiente' and z.atleta_id is not null
+                   and z.p_notas not like 'stripe:%'
+                   and coalesce(z.p_metodo, '') <> 'efectivo' then 'recibo-aviso'   -- 380: el efectivo no se «paga con tarjeta»
+              when z.origen = 'cubo' and z.ca_id is not null and z.estado = 'pendiente'
+                   and z.ca_sus is null then 'cubo-cobro-aviso'
+              when z.origen = 'entreno' and z.estado = 'pendiente' and z.q_sus = 'pendiente' then 'entreno-enlace'
+         end,
+         (z.origen = 'recibo' and z.estado in ('pendiente','fallido') and z.p_notas not like 'stripe:%'),
+         case when z.origen = 'cubo' then coalesce(z.ca_id, z.cc_alta, z.ca_atleta) end
+    from z;
+end;
+$function$;
+
+-- ===========================================================================
+-- 12 · dinero_proximos(): copia VIVA + la «fecha de parada» de julio de los
+--      adultos trimestrales no sale como un cobro próximo.
+-- ===========================================================================
+CREATE OR REPLACE FUNCTION public.dinero_proximos()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_hoy  date := (now() at time zone 'Europe/Madrid')::date;
+  v_mes  date := date_trunc('month', (now() at time zone 'Europe/Madrid'))::date;
+  v_dia5 date;
+  v_res  jsonb;
+begin
+  if not public.dinero_puede_ver() then
+    raise exception 'Solo administración, tesorería o contabilidad ven el dinero.' using errcode = '42501';
+  end if;
+  v_dia5 := case when extract(day from v_hoy) < 5 then v_mes + 4
+                 else (v_mes + interval '1 month')::date + 4 end;
+
+  with cu as (
+    select coalesce((ca.proximo_cobro at time zone 'Europe/Madrid')::date, v_dia5) as fecha, ca.*
+      from public.cubo_altas ca
+     where ca.estado = 'aprobada' and not coalesce(ca.lista_espera, false)
+       and ca.suscripcion_estado = 'activa' and ca.pago_externo is null
+  ),
+  filas as (
+    select cu.fecha, 'cubo'::text as tipo, trim(cu.nombre || ' ' || cu.apellidos) as persona,
+           'Cuota El Cubo · ' || cu.dias || (case when cu.dias = 1 then ' día' else ' días' end) as concepto,
+           cu.precio_mes::numeric as importe,
+           exists (select 1 from public.cubo_pausas cp where cp.alta_id = cu.id and cp.estado = 'aprobada'
+                    and cp.mes = date_trunc('month', cu.fecha)::date) as pausa,
+           case when cu.baja_solicitada is not null then 'Ha pedido la baja' end as detalle,
+           'admin/cubo-altas/'::text as enlace
+      from cu
+    union all
+    select (q.proximo_cobro at time zone 'Europe/Madrid')::date, 'cuota',
+           trim(coalesce(q.nombre,'') || ' ' || coalesce(q.apellidos,'')),
+           q.concepto, round(q.importe_cent / 100.0, 2), false,
+           concat_ws(' · ',
+             case q.suscripcion_estado when 'en_camino' then 'Primer adeudo en camino' end,
+             case when q.proximo_cobro is null then 'Stripe aún no ha dado la fecha' end,
+             case when q.cancel_programado then 'Se cancela sola al terminar' end,
+             case when q.fin is not null then 'Hasta el ' || to_char(q.fin, 'DD/MM/YYYY') end),
+           'admin/cuotas-entreno/'
+      from public.cuotas_entreno q
+     where q.suscripcion_estado in ('activa','en_camino')
+       and (q.fin is null or q.proximo_cobro is null or (q.proximo_cobro at time zone 'Europe/Madrid')::date <= q.fin)
+       -- 380: la parada va en un límite de periodo; los adultos sin fin no cobran tras abril (el «próximo» de julio es la parada, no un cobro)
+       and (q.fin is not null or q.proximo_cobro is null or q.proximo_cobro < timestamptz '2027-05-06 09:00+00')
+    union all
+    select p.fecha_vencimiento,
+           case when p.metodo = 'domiciliado' or coalesce(p.notas,'') ilike '%remesa%'
+                     or p.concepto ilike '%municipal%' then 'remesa' else 'unico' end,
+           coalesce(nullif(trim(coalesce(a.nombre,'') || ' ' || coalesce(a.apellidos,'')),''), 'Sin persona'),
+           p.concepto, p.importe::numeric, false,
+           nullif(p.periodo, ''),
+           'admin/cobros/'
+      from public.pagos p
+      left join public.atletas a on a.id = p.atleta_id
+     where not p.anulado and p.estado = 'pendiente' and p.fecha_vencimiento >= v_hoy
+  )
+  select jsonb_build_object(
+    'hoy', v_hoy,
+    'filas', coalesce((select jsonb_agg(to_jsonb(f) order by f.fecha nulls last, f.tipo, f.persona) from filas f), '[]'::jsonb)
+  ) into v_res;
+  return v_res;
+end;
+$function$;
+
+-- (create or replace conserva los permisos de las de arriba)
 
 commit;

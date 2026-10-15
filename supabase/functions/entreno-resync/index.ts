@@ -22,7 +22,7 @@
 //   supabase functions deploy entreno-resync --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
 
-import { cobroEnPagos } from "../_shared/cuota-entreno.ts";
+import { cancelAtExacto, cobroEnPagos, finUnixDe } from "../_shared/cuota-entreno.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -72,6 +72,31 @@ async function stripeGet(ruta: string) {
   });
   const d = await r.json().catch(() => null);
   return { ok: r.ok, estado: r.status, datos: d };
+}
+
+async function stripePost(ruta: string, cuerpo: string) {
+  const r = await fetch(`https://api.stripe.com/v1/${ruta}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${STRIPE_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: cuerpo,
+  });
+  const d = await r.json().catch(() => null);
+  return { ok: r.ok, estado: r.status, datos: d };
+}
+// Revisión 380 · pone la parada (cancel_at) en el LÍMITE DE PERIODO que toca
+// (_shared/cuota-entreno.ts). Sin prorrateo del último cobro. Devuelve antes /
+// después para enseñarlo.
+async function recolocarParada(s: any, fin: string | null, aplicar: boolean) {
+  const x = cancelAtExacto(s, finUnixDe(fin));
+  const antes = Number(s?.cancel_at) > 0 ? Number(s.cancel_at) : null;
+  if ("error" in x) return { ok: false, antes: aFecha(antes), error: x.error };
+  if (x.cancelAt <= Math.floor(Date.now() / 1000) + 60) return { ok: false, antes: aFecha(antes), error: "el límite calculado ya ha pasado" };
+  const cambia = antes !== x.cancelAt;
+  if (aplicar && cambia) {
+    const r = await stripePost(`subscriptions/${encodeURIComponent(String(s.id))}`, `cancel_at=${x.cancelAt}&proration_behavior=none`);
+    if (!r.ok) return { ok: false, antes: aFecha(antes), despues: aFecha(x.cancelAt), cobros: x.cobros, error: r.datos?.error?.message ?? `Stripe ${r.estado}` };
+  }
+  return { ok: true, antes: aFecha(antes), despues: aFecha(x.cancelAt), cobros: x.cobros, cambia, aplicado: aplicar && cambia };
 }
 
 function aFecha(unix?: number | null): string | null {
@@ -172,12 +197,49 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cuotaId = String((cuerpo.cuota_id ?? "")).trim();
 
   const filtro = cuotaId
-    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio&id=eq.${encodeURIComponent(cuotaId)}`
-    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
+    ? `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio,fin,cancel_programado,suscripcion_estado,importe_cent&id=eq.${encodeURIComponent(cuotaId)}`
+    : `cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,atleta_id,ultimo_cobro,periodicidad,metodo,origen,concepto,inicio,fin,cancel_programado,suscripcion_estado,importe_cent&stripe_subscription_id=not.is.null&suscripcion_estado=neq.cancelada`;
   const rA = await rest(filtro);
   const cuotas: Array<{ id: string; nombre: string; apellidos: string; stripe_subscription_id: string; atleta_id: string | null; ultimo_cobro: string | null;
-    periodicidad: string | null; metodo: string | null; origen: string | null; concepto: string | null; inicio: string | null }> =
+    periodicidad: string | null; metodo: string | null; origen: string | null; concepto: string | null; inicio: string | null;
+    fin: string | null; cancel_programado: boolean | null; suscripcion_estado: string | null; importe_cent: number | null }> =
     Array.isArray(rA.datos) ? rA.datos : [];
+
+  // --- Revisión 380 · RECOLOCAR LA PARADA de las suscripciones vivas ---
+  // body { recolocar: true }               → solo calcula: antes / después
+  // body { recolocar: true, aplicar: true } → además lo cambia en Stripe
+  // Regla: cancel_at en el primer límite de periodo en o después del final de
+  // `fin` (sin `fin`: tras el cobro de abril). Ningún cobro se acorta.
+  if (cuerpo.recolocar === true) {
+    const aplicar = cuerpo.aplicar === true;
+    // Cambiar fechas en Stripe: solo admin / tesorería / contabilidad (junta solo mira).
+    if (aplicar && !roles.some((r) => ["admin", "tesoreria", "contabilidad"].includes(r))) {
+      return responder({ error: "no_admin", mensaje: "Solo administración o tesorería pueden cambiar fechas en Stripe." }, 403, origen);
+    }
+    const lista: Array<Record<string, unknown>> = [];
+    for (const a of cuotas) {
+      const nombre = `${a.nombre} ${a.apellidos}`.trim();
+      if (!a.stripe_subscription_id) continue;
+      const rS = await stripeGet(`subscriptions/${encodeURIComponent(a.stripe_subscription_id)}`);
+      if (!rS.ok || !rS.datos || rS.datos.error) {
+        lista.push({ id: a.id, nombre, error: rS.datos?.error?.message ?? `Stripe ${rS.estado}` });
+        continue;
+      }
+      const s: any = rS.datos;
+      if (["canceled", "incomplete_expired"].includes(String(s.status ?? ""))) {
+        lista.push({ id: a.id, nombre, estado: s.status, error: "suscripción ya cancelada" });
+        continue;
+      }
+      const r = await recolocarParada(s, a.fin, aplicar);
+      if (r.ok && aplicar) {
+        await rest(`cuotas_entreno?id=eq.${encodeURIComponent(a.id)}`, {
+          method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ cancel_programado: true }),
+        });
+      }
+      lista.push({ id: a.id, nombre, estado: s.status, importe: (Number(a.importe_cent) || 0) / 100, periodicidad: a.periodicidad, fin: a.fin, ...r });
+    }
+    return responder({ ok: true, recolocar: true, aplicado: aplicar, detalle: lista }, 200, origen);
+  }
   // Pasada extra: altas de socio con el adeudo SEPA en camino (solo en la
   // revisión general, no al revisar una cuota suelta).
   let socio: Array<Record<string, unknown>> = [];
@@ -275,6 +337,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const cambios: Record<string, unknown> = {};
+    // Revisión 380 · si el webhook no pudo programar la parada, se reintenta aquí.
+    let parada: Record<string, unknown> | null = null;
+    if (a.cancel_programado !== true && !["canceled", "incomplete_expired"].includes(String(s.status ?? ""))) {
+      parada = await recolocarParada(s, a.fin, true);
+      if (parada.ok) cambios.cancel_programado = true;
+    }
     if (estadoFinal) cambios.suscripcion_estado = estadoFinal;
     if (proximo) cambios.proximo_cobro = proximo;
     if (ultimo) cambios.ultimo_cobro = ultimo;
@@ -293,6 +361,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       id: a.id, nombre: `${a.nombre} ${a.apellidos}`.trim(),
       estado: estadoFinal, factura: facturaEstado, cobro, factura_importe: facturaImporte,
       factura_fecha: facturaFecha, ultimo_cobro: ultimo, proximo_cobro: proximo,
+      ...(parada ? { parada } : {}),
     });
   }
 

@@ -53,6 +53,7 @@
     <div class="barra">
       <button id="enviar-todos">✉ Enviar enlace a los que faltan</button>
       <button id="resync" style="background:#5E7D3A;color:#fff;border-color:#5E7D3A" title="Cuotas de entreno y, además, altas de socio con el adeudo SEPA en camino">↻ Re-sincronizar con Stripe</button>
+      <button id="recolocar" title="Pone la fecha de parada de cada suscripción en su límite de periodo: el último cobro va entero y no hay ninguno después del fin">⇥ Revisar fechas de fin</button>
       <span class="resumen" id="resumen"></span>
     </div>
     <div id="resync-res" style="margin:4px 0 12px;font-size:13.5px;line-height:1.7;color:#3A3A33"></div>
@@ -199,6 +200,44 @@ APOLANA_ADMIN.listo(function (sb) {
       btn.textContent = 'No se pudo: '+((e&&e.message)||e);
     }
     setTimeout(function(){ btn.disabled=false; btn.textContent=t0; }, 4000);
+  });
+
+  // Revisión 380 · Recolocar la PARADA (cancel_at) de las suscripciones vivas en
+  // su límite de periodo: Stripe prorratea el último cobro si la parada cae a
+  // mitad de periodo. 1º se calcula (antes / después por persona) y solo si se
+  // confirma se cambia en Stripe (entreno-resync {recolocar, aplicar}).
+  document.getElementById('recolocar').addEventListener('click', async function(){
+    var btn=this, t0=btn.textContent, box=document.getElementById('resync-res');
+    function f(s){ return s ? new Date(s).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}) : '—'; }
+    function pinta(d, aplicado){
+      return '<b>Fechas de fin en Stripe</b>' + (aplicado ? ' · <span style="color:#3F7A4C">cambiadas</span>' : ' · solo calculado, sin tocar nada') + '<br>' +
+        (d.detalle||[]).map(function(x){
+          if (x.error && !x.despues) return '· '+esc(x.nombre)+': ⚠ '+esc(x.error);
+          return '· <b>'+esc(x.nombre)+'</b> ('+esc(x.periodicidad||'')+(x.importe?', '+x.importe+' €':'')+'): para el <s>'+esc(f(x.antes))+'</s> → <b>'+esc(f(x.despues))+'</b> · '+
+            (x.cobros!=null? x.cobros+' cobros enteros' : '')+(x.cambia ? '' : ' · ya estaba bien')+(x.error?' · ⚠ '+esc(x.error):'');
+        }).join('<br>');
+    }
+    btn.disabled=true; btn.textContent='Calculando…';
+    try {
+      var r = await sb.functions.invoke('entreno-resync', { body:{ recolocar:true } });
+      var d = (r && r.data) || {};
+      if (r && r.error || !d.recolocar) throw new Error((r&&r.error&&r.error.message)||'falta desplegar entreno-resync (revisión 380)');
+      box.innerHTML = pinta(d, false);
+      var n = (d.detalle||[]).filter(function(x){ return x.cambia && !x.error; }).length;
+      if (!n) { btn.textContent='✓ Todas bien'; }
+      else {
+        var ok = window.apoConfirm ? await window.apoConfirm({ titulo:'Cambiar '+n+' fechas en Stripe', texto:'Se cambia la fecha de parada de '+n+' suscripciones (ver la lista). No se cobra nada ahora: solo cambia cuándo se para cada una, para que el último cobro sea entero.', confirmar:'Cambiar '+n })
+                                   : window.confirm('¿Cambiar '+n+' fechas de parada en Stripe?');
+        if (ok) {
+          btn.textContent='Cambiando…';
+          var r2 = await sb.functions.invoke('entreno-resync', { body:{ recolocar:true, aplicar:true } });
+          if (r2 && r2.error) throw new Error(r2.error.message||'error');
+          box.innerHTML = pinta((r2&&r2.data)||{}, true);
+          btn.textContent='✓ Hecho';
+        } else btn.textContent=t0;
+      }
+    } catch(e){ btn.textContent='No se pudo: '+((e&&e.message)||e); }
+    setTimeout(function(){ btn.disabled=false; btn.textContent=t0; }, 5000);
   });
 
   cargar();

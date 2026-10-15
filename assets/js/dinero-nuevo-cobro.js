@@ -27,7 +27,7 @@
     tarjeta:  { t: 'Tarjeta',               d: 'La persona paga desde su app o con el enlace del correo. Cobro al momento.' },
     sepa:     { t: 'Domiciliación SEPA',    d: 'Mete su IBAN una vez (Stripe) y se cobra sola. El adeudo tarda unos días.' },
     remesa:   { t: 'Remesa de Isa',         d: 'Recibo domiciliado que pasa Isa por el banco. La familia no lo ve en la app.' },
-    efectivo: { t: 'Efectivo',              d: 'Te pagan en mano y lo marcas tú como pagado en Dinero.' }
+    efectivo: { t: 'Efectivo',              d: 'Se cobra en mano: la persona lo ve en su app como «se paga en mano» y lo marcas tú como pagado.' }
   };
   var SECCION = {
     escuela: 'Escuela de atletismo', cubo: 'El Cubo', natacion: 'Natación', 'escuela-natacion': 'Escuela de natación',
@@ -524,11 +524,15 @@
         li.push('La familia no lo ve en la app. En Dinero sale como «Remesa de Isa» (informativo, no deuda).');
       } else if (S.metodo === 'efectivo') {
         li.push('Se ' + (n > 1 ? 'crean <b>' + n + ' recibos</b> por persona (uno por plazo)' : 'crea un <b>recibo pendiente</b> por persona') + '.');
-        li.push('Cuando te paguen en mano: Dinero → Todos los pagos → «Marcar pagado (efectivo)». La persona lo ve como pendiente en su app.');
+        li.push('Se cobra <b>en mano</b>: en su app sale como «se paga en mano (efectivo)», sin opción de tarjeta, y no se le manda el correo de «págalo con tarjeta».');
+        li.push('Cuando te paguen: Dinero → Todos los pagos → «Marcar pagado (efectivo)».');
       } else {
         var tar = S.metodo === 'tarjeta';
         li.push('Cada persona recibe un <b>enlace</b> para ' + (tar ? 'meter su <b>tarjeta</b>' : 'domiciliar su <b>IBAN</b> (SEPA)') + ' una sola vez; también lo ve en el Inicio de su app.');
-        li.push((S.inicio > hoy().slice(0, 7) ? 'El primer cobro, el <b>1 de ' + esc(mesTxt(S.inicio)) + '</b>' : 'El primer cobro, al ' + (tar ? 'pagar' : 'domiciliar')) + '; después ' + cada + '. <b>Se para sola el ' + esc(fechaLarga(S.fin)) + '</b>.');
+        var fs = r.fechas || [];
+        li.push((S.inicio > hoy().slice(0, 7) ? 'El primer cobro, el <b>1 de ' + esc(mesTxt(S.inicio)) + '</b>' : 'El primer cobro, al ' + (tar ? 'pagar' : 'domiciliar')) + '; después ' + cada + ' en esa misma fecha. ' +
+          (fs.length ? 'Si se activa hoy: <b>' + fs.length + (fs.length === 1 ? ' cobro' : ' cobros') + '</b>, del ' + esc(fechaLarga(fs[0])) + ' al ' + esc(fechaLarga(fs[fs.length - 1])) + ' (cada uno entero, sin prorrateos). ' : '') +
+          '<b>No se cobra nada después del ' + esc(fechaLarga(S.fin)) + '</b>.');
         if (!tar) li.push('SEPA: el adeudo tarda unos 5 días hábiles; mientras, en Dinero sale «en camino».');
         li.push('Comisión de Stripe: ' + (tar && cfg.repercutir_comision ? 'se suma al importe de quien paga (así está configurado el club).' : 'la paga el club.'));
         li.push('Las cuotas se crean <b>sin enviar nada</b>: los correos se mandan aparte, cuando tú lo digas.');

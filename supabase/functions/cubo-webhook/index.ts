@@ -25,7 +25,7 @@
 // ============================================================
 
 import { planificar, finPeriodo as finPeriodoSub, isoMadrid, cargosPendientes, textoCargos } from "../_shared/cubo-pausa.ts";
-import { cobroEnPagos } from "../_shared/cuota-entreno.ts";
+import { cancelAtExacto, cobroEnPagos, finUnixDe } from "../_shared/cuota-entreno.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -43,9 +43,8 @@ const SK_TEST = Deno.env.get("STRIPE_SECRET_KEY_APOLANA_TEST") ?? "";
 
 const TOLERANCIA_SEGUNDOS = 60 * 5;
 
-// La cuota de entreno se cancela sola tras ABRIL: cancel_at a primeros de mayo
-// de 2027 (el cargo de abril ya ha pasado; el de julio no llega). En segundos.
-const ENTRENO_CANCEL_AT = Math.floor(Date.UTC(2027, 4, 6, 9, 0, 0) / 1000);
+// La parada de la cuota de entreno (antes ENTRENO_CANCEL_AT = 6-may-2027 a pelo)
+// se calcula ahora en un límite de periodo: _shared/cuota-entreno.ts (revisión 380).
 
 // ---- Firma de Stripe (HMAC-SHA256, sin librerías) ----
 function hexABytes(hex: string): Uint8Array {
@@ -189,7 +188,7 @@ async function patchEntreno(filtro: string, cambios: Record<string, unknown>) {
 
 async function getEntreno(id: string): Promise<Record<string, any> | null> {
   const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id,fin,periodicidad,metodo,origen,concepto,inicio&id=eq.${encodeURIComponent(id)}&limit=1`,
+    `${SUPABASE_URL}/rest/v1/cuotas_entreno?select=id,atleta_id,nombre,apellidos,importe_cent,cancel_programado,stripe_subscription_id,suscripcion_estado,fin,periodicidad,metodo,origen,concepto,inicio&id=eq.${encodeURIComponent(id)}&limit=1`,
     { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
   );
   if (!r.ok) return null;
@@ -197,21 +196,56 @@ async function getEntreno(id: string): Promise<Record<string, any> | null> {
   return Array.isArray(filas) ? (filas[0] ?? null) : null;
 }
 
-// Programa la cancelación de la suscripción tras el cargo de abril (cancel_at).
-// Se hace una sola vez (cancel_programado). Elige la clave por livemode.
-async function programarCancelEntreno(subId: string, livemode: boolean, fin?: string | null) {
+// Programa la PARADA de la suscripción (cancel_at). Revisión 380: Stripe
+// prorratea el último periodo si cancel_at cae a mitad de periodo, así que se
+// LEE la suscripción y se para EXACTAMENTE en un límite de periodo: el primero
+// en o después del final de `fin` (sin `fin`: tras el cobro de abril). Ningún
+// cobro se acorta y no hay ninguno después (_shared/cuota-entreno.ts).
+// Devuelve true solo si Stripe lo aceptó (si no, cancel_programado se queda en
+// false y entreno-resync lo reintenta).
+async function programarCancelEntreno(subId: string, livemode: boolean, fin?: string | null): Promise<boolean> {
   const key = livemode ? SK_LIVE : SK_TEST;
-  if (!key || !subId) return;
+  if (!key || !subId) return false;
+  const rS = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  const sub = rS.ok ? await rS.json().catch(() => null) : null;
+  if (!sub) { console.error("cancel_at de entreno: no se pudo leer la suscripción", subId, rS.status); return false; }
+  const x = cancelAtExacto(sub, finUnixDe(fin));
+  if ("error" in x) { console.error("cancel_at de entreno:", subId, x.error); return false; }
+  if (x.cancelAt <= Math.floor(Date.now() / 1000) + 60) {
+    console.error("cancel_at de entreno: el límite calculado ya ha pasado", subId, x.cancelAt);
+    return false;
+  }
+  if (Number(sub.cancel_at) === x.cancelAt) return true;   // ya estaba bien
   const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/x-www-form-urlencoded" },
-    // Cuota con `fin` (mig 313, p. ej. la mensual de natación hasta el 30-jun):
-    // se para al FINAL de ese día. Sin `fin`: la regla de la trimestral (tras abril).
-    // proration_behavior=none (mig 380): el último cobro va entero, sin prorrateos
-    // ni abonos raros si `fin` no cae justo en el cambio de periodo.
-    body: `cancel_at=${fin ? Math.floor(Date.parse(`${fin}T21:00:00Z`) / 1000) : ENTRENO_CANCEL_AT}&proration_behavior=none`,
+    body: `cancel_at=${x.cancelAt}&proration_behavior=none`,
   });
   if (!r.ok) console.error("No se pudo programar cancel_at de entreno:", r.status, await r.text().catch(() => ""));
+  return r.ok;
+}
+
+// ¿Sigue viva una suscripción? (para no abrir dos a la misma cuota)
+async function subViva(subId: string, livemode: boolean): Promise<boolean | null> {
+  const key = livemode ? SK_LIVE : SK_TEST;
+  if (!key || !subId) return null;
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  if (!r.ok) return r.status === 404 ? false : null;
+  const s = await r.json().catch(() => null);
+  if (!s) return null;
+  return !["canceled", "incomplete_expired"].includes(String(s.status ?? ""));
+}
+async function cancelarSubAhora(subId: string, livemode: boolean): Promise<boolean> {
+  const key = livemode ? SK_LIVE : SK_TEST;
+  if (!key || !subId) return false;
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    method: "DELETE", headers: { Authorization: `Bearer ${key}` },
+  });
+  if (!r.ok) console.error("No se pudo cancelar la suscripción duplicada", subId, r.status, await r.text().catch(() => ""));
   return r.ok;
 }
 
@@ -395,6 +429,35 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
   if (typeof ref !== "string" || !ref.startsWith("entreno-")) return false;
   const cuotaId = ref.slice("entreno-".length);
 
+  // --- Revisión 380 · DOBLE SUSCRIPCIÓN (dos pestañas, dos pagos…) ---
+  // Si la cuota ya tiene OTRA suscripción y esa sigue viva, la que llega ahora
+  // sobra: se cancela al momento y NO toca la fila. Si la vieja ya no vale
+  // (cancelada: p. ej. la cerró entreno-pagar por impago), la nueva la sustituye.
+  const subEvento: string | null = tipo.startsWith("customer.subscription.")
+    ? (typeof objeto.id === "string" ? objeto.id : null)
+    : (idDe(objeto.subscription) ?? idDe(objeto.parent?.subscription_details?.subscription));
+  const cuota0 = await getEntreno(cuotaId);
+  const actual: string | null = cuota0?.stripe_subscription_id ?? null;
+  if (cuota0 && subEvento && actual && subEvento !== actual) {
+    let viva = await subViva(actual, livemode);
+    if (viva === null) viva = ["activa", "en_camino"].includes(String(cuota0.suscripcion_estado ?? ""));
+    if (viva) {
+      if (tipo === "checkout.session.completed" || tipo === "customer.subscription.created") {
+        console.error(`REVISAR · cuota ${cuotaId}: llegó una 2ª suscripción (${subEvento}) con la ${actual} viva → se cancela la nueva.` +
+          " Si ya se cobró algo en ella, REEMBOLSARLO en Stripe.");
+        await cancelarSubAhora(subEvento, livemode);
+      }
+      // Dinero que de verdad entró por la duplicada: se apunta (para devolverlo).
+      if ((tipo === "invoice.paid" || tipo === "invoice.payment_succeeded") && Number(objeto.amount_paid ?? 0) > 0) {
+        console.error(`REVISAR · cuota ${cuotaId}: cobro ${objeto.id} en la suscripción duplicada ${subEvento} → reembolsar en Stripe.`);
+        await registrarCobroEntreno(objeto, cuota0);
+      }
+      return true;
+    }
+    // La actual está muerta: un evento de borrado de OTRA suscripción no toca nada.
+    if (tipo === "customer.subscription.deleted") return true;
+  }
+
   switch (tipo) {
     case "checkout.session.completed": {
       if (objeto.mode === "subscription") {
@@ -414,11 +477,13 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
           `id=eq.${encodeURIComponent(cuotaId)}` + (pagado ? "" : "&ultimo_cobro=is.null"),
           { suscripcion_estado: pagado ? "activa" : "en_camino" },
         );
-        // Programar la cancelación tras abril (una sola vez).
+        // Programar la parada en su límite de periodo (una sola vez). Solo se
+        // marca hecha si Stripe la aceptó; si no, la reintenta entreno-resync.
         const cuota = await getEntreno(cuotaId);
         if (subId && cuota && cuota.cancel_programado !== true) {
-          await programarCancelEntreno(subId, livemode, cuota.fin);
-          await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { cancel_programado: true });
+          if (await programarCancelEntreno(subId, livemode, cuota.fin)) {
+            await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { cancel_programado: true });
+          }
         }
       }
       break;
@@ -481,7 +546,11 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
       break;
     }
     case "customer.subscription.deleted": {
-      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}`, { suscripcion_estado: "cancelada" });
+      // Solo si es LA suscripción de la cuota (no una duplicada, ni la vieja que
+      // cerró entreno-pagar por impago: esa ya no está en la fila).
+      await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}` +
+        (subEvento ? `&stripe_subscription_id=eq.${encodeURIComponent(subEvento)}` : ""),
+        { suscripcion_estado: "cancelada" });
       break;
     }
     default:

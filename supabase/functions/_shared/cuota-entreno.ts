@@ -111,3 +111,62 @@ export function textosCuota(c: Cuota, ahoraMs = Date.now()) {
   const boton = tarjeta ? "Pagar con tarjeta →" : "Domiciliar la cuota →";
   return { tarjeta, cada, primero, fin, como, comoTxt, seguro, boton };
 }
+
+// ============================================================
+// FECHA DE PARADA EXACTA (revisión 380)
+// ------------------------------------------------------------
+// Stripe PRORRATEA el último periodo si `cancel_at` cae a mitad de periodo
+// (y eso no lo quita proration_behavior). Así que la cuota se para justo en
+// un LÍMITE DE PERIODO: el primero que cae en o después del final del día
+// `fin` (hora de Madrid). Ningún periodo se acorta, el último cobro va entero
+// y no hay ningún cobro después de `fin`.
+//   · Cuotas sin `fin` (los adultos trimestrales de 2026/27): el límite justo
+//     después del cobro de abril → `finPorDefecto` (6-may-2027) da ~7-jul.
+// ============================================================
+
+// Final del día `fin` en Madrid (= 00:00 del día siguiente), en unix.
+export function finDelDiaMadrid(fin: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fin || "")) return null;
+  const [y, m, d] = fin.split("-").map(Number);
+  const prueba = Date.UTC(y, m - 1, d + 1, 12, 0, 0);
+  const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", hourCycle: "h23" })
+    .format(new Date(prueba)));
+  return Math.floor((Date.UTC(y, m - 1, d + 1, 0, 0, 0) - (h - 12) * 3600 * 1000) / 1000);
+}
+
+// Límite k-ésimo de periodo desde el ancla, como lo calcula Stripe: mismo día
+// del mes que el ancla (si el mes no lo tiene, el último día), misma hora UTC.
+export function limitePeriodo(ancla: number, meses: number, k: number): number {
+  const a = new Date(ancla * 1000);
+  const total = a.getUTCMonth() + meses * k;
+  const y = a.getUTCFullYear() + Math.floor(total / 12);
+  const m = ((total % 12) + 12) % 12;
+  const ultimo = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const d = Math.min(a.getUTCDate(), ultimo);
+  return Math.floor(Date.UTC(y, m, d, a.getUTCHours(), a.getUTCMinutes(), a.getUTCSeconds()) / 1000);
+}
+
+// De una suscripción de Stripe (tal cual la devuelve la API) y del final que
+// toca (unix), el `cancel_at` exacto y cuántos cobros hará en total.
+export function cancelAtExacto(sub: Record<string, any>, finUnix: number):
+  { cancelAt: number; cobros: number; ancla: number; meses: number } | { error: string } {
+  const ancla = Number(sub?.billing_cycle_anchor ?? 0);
+  const rec = sub?.items?.data?.[0]?.price?.recurring ?? sub?.items?.data?.[0]?.plan ?? sub?.plan ?? null;
+  const intervalo = String(rec?.interval ?? "");
+  const cuenta = Number(rec?.interval_count ?? 1) || 1;
+  const meses = intervalo === "month" ? cuenta : intervalo === "year" ? 12 * cuenta : 0;
+  if (!(ancla > 0) || !meses) return { error: `suscripción sin ancla o con intervalo raro (${intervalo || "?"})` };
+  // El primer cobro es el ancla (con «prueba» hasta el mes de inicio, el ancla
+  // es el fin de la prueba). Si el ancla ya pasa del final, no debería cobrar
+  // nada: se para en el propio ancla.
+  let k = 0;
+  while (limitePeriodo(ancla, meses, k) < finUnix && k < 400) k++;
+  return { cancelAt: limitePeriodo(ancla, meses, k), cobros: k, ancla, meses };
+}
+
+// El final que toca a una cuota: su `fin` o, si no tiene, la regla de la
+// trimestral de adultos (tras abril).
+export const ENTRENO_FIN_POR_DEFECTO = Math.floor(Date.UTC(2027, 4, 6, 9, 0, 0) / 1000);
+export function finUnixDe(fin: string | null | undefined): number {
+  return (fin ? finDelDiaMadrid(fin) : null) ?? ENTRENO_FIN_POR_DEFECTO;
+}

@@ -166,6 +166,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "ya_activa", mensaje: "Ya has domiciliado tu cuota: el primer cobro está en camino (el banco tarda unos 5 días hábiles). No hace falta hacer nada más." }, 409, origen);
   }
 
+  // Revisión 380 · cuota cancelada: no se reabre (la vuelve a crear el club).
+  if (c.suscripcion_estado === "cancelada") {
+    return responder({ error: "cerrado", mensaje: "Esta cuota está cerrada. Si crees que es un error, escríbenos." }, 409, origen);
+  }
+  // Revisión 380 · IMPAGO: antes de abrir otra pasarela se cancela la
+  // suscripción vieja, para que no convivan dos (y el webhook acepte la nueva).
+  if (c.suscripcion_estado === "impago" && c.stripe_subscription_id) {
+    const rDel = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(c.stripe_subscription_id)}`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${STRIPE_KEY}` },
+    });
+    const dDel = await rDel.json().catch(() => null);
+    const yaNoEsta = rDel.status === 404 || dDel?.status === "canceled" || dDel?.error?.code === "resource_missing";
+    if (!rDel.ok && !yaNoEsta) {
+      console.error("No se pudo cancelar la suscripción en impago:", c.stripe_subscription_id, rDel.status, dDel?.error?.message);
+      return responder({ error: "pasarela", mensaje: "No hemos podido cerrar el intento anterior. Escríbenos y lo arreglamos." }, 502, origen);
+    }
+    await rest(`cuotas_entreno?id=eq.${encodeURIComponent(c.id)}`, {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ stripe_subscription_id: null, cancel_programado: false, suscripcion_estado: "pendiente" }),
+    });
+  }
+
   let importeCent = Math.round(Number(c.importe_cent));
   if (!Number.isFinite(importeCent) || importeCent < 50) {
     return responder({ error: "sin_precio", mensaje: "Tu cuota no tiene importe. Escríbenos y lo dejamos listo." }, 409, origen);
