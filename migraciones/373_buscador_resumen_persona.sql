@@ -69,3 +69,8 @@ grant execute on function public.buscador_personas_resumen(uuid[]) to authentica
 revoke all on function public.buscador_personas_resumen(uuid[]) from anon;
 
 commit;
+
+-- Arreglo (15-oct): faltaba el permiso de la función auxiliar → con sesión real
+-- daba «permission denied for function _dia_corto» y el buscador decía
+-- «Sin grupo ni horario» para todos.
+grant execute on function public._dia_corto(int) to authenticated;
