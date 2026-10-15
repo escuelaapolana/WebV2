@@ -19,6 +19,7 @@ Web pública + portal/app del **Club Atletismo Apolana** (Alicante). Sitio
 - **`bash .secrets/psql.sh` = psql a la base REAL de producción (superusuario).** Con eso se leen/escriben datos y se aplican migraciones (`migraciones/NNN_*.sql`). Cuidado: es producción. Insertar/actualizar sí; **borrar sesiones con feedback NO** (cascade).
 - Clave pública del front (REST/functions sin sesión): `sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH`. **Nunca** poner claves secretas (sk_*, service_role) en el repo — van solo en secretos de Supabase, las mete Andrés.
 - RLS activada en las tablas sensibles; hay funciones de permiso (`es_admin()`, `es_staff()`, `mis_atletas()`, `veo_bateria()`…).
+- **Desde la mig 386 (15-oct-2026) las funciones nuevas NO quedan abiertas a `anon`**: por defecto solo `authenticated` y `service_role`. Una RPC para visitantes sin sesión necesita su `grant execute on function … to anon` explícito. En políticas RLS, las funciones sin argumentos van SIEMPRE envueltas: `(select es_admin())`, `(select auth.uid())` (mig 387, ~15× más rápido).
 
 ## Estructura
 - `admin/` — panel de gestión (usa `APOLANA_ADMIN.listo(sb)`).
@@ -30,7 +31,7 @@ Web pública + portal/app del **Club Atletismo Apolana** (Alicante). Sitio
 
 ## Cómo trabajar aquí
 - **App en uso real** — tocar con cuidado; cambios aditivos y aislados mejor que reescrituras.
-- **No hay node/deno.** Comprobar sintaxis JS con `osascript -l JavaScript` + `new Function(script)` (parse-only). Python3 sí está.
+- **Node y ffmpeg instalados (15-oct-2026, Homebrew)** — para skills de vídeo/documentos; la web sigue SIN build (no meter npm en el repo). Comprobar sintaxis JS: `node --check fichero.js` (o `osascript -l JavaScript` + `new Function(script)`). Python3 sí está. Deno no.
 - Truco de caché para ver cambios en el navegador: `?n=` en la URL.
 - Los **documentos legales** (`legal/*`) son **borradores pendientes de asesoría** — no darlos por validados.
 - Commits: mensajes en español, estilo «Área · qué se hizo». Push solo cuando Andrés lo pida (o cuando algo tiene que estar live para que funcione, avisándole).
