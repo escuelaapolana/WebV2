@@ -784,7 +784,8 @@
         html += itemHTML(e.txt, e.bloque + ' · ' + e.desc, e.url, false);
       });
       personas.slice(0, TOPE_PERSONAS).forEach(function (p) {
-        var sub = 'Personas · ' + (p.cat ? 'ficha de ' + p.cat : 'ficha del atleta');
+        var sub = RESUMEN[p.id] ? RESUMEN[p.id]
+                : 'Personas · ' + (p.cat ? 'ficha de ' + p.cat : 'ficha del atleta') + (RESUMEN[p.id] === null ? ' · …' : '');
         html += itemHTML(p.nombre, sub, raiz() + 'atletas/?ficha=' + encodeURIComponent(p.id), false);
       });
       html += '</div>';
@@ -799,8 +800,29 @@
     pinta(coincidenPersonas(GENTE || [], trozos));
     gente(function (lista) {
       if (campo && sinTildes(campo.value).trim() !== q) return;   /* ya se escribió otra cosa */
-      pinta(coincidenPersonas(lista, trozos));
+      var pers = coincidenPersonas(lista, trozos);
+      pinta(pers);
+      var ids = pers.slice(0, TOPE_PERSONAS).map(function (p) { return p.id; });
+      resumenes(ids, function () {
+        if (campo && sinTildes(campo.value).trim() !== q) return;
+        pinta(pers);
+      });
     });
+  }
+
+  /* Resumen de cada persona (sección, grupo, días y hora) para verlo sin abrir
+     la ficha (mig 373). Se pide solo para las que salen en pantalla y se guarda. */
+  var RESUMEN = {};
+  function resumenes(ids, cuando) {
+    var falta = ids.filter(function (id) { return !(id in RESUMEN); });
+    var sb = window.APOLANA_DB;
+    if (!falta.length || !sb || !sb.rpc) { cuando(); return; }
+    falta.forEach(function (id) { RESUMEN[id] = null; });          /* pedido: no repetir */
+    sb.rpc('buscador_personas_resumen', { p_ids: falta }).then(function (r) {
+      (r && !r.error && r.data ? r.data : []).forEach(function (x) { RESUMEN[x.atleta_id] = x.resumen || ''; });
+      falta.forEach(function (id) { if (RESUMEN[id] == null) RESUMEN[id] = ''; });
+      cuando();
+    }, function () { falta.forEach(function (id) { RESUMEN[id] = ''; }); cuando(); });
   }
 
   function coincidenPersonas(lista, trozos) {
