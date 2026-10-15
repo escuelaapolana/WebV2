@@ -865,10 +865,31 @@
         );
       } catch (e) { fin([]); }
     }
+    /* Resumen de cada persona (sección, grupo, días y hora) sin abrir la ficha
+       (mig 373). Se pide solo para las que salen y se guarda. */
+    var _resumen = {};
     function filaPersona(a){
       var nom = ((a.nombre || '') + ' ' + (a.apellidos || '')).trim();
+      var r = _resumen[a.id];
       return '<a class="mm-row" href="' + esc(B + 'admin/atletas/?ficha=' + encodeURIComponent(a.id)) + '">' +
-        '<span class="mm-ic">' + ico('user') + '</span><span class="mm-rt">' + esc(nom) + '</span></a>';
+        '<span class="mm-ic">' + ico('user') + '</span><span class="mm-rt">' + esc(nom) +
+        '<small class="mm-resu" data-id="' + esc(a.id) + '">' + (r ? esc(r) : (r === '' ? 'Sin grupo ni horario' : '…')) + '</small></span></a>';
+    }
+    function rellenarResumenes(ids){
+      var falta = ids.filter(function (id) { return !(id in _resumen); });
+      var pinta = function () {
+        ids.forEach(function (id) {
+          var el = sheet.querySelector('.mm-resu[data-id="' + id + '"]');
+          if (el) el.textContent = _resumen[id] ? _resumen[id] : 'Sin grupo ni horario';
+        });
+      };
+      var c = window.APOLANA_DB;
+      if (!falta.length || !c || !c.rpc) { pinta(); return; }
+      c.rpc('buscador_personas_resumen', { p_ids: falta }).then(function (r) {
+        (r && !r.error && r.data ? r.data : []).forEach(function (x) { _resumen[x.atleta_id] = x.resumen || ''; });
+        falta.forEach(function (id) { if (!(id in _resumen) || _resumen[id] == null) _resumen[id] = ''; });
+        pinta();
+      }, function () { falta.forEach(function (id) { _resumen[id] = ''; }); pinta(); });
     }
     function buscar(q){
       var res = sheet.querySelector('.mm-res'), def = sheet.querySelector('.mm-def');
@@ -894,6 +915,7 @@
           return norm((a.nombre || '') + ' ' + (a.apellidos || '')).indexOf(nq) !== -1;
         }).slice(0, 10);
         box.outerHTML = pers.length ? pers.map(filaPersona).join('') : '<div class="mm-nada-busca">Nadie con ese nombre.</div>';
+        if (pers.length) rellenarResumenes(pers.map(function (a) { return a.id; }));
       });
     }
 
