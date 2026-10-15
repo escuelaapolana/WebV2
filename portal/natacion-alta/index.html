@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dar de alta · Natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=76807ff3">
+<script>
+  window.APOLANA_BASE = "../../";
+  /* Mundo de la lateral: Escuela de natación si viene ?tipo=Escuela; si no, Natación. */
+  (function(){
+    var t = new URLSearchParams(location.search).get('tipo');
+    var w = (t === 'Escuela') ? 'escuela-nat' : 'natacion';
+    if (!t) { try { if (sessionStorage.getItem('apo-mundo') === 'escuela-nat') w = 'escuela-nat'; } catch (e) {} }
+    window.APOLANA_MUNDO = { world: w, screen: 'alta', contentSel: '#alta' };
+  })();
+</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/portal-auth.js?v=d7edfa69"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f930fe41" defer></script>
+<script src="../../assets/js/mundos.js?v=b417b828" defer></script>
+<script src="../../assets/js/natacion-ficha.js?v=572b7273" defer></script>
+<style>
+  :root{ --mm-acento:#2F6FA8; --azul:#2F6FA8; --azul-osc:#245A8A;
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.20); }
+  body{ background:var(--crema,#FBF9F4); }
+  #alta{ max-width:760px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 60px; }
+  .al-msg{ color:var(--texto-suave,#6E6656); text-align:center; padding:28px 10px; }
+
+  /* cabecera */
+  .al-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--mm-acento); margin-bottom:8px; }
+  .al-cab h1{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(27px,5vw,36px); line-height:1; color:var(--navy,#26374B); margin:0; }
+  .al-cab p{ font-size:15px; color:var(--texto-suave,#6E6656); margin:8px 0 16px; line-height:1.45; }
+
+  /* pasos */
+  .al-pasos{ display:flex; gap:6px; margin:0 0 18px; flex-wrap:wrap; }
+  .al-paso{ display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--texto-tenue,#9A927F);
+    background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:999px; padding:5px 11px 5px 6px; }
+  .al-paso i{ font-style:normal; width:20px; height:20px; border-radius:50%; display:grid; place-items:center; font-size:11.5px;
+    background:var(--crema-media,#EFE9DC); color:var(--navy,#26374B); }
+  .al-paso.on{ color:var(--navy,#26374B); border-color:var(--azul); }
+  .al-paso.on i{ background:var(--azul); color:#fff; }
+  .al-paso.ok i{ background:#2E7D6B; color:#fff; }
+
+  /* tarjeta del paso: blanca, sombra, cabecera crema */
+  .al-card{ background:#fff; border-radius:16px; box-shadow:var(--s1); overflow:hidden; margin-bottom:16px; }
+  .al-card > h2{ margin:0; padding:13px 18px; background:var(--crema-media,#F4EEE1); border-bottom:1px solid var(--linea-marcada,#E4DCCB);
+    font-family:var(--fuente-titulo); text-transform:uppercase; font-size:18px; letter-spacing:-.01em; color:var(--navy,#26374B); }
+  .al-cuerpo{ padding:16px 18px 18px; }
+  .al-ayuda{ font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 14px; line-height:1.45; }
+
+  /* paso 1: dos tarjetas grandes */
+  .al-tipos{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:560px){ .al-tipos{ grid-template-columns:1fr; } }
+  .al-tipo{ text-align:left; font:inherit; cursor:pointer; background:#fff; border:2px solid var(--linea-marcada,#E4DCCB); border-radius:16px;
+    padding:18px; box-shadow:var(--s1); display:flex; flex-direction:column; gap:6px; transition:transform .2s, border-color .2s; }
+  .al-tipo:hover{ transform:translateY(-2px); border-color:var(--azul); }
+  .al-tipo .ico{ font-size:30px; line-height:1; }
+  .al-tipo b{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:20px; color:var(--navy,#26374B); }
+  .al-tipo span{ font-size:14px; color:var(--texto-suave,#6E6656); line-height:1.4; }
+  .al-tipo.on{ border-color:var(--azul); background:#F3F8FC; }
+
+  /* botones */
+  .al-acc{ display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; }
+  .al-btn{ font:inherit; font-weight:700; font-size:16px; min-height:50px; padding:12px 20px; border-radius:12px; cursor:pointer; border:0;
+    background:var(--azul); color:#fff; flex:1 1 200px; }
+  .al-btn:hover{ background:var(--azul-osc); }
+  .al-btn[disabled]{ opacity:.55; cursor:default; }
+  .al-btn.sec{ background:#fff; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE); flex:0 1 auto; }
+  .al-btn.sec:hover{ background:var(--crema-media,#EFE9DC); }
+  .al-btn.verde{ background:#2E7D6B; } .al-btn.verde:hover{ background:#25695A; }
+  .al-link{ font:inherit; font-size:14px; background:none; border:0; color:var(--azul); text-decoration:underline; cursor:pointer; padding:4px 0; }
+
+  /* buscador */
+  .al-input, .al-campo input, .al-campo select{ font:inherit; font-size:16px; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE);
+    border-radius:11px; padding:11px 13px; background:#fff; width:100%; box-sizing:border-box; min-height:48px; }
+  .al-input:focus, .al-campo input:focus{ outline:2px solid #BFD6EC; border-color:var(--azul); }
+  .al-res{ display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+  .al-res button{ text-align:left; font:inherit; font-size:15px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px;
+    padding:11px 13px; cursor:pointer; color:var(--navy,#26374B); box-shadow:0 2px 6px rgba(30,45,65,.06); }
+  .al-res button:hover{ border-color:var(--azul); background:#F3F8FC; }
+  .al-res button small{ display:block; font-size:13px; color:var(--texto-suave,#6E6656); margin-top:2px; }
+  .al-elegida{ display:flex; align-items:center; gap:10px; background:#E6F4EA; border:1px solid #BFE3C8; border-radius:12px; padding:11px 13px;
+    font-size:15px; color:#1E5E34; }
+  .al-elegida b{ flex:1; }
+
+  /* formulario */
+  .al-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; }
+  @media (max-width:560px){ .al-grid{ grid-template-columns:1fr; } }
+  .al-campo{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .al-campo.ancho{ grid-column:1 / -1; }
+  .al-campo label{ font-size:13px; font-weight:700; color:var(--navy,#26374B); }
+  .al-campo label small{ font-weight:500; color:var(--texto-tenue,#9A927F); }
+  .al-campo .err{ font-size:13px; color:#B23B3B; min-height:0; }
+  .al-campo.mal input{ border-color:#D64545; background:#FFF8F7; }
+  .al-sub{ grid-column:1 / -1; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--texto-tenue,#9A927F); margin:6px 0 -2px; }
+  .req{ color:#B23B3B; }
+
+  /* avisos */
+  .al-aviso{ font-size:14px; color:#7A5200; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+  .al-info{ font-size:14px; color:#1E4E79; background:#EEF5FB; border:1px solid #D2E4F3; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+  .al-mal{ font-size:14px; color:#8E2A2A; background:#FDECEA; border:1px solid #F3C6C1; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+
+  /* niveles */
+  .al-niveles{ display:flex; gap:8px; flex-wrap:wrap; }
+  .al-nivel{ font:inherit; font-weight:600; font-size:14.5px; min-height:44px; padding:0 16px; border-radius:12px; cursor:pointer;
+    background:#fff; color:var(--navy,#26374B); border:1px solid var(--linea-marcada,#E4DCCB); }
+  .al-nivel.on{ background:var(--azul); color:#fff; border-color:var(--azul); }
+
+  /* franjas por día */
+  .al-dia{ margin-top:16px; }
+  .al-dia h3{ font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--texto-tenue,#9A927F); margin:0 0 8px; }
+  .al-fr{ border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; margin-bottom:9px; background:#fff; }
+  .al-fr.on{ border:2px solid var(--azul); background:#FAFCFE; }
+  .al-fr-cab{ display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; border:0; font:inherit; cursor:pointer; padding:13px 14px; }
+  .al-chk{ width:26px; height:26px; flex:0 0 auto; border-radius:8px; border:2px solid var(--linea-borde,#C9C0AE); display:grid; place-items:center; color:#fff; font-size:16px; font-weight:800; }
+  .al-fr.on .al-chk{ background:var(--azul); border-color:var(--azul); }
+  .al-fr-cab b{ font-size:16.5px; color:var(--navy,#26374B); }
+  .al-fr-cab span.g{ font-size:13.5px; color:var(--texto-suave,#6E6656); }
+  .al-fr-cab .lib{ margin-left:auto; font-size:13px; font-weight:700; white-space:nowrap; }
+  .lib.v{ color:#2E7D6B; } .lib.a{ color:#B07A2E; } .lib.r{ color:#B23B3B; }
+  .al-calles{ display:flex; flex-wrap:wrap; gap:8px; padding:0 14px 14px 52px; }
+  @media (max-width:560px){ .al-calles{ padding-left:14px; } }
+  .al-calle{ font:inherit; text-align:left; cursor:pointer; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px;
+    padding:9px 12px; min-width:132px; flex:1 1 132px; max-width:220px; }
+  .al-calle b{ display:block; font-size:15px; color:var(--navy,#26374B); }
+  .al-calle small{ display:block; font-size:12.5px; color:var(--texto-suave,#6E6656); }
+  .al-calle .h{ font-weight:700; }
+  .al-calle.on{ border:2px solid var(--azul); background:#EEF5FB; }
+  .al-calle.llena .h{ color:#B23B3B; }
+  .al-calle.casi .h{ color:#B07A2E; }
+  .al-calle.libre .h{ color:#2E7D6B; }
+  .al-fr .al-aviso{ margin:0 14px 14px; }
+
+  /* cuota */
+  .al-cuota{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .al-cuota .euros{ display:flex; align-items:center; gap:8px; }
+  .al-cuota .euros input{ width:120px; font-size:26px; font-family:var(--fuente-titulo); font-weight:700; text-align:right; }
+  .al-cuota .euros span{ font-size:20px; font-weight:700; color:var(--navy,#26374B); }
+  .al-cuota-frase{ font-size:17px; color:var(--navy,#26374B); margin:0 0 12px; }
+  .al-cuota-frase b{ font-family:var(--fuente-titulo); font-size:22px; }
+  .al-switch{ display:inline-flex; align-items:center; gap:10px; font-size:15px; color:var(--navy,#26374B); cursor:pointer; min-height:44px; }
+  .al-switch input{ width:22px; height:22px; }
+
+  /* resumen */
+  .al-resu{ display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:15px; }
+  .al-resu dt{ color:var(--texto-suave,#6E6656); }
+  .al-resu dd{ margin:0; color:var(--navy,#26374B); font-weight:600; overflow-wrap:anywhere; }
+  .al-resu dd small{ display:block; font-weight:500; color:var(--texto-suave,#6E6656); }
+  .al-hecho{ text-align:center; padding:8px 0 4px; }
+  .al-hecho .ok{ width:64px; height:64px; border-radius:50%; background:#E6F4EA; color:#2E7D6B; display:grid; place-items:center; font-size:34px; margin:0 auto 10px; }
+  .al-hecho h3{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:24px; color:var(--navy,#26374B); margin:0 0 6px; }
+  .al-hecho ul{ list-style:none; padding:0; margin:12px auto 0; max-width:440px; text-align:left; font-size:15px; color:var(--navy,#26374B); }
+  .al-hecho li{ padding:7px 0; border-bottom:1px dashed var(--linea,#EAE3D5); }
+</style>
+</head>
+<body>
+  <div id="alta"><p class="al-msg">Cargando…</p></div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('alta');
+  var DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  var NIVELES = ['Iniciación', 'Desarrollo', 'Perfeccionamiento'];
+  var NIVEL_N = { 'Iniciación':1, 'Desarrollo':2, 'Perfeccionamiento':3 };
+  var MAX_FRANJAS = 3;
+  var RE_MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  var params = new URLSearchParams(location.search);
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function hhmm(h){ return String(h||'').slice(0,5); }
+  function norm(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
+  function eur(n){ var x = Number(n); return (Math.round(x*100)/100).toString().replace('.', ','); }
+  function fechaLarga(iso){ if(!iso) return ''; var d = new Date(iso+'T12:00:00'); return d.getDate()+'/'+(d.getMonth()+1); }
+
+  // Errores en cristiano: nada de «Supabase», «RLS» ni «permission denied».
+  function humano(e, accion){
+    var m = String((e && (e.message || e.msg || e.mensaje)) || e || '');
+    if (/JWT expired|jwt|sesi[oó]n caducada|sin_sesion/i.test(m)) return 'Tu sesión ha caducado. Sal y vuelve a entrar.';
+    if (/^CALLE LLENA:/.test(m)) return m.replace(/^CALLE LLENA:\s*/, 'Calle llena: ');
+    if (/^(Solo |No encuentro|Falta|Faltan|Nivel no|Ese correo|Ese DNI|El correo|La franja|La calle|Una de las|Hay una franja|Demasiadas|La fecha|La cuota|La periodicidad|Este nadador|No hay ning)/.test(m)) return m;
+    if ((e && e.code === '42501') || /permission denied|row-level security|violates row-level|sin_permiso|no_permiso|not allowed/i.test(m))
+      return 'No tienes permiso para ' + (accion || 'hacer esto') + '. Si crees que deberías poder, díselo a Andrés.';
+    if (/Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m)) return 'Sin conexión. Revisa internet y vuelve a intentarlo.';
+    if (/duplicate key|already exists/i.test(m)) return 'Eso ya estaba guardado.';
+    if (/check constraint/i.test(m)) return 'Algún dato no es válido (revisa nivel, calle o tipo).';
+    if (/foreign key/i.test(m)) return 'Esa franja o persona ya no existe. Recarga la página.';
+    if (/supabase|postgres|PGRST|relation |column |function .*does not exist|syntax/i.test(m))
+      return 'Algo ha fallado al guardar. Recarga la página y vuelve a intentarlo; si sigue, avisa a Andrés.';
+    return m || 'No se pudo hacer. Vuelve a intentarlo.';
+  }
+
+  // ---------- ¿puede dar altas? ----------
+  var rg = await sb.rpc('soy_gestor_natacion');
+  if (rg.error || !rg.data){
+    wrap.innerHTML = '<div class="al-card"><h2>Dar de alta</h2><div class="al-cuerpo"><p class="al-ayuda" style="margin:0">' +
+      (rg.error ? esc(humano(rg.error, 'dar altas en natación')) : 'Esta pantalla es para quien lleva la natación. Si crees que deberías poder dar altas, díselo a Andrés.') +
+      '</p></div></div>';
+    return;
+  }
+  if (window.APOLANA_NAT_FICHA) APOLANA_NAT_FICHA.init(sb);
+
+  // ---------- estado del asistente ----------
+  var S;
+  function nuevoEstado(tipo){
+    return {
+      paso: tipo ? 2 : 1,
+      tipo: tipo || null,           // 'Escuela' | 'Máster'
+      ficha: null,                  // resultado de natacion_buscar_fichas si ya está en el club
+      faltan: null,                 // natacion_alta_ficha_faltan de esa ficha
+      esNuevo: false,
+      busca: '', res: [],
+      d: { nombre:'', apellidos:'', nac:'', dni:'', email:'', tel:'', tutor:'' },
+      errores: {},
+      dupAvisado: false,
+      nivel: null,
+      franjas: null,                // filas de natacion_alta_franjas
+      sel: [],                      // [{franja, calle, nivel}]
+      tar: null,                    // natacion_alta_cuota
+      socio: false, cuota: '', cuotaTocada: false, periodicidad: 'mensual',
+      confirmaLlena: false,
+      enviando: false, hecho: null
+    };
+  }
+  var tipoUrl = params.get('tipo');
+  S = nuevoEstado(tipoUrl === 'Escuela' || tipoUrl === 'Máster' ? tipoUrl : null);
+
+  var PASOS = ['Tipo', '¿Ya está?', 'Datos', 'Días y calle', 'Cuota', 'Resumen'];
+  function pasosHtml(){
+    return '<div class="al-pasos">' + PASOS.map(function(t, i){
+      var n = i + 1, cls = n === S.paso ? 'on' : (n < S.paso ? 'ok' : '');
+      return '<span class="al-paso ' + cls + '"><i>' + (n < S.paso ? '✓' : n) + '</i>' + esc(t) + '</span>';
+    }).join('') + '</div>';
+  }
+  function quien(){ return S.tipo === 'Máster' ? 'el nadador' : 'el niño o la niña'; }
+  function nombreActual(){
+    if (S.ficha) return S.ficha.nombre;
+    return (S.d.nombre + ' ' + S.d.apellidos).trim();
+  }
+  function cab(){
+    var t = S.tipo === 'Escuela' ? 'Escuela de natación' : S.tipo === 'Máster' ? 'Natación · adultos y máster' : 'Natación';
+    return '<div class="al-cab"><div class="al-eyebrow">' + esc(t) + '</div><h1>Dar de alta</h1>' +
+      '<p>Paso a paso: quién es, qué días viene y en qué calle. Al final le llega el acceso por correo.</p></div>' + pasosHtml();
+  }
+  function ir(n){ S.paso = n; pintar(); try { window.scrollTo({ top:0, behavior:'smooth' }); } catch(e){ window.scrollTo(0,0); } }
+
+  // ======================================================================
+  //  PINTAR
+  // ======================================================================
+  function pintar(){
+    var h = cab();
+    if (S.hecho) h = cab().replace(pasosHtml(), '') + pasoHecho();
+    else if (S.paso === 1) h += paso1();
+    else if (S.paso === 2) h += paso2();
+    else if (S.paso === 3) h += paso3();
+    else if (S.paso === 4) h += paso4();
+    else if (S.paso === 5) h += paso5();
+    else h += paso6();
+    wrap.innerHTML = h;
+    if (S.paso === 2 && !S.ficha && !S.hecho){ var b = document.getElementById('al-busca'); if (b){ b.focus(); try{ b.setSelectionRange(b.value.length, b.value.length); }catch(e){} } }
+  }
+
+  // ---------- 1 · tipo ----------
+  function paso1(){
+    return '<div class="al-card"><h2>1 · ¿Escuela o adultos?</h2><div class="al-cuerpo">' +
+      '<div class="al-tipos">' +
+        '<button type="button" class="al-tipo' + (S.tipo==='Escuela'?' on':'') + '" data-tipo="Escuela"><span class="ico">🧒</span><b>Escuela de natación</b>' +
+          '<span>Un niño o una niña. El acceso le llega al padre, la madre o el tutor.</span></button>' +
+        '<button type="button" class="al-tipo' + (S.tipo==='Máster'?' on':'') + '" data-tipo="Máster"><span class="ico">🏊</span><b>Adultos / Máster</b>' +
+          '<span>Una persona adulta. El acceso le llega a ella misma.</span></button>' +
+      '</div></div></div>';
+  }
+
+  // ---------- 2 · ¿ya está en el club? ----------
+  function paso2(){
+    var h = '<div class="al-card"><h2>2 · ¿Ya está en el club?</h2><div class="al-cuerpo">';
+    if (S.ficha){
+      h += '<div class="al-elegida"><b>✓ ' + esc(S.ficha.nombre) + (S.ficha.anio ? ' (' + S.ficha.anio + ')' : '') + '</b>' +
+        '<button type="button" class="al-link" data-acc="quitar-ficha">cambiar</button></div>' +
+        '<p class="al-ayuda" style="margin:10px 0 0">Usaremos sus datos del club y solo te pediré lo que le falte.</p>' +
+        (S.ficha.acceso_activo ? '<div class="al-info">Ya nada con nosotros (código ' + esc(S.ficha.codigo || '') + '). Lo que elijas se le <b>suma</b> a sus franjas de ahora.</div>' : '') +
+        (S.ficha.estado === 'baja' ? '<div class="al-info">Estaba de baja: al darle de alta vuelve a quedar activo/a.</div>' : '');
+    } else {
+      h += '<p class="al-ayuda">Búscalo antes de crear nada, así no se duplican fichas. Escribe nombre o apellidos.</p>' +
+        '<input type="search" class="al-input" id="al-busca" autocomplete="off" placeholder="Nombre y apellidos (mín. 3 letras)" value="' + esc(S.busca) + '">' +
+        '<div class="al-res" id="al-res">' + resultadosHtml() + '</div>';
+    }
+    h += '<div class="al-acc">' +
+      '<button type="button" class="al-btn sec" data-ir="1">← Atrás</button>' +
+      (S.ficha ? '<button type="button" class="al-btn" data-acc="seguir-ficha">Seguir con esta ficha →</button>'
+               : '<button type="button" class="al-btn verde" data-acc="es-nuevo">Es nuevo/a: no está en el club →</button>') +
+      '</div></div></div>';
+    return h;
+  }
+  function resultadosHtml(){
+    var q = S.busca.trim();
+    if (q.length < 3) return '';
+    if (S.buscando) return '<small class="al-ayuda">Buscando…</small>';
+    if (S.errBusca) return '<div class="al-mal">' + esc(S.errBusca) + '</div>';
+    if (!S.res.length) return '<small class="al-ayuda" style="margin:0">No hay nadie con ese nombre en el club. Si es nuevo/a, pulsa el botón verde.</small>';
+    return S.res.map(function(x, i){
+      var det = [x.anio ? 'nacido/a en ' + x.anio : null, x.donde, x.correo ? 'correo ' + x.correo : 'sin correo',
+                 x.estado === 'baja' ? 'de baja (se reactiva)' : null,
+                 x.acceso_activo ? 'ya en natación' : null].filter(Boolean).join(' · ');
+      return '<button type="button" data-ficha-i="' + i + '"><b>' + esc(x.nombre) + '</b><small>' + esc(det) + '</small></button>';
+    }).join('');
+  }
+  var buscaN = 0, buscaTmr = null;
+  async function buscar(){
+    var q = S.busca.trim();
+    var cont = document.getElementById('al-res');
+    if (q.length < 3){ S.res = []; if (cont) cont.innerHTML = ''; return; }
+    var n = ++buscaN; S.buscando = true; S.errBusca = null; if (cont) cont.innerHTML = resultadosHtml();
+    var r = await sb.rpc('natacion_buscar_fichas', { p_texto: q });
+    if (n !== buscaN) return;
+    S.buscando = false;
+    if (r.error){ S.errBusca = humano(r.error, 'buscar fichas'); S.res = []; }
+    else S.res = r.data || [];
+    cont = document.getElementById('al-res'); if (cont) cont.innerHTML = resultadosHtml();
+  }
+
+  // ---------- 3 · datos ----------
+  function campo(id, lab, opts){
+    opts = opts || {};
+    var v = S.d[id] || '', e = S.errores[id];
+    return '<div class="al-campo' + (opts.ancho ? ' ancho' : '') + (e ? ' mal' : '') + '">' +
+      '<label for="al-' + id + '">' + lab + (opts.req ? ' <span class="req">*</span>' : ' <small>(opcional)</small>') + '</label>' +
+      '<input id="al-' + id + '" data-campo="' + id + '" type="' + (opts.type || 'text') + '"' +
+        (opts.im ? ' inputmode="' + opts.im + '"' : '') + (opts.ph ? ' placeholder="' + esc(opts.ph) + '"' : '') +
+        (opts.max ? ' max="' + opts.max + '"' : '') + ' autocomplete="off" value="' + esc(v) + '">' +
+      '<span class="err" id="al-err-' + id + '">' + (e ? esc(e) : '') + '</span></div>';
+  }
+  // Qué campos se piden y cuáles son obligatorios (nuevo vs ficha existente).
+  function camposPedidos(){
+    var esc_ = S.tipo === 'Escuela', f = S.faltan;
+    var L = [];
+    if (!S.ficha){
+      L.push({ id:'nombre', req:true }, { id:'apellidos', req:true }, { id:'nac', req:true }, { id:'dni', req:false });
+      if (esc_) L.push({ id:'tutor', req:true }, { id:'email', req:true }, { id:'tel', req:false });
+      else L.push({ id:'email', req:true }, { id:'tel', req:false });
+      return L;
+    }
+    if (!f) return L;
+    if (f.apellidos) L.push({ id:'apellidos', req:false });
+    if (f.fecha_nacimiento) L.push({ id:'nac', req:false });
+    if (f.dni) L.push({ id:'dni', req:false });
+    if (esc_){
+      if (f.nombre_tutor) L.push({ id:'tutor', req:false });
+      if (f.email_tutor) L.push({ id:'email', req:true });
+      if (f.telefono_tutor) L.push({ id:'tel', req:false });
+    } else {
+      if (f.email) L.push({ id:'email', req:true });
+      if (f.telefono) L.push({ id:'tel', req:false });
+    }
+    return L;
+  }
+  function paso3(){
+    var esc_ = S.tipo === 'Escuela';
+    var hoy = new Date().toISOString().slice(0,10);
+    var LAB = {
+      nombre:  ['Nombre', { req:true }],
+      apellidos:['Apellidos', {}],
+      nac:     ['Fecha de nacimiento', { type:'date', max:hoy }],
+      dni:     ['DNI o NIE', { ph:'12345678Z' }],
+      tutor:   ['Nombre del padre, madre o tutor', {}],
+      email:   [esc_ ? 'Correo del padre, madre o tutor' : 'Correo', { type:'email', im:'email', ph:'correo@ejemplo.com' }],
+      tel:     [esc_ ? 'Teléfono del padre, madre o tutor' : 'Teléfono', { type:'tel', im:'tel', ph:'600 123 456' }]
+    };
+    var pedidos = camposPedidos();
+    var h = '<div class="al-card"><h2>3 · Sus datos</h2><div class="al-cuerpo">';
+    if (S.ficha && !S.faltan){
+      h += '<p class="al-ayuda">Mirando qué le falta a su ficha…</p>';
+    } else if (S.ficha && !pedidos.length){
+      h += '<div class="al-elegida"><b>✓ La ficha de ' + esc(S.ficha.nombre) + ' está completa. No hace falta nada más.</b></div>';
+    } else {
+      if (S.ficha) h += '<p class="al-ayuda">Ya tiene ficha en el club. Solo te pido <b>lo que le falta</b>; lo que ya tiene no se toca.</p>';
+      else h += '<p class="al-ayuda">' + (esc_ ? 'Los datos del niño o la niña y de quien se ocupa de él/ella. Al correo le llegará el acceso a la app.'
+                                                : 'Sus datos. Al correo le llegará el acceso a la app.') + '</p>';
+      var nino = pedidos.filter(function(c){ return ['nombre','apellidos','nac','dni'].indexOf(c.id) !== -1; });
+      var cont = pedidos.filter(function(c){ return ['tutor','email','tel'].indexOf(c.id) !== -1; });
+      h += '<div class="al-grid">';
+      if (nino.length && esc_) h += '<div class="al-sub">El niño o la niña</div>';
+      nino.forEach(function(c){ var o = Object.assign({}, LAB[c.id][1], { req:c.req }); h += campo(c.id, LAB[c.id][0], o); });
+      if (cont.length) h += '<div class="al-sub">' + (esc_ ? 'Padre, madre o tutor' : 'Contacto') + '</div>';
+      cont.forEach(function(c){ var o = Object.assign({}, LAB[c.id][1], { req:c.req, ancho: c.id === 'email' }); h += campo(c.id, LAB[c.id][0], o); });
+      h += '</div>';
+    }
+    if (S.dup && S.dup.length){
+      h += '<div class="al-aviso"><b>Ojo: ya hay una ficha con este nombre.</b> Si es la misma persona, tócala para usarla. Si es otra distinta, pulsa «Siguiente» otra vez.' +
+        '<div class="al-res">' + S.dup.map(function(x, i){
+          return '<button type="button" data-dup-i="' + i + '"><b>' + esc(x.nombre) + '</b><small>' + esc([x.anio ? 'nacido/a en ' + x.anio : null, x.donde].filter(Boolean).join(' · ')) + '</small></button>';
+        }).join('') + '</div></div>';
+    }
+    h += '<div class="al-acc"><button type="button" class="al-btn sec" data-ir="2">← Atrás</button>' +
+      '<button type="button" class="al-btn" data-acc="validar-datos"' + (S.ficha && !S.faltan ? ' disabled' : '') + '>Siguiente: días y calle →</button></div>';
+    return h + '</div></div>';
+  }
+  function letraDni(num){ return 'TRWAGMYFPDXBNJZSQVHLCKE'.charAt(num % 23); }
+  function validarCampo(id){
+    var v = String(S.d[id] || '').trim();
+    var req = camposPedidos().some(function(c){ return c.id === id && c.req; });
+    if (!v) return req ? 'Este dato hace falta.' : null;
+    if (id === 'email' && !RE_MAIL.test(v)) return 'Ese correo no parece válido (falta la @ o el punto).';
+    if (id === 'dni'){
+      var x = v.toUpperCase().replace(/[\s.-]/g, '');
+      var m = x.match(/^([XYZ])(\d{7})([A-Z])$/) || x.match(/^()(\d{8})([A-Z])$/);
+      if (!m) return 'Debe tener 8 números y una letra (o X/Y/Z, 7 números y letra si es NIE).';
+      var num = parseInt(({X:'0',Y:'1',Z:'2'}[m[1]] || '') + m[2], 10);
+      if (letraDni(num) !== m[3]) return 'La letra no cuadra con el número: revísalo (debería ser ' + letraDni(num) + ').';
+    }
+    if (id === 'tel'){
+      var t = v.replace(/[\s.-]/g, '');
+      if (!/^(\+?\d{9,15})$/.test(t)) return 'Pon un teléfono de 9 cifras (o con prefijo +34…).';
+    }
+    if (id === 'nac'){
+      var d = new Date(v + 'T12:00:00'), hoy = new Date();
+      if (isNaN(d) || d > hoy) return 'Esa fecha no puede ser (es futura).';
+      var edad = (hoy - d) / (365.25 * 864e5);
+      if (edad > 100) return 'Esa fecha no parece correcta.';
+      if (S.tipo === 'Escuela' && edad >= 18) return 'Con esa fecha es mayor de edad: ¿no será de adultos/máster?';
+      if (S.tipo === 'Máster' && edad < 16) return 'Con esa fecha es menor: ¿no será de la escuela?';
+    }
+    return null;
+  }
+  function pintarError(id){
+    var e = S.errores[id];
+    var el = document.getElementById('al-err-' + id); if (el) el.textContent = e || '';
+    var inp = document.getElementById('al-' + id); if (inp && inp.parentNode) inp.parentNode.classList.toggle('mal', !!e);
+  }
+  async function validarDatos(){
+    var pedidos = camposPedidos(), ok = true;
+    S.errores = {};
+    pedidos.forEach(function(c){ var e = validarCampo(c.id); if (e){ S.errores[c.id] = e; ok = false; } });
+    if (!ok){ pintar(); var pri = document.querySelector('.al-campo.mal input'); if (pri) pri.focus(); return; }
+    // nuevo: ¿hay ya alguien con ese nombre? (se avisa una vez)
+    if (!S.ficha && !S.dupAvisado){
+      S.dupAvisado = true;
+      var completo = (S.d.nombre + ' ' + S.d.apellidos).trim();
+      var rb = await sb.rpc('natacion_buscar_fichas', { p_texto: completo });
+      var hay = (!rb.error && rb.data || []).filter(function(x){ return norm(x.nombre) === norm(completo); });
+      if (hay.length){ S.dup = hay; pintar(); return; }
+    }
+    S.dup = null;
+    await cargarFranjas();
+    ir(4);
+  }
+
+  // ---------- 4 · días, franjas y calle ----------
+  async function cargarFranjas(force){
+    if (S.franjas && !force) return;
+    var r = await sb.rpc('natacion_alta_franjas', { p_tipo: S.tipo });
+    if (r.error){ S.errFranjas = humano(r.error, 'ver las franjas'); S.franjas = []; return; }
+    S.errFranjas = null;
+    S.franjas = r.data || [];
+  }
+  function franjasAgrupadas(){
+    var m = {}, orden = [];
+    (S.franjas || []).forEach(function(x){
+      var f = m[x.franja_id];
+      if (!f){ f = m[x.franja_id] = { id:x.franja_id, dia:x.dia, hora:hhmm(x.hora), grupo:x.grupo, fecha:x.fecha, cancelado:x.cancelado, calles:[] }; orden.push(f); }
+      f.calles.push({ calle:x.calle, cupo:x.cupo, fijos:x.fijos, ocupados:x.ocupados, huecos:x.huecos, libres:x.libres, nivel:x.nivel });
+    });
+    return orden;
+  }
+  function franjaPorId(id){ return franjasAgrupadas().filter(function(f){ return f.id === id; })[0]; }
+  function selDe(id){ return S.sel.filter(function(s){ return s.franja === id; })[0]; }
+  // Calle propuesta: la del nivel elegido con hueco; si no, la de nivel más
+  // cercano con hueco; si ninguna tiene hueco, la del nivel (aunque esté llena).
+  function callePropuesta(f){
+    var obj = NIVEL_N[S.nivel] || null;
+    var c = f.calles.slice();
+    function dist(x){ return obj ? Math.abs((NIVEL_N[x.nivel] || 2) - obj) : 0; }
+    var conHueco = c.filter(function(x){ return x.libres > 0; });
+    var pool = conHueco.length ? conHueco : c;
+    pool.sort(function(a, b){ return dist(a) - dist(b) || b.libres - a.libres; });
+    return pool[0];
+  }
+  function claseLibres(n, cupo){ return n <= 0 ? 'llena' : (n <= Math.max(1, Math.round(cupo * 0.15)) ? 'casi' : 'libre'); }
+  function textoLibres(c){ return c.libres <= 0 ? (c.libres < 0 ? 'Llena (' + (-c.libres) + ' de más)' : 'Llena') : (c.libres === 1 ? '1 libre' : c.libres + ' libres'); }
+  function paso4(){
+    var h = '<div class="al-card"><h2>4 · Días, horario y calle</h2><div class="al-cuerpo">';
+    h += '<p class="al-ayuda" style="margin-bottom:8px"><b>Nivel</b> (opcional): si lo eliges, te propongo la calle de ese nivel que tenga hueco.</p>' +
+      '<div class="al-niveles">' + NIVELES.map(function(n){ return '<button type="button" class="al-nivel' + (S.nivel === n ? ' on' : '') + '" data-nivel="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') +
+      '<button type="button" class="al-nivel' + (!S.nivel ? ' on' : '') + '" data-nivel="">Sin decidir</button></div>';
+    if (S.errFranjas) h += '<div class="al-mal">' + esc(S.errFranjas) + '</div>';
+    var fr = franjasAgrupadas();
+    if (!fr.length && !S.errFranjas) h += '<div class="al-aviso">No hay franjas de ' + (S.tipo === 'Máster' ? 'adultos' : 'escuela') + ' abiertas.</div>';
+    h += '<p class="al-ayuda" style="margin:16px 0 0">Marca <b>1, 2 o 3</b> horarios. Los huecos son los del próximo día de clase.</p>';
+    var porDia = {};
+    fr.forEach(function(f){ (porDia[f.dia] = porDia[f.dia] || []).push(f); });
+    Object.keys(porDia).map(Number).sort(function(a,b){ return a-b; }).forEach(function(d){
+      h += '<div class="al-dia"><h3>' + DIAS[d] + '</h3>';
+      porDia[d].forEach(function(f){
+        var s = selDe(f.id), on = !!s;
+        var tot = f.calles.reduce(function(a, c){ return a + Math.max(0, c.libres); }, 0);
+        h += '<div class="al-fr' + (on ? ' on' : '') + '">' +
+          '<button type="button" class="al-fr-cab" data-franja="' + esc(f.id) + '" aria-pressed="' + on + '">' +
+            '<span class="al-chk">' + (on ? '✓' : '') + '</span>' +
+            '<span><b>' + esc(f.hora) + '</b> <span class="g">· ' + esc(f.grupo) + '</span></span>' +
+            '<span class="lib ' + (tot <= 0 ? 'r' : tot <= 2 ? 'a' : 'v') + '">' + (tot <= 0 ? 'Sin hueco' : tot + ' libre' + (tot === 1 ? '' : 's')) + '</span>' +
+          '</button>';
+        if (on){
+          h += '<div class="al-calles">' + f.calles.map(function(c){
+            var cls = claseLibres(c.libres, c.cupo);
+            return '<button type="button" class="al-calle ' + cls + (s.calle === c.calle ? ' on' : '') + '" data-calle="' + esc(c.calle) + '" data-fr="' + esc(f.id) + '">' +
+              '<b>' + esc(c.calle === 'Vaso' ? 'Vaso' : 'Calle ' + c.calle.replace(/^C/, '')) + '</b>' +
+              '<small>' + esc(c.nivel || '—') + '</small>' +
+              '<small class="h">' + esc(textoLibres(c)) + '</small>' +
+              '<small>' + c.fijos + ' de ' + c.cupo + ' fijos</small></button>';
+          }).join('') + '</div>';
+          var cs = f.calles.filter(function(c){ return c.calle === s.calle; })[0];
+          if (cs && cs.libres <= 0){
+            h += '<div class="al-aviso">⚠️ La ' + esc(cs.calle === 'Vaso' ? 'zona de vaso' : 'calle ' + cs.calle) + ' del ' + DIAS[f.dia].toLowerCase() + ' a las ' + esc(f.hora) +
+              ' está llena (' + cs.fijos + ' de ' + cs.cupo + '). Se le puede meter igualmente: te lo pediré confirmar al final.</div>';
+          }
+          if (f.cancelado) h += '<div class="al-info">El próximo ' + DIAS[f.dia].toLowerCase() + ' no hay clase (festivo o cierre).</div>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+    });
+    if (S.avisoMax) h += '<div class="al-aviso">' + esc(S.avisoMax) + '</div>';
+    h += '<div class="al-acc"><button type="button" class="al-btn sec" data-ir="3">← Atrás</button>' +
+      '<button type="button" class="al-btn" data-acc="a-cuota"' + (S.sel.length ? '' : ' disabled') + '>' +
+        (S.sel.length ? 'Siguiente: cuota (' + S.sel.length + ' día' + (S.sel.length === 1 ? '' : 's') + ') →' : 'Marca al menos un horario') + '</button></div>';
+    return h + '</div></div>';
+  }
+  function toggleFranja(id){
+    S.avisoMax = null;
+    var i = S.sel.findIndex(function(s){ return s.franja === id; });
+    if (i !== -1){ S.sel.splice(i, 1); pintar(); return; }
+    if (S.sel.length >= MAX_FRANJAS){ S.avisoMax = 'Como mucho ' + MAX_FRANJAS + ' horarios. Quita uno para elegir otro.'; pintar(); return; }
+    var f = franjaPorId(id); if (!f) return;
+    var c = callePropuesta(f);
+    S.sel.push({ franja:id, calle: c ? c.calle : null, nivel: S.nivel || (c ? c.nivel : null) });
+    pintar();
+  }
+  function elegirNivel(n){
+    S.nivel = n || null;
+    // re-proponer calle en lo ya marcado
+    S.sel.forEach(function(s){ var f = franjaPorId(s.franja); var c = f && callePropuesta(f); if (c){ s.calle = c.calle; s.nivel = S.nivel || c.nivel; } });
+    pintar();
+  }
+
+  // ---------- 5 · cuota ----------
+  async function prepararCuota(){
+    if (!S.tar){
+      var r = await sb.rpc('natacion_alta_cuota', { p_tipo: S.tipo, p_atleta: S.ficha ? S.ficha.atleta_id : null });
+      S.tar = r.error ? { es_socio:false, tarifas:[], error: humano(r.error, 'ver las tarifas') } : (r.data || { es_socio:false, tarifas:[] });
+      S.socio = !!S.tar.es_socio;
+    }
+    if (!S.cuotaTocada){ var c = cuotaCalculada(); S.cuota = c.importe == null ? '' : String(c.importe).replace('.', ','); S.periodicidad = c.periodicidad || 'mensual'; }
+  }
+  function cuotaCalculada(){
+    var n = S.sel.length, t = (S.tar && S.tar.tarifas || []).filter(function(x){ return x.dias === n; })[0];
+    if (!t) return { importe:null, n:n };
+    var unico = (t.no_socio == null);
+    var imp = S.socio ? t.socio : (unico ? t.socio : t.no_socio);
+    return { importe: imp == null ? null : Number(imp), n:n, unico:unico, tarifa:t, periodicidad: t.periodicidad || 'mensual' };
+  }
+  function notaCuota(){
+    var c = cuotaCalculada(), n = S.sel.length;
+    var base = 'Natación ' + (S.tipo === 'Máster' ? 'máster' : 'escuela') + ' · ' + n + ' día' + (n === 1 ? '' : 's') + '/semana · ' +
+      (c.unico ? 'precio único' : (S.socio ? 'socio' : 'no socio'));
+    var imp = importeCuota();
+    if (c.importe != null && imp != null && Math.abs(imp - c.importe) > 0.001) base += ' · tarifa ' + eur(c.importe) + ' €, puesta a mano ' + eur(imp) + ' €';
+    else if (c.tarifa) base += ' · tarifa ' + c.tarifa.clave;
+    return base + ' · alta ' + new Date().toISOString().slice(0,10);
+  }
+  function importeCuota(){
+    var v = String(S.cuota || '').trim().replace(',', '.');
+    if (v === '') return null;
+    var n = Number(v); return isNaN(n) ? NaN : n;
+  }
+  function textoPeriodo(p){ return p === 'trimestral' ? 'al trimestre' : p === 'temporada' ? 'por temporada' : p === 'anual' ? 'al año' : 'al mes'; }
+  function paso5(){
+    var c = cuotaCalculada(), n = S.sel.length, imp = importeCuota();
+    var h = '<div class="al-card"><h2>5 · Cuota</h2><div class="al-cuerpo">';
+    if (S.tar && S.tar.error) h += '<div class="al-mal">' + esc(S.tar.error) + '</div>';
+    h += '<label class="al-switch"><input type="checkbox" id="al-socio"' + (S.socio ? ' checked' : '') + '> ¿Es socio/a del club?' +
+      (S.ficha && S.tar && S.tar.es_socio ? ' <small style="color:var(--texto-suave)">(su ficha dice que sí)</small>' : '') + '</label>';
+    if (c.importe != null){
+      h += '<p class="al-cuota-frase">Cuota: <b>' + eur(c.importe) + ' €</b> ' + textoPeriodo(c.periodicidad) + ' <span style="color:var(--texto-suave)">(' + n + ' día' + (n === 1 ? '' : 's') + ' · ' +
+        (c.unico ? 'precio único' : (S.socio ? 'socio' : 'no socio')) + ')</span></p>';
+    } else {
+      h += '<div class="al-aviso">No hay tarifa guardada para ' + n + ' día' + (n === 1 ? '' : 's') + ' a la semana en ' + (S.tipo === 'Máster' ? 'natación' : 'escuela de natación') + '. Escribe la cuota a mano (o déjala vacía).</div>';
+    }
+    h += '<div class="al-cuota" style="margin-top:10px"><div class="euros"><input id="al-cuota" inputmode="decimal" value="' + esc(S.cuota) + '" aria-label="Cuota en euros"><span>€</span></div>' +
+      '<select id="al-per" class="al-input" style="width:auto;min-width:150px">' +
+        [['mensual','al mes'],['trimestral','al trimestre'],['temporada','por temporada']].map(function(o){ return '<option value="' + o[0] + '"' + (S.periodicidad === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+      '</select></div>' +
+      (S.cuotaTocada && c.importe != null ? '<button type="button" class="al-link" data-acc="cuota-auto">Volver a la de la tarifa (' + eur(c.importe) + ' €)</button>' : '') +
+      (isNaN(imp) ? '<div class="al-mal">Esa cantidad no es un número. Escribe solo la cifra, por ejemplo 45 o 45,50.</div>' : '') +
+      '<p class="al-ayuda" style="margin:12px 0 0">Se apunta en su ficha. <b>No se cobra nada ahora.</b> Si la dejas vacía, no se apunta cuota.</p>';
+    h += '<div class="al-acc"><button type="button" class="al-btn sec" data-ir="4">← Atrás</button>' +
+      '<button type="button" class="al-btn" data-acc="a-resumen"' + (isNaN(imp) ? ' disabled' : '') + '>Siguiente: revisar →</button></div>';
+    return h + '</div></div>';
+  }
+
+  // ---------- 6 · resumen ----------
+  function plazasTexto(){
+    return S.sel.map(function(s){
+      var f = franjaPorId(s.franja) || {}; var c = (f.calles || []).filter(function(x){ return x.calle === s.calle; })[0] || {};
+      return { txt: DIAS[f.dia] + ' ' + f.hora + ' · ' + (s.calle === 'Vaso' ? 'Vaso' : 'Calle ' + String(s.calle).replace(/^C/, '')) + ' · ' + (s.nivel || c.nivel || 'sin nivel'),
+               llena: (c.libres != null && c.libres <= 0) };
+    });
+  }
+  function paso6(){
+    var esc_ = S.tipo === 'Escuela';
+    var pl = plazasTexto(), llenas = pl.filter(function(p){ return p.llena; });
+    var imp = importeCuota();
+    var correo = S.d.email || (S.ficha && S.ficha.correo ? S.ficha.correo + ' (el de su ficha)' : '');
+    var h = '<div class="al-card"><h2>6 · Revisa y da de alta</h2><div class="al-cuerpo"><dl class="al-resu">' +
+      '<dt>Tipo</dt><dd>' + (esc_ ? 'Escuela de natación' : 'Adultos / Máster') + '</dd>' +
+      '<dt>' + (esc_ ? 'Niño/a' : 'Nadador/a') + '</dt><dd>' + esc(nombreActual()) +
+        (S.ficha ? '<small>Ya tenía ficha en el club</small>' : (S.d.nac ? '<small>Nacido/a el ' + esc(S.d.nac.split('-').reverse().join('/')) + (S.d.dni ? ' · DNI ' + esc(S.d.dni.toUpperCase()) : '') + '</small>' : '')) + '</dd>' +
+      (esc_ && S.d.tutor ? '<dt>Tutor/a</dt><dd>' + esc(S.d.tutor) + (S.d.tel ? '<small>' + esc(S.d.tel) + '</small>' : '') + '</dd>' : '') +
+      (!esc_ && S.d.tel ? '<dt>Teléfono</dt><dd>' + esc(S.d.tel) + '</dd>' : '') +
+      '<dt>Acceso a</dt><dd>' + esc(correo || '—') + '</dd>' +
+      '<dt>Horarios</dt><dd>' + pl.map(function(p){ return esc(p.txt) + (p.llena ? ' <span style="color:#B23B3B">· llena</span>' : ''); }).join('<br>') + '</dd>' +
+      '<dt>Cuota</dt><dd>' + (imp == null ? 'Sin cuota apuntada' : eur(imp) + ' € ' + textoPeriodo(S.periodicidad)) + '</dd>' +
+      '</dl>';
+    if (llenas.length){
+      h += '<div class="al-aviso"><b>⚠️ ' + (llenas.length === 1 ? 'Una calle está llena' : 'Hay calles llenas') + ':</b> ' + llenas.map(function(p){ return esc(p.txt); }).join(', ') + '.' +
+        '<label class="al-switch" style="display:flex;margin-top:6px"><input type="checkbox" id="al-conf-llena"' + (S.confirmaLlena ? ' checked' : '') + '> Sí, meterle igualmente</label></div>';
+    }
+    if (S.errAlta) h += '<div class="al-mal">' + esc(S.errAlta) + '</div>';
+    var bloquea = S.enviando || (llenas.length && !S.confirmaLlena);
+    h += '<div class="al-acc"><button type="button" class="al-btn sec" data-ir="5"' + (S.enviando ? ' disabled' : '') + '>← Atrás</button>' +
+      '<button type="button" class="al-btn verde" data-acc="dar-alta"' + (bloquea ? ' disabled' : '') + '>' +
+        (S.enviando ? 'Dando de alta…' : 'Dar de alta y enviar acceso ' + (esc_ ? 'a la familia' : 'al nadador')) + '</button></div>';
+    return h + '</div></div>';
+  }
+
+  // ---------- después del alta ----------
+  function pasoHecho(){
+    var r = S.hecho, esc_ = S.tipo === 'Escuela';
+    var nom = String(r.nombreBonito || r.nombre || '').trim();
+    var li = [];
+    (r.franjas || []).forEach(function(t){ li.push('🏊 ' + esc(t)); });
+    (r.ya_estaba || []).forEach(function(t){ li.push('↺ ' + esc(t) + ' (ya estaba apuntado/a)'); });
+    if (r.correo && r.correo.ok) li.push('✉️ Correo enviado: ' + esc(r.correo.que));
+    else if (r.correo && r.correo.sinCorreo) li.push('<span style="color:#B23B3B">✉️ Sin correo: añádelo en su ficha y pulsa ✉</span>');
+    else li.push('<span style="color:#B23B3B">✉️ El correo no ha salido. Ábrele la ficha y pulsa «✉ Enviar acceso».</span>');
+    if (r.cuota_guardada === true) li.push('💶 Cuota apuntada: ' + eur(importeCuota()) + ' € ' + textoPeriodo(S.periodicidad));
+    else if (r.cuota_guardada === false) li.push('<span style="color:#8A5A00">💶 ' + esc(r.cuota_aviso || 'La cuota no se ha apuntado.') + '</span>');
+    if ((r.sobre_cupo || []).length) li.push('<span style="color:#8A5A00">⚠️ Por encima del cupo: ' + esc(r.sobre_cupo.join(', ')) + '</span>');
+    return '<div class="al-card"><h2>Hecho</h2><div class="al-cuerpo"><div class="al-hecho"><div class="ok">✓</div>' +
+      '<h3>' + esc(nom) + ' ya está de alta</h3>' +
+      '<p class="al-ayuda" style="margin:0">' + (esc_ ? 'En la escuela de natación' : 'En natación de adultos') + (r.codigo ? ' · código ' + esc(r.codigo) : '') + '</p>' +
+      '<ul>' + li.map(function(x){ return '<li>' + x + '</li>'; }).join('') + '</ul></div>' +
+      '<div class="al-acc"><button type="button" class="al-btn sec" data-acc="ver-ficha">Ver su ficha</button>' +
+      '<button type="button" class="al-btn" data-acc="otro">+ Dar de alta a otro</button></div></div></div>';
+  }
+
+  // Correo tras el alta: invitación si no tiene cuenta, horarios si ya la tiene
+  // (igual que «Franjas y cupos»; las Edge ya admiten al gestor de natación).
+  async function avisar(res){
+    var esMas = S.tipo === 'Máster';
+    try {
+      if (res.ya_tiene_cuenta){
+        var rc = await sb.functions.invoke('correo-natacion-horarios', { body:{ codigo: res.codigo } });
+        return { ok: !(rc && rc.error) && !(rc && rc.data && rc.data.ok === false), que:'sus horarios (ya tenía cuenta)' };
+      }
+      if (!res.email_tutor) return { ok:false, sinCorreo:true };
+      var ri = await sb.functions.invoke('familia-invitar', { body:{ modo:'real', publico: esMas ? 'master' : 'familia', solo_a: res.email_tutor, forzar:true, confirmar:true } });
+      return { ok: !!(ri && !ri.error && ri.data && ri.data.ok), que:'invitación para crear su cuenta' };
+    } catch (e){ return { ok:false }; }
+  }
+
+  async function darAlta(){
+    if (S.enviando) return;
+    var imp = importeCuota();
+    if (imp != null && isNaN(imp)){ ir(5); return; }
+    S.enviando = true; S.errAlta = null; pintar();
+    var d = S.d, esc_ = S.tipo === 'Escuela';
+    var args = {
+      p_tipo: S.tipo,
+      p_plazas: S.sel.map(function(s){ return { franja:s.franja, calle:s.calle, nivel:s.nivel || null }; }),
+      p_atleta: S.ficha ? S.ficha.atleta_id : null,
+      p_nombre: S.ficha ? null : (d.nombre.trim() || null),
+      p_apellidos: d.apellidos.trim() || null,
+      p_fecha_nac: d.nac || null,
+      p_dni: d.dni.trim() || null,
+      p_email: d.email.trim().toLowerCase() || null,
+      p_telefono: d.tel.trim() || null,
+      p_nombre_tutor: esc_ ? (d.tutor.trim() || null) : null,
+      p_nivel: S.nivel || null,
+      p_confirmar_llenas: !!S.confirmaLlena,
+      p_cuota_importe: imp,
+      p_cuota_periodicidad: S.periodicidad || 'mensual',
+      p_cuota_nota: imp == null ? null : notaCuota()
+    };
+    var r = await sb.rpc('natacion_alta_unificada', args);
+    if (r.error){
+      S.enviando = false;
+      var m = String(r.error.message || '');
+      if (/^CALLE LLENA:/.test(m)){
+        // alguien llenó la calle mientras tanto: recargar huecos y pedir confirmación
+        await cargarFranjas(true); S.confirmaLlena = false;
+      }
+      S.errAlta = humano(r.error, 'dar altas en natación');
+      pintar(); return;
+    }
+    var res = r.data || {};
+    res.correo = await avisar(res);
+    res.nombreBonito = nombreActual();
+    S.enviando = false; S.hecho = res;
+    pintar();
+    try { window.scrollTo(0, 0); } catch(e){}
+  }
+
+  // ======================================================================
+  //  EVENTOS (delegados en el contenedor, que no se recrea)
+  // ======================================================================
+  wrap.addEventListener('click', async function(ev){
+    var t = ev.target.closest ? ev.target : null; if (!t) return;
+    var b;
+    if ((b = t.closest('[data-tipo]'))){
+      var nt = b.getAttribute('data-tipo');
+      if (nt !== S.tipo){ var keep = S.busca; S = nuevoEstado(nt); S.busca = keep; }
+      try { history.replaceState(null, '', '?tipo=' + encodeURIComponent(nt)); } catch(e){}
+      ir(2); if (S.busca.trim().length >= 3) buscar(); return;
+    }
+    if ((b = t.closest('[data-ir]'))){ ir(parseInt(b.getAttribute('data-ir'), 10)); return; }
+    if ((b = t.closest('[data-ficha-i]'))){
+      S.ficha = S.res[parseInt(b.getAttribute('data-ficha-i'), 10)] || null; S.esNuevo = false; S.faltan = null; S.tar = null; S.cuotaTocada = false;
+      S.d = { nombre:'', apellidos:'', nac:'', dni:'', email:'', tel:'', tutor:'' };
+      pintar(); return;
+    }
+    if ((b = t.closest('[data-dup-i]'))){
+      S.ficha = S.dup[parseInt(b.getAttribute('data-dup-i'), 10)] || null; S.dup = null; S.faltan = null; S.tar = null; S.cuotaTocada = false;
+      ir(2); return;
+    }
+    if ((b = t.closest('[data-franja]'))){ toggleFranja(b.getAttribute('data-franja')); return; }
+    if ((b = t.closest('[data-calle]'))){
+      var s = selDe(b.getAttribute('data-fr'));
+      if (s){
+        s.calle = b.getAttribute('data-calle');
+        var f = franjaPorId(s.franja), c = f && f.calles.filter(function(x){ return x.calle === s.calle; })[0];
+        if (!S.nivel && c) s.nivel = c.nivel;   // sin nivel elegido: el de la calle
+        pintar();
+      }
+      return;
+    }
+    if ((b = t.closest('[data-nivel]'))){ elegirNivel(b.getAttribute('data-nivel')); return; }
+    if (!(b = t.closest('[data-acc]'))) return;
+    var acc = b.getAttribute('data-acc');
+    if (acc === 'quitar-ficha'){ S.ficha = null; S.faltan = null; S.tar = null; pintar(); if (S.busca.trim().length >= 3) buscar(); return; }
+    if (acc === 'es-nuevo'){
+      S.ficha = null; S.esNuevo = true; S.faltan = null; S.tar = null; S.dupAvisado = false; S.dup = null;
+      // lo escrito en el buscador se aprovecha como nombre y apellidos
+      if (!S.d.nombre && S.busca.trim()){
+        var partes = S.busca.trim().split(/\s+/);
+        S.d.nombre = partes.shift() || ''; S.d.apellidos = partes.join(' ');
+      }
+      ir(3); return;
+    }
+    if (acc === 'seguir-ficha'){
+      ir(3);
+      var rf = await sb.rpc('natacion_alta_ficha_faltan', { p_atleta: S.ficha.atleta_id });
+      if (rf.error){ S.faltan = null; S.errAlta = null; wrap.querySelector('.al-cuerpo').insertAdjacentHTML('beforeend', '<div class="al-mal">' + esc(humano(rf.error, 'ver la ficha')) + '</div>'); return; }
+      S.faltan = rf.data || {};
+      pintar(); return;
+    }
+    if (acc === 'validar-datos'){ b.disabled = true; await validarDatos(); return; }
+    if (acc === 'a-cuota'){ if (!S.sel.length) return; b.disabled = true; await prepararCuota(); ir(5); return; }
+    if (acc === 'cuota-auto'){ S.cuotaTocada = false; await prepararCuota(); pintar(); return; }
+    if (acc === 'a-resumen'){ S.errAlta = null; ir(6); return; }
+    if (acc === 'dar-alta'){ darAlta(); return; }
+    if (acc === 'otro'){ var tp = S.tipo; S = nuevoEstado(tp); ir(2); return; }
+    if (acc === 'ver-ficha'){
+      if (window.APOLANA_NAT_FICHA && S.hecho && S.hecho.codigo) APOLANA_NAT_FICHA.abrir({ codigo: S.hecho.codigo, nombre: S.hecho.nombreBonito || '' });
+      return;
+    }
+  });
+  wrap.addEventListener('input', function(ev){
+    var t = ev.target;
+    if (t.id === 'al-busca'){ S.busca = t.value; clearTimeout(buscaTmr); buscaTmr = setTimeout(buscar, 280); return; }
+    var k = t.getAttribute && t.getAttribute('data-campo');
+    if (k){ S.d[k] = t.value; if (S.errores[k]){ S.errores[k] = validarCampo(k); pintarError(k); } if (k === 'nombre' || k === 'apellidos') S.dupAvisado = false; return; }
+    if (t.id === 'al-cuota'){
+      S.cuota = t.value; S.cuotaTocada = true;
+      var bt = wrap.querySelector('[data-acc="a-resumen"]'); if (bt) bt.disabled = isNaN(importeCuota());
+      return;
+    }
+  });
+  // validación en línea al salir de cada campo
+  wrap.addEventListener('focusout', function(ev){
+    var k = ev.target.getAttribute && ev.target.getAttribute('data-campo');
+    if (k){ S.errores[k] = validarCampo(k); pintarError(k); }
+  });
+  wrap.addEventListener('change', async function(ev){
+    var t = ev.target;
+    if (t.id === 'al-socio'){ S.socio = t.checked; if (!S.cuotaTocada) await prepararCuota(); pintar(); return; }
+    if (t.id === 'al-per'){ S.periodicidad = t.value; return; }
+    if (t.id === 'al-conf-llena'){ S.confirmaLlena = t.checked; pintar(); return; }
+  });
+  wrap.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter' && ev.target.getAttribute && ev.target.getAttribute('data-campo')){
+      ev.preventDefault(); var bt = wrap.querySelector('[data-acc="validar-datos"]'); if (bt) bt.click();
+    }
+  });
+
+  pintar();
+  if (S.paso === 2 && S.busca.trim().length >= 3) buscar();
+});
+</script>
+</body>
+</html>

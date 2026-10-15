@@ -126,6 +126,7 @@
       frase:'Adultos y máster. Franjas, calles, cupos y quién falta.',
       screens:[
         {key:'resumen',    t:'Resumen',          i:'grid',     url:B+'portal/natacion/'},
+        {key:'alta',       t:'Dar de alta',      i:'userplus', url:B+'portal/natacion-alta/?tipo=M%C3%A1ster', d:'Un nadador nuevo, paso a paso: datos, días, calle y cuota. Le llega el acceso por correo.', pill:'Empieza aquí'},
         {key:'nadadores',  g:'Nadadores', t:'Nadadores',        i:'people',   url:B+'portal/natacion/?p=nadadores'},
         {key:'franjas',    g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
@@ -137,6 +138,7 @@
       frase:'Los peques del agua: franjas, cupos, asistencia y familias.',
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-natacion/'},
+        {key:'alta', t:'Dar de alta', i:'userplus', url:B+'portal/natacion-alta/?tipo=Escuela', d:'Un niño o niña nuevo, paso a paso: datos, días, calle y cuota. A la familia le llega el acceso.', pill:'Empieza aquí'},
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-nat'},
         {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
         {g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
