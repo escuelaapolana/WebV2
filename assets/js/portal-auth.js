@@ -380,8 +380,24 @@
   css.textContent =
     /* --- tarjeta de acceso (maqueta 19b · pantalla A) --- */
     '.pt-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid #EAE3D5;border-radius:14px;padding:30px 26px 24px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
-    '.pt-login .pt-logo{display:block;margin:0 auto 8px;height:58px;width:auto}' +
-    '.pt-login h1{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:36px;line-height:1;color:#2E4256;margin:0 0 6px;text-align:center}' +
+    /* Cabecera azul marino con el escudo (15-oct): quien entra reconoce
+       su app desde el primer segundo, igual que la barra de dentro. El
+       escudo va sobre un disco blanco, como en la barra y en las camisetas. */
+    '.pt-cab{margin:-30px -26px 18px;padding:24px 20px 20px;background:linear-gradient(180deg,#35506E,#20303F);' +
+      'border-radius:13px 13px 0 0;text-align:center}' +
+    '.pt-login .pt-logo{display:block;margin:0 auto 10px;width:88px;height:88px;object-fit:contain;' +
+      'background:#fff;border-radius:999px;padding:5px;box-sizing:border-box;box-shadow:0 0 0 4px rgba(255,255,255,.14)}' +
+    '.pt-login h1{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:30px;line-height:1.05;letter-spacing:.02em;color:#fff;margin:0;text-align:center}' +
+    '.pt-login .btn--primario{box-shadow:0 2px 6px -3px rgba(46,66,86,.4)}' +
+    /* En el móvil, la tarjeta es la pantalla entera: pegada a los bordes
+       con sus esquinas redondeadas parecía un recorte. */
+    '@media (max-width:520px){' +
+      '.pt-login{margin:0 auto;max-width:none;min-height:100vh;border:0;border-radius:0;box-shadow:none;padding:30px 20px 28px}' +
+      '.pt-cab{margin:-30px -20px 18px;border-radius:0;padding-top:max(26px,env(safe-area-inset-top))}' +
+    '}' +
+    '.pt-app{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;margin:10px auto 0;' +
+      'font-size:14px;color:#2F6FA8;text-decoration:none;text-align:center}' +
+    '.pt-app:hover{text-decoration:underline}' +
     '.pt-login .lema{color:#5E5849;margin:0 0 16px;text-align:center;font-size:15px;line-height:1.5}' +
     '.pt-login label{display:block;font-size:13px;line-height:1.4;color:#6E6656;margin:12px 0 5px}' +
     '.pt-login input{width:100%;box-sizing:border-box;padding:13px 14px;border:1px solid #E0D8C8;border-radius:10px;font-size:16px;font-family:inherit;color:#2E4256;background:#fff}' +
@@ -942,8 +958,10 @@
     login.className = 'pt-login';
     login.style.display = 'none';
     login.innerHTML =
-      '<img class="pt-logo" src="' + b + 'assets/img/logo.png" alt="Club Apolana">' +
-      '<h1>Club Apolana</h1>' +
+      '<div class="pt-cab">' +
+        '<img class="pt-logo" src="' + b + 'assets/img/escudo-circulo.png" alt="Club Atletismo Apolana">' +
+        '<h1>Club Atletismo Apolana</h1>' +
+      '</div>' +
       '<p class="lema" id="pt-lema">Entra con tu correo y tu contraseña.</p>' +
       /* --------------------------------------------------------
          LA PUERTA DE SIEMPRE, A LA VISTA
@@ -983,14 +1001,14 @@
            que hay que hacer y en qué orden —tu correo arriba, este botón, te
            llega un enlace— porque el paso que se saltaba era escribir el correo
            en una casilla que parecía parte de «entrar con contraseña». */
-        '<p class="pt-nota"><b>¿Es tu primera vez?</b> Todavía no tienes contraseña. ' +
-          'Escribe tu correo en la casilla de arriba y pulsa aquí: te llega un enlace y entras con él.</p>' +
+        /* 15-oct: «primera vez» y «no me acuerdo» eran dos botones que hacían
+           lo mismo (mandar un enlace y, al volver, «Ponte una contraseña»).
+           Ahora es uno. OJO a la lección de arriba: el texto sigue diciendo
+           QUÉ HACER y en qué orden (correo arriba → este botón → enlace),
+           que es lo que faltaba cuando solo ponía la pregunta. */
+        '<p class="pt-nota"><b>¿Primera vez o no recuerdas tu contraseña?</b> ' +
+          'Escribe tu correo en la casilla de arriba y pulsa aquí: te llega un enlace para entrar y ponerte una contraseña.</p>' +
         '<button type="button" class="pt-btn2" id="pt-pedir">Enviarme un enlace al correo</button>' +
-        /* Quien SÍ tiene contraseña pero no la recuerda: mismo enlace por
-           correo, pero al volver le sale directamente «Ponte una contraseña»
-           (sin pedirle la vieja). Marca la intención antes de mandar. */
-        '<p class="pt-nota" style="margin-top:14px">¿Tienes contraseña pero <b>no te acuerdas</b>?</p>' +
-        '<button type="button" class="pt-olvido" id="pt-olvide">No me acuerdo de mi contraseña</button>' +
       '</div>' +
       /* --------------------------------------------------------
          LA ESPERA · lo que se ve mientras el correo va de camino
@@ -1044,13 +1062,13 @@
       '<div class="pt-publico">' +
         '<a href="' + b + 'noticias/"><b>Noticias y calendario del club</b><i>&rsaquo;</i></a>' +
         '<a href="' + b + '"><b>Grupos, horarios y precios</b><i>&rsaquo;</i></a>' +
-        '<a href="' + b + 'competicion/"><b>Probar cuatro entrenamientos</b><i>&rsaquo;</i></a>' +
-        '<a href="' + b + 'app/"><b>Instalar como app en el móvil</b><i>&rsaquo;</i></a>' +
       '</div>' +
       '<div class="pt-pie">' +
         '<span>¿Aún no estás en el club?</span>' +
         '<a href="' + b + 'inscripcion/">Inscribirme</a>' +
-      '</div>';
+      '</div>' +
+      /* Instalar no es «sin cuenta»: es para quien ya entra. Va aparte, al final. */
+      '<a class="pt-app" href="' + b + 'app/">Instalar la app en el móvil &rsaquo;</a>';
     document.body.insertBefore(login, document.body.firstChild);
     /* Por si el aviso de «HTML leído» no llegó (raro): se intenta aquí. Si ya
        hay barra (de antemano o real), no hace nada. */
@@ -1284,7 +1302,7 @@
        contraseña, porque esa persona YA está dentro y ofrecerle a la vez
        «Inscribirme» solo la hace dudar. */
     function extras(ver) {
-      ['.pt-sep', '.pt-publico', '.pt-pie'].forEach(function (s) {
+      ['.pt-sep', '.pt-publico', '.pt-pie', '.pt-app'].forEach(function (s) {
         var e = login.querySelector(s);
         if (e) e.style.display = ver ? '' : 'none';
       });
@@ -1583,7 +1601,9 @@
       apuntarMantener();
       elPedir.disabled = true;
       msg.textContent = 'Enviando…';
-      var como = await pedirEnlace(email);
+      /* Con cambiarClave: al volver del correo sale «Ponte una contraseña»
+         también a quien ya tenía una y no se acuerda (antes era otro botón). */
+      var como = await pedirEnlace(email, { cambiarClave: true });
       elPedir.disabled = false;
       if (como === 'apagado') {
         msg.textContent = 'Enviar el enlace todavía no está activado. '
