@@ -332,7 +332,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=f2628aa0';
+      s.src = base() + 'assets/js/mundos.js?v=b96b8760';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -445,6 +445,7 @@
         { txt: 'Buzón',                      url: r + 'buzon/',            desc: 'mensajes de contacto' },
         { txt: 'Solicitudes de inscripción', url: r + '#buzon',            desc: 'quién ha pedido plaza', panel: true },
         { txt: 'Avisos al móvil',            url: r + 'avisos-push/',      desc: 'notificaciones que se envían' },
+        { txt: 'Correo a un grupo',          url: r + 'correo-grupo/',     desc: 'un correo con el diseño del club a un grupo, desde info@' },
         { txt: 'Plantillas de email',        url: r + 'plantillas/',       desc: 'respuestas ya escritas' },
         { txt: 'Personas de contacto',       url: r + 'contactos/',        desc: 'quién lleva cada sección y su teléfono' },
         { txt: 'Se pone solo',               url: r + 'automatizaciones/', desc: 'lo que se publica sin tocar nada' }
@@ -1087,7 +1088,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=f2628aa0';
+      s.src = base() + 'assets/js/mundos.js?v=b96b8760';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
