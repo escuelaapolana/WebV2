@@ -11,8 +11,8 @@
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
-<script src="../../assets/js/admin-auth.js?v=327e060b"></script>
-<script src="../../assets/js/admin-tabbar.js?v=5a871f71" defer></script>
+<script src="../../assets/js/admin-auth.js?v=4b9794ba"></script>
+<script src="../../assets/js/admin-tabbar.js?v=54b863bc" defer></script>
 <style>
   :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',monospace);
     --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.26); }
@@ -211,6 +211,16 @@
   .pz-btn-no{ min-height:38px; padding:0 14px; border-radius:999px; border:1px solid #e0b4b0; background:#fff; color:#9A3B3B; font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; }
   .pz-btn-azul[disabled], .pz-btn-no[disabled]{ opacity:.55; cursor:progress; }
   .cq-stripe-falta{ font-size:12px; font-weight:700; color:#9A4A2E; }
+  /* [390] Recordatorio de pago + «no reclamar hasta que venga» + llegar a una persona desde el Resumen */
+  .cq-recordar{ display:flex; align-items:center; gap:12px 16px; flex-wrap:wrap; background:#fff; border:1px solid var(--linea,#E8E1D3); border-left:4px solid #B0710A; border-radius:14px; box-shadow:var(--sombra-suave,0 12px 30px -20px rgba(46,66,86,.5)); padding:13px 17px; margin-top:15px; }
+  .cq-recordar .tx{ flex:1 1 260px; min-width:0; font-size:13px; color:var(--texto-suave,#6E6656); line-height:1.45; }
+  .cq-recordar .tx b{ color:var(--navy,#2E4256); }
+  .cq-recordar-btn{ min-height:44px; padding:0 20px; border-radius:999px; border:1px solid #2F6FA8; background:#2F6FA8; color:#fff; font:inherit; font-size:14.5px; font-weight:700; cursor:pointer; }
+  .cq-recordar-btn:hover{ background:#1E4E78; }
+  .cq-recordar-btn[disabled]{ opacity:.55; cursor:progress; }
+  .cq-pill.p-noreclamar{ background:#EEF4EA; color:#4D6B2E; border:1px solid #CFE0C2; }
+  .cq-quitar-filtro{ font:inherit; font-size:12.5px; font-weight:600; border:1px solid var(--linea-marcada,#E4DCCB); background:#fff; color:var(--navy,#2E4256); border-radius:999px; padding:6px 12px; cursor:pointer; align-self:center; }
+  .cq-fila.cq-ver, .alta.cq-ver{ outline:2.5px solid #2F6FA8; outline-offset:-2px; background:#EEF5FB; transition:background .6s ease; }
 
   /* ---- Unificar Grupos · Altas · Contabilidad con el aspecto de Personas ---- */
   .alta, .ca-cobro, .cg-card, .cx-tabla{ box-shadow:var(--sombra-suave,0 12px 30px -20px rgba(46,66,86,.55)); }
@@ -296,8 +306,9 @@ APOLANA_ADMIN.listo(function (sb) {
     indexarDuplicados();
   }
   var DIAS = {};   // alta_id -> nº de días distintos que ha venido (desde su alta)
+  var FECHAS = {}; // [390] atleta_id -> fechas (YYYY-MM-DD) con asistencia presente
   async function cargarDias(){
-    DIAS = {};
+    DIAS = {}; FECHAS = {};
     var conAtleta = ALTAS.filter(function(a){ return a.atleta_id; });
     var ids = conAtleta.map(function(a){ return a.atleta_id; });
     if(!ids.length) return;
@@ -305,6 +316,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(r.error || !r.data) return;
     var porAtleta = {};
     r.data.forEach(function(x){ (porAtleta[x.atleta_id]=porAtleta[x.atleta_id]||[]).push(String(x.fecha||'')); });
+    FECHAS = porAtleta;
     conAtleta.forEach(function(a){
       var desde = a.created_at ? String(a.created_at).slice(0,10) : '';
       var set={};
@@ -356,6 +368,107 @@ APOLANA_ADMIN.listo(function (sb) {
     if(P.sol) return '<span class="cq-pill p-pidepausa">Pide pausa · '+esc(mesNombre(P.sol.mes))+'</span>';
     return '';
   }
+  // ===== [390] Recordatorio de pago y «no reclamar hasta que venga» =====
+  // Día local (YYYY-MM-DD) de una marca de tiempo.
+  function diaLocal(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d)) return ''; return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate(); }
+  // ¿Sigue en pie «no reclamar hasta que venga»? Se apaga SOLA en cuanto tiene
+  // una asistencia (presente) con fecha igual o posterior al día en que se marcó.
+  function noReclamarVigente(a){
+    if(!a.no_reclamar_hasta_asistir) return false;
+    var desde=diaLocal(a.no_reclamar_desde);
+    return !(FECHAS[a.atleta_id]||[]).some(function(f){ return f && (!desde || f>=desde); });
+  }
+  // Quién recibe el recordatorio: en el grupo con el cobro abierto y sin pagar
+  // el mes en curso. Fuera: suscripción activa/cancelada/impago, paga fuera de
+  // la app, lista de espera, baja pedida, Fuerza gratis y ya cobrado este mes.
+  // (La Edge lo vuelve a comprobar antes de enviar.)
+  function cobroPendienteMes(a){
+    var st=a.suscripcion_estado||'';
+    if((a.estado||'')!=='aprobada' || !a.cobro_abierto) return false;
+    if(st==='activa' || st==='cancelada' || st==='impago') return false;
+    if(a.pago_externo || a.lista_espera || a.baja_solicitada) return false;
+    if(/fuerza gratis/i.test(String(a.horario||''))) return false;
+    if(a.ultimo_cobro && diaLocal(a.ultimo_cobro).slice(0,7)===mesHoy()) return false;
+    return true;
+  }
+  function paraRecordar(){
+    var envio=[], saltados=[], sinCorreo=[];
+    ALTAS.forEach(function(a){
+      if(!cobroPendienteMes(a)) return;
+      if(noReclamarVigente(a)) saltados.push(a);
+      else if(!emailDe(a)) sinCorreo.push(a);
+      else envio.push(a);
+    });
+    var orden=function(x,y){ return nomCompleto(x).localeCompare(nomCompleto(y)); };
+    envio.sort(orden); saltados.sort(orden); sinCorreo.sort(orden);
+    return { envio:envio, saltados:saltados, sinCorreo:sinCorreo };
+  }
+  function nomCompleto(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }
+  function recordadoHoy(a){ return !!a.cobro_recordado_en && String(a.cobro_recordado_en).slice(0,10)===new Date().toISOString().slice(0,10); }
+  function recordarHTML(){
+    var R=paraRecordar();
+    if(!R.envio.length && !R.saltados.length && !R.sinCorreo.length) return '';
+    var ult=ALTAS.reduce(function(m,a){ return (a.cobro_recordado_en && (!m || a.cobro_recordado_en>m)) ? a.cobro_recordado_en : m; }, '');
+    var notas=[];
+    if(R.saltados.length) notas.push('Se salta a <b>'+R.saltados.map(function(a){ return esc(nomCompleto(a)); }).join(', ')+'</b> (no reclamar hasta que venga).');
+    if(R.sinCorreo.length) notas.push('Sin correo, avísales por WhatsApp: <b>'+R.sinCorreo.map(function(a){ return esc(nomCompleto(a)); }).join(', ')+'</b>.');
+    if(ult) notas.push('Último recordatorio: '+esc(fecha(ult))+'.');
+    return '<div class="cq-recordar">'+
+      '<button type="button" class="cq-recordar-btn" id="cq-recordar"'+(R.envio.length?'':' disabled')+'>✉ Recordar a los que no han pagado ('+R.envio.length+')</button>'+
+      '<div class="tx">Les llega un correo desde info@ con su importe y el botón <b>«Pagar la cuota»</b>. Solo a quien tiene el cobro abierto y no ha pagado '+esc(MES_L[new Date().getMonth()])+'. '+notas.join(' ')+'</div>'+
+    '</div>';
+  }
+  async function recordarPendientes(btn){
+    var R=paraRecordar(), lista=R.envio;
+    if(!lista.length){ toast('No hay nadie a quien recordar el pago.'); return; }
+    var msg='Se enviará el RECORDATORIO de pago de El Cubo ('+MES_L[new Date().getMonth()]+') a '+lista.length+' persona'+(lista.length===1?'':'s')+':\n\n'+
+      lista.map(function(a){ return '· '+nomCompleto(a); }).join('\n')+
+      (R.saltados.length?'\n\nSe salta (no reclamar hasta que venga): '+R.saltados.map(nomCompleto).join(', '):'')+
+      (R.sinCorreo.length?'\nSin correo (WhatsApp): '+R.sinCorreo.map(nomCompleto).join(', '):'')+
+      (lista.filter(recordadoHoy).length?'\n\nOJO: '+lista.filter(recordadoHoy).length+' de ellos ya recibieron el recordatorio HOY.':'')+
+      '\n\n¿Enviar?';
+    if(!confirm(msg)) return;
+    btn.disabled=true; var t0=btn.textContent; var ok=0, err=0, nada=0, ahora=new Date().toISOString();
+    // Seguro: si la Edge aún es la vieja (no entiende «recordatorio»), no se envía nada.
+    try{
+      var rc0=await sb.functions.invoke('cubo-cobro-aviso',{ body:{ comprobar:true, recordatorio:true } });
+      if(!(rc0 && !rc0.error && rc0.data && rc0.data.ok && rc0.data.recordatorio===true)) throw new Error('vieja');
+    }catch(e){ btn.disabled=false; btn.textContent=t0; toast('Falta desplegar la Edge cubo-cobro-aviso nueva. No se ha enviado nada.','error'); return; }
+    for(var i=0;i<lista.length;i++){
+      btn.textContent='Enviando '+(i+1)+'/'+lista.length+'…';
+      try{
+        var r=await sb.functions.invoke('cubo-cobro-aviso',{ body:{ alta_id:lista[i].id, recordatorio:true } });
+        var d=(r&&r.data)||{};
+        if(!r.error && d.ok){ ok++; lista[i].cobro_avisado_en=ahora; lista[i].cobro_recordado_en=ahora; }
+        else if(d.motivo==='no-toca') nada++;
+        else err++;
+      }catch(e){ err++; }
+    }
+    btn.disabled=false; btn.textContent=t0;
+    toast('Recordatorio enviado a '+ok+(nada?(' · '+nada+' ya no tocaba'):'')+(err?(' · '+err+' no salieron'):''), err?'error':'ok');
+    pintarPersonas(); pintarContab(); pintarCobro();
+  }
+  async function toggleNoReclamar(id, on, btn){
+    if(btn) btn.disabled=true;
+    var r=await sb.rpc('cubo_no_reclamar_set',{ p_id:id, p_on:on });
+    if(btn) btn.disabled=false;
+    if(r.error || (r.data && r.data.ok===false)){ toast((r.error&&r.error.message)||(r.data&&r.data.error)||'No se ha podido.','error'); return; }
+    var ahora=new Date().toISOString();
+    ALTAS.forEach(function(a){ if(a.id===id){ a.no_reclamar_hasta_asistir=on; a.no_reclamar_desde=on?ahora:null; } });
+    pintar();
+    toast(on?'Marcado: no se le reclama hasta que venga':'Quitado: se le reclama normal');
+  }
+  // Etiqueta + interruptor para la ficha (Personas y Altas).
+  function noReclamarHTML(a, conBoton){
+    var vig=noReclamarVigente(a), pill='';
+    if(vig) pill='<span class="cq-pill p-noreclamar" title="El recordatorio de pago se la salta hasta que venga 1 día">⏸ No reclamar hasta que venga</span>';
+    else if(a.no_reclamar_hasta_asistir) pill='<span class="cq-pill p-noreclamar" title="Ya ha venido desde que se marcó: se le vuelve a reclamar">✓ Ya vino · se le reclama</span>';
+    if(!conBoton) return pill;
+    var btn='<button type="button" class="pr-chip '+(a.no_reclamar_hasta_asistir?'on':'off')+'" data-noreclamar="'+esc(a.id)+'" data-on="'+(a.no_reclamar_hasta_asistir?'1':'0')+'" title="El recordatorio de pago no le llega hasta que venga al menos 1 día">'+
+      (a.no_reclamar_hasta_asistir?'✓ No reclamar hasta que venga':'⏸ No reclamar')+'</button>';
+    return btn+(pill&&a.no_reclamar_hasta_asistir&&!vig?' '+pill:'');
+  }
+
   async function cargarCobros(){
     COBROS = {};
     var r = await sb.from('cubo_cobros').select('id,alta_id,concepto,importe_cent,estado,created_at').eq('estado','pendiente');
@@ -469,7 +582,8 @@ APOLANA_ADMIN.listo(function (sb) {
     // suscripción activa (primero «Dar de baja»).
     if(a.suscripcion_estado!=='activa' && a.suscripcion_estado!=='pausada')
       acc+='<button type="button" class="b b-no" data-eliminar="'+esc(a.id)+'">Eliminar</button>';
-    return '<article class="alta">'+
+    if(est==='aprobada' && a.cobro_abierto && a.suscripcion_estado!=='activa' && !a.pago_externo) acc+=noReclamarHTML(a,true);
+    return '<article class="alta" data-alta="'+esc(a.id)+'">'+
       '<div class="alta-top">'+
         '<span class="quien"><b>'+esc((a.nombre||'')+' '+(a.apellidos||''))+'</b>'+
           '<span class="tag '+(a.es_escuela?'esc':(a.es_socio?'socio':'fuera'))+'">'+(a.es_escuela?'Escuela':(a.es_socio?'Socio':'De fuera'))+'</span>'+
@@ -479,6 +593,7 @@ APOLANA_ADMIN.listo(function (sb) {
           '<small>Apuntado el '+esc(fecha(a.created_at))+'</small>'+
           (DUP[a.id] && est!=='rechazada' ? '<small class="dup-aviso" style="color:#9A3B3B;font-weight:700">⚠️ Posible duplicado · ya hay otra alta de esta persona</small>' : '')+
           pagoHTML(a)+
+          (noReclamarVigente(a)?'<div style="margin-top:4px">'+noReclamarHTML(a,false)+'</div>':'')+
           pagosPuntualesHTML(a)+
           badgesPruebaHTML(a)+
         '</span>'+
@@ -531,7 +646,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var dias=cqDias(a), hor=esc(cqHorario(a));
     var sub = hor + (dias?('<span class="dot">·</span>'+esc(dias)):'');
     function base(subHtml, acc, imp, pill){
-      return '<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+subHtml+'</small></div>'+
+      return '<div class="cq-fila" data-alta="'+esc(a.id)+'"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+subHtml+'</small></div>'+
         (acc?'<div class="cq-acc">'+acc+'</div>':'')+(imp||'')+pill+'</div>';
     }
     if(estado==='prueba'){
@@ -540,16 +655,19 @@ APOLANA_ADMIN.listo(function (sb) {
       return base(sub, acc, '', '<span class="cq-pill p-prueba">De prueba</span>');
     }
     if(estado==='sinpagar'){
-      var av = a.cobro_avisado_en ? '<span class="cq-okbadge">✓ Avisado</span>'
+      var av = a.cobro_recordado_en ? '<span class="cq-okbadge" title="Último recordatorio de pago">✓ Recordado '+esc(fecha(a.cobro_recordado_en))+'</span>'
+        : a.cobro_avisado_en ? '<span class="cq-okbadge">✓ Avisado</span>'
         : '<button type="button" class="pr-chip off" data-avisauno="'+esc(a.id)+'">✉ Avisar</button>';
-      var acc=cqChip(a.id,'confirmado',!!a.confirmado_sigue)+cqChip(a.id,'whatsapp',!!a.en_whatsapp)+av;
+      var acc=cqChip(a.id,'confirmado',!!a.confirmado_sigue)+cqChip(a.id,'whatsapp',!!a.en_whatsapp)+noReclamarHTML(a,true)+av;
       var imp='<span class="cq-imp">'+(a.primer_pago_cent>0?(a.primer_pago_cent/100):(a.precio_mes||0))+' €</span>';
-      return base(sub, acc, imp, '<span class="cq-pill p-sinpagar">Sin pagar</span>');
+      var nr=noReclamarVigente(a) ? noReclamarHTML(a,false)+' ' : '';
+      return base(sub, acc, imp, nr+'<span class="cq-pill p-sinpagar">Sin pagar</span>');
     }
     if(estado==='pagado'){
       var ult=a.ultimo_cobro?('<span class="dot">·</span>último cobro '+esc(fecha(a.ultimo_cobro))):'';
       var pz=pillPausa(a);
-      return base(hor+ult, '', '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', (pz?pz+' ':'')+'<span class="cq-pill p-pagado">Pagado · socio</span>');
+      var bj=a.baja_solicitada?'<span class="cq-pill p-impago">Pide la baja · '+esc(fecha(a.baja_solicitada))+'</span> ':'';
+      return base(hor+ult, '', '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', bj+(pz?pz+' ':'')+'<span class="cq-pill p-pagado">Pagado · socio</span>');
     }
     if(estado==='impago'){
       return base(sub, '', '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', '<span class="cq-pill p-impago">Impago</span>');
@@ -566,6 +684,7 @@ APOLANA_ADMIN.listo(function (sb) {
       tile('pagado','k-pagado',G.pagado.length,'Pagados · socios','cuota activa');
     if(G.impago.length) h+='<span class="cq-flecha" style="opacity:.4">·</span>'+tile('impago','k-impago',G.impago.length,'Impago','el cobro falló');
     if(G.efectivo.length) h+='<span class="cq-flecha" style="opacity:.4">·</span>'+tile('efectivo','k-efvo',G.efectivo.length,'Paga en efectivo','fuera de la app');
+    if(personasFiltro) h+='<button type="button" class="cq-quitar-filtro" data-quitar-filtro="1">✕ Ver a todos</button>';
     return h;
   }
   function pintarPersonas(){
@@ -581,7 +700,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var tp=$('cq-tn-personas'); if(tp) tp.textContent=total;
     var ta=$('cq-tn-altas'); if(ta) ta.textContent=ALTAS.filter(function(a){ return (a.estado||'pendiente')==='pendiente'; }).length;
 
-    var html=seccionPausas();
+    var html=recordarHTML()+seccionPausas();
     CQ_SEC.forEach(function(s){
       if(personasFiltro && personasFiltro!==s.k) return;
       var gente=G[s.k]; if(!gente.length) return;
@@ -608,7 +727,7 @@ APOLANA_ADMIN.listo(function (sb) {
       PAUSAS[aid].forEach(function(p){
         var nom=((a.nombre||'')+' '+(a.apellidos||'')).trim(), hor=esc(cqHorario(a)), m=esc(mesNombre(p.mes));
         if(p.estado==='solicitada' && aTiempo(p)){
-          filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>pide pausar <b>'+m+'</b><span class="dot">·</span>pedida el '+esc(fecha(p.solicitada_en))+'</small></div>'+
+          filas.push('<div class="cq-fila" data-alta="'+esc(a.id)+'"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>pide pausar <b>'+m+'</b><span class="dot">·</span>pedida el '+esc(fecha(p.solicitada_en))+'</small></div>'+
             '<div class="cq-acc"><button type="button" class="pz-btn-azul" data-pausa-aprobar="'+esc(p.id)+'" data-mes="'+m+'" data-nom="'+esc(nom)+'">Aprobar</button>'+
             '<button type="button" class="pz-btn-no" data-pausa-rechazar="'+esc(p.id)+'">Rechazar</button></div>'+
             '<span class="cq-pill p-pidepausa">Pide pausa · '+m+'</span></div>');
@@ -616,14 +735,14 @@ APOLANA_ADMIN.listo(function (sb) {
           var deshacer = aTiempo(p) ? '<button type="button" class="pz-btn-no" data-pausa-deshacer="'+esc(p.id)+'" data-mes="'+m+'" data-nom="'+esc(nom)+'">Deshacer</button>' : '';
           var nota = faltaStripe(p) ? '<span class="cq-stripe-falta">⚠ Aprobada, falta ponerla en Stripe</span>'
                    : (p.stripe_aplicada_en ? 'Stripe no cobrará '+m : 'se pondrá en Stripe tras el cobro de '+esc(mesNombre(mesAntes(p.mes)+'-01')));
-          filas.push('<div class="cq-fila"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>'+nota+'</small></div>'+
+          filas.push('<div class="cq-fila" data-alta="'+esc(a.id)+'"><div class="cq-quien"><b>'+esc(nom)+'</b><small>'+hor+'<span class="dot">·</span>'+nota+'</small></div>'+
             '<div class="cq-acc">'+(faltaStripe(p)?'<button type="button" class="pz-btn-azul" data-pausa-aplicar="'+esc(p.id)+'">Aplicar en Stripe</button>':'')+deshacer+'</div>'+
             '<span class="cq-pill p-pausa">En pausa · '+m+'</span></div>');
         }
       });
     });
     if(!filas.length) return '';
-    return '<div class="cq-sec s-pausa"><div class="cq-sec-cab"><span class="cq-ic">⏸</span><h2>Pausar un mes</h2><span class="cq-cnt">'+filas.length+'</span>'+
+    return '<div class="cq-sec s-pausa" id="cq-pausas"><div class="cq-sec-cab"><span class="cq-ic">⏸</span><h2>Pausar un mes</h2><span class="cq-cnt">'+filas.length+'</span>'+
       '<p class="cq-desc">Piden no pagar un mes (uno por temporada, con 15 días de antelación). Al aprobar, Stripe no cobra ese mes, le llega un correo y se le guarda la plaza. Hasta el día 4 de ese mes se puede deshacer.</p></div>'+
       filas.join('')+'</div>';
   }
@@ -668,6 +787,33 @@ APOLANA_ADMIN.listo(function (sb) {
   // Llegar ya en la pestaña buena desde un aviso del Resumen (cubo-altas/#altas):
   // antes se abría siempre en «Personas» y el alta por revisar no se veía.
   try{ var tabUrl=(location.hash||'').slice(1); if(['personas','grupos','altas','contab'].indexOf(tabUrl)>=0) cambiarTab(tabUrl); }catch(e){}
+  // [390] Más precisión desde el Resumen, cuando ya están los datos:
+  //   ?f=<prueba|sinpagar|pagado|impago|efectivo|espera> → Personas filtrada
+  //   ?ver=<id del alta>  → abre donde está esa persona, la resalta y baja hasta ella
+  //                         (con #altas, en su tarjeta de «Altas por revisar»)
+  //   #pausas             → Personas, en la caja «Pausar un mes»
+  function irDesdeUrl(){
+    try{
+      var q=new URLSearchParams(location.search), h=(location.hash||'').slice(1);
+      var f=q.get('f'), ver=q.get('ver');
+      if(f && CQ_SEC.some(function(x){ return x.k===f; })){ cambiarTab('personas'); personasFiltro=f; pintarPersonas(); }
+      if(h==='pausas'){ cambiarTab('personas'); var pz=$('cq-pausas'); if(pz) pz.scrollIntoView({block:'start',behavior:'smooth'}); }
+      if(!ver) return;
+      var a=null; ALTAS.forEach(function(x){ if(x.id===ver) a=x; });
+      if(!a){ toast('Esa persona ya no está en la lista.','error'); return; }
+      var k=clasificar(a), enAltas = h==='altas' || !k || (a.estado||'pendiente')!=='aprobada';
+      if(enAltas){
+        cambiarTab('altas'); filtro=(a.estado||'pendiente'); pintar();
+      } else {
+        cambiarTab('personas');
+        if(!q.get('f')) personasFiltro=k;   // así no queda escondida entre los pagados plegados
+        pintarPersonas();
+      }
+      var caja=$(enAltas?'ca-lista':'ca-personas');
+      var el=caja && caja.querySelector('[data-alta="'+(window.CSS&&CSS.escape?CSS.escape(ver):ver)+'"]');
+      if(el){ el.classList.add('cq-ver'); setTimeout(function(){ el.scrollIntoView({block:'center'}); },150); }
+    }catch(e){}
+  }
   // Avisar a UNA persona (reutiliza la Edge cubo-cobro-aviso, que sella el aviso).
   async function avisarUno(id, btn){
     if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
@@ -788,7 +934,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if(a.pago_externo) return 'Paga '+(PAGO_EXT[a.pago_externo]||'(manual)')+' · fuera de la app';
     if(e==='activa') return 'Cuota activa'; if(e==='impago') return 'Impagada';
     if(e==='pausada') return 'En pausa'; if(e==='cancelada') return 'De baja';
-    if(a.cobro_abierto) return 'Cobro abierto (sin pagar)';
+    if(a.cobro_abierto) return 'Cobro abierto (sin pagar)'+(noReclamarVigente(a)?' · no reclamar hasta que venga':'');
     if(a.estado==='aprobada' && !a.lista_espera){
       var v = DIAS[a.id];
       return 'De prueba'+(v!=null ? ' · vino '+v+' día'+(v===1?'':'s') : '');
@@ -860,7 +1006,7 @@ APOLANA_ADMIN.listo(function (sb) {
       '<div class="cx-barra">'+
         '<input type="search" id="cx-buscar" placeholder="Buscar nombre, email o teléfono…" value="'+esc(contabQ)+'">'+
         '<button type="button" class="cx-btn" id="cx-avisar" style="background:#2F6FA8">✉ Avisar a pendientes</button>'+
-        (function(){ var n=ALTAS.filter(function(a){ return a.cobro_abierto&&a.cobro_avisado_en&&String(a.cobro_avisado_en).slice(0,10)===new Date().toISOString().slice(0,10); }).length; return n>0?'<button type="button" class="cx-btn" id="ca-corregir" style="background:#9A5B23">✉ Reenviar corrección a hoy ('+n+')</button>':''; })()+
+        (function(){ var n=ALTAS.filter(function(a){ return a.cobro_abierto&&a.cobro_avisado_en&&String(a.cobro_avisado_en).slice(0,10)===new Date().toISOString().slice(0,10)&&!recordadoHoy(a); }).length; return n>0?'<button type="button" class="cx-btn" id="ca-corregir" style="background:#9A5B23">✉ Reenviar corrección a hoy ('+n+')</button>':''; })()+
         '<button type="button" class="cx-btn" id="cx-resync" style="background:#5E7D3A">↻ Re-sincronizar Stripe</button>'+
         '<button type="button" class="cx-btn" id="cx-export" style="background:#26374B">⬇ Exportar Excel (CSV)</button>'+
       '</div>'+
@@ -884,7 +1030,8 @@ APOLANA_ADMIN.listo(function (sb) {
     setTimeout(function(){ URL.revokeObjectURL(url); el.remove(); },400);
   }
   async function avisarPendientes(btn){
-    var pend=ALTAS.filter(function(a){ return (a.estado||'')!=='rechazada' && a.cobro_abierto && a.suscripcion_estado!=='activa'; });
+    // [390] Tampoco a quien tiene «no reclamar hasta que venga» vigente.
+    var pend=ALTAS.filter(function(a){ return (a.estado||'')!=='rechazada' && a.cobro_abierto && a.suscripcion_estado!=='activa' && !noReclamarVigente(a); });
     if(!pend.length){ toast('No hay nadie con el cobro abierto pendiente de pagar.'); return; }
     if(!confirm('Se enviará el correo «Ya puedes activar tu cuota de El Cubo» a '+pend.length+' persona(s) con el cobro abierto y sin pagar. ¿Enviar?')) return;
     btn.disabled=true; var ok=0,err=0;
@@ -1043,7 +1190,7 @@ APOLANA_ADMIN.listo(function (sb) {
   // que se avisaron HOY. Les llega con su cuota correcta.
   async function reenviarCorreccion(btn){
     var hoy=new Date().toISOString().slice(0,10);
-    var lista=ALTAS.filter(function(a){ return a.cobro_abierto && a.cobro_avisado_en && String(a.cobro_avisado_en).slice(0,10)===hoy; });
+    var lista=ALTAS.filter(function(a){ return a.cobro_abierto && a.cobro_avisado_en && String(a.cobro_avisado_en).slice(0,10)===hoy && !recordadoHoy(a); });
     if(!lista.length){ toast('No hay nadie avisado hoy.'); return; }
     var nombres=lista.slice(0,8).map(function(a){ return ((a.nombre||'')+' '+(a.apellidos||'')).trim(); }).join(', ');
     if(!confirm('Reenviar correo de CORRECCIÓN a '+lista.length+' persona(s) (el anterior ponía 10 € por error):\n'+nombres+(lista.length>8?'…':'')+'\n\nLes llegará con su cuota correcta. ¿Enviar?')) return;
@@ -1164,7 +1311,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var septoct=aprob.filter(function(a){ return !a.lista_espera && !a.cobro_abierto && !a.pago_externo && a.created_at && String(a.created_at).slice(0,10) < '2026-09-30'; });
     var septoctTotal=septoct.reduce(function(s,a){ return s + (10 + (a.precio_mes>0?a.precio_mes:30)); }, 0);
     var _hoy=new Date().toISOString().slice(0,10);
-    var corrHoy=ALTAS.filter(function(a){ return a.cobro_abierto && a.cobro_avisado_en && String(a.cobro_avisado_en).slice(0,10)===_hoy; }).length;
+    var corrHoy=ALTAS.filter(function(a){ return a.cobro_abierto && a.cobro_avisado_en && String(a.cobro_avisado_en).slice(0,10)===_hoy && !recordadoHoy(a); }).length;
     caja.className='ca-cobro'+(abiertos>0?' abierto':'');
     caja.innerHTML='<div class="tx"><b>Cobro por persona</b>'+
       '<small><b>'+abiertos+'</b> con cobro abierto · <b>'+prueba+'</b> de prueba (no les sale pagar). '+
@@ -1296,6 +1443,12 @@ APOLANA_ADMIN.listo(function (sb) {
     if(pzd){ pausaDeshacer(pzd.getAttribute('data-pausa-deshacer'), pzd); return; }
     var pzs=ev.target.closest?ev.target.closest('[data-pausa-aplicar]'):null;
     if(pzs){ pausaAplicar(pzs.getAttribute('data-pausa-aplicar'), pzs); return; }
+    var rc=ev.target.closest?ev.target.closest('#cq-recordar'):null;
+    if(rc){ recordarPendientes(rc); return; }
+    var nrc=ev.target.closest?ev.target.closest('[data-noreclamar]'):null;
+    if(nrc){ toggleNoReclamar(nrc.getAttribute('data-noreclamar'), nrc.getAttribute('data-on')!=='1', nrc); return; }
+    var qf=ev.target.closest?ev.target.closest('[data-quitar-filtro]'):null;
+    if(qf){ personasFiltro=null; pagadosAbierto=false; pintarPersonas(); return; }
     var au=ev.target.closest?ev.target.closest('[data-avisauno]'):null;
     if(au){ avisarUno(au.getAttribute('data-avisauno'), au); return; }
     var t=ev.target.closest?ev.target.closest('#ca-cobro-btn'):null;
@@ -1370,7 +1523,7 @@ APOLANA_ADMIN.listo(function (sb) {
     pintar();
   }
 
-  refrescar();
+  refrescar().then(irDesdeUrl);
   cargarCobro();
   cargarGrupos();
 });

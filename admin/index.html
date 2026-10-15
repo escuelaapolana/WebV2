@@ -1486,6 +1486,16 @@ document.addEventListener('DOMContentLoaded', function () {
     return r.count || 0;
   }
 
+  /* Como cuentaFilas, pero además trae la primera fila: cuando el aviso es
+     de UNA persona, el botón lleva a esa persona y no a la lista entera. */
+  async function primeraYCuenta(tabla, campos, ajustar, queEs) {
+    var q = sb.from(tabla).select(campos, { count: 'exact' });
+    if (ajustar) q = ajustar(q);
+    var r = await q.limit(1);
+    if (r.error) { if (queEs) FALLOS.push(queEs); return { n: null, fila: null }; }
+    return { n: r.count || 0, fila: (r.data || [])[0] || null };
+  }
+
   async function cargarInicio() {
     FALLOS = [];
     var hoy = new Date();
@@ -1521,8 +1531,8 @@ document.addEventListener('DOMContentLoaded', function () {
           : pets.length + ' socios proponen una publicación',
         sub: (p0.titulo || p0.descripcion || 'Sin título').slice(0, 70) +
              (p0.created_at ? ' · ' + fechaCorta(p0.created_at) : ''),
-        accion: 'Ver', href: 'redes/',
-        accion2: 'Publicar', href2: 'redes/#publicar', azul2: true
+        accion: 'Ver', href: pets.length === 1 ? 'redes/?ver=' + encodeURIComponent(p0.id) : 'redes/?estado=pendiente',
+        accion2: 'Publicar', href2: pets.length === 1 ? 'redes/?ver=' + encodeURIComponent(p0.id) + '&preparar=1' : 'redes/?estado=pendiente', azul2: true
       });
     }
 
@@ -1532,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // (alta aprobada, aún sin pagar) que ya ha gastado sus 2 entrenamientos y a
     // la que todavía no se le ha marcado «Se queda» en El Cubo · Altas.
     var rPr = await sb.from('cubo_altas')
-      .select('id,nombre,apellidos,horario,atleta_id,created_at,suscripcion_estado,lista_espera,pago_externo,confirmado_sigue')
+      .select('id,nombre,apellidos,horario,atleta_id,created_at,suscripcion_estado,lista_espera,pago_externo,confirmado_sigue,cobro_abierto')
       .eq('estado', 'aprobada').is('confirmado_sigue', null);
     if (rPr.error) FALLOS.push('las pruebas de El Cubo');
     else {
@@ -1565,7 +1575,11 @@ document.addEventListener('DOMContentLoaded', function () {
           sub: (((pr0.nombre || '') + ' ' + (pr0.apellidos || '')).trim() || 'Alguien') +
                (listosPr.length > 1 ? ' y ' + (listosPr.length - 1) + ' más' : '') +
                ' · escríbele para ver si se queda',
-          accion: 'Ver', href: 'cubo-altas/', azul: true
+          /* Una persona → a su fila; varias → «De prueba» filtrado (si alguna
+             ya tiene el cobro abierto, está en «sin pagar»: lista entera). */
+          accion: 'Ver', azul: true,
+          href: listosPr.length === 1 ? 'cubo-altas/?ver=' + encodeURIComponent(pr0.id)
+              : (listosPr.some(function (a) { return a.cobro_abierto; }) ? 'cubo-altas/#personas' : 'cubo-altas/?f=prueba')
         });
       }
     }
@@ -1618,7 +1632,7 @@ document.addEventListener('DOMContentLoaded', function () {
           sub: nombreAtleta(uno) + (acaban.length > 1 ? ' y ' + (acaban.length - 1) + ' más' : '') +
                ' · hay que preguntarles si se quedan',
           accion: 'Ver ' + (acaban.length === 1 ? 'la ficha' : 'los ' + acaban.length),
-          href: 'atletas/?estado=prueba'
+          href: acaban.length === 1 ? 'atletas/?estado=prueba&ficha=' + encodeURIComponent(uno.id) : 'atletas/?estado=prueba'
         });
       }
 
@@ -1633,7 +1647,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? nombreAtleta(largos[0]) + ' lleva más de un mes en prueba'
             : largos.length + ' atletas llevan más de un mes en prueba',
           sub: 'Ninguno tiene fecha de fin, así que no van a saltar solos',
-          accion: 'Poner fecha', href: 'atletas/?estado=prueba'
+          accion: 'Poner fecha', href: largos.length === 1 ? 'atletas/?estado=prueba&ficha=' + encodeURIComponent(largos[0].id) : 'atletas/?estado=prueba'
         });
       }
 
@@ -1645,7 +1659,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? nombreAtleta(lesionados[0]) + ' comunica una lesión'
             : lesionados.length + ' atletas están marcados como lesionados',
           sub: 'Pendiente de avisar a su entrenador',
-          accion: 'Ver', href: 'atletas/?estado=lesionado'
+          accion: 'Ver', href: lesionados.length === 1 ? 'atletas/?estado=lesionado&ficha=' + encodeURIComponent(lesionados[0].id) : 'atletas/?estado=lesionado'
         });
       }
     }
@@ -1727,14 +1741,16 @@ document.addEventListener('DOMContentLoaded', function () {
         alertas.push({
           tipo: 'TIENDA', color: 'azul',
           texto: pendientes + (pendientes === 1 ? ' pedido de la tienda esperando confirmación' : ' pedidos de la tienda esperando confirmación'),
-          accion: 'Revisar', href: 'pedidos/'
+          accion: 'Revisar', href: 'pedidos/?estado=pendiente'
         });
       }
       if (prendasListas) {
         alertas.push({
           tipo: 'ROPA', color: 'azul',
           texto: prendasListas + (prendasListas === 1 ? ' prenda preparada y sin repartir' : ' prendas preparadas y sin repartir'),
-          accion: 'Ver listado', sec: 'tienda'
+          /* Antes abría «Tienda» (los productos); las prendas por repartir
+             son los pedidos en estado «listo». */
+          accion: 'Ver listado', href: 'pedidos/?estado=listo'
         });
       }
     }
@@ -1771,7 +1787,7 @@ document.addEventListener('DOMContentLoaded', function () {
         texto: altasEsc === 1 ? 'Un alta de la escuela sin revisar'
                               : altasEsc + ' altas de la escuela sin revisar',
         sub: 'Las han rellenado las familias en la web',
-        accion: 'Revisar', href: 'altas/?tipo=escuela', azul: true
+        accion: 'Revisar', href: 'altas/?tipo=escuela&estado=pendiente', azul: true
       });
     }
     var altasSoc = await cuentaFilas('altas_socio_panel', function (q) { return q.eq('estado', 'pendiente'); }, 'las altas de socio');
@@ -1781,29 +1797,35 @@ document.addEventListener('DOMContentLoaded', function () {
         texto: altasSoc === 1 ? 'Un alta de socio sin revisar'
                               : altasSoc + ' altas de socio sin revisar',
         sub: 'Las han rellenado en la web, en «Hacerse socio»',
-        accion: 'Revisar', href: 'altas/?tipo=socio', azul: true
+        accion: 'Revisar', href: 'altas/?tipo=socio&estado=pendiente', azul: true
       });
     }
 
     // --- Altas de El Cubo sin revisar (formulario público del Cubo) ---
-    var altasCubo = await cuentaFilas('cubo_altas', function (q) { return q.eq('estado', 'pendiente'); }, 'las altas de El Cubo');
+    var acPrim = await primeraYCuenta('cubo_altas', 'id', function (q) { return q.eq('estado', 'pendiente'); }, 'las altas de El Cubo');
+    var altasCubo = acPrim.n;
     if (altasCubo) {
       alertas.push({
         tipo: 'ALTA', color: 'ambar',
         texto: altasCubo === 1 ? 'Un alta de El Cubo sin revisar'
                                : altasCubo + ' altas de El Cubo sin revisar',
         sub: 'Se han apuntado por la web de El Cubo',
-        accion: 'Revisar', href: 'cubo-altas/#altas', azul: true
+        accion: 'Revisar', azul: true,
+        href: altasCubo === 1 && acPrim.fila ? 'cubo-altas/?ver=' + encodeURIComponent(acPrim.fila.id) + '#altas' : 'cubo-altas/#altas'
       });
     }
     // --- Bajas de El Cubo solicitadas por las familias ---
-    var bajasCubo = await cuentaFilas('cubo_altas', function (q) { return q.not('baja_solicitada', 'is', null); }, 'las bajas de El Cubo');
+    var bjPrim = await primeraYCuenta('cubo_altas', 'id', function (q) { return q.not('baja_solicitada', 'is', null).order('baja_solicitada'); }, 'las bajas de El Cubo');
+    var bajasCubo = bjPrim.n;
     if (bajasCubo) {
       alertas.push({
         tipo: 'BAJA', color: 'ambar',
         texto: bajasCubo === 1 ? 'Una baja de El Cubo por tramitar' : bajasCubo + ' bajas de El Cubo por tramitar',
         sub: 'Una familia ha pedido darse de baja de la cuota',
-        accion: 'Tramitar', href: 'cubo-altas/', azul: true
+        /* A la tarjeta de esa persona (pestaña Altas), que es donde está «Dar de baja».
+           Si son varias, a la primera que la pidió (las demás quedan en la misma lista). */
+        accion: 'Tramitar', azul: true,
+        href: bjPrim.fila ? 'cubo-altas/?ver=' + encodeURIComponent(bjPrim.fila.id) + '#altas' : 'cubo-altas/#altas'
       });
     }
     // --- [360] El Cubo: piden «pausar un mes» la cuota (aprobar o rechazar) ---
@@ -1811,23 +1833,26 @@ document.addEventListener('DOMContentLoaded', function () {
     // Solo las que aún se pueden decidir (antes del día 5 del mes pedido ⇔ mes ≥ hoy − 3 días).
     var dPz = new Date(); dPz.setDate(dPz.getDate() - 3);
     var minPz = dPz.getFullYear() + '-' + ('0' + (dPz.getMonth() + 1)).slice(-2) + '-' + ('0' + dPz.getDate()).slice(-2);
-    var rPz = await sb.from('cubo_pausas').select('id', { count: 'exact', head: true }).eq('estado', 'solicitada').gte('mes', minPz);
+    var rPz = await sb.from('cubo_pausas').select('id,alta_id', { count: 'exact' }).eq('estado', 'solicitada').gte('mes', minPz).limit(1);
     if (!rPz.error && (rPz.count || 0) > 0) {
       alertas.push({
         tipo: 'CUBO',
         texto: rPz.count === 1 ? 'Alguien pide pausar un mes la cuota de El Cubo' : rPz.count + ' piden pausar un mes la cuota de El Cubo',
         sub: 'No pagan ese mes y se les guarda la plaza · apruébalo o recházalo',
-        accion: 'Revisar', href: 'cubo-altas/', azul: true
+        accion: 'Revisar', azul: true,
+        href: rPz.count === 1 && rPz.data && rPz.data[0] ? 'cubo-altas/?ver=' + encodeURIComponent(rPz.data[0].alta_id) : 'cubo-altas/#pausas'
       });
     }
     // --- Lista de espera de El Cubo ---
-    var esperaCubo = await cuentaFilas('cubo_altas', function (q) { return q.eq('lista_espera', true); }, 'la lista de espera de El Cubo');
+    var esPrim = await primeraYCuenta('cubo_altas', 'id', function (q) { return q.eq('lista_espera', true); }, 'la lista de espera de El Cubo');
+    var esperaCubo = esPrim.n;
     if (esperaCubo) {
       alertas.push({
         tipo: 'ESPERA', color: 'azul',
         texto: esperaCubo === 1 ? 'Una persona en lista de espera de El Cubo' : esperaCubo + ' personas en lista de espera de El Cubo',
         sub: 'Un grupo está lleno; puedes darles plaza o ampliar el aforo',
-        accion: 'Ver', href: 'cubo-altas/'
+        accion: 'Ver',
+        href: esperaCubo === 1 && esPrim.fila ? 'cubo-altas/?ver=' + encodeURIComponent(esPrim.fila.id) : 'cubo-altas/?f=espera'
       });
     }
 
@@ -1852,7 +1877,7 @@ document.addEventListener('DOMContentLoaded', function () {
       (rc.data || []).forEach(function (c) {
         var f = (c.fecha_limite_interna || '').slice(0, 10);
         var cuando = f < hoyIso ? 'ya ha pasado' : (f === hoyIso ? 'acaba hoy' : 'acaba mañana');
-        alertas.push({ tipo: 'COMPETI', color: 'ambar', texto: c.nombre + ' · el plazo interno de inscripción ' + cuando, accion: 'Ver competición', href: 'competiciones/' });
+        alertas.push({ tipo: 'COMPETI', color: 'ambar', texto: c.nombre + ' · el plazo interno de inscripción ' + cuando, accion: 'Ver competición', href: 'competiciones/?ver=' + encodeURIComponent(c.id) });
       });
     }
 
