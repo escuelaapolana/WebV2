@@ -443,6 +443,13 @@
     var all = (M.screens || []).map(function (s, idx) { return { s: s, idx: idx, act: !!esActivo(s, idx) }; })
       .filter(function (o) { return o.s.side !== false; });
     if (!all.length) return '';
+    /* Mundos pequeños (≤ 10 pantallas): todo a la vista, sin apartados. Plegar
+       en un mundo de 7 pantallas solo escondía cosas (Andrés, 15-oct). Los
+       apartados quedan para los mundos grandes, como General. */
+    if (all.length <= 10) {
+      return '<nav class="mm-nav" aria-label="Pantallas de ' + esc(nombreMundo(M)) + '">' +
+        all.map(function (o) { return itemHtml(o.s, o.idx, o.act); }).join('') + '</nav>';
+    }
     var arriba = function (o) { return !o.s.g && (o.s.key === 'resumen' || o.s.key === 'calendario'); };
     var guard = gruposGuardados(), hechos = {}, n = 0, sep = false, html = '';
     all.filter(arriba).forEach(function (o) { html += itemHtml(o.s, o.idx, o.act); });
