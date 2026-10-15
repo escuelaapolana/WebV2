@@ -860,7 +860,7 @@
       if (!c || !c.from) { fin([]); return; }
       try {
         c.from('atletas').select('id,nombre,apellidos').limit(3000).then(
-          function (r) { fin((r && !r.error && r.data) ? r.data : []); },
+          function (r) { fin(((r && !r.error && r.data) ? r.data : []).filter(function (x) { return (x.nombre || '').indexOf('(duplicado)') === -1; })); },
           function () { fin([]); }
         );
       } catch (e) { fin([]); }

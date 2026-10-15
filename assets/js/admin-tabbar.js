@@ -681,7 +681,7 @@
     sb.from('atletas').select('id,nombre,apellidos,categoria,estado').order('apellidos').limit(1200)
       .then(function (r) {
         PIDIENDO = false;
-        GENTE = (r && !r.error && r.data ? r.data : []).map(function (a) {
+        GENTE = (r && !r.error && r.data ? r.data : []).filter(function (a) { return (a.nombre || '').indexOf('(duplicado)') === -1; }).map(function (a) {
           var n = ((a.nombre || '') + ' ' + (a.apellidos || '')).replace(/\s+/g, ' ').trim();
           return { id: a.id, nombre: n, cat: a.categoria || '', estado: a.estado || '', busca: sinTildes(n) };
         });
