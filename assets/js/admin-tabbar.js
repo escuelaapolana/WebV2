@@ -332,7 +332,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=907fbc57';
+      s.src = base() + 'assets/js/mundos.js?v=788cf9e9';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -395,7 +395,8 @@
       { t: 'Natación', enlaces: [
         { txt: 'Todos los de natación', url: r + 'natacion/',                        desc: 'la lista completa: adultos y escuela, con su franja, calle y nivel' },
         { txt: 'Gestionar franjas',     url: base() + 'portal/natacion-gestion/',    desc: 'días, calles, cupos, semáforo, altas y bajas' },
-        { txt: 'Quién falta hoy',       url: base() + 'portal/natacion-asistencia/', desc: 'pasar lista de natación, por franja' }
+        { txt: 'Quién falta hoy',       url: base() + 'portal/natacion-asistencia/', desc: 'pasar lista de natación, por franja' },
+        { txt: 'Cuotas y cobros',       url: base() + 'portal/natacion-cuotas/',     desc: 'la cuota de cada nadador y su enlace para domiciliarla' }
       ] },
       { t: 'Socios', enlaces: [
         { txt: 'Socios y estado',    url: r + 'socios/',         desc: 'quién es socio, al día o impago, filtros y los que pasan a socio' },
@@ -1089,7 +1090,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=907fbc57';
+      s.src = base() + 'assets/js/mundos.js?v=788cf9e9';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;

@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuotas y cobros · Natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=76807ff3">
+<script>
+  window.APOLANA_BASE = "../../";
+  /* Mundo de la lateral: Escuela de natación si viene ?tipo=Escuela; si no, Natación. */
+  (function(){
+    var t = new URLSearchParams(location.search).get('tipo');
+    var w = (t === 'Escuela') ? 'escuela-nat' : 'natacion';
+    if (!t) { try { if (sessionStorage.getItem('apo-mundo') === 'escuela-nat') w = 'escuela-nat'; } catch (e) {} }
+    window.APOLANA_MUNDO = { world: w, screen: 'cuotas', contentSel: '#cuotas' };
+  })();
+</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/portal-auth.js?v=5fe8d100"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f930fe41" defer></script>
+<script src="../../assets/js/mundos.js?v=788cf9e9" defer></script>
+<script src="../../assets/js/natacion-ficha.js?v=572b7273" defer></script>
+<style>
+  :root{ --mm-acento:#2F6FA8; --azul:#2F6FA8; --azul-osc:#245A8A;
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.20); }
+  body{ background:var(--crema,#FBF9F4); }
+  #cuotas{ max-width:860px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 60px; }
+  .cu-msg{ color:var(--texto-suave,#6E6656); text-align:center; padding:28px 10px; }
+
+  /* cabecera */
+  .cu-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--mm-acento); margin-bottom:8px; }
+  .cu-cab h1{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(27px,5vw,36px); line-height:1; color:var(--navy,#26374B); margin:0; }
+  .cu-cab p{ font-size:15px; color:var(--texto-suave,#6E6656); margin:8px 0 16px; line-height:1.45; }
+
+  /* tarjeta: blanca, sombra, cabecera crema */
+  .cu-card{ background:#fff; border-radius:16px; box-shadow:var(--s1); overflow:hidden; margin-bottom:16px; }
+  .cu-card > h2{ margin:0; padding:13px 18px; background:var(--crema-media,#F4EEE1); border-bottom:1px solid var(--linea-marcada,#E4DCCB);
+    font-family:var(--fuente-titulo); text-transform:uppercase; font-size:18px; letter-spacing:-.01em; color:var(--navy,#26374B);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .cu-card > h2 small{ font-family:inherit; text-transform:none; font-size:13px; font-weight:600; color:var(--texto-suave,#6E6656); margin-left:auto; letter-spacing:0; }
+  .cu-cuerpo{ padding:14px 18px 16px; }
+
+  /* filtros */
+  .cu-input, .cu-campo input, .cu-campo select, .cu-sel{ font:inherit; font-size:16px; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE);
+    border-radius:11px; padding:10px 12px; background:#fff; width:100%; box-sizing:border-box; min-height:46px; }
+  .cu-input:focus, .cu-campo input:focus, .cu-campo select:focus{ outline:2px solid #BFD6EC; border-color:var(--azul); }
+  .cu-filtros{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .cu-chip{ min-height:40px; padding:0 15px; border-radius:12px; border:1px solid var(--linea-marcada,#E4DCCB); background:#fff; font:inherit;
+    font-weight:600; font-size:14px; color:var(--navy,#26374B); cursor:pointer; }
+  .cu-chip.on{ background:var(--azul); color:#fff; border-color:var(--azul); }
+  .cu-filtros .cu-sel{ width:auto; min-height:40px; padding:6px 10px; font-size:14px; flex:0 1 auto; }
+
+  /* resumen de estados */
+  .cu-cuenta{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; font-size:13px; color:var(--texto-suave,#6E6656); }
+  .cu-cuenta b{ color:var(--navy,#26374B); }
+
+  /* filas */
+  .cu-fila{ padding:14px 18px; border-top:1px solid var(--linea,#EAE3D5); display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:10px 18px; align-items:start; }
+  .cu-fila:first-child{ border-top:0; }
+  @media (max-width:640px){ .cu-fila{ grid-template-columns:1fr; } }
+  .cu-nom{ font-size:16.5px; font-weight:700; color:var(--navy,#26374B); line-height:1.25; }
+  .cu-nom button{ font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left; }
+  .cu-nom button:hover{ text-decoration:underline; }
+  .cu-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .cu-tag{ font-size:12px; font-weight:700; border-radius:999px; padding:3px 9px; background:var(--crema-media,#EFE9DC); color:var(--navy,#26374B); }
+  .cu-tag.m{ background:#E3EEF8; color:#1E4E79; } .cu-tag.e{ background:#DFF1EF; color:#1F625D; }
+  .cu-tag.s{ background:#E6F4EA; color:#1E5E34; } .cu-tag.ns{ background:#FFF1DC; color:#7A5200; }
+  .cu-franjas{ font-size:13px; color:var(--texto-suave,#6E6656); margin-top:5px; }
+
+  .cu-cuota{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .cu-cuota input{ width:92px; font:inherit; font-size:16px; font-weight:700; text-align:right; color:var(--navy,#26374B);
+    border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:7px 9px; min-height:40px; box-sizing:border-box; }
+  .cu-cuota select{ font:inherit; font-size:14px; border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:7px 8px; min-height:40px; background:#fff; color:var(--navy,#26374B); }
+  .cu-cuota .eur{ font-weight:700; color:var(--navy,#26374B); }
+  .cu-cuota-lab{ font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--texto-tenue,#9A927F); margin-bottom:4px; }
+  .cu-otra{ font-size:13.5px; color:#7A5200; }
+
+  .cu-estado{ display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; border-radius:999px; padding:4px 10px; margin-top:10px; }
+  .cu-estado.sin{ background:#F1EEE7; color:#6E6656; }
+  .cu-estado.pend{ background:#FFF1DC; color:#7A5200; }
+  .cu-estado.camino{ background:#E3EEF8; color:#1E4E79; }
+  .cu-estado.activa{ background:#E6F4EA; color:#1E5E34; }
+  .cu-estado.impago{ background:#FDECEA; color:#8E2A2A; }
+  .cu-estado.cerrado{ background:#F1EEE7; color:#6E6656; }
+  .cu-cobro-det{ font-size:13px; color:var(--texto-suave,#6E6656); margin-top:5px; line-height:1.4; }
+
+  .cu-acc{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .cu-btn{ font:inherit; font-weight:700; font-size:14.5px; min-height:42px; padding:8px 14px; border-radius:11px; cursor:pointer; border:0;
+    background:var(--azul); color:#fff; }
+  .cu-btn:hover{ background:var(--azul-osc); }
+  .cu-btn[disabled]{ opacity:.55; cursor:default; }
+  .cu-btn.sec{ background:#fff; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE); }
+  .cu-btn.sec:hover{ background:var(--crema-media,#EFE9DC); }
+  .cu-btn.verde{ background:#2E7D6B; } .cu-btn.verde:hover{ background:#25695A; }
+  .cu-btn.wa{ background:#1F8F4E; } .cu-btn.wa:hover{ background:#187540; }
+  .cu-btn.peq{ min-height:40px; padding:6px 12px; font-size:14px; }
+  .cu-link{ font:inherit; font-size:13.5px; background:none; border:0; color:#B23B3B; text-decoration:underline; cursor:pointer; padding:4px 0; }
+
+  /* avisos */
+  .cu-aviso{ font-size:14px; color:#7A5200; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+  .cu-info{ font-size:14px; color:#1E4E79; background:#EEF5FB; border:1px solid #D2E4F3; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+  .cu-mal{ font-size:14px; color:#8E2A2A; background:#FDECEA; border:1px solid #F3C6C1; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+  .cu-ok{ font-size:14px; color:#1E5E34; background:#E6F4EA; border:1px solid #BFE3C8; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+
+  /* hoja del formulario */
+  .cu-velo{ position:fixed; inset:0; background:rgba(20,30,45,.45); z-index:2000; display:flex; align-items:flex-start; justify-content:center;
+    overflow-y:auto; padding:clamp(10px,4vh,40px) 12px 40px; }
+  .cu-hoja{ background:#fff; border-radius:18px; box-shadow:0 20px 50px rgba(20,30,45,.35); width:100%; max-width:600px; overflow:hidden; }
+  .cu-hoja > h2{ margin:0; padding:15px 18px; background:var(--crema-media,#F4EEE1); border-bottom:1px solid var(--linea-marcada,#E4DCCB);
+    font-family:var(--fuente-titulo); text-transform:uppercase; font-size:19px; color:var(--navy,#26374B); display:flex; align-items:center; gap:10px; }
+  .cu-hoja > h2 button{ margin-left:auto; font:inherit; font-size:22px; line-height:1; background:none; border:0; cursor:pointer; color:var(--texto-suave,#6E6656); padding:4px 8px; }
+  .cu-hoja .cu-cuerpo{ padding:16px 18px 18px; }
+  .cu-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; }
+  @media (max-width:520px){ .cu-grid{ grid-template-columns:1fr; } }
+  .cu-campo{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .cu-campo.ancho{ grid-column:1 / -1; }
+  .cu-campo label{ font-size:13px; font-weight:700; color:var(--navy,#26374B); }
+  .cu-campo label small{ font-weight:500; color:var(--texto-tenue,#9A927F); }
+  .cu-campo .ayuda{ font-size:12.5px; color:var(--texto-suave,#6E6656); }
+  .cu-switch{ display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; color:var(--navy,#26374B); cursor:pointer; min-height:44px; margin-top:12px; }
+  .cu-switch input{ width:22px; height:22px; }
+  .cu-prop{ border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:12px 14px; margin-top:6px; background:#FCFBF8; }
+  .cu-formula{ font-size:14px; color:var(--navy,#26374B); margin-top:10px; line-height:1.5; }
+  .cu-formula b{ font-size:15px; }
+  .cu-resumen{ font-size:15.5px; color:var(--navy,#26374B); background:#EEF5FB; border:1px solid #D2E4F3; border-radius:12px; padding:12px 14px; margin-top:16px; line-height:1.5; }
+  .cu-resumen small{ display:block; color:var(--texto-suave,#6E6656); font-size:13px; margin-top:4px; }
+  .cu-hoja .cu-acc{ margin-top:16px; }
+  .cu-hoja .cu-acc .cu-btn{ flex:1 1 180px; min-height:48px; font-size:15.5px; }
+  .cu-enlace{ display:flex; gap:8px; margin-top:10px; }
+  .cu-enlace input{ flex:1; min-width:0; font:inherit; font-size:13.5px; border:1px solid var(--linea-borde,#C9C0AE); border-radius:10px; padding:9px 10px; background:#F7F5F0; color:var(--navy,#26374B); }
+  .cu-hecho{ text-align:center; padding:4px 0 2px; }
+  .cu-hecho .ok{ width:58px; height:58px; border-radius:50%; background:#E6F4EA; color:#2E7D6B; display:grid; place-items:center; font-size:30px; margin:0 auto 8px; }
+  .cu-hecho h3{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:22px; color:var(--navy,#26374B); margin:0 0 6px; }
+
+  .cu-toast{ position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--navy,#26374B); color:#fff;
+    padding:10px 16px; border-radius:12px; font-size:14.5px; font-weight:600; z-index:2100; box-shadow:0 8px 24px rgba(20,30,45,.3); max-width:calc(100vw - 32px); }
+</style>
+</head>
+<body>
+  <div id="cuotas"><p class="cu-msg">Cargando…</p></div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('cuotas');
+  var params = new URLSearchParams(location.search);
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var RECARGO_NO_SOCIO = 15;                       // €/mes; va ENTERO en el proporcional (criterio de Mario)
+  var TARIFA_SOCIO = { 1:35, 2:45, 3:55 };         // respaldo si no se pueden leer las tarifas
+  var FIN_TEMPORADA = '2027-06-30';
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function norm(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim(); }
+  function r2(n){ return Math.round(Number(n) * 100) / 100; }
+  function eur(n){
+    if (n == null || n === '' || isNaN(Number(n))) return '—';
+    var v = r2(n);
+    return v.toLocaleString('es-ES', { minimumFractionDigits: Math.round(v*100) % 100 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
+  }
+  function num(s){ var v = String(s == null ? '' : s).trim().replace(/\s/g,'').replace(',', '.'); if (v === '') return null; var n = Number(v); return isNaN(n) ? NaN : n; }
+  function numTxt(n){ return n == null || isNaN(n) ? '' : String(r2(n)).replace('.', ','); }
+  function hoyISO(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function ymd(y, m, d){ return y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0'); }
+  function partes(iso){ var p = String(iso||'').slice(0,10).split('-'); return { y:+p[0], m:+p[1], d:+p[2] }; }
+  function diasDelMes(y, m){ return new Date(y, m, 0).getDate(); }
+  function fechaLarga(iso){ if (!iso) return ''; var p = partes(iso); return p.d + ' de ' + MESES[p.m-1] + ' de ' + p.y; }
+  function mesAnio(iso){ var p = partes(iso); return MESES[p.m-1] + ' de ' + p.y; }
+  function capital(s){ return String(s||'').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, function(_, a, b){ return a + b.toUpperCase(); }); }
+  function nombreDe(x){ return capital(((x.nombre || '') + ' ' + (x.apellidos || '')).trim()); }
+  function textoPer(p){ return p === 'trimestral' ? 'al trimestre' : p === 'temporada' ? 'por temporada' : p === 'anual' ? 'al año' : 'al mes'; }
+
+  // Errores en cristiano: nada de «Supabase», «RLS» ni «permission denied».
+  function humano(e, accion){
+    var m = String((e && (e.message || e.msg || e.mensaje)) || e || '');
+    if (/JWT expired|jwt|sesi[oó]n caducada|sin_sesion/i.test(m)) return 'Tu sesión ha caducado. Sal y vuelve a entrar.';
+    if (/^(Solo |No encuentro|Falta|Ya tiene|Ya está|Esa persona|Ese cobro|Está de baja|Su ficha|La fecha|La cuota|La periodicidad|La forma|El primer|El concepto)/.test(m)) return m;
+    if ((e && e.code === '42501') || /permission denied|row-level security|violates row-level|sin_permiso|not allowed/i.test(m))
+      return 'No tienes permiso para ' + (accion || 'hacer esto') + '. Si crees que deberías poder, díselo a Andrés.';
+    if (/Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m)) return 'Sin conexión. Revisa internet y vuelve a intentarlo.';
+    if (/duplicate key|already exists|ux_cuotas_entreno/i.test(m)) return 'Ya tiene un cobro creado. Recarga la página.';
+    if (/natacion_cuotas_listar|natacion_cobro_crear|schema cache|Could not find the function/i.test(m)) return 'Falta poner al día la base (migración 395). Avisa a Andrés.';
+    if (/supabase|postgres|PGRST|relation |column |function .*does not exist|syntax/i.test(m))
+      return 'Algo ha fallado. Recarga la página y vuelve a intentarlo; si sigue, avisa a Andrés.';
+    return m || 'No se pudo hacer. Vuelve a intentarlo.';
+  }
+  var toastTmr = null;
+  function toast(t){
+    var el = document.querySelector('.cu-toast');
+    if (!el){ el = document.createElement('div'); el.className = 'cu-toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.textContent = t; el.style.display = '';
+    clearTimeout(toastTmr); toastTmr = setTimeout(function(){ el.style.display = 'none'; }, 2600);
+  }
+  async function copiar(txt){
+    try { await navigator.clipboard.writeText(txt); toast('Enlace copiado'); return; } catch (e) {}
+    try {
+      var ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('Enlace copiado');
+    } catch (e2) { prompt('Copia el enlace:', txt); }
+  }
+  // WhatsApp: teléfono de la ficha si lo hay (España por defecto); si no, se elige el chat en WhatsApp.
+  function telWa(t){
+    var d = String(t || '').replace(/[^\d+]/g, '');
+    if (!d) return '';
+    if (d.indexOf('+') === 0) d = d.slice(1);
+    else if (d.indexOf('00') === 0) d = d.slice(2);
+    else if (d.length === 9) d = '34' + d;
+    d = d.replace(/\D/g, '');
+    return d.length >= 10 ? d : '';
+  }
+  function urlWa(x, enlace){
+    var pila = capital(String(x.nombre || '').trim().split(/\s+/)[0] || '');
+    var txt = x.tipo === 'Escuela'
+      ? 'Hola. Te paso el enlace para domiciliar la cuota de la escuela de natación de ' + pila + '. Se hace una sola vez y después se cobra sola: ' + enlace
+      : 'Hola, ' + pila + '. Te paso el enlace para domiciliar tu cuota de natación del club. Se hace una sola vez y después se cobra sola: ' + enlace;
+    var n = telWa(x.telefono);
+    return 'https://wa.me/' + n + '?text=' + encodeURIComponent(txt);
+  }
+
+  // ---------- ¿puede? ----------
+  var rp = await sb.rpc('natacion_cuotas_puede');
+  if (rp.error || !rp.data){
+    wrap.innerHTML = '<div class="cu-card"><h2>Cuotas y cobros</h2><div class="cu-cuerpo"><p style="margin:0">' +
+      (rp.error ? esc(humano(rp.error, 'ver las cuotas de natación')) : 'Esta pantalla es para quien lleva la natación. Si crees que deberías poder entrar, díselo a Andrés.') +
+      '</p></div></div>';
+    return;
+  }
+  if (window.APOLANA_NAT_FICHA) APOLANA_NAT_FICHA.init(sb);
+
+  // ---------- estado ----------
+  var tipoUrl = params.get('tipo');
+  var S = {
+    lista: null, err: null,
+    q: '', tipo: (tipoUrl === 'Escuela' || tipoUrl === 'Máster') ? tipoUrl : '', estado: '',
+    edit: {},          // atleta_id → { importe, per } mientras se edita la cuota de la ficha
+    guardando: {},
+    tarifas: { 'Máster': null, 'Escuela': null }
+  };
+
+  // Tarifas (para proponer la cuota si la ficha no tiene): socio por nº de días.
+  ['Máster', 'Escuela'].forEach(function(t){
+    sb.rpc('natacion_alta_cuota', { p_tipo: t, p_atleta: null }).then(function(r){
+      if (!r.error && r.data && r.data.tarifas) S.tarifas[t] = r.data.tarifas;
+    }, function(){});
+  });
+  function tarifaSocio(tipo, dias){
+    var t = (S.tarifas[tipo] || []).filter(function(x){ return x.dias === dias; })[0];
+    if (t && t.socio != null) return Number(t.socio);
+    return TARIFA_SOCIO[dias] != null ? TARIFA_SOCIO[dias] : null;
+  }
+  // Cuota mensual propuesta: socio por días; no socio (máster) = socio + 15; escuela = precio de socio.
+  function cuotaPropuesta(x){
+    var s = tarifaSocio(x.tipo, x.dias);
+    if (s == null) return null;
+    return x.tipo === 'Máster' && !x.es_socio ? s + RECARGO_NO_SOCIO : s;
+  }
+
+  async function cargar(){
+    var r = await sb.rpc('natacion_cuotas_listar');
+    if (r.error){ S.err = humano(r.error, 'ver las cuotas de natación'); S.lista = []; }
+    else { S.err = null; S.lista = r.data || []; }
+  }
+
+  // ---------- estados del cobro ----------
+  function estadoDe(x){
+    if (!x.cobro_id) return { k:'sin', t:'Sin cobro' };
+    if (x.cobro_estado === 'pendiente') return x.cobro_abierto === false ? { k:'cerrado', t:'Enlace cerrado' } : { k:'pend', t:'Enlace pendiente' };
+    if (x.cobro_estado === 'en_camino') return { k:'camino', t:'En camino' };
+    if (x.cobro_estado === 'activa') return { k:'activa', t:'Activa' };
+    if (x.cobro_estado === 'impago') return { k:'impago', t:'Impago' };
+    return { k:'sin', t: x.cobro_estado || 'Sin cobro' };
+  }
+  function filtrados(){
+    var q = norm(S.q);
+    return (S.lista || []).filter(function(x){
+      if (S.tipo && x.tipo !== S.tipo) return false;
+      if (S.estado && estadoDe(x).k !== S.estado) return false;
+      if (q){
+        var h = norm((x.nombre || '') + ' ' + (x.apellidos || '') + ' ' + (x.codigo || ''));
+        if (q.split(' ').some(function(w){ return h.indexOf(w) === -1; })) return false;
+      }
+      return true;
+    });
+  }
+
+  // ======================================================================
+  //  PINTAR LA LISTA
+  // ======================================================================
+  function cab(){
+    var t = S.tipo === 'Escuela' ? 'Escuela de natación' : S.tipo === 'Máster' ? 'Natación · adultos y máster' : 'Natación';
+    return '<div class="cu-cab"><div class="cu-eyebrow">' + esc(t) + '</div><h1>Cuotas y cobros</h1>' +
+      '<p>La cuota de cada nadador y su enlace para domiciliarla. <b>Desde aquí no sale ningún correo</b>: el enlace lo mandas tú (copiar o WhatsApp).</p></div>';
+  }
+  function filtrosHtml(){
+    var L = S.lista || [];
+    var base = L.filter(function(x){ return !S.tipo || x.tipo === S.tipo; });
+    var cuenta = {}; base.forEach(function(x){ var k = estadoDe(x).k; cuenta[k] = (cuenta[k] || 0) + 1; });
+    var ests = [['', 'Todos los estados'], ['sin', 'Sin cobro'], ['pend', 'Enlace pendiente'], ['camino', 'En camino'], ['activa', 'Activa'], ['impago', 'Impago'], ['cerrado', 'Enlace cerrado']];
+    return '<div class="cu-card"><div class="cu-cuerpo">' +
+      '<input type="search" class="cu-input" id="cu-q" autocomplete="off" placeholder="Buscar por nombre o apellidos" value="' + esc(S.q) + '" aria-label="Buscar nadador">' +
+      '<div class="cu-filtros">' +
+        [['', 'Todos'], ['Máster', 'Máster'], ['Escuela', 'Escuela']].map(function(o){
+          return '<button type="button" class="cu-chip' + (S.tipo === o[0] ? ' on' : '') + '" data-tipo="' + esc(o[0]) + '">' + esc(o[1]) + '</button>';
+        }).join('') +
+        '<select class="cu-sel" id="cu-estado" aria-label="Estado del cobro">' + ests.map(function(o){
+          return '<option value="' + o[0] + '"' + (S.estado === o[0] ? ' selected' : '') + '>' + esc(o[1]) + (o[0] && cuenta[o[0]] ? ' (' + cuenta[o[0]] + ')' : '') + '</option>';
+        }).join('') + '</select>' +
+      '</div>' +
+      '<div class="cu-cuenta"><span><b>' + base.length + '</b> nadadores</span>' +
+        '<span>· <b>' + (cuenta.activa || 0) + '</b> activas</span><span>· <b>' + (cuenta.camino || 0) + '</b> en camino</span>' +
+        '<span>· <b>' + (cuenta.pend || 0) + '</b> con enlace pendiente</span><span>· <b>' + (cuenta.sin || 0) + '</b> sin cobro</span></div>' +
+      '</div></div>';
+  }
+  function filaHtml(x){
+    var id = x.atleta_id, e = estadoDe(x), ed = S.edit[id];
+    var h = '<div class="cu-fila" data-fila="' + esc(id) + '"><div>' +
+      '<div class="cu-nom">' + (x.codigo ? '<button type="button" data-ficha="' + esc(id) + '" title="Abrir su ficha de natación">' + esc(nombreDe(x)) + '</button>' : esc(nombreDe(x))) + '</div>' +
+      '<div class="cu-tags">' +
+        (x.tipo === 'Escuela' ? '<span class="cu-tag e">Escuela</span>' : '<span class="cu-tag m">Máster</span>') +
+        (x.tipo === 'Máster' ? (x.es_socio ? '<span class="cu-tag s">Socio/a</span>' : '<span class="cu-tag ns">No socio</span>') : '') +
+        '<span class="cu-tag">' + (x.dias ? x.dias + ' día' + (x.dias === 1 ? '' : 's') : 'Sin franja') + '</span>' +
+        (!x.acceso_activo ? '<span class="cu-tag">De baja</span>' : '') +
+      '</div>' +
+      (x.franjas ? '<div class="cu-franjas">' + esc(x.franjas) + '</div>' : '') +
+      '</div><div>';
+    // cuota de la ficha
+    h += '<div class="cu-cuota-lab">Cuota de la ficha</div>';
+    if (x.cuota_otra_seccion){
+      h += '<div class="cu-otra">' + esc(eur(x.cuota_importe)) + ' ' + esc(textoPer(x.cuota_periodicidad)) + ' · de otra sección (la lleva administración)</div>';
+    } else {
+      var vImp = ed ? ed.importe : (x.cuota_importe == null ? '' : numTxt(x.cuota_importe));
+      var vPer = ed ? ed.per : (x.cuota_periodicidad === 'trimestral' ? 'trimestral' : 'mensual');
+      var cambiado = !!ed;
+      var malNum = ed && (num(ed.importe) == null || isNaN(num(ed.importe)) || num(ed.importe) < 0 || num(ed.importe) > 2000);
+      h += '<div class="cu-cuota"><input inputmode="decimal" data-cuota="' + esc(id) + '" value="' + esc(vImp) + '" placeholder="—" aria-label="Cuota de ' + esc(nombreDe(x)) + ' en euros"><span class="eur">€</span>' +
+        '<select data-per="' + esc(id) + '" aria-label="Periodicidad">' +
+          '<option value="mensual"' + (vPer === 'mensual' ? ' selected' : '') + '>al mes</option>' +
+          '<option value="trimestral"' + (vPer === 'trimestral' ? ' selected' : '') + '>al trimestre</option></select>' +
+        (cambiado ? '<button type="button" class="cu-btn peq verde" data-guardar="' + esc(id) + '"' + (malNum || S.guardando[id] ? ' disabled' : '') + '>' + (S.guardando[id] ? 'Guardando…' : 'Guardar') + '</button>' +
+                    '<button type="button" class="cu-btn peq sec" data-deshacer="' + esc(id) + '">✕</button>' : '') +
+        '</div>' +
+        (x.cuota_periodicidad && ['mensual', 'trimestral'].indexOf(x.cuota_periodicidad) === -1 && !ed ? '<div class="cu-cobro-det">Apuntada ' + esc(textoPer(x.cuota_periodicidad)) + '.</div>' : '') +
+        (malNum ? '<div class="cu-cobro-det" style="color:#B23B3B">Escribe un importe entre 0 y 2.000 €.</div>' : '');
+    }
+    // cobro domiciliado
+    h += '<span class="cu-estado ' + e.k + '">' + esc(e.t) + '</span>';
+    if (x.cobro_id){
+      var det = eur(x.cobro_importe) + ' ' + textoPer(x.cobro_periodicidad) +
+        (x.cobro_inicio ? ' desde ' + mesAnio(x.cobro_inicio) : '') + (x.cobro_fin ? ' hasta ' + mesAnio(x.cobro_fin) : '') +
+        (x.cobro_metodo === 'tarjeta' ? ' · con tarjeta' : '') +
+        (x.cobro_cargo_inicial ? ' · primer cargo ' + eur(x.cobro_cargo_inicial) : '');
+      h += '<div class="cu-cobro-det">' + esc(det) + '</div>';
+    }
+    h += '<div class="cu-acc">';
+    if (x.enlace){
+      h += '<button type="button" class="cu-btn peq" data-copiar="' + esc(id) + '">Copiar enlace</button>' +
+           '<a class="cu-btn peq wa" href="' + esc(urlWa(x, x.enlace)) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">WhatsApp</a>';
+    }
+    if (!x.cobro_id && x.acceso_activo){
+      h += '<button type="button" class="cu-btn peq sec" data-crear="' + esc(id) + '">Crear enlace de domiciliación</button>';
+    }
+    if (x.cobro_anulable){
+      h += '<button type="button" class="cu-link" data-anular="' + esc(id) + '">Anular este cobro</button>';
+    }
+    h += '</div></div></div>';
+    return h;
+  }
+  function listaHtml(){
+    if (S.lista == null) return '<p class="cu-msg">Cargando nadadores…</p>';
+    var L = filtrados();
+    var h = '<div class="cu-card"><h2>Nadadores <small>' + L.length + ' en la lista</small></h2>';
+    if (S.err) h += '<div class="cu-cuerpo"><div class="cu-mal" style="margin:0">' + esc(S.err) + '</div></div>';
+    else if (!L.length) h += '<div class="cu-cuerpo"><p class="cu-msg" style="padding:14px 0">No hay nadie con esos filtros.</p></div>';
+    else h += '<div id="cu-filas">' + L.map(filaHtml).join('') + '</div>';
+    return h + '</div>';
+  }
+  function pintar(){
+    var foco = document.activeElement && document.activeElement.id === 'cu-q';
+    wrap.innerHTML = cab() + filtrosHtml() + '<div id="cu-lista">' + listaHtml() + '</div>';
+    if (foco){ var b = document.getElementById('cu-q'); if (b){ b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch(e){} } }
+  }
+  function pintarLista(){ var c = document.getElementById('cu-lista'); if (c) c.innerHTML = listaHtml(); else pintar(); }
+  function pintarFila(id){
+    var x = porId(id), f = wrap.querySelector('[data-fila="' + id + '"]');
+    if (!x || !f){ pintarLista(); return; }
+    var foco = document.activeElement, campo = foco && foco.getAttribute && foco.getAttribute('data-cuota') === id, pos = campo ? foco.selectionStart : null;
+    var tmp = document.createElement('div'); tmp.innerHTML = filaHtml(x);
+    f.replaceWith(tmp.firstChild);
+    if (campo){ var nuevo = wrap.querySelector('[data-cuota="' + id + '"]'); if (nuevo){ nuevo.focus(); try { nuevo.setSelectionRange(pos, pos); } catch(e){} } }
+  }
+  function porId(id){ return (S.lista || []).filter(function(x){ return x.atleta_id === id; })[0] || null; }
+
+  // ---------- guardar la cuota de la ficha ----------
+  async function guardarCuota(id){
+    var x = porId(id), ed = S.edit[id]; if (!x || !ed) return;
+    var imp = num(ed.importe);
+    if (imp == null || isNaN(imp) || imp < 0 || imp > 2000) return;
+    S.guardando[id] = true; pintarFila(id);
+    var r = await sb.rpc('natacion_cuota_set', { p_atleta: id, p_importe: imp, p_periodicidad: ed.per });
+    S.guardando[id] = false;
+    if (r.error){ pintarFila(id); toast(humano(r.error, 'cambiar cuotas')); return; }
+    x.cuota_importe = imp; x.cuota_periodicidad = ed.per; delete S.edit[id];
+    pintarFila(id); toast('Cuota guardada: ' + eur(imp) + ' ' + textoPer(ed.per));
+  }
+
+  // ---------- anular ----------
+  async function anular(id){
+    var x = porId(id); if (!x || !x.cobro_id) return;
+    if (!confirm('¿Anular el cobro de ' + nombreDe(x) + ' (' + eur(x.cobro_importe) + ' ' + textoPer(x.cobro_periodicidad) + ')?\n\nEl enlace dejará de funcionar. Nadie lo ha domiciliado todavía, así que no se ha cobrado nada.')) return;
+    var r = await sb.rpc('natacion_cobro_anular', { p_cuota: x.cobro_id });
+    if (r.error){ toast(humano(r.error, 'anular cobros')); return; }
+    toast('Cobro anulado. Ya puedes crear otro.');
+    await cargar(); pintarLista();
+  }
+
+  // ======================================================================
+  //  FORMULARIO «Crear enlace de domiciliación»
+  // ======================================================================
+  var F = null, velo = null;
+  function mesSiguiente(iso){ var p = partes(iso); return p.m === 12 ? ymd(p.y + 1, 1, 1) : ymd(p.y, p.m + 1, 1); }
+  function abrirForm(id){
+    var x = porId(id); if (!x) return;
+    var per = x.cuota_periodicidad === 'trimestral' ? 'trimestral' : 'mensual';
+    var imp = (x.cuota_importe != null && !x.cuota_otra_seccion && Number(x.cuota_importe) > 0) ? Number(x.cuota_importe) : null;
+    var deFicha = imp != null;
+    if (imp == null){ var pr = cuotaPropuesta(x); if (pr != null){ imp = pr; per = 'mensual'; } }
+    var hoy = hoyISO();
+    F = {
+      x: x, importe: imp == null ? '' : numTxt(imp), per: per, impDeFicha: deFicha, impTocado: false,
+      inicio: mesSiguiente(hoy), fin: FIN_TEMPORADA,
+      mitad: false, alta: hoy, socio: !!x.es_socio,
+      ref: '', refTocada: false, cargo: '', cargoTocado: false,
+      enviando: false, err: null, hecho: null
+    };
+    velo = document.createElement('div'); velo.className = 'cu-velo';
+    velo.addEventListener('click', function(ev){ if (ev.target === velo) cerrarForm(); });
+    velo.addEventListener('click', clickForm);
+    velo.addEventListener('input', inputForm);
+    velo.addEventListener('change', inputForm);
+    document.body.appendChild(velo);
+    document.body.style.overflow = 'hidden';
+    pintarForm();
+  }
+  function cerrarForm(){
+    if (F && F.enviando) return;
+    if (velo){ velo.remove(); velo = null; }
+    document.body.style.overflow = '';
+    var recargar = F && F.hecho; F = null;
+    if (recargar) cargar().then(pintarLista);
+  }
+  document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && velo) cerrarForm(); });
+
+  // Cuota del mes completo de referencia (para el proporcional).
+  function refMensual(){
+    if (F.refTocada) return num(F.ref);
+    var imp = num(F.importe); if (imp == null || isNaN(imp)) return null;
+    return F.per === 'trimestral' ? r2((imp + 15) / 3) : imp;   // trimestral = 3 × mensual − 15
+  }
+  function recargo(){ return F.x.tipo === 'Máster' && !F.socio ? RECARGO_NO_SOCIO : 0; }
+  // Proporcional del mes de alta: SOLO la parte de socio; el recargo de no socio va entero (criterio de Mario).
+  function calcProp(){
+    var ref = refMensual(); if (ref == null || isNaN(ref) || !F.alta) return null;
+    var p = partes(F.alta), dm = diasDelMes(p.y, p.m), quedan = dm - p.d + 1;
+    var rec = recargo(), socio = Math.max(0, r2(ref - rec));
+    var prop = r2(socio * quedan / dm);
+    return { ref:ref, rec:rec, socio:socio, quedan:quedan, dm:dm, prop:prop, total:r2(prop + rec), mes:MESES[p.m-1], y:p.y, d:p.d };
+  }
+  function cargoFinal(){
+    if (!F.mitad) return null;
+    if (F.cargoTocado) return num(F.cargo);
+    var c = calcProp(); return c ? c.total : null;
+  }
+  function conceptoCargo(){
+    var c = calcProp(); if (!c) return null;
+    return (F.x.tipo === 'Escuela' ? 'Escuela de natación' : 'Natación máster') + ' · ' + c.mes + ' ' + c.y + (c.d > 1 ? ' (proporcional desde el ' + c.d + ')' : '');
+  }
+  function opcionesMes(){
+    var h = '', p = partes(hoyISO());
+    for (var i = 0; i <= 12; i++){
+      var m = p.m + i, y = p.y + Math.floor((m - 1) / 12); m = ((m - 1) % 12) + 1;
+      var v = ymd(y, m, 1);
+      h += '<option value="' + v + '"' + (F.inicio === v ? ' selected' : '') + '>' + capital(MESES[m-1]) + ' de ' + y + (i === 0 ? ' (este mes)' : '') + '</option>';
+    }
+    return h;
+  }
+  // Nº de cobros como los hará Stripe: ancla = día 1 del mes de inicio si falta más de ~2 días; si no, hoy.
+  function plan(){
+    var ini = new Date(F.inicio + 'T08:00:00Z');
+    var diferido = (ini - Date.now()) > 49 * 3600 * 1000;
+    var paso = F.per === 'trimestral' ? 3 : 1;
+    var ancla = diferido ? partes(F.inicio) : partes(hoyISO());
+    var fin = F.fin, n = 0, ultimo = null;
+    for (var k = 0; k < 60; k++){
+      var m = ancla.m + paso * k, y = ancla.y + Math.floor((m - 1) / 12); m = ((m - 1) % 12) + 1;
+      var d = Math.min(ancla.d, diasDelMes(y, m)), iso = ymd(y, m, d);
+      if (iso > fin) break; n++; ultimo = iso;
+    }
+    return { diferido: diferido, n: n, ultimo: ultimo };
+  }
+  function resumenHtml(){
+    var imp = num(F.importe), cargo = cargoFinal();
+    if (imp == null || isNaN(imp) || imp <= 0) return '<div class="cu-resumen">Escribe el importe de la cuota.</div>';
+    if (!F.fin || F.fin < F.inicio) return '<div class="cu-resumen">Revisa la fecha de fin: tiene que ser después del mes de inicio.</div>';
+    var pl = plan(), cuota = eur(imp) + (F.per === 'trimestral' ? ' al trimestre' : '/mes');
+    var hasta = pl.ultimo ? ' hasta ' + MESES[partes(pl.ultimo).m - 1] + ' de ' + partes(pl.ultimo).y : '';
+    var txt;
+    if (cargo != null && !isNaN(cargo) && cargo > 0){
+      var c = calcProp();
+      txt = 'Al domiciliar se cobran <b>' + eur(cargo) + '</b>' + (c ? ' de ' + c.mes : '') + '; ' +
+        (pl.diferido ? 'desde el <b>' + fechaLarga(F.inicio) + '</b>, ' : 'después, ') + '<b>' + cuota + '</b>' + hasta + '.';
+    } else if (pl.diferido){
+      txt = 'Al domiciliar no se cobra nada. Desde el <b>' + fechaLarga(F.inicio) + '</b>, <b>' + cuota + '</b>' + hasta + '.';
+    } else {
+      txt = 'El primer cobro (<b>' + cuota + '</b>) se hace al domiciliar y después ' + (F.per === 'trimestral' ? 'cada 3 meses' : 'cada mes') + ' en esa misma fecha' + hasta + '.';
+    }
+    return '<div class="cu-resumen">' + txt +
+      '<small>' + pl.n + ' cobro' + (pl.n === 1 ? '' : 's') + ' de la cuota en total; se para sola el ' + fechaLarga(F.fin) + '. El enlace es para ' + esc(F.x.email || '—') + '.</small></div>';
+  }
+  function pintarForm(){
+    if (!velo || !F) return;
+    var x = F.x, h = '<div class="cu-hoja" role="dialog" aria-modal="true" aria-labelledby="cu-hoja-t"><h2 id="cu-hoja-t">' +
+      (F.hecho ? 'Enlace creado' : 'Crear enlace de domiciliación') + '<button type="button" data-cerrar aria-label="Cerrar">×</button></h2><div class="cu-cuerpo">';
+    if (F.hecho){
+      var en = F.hecho.enlace;
+      h += '<div class="cu-hecho"><div class="ok">✓</div><h3>' + esc(nombreDe(x)) + '</h3>' +
+        '<p style="margin:0;color:var(--texto-suave)">' + esc(F.hecho.concepto || '') + '</p></div>' +
+        '<div class="cu-enlace"><input readonly value="' + esc(en) + '" aria-label="Enlace de domiciliación" id="cu-enlace-txt"></div>' +
+        '<div class="cu-acc"><button type="button" class="cu-btn" data-copiar-hecho>Copiar enlace</button>' +
+        '<a class="cu-btn wa" href="' + esc(urlWa(x, en)) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">WhatsApp' + (telWa(x.telefono) ? '' : ' (elige el chat)') + '</a></div>' +
+        '<div class="cu-info">No se ha mandado ningún correo. Cuando ' + (x.tipo === 'Escuela' ? 'la familia' : 'el nadador') + ' abra el enlace y meta su IBAN, aquí pasará a «En camino».</div>' +
+        '<div class="cu-acc"><button type="button" class="cu-btn sec" data-cerrar>Cerrar</button></div>';
+      velo.innerHTML = h + '</div></div>';
+      return;
+    }
+    var c = calcProp(), cargo = cargoFinal();
+    h += '<p style="margin:0 0 12px;font-size:15px;color:var(--navy)"><b>' + esc(nombreDe(x)) + '</b> · ' + (x.tipo === 'Escuela' ? 'Escuela de natación' : 'Máster') +
+      (x.dias ? ' · ' + x.dias + ' día' + (x.dias === 1 ? '' : 's') : '') + (x.tipo === 'Máster' ? (F.socio ? ' · socio/a' : ' · no socio') : '') + '</p>' +
+      '<div class="cu-grid">' +
+        '<div class="cu-campo"><label for="f-imp">Cuota</label><input id="f-imp" data-f="importe" inputmode="decimal" value="' + esc(F.importe) + '" placeholder="Ej.: 60"><span class="ayuda">En euros. ' + (F.impDeFicha ? 'La de su ficha.' : 'La de la tarifa' + (x.tipo === 'Máster' ? ' (no socio = socio + 15 €)' : '') + '.') + '</span></div>' +
+        '<div class="cu-campo"><label for="f-per">Cada cuánto</label><select id="f-per" data-f="per">' +
+          '<option value="mensual"' + (F.per === 'mensual' ? ' selected' : '') + '>Al mes</option>' +
+          '<option value="trimestral"' + (F.per === 'trimestral' ? ' selected' : '') + '>Al trimestre</option></select></div>' +
+        '<div class="cu-campo"><label for="f-ini">Empieza</label><select id="f-ini" data-f="inicio">' + opcionesMes() + '</select><span class="ayuda">El primer cobro de la cuota, el día 1.</span></div>' +
+        '<div class="cu-campo"><label for="f-fin">Se para sola el</label><input id="f-fin" data-f="fin" type="date" value="' + esc(F.fin) + '"></div>' +
+      '</div>' +
+      (x.tipo === 'Máster' ? '<label class="cu-switch"><input type="checkbox" data-f="socio"' + (F.socio ? ' checked' : '') + '> Es socio/a del club <small style="font-weight:500;color:var(--texto-suave)">(' + (x.es_socio ? 'su ficha dice que sí' : 'su ficha dice que no') + ')</small></label>' : '') +
+      '<label class="cu-switch"><input type="checkbox" data-f="mitad"' + (F.mitad ? ' checked' : '') + '> ¿Empieza a mitad de mes?</label>';
+    if (F.mitad){
+      var hoy = partes(hoyISO()), min = ymd(hoy.y, hoy.m, 1);
+      h += '<div class="cu-prop"><div class="cu-grid">' +
+        '<div class="cu-campo"><label for="f-alta">Fecha de alta</label><input id="f-alta" data-f="alta" type="date" min="' + min + '" value="' + esc(F.alta) + '"></div>' +
+        '<div class="cu-campo"><label for="f-ref">Cuota de un mes entero</label><input id="f-ref" data-f="ref" inputmode="decimal" value="' + esc(F.refTocada ? F.ref : numTxt(refMensual())) + '"><span class="ayuda">' + (F.per === 'trimestral' ? 'Del trimestre: (cuota + 15) ÷ 3.' : 'La misma cuota mensual.') + '</span></div>' +
+        '</div>';
+      if (c){
+        h += '<div class="cu-formula">' + eur(c.socio) + ' × ' + c.quedan + '/' + c.dm + ' = ' + eur(c.prop) +
+          (c.rec ? ' + ' + eur(c.rec) + ' (no socio, entero)' : '') + ' = <b>' + eur(c.total) + '</b>' +
+          '<br><small style="color:var(--texto-suave)">Del ' + c.d + ' al ' + c.dm + ' de ' + c.mes + ': ' + c.quedan + ' de ' + c.dm + ' días. Solo se prorratea la parte de socio' + (x.tipo === 'Máster' ? '; los 15 € de no socio van enteros' : '') + '.</small></div>';
+      }
+      h += '<div class="cu-campo" style="margin-top:10px"><label for="f-cargo">Primer cargo (al domiciliar)</label>' +
+        '<div style="display:flex;gap:8px;align-items:center"><input id="f-cargo" data-f="cargo" inputmode="decimal" style="max-width:140px" value="' + esc(F.cargoTocado ? F.cargo : numTxt(cargo)) + '"><b>€</b>' +
+        (F.cargoTocado ? '<button type="button" class="cu-btn peq sec" data-recalcular>Recalcular</button>' : '') + '</div>' +
+        '<span class="ayuda">Se puede cambiar a mano.</span></div>';
+      var pa = partes(F.alta || hoyISO()), pi = partes(F.inicio);
+      if (F.inicio <= ymd(pa.y, pa.m, 1)) h += '<div class="cu-aviso">La cuota tiene que empezar el mes <b>siguiente</b> al alta (si no, ese mes se cobraría dos veces).</div>';
+      else if (pi.y * 12 + pi.m > pa.y * 12 + pa.m + 1) h += '<div class="cu-aviso">Ojo: entre el mes del alta y el de inicio queda algún mes sin cobrar.</div>';
+      h += '</div>';
+    }
+    h += resumenHtml();
+    if (!x.email) h += '<div class="cu-mal">Falta el correo en su ficha: Stripe lo necesita. Ábrele la ficha, ponlo y vuelve aquí.</div>';
+    if (F.err) h += '<div class="cu-mal">' + esc(F.err) + '</div>';
+    var ok = valido();
+    h += '<div class="cu-acc"><button type="button" class="cu-btn sec" data-cerrar' + (F.enviando ? ' disabled' : '') + '>Cancelar</button>' +
+      '<button type="button" class="cu-btn verde" data-crear-ya' + (ok && !F.enviando ? '' : ' disabled') + '>' + (F.enviando ? 'Creando…' : 'Crear enlace') + '</button></div>' +
+      '<p style="font-size:12.5px;color:var(--texto-suave);margin:10px 0 0">No se manda ningún correo: te doy el enlace para que se lo pases tú.</p>';
+    var foco = document.activeElement && velo.contains(document.activeElement) ? document.activeElement.id : null, pos = null;
+    try { pos = foco ? document.activeElement.selectionStart : null; } catch(e){}
+    velo.innerHTML = h + '</div></div>';
+    if (foco){ var el = document.getElementById(foco); if (el){ el.focus(); try { if (pos != null) el.setSelectionRange(pos, pos); } catch(e){} } }
+  }
+  function valido(){
+    if (!F || !F.x.email) return false;
+    var imp = num(F.importe); if (imp == null || isNaN(imp) || imp < 1 || imp > 2000) return false;
+    if (!F.fin || F.fin < F.inicio) return false;
+    if (F.mitad){
+      var cg = cargoFinal(); if (cg == null || isNaN(cg) || cg < 0.5 || cg > 2000) return false;
+      var pa = partes(F.alta || hoyISO()); if (F.inicio <= ymd(pa.y, pa.m, 1)) return false;
+    }
+    return true;
+  }
+  async function crear(){
+    if (!valido() || F.enviando) return;
+    F.enviando = true; F.err = null; pintarForm();
+    var cargo = cargoFinal();
+    var r = await sb.rpc('natacion_cobro_crear', {
+      p_atleta: F.x.atleta_id,
+      p_importe: num(F.importe),
+      p_periodicidad: F.per,
+      p_inicio: F.inicio,
+      p_fin: F.fin,
+      p_cargo_inicial: F.mitad ? cargo : null,
+      p_cargo_concepto: F.mitad ? conceptoCargo() : null,
+      p_metodo: 'sepa'
+    });
+    F.enviando = false;
+    if (r.error){ F.err = humano(r.error, 'crear cobros de natación'); pintarForm(); return; }
+    F.hecho = r.data || {};
+    pintarForm();
+  }
+  function clickForm(ev){
+    var t = ev.target; if (!t || !t.closest) return;
+    if (t.closest('[data-cerrar]')){ cerrarForm(); return; }
+    if (t.closest('[data-crear-ya]')){ crear(); return; }
+    if (t.closest('[data-copiar-hecho]')){ if (F && F.hecho) copiar(F.hecho.enlace); return; }
+    if (t.closest('[data-recalcular]')){ F.cargoTocado = false; F.cargo = ''; pintarForm(); return; }
+  }
+  function inputForm(ev){
+    var t = ev.target, k = t && t.getAttribute && t.getAttribute('data-f'); if (!k || !F || F.hecho) return;
+    if (ev.type === 'change' && t.tagName === 'INPUT' && t.type !== 'checkbox' && t.type !== 'date') return;   // ya lo vio «input»
+    if (k === 'importe'){ F.importe = t.value; F.impTocado = true; }
+    else if (k === 'per'){
+      var antes = F.per; F.per = t.value;
+      if (antes !== F.per && !F.impTocado){   // trimestral = 3 × mensual − 15
+        var iv = num(F.importe);
+        if (iv != null && !isNaN(iv) && iv > 0) F.importe = numTxt(F.per === 'trimestral' ? 3 * iv - 15 : (iv + 15) / 3);
+      }
+    }
+    else if (k === 'inicio'){ F.inicio = t.value; }
+    else if (k === 'fin'){ F.fin = t.value; }
+    else if (k === 'mitad'){ F.mitad = t.checked; if (F.mitad) F.inicio = mesSiguiente(F.alta || hoyISO()); }
+    else if (k === 'alta'){ F.alta = t.value; if (F.alta) F.inicio = mesSiguiente(F.alta); }
+    else if (k === 'ref'){ F.ref = t.value; F.refTocada = true; }
+    else if (k === 'socio'){
+      F.socio = t.checked;
+      // si la cuota salió de la tarifa (no de la ficha) y no se ha tocado, se recalcula
+      if (!F.impDeFicha && !F.impTocado){
+        var pr = cuotaPropuesta({ tipo: F.x.tipo, dias: F.x.dias, es_socio: F.socio });
+        if (pr != null) F.importe = numTxt(F.per === 'trimestral' ? 3 * pr - 15 : pr);
+      }
+    }
+    else if (k === 'cargo'){ F.cargo = t.value; F.cargoTocado = true; }
+    F.err = null;
+    pintarForm();
+  }
+
+  // ======================================================================
+  //  EVENTOS DE LA LISTA (delegados en el contenedor)
+  // ======================================================================
+  wrap.addEventListener('click', function(ev){
+    var t = ev.target; if (!t || !t.closest) return;
+    var b;
+    if ((b = t.closest('[data-tipo]'))){
+      S.tipo = b.getAttribute('data-tipo');
+      try { history.replaceState(null, '', S.tipo ? '?tipo=' + encodeURIComponent(S.tipo) : location.pathname); } catch(e){}
+      pintar(); return;
+    }
+    if ((b = t.closest('[data-copiar]'))){ var x = porId(b.getAttribute('data-copiar')); if (x && x.enlace) copiar(x.enlace); return; }
+    if ((b = t.closest('[data-crear]'))){ abrirForm(b.getAttribute('data-crear')); return; }
+    if ((b = t.closest('[data-anular]'))){ anular(b.getAttribute('data-anular')); return; }
+    if ((b = t.closest('[data-guardar]'))){ guardarCuota(b.getAttribute('data-guardar')); return; }
+    if ((b = t.closest('[data-deshacer]'))){ delete S.edit[b.getAttribute('data-deshacer')]; pintarFila(b.getAttribute('data-deshacer')); return; }
+    if ((b = t.closest('[data-ficha]'))){
+      var xf = porId(b.getAttribute('data-ficha'));
+      if (xf && xf.codigo && window.APOLANA_NAT_FICHA){
+        APOLANA_NAT_FICHA.abrir({ codigo: xf.codigo, nombre: nombreDe(xf), onCambio: function(){ cargar().then(pintarLista); } });
+      }
+      return;
+    }
+  });
+  var qTmr = null;
+  wrap.addEventListener('input', function(ev){
+    var t = ev.target;
+    if (t.id === 'cu-q'){ S.q = t.value; clearTimeout(qTmr); qTmr = setTimeout(pintarLista, 150); return; }
+    var id = t.getAttribute && t.getAttribute('data-cuota');
+    if (id){
+      var x = porId(id); if (!x) return;
+      var ed = S.edit[id] || { importe: x.cuota_importe == null ? '' : numTxt(x.cuota_importe), per: x.cuota_periodicidad === 'trimestral' ? 'trimestral' : 'mensual' };
+      ed.importe = t.value; S.edit[id] = ed;
+      // repinta la fila solo si cambia la botonera (aparece «Guardar» o cambia si está bien)
+      var btn = wrap.querySelector('[data-guardar="' + id + '"]');
+      var mal = num(ed.importe) == null || isNaN(num(ed.importe)) || num(ed.importe) < 0 || num(ed.importe) > 2000;
+      if (!btn || btn.disabled !== mal) pintarFila(id);
+    }
+  });
+  wrap.addEventListener('change', function(ev){
+    var t = ev.target;
+    if (t.id === 'cu-estado'){ S.estado = t.value; pintarLista(); return; }
+    var id = t.getAttribute && t.getAttribute('data-per');
+    if (id){
+      var x = porId(id); if (!x) return;
+      var ed = S.edit[id] || { importe: x.cuota_importe == null ? '' : numTxt(x.cuota_importe), per: x.cuota_periodicidad === 'trimestral' ? 'trimestral' : 'mensual' };
+      ed.per = t.value; S.edit[id] = ed; pintarFila(id);
+    }
+  });
+  wrap.addEventListener('keydown', function(ev){
+    var id = ev.target.getAttribute && ev.target.getAttribute('data-cuota');
+    if (id && ev.key === 'Enter'){ ev.preventDefault(); guardarCuota(id); }
+    if (id && ev.key === 'Escape'){ delete S.edit[id]; pintarFila(id); }
+  });
+
+  pintar();
+  await cargar();
+  pintar();
+});
+</script>
+</body>
+</html>

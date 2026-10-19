@@ -13,7 +13,7 @@
 export type Cuota = {
   periodicidad?: string | null;   // mensual · trimestral · anual
   metodo?: string | null;         // sepa · tarjeta
-  origen?: string | null;         // 'asistente' = creada con «Nuevo cobro»
+  origen?: string | null;         // 'asistente' = «Nuevo cobro» · 'natacion' = Natación › Cuotas y cobros (395)
   concepto?: string | null;
   inicio?: string | null;         // YYYY-MM-DD (día 1 del mes de inicio)
   fin?: string | null;            // YYYY-MM-DD (último día que cubre)
@@ -23,7 +23,11 @@ const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
   "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const MES3 = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-export const esAsistente = (c: Cuota | null | undefined): boolean => c?.origen === "asistente";
+// 'natacion' (mig 395) = creada por el responsable de natación en
+// portal/natacion-cuotas: mismo formato que el asistente (mes de inicio, fin,
+// concepto propio), así que se comporta IGUAL (cobro diferido, recibo, correo).
+export const esAsistente = (c: Cuota | null | undefined): boolean =>
+  c?.origen === "asistente" || c?.origen === "natacion";
 export const esTarjeta = (c: Cuota | null | undefined): boolean => c?.metodo === "tarjeta";
 
 // Intervalo de la suscripción de Stripe.

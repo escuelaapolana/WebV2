@@ -134,6 +134,7 @@
         {key:'franjas',    g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
         {key:'reservas',   g:'Nadadores', t:'Reservas y abono', i:'ticket',   url:B+'portal/natacion-reservas/'},
+        {key:'cuotas',     g:'Nadadores', t:'Cuotas y cobros',  i:'euro',     url:B+'portal/natacion-cuotas/', d:'La cuota de cada nadador y su enlace para domiciliarla (sin correos automáticos).'},
         {key:'calendario', t:'Calendario',       i:'calendar', url:B+'portal/calendario-club/?world=natacion'},
         {key:'plazas',     t:'Ver en la web',    i:'signal',   url:B+'natacion/', ext:true}
       ] },
@@ -144,6 +145,7 @@
         {key:'alta', t:'Dar de alta', i:'userplus', url:B+'portal/natacion-alta/?tipo=Escuela', d:'Un niño o niña nuevo, paso a paso: datos, días, calle y cuota. A la familia le llega el acceso.', pill:'Empieza aquí'},
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-nat'},
         {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
+        {key:'cuotas', t:'Cuotas y cobros', i:'euro', url:B+'portal/natacion-cuotas/?tipo=Escuela', d:'La cuota de cada niño y el enlace para que la familia la domicilie.'},
         {g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
         {g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/?tipo=Escuela', d:'Quién viene a cada sesión.'},
         {t:'Ver en la web',    i:'signal',   url:B+'escuela-natacion/',                        d:'El semáforo de plazas que ven las familias.', ext:true}
