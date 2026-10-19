@@ -141,7 +141,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // --- La fila de la cuota, por su token ---
   const rC = await rest(
-    `cuotas_entreno?select=id,atleta_id,perfil_id,nombre,apellidos,email,concepto,importe_cent,cobro_abierto,stripe_subscription_id,suscripcion_estado,periodicidad,fin,metodo,inicio,origen&token=eq.${encodeURIComponent(token)}&limit=1`,
+    `cuotas_entreno?select=id,atleta_id,perfil_id,nombre,apellidos,email,concepto,importe_cent,cobro_abierto,stripe_subscription_id,suscripcion_estado,periodicidad,fin,metodo,inicio,origen,cargo_inicial_cent,cargo_inicial_concepto&token=eq.${encodeURIComponent(token)}&limit=1`,
   );
   const c = Array.isArray(rC.datos) ? rC.datos[0] as {
     id: string; atleta_id: string; perfil_id: string | null; nombre: string; apellidos: string;
@@ -149,6 +149,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     stripe_subscription_id: string | null; suscripcion_estado: string;
     periodicidad: string | null; fin: string | null;
     metodo: string | null; inicio: string | null; origen: string | null;
+    cargo_inicial_cent: number | null; cargo_inicial_concepto: string | null;
   } : null;
   if (!c) return responder({ error: "no_existe", mensaje: "No encontramos tu cuota. Escríbenos y lo miramos." }, 404, origen);
 
@@ -234,14 +235,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
     esAsistente(c) ? `${c.concepto || "Cuota"} · Club Atletismo Apolana`
     : mensual ? `${c.concepto || "Cuota mensual"} · Club Atletismo Apolana`
             : "Cuota de entrenamiento (trimestral) · Club Atletismo Apolana");
+  // Primer cargo suelto (mig 394): p. ej. el proporcional del mes de alta. Va
+  // como precio ÚNICO en la misma pasarela: se cobra hoy, con el mismo mandato,
+  // y la cuota normal empieza en «inicio».
+  const cargoIni = Math.round(Number(c.cargo_inicial_cent) || 0);
+  const eurTxt = (cent: number) => (cent / 100).toLocaleString("es-ES", { minimumFractionDigits: cent % 100 ? 2 : 0, maximumFractionDigits: 2 }) + " €";
+  if (cargoIni >= 50) {
+    params.set("line_items[1][quantity]", "1");
+    params.set("line_items[1][price_data][currency]", "eur");
+    params.set("line_items[1][price_data][unit_amount]", String(cargoIni));
+    params.set("line_items[1][price_data][product_data][name]",
+      `${c.cargo_inicial_concepto || "Primer cargo"} · Club Atletismo Apolana`);
+  }
   // Mes de inicio futuro (mig 380): se guarda la tarjeta / el mandato hoy y el
   // primer cobro llega ese día (Stripe lo llama «prueba»; por eso el aviso).
   const diferido = esAsistente(c) ? cobroDiferido(c) : null;
   if (diferido) {
     params.set("subscription_data[trial_end]", String(diferido));
     params.set("custom_text[submit][message]",
-      `Hoy no se cobra nada: el primer cobro será el ${fechaLarga(c.inicio)}` +
-      (c.fin ? ` y la cuota se para sola el ${fechaLarga(c.fin)}.` : "."));
+      (cargoIni >= 50
+        ? `Hoy se cobran ${eurTxt(cargoIni)} (${c.cargo_inicial_concepto || "primer cargo"}). La cuota de ${eurTxt(importeCent)} empieza el ${fechaLarga(c.inicio)}`
+        : `Hoy no se cobra nada: el primer cobro será el ${fechaLarga(c.inicio)}`) +
+      (c.fin ? ` y se para sola el ${fechaLarga(c.fin)}.` : "."));
   } else if (esAsistente(c) && c.fin) {
     params.set("custom_text[submit][message]", `La cuota se para sola el ${fechaLarga(c.fin)}: después no se cobra nada más.`);
   }
