@@ -24,6 +24,9 @@
   /* La Liga: la lleva el responsable de comunicación (gestiona la liga del
      club) sin ser administración. Entra a validar y publicar puntos por aquí. */
   var DEL_LIGA = /\/admin\/liga\//;
+  /* Competiciones (mig 396): las edita también quien lleva Comunicación, con el
+     mismo permiso que la Liga (es_responsable_liga). */
+  var DEL_LIGA_COMP = /\/admin\/competiciones\//;
   window.APOLANA_ADMIN = { listo: function (cb) { _cb = cb; } };
 
   function base() { return window.APOLANA_BASE || '../../'; }
@@ -424,7 +427,7 @@
              (responsable de comunicación) entra a validar/publicar puntos,
              aunque su papel principal sea atleta. Lo que ve dentro lo deciden
              las reglas de la base (es_responsable_liga). */
-          if (!suya && DEL_LIGA.test(location.pathname)) {
+          if (!suya && (DEL_LIGA.test(location.pathname) || DEL_LIGA_COMP.test(location.pathname))) {
             var delLiga = await sb.rpc('es_responsable_liga');
             suya = !delLiga.error && !!delLiga.data;
           }

@@ -200,6 +200,7 @@
         {g:'Publicar', t:'Noticias',        i:'newspaper', url:B+'admin/#noticias',    d:'Publicar y editar noticias de la web.'},
         {g:'Publicar', t:'Avisos al móvil', i:'bell',      url:B+'admin/avisos-push/', d:'Notificaciones a la gente del club.'},
         {key:'calendario', t:'Calendario',      i:'calendar',  url:B+'admin/eventos/',     d:'Eventos y fechas del club.'},
+        {g:'Publicar', t:'Competiciones',   i:'flag',       url:B+'admin/competiciones/', d:'Crear y corregir las competiciones que salen en el calendario.'},
         {g:'Publicar', t:'Liga',            i:'chart',      url:B+'admin/liga/',        d:'Comunicar la Liga Apolana.'},
         {g:'Publicar', t:'Se pone solo',    i:'sparkle',    url:B+'admin/automatizaciones/', d:'Lo que se publica sin tocar nada.', hub:false},
         {g:'Contacto y redes', t:'Peticiones de redes',    i:'at',   url:B+'admin/redes/',     d:'Lo que proponen los socios.'},
