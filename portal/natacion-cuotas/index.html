@@ -123,6 +123,11 @@
 
   /* avisos */
   .cu-aviso{ font-size:14px; color:#7A5200; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
+  .cu-msg{ margin-top:14px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; padding:11px 12px; }
+  .cu-msg-lab{ font-size:12.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--texto-suave,#6E6656); margin:0 0 7px; }
+  .cu-msg-nota{ margin:-3px 0 7px; font-size:12.5px; color:var(--texto-suave,#6E6656); }
+  .cu-msg textarea{ width:100%; box-sizing:border-box; border:1px solid var(--linea,#EAE3D5); border-radius:10px; padding:9px 10px; font:inherit; font-size:15px; line-height:1.45; color:var(--navy,#26374B); background:var(--crema,#FBF9F4); resize:vertical; }
+  .cu-msg .cu-btn{ width:100%; margin-top:8px; min-height:46px; }
   .cu-info{ font-size:14px; color:#1E4E79; background:#EEF5FB; border:1px solid #D2E4F3; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
   .cu-mal{ font-size:14px; color:#8E2A2A; background:#FDECEA; border:1px solid #F3C6C1; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
   .cu-ok{ font-size:14px; color:#1E5E34; background:#E6F4EA; border:1px solid #BFE3C8; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
@@ -216,12 +221,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     el.textContent = t; el.style.display = '';
     clearTimeout(toastTmr); toastTmr = setTimeout(function(){ el.style.display = 'none'; }, 2600);
   }
-  async function copiar(txt){
-    try { await navigator.clipboard.writeText(txt); toast('Enlace copiado'); return; } catch (e) {}
+  async function copiar(txt, aviso){
+    aviso = aviso || 'Enlace copiado';
+    try { await navigator.clipboard.writeText(txt); toast(aviso); return; } catch (e) {}
     try {
       var ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('Enlace copiado');
-    } catch (e2) { prompt('Copia el enlace:', txt); }
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast(aviso);
+    } catch (e2) { prompt('Cópialo:', txt); }
   }
   // WhatsApp: teléfono de la ficha si lo hay (España por defecto); si no, se elige el chat en WhatsApp.
   function telWa(t){
@@ -233,13 +239,48 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     d = d.replace(/\D/g, '');
     return d.length >= 10 ? d : '';
   }
-  function urlWa(x, enlace){
+  /* Mensaje listo para copiar y pegar (Andrés, 20-oct): quién, qué cuota, cuánto,
+     cuándo se cobra y el enlace. «d» = { importe, per, inicio, fin, cargo, metodo }
+     (lo que se acaba de crear o el cobro que ya tiene). Familia (escuela) en
+     vosotros; adulto (máster) de tú. */
+  function mensaje(x, enlace, d){
+    d = d || {};
+    var fam = x.tipo === 'Escuela';            // escuela → a la familia (vosotros); máster → al nadador (tú)
     var pila = capital(String(x.nombre || '').trim().split(/\s+/)[0] || '');
-    var txt = x.tipo === 'Escuela'
-      ? 'Hola. Te paso el enlace para domiciliar la cuota de la escuela de natación de ' + pila + '. Se hace una sola vez y después se cobra sola: ' + enlace
-      : 'Hola, ' + pila + '. Te paso el enlace para domiciliar tu cuota de natación del club. Se hace una sola vez y después se cobra sola: ' + enlace;
+    var tarjeta = d.metodo === 'tarjeta';
+    var imp = Number(d.importe), cargo = Number(d.cargo);
+    var cada = d.per === 'trimestral' ? 'cada trimestre' : 'cada mes';
+    var verbo = tarjeta ? 'activarla' : 'domiciliar';
+    var L = [];
+    L.push(fam ? '¡Hola! 👋' : '¡Hola, ' + pila + '! 👋');
+    L.push('');
+    L.push(fam ? 'Os paso el enlace para *' + (tarjeta ? 'pagar' : 'domiciliar') + ' la cuota de natación de ' + pila + '* 🏊'
+               : 'Te paso el enlace para *' + (tarjeta ? 'pagar' : 'domiciliar') + ' tu cuota de natación* del club 🏊');
+    if (imp > 0){
+      var cuota = eur(imp) + ' ' + textoPer(d.per);
+      L.push('');
+      L.push('💶 *Cuota:* ' + cuota + (d.fin ? ' (hasta ' + mesAnio(d.fin) + ')' : ''));
+      if (cargo > 0) L.push('📅 *Primer cobro:* al ' + verbo + ' se cobran *' + eur(cargo) + '*; después, ' + cuota + '.');
+      else if (d.inicio && d.inicio > hoyISO()) L.push('📅 *Primer cobro:* en ' + mesAnio(d.inicio) + '. Al ' + verbo + ' no se cobra nada.');
+      else L.push('📅 *Primer cobro:* al ' + verbo + '; después, ' + cada + ' en esa misma fecha.');
+    }
+    L.push('');
+    L.push(tarjeta
+      ? (fam ? '✅ Se mete la tarjeta *una sola vez* y después se cobra sola ' + cada + '.' : '✅ Metes la tarjeta *una sola vez* y después se cobra sola ' + cada + '.')
+      : (fam ? '✅ Se hace *una sola vez*: metéis el IBAN y después se cobra sola ' + cada + '.' : '✅ Se hace *una sola vez*: metes tu IBAN y después se cobra sola ' + cada + '.'));
+    L.push('');
+    L.push('👉 ' + enlace);
+    L.push('');
+    L.push(fam ? 'Cualquier duda, me decís. ¡Gracias!' : 'Cualquier duda, me dices. ¡Gracias!');
+    return L.join('\n');
+  }
+  function datosCobro(x){
+    return { importe: x.cobro_importe, per: x.cobro_periodicidad, inicio: x.cobro_inicio, fin: x.cobro_fin,
+             cargo: x.cobro_cargo_inicial, metodo: x.cobro_metodo };
+  }
+  function urlWa(x, enlace, d){
     var n = telWa(x.telefono);
-    return 'https://wa.me/' + n + '?text=' + encodeURIComponent(txt);
+    return 'https://wa.me/' + n + '?text=' + encodeURIComponent(mensaje(x, enlace, d || datosCobro(x)));
   }
 
   // ---------- ¿puede? ----------
@@ -406,7 +447,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     h += '<div class="cu-acc">';
     if (x.enlace){
       h += '<button type="button" class="cu-btn peq" data-copiar="' + esc(id) + '">Copiar enlace</button>' +
-           '<a class="cu-btn peq wa" href="' + esc(urlWa(x, x.enlace)) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">WhatsApp</a>';
+           '<a class="cu-btn peq wa" href="' + esc(urlWa(x, x.enlace)) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">WhatsApp</a>' +
+           '<button type="button" class="cu-btn peq sec" data-copiar-msg="' + esc(id) + '">Copiar mensaje</button>';
     }
     if (!x.cobro_id && x.acceso_activo){
       h += '<button type="button" class="cu-btn peq' + (pideCobro(x) ? '' : ' sec') + '" data-crear="' + esc(id) + '">Crear enlace de domiciliación</button>';
@@ -548,6 +590,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     return h;
   }
+  function datosHecho(){
+    return F ? { importe: num(F.importe), per: F.per, inicio: F.inicio, fin: F.fin, cargo: cargoFinal(), metodo: F.metodo } : {};
+  }
   // Nº de cobros como los hará Stripe: ancla = día 1 del mes de inicio si falta más de ~2 días; si no, hoy.
   function plan(){
     var ini = new Date(F.inicio + 'T08:00:00Z');
@@ -591,7 +636,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<p style="margin:0;color:var(--texto-suave)">' + esc(F.hecho.concepto || '') + '</p></div>' +
         '<div class="cu-enlace"><input readonly value="' + esc(en) + '" aria-label="Enlace de domiciliación" id="cu-enlace-txt"></div>' +
         '<div class="cu-acc"><button type="button" class="cu-btn" data-copiar-hecho>Copiar enlace</button>' +
-        '<a class="cu-btn wa" href="' + esc(urlWa(x, en)) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">WhatsApp' + (telWa(x.telefono) ? '' : ' (elige el chat)') + '</a></div>' +
+        '<a class="cu-btn wa" href="' + esc(urlWa(x, en, datosHecho())) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">WhatsApp' + (telWa(x.telefono) ? '' : ' (elige el chat)') + '</a></div>' +
+        '<div class="cu-msg"><div class="cu-msg-lab">Mensaje para copiar y pegar</div>' +
+          '<p class="cu-msg-nota">Las palabras entre *asteriscos* salen en negrita en WhatsApp.</p>' +
+          '<textarea readonly id="cu-msg-txt" rows="12">' + esc(mensaje(x, en, datosHecho())) + '</textarea>' +
+          '<button type="button" class="cu-btn" data-copiar-msg-hecho>Copiar mensaje</button></div>' +
         '<div class="cu-info">No se ha mandado ningún correo. Cuando ' + (x.tipo === 'Escuela' ? 'la familia' : 'el nadador') + ' abra el enlace y meta su IBAN, aquí pasará a «En camino».</div>' +
         '<div class="cu-acc"><button type="button" class="cu-btn sec" data-cerrar>Cerrar</button></div>';
       velo.innerHTML = h + '</div></div>';
@@ -676,6 +725,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (t.closest('[data-cerrar]')){ cerrarForm(); return; }
     if (t.closest('[data-crear-ya]')){ crear(); return; }
     if (t.closest('[data-copiar-hecho]')){ if (F && F.hecho) copiar(F.hecho.enlace); return; }
+    if (t.closest('[data-copiar-msg-hecho]')){ if (F && F.hecho) copiar(mensaje(F.x, F.hecho.enlace, datosHecho()), 'Mensaje copiado'); return; }
     if (t.closest('[data-recalcular]')){ F.cargoTocado = false; F.cargo = ''; pintarForm(); return; }
   }
   function inputForm(ev){
@@ -719,6 +769,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       pintar(); return;
     }
     if ((b = t.closest('[data-copiar]'))){ var x = porId(b.getAttribute('data-copiar')); if (x && x.enlace) copiar(x.enlace); return; }
+    if ((b = t.closest('[data-copiar-msg]'))){ var xm = porId(b.getAttribute('data-copiar-msg')); if (xm && xm.enlace) copiar(mensaje(xm, xm.enlace, datosCobro(xm)), 'Mensaje copiado'); return; }
     if ((b = t.closest('[data-crear]'))){ abrirForm(b.getAttribute('data-crear')); return; }
     if ((b = t.closest('[data-anular]'))){ anular(b.getAttribute('data-anular')); return; }
     if ((b = t.closest('[data-guardar]'))){ guardarCuota(b.getAttribute('data-guardar')); return; }
