@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
-<link rel="stylesheet" href="../../assets/css/apolana.css?v=76807ff3">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
@@ -31,6 +31,14 @@
   .err{ color:#B3261E; font-size:14px; margin-top:12px; min-height:1.2em; }
   .ok{ background:#EAF3E3; color:#2E6B3A; border-radius:12px; padding:16px 18px; line-height:1.6; }
   .mal{ background:#FBEAE8; color:#B3261E; border-radius:12px; padding:16px 18px; line-height:1.6; }
+  /* Estados finales (ya domiciliada, cerrada, enlace que no vale…): botones a lo ancho en el móvil. */
+  .acciones{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+  .acciones .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; box-sizing:border-box; padding:0 22px; }
+  .btn--wa{ background:#1F8A4C; }
+  .btn--claro{ background:#fff; color:var(--navy,#2E4256); border:1px solid var(--linea,#E4DCCB); }
+  .volver{ display:inline-flex; align-items:center; min-height:44px; margin-top:8px; color:#2F6FA8; font-weight:600; text-decoration:none; font-size:15px; }
+  .volver:hover{ text-decoration:underline; }
+  @media (max-width:480px){ .acciones .btn{ flex:1 1 100%; } }
 </style>
 </head>
 <body>
@@ -59,6 +67,54 @@
   function fechaLarga(iso) { if (!iso) return ''; var p = String(iso).slice(0, 10).split('-'); return (+p[2]) + ' de ' + MESES[(+p[1]) - 1] + ' de ' + p[0]; }
   function eur(n) { var v = Number(n) || 0; return v.toLocaleString('es-ES', { minimumFractionDigits: Math.round(v * 100) % 100 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; }
   var D = null;   // datos de la cuota (si es del asistente)
+
+  /* --- Estados que no son «paga aquí» -----------------------------------
+     El WhatsApp es el del club (el mismo que sale en toda la web). */
+  var WA = 'https://wa.me/34636061700?text=' + encodeURIComponent('Hola, el enlace para pagar mi cuota del club no me funciona. ¿Me mandáis uno nuevo?');
+  var WEB = window.APOLANA_BASE || '../../';
+  function botonWA(txt) { return '<a class="btn btn--wa" href="' + WA + '" target="_blank" rel="noopener">' + esc(txt || 'Pedir otro enlace por WhatsApp') + '</a>'; }
+  function volverWeb() { return '<a class="volver" href="' + WEB + '">← Volver a la web del club</a>'; }
+  // Enlace que no existe, cortado o caducado (la base no lo encuentra).
+  function enlaceMalo() {
+    caja.innerHTML = '<h1>Este enlace ya no vale o no es correcto</h1>' +
+      '<div class="mal">Puede que haya caducado o que se haya copiado a medias. No pasa nada: escríbenos y te mandamos uno nuevo.</div>' +
+      '<div class="acciones">' + botonWA() + '</div>' + volverWeb();
+  }
+  // No se pudo consultar (sin conexión, la base no responde…): no es culpa del enlace.
+  function sinConexion() {
+    caja.innerHTML = '<h1>No hemos podido abrir tu cuota</h1>' +
+      '<div class="mal">Parece un problema de conexión. Vuelve a cargar la página en un momento; si sigue igual, escríbenos.</div>' +
+      '<div class="acciones"><button class="btn" id="recargar">Volver a cargar</button>' + botonWA('Escribir al club por WhatsApp') + '</div>' + volverWeb();
+    document.getElementById('recargar').addEventListener('click', function () { location.reload(); });
+  }
+  // Vuelta de Stripe sin poder leer los datos de la cuota: un «hecho» que no se equivoque.
+  function hechoNeutro() {
+    caja.innerHTML = '<h1>¡Hecho! 🎉</h1>' +
+      '<div class="ok">Hemos recibido tus datos de pago. A partir de ahora la cuota se cobra sola: no tienes que hacer nada más.</div>' +
+      '<p class="fina">Si algún dato no cuadra, contesta al correo del club y lo miramos. ¡Gracias!</p>';
+  }
+  /* Respuesta «no» de entreno-pagar (409/404…): cada caso con su pantalla.
+     Devuelve true si la ha pintado; false si es un fallo pasajero (se enseña
+     el mensaje debajo del botón para reintentar). */
+  function estadoDeLaEdge(d) {
+    var cod = d && d.error, msg = d && d.mensaje;
+    if (cod === 'ya_activa') {
+      var tar = (D && D.metodo === 'tarjeta') || /tarjeta/i.test(msg || '');
+      caja.innerHTML = '<h1>' + (tar ? '✓ Tu cuota ya está activa' : '✓ Ya está domiciliada') + '</h1>' +
+        '<div class="ok">' + esc(msg || (tar ? 'Tu cuota ya está activa y se cobra sola.' : 'Tu cuota ya está domiciliada y se cobra sola.')) + '</div>' +
+        '<p class="fina">No se cobra dos veces: puedes cerrar esta página tranquilamente.</p>' + volverWeb();
+      return true;
+    }
+    if (cod === 'cerrado' || cod === 'terminada') {
+      // El porqué lo dice la Edge («no está abierta», «ya terminó»…); el título no lo repite.
+      caja.innerHTML = '<h1>Ahora no hay nada que pagar</h1>' +
+        '<div class="mal">' + esc(msg || (cod === 'terminada' ? 'Esta cuota ya terminó.' : 'Esta cuota no está abierta ahora mismo.') + ' Si crees que es un error, escríbenos.') + '</div>' +
+        '<div class="acciones">' + botonWA('Escribir al club por WhatsApp') + '</div>' + volverWeb();
+      return true;
+    }
+    if (cod === 'no_existe' || cod === 'sin_token') { enlaceMalo(); return true; }
+    return false;
+  }
   function txt() {
     var tar = D.metodo === 'tarjeta';
     var cada = D.periodicidad === 'mensual' ? 'al mes' : D.periodicidad === 'anual' ? 'al año' : 'cada 3 meses';
@@ -104,12 +160,26 @@
 
   if (!token || token.length < 20) { legado(); return; }
   caja.innerHTML = '<p>Cargando…</p>';
+  // Si no se puede consultar: a la vuelta de Stripe se da el «hecho»/«cancelado»
+  // sin detalles; si no, se dice que falla la conexión (no que el enlace esté mal).
+  function falloConsulta() {
+    if (pago === 'hecho') hechoNeutro();
+    else if (pago === 'cancelado') legado();
+    else sinConexion();
+  }
   esperarDB(function (db) {
-    if (!db || !db.rpc) { legado(); return; }
+    if (!db || !db.rpc) { falloConsulta(); return; }
     Promise.resolve(db.rpc('cuota_entreno_publica', { p_token: token })).then(function (r) {
-      var d = r && !r.error ? r.data : null;
-      if (d && d.inicio) { D = d; generica(); } else legado();
-    }).catch(function () { legado(); });
+      if (!r || r.error) { falloConsulta(); return; }
+      var d = r.data;
+      if (d && d.inicio) { D = d; generica(); return; }   // cuota del asistente (mig 380)
+      if (d) { legado(); return; }                          // cuota antigua (sin mes de inicio): textos de siempre
+      // La base no la encuentra. Los tokens antiguos de 32 caracteres no los
+      // busca la RPC (pide ≥ 40), así que esos siguen por legado() como
+      // siempre; la Edge dirá al pulsar si ya está domiciliada.
+      if (token.length < 40) { legado(); return; }
+      enlaceMalo();
+    }).catch(falloConsulta);
   });
 
   function legado() {
@@ -131,10 +201,7 @@
     if (token) document.getElementById('reintentar').addEventListener('click', irAPagar);
     return;
   }
-  if (!token || token.length < 20) {
-    caja.innerHTML = '<h1>Enlace no válido</h1><div class="mal">Este enlace no es correcto o ha caducado. Escríbenos y te mandamos uno nuevo.</div>';
-    return;
-  }
+  if (!token || token.length < 20) { enlaceMalo(); return; }
 
   caja.innerHTML =
     (mensual ? '<h1>Domicilia tu cuota</h1>' : '<h1>Domicilia tu cuota de entrenamiento</h1>') +
@@ -167,8 +234,15 @@
       db.functions.invoke('entreno-pagar', { body: { token: token } }).then(function (r) {
         var d = r && r.data;
         if (d && d.url) { location.href = d.url; return; }
-        if (btn) { btn.disabled = false; btn.textContent = textoBoton(); }
-        if (err) err.textContent = (d && d.mensaje) || 'No se pudo abrir el pago. Inténtalo en un minuto.';
+        // Con 4xx/5xx supabase-js no da `data`: el cuerpo ({error, mensaje})
+        // viene en error.context (la Response). Igual que en cubo-cuota.js.
+        var ctx = r && r.error && r.error.context;
+        var leer = (!d && ctx && typeof ctx.json === 'function') ? ctx.json().catch(function () { return null; }) : Promise.resolve(d);
+        return leer.then(function (cuerpo) {
+          if (estadoDeLaEdge(cuerpo)) return;
+          if (btn) { btn.disabled = false; btn.textContent = textoBoton(); }
+          if (err) err.textContent = (cuerpo && cuerpo.mensaje) || 'No se pudo abrir el pago. Inténtalo en un minuto.';
+        });
       }).catch(function () {
         if (btn) { btn.disabled = false; btn.textContent = textoBoton(); }
         if (err) err.textContent = 'No se pudo abrir el pago. Inténtalo en un minuto.';

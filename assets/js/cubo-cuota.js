@@ -133,8 +133,12 @@
       '.cb-pausa-elige label small{display:block;color:#6E6656;font-size:12.5px}' +
       '.cb-pausa-elige input{margin-top:3px;accent-color:#2F6FA8}' +
       '.cb-pausa-acc{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px}' +
-      '.cb-pausa-acc .cb-pedir{min-height:42px;padding:0 18px;border-radius:999px;border:0;background:#2F6FA8;color:#fff;font:inherit;font-weight:600;font-size:14px;cursor:pointer}' +
-      '.cb-pausa-acc .cb-pedir:disabled{opacity:.6;cursor:progress}';
+      '.cb-pausa-acc .cb-pedir{min-height:44px;padding:0 18px;border-radius:999px;border:0;background:#2F6FA8;color:#fff;font:inherit;font-weight:600;font-size:14px;cursor:pointer}' +
+      '.cb-pausa-acc .cb-pedir:disabled{opacity:.6;cursor:progress}' +
+      // Enlaces-botón («Pausar un mes», «Solicitar la baja», «Cancelar»…): en su
+      // propia línea y con 44 px de zona táctil (antes medían 19 px de alto).
+      '.cuota button.enlace{display:flex;align-items:center;width:fit-content;min-height:44px;margin:2px 0 -8px;padding:0 2px;font-size:14px;font-weight:600;text-underline-offset:3px}' +
+      '.cb-pausa-acc button.enlace{margin:0}';
     document.head.appendChild(st);
   }
   function bloquePausa(pausa) {
@@ -295,7 +299,7 @@
   async function render(sb, perfil, el) {
     if (!el) return false;
     var d = await cargar(sb, perfil);
-    if (d.pausa) estiloPausa();
+    estiloPausa();   // también trae el estilo de los enlaces-botón (baja), haya pausa o no
     el.innerHTML = bloqueCuota(d.alta, d.abierto, d.pausa);
     engancharPago(sb, el);
     engancharBaja(sb, perfil, el);

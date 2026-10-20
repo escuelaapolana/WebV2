@@ -123,6 +123,15 @@
     '.adm-top .der .ver-como:hover{background:rgba(255,255,255,.2)}' +
     '.adm-top .der .ver-como svg{width:16px;height:16px;flex:0 0 auto;opacity:.92}' +
     '@media(max-width:640px){.adm-top .der .ver-como span{display:none}.adm-top .der .ver-como{padding:10px}}' +
+    /* Móvil (auditoría 20-oct): «Web» y «Ver como…» solo con su icono, en un
+       botón redondo de 44 px, para que el título y el nombre quepan sin cortarse. */
+    '@media(max-width:560px){' +
+      '.adm-top .der .ir-web span,.adm-top .der .ver-como span{display:none}' +
+      '.adm-top .der .ir-web,.adm-top .der .ver-como{width:44px;min-width:44px;padding:0;justify-content:center;flex:0 0 44px}' +
+      '.adm-top .der .ir-web svg,.adm-top .der .ver-como svg{width:18px;height:18px}' +
+      '.adm-top .der{gap:6px}' +
+      '.adm-top a.volver{min-width:44px;justify-content:center}' +
+    '}' +
     '.vc-menu{position:fixed;z-index:2147483000;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;box-shadow:0 20px 44px -18px rgba(46,66,86,.55);padding:8px;min-width:250px;max-width:calc(100vw - 24px)}' +
     '.vc-menu[hidden]{display:none}' +
     '.vc-menu .vc-titu{font-size:12px;color:var(--texto-suave,#6E6656);padding:6px 10px 4px;text-transform:uppercase;letter-spacing:.04em}' +
@@ -168,8 +177,8 @@
         '<span class="sep">·</span>' +
         '<span class="marca">' + esc(tituloPagina()) + '</span></div>' +
         '<div class="der">' +
-          '<a class="ir-web" href="' + base() + '">' + GLOBO + '<span>Web</span></a>' +
-          '<button type="button" class="ver-como" id="ver-como" aria-haspopup="true" aria-expanded="false">' + OJO + '<span>Ver como…</span></button>' +
+          '<a class="ir-web" href="' + base() + '" title="Ir a la web del club" aria-label="Web del club">' + GLOBO + '<span>Web</span></a>' +
+          '<button type="button" class="ver-como" id="ver-como" aria-haspopup="true" aria-expanded="false" title="Ver como…" aria-label="Ver como…">' + OJO + '<span>Ver como…</span></button>' +
           /* El correo de la cuenta, sin estorbar: al pasar el ratón por la
              píldora, y escrito arriba de la hoja «Cambiar de vista» al abrirla. */
           '<button type="button" class="adm-perfil" id="adm-perfil" aria-haspopup="dialog"' +

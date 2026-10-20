@@ -290,7 +290,7 @@
       ini = (ini || String(nombre).substring(0, 2)).toUpperCase();
       var bb = base();
       var top = document.createElement('div');
-      top.className = 'pt-top pt-previa';
+      top.className = 'pt-top pt-previa' + (d.staff ? ' pt-con-vc' : '');
       top.setAttribute('aria-hidden', 'true');
       top.setAttribute('inert', '');
       top.innerHTML =
@@ -657,6 +657,21 @@
     '.pt-top .der .ver-como:hover{background:rgba(255,255,255,.18)}' +
     '.pt-top .der .ver-como svg{flex:0 0 auto}' +
     '@media(max-width:440px){.pt-top .der .ver-como span{display:none}.pt-top .der .ver-como{padding:0 9px}}' +
+    /* Móvil (auditoría 20-oct): con «Ver como…» el «APOLANA» se cortaba
+       («APOLAN» a 375, «APOL.» a 360) para Andrés, Mario y José Luis. En el
+       móvil «Web» y «Ver como…» van SOLO con su icono, en un botón redondo de
+       44 px (se pulsan igual; el nombre lo dicen title/aria-label). El hueco
+       vacío del papel (nace vacío) no ocupa sitio. Si aun así no cupiera
+       (móvil de 320 px), se aparta el texto y queda el escudo. */
+    '.pt-avatar .pt-rol:empty{display:none}' +
+    '@media(max-width:560px){' +
+      '.pt-top .der{gap:6px}' +
+      '.pt-top .pt-web span,.pt-top .der .ver-como span{display:none}' +
+      '.pt-top .pt-web,.pt-top .der .ver-como{width:44px;min-width:44px;padding:0;justify-content:center;flex:0 0 44px}' +
+      '.pt-top .pt-web svg,.pt-top .der .ver-como svg{width:18px;height:18px}' +
+      '.pt-avatar{padding-right:13px}' +
+    '}' +
+    '@media(max-width:340px){.pt-top.pt-con-vc .marca{display:none}}' +
     '.vc-menu{position:fixed;z-index:2147483000;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;box-shadow:0 20px 44px -18px rgba(46,66,86,.55);padding:8px;min-width:250px;max-width:calc(100vw - 24px)}' +
     '.vc-menu[hidden]{display:none}' +
     '.vc-menu .vc-titu{font-size:12px;color:var(--texto-suave,#6E6656);padding:6px 10px 4px;text-transform:uppercase;letter-spacing:.04em}' +
@@ -1092,7 +1107,7 @@
       }));
       var OJO_VC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
       var top = document.createElement('div');
-      top.className = 'pt-top';
+      top.className = 'pt-top' + (_staff ? ' pt-con-vc' : '');
       top.innerHTML =
         '<div class="izq">' +
           '<img class="escudo" src="' + b + 'assets/img/logo.png" alt="" aria-hidden="true">' +
@@ -1100,11 +1115,11 @@
         '</div>' +
         '<div class="der">' +
           /* Pastilla «Web» a la web pública del club (como la maqueta). */
-          '<a class="pt-web" href="' + b + '" title="Ir a la web del club">' +
+          '<a class="pt-web" href="' + b + '" title="Ir a la web del club" aria-label="Web del club">' +
             '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
               '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>' +
             '<span>Web</span></a>' +
-          (_staff ? '<button type="button" class="ver-como" id="pt-ver-como" aria-haspopup="true" aria-expanded="false">' + OJO_VC + '<span>Ver como…</span></button>' : '') +
+          (_staff ? '<button type="button" class="ver-como" id="pt-ver-como" aria-haspopup="true" aria-expanded="false" title="Ver como…" aria-label="Ver como…">' + OJO_VC + '<span>Ver como…</span></button>' : '') +
           /* La pastilla del nombre. Si solo tienes un papel no se pulsa (se le
              quita la flechita en unSoloPapel); con varios, abre la hoja. */
           /* Con qué cuenta has entrado: al pasar el ratón por el nombre y,

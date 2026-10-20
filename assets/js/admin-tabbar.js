@@ -129,15 +129,16 @@
     '.at-tabbar{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);right:auto;bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;box-sizing:border-box;max-width:calc(100% - 20px);' +
       'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
       'border:1px solid rgba(30,45,65,.08);border-radius:26px;padding:6px;box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
-    '.at-tabbar a,.at-tabbar button{flex:0 0 auto;min-width:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;' +
-      'min-height:52px;padding:9px 22px;border-radius:20px;text-decoration:none;color:var(--texto-suave,#6E6656);background:none;border:0;cursor:pointer;' +
+    '.at-tabbar a,.at-tabbar button{flex:0 0 auto;min-width:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
+      'min-height:52px;padding:7px 14px 6px;border-radius:20px;text-decoration:none;color:var(--texto-suave,#6E6656);background:none;border:0;cursor:pointer;' +
       'font-family:inherit;font-size:12px;font-weight:400;line-height:1.2;letter-spacing:normal;text-transform:none;-webkit-tap-highlight-color:transparent}' +
-    /* Barra de abajo SOLO con iconos (sin texto), pero con presencia (no enana):
-       iconos grandes y cada uno con su sitio. */
-    '.at-tabbar span{display:none}' +
-    '.at-tabbar .ic{width:27px;height:27px;flex:0 0 27px}' +
+    /* Icono + etiqueta corta debajo (Resumen · Personas · Compes · Más), como
+       la barra del portal (Inicio · Lo mío · Calendario · Más). Antes iba solo
+       con iconos y no se sabía qué era cada uno (auditoría 20-oct). */
+    '.at-tabbar span{display:block;font-size:10.5px;font-weight:600;line-height:1.1;white-space:nowrap}' +
+    '.at-tabbar .ic{width:24px;height:24px;flex:0 0 24px}' +
     '.at-tabbar .activo{background:var(--navy,#2E4256);color:#fff}' +
-    '.at-tabbar .activo span{font-weight:600}' +
+    '.at-tabbar .activo span{font-weight:700}' +
     '.at-hoja[hidden],.at-fondo[hidden],.at-tabbar[hidden]{display:none !important}' +
 
     /* --- buscador de la cabecera navy (todas las páginas del panel) --- */
@@ -1266,6 +1267,12 @@
     '.adm-buscador input{flex:1 1 260px;max-width:340px;min-height:44px;box-sizing:border-box;' +
       'padding:11px 14px;border:1px solid var(--linea-borde,#D4CBB9);border-radius:10px;' +
       'font-family:inherit;font-size:15px;color:var(--navy);background:#fff}',
+    /* Móvil: todo campo de texto del panel a 16 px como mínimo; con menos, el
+       iPhone hace zoom al tocarlo (buscadores a 13-15 px). Lo mismo que la
+       regla global de apolana.css, pero con el prefijo del panel para ganar a
+       los estilos propios de cada página. */
+    '@media (max-width:899px){' + P + 'input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),' +
+      P + 'select,' + P + 'textarea{font-size:16px}}',
     '.adm-buscador .adm-buscador-n{font-size:13px;color:var(--texto-suave);font-family:var(--fuente-dato)}',
     /* el recuento, al lado del título y en mono (kit 30h) */
     '.adm-cuenta-tit:not(:empty){font-family:var(--fuente-dato);font-size:14px;font-weight:400;' +
