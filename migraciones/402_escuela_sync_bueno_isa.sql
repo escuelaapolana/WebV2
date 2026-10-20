@@ -28,6 +28,7 @@
 --   · Fila nueva (sin ficha) que no es baja → se crea la ficha (activo/prueba),
 --     SIN grupo; el correo lo dice para asignarlo en el panel.
 --   · Nombre que casa con más de una ficha → duda, no se toca.
+--   · Las fichas DUPLICADAS archivadas (baja + «Duplicado» en observaciones) no cuentan.
 -- ============================================================================
 begin;
 
@@ -49,6 +50,23 @@ create policy "admin lee la sincronizacion" on public.escuela_sync_log
 
 -- p_filas: [{hoja, fila, nombre, ap1, ap2, nacimiento 'YYYY-MM-DD', colores:[hex…], turno,
 --            sexo, dni, tutor, telefono, email, direccion, obs}]
+-- Equivalencias a mano: un nombre del Excel que es una ficha con otro nombre
+-- (p. ej. «Rafa Gil de Bernabe Valero» del Excel = ficha «Rafael…» de la Academia).
+create table if not exists public.escuela_sync_alias (
+  nombre_norm text primary key,          -- _nombre_norm(nombre + apellidos) tal cual sale en el Excel
+  atleta_id   uuid not null references public.atletas(id) on delete cascade,
+  nota        text,
+  creado_en   timestamptz not null default now()
+);
+alter table public.escuela_sync_alias enable row level security;
+drop policy if exists "admin gestiona equivalencias" on public.escuela_sync_alias;
+create policy "admin gestiona equivalencias" on public.escuela_sync_alias
+  for all to authenticated using ((select public.es_admin())) with check ((select public.es_admin()));
+insert into public.escuela_sync_alias (nombre_norm, atleta_id, nota)
+values (public._nombre_norm('Rafa Gil de Bernabe Valero'), 'c2559895-be13-4eb5-b48a-48cc3bc83359',
+        'Andrés 20-oct-2026: no está de baja; su ficha real es «Rafael» (Academia AC98). La de baja es un duplicado del import.')
+on conflict (nombre_norm) do nothing;
+
 create or replace function public.escuela_isa_sincronizar(p_token text, p_filas jsonb, p_aplicar boolean default false)
 returns jsonb
 language plpgsql security definer set search_path = public, extensions
@@ -102,9 +120,15 @@ begin
             left join public.atletas a
               on public._nombre_norm(a.nombre||' '||coalesce(a.apellidos,'')) = public._nombre_norm(f2.nombre||' '||f2.apellidos)
              and (a.tipo_membresia in ('escuela','municipal') or 'escuela' = any(coalesce(a.secciones,'{}')))
+             and not (a.estado = 'baja' and coalesce(a.observaciones,'') ilike '%duplicado%')  -- fichas duplicadas archivadas
              and (f2.nacimiento is null or a.fecha_nacimiento is null or a.fecha_nacimiento = f2.nacimiento)
            group by f2.hoja, f2.fila) c
    where c.hoja = f.hoja and c.fila = f.fila;
+
+  -- 2a · Equivalencias a mano (mandan sobre todo lo demás)
+  update _f f set n_cand = 1, atleta_id = al.atleta_id
+    from public.escuela_sync_alias al
+   where al.nombre_norm = public._nombre_norm(f.nombre||' '||f.apellidos);
 
   -- 2b · Segunda pasada para nombres mal escritos («Sánchex», «No tiene segundo
   --      apellido»…): misma fecha de nacimiento + primer nombre + primer apellido.
@@ -116,6 +140,7 @@ begin
              and split_part(public._nombre_norm(a.nombre),' ',1) = split_part(public._nombre_norm(f2.nombre),' ',1)
              and split_part(public._nombre_norm(a.apellidos),' ',1) = split_part(public._nombre_norm(f2.apellidos),' ',1)
              and (a.tipo_membresia in ('escuela','municipal') or 'escuela' = any(coalesce(a.secciones,'{}')))
+             and not (a.estado = 'baja' and coalesce(a.observaciones,'') ilike '%duplicado%')  -- fichas duplicadas archivadas
            where f2.n_cand = 0
            group by f2.hoja, f2.fila) c
    where c.hoja = f.hoja and c.fila = f.fila;
