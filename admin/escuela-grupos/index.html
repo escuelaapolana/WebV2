@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grupos y listas · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/admin-auth.js?v=79f38ff1"></script>
+<script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
+<style>
+  /* ============================================================
+     GRUPOS DE LA ESCUELA DE ATLETISMO (martes y jueves 17:30)
+     ------------------------------------------------------------
+     Diseño aprobado: portal/_maqueta-escuela-lista/ · pestaña
+     «Panel (vosotros)». Tarjeta por grupo con franja de color,
+     entrenador con «Cambiar», niños que se tocan (hoja inferior
+     con los grupos destino) o se arrastran en el ordenador.
+     Todo lleva prefijo eg- para no pisar estilos del panel.
+     ============================================================ */
+  body { background: var(--crema); }
+  .admin-wrap { max-width: 1180px; margin: 0 auto; padding: clamp(18px,4vw,36px) clamp(16px,4vw,40px) 120px; }
+  .eg { --eg-navy:#2E4256; --eg-linea:#E6DFD0; --eg-suave:#6E6656; --eg-crema-c:#F1EADC;
+        --eg-rojo:#C8473B; --eg-azul:#2F6FA8; --eg-verde:#2E8B57; color: var(--eg-navy); -webkit-tap-highlight-color: transparent; }
+  .eg *, .eg-capa * { box-sizing: border-box; }
+
+  .eg-cab { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
+  .eg-cab h1 { font-family:var(--fuente-titulo); font-size:clamp(24px,5vw,34px); text-transform:uppercase; margin:0; line-height:1; color:var(--eg-navy); }
+  .eg-cab small { display:block; color:var(--eg-suave); font-size:13.5px; margin-top:5px; }
+  .eg-turno { display:flex; gap:4px; background:#fff; border:1px solid var(--eg-linea); border-radius:999px; padding:4px; max-width:100%; }
+  .eg-turno button { min-height:36px; padding:0 14px; border:0; border-radius:999px; background:none; font:inherit; font-weight:700; font-size:13.5px; color:var(--eg-suave); cursor:pointer; white-space:nowrap; }
+  .eg-turno button.on { background:var(--eg-navy); color:#fff; }
+  .eg-turno button:disabled { cursor:not-allowed; opacity:.55; }
+  .eg-buscar { width:100%; min-height:46px; border:1px solid var(--eg-linea); border-radius:14px; padding:0 14px; font:inherit; font-size:16px; background:#fff; color:var(--eg-navy); margin:0 0 14px; }
+  .eg-resumen { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
+  .eg-resumen span { background:#fff; border:1px solid var(--eg-linea); border-radius:999px; padding:6px 12px; font-size:13px; color:var(--eg-suave); }
+  .eg-resumen b { color:var(--eg-navy); }
+  .eg-resumen .ojo { background:#FFF1DC; border-color:#EBD9B8; color:#7A5200; }
+  .eg-resumen .ojo b { color:#7A5200; }
+  .eg-estado { background:#fff; border:1px solid var(--eg-linea); border-radius:14px; padding:18px; color:var(--eg-suave); }
+  .eg-estado.error { color:#B3261E; }
+
+  .eg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:14px; align-items:start; }
+  @media (max-width:420px){ .eg-grid { grid-template-columns:minmax(0,1fr); } }
+  .eg-card { background:#fff; border:1px solid var(--eg-linea); border-radius:18px; overflow:hidden; min-width:0;
+             box-shadow:0 1px 2px rgba(30,45,65,.05),0 14px 28px -20px rgba(30,45,65,.35); border-top:5px solid var(--c,#999); transition:box-shadow .15s, transform .15s; }
+  .eg-card.drop { box-shadow:0 0 0 3px var(--c), 0 14px 28px -12px rgba(30,45,65,.45); transform:translateY(-2px); }
+  .eg-gcab { display:flex; align-items:center; gap:10px; padding:12px 14px; background:var(--eg-crema-c); cursor:pointer; border:0; width:100%; text-align:left; font:inherit; color:inherit; }
+  .eg-gcab .bola { width:12px; height:12px; border-radius:50%; background:var(--c); flex:0 0 12px; }
+  .eg-gcab .t { flex:1; min-width:0; }
+  .eg-gcab .t b { display:block; font-size:16.5px; }
+  .eg-gcab .t small { display:block; font-size:12.5px; color:var(--eg-suave); margin-top:1px; line-height:1.4; }
+  .eg-gcab .t small.falta { color:#7A5200; font-weight:700; }
+  .eg-gcab .num { font-weight:800; font-size:20px; font-variant-numeric:tabular-nums; text-align:right; }
+  .eg-gcab .num small { display:block; font-size:10.5px; font-weight:700; color:var(--eg-suave); text-transform:uppercase; letter-spacing:.04em; }
+  .eg-gcab .chev { color:var(--eg-suave); transition:transform .2s; }
+  .eg-card.abierta .eg-gcab .chev { transform:rotate(180deg); }
+  .eg-ent { display:flex; align-items:center; gap:8px; padding:9px 14px; border-bottom:1px solid #F0EADF; font-size:13.5px; min-width:0; }
+  .eg-ent > span:nth-child(2) { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .eg-ent .av-s { width:26px; height:26px; border-radius:50%; background:var(--eg-navy); color:#fff; display:grid; place-items:center; font-size:11px; font-weight:800; flex:0 0 26px; }
+  .eg-ent .av-s.vacio { background:#E9E1D0; color:#7A6F5B; }
+  .eg-ent button { margin-left:auto; flex:0 0 auto; border:1px solid var(--eg-linea); background:#fff; border-radius:999px; padding:5px 11px; font:inherit; font-size:12.5px; font-weight:700; color:var(--eg-azul); cursor:pointer; min-height:32px; }
+  .eg-ent .sin { color:#7A5200; font-weight:700; }
+  .eg-ninos { display:none; }
+  .eg-card.abierta .eg-ninos { display:block; }
+  .eg-nino { display:flex; align-items:center; gap:10px; padding:9px 12px 9px 14px; border-top:1px solid #F3EEE4; cursor:pointer; min-height:52px; background:#fff; }
+  .eg-nino:hover { background:#FBF8F2; }
+  .eg-nino[draggable=true] { cursor:grab; }
+  .eg-av { width:34px; height:34px; border-radius:50%; flex:0 0 34px; display:grid; place-items:center; font-weight:800; font-size:12.5px; color:#fff; }
+  .eg-nino .i { flex:1; min-width:0; }
+  .eg-nino .i b { display:block; font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .eg-nino .i small { display:flex; gap:5px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--eg-suave); margin-top:1px; }
+  .eg-nino .dots { color:#B9AE97; font-size:20px; padding:0 4px; }
+  .eg-nino.recien { animation:eg-brilla 1.4s ease; }
+  @keyframes eg-brilla { 0%{ background:#FFF4CC; } 100%{ background:#fff; } }
+  .eg-pill { font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .eg-p-pr { background:#EFE7FA; color:#5B3E91; }
+  .eg-p-obs { background:#FDECEA; color:#9A2F26; }
+  .eg-p-dia { background:#EEF2F6; color:#4A5A6B; }
+  .eg-p-gris { background:#F0EBE0; color:#6E6656; }
+  .eg-add { display:block; width:100%; border:0; border-top:1px solid #F3EEE4; background:#fff; color:var(--eg-azul); font:inherit; font-weight:700; font-size:14px; padding:12px; cursor:pointer; min-height:46px; }
+  .eg-vacio-g { padding:14px; font-size:13.5px; color:var(--eg-suave); border-top:1px solid #F3EEE4; }
+  .eg-sec-t { margin:24px 2px 8px; font-size:13px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--eg-suave); }
+  .eg-vacios > summary { list-style:none; cursor:pointer; margin:22px 2px 8px; font-size:13px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--eg-suave); display:flex; align-items:center; gap:6px; min-height:36px; }
+  .eg-vacios > summary::-webkit-details-marker { display:none; }
+  .eg-vacios > summary::after { content:'▾'; transition:transform .2s; }
+  .eg-vacios[open] > summary::after { transform:rotate(180deg); }
+  .eg-vacios > summary span { text-transform:none; letter-spacing:0; font-weight:600; }
+  .eg-bajas .eg-nino { cursor:default; flex-wrap:wrap; }
+  .eg-reactivar { min-height:38px; border-radius:10px; padding:0 12px; font:inherit; font-weight:700; font-size:13.5px; cursor:pointer; border:1px solid var(--eg-linea); background:#fff; color:var(--eg-azul); }
+  .eg-nota { font-size:12.5px; color:var(--eg-suave); margin:16px 2px 0; line-height:1.5; }
+
+  /* ---------- Hoja inferior (encima de la barra del panel) ---------- */
+  .eg-velo { position:fixed; inset:0; background:rgba(20,30,45,.45); z-index:9000; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .eg-velo.ver { opacity:1; pointer-events:auto; }
+  .eg-hoja { position:fixed; left:50%; bottom:0; width:min(560px,100%); transform:translate(-50%,105%); z-index:9001; background:#fff; color:#2E4256;
+             border-radius:22px 22px 0 0; padding:10px 18px calc(18px + env(safe-area-inset-bottom)); transition:transform .25s ease; max-height:88vh; overflow:auto;
+             box-shadow:0 -10px 40px rgba(20,30,45,.25); visibility:hidden; }
+  .eg-hoja.ver { transform:translate(-50%,0); visibility:visible; }
+  .eg-hoja .asa { width:42px; height:5px; border-radius:9px; background:#DDD5C4; margin:2px auto 12px; }
+  .eg-hoja h3 { margin:0; font-family:var(--fuente-titulo); font-size:21px; color:#2E4256; }
+  .eg-hoja .sub { color:#6E6656; font-size:13.5px; margin:3px 0 12px; line-height:1.45; }
+  .eg-hoja .obs { background:#FDECEA; color:#9A2F26; border-radius:10px; padding:8px 11px; font-size:13.5px; margin:0 0 10px; }
+  .eg-hoja .info { background:#F5F1E8; color:#4A4437; border-radius:10px; padding:8px 11px; font-size:13.5px; margin:0 0 10px; }
+  .eg-hoja h4 { margin:14px 0 8px; font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:#6E6656; }
+  .eg-destinos { display:grid; grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); gap:8px; }
+  .eg-destinos button { min-height:52px; border:1px solid #E6DFD0; border-left:5px solid var(--c); border-radius:12px; background:#fff; font:inherit; text-align:left; padding:6px 10px; cursor:pointer; color:#2E4256; min-width:0; }
+  .eg-destinos button b { display:block; font-size:14.5px; }
+  .eg-destinos button small { display:block; font-size:11.5px; color:#6E6656; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .eg-destinos button.actual { background:#F1EADC; opacity:.6; cursor:default; }
+  .eg-acc { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .eg-acc a, .eg-acc button, .eg-acc span { flex:1 1 140px; min-height:48px; border-radius:12px; font:inherit; font-weight:700; font-size:14.5px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; text-decoration:none; padding:0 10px; text-align:center; }
+  .eg-acc .b-tel { background:#EAF2FA; color:#2F6FA8; border:1px solid #CFE0F1; }
+  .eg-acc .b-tel.off { background:#F5F1E8; color:#8C8270; border-color:#E6DFD0; cursor:default; }
+  .eg-acc .b-ficha { background:#fff; color:#2E4256; border:1px solid #E6DFD0; }
+  .eg-acc .b-baja { background:#fff; color:#B3261E; border:1px solid #EDC5C1; flex-basis:100%; }
+  .eg-ops { display:flex; flex-direction:column; gap:6px; }
+  .eg-op { display:flex; align-items:center; gap:10px; width:100%; min-height:52px; border:1px solid #E6DFD0; border-radius:12px; background:#fff; padding:8px 12px; font:inherit; text-align:left; cursor:pointer; color:#2E4256; }
+  .eg-op:hover { background:#FBF8F2; }
+  .eg-op .eg-av { width:32px; height:32px; flex-basis:32px; font-size:12px; }
+  .eg-op .i { flex:1; min-width:0; }
+  .eg-op .i b { display:block; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .eg-op .i small { display:flex; gap:5px; flex-wrap:wrap; font-size:12px; color:#6E6656; margin-top:1px; }
+  .eg-op.actual { background:#F1EADC; cursor:default; }
+  .eg-op .ok { color:#1E7A3D; font-weight:800; }
+  .eg-quitar { margin-top:8px; width:100%; min-height:46px; border-radius:12px; border:1px solid #EDC5C1; background:#fff; color:#B3261E; font:inherit; font-weight:700; font-size:14px; cursor:pointer; }
+  .eg-alta { margin-top:14px; background:#F5F1E8; border-radius:12px; padding:10px 12px; font-size:13.5px; color:#4A4437; line-height:1.5; }
+  .eg-alta a { color:#2F6FA8; font-weight:700; overflow-wrap:anywhere; }
+  .eg-alta button { margin-top:8px; min-height:40px; border-radius:999px; border:1px solid #CFE0F1; background:#fff; color:#2F6FA8; font:inherit; font-weight:700; font-size:13.5px; padding:0 14px; cursor:pointer; }
+  .eg-hoja input[type=search] { width:100%; min-height:46px; border:1px solid #E6DFD0; border-radius:12px; padding:0 12px; font:inherit; font-size:16px; color:#2E4256; margin:0 0 10px; }
+  .eg-mas { font-size:12.5px; color:#6E6656; padding:8px 2px 0; }
+
+  /* ---------- Aviso con «Deshacer» (sobre la barra flotante en el móvil) ---------- */
+  .eg-toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%,20px); opacity:0; pointer-events:none; transition:.25s; z-index:9002; background:#2E4256; color:#fff;
+              border-radius:999px; padding:10px 10px 10px 18px; display:flex; align-items:center; gap:12px; font-size:14px; box-shadow:0 10px 24px -8px rgba(30,45,65,.5); max-width:calc(100vw - 32px); }
+  .eg-toast span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .eg-toast.ver { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+  .eg-toast button { flex:0 0 auto; border:0; background:rgba(255,255,255,.16); color:#fff; font:inherit; font-weight:800; border-radius:999px; padding:6px 12px; cursor:pointer; }
+  .eg-toast button[hidden] { display:none; }
+  @media (max-width:899px){ body.at-con-tabbar .eg-toast { bottom:calc(94px + env(safe-area-inset-bottom)); } }
+</style>
+</head>
+<body class="adm-piel">
+<div id="admin-contenido">
+<div class="admin-wrap eg">
+  <div class="eg-cab">
+    <div><h1>Grupos de la escuela</h1><small id="eg-sub">1er turno · 17:30–18:30 · Estadio Joaquín Villar</small></div>
+    <div class="eg-turno" role="group" aria-label="Turno">
+      <button type="button" disabled title="Próximamente">Lunes y miércoles</button>
+      <button type="button" class="on" aria-pressed="true">Martes y jueves</button>
+    </div>
+  </div>
+  <input class="eg-buscar" id="eg-buscar" type="search" placeholder="Buscar a un niño o niña…" autocomplete="off">
+  <div class="eg-resumen" id="eg-resumen"></div>
+  <div id="eg-grid" class="eg-grid"><div class="eg-estado">Cargando los grupos…</div></div>
+  <div id="eg-vacios"></div>
+  <div id="eg-bajas"></div>
+  <p class="eg-nota">Toca un grupo para abrirlo y toca a un niño para moverlo, darlo de baja o llamar a la familia. En el ordenador también se puede <b>arrastrar</b> a un niño de un grupo a otro. Todo se guarda al momento y se puede deshacer durante unos segundos.</p>
+</div>
+</div><!-- /admin-contenido -->
+
+<div class="eg-capa">
+  <div class="eg-velo" id="eg-velo"></div>
+  <div class="eg-hoja" id="eg-hoja" role="dialog" aria-modal="true" aria-label="Opciones"></div>
+  <div class="eg-toast" id="eg-toast" role="status" aria-live="polite"><span id="eg-toast-t"></span><button type="button" id="eg-toast-d">Deshacer</button></div>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function () {
+  var sb = window.APOLANA_DB;
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+
+  var TURNO = /^martes y jueves 17:30/i;
+  var ALTA_ENTRENADOR = 'https://atletismoapolana.com/entrenador/alta/';
+  var COLOR = { rojo: '#C8473B', azul: '#2F6FA8', verde: '#2E8B57' };
+  var ORDEN = { rojo: 0, azul: 1, verde: 2 };
+  var COL = ['#2F6FA8', '#2E8C86', '#B5714A', '#6E5AA6', '#3F7A4C', '#C6892F'];
+  var DIAS = { 1: 'lunes', 2: 'martes', 3: 'miércoles', 4: 'jueves', 5: 'viernes', 6: 'sábado', 7: 'domingo' };
+
+  var GRUPOS = [];        // grupos de martes y jueves 17:30 (activos)
+  var ESC_IDS = [];       // todos los grupos de la escuela (para la baja)
+  var NINOS = {};         // atleta_id → { a, g, principal, desde }
+  var PERFILES = {};      // id → perfil
+  var ENTRENADORES = [];  // perfiles elegibles para llevar un grupo
+  var LISTAS = {};        // grupo_id → { fecha, si, tot }
+  var BAJAS = [];         // dados de baja en esta visita
+  var CANDIDATOS = null;  // para «Añadir» (se cargan la primera vez)
+  var abiertos = leerAbiertos(), filtro = '', ultimo = null, ocupado = false;
+
+  /* ---------------- utilidades ---------------- */
+  function bonito(n) {
+    n = String(n || '').trim().replace(/\s+/g, ' ');
+    if (!n || n !== n.toUpperCase() || !/[A-ZÁÉÍÓÚÑÜ]/.test(n)) return n;
+    return n.toLowerCase().split(' ').map(function (w, i) {
+      if (i && /^(de|del|la|las|los|y|i)$/.test(w)) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(' ');
+  }
+  function nom(a) { return (bonito(a.nombre) + ' ' + bonito(a.apellidos)).trim() || '(sin nombre)'; }
+  function nomP(p) { return p ? ((bonito(p.nombre) + ' ' + bonito(p.apellidos)).trim() || p.email || 'Sin nombre') : ''; }
+  function ini(s) { return String(s || '').trim().split(/\s+/).slice(0, 2).map(function (x) { return x.charAt(0).toUpperCase(); }).join(''); }
+  function color(s) { var h = 0; String(s).split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return COL[h % COL.length]; }
+  function sinAcentos(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function edad(f) {
+    if (!f) return '';
+    var n = new Date(f + 'T12:00:00'), h = new Date();
+    var e = h.getFullYear() - n.getFullYear();
+    if (h.getMonth() < n.getMonth() || (h.getMonth() === n.getMonth() && h.getDate() < n.getDate())) e--;
+    return e >= 0 ? e + (e === 1 ? ' año' : ' años') : '';
+  }
+  function anio(f) { return f ? Number(String(f).slice(0, 4)) : null; }
+  function fechaCorta(f) {
+    if (!f) return '';
+    var d = new Date(f + 'T12:00:00');
+    return d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' }).replace('.', '');
+  }
+  function fechaLarga(f) { return f ? new Date(String(f).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }) : ''; }
+  function colorGrupo(nombre) { return COLOR[sinAcentos(String(nombre).split(' ')[0])] || '#8C8270'; }
+  function ordenGrupo(a, b) {
+    var oa = ORDEN[sinAcentos(a.nombre.split(' ')[0])], ob = ORDEN[sinAcentos(b.nombre.split(' ')[0])];
+    oa = oa == null ? 9 : oa; ob = ob == null ? 9 : ob;
+    return oa - ob || a.nombre.localeCompare(b.nombre, 'es', { numeric: true });
+  }
+  function grupo(id) { return GRUPOS.filter(function (g) { return g.id === id; })[0]; }
+  function ninosDe(gid) { return Object.keys(NINOS).map(function (k) { return NINOS[k]; }).filter(function (n) { return n.g === gid; }); }
+  function soloDia(a) {
+    var d = a.escuela_dias;
+    if (!d || !d.length || d.length >= 2) return '';
+    return DIAS[d[0]] || '';
+  }
+  function telDe(a) { var t = String(a.telefono_tutor || a.telefono || '').replace(/[^\d+]/g, ''); return t.length >= 9 ? t : ''; }
+  function avisar(m) { if (window.apoToast) window.apoToast(m, 'error'); else alert(m); }
+  function leerAbiertos() { try { return JSON.parse(localStorage.getItem('eg-abiertos') || '{}') || {}; } catch (e) { return {}; } }
+  function guardarAbiertos() { try { localStorage.setItem('eg-abiertos', JSON.stringify(abiertos)); } catch (e) {} }
+  function vacio(g) { return !g.entrenador_id && !ninosDe(g.id).length; }
+
+  /* ---------------- carga ---------------- */
+  async function cargar() {
+    var rg = await sb.from('grupos').select('id,nombre,horario,seccion,entrenador_id,activo').eq('seccion', 'escuela');
+    if (rg.error) return fallo('No se han podido cargar los grupos: ' + rg.error.message);
+    ESC_IDS = (rg.data || []).map(function (g) { return g.id; });
+    GRUPOS = (rg.data || []).filter(function (g) { return g.activo !== false && TURNO.test(String(g.horario || '').trim()); }).sort(ordenGrupo);
+    GRUPOS.forEach(function (g) { g.c = colorGrupo(g.nombre); });
+    if (GRUPOS.length) {
+      var h = String(GRUPOS[0].horario || '').split('·');
+      if (h.length > 1) $('eg-sub').textContent = '1er turno · 17:30–18:30 · ' + h.slice(1).join('·').trim();
+    }
+    var ids = GRUPOS.map(function (g) { return g.id; });
+    if (!ids.length) { $('eg-grid').innerHTML = '<div class="eg-estado">No hay grupos de martes y jueves a las 17:30.</div>'; return; }
+
+    var ra = await sb.from('atleta_grupos').select('atleta_id,grupo_id,principal,desde').in('grupo_id', ids);
+    if (ra.error) return fallo('No se han podido cargar los niños: ' + ra.error.message);
+    var filas = ra.data || [];
+    var aids = filas.map(function (f) { return f.atleta_id; });
+    var atletas = {};
+    for (var i = 0; i < aids.length; i += 80) {
+      var r = await sb.from('atletas')
+        .select('id,nombre,apellidos,fecha_nacimiento,estado,fecha_prueba_fin,fecha_baja,telefono,telefono_tutor,nombre_tutor,aviso_salud,escuela_dias')
+        .in('id', aids.slice(i, i + 80));
+      if (r.error) return fallo('No se han podido cargar las fichas: ' + r.error.message);
+      (r.data || []).forEach(function (a) { atletas[a.id] = a; });
+    }
+    NINOS = {};
+    filas.forEach(function (f) {
+      var a = atletas[f.atleta_id];
+      if (!a || a.estado === 'baja' || NINOS[a.id]) return;
+      NINOS[a.id] = { a: a, g: f.grupo_id, principal: !!f.principal, desde: f.desde };
+    });
+
+    // Entrenadores: perfiles con papel de entrenador o admin, y los que ya llevan un grupo.
+    var rp = await sb.from('perfiles').select('id,nombre,apellidos,email,rol,roles').or('rol.in.(entrenador,admin),roles.ov.{entrenador,admin}');
+    PERFILES = {};
+    (rp.data || []).forEach(function (p) { PERFILES[p.id] = p; });
+    ENTRENADORES = (rp.data || []).filter(function (p) {
+      var rs = (p.roles || []).concat(p.rol ? [p.rol] : []);
+      return (rs.indexOf('entrenador') !== -1 || rs.indexOf('admin') !== -1) && String(p.nombre || '').trim() && sinAcentos(p.nombre) !== 'revisor';
+    });
+    var faltan = GRUPOS.map(function (g) { return g.entrenador_id; }).filter(function (x) { return x && !PERFILES[x]; });
+    if (faltan.length) {
+      var rf = await sb.from('perfiles').select('id,nombre,apellidos,email,rol,roles').in('id', faltan);
+      (rf.data || []).forEach(function (p) { PERFILES[p.id] = p; });
+    }
+    ENTRENADORES.sort(function (a, b) {
+      var ea = (a.roles || []).indexOf('entrenador') !== -1 || a.rol === 'entrenador' ? 0 : 1;
+      var eb = (b.roles || []).indexOf('entrenador') !== -1 || b.rol === 'entrenador' ? 0 : 1;
+      return ea - eb || nomP(a).localeCompare(nomP(b), 'es');
+    });
+
+    pintar();
+    cargarListas(ids);
+  }
+  // Repinta sin que la pantalla salte: la tarjeta del grupo indicado se queda donde estaba.
+  function pintarAnclado(gid) {
+    var sel = function () { return gid ? document.querySelector('.eg-card[data-g="' + gid + '"]') : null; };
+    var el = sel(), y0 = el ? el.getBoundingClientRect().top : null;
+    pintar();
+    var el2 = sel();
+    if (y0 != null && el2) window.scrollBy(0, el2.getBoundingClientRect().top - y0);
+  }
+  function fallo(m) { $('eg-grid').innerHTML = '<div class="eg-estado error">' + esc(m) + '</div>'; }
+
+  // «Última lista»: la última fecha con asistencia de cada grupo (opcional).
+  async function cargarListas(ids) {
+    try {
+      var desde = new Date(Date.now() - 15 * 864e5).toISOString().slice(0, 10);
+      var r = await sb.from('asistencia').select('grupo_id,fecha,presente').in('grupo_id', ids).gte('fecha', desde).order('fecha', { ascending: false }).limit(2000);
+      if (r.error) return;
+      LISTAS = {};
+      (r.data || []).forEach(function (x) {
+        if (!x.fecha) return;
+        var l = LISTAS[x.grupo_id];
+        if (!l || x.fecha > l.fecha) l = LISTAS[x.grupo_id] = { fecha: x.fecha, si: 0, tot: 0 };
+        if (x.fecha !== l.fecha) return;
+        l.tot++; if (x.presente) l.si++;
+      });
+      pintar();
+    } catch (e) { /* sin «última lista», la pantalla sigue igual */ }
+  }
+
+  /* ---------------- pintar ---------------- */
+  function pillsNino(a, corto) {
+    var m = [];
+    var e = edad(a.fecha_nacimiento); if (e) m.push('<span>' + esc(e) + '</span>');
+    if (soloDia(a)) m.push('<span class="eg-pill eg-p-dia">Solo ' + esc(soloDia(a)) + '</span>');
+    if (a.aviso_salud) m.push('<span class="eg-pill eg-p-obs" title="' + esc(a.aviso_salud) + '">⚠︎' + (corto ? '' : ' ' + esc(a.aviso_salud)) + '</span>');
+    if (a.estado === 'prueba') m.push('<span class="eg-pill eg-p-pr">De prueba</span>');
+    return m.join(' ');
+  }
+  function filaNino(n) {
+    var a = n.a, s = nom(a);
+    return '<div class="eg-nino' + (ultimo === a.id ? ' recien' : '') + '" draggable="true" data-n="' + esc(a.id) + '">' +
+      '<div class="eg-av" style="background:' + color(s) + '">' + esc(ini(s)) + '</div>' +
+      '<div class="i"><b>' + esc(s) + '</b><small>' + pillsNino(a, true) + '</small></div><span class="dots" aria-hidden="true">⋯</span></div>';
+  }
+  function tarjeta(g, f) {
+    var todos = ninosDe(g.id);
+    var lst = todos.slice().sort(function (x, y) { return nom(x.a).localeCompare(nom(y.a), 'es'); });
+    if (f) lst = lst.filter(function (n) { return sinAcentos(nom(n.a)).indexOf(f) !== -1; });
+    if (f && !lst.length) return '';
+    var abierto = !!abiertos[g.id] || !!f;
+    var nPr = todos.filter(function (n) { return n.a.estado === 'prueba'; }).length;
+    var ent = g.entrenador_id ? nomP(PERFILES[g.entrenador_id]) || 'Entrenador' : '';
+    var l = LISTAS[g.id];
+    var sub = (ent ? esc(ent) : '<span>Sin entrenador</span>') + (nPr ? ' · ' + nPr + ' de prueba' : '') +
+      (l ? ' · Última lista: ' + esc(fechaCorta(l.fecha)) + ' · ' + l.si + '/' + l.tot : '');
+    return '<div class="eg-card' + (abierto ? ' abierta' : '') + '" style="--c:' + g.c + '" data-g="' + esc(g.id) + '">' +
+      '<button type="button" class="eg-gcab" data-abrir="' + esc(g.id) + '" aria-expanded="' + abierto + '"><span class="bola"></span>' +
+        '<span class="t"><b>' + esc(g.nombre) + '</b><small class="' + (ent ? '' : 'falta') + '">' + sub + '</small></span>' +
+        '<span class="num">' + todos.length + '<small>niños</small></span><span class="chev" aria-hidden="true">▾</span></button>' +
+      '<div class="eg-ninos">' +
+        (g.entrenador_id
+          ? '<div class="eg-ent"><span class="av-s">' + esc(ini(ent)) + '</span><span>Entrena <b>' + esc(ent) + '</b></span><button type="button" data-cambiar-ent="' + esc(g.id) + '">Cambiar</button></div>'
+          : '<div class="eg-ent"><span class="av-s vacio">?</span><span class="sin">Sin entrenador</span><button type="button" data-cambiar-ent="' + esc(g.id) + '">Asignar</button></div>') +
+        (lst.length ? lst.map(filaNino).join('') : '<div class="eg-vacio-g">Todavía no hay nadie en este grupo.</div>') +
+        '<button type="button" class="eg-add" data-anadir="' + esc(g.id) + '">+ Añadir a este grupo</button>' +
+      '</div></div>';
+  }
+  function pintar() {
+    var tot = Object.keys(NINOS).length, pr = 0;
+    Object.keys(NINOS).forEach(function (k) { if (NINOS[k].a.estado === 'prueba') pr++; });
+    var llenos = GRUPOS.filter(function (g) { return !vacio(g); });
+    var sinEnt = llenos.filter(function (g) { return !g.entrenador_id; }).length;
+    $('eg-resumen').innerHTML = '<span><b>' + tot + '</b> niños</span><span><b>' + llenos.length + '</b> grupos</span>' +
+      '<span><b>' + pr + '</b> de prueba</span>' +
+      (sinEnt ? '<span class="ojo"><b>' + sinEnt + '</b> ' + (sinEnt === 1 ? 'grupo sin entrenador' : 'grupos sin entrenador') + '</span>' : '<span><b>✓</b> todos con entrenador</span>') +
+      (BAJAS.length ? '<span><b>' + BAJAS.length + '</b> ' + (BAJAS.length === 1 ? 'baja' : 'bajas') + ' hoy</span>' : '');
+
+    var f = sinAcentos(filtro.trim());
+    var html = llenos.map(function (g) { return tarjeta(g, f); }).join('');
+    $('eg-grid').innerHTML = html || '<div class="eg-estado">' + (f ? 'Nadie se llama así en estos grupos.' : 'Todavía no hay niños en los grupos.') + '</div>';
+
+    var vacios = GRUPOS.filter(vacio);
+    var vAbierto = $('eg-vacios').querySelector('details') ? $('eg-vacios').querySelector('details').open : false;
+    $('eg-vacios').innerHTML = (vacios.length && !f) ? '<details class="eg-vacios"' + (vAbierto ? ' open' : '') + '><summary>Grupos vacíos (' + vacios.length + ') <span>· sin niños ni entrenador</span></summary>' +
+      '<div class="eg-grid">' + vacios.map(function (g) { return tarjeta(g, ''); }).join('') + '</div></details>' : '';
+
+    $('eg-bajas').innerHTML = BAJAS.length ? '<div class="eg-sec-t">Dados de baja hoy</div><div class="eg-card abierta eg-bajas" style="--c:#B9AE97"><div class="eg-ninos">' +
+      BAJAS.map(function (b) {
+        var s = nom(b.a), g = grupo(b.g);
+        return '<div class="eg-nino"><div class="eg-av" style="background:#B9AE97">' + esc(ini(s)) + '</div>' +
+          '<div class="i"><b>' + esc(s) + '</b><small>Estaba en ' + esc(g ? g.nombre : 'su grupo') + '</small></div>' +
+          '<button type="button" class="eg-reactivar" data-reactivar="' + esc(b.a.id) + '">Volver a darle de alta</button></div>';
+      }).join('') + '</div></div>' : '';
+  }
+
+  /* ---------------- hoja inferior ---------------- */
+  function abrirHoja(html) {
+    $('eg-hoja').innerHTML = '<div class="asa"></div>' + html;
+    $('eg-hoja').scrollTop = 0;
+    $('eg-velo').classList.add('ver'); $('eg-hoja').classList.add('ver');
+  }
+  function cerrarHoja() { $('eg-velo').classList.remove('ver'); $('eg-hoja').classList.remove('ver'); }
+
+  function hojaNino(id) {
+    var n = NINOS[id]; if (!n) return;
+    var a = n.a, g = grupo(n.g), s = nom(a);
+    var ent = g && g.entrenador_id ? nomP(PERFILES[g.entrenador_id]) : 'sin entrenador';
+    var y = anio(a.fecha_nacimiento), e = edad(a.fecha_nacimiento);
+    var tel = telDe(a);
+    var destinos = GRUPOS.slice().sort(function (x, z) { return (vacio(x) ? 1 : 0) - (vacio(z) ? 1 : 0) || ordenGrupo(x, z); });
+    abrirHoja('<h3>' + esc(s) + '</h3>' +
+      '<div class="sub">' + esc(g ? g.nombre : '') + ' · ' + esc(ent) + (y ? ' · nacido/a en ' + y + (e ? ' (' + esc(e) + ')' : '') : '') +
+        (a.nombre_tutor ? '<br>Familia: ' + esc(bonito(a.nombre_tutor)) : '') + '</div>' +
+      (a.aviso_salud ? '<div class="obs">⚠︎ ' + esc(a.aviso_salud) + '</div>' : '') +
+      (a.estado === 'prueba' ? '<div class="info">De prueba' + (a.fecha_prueba_fin ? ' hasta el ' + esc(fechaLarga(a.fecha_prueba_fin)) : '') + '.</div>' : '') +
+      (soloDia(a) ? '<div class="info">Solo viene los ' + esc(soloDia(a)) + '.</div>' : '') +
+      '<h4>Mover a otro grupo</h4><div class="eg-destinos">' + destinos.map(function (x) {
+        var en = x.entrenador_id ? nomP(PERFILES[x.entrenador_id]).split(' ')[0] : 'Sin entrenador';
+        var act = x.id === n.g;
+        return '<button type="button" style="--c:' + x.c + '" class="' + (act ? 'actual' : '') + '" data-mover="' + esc(x.id) + '" data-n="' + esc(a.id) + '"' + (act ? ' aria-current="true"' : '') + '>' +
+          '<b>' + esc(x.nombre) + (act ? ' ✓' : '') + '</b><small>' + esc(en) + ' · ' + ninosDe(x.id).length + '</small></button>';
+      }).join('') + '</div>' +
+      '<div class="eg-acc">' +
+        (tel ? '<a class="b-tel" href="tel:' + esc(tel) + '">📞 Llamar a la familia</a>' : '<span class="b-tel off">Sin teléfono</span>') +
+        '<a class="b-ficha" href="../atletas/?ficha=' + encodeURIComponent(a.id) + '">Ver ficha</a>' +
+        '<button type="button" class="b-baja" data-baja="' + esc(a.id) + '">Dar de baja de la escuela</button></div>');
+  }
+
+  function hojaEntrenador(gid) {
+    var g = grupo(gid); if (!g) return;
+    var actual = g.entrenador_id ? PERFILES[g.entrenador_id] : null;
+    var lleva = {};
+    GRUPOS.forEach(function (x) { if (x.entrenador_id) (lleva[x.entrenador_id] = lleva[x.entrenador_id] || []).push(x.nombre); });
+    var lista = ENTRENADORES.slice();
+    if (actual && lista.indexOf(actual) === -1) lista.unshift(actual);
+    abrirHoja('<h3>¿Quién entrena ' + esc(g.nombre) + '?</h3>' +
+      '<div class="sub">' + (actual ? 'Ahora: <b>' + esc(nomP(actual)) + '</b>' : 'Ahora no tiene entrenador.') + '</div>' +
+      '<div class="eg-ops">' + (lista.length ? lista.map(function (p) {
+        var s = nomP(p), act = actual && p.id === actual.id;
+        var rs = (p.roles || []).concat(p.rol ? [p.rol] : []);
+        var papel = rs.indexOf('entrenador') !== -1 ? 'Entrenador' : 'Administración';
+        var otros = (lleva[p.id] || []).filter(function (nm) { return nm !== g.nombre; });
+        return '<button type="button" class="eg-op' + (act ? ' actual' : '') + '" data-elegir-ent="' + esc(p.id) + '" data-g="' + esc(g.id) + '">' +
+          '<span class="eg-av" style="background:' + color(s) + '">' + esc(ini(s)) + '</span>' +
+          '<span class="i"><b>' + esc(s) + '</b><small>' + papel + (otros.length ? ' · ya lleva ' + esc(otros.join(', ')) : '') + '</small></span>' +
+          (act ? '<span class="ok">✓</span>' : '') + '</button>';
+      }).join('') : '<div class="info">Todavía no hay entrenadores con cuenta.</div>') + '</div>' +
+      (actual ? '<button type="button" class="eg-quitar" data-quitar-ent="' + esc(g.id) + '">Quitar entrenador</button>' : '') +
+      '<div class="eg-alta">¿No sale en la lista? Los entrenadores que aún no tienen cuenta se dan de alta en ' +
+        '<a href="' + ALTA_ENTRENADOR + '" target="_blank" rel="noopener">atletismoapolana.com/entrenador/alta/</a>. Cuando la tengan, saldrán aquí.' +
+        '<br><button type="button" data-copiar>Copiar enlace</button></div>');
+  }
+
+  async function hojaAnadir(gid) {
+    var g = grupo(gid); if (!g) return;
+    abrirHoja('<h3>Añadir a ' + esc(g.nombre) + '</h3><div class="sub">Niños de la escuela que aún no están en ningún grupo de martes y jueves.</div>' +
+      '<input type="search" id="eg-busca-add" placeholder="Buscar por nombre…" autocomplete="off" data-g="' + esc(g.id) + '">' +
+      '<div class="eg-ops" id="eg-cands"><div class="info">Cargando…</div></div>');
+    if (window.matchMedia && window.matchMedia('(pointer:fine)').matches) setTimeout(function () { var i = $('eg-busca-add'); if (i) i.focus(); }, 260);
+    if (!CANDIDATOS) {
+      var r = await sb.from('atletas').select('id,nombre,apellidos,fecha_nacimiento,estado,secciones,tipo_membresia,escuela_dias,aviso_salud')
+        .neq('estado', 'baja').or('secciones.cs.{escuela},tipo_membresia.in.(escuela,municipal)').order('nombre');
+      if (r.error) { var c0 = $('eg-cands'); if (c0) c0.innerHTML = '<div class="obs">No se ha podido cargar la lista: ' + esc(r.error.message) + '</div>'; return; }
+      CANDIDATOS = (r.data || []).filter(function (a) {
+        return a.estado !== 'baja' && ((a.secciones || []).indexOf('escuela') !== -1 || a.tipo_membresia === 'escuela' || a.tipo_membresia === 'municipal');
+      });
+      // En qué otros grupos de la escuela están (p. ej. lunes y miércoles), para orientarse.
+      var rg = await sb.from('atleta_grupos').select('atleta_id,grupo_id').in('grupo_id', ESC_IDS);
+      var gr = await sb.from('grupos').select('id,nombre,horario').in('id', ESC_IDS);
+      var gn = {}; (gr.data || []).forEach(function (x) { gn[x.id] = x.nombre + (/^lunes y mi/i.test(x.horario || '') ? ' (L y X)' : /^martes y jue/i.test(x.horario || '') ? ' (M y J)' : ''); });
+      var en = {}; (rg.data || []).forEach(function (x) { if (gn[x.grupo_id]) (en[x.atleta_id] = en[x.atleta_id] || []).push(gn[x.grupo_id]); });
+      CANDIDATOS.forEach(function (a) { a._en = en[a.id] || []; });
+    }
+    pintarCandidatos();
+  }
+  function pintarCandidatos() {
+    var inp = $('eg-busca-add'), box = $('eg-cands'); if (!inp || !box || !CANDIDATOS) return;
+    var g = grupo(inp.getAttribute('data-g')), q = sinAcentos(inp.value.trim());
+    var lista = CANDIDATOS.filter(function (a) { return !NINOS[a.id]; });
+    var titulo = '';
+    if (q) lista = lista.filter(function (a) { return sinAcentos(nom(a)).indexOf(q) !== -1; });
+    else {
+      // Sin buscar: los de la edad del grupo (mismos años de nacimiento).
+      var ys = ninosDe(g.id).map(function (n) { return anio(n.a.fecha_nacimiento); }).filter(Boolean);
+      if (ys.length) {
+        var mn = Math.min.apply(null, ys), mx = Math.max.apply(null, ys);
+        lista = lista.filter(function (a) { var y = anio(a.fecha_nacimiento); return y && y >= mn && y <= mx; });
+        titulo = '<h4 style="margin-top:0">De la edad de este grupo (' + (mn === mx ? mn : mn + '–' + mx) + ')</h4>';
+      }
+    }
+    lista.sort(function (x, y) { return nom(x).localeCompare(nom(y), 'es'); });
+    var MAX = 40, mas = lista.length - MAX;
+    box.innerHTML = titulo + (lista.length ? lista.slice(0, MAX).map(function (a) {
+      var s = nom(a);
+      return '<button type="button" class="eg-op" data-meter="' + esc(a.id) + '" data-g="' + esc(g.id) + '">' +
+        '<span class="eg-av" style="background:' + color(s) + '">' + esc(ini(s)) + '</span>' +
+        '<span class="i"><b>' + esc(s) + '</b><small>' + pillsNino(a, true) + (a._en && a._en.length ? ' <span class="eg-pill eg-p-gris">En ' + esc(a._en.join(', ')) + '</span>' : '') + '</small></span>' +
+        '<span class="ok" style="color:#2F6FA8">+</span></button>';
+    }).join('') + (mas > 0 ? '<div class="eg-mas">Y ' + mas + ' más: escribe el nombre para encontrarlos.</div>' : '')
+      : '<div class="info">' + (q ? 'Nadie con ese nombre (o ya está en un grupo de martes y jueves).' : 'No hay nadie de esa edad sin grupo. Busca por nombre.') + '</div>');
+  }
+
+  /* ---------------- aviso con «Deshacer» ---------------- */
+  var tTimer = null, deshacer = null;
+  function toast(t, fnDeshacer) {
+    $('eg-toast-t').textContent = t; deshacer = fnDeshacer || null;
+    $('eg-toast-d').hidden = !fnDeshacer;
+    $('eg-toast').classList.add('ver');
+    clearTimeout(tTimer);
+    tTimer = setTimeout(function () { $('eg-toast').classList.remove('ver'); deshacer = null; }, 5000);
+  }
+  function quitarToast() { clearTimeout(tTimer); $('eg-toast').classList.remove('ver'); deshacer = null; }
+
+  /* ---------------- acciones (se guardan al momento) ---------------- */
+  async function mover(id, destino) {
+    var n = NINOS[id]; if (!n || n.g === destino || ocupado) return;
+    var desde = n.g, prev = { principal: n.principal, desde: n.desde };
+    ocupado = true;
+    // Primero entra en el nuevo y luego sale del viejo: si algo falla, no se queda sin grupo.
+    var r1 = await sb.from('atleta_grupos').insert({ atleta_id: id, grupo_id: destino, principal: n.principal });
+    if (r1.error) { ocupado = false; avisar('No se ha podido mover: ' + r1.error.message); return; }
+    var r2 = await sb.from('atleta_grupos').delete().eq('atleta_id', id).eq('grupo_id', desde);
+    ocupado = false;
+    if (r2.error) { avisar('Ha entrado en el grupo nuevo pero no ha salido del anterior: ' + r2.error.message + '. Recarga la página.'); return; }
+    n.g = destino; n.desde = new Date().toISOString().slice(0, 10);
+    ultimo = id;
+    pintarAnclado(desde);
+    toast(nom(n.a).split(' ')[0] + ' → ' + grupo(destino).nombre, function () { volverAMover(id, desde, prev); });
+  }
+  async function volverAMover(id, origen, prev) {
+    var n = NINOS[id]; if (!n || ocupado) return;
+    var ahora = n.g; ocupado = true;
+    var r1 = await sb.from('atleta_grupos').insert({ atleta_id: id, grupo_id: origen, principal: prev.principal, desde: prev.desde });
+    if (r1.error) { ocupado = false; avisar('No se ha podido deshacer: ' + r1.error.message); return; }
+    var r2 = await sb.from('atleta_grupos').delete().eq('atleta_id', id).eq('grupo_id', ahora);
+    ocupado = false;
+    if (r2.error) { avisar('No se ha podido deshacer del todo: ' + r2.error.message + '. Recarga la página.'); return; }
+    n.g = origen; n.desde = prev.desde; ultimo = id; pintarAnclado(origen);
+    toast(nom(n.a).split(' ')[0] + ' vuelve a ' + grupo(origen).nombre);
+  }
+
+  async function baja(id) {
+    var n = NINOS[id]; if (!n || ocupado) return;
+    var s = nom(n.a);
+    var ok = window.apoConfirm
+      ? await window.apoConfirm({ titulo: '¿Dar de baja a ' + s + '?', texto: 'Sale de sus grupos de la escuela y su ficha queda como baja. No se borra nada y se puede volver a dar de alta.', confirmar: 'Dar de baja', peligro: true })
+      : confirm('¿Dar de baja a ' + s + ' de la escuela?\n\nNo se borra nada: sale de su grupo y queda como baja.');
+    if (!ok) return;
+    ocupado = true;
+    var antes = { estado: n.a.estado, fecha_baja: n.a.fecha_baja || null, fecha_prueba_fin: n.a.fecha_prueba_fin || null };
+    var rf = await sb.from('atleta_grupos').select('atleta_id,grupo_id,principal,desde').eq('atleta_id', id).in('grupo_id', ESC_IDS);
+    if (rf.error) { ocupado = false; avisar('No se ha podido dar de baja: ' + rf.error.message); return; }
+    var filas = rf.data || [];
+    var ahora = new Date().toISOString();
+    var ru = await sb.from('atletas').update({ estado: 'baja', fecha_baja: ahora }).eq('id', id);
+    if (ru.error) { ocupado = false; avisar('No se ha podido dar de baja: ' + ru.error.message); return; }
+    if (filas.length) {
+      var rd = await sb.from('atleta_grupos').delete().eq('atleta_id', id).in('grupo_id', filas.map(function (f) { return f.grupo_id; }));
+      if (rd.error) { ocupado = false; avisar('Su ficha ya está de baja, pero no ha salido de los grupos: ' + rd.error.message + '. Recarga la página.'); return; }
+    }
+    ocupado = false;
+    n.a.estado = 'baja'; n.a.fecha_baja = ahora;
+    delete NINOS[id];
+    BAJAS.unshift({ a: n.a, g: n.g, principal: n.principal, desde: n.desde, antes: antes, filas: filas });
+    cerrarHoja(); pintarAnclado(n.g);
+    toast(s.split(' ')[0] + ' dado/a de baja', function () { reactivar(id); });
+  }
+  async function reactivar(id) {
+    var b = BAJAS.filter(function (x) { return x.a.id === id; })[0]; if (!b || ocupado) return;
+    ocupado = true;
+    var ru = await sb.from('atletas').update({ estado: b.antes.estado, fecha_baja: b.antes.fecha_baja, fecha_prueba_fin: b.antes.fecha_prueba_fin }).eq('id', id);
+    if (ru.error) { ocupado = false; avisar('No se ha podido volver a dar de alta: ' + ru.error.message); return; }
+    // Primero el principal (el que manda en la ficha) y luego el resto.
+    var filas = b.filas.slice().sort(function (x, y) { return (y.principal ? 1 : 0) - (x.principal ? 1 : 0); });
+    if (filas.length) {
+      var ri = await sb.from('atleta_grupos').insert(filas.map(function (f) { return { atleta_id: f.atleta_id, grupo_id: f.grupo_id, principal: !!f.principal, desde: f.desde }; }));
+      if (ri.error) { ocupado = false; avisar('Su ficha vuelve a estar de alta, pero no se ha podido volver a meter en sus grupos: ' + ri.error.message); return; }
+    }
+    ocupado = false;
+    b.a.estado = b.antes.estado; b.a.fecha_baja = b.antes.fecha_baja; b.a.fecha_prueba_fin = b.antes.fecha_prueba_fin;
+    BAJAS = BAJAS.filter(function (x) { return x !== b; });
+    NINOS[id] = { a: b.a, g: b.g, principal: b.principal, desde: b.desde };
+    ultimo = id;
+    pintarAnclado(b.g);
+    toast(nom(b.a).split(' ')[0] + ' vuelve a ' + grupo(b.g).nombre);
+  }
+
+  async function meter(aid, gid) {
+    if (ocupado || NINOS[aid]) return;
+    var a = (CANDIDATOS || []).filter(function (x) { return x.id === aid; })[0]; if (!a) return;
+    ocupado = true;
+    // Si no tiene grupo principal en ningún sitio, este pasa a serlo.
+    var rp = await sb.from('atleta_grupos').select('grupo_id').eq('atleta_id', aid).eq('principal', true);
+    var principal = !rp.error && !(rp.data || []).length;
+    var ri = await sb.from('atleta_grupos').insert({ atleta_id: aid, grupo_id: gid, principal: principal });
+    if (ri.error) { ocupado = false; avisar('No se ha podido añadir: ' + ri.error.message); return; }
+    var rf = await sb.from('atletas')
+      .select('id,nombre,apellidos,fecha_nacimiento,estado,fecha_prueba_fin,fecha_baja,telefono,telefono_tutor,nombre_tutor,aviso_salud,escuela_dias').eq('id', aid);
+    ocupado = false;
+    var ficha = (!rf.error && rf.data && rf.data[0]) || a;
+    NINOS[aid] = { a: ficha, g: gid, principal: principal, desde: new Date().toISOString().slice(0, 10) };
+    ultimo = aid; abiertos[gid] = true; guardarAbiertos();
+    pintarAnclado(gid); pintarCandidatos();
+    toast(nom(ficha).split(' ')[0] + ' entra en ' + grupo(gid).nombre, function () { sacarNuevo(aid, gid); });
+  }
+  async function sacarNuevo(aid, gid) {
+    if (ocupado) return; ocupado = true;
+    var r = await sb.from('atleta_grupos').delete().eq('atleta_id', aid).eq('grupo_id', gid);
+    ocupado = false;
+    if (r.error) { avisar('No se ha podido deshacer: ' + r.error.message); return; }
+    delete NINOS[aid]; pintarAnclado(gid); pintarCandidatos();
+  }
+
+  async function ponerEntrenador(gid, pid, sinDeshacer) {
+    var g = grupo(gid); if (!g || ocupado) return;
+    var antes = g.entrenador_id || null;
+    if (antes === (pid || null)) { cerrarHoja(); return; }
+    ocupado = true;
+    var r = await sb.from('grupos').update({ entrenador_id: pid || null }).eq('id', gid);
+    ocupado = false;
+    if (r.error) { avisar('No se ha podido guardar el entrenador: ' + r.error.message); return; }
+    g.entrenador_id = pid || null;
+    cerrarHoja(); pintarAnclado(gid);
+    if (sinDeshacer) return;
+    toast(pid ? g.nombre + ': ' + nomP(PERFILES[pid]).split(' ')[0] : g.nombre + ' sin entrenador', function () { ponerEntrenador(gid, antes, true); });
+  }
+
+  function copiar(btn) {
+    function hecho() { btn.textContent = '✓ Copiado'; setTimeout(function () { btn.textContent = 'Copiar enlace'; }, 1800); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ALTA_ENTRENADOR).then(hecho, function () { prompt('Copia el enlace:', ALTA_ENTRENADOR); });
+    } else prompt('Copia el enlace:', ALTA_ENTRENADOR);
+  }
+
+  /* ---------------- eventos ---------------- */
+  document.addEventListener('click', function (ev) {
+    var t = ev.target; if (!t || !t.closest) return;
+    if (t.id === 'eg-toast-d') { var f = deshacer; quitarToast(); if (f) f(); return; }
+    if (t.id === 'eg-velo') { cerrarHoja(); return; }
+    var ab = t.closest('[data-abrir]'); if (ab) { var gid = ab.getAttribute('data-abrir'); abiertos[gid] = !abiertos[gid]; guardarAbiertos(); pintarAnclado(gid); return; }
+    var ce = t.closest('[data-cambiar-ent]'); if (ce) { hojaEntrenador(ce.getAttribute('data-cambiar-ent')); return; }
+    var el = t.closest('[data-elegir-ent]'); if (el) { if (el.classList.contains('actual')) return; ponerEntrenador(el.getAttribute('data-g'), el.getAttribute('data-elegir-ent')); return; }
+    var qe = t.closest('[data-quitar-ent]'); if (qe) { ponerEntrenador(qe.getAttribute('data-quitar-ent'), null); return; }
+    if (t.closest('[data-copiar]')) { copiar(t.closest('[data-copiar]')); return; }
+    var an = t.closest('[data-anadir]'); if (an) { hojaAnadir(an.getAttribute('data-anadir')); return; }
+    var me = t.closest('[data-meter]'); if (me) { meter(me.getAttribute('data-meter'), me.getAttribute('data-g')); return; }
+    var mv = t.closest('[data-mover]'); if (mv) { if (mv.classList.contains('actual')) return; cerrarHoja(); mover(mv.getAttribute('data-n'), mv.getAttribute('data-mover')); return; }
+    var bj = t.closest('[data-baja]'); if (bj) { baja(bj.getAttribute('data-baja')); return; }
+    var re = t.closest('[data-reactivar]'); if (re) { re.disabled = true; reactivar(re.getAttribute('data-reactivar')); return; }
+    var ni = t.closest('.eg-nino[data-n]'); if (ni) { hojaNino(ni.getAttribute('data-n')); return; }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('eg-hoja').classList.contains('ver')) cerrarHoja(); });
+  $('eg-buscar').addEventListener('input', function (e) { filtro = e.target.value; pintar(); });
+  document.addEventListener('input', function (e) { if (e.target && e.target.id === 'eg-busca-add') pintarCandidatos(); });
+
+  // Arrastrar y soltar (ordenador)
+  var arrastrando = null;
+  function quitarDrop() { document.querySelectorAll('.eg-card.drop').forEach(function (x) { x.classList.remove('drop'); }); }
+  document.addEventListener('dragstart', function (e) {
+    var n = e.target.closest && e.target.closest('.eg-nino[data-n]'); if (!n) return;
+    arrastrando = n.getAttribute('data-n'); e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', arrastrando); } catch (x) {}
+  });
+  document.addEventListener('dragover', function (e) {
+    var c = e.target.closest && e.target.closest('.eg-card[data-g]'); if (!c || !arrastrando) return;
+    e.preventDefault();
+    document.querySelectorAll('.eg-card.drop').forEach(function (x) { if (x !== c) x.classList.remove('drop'); });
+    c.classList.add('drop');
+  });
+  document.addEventListener('dragleave', function (e) { var c = e.target.closest && e.target.closest('.eg-card'); if (c && !c.contains(e.relatedTarget)) c.classList.remove('drop'); });
+  document.addEventListener('drop', function (e) {
+    var c = e.target.closest && e.target.closest('.eg-card[data-g]'); quitarDrop();
+    if (!c || !arrastrando) return;
+    e.preventDefault(); var id = arrastrando; arrastrando = null;
+    mover(id, c.getAttribute('data-g'));
+  });
+  document.addEventListener('dragend', function () { arrastrando = null; quitarDrop(); });
+
+  cargar();
+});
+</script>
+</body>
+</html>

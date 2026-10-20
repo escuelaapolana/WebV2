@@ -181,6 +181,7 @@
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-atletismo/'},
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-atl'},
+        {g:'Niños y grupos', t:'Grupos y listas',   i:'clipboard', url:B+'admin/escuela-grupos/',         d:'Martes y jueves: mover niños de grupo, bajas y entrenadores.'},
         {g:'Niños y grupos', t:'Niños y niñas',     i:'people',   url:B+'admin/atletas/?seccion=escuela', d:'Los peques inscritos.'},
         {g:'Niños y grupos', t:'Grupos',            i:'people',   url:B+'admin/grupos/?seccion=escuela',  d:'Grupos por edad.'},
         {g:'Altas y pruebas', t:'Altas de familias', i:'userplus', url:B+'admin/altas/?tipo=escuela',      d:'Solicitudes nuevas de las familias.'},
@@ -666,7 +667,7 @@
     cubo:'cubo', 'cubo-altas':'cubo', 'cubo-prueba':'cubo', asistencia:'cubo',
     natacion:'natacion',
     tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista', 'cuotas-entreno':'pista',
-    repartir:'escuela-atl', historico:'escuela-atl', altas:'general',
+    repartir:'escuela-atl', historico:'escuela-atl', 'escuela-grupos':'escuela-atl', altas:'general',
     eventos:'comunicacion', enlaces:'general', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
   };
   // Mundo «pegajoso»: una vez dentro de un mundo, moverte por sus páginas NO

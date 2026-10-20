@@ -104,6 +104,7 @@
     if (r.indexOf('/portal/coordinador/') !== -1) return 'coordinador';
     if (r.indexOf('/portal/cubo-atleta/') !== -1) return 'cubo-atleta';
     if (r.indexOf('/portal/cubo-lista/') !== -1) return 'cubo-lista';
+    if (r.indexOf('/portal/escuela-lista/') !== -1) return 'escuela-lista';
     if (r.indexOf('/portal/socio/') !== -1) return 'socio';
     return null;
   }
@@ -121,7 +122,10 @@
     claves = claves || [];
     /* El papel se llama 'padre' por dentro, pero su zona/página es 'familia'.
        Se tratan como lo mismo para que la barra de la familia salga bien. */
-    function vale(z) { return z && (!claves.length || claves.indexOf(z) !== -1 || (z === 'familia' && claves.indexOf('padre') !== -1)); }
+    /* 'escuela-lista' (pasar lista de la escuela de atletismo) no es un papel
+       propio: es una pantalla del entrenador (y del admin). */
+    function vale(z) { return z && (!claves.length || claves.indexOf(z) !== -1 || (z === 'familia' && claves.indexOf('padre') !== -1) ||
+                                    (z === 'escuela-lista' && (claves.indexOf('entrenador') !== -1 || claves.indexOf('admin') !== -1))); }
     var z = zonaDeRuta(location.pathname);
     if (!vale(z)) z = zonaDeRuta(rutaAnterior());
     if (!vale(z)) z = recordada();
@@ -173,6 +177,14 @@
         { id: 'inicio',     txt: 'Lista',      ic: IC.lista,  url: b + 'portal/cubo-lista/' },
         { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/calendario/' },
         { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/cubo-lista/#mas' }
+      ];
+    }
+    /* Escuela de atletismo · entrenador de grupo que pasa lista. */
+    if (zona === 'escuela-lista') {
+      return [
+        { id: 'inicio',     txt: 'Lista',      ic: IC.lista,  url: b + 'portal/escuela-lista/' },
+        { id: 'calendario', txt: 'Calendario', ic: IC.agenda, url: b + 'portal/calendario/' },
+        { id: 'mas',        txt: 'Más',        ic: IC.mas,    url: b + 'portal/escuela-lista/#mas' }
       ];
     }
     /* Familia: barra sencilla, sin «Marcas» ni «Entreno». Inicio (sus hijos y
