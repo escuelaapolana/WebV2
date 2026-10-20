@@ -56,6 +56,7 @@
     clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.4V12l3 2"/>',
     flag:'<path d="M6 21V4M6 4.5h10.5l-2 3 2 3H6"/>',
     box:'<path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/>',
+    bottle:'<path d="M10 2.5h4M10.5 2.5v3.2c0 .9-2.5 2-2.5 4.3V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20V10c0-2.3-2.5-3.4-2.5-4.3V2.5"/><path d="M8 12.5h8"/>',
     run:'<circle cx="14.5" cy="5" r="2"/><path d="M7 21l3-5 3 2 1 3M13 18l-3-2 1.5-5-3.5 2v3M13 11l3-1 3 2"/>',
     sparkle:'<path d="M11.5 4l1.6 4.3L17.5 10l-4.4 1.7-1.6 4.3-1.6-4.3L5.5 10l4.4-1.7z"/>',
     inbox:'<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 8l8 5 8-5"/>',
@@ -120,7 +121,8 @@
         {g:'Comunicación', t:'Buzón',           i:'inbox',     url:B+'admin/buzon/',       d:'Los mensajes que llegan de contacto.'},
         {g:'Comunicación', t:'Enlaces para compartir', i:'link', url:B+'admin/enlaces/',   d:'Los enlaces de los formularios, para copiar y mandar.'},
         {g:'Web y tienda', t:'La web',          i:'globe',     url:B+'admin/paginas/',     d:'Páginas, textos y fotos de la web.'},
-        {g:'Web y tienda', t:'Pedidos de la tienda', i:'box', url:B+'admin/pedidos/', d:'Los pedidos de ropa y su estado.'},
+        {g:'Web y tienda', t:'Pedidos de la tienda', i:'box', url:B+'admin/pedidos/', d:'Los encargos de ropa: su estado y si ya se pagaron en la oficina.'},
+        {g:'Web y tienda', t:'Nevera',          i:'bottle',    url:B+'admin/nevera/',      d:'Las bebidas pagadas con el QR: ventas, precios y el QR para imprimir.'},
         {g:'Accesos y datos', t:'Acceso a los mundos', i:'shuffle', url:B+'admin/mundos/',    d:'Quién entra a cada mundo (Natación, Cubo…).'},
         {g:'Accesos y datos', t:'Quién entra al panel', i:'key', url:B+'admin/usuarios/',  d:'Cuentas, roles y permisos.', hub:false},
         {g:'Accesos y datos', t:'Datos del club',  i:'clipboard', url:B+'admin/documentos/',  d:'Documentos y datos legales.'}
@@ -660,7 +662,7 @@
     return _idx;
   }
   var COARSE = {
-    atletas:'general', socios:'general', dinero:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', 'cubo-pagos':'general', pedidos:'general',
+    atletas:'general', socios:'general', dinero:'general', cobros:'general', tarifas:'general', 'pagos-online':'general', 'cubo-pagos':'general', pedidos:'general', nevera:'general',
     paginas:'general', contenido:'general', imagenes:'general', biblioteca:'general', colaboradores:'general', mapa:'general',
     documentos:'general', estadisticas:'general', informes:'general', usuarios:'general', importar:'general', contactos:'general',
     grupos:'general', mundos:'general', campo:'general', buzon:'general', automatizaciones:'general',

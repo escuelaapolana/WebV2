@@ -1,24 +1,24 @@
 // ============================================================
-// tienda-pagar · abre el pago con tarjeta de un pedido de la tienda
+// tienda-pagar · registra un ENCARGO de ropa (ya NO cobra: se paga en la oficina)
 // ------------------------------------------------------------
 // QUÉ HACE, EN CRISTIANO
 //   El navegador manda el CARRITO (qué prendas, tallas y cuántas) y,
 //   si compra sin cuenta, sus datos de contacto. Esta función mira EN
-//   LA BASE cuánto vale de verdad cada prenda, crea el pedido y su
-//   pago, y devuelve la dirección de la pasarela de Stripe. La tarjeta
-//   NUNCA pasa por la web: se teclea en la página de Stripe.
+//   LA BASE cuánto vale de verdad cada prenda y crea el ENCARGO
+//   («pendiente», sin pago online). Se paga en la oficina del club, con
+//   tarjeta o en efectivo, al recogerlo (lo marca admin/pedidos).
 //
 // LO QUE NO SE FÍA DEL NAVEGADOR
-//   · Los precios. Los pone `tienda_pago_iniciar()` leyendo `productos`.
+//   · Los precios. Los pone `tienda_pedido_efectivo()` leyendo `productos`.
 //     Si el navegador manda un importe, se tira a la basura.
 //   · Quién es. NO hace falta sesión (la ropa se vende también a
 //     invitados). Pero SI viene una sesión válida, se enlaza el pedido
 //     a su ficha de socio. Si el token no vale, se sigue como invitado.
 //
 // CLAVES (variables de entorno de Supabase; aquí no hay ninguna)
-//     STRIPE_SECRET_KEY          (la de ITAKA; la pones tú en Supabase)
+//     (desde la 413 ya NO usa STRIPE_SECRET_KEY: la ropa es por encargo)
 //     SUPABASE_URL / SERVICE_ROLE_KEY / ANON_KEY  (las pone Supabase)
-//   Opcionales: PAGOS_URL_BASE, PAGOS_URL_OK, PAGOS_URL_KO, PAGOS_ORIGENES
+//   Opcional: PAGOS_ORIGENES
 //
 // Se despliega SIN comprobar el JWT (el invitado no tiene sesión; la
 // función ya trata el token como opcional):
@@ -32,17 +32,6 @@ const SERVICE_KEY =
 const ANON_KEY =
   Deno.env.get("SUPABASE_ANON_KEY") ??
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
-const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
-
-const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://atletismoapolana.com/")
-  .replace(/\/*$/, "/");
-
-// La ropa vuelve siempre a la tienda: es donde se ve la cesta y el aviso.
-function vuelta(resultado: "hecho" | "cancelado"): string {
-  const puesta = Deno.env.get(resultado === "hecho" ? "PAGOS_URL_OK" : "PAGOS_URL_KO");
-  if (puesta) return puesta;
-  return `${URL_BASE}tienda/?pago=${resultado}`;
-}
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("PAGOS_ORIGENES") ?? "")
@@ -117,12 +106,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) {
     return responder({ error: "config", mensaje: "El pago con tarjeta no está configurado." }, 503, origen);
   }
-  if (!STRIPE_KEY) {
-    return responder({
-      error: "no_activado",
-      mensaje: "El pago con tarjeta todavía no está activado. Escríbenos y te decimos cómo pagar tu pedido.",
-    }, 503, origen);
-  }
 
   // ---------------------------------------------------------------
   // 1 · Sesión OPCIONAL. Si hay token y vale, se enlaza a su ficha.
@@ -173,108 +156,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ---------------------------------------------------------------
-  // 2b · ¿El pago online de la TIENDA está desactivado? → pedido en EFECTIVO
-  //      (se recoge y se paga en la oficina; el pedido llega igual a admin).
+  // 3 · LA ROPA ES POR ENCARGO (Andrés, 20-oct-2026; migración 413)
+  //     Se crea el pedido «pendiente» y se paga EN LA OFICINA, con tarjeta
+  //     o en efectivo, al recogerlo. Esta función YA NO abre la pasarela de
+  //     Stripe aunque alguien la llame a mano o se vuelva a poner
+  //     pagos_config.tienda_pago_online = true: ese camino se ha quitado
+  //     (tienda_pago_iniciar ya ni siquiera se puede llamar desde fuera).
+  //     Si algún día se quiere cobrar la ropa online otra vez, hay que
+  //     recuperar el bloque de Stripe del historial de git (antes de la 413).
   // ---------------------------------------------------------------
-  const rCfg = await consulta("pagos_config?select=tienda_pago_online&id=eq.1&limit=1");
-  const cfg = Array.isArray(rCfg.datos) ? rCfg.datos[0] : null;
-  const pagoOnlineTienda = cfg ? cfg.tienda_pago_online !== false : true;
-  if (!pagoOnlineTienda) {
-    const rPed = await consulta("rpc/tienda_pedido_efectivo", {
-      method: "POST",
-      body: JSON.stringify({ p_items: items, p_contacto: contacto, p_perfil: perfilId }),
-    });
-    if (!rPed.ok) {
-      const msg = (rPed.datos as { message?: string } | null)?.message ?? "";
-      return responder({ error: "no_se_puede", mensaje: msg || "No se ha podido registrar el pedido." }, 400, origen);
-    }
-    const ped = (Array.isArray(rPed.datos) ? rPed.datos[0] : rPed.datos) as Record<string, any> | null;
-    return responder({ ok: true, efectivo: true, total: Number(ped?.total ?? 0) }, 200, origen);
-  }
-
-  // ---------------------------------------------------------------
-  // 3 · Abrir el pago EN LA BASE · aquí nacen el pedido y el importe
-  // ---------------------------------------------------------------
-  const rPago = await consulta("rpc/tienda_pago_iniciar", {
+  const rPed = await consulta("rpc/tienda_pedido_efectivo", {
     method: "POST",
-    body: JSON.stringify({
-      p_items: items,
-      p_contacto: contacto,
-      p_perfil: perfilId,
-      p_metadatos: { origen: perfilId ? "app" : "web" },
-    }),
+    body: JSON.stringify({ p_items: items, p_contacto: contacto, p_perfil: perfilId }),
   });
-
-  if (!rPago.ok) {
-    const msg = (rPago.datos as { message?: string } | null)?.message ?? "";
-    const apagado = msg.includes("no está activado");
-    return responder({
-      error: apagado ? "no_activado" : "no_se_puede",
-      mensaje: msg || "No se ha podido preparar el pago.",
-    }, apagado ? 503 : 400, origen);
+  if (!rPed.ok) {
+    const msg = (rPed.datos as { message?: string } | null)?.message ?? "";
+    return responder({ error: "no_se_puede", mensaje: msg || "No se ha podido registrar el encargo." }, 400, origen);
   }
-
-  const pago = (Array.isArray(rPago.datos) ? rPago.datos[0] : rPago.datos) as
-    Record<string, any> | null;
-  if (!pago?.referencia) {
-    return responder({ error: "interno", mensaje: "No se ha podido preparar el pago." }, 500, origen);
-  }
-
-  // ---------------------------------------------------------------
-  // 4 · La sesión de Stripe (importe y concepto, de la base)
-  // ---------------------------------------------------------------
-  const emailPagador = perfilId ? correoSocio : contacto.email;
-  const params = new URLSearchParams();
-  params.set("mode", "payment");
-  params.set("locale", "es");
-  params.set("client_reference_id", pago.referencia);
-  if (emailPagador) params.set("customer_email", emailPagador);
-  const urlOk = vuelta("hecho");
-  const urlKo = vuelta("cancelado");
-  params.set("success_url", `${urlOk}${urlOk.includes("?") ? "&" : "?"}ref=${pago.referencia}`);
-  params.set("cancel_url", `${urlKo}${urlKo.includes("?") ? "&" : "?"}ref=${pago.referencia}`);
-  params.set("line_items[0][quantity]", "1");
-  params.set("line_items[0][price_data][currency]", pago.moneda ?? "eur");
-  params.set("line_items[0][price_data][unit_amount]", String(pago.importe_centimos));
-  params.set("line_items[0][price_data][product_data][name]", pago.concepto);
-  params.set("line_items[0][price_data][product_data][description]", `Club Atletismo Apolana · ${pago.referencia}`);
-  params.set("metadata[referencia]", pago.referencia);
-  params.set("payment_intent_data[metadata][referencia]", pago.referencia);
-  params.set("payment_intent_data[description]", `${pago.concepto} · ${pago.referencia}`);
-
-  const rStripe = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${STRIPE_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Idempotency-Key": `apolana-${pago.referencia}`,
-    },
-    body: params.toString(),
-  });
-
-  const sesion = await rStripe.json().catch(() => null);
-
-  if (!rStripe.ok || !sesion?.url) {
-    await consulta("rpc/pagos_marcar", {
-      method: "POST",
-      body: JSON.stringify({ p_referencia: pago.referencia, p_estado: "fallido", p_evento: null }),
-    });
-    console.error("Stripe rechazó la sesión:", sesion?.error?.message ?? rStripe.status);
-    return responder({
-      error: "pasarela",
-      mensaje: "La pasarela de pago no ha respondido. Vuelve a intentarlo en un minuto.",
-    }, 502, origen);
-  }
-
-  await consulta(`pagos_online?referencia=eq.${encodeURIComponent(pago.referencia)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ stripe_session_id: sesion.id }),
-  });
-
-  return responder({
-    url: sesion.url,
-    referencia: pago.referencia,
-    importe_centimos: pago.importe_centimos,
-    concepto: pago.concepto,
-  }, 200, origen);
+  const ped = (Array.isArray(rPed.datos) ? rPed.datos[0] : rPed.datos) as Record<string, any> | null;
+  return responder({ ok: true, efectivo: true, encargo: true, total: Number(ped?.total ?? 0) }, 200, origen);
 });

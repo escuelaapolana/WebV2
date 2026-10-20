@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nevera · Club Atletismo Apolana</title>
+<meta name="description" content="Paga tu bebida de la nevera del club.">
+<!-- Página ESCONDIDA: solo se llega por el QR pegado en la nevera. Sin enlaces
+     desde la web, fuera del sitemap y sin indexar. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#2E4256">
+<link rel="icon" type="image/png" href="../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
+<link rel="preload" href="../assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preconnect" href="https://icaxokjsvhlreuwpyxeb.supabase.co" crossorigin>
+<!--
+  NEVERA · cómo funciona (ver migraciones/412_nevera.sql)
+  · La lista sale de `nevera_productos` (lectura pública). Se guarda en el
+    móvil para que la próxima vez salga al instante; luego se refresca.
+  · «Pagar» llama a la Edge `nevera-pagar` con SOLO {producto_id, cantidad}.
+    Los PRECIOS los pone la base. La Edge abre Stripe (cuenta de ÍTAKA).
+  · Stripe vuelve aquí con ?ref=NEV-…: se pregunta a `nevera-pagar`
+    {comprobar: ref}, que mira en Stripe si está cobrado, y sale «Pagado ✓».
+  · Sin supabase.js ni db.js a propósito: es una página de un solo uso que
+    tiene que abrir al momento delante de la nevera, y sin aviso de cookies
+    tapando el botón (aquí no hay analítica).
+-->
+<style>
+@font-face { font-family: 'Bricolage Grotesque'; font-style: normal; font-weight: 500 700; font-display: swap;
+  src: url('../assets/fonts/bricolage-grotesque-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../assets/fonts/ibm-plex-sans-400-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('../assets/fonts/ibm-plex-sans-600-latin.woff2') format('woff2'); }
+
+:root {
+  --navy: #2E4256; --navy-2: #24364A; --azul: #2F6FA8;
+  --crema: #FBF9F4; --crema-media: #EFE9DC; --linea: #E4DCCB;
+  --texto: #2E3640; --suave: #6E6656;
+  --verde: #1E7A3D; --verde-2: #15602F; --ambar: #B96F09; --ambar-fondo: #FDF3E3; --rojo: #B0563A;
+  --titulo: 'Bricolage Grotesque', system-ui, sans-serif;
+  --cuerpo: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --sombra: 0 14px 30px -18px rgba(46,66,86,.55), 0 2px 6px -2px rgba(46,66,86,.12);
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--crema); color: var(--texto); font-family: var(--cuerpo); font-size: 16px; line-height: 1.4;
+  -webkit-tap-highlight-color: transparent; min-height: 100vh; }
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+/* ---------- cabecera ---------- */
+.cab { background: var(--navy); color: #fff; padding: calc(18px + env(safe-area-inset-top, 0px)) 16px 26px;
+  border-radius: 0 0 26px 26px; position: relative; overflow: hidden; }
+.cab::after { content: ""; position: absolute; right: -60px; top: -70px; width: 220px; height: 220px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(59,133,192,.45), rgba(59,133,192,0) 70%); pointer-events: none; }
+.cab-in { max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 14px; position: relative; z-index: 1; }
+.escudo { width: 54px; height: 54px; border-radius: 50%; background: #fff; flex: 0 0 auto; display: grid; place-items: center;
+  box-shadow: 0 6px 16px -6px rgba(0,0,0,.45); }
+.escudo img { width: 50px; height: 50px; border-radius: 50%; display: block; }
+.cab h1 { font-family: var(--titulo); font-weight: 700; font-size: 32px; line-height: 1; margin: 0; letter-spacing: -.01em; }
+.cab p { margin: 4px 0 0; font-size: 14px; color: rgba(255,255,255,.78); }
+.cab .paso { max-width: 640px; margin: 16px auto 0; display: flex; gap: 8px; position: relative; z-index: 1; font-size: 13px; }
+.cab .paso span { flex: 1 1 0; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16); border-radius: 12px;
+  padding: 8px 10px; color: rgba(255,255,255,.92); display: flex; align-items: center; gap: 7px; line-height: 1.15; }
+.cab .paso b { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: var(--navy);
+  display: grid; place-items: center; font-family: var(--titulo); font-size: 13px; }
+
+/* ---------- lista de bebidas ---------- */
+main { max-width: 640px; margin: 0 auto; padding: 18px 16px calc(150px + env(safe-area-inset-bottom, 0px)); }
+.rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 560px) { .rejilla { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.beb { position: relative; background: #fff; border: 2px solid transparent; border-radius: 20px; box-shadow: var(--sombra);
+  display: flex; flex-direction: column; overflow: hidden; transition: border-color .15s ease, transform .12s ease; }
+.beb.con { border-color: var(--c); }
+.beb-toca { all: unset; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; padding: 0 0 10px; }
+.beb-toca:focus-visible { outline: 3px solid var(--azul); outline-offset: -3px; border-radius: 18px; }
+.beb-toca:active { transform: scale(.985); }
+.beb-dibujo { height: 96px; display: grid; place-items: center; position: relative;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 16%, #fff), color-mix(in srgb, var(--c) 5%, #fff)); }
+.beb-dibujo svg { height: 78px; width: auto; filter: drop-shadow(0 6px 6px rgba(0,0,0,.14)); }
+.beb-n { position: absolute; top: 8px; right: 8px; min-width: 30px; height: 30px; border-radius: 999px; padding: 0 8px;
+  background: var(--c); color: #fff; font-weight: 700; font-size: 16px; display: grid; place-items: center;
+  box-shadow: 0 4px 10px -4px rgba(0,0,0,.4); }
+.beb-txt { display: block; padding: 10px 12px 0; }
+.beb-nombre, .beb-det, .beb-precio { display: block; }
+.beb-nombre { font-family: var(--titulo); font-weight: 700; font-size: 17px; line-height: 1.12; color: var(--navy); }
+.beb-det { font-size: 13px; color: var(--suave); margin-top: 2px; }
+.beb-precio { font-family: var(--titulo); font-weight: 700; font-size: 22px; color: var(--navy); margin-top: 6px; }
+.beb-ctrl { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 4px; padding: 0 10px 12px; }
+.beb-ctrl button { height: 48px; border-radius: 14px; border: 0; background: var(--crema-media); color: var(--navy);
+  font-size: 26px; font-weight: 600; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.beb-ctrl button:active { transform: scale(.94); }
+.beb-ctrl button.mas { background: var(--navy); color: #fff; }
+.beb-ctrl button:disabled { opacity: .35; cursor: default; }
+.beb-ctrl output { text-align: center; font-weight: 700; font-size: 20px; color: var(--navy); }
+
+.nota { text-align: center; font-size: 14px; color: var(--suave); margin: 22px 8px 0; }
+.cargando { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cargando div { height: 236px; border-radius: 20px; background: linear-gradient(90deg, #F2EDE2, #F8F5EE, #F2EDE2); background-size: 200% 100%;
+  animation: brillo 1.2s linear infinite; }
+@keyframes brillo { to { background-position: -200% 0; } }
+.aviso { border-radius: 14px; padding: 12px 14px; font-size: 15px; margin: 0 0 14px; }
+.aviso.mal { background: #F8E4E3; color: #7A2F1F; }
+.aviso.ojo { background: var(--ambar-fondo); color: #6B4407; }
+.ultimo { display: block; width: 100%; margin: 0 0 14px; padding: 12px 14px; border: 1px solid #CBE0CE; background: #EDF5EE;
+  color: var(--verde-2); border-radius: 14px; text-align: left; font-size: 15px; cursor: pointer; }
+
+/* ---------- barra de pagar ---------- */
+.barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: rgba(251,249,244,.92); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--linea); }
+.barra-in { max-width: 640px; margin: 0 auto; }
+.pagar { width: 100%; min-height: 60px; border: 0; border-radius: 18px; background: var(--verde); color: #fff; cursor: pointer;
+  font-family: var(--titulo); font-weight: 700; font-size: 22px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  box-shadow: 0 12px 24px -12px rgba(30,122,61,.8); transition: background .15s ease, transform .1s ease; }
+.pagar:active { transform: scale(.985); }
+.pagar:disabled { background: #B9C3BC; box-shadow: none; cursor: default; }
+.pagar .giro { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: gira .8s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+.barra-pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; font-size: 12.5px; color: var(--suave); }
+.barra-pie button { border: 0; background: none; color: var(--azul); font-size: 13px; padding: 6px 0; cursor: pointer; text-decoration: underline; }
+.marcas { display: inline-flex; align-items: center; gap: 6px; }
+.marcas svg { height: 14px; width: auto; }
+
+/* ---------- pantalla «Pagado ✓» ---------- */
+.res { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: calc(28px + env(safe-area-inset-top, 0px)) 16px calc(28px + env(safe-area-inset-bottom, 0px)); text-align: center; }
+.res.ok { background: radial-gradient(120% 70% at 50% 0%, #2C9A52 0%, var(--verde) 55%, var(--verde-2) 100%); color: #fff; }
+.res.espera { background: var(--navy); color: #fff; }
+.res.mal { background: var(--crema); color: var(--texto); }
+.res-in { width: 100%; max-width: 460px; }
+.check { width: 120px; height: 120px; margin: 10px auto 8px; border-radius: 50%; background: #fff; display: grid; place-items: center;
+  box-shadow: 0 18px 40px -16px rgba(0,0,0,.45); animation: salta .5s cubic-bezier(.2,1.4,.4,1) both; }
+.check svg { width: 70px; height: 70px; }
+.check path { stroke-dasharray: 60; stroke-dashoffset: 0; animation: traza .45s .25s ease-out backwards; }
+@keyframes salta { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes traza { from { stroke-dashoffset: 60; } }
+.res h2 { font-family: var(--titulo); font-weight: 700; font-size: 52px; line-height: 1; margin: 10px 0 4px; letter-spacing: -.02em; }
+.res .sub { font-size: 17px; opacity: .92; margin: 0 0 18px; }
+.ticket { background: #fff; color: var(--texto); border-radius: 20px; padding: 16px 18px; text-align: left; box-shadow: 0 20px 40px -22px rgba(0,0,0,.5); }
+.ticket ul { list-style: none; margin: 0; padding: 0; }
+.ticket li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px dashed #E4DCCB; font-size: 16px; }
+.ticket li b { color: var(--navy); }
+.ticket .tot { display: flex; justify-content: space-between; align-items: baseline; padding-top: 10px; font-family: var(--titulo); font-weight: 700; font-size: 26px; color: var(--navy); }
+.ticket .tot small { font-family: var(--cuerpo); font-weight: 400; font-size: 14px; color: var(--suave); }
+.cuando { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #EFE8DA; font-size: 14px; color: var(--suave); }
+.cuando b { color: var(--navy); font-size: 16px; }
+.reloj { margin: 18px auto 0; display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28);
+  border-radius: 999px; padding: 8px 14px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.reloj i { width: 9px; height: 9px; border-radius: 50%; background: #9FF0B8; animation: late 1s ease-in-out infinite; }
+@keyframes late { 50% { opacity: .25; } }
+.ensena { margin: 14px 0 0; font-size: 16px; font-weight: 600; }
+.volver { margin-top: 22px; min-height: 52px; padding: 12px 22px; border-radius: 16px; border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff; font-size: 16px; cursor: pointer; }
+.res.mal .volver { border-color: var(--linea); color: var(--navy); background: #fff; }
+.res .ref { margin-top: 10px; font-size: 12px; opacity: .75; letter-spacing: .03em; }
+.giro-grande { width: 64px; height: 64px; margin: 40px auto 18px; border: 6px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: gira .9s linear infinite; }
+.icono-mal { width: 96px; height: 96px; margin: 20px auto 6px; border-radius: 50%; background: var(--ambar-fondo); display: grid; place-items: center; color: var(--ambar); font-size: 52px; font-weight: 700; }
+.res.mal h2 { color: var(--navy); font-size: 36px; }
+.res.mal p { color: var(--suave); }
+.btn-prim { margin-top: 18px; min-height: 54px; width: 100%; border: 0; border-radius: 16px; background: var(--navy); color: #fff; font-family: var(--titulo); font-weight: 700; font-size: 19px; cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div id="tienda">
+  <header class="cab">
+    <div class="cab-in">
+      <div class="escudo"><img src="../assets/img/favicon-escudo-180.png" alt="" width="50" height="50"></div>
+      <div>
+        <h1>Nevera</h1>
+        <p>Club Atletismo Apolana</p>
+      </div>
+    </div>
+    <div class="paso" aria-hidden="true">
+      <span><b>1</b>Elige</span>
+      <span><b>2</b>Paga</span>
+      <span><b>3</b>Coge</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="avisos"></div>
+    <div id="lista" class="cargando" aria-busy="true"><div></div><div></div><div></div><div></div></div>
+    <p class="nota">¿Prefieres pagar con el datáfono? Está junto a la nevera.<br>Gracias por confiar y por pagar lo que coges 💙</p>
+  </main>
+
+  <div class="barra">
+    <div class="barra-in">
+      <button type="button" class="pagar" id="pagar" disabled>Elige tu bebida</button>
+      <div class="barra-pie">
+        <span class="marcas">Tarjeta · Apple Pay · Google Pay</span>
+        <button type="button" id="vaciar" hidden>Vaciar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="resultado" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  var SB = 'https://icaxokjsvhlreuwpyxeb.supabase.co';
+  var KEY = 'sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH';
+  var CLAVE_CAT = 'apo-nevera-cat';
+  var CLAVE_CESTA = 'apo-nevera-cesta';
+  var CLAVE_ULTIMO = 'apo-nevera-ultimo';
+  var MAX_POR = 20, MAX_TOTAL = 30;
+
+  var productos = [];
+  var cesta = {};       // id -> cantidad
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function eur(cent) { return (cent / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }); }
+  function leer(k, s) { try { return (s ? sessionStorage : localStorage).getItem(k); } catch (e) { return null; } }
+  function guardar(k, v, s) { try { (s ? sessionStorage : localStorage).setItem(k, v); } catch (e) {} }
+  function borrar(k, s) { try { (s ? sessionStorage : localStorage).removeItem(k); } catch (e) {} }
+  function colorOk(c) { return /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#2E4256'; }
+
+  /* ---------- dibujos: botella para el agua, lata para lo demás ---------- */
+  function dibujo(p) {
+    var c = colorOk(p.color);
+    if (/agua/i.test(p.nombre)) {
+      var alta = /1[,.]5|litro|\bL\b/i.test(p.detalle || '');
+      var h = alta ? 78 : 62;
+      return '<svg viewBox="0 0 40 80" aria-hidden="true" style="height:' + h + 'px">' +
+        '<rect x="15" y="2" width="10" height="7" rx="2" fill="' + c + '"/>' +
+        '<path d="M14 9h12v5c0 3 7 6 7 13v46a5 5 0 0 1-5 5H12a5 5 0 0 1-5-5V27c0-7 7-10 7-13z" fill="#EAF4FB" stroke="' + c + '" stroke-width="2"/>' +
+        '<path d="M8 36h24v22H8z" fill="' + c + '"/>' +
+        '<path d="M8 50c5-3 9 3 14 0s7-3 10 0v8H8z" fill="rgba(255,255,255,.35)"/>' +
+        '<path d="M11 30v34" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/></svg>';
+    }
+    return '<svg viewBox="0 0 44 80" aria-hidden="true">' +
+      '<path d="M9 6h26l3 6v56l-3 6H9l-3-6V12z" fill="' + c + '"/>' +
+      '<rect x="9" y="2" width="26" height="5" rx="2" fill="#C9CED3"/>' +
+      '<rect x="9" y="73" width="26" height="5" rx="2" fill="#B5BBC1"/>' +
+      '<path d="M6 30h32v18H6z" fill="rgba(255,255,255,.92)"/>' +
+      '<path d="M6 34c8 4 18-4 32 0" stroke="' + c + '" stroke-width="2.4" fill="none"/>' +
+      '<path d="M12 14v52" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".35"/></svg>';
+  }
+
+  /* ---------- la lista ---------- */
+  function unidades() { var n = 0; for (var k in cesta) n += cesta[k]; return n; }
+  function total() {
+    var t = 0;
+    productos.forEach(function (p) { if (cesta[p.id]) t += cesta[p.id] * p.precio_cent; });
+    return t;
+  }
+
+  function pintarLista() {
+    var l = $('lista');
+    l.className = 'rejilla';
+    l.removeAttribute('aria-busy');
+    if (!productos.length) {
+      l.className = '';
+      l.innerHTML = '<div class="aviso ojo">Ahora mismo no hay bebidas para pagar aquí. Usa el datáfono de la nevera.</div>';
+      return;
+    }
+    l.innerHTML = productos.map(function (p) {
+      var n = cesta[p.id] || 0;
+      var nombre = esc(p.nombre) + (p.detalle ? ' ' + esc(p.detalle) : '');
+      return '<article class="beb' + (n ? ' con' : '') + '" style="--c:' + colorOk(p.color) + '" data-id="' + esc(p.id) + '">' +
+        '<button type="button" class="beb-toca" data-acc="mas" aria-label="Añadir ' + nombre + ', ' + eur(p.precio_cent) + '">' +
+          '<span class="beb-dibujo">' + dibujo(p) + (n ? '<span class="beb-n">' + n + '</span>' : '') + '</span>' +
+          '<span class="beb-txt">' +
+            '<span class="beb-nombre">' + esc(p.nombre) + '</span>' +
+            (p.detalle ? '<span class="beb-det">' + esc(p.detalle) + '</span>' : '') +
+            '<span class="beb-precio">' + eur(p.precio_cent) + '</span>' +
+          '</span>' +
+        '</button>' +
+        '<div class="beb-ctrl">' +
+          '<button type="button" data-acc="menos" aria-label="Quitar una ' + nombre + '"' + (n ? '' : ' disabled') + '>−</button>' +
+          '<output aria-live="polite" aria-label="' + nombre + ': ' + n + '">' + n + '</output>' +
+          '<button type="button" class="mas" data-acc="mas" aria-label="Añadir una ' + nombre + '"' + (n >= MAX_POR || unidades() >= MAX_TOTAL ? ' disabled' : '') + '>+</button>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+    pintarBarra();
+  }
+
+  function pintarBarra() {
+    var b = $('pagar');
+    var t = total();
+    if (b.getAttribute('data-ocupado')) return;
+    b.disabled = !t;
+    b.textContent = t ? 'Pagar ' + eur(t) : 'Elige tu bebida';
+    $('vaciar').hidden = !t;
+  }
+
+  function cambiar(id, d) {
+    var n = (cesta[id] || 0) + d;
+    if (d > 0 && unidades() >= MAX_TOTAL) { avisar('Como mucho ' + MAX_TOTAL + ' bebidas por pago.', 'ojo'); return; }
+    n = Math.max(0, Math.min(MAX_POR, n));
+    if (n) cesta[id] = n; else delete cesta[id];
+    guardar(CLAVE_CESTA, JSON.stringify(cesta), true);
+    pintarLista();
+    if (d > 0 && navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
+  }
+
+  function avisar(texto, tipo) {
+    $('avisos').innerHTML = texto ? '<div class="aviso ' + (tipo || 'mal') + '" role="alert">' + texto + '</div>' : '';
+  }
+
+  /* ---------- datos ---------- */
+  function cargarProductos() {
+    var cache = null;
+    try { cache = JSON.parse(leer(CLAVE_CAT) || 'null'); } catch (e) {}
+    if (cache && cache.length) { productos = cache; limpiarCesta(); pintarLista(); }
+    return fetch(SB + '/rest/v1/nevera_productos?select=id,nombre,detalle,precio_cent,color,orden&activo=eq.true&order=orden,nombre', {
+      headers: { apikey: KEY, Accept: 'application/json' }
+    }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (filas) {
+        productos = Array.isArray(filas) ? filas : [];
+        guardar(CLAVE_CAT, JSON.stringify(productos));
+        limpiarCesta();
+        pintarLista();
+      })
+      .catch(function () {
+        if (!productos.length) {
+          $('lista').className = '';
+          $('lista').innerHTML = '<div class="aviso mal">No hay conexión con el club. Comprueba los datos del móvil y recarga, o paga con el datáfono.</div>';
+        }
+      });
+  }
+  // Fuera de la cesta lo que ya no se vende.
+  function limpiarCesta() {
+    var ids = {}; productos.forEach(function (p) { ids[p.id] = 1; });
+    for (var k in cesta) if (!ids[k]) delete cesta[k];
+  }
+
+  function edge(cuerpo) {
+    return fetch(SB + '/functions/v1/nevera-pagar', {
+      method: 'POST',
+      headers: { apikey: KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) { d = d || {}; d._ok = r.ok; return d; });
+    });
+  }
+
+  /* ---------- pagar ---------- */
+  function pagar() {
+    var items = [];
+    for (var k in cesta) items.push({ producto_id: k, cantidad: cesta[k] });
+    if (!items.length) return;
+    var b = $('pagar');
+    b.setAttribute('data-ocupado', '1');
+    b.disabled = true;
+    b.innerHTML = '<span class="giro"></span> Abriendo el pago…';
+    avisar('');
+    var reponer = function (msg) {
+      b.removeAttribute('data-ocupado');
+      pintarBarra();
+      if (msg) avisar(esc(msg));
+    };
+    edge({ items: items }).then(function (d) {
+      if (!d._ok || !d.url) { reponer(d.mensaje || 'No se ha podido abrir el pago. Prueba otra vez o usa el datáfono.'); return; }
+      guardar(CLAVE_ULTIMO, JSON.stringify({ ref: d.referencia, t: Date.now() }));
+      window.location.href = d.url;
+    }).catch(function () { reponer('Sin conexión. Prueba otra vez o usa el datáfono.'); });
+  }
+
+  /* ---------- volver de Stripe ---------- */
+  function horaDe(iso) {
+    var f = new Date(iso);
+    var hoy = new Date();
+    var hora = f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    var mismo = f.toDateString() === hoy.toDateString();
+    return { hora: hora, dia: mismo ? 'Hoy' : f.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) };
+  }
+
+  var reloj = null;
+  function pintarPagado(d) {
+    var r = $('resultado');
+    var q = horaDe(d.pagado_en || d.creado_en);
+    var lineas = (d.items || []).map(function (l) {
+      return '<li><span><b>' + esc(l.cantidad) + ' ×</b> ' + esc(l.nombre) + '</span><span>' + eur(l.cantidad * l.precio_cent) + '</span></li>';
+    }).join('');
+    r.className = 'res ok';
+    r.innerHTML = '<div class="res-in">' +
+      '<div class="check"><svg viewBox="0 0 52 52" fill="none"><path d="M14 27l8 8 16-17" stroke="#1E7A3D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
+      '<h2>Pagado</h2>' +
+      '<p class="sub">¡Gracias! Ya puedes coger tu bebida.</p>' +
+      '<div class="ticket"><ul>' + lineas + '</ul>' +
+        '<div class="tot"><small>Total pagado</small><span>' + eur(d.total_cent) + '</span></div>' +
+        '<div class="cuando"><span>' + esc(q.dia.charAt(0).toUpperCase() + q.dia.slice(1)) + '</span><span>a las <b>' + esc(q.hora) + '</b></span></div>' +
+      '</div>' +
+      '<div class="reloj" aria-label="Hora actual"><i></i><span id="ahora"></span></div>' +
+      '<p class="ensena">Enséñalo si te lo piden.</p>' +
+      '<div class="ref">Ref. ' + esc(d.referencia) + '</div>' +
+      '<button type="button" class="volver" id="otra">Pagar otra bebida</button>' +
+      '</div>';
+    mostrarResultado();
+    var tic = function () { var e = $('ahora'); if (e) e.textContent = 'Ahora ' + new Date().toLocaleTimeString('es-ES'); };
+    tic(); clearInterval(reloj); reloj = setInterval(tic, 1000);
+    if (navigator.vibrate) { try { navigator.vibrate([30, 40, 30]); } catch (e) {} }
+  }
+
+  function pintarEspera() {
+    var r = $('resultado');
+    r.className = 'res espera';
+    r.innerHTML = '<div class="res-in"><div class="giro-grande"></div><h2 style="font-size:32px">Confirmando el pago…</h2>' +
+      '<p class="sub">Un segundo, estamos preguntando al banco.</p></div>';
+    mostrarResultado();
+  }
+
+  function pintarMal(titulo, texto, ref, reintentar) {
+    var r = $('resultado');
+    r.className = 'res mal';
+    r.innerHTML = '<div class="res-in"><div class="icono-mal">!</div><h2>' + esc(titulo) + '</h2><p>' + texto + '</p>' +
+      (reintentar ? '<button type="button" class="btn-prim" id="reintentar">Volver a comprobar</button>' : '') +
+      '<button type="button" class="volver" id="otra">Volver a la nevera</button>' +
+      (ref ? '<div class="ref">Ref. ' + esc(ref) + '</div>' : '') + '</div>';
+    mostrarResultado();
+  }
+
+  function mostrarResultado() { $('tienda').hidden = true; $('resultado').hidden = false; window.scrollTo(0, 0); }
+  function volverATienda() {
+    clearInterval(reloj);
+    $('resultado').hidden = true; $('tienda').hidden = false;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    pintarLista();
+  }
+
+  function comprobar(ref) {
+    pintarEspera();
+    var inicio = Date.now();
+    var vuelta = function () {
+      edge({ comprobar: ref }).then(function (d) {
+        if (d.estado === 'pagada') {
+          cesta = {}; borrar(CLAVE_CESTA, true);
+          guardar(CLAVE_ULTIMO, JSON.stringify({ ref: ref, t: Date.now(), pagada: true }));
+          pintarPagado(d); return;
+        }
+        if (d.estado === 'cancelada') { pintarMal('Pago no hecho', 'Este pago se canceló y <b>no se ha cobrado nada</b>. Puedes volver a intentarlo.', ref, false); return; }
+        if (d.estado === 'devuelta') { pintarMal('Pago devuelto', 'Este pago se ha devuelto.', ref, false); return; }
+        if (d.estado === 'no_existe') { pintarMal('No encontramos ese pago', 'Vuelve a la nevera y paga de nuevo.', null, false); return; }
+        if (Date.now() - inicio < 20000) { setTimeout(vuelta, 2000); return; }
+        pintarMal('Aún no nos consta', 'Si te ha llegado el cargo, espera un momento y vuelve a comprobar. Si no, <b>no se ha cobrado nada</b>.', ref, true);
+      }).catch(function () {
+        if (Date.now() - inicio < 20000) { setTimeout(vuelta, 2000); return; }
+        pintarMal('Sin conexión', 'No podemos comprobar el pago ahora. Vuelve a comprobar en un momento.', ref, true);
+      });
+    };
+    vuelta();
+  }
+
+  /* ---------- clics ---------- */
+  $('lista').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-acc]') : null;
+    if (!b || b.disabled) return;
+    var art = b.closest('.beb');
+    if (!art) return;
+    cambiar(art.getAttribute('data-id'), b.getAttribute('data-acc') === 'mas' ? 1 : -1);
+  });
+  $('pagar').addEventListener('click', pagar);
+  $('vaciar').addEventListener('click', function () { cesta = {}; borrar(CLAVE_CESTA, true); pintarLista(); });
+  $('resultado').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b) return;
+    if (b.id === 'otra') volverATienda();
+    if (b.id === 'reintentar') { var ref = new URLSearchParams(location.search).get('ref'); if (ref) comprobar(ref); }
+  });
+  $('avisos').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('#ver-ultimo') : null;
+    if (!b) return;
+    var u = null; try { u = JSON.parse(leer(CLAVE_ULTIMO) || 'null'); } catch (er) {}
+    if (u && u.ref) { try { history.replaceState(null, '', location.pathname + '?ref=' + encodeURIComponent(u.ref)); } catch (er) {} comprobar(u.ref); }
+  });
+
+  /* ---------- arranque ---------- */
+  try { cesta = JSON.parse(leer(CLAVE_CESTA, true) || '{}') || {}; } catch (e) { cesta = {}; }
+  var qs = new URLSearchParams(location.search);
+  var ref = (qs.get('ref') || '').trim();
+  var cancelado = (qs.get('cancelado') || '').trim();
+
+  cargarProductos();
+
+  if (ref) {
+    comprobar(ref);
+  } else {
+    if (cancelado) {
+      avisar('Has cancelado el pago: <b>no se ha cobrado nada</b>. Tu selección sigue aquí.', 'ojo');
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    } else {
+      // Atajo a la última compra (2 horas), por si cerraste la pantalla del «Pagado».
+      var u = null; try { u = JSON.parse(leer(CLAVE_ULTIMO) || 'null'); } catch (e) {}
+      if (u && u.pagada && u.ref && Date.now() - u.t < 2 * 3600 * 1000) {
+        $('avisos').innerHTML = '<button type="button" class="ultimo" id="ver-ultimo">✓ Ver mi último pago</button>';
+      }
+    }
+  }
+})();
+</script>
+</body>
+</html>

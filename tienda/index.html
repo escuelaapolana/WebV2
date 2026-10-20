@@ -268,7 +268,7 @@
 
       <!-- Resumen del pedido -->
       <aside class="pedido" id="pedido">
-        <h2 data-texto="tienda.pedido.titulo">Tu pedido</h2>
+        <h2 data-texto="tienda.pedido.titulo">Tu encargo</h2>
         <div id="pedido-cuerpo"></div>
       </aside>
 
@@ -289,13 +289,12 @@
      · La cesta vive solo en este navegador (localStorage), así que
        se conserva al recargar la página. Hasta que no se confirma,
        el club no se entera de nada.
-     · Al pulsar «Hacer pedido», la función `tienda-pagar` mira EN LA BASE
-       cuánto vale cada prenda (nunca se fía del navegador) y crea el
-       pedido + sus líneas. HOY el pago online de la tienda está DESACTIVADO
-       (pagos_config.tienda_pago_online=false): el pedido nace «pendiente»
-       y se PAGA AL RECOGERLO EN LA OFICINA (con tarjeta o en efectivo); la función devuelve
-       {efectivo:true}. Si algún día se reactiva el pago con tarjeta, la
-       misma función abre la pasarela de Stripe y devuelve {url}.
+     · LA ROPA ES POR ENCARGO (Andrés, 20-oct-2026; migración 413). Al pulsar
+       «Hacer el encargo», la función `tienda-pagar` mira EN LA BASE cuánto
+       vale cada prenda (nunca se fía del navegador) y crea el pedido + sus
+       líneas, «pendiente» y SIN pago online. Se paga EN LA OFICINA, con
+       tarjeta o en efectivo, al recogerlo (lo marca el panel admin/pedidos).
+       La función ya no abre nunca la pasarela de Stripe.
      · Compra el socio con sesión (va a su ficha) o un invitado (que
        deja nombre y contacto), para avisarle cuando esté listo.
      ============================================================ -->
@@ -454,21 +453,20 @@
 
   /* ---------- la cesta en pantalla ---------- */
   var AVISO_PAGO =
-    '<div class="caja-aviso"><b>Pago y recogida</b>' +
-    'Haces el pedido aquí y <b>pagas al recogerlo en la oficina, con tarjeta o en efectivo</b> (oficina Nº 1 del club), ' +
-    'en el Estadio de Atletismo, martes y jueves de 18:00 a 20:00. ' +
-    'Te avisaremos cuando esté listo. ' +
-    '¿Dudas con una talla? Tienes <b>14 días para devolver</b> en mano — <a href="../legal/devoluciones/">política de devoluciones</a>.</div>';
+    '<div class="caja-aviso"><b>La ropa es por encargo</b>' +
+    'Haces el encargo aquí, sin pagar nada todavía. <strong>Te avisamos cuando llegue</strong> y lo pagas al recogerlo ' +
+    '<strong>en la oficina del club, con tarjeta o en efectivo</strong> (oficina Nº 1, Estadio de Atletismo, martes y jueves de 18:00 a 20:00). ' +
+    '¿Dudas con una talla? Tienes <strong>14 días para devolver</strong> en mano — <a href="../legal/devoluciones/">política de devoluciones</a>.</div>';
 
   function pintarCesta() {
     if (!elPedido) return;
 
     if (enviado) {
       elPedido.innerHTML =
-        '<div class="caja-ok" role="status"><b>¡Pedido hecho!</b>' +
-        'Gracias. El club ya tiene tu pedido apuntado. <b>Lo pagas al recogerlo en la oficina, con tarjeta o en efectivo</b> (oficina Nº 1 del club), ' +
-        'en el Estadio de Atletismo, los martes y jueves de 18:00 a 20:00. Te avisaremos cuando esté listo.</div>' +
-        '<button type="button" class="btn btn--fantasma" id="otro-pedido" style="width:100%;">Hacer otro pedido</button>';
+        '<div class="caja-ok" role="status"><b>Encargo hecho ✓</b>' +
+        'Gracias. El club ya tiene tu encargo apuntado. <strong>Te avisamos cuando llegue.</strong> ' +
+        'Se paga en la oficina del club, <strong>con tarjeta o en efectivo</strong> (oficina Nº 1, Estadio de Atletismo, martes y jueves de 18:00 a 20:00).</div>' +
+        '<button type="button" class="btn btn--fantasma" id="otro-pedido" style="width:100%;">Hacer otro encargo</button>';
       return;
     }
 
@@ -511,10 +509,10 @@
             '<label>Teléfono<input type="tel" id="c-telefono" autocomplete="tel" placeholder="Para avisarte de la recogida"></label>' +
           '</div>';
       } else {
-        datos = '<p class="nota">Compras como <b>' + esc(((perfil.nombre || '') + ' ' + (perfil.apellidos || '')).trim()) + '</b>.</p>';
+        datos = '<p class="nota">Encargas como <b>' + esc(((perfil.nombre || '') + ' ' + (perfil.apellidos || '')).trim()) + '</b>.</p>';
       }
       accion = datos +
-        '<button type="button" class="btn btn--primario" id="pagar" style="width:100%;">Hacer pedido · ' + eur(totalCesta()) + '</button>';
+        '<button type="button" class="btn btn--primario" id="pagar" style="width:100%;">Hacer el encargo · ' + eur(totalCesta()) + '</button>';
     }
 
     elPedido.innerHTML =
@@ -576,14 +574,14 @@
       var g = function (id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
       contacto = { nombre: g('c-nombre'), email: g('c-email'), telefono: g('c-telefono') };
       if (!contacto.nombre || !(contacto.email || contacto.telefono)) {
-        mensaje('Para comprar sin cuenta necesitamos tu nombre y un correo o teléfono.', true);
+        mensaje('Para hacer el encargo sin cuenta necesitamos tu nombre y un correo o teléfono, para avisarte cuando llegue.', true);
         return;
       }
     }
 
-    var textoBoton = 'Hacer pedido · ' + eur(totalCesta());
+    var textoBoton = 'Hacer el encargo · ' + eur(totalCesta());
     boton.disabled = true;
-    boton.textContent = 'Haciendo el pedido…';
+    boton.textContent = 'Haciendo el encargo…';
     mensaje('');
 
     var reponer = function (msg) {
@@ -598,9 +596,9 @@
           var ctx = r.error.context;
           return (ctx && ctx.json ? ctx.json() : Promise.resolve(null))
             .catch(function () { return null; })
-            .then(function (d) { reponer((d && d.mensaje) || 'No hemos podido abrir el pago. Inténtalo de nuevo en un minuto.'); });
+            .then(function (d) { reponer((d && d.mensaje) || 'No hemos podido registrar el encargo. Inténtalo de nuevo en un minuto.'); });
         }
-        // Pedido en efectivo (pago online de la tienda desactivado): no hay pasarela.
+        // Encargo registrado: se paga en la oficina (no hay pasarela).
         if (r.data && r.data.efectivo) {
           cesta = [];
           guardarCesta();

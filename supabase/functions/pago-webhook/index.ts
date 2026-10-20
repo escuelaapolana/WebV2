@@ -31,6 +31,8 @@
 //     STRIPE_WEBHOOK_SECRET       (el del endpoint LIVE — bonos, ropa…)
 //     STRIPE_WEBHOOK_SECRET_TEST  (el del endpoint de PRUEBA, opcional; hace
 //                                  falta para probar el alta de socio en test)
+//     STRIPE_WEBHOOK_SECRET_ITAKA (el del endpoint en la cuenta de ÍTAKA, opcional:
+//                                  nevera/ropa; ver migración 412)
 //     SUPABASE_URL                (la pone Supabase sola)
 //     SUPABASE_SERVICE_ROLE_KEY   (la pone Supabase sola)
 //
@@ -49,6 +51,9 @@ const SERVICE_KEY =
   Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
 const WEBHOOK_SECRET_TEST = Deno.env.get("STRIPE_WEBHOOK_SECRET_TEST") ?? "";
+// 412 · El endpoint de la cuenta de ÍTAKA (nevera y ropa cobran ahí). Opcional:
+// si está puesto, también vale. Cada cuenta de Stripe firma con el suyo.
+const WEBHOOK_SECRET_ITAKA = Deno.env.get("STRIPE_WEBHOOK_SECRET_ITAKA") ?? "";
 
 // Margen de reloj: un aviso con más de cinco minutos se rechaza, para
 // que nadie pueda reenviar uno viejo que grabó por el camino.
@@ -140,7 +145,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // cabeceras CORS a propósito: no es para el navegador.
   if (req.method !== "POST") return new Response("Método no admitido.", { status: 405 });
 
-  if (!SUPABASE_URL || !SERVICE_KEY || !(WEBHOOK_SECRET || WEBHOOK_SECRET_TEST)) {
+  if (!SUPABASE_URL || !SERVICE_KEY || !(WEBHOOK_SECRET || WEBHOOK_SECRET_TEST || WEBHOOK_SECRET_ITAKA)) {
     // Sin claves no se puede comprobar nada, así que no se confirma
     // ningún pago. Se contesta 503 para que Stripe reintente cuando
     // el club termine de configurarlo.
@@ -155,7 +160,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Se valida contra el secreto live y, si no cuadra, contra el de test. Basta
   // con que uno de los dos case (cada aviso viene firmado con el de su entorno).
   const firmaOk = (WEBHOOK_SECRET && await firmaValida(crudo, cabecera, WEBHOOK_SECRET))
-    || (WEBHOOK_SECRET_TEST && await firmaValida(crudo, cabecera, WEBHOOK_SECRET_TEST));
+    || (WEBHOOK_SECRET_TEST && await firmaValida(crudo, cabecera, WEBHOOK_SECRET_TEST))
+    || (WEBHOOK_SECRET_ITAKA && await firmaValida(crudo, cabecera, WEBHOOK_SECRET_ITAKA));
   if (!firmaOk) {
     console.warn("Aviso con firma que no cuadra: descartado.");
     return new Response("Firma no válida.", { status: 400 });

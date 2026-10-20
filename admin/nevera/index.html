@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nevera · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/admin-auth.js?v=79f38ff1"></script>
+<script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
+<!--
+  NEVERA · panel (migración 412)
+  · Ventas: RPC nevera_admin_ventas(desde, hasta) — solo las PAGADAS.
+  · Al abrir, las ventas «pendientes» de las últimas 48 h se comprueban en
+    Stripe (Edge nevera-pagar {comprobar}), por si alguien pagó y cerró la
+    pantalla antes de volver (y el aviso del webhook no llegó).
+  · Productos: tabla nevera_productos (admin escribe por RLS).
+  · El dinero entra en la cuenta de Stripe de ÍTAKA (como la ropa).
+-->
+<style>
+  body { background: var(--crema); }
+  .admin-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  .nv-cab { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
+  .nv-cab h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(26px,5vw,34px); color: var(--navy); margin: 0 0 4px; }
+  .nv-cab p { font-size: 15px; color: var(--texto-suave); margin: 0; max-width: 62ch; line-height: 1.55; }
+  .nv-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nv-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 18px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--linea-borde); background: #fff; color: var(--navy); text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .nv-btn.prim { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .nv-btn:disabled { opacity: .5; cursor: default; }
+
+  .nv-kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin-bottom: 20px; }
+  .nv-kpi { background: #fff; border: 1px solid var(--linea-marcada); border-radius: 14px; box-shadow: var(--sombra-suave); overflow: hidden; }
+  .nv-kpi h3 { margin: 0; padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--navy); background: var(--crema-banda); border-bottom: 1px solid var(--linea-marcada); }
+  .nv-kpi .cifra { padding: 14px 16px 4px; font-family: var(--fuente-titulo); font-weight: 700; font-size: 34px; color: var(--navy); line-height: 1; }
+  .nv-kpi .det { padding: 0 16px 14px; font-size: 14px; color: var(--texto-suave); }
+
+  .nv-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 20px; align-items: start; margin-bottom: 20px; }
+  @media (max-width: 900px) { .nv-cols { grid-template-columns: 1fr; } }
+  .nv-card { background: #fff; border: 1px solid var(--linea-marcada); border-radius: 14px; box-shadow: var(--sombra-suave); overflow: hidden; margin-bottom: 20px; }
+  .nv-card > h2 { margin: 0; padding: 12px 18px; font-size: 15px; font-weight: 600; color: var(--navy); background: var(--crema-banda);
+    border-bottom: 1px solid var(--linea-marcada); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .nv-in { padding: 14px 18px; }
+  .nv-mes { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+  .nv-mes button { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--linea-borde); background: #fff; color: var(--navy); cursor: pointer; font-size: 16px; }
+  .nv-mes span { min-width: 120px; text-align: center; }
+
+  .nv-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .nv-rank li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 10px; font-size: 14px; color: var(--navy); }
+  .nv-rank .barra { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--crema-media); overflow: hidden; }
+  .nv-rank .barra i { display: block; height: 100%; border-radius: 99px; }
+  .nv-rank small { color: var(--texto-suave); }
+
+  .nv-tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .nv-tabla th, .nv-tabla td { padding: 9px 10px; border-bottom: 1px solid #EFE8DA; text-align: left; color: var(--navy); vertical-align: top; }
+  .nv-tabla th { font-weight: 600; font-size: 13px; color: var(--texto-suave); }
+  .nv-tabla td.num, .nv-tabla th.num { text-align: right; white-space: nowrap; }
+  .nv-tabla .suave { color: var(--texto-suave); font-size: 13px; }
+  .nv-tabla .dev { color: #B0563A; font-weight: 600; }
+  .nv-scroll { overflow-x: auto; }
+  .nv-vacio { color: var(--texto-suave); font-size: 14px; padding: 6px 0; }
+
+  .nv-prod td input[type=text], .nv-prod td input[type=number] { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #E0D8C8; border-radius: 8px; font: inherit; font-size: 14px; color: var(--navy); background: #fff; min-height: 40px; }
+  .nv-prod td input[type=color] { width: 44px; height: 40px; padding: 2px; border: 1px solid #E0D8C8; border-radius: 8px; background: #fff; }
+  .nv-prod td input[type=checkbox] { width: 22px; height: 22px; }
+  .nv-prod .c-precio { width: 100px; } .nv-prod .c-orden { width: 76px; }
+  .nv-prod tr.nuevo td { background: #FBF9F4; }
+  .nv-msg { font-size: 14px; margin-top: 10px; min-height: 1.2em; }
+  .nv-msg.ok { color: #1E7A3D; font-weight: 600; } .nv-msg.error { color: #B3261E; }
+  .nv-nota { font-size: 13px; color: var(--texto-suave); line-height: 1.55; margin: 10px 0 0; }
+  @media (max-width: 720px) { .nv-kpis { gap: 8px; } .nv-kpi h3 { padding: 8px 10px; font-size: 13px; } .nv-kpi .cifra { font-size: 18px; padding: 10px 10px 4px; white-space: nowrap; } .nv-kpi .det { padding: 0 10px 10px; font-size: 12px; } }
+</style>
+</head>
+<body class="adm-piel">
+<div id="admin-contenido">
+<div class="admin-wrap">
+  <div class="nv-cab">
+    <div>
+      <h1>Nevera</h1>
+      <p>Las bebidas pagadas con el QR de la nevera (tarjeta, Apple Pay, Google Pay). Lo del datáfono no sale aquí. El dinero entra en la cuenta de Stripe de <b>Ítaka</b>, como la ropa.</p>
+    </div>
+    <div class="nv-acc">
+      <a class="nv-btn prim" href="../../nevera/qr.html" target="_blank" rel="noopener">Imprimir el QR</a>
+      <a class="nv-btn" href="../../nevera/qr-nevera.png" download>QR en imagen</a>
+      <a class="nv-btn" href="../../nevera/" target="_blank" rel="noopener">Abrir la página</a>
+    </div>
+  </div>
+
+  <div class="nv-kpis" id="kpis">
+    <div class="nv-kpi"><h3>Hoy</h3><div class="cifra">—</div><div class="det">Cargando…</div></div>
+    <div class="nv-kpi"><h3>Esta semana</h3><div class="cifra">—</div><div class="det">&nbsp;</div></div>
+    <div class="nv-kpi"><h3>Este mes</h3><div class="cifra">—</div><div class="det">&nbsp;</div></div>
+  </div>
+
+  <div class="nv-cols">
+    <div class="nv-card">
+      <h2><span>Lo que más se vende</span><span class="nv-mes"><button type="button" id="mes-ant" aria-label="Mes anterior">‹</button><span id="mes-txt"></span><button type="button" id="mes-sig" aria-label="Mes siguiente">›</button></span></h2>
+      <div class="nv-in"><ul class="nv-rank" id="rank"><li class="nv-vacio">Cargando…</li></ul></div>
+    </div>
+    <div class="nv-card">
+      <h2><span>Ventas del mes</span><span class="suave" id="ventas-n" style="font-weight:400;font-size:13px;color:var(--texto-suave)"></span></h2>
+      <div class="nv-in nv-scroll" id="ventas"><span class="nv-vacio">Cargando…</span></div>
+    </div>
+  </div>
+
+  <div class="nv-card">
+    <h2><span>Bebidas y precios</span></h2>
+    <div class="nv-in nv-scroll">
+      <table class="nv-tabla nv-prod">
+        <thead><tr><th style="width:52px">Color</th><th>Nombre</th><th>Tamaño</th><th class="c-precio">Precio (€)</th><th class="c-orden">Orden</th><th style="width:60px">A la venta</th><th style="width:110px"></th></tr></thead>
+        <tbody id="productos"><tr><td colspan="7" class="nv-vacio">Cargando…</td></tr></tbody>
+      </table>
+      <div class="nv-msg" id="prod-msg" role="status" aria-live="polite"></div>
+      <p class="nv-nota">El precio que se cobra es SIEMPRE el de esta tabla (la página no puede cambiarlo). «A la venta» quitado = deja de salir en la página. El orden manda en cómo salen (de menor a mayor).</p>
+    </div>
+  </div>
+</div>
+</div><!-- /admin-contenido -->
+
+<script>
+APOLANA_ADMIN.listo(function () {
+  var sb = window.APOLANA_DB;
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  var eur = function (cent) { return (Number(cent || 0) / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }); };
+  var SB = 'https://icaxokjsvhlreuwpyxeb.supabase.co';
+  var KEY = 'sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH';
+
+  var productos = [];
+  var mesVisto = new Date(); mesVisto.setDate(1); mesVisto.setHours(0, 0, 0, 0);
+
+  function inicioDia(d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+  function lunes(d) { var x = inicioDia(d); var w = (x.getDay() + 6) % 7; x.setDate(x.getDate() - w); return x; }
+  function sumar(lista) {
+    return lista.reduce(function (a, v) { a.n++; a.u += v.unidades; a.t += v.total_cent; return a; }, { n: 0, u: 0, t: 0 });
+  }
+  function soloCobradas(l) { return l.filter(function (v) { return v.estado !== 'devuelta'; }); }
+
+  async function ventas(desde, hasta) {
+    var r = await sb.rpc('nevera_admin_ventas', { p_desde: desde.toISOString(), p_hasta: hasta.toISOString() });
+    if (r.error) throw r.error;
+    return r.data || [];
+  }
+
+  /* Por si alguien pagó y cerró antes de volver: se pregunta a Stripe. */
+  async function repasarPendientes() {
+    var hace = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    var r = await sb.from('nevera_ventas').select('referencia').eq('estado', 'pendiente').gte('creado_en', hace).order('creado_en', { ascending: false }).limit(15);
+    if (r.error || !r.data || !r.data.length) return false;
+    var cambio = false;
+    await Promise.all(r.data.map(function (v) {
+      return fetch(SB + '/functions/v1/nevera-pagar', { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ comprobar: v.referencia }) })
+        .then(function (x) { return x.json(); }).then(function (d) { if (d && d.estado === 'pagada') cambio = true; }).catch(function () {});
+    }));
+    return cambio;
+  }
+
+  async function pintarKpis() {
+    var ahora = new Date();
+    var desde = new Date(Math.min(lunes(ahora).getTime(), new Date(ahora.getFullYear(), ahora.getMonth(), 1).getTime()));
+    var lista = soloCobradas(await ventas(desde, new Date(ahora.getTime() + 60000)));
+    var hoy = inicioDia(ahora), sem = lunes(ahora), mes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    var bloques = [
+      ['Hoy', sumar(lista.filter(function (v) { return new Date(v.pagado_en) >= hoy; }))],
+      ['Esta semana', sumar(lista.filter(function (v) { return new Date(v.pagado_en) >= sem; }))],
+      ['Este mes', sumar(lista.filter(function (v) { return new Date(v.pagado_en) >= mes; }))]
+    ];
+    $('kpis').innerHTML = bloques.map(function (b) {
+      var s = b[1];
+      return '<div class="nv-kpi"><h3>' + b[0] + '</h3><div class="cifra">' + eur(s.t) + '</div><div class="det">' +
+        s.n + (s.n === 1 ? ' pago' : ' pagos') + ' · ' + s.u + (s.u === 1 ? ' bebida' : ' bebidas') + '</div></div>';
+    }).join('');
+  }
+
+  async function pintarMes() {
+    var ini = new Date(mesVisto), fin = new Date(mesVisto.getFullYear(), mesVisto.getMonth() + 1, 1);
+    var mt = ini.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    $('mes-txt').textContent = mt.charAt(0).toUpperCase() + mt.slice(1);
+    var hoyMes = new Date(); hoyMes.setDate(1); hoyMes.setHours(0, 0, 0, 0);
+    $('mes-sig').disabled = ini >= hoyMes;
+    var lista = await ventas(ini, fin);
+    var cobradas = soloCobradas(lista);
+
+    // Ranking por bebida (por unidades)
+    var por = {};
+    cobradas.forEach(function (v) {
+      (v.items || []).forEach(function (l) {
+        var k = l.producto_id || l.nombre;
+        if (!por[k]) por[k] = { nombre: l.nombre, u: 0, t: 0 };
+        por[k].u += Number(l.cantidad || 0); por[k].t += Number(l.cantidad || 0) * Number(l.precio_cent || 0);
+      });
+    });
+    var filas = Object.keys(por).map(function (k) { var p = por[k]; var pr = productos.filter(function (x) { return x.id === k; })[0]; p.color = pr ? pr.color : '#2E4256'; return p; })
+      .sort(function (a, b) { return b.u - a.u || b.t - a.t; });
+    var max = filas.length ? filas[0].u : 1;
+    $('rank').innerHTML = filas.length ? filas.map(function (p) {
+      return '<li><span>' + esc(p.nombre) + '</span><span><b>' + p.u + '</b> <small>· ' + eur(p.t) + '</small></span>' +
+        '<span class="barra"><i style="width:' + Math.max(4, Math.round(p.u / max * 100)) + '%;background:' + esc(p.color) + '"></i></span></li>';
+    }).join('') : '<li class="nv-vacio">Ninguna venta este mes.</li>';
+
+    var s = sumar(cobradas);
+    $('ventas-n').textContent = s.n ? (s.n + (s.n === 1 ? ' pago · ' : ' pagos · ') + eur(s.t)) : '';
+    $('ventas').innerHTML = lista.length ? '<table class="nv-tabla"><thead><tr><th>Cuándo</th><th>Qué</th><th class="num">Total</th></tr></thead><tbody>' +
+      lista.map(function (v) {
+        var f = new Date(v.pagado_en);
+        var cuando = f.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' + f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        var que = (v.items || []).map(function (l) { return l.cantidad + ' × ' + esc(l.nombre); }).join(', ');
+        return '<tr><td style="white-space:nowrap">' + esc(cuando) + '<div class="suave">' + esc(v.referencia) + '</div></td><td>' + que +
+          (v.estado === 'devuelta' ? ' <span class="dev">· devuelta</span>' : '') + '</td><td class="num">' + eur(v.total_cent) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<span class="nv-vacio">Ninguna venta este mes.</span>';
+  }
+
+  /* ---------- productos ---------- */
+  async function cargarProductos() {
+    var r = await sb.from('nevera_productos').select('id,nombre,detalle,precio_cent,color,orden,activo').order('orden').order('nombre');
+    if (r.error) { $('productos').innerHTML = '<tr><td colspan="7" class="nv-vacio">No se han podido leer las bebidas: ' + esc(r.error.message) + '</td></tr>'; return; }
+    productos = r.data || [];
+    pintarProductos();
+  }
+  function filaProd(p, nuevo) {
+    var precio = p.precio_cent != null ? (p.precio_cent / 100).toFixed(2) : '';
+    return '<tr data-id="' + esc(p.id || '') + '"' + (nuevo ? ' class="nuevo"' : '') + '>' +
+      '<td><input type="color" data-k="color" value="' + esc(p.color || '#2E4256') + '" aria-label="Color"></td>' +
+      '<td><input type="text" data-k="nombre" maxlength="60" value="' + esc(p.nombre || '') + '" placeholder="' + (nuevo ? 'Nueva bebida…' : '') + '" aria-label="Nombre"></td>' +
+      '<td><input type="text" data-k="detalle" maxlength="60" value="' + esc(p.detalle || '') + '" placeholder="33 cl" aria-label="Tamaño"></td>' +
+      '<td><input type="number" data-k="precio" min="0.10" max="50" step="0.05" inputmode="decimal" value="' + esc(precio) + '" aria-label="Precio en euros"></td>' +
+      '<td><input type="number" data-k="orden" step="10" value="' + esc(p.orden != null ? p.orden : '') + '" aria-label="Orden"></td>' +
+      '<td style="text-align:center"><input type="checkbox" data-k="activo"' + (p.activo !== false ? ' checked' : '') + ' aria-label="A la venta"></td>' +
+      '<td><button type="button" class="nv-btn' + (nuevo ? ' prim' : '') + '" data-guardar>' + (nuevo ? 'Añadir' : 'Guardar') + '</button></td></tr>';
+  }
+  function pintarProductos() {
+    var max = productos.reduce(function (m, p) { return Math.max(m, p.orden || 0); }, 0);
+    $('productos').innerHTML = productos.map(function (p) { return filaProd(p, false); }).join('') +
+      filaProd({ color: '#3B85C0', orden: max + 10, activo: true }, true);
+  }
+  function msg(t, tipo) { var m = $('prod-msg'); m.textContent = t || ''; m.className = 'nv-msg' + (tipo ? ' ' + tipo : ''); }
+
+  $('productos').addEventListener('click', async function (e) {
+    var b = e.target.closest ? e.target.closest('[data-guardar]') : null;
+    if (!b) return;
+    var tr = b.closest('tr');
+    var v = function (k) { var el = tr.querySelector('[data-k="' + k + '"]'); return el.type === 'checkbox' ? el.checked : el.value.trim(); };
+    var precio = Math.round(parseFloat(String(v('precio')).replace(',', '.')) * 100);
+    var datos = { nombre: v('nombre'), detalle: v('detalle') || null, precio_cent: precio, color: v('color'), orden: parseInt(v('orden'), 10) || 0, activo: v('activo') };
+    if (!datos.nombre) { msg('Falta el nombre de la bebida.', 'error'); return; }
+    if (!(precio >= 10 && precio <= 5000)) { msg('El precio tiene que estar entre 0,10 € y 50 €.', 'error'); return; }
+    b.disabled = true; msg('Guardando…');
+    var id = tr.getAttribute('data-id');
+    var r = id ? await sb.from('nevera_productos').update(datos).eq('id', id) : await sb.from('nevera_productos').insert(datos);
+    b.disabled = false;
+    if (r.error) { msg('No se ha podido guardar: ' + r.error.message, 'error'); return; }
+    msg(id ? 'Guardado: ' + datos.nombre + ' · ' + eur(precio) + '.' : 'Añadida: ' + datos.nombre + '.', 'ok');
+    await cargarProductos();
+  });
+
+  $('mes-ant').addEventListener('click', function () { mesVisto.setMonth(mesVisto.getMonth() - 1); pintarMes().catch(fallo); });
+  $('mes-sig').addEventListener('click', function () { mesVisto.setMonth(mesVisto.getMonth() + 1); pintarMes().catch(fallo); });
+
+  function fallo(err) {
+    var t = 'No se han podido leer las ventas: ' + esc(err && err.message ? err.message : err);
+    $('ventas').innerHTML = '<span class="nv-vacio">' + t + '</span>';
+    $('rank').innerHTML = '<li class="nv-vacio">—</li>';
+  }
+
+  async function todo() {
+    await cargarProductos();
+    try { await Promise.all([pintarKpis(), pintarMes()]); } catch (err) { fallo(err); }
+    // Después, sin bloquear: ¿algún pago que no se había confirmado?
+    repasarPendientes().then(function (cambio) { if (cambio) { pintarKpis().catch(fallo); pintarMes().catch(fallo); } });
+  }
+  todo();
+});
+</script>
+</body>
+</html>
