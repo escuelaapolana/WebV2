@@ -78,9 +78,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var b = window.APOLANA_BASE || '../../';
   var UI = window.APOLANA_UI;
 
-  /* Los grupos que entran (de momento): escuela de atletismo, martes y jueves 17:30. */
-  var HORARIO = 'Martes y jueves 17:30%';
-  var DIAS_ESCUELA = [2, 4];            // 1=lunes … 7=domingo
+  /* Los grupos que entran: escuela de atletismo, 1er turno (17:30) de lunes y
+     miércoles y de martes y jueves (Andrés, 20-oct-2026). Cada día salen los
+     grupos que entrenan ESE día (Azul 2 de L/X y Azul 2 de M/J no se mezclan). */
+  var RE_TURNO = /^(lunes y mi[eé]rcoles|martes y jueves) 17:30/i;
+  function diasDe(g){ return /^lunes y mi/i.test((g && g.horario) || '') ? [1, 3] : [2, 4]; }   // 1=lunes … 7=domingo
+  var TODOS = [];                        // todos mis grupos de la escuela (los dos turnos)
   var COLOR_GRUPO = { rojo:'#C8473B', azul:'#2F6FA8', verde:'#2E8B57' };
   var ORDEN_COLOR = { rojo:0, azul:1, verde:2 };
 
@@ -99,11 +102,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* Día de la semana de una fecha ISO: 1=lunes … 7=domingo. */
   function diaSem(s){ var p=String(s).split('-'); var js=new Date(+p[0],+p[1]-1,+p[2]).getDay(); return js===0?7:js; }
   function diaSemFecha(){ return diaSem(fecha); }
-  function hayEscuela(){ return DIAS_ESCUELA.indexOf(diaSemFecha()) !== -1; }
+  function diasEscuela(){ var u = []; TODOS.forEach(function(g){ diasDe(g).forEach(function(d){ if(u.indexOf(d) === -1) u.push(d); }); }); return u; }
+  function hayEscuela(){ return diasEscuela().indexOf(diaSemFecha()) !== -1; }
+  /* GRUPOS = los que entrenan el día elegido (si ese día no entrena ninguno, todos). */
+  function ajustarDia(){
+    var d = diaSemFecha();
+    var hoyG = TODOS.filter(function(g){ return diasDe(g).indexOf(d) !== -1; });
+    GRUPOS = hoyG.length ? hoyG : TODOS.slice();
+    if(!GRUPOS.some(function(g){ return g.id === sel; })){
+      var con = GRUPOS.filter(function(x){ return (EN_GRUPO[x.id] || []).some(function(id){ return NINOS[id]; }); })[0];
+      sel = GRUPOS.length ? (con || GRUPOS[0]).id : null;
+    }
+  }
   function moverDia(n, desde){ var p=(desde||fecha).split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate()+n);
     return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
   /* El último martes o jueves (anterior a la fecha elegida). */
-  function ultimoDiaEscuela(){ var f = fecha; for(var i=0;i<7;i++){ f = moverDia(-1, f); if(DIAS_ESCUELA.indexOf(diaSem(f)) !== -1) return f; } return fecha; }
+  function ultimoDiaEscuela(){ var u = diasEscuela(), f = fecha; for(var i=0;i<7;i++){ f = moverDia(-1, f); if(u.indexOf(diaSem(f)) !== -1) return f; } return fecha; }
   function colorKey(g){ return String((g && g.nombre) || '').trim().split(/\s+/)[0].toLowerCase(); }
   function colorDe(g){ return COLOR_GRUPO[colorKey(g)] || '#8A816E'; }
   function toast(msg,tipo){ var t=document.createElement('div'); t.className='el-toast'+(tipo==='err'?' err':''); t.textContent=msg;
@@ -144,8 +158,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function diasPropios(a){
     var d = (a && a.escuela_dias && a.escuela_dias.length) ? a.escuela_dias.map(Number) : null;
     if(!d) return null;
-    var dentro = DIAS_ESCUELA.filter(function(x){ return d.indexOf(x) !== -1; });
-    return dentro.length === DIAS_ESCUELA.length ? null : d;   // viene todos los días del grupo: nada que avisar
+    var dg = diasDe(grupoSel());
+    var dentro = dg.filter(function(x){ return d.indexOf(x) !== -1; });
+    return dentro.length === dg.length ? null : d;   // viene todos los días del grupo: nada que avisar
   }
   function leToca(a){ var d = diasPropios(a); return !d || d.indexOf(diaSemFecha()) !== -1; }
 
@@ -155,13 +170,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!esAdmin){ try { var ra = await sb.rpc('es_admin'); esAdmin = !!(ra && !ra.error && ra.data === true); } catch(e){} }
 
     var g = await sb.from('grupos').select('id,nombre,horario,seccion,entrenador_id,activo')
-      .eq('seccion','escuela').eq('activo',true).ilike('horario', HORARIO).order('nombre');
-    var todos = g.error ? [] : (g.data||[]);
+      .eq('seccion','escuela').eq('activo',true).order('nombre');
+    var todos = (g.error ? [] : (g.data||[])).filter(function(x){ return RE_TURNO.test(x.horario || ''); });
     GRUPOS = esAdmin ? todos : todos.filter(function(x){ return perfil && x.entrenador_id === perfil.id; });
     GRUPOS.sort(function(x, y){
       var cx = ORDEN_COLOR.hasOwnProperty(colorKey(x)) ? ORDEN_COLOR[colorKey(x)] : 9, cy = ORDEN_COLOR.hasOwnProperty(colorKey(y)) ? ORDEN_COLOR[colorKey(y)] : 9;
       return (cx - cy) || String(x.nombre).localeCompare(String(y.nombre), 'es', { numeric:true });
     });
+    TODOS = GRUPOS.slice();
 
     /* ¿Lleva además grupos que no son de la escuela? (para el enlace de vuelta en «Más») */
     if(perfil && perfil.id) try {
@@ -202,7 +218,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(qg && GRUPOS.some(function(x){ return x.id === qg; })) sel = qg;
       if(qf && /^\d{4}-\d{2}-\d{2}$/.test(qf) && qf <= hoyISO()) fecha = qf;
     }
-    /* Al entrar, el primero (por color y nombre) que tenga niños. */
+    /* Al entrar: el grupo pedido si entrena ese día; si no, el primero (por color y nombre) con niños. */
+    ajustarDia();
     if(!sel && GRUPOS.length){
       var conNinos = GRUPOS.filter(function(x){ return (EN_GRUPO[x.id] || []).some(function(id){ return NINOS[id]; }); })[0];
       sel = (conNinos || GRUPOS[0]).id;
@@ -224,6 +241,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!r.error) (r.data||[]).forEach(function(x){ ASIS[x.atleta_id] = !!x.presente; });
   }
 
+  function g0Turno(){ var g = grupoSel(); return g ? (/^lunes/i.test(g.horario||'') ? 'lunes y miércoles 17:30' : 'martes y jueves 17:30') : '17:30'; }
   function grupoSel(){ return GRUPOS.filter(function(g){ return g.id===sel; })[0] || null; }
   /* Cuántos niños le tocan ese día a un grupo (para el chip). */
   function cuenta(g){ return (EN_GRUPO[g.id] || []).filter(function(id){ var a = NINOS[id]; return a && leToca(a); }).length; }
@@ -339,7 +357,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="s">'+(entrena ? pl(cuenta(x), 'niño', 'niños') : pl((EN_GRUPO[x.id]||[]).filter(function(id){ return NINOS[id]; }).length, 'niño', 'niños'))+'</div></button>';
     }).join('');
     return '<h1 class="pl-tit el-tit">Pasar lista</h1>'+
-      '<p class="sub">Escuela de atletismo · martes y jueves 17:30</p>'+
+      '<p class="sub">Escuela de atletismo · '+esc(g0Turno())+'</p>'+
       '<div class="pl-fecha">'+
         '<button type="button" data-dia="-1" aria-label="Día anterior">‹</button>'+
         '<label class="dia">'+(fecha===hoy?'Hoy · ':'')+esc(fechaLarga(fecha))+
@@ -353,8 +371,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var g = grupoSel();
     var chipsAntes = wrap.querySelector('.pl-chips'), scrollChips = chipsAntes ? chipsAntes.scrollLeft : null;
 
-    if(!GRUPOS.length){
-      wrap.innerHTML = '<h1 class="pl-tit el-tit">Pasar lista</h1><p class="sub">Escuela de atletismo · martes y jueves 17:30</p>'+
+    if(!TODOS.length){
+      wrap.innerHTML = '<h1 class="pl-tit el-tit">Pasar lista</h1><p class="sub">Escuela de atletismo · 17:30</p>'+
         '<div class="el-caja"><div class="ic">🏃</div><b>Aún no tienes grupo asignado</b><p>Avisa al club.</p></div>';
       return;
     }
@@ -363,7 +381,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!hayEscuela()){
       var ult = ultimoDiaEscuela();
       wrap.innerHTML = cab +
-        '<div class="el-caja"><div class="ic">📅</div><b>Los grupos de la escuela entrenan martes y jueves</b>'+
+        '<div class="el-caja"><div class="ic">📅</div><b>Tus grupos de la escuela entrenan '+esc(nombreDias(diasEscuela().sort()))+'</b>'+
           '<p>Este día no hay entrenamiento: no hace falta pasar lista.</p>'+
           '<button type="button" data-ir="'+esc(ult)+'">Ir al '+esc(fechaLarga(ult))+'</button></div>';
       restaurarChips(scrollChips);
@@ -449,6 +467,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function pintar(){
     if(!cargado){ if(UI) wrap.innerHTML = '<div class="ap-esq" data-esq="filas:4"></div>'; await cargar(); }
     if((location.hash||'') === '#mas'){ pintarMas(); return; }
+    ajustarDia();
     await cargarAsis();
     pintarLista();
   }

@@ -151,8 +151,8 @@
   <div class="eg-cab">
     <div><h1>Grupos de la escuela</h1><small id="eg-sub">1er turno · 17:30–18:30 · Estadio Joaquín Villar</small></div>
     <div class="eg-turno" role="group" aria-label="Turno">
-      <button type="button" disabled title="Próximamente">Lunes y miércoles</button>
-      <button type="button" class="on" aria-pressed="true">Martes y jueves</button>
+      <button type="button" data-turno="lx">Lunes y miércoles</button>
+      <button type="button" data-turno="mj">Martes y jueves</button>
     </div>
   </div>
   <input class="eg-buscar" id="eg-buscar" type="search" placeholder="Buscar a un niño o niña…" autocomplete="off">
@@ -176,7 +176,15 @@ APOLANA_ADMIN.listo(function () {
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
 
-  var TURNO = /^martes y jueves 17:30/i;
+  /* Dos turnos de 17:30: lunes y miércoles / martes y jueves. Al entrar, el del
+     día (lunes o miércoles → L/X); se recuerda el último elegido. */
+  var TURNOS = { lx: /^lunes y mi[eé]rcoles 17:30/i, mj: /^martes y jueves 17:30/i };
+  var NOMBRE_TURNO = { lx: 'lunes y miércoles', mj: 'martes y jueves' };
+  var turnoAct = (function () {
+    try { var t = localStorage.getItem('eg-turno'); if (t === 'lx' || t === 'mj') return t; } catch (e) {}
+    var d = new Date().getDay(); return (d === 1 || d === 3) ? 'lx' : 'mj';
+  })();
+  var TURNO = TURNOS[turnoAct];
   var ALTA_ENTRENADOR = 'https://atletismoapolana.com/entrenador/alta/';
   var COLOR = { rojo: '#C8473B', azul: '#2F6FA8', verde: '#2E8B57' };
   var ORDEN = { rojo: 0, azul: 1, verde: 2 };
@@ -241,7 +249,24 @@ APOLANA_ADMIN.listo(function () {
   function vacio(g) { return !g.entrenador_id && !ninosDe(g.id).length; }
 
   /* ---------------- carga ---------------- */
+  function pintarTurno() {
+    document.querySelectorAll('[data-turno]').forEach(function (b) {
+      var on = b.getAttribute('data-turno') === turnoAct;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('[data-turno]') : null;
+    if (!b) return;
+    var t = b.getAttribute('data-turno'); if (t === turnoAct) return;
+    turnoAct = t; TURNO = TURNOS[t]; CANDIDATOS = null;
+    try { localStorage.setItem('eg-turno', t); } catch (e) {}
+    pintarTurno();
+    $('eg-grid').innerHTML = '<div class="eg-estado">Cargando los grupos…</div>';
+    cargar();
+  });
   async function cargar() {
+    pintarTurno();
     var rg = await sb.from('grupos').select('id,nombre,horario,seccion,entrenador_id,activo').eq('seccion', 'escuela');
     if (rg.error) return fallo('No se han podido cargar los grupos: ' + rg.error.message);
     ESC_IDS = (rg.data || []).map(function (g) { return g.id; });
@@ -252,7 +277,7 @@ APOLANA_ADMIN.listo(function () {
       if (h.length > 1) $('eg-sub').textContent = '1er turno · 17:30–18:30 · ' + h.slice(1).join('·').trim();
     }
     var ids = GRUPOS.map(function (g) { return g.id; });
-    if (!ids.length) { $('eg-grid').innerHTML = '<div class="eg-estado">No hay grupos de martes y jueves a las 17:30.</div>'; return; }
+    if (!ids.length) { $('eg-grid').innerHTML = '<div class="eg-estado">No hay grupos de ' + NOMBRE_TURNO[turnoAct] + ' a las 17:30.</div>'; return; }
 
     var ra = await sb.from('atleta_grupos').select('atleta_id,grupo_id,principal,desde').in('grupo_id', ids);
     if (ra.error) return fallo('No se han podido cargar los niños: ' + ra.error.message);
@@ -449,7 +474,7 @@ APOLANA_ADMIN.listo(function () {
 
   async function hojaAnadir(gid) {
     var g = grupo(gid); if (!g) return;
-    abrirHoja('<h3>Añadir a ' + esc(g.nombre) + '</h3><div class="sub">Niños de la escuela que aún no están en ningún grupo de martes y jueves.</div>' +
+    abrirHoja('<h3>Añadir a ' + esc(g.nombre) + '</h3><div class="sub">Niños de la escuela que aún no están en ningún grupo de ' + NOMBRE_TURNO[turnoAct] + '.</div>' +
       '<input type="search" id="eg-busca-add" placeholder="Buscar por nombre…" autocomplete="off" data-g="' + esc(g.id) + '">' +
       '<div class="eg-ops" id="eg-cands"><div class="info">Cargando…</div></div>');
     if (window.matchMedia && window.matchMedia('(pointer:fine)').matches) setTimeout(function () { var i = $('eg-busca-add'); if (i) i.focus(); }, 260);
@@ -493,7 +518,7 @@ APOLANA_ADMIN.listo(function () {
         '<span class="i"><b>' + esc(s) + '</b><small>' + pillsNino(a, true) + (a._en && a._en.length ? ' <span class="eg-pill eg-p-gris">En ' + esc(a._en.join(', ')) + '</span>' : '') + '</small></span>' +
         '<span class="ok" style="color:#2F6FA8">+</span></button>';
     }).join('') + (mas > 0 ? '<div class="eg-mas">Y ' + mas + ' más: escribe el nombre para encontrarlos.</div>' : '')
-      : '<div class="info">' + (q ? 'Nadie con ese nombre (o ya está en un grupo de martes y jueves).' : 'No hay nadie de esa edad sin grupo. Busca por nombre.') + '</div>');
+      : '<div class="info">' + (q ? 'Nadie con ese nombre (o ya está en un grupo de ' + NOMBRE_TURNO[turnoAct] + ').' : 'No hay nadie de esa edad sin grupo. Busca por nombre.') + '</div>');
   }
 
   /* ---------------- aviso con «Deshacer» ---------------- */
