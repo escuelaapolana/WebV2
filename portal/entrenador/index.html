@@ -1416,6 +1416,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return;
   }
   var LLEVA_ESCUELA = MIS_GRUPOS.some(ES_ESCUELA);
+  /* Los grupos de la escuela de martes/jueves 17:30 se pasan con la lista nueva
+     (portal/escuela-lista): elegirlos aquí lleva allí, con el grupo y el día. */
+  function esListaNueva(id){
+    for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===id)
+      return MIS_GRUPOS[i].seccion==='escuela' && /^martes y jueves 17:30/i.test(MIS_GRUPOS[i].horario||'');
+    return false;
+  }
+  function urlListaNueva(id, f){ return '../escuela-lista/?g='+encodeURIComponent(id)+(f ? '&f='+encodeURIComponent(f) : ''); }
   /* Quien lleva dos turnos del mismo grupo de la escuela —el «Azul 2»
      de lunes y miércoles y el de martes y jueves, que se llaman igual y
      tienen niños distintos— los veía aquí como dos líneas idénticas.
@@ -2410,6 +2418,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // Abre la lista del día en el grupo que toque
   async function irAPasarLista(grupoId, fecha){
+    if(grupoId && esListaNueva(grupoId)){ location.href = urlListaNueva(grupoId, fecha || todayISO); return; }
     // Si ya había una lista a medias sin guardar, primero se pone a salvo.
     if(!(await puedoDejarLaLista())) { irASeccion('lista'); cerrarMas(); window.scrollTo(0,0); return; }
     irASeccion('lista'); cerrarMas();
@@ -2791,6 +2800,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pintarLista(){
     var cont = $('lst-cont');
     if(!cont) return;
+    if(esListaNueva(LST.grupo)){
+      cont.innerHTML = '<div style="text-align:center;padding:18px 10px"><p style="margin:0 0 12px">Este grupo de la escuela se pasa con la <b>lista nueva</b>.</p>'+
+        '<a class="btn" style="display:inline-flex;min-height:46px;align-items:center;padding:0 18px" href="'+urlListaNueva(LST.grupo, LST.fecha)+'">Abrir la lista</a></div>';
+      return;
+    }
     if(LST.cargando){ cont.innerHTML = APOLANA_UI.cargando('filas', 6); return; }
     var gr = null;
     for(var i=0;i<MIS_GRUPOS.length;i++) if(MIS_GRUPOS[i].id===LST.grupo) gr = MIS_GRUPOS[i];
@@ -3211,7 +3225,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       cont.innerHTML = '<div class="tarjeta"><h2>Pasar lista</h2>'+vacioHTML(icVacGrupo, 'Necesitas tener al menos un grupo a tu cargo para pasar lista.')+'</div>';
       return;
     }
-    LST.grupo = MIS_GRUPOS[0].id;
+    LST.grupo = (MIS_GRUPOS.filter(function(gr){ return !esListaNueva(gr.id); })[0] || MIS_GRUPOS[0]).id;
     cont.innerHTML =
       '<div class="tarjeta">'+
         '<div class="grid2">'+
@@ -3228,6 +3242,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('lst-grupo').addEventListener('change', async function(){
       var nuevo = $('lst-grupo').value, anterior = LST.grupo;
       if(!(await puedoDejarLaLista())){ $('lst-grupo').value = anterior; return; }
+      if(esListaNueva(nuevo)){ location.href = urlListaNueva(nuevo, LST.fecha); return; }
       LST.grupo = nuevo; refrescarLista();
     });
     $('lst-fecha').addEventListener('change', async function(){
