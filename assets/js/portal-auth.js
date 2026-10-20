@@ -596,6 +596,15 @@
     '@media(max-width:560px){.pt-top{padding:4px 14px}' +
       '.pt-papel{max-width:none;padding:8px 12px}' +
       '.pt-papel .pt-dequé{display:none}}' +
+    /* iPhone con la app instalada: la hora y la batería se montaban encima de la
+       barra (Andrés, 20-oct). Con viewport-fit=cover en las páginas del portal,
+       la barra baja lo que mida la zona de la hora y se rellena una franja navy
+       fija para que, al bajar, el contenido no se vea detrás del reloj.
+       En el navegador normal env() vale 0 y no cambia nada. */
+    '.pt-top{padding-top:calc(4px + env(safe-area-inset-top,0px));' +
+      'padding-left:max(clamp(14px,4vw,40px),env(safe-area-inset-left,0px));padding-right:max(clamp(14px,4vw,40px),env(safe-area-inset-right,0px))}' +
+    '@media(max-width:560px){.pt-top{padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}}' +
+    'body.pt-con-top::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:#2B4157;z-index:9050;pointer-events:none}' +
     /* Con solo dos mandos a la derecha, APOLANA cabe hasta en un móvil de
        375 px aunque tengas cuatro papeles: antes eran tres o cuatro mandos
        y la barra se partía en dos filas. Si aun así no cupiera —un móvil de
@@ -1108,6 +1117,7 @@
       var OJO_VC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
       var top = document.createElement('div');
       top.className = 'pt-top' + (_staff ? ' pt-con-vc' : '');
+      try { document.body.classList.add('pt-con-top'); } catch (eTop) {}
       top.innerHTML =
         '<div class="izq">' +
           '<img class="escudo" src="' + b + 'assets/img/logo.png" alt="" aria-hidden="true">' +
