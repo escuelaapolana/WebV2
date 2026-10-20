@@ -788,6 +788,17 @@
   .hoy-e .he-ver { background:transparent; border:1px solid rgba(255,255,255,.42); color:#fff; }
   .hoy-e .he-ver:hover { border-color:#fff; }
   .hoy-e .he-aviso { margin:0; font-size:13px; color:#FBE7B8; }
+  /* Varias sesiones el mismo día (un entreno por atleta): lista plegada. */
+  .hoy-e .he-partes summary { cursor:pointer; font-size:14px; font-weight:600; color:#fff; list-style:none; min-height:32px; display:flex; align-items:center; gap:6px; }
+  .hoy-e .he-partes summary::-webkit-details-marker { display:none; }
+  .hoy-e .he-partes[open] summary span { transform:rotate(90deg); }
+  .hoy-e .he-partes summary span { display:inline-block; transition:transform .15s; }
+  .hoy-e .he-partes ul { list-style:none; margin:6px 0 0; padding:0; border-top:1px solid rgba(255,255,255,.18); }
+  .hoy-e .he-partes li { border-bottom:1px solid rgba(255,255,255,.18); }
+  .hoy-e .he-partes li button { display:block; width:100%; text-align:left; background:transparent; border:0; color:#D6E4F0; font:inherit; font-size:14px; line-height:1.35; padding:9px 0; cursor:pointer; min-height:40px; }
+  .hoy-e .he-partes li button b { color:#fff; font-weight:600; }
+  .hoy-e .he-partes li button em { color:#FBE7B8; font-style:normal; }
+  .hoy-e .he-partes li button:hover b { text-decoration:underline; }
 
   .hoy-e-no { background:#fff; border:1px solid var(--linea-marcada); border-radius:12px; padding:14px 16px; display:flex; align-items:center; gap:14px; margin-bottom:14px; box-shadow: var(--sombra-suave); }
   .hoy-e-no .hn-ic { flex:none; width:42px; height:42px; border-radius:10px; background: var(--crema-media); color: var(--navy); display:flex; align-items:center; justify-content:center; }
@@ -1406,7 +1417,33 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ningún atleta al que pasar lista, ninguna ficha que abrir. Se apunta
      que ha fallado para poder decirlo arriba del todo. */
   var FALLO_BASE = false;
-  try { var g = await sb.from('grupos').select('id,nombre,seccion,horario,descripcion,turno').eq('entrenador_id', perfil.id).order('nombre').order('turno', { nullsFirst: true }); if(g.error) FALLO_BASE = true; else MIS_GRUPOS = g.data || []; } catch(e){ FALLO_BASE = true; }
+  /* LA CARGA DEL ARRANQUE, EN TRES VUELTAS Y NO EN DIEZ
+     Antes se pedía todo en fila —tus grupos, tus atletas, los de tus grupos,
+     sus grupos, los ejercicios, todos los grupos, los sitios, las pruebas,
+     las marcas— y cada consulta esperaba a la anterior aunque no le hiciera
+     falta nada de ella: diez viajes a la base antes de pintar nada. Ahora va
+     junto lo que no depende de nada; luego lo que necesita saber tus grupos
+     y tus atletas; y al final lo de los atletas que entrenan en tus grupos
+     sin estar a tu nombre. Lo que solo sirve para planificar (el banco de
+     ejercicios, los sitios de sesiones viejas) se pide después de pintar el
+     Inicio, en segundo plano (ver `cargarSecundarios`).
+     `pedir` convierte un fallo de red en { error }, igual que hacían los
+     `try` de antes, para que una consulta caída no tumbe a las demás. */
+  function pedir(fn){
+    try {
+      return Promise.resolve(fn()).then(function(r){ return r || { error: true, data: null }; },
+                                        function(e){ return { error: e || true, data: null }; });
+    } catch(e){ return Promise.resolve({ error: e || true, data: null }); }
+  }
+  var CAMPOS_ATLETA = 'id,nombre,apellidos,categoria,estado,grupo_id,entrenador_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id,permiso_imagen,permiso_imagen_ambitos';
+  var R1 = await Promise.all([
+    pedir(function(){ return sb.from('grupos').select('id,nombre,seccion,horario,descripcion,turno').eq('entrenador_id', perfil.id).order('nombre').order('turno', { nullsFirst: true }); }),
+    pedir(function(){ return sb.from('atletas').select(CAMPOS_ATLETA).eq('entrenador_id', perfil.id).order('apellidos'); }),
+    pedir(function(){ return sb.from('grupos').select('seccion,horario'); }),
+    pedir(function(){ return sb.from('pruebas').select('nombre,disciplina,ambito,unidad,mas_es_mejor').eq('activa', true).order('orden'); })
+  ]);
+  var R_GRUPOS_TODOS = R1[2], R_PRUEBAS = R1[3];
+  var g = R1[0]; if(g.error) FALLO_BASE = true; else MIS_GRUPOS = g.data || [];
   /* Entrenador SOLO de la escuela de atletismo: su pantalla es pasar lista a
      su grupo (portal/escuela-lista). Quien además lleva otros grupos se queda
      aquí y tiene el enlace «Pasar lista de la escuela» (lateral y «Más»). */
@@ -1450,46 +1487,64 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      de papeleo: es lo único que le dice al entrenador, antes de sacar el
      móvil, de qué críos no se publican fotos. Si no se pide en esta línea,
      no se puede enseñar en ninguna pantalla. */
-  var CAMPOS_ATLETA = 'id,nombre,apellidos,categoria,estado,grupo_id,entrenador_id,fecha_nacimiento,dias_entreno,fecha_prueba_fin,especialidades,pruebas_principales,licencia,perfil_padre_id,permiso_imagen,permiso_imagen_ambitos';
-  try { var a = await sb.from('atletas').select(CAMPOS_ATLETA).eq('entrenador_id', perfil.id).order('apellidos'); if(a.error) FALLO_BASE = true; else MIS_ATLETAS = a.data || []; } catch(e){ FALLO_BASE = true; }
-  /* Y ahora los de mis grupos. Se piden aparte y con su propio `try`: si
-     esta se cae, la pantalla sigue enseñando a los de siempre en vez de
-     quedarse en blanco. Los repetidos se descartan por su id. */
-  try {
-    var idsG = MIS_GRUPOS.map(function(gr){ return gr.id; });
-    if(idsG.length){
-      var pert = await sb.from('atleta_grupos').select('atleta_id').in('grupo_id', idsG);
-      if(pert.error) FALLO_BASE = true;
-      else {
-        var ya = {}; MIS_ATLETAS.forEach(function(x){ ya[x.id] = true; });
-        var faltan = [];
-        (pert.data || []).forEach(function(m){ if(!ya[m.atleta_id]){ ya[m.atleta_id] = true; faltan.push(m.atleta_id); } });
-        if(faltan.length){
-          var a2 = await sb.from('atletas').select(CAMPOS_ATLETA).in('id', faltan).order('apellidos');
-          if(a2.error) FALLO_BASE = true;
-          else if(a2.data) MIS_ATLETAS = MIS_ATLETAS.concat(a2.data);
-        }
+  /* (CAMPOS_ATLETA está arriba, con la primera vuelta de consultas.) */
+  var a = R1[1]; if(a.error) FALLO_BASE = true; else MIS_ATLETAS = a.data || [];
+  /* Las marcas y los grupos de cada atleta se piden en la misma vuelta que
+     los atletas que les tocan: los míos con los de mis grupos, y los de mis
+     grupos en cuanto se sabe quiénes son. Se juntan aquí y se procesan más
+     abajo, donde siempre. */
+  var FILAS_MARCAS = [];
+  function sumarMiembros(mg){
+    if(mg && !mg.error && mg.data) mg.data.forEach(function(m){ (MIEMBROS[m.atleta_id] = MIEMBROS[m.atleta_id] || {})[m.grupo_id] = true; });
+  }
+  function sumarMarcas(mr){ if(mr && !mr.error && mr.data) FILAS_MARCAS = FILAS_MARCAS.concat(mr.data); }
+  function pedirMarcas(ids){ return pedir(function(){ return sb.from('marcas_atleta').select('atleta_id,prueba,tiempo_segundos,tiempo_display,fecha').in('atleta_id', ids).limit(2000); }); }
+  function pedirMiembros(ids){ return pedir(function(){ return sb.from('atleta_grupos').select('atleta_id,grupo_id').in('atleta_id', ids); }); }
+  /* Y ahora los de mis grupos. Si esta se cae, la pantalla sigue enseñando a
+     los de siempre en vez de quedarse en blanco. Los repetidos se descartan
+     por su id. A la vez: en qué grupos entrena cada uno de los míos y sus
+     marcas. Eso va sin hacer ruido si falla: las listas siguen saliendo por
+     la casilla de la ficha, que es lo que se hacía hasta ahora. */
+  var idsG = MIS_GRUPOS.map(function(gr){ return gr.id; });
+  var ids0 = MIS_ATLETAS.map(function(x){ return x.id; });
+  var R2 = await Promise.all([
+    idsG.length ? pedir(function(){ return sb.from('atleta_grupos').select('atleta_id').in('grupo_id', idsG); }) : null,
+    ids0.length ? pedirMiembros(ids0) : null,
+    ids0.length ? pedirMarcas(ids0) : null
+  ]);
+  sumarMiembros(R2[1]); sumarMarcas(R2[2]);
+  var pert = R2[0];
+  if(pert){
+    if(pert.error) FALLO_BASE = true;
+    else {
+      var ya = {}; MIS_ATLETAS.forEach(function(x){ ya[x.id] = true; });
+      var faltan = [];
+      (pert.data || []).forEach(function(m){ if(!ya[m.atleta_id]){ ya[m.atleta_id] = true; faltan.push(m.atleta_id); } });
+      if(faltan.length){
+        var R3 = await Promise.all([
+          pedir(function(){ return sb.from('atletas').select(CAMPOS_ATLETA).in('id', faltan).order('apellidos'); }),
+          pedirMiembros(faltan),
+          pedirMarcas(faltan)
+        ]);
+        var a2 = R3[0];
+        if(a2.error) FALLO_BASE = true;
+        else if(a2.data) MIS_ATLETAS = MIS_ATLETAS.concat(a2.data);
+        sumarMiembros(R3[1]); sumarMarcas(R3[2]);
       }
     }
-  } catch(e){ FALLO_BASE = true; }
-  /* En qué grupos entrena cada uno. Va aparte y sin hacer ruido si falla: si
-     esta consulta se cae, las listas siguen saliendo por la casilla de la
-     ficha, que es lo que se hacía hasta ahora. */
-  try {
-    var ids0 = MIS_ATLETAS.map(function(x){ return x.id; });
-    if(ids0.length){
-      var mg = await sb.from('atleta_grupos').select('atleta_id,grupo_id').in('atleta_id', ids0);
-      if(!mg.error && mg.data) mg.data.forEach(function(m){ (MIEMBROS[m.atleta_id] = MIEMBROS[m.atleta_id] || {})[m.grupo_id] = true; });
-    }
-  } catch(e){}
-  try { var e = await sb.from('ejercicios').select('nombre,nombre_corto,categoria,tipo').eq('activo', true).order('categoria').order('nombre'); if(!e.error && e.data) EJERCICIOS = e.data; } catch(e){}
+  }
 
   // Secciones del club y sitios donde se entrena. Los grupos son de lectura
   // pública, así que aquí salen TODAS las secciones (no solo las tuyas): son
   // las que se pueden marcar al abrir un entreno a otra gente del club.
   var vistaS = {}, vistaL = {};
+  function pintarLugares(){
+    LUGARES.sort();
+    var dl = document.getElementById('lugares-dl');
+    if(dl) dl.innerHTML = LUGARES.map(function(l){ return '<option value="'+escAttr(l)+'"></option>'; }).join('');
+  }
   try {
-    var gt = await sb.from('grupos').select('seccion,horario');
+    var gt = R_GRUPOS_TODOS;   // pedida en la primera vuelta, junto a tus grupos
     if(!gt.error && gt.data){
       gt.data.forEach(function(g){
         if(g.seccion && !vistaS[g.seccion]){ vistaS[g.seccion] = true; SECCIONES_CLUB.push(g.seccion); }
@@ -1498,15 +1553,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
       SECCIONES_CLUB.sort();
     }
-    var sl = await sb.from('sesiones').select('lugar').not('lugar','is',null).limit(400);
-    if(!sl.error && sl.data) sl.data.forEach(function(s){
-      var l = (s.lugar||'').trim();
-      if(l && !vistaL[norm(l)]){ vistaL[norm(l)] = true; LUGARES.push(l); }
-    });
-    LUGARES.sort();
-    var dl = document.getElementById('lugares-dl');
-    if(dl) dl.innerHTML = LUGARES.map(function(l){ return '<option value="'+escAttr(l)+'"></option>'; }).join('');
+    pintarLugares();
   } catch(e){}
+
+  /* LO QUE SOLO SIRVE PARA PLANIFICAR, DESPUÉS DEL INICIO
+     El banco de ejercicios (las sugerencias al escribir un ejercicio) y los
+     sitios de sesiones anteriores (las sugerencias del campo «Lugar») no
+     salen en el Inicio: se piden en segundo plano cuando el Inicio ya tiene
+     sus datos, para no quitarle red a lo que se ve nada más entrar. Si
+     fallan, se queda como antes de pedirlas: sin sugerencias, y nada más. */
+  async function cargarSecundarios(){
+    var R = await Promise.all([
+      pedir(function(){ return sb.from('ejercicios').select('nombre,nombre_corto,categoria,tipo').eq('activo', true).order('categoria').order('nombre'); }),
+      pedir(function(){ return sb.from('sesiones').select('lugar').not('lugar','is',null).limit(400); })
+    ]);
+    var e = R[0];
+    if(!e.error && e.data){
+      /* Si mientras tanto el entrenador ha añadido uno al banco, no se pierde. */
+      var nuevos = EJERCICIOS.filter(function(x){ return !e.data.some(function(y){ return norm(y.nombre) === norm(x.nombre); }); });
+      EJERCICIOS = e.data.concat(nuevos);
+    }
+    var sl = R[1];
+    try {
+      if(!sl.error && sl.data) sl.data.forEach(function(s){
+        var l = (s.lugar||'').trim();
+        if(l && !vistaL[norm(l)]){ vistaL[norm(l)] = true; LUGARES.push(l); }
+      });
+      pintarLugares();
+    } catch(e2){}
+  }
 
   /* La Tribu, Madre Tierra y El Cubo tienen nombre propio; el resto son
      categorías («Natación adultos») y se quedan en navy (carácter 31c). */
@@ -1628,7 +1703,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      disciplina es, para ordenar el desplegable como lo tiene el atleta. */
   var PRUEBAS = [], PRUEBA_POR_NOMBRE = {};
   try {
-    var pc = await sb.from('pruebas').select('nombre,disciplina,ambito,unidad,mas_es_mejor').eq('activa', true).order('orden');
+    var pc = R_PRUEBAS;   // pedida en la primera vuelta
     if(!pc.error && pc.data){
       PRUEBAS = pc.data;
       pc.data.forEach(function(p){ MAS_MEJOR[p.nombre] = !!p.mas_es_mejor; PRUEBA_POR_NOMBRE[p.nombre] = p; });
@@ -1636,8 +1711,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   } catch(e){}
   if(MIS_ATLETAS.length){
     try {
-      var mr = await sb.from('marcas_atleta').select('atleta_id,prueba,tiempo_segundos,tiempo_display,fecha').in('atleta_id', MIS_ATLETAS.map(function(x){ return x.id; })).limit(2000);
-      if(!mr.error && mr.data) mr.data.forEach(function(m){
+      /* Las filas ya han llegado con los atletas (FILAS_MARCAS, arriba). */
+      FILAS_MARCAS.forEach(function(m){
         var v = valorMarca(m);
         if(v==null || !m.prueba || !m.atleta_id) return;
         var pa = MARCAS[m.atleta_id] = MARCAS[m.atleta_id] || {};
@@ -1774,7 +1849,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(sec==='calendario' && typeof entrarCalendario==='function') entrarCalendario();
     if(sec==='semana' && typeof entrarSemana==='function') entrarSemana();
     if(sec==='recursos' && typeof entrarRecursos==='function') entrarRecursos();
+    /* Lo mismo con la lista, el feedback y el planificador: antes se pedían
+       al arrancar aunque no se abrieran (y el planificador se traía 200
+       entrenos con todos sus bloques), quitándole red al Inicio. Ahora la
+       primera vez que se entra. Va en un `setTimeout` porque quien llega
+       desde un botón («Pasar lista», «Ver entrenamiento») pide justo detrás
+       la carga con SU grupo y SU día; si ya lo ha hecho, aquí no se repite. */
+    if(sec==='lista' || sec==='feedback' || sec==='planificar'){
+      setTimeout(function(){
+        if(sec==='lista' && !LISTA_PEDIDA && typeof refrescarLista==='function' && $('lst-grupo')) refrescarLista();
+        if(sec==='feedback' && !FB_PEDIDO && typeof cargarSesionesFeedback==='function') cargarSesionesFeedback();
+        if(sec==='planificar' && !PL_PEDIDO && typeof cargarSesionesGrupo==='function' && $('pl-grupo')) cargarSesionesGrupo($('pl-grupo').value);
+      }, 0);
+    }
   }
+  var LISTA_PEDIDA = false, FB_PEDIDO = false, PL_PEDIDO = false;
   navLinks.forEach(function(link){ link.addEventListener('click', function(){ irASeccion(link.getAttribute('data-sec')); cerrarMas(); window.scrollTo(0,0); }); });
 
   /* ============================================================
@@ -2194,42 +2283,67 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargarHoy(){
     HOY.sesiones = []; HOY.siguiente = null; HOY.semana = []; HOY.apuntados = {};
     if(!MIS_GRUPOS.length) return;
-    try {
-      if(window.APOLANA_FESTIVOS) FEST = await window.APOLANA_FESTIVOS.cargar(sb, addDias(todayISO,-62), addDias(todayISO,31));
-    } catch(e){ FEST = null; }
     var ids = MIS_GRUPOS.map(function(g){ return g.id; });
-    /* La semana entera, para la tira del inicio. Es UNA consulta más y evita
-       que el entrenador tenga que entrar en el planificador solo para ver qué
-       hay mañana. */
-    try {
-      var lun = lunesDeFecha(todayISO);
-      var rs = await sb.from('sesiones').select('id,fecha,titulo,deporte,tipo,papel_dia,grupo_id')
-        .in('grupo_id', ids).gte('fecha', lun).lte('fecha', addDias(lun,6))
-        .order('fecha', { ascending:true }).limit(60);
-      if(!rs.error && rs.data){
-        HOY.semana = rs.data;
-        /* Y cuántos han apuntado ya en cada una: a un entrenador no le sirve
-           saber que el martes hay «Carrera A», le sirve saber si alguien la ha
-           apuntado. Ese es el dato que le hace entrar o no. */
-        var sids = HOY.semana.map(function(x){ return x.id; });
-        if(sids.length){
-          var rr = await sb.from('registros_sesion').select('sesion_id').in('sesion_id', sids);
-          if(!rr.error && rr.data) rr.data.forEach(function(x){
-            HOY.apuntados[x.sesion_id] = (HOY.apuntados[x.sesion_id]||0)+1;
-          });
-        }
-      }
-    } catch(e){ /* sin la semana, el inicio sigue enseñando lo de hoy */ }
-    var r = await sb.from('sesiones')
-      .select('id,fecha,hora,titulo,tipo,deporte,deporte_2,papel_dia,lugar,grupo_id,publicada,atletas_ids,abierta_inscripcion')
-      .in('grupo_id', ids).eq('fecha', todayISO)
-      .order('hora', { ascending:true }).limit(8);
-    if(!r.error && r.data) HOY.sesiones = r.data;
-    if(HOY.sesiones.length) return;
-    var r2 = await sb.from('sesiones').select('id,fecha,titulo,grupo_id')
-      .in('grupo_id', ids).gt('fecha', todayISO)
-      .order('fecha', { ascending:true }).limit(1);
-    if(!r2.error && r2.data && r2.data.length) HOY.siguiente = r2.data[0];
+    var CAMPOS_HOY = 'id,fecha,hora,titulo,tipo,deporte,deporte_2,papel_dia,lugar,grupo_id,publicada,atletas_ids,abierta_inscripcion';
+    /* La semana entera, para la tira del inicio, y de ella sale también lo de
+       hoy. ANTES llevaba `.limit(60)`, y la Academia sube un entreno POR
+       ATLETA y día (13-14 al día): a mitad de semana se acababan las 60 filas
+       y el sábado salía «libre» con trece entrenos puestos. Y lo de hoy se
+       pedía aparte con `.limit(8)`, así que la tarjeta contaba ocho de
+       catorce. Ahora se piden todas las de la semana (el tope es solo de
+       seguridad: 7 días × un grupo entero de atletas cabe de sobra) y con
+       las columnas de la tarjeta, que también hacen falta al ojear otro día.
+       Los festivos van en la misma vuelta. */
+    var lun = lunesDeFecha(todayISO);
+    var R = await Promise.all([
+      (async function(){
+        try {
+          if(window.APOLANA_FESTIVOS) return await window.APOLANA_FESTIVOS.cargar(sb, addDias(todayISO,-62), addDias(todayISO,31));
+        } catch(e){}
+        return null;
+      })(),
+      pedir(function(){
+        return sb.from('sesiones').select(CAMPOS_HOY)
+          .in('grupo_id', ids).gte('fecha', lun).lte('fecha', addDias(lun,6))
+          .order('fecha', { ascending:true }).order('hora', { ascending:true }).limit(1000);
+      })
+    ]);
+    FEST = R[0] || null;
+    var rs = R[1];
+    if(!rs.error && rs.data){
+      HOY.semana = rs.data;
+      HOY.sesiones = rs.data.filter(function(x){ return x.fecha === todayISO; });
+    } else {
+      /* Sin la semana, el inicio sigue enseñando lo de hoy: se pide sola. */
+      var r = await pedir(function(){
+        return sb.from('sesiones').select(CAMPOS_HOY)
+          .in('grupo_id', ids).eq('fecha', todayISO)
+          .order('hora', { ascending:true }).limit(200);
+      });
+      if(!r.error && r.data) HOY.sesiones = r.data;
+    }
+    /* Y a la vez: cuántos han apuntado ya en cada sesión de la semana (a un
+       entrenador no le sirve saber que el martes hay «Carrera A», le sirve
+       saber si alguien la ha apuntado: es el dato que le hace entrar o no),
+       y, si hoy no hay nada, cuál es la siguiente. Si la siguiente cae esta
+       semana ya la tenemos; si no, se pregunta. */
+    var sids = HOY.semana.map(function(x){ return x.id; });
+    var siguienteSemana = null;
+    if(!HOY.sesiones.length){
+      for(var i=0;i<HOY.semana.length;i++) if(HOY.semana[i].fecha > todayISO){ siguienteSemana = HOY.semana[i]; break; }
+    }
+    var R2 = await Promise.all([
+      sids.length ? pedir(function(){ return sb.from('registros_sesion').select('sesion_id').in('sesion_id', sids); }) : null,
+      (!HOY.sesiones.length && !siguienteSemana)
+        ? pedir(function(){ return sb.from('sesiones').select('id,fecha,titulo,grupo_id').in('grupo_id', ids).gt('fecha', todayISO).order('fecha', { ascending:true }).limit(1); })
+        : null
+    ]);
+    var rr = R2[0];
+    if(rr && !rr.error && rr.data) rr.data.forEach(function(x){
+      HOY.apuntados[x.sesion_id] = (HOY.apuntados[x.sesion_id]||0)+1;
+    });
+    if(siguienteSemana) HOY.siguiente = siguienteSemana;
+    else if(R2[1] && !R2[1].error && R2[1].data && R2[1].data.length) HOY.siguiente = R2[1].data[0];
   }
 
   async function cargarAvisos(){
@@ -2246,24 +2360,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        preguntadas por grupo y no a la tabla, que está cerrada. Quien entrena
        en dos de mis grupos vendría dos veces —una por lista—, y en la portada
        eso serían dos avisos de la misma falta: se deja uno por persona. */
-    try {
-      var au = await sb.rpc('apo_faltas_avisadas', {
-        p_grupos: MIS_GRUPOS.map(function(gr){ return gr.id; }), p_fecha: todayISO });
-      if(!au.error && au.data){
-        var vistos = {};
-        AVISOS.ausencias = au.data.filter(function(r){
-          if(vistos[r.atleta_id]) return false;
-          vistos[r.atleta_id] = true; return true;
-        });
-      }
-    } catch(e){}
-    // Feedback nuevo desde la última visita (o de los últimos 3 días la primera vez).
-    try {
-      var desde = feedbackVistoDesde() || (addDias(todayISO,-3)+'T00:00:00');
-      var rg = await sb.from('registros_sesion').select('id,created_at')
-        .in('atleta_id', ids).gte('created_at', desde).limit(300);
-      if(!rg.error && rg.data) AVISOS.feedbackNuevos = rg.data.length;
-    } catch(e){}
+    /* Feedback nuevo desde la última visita (o de los últimos 3 días la
+       primera vez). Las dos consultas van a la vez: no dependen una de otra. */
+    var desde = feedbackVistoDesde() || (addDias(todayISO,-3)+'T00:00:00');
+    var R = await Promise.all([
+      pedir(function(){ return sb.rpc('apo_faltas_avisadas', {
+        p_grupos: MIS_GRUPOS.map(function(gr){ return gr.id; }), p_fecha: todayISO }); }),
+      pedir(function(){ return sb.from('registros_sesion').select('id,created_at')
+        .in('atleta_id', ids).gte('created_at', desde).limit(300); })
+    ]);
+    var au = R[0];
+    if(!au.error && au.data){
+      var vistos = {};
+      AVISOS.ausencias = au.data.filter(function(r){
+        if(vistos[r.atleta_id]) return false;
+        vistos[r.atleta_id] = true; return true;
+      });
+    }
+    var rg = R[1];
+    if(!rg.error && rg.data) AVISOS.feedbackNuevos = rg.data.length;
   }
 
   /* La semana en el inicio del entrenador. Cada día dice el deporte y, si hay
@@ -2284,7 +2399,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var fx = festivoDeMisGrupos(iso);
       var cls = 'te-d'+(ses.length?'':' libre')+(iso===todayISO?' hoy':'')+(iso===(ENT_OJEO||todayISO)?' sel':'');
       h += '<button type="button" class="'+cls+'" data-ojear-ent="'+iso+'" '+
-           'title="'+esc(formatFecha(iso)+(ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento')+(fx?' · '+textoFestivo(fx):''))+'">'+
+           'title="'+esc(formatFecha(iso)+(ses.length>1?': '+ses.length+' entrenamientos':ses.length?': '+(ses[0].titulo||'entrenamiento'):': sin entrenamiento')+(fx?' · '+textoFestivo(fx):''))+'">'+
            '<span class="te-n">'+(iso===todayISO?'hoy':nom[i])+'</span>'+
            '<span class="te-num">'+d.getDate()+'</span>'+
            '<span class="te-et">'+esc(ses.length?(nombreDeporte(ses[0].deporte)||tipoNombre(ses[0].tipo)||'entreno'):(fx?(fx.tipo==='cierre'?'cierre':'festivo'):'libre'))+'</span>'+
@@ -2306,22 +2421,65 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var c = {}; for(var k in s){ c[k] = s[k]; }
         c.__titulos = [s.titulo || 'Entrenamiento de hoy'];
         c.__n = 1;
+        c.__partes = [s];
         out.push(c);
       } else {
         var c2 = out[idx[g]];
         c2.__n++;
+        c2.__partes.push(s);
+        /* La hora y el sitio de la tarjeta salían de la PRIMERA parte: con un
+           entreno por atleta, el rodaje de las 9:00 de uno ponía «09:00» a
+           todo el grupo. Si no son iguales en todas, no se dice ninguna. */
+        if(String(c2.hora||'') !== String(s.hora||'')) c2.__horaMezcla = true;
+        if(String(c2.lugar||'') !== String(s.lugar||'')) c2.__lugarMezcla = true;
         var t = s.titulo || 'Entrenamiento de hoy';
         if(c2.__titulos.indexOf(t) < 0) c2.__titulos.push(t);
         if(!s.publicada) c2.publicada = false;   // si alguna parte está en borrador, se avisa
       }
     });
     out.forEach(function(c){
+      /* El título juntado solo vale para pocas partes con nombre parecido.
+         Con un entreno por atleta (la Academia sube 13-14 al día) salía una
+         ristra de diez líneas en letra gorda que no se podía leer: esas
+         tarjetas se pintan con su lista aparte (ver `partesHoyHTML`). */
       c.titulo = c.__titulos.join(' · ');
+      if(c.__horaMezcla) c.hora = null;
+      if(c.__lugarMezcla) c.lugar = null;   // se queda el sitio habitual del grupo
       /* Varias sesiones = el grupo entero (entre todas cubren a todos): sin
          «solo X», que se leería como que solo entrenan unos pocos. */
       if(c.__n > 1) c.atletas_ids = null;
     });
     return out;
+  }
+
+  /* ¿Es un entreno por atleta? Lo es si cada parte va para UNA persona. */
+  function sonIndividuales(c){
+    return (c.__partes||[]).every(function(p){ return Array.isArray(p.atletas_ids) && p.atletas_ids.length === 1; });
+  }
+  // «13 entrenos individuales»; si todas las partes se llaman igual (el
+  // mismo entreno partido por volúmenes), ese nombre; si no, «3 entrenos».
+  function tituloVarias(c){
+    if(sonIndividuales(c)) return c.__n+' entrenos individuales';
+    if(c.__titulos && c.__titulos.length === 1) return c.__titulos[0];
+    return c.__n+' entrenos';
+  }
+  // La lista plegada de la tarjeta: «Nombre — título», cada línea abre su sesión.
+  function partesHoyHTML(c){
+    var partes = (c.__partes||[]).map(function(p){
+      var ids = Array.isArray(p.atletas_ids) ? p.atletas_ids : [];
+      var quien = !ids.length ? 'Todo el grupo'
+                : (ids.length === 1 && !atletaPorId(ids[0])) ? 'Otro atleta'
+                : nombresDeIds(ids, 2);
+      return { s: p, quien: quien };
+    }).sort(function(a, b){ return a.quien.localeCompare(b.quien, 'es'); });
+    return '<details class="he-partes"><summary>Ver los '+partes.length+' <span aria-hidden="true">&rsaquo;</span></summary><ul>'+
+      partes.map(function(p){
+        return '<li><button type="button" data-ver="'+escAttr(p.s.id)+'" data-grupo="'+escAttr(p.s.grupo_id)+'">'+
+          '<b>'+esc(p.quien)+'</b> — '+esc(p.s.titulo || 'Entrenamiento')+
+          (p.s.hora && !c.hora ? ' · '+esc(horaCorta(p.s.hora)) : '')+
+          (p.s.publicada === false ? ' <em>(borrador)</em>' : '')+'</button></li>';
+      }).join('')+
+    '</ul></details>';
   }
 
   function pintarHoy(){
@@ -2386,21 +2544,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           var fuera = rf.no.concat(rf.parcial, rf.nose);
           lineaFoto = '<p class="he-foto">'+icSinFoto+'<span>No salen en fotos publicadas: <strong>'+esc(nombresCortos(fuera, 3))+'</strong>.</span></p>';
         }
+        /* Varias sesiones del grupo ese día: título corto con cuántas son y,
+           debajo, la lista plegada con quién hace qué, cada una con su
+           enlace. Con UNA sesión todo sigue como siempre. */
+        var varias = s.__n > 1;
+        var titulo = varias ? tituloVarias(s) : (s.titulo || 'Entrenamiento de hoy');
         return '<div class="hoy-e">'+
           '<div class="he-top">'+
             '<span class="he-et">Hoy · '+esc(nombreGrupo(s.grupo_id)||'tu grupo')+'</span>'+
             (tipo ? '<span class="he-tipo">'+esc(tipo)+'</span>' : '')+
           '</div>'+
           '<div>'+
-            '<h2 class="he-tit">'+esc(s.titulo || 'Entrenamiento de hoy')+'</h2>'+
+            '<h2 class="he-tit">'+esc(titulo)+'</h2>'+
             (det.length ? '<div class="he-det">'+det.join('')+'</div>' : '')+
           '</div>'+
+          (varias ? partesHoyHTML(s) : '')+
           (!s.publicada ? '<p class="he-aviso">Está en borrador: todavía no lo ven tus atletas.</p>' : '')+
           (festivoDeGrupo(s.grupo_id, diaVer) ? '<p class="he-aviso">Día marcado en el calendario del club: '+esc(textoFestivo(festivoDeGrupo(s.grupo_id, diaVer)))+'. Confirma con tus atletas que se entrena.</p>' : '')+
           lineaFoto+
           '<div class="he-btns">'+
             '<button type="button" class="he-lista" data-lista="'+escAttr(s.grupo_id)+'">Pasar lista</button>'+
-            '<button type="button" class="he-ver" data-ver="'+escAttr(s.id)+'" data-grupo="'+escAttr(s.grupo_id)+'">Ver entrenamiento</button>'+
+            /* Con varias, cada una se abre desde su línea de la lista: un
+               solo botón abría la del primer atleta y nada más. */
+            (varias ? '' : '<button type="button" class="he-ver" data-ver="'+escAttr(s.id)+'" data-grupo="'+escAttr(s.grupo_id)+'">Ver entrenamiento</button>')+
           '</div>'+
         '</div>';
       }).join('');
@@ -2493,15 +2659,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
-  async function refrescarDia(){
+  /* Lo de hoy y los avisos no dependen uno de otro: se piden a la vez y
+     cada uno se pinta en cuanto llega (antes los avisos esperaban a que
+     terminara todo lo de hoy). */
+  function refrescarDia(){
     HOY.cargando = true; AVISOS.cargando = true;
     pintarHoy(); pintarAvisos();
-    await cargarHoy();
-    HOY.cargando = false; pintarHoy();
-    await cargarAvisos();
-    AVISOS.cargando = false; pintarAvisos();
+    return Promise.all([
+      cargarHoy().then(function(){ HOY.cargando = false; pintarHoy(); }),
+      cargarAvisos().then(function(){ AVISOS.cargando = false; pintarAvisos(); })
+    ]);
   }
-  refrescarDia();
+  var DIA_PEDIDO = refrescarDia();
 
   // ============================================================
   // SECCIÓN 1a · QUIÉN SE HA APUNTADO A TUS ENTRENOS ABIERTOS
@@ -2531,16 +2700,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!APUNTADOS.sesiones.length) return;
     var sids = APUNTADOS.sesiones.map(function(s){ return s.id; });
 
-    var ri = await sb.from('sesion_inscripciones').select('id,sesion_id,atleta_id,created_at').in('sesion_id', sids);
+    // Los míos y el TOTAL de apuntados (incluida la gente de otros grupos,
+    // que sale de la agenda del club, que sí puede contarlos), a la vez.
+    var R = await Promise.all([
+      sb.from('sesion_inscripciones').select('id,sesion_id,atleta_id,created_at').in('sesion_id', sids),
+      pedir(function(){ return sb.from('sesiones_agenda').select('sesion_id,apuntados,libres').in('sesion_id', sids); })
+    ]);
+    var ri = R[0];
     if(!ri.error && ri.data) ri.data.forEach(function(i){
       (APUNTADOS.porSesion[i.sesion_id] = APUNTADOS.porSesion[i.sesion_id] || []).push(i);
     });
-    // El TOTAL de apuntados (incluida la gente de otros grupos) sale de la
-    // agenda del club, que sí puede contarlos.
-    try {
-      var ra = await sb.from('sesiones_agenda').select('sesion_id,apuntados,libres').in('sesion_id', sids);
-      if(!ra.error && ra.data) ra.data.forEach(function(v){ APUNTADOS.totales[v.sesion_id] = v; });
-    } catch(e){}
+    var ra = R[1];
+    if(!ra.error && ra.data) ra.data.forEach(function(v){ APUNTADOS.totales[v.sesion_id] = v; });
   }
 
   function pintarApuntados(){
@@ -2647,6 +2818,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     APUNTADOS.cargando = false; pintarApuntados();
   }
   refrescarApuntados();
+  // Cuando el Inicio ya tiene lo suyo, lo que solo sirve para planificar.
+  DIA_PEDIDO.then(cargarSecundarios, cargarSecundarios);
 
   // ============================================================
   // SECCIÓN 1b · PASAR LISTA
@@ -2749,8 +2922,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        entrene con dos grupos el mismo día —primera y segunda hora de la
        escuela— aparecía marcado en los dos, y desmarcarlo en uno borraba
        la marca que había puesto el otro entrenador. */
-    var asis = await sb.from('asistencia').select('atleta_id,presente')
-      .eq('fecha', LST.fecha).eq('grupo_id', LST.grupo).in('atleta_id', ids);
+    /* Las cuatro cosas de la lista (lo ya guardado, las faltas avisadas, la
+       sesión del día y las notas del día) se piden A LA VEZ y se aplican
+       después en el mismo orden de siempre: las faltas avisadas solo
+       rellenan a quien no tenga ya una marca guardada. */
+    var grupoPedido = LST.grupo, fechaPedida = LST.fecha;
+    var RL = await Promise.all([
+      sb.from('asistencia').select('atleta_id,presente')
+        .eq('fecha', fechaPedida).eq('grupo_id', grupoPedido).in('atleta_id', ids),
+      pedir(function(){ return sb.rpc('apo_faltas_avisadas', { p_grupos: [grupoPedido], p_fecha: fechaPedida }); }),
+      sb.from('sesiones').select('id,titulo,fecha,publicada').eq('grupo_id', grupoPedido).eq('fecha', fechaPedida).order('publicada',{ascending:false}).limit(1),
+      cargarNotasDia(ids, fechaPedida)
+    ]);
+    var asis = RL[0];
     if(asis.error){
       /* Sin esto, un fallo de red se vería como "no hay nadie pasado" y el
          entrenador repetiría la lista creyendo que se había perdido. */
@@ -2769,20 +2953,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        faltas a quien había avisado por la mañana. La función devuelve las de
        su grupo; el motivo solo si además es quien lo lleva, porque un motivo
        suele ser salud y eso no es del grupo. */
-    try {
-      var au = await sb.rpc('apo_faltas_avisadas', { p_grupos: [LST.grupo], p_fecha: LST.fecha });
-      if(!au.error && au.data) au.data.forEach(function(r){
-        LST.ausencias[r.atleta_id] = r;
-        if(LST.marcas[r.atleta_id]===undefined) LST.marcas[r.atleta_id] = false;
-      });
-    } catch(e){}
+    var au = RL[1];
+    if(!au.error && au.data) au.data.forEach(function(r){
+      LST.ausencias[r.atleta_id] = r;
+      if(LST.marcas[r.atleta_id]===undefined) LST.marcas[r.atleta_id] = false;
+    });
 
-    var se = await sb.from('sesiones').select('id,titulo,fecha,publicada').eq('grupo_id', LST.grupo).eq('fecha', LST.fecha).order('publicada',{ascending:false}).limit(1);
+    var se = RL[2];
     if(!se.error && se.data && se.data.length) LST.sesion = se.data[0];
 
-    /* Las notas de ESE día: así el icono de cada fila ya sale marcado si
-       alguien apuntó algo antes (por ejemplo, al corregir la lista). */
-    await cargarNotasDia(ids, LST.fecha);
+    /* Las notas de ESE día (ya pedidas arriba, con lo demás): así el icono
+       de cada fila ya sale marcado si alguien apuntó algo antes (por
+       ejemplo, al corregir la lista). */
 
     if(recuperarBorrador()){
       LST.sucio = true;
@@ -3025,6 +3207,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   });
 
   async function refrescarLista(){
+    LISTA_PEDIDA = true;
     LST.cargando = true; pintarLista();
     await cargarLista();
     LST.cargando = false; pintarLista();
@@ -3262,7 +3445,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(!(await puedoDejarLaLista())){ $('lst-fecha').value = anterior; return; }
       LST.fecha = nueva; refrescarLista();
     });
-    refrescarLista();
+    /* La lista del día ya no se pide aquí, al arrancar: se pide al entrar
+       en «Pasar lista» (ver irASeccion). */
   })();
 
   // ============================================================
@@ -3308,86 +3492,95 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     FICHA = { atletaId: atletaId, asistencia: [], pagos: [], registros: [], notas: [], notasFamilia: [], ausencias: [], contacto: null, abierto: '', rm: [], marcas: [], veMarcas: true, sesiones: {} };
 
     var desde = addDias(todayISO, -30);
-    var r1 = await sb.from('asistencia').select('fecha,presente').eq('atleta_id', atletaId).gte('fecha', desde).order('fecha', { ascending:false });
-    if(!r1.error && r1.data) FICHA.asistencia = r1.data;
-    /* El historial de faltas avisadas, con su motivo, solo lo lee quien lleva
-       a ese atleta: el motivo suele ser salud. Si entrena en tu grupo pero en
-       su ficha figura otro entrenador, esta consulta devuelve cero filas —y
-       eso NO quiere decir que no haya avisado ninguna vez—. Se guarda si el
-       apartado se puede enseñar o no, para no dar por mirado lo que no se ha
-       podido mirar. */
-    FICHA.veAusencias = false;
-    var r1b = await sb.from('ausencias').select('fecha,motivo,avisado_por_nombre').eq('atleta_id', atletaId).gte('fecha', addDias(todayISO,-60)).order('fecha', { ascending:false }).limit(8);
-    if(!r1b.error){ FICHA.veAusencias = true; if(r1b.data) FICHA.ausencias = r1b.data; }
-    var r1c = await sb.from('notas_familia').select('id,texto,fecha,autor_nombre,visible').eq('atleta_id', atletaId).order('fecha', { ascending:false }).limit(5);
-    if(!r1c.error && r1c.data) FICHA.notasFamilia = r1c.data;
-    /* Los recibos ya no se piden: lo que debe una familia no es cosa del
-       entrenador (migración 126). Se quitó también de la ficha porque, sin
-       datos, la línea decía «Sin recibos registrados» a todo el mundo, que
-       es peor que no decir nada: parece un dato y es una mentira. */
-    var r3 = await sb.from('registros_sesion').select('sesion_id,created_at,rpe,sensacion_general,como_me_siento,molestias').eq('atleta_id', atletaId).order('created_at', { ascending:false }).limit(5);
-    if(!r3.error && r3.data) FICHA.registros = r3.data;
-    /* De QUÉ entrenamiento habla cada cosa que ha contado. Sin esto, aquí se
-       leía «RPE 8/10 · me costó el final» y no había manera de volver al
-       entrenamiento del que hablaba: un comentario suelto sin nada detrás. */
-    var sesIds = (FICHA.registros||[]).map(function(r){ return r.sesion_id; })
-                   .filter(function(x, i, a){ return x && a.indexOf(x)===i; });
-    if(sesIds.length){
-      var r3b = await sb.from('sesiones').select('id,fecha,titulo,grupo_id,publicada').in('id', sesIds);
-      if(!r3b.error && r3b.data) r3b.data.forEach(function(s){ FICHA.sesiones[s.id] = s; });
-    }
-    /* ------------------------------------------------------------
-       CUÁNTO LLEVA HECHO · lo mismo que ve él en su portal
-       ------------------------------------------------------------
-       La ficha contaba las últimas cinco cosas que dijo el atleta y su
-       asistencia de treinta días, y con eso no se contesta la pregunta
-       que se hace un entrenador al abrirla: «¿este chaval está haciendo
-       el volumen que le he puesto?». Los metros estaban apuntados desde
-       el primer día; solo que no había dónde verlos sumados.
+    var F = FICHA;
+    /* TODO A LA VEZ, Y NO DOCE CONSULTAS EN FILA
+       Ninguna de estas necesita a otra, así que se piden juntas: antes la
+       ficha tardaba doce viajes a la base en pintarse. Solo hay dos que
+       esperan —de qué entrenamiento habla cada registro y los entrenos del
+       volumen—, y esas dos van juntas en una segunda vuelta. Lo que antes
+       iba envuelto en `try` (el volumen y el contacto de la familia) sigue
+       sin tumbar nada si falla: `pedir` lo convierte en { error }. */
+    var RF = await Promise.all([
+      sb.from('asistencia').select('fecha,presente').eq('atleta_id', atletaId).gte('fecha', desde).order('fecha', { ascending:false }),
+      /* El historial de faltas avisadas, con su motivo, solo lo lee quien lleva
+         a ese atleta: el motivo suele ser salud. Si entrena en tu grupo pero en
+         su ficha figura otro entrenador, esta consulta devuelve cero filas —y
+         eso NO quiere decir que no haya avisado ninguna vez—. Se guarda si el
+         apartado se puede enseñar o no, para no dar por mirado lo que no se ha
+         podido mirar. */
+      sb.from('ausencias').select('fecha,motivo,avisado_por_nombre').eq('atleta_id', atletaId).gte('fecha', addDias(todayISO,-60)).order('fecha', { ascending:false }).limit(8),
+      sb.from('notas_familia').select('id,texto,fecha,autor_nombre,visible').eq('atleta_id', atletaId).order('fecha', { ascending:false }).limit(5),
+      /* Los recibos ya no se piden: lo que debe una familia no es cosa del
+         entrenador (migración 126). Se quitó también de la ficha porque, sin
+         datos, la línea decía «Sin recibos registrados» a todo el mundo, que
+         es peor que no decir nada: parece un dato y es una mentira. */
+      sb.from('registros_sesion').select('sesion_id,created_at,rpe,sensacion_general,como_me_siento,molestias').eq('atleta_id', atletaId).order('created_at', { ascending:false }).limit(5),
+      /* ------------------------------------------------------------
+         CUÁNTO LLEVA HECHO · lo mismo que ve él en su portal
+         ------------------------------------------------------------
+         La ficha contaba las últimas cinco cosas que dijo el atleta y su
+         asistencia de treinta días, y con eso no se contesta la pregunta
+         que se hace un entrenador al abrirla: «¿este chaval está haciendo
+         el volumen que le he puesto?». Los metros estaban apuntados desde
+         el primer día; solo que no había dónde verlos sumados.
 
-       Es EL MISMO cálculo que ve el atleta (`assets/js/estadisticas.js`),
-       a propósito: si el entrenador mira una cifra y el atleta otra, la
-       conversación empieza discutiendo cuál de las dos es la buena.
+         Es EL MISMO cálculo que ve el atleta (`assets/js/estadisticas.js`),
+         a propósito: si el entrenador mira una cifra y el atleta otra, la
+         conversación empieza discutiendo cuál de las dos es la buena.
 
-       Los cinco registros de arriba no sirven para esto —son cinco y sin
-       las series dentro—, así que se pide otra vez con lo que hace falta.
-       Va al final de la carga porque es lo más pesado de la ficha y lo
-       último que se mira: si falla o tarda, lo demás ya está pintado.
-       ------------------------------------------------------------ */
-    FICHA.volumen = null;
-    try {
-      var rv = await sb.from('registros_sesion')
+         Los cinco registros de arriba no sirven para esto —son cinco y sin
+         las series dentro—, así que se pide otra vez con lo que hace falta.
+         ------------------------------------------------------------ */
+      pedir(function(){ return sb.from('registros_sesion')
         .select('sesion_id,created_at,tiempos_reales,rpe,sensacion_general')
         .eq('atleta_id', atletaId).gte('created_at', addDias(todayISO, -7*13))
-        .order('created_at', { ascending:false }).limit(250);
-      if(!rv.error && rv.data && rv.data.length){
-        var idsV = rv.data.map(function(r){ return r.sesion_id; })
-                     .filter(function(x,i,a){ return x && a.indexOf(x)===i; });
-        var sesV = [];
-        if(idsV.length){
-          var qv = await sb.from('sesiones').select('id,fecha,deporte,deporte_2').in('id', idsV);
-          if(!qv.error && qv.data) sesV = qv.data;
-        }
-        /* Si mientras se pedía esto el entrenador cerró la ficha y abrió la
-           de otro atleta, lo que llega aquí son los metros del PRIMERO: no
-           se escriben, o el segundo mostraría el volumen del otro. */
-        if(window.APOLANA_ESTADISTICAS && FICHA && FICHA.atletaId===atletaId)
-          FICHA.volumen = window.APOLANA_ESTADISTICAS.resumir(sesV, rv.data, 12);
-      }
-    } catch(e){}
-    var r4 = await sb.from('notas_atleta').select('id,texto,created_at').eq('atleta_id', atletaId).order('created_at', { ascending:false }).limit(3);
-    if(!r4.error && r4.data) FICHA.notas = r4.data;
-    /* Sus repeticiones máximas, de la más reciente a la más antigua: de aquí
-       salen los kilos que ve el atleta cuando el entrenamiento dice «80 % RM».
-       Se guardan todos los tests, no solo el último: la progresión de la
-       sentadilla a lo largo del año es justo lo que se quiere mirar. */
-    var r4b = await sb.from('rm_atleta').select('id,ejercicio,peso_kg,fecha_test,nota')
-                .eq('atleta_id', atletaId).order('fecha_test', { ascending:false, nullsFirst:false });
-    if(!r4b.error && r4b.data) FICHA.rm = r4b.data;
-    await traerMarcas(atletaId);
+        .order('created_at', { ascending:false }).limit(250); }),
+      sb.from('notas_atleta').select('id,texto,created_at').eq('atleta_id', atletaId).order('created_at', { ascending:false }).limit(3),
+      /* Sus repeticiones máximas, de la más reciente a la más antigua: de aquí
+         salen los kilos que ve el atleta cuando el entrenamiento dice «80 % RM».
+         Se guardan todos los tests, no solo el último: la progresión de la
+         sentadilla a lo largo del año es justo lo que se quiere mirar. */
+      sb.from('rm_atleta').select('id,ejercicio,peso_kg,fecha_test,nota')
+        .eq('atleta_id', atletaId).order('fecha_test', { ascending:false, nullsFirst:false }),
+      traerMarcas(atletaId),
+      pedir(function(){ return sb.rpc('contacto_familia_atleta', { p_atleta: atletaId }); })
+    ]);
+    /* Si mientras se pedía esto el entrenador cerró la ficha y abrió la de
+       otro atleta, lo que llega es del PRIMERO: no se escribe en la nueva. */
+    if(!F || FICHA !== F) return;
+    var r1 = RF[0], r1b = RF[1], r1c = RF[2], r3 = RF[3], rv = RF[4], r4 = RF[5], r4b = RF[6], r5 = RF[8];
+    if(!r1.error && r1.data) F.asistencia = r1.data;
+    F.veAusencias = false;
+    if(!r1b.error){ F.veAusencias = true; if(r1b.data) F.ausencias = r1b.data; }
+    if(!r1c.error && r1c.data) F.notasFamilia = r1c.data;
+    if(!r3.error && r3.data) F.registros = r3.data;
+    if(!r4.error && r4.data) F.notas = r4.data;
+    if(!r4b.error && r4b.data) F.rm = r4b.data;
+    if(!r5.error && r5.data && r5.data.length) F.contacto = r5.data[0];
+    /* Segunda vuelta, las dos a la vez: de QUÉ entrenamiento habla cada cosa
+       que ha contado (sin esto se leía «RPE 8/10 · me costó el final» y no
+       había manera de volver al entrenamiento del que hablaba), y el deporte
+       de los entrenos del volumen. */
+    var sesIds = (F.registros||[]).map(function(r){ return r.sesion_id; })
+                   .filter(function(x, i, a){ return x && a.indexOf(x)===i; });
+    var hayVol = !rv.error && rv.data && rv.data.length;
+    var idsV = hayVol ? rv.data.map(function(r){ return r.sesion_id; })
+                           .filter(function(x,i,a){ return x && a.indexOf(x)===i; }) : [];
+    var RF2 = await Promise.all([
+      sesIds.length ? sb.from('sesiones').select('id,fecha,titulo,grupo_id,publicada').in('id', sesIds) : null,
+      idsV.length ? pedir(function(){ return sb.from('sesiones').select('id,fecha,deporte,deporte_2').in('id', idsV); }) : null
+    ]);
+    if(FICHA !== F) return;
+    var r3b = RF2[0];
+    if(r3b && !r3b.error && r3b.data) r3b.data.forEach(function(s){ F.sesiones[s.id] = s; });
+    F.volumen = null;
     try {
-      var r5 = await sb.rpc('contacto_familia_atleta', { p_atleta: atletaId });
-      if(!r5.error && r5.data && r5.data.length) FICHA.contacto = r5.data[0];
+      if(hayVol){
+        var qv = RF2[1], sesV = [];
+        if(qv && !qv.error && qv.data) sesV = qv.data;
+        if(window.APOLANA_ESTADISTICAS)
+          F.volumen = window.APOLANA_ESTADISTICAS.resumir(sesV, rv.data, 12);
+      }
     } catch(e){}
 
     if(FICHA && FICHA.atletaId===atletaId) pintarFicha();
@@ -5411,6 +5604,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargarSesionesGrupo(grupoId){
     var selEditar = $('pl-editar');
     if(!selEditar) return;
+    PL_PEDIDO = true;
     selEditar.innerHTML = '<option value="">— nuevo entrenamiento —</option>';
     if(!grupoId) return;
     /* 200 en vez de 60: este desplegable ya no es solo «el de la semana
@@ -5965,7 +6159,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     // estado inicial
     limpiarFormulario();
-    cargarSesionesGrupo($('pl-grupo').value);
+    /* Los entrenamientos del grupo (200, con sus bloques) se piden al
+       entrar en el planificador (ver irASeccion), no al arrancar. */
   })();
 
 
@@ -7541,7 +7736,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
 
   // La primera vez que se entra se trae la semana en curso del primer grupo.
+  var SW_EXTRAS_PEDIDOS = false;
   function entrarSemana(){
+    if(!SW_EXTRAS_PEDIDOS && $('sw-dup-semana')){
+      SW_EXTRAS_PEDIDOS = true;
+      cargarSemanasOrigen();
+      cargarPlantillas();
+    }
     if(!MIS_GRUPOS.length || !$('sw-vista')) return;
     if(!SV_GRUPO) SV_GRUPO = MIS_GRUPOS[0].id;
     if(!SV_LUNES) SV_LUNES = lunesDe(todayISO);
@@ -7915,8 +8116,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(SEMANA){ SEMANA.grupo_id = $('sw-grupo').value; await comprobarChoques(); }
     });
 
-    cargarSemanasOrigen();
-    cargarPlantillas();
+    /* «Duplicar una semana» y las plantillas se piden la primera vez que
+       se entra en «Planificar semana» (ver entrarSemana), no al arrancar. */
 
     /* ------------------------------------------------------------
        TODO LO QUE SE PULSA EN LA REJILLA DE LA SEMANA
@@ -8265,6 +8466,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargarSesionesFeedback(){
     var sel = $('fb-sesion');
     if(!sel) return;
+    FB_PEDIDO = true;
     var prev = sel.value;
     var r = await sb.from('sesiones').select('id,fecha,titulo,grupo_id,publicada').order('fecha',{ascending:false}).limit(120);
     FB_SESIONES = {};
@@ -8589,7 +8791,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var b = ev.target && ev.target.closest ? ev.target.closest('.fbr-guardar') : null;
       if(b) guardarComentario(b);
     });
-    cargarSesionesFeedback();
+    /* Los entrenamientos del desplegable se piden al entrar en Feedback
+       (ver irASeccion), no al arrancar. */
     prepararDescargaFeedback();
   })();
 
