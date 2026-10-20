@@ -58,6 +58,8 @@ create table if not exists public.escuela_sync_alias (
   nota        text,
   creado_en   timestamptz not null default now()
 );
+-- no_tocar: la comprobación casa la fila con esa ficha pero NUNCA le cambia el estado
+alter table public.escuela_sync_alias add column if not exists no_tocar boolean not null default false;
 alter table public.escuela_sync_alias enable row level security;
 drop policy if exists "admin gestiona equivalencias" on public.escuela_sync_alias;
 create policy "admin gestiona equivalencias" on public.escuela_sync_alias
@@ -163,6 +165,7 @@ begin
            bool_or(f.dice='activo') hay_activo, bool_or(f.dice='baja') hay_baja, bool_or(f.dice='prueba') hay_prueba,
            string_agg(distinct f.hoja||' fila '||f.fila, ', ') de
       from _f f join public.atletas a on a.id = f.atleta_id
+     where not exists (select 1 from public.escuela_sync_alias al where al.atleta_id = a.id and al.no_tocar)
      group by a.id, a.nombre, a.apellidos, a.estado
   loop
     if r.hay_activo and r.estado = 'prueba' then
