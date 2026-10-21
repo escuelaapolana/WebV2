@@ -427,11 +427,24 @@ main { max-width: 640px; margin: 0 auto; padding: 18px 16px 18px; }
     pintarLista();
   }
 
+  /* Lectura directa en la base (rápida, sin arrancar la función): como el webhook de
+     Stripe suele confirmar la venta antes de que la persona vuelva, casi siempre ya
+     consta «pagada» y el «Pagado ✓» sale al instante. Si no, se pregunta a Stripe. */
+  function estadoDirecto(ref) {
+    return fetch(SB + '/rest/v1/rpc/nevera_venta_estado', {
+      method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_ref: ref })
+    }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+  }
   function comprobar(ref) {
     pintarEspera();
-    var inicio = Date.now();
+    var inicio = Date.now(), primera = true;
     var vuelta = function () {
-      edge({ comprobar: ref }).then(function (d) {
+      var paso = primera
+        ? estadoDirecto(ref).then(function (d) { return (d && d.estado === 'pagada') ? d : edge({ comprobar: ref }); })
+        : edge({ comprobar: ref });
+      primera = false;
+      paso.then(function (d) {
         if (d.estado === 'pagada') {
           cesta = {}; borrar(CLAVE_CESTA, true);
           guardar(CLAVE_ULTIMO, JSON.stringify({ ref: ref, t: Date.now(), pagada: true }));
@@ -440,7 +453,7 @@ main { max-width: 640px; margin: 0 auto; padding: 18px 16px 18px; }
         if (d.estado === 'cancelada') { pintarMal('Pago no hecho', 'Este pago se canceló y <b>no se ha cobrado nada</b>. Puedes volver a intentarlo.', ref, false); return; }
         if (d.estado === 'devuelta') { pintarMal('Pago devuelto', 'Este pago se ha devuelto.', ref, false); return; }
         if (d.estado === 'no_existe') { pintarMal('No encontramos ese pago', 'Vuelve a la nevera y paga de nuevo.', null, false); return; }
-        if (Date.now() - inicio < 20000) { setTimeout(vuelta, 2000); return; }
+        if (Date.now() - inicio < 20000) { setTimeout(vuelta, 1200); return; }
         pintarMal('Aún no nos consta', 'Si te ha llegado el cargo, espera un momento y vuelve a comprobar. Si no, <b>no se ha cobrado nada</b>.', ref, true);
       }).catch(function () {
         if (Date.now() - inicio < 20000) { setTimeout(vuelta, 2000); return; }
