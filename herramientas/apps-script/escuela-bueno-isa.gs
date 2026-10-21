@@ -1,7 +1,7 @@
 /**
  * Club Atletismo Apolana · Comprobación diaria de «BUENO ISA» (escuela)
  * ---------------------------------------------------------------------
- * Cada día a las 12:30 lee las hojas de Isa (con los COLORES de cada fila)
+ * Cada día a las 9:00 y a las 12:30 lee las hojas de Isa (con los COLORES de cada fila)
  * y las manda a la app (Edge `escuela-isa-sync`, migración 402), que:
  *   · quita «de prueba» a quien está en verde,
  *   · da de baja (y saca de sus grupos) a quien está en rojo,
@@ -82,12 +82,14 @@ function comprobarEscuela() { enviar_(true); }
 /** Para probar: lee y manda, pero la app NO cambia nada (sí puede llegar el correo con lo que haría). */
 function probarSinAplicar() { enviar_(false); }
 
-/** Ejecutar UNA vez: deja programada la comprobación diaria a las 12:30 (hora de Madrid). */
+/** Ejecutar UNA vez: deja programada la comprobación diaria a las 9:00 y a las 12:30 (hora de Madrid).
+ *  Se puede volver a ejecutar sin miedo: borra las programaciones anteriores y las pone de nuevo. */
 function instalar() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'comprobarEscuela') ScriptApp.deleteTrigger(t);
   });
+  ScriptApp.newTrigger('comprobarEscuela').timeBased().everyDays(1).atHour(9).nearMinute(0).inTimezone('Europe/Madrid').create();
   ScriptApp.newTrigger('comprobarEscuela').timeBased().everyDays(1).atHour(12).nearMinute(30).inTimezone('Europe/Madrid').create();
   leerFilas_();   // para que pida los permisos ahora y avise si falta alguna pestaña
-  Logger.log('Listo: cada día sobre las 12:30.');
+  Logger.log('Listo: cada día sobre las 9:00 y las 12:30.');
 }
