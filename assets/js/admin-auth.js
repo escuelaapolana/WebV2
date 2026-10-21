@@ -217,15 +217,155 @@
         var menu = document.createElement('div');
         menu.className = 'vc-menu'; menu.hidden = true;
         menu.setAttribute('role', 'menu');
-        menu.innerHTML = '<div class="vc-titu">Abrir la vista de…</div>' +
+        /* «VER COMO UNA PERSONA» (21-oct-2026): arriba, un buscador de personas.
+           Al elegir a alguien salen las vistas que le tocan (por sus papeles,
+           sus hijos, sus grupos y sus secciones) y cada una abre en pestaña
+           nueva portal/<vista>/?como=<perfil_id>: la app TAL COMO LA VE ESA
+           PERSONA, solo para mirar (lo que escribe está bloqueado; ver «VER
+           COMO» en portal-auth.js y la migración 421). Solo sale para un admin
+           de verdad (soy_admin_de_verdad; sin la 421, es_admin). */
+        menu.innerHTML =
+          '<div class="vc-persona" id="vc-persona" hidden>' +
+            '<div class="vc-titu">Ver como una persona</div>' +
+            '<input type="search" class="vc-buscar" id="vc-buscar" placeholder="Nombre, apellidos o correo" autocomplete="off" aria-label="Buscar a una persona">' +
+            '<div class="vc-res" id="vc-res"></div>' +
+          '</div>' +
+          '<div class="vc-titu">Abrir la vista de… (con tus datos)</div>' +
           VISTAS.map(function (v) { return '<a role="menuitem" href="' + b + v[1] + '" target="_blank" rel="noopener">' + esc(v[0]) + FL + '</a>'; }).join('') +
           '<div class="vc-pie">Se abre en una pestaña nueva, solo para mirar cómo queda. La verás con tus propios datos (o vacía si no tienes ese papel).</div>';
         document.body.appendChild(menu);
+        (function () {
+          var st = document.createElement('style');
+          st.textContent =
+            '.vc-menu{max-height:calc(100vh - 80px);overflow:auto;width:340px}' +
+            '.vc-persona{padding-bottom:8px;margin-bottom:6px;border-bottom:1px solid var(--linea,#EDE6D7)}' +
+            '.vc-buscar{display:block;width:calc(100% - 12px);margin:4px 6px 6px;box-sizing:border-box;min-height:44px;padding:10px 13px;border:1px solid #E0D8C8;border-radius:10px;font:inherit;font-size:15px;color:#2E4256;background:#fff}' +
+            '.vc-buscar:focus{outline:2px solid #3B85C0;outline-offset:0;border-color:#3B85C0}' +
+            '.vc-res button.vc-p{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;min-height:44px;padding:8px 12px;border:0;border-radius:10px;background:none;text-align:left;font:inherit;color:var(--navy,#2E4256);cursor:pointer;box-sizing:border-box}' +
+            '.vc-res button.vc-p:hover,.vc-res button.vc-p:focus-visible{background:var(--crema,#F4EEE1)}' +
+            '.vc-res .vc-p b{font-size:14.5px;font-weight:600}' +
+            '.vc-res .vc-p small,.vc-res .vc-nota{font-size:12.5px;color:var(--texto-suave,#6E6656);line-height:1.35}' +
+            '.vc-res .vc-nota{padding:6px 12px}' +
+            '.vc-res .vc-quien{padding:6px 12px 4px}' +
+            '.vc-res .vc-quien b{display:block;font-size:15.5px;color:var(--navy,#2E4256)}' +
+            '.vc-res a.vc-como{font-weight:600}' +
+            '.vc-res a small{display:block;font-weight:400;font-size:12.5px;color:var(--texto-suave,#6E6656)}' +
+            '.vc-res details summary{padding:9px 12px;font-size:13.5px;color:#2F6FA8;cursor:pointer;min-height:24px}' +
+            '.vc-res .vc-otra{display:block;width:100%;min-height:40px;padding:8px 12px;border:0;background:none;text-align:left;font:inherit;font-size:14px;color:#2F6FA8;cursor:pointer}' +
+            '@media(max-width:400px){.vc-menu{width:auto;left:12px}}';
+          document.head.appendChild(st);
+        })();
+        (function () {
+          var caja = menu.querySelector('#vc-persona');
+          var q = menu.querySelector('#vc-buscar');
+          var res = menu.querySelector('#vc-res');
+          var gente = null, cargando = null, turno = 0;   /* la última petición manda */
+          /* ¿Es admin de verdad? Solo entonces sale el buscador. */
+          function soyAdmin() {
+            return Promise.resolve(sb.rpc('soy_admin_de_verdad')).then(function (r) {
+              if (r && !r.error) return r.data === true;
+              return Promise.resolve(sb.rpc('es_admin')).then(function (r2) { return !!(r2 && !r2.error && r2.data === true); });
+            }).catch(function () { return false; });
+          }
+          soyAdmin().then(function (si) { if (si) caja.hidden = false; });
+          function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+          var PAPEL = { admin: 'admin', tesoreria: 'tesorería', contabilidad: 'contabilidad', junta: 'junta', entrenador: 'entrenador',
+            atleta: 'atleta', padre: 'familia', coordinador: 'coordinación', cubo: 'Cubo (gestión)', 'cubo-atleta': 'El Cubo',
+            'cubo-lista': 'lista del Cubo', socio: 'socio', responsable: 'responsable', escuela: 'escuela', pendiente: 'pendiente' };
+          function papeles(p) {
+            var rr = (p.roles && p.roles.length) ? p.roles : [p.rol];
+            return rr.filter(Boolean).map(function (r) { return PAPEL[r] || r; }).join(', ');
+          }
+          function nombreDe(p) { return (String(p.nombre || '') + ' ' + String(p.apellidos || '')).trim() || p.email; }
+          function cargar() {
+            if (cargando) return cargando;
+            cargando = Promise.resolve(sb.from('perfiles').select('id,nombre,apellidos,email,rol,roles,activo').order('nombre').limit(3000))
+              .then(function (r) { gente = (r && !r.error && r.data) || []; return gente; }, function () { gente = []; return gente; });
+            return cargando;
+          }
+          function buscar() {
+            var t = norm(q.value).trim(), mio = ++turno;
+            if (!t) { res.innerHTML = ''; return; }
+            cargar().then(function () {
+              if (mio !== turno || norm(q.value).trim() !== t) return;
+              var pal = t.split(/\s+/);
+              var hay = gente.filter(function (p) {
+                var s = norm(nombreDe(p) + ' ' + p.email);
+                return pal.every(function (w) { return s.indexOf(w) !== -1; });
+              }).slice(0, 8);
+              res.innerHTML = hay.length ? hay.map(function (p) {
+                return '<button type="button" class="vc-p" data-id="' + esc(p.id) + '"><b>' + esc(nombreDe(p)) + '</b>' +
+                  '<small>' + esc(papeles(p)) + (p.activo === false ? ' · desactivada' : '') + ' · ' + esc(p.email) + '</small></button>';
+              }).join('') : '<div class="vc-nota">No hay nadie con «' + esc(q.value.trim()) + '».</div>';
+            });
+          }
+          var tq = 0;
+          q.addEventListener('input', function () { clearTimeout(tq); tq = setTimeout(buscar, 120); });
+          q.addEventListener('focus', function () { cargar(); });
+          /* Las vistas que le tocan a esa persona (lo mismo que deduce el portal). */
+          var MUNDO = {
+            natacion: [['Natación', 'portal/natacion/'], ['Pasar lista de natación', 'portal/natacion-asistencia/']],
+            'escuela-natacion': [['Escuela de natación', 'portal/escuela-natacion/']],
+            cubo: [['El Cubo (gestión)', 'portal/cubo/']],
+            pista: [['Pista', 'portal/pista/']],
+            'escuela-atletismo': [['Escuela de atletismo', 'portal/escuela-atletismo/']],
+            running: [['Running', 'portal/running/']],
+            comunicacion: [['Comunicación', 'portal/comunicacion/']]
+          };
+          function elegir(id) {
+            var p = (gente || []).filter(function (x) { return x.id === id; })[0];
+            if (!p) return;
+            clearTimeout(tq);
+            var mio = ++turno;
+            res.innerHTML = '<div class="vc-nota">Mirando qué ve ' + esc(nombreDe(p)) + '…</div>';
+            var rr = (p.roles && p.roles.length) ? p.roles : [p.rol];
+            Promise.all([
+              Promise.resolve(sb.from('atletas').select('nombre,perfil_id,perfil_padre_id,entrenador_id,tipo_membresia')
+                .or('perfil_id.eq.' + id + ',perfil_padre_id.eq.' + id + ',entrenador_id.eq.' + id)).catch(function () { return {}; }),
+              Promise.resolve(sb.from('grupos').select('nombre,seccion,turno').eq('entrenador_id', id)).catch(function () { return {}; }),
+              Promise.resolve(sb.from('responsable_seccion').select('seccion').eq('perfil_id', id)).catch(function () { return {}; })
+            ]).then(function (x) {
+              if (mio !== turno) return;
+              var at = (x[0] && x[0].data) || [], gr = (x[1] && x[1].data) || [], rs = (x[2] && x[2].data) || [];
+              var hijos = at.filter(function (a) { return a.perfil_padre_id === id; }).map(function (a) { return a.nombre; });
+              var propia = at.filter(function (a) { return a.perfil_id === id; });
+              var entrena = gr.length || rr.indexOf('entrenador') !== -1 || at.some(function (a) { return a.entrenador_id === id; });
+              var v = [['La app (Inicio, Lo mío, Calendario, Más)', 'portal/inicio/', '']];
+              if (hijos.length || rr.indexOf('padre') !== -1) v.push(['Familia', 'portal/familia/', hijos.join(', ')]);
+              if (entrena) v.push(['Entrenador', 'portal/entrenador/', gr.map(function (g) { return window.APOLANA_GRUPO_NOMBRE ? window.APOLANA_GRUPO_NOMBRE(g) : g.nombre; }).join(', ')]);
+              if (gr.some(function (g) { return g.seccion === 'escuela'; })) v.push(['Pasar lista de la escuela', 'portal/escuela-lista/', '']);
+              if (rr.indexOf('cubo-lista') !== -1 || gr.some(function (g) { return g.seccion === 'cubo'; })) v.push(['El Cubo (pasar lista)', 'portal/cubo-lista/', '']);
+              if (propia.some(function (a) { return a.tipo_membresia !== 'cubo'; })) v.push(['Su ficha de atleta', 'portal/atleta/', 'Entrenos, marcas y tests']);
+              if (rs.length || rr.indexOf('responsable') !== -1) {
+                v.push(['Responsable de sección', 'portal/responsable/', rs.map(function (s) { return s.seccion; }).join(', ')]);
+                rs.forEach(function (s) { (MUNDO[s.seccion] || []).forEach(function (m) { v.push([m[0], m[1], '']); }); });
+              }
+              var vistas = {}, suyas = v.filter(function (e) { if (vistas[e[1]]) return false; vistas[e[1]] = 1; return true; });
+              var otras = VISTAS.filter(function (e) { return !vistas[e[1]]; });
+              function enlace(e, extra) {
+                return '<a role="menuitem" class="vc-como" href="' + b + e[1] + '?como=' + encodeURIComponent(id) + '" target="_blank" rel="noopener">' +
+                  '<span>' + esc(e[0]) + (extra ? '<small>' + esc(extra) + '</small>' : '') + '</span>' + FL + '</a>';
+              }
+              res.innerHTML =
+                '<div class="vc-quien"><b>' + esc(nombreDe(p)) + '</b><span class="vc-nota" style="padding:0">' + esc(papeles(p)) + '</span></div>' +
+                suyas.map(function (e) { return enlace(e, e[2]); }).join('') +
+                (otras.length ? '<details><summary>Otras vistas (puede que no le toquen)</summary>' + otras.map(function (e) { return enlace(e); }).join('') + '</details>' : '') +
+                '<button type="button" class="vc-otra" id="vc-otra">← Otra persona</button>';
+              var ot = res.querySelector('#vc-otra');
+              if (ot) ot.addEventListener('click', function () { buscar(); q.focus(); });
+            });
+          }
+          res.addEventListener('click', function (e) {
+            var t = e.target.closest && e.target.closest('button.vc-p');
+            if (t) { e.preventDefault(); elegir(t.getAttribute('data-id')); }
+          });
+        })();
         var btn = document.getElementById('ver-como');
         function colocar() {
           var r = btn.getBoundingClientRect();
           menu.style.top = (r.bottom + 6) + 'px';
           menu.style.right = Math.max(8, window.innerWidth - r.right) + 'px';
+          menu.style.maxHeight = Math.max(200, window.innerHeight - r.bottom - 18) + 'px';
         }
         function fuera(e) { if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) cerrar(); }
         function cerrar() { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', fuera, true); }

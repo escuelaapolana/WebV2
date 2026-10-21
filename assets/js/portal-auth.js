@@ -106,7 +106,7 @@
      SOLO sirven para PINTAR antes: los permisos los decide siempre la
      base (RLS). Se borran al cerrar sesión y al cambiar de vista.
      OJO: no se toca ninguna otra clave (p. ej. 'apo-mundo' es de mundos.js). */
-  var CACHE_PREFIJOS = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-', 'apo-pant-'];
+  var CACHE_PREFIJOS = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-', 'apo-pant-', 'apo-como'];
   function limpiarCachePortal() {
     try {
       var borrar = [];
@@ -128,6 +128,350 @@
   var _veniaDeCambio = false;
   try { _veniaDeCambio = !!sessionStorage.getItem('apolana.cambiando'); } catch (e) {}
   if (_veniaDeCambio) limpiarCachePortal();
+
+  /* ------------------------------------------------------------
+     «VER COMO…» DE VERDAD · SOLO MIRAR (21-oct-2026)
+     ------------------------------------------------------------
+     Desde el panel, «Ver como…» → una persona → abre esta pestaña con
+     ?como=<perfil_id>. Si la cuenta que ha entrado es ADMIN DE VERDAD (lo
+     dice la base: ver_como_perfil / soy_admin_de_verdad, migración 421), la
+     app se pinta con el perfil de esa persona: sus papeles, sus zonas, su
+     barra de abajo, sus hijos y sus grupos. Arriba, una banda fija lo dice
+     («Viendo como Joan Pellín · solo mirar · Salir»).
+     · SOLO MIRAR: el cliente `sb` se envuelve. insert/update/upsert/delete,
+       las RPC que no son de lectura, subir/borrar ficheros, las funciones
+       Edge y lo de la contraseña NO se ejecutan: devuelven un error amable.
+     · Las RPC de LECTURA (LECTURA_COMO) se piden a la base COMO esa persona
+       (ver_como_leer, migración 421), así lo «mío» (natacion_mis_plazas,
+       mi_cuota_entreno, mis_mundos…) es lo suyo y no lo del admin. Sin la
+       migración, lo «mío» sale como «no se puede ver» (nunca lo del admin).
+     · Las lecturas de tablas van con la RLS del admin: las pantallas que
+       filtran por perfil.id salen fieles; alguna podría enseñar MÁS de lo
+       que esa persona ve (la RLS del admin es más ancha).
+     · El modo se recuerda en ESTA pestaña (sessionStorage 'apo-como'): así
+       sigue al cambiar de pestaña con la barra. Sus cachés van con claves
+       aparte ('apo-como-…') y no se guarda nada de la barra, la foto ni la
+       «foto de la pantalla»: nada pisa lo del admin. Al entrar y al salir se
+       vacían las cachés de pintado de la pestaña.
+     · Quien NO es admin y trae ?como en la dirección: se ignora y ve lo suyo.
+     ------------------------------------------------------------ */
+  var COMO_CLAVE = 'apo-como';
+  var COMO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  var COMO_MSG = 'Estás en modo «ver como»: no se guarda nada.';
+  /* Las RPC de lectura (STABLE en la base) que usan el portal y el panel. La
+     MISMA lista va en la migración 421 (ver_como_leer). Una RPC que no esté
+     aquí se trata como «escribe» y no se ejecuta. */
+  var LECTURA_COMO = ['apo_faltas_avisadas', 'atleta_pide_bienestar', 'atletas_sin_etiqueta', 'atletas_sin_etiqueta_cuantos',
+    'biblioteca_usos', 'buscador_personas_resumen', 'calendario_club', 'cobro_asistente_datos',
+    'cobro_asistente_personas', 'comunicacion_resumen', 'conf_lista', 'conf_resumen',
+    'contacto_familia_atleta', 'cubo_es_gestor', 'cubo_mis_ausencias', 'dia_cancelado',
+    'dinero_bandeja', 'dinero_destinatarios', 'dinero_quien_soy', 'es_admin', 'es_escuela',
+    'es_responsable_liga', 'es_staff', 'excepciones_rango', 'general_resumen', 'general_secciones',
+    'juego_es_menor', 'mi_cuota_entreno', 'mi_perfil_id', 'mis_avisos', 'mis_mundos', 'mis_papeles',
+    'mis_secciones_responsable', 'mis_solicitudes_sin_contestar', 'mundo_stats', 'natacion_acceso_de',
+    'natacion_alta_cuota', 'natacion_alta_ficha_faltan', 'natacion_alta_franjas',
+    'natacion_aviso_destinatarios', 'natacion_aviso_franjas', 'natacion_buscar_fichas',
+    'natacion_contacto_de', 'natacion_cuotas_listar', 'natacion_cuotas_puede', 'natacion_dia_cancelado',
+    'natacion_espera_mias', 'natacion_huecos', 'natacion_lista_dia', 'natacion_master_disponibles',
+    'natacion_master_estado', 'natacion_mis_plazas', 'natacion_reservas_dia', 'pagos_disponible',
+    'pagos_resumen', 'papeles_pendientes', 'pedidos_admin_listar', 'perfil_socios_encendido',
+    'retos_progreso_atleta', 'retos_propios_historial', 'retos_propios_progreso', 'sesion_solicitudes',
+    'soy_gestor_natacion', 'soy_responsable'];
+  /* De esas, las que dependen de QUIÉN pregunta. Sin la migración 421 no se
+     pueden pedir como la persona: salen como «no se puede ver» (enseñar las
+     del admin como si fueran suyas sería mentir). */
+  var QUIEN_COMO = ['cubo_es_gestor', 'cubo_mis_ausencias', 'dinero_bandeja', 'dinero_quien_soy', 'es_responsable_liga',
+    'mi_cuota_entreno', 'mis_avisos', 'mis_mundos', 'mis_papeles', 'mis_secciones_responsable',
+    'mis_solicitudes_sin_contestar', 'natacion_cuotas_puede', 'natacion_espera_mias', 'natacion_master_estado',
+    'natacion_master_disponibles', 'natacion_mis_plazas', 'papeles_pendientes', 'soy_gestor_natacion',
+    'soy_responsable', 'sesion_solicitudes', 'retos_progreso_atleta', 'mundo_stats', 'general_resumen',
+    'general_secciones', 'comunicacion_resumen', 'apo_faltas_avisadas'];
+  /* Lo privado entre dos personas: ni el admin lo lee (RLS), y aquí tampoco. */
+  var PRIVADAS_COMO = ['mensajes_directos'];
+  var _comoCand = null;   // id que pide la dirección o la pestaña (aún sin comprobar)
+  var _como = null;       // ya comprobado: { id, perfil, nombre, rolActivo, activo, adminActivo, sinMig }
+  var _comoGate = null, _comoSoltar = null, _comoOrig = null;
+  var _comoLeerFalta = false, _comoNoSeVe = {}, _comoUltimoAviso = 0;
+
+  /* Cachés de pintado de la pestaña + las de mundos.js y la barra de abajo. */
+  function comoPurgar() {
+    limpiarCachePortal();
+    try { ['apolana-mis-mundos', 'apo-mundo', 'apolana-zona'].forEach(function (k) { sessionStorage.removeItem(k); }); } catch (e) {}
+  }
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search).get('como');
+      var o = null;
+      try { o = JSON.parse(sessionStorage.getItem(COMO_CLAVE) || 'null'); } catch (e) { o = null; }
+      var guardado = (o && COMO_UUID.test(String(o.id || ''))) ? String(o.id) : null;
+      if (q && COMO_UUID.test(q)) {
+        /* Se entra (o se cambia de persona): nada de lo pintado antes en la
+           pestaña sirve. Se vacía YA, antes de que nadie lo lea. */
+        if (q !== guardado) {
+          comoPurgar();
+          sessionStorage.setItem(COMO_CLAVE, JSON.stringify({ id: q, t: Date.now() }));
+        }
+        _comoCand = q;
+      } else if (guardado) {
+        _comoCand = guardado;
+      }
+    } catch (e) { _comoCand = null; }
+  })();
+
+  function comoRes(data, error) {
+    return { __como: true, v: { data: data, error: error || null, count: null, status: error ? 403 : 200, statusText: '' } };
+  }
+  function comoErr(msg) { return { message: msg, code: 'VER_COMO', details: null, hint: null }; }
+  function comoAvisar() {
+    if (Date.now() - _comoUltimoAviso < 2500) return;
+    _comoUltimoAviso = Date.now();
+    try { if (window.APX && window.APX.toast) window.APX.toast(COMO_MSG); } catch (e) {}
+  }
+  function comoBloqueado() { comoAvisar(); return comoRes(null, comoErr(COMO_MSG)); }
+  function comoNoSeVe(que) {
+    _comoNoSeVe[que] = true;
+    comoNota();
+    return comoRes(null, comoErr('En «ver como» esto no se puede ver como esa persona.'));
+  }
+  function comoFalta(err) {
+    return !!err && (err.code === 'PGRST202' || /could not find the function/i.test(String(err.message || '')));
+  }
+
+  /* Una llamada que espera a saber si hay «ver como» antes de hacerse. Admite
+     encadenar (.select().single()…): se apunta y se repite sobre la de verdad.
+     `alDecidir(como)` devuelve: un resultado ya hecho (comoRes), { __real:
+     consulta } (se ejecuta tal cual) o { __prom: promesa } (ya resuelta aquí). */
+  function comoDiferido(alDecidir) {
+    var cadena = [], prom = null, p;
+    function ejecutar() {
+      if (!prom) prom = (_comoGate || Promise.resolve(null)).then(function (c) {
+        var r = alDecidir(c);
+        if (r && r.__como) return r.v;
+        if (r && r.__prom) return Promise.resolve(r.__prom).then(function (x) { return (x && x.__como) ? x.v : x; });
+        var q = r && r.__real;
+        for (var i = 0; i < cadena.length && q; i++) {
+          if (typeof q[cadena[i][0]] === 'function') q = q[cadena[i][0]].apply(q, cadena[i][1]);
+        }
+        return q;
+      });
+      return prom;
+    }
+    p = new Proxy({}, {
+      get: function (_, k) {
+        if (k === 'then') return function (a, b) { return ejecutar().then(a, b); };
+        if (k === 'catch') return function (b) { return ejecutar().catch(b); };
+        if (k === 'finally') return function (f) { return ejecutar().finally(f); };
+        if (typeof k === 'symbol') return undefined;
+        return function () { cadena.push([k, Array.prototype.slice.call(arguments)]); return p; };
+      }
+    });
+    return p;
+  }
+
+  /* Lo que se puede contestar aquí mismo con el perfil de la persona: es
+     exactamente lo que hace la base (mira coalesce(rol_activo, rol)). */
+  function comoLocal(fn, c) {
+    var rol = c.rolActivo;
+    if (fn === 'mi_perfil_id') return comoRes(c.id);
+    if (fn === 'es_admin') return comoRes(c.activo && rol === 'admin');
+    if (fn === 'es_staff') return comoRes(c.activo && ['admin', 'coordinador', 'entrenador', 'tesoreria', 'contabilidad', 'junta'].indexOf(rol) !== -1);
+    if (fn === 'es_escuela') return comoRes(c.activo && rol === 'escuela');
+    return null;
+  }
+  function comoSinServidor(fn, args) {
+    if (QUIEN_COMO.indexOf(fn) !== -1) return Promise.resolve(comoNoSeVe(fn));
+    return _comoOrig.rpc(fn, args);   /* no depende de quién: se lee tal cual */
+  }
+  function comoRpc(fn, args) {
+    var c = _como;
+    args = args || {};
+    var loc = comoLocal(fn, c);
+    if (loc) return Promise.resolve(loc);
+    if (LECTURA_COMO.indexOf(fn) === -1) return Promise.resolve(comoBloqueado());
+    if (_comoLeerFalta) return comoSinServidor(fn, args);
+    return Promise.resolve(_comoOrig.rpc('ver_como_leer', { p_perfil: c.id, p_fn: fn, p_args: args })).then(function (r) {
+      if (r && r.error && comoFalta(r.error)) { _comoLeerFalta = true; comoNota(); return comoSinServidor(fn, args); }
+      return r;
+    }, function (e) { return { data: null, error: { message: String((e && e.message) || e) } }; });
+  }
+
+  /* Envuelve el cliente EN SU SITIO (las pantallas que usan window.APOLANA_DB
+     directamente quedan cubiertas igual). Hasta que arranque() decide, todo
+     lo que escribe y todas las RPC esperan; las lecturas de tablas no. */
+  function comoEnvolver(sb) {
+    if (!sb || _comoOrig || typeof sb.from !== 'function') return;
+    _comoGate = new Promise(function (r) { _comoSoltar = r; });
+    var o = _comoOrig = {
+      fromFn: sb.from, rpcFn: sb.rpc,
+      from: sb.from.bind(sb), rpc: sb.rpc.bind(sb),
+      st: sb.storage || null, stFrom: (sb.storage && sb.storage.from) || null,
+      auth: {}
+    };
+    var ESCRIBE = ['insert', 'update', 'upsert', 'delete'];
+    function cerrojo(obj, metodo, siComo) {
+      var real = obj[metodo];
+      if (typeof real !== 'function') return;
+      obj[metodo] = function () {
+        var a = arguments;
+        return comoDiferido(function (c) { return c ? siComo() : { __real: real.apply(obj, a) }; });
+      };
+    }
+    sb.from = function (tabla) {
+      var qb = o.from(tabla);
+      ESCRIBE.forEach(function (m) { cerrojo(qb, m, comoBloqueado); });
+      if (PRIVADAS_COMO.indexOf(tabla) !== -1) cerrojo(qb, 'select', function () { return comoNoSeVe(tabla); });
+      return qb;
+    };
+    sb.rpc = function (fn, args, opts) {
+      return comoDiferido(function (c) { return c ? { __prom: comoRpc(fn, args) } : { __real: o.rpc(fn, args, opts) }; });
+    };
+    if (o.st && typeof o.stFrom === 'function') {
+      o.st.from = function (bucket) {
+        var api = o.stFrom.call(o.st, bucket);
+        ['upload', 'update', 'remove', 'move', 'copy', 'createSignedUploadUrl', 'uploadToSignedUrl'].forEach(function (m) { cerrojo(api, m, comoBloqueado); });
+        return api;
+      };
+    }
+    /* `functions` es un «getter» que crea uno nuevo cada vez: se tapa en la instancia. */
+    var proto = Object.getPrototypeOf(sb), desc = null;
+    while (proto && !desc) { desc = Object.getOwnPropertyDescriptor(proto, 'functions'); proto = Object.getPrototypeOf(proto); }
+    if (desc && desc.get) {
+      try {
+        Object.defineProperty(sb, 'functions', {
+          configurable: true,
+          get: function () {
+            var f = desc.get.call(sb);
+            if (f) cerrojo(f, 'invoke', comoBloqueado);
+            return f;
+          }
+        });
+        o.fnTapado = true;
+      } catch (e) {}
+    }
+    if (sb.auth) ['updateUser', 'resetPasswordForEmail', 'signOut', 'signInWithOtp'].forEach(function (m) {
+      if (typeof sb.auth[m] !== 'function') return;
+      o.auth[m] = sb.auth[m];
+      cerrojo(sb.auth, m, comoBloqueado);
+    });
+  }
+  /* No hay «ver como»: el cliente vuelve a ser el de siempre. */
+  function comoRestaurar(sb) {
+    var o = _comoOrig;
+    if (!o || !sb) return;
+    sb.from = o.fromFn; sb.rpc = o.rpcFn;
+    if (o.st && o.stFrom) o.st.from = o.stFrom;
+    if (o.fnTapado) { try { delete sb.functions; } catch (e) {} }
+    for (var m in o.auth) { if (o.auth.hasOwnProperty(m)) sb.auth[m] = o.auth[m]; }
+    _comoOrig = null;
+  }
+
+  /* ¿Puede esta cuenta mirar como esa persona? Lo dice la base. */
+  async function comoDecidir() {
+    var id = _comoCand, o = _comoOrig;
+    if (!id || !o) return null;
+    function armar(p, adminActivo, sinMig) {
+      return {
+        id: p.id, perfil: p, sinMig: !!sinMig, adminActivo: !!adminActivo,
+        nombre: (String(p.nombre || '') + ' ' + String(p.apellidos || '')).trim() || p.email || 'esta persona',
+        rolActivo: p.rol_activo || p.rol || '', activo: p.activo !== false
+      };
+    }
+    var r = null;
+    try { r = await o.rpc('ver_como_perfil', { p_id: id }); } catch (e) { r = null; }
+    if (r && !r.error && r.data) {
+      if (r.data.ok && r.data.perfil && r.data.perfil.id) return armar(r.data.perfil, r.data.admin_activo, false);
+      return { rechazo: r.data.motivo || 'no' };
+    }
+    if (r && r.error && comoFalta(r.error)) {
+      /* Aún sin la migración 421: vale si AHORA va como admin (es_admin) y
+         puede leer la ficha. Lo «suyo» de las RPC no se verá (ver comoNota). */
+      try {
+        var a = await o.rpc('es_admin');
+        if (!a || a.error || a.data !== true) return { rechazo: 'no_admin' };
+        var p = await o.from('perfiles').select('id,nombre,apellidos,email,rol,roles,rol_activo,seccion,foto_ruta,activo').eq('id', id).maybeSingle();
+        if (!p || p.error || !p.data) return { rechazo: 'no_existe' };
+        _comoLeerFalta = true;
+        return armar(p.data, true, true);
+      } catch (e) { return { rechazo: 'error' }; }
+    }
+    return { rechazo: 'error' };
+  }
+  function comoFijar(sb, c) {
+    if (c && c.id) {
+      _como = c;
+    } else {
+      _como = null;
+      if (_comoCand) { try { sessionStorage.removeItem(COMO_CLAVE); } catch (e) {} }
+      _comoCand = null;
+      comoRestaurar(sb);
+      /* Al que no es admin no se le dice nada: ve lo suyo, como siempre. */
+      var mot = c && c.rechazo;
+      if (mot === 'no_existe' || mot === 'error') {
+        setTimeout(function () {
+          try { window.APX.toast('No se ha podido abrir «ver como»', 'error', { detalle: mot === 'no_existe' ? 'No se encuentra a esa persona.' : 'Vuelve a intentarlo desde el panel.' }); } catch (e) {}
+        }, 400);
+      }
+    }
+    if (_comoSoltar) { _comoSoltar(_como); _comoSoltar = null; }
+  }
+
+  /* Cerrar el modo: fuera la marca y las cachés de la pestaña, y la misma
+     pantalla otra vez, ya con lo tuyo. */
+  function comoSalir() {
+    try { sessionStorage.removeItem(COMO_CLAVE); } catch (e) {}
+    comoPurgar();
+    var u;
+    try { u = new URL(location.href); u.searchParams.delete('como'); u = u.pathname + u.search + u.hash; }
+    catch (e) { u = location.pathname; }
+    location.replace(u);
+  }
+  function comoNota() {
+    var n = document.getElementById('pt-como-nota');
+    if (!n || !_como) return;
+    var txt = [];
+    if (!_como.adminActivo) txt.push('vas con otro papel: para verlo todo, vuelve a Administración');
+    if (_comoLeerFalta) txt.push('falta la migración 421: lo «suyo» no se ve');
+    var nNo = Object.keys(_comoNoSeVe).length;
+    if (nNo) txt.push(nNo === 1 ? '1 parte no se puede ver' : nNo + ' partes no se pueden ver');
+    n.hidden = !txt.length;
+    n.textContent = txt.length ? ' · ' + txt.join(' · ') : '';
+    var b = document.getElementById('pt-como');
+    if (b) b.title = 'Viendo la app como ' + _como.nombre + '. Solo mirar: no se guarda nada.' +
+      (nNo ? ' No se ve: ' + Object.keys(_comoNoSeVe).join(', ') + '.' : '');
+  }
+  function comoBanda() {
+    if (!_como || document.getElementById('pt-como')) return;
+    var st = document.createElement('style');
+    st.textContent =
+      '.pt-como{position:fixed;top:0;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:10px;' +
+        'min-height:42px;box-sizing:border-box;padding:5px 8px 5px 14px;padding-top:calc(5px + env(safe-area-inset-top,0px));' +
+        'background:repeating-linear-gradient(135deg,#B96F09 0 16px,#A86207 16px 32px);color:#fff;' +
+        'font-family:inherit;font-size:14px;line-height:1.3;box-shadow:0 3px 12px rgba(60,35,0,.35)}' +
+      '.pt-como-ojo{flex:0 0 auto;display:flex}' +
+      '.pt-como-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.pt-como-txt b{font-weight:700}' +
+      '.pt-como-sub,.pt-como-nota{opacity:.92}' +
+      '.pt-como-salir{flex:0 0 auto;min-height:36px;padding:0 16px;border:0;border-radius:999px;background:#fff;color:#7A4A05;' +
+        'font:inherit;font-weight:700;cursor:pointer}' +
+      '.pt-como-salir:hover{background:#FDF3E3}' +
+      '.pt-como-salir:focus-visible{outline:2px solid #fff;outline-offset:2px}' +
+      'body.pt-con-como{padding-top:calc(42px + env(safe-area-inset-top,0px))}' +
+      '@media(max-width:560px){.pt-como-nota{display:none}}' +
+      '@media(max-width:380px){.pt-como-sub{display:none}}';
+    document.head.appendChild(st);
+    var b = document.createElement('div');
+    b.id = 'pt-como'; b.className = 'pt-como';
+    b.setAttribute('role', 'status');
+    b.innerHTML =
+      '<span class="pt-como-ojo" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>' +
+      '<span class="pt-como-txt"><b>Viendo como ' + esc(_como.nombre) + '</b>' +
+        '<span class="pt-como-sub"> · solo mirar</span><span class="pt-como-nota" id="pt-como-nota" hidden></span></span>' +
+      '<button type="button" class="pt-como-salir" id="pt-como-salir">Salir</button>';
+    document.body.insertBefore(b, document.body.firstChild);
+    document.body.classList.add('pt-con-como');
+    document.getElementById('pt-como-salir').addEventListener('click', comoSalir);
+    comoNota();
+  }
 
   /* ------------------------------------------------------------
      FLUIDEZ · FOTO DE LA PANTALLA (21-oct-2026)
@@ -162,6 +506,8 @@
     /* Con parámetros en la dirección la pantalla puede ser otra (un día, un
        aviso de pago…): ni se guarda ni se pinta. */
     if (location.search) return null;
+    /* En «ver como» ni se guarda ni se pinta: es otra persona. */
+    if (_comoCand) return null;
     var r = location.pathname.replace(/index\.html$/, '');
     for (var i = 0; i < FOTO_PAGINAS.length; i++) {
       var p = FOTO_PAGINAS[i];
@@ -254,7 +600,11 @@
     olvidarCache: function () { limpiarCachePortal(); },
     /* Correo de la sesión guardada en el aparato (o ''): ata las cachés de
        pintado a la persona, por si en la pestaña ha entrado otra. */
-    correoDelAparato: function () { return correoDelToken(); }
+    correoDelAparato: function () { return _comoCand ? '' : correoDelToken(); },
+    /* «Ver como…»: null, o { id, nombre } de la persona que se está mirando.
+       Las pantallas pueden usarlo para avisar o esconder botones de guardar
+       (aunque no hace falta: lo que escribe ya está bloqueado). */
+    verComo: function () { return _como ? { id: _como.id, nombre: _como.nombre } : null; }
     /* Cuando ya hay sesión se añaden aquí abajo, y las pantallas del
        portal pueden usarlas para NO volver a pedir lo que esta
        pantalla de acceso ya ha pedido:
@@ -400,6 +750,7 @@
       if (location.pathname.indexOf('/portal/') === -1) return;
       if (!document.body || document.querySelector('.pt-top')) return;
       if (_acabaDeEntrar || _delEnlace || _forzarClave) return;
+      if (_comoCand) return;   /* «ver como»: la barra es la de otra persona */
       if (/[?&]code=/.test(location.search)) return;
       if (!hayTokenEnAparato()) return;
       var d = JSON.parse(sessionStorage.getItem('apo-barra') || 'null');
@@ -1098,6 +1449,9 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     var sb = window.APOLANA_DB;
+    /* «Ver como…»: el cliente se envuelve YA, antes de que ninguna pantalla
+       (ni mundos.js) pida nada; arranque() decide luego si se queda o se quita. */
+    if (_comoCand) comoEnvolver(sb);
     var cont = document.getElementById('portal-contenido');
     if (cont) cont.style.display = 'none';
 
@@ -1236,7 +1590,7 @@
       var primerNom = String(nombre).trim().split(/\s+/)[0] || nombre;
       var ini = iniciales(perfil, email);
       /* «Ver como…» solo para quien gestiona (admin/tesorería/contabilidad/junta). */
-      var _staff = !!(perfil && Array.isArray(perfil.roles) && perfil.roles.some(function (r) {
+      var _staff = !_como && !!(perfil && Array.isArray(perfil.roles) && perfil.roles.some(function (r) {
         return ['admin', 'tesoreria', 'contabilidad', 'junta'].indexOf(r) !== -1;
       }));
       var OJO_VC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -1279,8 +1633,9 @@
           '</button>' +
         '</div>';
       document.body.insertBefore(top, document.body.firstChild);
-      /* Lo justo para pintar la copia de antemano en la próxima pestaña. */
-      try {
+      /* Lo justo para pintar la copia de antemano en la próxima pestaña.
+         En «ver como» no: sería la barra de otra persona. */
+      if (!_como) try {
         sessionStorage.setItem('apo-barra', JSON.stringify({
           t: Date.now(), email: email,
           nombre: (perfil && perfil.nombre) || '', apellidos: (perfil && perfil.apellidos) || '',
@@ -1351,7 +1706,7 @@
           sb.storage.from('fotos-perfil').createSignedUrl(ruta, 3600).then(function (r) {
             if (r && !r.error && r.data && r.data.signedUrl) {
               pintar(r.data.signedUrl);
-              try { sessionStorage.setItem('apo-foto', JSON.stringify({ t: Date.now(), email: email, ruta: ruta, url: r.data.signedUrl })); } catch (e) {}
+              if (!_como) try { sessionStorage.setItem('apo-foto', JSON.stringify({ t: Date.now(), email: email, ruta: ruta, url: r.data.signedUrl })); } catch (e) {}
             }
           }, function () { /* sin foto, las iniciales */ });
         } catch (e) { /* igual */ }
@@ -1376,6 +1731,9 @@
          La píldora del papel se enciende cuando se sabe en qué papel estás. Si
          solo tienes uno, el nombre NO se pulsa: es la mayoría del club, y para
          ellos la barra es escudo, Web y nombre, sin nada que abrir. */
+      /* «Ver como»: el nombre no abre nada (cambiar de papel o cerrar sesión
+         serían cosas de la cuenta del admin, no de la persona). */
+      if (_como) { unSoloPapel(); return; }
       conPapeles(function () {
         if (!window.APOLANA_PAPELES) { unSoloPapel(); return; }
         window.APOLANA_PAPELES.cargar().then(function (d) {
@@ -2107,7 +2465,7 @@
       if (_atletasProm) return _atletasProm;
       _atletasProm = (async function () {
         if (!id) return { error: false, data: [] };
-        var ck = 'apo-atletas-' + id;
+        var ck = (_como ? 'apo-como-atletas-' : 'apo-atletas-') + id;
         async function pedir() {
           try {
             var r = await conTiempo(sb.from('atletas')
@@ -2376,7 +2734,7 @@
            aparece un segundo y luego entra. Así que: si NO hay ni rastro de
            token, login ya; si SÍ lo hay, se espera (refrescando y reintentando
            en silencio, con el login oculto) hasta ~2,5 s antes de rendirse. */
-        if (!hayTokenGuardado()) { mostrarLogin(); return; }
+        if (!hayTokenGuardado()) { comoFijar(sb, null); mostrarLogin(); return; }
         var recuperada = null;
         try {
           var rs = await conLimite(sb.auth.refreshSession(), 8000, { data: { session: null } });
@@ -2387,11 +2745,18 @@
           var g = await conLimite(sb.auth.getSession(), 5000, { data: { session: null } });
           if (g.data && g.data.session) recuperada = g.data.session;
         }
-        if (!recuperada) { mostrarLogin(); return; }
+        if (!recuperada) { comoFijar(sb, null); mostrarLogin(); return; }
         s = { data: { session: recuperada } };
       }
       var usuario = s.data.session.user;
       var email = usuario.email;
+
+      /* «VER COMO…»: ¿esta cuenta puede mirar como esa persona? Se decide
+         aquí, antes de cualquier otra RPC (las RPC esperan a esta respuesta).
+         Si sí, lo de la contraseña y el «papel al entrar» se saltan: son de
+         la cuenta del admin, no de la persona. */
+      if (_comoCand && !_como) comoFijar(sb, await comoDecidir());
+      else if (!_como) comoFijar(sb, null);
 
       /* Quien acaba de entrar pulsando el enlace del correo no ha
          pasado por el formulario, así que aquí es donde le toca el
@@ -2399,7 +2764,7 @@
          se le pone antes de pintar nada. Solo la primera vez; al
          recargar la página ya no. */
       var recienLlegado = _acabaDeEntrar;
-      if (_acabaDeEntrar) {
+      if (_acabaDeEntrar && !_como) {
         _acabaDeEntrar = false;
         try { await sb.rpc('rol_al_entrar_aplicar'); } catch (e) {}
       }
@@ -2427,9 +2792,10 @@
           }, function () { return null; /* si aún no hay permisos de lectura, perfil queda null */ });
       }
       var perfilViejo = false;
-      var cPerfil = forzarPerfilFresco ? null : deCacheSWR(ckPerfil, 60000, 15 * 60000);
+      var cPerfil = (forzarPerfilFresco || _como) ? null : deCacheSWR(ckPerfil, 60000, 15 * 60000);
       var pPerfil;
-      if (cPerfil && cPerfil.v && cPerfil.v.id) { perfilViejo = cPerfil.viejo; pPerfil = Promise.resolve(cPerfil.v); }
+      if (_como) pPerfil = Promise.resolve(_como.perfil);   /* «ver como»: la de la persona, sin caché */
+      else if (cPerfil && cPerfil.v && cPerfil.v.id) { perfilViejo = cPerfil.viejo; pPerfil = Promise.resolve(cPerfil.v); }
       else pPerfil = pedirPerfil();
 
       /* ¿Pidió «cambiar la contraseña»? La intención viaja por la base
@@ -2437,7 +2803,7 @@
          una petición reciente, se gasta (la RPC la borra) y se enseña «Ponte
          una contraseña». Fiable en cualquier flujo (hash o PKCE) y sin tocar
          el redirect del correo. La marca vieja ?recuperar=1 también vale. */
-      if (!_claveRecienPuesta) {
+      if (!_claveRecienPuesta && !_como) {
         var debeClave = _forzarClave;
         /* FLUIDEZ · Si en esta pestaña ya se preguntó hace < 10 min y la base
            dijo «no», no se vuelve a preguntar en cada pestaña. NUNCA se fía de
@@ -2468,7 +2834,7 @@
          tiene contraseña se pone una. Es lo primero que hace en su vida
          dentro de la app, y no ve el portal hasta que está hecho. Al
          guardarla se vuelve por aquí y esta vez sí se sigue. */
-      if (await tocaPonerClave(usuario, recienLlegado)) { pedirClave(email); return; }
+      if (!_como && await tocaPonerClave(usuario, recienLlegado)) { pedirClave(email); return; }
 
       /* SALTO RÁPIDO A TU ZONA — lo que hacía lento abrir la app. La página
          del hub (portal/index.html) solo existe para reenviarte, pero pedía
@@ -2511,7 +2877,8 @@
       }
 
       login.style.display = 'none';
-      barra(perfil, email);
+      barra(perfil, _como ? (perfil.email || '') : email);
+      if (_como) comoBanda();
       if (cont) cont.style.display = '';
 
       /* Las fichas y los grupos se piden YA, antes de dar paso a la
@@ -2534,7 +2901,7 @@
          única —lo mira cualquier pantalla del portal, no solo el hub—, para
          que la próxima vez que abras la app vuelvas al hub a elegir. Si solo
          tienes uno, no se toca y el salto directo se mantiene. */
-      _papeles.then(function (lista) {
+      if (!_como) _papeles.then(function (lista) {
         try {
           if (lista && lista.length > 1 && email) localStorage.removeItem('apolana.zona.' + email);
         } catch (e) {}
@@ -2581,7 +2948,7 @@
          pantallas del portal seguidas es una llamada, no seis. Y en
          silencio: si falla, el recado sigue en la cola.
          ------------------------------------------------------------ */
-      try { if (sb.functions) window.APOLANA_DB.empujarAvisos(600); } catch (e) { /* nada */ }
+      try { if (sb.functions && !_como) window.APOLANA_DB.empujarAvisos(600); } catch (e) { /* nada */ }
 
       /* ------------------------------------------------------------
          OFRECER LOS AVISOS AL MÓVIL, UNA VEZ
@@ -2609,7 +2976,7 @@
          el primer pintado de la pantalla —y para que, si esta página
          va a mandar a otra zona, salga allí y no aquí—.
          ------------------------------------------------------------ */
-      if (perfil) {
+      if (perfil && !_como) {
         setTimeout(function () {
           function saluda() {
             try { window.APOLANA_AVISOS.saludar({ perfil: perfil }); } catch (e) { /* nada */ }
@@ -2654,7 +3021,7 @@
            teniendo dónde cambiar: la misma píldora, abriendo la hoja de
            zonas de siempre. Si ya la ha puesto el selector de papeles, que
            es el que trae los pendientes, manda ese y este no la pisa. */
-        if (lista.length < 2 || pildoraPuesta) return;
+        if (lista.length < 2 || pildoraPuesta || _como) return;
         var actual = papelActivo(lista);
         var zona = lista.filter(function (z) { return z.clave === actual; })[0] || lista[0];
         ponerPildora(perfil, zona.titulo, zona.clave, function () {
