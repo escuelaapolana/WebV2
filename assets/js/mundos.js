@@ -185,7 +185,7 @@
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-atl'},
         {g:'Niños y grupos', t:'Grupos y listas',   i:'clipboard', url:B+'admin/escuela-grupos/',         d:'Martes y jueves: mover niños de grupo, bajas y entrenadores.'},
         {g:'Niños y grupos', t:'Niños y niñas',     i:'people',   url:B+'admin/atletas/?seccion=escuela', d:'Los peques inscritos.'},
-        {g:'Niños y grupos', t:'Grupos',            i:'people',   url:B+'admin/grupos/?seccion=escuela',  d:'Grupos por edad.'},
+        {g:'Niños y grupos', t:'Editar grupos',     i:'people',   url:B+'admin/grupos/?seccion=escuela',  d:'Nombre, horario, años y plazas de cada grupo.'},
         {g:'Altas y pruebas', t:'Altas de familias', i:'userplus', url:B+'admin/altas/?tipo=escuela',      d:'Solicitudes nuevas de las familias.'},
         {g:'Altas y pruebas', t:'Pruebas de pista',  i:'sparkle',  url:B+'admin/pista-pruebas/',           d:'Peques (y adultos) que piden venir a probar.'},
         {g:'Niños y grupos', t:'Repartir',          i:'shuffle',  url:B+'admin/repartir/',                d:'Colocar a cada peque en su grupo.'},
