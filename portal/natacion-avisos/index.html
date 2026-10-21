@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Avisos · Natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>
+  window.APOLANA_BASE = "../../";
+  /* Mundo de la lateral: Escuela de natación si viene ?tipo=Escuela; si no, Natación. */
+  (function(){
+    var t = new URLSearchParams(location.search).get('tipo');
+    var w = (t === 'Escuela') ? 'escuela-nat' : 'natacion';
+    if (!t) { try { if (sessionStorage.getItem('apo-mundo') === 'escuela-nat') w = 'escuela-nat'; } catch (e) {} }
+    window.APOLANA_MUNDO = { world: w, screen: 'avisos', contentSel: '#av' };
+  })();
+</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/portal-auth.js?v=87f680a5"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<script src="../../assets/js/mundos.js?v=d1bb0d9d" defer></script>
+<style>
+  :root{ --mm-acento:#2F6FA8; --azul:#2F6FA8; --azul-osc:#245A8A;
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.20); }
+  body{ background:var(--crema,#FBF9F4); }
+  #av{ max-width:860px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 60px; box-sizing:border-box; }
+  .av-msg{ color:var(--texto-suave,#6E6656); text-align:center; padding:28px 10px; }
+
+  .av-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--mm-acento); margin-bottom:8px; }
+  .av-cab h1{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(27px,5vw,36px); line-height:1; color:var(--navy,#26374B); margin:0; }
+  .av-cab p{ font-size:15px; color:var(--texto-suave,#6E6656); margin:8px 0 16px; line-height:1.45; }
+
+  /* tarjeta: blanca, sombra, cabecera crema */
+  .av-card{ background:#fff; border-radius:16px; box-shadow:var(--s1); overflow:hidden; margin-bottom:16px; }
+  .av-card > h2{ margin:0; padding:13px 18px; background:var(--crema-media,#F4EEE1); border-bottom:1px solid var(--linea-marcada,#E4DCCB);
+    font-family:var(--fuente-titulo); text-transform:uppercase; font-size:18px; letter-spacing:-.01em; color:var(--navy,#26374B);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .av-card > h2 .n{ width:24px; height:24px; border-radius:50%; background:var(--navy,#26374B); color:#fff; font-size:13px; display:grid; place-items:center; font-family:inherit; flex:0 0 auto; }
+  .av-card > h2 small{ font-family:inherit; text-transform:none; font-size:13px; font-weight:600; color:var(--texto-suave,#6E6656); margin-left:auto; letter-spacing:0; }
+  .av-cuerpo{ padding:14px 18px 16px; }
+  .av-lab{ font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--texto-tenue,#9A927F); margin:4px 0 8px; }
+  .av-lab + .av-lab, .av-bloque + .av-lab{ margin-top:16px; }
+
+  /* chips */
+  .av-chips{ display:flex; gap:8px; flex-wrap:wrap; }
+  .av-chip{ min-height:44px; padding:0 15px; border-radius:12px; border:1px solid var(--linea-marcada,#E4DCCB); background:#fff; font:inherit;
+    font-weight:600; font-size:14px; color:var(--navy,#26374B); cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+  .av-chip.on{ background:var(--azul); color:#fff; border-color:var(--azul); }
+  .av-chip .c{ font-size:12px; font-weight:700; opacity:.7; }
+  .av-chip:disabled{ opacity:.4; cursor:default; }
+
+  .av-dias{ display:grid; gap:10px; margin-top:12px; }
+  .av-dia{ display:grid; grid-template-columns:96px 1fr; gap:8px; align-items:start; }
+  .av-dia .d{ font-weight:700; color:var(--navy,#26374B); font-size:14.5px; padding-top:12px; }
+  @media (max-width:520px){ .av-dia{ grid-template-columns:1fr; gap:4px; } .av-dia .d{ padding-top:0; } }
+  .av-franja{ min-height:44px; padding:6px 12px; border-radius:12px; border:1px solid var(--linea-marcada,#E4DCCB); background:#fff; font:inherit;
+    color:var(--navy,#26374B); cursor:pointer; text-align:left; display:inline-flex; flex-direction:column; justify-content:center; line-height:1.15; }
+  .av-franja b{ font-size:15px; }
+  .av-franja span{ font-size:12px; color:var(--texto-suave,#6E6656); }
+  .av-franja.on{ background:var(--azul); border-color:var(--azul); color:#fff; }
+  .av-franja.on span{ color:#DCE8F4; }
+  .av-franja:disabled{ opacity:.35; cursor:default; }
+  .av-mini{ background:none; border:0; color:var(--azul); font:inherit; font-weight:600; font-size:14px; cursor:pointer; padding:0 2px; min-height:40px; }
+
+  /* resumen de destinatarios */
+  .av-quien{ margin-top:14px; border-radius:12px; background:#F4F8FC; border:1px solid #DCE8F4; padding:12px 14px; }
+  .av-cifras{ display:flex; gap:8px 18px; flex-wrap:wrap; align-items:baseline; color:var(--navy,#26374B); }
+  .av-cifras .k{ font-size:14px; }
+  .av-cifras .k b{ font-size:20px; font-variant-numeric:tabular-nums; margin-right:3px; }
+  .av-alcance{ font-size:13.5px; color:var(--texto-suave,#6E6656); margin-top:4px; }
+  .av-aviso-sin{ margin-top:10px; font-size:13.5px; color:#7A5200; background:#FFF6E6; border:1px solid #F1D9A8; border-radius:10px; padding:8px 10px; line-height:1.4; }
+  details.av-lista{ margin-top:8px; }
+  details.av-lista summary{ cursor:pointer; color:var(--azul); font-weight:600; font-size:14px; min-height:36px; display:flex; align-items:center; }
+  .av-lista ul{ list-style:none; padding:0; margin:6px 0 0; max-height:280px; overflow:auto; border-top:1px solid #DCE8F4; }
+  .av-lista li{ padding:7px 0; border-bottom:1px solid #E6EEF6; font-size:13.5px; color:var(--navy,#26374B); line-height:1.35; overflow-wrap:anywhere; }
+  .av-lista li small{ display:block; color:var(--texto-suave,#6E6656); }
+
+  /* formulario */
+  .av-campo{ display:block; margin-bottom:12px; }
+  .av-campo span{ display:block; font-size:13px; font-weight:700; color:var(--navy,#26374B); margin-bottom:5px; }
+  .av-campo input, .av-campo textarea{ font:inherit; font-size:16px; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE);
+    border-radius:11px; padding:10px 12px; background:#fff; width:100%; box-sizing:border-box; min-height:46px; }
+  .av-campo textarea{ min-height:150px; resize:vertical; line-height:1.5; }
+  .av-campo input:focus, .av-campo textarea:focus{ outline:2px solid #BFD6EC; border-color:var(--azul); }
+  .av-campo em{ display:block; font-style:normal; font-size:12.5px; color:var(--texto-tenue,#9A927F); margin-top:4px; }
+  .av-plantillas{ display:flex; gap:6px; flex-wrap:wrap; margin:-2px 0 12px; }
+  .av-plantillas button{ font:inherit; font-size:13px; font-weight:600; border-radius:999px; padding:6px 12px; min-height:36px; border:1px dashed var(--linea-borde,#C9C0AE);
+    background:#FBF9F4; color:var(--navy,#26374B); cursor:pointer; }
+
+  /* vista previa */
+  .av-previa{ border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; overflow:hidden; background:#f4f4f5; }
+  .av-previa iframe{ display:block; width:100%; height:520px; max-height:none; border:0; background:#f4f4f5; }
+  .av-previa-nota{ font-size:12.5px; color:var(--texto-tenue,#9A927F); margin:8px 0 0; }
+
+  /* botones */
+  .av-acciones{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; margin-top:4px; }
+  .av-btn{ min-height:48px; padding:0 20px; border-radius:12px; font:inherit; font-weight:700; font-size:15px; cursor:pointer; border:1px solid transparent; }
+  .av-btn.pri{ background:var(--azul); color:#fff; }
+  .av-btn.pri:hover{ background:var(--azul-osc); }
+  .av-btn.sec{ background:#fff; color:var(--navy,#26374B); border-color:var(--linea-borde,#C9C0AE); }
+  .av-btn:disabled{ opacity:.5; cursor:default; }
+  @media (max-width:520px){ .av-acciones .av-btn{ flex:1 1 100%; } }
+
+  /* historial */
+  .av-hist{ list-style:none; margin:0; padding:0; }
+  .av-hist li{ border-bottom:1px solid var(--linea,#EAE3D5); }
+  .av-hist li:last-child{ border-bottom:0; }
+  .av-hist button.fila{ width:100%; text-align:left; background:none; border:0; font:inherit; cursor:pointer; padding:12px 18px; display:flex; gap:12px; align-items:flex-start; min-height:56px; color:inherit; }
+  .av-hist .t{ flex:1; min-width:0; }
+  .av-hist .t b{ display:block; color:var(--navy,#26374B); font-size:15px; line-height:1.3; overflow-wrap:anywhere; }
+  .av-hist .t small{ display:block; color:var(--texto-suave,#6E6656); font-size:13px; margin-top:2px; }
+  .av-hist .cnt{ flex:0 0 auto; text-align:right; font-size:12.5px; color:var(--texto-suave,#6E6656); line-height:1.4; white-space:nowrap; }
+  .av-hist .cnt b{ color:var(--navy,#26374B); }
+  .av-hist .cnt .mal{ color:#B23B3B; font-weight:700; }
+  .av-hist .det{ padding:0 18px 14px; font-size:14px; color:#3f3f46; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .av-vacio{ padding:16px 18px; color:var(--texto-suave,#6E6656); font-size:14px; margin:0; }
+
+  /* hoja de confirmación */
+  .av-velo{ position:fixed; inset:0; background:rgba(20,30,45,.45); z-index:2000; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .av-hoja{ background:#fff; border-radius:18px; max-width:440px; width:100%; box-shadow:0 20px 50px rgba(20,30,45,.35); overflow:hidden; }
+  .av-hoja h3{ margin:0; padding:16px 18px; background:var(--crema-media,#F4EEE1); font-family:var(--fuente-titulo); text-transform:uppercase; font-size:19px; color:var(--navy,#26374B); }
+  .av-hoja .cu{ padding:16px 18px; color:#3f3f46; font-size:15px; line-height:1.5; }
+  .av-hoja .grande{ font-size:22px; font-weight:800; color:var(--navy,#26374B); margin:0 0 6px; }
+  .av-hoja .pie{ display:flex; gap:10px; padding:0 18px 18px; }
+  .av-hoja .pie .av-btn{ flex:1; }
+  .av-hecho{ text-align:center; }
+  .av-hecho .ok{ width:58px; height:58px; border-radius:50%; background:#E6F4EA; color:#2E7D6B; display:grid; place-items:center; font-size:30px; margin:0 auto 8px; }
+
+  .av-toast{ position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--navy,#26374B); color:#fff;
+    padding:10px 16px; border-radius:12px; font-size:14.5px; font-weight:600; z-index:2100; box-shadow:0 8px 24px rgba(20,30,45,.3); max-width:calc(100vw - 32px); }
+  .av-toast.err{ background:#B23B3B; }
+</style>
+</head>
+<body>
+  <div id="av"><p class="av-msg">Cargando…</p></div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('av');
+  var params = new URLSearchParams(location.search);
+  var DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var APP = 'https://atletismoapolana.com/portal/';
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function pl(n, uno, varios){ return n + ' ' + (n === 1 ? uno : varios); }
+  function capital(s){ return String(s||'').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, function(_, a, b){ return a + b.toUpperCase(); }).trim(); }
+  function pila(s){ var p = String(s||'').trim().split(/\s+/)[0] || ''; return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''; }
+  function lista(xs){ return xs.length <= 1 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1]; }
+  function cuando(iso){
+    var d = new Date(iso), h = new Date();
+    var hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    var mismoDia = d.toDateString() === h.toDateString();
+    return (mismoDia ? 'Hoy' : d.getDate() + ' ' + MESES[d.getMonth()] + (d.getFullYear() !== h.getFullYear() ? ' ' + d.getFullYear() : '')) + ' · ' + hora;
+  }
+  function humano(e, accion){
+    var m = String((e && (e.message || e.msg || e.mensaje || e.error)) || e || '');
+    if (/JWT expired|jwt|sesi[oó]n caducada|sin_sesion/i.test(m)) return 'Tu sesión ha caducado. Sal y vuelve a entrar.';
+    if (/^Solo quien lleva|^El destino|^Falta|^Pon el|^No hay nadie|^Son \d|^Ahora son/.test(m)) return m;
+    if ((e && e.code === '42501') || /permission denied|row-level security|sin_permiso|not allowed/i.test(m))
+      return 'No tienes permiso para ' + (accion || 'hacer esto') + '. Si crees que deberías poder, díselo a Andrés.';
+    if (/Failed to fetch|NetworkError|Load failed|network|timeout/i.test(m)) return 'Sin conexión. Revisa internet y vuelve a intentarlo.';
+    if (/natacion_aviso|schema cache|Could not find the function|natacion_avisos/i.test(m)) return 'Falta poner al día la base (migración 418). Avisa a Andrés.';
+    if (/supabase|postgres|PGRST|relation |column |function .*does not exist|syntax|FunctionsHttpError|non-2xx/i.test(m))
+      return 'Algo ha fallado. Recarga la página y vuelve a intentarlo; si sigue, avisa a Andrés.';
+    return m || 'No se pudo hacer. Vuelve a intentarlo.';
+  }
+  var toastTmr = null;
+  function toast(t, err){
+    var el = document.querySelector('.av-toast');
+    if (!el){ el = document.createElement('div'); el.className = 'av-toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.textContent = t; el.className = 'av-toast' + (err ? ' err' : ''); el.style.display = '';
+    clearTimeout(toastTmr); toastTmr = setTimeout(function(){ el.style.display = 'none'; }, err ? 4200 : 2800);
+  }
+  // La Edge contesta 200 con {ok:false, mensaje} para lo «normal»; los 4xx llegan como error.
+  async function edge(cuerpo){
+    var r = await sb.functions.invoke('natacion-aviso', { body: cuerpo });
+    if (r.error){
+      var det = null;
+      try { if (r.error.context && r.error.context.json) det = await r.error.context.json(); } catch (e) {}
+      throw (det && det.error) ? { message: det.error } : r.error;
+    }
+    return r.data || {};
+  }
+
+  // ---------- ¿puede? ----------
+  var rp = await sb.rpc('natacion_cuotas_puede');
+  if (rp.error || !rp.data){
+    wrap.innerHTML = '<div class="av-card"><h2>Avisos</h2><div class="av-cuerpo"><p style="margin:0">' +
+      (rp.error ? esc(humano(rp.error, 'mandar avisos de natación')) : 'Esta pantalla es para quien lleva la natación. Si crees que deberías poder entrar, díselo a Andrés.') +
+      '</p></div></div>';
+    return;
+  }
+
+  // ---------- estado ----------
+  var tipoUrl = params.get('tipo');
+  var S = {
+    tipo: tipoUrl === 'Escuela' ? 'escuela' : (tipoUrl === 'Máster' ? 'master' : 'todos'),
+    elegir: false,            // false = todas las franjas; true = las marcadas
+    sel: {},                  // franja_id → true
+    franjas: [],
+    dest: null, destErr: null, cargandoDest: false,
+    asunto: '', mensaje: '',
+    hist: null, histErr: null, abierto: {},
+    enviando: false
+  };
+  try { var bor = JSON.parse(sessionStorage.getItem('apo-nat-aviso-borrador') || 'null'); if (bor){ S.asunto = bor.asunto || ''; S.mensaje = bor.mensaje || ''; } } catch (e) {}
+  function guardarBorrador(){ try { sessionStorage.setItem('apo-nat-aviso-borrador', JSON.stringify({ asunto: S.asunto, mensaje: S.mensaje })); } catch (e) {} }
+  function franjaIds(){ return S.elegir ? Object.keys(S.sel).filter(function(k){ return S.sel[k]; }) : []; }
+  function cuantosEn(f){ return S.tipo === 'escuela' ? f.n_escuela : S.tipo === 'master' ? f.n_master : f.n_escuela + f.n_master; }
+
+  // ---------- datos ----------
+  async function cargarFranjas(){
+    var r = await sb.rpc('natacion_aviso_franjas');
+    if (r.error) throw r.error;
+    S.franjas = r.data || [];
+  }
+  var destTurno = 0, destTmr = null;
+  function pedirDestinatarios(){
+    clearTimeout(destTmr);
+    S.cargandoDest = true; pintarQuien();
+    destTmr = setTimeout(async function(){
+      var turno = ++destTurno;
+      if (S.elegir && !franjaIds().length){ S.dest = null; S.destErr = null; S.cargandoDest = false; pintarQuien(); pintarPrevia(); return; }
+      var r = await sb.rpc('natacion_aviso_destinatarios', { p_tipo: S.tipo, p_franjas: franjaIds() });
+      if (turno !== destTurno) return;
+      S.cargandoDest = false;
+      if (r.error){ S.dest = null; S.destErr = humano(r.error, 'ver a quién llega'); }
+      else { S.dest = r.data; S.destErr = null; }
+      pintarQuien(); pintarPrevia(); pintarAcciones();
+    }, 180);
+  }
+  async function cargarHistorial(){
+    var r = await sb.from('natacion_avisos')
+      .select('id,creado_nombre,creado_email,alcance,asunto,mensaje,n_nadadores,n_correos,n_fallidos,n_app,created_at')
+      .order('created_at', { ascending: false }).limit(40);
+    if (r.error){ S.hist = []; S.histErr = humano(r.error, 'ver los avisos enviados'); }
+    else { S.hist = r.data || []; S.histErr = null; }
+  }
+
+  // ---------- pintar ----------
+  function esqueleto(){
+    wrap.innerHTML =
+      '<div class="av-cab"><div class="av-eyebrow">Natación</div><h1>Avisos</h1>' +
+        '<p>Un aviso a una franja, a la escuela, al máster o a toda la natación. Llega <b>dentro de la app</b> y <b>por correo</b> (a cada familia por separado, nadie ve los correos de los demás).</p></div>' +
+      '<section class="av-card"><h2><span class="n">1</span>¿A quién va?</h2><div class="av-cuerpo" id="av-a"></div></section>' +
+      '<section class="av-card"><h2><span class="n">2</span>El mensaje</h2><div class="av-cuerpo" id="av-m"></div></section>' +
+      '<section class="av-card"><h2><span class="n">3</span>Así llega el correo<small id="av-previa-de"></small></h2><div class="av-cuerpo">' +
+        '<div class="av-previa"><iframe id="av-ifr" title="Vista previa del correo" sandbox="allow-same-origin"></iframe></div>' +
+        '<p class="av-previa-nota">Cada familia lo recibe con su saludo y con el nombre y la franja de su nadador. En la app llega como aviso con el mismo asunto y mensaje.</p>' +
+        '<div class="av-acciones" id="av-acc" style="margin-top:14px"></div>' +
+      '</div></section>' +
+      '<section class="av-card"><h2>Avisos enviados<small id="av-hist-n"></small></h2><div id="av-h"></div></section>';
+    pintarA(); pintarM(); pintarHist();
+  }
+
+  function pintarA(){
+    var el = document.getElementById('av-a');
+    var tipos = [['todos','Toda la natación'],['escuela','Escuela'],['master','Máster']];
+    var h = '<div class="av-lab">Quiénes</div><div class="av-chips" role="group" aria-label="Quiénes">' +
+      tipos.map(function(t){ return '<button type="button" class="av-chip' + (S.tipo === t[0] ? ' on' : '') + '" data-tipo="' + t[0] + '" aria-pressed="' + (S.tipo === t[0]) + '">' + t[1] + '</button>'; }).join('') +
+      '</div>' +
+      '<div class="av-lab" style="margin-top:16px">Franjas</div><div class="av-chips" role="group" aria-label="Franjas">' +
+        '<button type="button" class="av-chip' + (!S.elegir ? ' on' : '') + '" data-elegir="0" aria-pressed="' + !S.elegir + '">Todas las franjas</button>' +
+        '<button type="button" class="av-chip' + (S.elegir ? ' on' : '') + '" data-elegir="1" aria-pressed="' + S.elegir + '">Elegir franjas</button>' +
+      '</div>';
+    if (S.elegir){
+      var porDia = {};
+      S.franjas.forEach(function(f){ (porDia[f.dia] = porDia[f.dia] || []).push(f); });
+      h += '<div class="av-dias">' + Object.keys(porDia).sort().map(function(d){
+        return '<div class="av-dia"><div class="d">' + DIAS[d] + '</div><div class="av-chips">' + porDia[d].map(function(f){
+          var n = cuantosEn(f), on = !!S.sel[f.id];
+          return '<button type="button" class="av-franja' + (on ? ' on' : '') + '" data-franja="' + f.id + '" aria-pressed="' + on + '"' + (n === 0 && !on ? ' disabled' : '') + '>' +
+            '<b>' + esc(f.hora) + '</b><span>' + esc(f.grupo) + ' · ' + n + '</span></button>';
+        }).join('') + '</div></div>';
+      }).join('') + '</div>' +
+      '<div style="margin-top:6px"><button type="button" class="av-mini" data-limpiar>Quitar todas</button></div>';
+    }
+    h += '<div class="av-quien" id="av-q" aria-live="polite"></div>';
+    el.innerHTML = h;
+    pintarQuien();
+  }
+
+  function pintarQuien(){
+    var el = document.getElementById('av-q'); if (!el) return;
+    if (S.elegir && !franjaIds().length){ el.innerHTML = '<div class="av-alcance" style="margin:0">Marca una o varias franjas.</div>'; return; }
+    if (S.destErr){ el.innerHTML = '<div class="av-aviso-sin" style="margin:0">' + esc(S.destErr) + '</div>'; return; }
+    var d = S.dest;
+    if (!d){ el.innerHTML = '<div class="av-alcance" style="margin:0">Calculando a quién llega…</div>'; return; }
+    var correos = d.correos || [], sin = d.sin_correo || [];
+    var h = '<div class="av-cifras' + (S.cargandoDest ? '" style="opacity:.55' : '') + '">' +
+        '<span class="k"><b>' + d.nadadores + '</b>' + (d.nadadores === 1 ? 'nadador' : 'nadadores') + '</span>' +
+        '<span class="k"><b>' + correos.length + '</b>' + (correos.length === 1 ? 'correo' : 'correos') + '</span>' +
+        '<span class="k"><b>' + d.en_app + '</b>en la app</span>' +
+      '</div>' +
+      '<div class="av-alcance">' + esc(d.alcance) + (correos.length < d.nadadores - sin.length ? ' · los hermanos reciben un solo correo' : '') + '</div>';
+    if (sin.length){
+      h += '<div class="av-aviso-sin"><b>' + pl(sin.length, 'nadador sin correo', 'nadadores sin correo') + ':</b> ' +
+        esc(sin.map(capital).join(', ')) + '. A ' + (sin.length === 1 ? 'esa familia' : 'esas familias') + ' no les llegará el correo; avísales por WhatsApp.</div>';
+    }
+    if (correos.length){
+      h += '<details class="av-lista"><summary>Ver a quién llega el correo</summary><ul>' + correos.map(function(c){
+        return '<li>' + esc(c.email) + '<small>' + esc((c.nadadores || []).map(function(n){ return capital(n.nombre) + ' (' + n.franjas + ')'; }).join(' · ')) + '</small></li>';
+      }).join('') + '</ul></details>';
+    }
+    el.innerHTML = h;
+  }
+
+  function pintarM(){
+    var el = document.getElementById('av-m');
+    el.innerHTML =
+      '<div class="av-plantillas" aria-label="Empezar con un ejemplo">' +
+        '<button type="button" data-plantilla="cierre">Cierre de la piscina</button>' +
+        '<button type="button" data-plantilla="horario">Cambio de horario</button>' +
+        '<button type="button" data-plantilla="libre">Aviso general</button>' +
+      '</div>' +
+      '<label class="av-campo"><span>Asunto</span><input id="av-asunto" type="text" maxlength="150" autocomplete="off" placeholder="Ej.: El jueves 23 la piscina está cerrada" value="' + esc(S.asunto) + '"></label>' +
+      '<label class="av-campo"><span>Mensaje</span><textarea id="av-mensaje" maxlength="4000" placeholder="Escribe aquí el aviso. Una línea en blanco separa párrafos.">' + esc(S.mensaje) + '</textarea>' +
+        '<em>El saludo («Hola, familia de…») y la firma del club se ponen solos.</em></label>';
+  }
+
+  // ---------- vista previa (misma plantilla que la Edge natacion-aviso) ----------
+  function saludo(c){
+    if (!c || !(c.nadadores || []).length) return 'Hola:';
+    var nombres = c.nadadores.map(function(n){ return pila(n.nombre); }).filter(Boolean);
+    if (c.escuela && !c.master) return 'Hola, familia de ' + lista(nombres) + ':';
+    if (c.master && !c.escuela && nombres.length === 1) return '¡Hola, ' + nombres[0] + '!';
+    return 'Hola:';
+  }
+  function parrafos(t){
+    return String(t).split(/\n\s*\n/).map(function(p){ return p.trim(); }).filter(Boolean)
+      .map(function(p){ return '<p style="margin:0 0 14px;color:#3f3f46;font-size:15px;line-height:1.6">' + esc(p).replace(/\n/g, '<br>') + '</p>'; }).join('');
+  }
+  function correoHtml(asunto, mensaje, c){
+    var filas = ((c && c.nadadores) || []).map(function(n){ return '<b>' + esc(capital(n.nombre)) + '</b>' + (n.franjas ? ' · ' + esc(n.franjas) : ''); }).join('<br>');
+    var tarjeta = filas ? '<tr><td style="padding:0 24px 8px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border:1px solid #e9e2d2;border-radius:10px">' +
+      '<tr><td style="padding:14px 16px;color:#26374B;font-size:15px;line-height:1.6"><span style="font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:#7a6a4f">Te llega por</span><br>' + filas + '</td></tr></table></td></tr>' : '';
+    return '<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">' +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4f5" style="background-color:#f4f4f5"><tr><td align="center">' +
+      '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">' +
+      '<tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px"><div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#C9D3DD">Club Atletismo Apolana · Natación</div>' +
+      '<div style="font-size:21px;font-weight:700;line-height:1.25;margin-top:6px;color:#ffffff">' + esc(asunto) + '</div></td></tr>' +
+      '<tr><td style="padding:22px 24px 4px 24px"><p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">' + esc(saludo(c)) + '</p>' + parrafos(mensaje) + '</td></tr>' + tarjeta +
+      '<tr><td align="left" style="padding:10px 24px 6px 24px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">' +
+      '<a href="' + APP + '" style="display:inline-block;padding:12px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px">Abrir la app del club →</a></td></tr></table></td></tr>' +
+      '<tr><td style="padding:14px 24px 24px 24px"><p style="margin:14px 0 0 0;color:#71717a;font-size:13px;line-height:1.5;border-top:1px solid #ececec;padding-top:14px">Si tienes cualquier duda, contesta a este correo.<br>Un saludo,<br><b style="color:#26374B">Club Atletismo Apolana · Natación</b></p></td></tr>' +
+      '</table></td></tr></table></body></html>';
+  }
+  var previaTmr = null;
+  function pintarPrevia(){
+    clearTimeout(previaTmr);
+    previaTmr = setTimeout(function(){
+      var ifr = document.getElementById('av-ifr'); if (!ifr) return;
+      // Sin scripts (sandbox): solo se mide el alto para que no haga falta hacer scroll dentro.
+      ifr.onload = function(){ try { var h = ifr.contentDocument.documentElement.scrollHeight; if (h > 200) ifr.style.height = (h + 4) + 'px'; } catch (e) {} };
+      var c = S.dest && S.dest.correos && S.dest.correos[0] || null;
+      ifr.srcdoc = correoHtml(S.asunto || 'Asunto del aviso', S.mensaje || 'Aquí va tu mensaje.', c);
+      var de = document.getElementById('av-previa-de');
+      if (de) de.textContent = c ? 'ejemplo: ' + c.email.replace(/^(.{2}).*(@.*)$/, '$1…$2') : '';
+    }, 120);
+  }
+
+  function pintarAcciones(){
+    var el = document.getElementById('av-acc'); if (!el) return;
+    var d = S.dest, hayTexto = S.asunto.trim() && S.mensaje.trim();
+    var n = d ? (d.correos || []).length : 0, app = d ? d.en_app : 0;
+    var listo = hayTexto && d && (n + app) > 0 && !S.cargandoDest && !S.enviando;
+    el.innerHTML =
+      '<button type="button" class="av-btn sec" data-prueba' + (hayTexto && !S.enviando ? '' : ' disabled') + '>Enviarme una prueba</button>' +
+      '<button type="button" class="av-btn pri" data-enviar' + (listo ? '' : ' disabled') + '>' + (S.enviando ? 'Enviando…' : 'Enviar aviso' + (d ? ' · ' + pl(n, 'correo', 'correos') : '')) + '</button>';
+  }
+
+  function pintarHist(){
+    var el = document.getElementById('av-h'); if (!el) return;
+    var n = document.getElementById('av-hist-n');
+    if (S.hist == null){ el.innerHTML = '<p class="av-vacio">Cargando…</p>'; return; }
+    if (S.histErr){ el.innerHTML = '<p class="av-vacio">' + esc(S.histErr) + '</p>'; return; }
+    if (n) n.textContent = S.hist.length ? pl(S.hist.length, 'aviso', 'avisos') : '';
+    if (!S.hist.length){ el.innerHTML = '<p class="av-vacio">Aún no se ha enviado ningún aviso desde aquí.</p>'; return; }
+    el.innerHTML = '<ul class="av-hist">' + S.hist.map(function(a){
+      var ab = !!S.abierto[a.id];
+      return '<li><button type="button" class="fila" data-hist="' + a.id + '" aria-expanded="' + ab + '">' +
+        '<span class="t"><b>' + esc(a.asunto) + '</b><small>' + esc(a.alcance) + '</small><small>' + esc(cuando(a.created_at)) + ' · ' + esc(a.creado_nombre || a.creado_email || '—') + '</small></span>' +
+        '<span class="cnt"><b>' + a.n_correos + '</b> ' + (a.n_correos === 1 ? 'correo' : 'correos') + '<br><b>' + a.n_app + '</b> en la app' +
+          (a.n_fallidos ? '<br><span class="mal">' + a.n_fallidos + ' sin enviar</span>' : '') + '</span>' +
+        '</button>' + (ab ? '<div class="det">' + esc(a.mensaje) + '</div>' : '') + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  // ---------- confirmación ----------
+  function hoja(html){
+    cerrarHoja();
+    var v = document.createElement('div'); v.className = 'av-velo';
+    v.innerHTML = '<div class="av-hoja" role="dialog" aria-modal="true" aria-labelledby="av-hoja-t">' + html + '</div>';
+    v.addEventListener('click', function(e){ if (e.target === v && !S.enviando) cerrarHoja(); });
+    document.body.appendChild(v);
+    var b = v.querySelector('[data-cerrar]'); if (b) b.focus();
+    return v;
+  }
+  function cerrarHoja(){ var v = document.querySelector('.av-velo'); if (v) v.remove(); }
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !S.enviando) cerrarHoja(); });
+
+  function confirmar(){
+    var d = S.dest; if (!d) return;
+    var n = (d.correos || []).length;
+    hoja('<h3 id="av-hoja-t">¿Enviar el aviso?</h3><div class="cu">' +
+      '<p class="grande">Se enviará a ' + pl(n, 'persona', 'personas') + '</p>' +
+      '<p style="margin:0 0 8px">Por correo a <b>' + pl(n, 'dirección', 'direcciones') + '</b> y como aviso en la app a <b>' + pl(d.en_app, 'persona', 'personas') + '</b>.</p>' +
+      '<p style="margin:0 0 8px"><b>A quién:</b> ' + esc(d.alcance) + ' (' + pl(d.nadadores, 'nadador', 'nadadores') + ')</p>' +
+      '<p style="margin:0"><b>Asunto:</b> ' + esc(S.asunto) + '</p>' +
+      '<p style="margin:10px 0 0;font-size:13px;color:#71717a">No se puede deshacer.</p>' +
+      '</div><div class="pie"><button type="button" class="av-btn sec" data-cerrar>Cancelar</button><button type="button" class="av-btn pri" data-si>Sí, enviar</button></div>');
+  }
+
+  async function enviar(){
+    if (S.enviando) return;
+    var d = S.dest; if (!d) return;
+    S.enviando = true; pintarAcciones();
+    var v = document.querySelector('.av-velo');
+    if (v){ v.querySelector('.pie').innerHTML = '<button type="button" class="av-btn pri" disabled style="flex:1">Enviando… no cierres la página</button>'; }
+    try {
+      var r = await edge({ accion: 'enviar', tipo: S.tipo, franja_ids: franjaIds(), asunto: S.asunto.trim(), mensaje: S.mensaje.trim(), esperado: (d.correos || []).length });
+      S.enviando = false;
+      if (r.ok === false && !r.enviados){ cerrarHoja(); toast(humano({ message: r.mensaje || r.motivo }, 'mandar avisos'), true); pintarAcciones(); if (r.motivo === 'cambio') pedirDestinatarios(); return; }
+      var fall = (r.fallidos || []).length;
+      hoja('<div class="cu av-hecho"><div class="ok">✓</div><h3 id="av-hoja-t" style="background:none;padding:0 0 6px">Aviso enviado</h3>' +
+        '<p style="margin:0">' + pl(r.enviados || 0, 'correo enviado', 'correos enviados') + ' y ' + pl(r.en_app || 0, 'aviso', 'avisos') + ' en la app.</p>' +
+        (fall ? '<p style="margin:8px 0 0;color:#B23B3B"><b>' + pl(fall, 'correo no salió', 'correos no salieron') + ':</b> ' + esc(r.fallidos.join(', ')) + '</p>' : '') +
+        (r.registrado === false ? '<p style="margin:8px 0 0;color:#B23B3B">Los correos salieron, pero no se pudo guardar en el historial ni en la app. Avisa a Andrés.</p>' : '') +
+        '</div><div class="pie"><button type="button" class="av-btn pri" data-cerrar>Hecho</button></div>');
+      S.asunto = ''; S.mensaje = ''; guardarBorrador(); pintarM(); pintarPrevia(); pintarAcciones();
+      await cargarHistorial(); pintarHist();
+    } catch (e) {
+      S.enviando = false; cerrarHoja(); pintarAcciones();
+      toast(humano(e, 'mandar avisos'), true);
+    }
+  }
+
+  async function prueba(){
+    var b = document.querySelector('[data-prueba]'); if (b){ b.disabled = true; b.textContent = 'Enviando prueba…'; }
+    try {
+      var r = await edge({ accion: 'prueba', tipo: S.tipo, franja_ids: franjaIds(), asunto: S.asunto.trim(), mensaje: S.mensaje.trim() });
+      if (r.ok) toast('Prueba enviada a ' + (r.a || 'tu correo') + '. Mira tu bandeja.');
+      else toast(humano({ message: r.mensaje || r.motivo }, 'mandar la prueba'), true);
+    } catch (e) { toast(humano(e, 'mandar la prueba'), true); }
+    pintarAcciones();
+  }
+
+  var PLANTILLAS = {
+    cierre: { a: 'La piscina estará cerrada el …', m: 'Os avisamos de que el … la piscina de Vía Parque estará cerrada, así que ese día no hay entrenamiento.\n\nEl resto de días seguimos con el horario de siempre.' },
+    horario: { a: 'Cambio de horario el …', m: 'Os avisamos de que el … el entrenamiento cambia de horario: será de … a ….\n\nEl resto de días seguimos como siempre.' },
+    libre: { a: '', m: '' }
+  };
+
+  // ---------- eventos ----------
+  wrap.addEventListener('click', function(e){
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.tipo){ S.tipo = t.dataset.tipo; pintarA(); pedirDestinatarios(); return; }
+    if (t.dataset.elegir != null){ S.elegir = t.dataset.elegir === '1'; pintarA(); pedirDestinatarios(); return; }
+    if (t.dataset.franja){ S.sel[t.dataset.franja] = !S.sel[t.dataset.franja]; pintarA(); pedirDestinatarios(); return; }
+    if (t.hasAttribute('data-limpiar')){ S.sel = {}; pintarA(); pedirDestinatarios(); return; }
+    if (t.dataset.plantilla){
+      var p = PLANTILLAS[t.dataset.plantilla];
+      if ((S.asunto || S.mensaje) && !confirm('¿Cambiar lo que has escrito por el ejemplo?')) return;
+      S.asunto = p.a; S.mensaje = p.m; guardarBorrador(); pintarM(); pintarPrevia(); pintarAcciones();
+      var ta = document.getElementById(p.a ? 'av-mensaje' : 'av-asunto'); if (ta) ta.focus();
+      return;
+    }
+    if (t.hasAttribute('data-prueba')){ prueba(); return; }
+    if (t.hasAttribute('data-enviar')){ confirmar(); return; }
+    if (t.dataset.hist){ S.abierto[t.dataset.hist] = !S.abierto[t.dataset.hist]; pintarHist(); return; }
+  });
+  wrap.addEventListener('input', function(e){
+    if (e.target.id === 'av-asunto'){ S.asunto = e.target.value; }
+    else if (e.target.id === 'av-mensaje'){ S.mensaje = e.target.value; }
+    else return;
+    guardarBorrador(); pintarPrevia(); pintarAcciones();
+  });
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('.av-velo button'); if (!t) return;
+    if (t.hasAttribute('data-cerrar')) cerrarHoja();
+    else if (t.hasAttribute('data-si')) enviar();
+  });
+
+  // ---------- arranque ----------
+  try { await cargarFranjas(); }
+  catch (e) {
+    wrap.innerHTML = '<div class="av-card"><h2>Avisos</h2><div class="av-cuerpo"><p style="margin:0">' + esc(humano(e, 'mandar avisos de natación')) + '</p></div></div>';
+    return;
+  }
+  esqueleto(); pintarPrevia(); pintarAcciones();
+  pedirDestinatarios();
+  cargarHistorial().then(pintarHist);
+});
+</script>
+</body>
+</html>
