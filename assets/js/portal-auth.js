@@ -53,7 +53,13 @@
         '.pt-tabbar{view-transition-name:pt-tabbar}' +
         'html.pt-vt-sin-top .pt-top{view-transition-name:none}' +
         '::view-transition-group(root){animation-duration:.2s}' +
-      '}';
+      '}' +
+      /* FOTO DE LA PANTALLA (ver más abajo): mientras se enseña la copia, el
+         contenido de verdad se monta DEBAJO, invisible y fuera del flujo (en su
+         mismo sitio y ancho, para que las medidas que tome la página sean
+         buenas), y se destapa en cuanto está listo. */
+      '#portal-contenido.pt-foto-tapado{position:absolute!important;left:0!important;right:0!important;' +
+        'visibility:hidden!important;pointer-events:none!important}';
     (document.head || document.documentElement).appendChild(_vt);
     window.addEventListener('pageswap', function () {
       try {
@@ -100,7 +106,7 @@
      SOLO sirven para PINTAR antes: los permisos los decide siempre la
      base (RLS). Se borran al cerrar sesión y al cambiar de vista.
      OJO: no se toca ninguna otra clave (p. ej. 'apo-mundo' es de mundos.js). */
-  var CACHE_PREFIJOS = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-'];
+  var CACHE_PREFIJOS = ['apo-perfil-', 'apo-atletas-', 'apo-grupos', 'apo-barra', 'apo-foto', 'apo-clave-', 'apo-pant-'];
   function limpiarCachePortal() {
     try {
       var borrar = [];
@@ -122,6 +128,122 @@
   var _veniaDeCambio = false;
   try { _veniaDeCambio = !!sessionStorage.getItem('apolana.cambiando'); } catch (e) {}
   if (_veniaDeCambio) limpiarCachePortal();
+
+  /* ------------------------------------------------------------
+     FLUIDEZ · FOTO DE LA PANTALLA (21-oct-2026)
+     ------------------------------------------------------------
+     Al cambiar de pestaña (Inicio · Lo mío · Calendario · Más) la página
+     nueva enseñaba los bloques grises de «cargando» mientras pedía sus
+     datos (1-3 idas y vueltas a la base). Ahora, la primera vez que una
+     de esas pantallas termina de pintarse se guarda una COPIA de lo que
+     enseña (sessionStorage, solo esta pestaña del navegador). La próxima
+     vez que se entra, esa copia se pinta en el PRIMER fotograma, como la
+     barra de antemano, mientras la página pide sus datos de verdad por
+     debajo; en cuanto los tiene, la copia se cambia por lo de verdad en el
+     mismo fotograma.
+     · Es solo un dibujo: no se puede pulsar (inert) ni la leen los lectores
+       de pantalla (aria-hidden), y no lleva ids (no choca con la página).
+     · Solo de la MISMA persona: se pinta solo si salió la barra de antemano
+       (sesión guardada en el aparato y mismo correo) y el correo de la copia
+       es el de la sesión. Se borra al cerrar sesión, al cambiar de vista y
+       si sale el login (prefijo 'apo-pant-' en CACHE_PREFIJOS).
+     · Caduca a los 15 min. Nunca se guarda con bloques de carga ni errores.
+     · Red: si en 6 s la página no ha terminado, la copia se quita igual.
+     · INTERRUPTOR: FOTO_ACTIVA = false aquí (para todos) o, en un aparato,
+       localStorage 'apolana-sin-foto' = '1'. Sin la copia, todo va como antes. */
+  var FOTO_ACTIVA = true;
+  var FOTO_PAGINAS = ['/portal/inicio/', '/portal/lo-mio/', '/portal/calendario/', '/portal/mas/'];
+  var FOTO_MAX_EDAD = 15 * 60000;
+  var FOTO_MAX_TAM = 300000;
+  var _foto = null, _fotoTimer = 0, _fotoVigilando = false;
+  function fotoClave() {
+    if (!FOTO_ACTIVA) return null;
+    try { if (localStorage.getItem('apolana-sin-foto') === '1') return null; } catch (e) {}
+    /* Con parámetros en la dirección la pantalla puede ser otra (un día, un
+       aviso de pago…): ni se guarda ni se pinta. */
+    if (location.search) return null;
+    var r = location.pathname.replace(/index\.html$/, '');
+    for (var i = 0; i < FOTO_PAGINAS.length; i++) {
+      var p = FOTO_PAGINAS[i];
+      if (r.length >= p.length && r.slice(-p.length) === p) return 'apo-pant-' + p;
+    }
+    return null;
+  }
+  function fotoQuitar() {
+    try {
+      if (_fotoTimer) { clearTimeout(_fotoTimer); _fotoTimer = 0; }
+      if (_foto && _foto.parentNode) _foto.parentNode.removeChild(_foto);
+      _foto = null;
+      var c = document.getElementById('portal-contenido');
+      if (c) c.classList.remove('pt-foto-tapado');
+    } catch (e) {}
+  }
+  /* Se llama al terminar de leer el HTML, DESPUÉS de la barra de antemano. */
+  function fotoPintar() {
+    try {
+      var k = fotoClave();
+      if (!k || _foto) return;
+      if (!document.querySelector('.pt-top.pt-previa')) return;
+      var c = document.getElementById('portal-contenido');
+      if (!c || !c.parentNode) return;
+      var o = JSON.parse(sessionStorage.getItem(k) || 'null');
+      if (!o || typeof o.html !== 'string' || !o.html || !o.email) return;
+      if ((Date.now() - (o.t || 0)) > FOTO_MAX_EDAD || String(o.email).toLowerCase() !== correoDelToken()) {
+        sessionStorage.removeItem(k);
+        return;
+      }
+      var f = document.createElement('div');
+      f.className = 'pt-foto-pantalla';
+      f.setAttribute('aria-hidden', 'true');
+      f.setAttribute('inert', '');
+      f.innerHTML = o.html;
+      var fuera = f.querySelectorAll('script,iframe,video,audio,object,embed');
+      for (var i = fuera.length - 1; i >= 0; i--) fuera[i].parentNode.removeChild(fuera[i]);
+      var conId = f.querySelectorAll('[id],[name],[autofocus]');
+      for (var j = 0; j < conId.length; j++) {
+        conId[j].removeAttribute('id'); conId[j].removeAttribute('name'); conId[j].removeAttribute('autofocus');
+      }
+      c.classList.add('pt-foto-tapado');
+      c.parentNode.insertBefore(f, c.nextSibling);
+      _foto = f;
+      _fotoTimer = setTimeout(fotoQuitar, 6000);
+    } catch (e) { fotoQuitar(); }
+  }
+  /* Se llama cuando ya hay sesión y la página ha arrancado: destapa lo de
+     verdad en cuanto está listo y guarda la copia para la próxima vez. */
+  function fotoVigilar(email) {
+    if (_fotoVigilando) return;
+    var k = fotoClave();
+    var c = document.getElementById('portal-contenido');
+    if (!k || !c || !email) { fotoQuitar(); return; }
+    _fotoVigilando = true;
+    var guardada = false, tq = 0, obs = null;
+    function listo() {
+      return c.style.display !== 'none' && !c.querySelector('.ap-esq') && c.getElementsByTagName('*').length > 4;
+    }
+    function guardar() {
+      if (guardada || !listo() || c.querySelector('.ap-error')) return;
+      guardada = true;
+      if (obs) obs.disconnect();
+      try {
+        var html = c.innerHTML;
+        if (html.length > FOTO_MAX_TAM) { sessionStorage.removeItem(k); return; }
+        sessionStorage.setItem(k, JSON.stringify({ t: Date.now(), email: String(email).toLowerCase(), html: html }));
+      } catch (e) { try { sessionStorage.removeItem(k); } catch (e2) {} }
+    }
+    function mirar() {
+      if (!listo()) return;
+      if (_foto) fotoQuitar();
+      clearTimeout(tq);
+      tq = setTimeout(guardar, 700);   /* se guarda cuando la pantalla se queda quieta */
+    }
+    try {
+      obs = new MutationObserver(mirar);
+      obs.observe(c, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+    } catch (e) { fotoQuitar(); return; }
+    mirar();
+    setTimeout(function () { if (obs && !guardada) obs.disconnect(); }, 20000);
+  }
 
   var _cb = null;
   var _papeles = null;      // promesa cacheada con los papeles del usuario
@@ -271,6 +393,7 @@
       if (p && p.parentNode) p.parentNode.removeChild(p);
       if (p && !document.querySelector('.pt-top')) avisarBarra('apolana:sin-barra');
     } catch (e) {}
+    fotoQuitar();   /* sin sesión / sin ficha / poner contraseña: fuera también la foto */
   }
   function pintarBarraPrevia() {
     try {
@@ -327,6 +450,7 @@
       if (c && hayTokenEnAparato()) c.style.display = 'none';
     } catch (e) {}
     pintarBarraPrevia();
+    fotoPintar();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('readystatechange', function una() {
@@ -1097,6 +1221,7 @@
     /* Por si el aviso de «HTML leído» no llegó (raro): se intenta aquí. Si ya
        hay barra (de antemano o real), no hace nada. */
     pintarBarraPrevia();
+    fotoPintar();
 
     function barra(perfil, email) {
       /* Nunca dos barras: si ya hay una pintada, no se pinta otra. Esto
@@ -2416,6 +2541,8 @@
       }).catch(function () {});
 
       if (_cb) _cb(sb, perfil);
+      /* FOTO DE LA PANTALLA: destapar lo de verdad cuando esté y guardar la copia. */
+      fotoVigilar(email);
 
       /* Revalidación del perfil cacheado (si era «viejo»). Si el papel ha
          cambiado entretanto (otra pestaña, o el club le ha cambiado los

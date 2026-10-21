@@ -12,7 +12,7 @@
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/festivos.js?v=9483b898" defer></script>
-<script src="../../assets/js/portal-auth.js?v=e6a01224"></script>
+<script src="../../assets/js/portal-auth.js?v=87f680a5"></script>
 <!-- FLUIDEZ: blocking="render" = el primer fotograma espera a que la barra de abajo
      se haya pintado (con la de arriba «de antemano»), para que la transición entre
      pestañas las deje quietas en vez de hacerlas parpadear. Navegadores sin soporte lo ignoran. -->
@@ -119,6 +119,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var pPlazas = lanzar(sb.rpc('natacion_mis_plazas'));
   var pMaster = lanzar(sb.rpc('natacion_master_estado'));
   var pSes = lanzar(sb.from('sesiones').select('id,titulo,hora,lugar,grupo_id,atletas_ids,tipo,papel_dia').eq('publicada', true).eq('fecha', HOY_ISO));
+  /* FLUIDEZ (21-oct) · Los festivos de las próximas dos semanas tampoco dependen
+     de nada: antes se pedían al FINAL de la cadena (una ida y vuelta más en
+     serie). cargar() nunca falla: sin datos devuelve una lista vacía. */
+  var _f2 = new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + 13);
+  var pFest = null;
+  try { if (window.APOLANA_FESTIVOS) pFest = APOLANA_FESTIVOS.cargar(sb, HOY_ISO, _f2.getFullYear()+'-'+pad(_f2.getMonth()+1)+'-'+pad(_f2.getDate())); } catch (e) { pFest = null; }
 
   var fichas = [];
   try {
@@ -140,14 +146,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   gids = gids.filter(function (v, i) { return v && gids.indexOf(v) === i; });
 
   var GRUPOS = {};
+  function ponerGrupo(x) {
+    /* Copia: las filas de APOLANA_PORTAL.grupos() son compartidas y no se tocan. */
+    var g = { id: x.id, nombre: x.nombre, seccion: x.seccion, turno: x.turno };
+    if (g.turno && window.APOLANA_GRUPO_NOMBRE) g.nombre = window.APOLANA_GRUPO_NOMBRE(g);
+    GRUPOS[g.id] = g;
+  }
   if (gids.length) {
+    /* FLUIDEZ (21-oct) · Los grupos ya vienen (todos, lectura pública) con el
+       arranque del portal, y casi siempre de su caché: se toman de ahí. Solo
+       si falta alguno se pregunta a la base, como antes. */
     try {
-      var rg = await sb.from('grupos').select('id,nombre,seccion,turno').in('id', gids);
-      if (rg && !rg.error && rg.data) rg.data.forEach(function (g) {
-        if (g.turno && window.APOLANA_GRUPO_NOMBRE) g.nombre = window.APOLANA_GRUPO_NOMBRE(g);
-        GRUPOS[g.id] = g;
-      });
+      var tg = APOLANA_PORTAL.grupos ? await APOLANA_PORTAL.grupos() : null;
+      if (tg && !tg.error && tg.data) tg.data.forEach(function (x) { if (x && gids.indexOf(x.id) >= 0) ponerGrupo(x); });
     } catch (e) {}
+    var faltan = gids.filter(function (id) { return !GRUPOS[id]; });
+    if (faltan.length) {
+      try {
+        var rg = await sb.from('grupos').select('id,nombre,seccion,turno').in('id', faltan);
+        if (rg && !rg.error && rg.data) rg.data.forEach(ponerGrupo);
+      } catch (e) {}
+    }
   }
   var SEC_ATL = ['competicion','pista','escuela','running','triatlon','montana','marcha'];
   var gCubo = gids.filter(function (id) { return GRUPOS[id] && GRUPOS[id].seccion === 'cubo'; });
@@ -169,10 +188,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   //  Un festivo no se nota en el horario fijo de abajo: se dice aparte, con su
   //  día, en el bloque al que afecta. Si la consulta falla, no sale nada.
   var FEST = null;
-  try {
-    var _f2 = new Date(HOY.getFullYear(), HOY.getMonth(), HOY.getDate() + 13);
-    if (window.APOLANA_FESTIVOS) FEST = await APOLANA_FESTIVOS.cargar(sb, HOY_ISO, _f2.getFullYear()+'-'+pad(_f2.getMonth()+1)+'-'+pad(_f2.getDate()));
-  } catch (e) {}
+  try { if (pFest) FEST = await pFest; } catch (e) {}
   /* items: [{ dia: 1..7, ctx: {seccion, grupo_id, lugar} }] → líneas «Lun 12 · Festivo · sin entreno». */
   function lineasFestivo(items) {
     if (!FEST || !items.length) return [];
