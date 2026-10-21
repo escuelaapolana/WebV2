@@ -237,6 +237,10 @@
   @media (max-width: 760px) {
     .cab { padding-top:16px; }
   }
+  /* Contacto del participante (mig 414) */
+  .lc-contacto { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; margin-top:6px; font-size:13px; }
+  .lc-contacto .lc-dato { color:#2F6FA8; text-decoration:none; white-space:nowrap; }
+  .lc-contacto .b-wa { background:#E3F2E8; border-color:#1E7A3D; color:#1E7A3D; text-decoration:none; }
 </style>
 </head>
 <body>
@@ -669,6 +673,11 @@ APOLANA_ADMIN.listo(function (sb) {
     ATLETAS = marcar('atletas', ra) ? (ra.data || []) : [];
     ATL_POR_ID = {}; ATLETAS.forEach(function (a) { ATL_POR_ID[a.id] = a; });
 
+    /* Contacto (teléfono y correo) SOLO de quien participa en la Liga, para
+       avisarle (mig 414). Andrés, 21-oct: no el listado de socios entero. */
+    CONTACTO = {};
+    try { var rco = await sb.rpc('liga_contactos'); if (!rco.error) (rco.data || []).forEach(function (c) { CONTACTO[c.atleta_id] = c; }); } catch (eCo) {}
+
     var rp = await sb.from('liga_participaciones').select('*').eq('edicion_id', EDICION.id)
       .order('fecha', { ascending: false }).order('created_at', { ascending: false });
     PARTICIPACIONES = marcar('participaciones', rp) ? (rp.data || []) : [];
@@ -690,6 +699,31 @@ APOLANA_ADMIN.listo(function (sb) {
     pintar();
   }
 
+  var CONTACTO = {};
+  function telWa(t) {
+    var d = String(t || '').replace(/[^\d+]/g, '');
+    if (d.indexOf('+') === 0) d = d.slice(1); else if (d.indexOf('00') === 0) d = d.slice(2); else if (d.length === 9) d = '34' + d;
+    d = d.replace(/\D/g, ''); return d.length >= 10 ? d : '';
+  }
+  /* Mensaje ya escrito: si está rechazada, con el motivo; si no, genérico. */
+  function mensajeWa(p) {
+    var pila = (quienDe(p).split(' ')[0] || '').trim();
+    var carrera = '«' + (p.competicion || 'tu carrera') + '»';
+    if (p.estado === 'no_validada') {
+      return 'Hola, ' + pila + '. Te escribo de la Liga Apolana: no hemos podido validar ' + carrera +
+        (p.motivo_no_validada ? '. Motivo: ' + p.motivo_no_validada.replace(/\.$/, '') + '.' : '.') +
+        ' Si crees que es un error, mándanos la clasificación donde salgas como Club Atletismo Apolana y lo revisamos. ¡Gracias!';
+    }
+    return 'Hola, ' + pila + '. Te escribo de la Liga Apolana sobre ' + carrera + ': ';
+  }
+  function contactoHTML(p) {
+    var c = p.atleta_id && CONTACTO[p.atleta_id]; if (!c) return '';
+    var t = telWa(c.telefono), h = '';
+    if (t) h += '<a class="bmini b-wa" href="https://wa.me/' + t + '?text=' + encodeURIComponent(mensajeWa(p)) + '" target="_blank" rel="noopener">WhatsApp</a>';
+    if (c.telefono) h += '<a class="lc-dato" href="tel:' + esc(String(c.telefono).replace(/[^\d+]/g, '')) + '">📞 ' + esc(c.telefono) + '</a>';
+    if (c.email) h += '<a class="lc-dato" href="mailto:' + esc(c.email) + '">✉ ' + esc(c.email) + '</a>';
+    return h ? '<div class="lc-contacto">' + h + '</div>' : '';
+  }
   function nombreAtleta(a) { return a ? ((a.nombre || '') + ' ' + (a.apellidos || '')).trim() : ''; }
   function quienDe(p) {
     if (p.atleta_id && ATL_POR_ID[p.atleta_id]) return nombreAtleta(ATL_POR_ID[p.atleta_id]);
@@ -919,6 +953,7 @@ APOLANA_ADMIN.listo(function (sb) {
             (fueraDePlazo(p) ? '<span class="pill pill-tarde">fuera de plazo</span>' : '') +
             (esDuplicada(p) ? '<span class="pill" style="background:#FBE3E1;color:#B3261E;border:1px solid #F1C7C3">⚠️ Posible duplicada</span>' : '') +
           '</div>' +
+          contactoHTML(p) +
           (esDuplicada(p) ? '<span class="porque">Esta persona ya tiene otra prueba el mismo día, con la misma disciplina y distancia. Si es la misma carrera metida dos veces, <strong>rechaza esta</strong> para no contar los puntos doble.</span>' : '') +
           (d.porque ? '<span class="porque">' + d.porque + '</span>' : '') +
           (nAdj ? '<div class="pruebas-adj" data-adj="' + p.id + '">' + ADM.esqueleto(1) + '</div>' : '') +
@@ -1204,7 +1239,7 @@ APOLANA_ADMIN.listo(function (sb) {
                : '<span class="pill pill-pend">Sin validar</span>';
       if (fueraDePlazo(p)) pill += ' <span class="pill pill-tarde">tarde</span>';
       return '<tr>' +
-        '<td data-etiqueta="Quién">' + esc(quienDe(p)) + '</td>' +
+        '<td data-etiqueta="Quién">' + esc(quienDe(p)) + contactoHTML(p) + '</td>' +
         '<td data-etiqueta="Fecha">' + esc(fCorta(p.fecha)) + '</td>' +
         '<td data-etiqueta="Competición">' + esc(p.competicion) + '</td>' +
         '<td data-etiqueta="Prueba">' + esc(DISCIPLINAS[p.disciplina] || p.disciplina) + ' · ' + esc(p.modalidad) + '</td>' +
@@ -1563,7 +1598,17 @@ APOLANA_ADMIN.listo(function (sb) {
       .update({ estado: 'no_validada', motivo_no_validada: $('mo-texto').value.trim() })
       .eq('id', $('mo-id').value);
     if (r.error) { $('msg-motivo').className = 'msg error'; $('msg-motivo').textContent = r.error.message; return; }
-    cerrar('m-motivo'); cargarTodo();
+    cerrar('m-motivo');
+    /* Avisarle en el momento: WhatsApp con el motivo ya escrito. */
+    var pr = PARTICIPACIONES.filter(function (x) { return x.id === $('mo-id').value; })[0];
+    if (pr) {
+      pr = Object.assign({}, pr, { estado: 'no_validada', motivo_no_validada: $('mo-texto').value.trim() });
+      var c = pr.atleta_id && CONTACTO[pr.atleta_id], t = c && telWa(c.telefono);
+      if (t && await apoConfirm({ titulo: 'Avisar a ' + quienDe(pr), texto: 'Se abre WhatsApp con el mensaje ya escrito (el motivo incluido). Lo revisas y lo envías tú.', confirmar: 'Abrir WhatsApp' })) {
+        window.open('https://wa.me/' + t + '?text=' + encodeURIComponent(mensajeWa(pr)), '_blank', 'noopener');
+      }
+    }
+    cargarTodo();
   });
 
   /* Con tres días de plazo y una temporada entera de pruebas, revisarlas una
