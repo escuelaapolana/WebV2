@@ -121,6 +121,18 @@
   .cu-btn.peq{ min-height:44px; padding:6px 13px; font-size:14px; }
   .cu-link{ font:inherit; font-size:14px; background:none; border:0; color:#B23B3B; text-decoration:underline; cursor:pointer; padding:0 4px; min-height:44px; }
 
+  /* descargar Excel */
+  .cu-exp > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:14px 18px; background:var(--crema-banda,#F1EADC);
+    font-family:var(--fuente-titulo); font-size:17px; font-weight:700; color:var(--navy,#26374B); }
+  .cu-exp > summary::-webkit-details-marker{ display:none; }
+  .cu-exp > summary small{ font-family:inherit; font-size:13px; font-weight:600; color:var(--texto-suave,#6E6656); }
+  .cu-exp > summary::after{ content:'▼'; margin-left:auto; font-size:11px; color:var(--texto-suave,#6E6656); transition:transform .2s; }
+  .cu-exp[open] > summary::after{ transform:rotate(180deg); }
+  .cu-exp-f{ display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
+  .cu-exp-f label{ flex:1 1 140px; font-size:12.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--texto-suave,#6E6656); }
+  .cu-exp-f input{ display:block; width:100%; box-sizing:border-box; margin-top:5px; font:inherit; font-size:16px; min-height:46px; padding:8px 10px;
+    border:1px solid var(--linea-borde,#C9C0AE); border-radius:11px; background:#fff; color:var(--navy,#26374B); text-transform:none; letter-spacing:0; }
+
   /* avisos */
   .cu-aviso{ font-size:14px; color:#7A5200; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:12px; padding:11px 13px; margin-top:12px; line-height:1.45; }
   .cu-msg{ margin-top:14px; background:#fff; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; padding:11px 12px; }
@@ -301,8 +313,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     edit: {},          // atleta_id → { importe, per } mientras se edita la cuota de la ficha
     abiertos: {},      // atleta_id → true: filas desplegadas
     guardando: {},
-    tarifas: { 'Máster': null, 'Escuela': null }
+    tarifas: { 'Máster': null, 'Escuela': null },
+    exp: { abierto: false, desde: '', hasta: '', cargando: false }   // «Descargar Excel»
   };
+  (function(){ var h = partes(hoyISO()); S.exp.desde = ymd(h.y, h.m, 1); S.exp.hasta = ymd(h.y, h.m, diasDelMes(h.y, h.m)); })();
 
   // Tarifas (para proponer la cuota si la ficha no tiene): socio por nº de días.
   ['Máster', 'Escuela'].forEach(function(t){
@@ -388,6 +402,86 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<span>· <b>' + (cuenta.pend || 0) + '</b> con enlace pendiente</span><span>· <b>' + (cuenta.sin || 0) + '</b> sin cobro</span></div>' +
       '</div></div>';
   }
+  // ---------- «Descargar Excel»: cobros por fechas + cómo está cada cuota hoy ----------
+  function rango(k){
+    var h = partes(hoyISO());
+    if (k === 'mes') return [ymd(h.y, h.m, 1), ymd(h.y, h.m, diasDelMes(h.y, h.m))];
+    if (k === 'pasado'){ var y = h.m === 1 ? h.y - 1 : h.y, m = h.m === 1 ? 12 : h.m - 1; return [ymd(y, m, 1), ymd(y, m, diasDelMes(y, m))]; }
+    var ti = h.m >= 9 ? h.y : h.y - 1;   // temporada: 1 de septiembre → hoy
+    return [ymd(ti, 9, 1), hoyISO()];
+  }
+  function expHtml(){
+    var E = S.exp;
+    var chips = [['mes', 'Este mes'], ['pasado', 'Mes pasado'], ['temp', 'Toda la temporada']].map(function(o){
+      var r = rango(o[0]), on = r[0] === E.desde && r[1] === E.hasta;
+      return '<button type="button" class="cu-chip' + (on ? ' on' : '') + '" data-rango="' + o[0] + '">' + o[1] + '</button>';
+    }).join('');
+    return '<details class="cu-card cu-exp" id="cu-exp"' + (E.abierto ? ' open' : '') + '><summary>Descargar Excel <small>cobros por fechas</small></summary><div class="cu-cuerpo">' +
+      '<div class="cu-filtros" style="margin-top:0">' + chips + '</div>' +
+      '<div class="cu-exp-f"><label>Desde<input type="date" id="cu-desde" value="' + esc(E.desde) + '"></label>' +
+        '<label>Hasta<input type="date" id="cu-hasta" value="' + esc(E.hasta) + '"></label></div>' +
+      '<button type="button" class="cu-btn" data-exportar style="width:100%;min-height:48px"' + (E.cargando ? ' disabled' : '') + '>' + (E.cargando ? 'Preparando el Excel…' : 'Descargar Excel') + '</button>' +
+      '<div class="cu-cobro-det" style="margin-top:10px">Dos hojas: <b>Cobros</b> (lo cobrado o por cobrar en esas fechas, solo natación) y <b>Cuotas hoy</b> (cómo está la domiciliación de cada nadador). ' +
+        'Un cobro domiciliado aparece cuando el banco lo confirma, unos días después del cargo.</div>' +
+    '</div></details>';
+  }
+  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', _xlsx = null;
+  function cargarXlsx(){
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_xlsx) return _xlsx;
+    _xlsx = new Promise(function(ok, ko){
+      var sc = document.createElement('script'); sc.src = XLSX_URL; sc.async = true;
+      sc.onload = function(){ window.XLSX ? ok(window.XLSX) : ko(new Error('No se pudo cargar el Excel')); };
+      sc.onerror = function(){ _xlsx = null; ko(new Error('No se pudo cargar el Excel. Revisa internet y vuelve a intentarlo.')); };
+      document.head.appendChild(sc);
+    });
+    return _xlsx;
+  }
+  function fecha(iso){ if (!iso) return ''; var p = partes(iso); return new Date(p.y, p.m - 1, p.d, 12); }   // a mediodía: sin saltos de día por la zona horaria
+  function ddmm(iso){ if (!iso) return ''; var p = partes(iso); return String(p.d).padStart(2,'0') + '/' + String(p.m).padStart(2,'0') + '/' + p.y; }
+  var ESTADO_COBRO = { pagado:'Pagado', pendiente:'Pendiente', impagado:'Impagado', anulado:'Anulado' };
+  var FORMA = { domiciliado:'Domiciliado', tarjeta:'Tarjeta', transferencia:'Transferencia', efectivo:'Efectivo', otro:'Otro' };
+  async function exportar(){
+    var E = S.exp;
+    if (!E.desde || !E.hasta){ toast('Pon las dos fechas'); return; }
+    if (E.hasta < E.desde){ toast('«Hasta» es anterior a «Desde»'); return; }
+    E.cargando = true; pintarExp();
+    try {
+      var r = await sb.rpc('natacion_cobros_exportar', { p_desde: E.desde, p_hasta: E.hasta });
+      if (r.error) throw r.error;
+      var X = await cargarXlsx();
+      var cobros = (r.data || []).map(function(c){
+        return { 'Fecha': fecha(c.fecha), 'Estado': ESTADO_COBRO[c.estado] || c.estado || '', 'Nadador': capital(c.nadador), 'Tipo': c.tipo || '',
+          'Concepto': c.concepto || '', 'Importe (€)': Number(c.importe) || 0, 'Forma de pago': FORMA[c.metodo] || c.metodo || '',
+          'Nº recibo': c.numero_recibo || '', 'Fecha de cobro': fecha(c.fecha_pago), 'Vencimiento': fecha(c.vencimiento) };
+      });
+      var pagado = cobros.filter(function(c){ return c['Estado'] === 'Pagado'; }).reduce(function(a, c){ return a + c['Importe (€)']; }, 0);
+      var h1 = X.utils.json_to_sheet(cobros.length ? cobros : [{ 'Fecha': '', 'Estado': 'Sin cobros de natación entre el ' + ddmm(E.desde) + ' y el ' + ddmm(E.hasta) }],
+        { cellDates: true, dateNF: 'dd/mm/yyyy' });
+      if (cobros.length) X.utils.sheet_add_json(h1, [{}, { 'Concepto': 'Total pagado', 'Importe (€)': r2(pagado) }], { skipHeader: true, origin: -1, header: Object.keys(cobros[0]) });
+      h1['!cols'] = [{wch:11},{wch:11},{wch:30},{wch:9},{wch:52},{wch:11},{wch:14},{wch:11},{wch:13},{wch:12}];
+      var cuotas = (S.lista || []).filter(function(x){ return x.cobro_id || Number(x.cuota_importe) > 0; }).map(function(x){
+        return { 'Nadador': nombreDe(x), 'Tipo': x.tipo || '', 'Días': x.dias || '', 'Socio': x.tipo === 'Máster' ? (x.es_socio ? 'Sí' : 'No') : '',
+          'Cuota de la ficha (€)': x.cuota_importe != null ? Number(x.cuota_importe) : '', 'Cada': x.cuota_importe != null ? textoPer(x.cuota_periodicidad) : '',
+          'Domiciliación': estadoDe(x).t, 'Importe domiciliado (€)': x.cobro_importe != null ? Number(x.cobro_importe) : '',
+          'Cada ': x.cobro_id ? textoPer(x.cobro_periodicidad) : '', 'Forma': x.cobro_id ? (x.cobro_metodo === 'tarjeta' ? 'Tarjeta' : 'Domiciliación SEPA') : '',
+          'Desde': x.cobro_inicio ? mesAnio(x.cobro_inicio) : '', 'Hasta': x.cobro_fin ? mesAnio(x.cobro_fin) : '',
+          'Primer cargo (€)': x.cobro_cargo_inicial != null ? Number(x.cobro_cargo_inicial) : '', 'Baja': x.acceso_activo ? '' : 'De baja' };
+      });
+      var h2 = X.utils.json_to_sheet(cuotas.length ? cuotas : [{ 'Nadador': 'Nadie con cuota todavía' }]);
+      h2['!cols'] = [{wch:30},{wch:9},{wch:6},{wch:6},{wch:12},{wch:13},{wch:18},{wch:12},{wch:13},{wch:18},{wch:18},{wch:18},{wch:11},{wch:8}];
+      var wb = X.utils.book_new();
+      X.utils.book_append_sheet(wb, h1, 'Cobros');
+      X.utils.book_append_sheet(wb, h2, 'Cuotas hoy');
+      X.writeFile(wb, 'Natación cobros ' + E.desde + ' a ' + E.hasta + '.xlsx');
+      toast(cobros.length ? 'Excel descargado · ' + pl(cobros.length, 'cobro', 'cobros') : 'Excel descargado (sin cobros en esas fechas)');
+    } catch (e) {
+      toast(humano(e, 'descargar los cobros de natación'));
+    }
+    E.cargando = false; pintarExp();
+  }
+  function pintarExp(){ var d = document.getElementById('cu-exp'); if (!d) return; var tmp = document.createElement('div'); tmp.innerHTML = expHtml(); d.replaceWith(tmp.firstChild); }
+
   // Importe que se ve en la fila: la cuota de la ficha (o, si no tiene, la del cobro).
   function impFila(x){
     var v = x.cuota_importe != null ? x.cuota_importe : x.cobro_importe, per = x.cuota_importe != null ? x.cuota_periodicidad : x.cobro_periodicidad;
@@ -483,7 +577,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function pintar(){
     var foco = document.activeElement && document.activeElement.id === 'cu-q';
-    wrap.innerHTML = cab() + filtrosHtml() + '<div id="cu-lista">' + listaHtml() + '</div>';
+    wrap.innerHTML = cab() + filtrosHtml() + expHtml() + '<div id="cu-lista">' + listaHtml() + '</div>';
     if (foco){ var b = document.getElementById('cu-q'); if (b){ b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch(e){} } }
   }
   function pintarLista(){ var c = document.getElementById('cu-lista'); if (c) c.innerHTML = listaHtml(); else pintar(); }
@@ -768,6 +862,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       try { history.replaceState(null, '', S.tipo ? '?tipo=' + encodeURIComponent(S.tipo) : location.pathname); } catch(e){}
       pintar(); return;
     }
+    if ((b = t.closest('[data-rango]'))){ var rg = rango(b.getAttribute('data-rango')); S.exp.desde = rg[0]; S.exp.hasta = rg[1]; pintarExp(); return; }
+    if ((b = t.closest('[data-exportar]'))){ if (!S.exp.cargando) exportar(); return; }
     if ((b = t.closest('[data-copiar]'))){ var x = porId(b.getAttribute('data-copiar')); if (x && x.enlace) copiar(x.enlace); return; }
     if ((b = t.closest('[data-copiar-msg]'))){ var xm = porId(b.getAttribute('data-copiar-msg')); if (xm && xm.enlace) copiar(mensaje(xm, xm.enlace, datosCobro(xm)), 'Mensaje copiado'); return; }
     if ((b = t.closest('[data-crear]'))){ abrirForm(b.getAttribute('data-crear')); return; }
@@ -805,6 +901,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   wrap.addEventListener('change', function(ev){
     var t = ev.target;
     if (t.id === 'cu-estado'){ S.estado = t.value; pintarLista(); return; }
+    if (t.id === 'cu-desde' || t.id === 'cu-hasta'){ S.exp[t.id === 'cu-desde' ? 'desde' : 'hasta'] = t.value; pintarExp(); return; }
     var id = t.getAttribute && t.getAttribute('data-per');
     if (id){
       var x = porId(id); if (!x) return;
@@ -812,6 +909,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       ed.per = t.value; S.edit[id] = ed; pintarFila(id);
     }
   });
+  wrap.addEventListener('toggle', function(ev){ if (ev.target && ev.target.id === 'cu-exp') S.exp.abierto = ev.target.open; }, true);
   wrap.addEventListener('keydown', function(ev){
     var id = ev.target.getAttribute && ev.target.getAttribute('data-cuota');
     if (id && ev.key === 'Enter'){ ev.preventDefault(); guardarCuota(id); }
