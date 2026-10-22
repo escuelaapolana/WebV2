@@ -91,6 +91,13 @@
                 0 44px 76px -32px rgba(30,45,65,.34);
   }
   /* La foto ocupa todo el ancho de la ficha (a sangre) y hace un zoom suave. */
+  /* Filtro por sección */
+  .secciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+  .secciones button {
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; min-height: 42px; padding: 8px 16px;
+    border-radius: 999px; border: 1px solid var(--linea-borde, #D4CBB9); background: #fff; color: var(--navy, #2E4256);
+  }
+  .secciones button[aria-pressed="true"] { background: var(--navy, #2E4256); border-color: var(--navy, #2E4256); color: #fff; }
   .producto .foto {
     aspect-ratio: 4 / 5; background: var(--crema-media); overflow: hidden;
   }
@@ -264,6 +271,8 @@
            migraciones/029_tienda.sql). -->
       <div>
         <div id="aviso-catalogo" class="aviso-catalogo" hidden></div>
+        <!-- Filtro por sección (mig 433): /tienda/?seccion=triatlon entra ya filtrada. -->
+        <div class="secciones" id="secciones" role="group" aria-label="Filtrar por sección" hidden></div>
         <div class="catalogo" id="catalogo"></div>
       </div>
 
@@ -332,6 +341,27 @@
   var enviado = null;       // pedido ya enviado, para enseñar la confirmación
 
   var elCatalogo = document.getElementById('catalogo');
+  var elSecciones = document.getElementById('secciones');
+  var SECCIONES = [['club', 'Ropa del club'], ['atletismo', 'Atletismo · competición'], ['triatlon', 'Triatlón'], ['natacion', 'Natación']];
+  var filtroSec = (function () { try { return new URLSearchParams(location.search).get('seccion') || ''; } catch (e) { return ''; } })();
+  function pintarSecciones() {
+    if (!elSecciones) return;
+    var hay = {}; catalogo.forEach(function (p) { if (p.seccion) hay[p.seccion] = true; });
+    var lista = SECCIONES.filter(function (x) { return hay[x[0]]; });
+    if (lista.length < 2) { elSecciones.hidden = true; filtroSec = ''; return; }
+    if (filtroSec && !hay[filtroSec]) filtroSec = '';
+    elSecciones.innerHTML = [['', 'Todo']].concat(lista).map(function (x) {
+      return '<button type="button" data-sec="' + x[0] + '" aria-pressed="' + (filtroSec === x[0] ? 'true' : 'false') + '">' + esc(x[1]) + '</button>';
+    }).join('');
+    elSecciones.hidden = false;
+  }
+  if (elSecciones) elSecciones.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('button[data-sec]') : null;
+    if (!b) return;
+    filtroSec = b.getAttribute('data-sec');
+    try { history.replaceState(null, '', filtroSec ? '?seccion=' + filtroSec : location.pathname); } catch (e) {}
+    pintarSecciones(); pintarCatalogo();
+  });
   var elAviso    = document.getElementById('aviso-catalogo');
   var elPedido   = document.getElementById('pedido-cuerpo');
 
@@ -375,6 +405,7 @@
   function pintarCatalogo() {
     if (!elCatalogo) return;
     elCatalogo.innerHTML = catalogo.map(function (p, i) {
+      if (filtroSec && p.seccion && p.seccion !== filtroSec) return '';   // filtro por sección (se conserva el índice i)
       var agotadas = p.tallas_agotadas || [];
       var tallas = (p.tallas_disponibles || []).slice();
       var libres = tallas.filter(function (t) { return agotadas.indexOf(t) === -1; });
@@ -421,7 +452,7 @@
     var sb = window.APOLANA_DB;
     if (!sb) { catalogo = RESPALDO; hayBase = false; return Promise.resolve(); }
     return sb.from('productos')
-      .select('id,nombre,precio,tallas_disponibles,tallas_agotadas,imagen_url,orden')
+      .select('id,nombre,precio,tallas_disponibles,tallas_agotadas,imagen_url,orden,seccion')
       .eq('activo', true)
       .order('orden', { ascending: true, nullsFirst: false })
       .order('nombre')
@@ -431,7 +462,7 @@
           return {
             id: p.id, nombre: p.nombre, precio: (p.precio == null ? null : Number(p.precio)),
             tallas_disponibles: p.tallas_disponibles || [], tallas_agotadas: p.tallas_agotadas || [],
-            imagen_url: p.imagen_url || ''
+            imagen_url: p.imagen_url || '', seccion: p.seccion || 'club'
           };
         });
         hayBase = true;
@@ -691,6 +722,7 @@
     if (pagoVuelta === 'cancelado') { mensaje('Pago cancelado. Tu cesta sigue aquí; puedes intentarlo de nuevo cuando quieras.', false); }
 
     cargarCatalogo().then(function () {
+      pintarSecciones();
       pintarCatalogo();
       if (!hayBase && elAviso) {
         elAviso.hidden = false;
