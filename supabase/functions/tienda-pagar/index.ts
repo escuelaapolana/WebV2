@@ -102,7 +102,7 @@ async function avisarEncargo(items: Array<Record<string, unknown>>, contacto: Re
 <table width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="max-width:560px;border-radius:12px;overflow:hidden">
 <tr><td bgcolor="#2E4256" style="padding:18px 22px;color:#ffffff;font-size:18px;font-weight:bold">Nuevo encargo de ropa · ${escH(eurTxt(total))}</td></tr>
 <tr><td style="padding:16px 12px 4px"><table cellpadding="0" cellspacing="0" style="font-size:15px">
-${fila("Para", contacto.atleta)}${fila("Quién lo pide", contacto.nombre)}${fila("Teléfono", contacto.telefono)}${fila("Correo", contacto.email)}
+${fila("Para", contacto.atleta)}${fila("Quién lo pide", contacto.nombre)}${fila("Teléfono", contacto.telefono)}${fila("Correo", contacto.email)}${fila("Observaciones", contacto.nota)}
 </table></td></tr>
 <tr><td style="padding:10px 22px"><table width="100%" cellpadding="0" cellspacing="0" style="font-size:15px;border-collapse:collapse">
 <tr bgcolor="#F1EADC"><td style="padding:7px 8px"><b>Prenda</b></td><td style="padding:7px 8px"><b>Talla</b></td><td style="padding:7px 8px" align="right"><b>Uds.</b></td><td style="padding:7px 8px" align="right"><b>Importe</b></td></tr>
@@ -112,7 +112,7 @@ ${lineas.map((l) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #eee
 <tr><td style="padding:6px 22px 22px" align="center"><a href="https://atletismoapolana.com/admin/pedidos/" style="display:inline-block;background:#2F6FA8;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:9px">Ver los pedidos</a>
 <div style="color:#71717a;font-size:13px;margin-top:10px">Se paga en la oficina al recogerlo (tarjeta o efectivo).</div></td></tr>
 </table></td></tr></table></body></html>`;
-    const texto = `Nuevo encargo de ropa (${eurTxt(total)})\nPara: ${contacto.atleta || "-"}\nQuién: ${contacto.nombre || "-"} · ${contacto.telefono || ""} ${contacto.email || ""}\n` +
+    const texto = `Nuevo encargo de ropa (${eurTxt(total)})\nPara: ${contacto.atleta || "-"}\nQuién: ${contacto.nombre || "-"} · ${contacto.telefono || ""} ${contacto.email || ""}\n${contacto.nota ? "Observaciones: " + contacto.nota + "\n" : ""}` +
       lineas.map((l) => `- ${l.cant} × ${l.nombre}${l.talla ? " (talla " + l.talla + ")" : ""}`).join("\n");
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
