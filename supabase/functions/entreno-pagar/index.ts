@@ -35,7 +35,7 @@
 //   versión está desplegada antes de crear cuotas nuevas.
 // ============================================================
 
-import { cobroDiferido, esAsistente, fechaLarga, intervalo } from "../_shared/cuota-entreno.ts";
+import { cobroDiferido, esAsistente, esNatacion, fechaLarga, intervalo, planNatacion, DIA_COBRO_NATACION } from "../_shared/cuota-entreno.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -240,7 +240,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // y la cuota normal empieza en «inicio».
   const cargoIni = Math.round(Number(c.cargo_inicial_cent) || 0);
   const eurTxt = (cent: number) => (cent / 100).toLocaleString("es-ES", { minimumFractionDigits: cent % 100 ? 2 : 0, maximumFractionDigits: 2 }) + " €";
-  if (cargoIni >= 50) {
+  // NATACIÓN (22-oct-2026): el primer pago hoy y luego SIEMPRE el día 5.
+  const nat = esNatacion(c) ? planNatacion(c, importeCent) : null;
+  if (nat) {
+    if (nat.hoyCent >= 50) {
+      params.set("line_items[1][quantity]", "1");
+      params.set("line_items[1][price_data][currency]", "eur");
+      params.set("line_items[1][price_data][unit_amount]", String(nat.hoyCent));
+      params.set("line_items[1][price_data][product_data][name]", `${nat.hoyConcepto} · Club Atletismo Apolana`);
+    }
+    params.set("subscription_data[trial_end]", String(nat.trialEnd));
+    const primerDia5 = new Date(nat.trialEnd * 1000).toISOString().slice(0, 10);
+    const cadaTxt = c.periodicidad === "mensual" ? "cada mes" : c.periodicidad === "anual" ? "cada año" : "cada 3 meses";
+    params.set("custom_text[submit][message]",
+      (nat.hoyCent >= 50 ? `Hoy se cobran ${eurTxt(nat.hoyCent)} (${nat.hoyConcepto}). ` : "Hoy no se cobra nada. ") +
+      `Después, ${eurTxt(importeCent)} el día ${DIA_COBRO_NATACION} ${cadaTxt}, desde el ${fechaLarga(primerDia5)}` +
+      (c.fin ? `; se para sola el ${fechaLarga(c.fin)}.` : "."));
+  } else if (cargoIni >= 50) {
     params.set("line_items[1][quantity]", "1");
     params.set("line_items[1][price_data][currency]", "eur");
     params.set("line_items[1][price_data][unit_amount]", String(cargoIni));
@@ -249,8 +265,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   // Mes de inicio futuro (mig 380): se guarda la tarjeta / el mandato hoy y el
   // primer cobro llega ese día (Stripe lo llama «prueba»; por eso el aviso).
-  const diferido = esAsistente(c) ? cobroDiferido(c) : null;
-  if (diferido) {
+  const diferido = !nat && esAsistente(c) ? cobroDiferido(c) : null;
+  if (nat) {
+    // (ya preparado arriba)
+  } else if (diferido) {
     params.set("subscription_data[trial_end]", String(diferido));
     params.set("custom_text[submit][message]",
       (cargoIni >= 50

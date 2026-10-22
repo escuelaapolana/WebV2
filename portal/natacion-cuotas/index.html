@@ -272,9 +272,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var cuota = eur(imp) + ' ' + textoPer(d.per);
       L.push('');
       L.push('💶 *Cuota:* ' + cuota + (d.fin ? ' (hasta ' + mesAnio(d.fin) + ')' : ''));
-      if (cargo > 0) L.push('📅 *Primer cobro:* al ' + verbo + ' se cobran *' + eur(cargo) + '*; después, ' + cuota + '.');
-      else if (d.inicio && d.inicio > hoyISO()) L.push('📅 *Primer cobro:* en ' + mesAnio(d.inicio) + '. Al ' + verbo + ' no se cobra nada.');
-      else L.push('📅 *Primer cobro:* al ' + verbo + '; después, ' + cada + ' en esa misma fecha.');
+      // Desde el 22-oct-2026 (mig 429) natación cobra SIEMPRE el día 5: el primer pago al domiciliar.
+      var dia5 = d.per === 'trimestral' ? 'el *día 5* de cada trimestre' : 'el *día 5* de cada mes';
+      if (cargo > 0) L.push('📅 *Primer cobro:* al ' + verbo + ' se cobran *' + eur(cargo) + '*; después, ' + cuota + ', ' + dia5 + ' desde el 5 de ' + mesAnio(d.inicio) + '.');
+      else if (d.inicio && d.inicio > hoyISO()) L.push('📅 *Primer cobro:* el *5 de ' + mesAnio(d.inicio) + '*; después, ' + dia5 + '. Al ' + verbo + ' no se cobra nada.');
+      else L.push('📅 *Primer cobro:* al ' + verbo + ' (' + (d.per === 'trimestral' ? 'el trimestre en curso' : 'el mes en curso') + '); después, ' + dia5 + '.');
     }
     L.push('');
     L.push(tarjeta
@@ -687,19 +689,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function datosHecho(){
     return F ? { importe: num(F.importe), per: F.per, inicio: F.inicio, fin: F.fin, cargo: cargoFinal(), metodo: F.metodo } : {};
   }
-  // Nº de cobros como los hará Stripe: ancla = día 1 del mes de inicio si falta más de ~2 días; si no, hoy.
+  // Nº de cobros como los hará Stripe (mig 429): si empieza un mes que viene, el
+  // primero es el día 5 de ese mes; si empieza este mes, uno hoy (el periodo en
+  // curso) y luego el día 5 del periodo siguiente. Siempre el día 5.
   function plan(){
-    var ini = new Date(F.inicio + 'T08:00:00Z');
-    var diferido = (ini - Date.now()) > 49 * 3600 * 1000;
+    var hoy = partes(hoyISO()), ini = partes(F.inicio);
+    var diferido = ini.y * 12 + ini.m > hoy.y * 12 + hoy.m;
     var paso = F.per === 'trimestral' ? 3 : 1;
-    var ancla = diferido ? partes(F.inicio) : partes(hoyISO());
-    var fin = F.fin, n = 0, ultimo = null;
+    var ancla = diferido ? { y: ini.y, m: ini.m } : { y: hoy.y, m: hoy.m + paso };
+    var fin = F.fin, n = diferido ? 0 : 1, ultimo = diferido ? null : hoyISO(), primero5 = null;
     for (var k = 0; k < 60; k++){
       var m = ancla.m + paso * k, y = ancla.y + Math.floor((m - 1) / 12); m = ((m - 1) % 12) + 1;
-      var d = Math.min(ancla.d, diasDelMes(y, m)), iso = ymd(y, m, d);
-      if (iso > fin) break; n++; ultimo = iso;
+      var iso = ymd(y, m, 5);
+      if (iso > fin) break; n++; ultimo = iso; if (!primero5) primero5 = iso;
     }
-    return { diferido: diferido, n: n, ultimo: ultimo };
+    return { diferido: diferido, n: n, ultimo: ultimo, primero5: primero5 };
   }
   function resumenHtml(){
     var imp = num(F.importe), cargo = cargoFinal();
@@ -711,11 +715,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (cargo != null && !isNaN(cargo) && cargo > 0){
       var c = calcProp();
       txt = 'Al domiciliar se cobran <b>' + eur(cargo) + '</b>' + (c ? ' de ' + c.mes : '') + '; ' +
-        (pl.diferido ? 'desde el <b>' + fechaLarga(F.inicio) + '</b>, ' : 'después, ') + '<b>' + cuota + '</b>' + hasta + '.';
+        (pl.primero5 ? 'desde el <b>' + fechaLarga(pl.primero5) + '</b>, ' : 'después, ') + '<b>' + cuota + '</b> el día 5' + hasta + '.';
     } else if (pl.diferido){
-      txt = 'Al domiciliar no se cobra nada. Desde el <b>' + fechaLarga(F.inicio) + '</b>, <b>' + cuota + '</b>' + hasta + '.';
+      txt = 'Al domiciliar no se cobra nada. Desde el <b>' + fechaLarga(pl.primero5 || F.inicio) + '</b>, <b>' + cuota + '</b> el día 5' + hasta + '.';
     } else {
-      txt = 'El primer cobro (<b>' + cuota + '</b>) se hace al domiciliar y después ' + (F.per === 'trimestral' ? 'cada 3 meses' : 'cada mes') + ' en esa misma fecha' + hasta + '.';
+      txt = 'El primer cobro (<b>' + cuota + '</b>, ' + (F.per === 'trimestral' ? 'el trimestre en curso' : 'el mes en curso') + ') se hace al domiciliar y después <b>el día 5</b> ' + (F.per === 'trimestral' ? 'de cada trimestre' : 'de cada mes') + (pl.primero5 ? ', desde el ' + fechaLarga(pl.primero5) : '') + hasta + '.';
     }
     return '<div class="cu-resumen">' + txt +
       '<small>' + pl.n + ' cobro' + (pl.n === 1 ? '' : 's') + ' de la cuota en total; se para sola el ' + fechaLarga(F.fin) + '. El enlace es para ' + esc(F.x.email || '—') + '.</small></div>';
@@ -748,7 +752,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="cu-campo"><label for="f-per">Cada cuánto</label><select id="f-per" data-f="per">' +
           '<option value="mensual"' + (F.per === 'mensual' ? ' selected' : '') + '>Al mes</option>' +
           '<option value="trimestral"' + (F.per === 'trimestral' ? ' selected' : '') + '>Al trimestre</option></select></div>' +
-        '<div class="cu-campo"><label for="f-ini">Empieza</label><select id="f-ini" data-f="inicio">' + opcionesMes() + '</select><span class="ayuda">El primer cobro de la cuota, el día 1.</span></div>' +
+        '<div class="cu-campo"><label for="f-ini">Empieza</label><select id="f-ini" data-f="inicio">' + opcionesMes() + '</select><span class="ayuda">La cuota se cobra el día 5 de cada mes.</span></div>' +
         '<div class="cu-campo"><label for="f-fin">Se para sola el</label><input id="f-fin" data-f="fin" type="date" value="' + esc(F.fin) + '"></div>' +
       '</div>' +
       (x.tipo === 'Máster' ? '<label class="cu-switch"><input type="checkbox" data-f="socio"' + (F.socio ? ' checked' : '') + '> Es socio/a del club <small style="font-weight:500;color:var(--texto-suave)">(' + (x.es_socio ? 'su ficha dice que sí' : 'su ficha dice que no') + ')</small></label>' : '') +

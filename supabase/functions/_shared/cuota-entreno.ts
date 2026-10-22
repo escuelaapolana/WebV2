@@ -52,6 +52,52 @@ export function cobroDiferido(c: Cuota, ahoraMs = Date.now()): number | null {
   return t - Math.floor(ahoraMs / 1000) > MARGEN_DIFERIDO_S ? t : null;
 }
 
+// ============================================================
+// NATACIÓN · COBRO EL DÍA 5 (Mario/Andrés, 22-oct-2026)
+// ------------------------------------------------------------
+// «Tras el primer mes, que los pagos se hagan solos el día 5 de cada mes.»
+//   · El PRIMER pago va al domiciliar: si la cuota empieza este mes (o ya
+//     empezó), un cargo suelto con la cuota entera del periodo en curso; si
+//     empieza un mes que viene, el «primer cargo» que ponga Mario (o nada).
+//   · Después la suscripción arranca el DÍA 5 (08:00 UTC = 9-10 h Madrid) del
+//     mes que toca y se repite cada mes / 3 meses / año ese día.
+// Se hace con `trial_end` (la «prueba» de Stripe) + precio único en la misma
+// pasarela, igual que el primer cargo de la 394 (Stripe no deja anclar sin
+// prorratear en Checkout).
+// ============================================================
+export const DIA_COBRO_NATACION = 5;
+export const esNatacion = (c: Cuota | null | undefined): boolean => c?.origen === "natacion";
+
+// Unix del día `dia` (08:00 UTC) del mes (año, mes 1-12) desplazado `mas` meses.
+export function diaDeMes(y: number, m: number, mas: number, dia = DIA_COBRO_NATACION): number {
+  const total = (m - 1) + mas;
+  return Math.floor(Date.UTC(y + Math.floor(total / 12), ((total % 12) + 12) % 12, dia, 8, 0, 0) / 1000);
+}
+export const mesesDe = (periodicidad: string | null | undefined): number =>
+  periodicidad === "mensual" ? 1 : periodicidad === "anual" ? 12 : 3;
+
+// Plan de cobro de una cuota de natación: qué se cobra hoy y cuándo arranca
+// la suscripción (siempre un día 5).
+export function planNatacion(c: Cuota & { cargo_inicial_cent?: number | null; cargo_inicial_concepto?: string | null },
+  importeCent: number, ahoraMs = Date.now()): { hoyCent: number; hoyConcepto: string; trialEnd: number } {
+  const [hy, hm] = ymdMadrid(Math.floor(ahoraMs / 1000)).split("-").map(Number);
+  const [iy, im] = (c.inicio && /^\d{4}-\d{2}/.test(c.inicio) ? c.inicio : `${hy}-${String(hm).padStart(2, "0")}`)
+    .split("-").map(Number);
+  const futuro = iy * 12 + im > hy * 12 + hm;
+  const base = String(c.concepto ?? "").trim() || "Cuota de natación";
+  if (futuro) {
+    const cargo = Math.round(Number(c.cargo_inicial_cent) || 0);
+    return { hoyCent: cargo >= 50 ? cargo : 0, hoyConcepto: c.cargo_inicial_concepto || "Primer cargo",
+      trialEnd: diaDeMes(iy, im, 0) };
+  }
+  // Empieza este mes: hoy se cobra el periodo en curso entero; la siguiente,
+  // el día 5 del mes que viene (o de dentro de 3 meses / un año).
+  const n = mesesDe(c.periodicidad);
+  const etq = n === 1 ? `${MESES[hm - 1]} ${hy}` : n === 12 ? `temporada ${hy}` :
+    `${MES3[hm - 1]}-${MES3[(hm - 1 + 2) % 12]} ${hy}`;
+  return { hoyCent: importeCent, hoyConcepto: `${base} · ${etq}`, trialEnd: diaDeMes(hy, hm, n) };
+}
+
 // "2026-10-14" en Madrid de un instante unix.
 const ymdMadrid = (unix: number): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" })
