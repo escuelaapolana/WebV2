@@ -71,7 +71,7 @@ function correoLlegado(contacto: string, total: number, pago: string | null) {
   const c = sencillo([
     n ? `Hola, ${n}:` : "Hola:",
     "¡Ya ha llegado la equipación de natación que pediste!",
-    pago ? `Antes de recogerla, paga ${eur(total)} con tarjeta aquí (o en la oficina):{{ENLACE}}` : "No tienes nada que pagar: te avisaremos de cuándo y dónde recogerla.",
+    pago ? `Antes de recogerla, paga ${eur(total)} con tarjeta aquí:{{ENLACE}}` : "No tienes nada que pagar: te avisaremos de cuándo y dónde recogerla.",
     "Si tienes cualquier duda, contesta a este correo.",
   ], pago ?? undefined);
   return { ...c, asunto: "Ya ha llegado tu equipación de natación" };
