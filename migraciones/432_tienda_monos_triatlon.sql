@@ -10,3 +10,13 @@ select x.nombre, x.descr, x.precio, 'equipacion', array['XS','S','M','L','XL','X
                ('Mono de triatlón larga distancia', 'Para larga distancia. Con tu nombre sin coste (ponlo en observaciones).', 103.00)) as x(nombre, descr, precio)
  where not exists (select 1 from public.productos p where p.nombre = x.nombre);
 commit;
+
+-- Mismo día: llegó el diseño de mujer → «hombre» y «mujer» por separado (como
+-- los tirantes); y el de larga distancia es el «mono aero» con mangas.
+update public.productos set nombre = 'Mono de triatlón · hombre' where nombre = 'Mono de triatlón';
+insert into public.productos (nombre, descripcion, precio, categoria, tallas_disponibles, stock, activo, imagen_url, tallas_agotadas, orden)
+select 'Mono de triatlón · mujer', descripcion, precio, categoria, tallas_disponibles, stock, activo, 'tienda-mono-triatlon-mujer.jpg', '{}', orden
+  from public.productos where nombre = 'Mono de triatlón · hombre'
+   and not exists (select 1 from public.productos where nombre = 'Mono de triatlón · mujer');
+update public.productos set imagen_url = 'tienda-mono-triatlon-larga.jpg', descripcion = 'Mono aero con manga corta, para larga distancia. Con tu nombre sin coste (ponlo en observaciones).'
+ where nombre = 'Mono de triatlón larga distancia';
