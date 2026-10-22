@@ -314,7 +314,8 @@ APOLANA_ADMIN.listo(function (sb) {
     $('cabecera').innerHTML = PZ.cabecera({
       titulo: 'Pedidos de ropa',
       contexto: ctx == null ? 'No se han podido cargar los pedidos.' : ctx,
-      accion: { texto: 'Nuevo pedido', accion: 'nuevo' }
+      accion: { texto: 'Nuevo pedido', accion: 'nuevo' },
+      secundaria: ctx == null ? null : { texto: 'Descargar Excel', accion: 'excel' }
     });
   }
 
@@ -447,6 +448,7 @@ APOLANA_ADMIN.listo(function (sb) {
     if (p.pagado_en) ctx.push('pagado ' + (PAGO_METODO[p.pago_metodo] || '') + ' el ' + fechaCorta(p.pagado_en));
     else if (p.estado !== 'cancelado') ctx.push('sin pagar');
     var c = p.contacto || {};
+    if (c.atleta) ctx.push('para ' + c.atleta);
     if (!p.atleta_id && !p.perfil_id && (c.telefono || c.email)) ctx.push([c.telefono, c.email].filter(Boolean).join(' · '));
     if (p.notas) ctx.push(p.notas);
 
@@ -492,7 +494,74 @@ APOLANA_ADMIN.listo(function (sb) {
   });
   $('f-para').addEventListener('change', pintar);
 
-  PZ.alPulsar('#cabecera', function (accion) { if (accion === 'nuevo') abrirForm(); });
+  PZ.alPulsar('#cabecera', function (accion, id, boton) {
+    if (accion === 'nuevo') abrirForm();
+    if (accion === 'excel') descargarExcel(boton);
+  });
+
+  /* «Descargar Excel» (Andrés, 22-oct: «exportar el excel para hacer el
+     pedido»). Son los encargos PENDIENTES (los que aún no se han pedido):
+     hoja 1, lo que hay que pedir al proveedor (prenda × talla × unidades);
+     hoja 2, cada prenda con quién la pide y su teléfono. Cuando hagas el
+     pedido al proveedor, pásalos a «Preparando» y ya no vuelven a salir. */
+  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', _xlsx = null;
+  function cargarXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_xlsx) return _xlsx;
+    _xlsx = new Promise(function (ok, ko) {
+      var sc = document.createElement('script'); sc.src = XLSX_URL; sc.async = true;
+      sc.onload = function () { window.XLSX ? ok(window.XLSX) : ko(new Error('No se pudo cargar el Excel')); };
+      sc.onerror = function () { _xlsx = null; ko(new Error('No se pudo cargar el Excel. Revisa internet.')); };
+      document.head.appendChild(sc);
+    });
+    return _xlsx;
+  }
+  var ORDEN_TALLAS = ['4', '6', '8', '10', '12', '14', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'ÚNICA'];
+  function ordenTalla(t) { var i = ORDEN_TALLAS.indexOf(String(t || '').toUpperCase()); return i < 0 ? 99 : i; }
+  async function descargarExcel(boton) {
+    var pend = pedidos.filter(function (p) { return p.estado === 'pendiente'; });
+    if (!pend.length) { apoToast('No hay encargos pendientes de pedir.', 'error'); return; }
+    if (boton) boton.disabled = true;
+    try {
+      var X = await cargarXlsx();
+      var suma = {}, lineas = [];
+      pend.slice().sort(function (a, b) { return String(a.created_at).localeCompare(String(b.created_at)); }).forEach(function (p) {
+        var c = p.contacto || {};
+        var para = c.atleta || paraDe(p).replace(/ \(web\)$/, '');
+        (itemsPorPedido[p.id] || []).forEach(function (it) {
+          var pr = productosPorId[it.producto_id];
+          var nom = pr ? pr.nombre : 'Prenda';
+          var talla = it.talla && it.talla !== 'ÚNICA' ? it.talla : 'Única';
+          var k = nom + '|' + talla;
+          if (!suma[k]) suma[k] = { 'Prenda': nom, 'Talla': talla, 'Unidades': 0, _o: ordenTalla(it.talla) };
+          suma[k]['Unidades'] += Number(it.cantidad) || 0;
+          lineas.push({ 'Fecha': new Date(p.created_at).toLocaleDateString('es-ES'), 'Para': para,
+            'Quién lo pide': c.nombre || '', 'Teléfono': c.telefono || '', 'Correo': c.email || '',
+            'Prenda': nom, 'Talla': talla, 'Unidades': Number(it.cantidad) || 0,
+            'Importe (€)': Math.round((Number(it.precio_unitario) || 0) * (Number(it.cantidad) || 0) * 100) / 100,
+            'Pagado': p.pagado_en ? 'Sí' : 'No' });
+        });
+      });
+      var prov = Object.keys(suma).map(function (k) { return suma[k]; })
+        .sort(function (a, b) { return a['Prenda'].localeCompare(b['Prenda'], 'es') || a._o - b._o; })
+        .map(function (r) { return { 'Prenda': r['Prenda'], 'Talla': r['Talla'], 'Unidades': r['Unidades'] }; });
+      var total = prov.reduce(function (a, r) { return a + r['Unidades']; }, 0);
+      var h1 = X.utils.json_to_sheet(prov);
+      X.utils.sheet_add_json(h1, [{}, { 'Prenda': 'Total prendas', 'Unidades': total }], { skipHeader: true, origin: -1, header: ['Prenda', 'Talla', 'Unidades'] });
+      h1['!cols'] = [{ wch: 28 }, { wch: 8 }, { wch: 10 }];
+      var h2 = X.utils.json_to_sheet(lineas);
+      h2['!cols'] = [{ wch: 11 }, { wch: 28 }, { wch: 26 }, { wch: 13 }, { wch: 26 }, { wch: 26 }, { wch: 7 }, { wch: 9 }, { wch: 11 }, { wch: 8 }];
+      var wb = X.utils.book_new();
+      X.utils.book_append_sheet(wb, h1, 'Para el proveedor');
+      X.utils.book_append_sheet(wb, h2, 'Quién lo pide');
+      var hoy = new Date();
+      X.writeFile(wb, 'Pedido de ropa ' + hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0') + '.xlsx');
+      apoToast(pend.length + (pend.length === 1 ? ' encargo pendiente' : ' encargos pendientes') + ' · ' + total + ' prendas. Cuando lo pidas, pásalos a «Preparando».');
+    } catch (e) {
+      apoToast((e && e.message) || 'No se pudo hacer el Excel.', 'error');
+    }
+    if (boton) boton.disabled = false;
+  }
 
   // --- Pagado en la oficina (tarjeta o efectivo) ---
   var PAGO_METODO = { tarjeta: 'con tarjeta', efectivo: 'en efectivo', online: 'online' };
