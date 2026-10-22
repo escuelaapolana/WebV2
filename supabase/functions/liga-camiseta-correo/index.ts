@@ -19,8 +19,6 @@ const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gma
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
 const RESPUESTAS = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 const WEB = "https://atletismoapolana.com/";
-// La foto va desde el almacén público de la app (no depende de que la web esté publicada).
-const FOTO = `${SUPABASE_URL}/storage/v1/object/public/imagenes/liga/liga-camiseta-2026.jpg`;
 
 function iguales(a: string, b: string): boolean {
   const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
@@ -40,33 +38,26 @@ async function rest(ruta: string, init: RequestInit = {}) {
   try { return { ok: r.ok, datos: t ? JSON.parse(t) : null }; } catch { return { ok: r.ok, datos: t }; }
 }
 
+// Correo PERSONAL (texto sencillo, sin foto ni botón ni emoji): Gmail mandaba
+// la versión «boletín» a Promociones (Andrés, 22-oct). La foto la ven en la página.
 function correo(nombre: string, enlace: string, recordatorio: boolean) {
   const n = pila(nombre);
-  const titulo = recordatorio ? "¿Nos dices tu talla?" : `¡Enhorabuena${n ? ", " + n : ""}!`;
-  const intro = recordatorio
-    ? "Aún no nos has dicho la talla de tu camiseta <b>«Finisher Liga Apolana 2026»</b>. Es un momento: pulsa el botón y elígela."
-    : "Has completado la Liga Apolana 2026 y te has ganado la camiseta <b>«Finisher Liga Apolana»</b>. Para prepararla necesitamos tu talla (corte único, igual para todos): pulsa el botón y elígela, es un momento.";
-  const html = `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
-      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana · Liga 2026</td></tr>
-      <tr><td style="padding:22px 24px 8px 24px">
-        <p style="margin:0 0 10px;font-size:19px;font-weight:700;color:#26374B">${escH(titulo)} 🏅</p>
-        <p style="margin:0;color:#3f3f46;line-height:1.6">${intro}</p>
-      </td></tr>
-      <tr><td style="padding:14px 24px 0 24px"><img src="${FOTO}" width="552" alt="Camiseta Finisher Liga Apolana 2026" style="display:block;width:100%;max-width:552px;height:auto;border-radius:10px;border:1px solid #ececec"></td></tr>
-      <tr><td style="padding:8px 24px 0 24px"><p style="margin:0;color:#71717a;font-size:13px;line-height:1.5">La imagen es una <b>representación</b>: el diseño aún tiene que aprobarlo el proveedor y puede cambiar algún detalle.</p></td></tr>
-      <tr><td align="center" style="padding:20px 24px 8px 24px">
-        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
-            <a href="${escH(enlace)}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">Elegir mi talla →</a>
-          </td></tr></table>
-      </td></tr>
-      <tr><td style="padding:12px 24px 24px 24px"><p style="margin:0;color:#71717a;font-size:13px;line-height:1.5">Si tienes cualquier duda, contesta a este correo. ¡Gracias por representar al club! #SomosApolana</p></td></tr>
-    </table>
-  </td></tr></table></body></html>`;
-  const texto = `${titulo} ${intro.replace(/<\/?b>/g, "")} Elige tu talla aquí: ${enlace} (La imagen es una representación: el diseño aún tiene que aprobarlo el proveedor.)`;
-  return { html, texto, asunto: recordatorio ? "Recordatorio · tu talla de la camiseta Finisher de la Liga" : "🏅 Te has ganado la camiseta Finisher de la Liga Apolana" };
+  const hola = n ? `Hola, ${n}:` : "Hola:";
+  const p1 = recordatorio
+    ? "Te escribo otra vez porque aún no nos has dicho la talla de tu camiseta Finisher de la Liga Apolana 2026."
+    : "¡Enhorabuena! Has completado la Liga Apolana 2026 y te has ganado la camiseta Finisher.";
+  const p2 = "Para encargarla necesito saber tu talla (es corte único, igual para todos). Elígela aquí, es un momento:";
+  const p3 = "En ese enlace puedes ver cómo será la camiseta. Es una representación: el diseño aún tiene que aprobarlo el proveedor y puede cambiar algún detalle.";
+  const html = `<!doctype html><html lang="es"><body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222">
+<p>${escH(hola)}</p>
+<p>${escH(p1)}</p>
+<p>${escH(p2)}<br><a href="${escH(enlace)}">${escH(enlace)}</a></p>
+<p>${escH(p3)}</p>
+<p>Si tienes cualquier duda, contesta a este correo.</p>
+<p>Un saludo,<br>Club Atletismo Apolana</p>
+</body></html>`;
+  const texto = `${hola}\n\n${p1}\n\n${p2}\n${enlace}\n\n${p3}\n\nSi tienes cualquier duda, contesta a este correo.\n\nUn saludo,\nClub Atletismo Apolana`;
+  return { html, texto, asunto: recordatorio ? "Tu talla de la camiseta de la Liga" : "Tu camiseta Finisher de la Liga: ¿qué talla usas?" };
 }
 
 async function enviar(a: string, c: { html: string; texto: string; asunto: string }) {
