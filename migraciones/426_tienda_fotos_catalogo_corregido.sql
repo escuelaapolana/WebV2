@@ -9,3 +9,4 @@ update public.productos set imagen_url = 'tienda-top-largo-v2.jpg'            wh
 update public.productos set imagen_url = 'tienda-mallas-v2.jpg'               where nombre = 'Mallas';
 update public.productos set imagen_url = 'tienda-pantalon-competicion-v2.jpg' where nombre = 'Pantalón de competición';
 commit;
+update public.productos set imagen_url = 'tienda-mono-v2.jpg' where nombre = 'Mono de velocidad';  -- 22-oct: foto del mono centrada
