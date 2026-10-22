@@ -68,6 +68,7 @@
     stopwatch:'<circle cx="12" cy="13.5" r="7"/><path d="M12 13.5V9.8M10 3.5h4M12 3.5v3M18.2 7.3l1.3-1.3"/>',
     sprout:'<path d="M12 20v-8"/><path d="M12 12c0-3.5-2.5-6-6.5-6 0 3.8 2.6 6 6.5 6z"/><path d="M12 14c0-3.2 2.3-5.5 6-5.5 0 3.5-2.4 5.5-6 5.5z"/>',
     megaphone:'<path d="M4 10v4h3l7 4V6l-7 4H4z"/><path d="M17.5 9a4 4 0 0 1 0 6"/>',
+    shirt:'<path d="M8 4l-4 3 2 3 2-1v11h8V9l2 1 2-3-4-3c-.5 1.5-2 2.5-4 2.5S8.5 5.5 8 4z"/>',
     bank:'<path d="M3.5 9.5L12 4.5l8.5 5"/><path d="M5 10v7M9.7 10v7M14.3 10v7M19 10v7M3.5 20h17"/>',
     repeat:'<path d="M4 11a7 7 0 0 1 12.2-4.7l2.3 2.2M19.5 4.5v4h-4"/><path d="M20 13a7 7 0 0 1-12.2 4.7l-2.3-2.2M4.5 19.5v-4h4"/>',
     upload:'<path d="M12 15V4.5M7.5 9L12 4.5 16.5 9M5 15v3.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V15"/>',
@@ -138,6 +139,7 @@
         {key:'reservas',   g:'Nadadores', t:'Reservas y abono', i:'ticket',   url:B+'portal/natacion-reservas/'},
         {key:'cuotas',     g:'Nadadores', t:'Cuotas y cobros',  i:'euro',     url:B+'portal/natacion-cuotas/', d:'La cuota de cada nadador y su enlace para domiciliarla (sin correos automáticos).'},
         {key:'avisos',     t:'Avisos',           i:'megaphone', url:B+'portal/natacion-avisos/', d:'Un aviso a una franja, a la escuela, al máster o a todos: llega en la app y por correo.'},
+        {key:'equipacion', t:'Equipación',       i:'shirt',    url:B+'portal/natacion-equipacion/', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
         {key:'calendario', t:'Calendario',       i:'calendar', url:B+'portal/calendario-club/?world=natacion'},
         {key:'plazas',     t:'Ver en la web',    i:'signal',   url:B+'natacion/', ext:true}
       ] },
@@ -150,6 +152,7 @@
         {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
         {key:'cuotas', t:'Cuotas y cobros', i:'euro', url:B+'portal/natacion-cuotas/?tipo=Escuela', d:'La cuota de cada niño y el enlace para que la familia la domicilie.'},
         {key:'avisos', t:'Avisos a las familias', i:'megaphone', url:B+'portal/natacion-avisos/?tipo=Escuela', d:'Un aviso a una franja o a toda la escuela: llega en la app y por correo a cada familia.'},
+        {key:'equipacion', t:'Equipación', i:'shirt', url:B+'portal/natacion-equipacion/', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
         {g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
         {g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/?tipo=Escuela', d:'Quién viene a cada sesión.'},
         {t:'Ver en la web',    i:'signal',   url:B+'escuela-natacion/',                        d:'El semáforo de plazas que ven las familias.', ext:true}
