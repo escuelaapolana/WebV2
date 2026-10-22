@@ -6,7 +6,7 @@
 //   { enviar: true }            → a cada familia que aún no lo tiene, su enlace
 //   { recordar: true }          → a las que lo recibieron y no han contestado
 //   { llegado: "<familia_id>" } → «ya ha llegado»: con enlace de pago si hay algo que pagar
-//   { prueba: true, a, t? }     → un ejemplo a ese correo
+//   { prueba: true, a, t?, tipo? } → un ejemplo a ese correo (tipo: recordatorio | llegado)
 // Correo SENCILLO (texto, sin foto ni botón): el «boletín» cae en Promociones.
 //
 //   supabase functions deploy natacion-equipacion-correo --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
@@ -117,7 +117,11 @@ Deno.serve(async (req: Request) => {
   if (b.prueba === true) {
     const a = String(b.a ?? "").trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)) return responder({ error: "falta 'a'" }, 400, o);
-    const okp = await enviar(a, correoEnlace(String(b.nombre ?? "Andrés"), "Lucía y Marcos", `${WEB}natacion/equipacion/?t=${String(b.t ?? "ejemplo")}`, false));
+    const quien = String(b.nombre ?? "Andrés");
+    const c = b.tipo === "llegado"
+      ? correoLlegado(quien, 70, `${WEB}pagar/?t=ejemplo`)
+      : correoEnlace(quien, "Lucía y Marcos", `${WEB}natacion/equipacion/?t=${String(b.t ?? "ejemplo")}`, b.tipo === "recordatorio");
+    const okp = await enviar(a, { ...c, asunto: (b.tipo ? "[Ejemplo] " : "") + c.asunto });
     return responder({ ok: okp, prueba: true, a }, 200, o);
   }
 
