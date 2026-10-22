@@ -117,6 +117,7 @@
   }
   function txt() {
     var tar = D.metodo === 'tarjeta';
+    var ambos = D.metodo === 'ambos';   // mig 430: la familia elige tarjeta o IBAN en la pasarela
     var cada = D.periodicidad === 'mensual' ? 'al mes' : D.periodicidad === 'anual' ? 'al año' : 'cada 3 meses';
     var repite = D.periodicidad === 'mensual' ? 'cada mes' : D.periodicidad === 'anual' ? 'cada año' : 'cada 3 meses';
     var ini = D.inicio ? new Date(String(D.inicio).slice(0, 10) + 'T08:00:00Z') : null;
@@ -128,27 +129,28 @@
       var cada5 = D.periodicidad === 'mensual' ? 'cada mes' : D.periodicidad === 'anual' ? 'cada año' : 'cada 3 meses';
       dia5 = (ini && mi > mh)
         ? (D.cargo_inicial
-            ? 'Hoy, al domiciliar, se cobran <b>' + eur(D.cargo_inicial) + '</b>' + (D.cargo_inicial_concepto ? ' (' + esc(D.cargo_inicial_concepto) + ')' : '') + '. Después, <b>' + eur(D.importe) + '</b> el <b>día ' + D.dia_cobro + '</b> ' + cada5 + ', desde el 5 de ' + fechaLarga(D.inicio).replace(/^\d+ de /, '') + '.'
+            ? 'Hoy, al ' + (tar || ambos ? 'activarla' : 'domiciliar') + ', se cobran <b>' + eur(D.cargo_inicial) + '</b>' + (D.cargo_inicial_concepto ? ' (' + esc(D.cargo_inicial_concepto) + ')' : '') + '. Después, <b>' + eur(D.importe) + '</b> el <b>día ' + D.dia_cobro + '</b> ' + cada5 + ', desde el 5 de ' + fechaLarga(D.inicio).replace(/^\d+ de /, '') + '.'
             : 'Hoy no se cobra nada. El <b>primer cobro</b> será el <b>5 de ' + fechaLarga(D.inicio).replace(/^\d+ de /, '') + '</b> y después el <b>día ' + D.dia_cobro + '</b> ' + cada5 + '.')
-        : 'El <b>primer pago</b> (' + (D.periodicidad === 'mensual' ? 'el mes en curso' : 'el periodo en curso') + ') se hace ' + (tar ? 'al pagar' : 'al domiciliar (el adeudo tarda unos días)') + '; después, el <b>día ' + D.dia_cobro + '</b> ' + cada5 + '. Unos días antes de cada cobro te llega un aviso por correo.';
+        : 'El <b>primer pago</b> (' + (D.periodicidad === 'mensual' ? 'el mes en curso' : 'el periodo en curso') + ') se hace ' + (tar || ambos ? 'al activarla' : 'al domiciliar (el adeudo tarda unos días)') + '; después, el <b>día ' + D.dia_cobro + '</b> ' + cada5 + '. Unos días antes de cada cobro te llega un aviso por correo.';
     }
     return {
       tar: tar, cada: cada,
-      boton: tar ? 'Pagar con tarjeta →' : 'Domiciliar mi cuota →',
+      boton: ambos ? 'Activar mi cuota →' : tar ? 'Pagar con tarjeta →' : 'Domiciliar mi cuota →',
       primero: dia5 ? dia5 : (diferido && D.cargo_inicial)
                  ? 'Hoy, al domiciliar, se cobran <b>' + eur(D.cargo_inicial) + '</b>' + (D.cargo_inicial_concepto ? ' (' + esc(D.cargo_inicial_concepto) + ')' : '') +
                    '. La cuota de <b>' + eur(D.importe) + '</b> empieza el <b>' + fechaLarga(D.inicio) + '</b> y después ' + repite + ' en esa misma fecha.'
                : diferido ? 'El <b>primer cobro</b> será el <b>' + fechaLarga(D.inicio) + '</b>; hoy no se cobra nada. Después, ' + repite + ' en esa misma fecha.'
                         : 'El <b>primer cobro</b> se hace ' + (tar ? 'al pagar' : 'al domiciliar (el adeudo tarda unos días)') + ' y después ' + repite + ' en esa misma fecha.',
       fin: D.fin ? 'Se <b>para sola</b> el ' + fechaLarga(D.fin) + ': después no se cobra nada más.' : '',
-      seguro: tar ? 'La tarjeta se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.' : 'El IBAN se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.'
+      ambos: ambos,
+      seguro: ambos ? 'La tarjeta o el IBAN se teclean en la pantalla segura de Stripe, <b>nunca</b> en esta web.' : tar ? 'La tarjeta se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.' : 'El IBAN se teclea en la pantalla segura de Stripe, <b>nunca</b> en esta web.'
     };
   }
   function generica() {
     var t = txt();
     if (pago === 'hecho') {
-      caja.innerHTML = '<h1>' + (t.tar ? '¡Cuota activada! 🎉' : '¡Domiciliación recibida! 🎉') + '</h1>' +
-        '<div class="ok">' + (t.tar ? 'Tu tarjeta ha quedado guardada para esta cuota.' : 'Ya hemos guardado tu mandato SEPA.') + ' ' + t.primero + ' ' + t.fin + '</div>' +
+      caja.innerHTML = '<h1>' + (t.ambos ? '¡Cuota activada! 🎉' : t.tar ? '¡Cuota activada! 🎉' : '¡Domiciliación recibida! 🎉') + '</h1>' +
+        '<div class="ok">' + (t.ambos ? 'Tu forma de pago ha quedado guardada para esta cuota.' : t.tar ? 'Tu tarjeta ha quedado guardada para esta cuota.' : 'Ya hemos guardado tu mandato SEPA.') + ' ' + t.primero + ' ' + t.fin + '</div>' +
         '<p class="fina">Si algún dato no cuadra, contesta al correo del club y lo miramos. ¡Gracias!</p>';
       return;
     }
@@ -159,8 +161,8 @@
       document.getElementById('reintentar').addEventListener('click', irAPagar);
       return;
     }
-    caja.innerHTML = '<h1>' + (t.tar ? 'Activa tu cuota' : 'Domicilia tu cuota') + '</h1>' +
-      '<p>Se paga ' + (t.tar ? 'con <b>tarjeta</b>: la metes una vez y se cobra sola.' : 'por <b>domiciliación bancaria (SEPA)</b>: metes tu IBAN una vez y se cobra sola.') + '</p>' +
+    caja.innerHTML = '<h1>' + (t.ambos ? 'Activa tu cuota' : t.tar ? 'Activa tu cuota' : 'Domicilia tu cuota') + '</h1>' +
+      '<p>Se paga ' + (t.ambos ? 'como prefieras, con <b>tarjeta</b> o con <b>domiciliación bancaria (IBAN)</b>: lo pones una vez y se cobra sola.' : t.tar ? 'con <b>tarjeta</b>: la metes una vez y se cobra sola.' : 'por <b>domiciliación bancaria (SEPA)</b>: metes tu IBAN una vez y se cobra sola.') + '</p>' +
       '<div class="dato"><b>' + esc(D.concepto || 'Cuota') + '</b><br><span style="font-size:20px;font-weight:700">' + eur(D.importe) + '</span> ' + t.cada +
         '<ul><li>' + t.primero + '</li>' + (t.fin ? '<li>' + t.fin + '</li>' : '') + '<li>' + t.seguro + '</li></ul></div>' +
       '<button class="btn" id="domiciliar">' + t.boton + '</button><p class="err" id="err"></p>' +

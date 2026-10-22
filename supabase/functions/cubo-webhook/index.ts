@@ -239,6 +239,20 @@ async function subViva(subId: string, livemode: boolean): Promise<boolean | null
   if (!s) return null;
   return !["canceled", "incomplete_expired"].includes(String(s.status ?? ""));
 }
+// Mig 430 · ¿con qué pagó? (tarjeta o SEPA) mirando el método guardado en la suscripción.
+async function metodoUsado(subId: string, livemode: boolean): Promise<"tarjeta" | "sepa" | null> {
+  const key = livemode ? SK_LIVE : SK_TEST;
+  if (!key || !subId) return null;
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}?expand[]=default_payment_method`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!r.ok) return null;
+    const s = await r.json().catch(() => null);
+    const t = String(s?.default_payment_method?.type ?? "");
+    return t === "card" ? "tarjeta" : t === "sepa_debit" ? "sepa" : null;
+  } catch { return null; }
+}
 async function cancelarSubAhora(subId: string, livemode: boolean): Promise<boolean> {
   const key = livemode ? SK_LIVE : SK_TEST;
   if (!key || !subId) return false;
@@ -473,6 +487,11 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
           stripe_customer_id: idDe(objeto.customer),
           stripe_subscription_id: subId,
         });
+        // Mig 430 · cuota «tarjeta o SEPA» (natación): se apunta lo que eligió.
+        if (subId) {
+          const usado = await metodoUsado(subId, livemode);
+          if (usado) await patchEntreno(`id=eq.${encodeURIComponent(cuotaId)}&metodo=eq.ambos`, { metodo: usado });
+        }
         await patchEntreno(
           `id=eq.${encodeURIComponent(cuotaId)}` + (pagado ? "" : "&ultimo_cobro=is.null"),
           { suscripcion_estado: pagado ? "activa" : "en_camino" },

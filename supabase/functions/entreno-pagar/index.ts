@@ -26,6 +26,7 @@
 //   La misma tabla sirve ahora para cuotas recurrentes con TARJETA o SEPA,
 //   mensuales, trimestrales o anuales, con mes de inicio y fecha de fin:
 //     · metodo 'tarjeta' → payment_method_types[0]=card (cobro al momento).
+//     · metodo 'ambos' (mig 430, natación) → tarjeta Y SEPA: elige la familia.
 //     · inicio futuro (> 48 h) → subscription_data[trial_end] = ese día: se
 //       guarda la tarjeta/el mandato y el 1er cobro llega el día 1 del mes.
 //     · repercutir_comision (pagos_config) → con tarjeta se suma la comisión
@@ -216,7 +217,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const params = new URLSearchParams();
   params.set("mode", "subscription");
   params.set("locale", "es");
-  params.set("payment_method_types[0]", tarjeta ? "card" : "sepa_debit");
+  // Mig 430 · 'ambos' (natación): la familia elige en la pasarela tarjeta o IBAN.
+  // El webhook apunta luego cuál usó. Sin comisión (si algún día se cobra
+  // comisión por tarjeta, 'ambos' no la suma: el importe es uno solo).
+  if (c.metodo === "ambos") {
+    params.set("payment_method_types[0]", "card");
+    params.set("payment_method_types[1]", "sepa_debit");
+  } else {
+    params.set("payment_method_types[0]", tarjeta ? "card" : "sepa_debit");
+  }
   params.set("client_reference_id", referencia);
   if (c.email) params.set("customer_email", c.email);
   const mensual = c.periodicidad === "mensual";
@@ -286,7 +295,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Etiquetas para que el webhook case el cobro y el export de Stripe sepa quién es.
   params.set("subscription_data[metadata][referencia]", referencia);
   params.set("subscription_data[metadata][cuota_id]", c.id);
-  params.set("subscription_data[metadata][metodo]", tarjeta ? "tarjeta" : "sepa");
+  params.set("subscription_data[metadata][metodo]", c.metodo === "ambos" ? "ambos" : tarjeta ? "tarjeta" : "sepa");
   params.set("subscription_data[metadata][atleta_id]", c.atleta_id);
   if (c.perfil_id) params.set("subscription_data[metadata][perfil_id]", c.perfil_id);
   if (persona) {
