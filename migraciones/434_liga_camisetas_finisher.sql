@@ -106,6 +106,7 @@ begin
     select c.nombre, c.email, c.talla, c.nota, c.respondido_en, c.avisado_en
       from public.liga_camisetas c
       join public.liga_ediciones e on e.id = c.edicion_id and e.activa
+     where c.clave not like 'prueba-%'   -- la fila de prueba de Andrés no cuenta
      order by c.respondido_en is null, lower(c.nombre);
 end;
 $$;

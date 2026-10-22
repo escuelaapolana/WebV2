@@ -19,6 +19,8 @@ const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gma
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
 const RESPUESTAS = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 const WEB = "https://atletismoapolana.com/";
+// La foto va desde el almacén público de la app (no depende de que la web esté publicada).
+const FOTO = `${SUPABASE_URL}/storage/v1/object/public/imagenes/liga/liga-camiseta-2026.jpg`;
 
 function iguales(a: string, b: string): boolean {
   const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
@@ -52,7 +54,7 @@ function correo(nombre: string, enlace: string, recordatorio: boolean) {
         <p style="margin:0 0 10px;font-size:19px;font-weight:700;color:#26374B">${escH(titulo)} 🏅</p>
         <p style="margin:0;color:#3f3f46;line-height:1.6">${intro}</p>
       </td></tr>
-      <tr><td style="padding:14px 24px 0 24px"><img src="${WEB}assets/img/liga-camiseta-2026.jpg" width="552" alt="Camiseta Finisher Liga Apolana 2026" style="display:block;width:100%;max-width:552px;height:auto;border-radius:10px;border:1px solid #ececec"></td></tr>
+      <tr><td style="padding:14px 24px 0 24px"><img src="${FOTO}" width="552" alt="Camiseta Finisher Liga Apolana 2026" style="display:block;width:100%;max-width:552px;height:auto;border-radius:10px;border:1px solid #ececec"></td></tr>
       <tr><td style="padding:8px 24px 0 24px"><p style="margin:0;color:#71717a;font-size:13px;line-height:1.5">La imagen es una <b>representación</b>: el diseño aún tiene que aprobarlo el proveedor y puede cambiar algún detalle.</p></td></tr>
       <tr><td align="center" style="padding:20px 24px 8px 24px">
         <table role="presentation" cellpadding="0" cellspacing="0"><tr>
