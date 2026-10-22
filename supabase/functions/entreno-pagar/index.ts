@@ -168,6 +168,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "ya_activa", mensaje: "Ya has domiciliado tu cuota: el primer cobro está en camino (el banco tarda unos 5 días hábiles). No hace falta hacer nada más." }, 409, origen);
   }
 
+  // Mig 431 · «mes a mes»: no hay suscripción; se paga cada recibo con su enlace.
+  if (c.metodo === "mes_a_mes") {
+    return responder({ error: "cerrado", mensaje: "Esta cuota se paga mes a mes: cada mes te llega un correo con el enlace para pagar ese mes." }, 409, origen);
+  }
   // Revisión 380 · cuota cancelada: no se reabre (la vuelve a crear el club).
   if (c.suscripcion_estado === "cancelada") {
     return responder({ error: "cerrado", mensaje: "Esta cuota está cerrada. Si crees que es un error, escríbenos." }, 409, origen);

@@ -257,6 +257,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      vosotros; adulto (máster) de tú. */
   function mensaje(x, enlace, d){
     d = d || {};
+    if (d.metodo === 'mes_a_mes') return mensajeMes(x, enlace, d);
     var fam = x.tipo === 'Escuela';            // escuela → a la familia (vosotros); máster → al nadador (tú)
     var pila = capital(String(x.nombre || '').trim().split(/\s+/)[0] || '');
     var tarjeta = d.metodo === 'tarjeta', ambos = !d.metodo || d.metodo === 'ambos';   // mig 430: eligen tarjeta o IBAN
@@ -286,6 +287,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       : tarjeta
       ? (fam ? '✅ Se mete la tarjeta *una sola vez* y después se cobra sola ' + cada + '.' : '✅ Metes la tarjeta *una sola vez* y después se cobra sola ' + cada + '.')
       : (fam ? '✅ Se hace *una sola vez*: metéis el IBAN y después se cobra sola ' + cada + '.' : '✅ Se hace *una sola vez*: metes tu IBAN y después se cobra sola ' + cada + '.'));
+    L.push('');
+    L.push('👉 ' + enlace);
+    L.push('');
+    L.push(fam ? 'Cualquier duda, me decís. ¡Gracias!' : 'Cualquier duda, me dices. ¡Gracias!');
+    return L.join('\n');
+  }
+  // 431 · «mes a mes»: el enlace es el del recibo de este periodo.
+  function mensajeMes(x, enlace, d){
+    var fam = x.tipo === 'Escuela';
+    var pila = capital(String(x.nombre || '').trim().split(/\s+/)[0] || '');
+    var imp = Number(d.importe), cada = d.per === 'trimestral' ? 'trimestre' : 'mes';
+    var L = [];
+    L.push(fam ? '¡Hola! 👋' : '¡Hola, ' + pila + '! 👋');
+    L.push('');
+    L.push(fam ? 'Os paso el enlace para *pagar la cuota de natación de ' + pila + '* 🏊' : 'Te paso el enlace para *pagar tu cuota de natación* 🏊');
+    if (imp > 0) { L.push(''); L.push('💶 *Cuota:* ' + eur(imp) + ' ' + textoPer(d.per)); }
+    L.push('');
+    L.push(fam ? '✅ Se paga con tarjeta y *no se queda guardada*. Cada ' + cada + ' os llegará un correo el día 1 con el enlace para pagar antes del 5.'
+               : '✅ Se paga con tarjeta y *no se queda guardada*. Cada ' + cada + ' te llegará un correo el día 1 con el enlace para pagar antes del 5.');
     L.push('');
     L.push('👉 ' + enlace);
     L.push('');
@@ -345,12 +365,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function cargar(){
     var r = await sb.rpc('natacion_cuotas_listar');
     if (r.error){ S.err = humano(r.error, 'ver las cuotas de natación'); S.lista = []; }
-    else { S.err = null; S.lista = r.data || []; }
+    else {
+      S.err = null; S.lista = r.data || [];
+      // 431 · «mes a mes»: el enlace que se manda es el del recibo del periodo.
+      S.lista.forEach(function(x){ if (x.cobro_metodo === 'mes_a_mes') x.enlace = x.mes_enlace || null; });
+    }
   }
 
   // ---------- estados del cobro ----------
+  var MES3 = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function mesCorto(per){ var p = String(per || '').split('-'); return p.length === 2 ? MES3[+p[1] - 1] : ''; }
   function estadoDe(x){
     if (!x.cobro_id) return { k:'sin', t:'Sin cobro' };
+    if (x.cobro_metodo === 'mes_a_mes'){   // 431: paga cada mes con el aviso
+      var mc = mesCorto(x.mes_periodo);
+      if (!x.mes_periodo) return { k:'camino', t:'Mes a mes' };
+      if (x.mes_estado === 'pagado') return { k:'activa', t:'Mes a mes · ' + mc + ' pagado' };
+      if (x.mes_vence && x.mes_vence < hoyISO()) return { k:'impago', t:'Mes a mes · ' + mc + ' sin pagar' };
+      return { k:'camino', t:'Mes a mes · ' + mc + ' por pagar' };
+    }
     if (x.cobro_estado === 'pendiente') return x.cobro_abierto === false ? { k:'cerrado', t:'Enlace cerrado' } : { k:'pend', t:'Enlace pendiente' };
     if (x.cobro_estado === 'en_camino') return { k:'camino', t:'En camino' };
     if (x.cobro_estado === 'activa') return { k:'activa', t:'Activa' };
@@ -470,7 +503,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         return { 'Nadador': nombreDe(x), 'Tipo': x.tipo || '', 'Días': x.dias || '', 'Socio': x.tipo === 'Máster' ? (x.es_socio ? 'Sí' : 'No') : '',
           'Cuota de la ficha (€)': x.cuota_importe != null ? Number(x.cuota_importe) : '', 'Cada': x.cuota_importe != null ? textoPer(x.cuota_periodicidad) : '',
           'Domiciliación': estadoDe(x).t, 'Importe domiciliado (€)': x.cobro_importe != null ? Number(x.cobro_importe) : '',
-          'Cada ': x.cobro_id ? textoPer(x.cobro_periodicidad) : '', 'Forma': x.cobro_id ? (x.cobro_metodo === 'tarjeta' ? 'Tarjeta' : x.cobro_metodo === 'ambos' ? 'Tarjeta o IBAN (aún sin elegir)' : 'Domiciliación SEPA') : '',
+          'Cada ': x.cobro_id ? textoPer(x.cobro_periodicidad) : '', 'Forma': x.cobro_id ? (x.cobro_metodo === 'tarjeta' ? 'Tarjeta' : x.cobro_metodo === 'ambos' ? 'Tarjeta o IBAN (aún sin elegir)' : x.cobro_metodo === 'mes_a_mes' ? 'Mes a mes (aviso y pago con tarjeta)' : 'Domiciliación SEPA') : '',
           'Desde': x.cobro_inicio ? mesAnio(x.cobro_inicio) : '', 'Hasta': x.cobro_fin ? mesAnio(x.cobro_fin) : '',
           'Primer cargo (€)': x.cobro_cargo_inicial != null ? Number(x.cobro_cargo_inicial) : '', 'Baja': x.acceso_activo ? '' : 'De baja' };
       });
@@ -535,12 +568,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (malNum ? '<div class="cu-cobro-det" style="color:#B23B3B">Escribe un importe entre 0 y 2.000 €.</div>' : '');
     }
     // cobro domiciliado (la pastilla de estado ya va en la fila)
-    h += '<div class="cu-sec-lab">Domiciliación</div>';
+    h += '<div class="cu-sec-lab">' + (x.cobro_metodo === 'mes_a_mes' ? 'Cobro mes a mes' : 'Domiciliación') + '</div>';
     if (!x.cobro_id) h += '<div class="cu-cobro-det" style="margin-top:0">' + (pideCobro(x) ? 'Aún no tiene cobro: crea su enlace y pásaselo.' : 'Sin cobro creado.') + '</div>';
     if (x.cobro_id){
       var det = eur(x.cobro_importe) + ' ' + textoPer(x.cobro_periodicidad) +
         (x.cobro_inicio ? ' desde ' + mesAnio(x.cobro_inicio) : '') + (x.cobro_fin ? ' hasta ' + mesAnio(x.cobro_fin) : '') +
-        (x.cobro_metodo === 'tarjeta' ? ' · con tarjeta' : '') +
+        (x.cobro_metodo === 'tarjeta' ? ' · con tarjeta' : x.cobro_metodo === 'mes_a_mes' ? ' · mes a mes (aviso por correo cada ' + (x.cobro_periodicidad === 'trimestral' ? 'trimestre' : 'mes') + ')' : '') +
         (x.cobro_cargo_inicial ? ' · primer cargo ' + eur(x.cobro_cargo_inicial) : '');
       h += '<div class="cu-cobro-det" style="margin-top:0">' + esc(det) + '</div>';
     }
@@ -637,6 +670,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       inicio: mesSiguiente(hoy), fin: FIN_TEMPORADA,
       mitad: false, alta: hoy, socio: !!x.es_socio,
       ref: '', refTocada: false, cargo: '', cargoTocado: false,
+      forma: 'ambos',   // 431: 'ambos' = se cobra solo (tarjeta o IBAN) · 'mes_a_mes' = aviso y paga cada mes
       enviando: false, err: null, hecho: null
     };
     velo = document.createElement('div'); velo.className = 'cu-velo';
@@ -691,7 +725,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return h;
   }
   function datosHecho(){
-    return F ? { importe: num(F.importe), per: F.per, inicio: F.inicio, fin: F.fin, cargo: cargoFinal(), metodo: 'ambos' } : {};
+    return F ? { importe: num(F.importe), per: F.per, inicio: F.inicio, fin: F.fin, cargo: cargoFinal(), metodo: F.forma === 'mes_a_mes' ? 'mes_a_mes' : 'ambos' } : {};
   }
   // Nº de cobros como los hará Stripe (mig 429): si empieza un mes que viene, el
   // primero es el día 5 de ese mes; si empieza este mes, uno hoy (el periodo en
@@ -713,6 +747,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var imp = num(F.importe), cargo = cargoFinal();
     if (imp == null || isNaN(imp) || imp <= 0) return '<div class="cu-resumen">Escribe el importe de la cuota.</div>';
     if (!F.fin || F.fin < F.inicio) return '<div class="cu-resumen">Revisa la fecha de fin: tiene que ser después del mes de inicio.</div>';
+    if (F.forma === 'mes_a_mes'){
+      var cuotaM = eur(imp) + (F.per === 'trimestral' ? ' al trimestre' : '/mes');
+      var primero = (cargo != null && !isNaN(cargo) && cargo > 0) ? '<b>' + eur(cargo) + '</b> (el proporcional de este mes)' : '<b>' + cuotaM + '</b> de ' + mesAnio(F.inicio);
+      return '<div class="cu-resumen">Se crea ya el primer recibo, ' + primero + ', con su enlace para pagar con tarjeta: mándaselo tú. ' +
+        ((cargo != null && !isNaN(cargo) && cargo > 0)
+          ? 'Después, desde ' + mesAnio(F.inicio) + ', cada ' + (F.per === 'trimestral' ? 'trimestre' : 'mes') + ' se crea solo un recibo de <b>' + cuotaM + '</b>'
+          : 'Los siguientes se crean solos cada ' + (F.per === 'trimestral' ? 'trimestre' : 'mes')) +
+        ' y le llega un correo el día 1 para pagarlo antes del 5.' +
+        '<small>No se guarda ninguna tarjeta. Se para sola el ' + fechaLarga(F.fin) + '. Los correos van a ' + esc(F.x.email || '—') + '.</small></div>';
+    }
     var pl = plan(), cuota = eur(imp) + (F.per === 'trimestral' ? ' al trimestre' : '/mes');
     var hasta = pl.ultimo ? ' hasta ' + MESES[partes(pl.ultimo).m - 1] + ' de ' + partes(pl.ultimo).y : '';
     var txt;
@@ -743,7 +787,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<p class="cu-msg-nota">Las palabras entre *asteriscos* salen en negrita en WhatsApp.</p>' +
           '<textarea readonly id="cu-msg-txt" rows="12">' + esc(mensaje(x, en, datosHecho())) + '</textarea>' +
           '<button type="button" class="cu-btn" data-copiar-msg-hecho>Copiar mensaje</button></div>' +
-        '<div class="cu-info">No se ha mandado ningún correo. Cuando ' + (x.tipo === 'Escuela' ? 'la familia' : 'el nadador') + ' abra el enlace y ponga su tarjeta o su IBAN (lo elige ' + (x.tipo === 'Escuela' ? 'ella' : 'él') + '), aquí pasará a «Activa» (tarjeta) o «En camino» (IBAN, el banco tarda unos días).</div>' +
+        (F.forma === 'mes_a_mes'
+          ? '<div class="cu-info">No se ha mandado ningún correo de este primer recibo: el enlace lo mandas tú. Cuando pague, aquí saldrá como pagado. Los siguientes le llegarán solos por correo cada ' + (F.per === 'trimestral' ? 'trimestre' : 'mes') + '.</div>'
+          : '<div class="cu-info">No se ha mandado ningún correo. Cuando ' + (x.tipo === 'Escuela' ? 'la familia' : 'el nadador') + ' abra el enlace y ponga su tarjeta o su IBAN (lo elige ' + (x.tipo === 'Escuela' ? 'ella' : 'él') + '), aquí pasará a «Activa» (tarjeta) o «En camino» (IBAN, el banco tarda unos días).</div>') +
         '<div class="cu-acc"><button type="button" class="cu-btn sec" data-cerrar>Cerrar</button></div>';
       velo.innerHTML = h + '</div></div>';
       return;
@@ -760,6 +806,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="cu-campo"><label for="f-fin">Se para sola el</label><input id="f-fin" data-f="fin" type="date" value="' + esc(F.fin) + '"></div>' +
       '</div>' +
       (x.tipo === 'Máster' ? '<label class="cu-switch"><input type="checkbox" data-f="socio"' + (F.socio ? ' checked' : '') + '> Es socio/a del club <small style="font-weight:500;color:var(--texto-suave)">(' + (x.es_socio ? 'su ficha dice que sí' : 'su ficha dice que no') + ')</small></label>' : '') +
+      '<div class="cu-campo" style="margin:4px 0 10px"><label for="f-forma">Cómo paga</label><select id="f-forma" data-f="forma">' +
+        '<option value="ambos"' + (F.forma === 'ambos' ? ' selected' : '') + '>Se cobra solo — tarjeta o IBAN guardados (recomendado)</option>' +
+        '<option value="mes_a_mes"' + (F.forma === 'mes_a_mes' ? ' selected' : '') + '>Mes a mes — le llega un aviso y paga cada vez</option></select>' +
+        '<span class="ayuda">' + (F.forma === 'mes_a_mes'
+          ? 'No deja la tarjeta guardada: cada ' + (F.per === 'trimestral' ? 'trimestre' : 'mes') + ' le llega un correo el día 1 con un enlace para pagar con tarjeta antes del 5 (y un recordatorio si no paga).'
+          : 'Elige en el enlace tarjeta o IBAN; se queda guardado y se cobra solo el día 5.') + '</span></div>' +
       '<label class="cu-switch"><input type="checkbox" data-f="mitad"' + (F.mitad ? ' checked' : '') + '> ¿Empieza a mitad de mes?</label>';
     if (F.mitad){
       var hoy = partes(hoyISO()), min = ymd(hoy.y, hoy.m, 1);
@@ -815,7 +867,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       p_fin: F.fin,
       p_cargo_inicial: F.mitad ? cargo : null,
       p_cargo_concepto: F.mitad ? conceptoCargo() : null,
-      p_metodo: 'ambos'
+      p_metodo: F.forma === 'mes_a_mes' ? 'mes_a_mes' : 'ambos'
     });
     F.enviando = false;
     if (r.error){ F.err = humano(r.error, 'crear cobros de natación'); pintarForm(); return; }
@@ -855,6 +907,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       }
     }
     else if (k === 'cargo'){ F.cargo = t.value; F.cargoTocado = true; }
+    else if (k === 'forma'){ F.forma = t.value === 'mes_a_mes' ? 'mes_a_mes' : 'ambos'; }
     F.err = null;
     pintarForm();
   }

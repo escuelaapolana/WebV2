@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pagar recibo · Club Atletismo Apolana</title>
+<meta name="description" content="Paga tu recibo del Club Atletismo Apolana con tarjeta.">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/css/apolana.css?v=3f7ff4ee">
+<script>window.APOLANA_BASE="../";</script>
+<script src="../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../assets/js/db.js?v=4fd9379b" defer></script>
+<style>
+  body{ background:var(--crema,#FBF9F4); margin:0; font-family:var(--fuente-texto,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif); color:var(--navy,#2E4256); }
+  .wrap{ max-width:560px; margin:0 auto; padding:34px 18px 60px; }
+  .cab{ display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+  .cab img{ height:46px; width:auto; }
+  .cab b{ font-family:var(--fuente-titulo); font-weight:700; font-size:18px; }
+  .caja{ background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:18px;
+    box-shadow:0 18px 40px -26px rgba(46,66,86,.5); padding:26px 24px; }
+  h1{ font-family:var(--fuente-titulo); font-size:clamp(22px,5vw,28px); margin:0 0 10px; }
+  p{ line-height:1.6; color:#3f3f46; margin:0 0 14px; }
+  .dato{ background:#F1EADC; border-radius:12px; padding:14px 16px; color:#5C4A1E; font-size:14.5px; line-height:1.6; margin:4px 0 18px; }
+  .dato ul{ margin:8px 0 0; padding-left:20px; }
+  .btn{ display:inline-block; background:#2F6FA8; color:#fff; border:0; text-decoration:none;
+    padding:15px 30px; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer; font-family:inherit; }
+  .btn[disabled]{ opacity:.6; cursor:default; }
+  .fina{ font-size:13px; color:var(--texto-suave,#6E6656); margin-top:16px; }
+  .err{ color:#B3261E; font-size:14px; margin-top:12px; min-height:1.2em; }
+  .ok{ background:#EAF3E3; color:#2E6B3A; border-radius:12px; padding:16px 18px; line-height:1.6; }
+  .mal{ background:#FBEAE8; color:#B3261E; border-radius:12px; padding:16px 18px; line-height:1.6; }
+  /* Estados finales (ya domiciliada, cerrada, enlace que no vale…): botones a lo ancho en el móvil. */
+  .acciones{ display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+  .acciones .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:48px; box-sizing:border-box; padding:0 22px; }
+  .btn--wa{ background:#1F8A4C; }
+  .btn--claro{ background:#fff; color:var(--navy,#2E4256); border:1px solid var(--linea,#E4DCCB); }
+  .volver{ display:inline-flex; align-items:center; min-height:44px; margin-top:8px; color:#2F6FA8; font-weight:600; text-decoration:none; font-size:15px; }
+  .volver:hover{ text-decoration:underline; }
+  @media (max-width:480px){ .acciones .btn{ flex:1 1 100%; } }
+  .importe{ font-family:var(--fuente-titulo); font-size:34px; font-weight:800; margin:4px 0 2px; }
+  .concepto{ font-size:16px; font-weight:700; }
+  .vence{ font-size:14px; color:var(--texto-suave,#6E6656); margin-top:4px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="cab">
+      <img src="../assets/img/favicon-escudo.png" alt="Escudo Apolana">
+      <b>Club Atletismo Apolana</b>
+    </div>
+    <div class="caja" id="caja"><p>Cargando…</p></div>
+  </div>
+<script>
+/* /pagar/?t=… · pagar UN recibo por su enlace, sin cuenta (mig 431, natación
+   «mes a mes»). El importe lo pone la base; la tarjeta se teclea en Stripe. */
+(function () {
+  var caja = document.getElementById('caja');
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fechaLarga(iso){ if(!iso) return ''; var p=String(iso).slice(0,10).split('-').map(Number); return p[2]+' de '+MESES[p[1]-1]; }
+  function eur(n){ var v=Math.round(Number(n)*100)/100; return v.toLocaleString('es-ES',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2})+' €'; }
+  var qs = new URLSearchParams(location.search);
+  var token = (qs.get('t') || '').trim();
+  var vuelta = qs.get('pago');
+  var R = null;
+
+  /* Sin cuenta y SIN la sesión que pudiera haber guardada en el navegador (una
+     caducada rompía la llamada): peticiones directas con la clave pública. */
+  var SB = 'https://icaxokjsvhlreuwpyxeb.supabase.co', KEY = 'sb_publishable_ABwJ5L9azzN30mqKg6igxA_zq6pB3MH';
+  function post(ruta, cuerpo){
+    return fetch(SB + ruta, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) })
+      .then(function (r) { return r.json().catch(function(){ return null; }).then(function (d) { return { ok: r.ok, d: d }; }); });
+  }
+  function esperarDB(cb){ cb({}); }
+  function invocar(db, cuerpo){ return post('/functions/v1/natacion-mes-pagar', cuerpo).then(function (x) { return x.d; }); }
+  function malo(msg){ caja.innerHTML = '<h1>Este enlace no funciona</h1><div class="mal">' + esc(msg || 'El enlace no es válido o ha caducado.') + ' Escríbenos y te mandamos uno nuevo.</div>'; }
+  function pagado(){
+    caja.innerHTML = '<h1>✓ Pagado</h1><div class="ok"><b>' + esc(R ? R.concepto : 'Recibo') + '</b>' + (R ? ' · ' + eur(R.importe) : '') +
+      '<br>¡Gracias! Ya está apuntado en el club. No hace falta hacer nada más.</div>';
+  }
+  function pintar(){
+    if (!R) { malo(); return; }
+    if (R.estado === 'pagado') { pagado(); return; }
+    if (R.estado === 'anulado') { caja.innerHTML = '<h1>Ahora no hay nada que pagar</h1><div class="mal">Este recibo está anulado. Si crees que es un error, escríbenos.</div>'; return; }
+    caja.innerHTML = '<h1>' + (R.nombre ? 'Recibo de ' + esc(R.nombre) : 'Tu recibo') + '</h1>' +
+      '<div class="dato"><div class="concepto">' + esc(R.concepto) + '</div><div class="importe">' + eur(R.importe) + '</div>' +
+      (R.vence ? '<div class="vence">Para pagar antes del ' + esc(fechaLarga(R.vence)) + '</div>' : '') + '</div>' +
+      (vuelta === 'cancelado' ? '<div class="mal" style="margin-bottom:14px">No llegaste a terminar el pago. Puedes intentarlo otra vez.</div>' : '') +
+      '<button class="btn" id="pagar">Pagar con tarjeta →</button><p class="err" id="err"></p>' +
+      '<p class="fina">Se paga en la pantalla segura de Stripe; la tarjeta <b>no</b> se queda guardada. Cada mes te llegará el aviso con su enlace.</p>';
+    document.getElementById('pagar').addEventListener('click', irAPagar);
+  }
+  function irAPagar(){
+    var b = document.getElementById('pagar'), err = document.getElementById('err');
+    b.disabled = true; b.textContent = 'Abriendo…'; err.textContent = '';
+    esperarDB(function (db) {
+      if (!db) { err.textContent = 'No se pudo conectar. Recarga la página.'; b.disabled = false; b.textContent = 'Pagar con tarjeta →'; return; }
+      invocar(db, { t: token }).then(function (d) {
+        if (d && d.url) { location.href = d.url; return; }
+        if (d && d.pagado) { R && (R.estado = 'pagado'); pagado(); return; }
+        err.textContent = (d && d.mensaje) || 'No se ha podido abrir el pago. Inténtalo en un minuto.';
+        b.disabled = false; b.textContent = 'Pagar con tarjeta →';
+      }).catch(function(){ err.textContent = 'No se pudo conectar. Inténtalo en un minuto.'; b.disabled = false; b.textContent = 'Pagar con tarjeta →'; });
+    });
+  }
+  // Al volver de Stripe con «hecho»: se pregunta (a Stripe, vía la Edge) hasta que conste.
+  function comprobar(db, n){
+    invocar(db, { t: token, comprobar: true }).then(function (d) {
+      if (d && d.pagado) { pagado(); return; }
+      if (n > 0) { setTimeout(function(){ comprobar(db, n - 1); }, 1500); return; }
+      caja.innerHTML = '<h1>Pago recibido</h1><div class="ok">Stripe nos ha devuelto aquí con el pago hecho. En unos minutos aparecerá como pagado; no hace falta repetirlo.</div>';
+    }).catch(function(){ if (n > 0) setTimeout(function(){ comprobar(db, n - 1); }, 1500); });
+  }
+
+  if (!/^[0-9a-f]{40,128}$/i.test(token)) { malo(); return; }
+  esperarDB(function (db) {
+    if (!db) { caja.innerHTML = '<div class="mal">No se pudo conectar. Revisa internet y recarga la página.</div>'; return; }
+    post('/rest/v1/rpc/recibo_publico', { p_token: token }).then(function (x) {
+      R = x.ok ? x.d : null;
+      if (R && R.estado !== 'pagado' && vuelta === 'hecho') { caja.innerHTML = '<h1>Comprobando el pago…</h1><p>Un momento.</p>'; comprobar(db, 8); return; }
+      pintar();
+    }).catch(function(){ malo(); });
+  });
+})();
+</script>
+</body>
+</html>
