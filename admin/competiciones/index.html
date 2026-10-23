@@ -14,182 +14,383 @@
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
 <style>
-  body { background: var(--crema); }
-  .admin-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  /* ============================================================
+     COMPETICIONES · lista en tarjetas (23-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios», «Pedidos» y «Altas»: cabecera
+     grande, cifras que filtran, buscador + chips (ámbito), una
+     tarjeta por competición agrupadas por MES, con la fecha a la
+     izquierda y la franja del color de su deporte (los mismos
+     colores que el calendario de la web), y una HOJA INFERIOR con
+     sus datos, quién va del club (confirmar, deshacer, quitar,
+     marca acreditada, confirmar todos y copiar la lista para la
+     federación), editar y borrar. El formulario de nueva / editar
+     es el de antes, en ventana por encima de la hoja. Mismas
+     lecturas y mismas escrituras que la versión de antes.
+     Prefijo cp-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .cp-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .cp-wrap *, .cp-capa *, #panel-form * { box-sizing: border-box; }
+  .oculto { display: none !important; }
 
-  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
-  input, textarea, select {
-    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
-    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  /* --- Cabecera --- */
+  .cp-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .cp-cab > div:first-child { flex: 1 1 340px; min-width: 0; }
+  .cp-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .cp-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 68ch; }
+  .cp-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cp-b { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; text-decoration: none; }
+  .cp-b:hover { background: var(--crema,#FBF9F4); }
+  .cp-b.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .cp-b.prin:hover { background: #24364A; }
+  .cp-b:disabled { opacity: .55; cursor: wait; }
+  .cp-b svg { width: 16px; height: 16px; }
+  @media (max-width: 520px) { .cp-cab-acc { width: 100%; } .cp-cab-acc .cp-b { flex: 1 1 0; padding: 0 12px; } }
+
+  /* --- Cifras: pulsar una filtra la lista --- */
+  .cp-cifras { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .cp-cifra { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .cp-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .cp-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .cp-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .cp-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .cp-cifra.ok b { color: #3E7A34; }
+  .cp-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .cp-cifra.aviso b, .cp-cifra.aviso span { color: #8A5307; }
+  .cp-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .cp-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .cp-cifra b { font-size: 21px; } }
+
+  /* --- Buscador + chips (ámbito) --- */
+  .cp-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .cp-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .cp-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .cp-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .cp-chips::-webkit-scrollbar { display: none; }
+  .cp-chips button { flex: 1 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px;
+    background: none; font: inherit; font-weight: 700; font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .cp-chips button:hover { color: var(--navy,#26374B); }
+  .cp-chips button .pt { width: 8px; height: 8px; border-radius: 999px; background: var(--c); flex: 0 0 8px; }
+  .cp-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .cp-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; }
+  .cp-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .cp-ir { font-size: 14px; font-weight: 700; color: var(--azul-oscuro,#2A5E8C); text-decoration: none; min-height: 40px; display: inline-flex; align-items: center; }
+  .cp-ir:hover { text-decoration: underline; text-underline-offset: 2px; }
+  @media (max-width: 620px) { .cp-chips { width: 100%; border-radius: 14px; flex-wrap: wrap; } .cp-chips button { flex: 0 0 auto; } }
+
+  /* --- Color por deporte: los mismos que el calendario de la web.
+     Primero el gris de reserva (ámbito desconocido) y DESPUÉS los colores,
+     para que estos ganen. --- */
+  .cp-fila, .cp-hoja-cab { --c: #CFC6B4; --s: #F0EBE0; --t: #6E6656; }
+  .a-pista, .a-atletismo { --c: #B0563A; --s: #FBEAE5; --t: #8A3E28; }
+  .a-running            { --c: #C1742E; --s: #FBEEDD; --t: #86501C; }
+  .a-natacion           { --c: #2E8C86; --s: #E2F1EF; --t: #1F615C; }
+  .a-escuela-natacion   { --c: #3B85C0; --s: #E6F0F8; --t: #29628F; }
+  .a-triatlon           { --c: #7A5CA8; --s: #EEE8F4; --t: #543C74; }
+  .a-escolar            { --c: #6E9B3E; --s: #EEF4E2; --t: #4C6C2A; }
+  .a-montana            { --c: #8A6D3B; --s: #F3ECDD; --t: #60492A; }
+
+  /* --- Bloques por mes --- */
+  .cp-mes { margin: 22px 4px 8px; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656);
+    display: flex; align-items: baseline; gap: 8px; }
+  .cp-mes span { font-weight: 600; letter-spacing: 0; text-transform: none; }
+  .cp-mes.pasado { color: var(--texto-tenue,#9A927F); }
+  .cp-lista { container: cp-lista / inline-size; display: flex; flex-direction: column; gap: 8px; }
+
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .cp-fila { position: relative; display: grid; grid-template-columns: 52px minmax(0,1.6fr) minmax(0,1.3fr) 132px 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid var(--c); border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .cp-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .cp-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .cp-fila.pasada { background: #FCFBF8; }
+  .cp-fila.pasada .cp-nom b { color: var(--texto-suave,#6E6656); }
+  /* La fecha, donde otras pantallas llevan las iniciales */
+  .cp-dia { width: 52px; min-height: 52px; border-radius: 12px; background: var(--s); color: var(--t); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; line-height: 1; padding: 5px 0; text-align: center; }
+  .cp-dia small { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .cp-dia b { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-size: 22px; font-weight: 700; margin-top: 3px; }
+  .cp-fila.pasada .cp-dia { background: #F0EBE0; color: #8A816E; }
+  .cp-nom { min-width: 0; }
+  .cp-nom b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .cp-nom small { display: block; font-size: 13px; color: var(--texto-tenue,#9A927F); margin-top: 2px; overflow-wrap: anywhere; line-height: 1.35; }
+  .cp-nom small svg { width: 12px; height: 12px; vertical-align: -1px; margin-right: 3px; }
+  .cp-pills { display: flex; flex-wrap: wrap; gap: 4px 5px; min-width: 0; align-items: center; }
+  .cp-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .cp-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .cp-pill.amb { background: var(--s); color: var(--t); } .cp-pill.amb .pt { background: var(--c); }
+  .cp-pill.abierta { background: #E7F3EA; color: #23603A; } .cp-pill.abierta .pt { background: #3E7A34; }
+  .cp-pill.plazo { background: #FBF1D9; color: #8A5307; } .cp-pill.plazo .pt { background: #D9A441; }
+  .cp-pill.cerrada { background: #fff; color: var(--texto-tenue,#9A927F); border: 1px dashed #D8CFBC; padding: 2px 9px; }
+  .cp-pill.coste { background: #fff; color: var(--navy,#26374B); border: 1px solid var(--linea-marcada,#E4DCCB); font-family: var(--fuente-dato); padding: 2px 9px; }
+  .cp-enlace { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border-radius: 999px;
+    border: 1px solid #CFE2F1; background: #F2F7FC; color: var(--azul-oscuro,#1E4E78); font-size: 12.5px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .cp-enlace:hover { background: #E6F0F8; }
+  .cp-enlace svg { width: 13px; height: 13px; }
+  .cp-van { display: flex; flex-direction: column; min-width: 0; font-size: 13px; line-height: 1.3; }
+  .cp-van b { font-size: 14px; font-weight: 700; }
+  .cp-van small { font-size: 12.5px; color: var(--texto-tenue,#9A927F); }
+  .cp-van em { font-style: normal; font-size: 12.5px; font-weight: 700; color: #8A5307; }
+  .cp-van.nadie small { font-size: 13px; }
+  .cp-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  .cp-cab-cols { display: grid; grid-template-columns: 52px minmax(0,1.6fr) minmax(0,1.3fr) 132px 14px; gap: 0 14px; padding: 14px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  /* Lista estrecha (móvil): fecha y nombre arriba; ámbito, estado y quién va debajo */
+  @container cp-lista (max-width: 640px) {
+    .cp-fila { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 11px 12px 12px 10px; }
+    .cp-dia { order: 0; flex: 0 0 52px; }
+    .cp-nom { order: 1; flex: 1 1 0; align-self: center; }
+    .cp-flecha { order: 2; font-size: 22px; align-self: center; }
+    .cp-fila::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+    .cp-pills { order: 4; flex: 1 1 auto; padding-left: 64px; }
+    .cp-van { order: 5; padding-left: 64px; flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+    .cp-van.nadie { display: none; }
   }
-  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
-  textarea { min-height: 80px; resize: vertical; }
-  input[type=file] { padding: 8px; font-size: 14px; }
+  @media (max-width: 700px) { .cp-cab-cols { display: none; } }
+  .cp-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .cp-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .cp-vacio button { margin-top: 10px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+
+  /* --- Hoja inferior: lo que se hace con una competición --- */
+  .cp-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .cp-velo.ver { opacity: 1; pointer-events: auto; }
+  .cp-hoja { position: fixed; left: 50%; bottom: 0; width: min(640px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .cp-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .cp-hoja, .cp-velo, .cp-fila { transition: none; } }
+  .cp-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .cp-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .cp-hoja-cab .cp-dia { width: 60px; flex: 0 0 60px; min-height: 64px; }
+  .cp-hoja-cab .cp-dia b { font-size: 26px; margin: 2px 0 3px; }
+  .cp-hoja-cab > div { flex: 1; min-width: 0; }
+  .cp-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .cp-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 4px 0 0; overflow-wrap: anywhere; }
+  .cp-cerrar { flex: 0 0 auto; align-self: flex-start; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .cp-et { margin: 18px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  .cp-caja { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 4px 14px; margin-top: 14px; }
+  .cp-caja div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid #EFE9DA; font-size: 14.5px; }
+  .cp-caja div:last-child { border-bottom: 0; }
+  .cp-caja span { color: var(--texto-suave,#6E6656); flex: 0 0 auto; }
+  .cp-caja b { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .cp-caja b .cp-pill { vertical-align: 1px; }
+  .cp-caja b small { display: block; font-size: 12.5px; font-weight: 400; color: var(--texto-tenue,#9A927F); }
+  .cp-caja a { color: var(--azul-oscuro,#2A5E8C); }
+  .cp-notas { margin-top: 8px; background: #F3F7FB; border: 1px solid #D5E3F0; color: #24476B; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45;
+    white-space: pre-line; overflow-wrap: anywhere; }
+  .cp-resumen { font-size: 14px; color: var(--texto-suave,#6E6656); margin: 0 2px; line-height: 1.5; }
+  .cp-resumen b { color: var(--navy,#26374B); }
+  .cp-ins-barra { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 0; }
+  .cp-ins-barra button { min-height: 46px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; font-size: 14px;
+    font-weight: 700; color: var(--navy,#26374B); cursor: pointer; padding: 4px 10px; line-height: 1.2; }
+  .cp-ins-barra button:hover { background: var(--crema,#FBF9F4); }
+  .cp-ins-barra button.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .cp-ins-barra button.prin:hover { background: #24364A; }
+  @media (max-width: 420px) { .cp-ins-barra { grid-template-columns: 1fr; } }
+  .cp-insl { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .cp-ins { border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid #D9A441; border-radius: 14px; padding: 10px 12px 10px 12px; background: #fff; }
+  .cp-ins.conf { border-left-color: #6FAF7E; }
+  .cp-ins.canc { border-left-color: #CFC6B4; background: #FCFBF8; }
+  .cp-ins-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .cp-ins-quien { min-width: 0; }
+  .cp-ins-quien b { display: block; font-size: 15px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .cp-ins-quien small { display: block; font-size: 12.5px; color: var(--texto-tenue,#9A927F); margin-top: 1px; }
+  .cp-ins-datos { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr); gap: 6px; margin-top: 8px; }
+  .cp-ins-datos > div, .cp-ins-datos > label { background: var(--crema,#FBF9F4); border-radius: 10px; padding: 6px 10px; min-width: 0; margin: 0; }
+  .cp-ins-datos span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); margin-bottom: 2px; }
+  .cp-ins-datos b { display: block; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .cp-ins-datos b small { font-size: 12px; font-weight: 400; color: var(--texto-tenue,#9A927F); }
+  .cp-ins-datos .tenue { font-size: 13px; color: var(--texto-tenue,#9A927F); }
+  .cp-ins-datos input { width: 100%; min-height: 34px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 8px; padding: 4px 8px; font: inherit; font-size: 14px;
+    background: #fff; color: var(--navy,#26374B); }
+  .cp-ins-datos input:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  @media (max-width: 520px) { .cp-ins-datos { grid-template-columns: 1fr 1fr; } .cp-ins-datos > label { grid-column: 1 / -1; } }
+  .cp-ins-acc { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .cp-ins-acc button { min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit;
+    font-size: 13.5px; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .cp-ins-acc button:hover { background: var(--crema,#FBF9F4); }
+  .cp-ins-acc button.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .cp-ins-acc button.prin:hover { background: #24364A; }
+  .cp-ins-acc button.peligro { color: #9A3B3B; border-color: #EBC9C5; }
+  .cp-ins-acc button.peligro:hover { background: #FDF3F2; }
+  #lista-copiar { width: 100%; min-height: 150px; margin-top: 10px; font-family: var(--fuente-dato); font-size: 13px; border: 1px solid var(--linea-marcada,#E4DCCB);
+    border-radius: 12px; padding: 10px 12px; background: #fff; color: var(--navy,#26374B); resize: vertical; }
+  .cp-acc { display: grid; gap: 8px; margin-top: 20px; }
+  .cp-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; width: 100%; }
+  .cp-acc button:hover { background: var(--crema,#FBF9F4); }
+  .cp-acc button.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .cp-acc button.prin:hover { background: #24364A; }
+  .cp-acc button.peligro { color: #9A3B3B; border-color: #EBC9C5; }
+  .cp-acc button.peligro:hover { background: #FDF3F2; }
+  .cp-acc svg { width: 17px; height: 17px; }
+
+  .msg { margin-top: 10px; font-size: 14px; }
+  .msg:empty { display: none; }
+  .msg.error { color: #B0563A; }
+  .msg.ok { color: #1e7a3d; }
+
+  /* --- Formulario nueva / editar: el de antes, en ventana por ENCIMA de la hoja --- */
+  #panel-form { position: fixed; inset: 0; z-index: 9500; background: rgba(20,30,45,.45);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: clamp(16px,5vh,60px) 16px; overflow: auto;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  #panel-form .modal-caja { background: #fff; border-radius: 20px; color: var(--navy,#26374B);
+    box-shadow: 0 30px 70px -25px rgba(20,30,45,.6); padding: 22px clamp(16px,4vw,26px) 22px; width: min(720px,100%);
+    animation: modal-sube .2s ease; }
+  @keyframes modal-sube { from { transform: translateY(12px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #panel-form .modal-caja { animation: none; } }
+  #panel-form h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; letter-spacing: -0.01em; color: var(--navy,#26374B); margin: 0 0 4px; line-height: 1.1; }
+  #panel-form h3 { margin: 22px 0 2px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  #panel-form label { display: block; font-size: 13px; font-weight: 600; color: var(--navy,#26374B); margin: 12px 0 5px; }
+  #panel-form input, #panel-form textarea, #panel-form select {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy,#26374B); }
+  #panel-form input:focus, #panel-form textarea:focus, #panel-form select:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  #panel-form textarea { min-height: 80px; resize: vertical; }
+  #panel-form input[type=file] { padding: 8px; font-size: 14px; }
   /* El cuadradito de marcar mide trece píxeles: con el dedo se falla más de lo
      que se acierta. Por eso la fila entera responde al toque, con la altura de
      un dedo, y también vale pulsar el texto, que es lo que la gente hace sin
      pensar. La casilla se ve igual que siempre; lo que crece es la zona
      sensible, que no se ve. */
-  .fila-check { display: flex; align-items: center; gap: 8px; margin: 14px 0 0;
-    min-height: 44px; cursor: pointer; }
-  .fila-check input { width: auto; flex: 0 0 auto; }
-  .ayuda { font-size: 13px; color: var(--texto-suave); margin-top: 4px; }
-
-  .msg { margin-top: 12px; font-size: 14px; }
-  .msg.error { color: #B0563A; }
-  .msg.ok { color: #1e7a3d; }
-
-  .panel { background: #fff; border: 1px solid var(--linea-marcada); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); margin-bottom: 22px; box-shadow: var(--sombra-suave); }
-  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 21px; color: var(--navy); margin-bottom: 4px; }
-  .panel h3 { font-size: 13px; text-transform: none; color: var(--azul-oscuro); margin: 18px 0 6px; }
-
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
-  th { font-size: 13px; text-transform: none; color: var(--texto-suave); }
-  .acciones-fila { display: flex; gap: 6px; flex-wrap: wrap; }
-
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  #panel-form .fila-check { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; min-height: 44px; cursor: pointer; }
+  #panel-form .fila-check input { width: auto; flex: 0 0 auto; }
+  .ayuda { font-size: 13px; color: var(--texto-suave,#6E6656); margin-top: 4px; line-height: 1.4; }
+  .grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 14px; }
+  .grid3 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 0 14px; }
   @media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
-
-  .btn { cursor: pointer; }
-  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px; }
-  .btn--peligro:hover { background: #fbeceb; }
-  .btn--mini { padding: 8px 14px; font-size: 14px; }
-  .oculto { display: none !important; }
-  /* Edición en ventana emergente (modal), no al fondo de la página */
-  #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
-    display:flex; align-items:flex-start; justify-content:center;
-    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none; margin:0;
-    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
-  #panel-form .modal-caja { background:#fff; border:1px solid var(--linea); border-radius: 14px;
-    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:24px; width:min(720px,100%);
-    animation:modal-sube .2s ease; }
-  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
-
-  .pill-estado { font-size: 13px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-  .pill-si { background: #e6f4ea; color: #1e7a3d; }
-  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
-  .pill-aviso { background: #fdf1e3; color: #9a5b12; }
-
-  /* Las explicaciones largas van plegadas: se leen una vez y estorban el resto */
-  details.explica { margin: 0 0 12px; }
-  details.explica > summary { display: inline-flex; align-items: center; min-height: 44px;
-    cursor: pointer; font-size: 14px; font-weight: 600; color: var(--azul-oscuro); }
-  details.explica > summary::marker { color: var(--texto-suave); }
-  details.explica .intro { margin: 4px 0 0; }
-
-  .barra-acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
-  .resumen { font-size: 14px; color: var(--texto-suave); }
-  .resumen b { color: var(--navy); }
-  #lista-copiar { width: 100%; min-height: 150px; font-family: var(--fuente-dato); font-size: 13px; margin-top: 10px; }
+  .cp-form-pie { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .cp-form-pie .msg { margin: 0; }
 </style>
 </head>
-<body>
+<body class="adm-piel">
 
 <div id="admin-contenido">
   <div class="admin-wrap">
+    <div class="cp-wrap" id="cp">
+      <div class="cp-cab">
+        <div>
+          <h1>Competiciones</h1>
+          <p>Lo que guardas aquí sale en el calendario de la web. Publica cada competición con el enlace donde se inscriben, el coste y hasta cuándo se pueden apuntar. Los atletas van a inscribirse a la web de la organización; en el portal solo le dicen al club que van, y tú lo confirmas aquí. Toca una competición para ver quién va, editarla o borrarla.</p>
+        </div>
+        <div class="cp-cab-acc"><button type="button" class="cp-b prin" id="nueva-comp">+ Nueva competición</button></div>
+      </div>
+      <div class="cp-cifras" id="cp-cifras"></div>
+      <div class="cp-filtros">
+        <input type="search" class="cp-buscar" id="cp-buscar" placeholder="Buscar competición o lugar…" aria-label="Buscar competición" autocomplete="off">
+        <div class="cp-chips" id="cp-chips" role="group" aria-label="Ámbito"></div>
+      </div>
+      <div class="cp-pie-filtros"><span class="cp-cuenta" id="cp-cuenta" aria-live="polite"></span>
+        <a class="cp-ir" id="cp-ir-web" href="../../calendario/" target="_blank" rel="noopener">Ver el calendario de la web →</a></div>
+      <div id="cp-lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+    </div>
+  </div>
+</div>
 
-    <!-- ===== LISTA DE COMPETICIONES ===== -->
-    <div class="panel">
-      <h2>Competiciones</h2>
-      <details class="explica">
-        <summary>Cómo funciona esto</summary>
-        <p class="intro">Publica la competición con el enlace donde se inscriben, el coste y hasta cuándo se puede apuntar. Los atletas van a inscribirse a la web de la organización; en el portal solo le dicen al club que van, y tú lo confirmas aquí.</p>
-      </details>
-      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nueva-comp">+ Nueva competición</button></div>
-      <div style="overflow-x:auto;">
-        <table id="tabla-comps">
-          <thead><tr><th>Fecha</th><th>Competición</th><th>Enlace de inscripción</th><th>Coste</th><th>Se apuntan hasta</th><th>Estado</th><th>Van del club</th><th></th></tr></thead>
-          <tbody><tr><td colspan="8" class="sin-etiqueta"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></td></tr></tbody>
-        </table>
+<!-- ===== HOJA DE LA COMPETICIÓN (se abre al tocar una fila) ===== -->
+<div class="cp-capa">
+  <div class="cp-velo" id="cp-velo"></div>
+  <div class="cp-hoja" id="cp-hoja" role="dialog" aria-modal="true" aria-labelledby="ins-titulo">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="cp-hoja-cab" id="cp-h-cab">
+      <span class="cp-dia" id="cp-h-dia"></span>
+      <div><h3 id="ins-titulo"></h3><p class="sub" id="cp-h-sub"></p></div>
+      <button type="button" class="cp-cerrar" id="ins-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div id="cp-h-datos"></div>
+
+    <!-- ===== INSCRITOS (quién va del club) ===== -->
+    <p class="cp-et">Van del club</p>
+    <p class="cp-resumen" id="ins-resumen"></p>
+    <div class="cp-ins-barra" id="ins-barra">
+      <button type="button" class="prin" id="ins-confirmar-todos">Confirmar todos los pendientes</button>
+      <button type="button" id="ins-copiar">Copiar lista para la federación</button>
+    </div>
+    <div class="msg" id="msg-ins"></div>
+    <div id="tabla-inscritos"></div>
+    <textarea id="lista-copiar" class="oculto" readonly></textarea>
+
+    <div class="cp-acc" id="cp-h-acc">
+      <button type="button" class="prin" data-hoja="editar">Editar la competición</button>
+      <button type="button" class="peligro" data-hoja="borrar">Borrar la competición</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FORMULARIO (nueva / editar), el mismo de antes ===== -->
+<div class="oculto" id="panel-form">
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="form-titulo">
+  <h2 id="form-titulo">Nueva competición</h2>
+  <form id="form-comp">
+    <input type="hidden" id="c-id">
+    <label for="c-nombre">Nombre de la competición</label>
+    <input type="text" id="c-nombre" required placeholder="Control FACV · 1ª Jornada Liga Autonómica…">
+    <div class="grid3">
+      <div>
+        <label for="c-sede">Lugar</label>
+        <input type="text" id="c-sede" placeholder="Pista de Elche">
+      </div>
+      <div>
+        <label for="c-fecha">Fecha</label>
+        <input type="date" id="c-fecha">
+      </div>
+      <div>
+        <label for="c-ambito">Ámbito</label>
+        <select id="c-ambito">
+          <option value="atletismo">Atletismo</option>
+          <option value="natacion">Natación (máster)</option>
+          <option value="escuela-natacion">Escuela de natación</option>
+        </select>
+      </div>
+    </div>
+    <h3>Cómo se inscriben los atletas</h3>
+    <label for="c-circular">Enlace donde se inscriben (web de la organización)</label>
+    <input type="text" id="c-circular" placeholder="https://…" inputmode="url">
+    <div class="ayuda">Es el botón que verán los atletas: "Ir a la inscripción". Pega aquí la página de inscripción o la circular. Si lo dejas vacío, se les dirá que les apunta el club.</div>
+
+    <div class="grid2">
+      <div>
+        <label for="c-coste">Coste de la inscripción (€)</label>
+        <input type="text" id="c-coste" inputmode="decimal" placeholder="25">
+        <div class="ayuda">Solo para informar: se paga en la web de la organización, no por la app.</div>
+      </div>
+      <div>
+        <label for="c-limite">Hasta cuándo se puede apuntar</label>
+        <input type="datetime-local" id="c-limite">
+        <div class="ayuda">Plazo del club. Ponlo antes del cierre real (p. ej. lunes 20:00). Pasada esa hora, el botón se apaga.</div>
       </div>
     </div>
 
-    <!-- ===== FORMULARIO ===== -->
-    <div class="panel oculto" id="panel-form">
-      <div class="modal-caja">
-      <h2 id="form-titulo">Nueva competición</h2>
-      <form id="form-comp">
-        <input type="hidden" id="c-id">
-        <label for="c-nombre">Nombre de la competición</label>
-        <input type="text" id="c-nombre" required placeholder="Control FACV · 1ª Jornada Liga Autonómica…">
-        <div class="grid3">
-          <div>
-            <label for="c-sede">Lugar</label>
-            <input type="text" id="c-sede" placeholder="Pista de Elche">
-          </div>
-          <div>
-            <label for="c-fecha">Fecha</label>
-            <input type="date" id="c-fecha">
-          </div>
-          <div>
-            <label for="c-ambito">Ámbito</label>
-            <select id="c-ambito">
-              <option value="atletismo">Atletismo</option>
-              <option value="natacion">Natación (máster)</option>
-              <option value="escuela-natacion">Escuela de natación</option>
-            </select>
-          </div>
-        </div>
-        <h3>Cómo se inscriben los atletas</h3>
-        <label for="c-circular">Enlace donde se inscriben (web de la organización)</label>
-        <input type="text" id="c-circular" placeholder="https://…" inputmode="url">
-        <div class="ayuda">Es el botón que verán los atletas: "Ir a la inscripción". Pega aquí la página de inscripción o la circular. Si lo dejas vacío, se les dirá que les apunta el club.</div>
+    <label for="c-pdf">O sube la circular en PDF y se rellena el enlace</label>
+    <input type="file" id="c-pdf" accept="application/pdf">
+    <div class="msg" id="msg-pdf"></div>
 
-        <div class="grid2">
-          <div>
-            <label for="c-coste">Coste de la inscripción (€)</label>
-            <input type="text" id="c-coste" inputmode="decimal" placeholder="25">
-            <div class="ayuda">Solo para informar: se paga en la web de la organización, no por la app.</div>
-          </div>
-          <div>
-            <label for="c-limite">Hasta cuándo se puede apuntar</label>
-            <input type="datetime-local" id="c-limite">
-            <div class="ayuda">Plazo del club. Ponlo antes del cierre real (p. ej. lunes 20:00). Pasada esa hora, el botón se apaga.</div>
-          </div>
-        </div>
+    <label for="c-notas">Notas para los atletas</label>
+    <textarea id="c-notas" placeholder="Hora de quedada, transporte, quién va…"></textarea>
 
-        <label for="c-pdf">O sube la circular en PDF y se rellena el enlace</label>
-        <input type="file" id="c-pdf" accept="application/pdf">
-        <div class="msg" id="msg-pdf"></div>
+    <label class="fila-check" for="c-abierta">
+      <input type="checkbox" id="c-abierta" checked>
+      <span>Abierta (los atletas la ven y pueden decir que van)</span>
+    </label>
 
-        <label for="c-notas">Notas para los atletas</label>
-        <textarea id="c-notas" placeholder="Hora de quedada, transporte, quién va…"></textarea>
-
-        <label class="fila-check" for="c-abierta">
-          <input type="checkbox" id="c-abierta" checked>
-          <span>Abierta (los atletas la ven y pueden decir que van)</span>
-        </label>
-
-        <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
-          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
-          <span class="msg" id="msg-form"></span>
-        </div>
-      </form>
-      </div>
+    <div class="cp-form-pie">
+      <button class="cp-b prin" type="submit">Guardar</button>
+      <button class="cp-b" type="button" id="cancelar">Cancelar</button>
+      <span class="msg" id="msg-form"></span>
     </div>
-
-    <!-- ===== INSCRITOS ===== -->
-    <div class="panel oculto" id="panel-inscritos">
-      <h2 id="ins-titulo">Inscritos</h2>
-      <p class="resumen" id="ins-resumen"></p>
-      <div class="barra-acciones">
-        <button class="btn btn--primario btn--mini" id="ins-confirmar-todos">Confirmar todos los pendientes</button>
-        <button class="btn btn--fantasma btn--mini" id="ins-copiar">Copiar lista para la federación</button>
-        <button class="btn btn--fantasma btn--mini" id="ins-cerrar">Cerrar</button>
-        <span class="msg" id="msg-ins"></span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table id="tabla-inscritos">
-          <thead><tr><th>Atleta</th><th>Cat.</th><th>Prueba</th><th>Mejor marca</th><th>Marca acreditada</th><th>Estado</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <textarea id="lista-copiar" class="oculto" readonly></textarea>
-    </div>
-
+  </form>
   </div>
 </div>
 
@@ -212,11 +413,59 @@ APOLANA_ADMIN.listo(function (sb) {
   // Si pegan "www.algo.es/inscripcion" lo dejamos utilizable como enlace
   function enlaceLimpio(v){ v=(v==null?'':String(v)).trim(); if(!v) return null; if(!/^(https?:)?\/\//i.test(v)) v='https://'+v.replace(/^\/+/,''); return v; }
 
-  var COLS_COMP = 8;   // columnas de la tabla de competiciones
-  var COLS_INS  = 7;   // columnas de la tabla de inscritos
+  var b = (window.APOLANA_BASE || '../../');
+  $('cp-ir-web').href = b + 'calendario/';
 
   var CATALOGO = {};   // nombre de prueba -> ficha del catálogo
   var compActual = null;
+
+  /* ---------- ámbitos: nombre y color (los del calendario de la web) ---------- */
+  var AMBITOS = {
+    pista:              { corto: 'Pista',            largo: 'Atletismo pista' },
+    atletismo:          { corto: 'Atletismo',        largo: 'Atletismo' },
+    escolar:            { corto: 'Escolar',          largo: 'Escolar atletismo' },
+    running:            { corto: 'Running',          largo: 'Running' },
+    triatlon:           { corto: 'Triatlón',         largo: 'Triatlón' },
+    montana:            { corto: 'Montaña',          largo: 'Montaña' },
+    natacion:           { corto: 'Natación máster',  largo: 'Natación (máster)' },
+    'escuela-natacion': { corto: 'Escuela natación', largo: 'Escuela de natación' }
+  };
+  var ORDEN_AMB = ['pista', 'atletismo', 'escolar', 'running', 'triatlon', 'montana', 'natacion', 'escuela-natacion'];
+  function amb(k) { return AMBITOS[k] || { corto: k || 'Sin ámbito', largo: k || 'Sin ámbito' }; }
+  function ambClase(k) { return 'a-' + String(k || 'otro').toLowerCase().replace(/[^a-z-]/g, ''); }
+
+  /* ---------- fechas ---------- */
+  var DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  var DIAS_LARGO = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  var MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  var ME = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  /* La fecha de la competición es un día ('2026-12-05'): se lee como día local. */
+  function fechaLocal(s) {
+    if (!s) return null;
+    var t = String(s).slice(0, 10).split('-');
+    if (t.length !== 3) return null;
+    var d = new Date(+t[0], +t[1] - 1, +t[2]);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function fechaLarga(s) {
+    var d = fechaLocal(s);
+    if (!d) return s ? String(s) : 'sin fecha';
+    return DIAS_LARGO[d.getDay()] + ', ' + d.getDate() + ' de ' + MESES[d.getMonth()] + ' de ' + d.getFullYear();
+  }
+  function fechaCorta(s) {
+    if (!s) return '';
+    var t = String(s).slice(0, 10).split('-');
+    return t.length === 3 ? t[2] + '/' + t[1] + '/' + t[0] : String(s);
+  }
+  function diaHtml(fecha, conMes) {
+    var d = fechaLocal(fecha);
+    if (!d) return '<small>fecha</small><b>?</b>' + (conMes ? '<small>&nbsp;</small>' : '');
+    return '<small>' + DIAS[d.getDay()] + '</small><b>' + d.getDate() + '</b>' + (conMes ? '<small>' + ME[d.getMonth()] + '</small>' : '');
+  }
+  function quitarTildes(s) { s = String(s || '').toLowerCase(); try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); } catch (e) {} return s; }
+
+  var ICO_LUGAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+  var ICO_ENLACE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 
   // =========================================================
   // CATÁLOGO DE PRUEBAS (para saber si en esa prueba "más es mejor")
@@ -234,71 +483,214 @@ APOLANA_ADMIN.listo(function (sb) {
   // =========================================================
   // LISTA DE COMPETICIONES
   // =========================================================
+  var COMPS = [], CONTEO = {}, CONTEO_ROTO = false, HOY = '', LISTA_ROTA = false;
+  var FCIFRA = '';   // '' | 'proximas' | 'mes' | 'abiertas' | 'pendientes'
+  var FAMB = '';     // '' | ámbito
+
   async function cargarComps(){
-    var tb = $('tabla-comps').querySelector('tbody');
-    tb.innerHTML = ADM.filaCargando(COLS_COMP);
+    var cont = $('cp-lista');
+    cont.innerHTML = ADM.esqueleto(4);
     var r = await sb.from('competiciones')
       .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta')
       .order('fecha_inicio', { ascending: true });
     /* Un fallo de lectura no puede leerse como «no hay competiciones». */
-    if (r.error) { tb.innerHTML = ADM.filaError(COLS_COMP, r.error.message, cargarComps); return; }
-    /* Orden (Mario, 19-oct): primero las PRÓXIMAS, de la más cercana a la más
-       lejana; después las ya pasadas, de la más reciente a la más antigua. */
-    (function () {
-      var hoy = new Date(); hoy.setHours(0,0,0,0);
-      var h = hoy.getFullYear() + '-' + ('0' + (hoy.getMonth() + 1)).slice(-2) + '-' + ('0' + hoy.getDate()).slice(-2);
-      var f = function (c) { return String(c.fecha_inicio || '').slice(0, 10); };
-      var prox = (r.data || []).filter(function (c) { return !f(c) || f(c) >= h; });
-      var pas  = (r.data || []).filter(function (c) { return f(c) && f(c) < h; }).reverse();
-      r.data = prox.concat(pas);
-    })();
-    if (!(r.data || []).length) {
-      tb.innerHTML = ADM.filaVacia(COLS_COMP, 'Todavía no hay competiciones',
-        'Crea la primera con el botón de arriba: nombre, fecha y enlace de inscripción.',
-        '<button type="button" class="btn btn--primario btn--mini" data-primera>+ Nueva competición</button>',
-        '<path d="M4 4v16"/><path d="M4 5.5h13l-2.5 4 2.5 4H4"/>');
+    if (r.error) {
+      LISTA_ROTA = true; COMPS = []; CONTEO = {};
+      $('cp-cifras').innerHTML = ''; $('cp-chips').innerHTML = ''; $('cp-cuenta').textContent = '';
+      cont.innerHTML = ADM.error(r.error.message, cargarComps);
       return;
     }
+    LISTA_ROTA = false;
+    /* Orden (Mario, 19-oct): primero las PRÓXIMAS, de la más cercana a la más
+       lejana; después las ya pasadas, de la más reciente a la más antigua. */
+    var hoy = new Date(); hoy.setHours(0,0,0,0);
+    HOY = hoy.getFullYear() + '-' + ('0' + (hoy.getMonth() + 1)).slice(-2) + '-' + ('0' + hoy.getDate()).slice(-2);
+    (function () {
+      var f = function (c) { return String(c.fecha_inicio || '').slice(0, 10); };
+      var prox = (r.data || []).filter(function (c) { return !f(c) || f(c) >= HOY; });
+      var pas  = (r.data || []).filter(function (c) { return f(c) && f(c) < HOY; }).reverse();
+      r.data = prox.concat(pas);
+    })();
+    COMPS = r.data || [];
+    if (!COMPS.length) { CONTEO = {}; CONTEO_ROTO = false; pintarTodo(); return; }
 
     // cuántos apuntados/confirmados hay en cada una
     var conteo = {}, conteoRoto = false;
     var ins = await sb.from('competicion_atleta').select('competicion_id,estado,atleta_id');
-    /* Si el recuento no se puede leer, la columna dice que no se sabe: poner
+    /* Si el recuento no se puede leer, se dice que no se sabe: poner
        «0 atletas» haría creer que no va nadie cuando puede ir media pista. */
     if (ins.error) conteoRoto = true;
     else (ins.data || []).forEach(function(x){
       if (x.estado === 'cancelada') return;
-      var c = conteo[x.competicion_id] || (conteo[x.competicion_id] = { total:0, conf:0, atletas:{} });
-      c.total++; if (x.estado === 'confirmada') c.conf++;
+      var c = conteo[x.competicion_id] || (conteo[x.competicion_id] = { total:0, conf:0, pend:0, atletas:{} });
+      c.total++; if (x.estado === 'confirmada') c.conf++; if (x.estado === 'apuntado') c.pend++;
       c.atletas[x.atleta_id] = true;
     });
+    CONTEO = conteo; CONTEO_ROTO = conteoRoto;
+    pintarTodo();
+  }
 
-    tb.innerHTML = r.data.map(function(c){
-      var k = conteo[c.id] || { total:0, conf:0, atletas:{} };
-      var nAtl = Object.keys(k.atletas).length;
-      var plazoOff = pasado(c.fecha_limite_interna);
-      var abierta = c.inscripcion_abierta && !plazoOff;
-      var estado = abierta
-        ? '<span class="pill-estado pill-si">Abierta</span>'
-        : (c.inscripcion_abierta ? '<span class="pill-estado pill-aviso">Plazo pasado</span>' : '<span class="pill-estado pill-no">Cerrada</span>');
-      return '<tr>' +
-        '<td>'+fechaTxt(c.fecha_inicio)+'</td>' +
-        '<td><b>'+esc(c.nombre)+'</b>' + (c.sede ? '<br><span class="resumen">'+esc(c.sede)+'</span>' : '') + '</td>' +
-        '<td>' + (c.circular_url ? '<a href="'+esc(c.circular_url)+'" target="_blank" rel="noopener">Abrir enlace</a>' : '<span class="resumen">sin enlace · les apunta el club</span>') + '</td>' +
-        '<td>'+eur(c.coste)+'</td>' +
-        '<td>'+fechaTxt(c.fecha_limite_interna)+'</td>' +
-        '<td>'+estado+'</td>' +
-        '<td>' + (conteoRoto
-          ? '<span class="resumen">no se ha podido contar</span>'
-          : plural(nAtl,'atleta','atletas')+'<br><span class="resumen">'+plural(k.total,'prueba','pruebas')+' · '+plural(k.conf,'confirmada','confirmadas')+'</span>') + '</td>' +
-        '<td class="acciones-fila">' +
-          '<button class="btn btn--primario btn--mini" data-inscritos="'+c.id+'">Inscritos</button>' +
-          '<button class="btn btn--fantasma btn--mini" data-editar="'+c.id+'">Editar</button>' +
-          '<button class="btn btn--peligro" data-borrar="'+c.id+'" data-nom="'+esc(c.nombre)+'">Borrar</button>' +
-        '</td>' +
-      '</tr>';
+  /* Lo que se deduce de cada competición (nada de esto se guarda). */
+  function info(c) {
+    var f = String(c.fecha_inicio || '').slice(0, 10);
+    var plazoOff = pasado(c.fecha_limite_interna);
+    var k = CONTEO[c.id] || { total:0, conf:0, pend:0, atletas:{} };
+    return { f: f, pasada: !!f && f < HOY, mes: f.slice(0, 7),
+      abierta: !!c.inscripcion_abierta && !plazoOff, plazoPasado: !!c.inscripcion_abierta && plazoOff,
+      k: k, nAtl: Object.keys(k.atletas).length };
+  }
+  function estadoPill(c, i) {
+    i = i || info(c);
+    return i.abierta
+      ? '<span class="cp-pill abierta"><span class="pt"></span>Inscripción abierta</span>'
+      : (c.inscripcion_abierta ? '<span class="cp-pill plazo"><span class="pt"></span>Plazo pasado</span>' : '<span class="cp-pill cerrada">Cerrada</span>');
+  }
+
+  function pintarTodo() { pintarCifras(); pintarChips(); pintarLista(); }
+
+  function pintarCifras() {
+    if (!COMPS.length) { $('cp-cifras').innerHTML = ''; return; }
+    var mesHoy = HOY.slice(0, 7), nProx = 0, nMes = 0, nAb = 0, nPend = 0;
+    COMPS.forEach(function (c) {
+      var i = info(c);
+      if (!i.pasada) nProx++;
+      if (i.mes === mesHoy) nMes++;
+      if (i.abierta) nAb++;
+      nPend += i.k.pend;
+    });
+    $('cp-cifras').innerHTML =
+      '<button type="button" class="cp-cifra" data-f="proximas"><b>' + nProx + '</b><span>' + (nProx === 1 ? 'próxima' : 'próximas') + '</span></button>' +
+      '<button type="button" class="cp-cifra" data-f="mes"><b>' + nMes + '</b><span>en ' + MESES[+mesHoy.slice(5, 7) - 1] + '</span></button>' +
+      '<button type="button" class="cp-cifra ok" data-f="abiertas"><b>' + nAb + '</b><span>inscripción abierta</span></button>' +
+      (CONTEO_ROTO
+        ? '<button type="button" class="cp-cifra" data-f="pendientes"><b>?</b><span>por confirmar (sin poder contarlas)</span></button>'
+        : '<button type="button" class="cp-cifra' + (nPend ? ' aviso' : '') + '" data-f="pendientes" title="Inscripciones de atletas pendientes de confirmar"><b>' + nPend + '</b><span>' + (nPend === 1 ? 'inscripción por confirmar' : 'por confirmar') + '</span></button>');
+  }
+
+  function pintarChips() {
+    if (!COMPS.length) { $('cp-chips').innerHTML = ''; $('cp-chips').classList.add('oculto'); return; }
+    $('cp-chips').classList.remove('oculto');
+    var hay = {};
+    COMPS.forEach(function (c) { hay[c.ambito || ''] = true; });
+    var orden = ORDEN_AMB.filter(function (k) { return hay[k]; });
+    Object.keys(hay).forEach(function (k) { if (orden.indexOf(k) === -1) orden.push(k); });
+    if (FAMB && !hay[FAMB]) FAMB = '';
+    $('cp-chips').innerHTML = '<button type="button" data-amb="">Todas</button>' + orden.map(function (k) {
+      return '<button type="button" class="' + ambClase(k) + '" data-amb="' + esc(k) + '"><span class="pt"></span>' + esc(amb(k).corto) + '</button>';
     }).join('');
   }
+
+  function visibles() {
+    var q = quitarTildes(($('cp-buscar').value || '').trim());
+    var mesHoy = HOY.slice(0, 7);
+    return COMPS.filter(function (c) {
+      var i = info(c);
+      if (FAMB && (c.ambito || '') !== FAMB) return false;
+      if (FCIFRA === 'proximas' && i.pasada) return false;
+      if (FCIFRA === 'mes' && i.mes !== mesHoy) return false;
+      if (FCIFRA === 'abiertas' && !i.abierta) return false;
+      if (FCIFRA === 'pendientes' && !i.k.pend) return false;
+      if (q && quitarTildes((c.nombre || '') + ' ' + (c.sede || '') + ' ' + amb(c.ambito).largo).indexOf(q) === -1) return false;
+      return true;
+    });
+  }
+
+  function filaHtml(c) {
+    var i = info(c), a = amb(c.ambito);
+    var sub = [];
+    if (c.sede) sub.push(ICO_LUGAR + esc(c.sede));
+    if (c.fecha_limite_interna) sub.push('se apuntan hasta ' + fechaTxt(c.fecha_limite_interna));
+    var pills = '<span class="cp-pill amb"><span class="pt"></span>' + esc(a.corto) + '</span>' + estadoPill(c, i) +
+      ((parseFloat(c.coste) || 0) > 0 ? '<span class="cp-pill coste" title="Coste de la inscripción">' + eur(c.coste) + '</span>' : '') +
+      (c.circular_url ? '<a class="cp-enlace" href="' + esc(c.circular_url) + '" target="_blank" rel="noopener" title="Abrir el enlace de inscripción">' + ICO_ENLACE + 'Enlace</a>' : '');
+    var van;
+    if (CONTEO_ROTO) van = '<span class="cp-van"><small>no se ha podido contar</small></span>';
+    else if (!i.k.total) van = '<span class="cp-van nadie"><small>nadie apuntado</small></span>';
+    else van = '<span class="cp-van"><b>' + plural(i.nAtl, 'atleta', 'atletas') + '</b>' +
+      '<small>' + plural(i.k.total, 'prueba', 'pruebas') + ' · ' + plural(i.k.conf, 'confirmada', 'confirmadas') + '</small>' +
+      (i.k.pend ? '<em>' + i.k.pend + ' por confirmar</em>' : '') + '</span>';
+    return '<div class="cp-fila ' + ambClase(c.ambito) + (i.pasada ? ' pasada' : '') + '" tabindex="0" data-id="' + esc(c.id) + '" aria-label="' + esc(c.nombre) + ': ver quién va y qué hacer">' +
+      '<span class="cp-dia">' + diaHtml(c.fecha_inicio) + '</span>' +
+      '<span class="cp-nom"><b>' + esc(c.nombre) + '</b>' + (sub.length ? '<small>' + sub.join(' · ') + '</small>' : '') + '</span>' +
+      '<span class="cp-pills">' + pills + '</span>' +
+      van +
+      '<span class="cp-flecha" aria-hidden="true">›</span>' +
+    '</div>';
+  }
+
+  function pintarLista() {
+    if (LISTA_ROTA) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#cp-chips button'), function (x) {
+      var on = (x.getAttribute('data-amb') || '') === FAMB;
+      x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.cp-cifra[data-f]'), function (c) {
+      c.classList.toggle('on', !!FCIFRA && c.getAttribute('data-f') === FCIFRA);
+    });
+    var cont = $('cp-lista');
+    if (!COMPS.length) {
+      $('cp-cuenta').textContent = '';
+      cont.innerHTML = ADM.vacio('Todavía no hay competiciones',
+        'Crea la primera con el botón de arriba: nombre, fecha y enlace de inscripción.',
+        '<button type="button" class="cp-b prin" data-primera>+ Nueva competición</button>',
+        '<path d="M4 4v16"/><path d="M4 5.5h13l-2.5 4 2.5 4H4"/>');
+      return;
+    }
+    var lista = visibles();
+    var nPas = COMPS.filter(function (c) { return info(c).pasada; }).length;
+    $('cp-cuenta').textContent = lista.length === COMPS.length
+      ? plural(COMPS.length, 'competición', 'competiciones') + (nPas ? ' · ' + nPas + ' ya ' + (nPas === 1 ? 'celebrada' : 'celebradas') : '')
+      : lista.length + ' de ' + plural(COMPS.length, 'competición', 'competiciones');
+    if (!lista.length) {
+      cont.innerHTML = '<div class="cp-vacio"><b>Ninguna competición con este filtro</b>Prueba con otra palabra o quita el filtro.<br><button type="button" data-limpiar>Ver todas</button></div>';
+      return;
+    }
+    /* Por meses: primero las próximas (de la más cercana a la más lejana), luego
+       las que no tienen fecha y al final las ya celebradas (la más reciente
+       primero), que es el orden en que llegan. */
+    var grupos = [], porClave = {};
+    lista.forEach(function (c) {
+      var i = info(c), d = fechaLocal(c.fecha_inicio), clave, titulo;
+      if (!d) { clave = 'sin'; titulo = 'Sin fecha'; }
+      else {
+        var mes = MESES[d.getMonth()];
+        titulo = mes.charAt(0).toUpperCase() + mes.slice(1) + ' ' + d.getFullYear() + (i.pasada ? ' · ya celebradas' : '');
+        clave = (i.pasada ? 'p' : 'f') + i.mes;
+      }
+      if (!porClave[clave]) { porClave[clave] = { titulo: titulo, pasado: i.pasada, filas: [] }; grupos.push(porClave[clave]); }
+      porClave[clave].filas.push(c);
+    });
+    cont.innerHTML =
+      '<div class="cp-cab-cols" aria-hidden="true"><span>Fecha</span><span>Competición</span><span>Ámbito e inscripción</span><span>Van del club</span><span></span></div>' +
+      grupos.map(function (g) {
+        return '<h2 class="cp-mes' + (g.pasado ? ' pasado' : '') + '">' + esc(g.titulo) + ' <span>' + g.filas.length + '</span></h2>' +
+          '<div class="cp-lista">' + g.filas.map(filaHtml).join('') + '</div>';
+      }).join('');
+  }
+
+  $('cp-buscar').addEventListener('input', pintarLista);
+  $('cp').addEventListener('click', function (e) {
+    var f = e.target.closest('.cp-cifra[data-f]');
+    if (f) {
+      var v = f.getAttribute('data-f') || '';
+      /* Pulsar la cifra que ya filtra la quita. */
+      FCIFRA = (FCIFRA === v) ? '' : v;
+      pintarLista(); return;
+    }
+    var ch = e.target.closest('#cp-chips button[data-amb]');
+    if (ch) { FAMB = ch.getAttribute('data-amb') || ''; pintarLista(); return; }
+    if (e.target.closest('[data-limpiar]')) { FCIFRA = ''; FAMB = ''; $('cp-buscar').value = ''; pintarLista(); $('cp-buscar').focus(); return; }
+    if (e.target.closest('[data-primera]')) { abrirForm(); return; }
+    if (e.target.closest('a')) return;          // el enlace de inscripción se abre, no abre la hoja
+    var fila = e.target.closest('.cp-fila[data-id]');
+    if (fila) verInscritos(fila.getAttribute('data-id'), fila);
+  });
+  $('cp').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var fila = e.target.closest && e.target.closest('.cp-fila[data-id]');
+    if (!fila || e.target !== fila) return;
+    e.preventDefault(); verInscritos(fila.getAttribute('data-id'), fila);
+  });
 
   // =========================================================
   // FORMULARIO
@@ -310,7 +702,18 @@ APOLANA_ADMIN.listo(function (sb) {
     $('c-nombre').value = c.nombre || '';
     $('c-sede').value = c.sede || '';
     $('c-fecha').value = c.fecha_inicio || '';
-    $('c-ambito').value = c.ambito || 'atletismo';
+    /* El desplegable solo ofrece tres ámbitos, pero en la base hay más (pista,
+       escolar…). Si la competición tiene otro, se añade como opción para que al
+       guardar se quede el que tenía y no se convierta en «Atletismo». */
+    var selAmb = $('c-ambito');
+    Array.prototype.forEach.call(selAmb.querySelectorAll('option[data-extra]'), function (o) { o.parentNode.removeChild(o); });
+    var ambV = c.ambito || 'atletismo';
+    if (!Array.prototype.some.call(selAmb.options, function (o) { return o.value === ambV; })) {
+      var op = document.createElement('option');
+      op.value = ambV; op.textContent = amb(ambV).largo; op.setAttribute('data-extra', '1');
+      selAmb.appendChild(op);
+    }
+    selAmb.value = ambV;
     $('c-coste').value = (c.coste != null ? c.coste : '');
     $('c-limite').value = aInput(c.fecha_limite_interna);
     $('c-circular').value = c.circular_url || '';
@@ -320,10 +723,10 @@ APOLANA_ADMIN.listo(function (sb) {
     $('panel-form').classList.remove('oculto');
     $('panel-form').scrollTop = 0;
   }
+  function cerrarForm() { $('panel-form').classList.add('oculto'); }
   $('nueva-comp').addEventListener('click', function(){ abrirForm(); });
-  $('cancelar').addEventListener('click', function(){ $('panel-form').classList.add('oculto'); });
-  $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
+  $('cancelar').addEventListener('click', cerrarForm);
+  $('panel-form').addEventListener('click', function (e) { if (e.target === this) cerrarForm(); });
 
   // Subida del PDF de la circular
   $('c-pdf').addEventListener('change', async function(){
@@ -359,81 +762,117 @@ APOLANA_ADMIN.listo(function (sb) {
     else r = await sb.from('competiciones').insert(datos);
     if (r.error) { m.textContent = 'Error: ' + r.error.message; m.className = 'msg error'; return; }
     m.textContent = 'Guardado ✓'; m.className = 'msg ok';
-    $('panel-form').classList.add('oculto');
+    cerrarForm();
     cargarComps();
+    /* Si se ha editado desde su hoja, la hoja se pone al día. */
+    if (id && hojaAbierta() && HOJA_ID === id) verInscritos(id);
   });
 
   // =========================================================
-  // ACCIONES DE LA TABLA DE COMPETICIONES
+  // HOJA DE UNA COMPETICIÓN (datos, inscritos, editar, borrar)
   // =========================================================
-  $('tabla-comps').addEventListener('click', async function(e){
-    if (e.target.closest('[data-primera]')) { abrirForm(); return; }
-    var ed = e.target.getAttribute('data-editar');
-    var bo = e.target.getAttribute('data-borrar');
-    var ins = e.target.getAttribute('data-inscritos');
-    if (ed) {
-      var r = await sb.from('competiciones').select('*').eq('id', ed).single();
-      if (!r.error) abrirForm(r.data);
-    }
-    if (bo) {
-      if (!await apoConfirm({ texto: '¿Borrar la competición "' + e.target.getAttribute('data-nom') + '"? Se borrarán también sus inscripciones. No se puede deshacer.', peligro: true })) return;
-      var d = await sb.from('competiciones').delete().eq('id', bo);
-      if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
-      $('panel-inscritos').classList.add('oculto');
-      cargarComps();
-    }
-    if (ins) verInscritos(ins);
+  var HOJA_ID = null, focoPrevio = null, TURNO = 0;
+  function hojaAbierta() { return $('cp-hoja').classList.contains('ver'); }
+  function abrirCapa(desde) {
+    focoPrevio = desde || document.activeElement;
+    $('cp-velo').classList.add('ver'); $('cp-hoja').classList.add('ver');
+    $('cp-hoja').scrollTop = 0;
+    setTimeout(function () { $('ins-cerrar').focus(); }, 60);
+  }
+  function cerrarHoja() {
+    if (!hojaAbierta()) return;
+    $('cp-velo').classList.remove('ver'); $('cp-hoja').classList.remove('ver');
+    HOJA_ID = null; TURNO++;
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  $('cp-velo').addEventListener('click', cerrarHoja);
+  $('ins-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;   // el Escape que cierra un «¿seguro?» no cierra también lo de debajo
+    if (!$('panel-form').classList.contains('oculto')) { cerrarForm(); return; }
+    cerrarHoja();
   });
 
-  // =========================================================
-  // INSCRITOS DE UNA COMPETICIÓN
-  // =========================================================
+  /* Cabecera y datos de la hoja. Al abrir se pintan con lo que ya hay en la
+     lista; cuando llega la ficha entera, se repintan con ella. */
+  function pintarCabHoja(c) {
+    var cab = $('cp-h-cab');
+    cab.className = 'cp-hoja-cab ' + ambClase(c.ambito);
+    $('cp-h-dia').innerHTML = diaHtml(c.fecha_inicio, true);
+    $('ins-titulo').textContent = c.nombre || 'Competición';
+    $('cp-h-sub').textContent = [amb(c.ambito).largo, c.sede || ''].filter(Boolean).join(' · ');
+    function par(k, v) { return '<div><span>' + esc(k) + '</span><b>' + v + '</b></div>'; }
+    $('cp-h-datos').innerHTML = '<div class="cp-caja">' +
+      par('Fecha', esc(fechaLarga(c.fecha_inicio))) +
+      par('Lugar', c.sede ? esc(c.sede) : '—') +
+      par('Coste de la inscripción', eur(c.coste)) +
+      par('Se apuntan hasta', c.fecha_limite_interna ? fechaTxt(c.fecha_limite_interna) : '<small>sin plazo del club</small>') +
+      par('Inscripción', estadoPill(c)) +
+      par('Enlace de inscripción', c.circular_url
+        ? '<a href="' + esc(c.circular_url) + '" target="_blank" rel="noopener">Abrir enlace</a>'
+        : '<small>sin enlace · les apunta el club</small>') +
+      '</div>' +
+      (c.notas ? '<div class="cp-notas"><b>Notas para los atletas:</b> ' + esc(c.notas) + '</div>' : '');
+  }
+
   var filasIns = [];
 
-  async function verInscritos(compId){
-    var panel = $('panel-inscritos');
-    panel.classList.remove('oculto');
-    panel.scrollIntoView({ behavior: 'smooth' });
-    var tb = $('tabla-inscritos').querySelector('tbody');
-    tb.innerHTML = ADM.filaCargando(COLS_INS);
-    $('msg-ins').textContent = '';
+  async function verInscritos(compId, desde){
+    var turno = ++TURNO;
+    /* Al repintar la MISMA competición (tras confirmar, deshacer…) se deja el
+       mensaje («Confirmada ✓», «Algunas fallaron…») para que se pueda leer. */
+    var mismaHoja = hojaAbierta() && HOJA_ID === compId;
+    HOJA_ID = compId;
+    if (!hojaAbierta()) abrirCapa(desde);
+    var ya = COMPS.filter(function (x) { return x.id === compId; })[0];
+    if (ya) pintarCabHoja(ya);
+    else { $('ins-titulo').textContent = 'Competición'; $('cp-h-sub').textContent = ''; $('cp-h-dia').innerHTML = ''; $('cp-h-datos').innerHTML = ''; }
+    var lst = $('tabla-inscritos');
+    lst.innerHTML = ADM.esqueleto(3);
+    $('ins-resumen').textContent = '';
+    if (!mismaHoja) { $('ins-barra').classList.add('oculto'); $('msg-ins').textContent = ''; }
     $('lista-copiar').classList.add('oculto');
 
     /* Si la consulta falla no se puede decir «no hay nadie apuntado»: se dice
        que no se ha podido leer, y se ofrece volver a intentarlo. */
     var c = await sb.from('competiciones').select('*').eq('id', compId).single();
+    if (turno !== TURNO) return;
     if (c.error) {
-      $('ins-resumen').textContent = '';
-      tb.innerHTML = ADM.filaError(COLS_INS, c.error.message, function(){ verInscritos(compId); });
+      $('ins-resumen').textContent = ''; $('ins-barra').classList.add('oculto');
+      lst.innerHTML = ADM.error(c.error.message, function(){ verInscritos(compId); });
       return;
     }
     compActual = c.data;
-    $('ins-titulo').textContent = 'Inscritos · ' + compActual.nombre;
+    pintarCabHoja(compActual);
 
     var r = await sb.from('competicion_atleta')
       .select('id,atleta_id,prueba,estado,marca_acreditada,created_at,atletas(nombre,apellidos,categoria,licencia)')
       .eq('competicion_id', compId)
       .order('prueba');
+    if (turno !== TURNO) return;
     if (r.error) {
-      $('ins-resumen').textContent = '';
-      tb.innerHTML = ADM.filaError(COLS_INS, r.error.message, function(){ verInscritos(compId); });
+      $('ins-resumen').textContent = ''; $('ins-barra').classList.add('oculto');
+      lst.innerHTML = ADM.error(r.error.message, function(){ verInscritos(compId); });
       return;
     }
     filasIns = r.data || [];
 
     if (!filasIns.length) {
+      $('ins-barra').classList.add('oculto');
       $('ins-resumen').innerHTML = 'Coste por atleta: <b>'+eur(compActual.coste)+'</b> · Nadie se ha apuntado todavía.';
-      tb.innerHTML = ADM.filaVacia(COLS_INS, 'Todavía no hay nadie apuntado',
+      lst.innerHTML = ADM.vacio('Todavía no hay nadie apuntado',
         'Cuando alguien diga en el portal que va, aparecerá aquí para que lo confirmes.',
         '', '<path d="M4 19.5c1.8-3.2 4.6-4.8 8-4.8s6.2 1.6 8 4.8"/><circle cx="12" cy="8" r="3.7"/>');
       return;
     }
+    $('ins-barra').classList.remove('oculto');
 
     var ids = []; filasIns.forEach(function(x){ if (ids.indexOf(x.atleta_id) < 0) ids.push(x.atleta_id); });
 
     // Mejores marcas de cada atleta
     var marcas = {}, marcasRotas = false;
     var m = await sb.from('marcas_atleta').select('atleta_id,prueba,tiempo_display,fecha').in('atleta_id', ids);
+    if (turno !== TURNO) return;
     /* «Sin marca» solo se dice si las marcas se han podido leer. */
     if (m.error) marcasRotas = true;
     else if (m.data) m.data.forEach(function(x){
@@ -447,36 +886,56 @@ APOLANA_ADMIN.listo(function (sb) {
     var coste = parseFloat(compActual.coste) || 0;
     var nConf = 0, nPend = 0;
 
-    tb.innerHTML = filasIns.map(function(x){
+    lst.innerHTML = '<div class="cp-insl">' + filasIns.map(function(x){
       var a = x.atletas || {};
       var nom = ((a.nombre||'')+' '+(a.apellidos||'')).trim() || '(atleta)';
       if (x.estado === 'confirmada') nConf++;
       else if (x.estado === 'apuntado') nPend++;
       var mm = marcas[x.atleta_id + '||' + x.prueba];
+      var clase = x.estado === 'confirmada' ? 'conf' : (x.estado === 'cancelada' ? 'canc' : 'pend');
       var estadoHtml = x.estado === 'confirmada'
-        ? '<span class="pill-estado pill-si">Confirmada</span>'
-        : (x.estado === 'cancelada' ? '<span class="pill-estado pill-no">Cancelada</span>' : '<span class="pill-estado pill-aviso">Apuntado</span>');
+        ? '<span class="cp-pill abierta"><span class="pt"></span>Confirmada</span>'
+        : (x.estado === 'cancelada' ? '<span class="cp-pill cerrada">Cancelada</span>' : '<span class="cp-pill plazo"><span class="pt"></span>Apuntado</span>');
       var acciones = x.estado === 'confirmada'
-        ? '<button class="btn btn--fantasma btn--mini" data-deshacer="'+x.id+'" data-atleta="'+x.atleta_id+'">Deshacer</button>'
-        : '<button class="btn btn--primario btn--mini" data-confirmar="'+x.id+'" data-atleta="'+x.atleta_id+'">Confirmar</button>';
-      acciones += ' <button class="btn btn--peligro" data-quitar="'+x.id+'">Quitar</button>';
-      return '<tr>' +
-        '<td><b>'+esc(nom)+'</b>'+(a.licencia?'<br><span class="resumen">Lic. '+esc(a.licencia)+'</span>':'')+'</td>' +
-        '<td>'+esc(a.categoria||'—')+'</td>' +
-        '<td>'+esc(x.prueba||'—')+'</td>' +
-        '<td>'+(mm ? esc(mm.disp)+'<br><span class="resumen">'+esc(mm.fecha||'')+'</span>'
-                   : '<span class="resumen">'+(marcasRotas ? 'marca sin leer' : 'sin marca')+'</span>')+'</td>' +
-        '<td><input type="text" value="'+esc(x.marca_acreditada||'')+'" data-marca="'+x.id+'" placeholder="—" style="padding:6px 8px;font-size:13px;"></td>' +
-        '<td>'+estadoHtml+'</td>' +
-        '<td class="acciones-fila">'+acciones+'</td>' +
-      '</tr>';
-    }).join('');
+        ? '<button type="button" data-deshacer="'+esc(x.id)+'" data-atleta="'+esc(x.atleta_id)+'">Deshacer</button>'
+        : '<button type="button" class="prin" data-confirmar="'+esc(x.id)+'" data-atleta="'+esc(x.atleta_id)+'">Confirmar</button>';
+      acciones += '<button type="button" class="peligro" data-quitar="'+esc(x.id)+'">Quitar</button>';
+      var quien = [a.categoria || '', a.licencia ? 'Lic. ' + a.licencia : ''].filter(Boolean).join(' · ');
+      return '<div class="cp-ins ' + clase + '">' +
+        '<div class="cp-ins-top"><div class="cp-ins-quien"><b>'+esc(nom)+'</b>'+(quien ? '<small>'+esc(quien)+'</small>' : '')+'</div>'+estadoHtml+'</div>' +
+        '<div class="cp-ins-datos">' +
+          '<div><span>Prueba</span><b>'+esc(x.prueba||'—')+'</b></div>' +
+          '<div><span>Mejor marca</span>'+(mm ? '<b>'+esc(mm.disp)+(mm.fecha ? ' <small>'+esc(fechaCorta(mm.fecha))+'</small>' : '')+'</b>'
+                     : '<span class="tenue">'+(marcasRotas ? 'marca sin leer' : 'sin marca')+'</span>')+'</div>' +
+          '<label><span>Marca acreditada</span><input type="text" value="'+esc(x.marca_acreditada||'')+'" data-marca="'+esc(x.id)+'" placeholder="—" aria-label="Marca acreditada de '+esc(nom)+' en '+esc(x.prueba||'la prueba')+'"></label>' +
+        '</div>' +
+        '<div class="cp-ins-acc">'+acciones+'</div>' +
+      '</div>';
+    }).join('') + '</div>';
 
     $('ins-resumen').innerHTML =
       'Coste por atleta: <b>'+eur(coste)+'</b> · <b>'+ids.length+'</b> ' + (ids.length === 1 ? 'atleta' : 'atletas') +
       ', <b>'+filasIns.length+'</b> ' + (filasIns.length === 1 ? 'inscripción a una prueba' : 'inscripciones a pruebas') + ' · ' +
       '<b>'+nConf+'</b> ' + (nConf === 1 ? 'confirmada' : 'confirmadas') + ', <b>'+nPend+'</b> ' + (nPend === 1 ? 'pendiente' : 'pendientes');
   }
+
+  // Editar y borrar, desde la hoja
+  $('cp-h-acc').addEventListener('click', async function (e) {
+    var bt = e.target.closest('button[data-hoja]');
+    if (!bt || !HOJA_ID) return;
+    var id = HOJA_ID;
+    if (bt.getAttribute('data-hoja') === 'editar') {
+      var r = await sb.from('competiciones').select('*').eq('id', id).single();
+      if (!r.error) abrirForm(r.data);
+      return;
+    }
+    var c = (compActual && compActual.id === id) ? compActual : (COMPS.filter(function (x) { return x.id === id; })[0] || {});
+    if (!await apoConfirm({ texto: '¿Borrar la competición "' + (c.nombre || '') + '"? Se borrarán también sus inscripciones. No se puede deshacer.', peligro: true })) return;
+    var d = await sb.from('competiciones').delete().eq('id', id);
+    if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
+    cerrarHoja();
+    cargarComps();
+  });
 
   // Confirmar la inscripción. NO toca ningún bono: el bono es solo de El Cubo
   // y las competiciones se pagan en la web de la organización.
@@ -488,19 +947,24 @@ APOLANA_ADMIN.listo(function (sb) {
     return null;
   }
 
+  /* Al confirmar, deshacer o quitar cambia el recuento de la lista de fuera. */
+  function alCambiarInscritos() { verInscritos(compActual.id); cargarComps(); }
+
   $('tabla-inscritos').addEventListener('click', async function(e){
-    var conf = e.target.getAttribute('data-confirmar');
-    var desh = e.target.getAttribute('data-deshacer');
-    var quit = e.target.getAttribute('data-quitar');
+    var bt = e.target.closest('button');
+    if (!bt) return;
+    var conf = bt.getAttribute('data-confirmar');
+    var desh = bt.getAttribute('data-deshacer');
+    var quit = bt.getAttribute('data-quitar');
     var m = $('msg-ins');
 
     if (conf) {
-      var atleta = e.target.getAttribute('data-atleta');
+      var atleta = bt.getAttribute('data-atleta');
       m.textContent = 'Confirmando…'; m.className = 'msg';
       var err = await confirmarFila(conf, atleta);
       if (err) { m.textContent = 'Error: ' + err; m.className = 'msg error'; return; }
       m.textContent = 'Confirmada ✓'; m.className = 'msg ok';
-      verInscritos(compActual.id);
+      alCambiarInscritos();
     }
 
     if (desh) {
@@ -509,14 +973,14 @@ APOLANA_ADMIN.listo(function (sb) {
       var up = await sb.from('competicion_atleta').update({ estado: 'apuntado', confirmada_en: null }).eq('id', desh);
       if (up.error) { m.textContent = 'Error: ' + up.error.message; m.className = 'msg error'; return; }
       m.textContent = 'Confirmación deshecha ✓'; m.className = 'msg ok';
-      verInscritos(compActual.id);
+      alCambiarInscritos();
     }
 
     if (quit) {
       if (!await apoConfirm({ titulo: 'Quitar inscripción', texto: '¿Quitar esta inscripción?', confirmar: 'Quitar', peligro: true })) return;
       var d = await sb.from('competicion_atleta').delete().eq('id', quit);
       if (d.error) { m.textContent = 'Error: ' + d.error.message; m.className = 'msg error'; return; }
-      verInscritos(compActual.id);
+      alCambiarInscritos();
     }
   });
 
@@ -543,7 +1007,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if (fallos.length) { m.textContent = 'Algunas fallaron: ' + fallos.join(' · '); m.className = 'msg error'; }
     else { m.textContent = 'Todas confirmadas ✓'; m.className = 'msg ok'; }
-    verInscritos(compActual.id);
+    alCambiarInscritos();
   });
 
   // Lista en texto, agrupada por prueba, para pasarla a la federación
@@ -567,8 +1031,6 @@ APOLANA_ADMIN.listo(function (sb) {
     catch (err) { ta.select(); $('msg-ins').textContent = 'Selecciona el texto de abajo y cópialo.'; $('msg-ins').className = 'msg'; }
   });
 
-  $('ins-cerrar').addEventListener('click', function(){ $('panel-inscritos').classList.add('oculto'); });
-
   // =========================================================
   // ARRANQUE
   // =========================================================
@@ -576,7 +1038,7 @@ APOLANA_ADMIN.listo(function (sb) {
     await cargarAuxiliares();
     await cargarComps();
     /* Desde el aviso del Resumen («el plazo interno acaba…»): ?ver=<id> abre
-       directamente los inscritos de esa competición. */
+       directamente la hoja de esa competición, con sus inscritos. */
     var ver = new URLSearchParams(location.search).get('ver');
     if (ver) verInscritos(ver);
   })();
