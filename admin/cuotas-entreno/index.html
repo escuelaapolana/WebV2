@@ -14,176 +14,541 @@
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
 <style>
-  body { background: var(--crema); }
-  .wrap { max-width: 960px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px) 60px; }
-  h1 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: clamp(24px,5vw,32px); color: var(--navy); margin: 0 0 4px; }
-  .sub { font-size: 15px; color: var(--texto-suave); margin: 0 0 20px; max-width: 70ch; line-height: 1.6; }
-  .barra { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
-  .barra button { min-height:42px; padding:10px 18px; border-radius:999px; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer;
-    border:1px solid var(--azul-filete,#3B85C0); background:var(--navy,#2E4256); color:#fff; }
-  .barra button:hover { filter:brightness(1.08); }
-  .barra button[disabled]{ opacity:.6; cursor:default; }
-  .resumen { font-size:13.5px; color:var(--texto-suave); }
-  .lista { display:flex; flex-direction:column; gap:12px; }
-  .card { background:#fff; border: 1px solid var(--linea-marcada); border-radius:14px;
-    padding:15px 18px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); }
-  .card .quien { flex:1 1 240px; min-width:0; }
-  .card .quien b { font-size:16px; color:var(--navy); }
-  .card .quien span { display:block; font-size:13.5px; color:var(--texto-suave); margin-top:2px; }
-  .badge { display:inline-block; font-size:12.5px; font-weight:700; padding:3px 10px; border-radius:999px; }
-  .b-pend { background:#FDF6E9; color:#8A5307; }
-  .b-act  { background:#EAF3E3; color:#2E6B3A; }
-  .b-imp  { background:#FBEAE8; color:#B3261E; }
-  .b-can  { background:#eee; color:#555; }
-  .b-cam  { background:#EAF2F9; color:#1E4E78; }
-  .acc { display:flex; gap:8px; flex:0 0 auto; flex-wrap:wrap; }
-  .acc button, .acc a { min-height:40px; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
-    padding:9px 15px; border-radius:999px; font-size:13.5px; font-family:inherit; cursor:pointer; text-decoration:none; white-space:nowrap; border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy); }
-  .acc button.prim { background:var(--navy,#2E4256); color:#fff; border-color:var(--navy); font-weight:600; }
-  .acc button.ok { background:#1e7a3d; color:#fff; border-color:#1e7a3d; }
-  .acc button[disabled] { opacity:.55; cursor:default; }
-  .acc button:hover, .acc a:hover { filter:brightness(1.03); }
-  .msg { font-size:13px; margin-top:6px; }
+  /* ============================================================
+     CUOTAS DOMICILIADAS (SEPA) · lista en tarjetas (23-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios»: cabecera grande, cifras por estado
+     que filtran, buscador + chips, una tarjeta por cuota (quién,
+     importe, estado de la domiciliación y si ha entrado el pago) y
+     una hoja inferior con lo que se hace con ella: enviar el enlace
+     por correo y copiarlo. Las tres acciones de toda la lista
+     (enviar a los que faltan, re-sincronizar con Stripe y revisar
+     fechas de fin) siguen arriba. Mismos datos, mismas funciones
+     (entreno-enlace, entreno-resync) y mismos argumentos que antes.
+     Prefijo ce-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .ce-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .ce-wrap *, .ce-capa * { box-sizing: border-box; }
+  .ce-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .ce-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.5; max-width: 72ch; }
+  .ce-cab p b { color: var(--navy,#26374B); font-weight: 700; }
+
+  /* --- Acciones de toda la lista --- */
+  .ce-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+  .ce-b { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 6px 16px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14px; font-weight: 700;
+    line-height: 1.2; text-align: center; cursor: pointer; }
+  .ce-b:hover { background: var(--crema,#FBF9F4); }
+  .ce-b.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .ce-b.prin:hover { background: #24364A; }
+  .ce-b:disabled { opacity: .55; cursor: default; }
+  .ce-b:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .ce-b svg { width: 17px; height: 17px; flex: 0 0 17px; }
+  .ce-b .verde { color: #3E7A34; }
+  @media (max-width: 560px) {
+    .ce-acciones .ce-b { flex: 1 1 calc(50% - 4px); padding: 6px 12px; }
+    .ce-acciones .ce-b.prin { flex-basis: 100%; }
+  }
+  /* Resultado de «Re-sincronizar» / «Revisar fechas de fin» */
+  .ce-res { margin: 12px 0 0; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid var(--azul-filete,#3B85C0);
+    border-radius: 14px; padding: 12px 16px; font-size: 13.5px; line-height: 1.7; color: #3A3A33; overflow-wrap: anywhere;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .ce-res:empty { display: none; }
+  .ce-res b { color: var(--navy,#26374B); }
+
+  /* --- Cifras: pulsar una filtra la lista --- */
+  .ce-cifras { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .ce-cifra { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .ce-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .ce-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .ce-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .ce-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .ce-cifra.ok b { color: #3E7A34; }
+  .ce-cifra.mal b { color: #B23B3B; }
+  .ce-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .ce-cifra.aviso b, .ce-cifra.aviso span { color: #8A5307; }
+  .ce-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .ce-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .ce-cifra b { font-size: 21px; } }
+
+  /* --- Buscador + chips --- */
+  .ce-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .ce-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .ce-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .ce-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .ce-chips::-webkit-scrollbar { display: none; }
+  .ce-chips button { flex: 1 0 auto; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 700;
+    font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .ce-chips button:hover { color: var(--navy,#26374B); }
+  .ce-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .ce-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; }
+  .ce-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .ce-ir { font-size: 14px; font-weight: 700; color: var(--azul-oscuro,#2A5E8C); text-decoration: none; min-height: 40px; display: inline-flex; align-items: center; }
+  .ce-ir:hover { text-decoration: underline; text-underline-offset: 2px; }
+  @media (max-width: 620px) { .ce-chips { width: 100%; border-radius: 14px; } }
+
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .ce-lista { container: ce-lista / inline-size; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .ce-fila { position: relative; display: grid; grid-template-columns: 40px minmax(0,1.25fr) 100px minmax(0,1.6fr) 132px 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid #D9A441; border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .ce-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .ce-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .ce-fila.act { border-left-color: #6FAF7E; }
+  .ce-fila.cam { border-left-color: #3B85C0; }
+  .ce-fila.imp { border-left-color: #C9564C; background: #FFFBFA; }
+  .ce-fila.can { border-left-color: #CFC6B4; background: #FCFBF8; }
+  .ce-ini { width: 40px; height: 40px; border-radius: 999px; background: #EAF2FA; color: var(--azul-oscuro,#2A5E8C); display: flex; align-items: center;
+    justify-content: center; font-family: var(--fuente-titulo); font-weight: 700; font-size: 14px; }
+  .ce-ini.imp { background: #FBE9E7; color: #9A2F26; }
+  .ce-ini.can { background: #F0EBE0; color: #8A816E; }
+  .ce-per { min-width: 0; }
+  .ce-per b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .ce-fila.can .ce-per b { color: var(--texto-suave,#6E6656); }
+  .ce-per small { display: block; font-size: 13px; color: var(--texto-tenue,#9A927F); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ce-imp { min-width: 0; text-align: right; }
+  .ce-imp b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .ce-imp small { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); line-height: 1.3; }
+  .ce-est { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .ce-est-l1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 100%; }
+  .ce-prox { font-size: 12.5px; color: var(--texto-suave,#6E6656); white-space: nowrap; }
+  .ce-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #FBF1D9; color: #8A5307; white-space: nowrap; }
+  .ce-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #D9A441; flex: 0 0 7px; }
+  .ce-pill.act { background: #E7F3EA; color: #23603A; } .ce-pill.act .pt { background: #3E7A34; }
+  .ce-pill.cam { background: #E6F0FB; color: #1E4E78; } .ce-pill.cam .pt { background: #3B85C0; }
+  .ce-pill.imp { background: #FDECEA; color: #9A2F26; } .ce-pill.imp .pt { background: #B23B3B; }
+  .ce-pill.can { background: #F0EBE0; color: #6E6656; } .ce-pill.can .pt { background: #9A927F; }
+  .ce-pago { font-size: 13px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+  .ce-pago.ok { color: #1E7A3D; } .ce-pago.mal { color: #B3261E; } .ce-pago.cam { color: #1E4E78; } .ce-pago.espera { color: #8A5A00; }
+  .ce-pago.nada { color: var(--texto-tenue,#9A927F); font-weight: 400; }
+  .ce-cop { position: relative; z-index: 1; justify-self: start; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px 0 10px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; color: var(--azul-oscuro,#1E4E78); font: inherit; font-size: 13.5px; font-weight: 600;
+    background: #fff; white-space: nowrap; cursor: pointer; }
+  .ce-cop:hover { background: #F2F7FC; border-color: #CFE2F1; }
+  .ce-cop:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .ce-cop svg { width: 15px; height: 15px; flex: 0 0 15px; }
+  .ce-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  /* Lo que pasó al enviar el enlace (también con «Enviar a los que faltan») */
+  .ce-msg { grid-column: 2 / -1; font-size: 13px; font-weight: 600; margin-top: 6px; color: var(--texto-suave,#6E6656); overflow-wrap: anywhere; }
+  .ce-msg:empty { display: none; }
+  .ce-msg.ok { color: #2E6B3A; } .ce-msg.mal { color: #B3261E; }
+  .ce-cab-cols { display: grid; grid-template-columns: 40px minmax(0,1.25fr) 100px minmax(0,1.6fr) 132px 14px; gap: 0 14px; padding: 4px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  .ce-cab-cols span:nth-child(3) { text-align: right; }
+  /* Lista estrecha (móvil): nombre e importe arriba, estado y pago debajo.
+     Copiar el enlace queda en la hoja (botón grande). */
+  @container ce-lista (max-width: 640px) {
+    .ce-cab-cols { display: none; }
+    .ce-fila { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 11px 12px 12px 10px; }
+    .ce-ini { order: 0; flex: 0 0 40px; }
+    .ce-per { order: 1; flex: 1 1 0; }
+    .ce-imp { order: 2; align-self: flex-start; padding-top: 1px; }
+    .ce-flecha { order: 3; align-self: flex-start; font-size: 22px; padding-top: 6px; }
+    .ce-fila::after { content: ""; order: 4; flex-basis: 100%; height: 0; }
+    .ce-est { order: 5; flex: 1 1 100%; padding-left: 50px; }
+    .ce-cop { display: none; }
+    .ce-msg { order: 7; flex: 1 1 100%; margin: 0; padding-left: 50px; }
+  }
+  .ce-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .ce-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .ce-vacio button { margin-top: 10px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+
+  /* --- Hoja inferior: lo que se hace con una cuota --- */
+  .ce-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .ce-velo.ver { opacity: 1; pointer-events: auto; }
+  .ce-hoja { position: fixed; left: 50%; bottom: 0; width: min(560px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .ce-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .ce-hoja, .ce-velo, .ce-fila { transition: none; } }
+  .ce-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .ce-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .ce-hoja-cab .ce-ini { width: 48px; height: 48px; flex: 0 0 48px; font-size: 16px; }
+  .ce-hoja-cab > div { flex: 1; min-width: 0; }
+  .ce-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .ce-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 3px 0 0; overflow-wrap: anywhere; }
+  .ce-cerrar { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .ce-h-pago { margin: 14px 0 0; border-radius: 12px; padding: 10px 14px; font-size: 14.5px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere;
+    background: #F6F3EC; border: 1px solid #E6DFCF; color: var(--texto-suave,#6E6656); }
+  .ce-h-pago.ok { background: #F3F9F4; border-color: #D4E8D9; color: #1E7A3D; }
+  .ce-h-pago.mal { background: #FDF3F2; border-color: #EBC9C5; color: #B3261E; }
+  .ce-h-pago.cam { background: #EEF5FC; border-color: #CFE2F1; color: #1E4E78; }
+  .ce-h-pago.espera { background: #FBF1DE; border-color: #E9CE9A; color: #8A5A00; }
+  .ce-h-pago.nada { font-weight: 400; }
+  .ce-et { margin: 16px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  .ce-datos { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 4px 14px; }
+  .ce-datos div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid #EFE9DA; font-size: 14.5px; }
+  .ce-datos div:last-child { border-bottom: 0; }
+  .ce-datos span.k { color: var(--texto-suave,#6E6656); flex: 0 0 auto; }
+  .ce-datos b { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .ce-h-msg { margin: 14px 0 0; border-radius: 12px; padding: 10px 14px; font-size: 14.5px; font-weight: 600; background: #F6F3EC; color: var(--texto-suave,#6E6656); }
+  .ce-h-msg.ok { background: #F3F9F4; color: #2E6B3A; }
+  .ce-h-msg.mal { background: #FDF3F2; color: #B3261E; }
+  .ce-acc { display: grid; gap: 8px; margin-top: 16px; }
+  .ce-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; border-radius: 12px; font: inherit;
+    font-weight: 700; font-size: 15px; border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; }
+  .ce-acc button:hover { background: var(--crema,#FBF9F4); }
+  .ce-acc button.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .ce-acc button.prin:hover { background: #24364A; }
+  .ce-acc button.ok { background: #1E7A3D; border-color: #1E7A3D; color: #fff; }
+  .ce-acc button:disabled { opacity: .6; cursor: default; }
+  .ce-acc button.ok:disabled { opacity: 1; }
+  .ce-acc svg { width: 17px; height: 17px; flex: 0 0 17px; }
+  .ce-nota { margin: 8px 2px 0; font-size: 13px; color: var(--texto-suave,#6E6656); line-height: 1.45; }
 </style>
 </head>
-<body>
-  <div class="wrap">
-    <h1>Cuotas domiciliadas · SEPA</h1>
-    <p class="sub">Cuotas que se pagan por <b>domiciliación SEPA</b>: los adultos de Velocidad/Academia, <b>trimestral</b> (octubre, enero y abril; tras abril se para solo), y algún caso <b>mensual</b> (el día 1 de cada mes, hasta su fecha de fin). Cada uno recibe un enlace para meter su IBAN una vez; luego se cobra solo. Los cobros liquidados aparecen también en <b>Cobros</b>.</p>
-    <div class="barra">
-      <button id="enviar-todos">✉ Enviar enlace a los que faltan</button>
-      <button id="resync" style="background:#5E7D3A;color:#fff;border-color:#5E7D3A" title="Cuotas de entreno y, además, altas de socio con el adeudo SEPA en camino">↻ Re-sincronizar con Stripe</button>
-      <button id="recolocar" title="Pone la fecha de parada de cada suscripción en su límite de periodo: el último cobro va entero y no hay ninguno después del fin">⇥ Revisar fechas de fin</button>
-      <span class="resumen" id="resumen"></span>
+<body class="adm-piel">
+
+<div class="admin-wrap">
+  <div class="ce-wrap" id="ce">
+    <div class="ce-cab">
+      <h1>Cuotas domiciliadas · SEPA</h1>
+      <p>Cuotas que se pagan por <b>domiciliación SEPA</b>: los adultos de Velocidad/Academia, <b>trimestral</b> (octubre, enero y abril; tras abril se para solo), y algún caso <b>mensual</b> (el día 1 de cada mes, hasta su fecha de fin). Cada uno recibe un enlace para meter su IBAN una vez; luego se cobra solo. Los cobros liquidados aparecen también en <b>Cobros</b>.</p>
     </div>
-    <div id="resync-res" style="margin:4px 0 12px;font-size:13.5px;line-height:1.7;color:#3A3A33"></div>
-    <div class="lista" id="lista"><p class="sub">Cargando…</p></div>
+
+    <div class="ce-acciones">
+      <button type="button" class="ce-b prin" id="enviar-todos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span class="ce-lbl">Enviar enlace a los que faltan</span></button>
+      <button type="button" class="ce-b" id="resync" title="Cuotas de entreno y, además, altas de socio con el adeudo SEPA en camino"><svg class="verde" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg><span class="ce-lbl">Re-sincronizar con Stripe</span></button>
+      <button type="button" class="ce-b" id="recolocar" title="Pone la fecha de parada de cada suscripción en su límite de periodo: el último cobro va entero y no hay ninguno después del fin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h13"/><path d="m11 6 6 6-6 6"/><path d="M21 5v14"/></svg><span class="ce-lbl">Revisar fechas de fin</span></button>
+    </div>
+    <div class="ce-res" id="resync-res" aria-live="polite"></div>
+
+    <div class="ce-cifras" id="ce-cifras"></div>
+    <div class="ce-filtros">
+      <input type="search" class="ce-buscar" id="ce-buscar" placeholder="Buscar por nombre o correo…" aria-label="Buscar cuota" autocomplete="off">
+      <div class="ce-chips" id="ce-chips" role="group" aria-label="Estado"></div>
+    </div>
+    <div class="ce-pie-filtros"><span class="ce-cuenta" id="ce-cuenta" aria-live="polite"></span>
+      <a class="ce-ir" href="../cobros/">Ver los cobros →</a></div>
+    <div id="lista"><div class="adm-cargando" aria-label="Cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
   </div>
+</div>
+
+<!-- ===== HOJA DE LA CUOTA (se abre al tocar una fila) ===== -->
+<div class="ce-capa">
+  <div class="ce-velo" id="ce-velo"></div>
+  <div class="ce-hoja" id="ce-hoja" role="dialog" aria-modal="true" aria-labelledby="ce-h-nombre">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="ce-hoja-cab">
+      <span class="ce-ini" id="ce-h-ini"></span>
+      <div><h3 id="ce-h-nombre"></h3><p class="sub" id="ce-h-sub"></p></div>
+      <button type="button" class="ce-cerrar" id="ce-h-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div id="ce-h-cuerpo"></div>
+    <div id="ce-h-msg"></div>
+    <div class="ce-acc" id="ce-h-acc"></div>
+    <p class="ce-nota" id="ce-h-nota"></p>
+  </div>
+</div>
+
 <script>
 APOLANA_ADMIN.listo(function (sb) {
-  var lista = document.getElementById('lista');
+  var $ = function (id) { return document.getElementById(id); };
+  var lista = $('lista');
   var B = window.APOLANA_BASE || '../../';
   var FILAS = [];
+  var FILTRO = '';      // '' | 'sin' | 'dom' | 'impago' | 'cancelada'
+  var ENVIO = {};       // id → { estado: 'enviando'|'ok'|'mal', txt } · lo que pasó al enviar su enlace
+  var abiertoId = null, focoPrevio = null;
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   var eur = function(n){ return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0})+' €'; };
   function fecha(s){ if(!s) return '—'; try{ return new Date(s).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return '—'; } }
 
+  var ICO_MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+  var ICO_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+
+  // Texto de un botón con icono: se cambia solo la etiqueta, el icono se queda.
+  function lbl(btn, s){
+    var x = btn.querySelector('.ce-lbl') || btn;
+    if (s == null) return x.textContent;
+    x.textContent = s;
+  }
+
   // Resultado de la pasada extra del resync: altas de socio con el adeudo SEPA
   // «en camino» comprobadas contra Stripe (mig 311).
-  function socioHTML(lista){
-    if (!lista || !lista.length) return '';
-    return '<br><b>Altas de socio en camino (SEPA)</b> · '+lista.length+' comprobadas:<br>'+
-      lista.map(function(x){
+  function socioHTML(xs){
+    if (!xs || !xs.length) return '';
+    return '<br><b>Altas de socio en camino (SEPA)</b> · '+xs.length+' comprobadas:<br>'+
+      xs.map(function(x){
         if (x.error) return '· '+esc(x.nombre||'')+': ⚠ '+esc(x.error);
         var f = x.cobrado_en ? (' el '+fecha(x.cobrado_en)) : '';
         return '· <b>'+esc(x.nombre)+'</b> ('+esc(x.referencia||'')+'): <b>'+esc(x.resultado||'—')+'</b>'+f;
       }).join('<br>');
   }
 
+  // «Por domiciliar» = sin mandato. Con el mandato firmado (en camino) ya no
+  // se les manda el enlace: abrirían otra suscripción.
   function porDomiciliar(f){ return f.suscripcion_estado!=='activa' && f.suscripcion_estado!=='en_camino'; }
 
-  function badge(est){
-    if(est==='activa') return '<span class="badge b-act">Domiciliada</span>';
-    if(est==='en_camino') return '<span class="badge b-cam">Mandato firmado · cobro en camino</span>';
-    if(est==='impago') return '<span class="badge b-imp">Impago</span>';
-    if(est==='cancelada') return '<span class="badge b-can">Cancelada</span>';
-    return '<span class="badge b-pend">Sin domiciliar</span>';
+  function clase(f){
+    var e = f.suscripcion_estado;
+    return e==='activa' ? 'act' : e==='en_camino' ? 'cam' : e==='impago' ? 'imp' : e==='cancelada' ? 'can' : 'pend';
+  }
+  var ESTADO_TXT   = { act:'Domiciliada', cam:'Mandato firmado · cobro en camino', imp:'Impago', can:'Cancelada', pend:'Sin domiciliar' };
+  var ESTADO_CORTO = { act:'Domiciliada', cam:'Mandato firmado', imp:'Impago', can:'Cancelada', pend:'Sin domiciliar' };
+  function badge(f, corto){
+    var c = clase(f);
+    return '<span class="ce-pill '+c+'"'+(corto && c==='cam' ? ' title="'+ESTADO_TXT.cam+'"' : '')+'><span class="pt"></span>'+(corto ? ESTADO_CORTO : ESTADO_TXT)[c]+'</span>';
   }
 
   // ¿Ha entrado ya el pago de este periodo? (lo rellena Re-sincronizar desde Stripe)
-  function pagoHTML(f){
-    if (f.ultimo_cobro) return '<b style="color:#1E7A3D">✓ Pago entrado · '+fecha(f.ultimo_cobro)+'</b>';
-    if (f.suscripcion_estado==='impago') return '<b style="color:#B3261E">✗ Impago — no ha entrado</b>';
-    if (f.suscripcion_estado==='en_camino' && !f.factura_cobro) return '<b style="color:#1E4E78">⏳ En camino (SEPA) · el primer adeudo tarda ~5 días hábiles (hasta 14)</b>';
+  // «largo» es el texto de siempre (va en la hoja); «corto», el de la fila.
+  function pago(f){
+    if (f.ultimo_cobro){ var t='✓ Pago entrado · '+fecha(f.ultimo_cobro); return { c:'ok', corto:t, largo:t }; }
+    if (f.suscripcion_estado==='impago') return { c:'mal', corto:'✗ Impago — no ha entrado', largo:'✗ Impago — no ha entrado' };
+    if (f.suscripcion_estado==='en_camino' && !f.factura_cobro) return { c:'cam', corto:'⏳ En camino (SEPA)', largo:'⏳ En camino (SEPA) · el primer adeudo tarda ~5 días hábiles (hasta 14)' };
     var c=(f.factura_cobro||'').toLowerCase();
-    if (!c) return '<span style="color:#9A927F">Pago sin comprobar · pulsa «Re-sincronizar»</span>';
-    if (c.indexOf('cobrad')>=0) return '<b style="color:#1E7A3D">✓ Pago entrado</b>';
-    if (c.indexOf('fall')>=0||c.indexOf('incobr')>=0||c.indexOf('anulad')>=0) return '<b style="color:#B3261E">✗ '+esc(f.factura_cobro)+' — revisar</b>';
+    if (!c) return { c:'nada', corto:'Pago sin comprobar', largo:'Pago sin comprobar · pulsa «Re-sincronizar»' };
+    if (c.indexOf('cobrad')>=0) return { c:'ok', corto:'✓ Pago entrado', largo:'✓ Pago entrado' };
+    if (c.indexOf('fall')>=0||c.indexOf('incobr')>=0||c.indexOf('anulad')>=0){ var m='✗ '+esc(f.factura_cobro)+' — revisar'; return { c:'mal', corto:m, largo:m }; }
     var ff=f.factura_fecha?(' · factura del '+fecha(f.factura_fecha)):'';
-    return '<b style="color:#8A5A00">⏳ Aún NO ha entrado · '+esc(f.factura_cobro)+ff+'</b>';
+    return { c:'espera', corto:'⏳ Aún no ha entrado · '+esc(f.factura_cobro), largo:'⏳ Aún NO ha entrado · '+esc(f.factura_cobro)+ff };
   }
+
+  function nombre(f){ return ((f.nombre||'')+' '+(f.apellidos||'')).trim() || '(sin nombre)'; }
+  function iniciales(f){
+    var n=(f.nombre||'').trim(), a=(f.apellidos||'').trim();
+    return ((n?n[0]:'')+(a?a[0]:'')).toUpperCase() || '·';
+  }
+  function periodo(f){ return f.periodicidad==='mensual'?'/ mes':f.periodicidad==='anual'?'/ año':'/ trimestre'; }
+  function urlDe(f){ return 'https://atletismoapolana.com/entreno/cuota/?t=' + encodeURIComponent(f.token) + (f.periodicidad==='mensual' ? '&m=1' : ''); }
+  function proximo(f){ return (f.proximo_cobro&&(f.suscripcion_estado==='activa'||f.suscripcion_estado==='en_camino')) ? fecha(f.proximo_cobro) : ''; }
 
   async function cargar(){
     var r = await sb.from('cuotas_entreno')
       .select('id,nombre,apellidos,email,importe_cent,token,suscripcion_estado,ultimo_cobro,proximo_cobro,factura_cobro,factura_fecha,periodicidad,metodo')
       .order('apellidos');
-    if (r.error) { lista.innerHTML = '<p class="sub">No se pudo cargar: '+esc(r.error.message)+'</p>'; return; }
+    if (r.error) {
+      lista.innerHTML = window.ADM ? ADM.error('No se pudo cargar: '+r.error.message, cargar)
+                                   : '<div class="ce-vacio"><b>No se pudo cargar</b>'+esc(r.error.message)+'</div>';
+      return;
+    }
     FILAS = r.data || [];
     pintar();
   }
 
-  function pintar(){
-    // «Por domiciliar» = sin mandato. Con el mandato firmado (en camino) ya no
-    // se les manda el enlace: abrirían otra suscripción.
-    var pend = FILAS.filter(porDomiciliar).length;
-    document.getElementById('resumen').textContent =
-      FILAS.length + ' atletas · ' + (FILAS.length-pend) + ' domiciliados · ' + pend + ' por domiciliar';
-    document.getElementById('enviar-todos').disabled = (pend===0);
-    lista.innerHTML = FILAS.map(function(f){
-      var enlace = B.replace(/\/*$/,'/') ;
-      var url = 'https://atletismoapolana.com/entreno/cuota/?t=' + encodeURIComponent(f.token) + (f.periodicidad==='mensual' ? '&m=1' : '');
-      return '<div class="card" data-id="'+f.id+'">'+
-        '<div class="quien"><b>'+esc(f.nombre)+' '+esc(f.apellidos||'')+'</b>'+
-          '<span>'+eur(f.importe_cent/100)+(f.periodicidad==='mensual'?' / mes':f.periodicidad==='anual'?' / año':' / trimestre')+(f.metodo==='tarjeta'?' · con tarjeta':'')+' · '+esc(f.email||'—')+'</span>'+
-          '<span>'+badge(f.suscripcion_estado)+
-            (f.ultimo_cobro?(' · último cobro '+fecha(f.ultimo_cobro)):'')+
-            (f.proximo_cobro&&(f.suscripcion_estado==='activa'||f.suscripcion_estado==='en_camino')?(' · próximo '+fecha(f.proximo_cobro)):'')+
-          '</span>'+
-          '<span class="pago" style="display:block;margin-top:3px">'+pagoHTML(f)+'</span>'+
-        '</div>'+
-        '<div class="acc">'+
-          (porDomiciliar(f)
-            ? '<button class="prim" data-env="'+f.id+'">✉ Enviar enlace</button>'
-            : '<button class="prim" disabled title="Ya tiene el mandato firmado: otro enlace abriría otra suscripción">✓ Ya domiciliada</button>')+
-          '<button data-cop="'+esc(url)+'">Copiar enlace</button>'+
-        '</div>'+
-        '<div class="msg" data-msg="'+f.id+'" style="flex:1 1 100%"></div>'+
-      '</div>';
-    }).join('');
+  function cuantas(c){ return FILAS.filter(function(f){ return clase(f)===c; }).length; }
+
+  function visibles(){
+    var q = ($('ce-buscar').value || '').trim().toLowerCase();
+    return FILAS.filter(function(f){
+      var c = clase(f);
+      if (FILTRO==='dom' && c!=='act' && c!=='cam') return false;
+      if (FILTRO==='sin' && c!=='pend') return false;
+      if (FILTRO==='impago' && c!=='imp') return false;
+      if (FILTRO==='cancelada' && c!=='can') return false;
+      if (!q) return true;
+      return ((f.nombre||'')+' '+(f.apellidos||'')+' '+(f.email||'')).toLowerCase().indexOf(q) !== -1;
+    });
   }
 
-  async function enviar(id, btn){
-    var msg = lista.querySelector('[data-msg="'+id+'"]');
-    if (btn){ btn.disabled=true; var t0=btn.textContent; btn.textContent='Enviando…'; }
-    if (msg) msg.textContent='';
+  function pintar(){
+    var pend = FILAS.filter(porDomiciliar).length;
+    $('enviar-todos').disabled = (pend===0);
+    pintarCifras();
+    pintarLista();
+    if (abiertoId) pintarHoja();
+  }
+
+  function pintarCifras(){
+    var dom = cuantas('act') + cuantas('cam'), cam = cuantas('cam'), sin = cuantas('pend'), imp = cuantas('imp');
+    $('ce-cifras').innerHTML =
+      '<button type="button" class="ce-cifra" data-f=""><b>'+FILAS.length+'</b><span>cuotas</span></button>'+
+      '<button type="button" class="ce-cifra ok" data-f="dom"><b>'+dom+'</b><span>domiciliadas'+(cam?' · '+cam+' en camino':'')+'</span></button>'+
+      '<button type="button" class="ce-cifra'+(sin?' aviso':'')+'" data-f="sin"><b>'+sin+'</b><span>sin domiciliar</span></button>'+
+      '<button type="button" class="ce-cifra'+(imp?' mal':'')+'" data-f="impago"><b>'+imp+'</b><span>'+(imp===1?'impago':'impagos')+'</span></button>';
+    $('ce-chips').innerHTML =
+      '<button type="button" data-f="">Todas</button>'+
+      '<button type="button" data-f="sin">Sin domiciliar'+(sin?' · '+sin:'')+'</button>'+
+      '<button type="button" data-f="dom">Domiciliadas</button>'+
+      '<button type="button" data-f="impago">Impago</button>'+
+      '<button type="button" data-f="cancelada">Canceladas</button>';
+  }
+
+  function filaHtml(f){
+    var c = clase(f), p = pago(f), e = ENVIO[f.id], prox = proximo(f);
+    // En las que nunca se domiciliaron (o se cancelaron) «pago sin comprobar» no dice nada: va solo en la hoja.
+    var conPago = !(p.c==='nada' && (c==='pend' || c==='can'));
+    return '<div class="ce-fila '+c+'" tabindex="0" data-id="'+esc(f.id)+'" aria-label="'+esc(nombre(f))+': ver estado y enlace">'+
+      '<span class="ce-ini '+c+'">'+esc(iniciales(f))+'</span>'+
+      '<span class="ce-per"><b>'+esc(nombre(f))+'</b><small>'+esc(f.email||'sin correo')+'</small></span>'+
+      '<span class="ce-imp"><b>'+eur(f.importe_cent/100)+'</b><small>'+periodo(f)+(f.metodo==='tarjeta'?' · con tarjeta':'')+'</small></span>'+
+      '<span class="ce-est"><span class="ce-est-l1">'+badge(f, true)+(prox?'<span class="ce-prox">próximo '+prox+'</span>':'')+'</span>'+
+        (conPago ? '<span class="ce-pago '+p.c+'">'+p.corto+'</span>' : '')+'</span>'+
+      '<button type="button" class="ce-cop" data-cop="'+esc(urlDe(f))+'" aria-label="Copiar el enlace de '+esc(nombre(f))+'">'+ICO_LINK+'<span class="ce-lbl">Copiar enlace</span></button>'+
+      '<span class="ce-flecha" aria-hidden="true">›</span>'+
+      '<div class="ce-msg'+(e?' '+e.estado:'')+'" data-msg="'+esc(f.id)+'">'+(e?esc(e.txt):'')+'</div>'+
+    '</div>';
+  }
+
+  function pintarLista(){
+    Array.prototype.forEach.call(document.querySelectorAll('#ce-chips button'), function(x){
+      var on = (x.getAttribute('data-f')||'') === FILTRO;
+      x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.ce-cifra[data-f]'), function(x){
+      x.classList.toggle('on', !!FILTRO && x.getAttribute('data-f') === FILTRO);
+    });
+    var vs = visibles();
+    $('ce-cuenta').textContent = vs.length === FILAS.length
+      ? FILAS.length + (FILAS.length===1 ? ' cuota' : ' cuotas')
+      : vs.length + ' de ' + FILAS.length + ' cuotas';
+    if (!FILAS.length){
+      lista.innerHTML = '<div class="ce-vacio"><b>Todavía no hay cuotas domiciliadas</b>Cuando se cree una, saldrá aquí con su enlace.</div>';
+      return;
+    }
+    if (!vs.length){
+      lista.innerHTML = '<div class="ce-vacio"><b>Ninguna cuota con este filtro</b>Prueba con otra palabra o quita el filtro.<br><button type="button" data-limpiar>Ver todas</button></div>';
+      return;
+    }
+    lista.innerHTML = '<div class="ce-lista">'+
+      '<div class="ce-cab-cols" aria-hidden="true"><span></span><span>Atleta</span><span>Cuota</span><span>Estado y pago</span><span>Enlace</span><span></span></div>'+
+      vs.map(filaHtml).join('')+'</div>';
+  }
+
+  // Envía el enlace de una cuota por correo (Edge entreno-enlace, igual que antes).
+  async function enviar(id){
+    if (ENVIO[id] && ENVIO[id].estado==='enviando') return;
+    ENVIO[id] = { estado:'enviando', txt:'Enviando…' }; pintarMsg(id);
     try {
       var r = await sb.functions.invoke('entreno-enlace', { body: { cuota_id: id } });
       var d = r && r.data;
-      if (d && d.ok){ if(btn){ btn.classList.add('ok'); btn.textContent='✓ Enviado'; } if(msg){ msg.style.color='#2E6B3A'; msg.textContent='Enviado a '+(d.destino||'su correo')+'.'; } }
-      else { if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Enviar enlace'; } if(msg){ msg.style.color='#B3261E'; msg.textContent='No se pudo enviar'+(d&&d.motivo?(' ('+d.motivo+')'):'')+'.'; } }
-    } catch(e){ if(btn){ btn.disabled=false; btn.textContent=t0||'✉ Enviar enlace'; } if(msg){ msg.style.color='#B3261E'; msg.textContent='No se pudo enviar.'; } }
+      if (d && d.ok) ENVIO[id] = { estado:'ok', txt:'Enviado a '+(d.destino||'su correo')+'.' };
+      else ENVIO[id] = { estado:'mal', txt:'No se pudo enviar'+(d&&d.motivo?(' ('+d.motivo+')'):'')+'.' };
+    } catch(e){ ENVIO[id] = { estado:'mal', txt:'No se pudo enviar.' }; }
+    pintarMsg(id);
+  }
+  function pintarMsg(id){
+    var m = lista.querySelector('[data-msg="'+id+'"]'), e = ENVIO[id];
+    if (m){ m.className = 'ce-msg' + (e ? ' '+e.estado : ''); m.textContent = e ? e.txt : ''; }
+    if (abiertoId === id) pintarHoja();
   }
 
+  function copiar(btn){
+    var url = btn.getAttribute('data-cop');
+    navigator.clipboard.writeText(url).then(function(){
+      var t = lbl(btn); lbl(btn, '✓ Copiado'); setTimeout(function(){ lbl(btn, t); }, 1400);
+    }).catch(function(){ if (window.apoToast) apoToast('No se ha podido copiar el enlace.', 'error'); });
+  }
+
+  /* ---------- filtros ---------- */
+  $('ce-buscar').addEventListener('input', pintarLista);
+  function alFiltro(ev){
+    var f = ev.target.closest('[data-f]');
+    if (!f) return;
+    var v = f.getAttribute('data-f') || '';
+    /* Pulsar la cifra que ya filtra la quita. */
+    FILTRO = (f.classList.contains('ce-cifra') && v && FILTRO === v) ? '' : v;
+    pintarLista();
+  }
+  $('ce-cifras').addEventListener('click', alFiltro);
+  $('ce-chips').addEventListener('click', alFiltro);
+
   lista.addEventListener('click', function(e){
-    var env = e.target.closest('[data-env]');
-    if (env){ enviar(env.getAttribute('data-env'), env); return; }
     var cop = e.target.closest('[data-cop]');
-    if (cop){
-      var url = cop.getAttribute('data-cop');
-      navigator.clipboard.writeText(url).then(function(){ var t=cop.textContent; cop.textContent='✓ Copiado'; setTimeout(function(){ cop.textContent=t; },1400); }).catch(function(){});
-    }
+    if (cop){ copiar(cop); return; }          // copiar no abre la hoja
+    if (e.target.closest('[data-limpiar]')){ FILTRO=''; $('ce-buscar').value=''; pintarLista(); $('ce-buscar').focus(); return; }
+    var fila = e.target.closest('.ce-fila[data-id]');
+    if (fila) abrirHoja(fila.getAttribute('data-id'), fila);
+  });
+  lista.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var fila = e.target.closest && e.target.closest('.ce-fila[data-id]');
+    if (!fila || e.target !== fila) return;
+    e.preventDefault(); abrirHoja(fila.getAttribute('data-id'), fila);
   });
 
-  document.getElementById('enviar-todos').addEventListener('click', async function(){
-    var btn = this; btn.disabled=true; var t0=btn.textContent; btn.textContent='Enviando…';
+  /* ---------- hoja de la cuota ---------- */
+  function pintarHoja(){
+    var f = FILAS.filter(function(x){ return x.id === abiertoId; })[0];
+    if (!f){ cerrarHoja(); return; }
+    var c = clase(f), p = pago(f), e = ENVIO[f.id], prox = proximo(f);
+    $('ce-h-ini').textContent = iniciales(f);
+    $('ce-h-ini').className = 'ce-ini ' + c;
+    $('ce-h-nombre').textContent = nombre(f);
+    $('ce-h-sub').textContent = f.email || 'sin correo';
+    function par(k, v){ return '<div><span class="k">'+esc(k)+'</span><b>'+v+'</b></div>'; }
+    $('ce-h-cuerpo').innerHTML =
+      '<div class="ce-h-pago '+p.c+'">'+p.largo+'</div>'+
+      '<p class="ce-et">La cuota</p>'+
+      '<div class="ce-datos">'+
+        par('Importe', eur(f.importe_cent/100)+' '+periodo(f)+(f.metodo==='tarjeta'?' · con tarjeta':''))+
+        par('Estado', badge(f, false))+
+        par('Último cobro', f.ultimo_cobro ? fecha(f.ultimo_cobro) : '—')+
+        par('Próximo cobro', prox || '—')+
+        par('Correo', esc(f.email||'—'))+
+      '</div>';
+    $('ce-h-msg').innerHTML = e ? '<div class="ce-h-msg '+e.estado+'" role="status">'+esc(e.txt)+'</div>' : '';
+    var acc = '';
+    if (porDomiciliar(f)){
+      if (e && e.estado==='enviando') acc += '<button type="button" class="prin" disabled>'+ICO_MAIL+'Enviando…</button>';
+      else if (e && e.estado==='ok') acc += '<button type="button" class="ok" disabled>✓ Enviado</button>';
+      else acc += '<button type="button" class="prin" data-env="'+esc(f.id)+'">'+ICO_MAIL+'Enviar enlace por correo</button>';
+    } else {
+      acc += '<button type="button" class="prin" disabled title="Ya tiene el mandato firmado: otro enlace abriría otra suscripción">✓ Ya domiciliada</button>';
+    }
+    acc += '<button type="button" data-cop="'+esc(urlDe(f))+'">'+ICO_LINK+'<span class="ce-lbl">Copiar enlace</span></button>';
+    $('ce-h-acc').innerHTML = acc;
+    $('ce-h-nota').textContent = porDomiciliar(f)
+      ? 'El enlace es para meter su IBAN una vez; luego se cobra solo.'
+      : 'Ya tiene el mandato firmado: otro enlace abriría otra suscripción.';
+  }
+  function abrirHoja(id, desde){
+    if (!FILAS.some(function(x){ return x.id === id; })) return;
+    abiertoId = id;
+    focoPrevio = desde || document.activeElement;
+    pintarHoja();
+    $('ce-velo').classList.add('ver'); $('ce-hoja').classList.add('ver');
+    setTimeout(function(){ $('ce-h-cerrar').focus(); }, 60);
+  }
+  function cerrarHoja(){
+    if (!$('ce-hoja').classList.contains('ver')) return;
+    $('ce-velo').classList.remove('ver'); $('ce-hoja').classList.remove('ver');
+    abiertoId = null;
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  $('ce-velo').addEventListener('click', cerrarHoja);
+  $('ce-h-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape' && !ev.defaultPrevented) cerrarHoja();   // el Escape que cierra un «¿seguro?» no cierra también la hoja
+  });
+  $('ce-h-acc').addEventListener('click', function(ev){
+    var env = ev.target.closest('[data-env]');
+    if (env){ enviar(env.getAttribute('data-env')); return; }
+    var cop = ev.target.closest('[data-cop]');
+    if (cop) copiar(cop);
+  });
+
+  /* ---------- acciones de toda la lista (igual que antes) ---------- */
+  // Envía el enlace a todas las que están por domiciliar (sin mirar el filtro ni el buscador).
+  $('enviar-todos').addEventListener('click', async function(){
+    var btn = this; btn.disabled=true; lbl(btn, 'Enviando…');
     var pend = FILAS.filter(porDomiciliar);
     for (var i=0;i<pend.length;i++){
-      var b = lista.querySelector('[data-env="'+pend[i].id+'"]');
-      await enviar(pend[i].id, b);
+      await enviar(pend[i].id);
     }
-    btn.textContent='✓ Enviados ('+pend.length+')';
+    lbl(btn, '✓ Enviados ('+pend.length+')');
   });
 
   // Pregunta a Stripe la verdad de cada suscripción y rellena fechas/estado
   // (por si el webhook perdió algún evento: «activa pero sin fechas»).
-  document.getElementById('resync').addEventListener('click', async function(){
-    var btn=this; btn.disabled=true; var t0=btn.textContent; btn.textContent='Preguntando a Stripe…';
+  $('resync').addEventListener('click', async function(){
+    var btn=this; btn.disabled=true; var t0=lbl(btn); lbl(btn, 'Preguntando a Stripe…');
     try {
       var r = await sb.functions.invoke('entreno-resync', { body:{} });
       if (r && r.error) throw new Error((r.error&&r.error.message)||'error');
       var d = (r && r.data) || {};
       await cargar();
-      var box=document.getElementById('resync-res');
+      var box=$('resync-res');
       if (box){
         var det=(d.detalle||[]);
         box.innerHTML = '<b>Estado real en Stripe</b> · '+(d.revisadas||0)+' revisadas:<br>'+
@@ -195,19 +560,19 @@ APOLANA_ADMIN.listo(function (sb) {
             return '· <b>'+esc(x.nombre)+'</b>: octubre <b>'+esc(x.cobro||'—')+'</b>'+imp+ff+prox;
           }).join('<br>') + socioHTML(d.socio);
       }
-      btn.textContent = '✓ Revisadas '+(d.revisadas||0);
+      lbl(btn, '✓ Revisadas '+(d.revisadas||0));
     } catch(e){
-      btn.textContent = 'No se pudo: '+((e&&e.message)||e);
+      lbl(btn, 'No se pudo: '+((e&&e.message)||e));
     }
-    setTimeout(function(){ btn.disabled=false; btn.textContent=t0; }, 4000);
+    setTimeout(function(){ btn.disabled=false; lbl(btn, t0); }, 4000);
   });
 
   // Revisión 380 · Recolocar la PARADA (cancel_at) de las suscripciones vivas en
   // su límite de periodo: Stripe prorratea el último cobro si la parada cae a
   // mitad de periodo. 1º se calcula (antes / después por persona) y solo si se
   // confirma se cambia en Stripe (entreno-resync {recolocar, aplicar}).
-  document.getElementById('recolocar').addEventListener('click', async function(){
-    var btn=this, t0=btn.textContent, box=document.getElementById('resync-res');
+  $('recolocar').addEventListener('click', async function(){
+    var btn=this, t0=lbl(btn), box=$('resync-res');
     function f(s){ return s ? new Date(s).toLocaleDateString('es-ES',{day:'numeric',month:'short',year:'numeric'}) : '—'; }
     function pinta(d, aplicado){
       return '<b>Fechas de fin en Stripe</b>' + (aplicado ? ' · <span style="color:#3F7A4C">cambiadas</span>' : ' · solo calculado, sin tocar nada') + '<br>' +
@@ -217,27 +582,27 @@ APOLANA_ADMIN.listo(function (sb) {
             (x.cobros!=null? x.cobros+' cobros enteros' : '')+(x.cambia ? '' : ' · ya estaba bien')+(x.error?' · ⚠ '+esc(x.error):'');
         }).join('<br>');
     }
-    btn.disabled=true; btn.textContent='Calculando…';
+    btn.disabled=true; lbl(btn, 'Calculando…');
     try {
       var r = await sb.functions.invoke('entreno-resync', { body:{ recolocar:true } });
       var d = (r && r.data) || {};
       if (r && r.error || !d.recolocar) throw new Error((r&&r.error&&r.error.message)||'falta desplegar entreno-resync (revisión 380)');
       box.innerHTML = pinta(d, false);
       var n = (d.detalle||[]).filter(function(x){ return x.cambia && !x.error; }).length;
-      if (!n) { btn.textContent='✓ Todas bien'; }
+      if (!n) { lbl(btn, '✓ Todas bien'); }
       else {
         var ok = window.apoConfirm ? await window.apoConfirm({ titulo:'Cambiar '+n+' fechas en Stripe', texto:'Se cambia la fecha de parada de '+n+' suscripciones (ver la lista). No se cobra nada ahora: solo cambia cuándo se para cada una, para que el último cobro sea entero.', confirmar:'Cambiar '+n })
                                    : window.confirm('¿Cambiar '+n+' fechas de parada en Stripe?');
         if (ok) {
-          btn.textContent='Cambiando…';
+          lbl(btn, 'Cambiando…');
           var r2 = await sb.functions.invoke('entreno-resync', { body:{ recolocar:true, aplicar:true } });
           if (r2 && r2.error) throw new Error(r2.error.message||'error');
           box.innerHTML = pinta((r2&&r2.data)||{}, true);
-          btn.textContent='✓ Hecho';
-        } else btn.textContent=t0;
+          lbl(btn, '✓ Hecho');
+        } else lbl(btn, t0);
       }
-    } catch(e){ btn.textContent='No se pudo: '+((e&&e.message)||e); }
-    setTimeout(function(){ btn.disabled=false; btn.textContent=t0; }, 5000);
+    } catch(e){ lbl(btn, 'No se pudo: '+((e&&e.message)||e)); }
+    setTimeout(function(){ btn.disabled=false; lbl(btn, t0); }, 5000);
   });
 
   cargar();
