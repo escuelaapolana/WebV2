@@ -8,232 +8,348 @@
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
-<link rel="stylesheet" href="../../assets/css/panel-piezas.css?v=3261f3f3">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
-<script src="../../assets/js/admin-filtros.js?v=c5447a71" defer></script>
-<script src="../../assets/js/panel-piezas.js?v=16c512a9" defer></script>
 <style>
   /* ============================================================
-     ALTAS QUE ENTRAN
+     ALTAS QUE ENTRAN · lista en tarjetas (23-oct-2026)
      ------------------------------------------------------------
-     La forma la ponen las piezas del panel (panel-piezas.css): la
-     cabecera, la barra de filtros y la lista que en el móvil se
-     convierte en fichas. Aquí abajo solo está lo que las piezas no
-     traen: la ventana de la ficha del alta y cómo se escriben
-     dentro los pares «rótulo / dato».
-
-     Nada de esto inventa colores: todo sale de las variables `--pz-`
-     y de apolana.css.
+     Mismo lenguaje que «Socios», «Pedidos» y «Entrenadores»:
+     cabecera grande, cifras por estado que filtran, buscador +
+     chips (tipo de alta) y temporada, una tarjeta por alta con
+     franja de color según su estado, y una HOJA INFERIOR con el
+     alta entera y todo lo que se hace con ella: crear las fichas,
+     llamar o escribir, marcarla (sin revisar / revisada /
+     rechazada), ver los números enteros, los documentos, la firma
+     y el enlace del chat, la nota del club y eliminarla.
+     Mismos datos y mismas escrituras que la versión de antes (las
+     mismas vistas y las mismas funciones de la base). Prefijo al-.
      ============================================================ */
-  body { background: var(--crema); }
-  .admin-wrap { max-width: 1180px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .al-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .al-wrap *, .al-capa * { box-sizing: border-box; }
+  .al-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .al-cab > div:first-child { flex: 1 1 340px; min-width: 0; }
+  .al-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .al-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 66ch; }
+  .al-cab p.al-ctx { font-size: 14px; margin-top: 4px; }
+  .al-cab p.al-ctx b { color: var(--navy,#26374B); font-weight: 700; }
+  .al-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .al-b { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; text-decoration: none; }
+  .al-b:hover { background: var(--crema,#FBF9F4); }
+  .al-b:disabled { opacity: .55; cursor: wait; }
+  .al-b svg { width: 16px; height: 16px; flex: 0 0 16px; }
+  @media (max-width: 520px) { .al-cab-acc { width: 100%; } .al-cab-acc .al-b { flex: 1 1 0; padding: 0 12px; } }
 
-  .panel { background:#fff; border: 1px solid var(--linea-marcada); border-radius: var(--radio-grande);
-    padding: clamp(18px,3vw,28px); margin-bottom: 22px; box-shadow: var(--sombra-suave); }
+  /* --- Cifras por estado: pulsar una filtra la lista --- */
+  .al-cifras { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .al-cifra { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .al-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .al-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .al-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .al-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .al-cifra.ok b { color: #3E7A34; } .al-cifra.mal b { color: #B23B3B; }
+  .al-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .al-cifra.aviso b, .al-cifra.aviso span { color: #8A5307; }
+  .al-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .al-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .al-cifra b { font-size: 21px; } }
 
-  /* El cajón de «Filtrar»: lo que no cabe en la única fila de mandos. */
-  .cajon { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:10px; background:#fff;
-    padding:14px 16px; margin:0 0 14px; max-width:420px; }
-  .cajon[hidden] { display:none; }
-  .cajon label { display:block; font-size:15px; font-weight:500; color:var(--navy); margin:0 0 6px; }
-  .cajon label + select { margin-bottom:12px; }
-  .cajon select { width:100%; box-sizing:border-box; min-height:44px; padding:10px 13px;
-    border:1px solid var(--linea-borde); border-radius:10px; background:#fff;
-    font-family: var(--fuente-texto); font-size:15px; color: var(--navy); }
-  .cajon select:last-child { margin-bottom:0; }
+  /* --- Buscador + chips (tipo) + temporada --- */
+  .al-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .al-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .al-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .al-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .al-chips::-webkit-scrollbar { display: none; }
+  .al-chips button { flex: 1 0 auto; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 700;
+    font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .al-chips button:hover { color: var(--navy,#26374B); }
+  .al-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  /* La temporada: un desplegable con forma de cápsula, al lado de los chips. */
+  .al-sel { min-height: 48px; max-width: 100%; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 0 36px 0 16px;
+    font: inherit; font-size: 14px; font-weight: 700; color: var(--navy,#26374B); background-color: #fff; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E6656' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; background-size: 16px 16px; }
+  .al-sel:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .al-sel.puesto { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  .al-sel[hidden] { display: none; }
+  .al-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; min-height: 28px; }
+  .al-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  @media (max-width: 620px) { .al-chips { flex: 1 1 auto; border-radius: 14px; } .al-sel { flex: 1 1 auto; border-radius: 14px; } }
 
-  /* Las explicaciones se leen una vez: van plegadas y no ocupan pantalla. */
-  details.explica { margin: 0 0 16px; }
-  details.explica > summary { display:inline-flex; align-items:center; min-height:44px; cursor:pointer;
-    font-size:14px; font-weight:600; color: var(--azul-oscuro); }
-  details.explica > summary::marker { color: var(--texto-suave); }
-  .nota-pie { font-size:13px; line-height:1.5; color: var(--texto-suave); margin:6px 0 0; }
-
-  /* ---------- LA FICHA DEL ALTA ----------
-     Ventana emergente, igual que la de Pedidos: la lista no se pierde
-     por debajo y se cierra con Escape, con la × o tocando fuera.
-     En el móvil ocupa lo que puede y se lee de arriba abajo. */
-  #ficha { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
-    display:flex; align-items:flex-start; justify-content:center;
-    padding:clamp(12px,5vh,60px) 12px; overflow:auto;
-    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
-  #ficha[hidden] { display:none; }
-  .ficha-caja { background:#fff; border:1px solid var(--linea); border-radius:14px;
-    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); width:min(680px,100%); box-sizing:border-box;
-    padding:20px clamp(16px,3vw,24px) 24px; animation:sube .2s ease; }
-  @keyframes sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
-  @media (prefers-reduced-motion: reduce) { .ficha-caja { animation:none; } }
-
-  .ficha-cab { display:flex; align-items:flex-start; gap:12px; margin:0 0 4px; }
-  .ficha-cab .txt { flex:1 1 auto; min-width:0; }
-  .ficha-cab h2 { font-family:var(--fuente-titulo); text-transform:uppercase; font-weight:700;
-    font-size:26px; line-height:1.05; color:var(--navy); margin:4px 0 0; overflow-wrap:anywhere; }
-  /* El código del resguardo va en la letra de los datos porque es lo que
-     la familia lee por teléfono, letra por letra; lo de al lado es una
-     frase normal y va en la letra normal. */
-  .ficha-cab .ref { font-size:13px; color:var(--texto-suave); }
-  .ficha-cab .ref b { font-family:var(--fuente-dato, monospace); font-weight:600; letter-spacing:.04em;
-    color:var(--navy); }
-  .ficha-x { flex:0 0 auto; width:44px; height:44px; margin:-8px -8px 0 0; border:0; border-radius:999px;
-    background:none; color:var(--texto-suave); font-size:20px; line-height:1; cursor:pointer; }
-  .ficha-x:hover { background:var(--crema-media); color:var(--navy); }
-
-  .ficha-sub { font-size:14px; line-height:1.45; color:var(--texto-suave); margin:8px 0 0; }
-
-  /* Cada apartado de la ficha: un rótulo pequeño y sus datos debajo. */
-  .bloque { margin-top:20px; }
-  .bloque > h3 { font-size:13px; font-weight:500; letter-spacing:.04em; text-transform:uppercase;
-    color:var(--texto-suave); margin:0 0 8px; }
-  /* El «2» de «Sus hijos» es un recuento, no parte del rótulo. */
-  .bloque > h3 .pz-n { display:inline-flex; align-items:center; justify-content:center;
-    min-width:20px; height:20px; padding:0 6px; margin-left:2px; border-radius:999px;
-    background:var(--crema-media,#EFE9DC); color:var(--navy); font-size:12px; font-weight:600;
-    letter-spacing:0; vertical-align:middle; }
-
-  /* El par «rótulo / dato». Es el mismo dibujo que usan las piezas en la
-     ficha de móvil: rótulo apagado a la izquierda, dato a la derecha.
-     `overflow-wrap:anywhere` es lo que evita que un correo largo se salga
-     por el borde derecho en un móvil de 375 px. */
-  .dato { display:flex; gap:12px; justify-content:space-between; align-items:baseline;
-    padding:7px 0; border-bottom:1px solid var(--pz-separador, #EFE9DC); }
-  .dato:last-child { border-bottom:0; }
-  .dato > .r { flex:0 0 auto; font-size:14px; color:var(--texto-suave); }
-  .dato > .v { flex:1 1 auto; min-width:0; text-align:right; font-size:15px; line-height:1.4;
-    color:var(--navy); overflow-wrap:anywhere; }
-  /* El correo y el teléfono se pulsan: desde el móvil, tocar el número es
-     llamar a la familia, que es para lo que se abre esta ficha. Así que
-     tienen que medir 44 px de alto como todo lo demás. El relleno crece y
-     el margen negativo lo devuelve, para que la fila no engorde 26 px y
-     la ficha no se haga el doble de larga. */
-  .dato .v a { display:inline-block; max-width:100%; padding:13px 0; margin:-13px 0;
-    color:var(--azul-oscuro); }
-  .dato .v.falta { color:var(--pz-aviso-texto, #8A5207); }
-
-  /* Un número tapado y el botón de enseñarlo entero. */
-  .tapa { font-variant-numeric: tabular-nums; letter-spacing:.02em; }
-  .destapar { min-height:44px; margin:-12px 0 -12px 4px; padding:8px 10px; border:0; border-radius:8px;
-    background:none; color:var(--pz-azul, #2F6FA8); font-family:inherit; font-size:14px;
-    font-weight:600; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-  .destapar:hover { background:var(--pz-azul-suave, #EAF2F9); }
-
-  /* La tarjeta de cada hijo. */
-  .nino { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; padding:13px 15px;
-    margin:0 0 10px; box-sizing:border-box; }
-  .nino > .quien { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin:0 0 6px; }
-  .nino > .quien b { font-size:16px; font-weight:600; color:var(--navy); overflow-wrap:anywhere; }
-  .nino > .quien .anos { font-size:14px; color:var(--texto-suave); }
-
-  /* Las alergias no van en una fila más: van en su propia caja de aviso.
-     Es lo único de esta pantalla que alguien tiene que leer ANTES de que
-     el crío pise la pista, y en una lista de doce filas se pierde. */
-  .alergia { display:flex; gap:9px; align-items:flex-start; margin:9px 0 0; padding:10px 12px;
-    border:1px solid var(--pz-aviso-borde, #EBD9B8); border-radius:10px;
-    background:var(--pz-aviso-fondo, #FDF6EA); color:var(--pz-aviso-texto, #8A5207);
-    font-size:14px; line-height:1.45; overflow-wrap:anywhere; }
-  .alergia b { font-weight:600; }
-
-  /* 16 px de letra no es estética: por debajo de 16, Safari en el iPhone
-     hace zoom al entrar en el campo y la ficha se descoloca. */
-  #ficha textarea { box-sizing:border-box; width:100%; min-height:88px; padding:12px 14px;
-    border:1px solid var(--pz-borde, #C6BEAE); border-radius:10px; background:#fff;
-    color:var(--navy); font-family:var(--fuente-texto); font-size:16px; line-height:1.4; resize:vertical; }
-  #ficha textarea::placeholder { color:var(--texto-suave); opacity:1; }
-  #ficha textarea:focus { outline:2px solid var(--pz-azul,#2F6FA8); outline-offset:1px; border-color:var(--pz-azul,#2F6FA8); }
-
-  /* El pie de la ficha: la acción principal primero, y en el móvil a lo ancho. */
-  .ficha-pie { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-    margin-top:20px; padding-top:16px; border-top:1px solid var(--pz-separador,#EFE9DC); }
-  .ficha-pie .msg { font-size:14px; color:var(--texto-suave); }
-  .ficha-pie .msg.mal { color:#B0563A; }
-  .ficha-pie .msg.bien { color:#3D6220; }
-  @media (max-width: 560px) {
-    /* La acción principal, a lo ancho y arriba, que es donde llega el
-       pulgar. Las dos de texto se reparten el renglón de abajo. */
-    .ficha-pie > .pz-btn { flex:1 1 100%; }
-    .ficha-pie > .pz-btn--texto { flex:1 1 40%; }
-    .ficha-caja { padding:18px 16px 22px; }
-    .ficha-cab h2 { font-size:23px; }
-    .dato { flex-direction:column; gap:2px; align-items:stretch; }
-    .dato > .v { text-align:left; }
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .al-lista { container: al-lista / inline-size; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .al-fila, .al-cab-cols { grid-template-columns: 40px minmax(0,1.45fr) minmax(0,1.25fr) 142px 150px 14px; }
+  .al-fila { position: relative; display: grid; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid #CFC6B4; border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .al-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .al-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .al-fila.pendiente { border-left-color: #D9A441; }
+  .al-fila.revisada { border-left-color: #6FAF7E; }
+  .al-fila.rechazada { border-left-color: #C9564C; background: #FCFBF8; }
+  .al-fila.rechazada .al-per b { color: var(--texto-suave,#6E6656); }
+  .al-ini { width: 40px; height: 40px; border-radius: 999px; background: #EAF2FA; color: var(--azul-oscuro,#2A5E8C); display: flex; align-items: center;
+    justify-content: center; font-family: var(--fuente-titulo); font-weight: 700; font-size: 14px; flex: 0 0 auto; }
+  .al-ini.escuela { background: #E7F3EA; color: #23603A; }
+  .al-fila.rechazada .al-ini { background: #F0EBE0; color: #8A816E; }
+  .al-per { min-width: 0; }
+  .al-per b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .al-per small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; color: var(--texto-tenue,#9A927F);
+    margin-top: 1px; overflow-wrap: anywhere; }
+  .al-per small .ref { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-size: 12px; letter-spacing: .02em; color: var(--texto-suave,#6E6656); }
+  .al-pide { min-width: 0; font-size: 13.5px; line-height: 1.4; color: var(--texto,#3A3A3A); overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .al-tipo { display: inline-block; font-size: 11.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    margin-right: 4px; background: #EAF2FA; color: #2A5E8C; vertical-align: 1px; }
+  .al-tipo.escuela { background: #E7F3EA; color: #23603A; }
+  .al-pide .sin-iban { color: #8A5307; font-weight: 600; }
+  .al-pills { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+  .al-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; max-width: 100%; }
+  .al-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .al-pill.pendiente { background: #FBF1D9; color: #8A5307; } .al-pill.pendiente .pt { background: #D9A441; }
+  .al-pill.revisada { background: #E7F3EA; color: #23603A; } .al-pill.revisada .pt { background: #3E7A34; }
+  .al-pill.rechazada { background: #FDECEA; color: #9A2F26; } .al-pill.rechazada .pt { background: #B23B3B; }
+  .al-pill.fichas-ok { background: #fff; color: #23603A; border: 1px solid #CFE5D5; }
+  .al-pill.fichas-medio { background: #fff; color: #8A5307; border: 1px solid #E9CE9A; }
+  .al-pill.fichas-no { background: #fff; color: var(--texto-tenue,#9A927F); border: 1px dashed #D8CFBC; }
+  /* Ya tiene ficha en el club: se dice en la propia fila, porque es lo
+     que evita crearle una segunda. Con quién casa, en la hoja. */
+  .al-pill.ya { background: #FBF1DE; color: #8A5307; border: 1px solid #E9CE9A; }
+  .al-tel { position: relative; z-index: 1; justify-self: start; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px 0 10px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; color: var(--azul-oscuro,#1E4E78); text-decoration: none; font-size: 13.5px;
+    font-variant-numeric: tabular-nums; background: #fff; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .al-tel:hover { background: #F2F7FC; border-color: #CFE2F1; }
+  .al-tel svg { width: 15px; height: 15px; flex: 0 0 15px; }
+  .al-tel.sin { color: var(--texto-tenue,#9A927F); border-style: dashed; cursor: default; }
+  .al-tel.sin:hover { background: #fff; border-color: var(--linea-marcada,#E4DCCB); }
+  .al-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  .al-cab-cols { display: grid; gap: 0 14px; padding: 4px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  /* Lista estrecha (móvil, o escritorio con poco sitio): nombre arriba, y
+     debajo lo que pide y sus pastillas, con el teléfono a mano. */
+  @container al-lista (max-width: 760px) {
+    .al-cab-cols { display: none; }
+    .al-fila { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 11px 12px 12px 10px; }
+    .al-ini { order: 0; flex: 0 0 40px; }
+    .al-per { order: 1; flex: 1 1 0; }
+    .al-flecha { order: 2; font-size: 22px; align-self: flex-start; padding-top: 8px; }
+    .al-fila::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+    .al-pide { order: 4; flex: 1 1 100%; padding-left: 50px; }
+    .al-pills { order: 5; flex: 0 1 auto; flex-direction: row; flex-wrap: wrap; padding-left: 50px; }
+    .al-tel { order: 6; margin-left: auto; }
+    .al-tel.sin { display: none; }
   }
+  .al-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .al-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .al-vacio button { margin-top: 10px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .al-error { margin-top: 10px; }
 
-  /* La firma se enseña dentro de su plegable, nunca de golpe. */
-  .firma { max-width:100%; height:auto; border:1px solid var(--linea-marcada,#E4DCCB);
-    border-radius:8px; background:#fff; display:block; }
+  /* --- Copia de seguridad y la explicación, al pie --- */
+  .al-copia { display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap; margin-top: 22px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB);
+    border-radius: 14px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .al-copia[hidden] { display: none; }
+  .al-copia p { flex: 1 1 280px; min-width: 0; margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--texto-suave,#6E6656); }
+  .al-copia p b { color: var(--navy,#26374B); }
+  details.al-explica { margin: 14px 2px 0; }
+  details.al-explica > summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--azul-oscuro,#2A5E8C); }
+  details.al-explica > summary::marker { color: var(--texto-suave,#6E6656); }
+  .al-nota-pie { font-size: 13px; line-height: 1.5; color: var(--texto-suave,#6E6656); margin: 6px 0 0; }
 
-  .texto-literal { margin:0; font-size:14px; line-height:1.55; color:var(--texto);
-    white-space:pre-wrap; overflow-wrap:anywhere; }
+  /* --- Hoja inferior: el alta entera y lo que se hace con ella --- */
+  .al-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .al-velo.ver { opacity: 1; pointer-events: auto; }
+  .al-hoja { position: fixed; left: 50%; bottom: 0; width: min(640px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .al-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .al-hoja, .al-velo, .al-fila { transition: none; } }
+  .al-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .al-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .al-hoja-cab .al-ini { width: 48px; height: 48px; flex: 0 0 48px; font-size: 16px; }
+  .al-hoja-cab > div { flex: 1; min-width: 0; }
+  .al-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .al-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 3px 0 0; overflow-wrap: anywhere; }
+  /* El código del resguardo va en la letra de los datos porque es lo que
+     la familia lee por teléfono, letra por letra. */
+  .al-hoja .sub .ref { font-family: var(--fuente-dato, monospace); font-weight: 600; letter-spacing: .04em; color: var(--navy,#26374B); }
+  .al-cerrar { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .al-cerrar:hover { background: var(--crema,#FBF9F4); color: var(--navy,#26374B); }
+  .al-h-estado { margin: 12px 0 0; font-size: 14px; line-height: 1.6; color: var(--texto-suave,#6E6656); }
+  .al-h-estado .al-pill { margin-right: 6px; vertical-align: 1px; }
+  .al-aviso { margin-top: 12px; background: #FBF1DE; border: 1px solid #E9CE9A; color: #6B4B10; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+  .al-aviso a { color: #6B4B10; font-weight: 700; }
+  .al-hecho { display: flex; align-items: center; gap: 8px; min-height: 48px; background: #F3F9F4; border: 1px solid #D4E8D9; border-radius: 12px; padding: 8px 14px;
+    color: #23603A; font-size: 15px; font-weight: 700; }
+  .al-acc { display: grid; gap: 8px; margin-top: 14px; }
+  .al-acc a, .al-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px;
+    text-decoration: none; border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; width: 100%; }
+  .al-acc a:hover, .al-acc button:hover { background: var(--crema,#FBF9F4); }
+  .al-acc a.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .al-acc a.prin:hover { background: #24364A; }
+  .al-acc button.peligro { color: #9A3B3B; border-color: #EBC9C5; }
+  .al-acc button.peligro:hover { background: #FDF3F2; }
+  .al-acc .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .al-acc svg { width: 17px; height: 17px; flex: 0 0 17px; }
+  .al-et { margin: 18px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  /* El «2» de «Sus hijos» es un recuento, no parte del rótulo. */
+  .al-et .al-n { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px;
+    border-radius: 999px; background: #EFE9DC; color: var(--navy,#26374B); font-size: 12px; font-weight: 700; letter-spacing: 0; vertical-align: 1px; }
+  /* Marcar el alta: los tres estados a la vista, el puesto en color. */
+  .al-estados { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+  .al-estados button { min-height: 46px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; font-size: 14px;
+    font-weight: 700; color: var(--navy,#26374B); cursor: pointer; padding: 4px 6px; line-height: 1.15; }
+  .al-estados button:hover { background: var(--crema,#FBF9F4); }
+  .al-estados button[aria-pressed="true"] { color: #fff; cursor: default; }
+  .al-estados button[aria-pressed="true"].e-pendiente { background: #A86A10; border-color: #A86A10; }
+  .al-estados button[aria-pressed="true"].e-revisada { background: #2F7A45; border-color: #2F7A45; }
+  .al-estados button[aria-pressed="true"].e-rechazada { background: #9A3B3B; border-color: #9A3B3B; }
+  .al-msg { display: block; font-size: 14px; color: var(--texto-suave,#6E6656); margin: 6px 2px 0; min-height: 0; }
+  .al-msg:empty { display: none; }
+  .al-msg.mal { color: #B0563A; } .al-msg.bien { color: #3D6220; }
 
-  /* La primera columna de la lista abre el alta al tocarla. No es un
-     botón nuevo ni un dibujo nuevo: es el nombre de siempre, con el
-     cursor de que ahí se puede pulsar. La misma acción está en el «⋯»,
-     que es por donde entran el teclado y el lector de pantalla. */
-  #tabla td.pz-td-principal { cursor:pointer; }
-  #tabla td.pz-td-principal:hover .pz-dato { color: var(--pz-azul, #2F6FA8); }
+  /* Cada apartado: una caja crema con pares «rótulo / dato». */
+  .al-caja { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 4px 14px; }
+  /* `overflow-wrap:anywhere` es lo que evita que un correo largo se salga
+     por el borde derecho en un móvil de 375 px. */
+  .al-dato { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px solid #EFE9DA; }
+  .al-dato:last-child { border-bottom: 0; }
+  .al-dato > .r { flex: 0 0 auto; font-size: 14px; color: var(--texto-suave,#6E6656); }
+  .al-dato > .v { flex: 1 1 auto; min-width: 0; text-align: right; font-size: 14.5px; font-weight: 600; line-height: 1.4; color: var(--navy,#26374B); overflow-wrap: anywhere; }
+  /* El correo y el teléfono se pulsan: 44 px de alto sin engordar la fila. */
+  .al-dato .v a { display: inline-block; max-width: 100%; padding: 12px 0; margin: -12px 0; color: var(--azul-oscuro,#2A5E8C); }
+  .al-dato .v.falta, .al-falta { color: #8A5307; font-weight: 600; }
+  .al-nota-mini { display: block; font-size: 13px; font-weight: 400; color: var(--texto-suave,#6E6656); margin-top: 2px; }
+  /* Un número tapado y el botón de enseñarlo entero. */
+  .al-tapa { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  .al-destapar { min-height: 44px; margin: -12px 0 -12px 4px; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: #2F6FA8;
+    font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .al-destapar:hover { background: #EAF2F9; }
+  .al-mini { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 14px; border-radius: 999px;
+    border: 1px solid var(--linea-borde,#C9C0AE); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .al-mini:hover { background: #fff; border-color: var(--azul-filete,#3B85C0); color: var(--azul-oscuro,#2A5E8C); }
+  .al-mini:disabled { opacity: .6; cursor: wait; }
+  /* La tarjeta de cada hijo, dentro de su caja. */
+  .al-nino { background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; padding: 10px 14px 6px; margin: 10px 0; }
+  .al-nino .quien { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid #EFE9DA; }
+  .al-nino .quien b { font-size: 16px; font-weight: 700; color: var(--navy,#26374B); overflow-wrap: anywhere; }
+  .al-nino .quien .anos { font-size: 14px; color: var(--texto-suave,#6E6656); }
+  /* Las alergias no van en una fila más: van en su propia caja de aviso.
+     Es lo único que alguien tiene que leer ANTES de que el crío pise la pista. */
+  .al-alergia { display: flex; gap: 9px; align-items: flex-start; margin: 8px 0; padding: 10px 12px; border: 1px solid #EBD9B8; border-radius: 10px;
+    background: #FDF6EA; color: #8A5207; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+  .al-alergia b { font-weight: 700; }
+  /* Los textos largos (lo que firmó, las normas) van plegados. */
+  details.al-pleg { margin: 8px 0 0; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; }
+  details.al-pleg > summary { display: flex; align-items: center; min-height: 44px; padding: 0 14px; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--azul-oscuro,#2A5E8C); }
+  details.al-pleg > .cuerpo { padding: 0 14px 12px; }
+  .al-literal { margin: 0; font-size: 14px; line-height: 1.55; color: var(--texto,#3A3A3A); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .al-firma { max-width: 100%; height: auto; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 8px; background: #fff; display: block; }
+  /* 16 px de letra: por debajo, Safari en el iPhone hace zoom al entrar. */
+  #ficha-nota { width: 100%; min-height: 88px; padding: 12px 14px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px; background: #fff;
+    color: var(--navy,#26374B); font-family: var(--fuente-texto); font-size: 16px; line-height: 1.4; resize: vertical; }
+  #ficha-nota::placeholder { color: var(--texto-suave,#6E6656); opacity: 1; }
+  #ficha-nota:focus { outline: 2px solid var(--azul-filete,#3B85C0); outline-offset: 1px; border-color: var(--azul-filete,#3B85C0); }
+  .al-nota-acc { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  .al-nota-acc .al-msg { margin: 0; }
+  @media (max-width: 560px) {
+    .al-dato { flex-direction: column; gap: 2px; align-items: stretch; }
+    .al-dato > .v { text-align: left; }
+    .al-dato > .v > .al-destapar:first-child { margin-left: -10px; }
+    .al-hoja h3 { font-size: 20px; }
+    .al-estados button { font-size: 13.5px; }
+  }
 </style>
 </head>
-<body>
+<body class="adm-piel">
 
 <div id="admin-contenido">
   <div class="admin-wrap">
+    <div class="al-wrap" id="al">
 
-    <!-- Cabecera (pieza 1). La línea de cifras dice cuántas hay sin revisar
-         antes de mirar la lista, que es la pregunta de septiembre. -->
-    <div id="cabecera"></div>
-
-    <details class="explica">
-      <summary>De dónde salen estas altas</summary>
-      <p class="nota-pie">
-        Las rellenan las familias en la web, en <strong>Apuntarse a la escuela</strong> y en
-        <strong>Hacerse socio</strong>. Un alta es una <strong>solicitud</strong>: aquí se revisa, se llama
-        si falta algo y, cuando está bien, se pulsa <strong>Crear las fichas</strong>. Ahí se ve lo que se
-        va a crear, se corrige si hace falta y se acepta; hasta que alguien acepta no se crea ninguna ficha.
-      </p>
-      <p class="nota-pie">
-        El DNI, el número de cuenta y la tarjeta sanitaria salen tapados y solo se ven los cuatro últimos.
-        Se pueden enseñar enteros cuando hace falta, y entonces queda apuntado quién los ha mirado y cuándo.
-      </p>
-    </details>
-
-    <div class="panel">
-      <!-- Mandos (pieza 2): una sola fila. Cada estado lleva su cifra dentro
-           del chip; el tipo y la temporada viven en el cajón de «Filtrar». -->
-      <div id="mandos"></div>
-      <div class="cajon" id="cajon" hidden data-chips>
-        <label for="f-tipo">Tipo de alta</label>
-        <select id="f-tipo">
-          <option value="">Todas</option>
-          <option value="escuela">De la escuela</option>
-          <option value="socio">De socio</option>
-        </select>
-        <label for="f-temporada">Temporada</label>
-        <select id="f-temporada"><option value="">Todas</option></select>
+      <div class="al-cab">
+        <div>
+          <h1>Altas que entran</h1>
+          <p>Las solicitudes de escuela y de socio que rellenan las familias en la web. Toca una para verla entera, crear sus fichas, llamar o marcarla.</p>
+          <p class="al-ctx" id="al-ctx">Contando las altas…</p>
+        </div>
+        <!-- No hay «Nueva alta»: las altas las rellenan las familias, no el
+             club. Lo que sí hace falta a diario es poder abrir el formulario
+             tal y como lo ve la familia mientras se le explica por teléfono. -->
+        <div class="al-cab-acc">
+          <a class="al-b" href="../../escuelas/apuntar/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>Ver el formulario</a>
+        </div>
       </div>
 
-      <div id="alt-copia" hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 12px">
-        <button type="button" class="b2" id="exportar-altas">Exportar copia (CSV)</button>
-        <span style="font-size:13px;color:var(--tenue,#71717a)">Descarga todas las altas como respaldo, con el DNI y la cuenta <b>enteros</b>. Guárdala en sitio seguro: lleva datos personales.</span>
+      <!-- Cifras, buscador y filtros. Se enseñan cuando hay datos que filtrar. -->
+      <div id="al-mandos" hidden>
+        <div class="al-cifras" id="al-cifras"></div>
+        <div class="al-filtros">
+          <input type="search" class="al-buscar" id="f-buscar" placeholder="Nombre, correo, teléfono o código" aria-label="Buscar un alta" autocomplete="off">
+          <div class="al-chips" id="al-chips" role="group" aria-label="Tipo de alta"></div>
+          <select id="f-temporada" class="al-sel" aria-label="Temporada"><option value="">Todas las temporadas</option></select>
+        </div>
+        <div class="al-pie-filtros"><span class="al-cuenta" id="al-cuenta" aria-live="polite"></span></div>
       </div>
+
       <div id="aviso-carga"></div>
       <div id="tabla"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
-    </div>
 
+      <div class="al-copia" id="alt-copia" hidden>
+        <button type="button" class="al-b" id="exportar-altas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>Exportar copia (CSV)</button>
+        <p>Descarga todas las altas como respaldo, con el DNI y la cuenta <b>enteros</b>. Guárdala en sitio seguro: lleva datos personales.</p>
+      </div>
+
+      <details class="al-explica">
+        <summary>De dónde salen estas altas</summary>
+        <p class="al-nota-pie">
+          Las rellenan las familias en la web, en <strong>Apuntarse a la escuela</strong> y en
+          <strong>Hacerse socio</strong>. Un alta es una <strong>solicitud</strong>: aquí se revisa, se llama
+          si falta algo y, cuando está bien, se pulsa <strong>Crear las fichas</strong>. Ahí se ve lo que se
+          va a crear, se corrige si hace falta y se acepta; hasta que alguien acepta no se crea ninguna ficha.
+        </p>
+        <p class="al-nota-pie">
+          El DNI, el número de cuenta y la tarjeta sanitaria salen tapados y solo se ven los cuatro últimos.
+          Se pueden enseñar enteros cuando hace falta, y entonces queda apuntado quién los ha mirado y cuándo.
+        </p>
+      </details>
+
+    </div>
   </div>
 </div>
 
-<!-- La ficha de un alta. Vacía hasta que se abre una. -->
-<div id="ficha" hidden role="dialog" aria-modal="true" aria-labelledby="ficha-titulo">
-  <div class="ficha-caja" id="ficha-caja"></div>
+<!-- ===== HOJA DEL ALTA (se abre al tocar una fila). Vacía hasta que se abre una. ===== -->
+<div class="al-capa">
+  <div class="al-velo" id="al-velo"></div>
+  <div class="al-hoja" id="ficha" role="dialog" aria-modal="true" aria-labelledby="ficha-titulo">
+    <div class="asa" aria-hidden="true"></div>
+    <div id="ficha-caja"></div>
+  </div>
 </div>
 
 <script>
 APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  var ICO_TEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  var ICO_MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+  var ICO_FICHA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>';
+  var ICO_BORRAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>';
 
   /* ============================================================
      CÓMO SE DICEN LAS COSAS
@@ -302,12 +418,17 @@ APOLANA_ADMIN.listo(function (sb) {
   var NINOS = {};             /* alta_id → [hijos] */
   var MANDATOS = {};          /* alta_id → orden de domiciliación firmada */
   var filtroEstado = 'pendiente';   /* se entra por lo que falta por hacer */
+  var filtroTipo = '';              /* '' | 'escuela' | 'socio' */
   var PUEDE = null;           /* si esta persona puede ver altas siquiera */
 
   function nombreDe(a) {
     return a.que === 'escuela'
       ? (a.tutor_nombre || 'Sin nombre')
       : ((a.nombre || '') + ' ' + (a.apellidos || '')).trim() || 'Sin nombre';
+  }
+  function inicialesDe(a) {
+    var p = nombreDe(a) === 'Sin nombre' ? [] : nombreDe(a).trim().split(/\s+/);
+    return ((p[0] ? p[0][0] : '') + (p[1] ? p[1][0] : '')).toUpperCase() || '·';
   }
   function correoDe(a)   { return a.que === 'escuela' ? a.tutor_email : a.email; }
   function telefonoDe(a) { return a.que === 'escuela' ? a.tutor_telefono : a.telefono; }
@@ -347,10 +468,10 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     if (!PUEDE) {
       pintarCabecera(null);
-      tb.innerHTML = ADM.vacio('Esta pantalla no es de tu papel',
+      $('al-mandos').hidden = true;
+      tb.innerHTML = vacio('Esta pantalla no es de tu papel',
         'Las altas las llevan administración y tesorería, porque dentro hay datos de menores, ' +
-        'DNI y números de cuenta. Si te toca verlas, cambia de papel en la banda de arriba.',
-        '', '<path d="M7 11V8a5 5 0 0 1 10 0v3"/><rect x="4.5" y="11" width="15" height="9.5" rx="2.5"/>');
+        'DNI y números de cuenta. Si te toca verlas, cambia de papel en la banda de arriba.', '');
       return;
     }
 
@@ -364,8 +485,9 @@ APOLANA_ADMIN.listo(function (sb) {
     /* Si no se puede leer NADA, es un error con su botón de reintentar, no
        una lista vacía que se lea como «no ha entrado nadie». */
     if (re.error && rs.error) {
-      tb.innerHTML = ADM.error(re.error.message, cargar);
+      tb.innerHTML = '<div class="al-error">' + ADM.error(re.error.message, cargar) + '</div>';
       pintarCabecera(null);
+      $('al-mandos').hidden = true;
       return;
     }
     if (re.error) noLeido.push('las altas de la escuela');
@@ -398,14 +520,15 @@ APOLANA_ADMIN.listo(function (sb) {
     });
 
     if (noLeido.length) {
-      $('aviso-carga').innerHTML = ADM.error(
-        'Las altas se ven, pero no se ha podido leer ' + noLeido.join(' ni ') + '.', cargar);
+      $('aviso-carga').innerHTML = '<div class="al-error">' + ADM.error(
+        'Las altas se ven, pero no se ha podido leer ' + noLeido.join(' ni ') + '.', cargar) + '</div>';
     }
 
     await marcarYaEnClub();
     pintarTemporadas();
+    $('al-mandos').hidden = false;
     pintar();
-    /* Ya hay datos y quien mira puede verlos: se enseña el botón de copia. */
+    /* Ya hay datos y quien mira puede verlos: se enseña la copia. */
     var bc = $('alt-copia'); if (bc) bc.hidden = false;
   }
 
@@ -491,7 +614,7 @@ APOLANA_ADMIN.listo(function (sb) {
   }
   async function exportarAltas() {
     var btn = $('exportar-altas');
-    var antes = btn.textContent;
+    var antes = btn.innerHTML;
     btn.disabled = true; btn.textContent = 'Preparando…';
     try {
       var r = await sb.functions.invoke('altas-export', { body: {} });
@@ -516,56 +639,47 @@ APOLANA_ADMIN.listo(function (sb) {
     } catch (e) {
       apoToast('No se ha podido preparar la copia.', 'error');
     } finally {
-      btn.disabled = false; btn.textContent = antes;
+      btn.disabled = false; btn.innerHTML = antes;
     }
   }
 
   /* Las temporadas que existen de verdad, no una lista escrita a mano que
-     se quede corta el año que viene. */
+     se quede corta el año que viene. Con una sola temporada el desplegable
+     no filtra nada y no se enseña (salvo que haya una puesta). */
   function pintarTemporadas() {
     var vistas = [], sel = $('f-temporada');
     ALTAS.forEach(function (a) { if (a.temporada && vistas.indexOf(a.temporada) === -1) vistas.push(a.temporada); });
     vistas.sort().reverse();
     var antes = sel.value;
-    sel.innerHTML = '<option value="">Todas</option>' + vistas.map(function (t) {
-      return '<option value="' + esc(t) + '">' + esc(t) + '</option>';
+    sel.innerHTML = '<option value="">Todas las temporadas</option>' + vistas.map(function (t) {
+      return '<option value="' + esc(t) + '">Temporada ' + esc(t) + '</option>';
     }).join('');
     sel.value = antes;
+    sel.hidden = vistas.length < 2 && !sel.value;
+    sel.classList.toggle('puesto', !!sel.value);
   }
 
   /* ============================================================
-     LA CABECERA · pieza 1
+     LA CABECERA · la línea de cifras dice cuántas hay sin revisar
+     antes de mirar la lista, que es la pregunta de septiembre.
      ============================================================ */
   function pintarCabecera(ctx) {
-    $('cabecera').innerHTML = PZ.cabecera({
-      titulo: 'Altas que entran',
-      contexto: ctx == null ? 'No se han podido cargar las altas.' : ctx,
-      /* No hay «Nueva alta»: las altas las rellenan las familias, no el
-         club. Lo que sí hace falta a diario es poder abrir el formulario
-         tal y como lo ve la familia mientras se le explica por teléfono. */
-      secundaria: { texto: 'Ver el formulario', href: '../../escuelas/apuntar/' }
-    });
+    $('al-ctx').innerHTML = ctx == null ? 'No se han podido cargar las altas.' : ctx;
   }
 
   /* ============================================================
-     LA LISTA · piezas 2, 3 y 4
+     LA LISTA
+     Cada filtro cuenta sin contarse a sí mismo: las cifras de estado
+     respetan el tipo y la temporada; los chips de tipo, el estado y la
+     temporada. El buscador solo afecta a la lista.
      ============================================================ */
-  var COLUMNAS = [
-    { texto: 'Quién se apunta' },
-    { texto: 'Qué pide',  ancho: '250px' },
-    { texto: 'Entró',     ancho: '170px' },
-    { texto: 'Estado',    ancho: '150px' },
-    { texto: '',          ancho: '56px' }
-  ];
-
-  function baseFiltrada() {
-    var tipo = $('f-tipo').value;
+  function pasa(a, o) {
     var temp = $('f-temporada').value;
-    var caja = $('f-buscar');
-    var q = ((caja && caja.value) || '').trim().toLowerCase();
-    return ALTAS.filter(function (a) {
-      if (tipo && a.que !== tipo) return false;
-      if (temp && a.temporada !== temp) return false;
+    if (temp && a.temporada !== temp) return false;
+    if (o.tipo && filtroTipo && a.que !== filtroTipo) return false;
+    if (o.estado && filtroEstado !== 'todas' && a.estado !== filtroEstado) return false;
+    if (o.buscar) {
+      var q = ($('f-buscar').value || '').trim().toLowerCase();
       if (q) {
         /* Se busca por lo que dice una familia al llamar: su nombre, el
            del niño, el correo, el teléfono o el código del resguardo. */
@@ -574,132 +688,134 @@ APOLANA_ADMIN.listo(function (sb) {
                   ].join(' ').toLowerCase();
         if (txt.indexOf(q) === -1) return false;
       }
-      return true;
-    });
+    }
+    return true;
+  }
+
+  function vacio(titulo, texto, boton) {
+    return '<div class="al-vacio"><b>' + esc(titulo) + '</b>' + esc(texto) + (boton ? '<br>' + boton : '') + '</div>';
   }
 
   function pintar() {
-    var base = baseFiltrada();
-
     var sinRevisar = ALTAS.filter(function (a) { return a.estado === 'pendiente'; }).length;
+    var porCrear = ALTAS.filter(function (a) {
+      var f = fichasDe(a); return a.estado !== 'rechazada' && f && f.hechas < f.total;
+    }).length;
     pintarCabecera(
-      (ALTAS.length === 1 ? '1 alta' : ALTAS.length + ' altas') + ' recibidas · ' +
-      (sinRevisar === 0 ? 'ninguna sin revisar'
-                        : (sinRevisar === 1 ? '1 sin revisar' : sinRevisar + ' sin revisar')));
+      '<b>' + ALTAS.length + '</b> ' + (ALTAS.length === 1 ? 'alta recibida' : 'altas recibidas') + ' · ' +
+      (sinRevisar === 0 ? 'ninguna sin revisar' : '<b>' + sinRevisar + '</b> sin revisar') +
+      (porCrear ? ' · <b>' + porCrear + '</b> con fichas por crear' : ''));
 
-    pintarMandos(base);
+    /* Cifras por estado (filtran). «Sin revisar» en ámbar si hay alguna. */
+    var porEstado = ALTAS.filter(function (a) { return pasa(a, { tipo: true }); });
+    function n(k) { return porEstado.filter(function (a) { return a.estado === k; }).length; }
+    var pend = n('pendiente');
+    var cifras = [
+      { k: 'pendiente', t: 'sin revisar', n: pend, c: pend ? 'aviso' : '' },
+      { k: 'revisada',  t: 'revisadas',   n: n('revisada'),  c: 'ok' },
+      { k: 'rechazada', t: 'rechazadas',  n: n('rechazada'), c: 'mal' },
+      { k: 'todas',     t: 'todas',       n: porEstado.length, c: '' }
+    ];
+    $('al-cifras').innerHTML = cifras.map(function (c) {
+      var on = filtroEstado === c.k;
+      return '<button type="button" class="al-cifra ' + c.c + (on ? ' on' : '') + '" data-f="' + c.k + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+        '<b>' + c.n + '</b><span>' + esc(c.t) + '</span></button>';
+    }).join('');
 
-    var filas = filtroEstado === 'todas' ? base : base.filter(function (a) { return a.estado === filtroEstado; });
+    /* Chips de tipo, con su cuenta. */
+    var porTipo = ALTAS.filter(function (a) { return pasa(a, { estado: true }); });
+    var chips = [
+      { k: '', t: 'Todas', n: porTipo.length },
+      { k: 'escuela', t: 'Escuela', n: porTipo.filter(function (a) { return a.que === 'escuela'; }).length },
+      { k: 'socio', t: 'Socio', n: porTipo.filter(function (a) { return a.que === 'socio'; }).length }
+    ];
+    $('al-chips').innerHTML = chips.map(function (c) {
+      var on = filtroTipo === c.k;
+      return '<button type="button" class="' + (on ? 'on' : '') + '" data-tipo="' + c.k + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+        esc(c.t) + ' · ' + c.n + '</button>';
+    }).join('');
+    $('f-temporada').classList.toggle('puesto', !!$('f-temporada').value);
+
+    pintarLista();
+  }
+
+  function pintarLista() {
+    var filas = ALTAS.filter(function (a) { return pasa(a, { estado: true, tipo: true, buscar: true }); });
     var cont = $('tabla');
+    $('al-cuenta').textContent = filas.length === ALTAS.length
+      ? ALTAS.length + (ALTAS.length === 1 ? ' alta' : ' altas')
+      : filas.length + ' de ' + ALTAS.length + ' altas';
 
     /* Tres vacíos distintos, porque quieren decir tres cosas distintas. */
     if (!ALTAS.length) {
-      cont.innerHTML = ADM.vacio('Todavía no ha entrado ninguna alta',
-        'Cuando una familia rellene el formulario de la web aparecerá aquí, con lo más nuevo arriba.',
-        '', '<path d="M4.5 6.5h15v13h-15z"/><path d="M8 3.5v6M16 3.5v6M4.5 12h15"/>');
+      cont.innerHTML = vacio('Todavía no ha entrado ninguna alta',
+        'Cuando una familia rellene el formulario de la web aparecerá aquí, con lo más nuevo arriba.', '');
       return;
     }
-    if (!filas.length && filtroEstado === 'pendiente' && !$('f-buscar').value && !$('f-tipo').value && !$('f-temporada').value) {
-      cont.innerHTML = ADM.vacio('No queda ninguna alta sin revisar',
-        'Todas las que han entrado están revisadas o rechazadas. Toca «Todas» para volver a verlas.',
-        '<button type="button" class="pz-btn pz-btn--borde" data-todas>Ver todas</button>',
-        '<path d="m5 12.5 4.5 4.5L19 7.5"/>');
+    if (!filas.length && filtroEstado === 'pendiente' && !$('f-buscar').value && !filtroTipo && !$('f-temporada').value) {
+      cont.innerHTML = vacio('No queda ninguna alta sin revisar',
+        'Todas las que han entrado están revisadas o rechazadas.',
+        '<button type="button" data-todas>Ver todas</button>');
       return;
     }
     if (!filas.length) {
-      cont.innerHTML = ADM.vacio('Ningún alta encaja con estos filtros',
+      cont.innerHTML = vacio('Ningún alta encaja con estos filtros',
         'Prueba a quitar el estado, el tipo o lo que has escrito en el buscador.',
-        '<button type="button" class="pz-btn pz-btn--borde" data-limpiar>Quitar los filtros</button>',
-        '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>');
+        '<button type="button" data-limpiar>Quitar los filtros</button>');
       return;
     }
 
-    cont.innerHTML = PZ.tabla({ columnas: COLUMNAS, etiqueta: 'Altas recibidas', filas: filas.map(fila) });
+    cont.innerHTML = '<div class="al-lista" role="list" aria-label="Altas recibidas">' +
+      '<div class="al-cab-cols" aria-hidden="true"><span></span><span>Quién se apunta</span><span>Qué pide</span><span>Estado</span><span>Teléfono</span><span></span></div>' +
+      filas.map(filaHtml).join('') + '</div>';
   }
 
-  /* Los mandos se repintan enteros salvo el buscador, que se deja como
-     está para no quitarle el foco a quien está escribiendo. */
-  function pintarMandos(base) {
-    var caja = $('mandos');
-    var antes = $('f-buscar');
-    var texto = antes ? antes.value : '';
-    var foco = antes && document.activeElement === antes;
-    var punto = foco ? antes.selectionStart : null;
-
-    var chips = [{ k: 'todas', t: 'Todas', n: base.length }].concat(ESTADOS.map(function (e) {
-      return { k: e.k, t: e.t, n: base.filter(function (a) { return a.estado === e.k; }).length };
-    /* Un chip que dice «0» ocupa sitio en la única fila y no lleva a
-       ninguna parte. Solo se queda el que está puesto, para poder quitarlo. */
-    })).filter(function (c) { return c.n > 0 || c.k === filtroEstado || c.k === 'todas'; });
-
-    var extra = ($('f-tipo').value ? 1 : 0) + ($('f-temporada').value ? 1 : 0);
-
-    caja.innerHTML = PZ.filtros({
-      buscador: { id: 'f-buscar', placeholder: 'Nombre, correo, teléfono o código', valor: texto },
-      chips: chips.map(function (c) {
-        return { texto: c.t, cuenta: c.n, valor: c.k, activo: filtroEstado === c.k,
-                 tono: (c.k === 'pendiente' && c.n) ? 'aviso' : null };
-      }),
-      filtrar: { cuenta: extra }
-    });
-
-    if (foco) {
-      var ahora = $('f-buscar');
-      ahora.focus();
-      try { ahora.setSelectionRange(punto, punto); } catch (err) {}
-    }
-  }
-
-  function fila(a) {
+  function filaHtml(a) {
     var e = estadoT(a.estado);
     var hijos = hijosDe(a);
 
+    /* Qué pide: el tipo como etiqueta y, detrás, los hijos o las secciones. */
     var pide;
     if (a.que === 'escuela') {
-      pide = 'Escuela · ' + (hijos.length === 1 ? '1 hijo' : hijos.length + ' hijos');
-      if (hijos.length) pide += ': ' + hijos.map(function (n) { return n.nombre; }).join(', ');
+      pide = '<span class="al-tipo escuela">Escuela</span>' + (hijos.length === 1 ? '1 hijo' : hijos.length + ' hijos') +
+        (hijos.length ? ': ' + esc(hijos.map(function (n) { return n.nombre; }).join(', ')) : '');
+      if (!a.tiene_iban) pide += ' · <span class="sin-iban">sin número de cuenta</span>';
     } else {
-      pide = 'Socio' + (a.secciones && a.secciones.length ? ' · ' + lista(a.secciones, SECCION) : '');
+      pide = '<span class="al-tipo">Socio</span>' + (a.secciones && a.secciones.length ? esc(lista(a.secciones, SECCION)) : '');
     }
 
-    /* La línea de contexto: cómo se le localiza, que es lo primero que se
-       necesita cuando falta algo, y lo que falta si falta. Y quién la
-       revisó ya, que es lo que evita que dos personas la trabajen otra vez. */
-    var ctx = [correoDe(a), telefonoDe(a)].filter(Boolean);
+    /* Debajo del nombre: cuándo entró, su código y quién la revisó, que es
+       lo que evita que dos personas la trabajen otra vez. */
+    var sub = [esc(cuando(a.created_at))];
+    if (a.referencia) sub.push('<span class="ref">' + esc(a.referencia) + '</span>');
+    if (a.estado !== 'pendiente' && a.revisada_por_nombre) sub.push('la vio ' + esc(a.revisada_por_nombre) + ' el ' + esc(fechaCorta(a.revisada_en)));
+
     var yc = yaEnClubDe(a);
-    if (yc) ctx.unshift('⚠️ YA ES DEL CLUB: ' + ((yc.nombre || '') + ' ' + (yc.apellidos || '')).trim() + ' — enlázalo, no dupliques');
-    if (a.que === 'escuela' && !a.tiene_iban) ctx.push('sin número de cuenta');
-    if (a.estado !== 'pendiente' && a.revisada_por_nombre) {
-      ctx.push('la vio ' + a.revisada_por_nombre + ' el ' + fechaCorta(a.revisada_en));
-    }
+    var ya = yc ? '<span class="al-pill ya" title="Ya es del club: ' + esc(((yc.nombre || '') + ' ' + (yc.apellidos || '')).trim()) +
+      ' · enlázalo, no dupliques">⚠ Ya es del club</span>' : '';
+
     /* Si de esta alta ya han salido fichas se dice aquí. Es lo primero
        que se pregunta al volver a abrirla al día siguiente. */
-    var f = fichasDe(a);
-    if (f && f.hechas === f.total)  ctx.push(f.total === 1 ? 'ficha creada' : 'sus ' + f.total + ' fichas creadas');
-    else if (f && f.hechas > 0)     ctx.push(f.hechas + ' de ' + f.total + ' fichas creadas');
+    var f = fichasDe(a), fp = '';
+    if (f && f.hechas === f.total)  fp = '<span class="al-pill fichas-ok">✓ ' + (f.total === 1 ? 'ficha creada' : f.total + ' fichas creadas') + '</span>';
+    else if (f && f.hechas > 0)     fp = '<span class="al-pill fichas-medio">' + f.hechas + ' de ' + f.total + ' fichas</span>';
+    else if (f && a.estado !== 'rechazada') fp = '<span class="al-pill fichas-no">sin ficha</span>';
 
-    var menu = [{ texto: 'Ver el alta entera', accion: 'abrir' }];
-    if (!f || f.hechas < f.total)  menu.push({ texto: 'Crear las fichas', accion: 'convertir' });
-    if (a.estado !== 'revisada')  menu.push({ texto: 'Marcar como revisada', accion: 'revisada' });
-    if (a.estado !== 'pendiente') menu.push({ texto: 'Volver a sin revisar',  accion: 'pendiente' });
-    if (a.estado !== 'rechazada') menu.push({ texto: 'Rechazar el alta',      accion: 'rechazada', ojo: true });
-    menu.push({ texto: 'Eliminar solicitud', accion: 'eliminar', ojo: true });
-
-    return {
-      id: a.que + ':' + a.id,
-      principal: nombreDe(a),
-      contexto: ctx.join(' · '),
-      celdas: [
-        pide,
-        { html: esc(cuando(a.created_at)) + '<span class="pz-ctx">' + esc(a.referencia || '') + '</span>' }
-      ],
-      estado: { texto: e.t, tono: e.tono },
-      menu: menu
-    };
+    var tel = telefonoDe(a);
+    return '<div class="al-fila ' + esc(a.estado) + '" role="listitem" tabindex="0" data-id="' + esc(a.que + ':' + a.id) + '" aria-label="' + esc(nombreDe(a)) + ': ver el alta">' +
+      '<span class="al-ini' + (a.que === 'escuela' ? ' escuela' : '') + '">' + esc(inicialesDe(a)) + '</span>' +
+      '<span class="al-per"><b>' + esc(nombreDe(a)) + '</b><small>' + sub.join(' · ') + '</small></span>' +
+      '<span class="al-pide">' + pide + '</span>' +
+      '<span class="al-pills"><span class="al-pill ' + esc(a.estado) + '"><span class="pt"></span>' + esc(e.t) + '</span>' + fp + ya + '</span>' +
+      (tel
+        ? '<a class="al-tel" href="tel:' + esc(String(tel).replace(/\s+/g, '')) + '" aria-label="Llamar a ' + esc(nombreDe(a)) + '">' + ICO_TEL + esc(tel) + '</a>'
+        : '<span class="al-tel sin">sin teléfono</span>') +
+      '<span class="al-flecha" aria-hidden="true">›</span>' +
+    '</div>';
   }
 
   /* ============================================================
-     ABRIR UNA Y VERLA ENTERA
+     ABRIR UNA Y VERLA ENTERA (la hoja de abajo)
      ============================================================ */
   function porId(clave) {
     var t = String(clave || '').split(':');
@@ -714,7 +830,7 @@ APOLANA_ADMIN.listo(function (sb) {
      ámbar, en vez de dejar un hueco: un hueco no se reclama. */
   function d(rotulo, valor, falta) {
     var vacio = (valor == null || valor === '');
-    return '<div class="dato"><span class="r">' + esc(rotulo) + '</span>' +
+    return '<div class="al-dato"><span class="r">' + esc(rotulo) + '</span>' +
       '<span class="v' + (vacio ? ' falta' : '') + '">' +
       (vacio ? esc(falta || 'No lo puso') : valor) + '</span></div>';
   }
@@ -722,16 +838,19 @@ APOLANA_ADMIN.listo(function (sb) {
      se firma un enlace temporal (solo admin puede) y se ve la imagen/PDF. */
   function docBoton(rotulo, ruta) {
     if (!ruta) return d(rotulo, null, 'No lo adjuntó');
-    return '<div class="dato"><span class="r">' + esc(rotulo) + '</span>' +
-      '<span class="v"><button type="button" class="pz-btn pz-btn--borde" data-doc="' + esc(ruta) + '">Ver el documento</button>' +
+    return '<div class="al-dato"><span class="r">' + esc(rotulo) + '</span>' +
+      '<span class="v"><button type="button" class="al-mini" data-doc="' + esc(ruta) + '">Ver el documento</button>' +
       '<span data-doc-caja style="display:block;margin-top:8px"></span></span></div>';
   }
   /* Un número tapado, con su botón de enseñarlo entero. */
   function tapado(rotulo, texto, hay, que, id, falta) {
     if (!hay) return d(rotulo, null, falta);
-    return '<div class="dato"><span class="r">' + esc(rotulo) + '</span>' +
-      '<span class="v"><span class="tapa" data-tapa="' + esc(que + '|' + id) + '">' + esc(texto) + '</span>' +
-      '<button type="button" class="destapar" data-ver="' + esc(que + '|' + id) + '">Ver entero</button></span></div>';
+    return '<div class="al-dato"><span class="r">' + esc(rotulo) + '</span>' +
+      '<span class="v"><span class="al-tapa" data-tapa="' + esc(que + '|' + id) + '">' + esc(texto) + '</span>' +
+      '<button type="button" class="al-destapar" data-ver="' + esc(que + '|' + id) + '">Ver entero</button></span></div>';
+  }
+  function plegable(titulo, cuerpo) {
+    return '<details class="al-pleg"><summary>' + esc(titulo) + '</summary><div class="cuerpo">' + cuerpo + '</div></details>';
   }
 
   function fichaHTML(a) {
@@ -740,28 +859,63 @@ APOLANA_ADMIN.listo(function (sb) {
     var m = MANDATOS[a.id];
     var h = '';
 
-    h += '<div class="ficha-cab"><div class="txt">' +
-      '<span class="ref"><b>' + esc(a.referencia || '') + '</b> · ' +
-        esc(a.que === 'escuela' ? 'Alta de la escuela' : 'Alta de socio') + '</span>' +
-      '<h2 id="ficha-titulo">' + esc(nombreDe(a)) + '</h2>' +
-      '</div><button type="button" class="ficha-x" data-cerrar aria-label="Cerrar la ficha">×</button></div>';
+    h += '<div class="al-hoja-cab">' +
+      '<span class="al-ini' + (a.que === 'escuela' ? ' escuela' : '') + '">' + esc(inicialesDe(a)) + '</span>' +
+      '<div><h3 id="ficha-titulo">' + esc(nombreDe(a)) + '</h3>' +
+      '<p class="sub">' + (a.referencia ? '<span class="ref">' + esc(a.referencia) + '</span> · ' : '') +
+        esc(a.que === 'escuela' ? 'Alta de la escuela' : 'Alta de socio') + '</p></div>' +
+      '<button type="button" class="al-cerrar" data-cerrar aria-label="Cerrar el alta">×</button></div>';
 
-    h += '<p class="ficha-sub"><span class="pz-estado pz-estado--' + esc(e.tono) + '">' + esc(e.t) + '</span> ' +
-      ' Entró ' + esc(cuando(a.created_at)) + ' · temporada ' + esc(a.temporada || '—') +
+    h += '<p class="al-h-estado"><span class="al-pill ' + esc(a.estado) + '"><span class="pt"></span>' + esc(e.t) + '</span>' +
+      'Entró ' + esc(cuando(a.created_at)) + ' · <span style="white-space:nowrap">temporada ' + esc(a.temporada || '—') + '</span>' +
       (a.estado !== 'pendiente' && a.revisada_por_nombre
         ? '<br>La revisó ' + esc(a.revisada_por_nombre) + ' el ' + esc(fechaCorta(a.revisada_en)) : '') +
       '</p>';
 
+    var yc = yaEnClubDe(a);
+    if (yc) {
+      h += '<div class="al-aviso"><b>Ya es del club:</b> ' + esc(((yc.nombre || '') + ' ' + (yc.apellidos || '')).trim()) +
+        '. Enlázalo al crear la ficha, no dupliques.' +
+        (yc.atleta_id ? ' <a href="../atletas/?ficha=' + esc(yc.atleta_id) + '">Ver su ficha</a>' : '') + '</div>';
+    }
+
+    /* --- Lo que se hace con ella. «Crear las fichas» es la acción
+       principal desde que existe la 121: revisar un alta y no crear nada
+       deja el trabajo a medias. --- */
+    var f = fichasDe(a);
+    var correo = correoDe(a), tel = telefonoDe(a);
+    var telLimpio = tel ? String(tel).replace(/\s/g, '') : '';
+    h += '<div class="al-acc">';
+    if (f && f.hechas === f.total) {
+      h += '<div class="al-hecho">✓ ' + (f.total === 1 ? 'Su ficha ya está creada' : 'Sus ' + f.total + ' fichas ya están creadas') + '</div>';
+    } else {
+      h += '<a class="prin" href="' + esc(enlaceConvertir(a)) + '">' + ICO_FICHA +
+           (f && f.hechas > 0 ? 'Seguir creando las fichas' : 'Crear las fichas') + '</a>';
+    }
+    if (telLimpio || correo) {
+      h += '<div' + (telLimpio && correo ? ' class="dos"' : '') + '>' +
+        (telLimpio ? '<a href="tel:' + esc(telLimpio) + '">' + ICO_TEL + 'Llamar</a>' : '') +
+        (correo ? '<a href="mailto:' + esc(correo) + '">' + ICO_MAIL + 'Correo</a>' : '') + '</div>';
+    }
+    h += '</div>';
+
+    /* Marcar: el estado y el nombre de quien la revisa los pone la base. */
+    h += '<p class="al-et">¿En qué punto está?</p>' +
+      '<div class="al-estados" role="group" aria-label="Estado del alta">' +
+      ESTADOS.map(function (s) {
+        return '<button type="button" class="e-' + s.k + '" data-marcar="' + s.k + '" aria-pressed="' + (a.estado === s.k ? 'true' : 'false') + '">' + esc(s.t) + '</button>';
+      }).join('') + '</div>' +
+      '<span class="al-msg" id="ficha-msg" aria-live="polite"></span>';
+
     /* --- Cómo se le localiza. Va lo primero porque es lo que se usa. --- */
-    h += '<div class="bloque"><h3>' + (a.que === 'escuela' ? 'Quien apunta' : 'La persona que se hace socia') + '</h3>';
+    h += '<p class="al-et">' + (a.que === 'escuela' ? 'Quien apunta' : 'La persona que se hace socia') + '</p><div class="al-caja">';
     if (a.que === 'socio' && a.fecha_nacimiento) {
       var ed = anos(a.fecha_nacimiento);
       h += d('Nacimiento', esc(fechaCorta(a.fecha_nacimiento)) + (ed != null ? ' · ' + ed + ' años' : ''));
     }
     if (a.que === 'socio') h += d('Sexo', SEXO[a.sexo] ? esc(SEXO[a.sexo]) : null, 'No lo dijo');
-    var correo = correoDe(a), tel = telefonoDe(a);
     h += d('Correo', correo ? '<a href="mailto:' + esc(correo) + '">' + esc(correo) + '</a>' : null);
-    h += d('Teléfono', tel ? '<a href="tel:' + esc(String(tel).replace(/\s/g, '')) + '">' + esc(tel) + '</a>' : null);
+    h += d('Teléfono', tel ? '<a href="tel:' + esc(telLimpio) + '">' + esc(tel) + '</a>' : null);
     h += tapado('DNI', a.que === 'escuela' ? a.tutor_dni_tapado : a.dni_tapado, a.tiene_dni,
                 a.que === 'escuela' ? 'escuela-dni' : 'socio-dni', a.id, 'No lo puso');
     var dir = [a.direccion, [a.cp, a.localidad].filter(Boolean).join(' '), a.provincia].filter(Boolean).join(', ');
@@ -786,7 +940,7 @@ APOLANA_ADMIN.listo(function (sb) {
       var tallasSoc = [a.talla_camiseta ? 'camiseta ' + esc(a.talla_camiseta) : null,
                        a.talla_pantalon ? 'pantalón ' + esc(a.talla_pantalon) : null,
                        a.talla_calcetin ? 'calcetín ' + esc(a.talla_calcetin) : null].filter(Boolean).join(' · ');
-      h += '<div class="bloque"><h3>Equipación y documentos</h3>';
+      h += '<p class="al-et">Equipación y documentos</p><div class="al-caja">';
       h += d('Físico', fisico || null, 'No lo dijo');
       h += d('Tallas', tallasSoc || null, 'Sin talla');
       h += docBoton('Foto carnet', a.foto_carnet);
@@ -797,18 +951,23 @@ APOLANA_ADMIN.listo(function (sb) {
 
     /* --- Los hijos, uno por tarjeta --- */
     if (a.que === 'escuela') {
-      h += '<div class="bloque"><h3>' + (hijos.length === 1 ? 'Su hijo' : 'Sus hijos') +
-           ' <span class="pz-n">' + hijos.length + '</span></h3>';
+      h += '<p class="al-et">' + (hijos.length === 1 ? 'Su hijo' : 'Sus hijos') +
+           ' <span class="al-n">' + hijos.length + '</span></p>';
       if (!hijos.length) {
-        h += '<p class="nota-pie">Este alta no tiene ningún hijo apuntado. No debería pasar: ' +
+        h += '<p class="al-nota-pie">Este alta no tiene ningún hijo apuntado. No debería pasar: ' +
              'si lo ves, avisa antes de darla por revisada.</p>';
       }
       hijos.forEach(function (n) {
         var ed = anos(n.fecha_nacimiento);
-        h += '<div class="nino">';
+        h += '<div class="al-nino">';
         h += '<div class="quien"><b>' + esc(n.nombre) + '</b>' +
              (ed != null ? '<span class="anos">' + ed + ' años · ' + esc(fechaCorta(n.fecha_nacimiento)) + '</span>'
                          : '<span class="anos">' + esc(fechaCorta(n.fecha_nacimiento)) + '</span>') + '</div>';
+        /* Las alergias, arriba y en su caja: es lo que no se puede pasar por alto. */
+        if (n.alergias) {
+          h += '<div class="al-alergia"><span aria-hidden="true">⚠</span><span><b>Alergias:</b> ' +
+               esc(n.alergias) + '</span></div>';
+        }
         /* El sexo se pregunta en el formulario desde agosto de 2026. En
            las altas de antes está vacío y se dice, porque la licencia
            federativa lo pide y hay que reclamarlo por teléfono. */
@@ -842,29 +1001,24 @@ APOLANA_ADMIN.listo(function (sb) {
            la base decide si toca —y si no toca, dice por qué—. Quien
            tiene ese enlace entra al grupo sin que nadie le pregunte
            quién es, así que no viaja a ninguna pantalla antes de hora. */
-        h += '<div class="dato"><span class="r">Chat de familias</span><span class="v">' +
-             '<button type="button" class="destapar" data-wa="' + esc(n.id) + '">Ver el enlace</button>' +
+        h += '<div class="al-dato"><span class="r">Chat de familias</span><span class="v">' +
+             '<button type="button" class="al-destapar" data-wa="' + esc(n.id) + '">Ver el enlace</button>' +
              '<span data-wa-caja="' + esc(n.id) + '"></span></span></div>';
-        h += d('Tallas', [n.talla_camiseta ? 'camiseta ' + n.talla_camiseta : null,
-                          n.talla_sudadera ? 'sudadera ' + n.talla_sudadera : null]
+        h += d('Tallas', [n.talla_camiseta ? 'camiseta ' + esc(n.talla_camiseta) : null,
+                          n.talla_sudadera ? 'sudadera ' + esc(n.talla_sudadera) : null]
                          .filter(Boolean).join(' · ') || null, 'Sin talla');
         /* El permiso de imagen sin contestar NO es un «no lo sé»: la 114 lo
            dice claro y aquí se repite en castellano, porque quien publica
            una foto lee esta línea. */
         h += d('Fotos', n.permiso_imagen === true
                  ? 'Sí, para ' + esc(lista(n.permiso_imagen_ambitos, AMBITO) || 'la web y redes')
-                 : (n.permiso_imagen === false ? 'No' : '<span class="falta">No contestó · cuenta como un no</span>'));
-        if (n.alergias) {
-          h += '<div class="alergia"><span aria-hidden="true">⚠</span><span><b>Alergias:</b> ' +
-               esc(n.alergias) + '</span></div>';
-        }
+                 : (n.permiso_imagen === false ? 'No' : '<span class="al-falta">No contestó · cuenta como un no</span>'));
         h += '</div>';
       });
-      h += '</div>';
     }
 
     /* --- El dinero --- */
-    h += '<div class="bloque"><h3>Cómo va a pagar</h3>';
+    h += '<p class="al-et">Cómo va a pagar</p><div class="al-caja">';
     if (a.que === 'escuela') {
       h += d('Forma de pago', PAGO[a.forma_pago] ? esc(PAGO[a.forma_pago]) : null, 'No la eligió');
       h += tapado('Número de cuenta', a.iban_tapado, a.tiene_iban, 'escuela-iban', a.id,
@@ -874,99 +1028,91 @@ APOLANA_ADMIN.listo(function (sb) {
       h += d('Domiciliación', 'Firmada el ' + esc(fechaCorta(m.firmado_en)));
       h += d('Titular de la cuenta', esc(m.titular));
       h += tapado('Cuenta del mandato', m.iban_tapado, !!m.iban_tapado, 'sepa-iban', m.id, '—');
-      h += PZ.plegable({
-        titulo: 'Lo que firmó',
-        cuerpo: '<p class="texto-literal">' + esc(m.texto_mandato || '') + '</p>' +
-                (m.tiene_firma
-                  ? '<p class="nota-pie">La firma se dibujó en la pantalla el ' + esc(fechaCorta(m.firmado_en)) + '.</p>' +
-                    '<button type="button" class="pz-btn pz-btn--borde" data-firma="' + esc(m.id) + '">Ver la firma</button>' +
-                    '<div data-firma-caja="' + esc(m.id) + '" style="margin-top:10px"></div>'
-                  : '')
-      });
     } else if (a.que === 'escuela' || a.que === 'socio') {
       h += d('Domiciliación', null, 'Todavía no la ha firmado');
     }
     h += '</div>';
+    if (m) {
+      h += plegable('Lo que firmó',
+        '<p class="al-literal">' + esc(m.texto_mandato || '') + '</p>' +
+        (m.tiene_firma
+          ? '<p class="al-nota-pie">La firma se dibujó en la pantalla el ' + esc(fechaCorta(m.firmado_en)) + '.</p>' +
+            '<button type="button" class="al-mini" data-firma="' + esc(m.id) + '" style="margin-top:8px">Ver la firma</button>' +
+            '<div data-firma-caja="' + esc(m.id) + '" style="margin-top:10px"></div>'
+          : ''));
+    }
 
     /* --- Lo que aceptó, literal --- */
-    h += '<div class="bloque"><h3>Lo que aceptó</h3>';
+    h += '<p class="al-et">Lo que aceptó</p><div class="al-caja">';
     h += d('Normas del club', a.acepta_normas ? 'Aceptadas' : null, 'NO las aceptó');
-    if (a.texto_normas) {
-      h += PZ.plegable({ titulo: 'El texto que se le enseñó',
-                         cuerpo: '<p class="texto-literal">' + esc(a.texto_normas) + '</p>' });
-    }
     if (a.que === 'socio') {
       h += d('Fotos', a.permiso_imagen === true
                ? 'Sí, para ' + esc(lista(a.permiso_imagen_ambitos, AMBITO) || 'la web y redes')
-               : (a.permiso_imagen === false ? 'No' : '<span class="falta">No contestó · cuenta como un no</span>'));
-      if (a.texto_condiciones) {
-        h += PZ.plegable({ titulo: 'Las condiciones que se le enseñaron',
-                           cuerpo: '<p class="texto-literal">' + esc(a.texto_condiciones) + '</p>' });
-      }
+               : (a.permiso_imagen === false ? 'No' : '<span class="al-falta">No contestó · cuenta como un no</span>'));
     }
     h += '</div>';
+    if (a.texto_normas) {
+      h += plegable('El texto que se le enseñó', '<p class="al-literal">' + esc(a.texto_normas) + '</p>');
+    }
+    if (a.que === 'socio' && a.texto_condiciones) {
+      h += plegable('Las condiciones que se le enseñaron', '<p class="al-literal">' + esc(a.texto_condiciones) + '</p>');
+    }
 
     /* --- La nota del club --- */
-    h += '<div class="bloque"><h3>Nota del club</h3>' +
-      '<textarea id="ficha-nota" placeholder="Llamada el martes, falta el número de cuenta…">' +
+    h += '<p class="al-et">Nota del club</p>' +
+      '<textarea id="ficha-nota" aria-label="Nota del club" placeholder="Llamada el martes, falta el número de cuenta…">' +
       esc(a.nota_club || '') + '</textarea>' +
-      '<p class="nota-pie">La ve todo el que entre aquí. No es para la familia.</p></div>';
+      '<div class="al-nota-acc"><button type="button" class="al-mini" data-nota>Guardar la nota</button>' +
+      '<span class="al-msg" id="ficha-msg-nota" aria-live="polite"></span></div>' +
+      '<p class="al-nota-pie">La ve todo el que entre aquí. No es para la familia. Al marcar el alta también se guarda lo escrito.</p>';
 
-    /* --- El pie ---
-       «Crear las fichas» es la acción principal de esta pantalla desde
-       que existe la 121: revisar un alta y no crear nada deja el trabajo
-       a medias. Marcar como revisada pasa a ser lo de al lado, y además
-       se marca sola cuando ya han salido todas las fichas. */
-    h += '<div class="ficha-pie">';
-    var f = fichasDe(a);
-    if (f && f.hechas === f.total) {
-      h += '<span class="msg bien">' +
-           (f.total === 1 ? 'Su ficha ya está creada' : 'Sus ' + f.total + ' fichas ya están creadas') + '</span>';
-    } else {
-      h += '<a class="pz-btn" href="' + esc(enlaceConvertir(a)) + '">' +
-           (f && f.hechas > 0 ? 'Seguir creando las fichas' : 'Crear las fichas') + '</a>';
-    }
-    if (a.estado !== 'revisada') h += '<button type="button" class="pz-btn pz-btn--borde" data-marcar="revisada">Marcar como revisada</button>';
-    else h += '<button type="button" class="pz-btn pz-btn--borde" data-marcar="pendiente">Volver a sin revisar</button>';
-    h += '<button type="button" class="pz-btn pz-btn--texto" data-nota>Guardar la nota</button>';
-    if (a.estado !== 'rechazada') h += '<button type="button" class="pz-btn pz-btn--texto" data-marcar="rechazada">Rechazar</button>';
-    h += '<span class="msg" id="ficha-msg"></span></div>';
+    /* --- Eliminar del todo (rechazadas o de prueba) --- */
+    h += '<div class="al-acc"><button type="button" class="peligro" data-eliminar>' + ICO_BORRAR + 'Eliminar solicitud</button>' +
+      '<span class="al-msg" id="ficha-msg-borrar" aria-live="polite"></span></div>';
 
-    h += '<p class="nota-pie">Cuando alguien enseña un número entero queda apuntado quién ha sido y cuándo.</p>';
+    h += '<p class="al-nota-pie">Cuando alguien enseña un número entero queda apuntado quién ha sido y cuándo.</p>';
 
     return h;
   }
 
-  var ABIERTA = null;   /* el alta que está en la ficha */
+  var ABIERTA = null;   /* el alta que está en la hoja */
   var FOCO_ANTES = null;
+  var tVaciar = null;
 
-  function abrir(a) {
+  function abierta() { return $('ficha').classList.contains('ver'); }
+  function abrir(a, desde) {
     if (!a) return;
+    clearTimeout(tVaciar);
     ABIERTA = a;
-    FOCO_ANTES = document.activeElement;
+    FOCO_ANTES = desde || document.activeElement;
     $('ficha-caja').innerHTML = fichaHTML(a);
-    $('ficha').hidden = false;
+    $('al-velo').classList.add('ver');
+    $('ficha').classList.add('ver');
     document.body.style.overflow = 'hidden';
     $('ficha').scrollTop = 0;
-    var x = $('ficha-caja').querySelector('[data-cerrar]');
-    if (x) x.focus();
+    setTimeout(function () {
+      var x = $('ficha-caja').querySelector('[data-cerrar]');
+      if (x && abierta()) x.focus();
+    }, 60);
   }
   function cerrar() {
-    $('ficha').hidden = true;
-    $('ficha-caja').innerHTML = '';
+    $('al-velo').classList.remove('ver');
+    $('ficha').classList.remove('ver');
     ABIERTA = null;
     document.body.style.overflow = '';
-    if (FOCO_ANTES && FOCO_ANTES.focus) { try { FOCO_ANTES.focus(); } catch (e) {} }
+    /* Se vacía cuando ha terminado de bajar, para que no baje en blanco. */
+    clearTimeout(tVaciar);
+    tVaciar = setTimeout(function () { if (!ABIERTA) $('ficha-caja').innerHTML = ''; }, 300);
+    if (FOCO_ANTES && FOCO_ANTES.focus && document.body.contains(FOCO_ANTES)) { try { FOCO_ANTES.focus(); } catch (e) {} }
   }
 
-  $('ficha').addEventListener('click', function (e) {
-    if (e.target === this) cerrar();
-  });
+  $('al-velo').addEventListener('click', cerrar);
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !$('ficha').hidden) cerrar();
+    /* El Escape que cierra un «¿seguro?» no cierra también la hoja. */
+    if (e.key === 'Escape' && !e.defaultPrevented && abierta()) cerrar();
   });
 
-  /* Todo lo que se pulsa dentro de la ficha. */
+  /* Todo lo que se pulsa dentro de la hoja. */
   $('ficha-caja').addEventListener('click', async function (e) {
     var b = e.target.closest ? e.target.closest('button') : null;
     if (!b || !ABIERTA) return;
@@ -1015,7 +1161,7 @@ APOLANA_ADMIN.listo(function (sb) {
            se dice a qué grupo lleva: pegar el del chat que no es sería
            el mismo problema por otro camino. */
         cw.innerHTML = '<a href="' + esc(w.enlace) + '" target="_blank" rel="noopener">' + esc(w.enlace) + '</a>' +
-                       '<br><span class="falta" style="color:var(--texto-suave)">Es el chat de ' + esc(w.grupo || '') + '.</span>';
+                       '<span class="al-nota-mini">Es el chat de ' + esc(w.grupo || '') + '.</span>';
       } else {
         var PORQUE = {
           'sin-revisar': 'Todavía no: marca antes el alta como revisada, que es cuando alguien ha mirado quién es esta familia.',
@@ -1024,13 +1170,13 @@ APOLANA_ADMIN.listo(function (sb) {
           'grupo-sin-enlace': 'El grupo ' + (w.grupo || '') + ' todavía no tiene chat puesto. Se pega en Deportivo → Grupos.',
           'no-esta': 'No se encuentra este niño en el alta.'
         };
-        cw.innerHTML = '<span class="falta">' + esc(PORQUE[w.motivo] || 'Ahora mismo no se puede dar.') + '</span>';
+        cw.innerHTML = '<span class="al-falta">' + esc(PORQUE[w.motivo] || 'Ahora mismo no se puede dar.') + '</span>';
       }
       b.remove();
       return;
     }
 
-    /* La firma, que pesa y por eso se pide solo cuando se pulsa. */
+    /* Los documentos (foto carnet y DNI), que se piden solo cuando se pulsa. */
     if (b.hasAttribute('data-doc')) {
       var ruta = b.getAttribute('data-doc');
       b.disabled = true; b.textContent = 'Un momento…';
@@ -1051,6 +1197,7 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
 
+    /* La firma, que pesa y por eso se pide solo cuando se pulsa. */
     if (b.hasAttribute('data-firma')) {
       var mid = b.getAttribute('data-firma');
       b.disabled = true; b.textContent = 'Un momento…';
@@ -1061,28 +1208,35 @@ APOLANA_ADMIN.listo(function (sb) {
         apoToast('No se ha podido cargar la firma.', 'error');
         return;
       }
-      if (cf) cf.innerHTML = '<img class="firma" alt="Firma de la orden de domiciliación" src="' + esc(rf.data.firma_png) + '">';
+      if (cf) cf.innerHTML = '<img class="al-firma" alt="Firma de la orden de domiciliación" src="' + esc(rf.data.firma_png) + '">';
       b.remove();
       return;
     }
 
     if (b.hasAttribute('data-nota')) { guardarNota(); return; }
-    if (b.hasAttribute('data-marcar')) { marcar(ABIERTA, b.getAttribute('data-marcar')); return; }
+    if (b.hasAttribute('data-marcar')) {
+      /* Pulsar el estado que ya tiene no hace nada. */
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      marcar(ABIERTA, b.getAttribute('data-marcar'));
+      return;
+    }
+    if (b.hasAttribute('data-eliminar')) { eliminar(ABIERTA); return; }
   });
 
-  function decir(txt, clase) {
-    var m = $('ficha-msg');
-    if (m) { m.textContent = txt; m.className = 'msg' + (clase ? ' ' + clase : ''); }
+  /* Los avisos de la hoja: cada uno junto a lo que se ha pulsado. */
+  function decir(txt, clase, donde) {
+    var m = $(donde || 'ficha-msg');
+    if (m) { m.textContent = txt; m.className = 'al-msg' + (clase ? ' ' + clase : ''); }
   }
 
   async function guardarNota() {
     var a = ABIERTA, campo = $('ficha-nota');
     if (!a || !campo) return;
-    decir('Guardando…');
+    decir('Guardando…', '', 'ficha-msg-nota');
     var r = await sb.rpc('alta_nota', { p_que: a.que, p_id: a.id, p_nota: campo.value });
-    if (r.error) { decir('No se ha podido guardar: ' + r.error.message, 'mal'); return; }
+    if (r.error) { decir('No se ha podido guardar: ' + r.error.message, 'mal', 'ficha-msg-nota'); return; }
     a.nota_club = campo.value.trim() || null;
-    decir('Nota guardada ✓', 'bien');
+    decir('Nota guardada ✓', 'bien', 'ficha-msg-nota');
   }
 
   /* ============================================================
@@ -1100,7 +1254,7 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     /* La nota escrita se guarda con el mismo botón: si alguien apunta
        «falta el IBAN» y luego marca revisada, no se puede perder lo
-       escrito. Desde la lista no hay campo de nota y no se toca la que hubiera. */
+       escrito. Si el campo está vacío no se toca la que hubiera. */
     var campo = ABIERTA ? $('ficha-nota') : null;
     var nota = (campo && campo.value.trim()) ? campo.value : null;
 
@@ -1127,79 +1281,69 @@ APOLANA_ADMIN.listo(function (sb) {
   /* Eliminar del todo la solicitud (rechazadas o de prueba). Borra el registro
      de intake; no toca a un socio/atleta ya creado. No tiene vuelta atrás. */
   async function eliminar(a) {
+    if (!a) return;
     var ok = await apoConfirm({
       texto: '¿Eliminar la solicitud de ' + nombreDe(a) + '? Se borra del todo y NO se puede deshacer. ' +
              '(No borra a un socio o atleta ya creado, solo esta solicitud.)', peligro: true });
     if (!ok) return;
-    decir('Eliminando…');
+    decir('Eliminando…', '', 'ficha-msg-borrar');
     var r = await sb.rpc('alta_eliminar', { p_que: a.que, p_id: a.id });
-    if (r.error) { decir('No se ha podido eliminar: ' + r.error.message, 'mal'); return; }
-    if (!r.data || !r.data.ok) { decir('Esa solicitud ya no está.', 'mal'); return; }
+    if (r.error) { decir('No se ha podido eliminar: ' + r.error.message, 'mal', 'ficha-msg-borrar'); return; }
+    if (!r.data || !r.data.ok) { decir('Esa solicitud ya no está.', 'mal', 'ficha-msg-borrar'); return; }
     cerrar();
     apoToast('Solicitud eliminada');
     cargar();
   }
 
   /* ============================================================
-     LOS MANDOS
+     LOS MANDOS: cifras, chips de tipo, temporada y buscador
      ============================================================ */
-  PZ.alPulsar('#mandos', function (accion, id, boton) {
-    if (accion === 'filtrar') {
-      var abierto = $('cajon').hidden;
-      $('cajon').hidden = !abierto;
-      boton.setAttribute('aria-expanded', abierto ? 'true' : 'false');
-      return;
+  $('al-mandos').addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('.al-cifra[data-f]') : null;
+    if (c) {
+      var v = c.getAttribute('data-f');
+      /* Pulsar la cifra que ya filtra la quita (salvo «todas», que es quitarla). */
+      filtroEstado = (filtroEstado === v && v !== 'todas') ? 'todas' : v;
+      pintar(); return;
     }
-    if (accion === 'filtro') { filtroEstado = boton.getAttribute('data-pz-filtro'); pintar(); }
+    var t = e.target.closest ? e.target.closest('#al-chips button[data-tipo]') : null;
+    if (t) { filtroTipo = t.getAttribute('data-tipo') || ''; pintar(); }
   });
-  $('mandos').addEventListener('input', function (e) { if (e.target.id === 'f-buscar') pintar(); });
-  $('f-tipo').addEventListener('change', pintar);
+  $('f-buscar').addEventListener('input', pintarLista);
   $('f-temporada').addEventListener('change', pintar);
   $('exportar-altas').addEventListener('click', exportarAltas);
 
-  /* El «⋯» de cada fila. */
-  PZ.alPulsar('#tabla', function (accion, id) {
-    var a = porId(id);
-    if (!a) return;
-    if (accion === 'abrir') { abrir(a); return; }
-    if (accion === 'convertir') { location.href = enlaceConvertir(a); return; }
-    /* Marcar desde la lista, sin abrir la ficha: en la semana de
-       septiembre se repasan veinte seguidas y abrir y cerrar veinte veces
-       es el trabajo que sobra. Rechazar sí pregunta antes. */
-    if (accion === 'revisada' || accion === 'pendiente' || accion === 'rechazada') marcar(a, accion);
-    if (accion === 'eliminar') eliminar(a);
-  });
-
-  /* Abrir una fila tocándola. La acción también está en el «⋯», que es
-     por donde entra el teclado y el lector de pantalla; esto es el atajo
-     del pulgar, que es como se usa esta pantalla de verdad. */
+  /* La lista: tocar una fila abre su hoja. El teléfono llama, no abre. */
   $('tabla').addEventListener('click', function (e) {
     if (!e.target.closest) return;
     var b = e.target.closest('button');
     if (b && b.hasAttribute('data-todas'))   { filtroEstado = 'todas'; pintar(); return; }
     if (b && b.hasAttribute('data-limpiar')) {
-      filtroEstado = 'todas'; $('f-tipo').value = ''; $('f-temporada').value = '';
-      var bu = $('f-buscar'); if (bu) bu.value = '';
-      if (window.APOLANA_FILTROS) APOLANA_FILTROS.repasar();
+      filtroEstado = 'todas'; filtroTipo = ''; $('f-temporada').value = ''; $('f-buscar').value = '';
+      pintarTemporadas();
       pintar();
       return;
     }
-    if (b) return;                                   /* «⋯» y «Más detalles» ya tienen lo suyo */
-    var celda = e.target.closest('.pz-td-principal');
-    if (!celda) return;
-    var tr = celda.closest('tr');
-    if (tr) abrir(porId(tr.getAttribute('data-pz-id')));
+    if (b || e.target.closest('a')) return;
+    var fila = e.target.closest('.al-fila[data-id]');
+    if (fila) abrir(porId(fila.getAttribute('data-id')), fila);
+  });
+  $('tabla').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var fila = e.target.closest && e.target.closest('.al-fila[data-id]');
+    if (!fila || e.target !== fila) return;
+    e.preventDefault(); abrir(porId(fila.getAttribute('data-id')), fila);
   });
 
   /* Se puede llegar con los filtros puestos desde el aviso del Inicio del
-     panel: /admin/altas/?tipo=escuela. Así el aviso lleva a lo que dice
-     que hay, no a la lista entera para volver a buscarlo. */
+     panel o desde Socios: /admin/altas/?tipo=escuela. Así el aviso lleva a
+     lo que dice que hay, no a la lista entera para volver a buscarlo. */
   function filtrosDeLaUrl() {
     var q = new URLSearchParams(location.search);
     var e = q.get('estado');
     if (e && ['pendiente', 'revisada', 'rechazada', 'todas'].indexOf(e) !== -1) filtroEstado = e;
     var t = q.get('tipo');
-    if (t && ['escuela', 'socio'].indexOf(t) !== -1) $('f-tipo').value = t;
+    if (t && ['escuela', 'socio'].indexOf(t) !== -1) filtroTipo = t;
   }
   filtrosDeLaUrl();
 
