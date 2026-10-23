@@ -13,171 +13,294 @@
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
-<script src="../../assets/js/admin-filtros.js?v=c5447a71" defer></script>
 <style>
-  body { background: var(--crema); }
-  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  /* ============================================================
+     PRUEBAS · catálogo en tarjetas (23-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios» y «Competiciones»: cabecera
+     grande, cifras que filtran (todas, atletismo, natación,
+     desactivadas), buscador + chips por disciplina (velocidad,
+     vallas, saltos…), una tarjeta por prueba agrupadas por
+     disciplina con la franja del color de su familia, y una HOJA
+     INFERIOR con sus datos, editar y activar/desactivar. El
+     formulario de nueva / editar es el de antes, en ventana por
+     encima de la hoja. Mismas lecturas y mismas escrituras.
+     Prefijo pb-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .pb-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .pb-wrap *, .pb-capa *, #panel-form * { box-sizing: border-box; }
+  .oculto { display: none !important; }
 
-  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 12px 0 5px; }
-  input, textarea, select {
-    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde); border-radius: 10px;
-    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
+  /* --- Cabecera --- */
+  .pb-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .pb-cab > div:first-child { flex: 1 1 340px; min-width: 0; }
+  .pb-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .pb-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 68ch; }
+  .pb-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pb-b { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; text-decoration: none; }
+  .pb-b:hover { background: var(--crema,#FBF9F4); }
+  .pb-b.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .pb-b.prin:hover { background: #24364A; }
+  .pb-b:disabled { opacity: .55; cursor: wait; }
+  @media (max-width: 520px) { .pb-cab-acc { width: 100%; } .pb-cab-acc .pb-b { flex: 1 1 0; padding: 0 12px; } }
+
+  /* --- Cifras: pulsar una filtra la lista --- */
+  .pb-cifras { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .pb-cifra { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .pb-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .pb-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .pb-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .pb-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .pb-cifra.atl b { color: #8A3E28; } .pb-cifra.nat b { color: #1F615C; }
+  .pb-cifra.apagada b { color: var(--texto-tenue,#9A927F); }
+  .pb-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .pb-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .pb-cifra b { font-size: 21px; } }
+
+  /* --- Buscador + chips (disciplina) --- */
+  .pb-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .pb-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .pb-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .pb-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .pb-chips::-webkit-scrollbar { display: none; }
+  .pb-chips button { flex: 1 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px;
+    background: none; font: inherit; font-weight: 700; font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .pb-chips button::first-letter { text-transform: uppercase; }
+  .pb-chips button:hover { color: var(--navy,#26374B); }
+  .pb-chips button .pt { width: 8px; height: 8px; border-radius: 999px; background: var(--c); flex: 0 0 8px; }
+  .pb-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .pb-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; }
+  .pb-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); min-height: 40px; display: inline-flex; align-items: center; }
+  /* En el móvil, una sola tira que se desliza de lado: con trece disciplinas,
+     en varias filas ocupaban media pantalla. */
+  @media (max-width: 620px) { .pb-chips { width: 100%; border-radius: 14px; } .pb-chips button { flex: 0 0 auto; } }
+
+  /* --- Color por familia de prueba. Primero el gris de reserva y DESPUÉS
+     los colores, para que estos ganen. Una prueba desactivada va en gris. --- */
+  :where(.pb-fila, .pb-hoja-cab, .pb-chips button) { --c: #CFC6B4; --s: #F0EBE0; --t: #6E6656; }
+  .f-vel { --c: #B0563A; --s: #FBEAE5; --t: #8A3E28; }
+  .f-fon { --c: #C1742E; --s: #FBEEDD; --t: #86501C; }
+  .f-sal { --c: #7A5CA8; --s: #EEE8F4; --t: #543C74; }
+  .f-lan { --c: #8A6D3B; --s: #F3ECDD; --t: #60492A; }
+  .f-com { --c: #6E9B3E; --s: #EEF4E2; --t: #4C6C2A; }
+  .f-nat { --c: #2E8C86; --s: #E2F1EF; --t: #1F615C; }
+  .pb-fila.inactiva, .pb-hoja-cab.inactiva { --c: #CFC6B4; --s: #F0EBE0; --t: #8A816E; }
+
+  /* --- Bloques por disciplina --- */
+  .pb-grupo { margin: 22px 4px 8px; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656);
+    display: flex; align-items: baseline; gap: 8px; }
+  .pb-grupo span { font-weight: 600; letter-spacing: 0; text-transform: none; }
+  .pb-lista { container: pb-lista / inline-size; display: flex; flex-direction: column; gap: 8px; }
+
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .pb-fila { position: relative; display: grid; grid-template-columns: 40px minmax(0,1.5fr) minmax(0,1.3fr) 128px 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid var(--c); border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .pb-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .pb-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .pb-fila.inactiva { background: #FCFBF8; }
+  .pb-fila.inactiva .pb-nom b { color: var(--texto-suave,#6E6656); }
+  /* Donde otras pantallas llevan las iniciales: el icono de cómo se mide */
+  .pb-ico { width: 40px; height: 40px; border-radius: 999px; background: var(--s); color: var(--t); display: flex; align-items: center; justify-content: center; }
+  .pb-ico svg { width: 19px; height: 19px; }
+  .pb-nom { min-width: 0; }
+  .pb-nom b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .pb-nom small { display: block; font-size: 13px; color: var(--texto-tenue,#9A927F); margin-top: 1px; }
+  .pb-nom small::first-letter { text-transform: uppercase; }
+  .pb-pills { display: flex; flex-wrap: wrap; gap: 4px 5px; min-width: 0; align-items: center; }
+  .pb-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; justify-self: start; }
+  .pb-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .pb-pill.uni { background: var(--s); color: var(--t); } .pb-pill.uni .pt { background: var(--c); }
+  .pb-pill.mejor { background: #fff; color: var(--texto-suave,#6E6656); border: 1px solid var(--linea-marcada,#E4DCCB); padding: 2px 9px; }
+  .pb-pill.si { background: #E7F3EA; color: #23603A; } .pb-pill.si .pt { background: #3E7A34; }
+  .pb-pill.no { background: #fff; color: var(--texto-tenue,#9A927F); border: 1px dashed #D8CFBC; padding: 2px 9px; }
+  .pb-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  .pb-cab-cols { display: grid; grid-template-columns: 40px minmax(0,1.5fr) minmax(0,1.3fr) 128px 14px; gap: 0 14px; padding: 14px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  /* Lista estrecha (móvil): icono y nombre arriba; cómo se mide y estado debajo */
+  @container pb-lista (max-width: 640px) {
+    .pb-fila { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 11px 12px 12px 10px; }
+    .pb-ico { order: 0; flex: 0 0 40px; }
+    .pb-nom { order: 1; flex: 1 1 0; align-self: center; }
+    .pb-flecha { order: 2; font-size: 22px; align-self: center; }
+    .pb-fila::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+    .pb-pills { order: 4; flex: 1 1 auto; padding-left: 52px; }
+    .pb-est { order: 5; }
   }
-  input:focus, textarea:focus, select:focus { outline: 2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
-  /* El cuadradito de marcar mide trece píxeles: con el dedo se falla más de lo
-     que se acierta. Por eso la fila entera responde al toque, con la altura de
-     un dedo, y también vale pulsar el texto, que es lo que la gente hace sin
-     pensar. La casilla se ve igual que siempre; lo que crece es la zona
-     sensible, que no se ve. */
-  .fila-check { display: flex; align-items: center; gap: 8px; margin: 14px 0 0;
-    min-height: 44px; cursor: pointer; }
-  .fila-check input { width: auto; flex: 0 0 auto; }
+  @media (max-width: 700px) { .pb-cab-cols { display: none; } }
+  .pb-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .pb-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .pb-vacio button { margin-top: 10px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
 
-  .msg { margin-top: 12px; font-size: 14px; }
+  /* --- Hoja inferior: lo que se hace con una prueba --- */
+  .pb-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .pb-velo.ver { opacity: 1; pointer-events: auto; }
+  .pb-hoja { position: fixed; left: 50%; bottom: 0; width: min(560px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .pb-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .pb-hoja, .pb-velo, .pb-fila { transition: none; } }
+  .pb-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .pb-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .pb-hoja-cab .pb-ico { width: 48px; height: 48px; flex: 0 0 48px; }
+  .pb-hoja-cab .pb-ico svg { width: 22px; height: 22px; }
+  .pb-hoja-cab > div { flex: 1; min-width: 0; }
+  .pb-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .pb-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 4px 0 0; overflow-wrap: anywhere; }
+  .pb-hoja .sub::first-letter { text-transform: uppercase; }
+  .pb-cerrar { flex: 0 0 auto; align-self: flex-start; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .pb-caja { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 4px 14px; margin-top: 14px; }
+  .pb-caja div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid #EFE9DA; font-size: 14.5px; }
+  .pb-caja div:last-child { border-bottom: 0; }
+  .pb-caja span { color: var(--texto-suave,#6E6656); flex: 0 0 auto; }
+  .pb-caja b { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .pb-caja b small { display: block; font-size: 12.5px; font-weight: 400; color: var(--texto-tenue,#9A927F); }
+  .pb-nota { margin: 10px 2px 0; font-size: 13.5px; color: var(--texto-suave,#6E6656); line-height: 1.45; }
+  .pb-acc { display: grid; gap: 8px; margin-top: 16px; }
+  .pb-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; width: 100%; }
+  .pb-acc button:hover { background: var(--crema,#FBF9F4); }
+  .pb-acc button.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .pb-acc button.prin:hover { background: #24364A; }
+  .pb-acc button:disabled { opacity: .55; cursor: wait; }
+
+  .msg { margin-top: 10px; font-size: 14px; }
+  .msg:empty { display: none; }
   .msg.error { color: #B0563A; }
   .msg.ok { color: #1e7a3d; }
 
-  .panel { background: #fff; border: 1px solid var(--linea-marcada); border-radius: var(--radio-grande); padding: clamp(20px,3vw,30px); margin-bottom: 22px; box-shadow: var(--sombra-suave); }
-  .panel h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 21px; color: var(--navy); margin-bottom: 4px; }
-
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--linea); font-size: 14px; vertical-align: top; }
-  th { font-size: 13px; text-transform: none; color: var(--texto-suave); }
-  .acciones-fila { display: flex; gap: 8px; white-space: nowrap; }
-
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  /* --- Formulario nueva / editar: el de antes, en ventana por ENCIMA de la hoja --- */
+  #panel-form { position: fixed; inset: 0; z-index: 9500; background: rgba(20,30,45,.45);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: clamp(16px,5vh,60px) 16px; overflow: auto;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  #panel-form .modal-caja { background: #fff; border-radius: 20px; color: var(--navy,#26374B);
+    box-shadow: 0 30px 70px -25px rgba(20,30,45,.6); padding: 22px clamp(16px,4vw,26px) 22px; width: min(660px,100%);
+    animation: modal-sube .2s ease; }
+  @keyframes modal-sube { from { transform: translateY(12px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #panel-form .modal-caja { animation: none; } }
+  #panel-form h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; letter-spacing: -0.01em; color: var(--navy,#26374B); margin: 0 0 4px; line-height: 1.1; }
+  #panel-form label { display: block; font-size: 13px; font-weight: 600; color: var(--navy,#26374B); margin: 12px 0 5px; }
+  #panel-form input, #panel-form select {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy,#26374B); }
+  #panel-form input:focus, #panel-form select:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 14px; }
   @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
-
-  .btn { cursor: pointer; }
-  /* Todo lo que se pulsa, 44 px de alto. */
-  .btn--peligro { background: transparent; border: 1px solid #e0b4b0; color: #B0563A; padding: 8px 14px; border-radius: 999px; font-size: 14px;
-    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-  .btn--peligro:hover { background: #fbeceb; }
-  .btn--mini { padding: 8px 14px; font-size: 14px;
-    min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-  .oculto { display: none !important; }
-  /* Edición en ventana emergente (modal), no al fondo de la página */
-  #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
-    display:flex; align-items:flex-start; justify-content:center;
-    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none; margin:0;
-    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
-  #panel-form .modal-caja { background:#fff; border:1px solid var(--linea); border-radius: 14px;
-    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:24px; width:min(660px,100%);
-    animation:modal-sube .2s ease; }
-  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
-
-  .pill-estado { font-size: 13px; padding: 2px 8px; border-radius: 999px; }
-  .pill-si { background: #e6f4ea; color: #1e7a3d; }
-  .pill-no { background: var(--crema-media); color: var(--texto-suave); }
-
-  .filtros { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 14px; }
-  .filtros > div { flex: 1 1 200px; }
-  .filtros label { margin: 0 0 5px; }
-  .subcabecera td { background: var(--crema-media); font-size: 13px; text-transform: none; color: var(--navy); font-weight: 700; }
-  .fila-inactiva td { opacity: .55; }
+  .pb-form-pie { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .pb-form-pie .msg { margin: 0; }
 </style>
 </head>
-<body>
+<body class="adm-piel">
 
 <div id="admin-contenido">
   <div class="admin-wrap">
-
-    <!-- ===== LISTA DE PRUEBAS ===== -->
-    <div class="panel">
-      <h2>Pruebas</h2>
-      <p class="intro" style="margin-bottom:10px;">Catálogo de pruebas de atletismo y natación. Crea, edita o activa/desactiva las pruebas disponibles para registrar marcas.</p>
-      <div style="margin-bottom:14px;"><button class="btn btn--primario btn--mini" id="nueva-prueba">+ Nueva prueba</button></div>
-
-      <div class="filtros" data-chips>
+    <div class="pb-wrap" id="pb">
+      <div class="pb-cab">
         <div>
-          <label for="f-ambito">Ámbito</label>
-          <select id="f-ambito">
-            <option value="">Todos</option>
-            <option value="atletismo">Atletismo</option>
-            <option value="natacion">Natación</option>
-          </select>
+          <h1>Pruebas</h1>
+          <p>El catálogo de pruebas de atletismo y natación (100 m, longitud, 50 libres…) con el que se registran las marcas. Crea las que falten y desactiva las que no se usen: una prueba desactivada deja de ofrecerse. Toca una prueba para editarla o activarla/desactivarla.</p>
         </div>
-        <div>
-          <label for="f-disciplina">Disciplina</label>
-          <select id="f-disciplina"><option value="">Todas</option></select>
-        </div>
-        <div>
-          <label for="f-texto">Buscar</label>
-          <input type="text" id="f-texto" placeholder="Nombre…">
-        </div>
+        <div class="pb-cab-acc"><button type="button" class="pb-b prin" id="nueva-prueba">+ Nueva prueba</button></div>
       </div>
+      <div class="pb-cifras" id="pb-cifras"></div>
+      <div class="pb-filtros">
+        <input type="search" class="pb-buscar" id="f-texto" placeholder="Buscar prueba: 100 m, longitud, braza…" aria-label="Buscar prueba" autocomplete="off">
+        <div class="pb-chips oculto" id="pb-chips" role="group" aria-label="Disciplina"></div>
+      </div>
+      <div class="pb-pie-filtros"><span class="pb-cuenta" id="pb-cuenta" aria-live="polite"></span></div>
+      <div id="pb-lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+    </div>
+  </div>
+</div>
 
-      <div style="overflow-x:auto;">
-        <table id="tabla-pruebas">
-          <thead><tr>
-            <th>Nombre</th><th>Disciplina</th><th>Unidad</th><th>Más es mejor</th><th>Orden</th><th>Activa</th><th></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
+<!-- ===== HOJA DE LA PRUEBA (se abre al tocar una fila) ===== -->
+<div class="pb-capa">
+  <div class="pb-velo" id="pb-velo"></div>
+  <div class="pb-hoja" id="pb-hoja" role="dialog" aria-modal="true" aria-labelledby="pb-h-nombre">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="pb-hoja-cab" id="pb-h-cab">
+      <span class="pb-ico" id="pb-h-ico"></span>
+      <div><h3 id="pb-h-nombre"></h3><p class="sub" id="pb-h-sub"></p></div>
+      <button type="button" class="pb-cerrar" id="pb-h-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div id="pb-h-datos"></div>
+    <div class="pb-acc" id="pb-h-acc">
+      <button type="button" class="prin" data-hoja="editar">Editar la prueba</button>
+      <button type="button" data-hoja="toggle" id="pb-h-toggle">Desactivar la prueba</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FORMULARIO (nueva / editar), el mismo de antes ===== -->
+<div class="oculto" id="panel-form">
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="form-titulo">
+  <h2 id="form-titulo">Nueva prueba</h2>
+  <form id="form-prueba">
+    <input type="hidden" id="p-id">
+    <label for="p-nombre">Nombre</label>
+    <input type="text" id="p-nombre" required placeholder="Ej.: 100 m lisos">
+    <div class="grid2">
+      <div>
+        <label for="p-ambito">Ámbito</label>
+        <select id="p-ambito" required>
+          <option value="atletismo">Atletismo</option>
+          <option value="natacion">Natación</option>
+        </select>
+      </div>
+      <div>
+        <label for="p-disciplina">Disciplina</label>
+        <input type="text" id="p-disciplina" list="lista-disciplinas" placeholder="Ej.: velocidad, libre…">
+        <datalist id="lista-disciplinas"></datalist>
       </div>
     </div>
-
-    <!-- ===== FORMULARIO (oculto hasta crear/editar) ===== -->
-    <div class="panel oculto" id="panel-form">
-      <div class="modal-caja">
-      <h2 id="form-titulo">Nueva prueba</h2>
-      <form id="form-prueba">
-        <input type="hidden" id="p-id">
-        <label for="p-nombre">Nombre</label>
-        <input type="text" id="p-nombre" required placeholder="Ej.: 100 m lisos">
-        <div class="grid2">
-          <div>
-            <label for="p-ambito">Ámbito</label>
-            <select id="p-ambito" required>
-              <option value="atletismo">Atletismo</option>
-              <option value="natacion">Natación</option>
-            </select>
-          </div>
-          <div>
-            <label for="p-disciplina">Disciplina</label>
-            <input type="text" id="p-disciplina" list="lista-disciplinas" placeholder="Ej.: velocidad, libre…">
-            <datalist id="lista-disciplinas"></datalist>
-          </div>
-        </div>
-        <div class="grid2">
-          <div>
-            <label for="p-unidad">Unidad</label>
-            <select id="p-unidad" required>
-              <option value="tiempo">Tiempo</option>
-              <option value="distancia">Distancia</option>
-              <option value="puntos">Puntos</option>
-            </select>
-          </div>
-          <div>
-            <label for="p-mas">Más es mejor</label>
-            <select id="p-mas" required>
-              <option value="false">No (menos es mejor · tiempos)</option>
-              <option value="true">Sí (más es mejor · distancia/puntos)</option>
-            </select>
-          </div>
-        </div>
-        <div class="grid2">
-          <div>
-            <label for="p-orden">Orden</label>
-            <input type="number" id="p-orden" step="1" placeholder="Ej.: 10">
-          </div>
-          <div>
-            <label for="p-activa">Activa</label>
-            <select id="p-activa">
-              <option value="true">Sí (disponible)</option>
-              <option value="false">No (oculta)</option>
-            </select>
-          </div>
-        </div>
-        <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <button class="btn btn--primario btn--mini" type="submit">Guardar</button>
-          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
-          <span class="msg" id="msg-form"></span>
-        </div>
-      </form>
+    <div class="grid2">
+      <div>
+        <label for="p-unidad">Unidad</label>
+        <select id="p-unidad" required>
+          <option value="tiempo">Tiempo</option>
+          <option value="distancia">Distancia</option>
+          <option value="puntos">Puntos</option>
+        </select>
+      </div>
+      <div>
+        <label for="p-mas">Más es mejor</label>
+        <select id="p-mas" required>
+          <option value="false">No (menos es mejor · tiempos)</option>
+          <option value="true">Sí (más es mejor · distancia/puntos)</option>
+        </select>
       </div>
     </div>
-
+    <div class="grid2">
+      <div>
+        <label for="p-orden">Orden</label>
+        <input type="number" id="p-orden" step="1" placeholder="Ej.: 10">
+      </div>
+      <div>
+        <label for="p-activa">Activa</label>
+        <select id="p-activa">
+          <option value="true">Sí (disponible)</option>
+          <option value="false">No (oculta)</option>
+        </select>
+      </div>
+    </div>
+    <div class="pb-form-pie">
+      <button class="pb-b prin" type="submit">Guardar</button>
+      <button class="pb-b" type="button" id="cancelar">Cancelar</button>
+      <span class="msg" id="msg-form"></span>
+    </div>
+  </form>
   </div>
 </div>
 
@@ -185,116 +308,210 @@
 APOLANA_ADMIN.listo(function (sb) {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function plural(n, uno, varios) { return n + ' ' + (n === 1 ? uno : varios); }
+  function quitarTildes(s) { s = String(s || '').toLowerCase(); try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); } catch (e) {} return s; }
 
   var TODAS = [];              // todas las pruebas cargadas
   var UNIDAD_LABEL = { tiempo: 'Tiempo', distancia: 'Distancia', puntos: 'Puntos' };
   var AMBITO_LABEL = { atletismo: 'Atletismo', natacion: 'Natación' };
+  var LISTA_ROTA = false;
+
+  /* Filtros: las cifras ponen el ámbito (o «solo desactivadas»), los chips la
+     disciplina y el buscador el nombre. Son los mismos filtros que tenían los
+     desplegables de antes (ámbito, disciplina, buscar) más el de desactivadas. */
+  var FAMB = '';      // '' | 'atletismo' | 'natacion'
+  var FDIS = '';      // '' | disciplina
+  var FINACT = false; // solo las desactivadas
+
+  /* ---------- familia de cada prueba: da el color de la franja ---------- */
+  function familia(p) {
+    if (p.ambito === 'natacion') return 'nat';
+    var d = quitarTildes(p.disciplina);
+    if (/velocidad|vallas|relevo/.test(d)) return 'vel';
+    if (/fondo|marcha|ruta|cross|obstac/.test(d)) return 'fon';
+    if (/salto/.test(d)) return 'sal';
+    if (/lanza/.test(d)) return 'lan';
+    if (/combinad/.test(d)) return 'com';
+    return 'otro';
+  }
+  function clases(p) { return 'f-' + familia(p) + (p.activa ? '' : ' inactiva'); }
+
+  var ICO = {
+    tiempo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5"/><path d="M10 2.5h4"/><path d="M18.5 6.5l1.3-1.3"/></svg>',
+    distancia: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3"/><path d="M10.5 8v4"/><path d="M14.5 8v3"/><path d="M18 8v4"/></svg>',
+    puntos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>'
+  };
+  function icono(p) { return ICO[p.unidad] || ICO.tiempo; }
+  function textoMejor(p) { return p.mas_es_mejor ? 'más es mejor' : 'menos es mejor'; }
 
   // --- Cargar desde BD ---
   async function cargarPruebas() {
-    var tb = $('tabla-pruebas').querySelector('tbody');
-    tb.innerHTML = ADM.filaCargando(7, 3);
+    $('pb-lista').innerHTML = ADM.esqueleto(4);
     var r = await sb.from('pruebas')
       .select('id,nombre,disciplina,ambito,unidad,mas_es_mejor,orden,activa')
       .order('ambito').order('orden', { nullsFirst: false }).order('nombre');
     // Si falla la consulta no se ha podido mirar: error con reintento, y que
     // no se pinte la lista vacía como si el catálogo estuviera de verdad vacío.
-    if (r.error) { tb.innerHTML = ADM.filaError(7, r.error.message, cargarPruebas); return; }
+    if (r.error) {
+      LISTA_ROTA = true;
+      $('pb-cifras').innerHTML = ''; $('pb-chips').classList.add('oculto'); $('pb-cuenta').textContent = '';
+      $('pb-lista').innerHTML = ADM.error(r.error.message, cargarPruebas);
+      return;
+    }
+    LISTA_ROTA = false;
     TODAS = r.data || [];
-    poblarDisciplinasFiltro();
     poblarDatalistDisciplinas();
+    pintarCifras();
+    pintarChips();
     render();
+    /* Si la hoja de una prueba está abierta, se pone al día con lo guardado. */
+    if (hojaAbierta() && HOJA_ID) pintarHoja(HOJA_ID);
   }
 
-  // Disciplinas únicas (opcionalmente por ámbito)
+  // Disciplinas únicas (opcionalmente por ámbito), en el orden del catálogo
+  // (velocidad, vallas, medio fondo…), que es el que lleva la columna «orden».
   function disciplinasDe(ambito) {
-    var set = {};
+    var vistas = {}, l = [];
     TODAS.forEach(function (p) {
       if (ambito && p.ambito !== ambito) return;
-      if (p.disciplina) set[p.disciplina] = true;
+      if (p.disciplina && !vistas[p.disciplina]) { vistas[p.disciplina] = p; l.push(p.disciplina); }
     });
-    return Object.keys(set).sort();
-  }
-
-  function poblarDisciplinasFiltro() {
-    var sel = $('f-disciplina'), actual = sel.value;
-    var amb = $('f-ambito').value;
-    var opts = ['<option value="">Todas</option>'];
-    disciplinasDe(amb).forEach(function (d) { opts.push('<option value="' + esc(d) + '">' + esc(d) + '</option>'); });
-    sel.innerHTML = opts.join('');
-    // conservar selección si sigue existiendo
-    if (Array.prototype.some.call(sel.options, function (o) { return o.value === actual; })) sel.value = actual;
+    return { lista: l, primera: vistas };
   }
 
   function poblarDatalistDisciplinas() {
     var dl = $('lista-disciplinas');
-    dl.innerHTML = disciplinasDe('').map(function (d) { return '<option value="' + esc(d) + '">'; }).join('');
+    dl.innerHTML = disciplinasDe('').lista.slice().sort().map(function (d) { return '<option value="' + esc(d) + '">'; }).join('');
   }
 
-  // --- Pintar la tabla filtrada y agrupada ---
-  function render() {
-    var tb = $('tabla-pruebas').querySelector('tbody');
-    var fAmb = $('f-ambito').value;
-    var fDis = $('f-disciplina').value;
-    var fTxt = $('f-texto').value.trim().toLowerCase();
+  function pintarCifras() {
+    if (!TODAS.length) { $('pb-cifras').innerHTML = ''; return; }
+    var nAtl = 0, nNat = 0, nOff = 0;
+    TODAS.forEach(function (p) {
+      if (p.ambito === 'atletismo') nAtl++;
+      else if (p.ambito === 'natacion') nNat++;
+      if (!p.activa) nOff++;
+    });
+    $('pb-cifras').innerHTML =
+      '<button type="button" class="pb-cifra" data-f="todas"><b>' + TODAS.length + '</b><span>' + (TODAS.length === 1 ? 'prueba' : 'pruebas') + '</span></button>' +
+      '<button type="button" class="pb-cifra atl" data-f="atletismo"><b>' + nAtl + '</b><span>de atletismo</span></button>' +
+      '<button type="button" class="pb-cifra nat" data-f="natacion"><b>' + nNat + '</b><span>de natación</span></button>' +
+      '<button type="button" class="pb-cifra apagada" data-f="inactivas"><b>' + nOff + '</b><span>' + (nOff === 1 ? 'desactivada' : 'desactivadas') + '</span></button>';
+  }
 
-    var lista = TODAS.filter(function (p) {
-      if (fAmb && p.ambito !== fAmb) return false;
-      if (fDis && p.disciplina !== fDis) return false;
-      if (fTxt && (p.nombre || '').toLowerCase().indexOf(fTxt) === -1) return false;
+  /* Los chips son las disciplinas del ámbito elegido (o de todos). Si la
+     disciplina elegida sigue existiendo al cambiar de ámbito, se conserva. */
+  function pintarChips() {
+    var d = disciplinasDe(FAMB);
+    if (FDIS && d.lista.indexOf(FDIS) === -1) FDIS = '';
+    if (!d.lista.length) { $('pb-chips').innerHTML = ''; $('pb-chips').classList.add('oculto'); return; }
+    $('pb-chips').classList.remove('oculto');
+    $('pb-chips').innerHTML = '<button type="button" data-dis="">Todas</button>' + d.lista.map(function (x) {
+      return '<button type="button" class="f-' + familia(d.primera[x]) + '" data-dis="' + esc(x) + '"><span class="pt"></span>' + esc(x) + '</button>';
+    }).join('');
+  }
+
+  function visibles() {
+    var fTxt = quitarTildes($('f-texto').value.trim());
+    return TODAS.filter(function (p) {
+      if (FAMB && p.ambito !== FAMB) return false;
+      if (FDIS && p.disciplina !== FDIS) return false;
+      if (FINACT && p.activa) return false;
+      if (fTxt && quitarTildes(p.nombre).indexOf(fTxt) === -1) return false;
       return true;
     });
+  }
+
+  function filaHtml(p) {
+    var sub = [p.disciplina || 'sin disciplina', p.orden == null ? '' : 'orden ' + p.orden].filter(Boolean).join(' · ');
+    return '<div class="pb-fila ' + clases(p) + '" tabindex="0" data-id="' + esc(p.id) + '" aria-label="' + esc(p.nombre) + ': editar o activar/desactivar">' +
+      '<span class="pb-ico" title="' + esc(UNIDAD_LABEL[p.unidad] || p.unidad) + '">' + icono(p) + '</span>' +
+      '<span class="pb-nom"><b>' + esc(p.nombre) + '</b><small>' + esc(sub) + '</small></span>' +
+      '<span class="pb-pills"><span class="pb-pill uni"><span class="pt"></span>' + esc(UNIDAD_LABEL[p.unidad] || p.unidad || '—') + '</span>' +
+        '<span class="pb-pill mejor">' + esc(textoMejor(p)) + '</span></span>' +
+      (p.activa ? '<span class="pb-pill si pb-est"><span class="pt"></span>Activa</span>' : '<span class="pb-pill no pb-est">Desactivada</span>') +
+      '<span class="pb-flecha" aria-hidden="true">›</span>' +
+    '</div>';
+  }
+
+  // --- Pintar la lista filtrada y agrupada ---
+  function render() {
+    if (LISTA_ROTA) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#pb-chips button'), function (x) {
+      var on = (x.getAttribute('data-dis') || '') === FDIS;
+      x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.pb-cifra[data-f]'), function (c) {
+      var f = c.getAttribute('data-f');
+      var on = (f === 'inactivas') ? FINACT : (f === 'todas' ? false : FAMB === f);
+      c.classList.toggle('on', on); c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var cont = $('pb-lista');
 
     // No es lo mismo que el catálogo esté vacío que que el filtro no encuentre nada:
     // en el primer caso hay que crear una prueba, en el segundo basta con quitar el filtro.
+    if (!TODAS.length) {
+      $('pb-cuenta').textContent = '';
+      cont.innerHTML = ADM.vacio('Todavía no hay ninguna prueba',
+        'Las pruebas son el catálogo con el que luego se registran las marcas: 100 m lisos, longitud, 50 libre…',
+        '<button class="pb-b prin" type="button" id="vacio-nueva">+ Nueva prueba</button>',
+        '<path d="M4 19h16"/><path d="M7 19V9l5-4 5 4v10"/><path d="M10 19v-5h4v5"/>');
+      return;
+    }
+    var lista = visibles();
+    var nOff = TODAS.filter(function (p) { return !p.activa; }).length;
+    $('pb-cuenta').textContent = lista.length === TODAS.length
+      ? plural(TODAS.length, 'prueba', 'pruebas') + ' en el catálogo' + (nOff ? ' · ' + nOff + ' ' + (nOff === 1 ? 'desactivada' : 'desactivadas') : '')
+      : lista.length + ' de ' + plural(TODAS.length, 'prueba', 'pruebas');
     if (!lista.length) {
-      if (!TODAS.length) {
-        tb.innerHTML = ADM.filaVacia(7, 'Todavía no hay ninguna prueba',
-          'Las pruebas son el catálogo con el que luego se registran las marcas: 100 m lisos, longitud, 50 libres…',
-          '<button class="btn btn--primario btn--mini" type="button" id="vacio-nueva">+ Nueva prueba</button>',
-          '<path d="M4 19h16"/><path d="M7 19V9l5-4 5 4v10"/><path d="M10 19v-5h4v5"/>');
-        var bv = document.getElementById('vacio-nueva');
-        if (bv) bv.addEventListener('click', function () { abrirForm(); });
-      } else {
-        tb.innerHTML = ADM.filaVacia(7, 'Ninguna prueba encaja con la búsqueda',
-          'Hay ' + TODAS.length + ' pruebas en el catálogo, pero ninguna cumple estos filtros.',
-          '<button class="btn btn--fantasma btn--mini" type="button" id="vacio-limpiar">Quitar los filtros</button>');
-        var bl = document.getElementById('vacio-limpiar');
-        if (bl) bl.addEventListener('click', function () {
-          $('f-ambito').value = ''; $('f-disciplina').value = ''; $('f-texto').value = '';
-          poblarDisciplinasFiltro(); render();
-        });
-      }
+      cont.innerHTML = '<div class="pb-vacio"><b>Ninguna prueba encaja con la búsqueda</b>Hay ' + TODAS.length + ' pruebas en el catálogo, pero ninguna cumple estos filtros.<br><button type="button" id="vacio-limpiar">Quitar los filtros</button></div>';
       return;
     }
 
-    var html = '', grupoActual = null;
+    /* Por ámbito · disciplina, en el orden en que llegan (ámbito, orden, nombre). */
+    var grupos = [], porClave = {};
     lista.forEach(function (p) {
       var clave = p.ambito + ' · ' + (p.disciplina || 'sin disciplina');
-      if (clave !== grupoActual) {
-        grupoActual = clave;
-        html += '<tr class="subcabecera"><td colspan="7">' +
-          esc(AMBITO_LABEL[p.ambito] || p.ambito) + ' · ' + esc(p.disciplina || 'sin disciplina') + '</td></tr>';
+      if (!porClave[clave]) {
+        porClave[clave] = { titulo: (AMBITO_LABEL[p.ambito] || p.ambito) + ' · ' + (p.disciplina || 'sin disciplina'), filas: [] };
+        grupos.push(porClave[clave]);
       }
-      html += '<tr' + (p.activa ? '' : ' class="fila-inactiva"') + '>' +
-        '<td>' + esc(p.nombre) + '</td>' +
-        '<td>' + esc(p.disciplina || '—') + '</td>' +
-        '<td>' + esc(UNIDAD_LABEL[p.unidad] || p.unidad) + '</td>' +
-        '<td>' + (p.mas_es_mejor ? 'Sí' : 'No') + '</td>' +
-        '<td>' + (p.orden == null ? '—' : esc(p.orden)) + '</td>' +
-        '<td>' + (p.activa ? '<span class="pill-estado pill-si">Sí</span>' : '<span class="pill-estado pill-no">No</span>') + '</td>' +
-        '<td class="acciones-fila">' +
-          '<button class="btn btn--fantasma btn--mini" data-editar="' + p.id + '">Editar</button>' +
-          '<button class="btn btn--fantasma btn--mini" data-toggle="' + p.id + '">' + (p.activa ? 'Desactivar' : 'Activar') + '</button>' +
-        '</td>' +
-      '</tr>';
+      porClave[clave].filas.push(p);
     });
-    tb.innerHTML = html;
+    cont.innerHTML =
+      '<div class="pb-cab-cols" aria-hidden="true"><span></span><span>Prueba</span><span>Cómo se mide</span><span>Estado</span><span></span></div>' +
+      grupos.map(function (g) {
+        return '<h2 class="pb-grupo">' + esc(g.titulo) + ' <span>' + g.filas.length + '</span></h2>' +
+          '<div class="pb-lista">' + g.filas.map(filaHtml).join('') + '</div>';
+      }).join('');
   }
 
-  $('f-ambito').addEventListener('change', function () { poblarDisciplinasFiltro(); render(); });
-  $('f-disciplina').addEventListener('change', render);
   $('f-texto').addEventListener('input', render);
+  $('pb').addEventListener('click', function (e) {
+    var c = e.target.closest('.pb-cifra[data-f]');
+    if (c) {
+      var f = c.getAttribute('data-f');
+      if (f === 'todas') { FAMB = ''; FINACT = false; FDIS = ''; }
+      else if (f === 'inactivas') FINACT = !FINACT;
+      else FAMB = (FAMB === f) ? '' : f;   // pulsar la cifra que ya filtra la quita
+      pintarChips(); render(); return;
+    }
+    var ch = e.target.closest('#pb-chips button[data-dis]');
+    if (ch) { FDIS = ch.getAttribute('data-dis') || ''; render(); return; }
+    if (e.target.closest('#vacio-limpiar')) {
+      FAMB = ''; FDIS = ''; FINACT = false; $('f-texto').value = '';
+      pintarChips(); render(); $('f-texto').focus(); return;
+    }
+    if (e.target.closest('#vacio-nueva')) { abrirForm(); return; }
+    var fila = e.target.closest('.pb-fila[data-id]');
+    if (fila) abrirHoja(fila.getAttribute('data-id'), fila);
+  });
+  $('pb').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var fila = e.target.closest && e.target.closest('.pb-fila[data-id]');
+    if (!fila || e.target !== fila) return;
+    e.preventDefault(); abrirHoja(fila.getAttribute('data-id'), fila);
+  });
 
   // --- Autoseleccionar "más es mejor" según la unidad ---
   $('p-unidad').addEventListener('change', function () {
@@ -319,29 +536,74 @@ APOLANA_ADMIN.listo(function (sb) {
     $('msg-form').textContent = ''; $('msg-form').className = 'msg';
     $('panel-form').classList.remove('oculto');
     $('panel-form').scrollTop = 0;
+    setTimeout(function () { $('p-nombre').focus(); }, 60);
   }
+  function cerrarForm() { $('panel-form').classList.add('oculto'); }
   $('nueva-prueba').addEventListener('click', function () { abrirForm(); });
-  $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
-  $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
+  $('cancelar').addEventListener('click', cerrarForm);
+  $('panel-form').addEventListener('click', function (e) { if (e.target === this) cerrarForm(); });
 
-  // --- Acciones de la tabla (editar / activar-desactivar) ---
-  $('tabla-pruebas').addEventListener('click', async function (e) {
-    var ed = e.target.getAttribute('data-editar');
-    var tg = e.target.getAttribute('data-toggle');
-    if (ed) {
-      var p = TODAS.filter(function (x) { return x.id === ed; })[0];
-      if (p) abrirForm(p);
-    }
-    if (tg) {
-      var pr = TODAS.filter(function (x) { return x.id === tg; })[0];
-      if (!pr) return;
-      e.target.disabled = true;
-      var d = await sb.from('pruebas').update({ activa: !pr.activa }).eq('id', tg);
-      e.target.disabled = false;
-      if (d.error) { apoToast('No se pudo cambiar el estado: ' + d.error.message, 'error'); return; }
-      cargarPruebas();
-    }
+  // =========================================================
+  // HOJA DE UNA PRUEBA (datos, editar, activar/desactivar)
+  // =========================================================
+  var HOJA_ID = null, focoPrevio = null;
+  function hojaAbierta() { return $('pb-hoja').classList.contains('ver'); }
+  function pintarHoja(id) {
+    var p = TODAS.filter(function (x) { return x.id === id; })[0];
+    if (!p) return false;
+    $('pb-h-cab').className = 'pb-hoja-cab ' + clases(p);
+    $('pb-h-ico').innerHTML = icono(p);
+    $('pb-h-nombre').textContent = p.nombre || 'Prueba';
+    $('pb-h-sub').textContent = [AMBITO_LABEL[p.ambito] || p.ambito, p.disciplina || 'sin disciplina'].filter(Boolean).join(' · ');
+    function par(k, v) { return '<div><span>' + esc(k) + '</span><b>' + v + '</b></div>'; }
+    $('pb-h-datos').innerHTML = '<div class="pb-caja">' +
+      par('Ámbito', esc(AMBITO_LABEL[p.ambito] || p.ambito || '—')) +
+      par('Disciplina', esc(p.disciplina || '—')) +
+      par('Unidad', esc(UNIDAD_LABEL[p.unidad] || p.unidad || '—')) +
+      par('Más es mejor', p.mas_es_mejor ? 'Sí <small>gana la marca más alta</small>' : 'No <small>gana la marca más baja</small>') +
+      par('Orden', p.orden == null ? '—' : esc(p.orden)) +
+      par('Activa', p.activa ? '<span class="pb-pill si"><span class="pt"></span>Sí, disponible</span>' : '<span class="pb-pill no">No, oculta</span>') +
+      '</div>' +
+      (p.activa ? '' : '<p class="pb-nota">Desactivada: no se ofrece para registrar marcas. Actívala para que vuelva a salir.</p>');
+    var t = $('pb-h-toggle');
+    t.textContent = p.activa ? 'Desactivar la prueba' : 'Activar la prueba';
+    t.disabled = false;
+    return true;
+  }
+  function abrirHoja(id, desde) {
+    if (!pintarHoja(id)) return;
+    HOJA_ID = id;
+    focoPrevio = desde || document.activeElement;
+    $('pb-velo').classList.add('ver'); $('pb-hoja').classList.add('ver');
+    $('pb-hoja').scrollTop = 0;
+    setTimeout(function () { $('pb-h-cerrar').focus(); }, 60);
+  }
+  function cerrarHoja() {
+    if (!hojaAbierta()) return;
+    $('pb-velo').classList.remove('ver'); $('pb-hoja').classList.remove('ver');
+    HOJA_ID = null;
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  $('pb-velo').addEventListener('click', cerrarHoja);
+  $('pb-h-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (!$('panel-form').classList.contains('oculto')) { cerrarForm(); return; }
+    cerrarHoja();
+  });
+
+  // --- Acciones de la hoja (editar / activar-desactivar) ---
+  $('pb-h-acc').addEventListener('click', async function (e) {
+    var bt = e.target.closest('button[data-hoja]');
+    if (!bt || !HOJA_ID) return;
+    var pr = TODAS.filter(function (x) { return x.id === HOJA_ID; })[0];
+    if (!pr) return;
+    if (bt.getAttribute('data-hoja') === 'editar') { abrirForm(pr); return; }
+    bt.disabled = true;
+    var d = await sb.from('pruebas').update({ activa: !pr.activa }).eq('id', pr.id);
+    bt.disabled = false;
+    if (d.error) { apoToast('No se pudo cambiar el estado: ' + d.error.message, 'error'); return; }
+    cargarPruebas();
   });
 
   // --- Guardar (crear / editar) ---
@@ -377,7 +639,7 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
     $('msg-form').textContent = 'Guardado ✓'; $('msg-form').className = 'msg ok';
-    $('panel-form').classList.add('oculto');
+    cerrarForm();
     cargarPruebas();
   });
 
