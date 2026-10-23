@@ -8,66 +8,210 @@
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
-<link rel="stylesheet" href="../../assets/css/panel-piezas.css?v=3261f3f3">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
-<script src="../../assets/js/admin-filtros.js?v=c5447a71" defer></script>
-<script src="../../assets/js/panel-piezas.js?v=16c512a9" defer></script>
 <style>
-  body { background: var(--crema); }
-  .admin-wrap { max-width: 1180px; margin: 0 auto; padding: clamp(20px,4vw,40px) clamp(16px,4vw,40px); }
+  /* ============================================================
+     PEDIDOS DE ROPA · lista en tarjetas (23-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios»: cabecera grande, cifras por estado
+     que filtran, buscador + chips, una tarjeta por encargo (para
+     quién, prendas, total, estado y si está pagado) y una hoja
+     inferior con todo lo que se hace con él: cambiar el estado,
+     apuntar el pago en la oficina, escribir por WhatsApp, editar o
+     borrar. El Excel para el proveedor y el formulario de editar
+     son los de antes; se guarda exactamente lo mismo. Prefijo pe-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .pe-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .pe-wrap *, .pe-capa * { box-sizing: border-box; }
+  .pe-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .pe-cab > div:first-child { flex: 1 1 340px; min-width: 0; }
+  .pe-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .pe-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 64ch; }
+  .pe-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pe-b { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; text-decoration: none; }
+  .pe-b:hover { background: var(--crema,#FBF9F4); }
+  .pe-b.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .pe-b.prin:hover { background: #24364A; }
+  .pe-b:disabled { opacity: .55; cursor: wait; }
+  .pe-b svg { width: 16px; height: 16px; }
+  @media (max-width: 520px) { .pe-cab-acc { width: 100%; } .pe-cab-acc .pe-b { flex: 1 1 0; padding: 0 12px; } }
 
-  .panel { background:#fff; border: 1px solid var(--linea-marcada); border-radius: var(--radio-grande); padding: clamp(18px,3vw,28px); margin-bottom: 22px; box-shadow: var(--sombra-suave); }
+  /* --- Cifras por estado: pulsar una filtra la lista --- */
+  .pe-cifras { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .pe-cifra { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .pe-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .pe-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .pe-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .pe-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .pe-cifra.preparando b { color: #2F6FA8; } .pe-cifra.listo b { color: #3E7A34; }
+  .pe-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .pe-cifra.aviso b, .pe-cifra.aviso span { color: #8A5307; }
+  .pe-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .pe-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .pe-cifra b { font-size: 21px; } }
+  .pe-resumen { margin: 8px 2px 0; font-size: 13.5px; color: var(--texto-suave,#6E6656); }
+  .pe-resumen b { color: var(--navy,#26374B); font-weight: 700; }
 
-  /* El cajón de «Filtrar»: lo que no cabe en la única fila de mandos. */
-  .cajon { border:1px solid var(--linea-marcada,#E4DCCB); border-radius:10px; background:#fff;
-    padding:14px 16px; margin:0 0 14px; max-width:420px; }
-  .cajon[hidden] { display:none; }
+  /* --- Buscador + chips --- */
+  .pe-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .pe-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .pe-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .pe-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .pe-chips::-webkit-scrollbar { display: none; }
+  .pe-chips button { flex: 1 0 auto; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 700;
+    font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .pe-chips button:hover { color: var(--navy,#26374B); }
+  .pe-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .pe-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; }
+  .pe-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .pe-ir { font-size: 14px; font-weight: 700; color: var(--azul-oscuro,#2A5E8C); text-decoration: none; min-height: 40px; display: inline-flex; align-items: center; }
+  .pe-ir:hover { text-decoration: underline; text-underline-offset: 2px; }
+  @media (max-width: 620px) { .pe-chips { width: 100%; border-radius: 14px; } }
 
-  /* Los campos de la ficha van atados al panel: sueltos también caían sobre
-     el buscador y los chips de las piezas, que traen su propia medida. */
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .pe-lista { container: pe-lista / inline-size; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .pe-fila { position: relative; display: grid; grid-template-columns: 40px minmax(0,1.3fr) minmax(0,1.4fr) 86px 150px 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid #CFC6B4; border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .pe-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .pe-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .pe-fila.pendiente { border-left-color: #D9A441; }
+  .pe-fila.preparando { border-left-color: #3B85C0; }
+  .pe-fila.listo { border-left-color: #6FAF7E; }
+  .pe-fila.entregado, .pe-fila.cancelado { background: #FCFBF8; }
+  .pe-fila.cancelado .pe-per b { color: var(--texto-suave,#6E6656); text-decoration: line-through; }
+  .pe-ini { width: 40px; height: 40px; border-radius: 999px; background: #EAF2FA; color: var(--azul-oscuro,#2A5E8C); display: flex; align-items: center;
+    justify-content: center; font-family: var(--fuente-titulo); font-weight: 700; font-size: 14px; }
+  .pe-fila.entregado .pe-ini, .pe-fila.cancelado .pe-ini { background: #F0EBE0; color: #8A816E; }
+  .pe-per { min-width: 0; }
+  .pe-per b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  /* Dos líneas como mucho: las observaciones largas se leen enteras en la hoja. */
+  .pe-per small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; color: var(--texto-tenue,#9A927F); margin-top: 1px; overflow-wrap: anywhere; }
+  .pe-prendas { margin: 0; padding: 0; list-style: none; min-width: 0; }
+  .pe-prendas li { font-size: 13.5px; line-height: 1.35; color: var(--texto,#3A3A3A); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pe-prendas .cant { font-family: var(--fuente-dato); font-weight: 700; color: var(--navy,#26374B); }
+  .pe-prendas .talla { font-size: 12px; font-weight: 700; background: #F0EBE0; color: #6E6656; border-radius: 999px; padding: 1px 7px; margin-left: 5px; }
+  .pe-total { font-family: var(--fuente-dato); font-weight: 700; font-size: 15px; text-align: right; white-space: nowrap; }
+  .pe-pills { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .pe-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; }
+  .pe-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .pe-pill.pendiente { background: #FBF1D9; color: #8A5307; } .pe-pill.pendiente .pt { background: #D9A441; }
+  .pe-pill.preparando { background: #E6F0FB; color: #2F6FA8; } .pe-pill.preparando .pt { background: #3B85C0; }
+  .pe-pill.listo { background: #E7F3EA; color: #23603A; } .pe-pill.listo .pt { background: #3E7A34; }
+  .pe-pill.cancelado { background: #FDECEA; color: #9A2F26; } .pe-pill.cancelado .pt { background: #B23B3B; }
+  .pe-pill.pagado { background: #E7F3EA; color: #23603A; }
+  .pe-pill.sinpagar { background: #fff; color: var(--texto-tenue,#9A927F); border: 1px dashed #D8CFBC; }
+  .pe-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  .pe-cab-cols { display: grid; grid-template-columns: 40px minmax(0,1.3fr) minmax(0,1.4fr) 86px 150px 14px; gap: 0 14px; padding: 12px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  .pe-cab-cols span:nth-child(4) { text-align: right; }
+  @container pe-lista (max-width: 640px) {
+    .pe-fila { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 11px 12px 12px 10px; }
+    .pe-ini { order: 0; flex: 0 0 40px; }
+    .pe-per { order: 1; flex: 1 1 0; }
+    .pe-total { order: 2; align-self: flex-start; padding-top: 2px; }
+    .pe-flecha { order: 3; font-size: 22px; align-self: flex-start; }
+    .pe-fila::after { content: ""; order: 4; flex-basis: 100%; height: 0; }
+    .pe-prendas { order: 5; flex: 1 1 100%; padding-left: 50px; }
+    .pe-pills { order: 6; flex-direction: row; flex-wrap: wrap; padding-left: 50px; }
+  }
+  @media (max-width: 700px) { .pe-cab-cols { display: none; } }
+  .pe-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .pe-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .pe-vacio button { margin-top: 10px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .pe-error { margin-top: 10px; }
+  .pe-nota-pie { margin: 14px 2px 0; font-size: 13px; color: var(--texto-suave,#6E6656); line-height: 1.5; }
+
+  /* --- Hoja inferior: lo que se hace con un encargo --- */
+  .pe-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .pe-velo.ver { opacity: 1; pointer-events: auto; }
+  .pe-hoja { position: fixed; left: 50%; bottom: 0; width: min(560px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .pe-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .pe-hoja, .pe-velo, .pe-fila { transition: none; } }
+  .pe-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .pe-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .pe-hoja-cab .pe-ini { width: 48px; height: 48px; flex: 0 0 48px; font-size: 16px; }
+  .pe-hoja-cab > div { flex: 1; min-width: 0; }
+  .pe-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .pe-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 3px 0 0; }
+  .pe-cerrar { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .pe-et { margin: 16px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  .pe-caja { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 4px 14px; }
+  .pe-caja div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid #EFE9DA; font-size: 14.5px; }
+  .pe-caja div:last-child { border-bottom: 0; }
+  .pe-caja span { color: var(--texto-suave,#6E6656); min-width: 0; overflow-wrap: anywhere; }
+  .pe-caja b { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .pe-caja .prenda span { color: var(--navy,#26374B); }
+  .pe-caja .prenda b { font-family: var(--fuente-dato); white-space: nowrap; }
+  .pe-caja .tot span, .pe-caja .tot b { color: var(--navy,#26374B); font-weight: 800; }
+  .pe-obs { margin-top: 8px; background: #FBF1DE; border: 1px solid #E9CE9A; color: #6B4B10; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45; }
+  .pe-estados { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+  .pe-estados button { min-height: 46px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; font-size: 13.5px;
+    font-weight: 700; color: var(--navy,#26374B); cursor: pointer; padding: 4px 6px; line-height: 1.15; }
+  .pe-estados button:hover { background: var(--crema,#FBF9F4); }
+  .pe-estados button[aria-pressed="true"] { color: #fff; }
+  .pe-estados button[aria-pressed="true"].e-pendiente { background: #A86A10; border-color: #A86A10; }
+  .pe-estados button[aria-pressed="true"].e-preparando { background: #2F6FA8; border-color: #2F6FA8; }
+  .pe-estados button[aria-pressed="true"].e-listo { background: #2F7A45; border-color: #2F7A45; }
+  .pe-estados button[aria-pressed="true"].e-entregado { background: var(--navy,#26374B); border-color: var(--navy,#26374B); }
+  .pe-estados button[aria-pressed="true"].e-cancelado { background: #9A3B3B; border-color: #9A3B3B; }
+  .pe-estados button:disabled { opacity: .6; cursor: wait; }
+  .pe-pago { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .pe-pago button { min-height: 46px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; font-size: 14px;
+    font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .pe-pago button:hover { background: var(--crema,#FBF9F4); }
+  .pe-pago .hecho { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #F3F9F4; border: 1px solid #D4E8D9;
+    border-radius: 12px; padding: 8px 8px 8px 14px; color: #23603A; font-size: 14.5px; font-weight: 600; }
+  .pe-pago .hecho button { min-height: 36px; padding: 0 12px; font-size: 13px; color: #9A3B3B; border-color: #E3CFCB; }
+  .pe-acc { display: grid; gap: 8px; margin-top: 16px; }
+  .pe-acc a, .pe-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px;
+    text-decoration: none; border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; width: 100%; }
+  .pe-acc a:hover, .pe-acc button:hover { background: var(--crema,#FBF9F4); }
+  .pe-acc a.wa { background: #1F8F4E; border-color: #1F8F4E; color: #fff; }
+  .pe-acc a.wa:hover { background: #187A41; }
+  .pe-acc button.peligro { color: #9A3B3B; border-color: #EBC9C5; }
+  .pe-acc button.peligro:hover { background: #FDF3F2; }
+  .pe-acc .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pe-acc svg { width: 17px; height: 17px; }
+
+  /* --- Formulario de editar (el de antes, en ventana emergente) --- */
+  .oculto { display: none !important; }
   .panel label { display:block; font-size:13px; font-weight:600; color: var(--navy); margin: 10px 0 5px; }
-  .panel input, .panel textarea, .panel select, .cajon label, .cajon select {
+  .panel input, .panel textarea, .panel select {
     width:100%; box-sizing:border-box; padding:11px 13px; border:1px solid var(--linea-borde); border-radius:10px;
     font-family: var(--fuente-texto); font-size:15px; background:#fff; color: var(--navy);
   }
-  .cajon label { border:0; padding:0; font-size:15px; font-weight:500; color:var(--navy); margin:0 0 6px; }
-  .cajon select { min-height:44px; }
   .panel input:focus, .panel textarea:focus, .panel select:focus { outline:2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
   .panel textarea { min-height:70px; resize:vertical; }
-
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   @media (max-width: 720px) { .grid2 { grid-template-columns:1fr; } }
-
-  .lineas { margin:0; padding:0; list-style:none; }
-  .lineas li { font-size:13px; color: var(--texto); padding:1px 0; }
-  .lineas .cant { font-family: var(--fuente-dato); color: var(--navy); font-weight:600; }
-  .lineas .talla { font-size: 13px; background: var(--crema-media); color: var(--texto-suave); border-radius:999px; padding:1px 7px; margin-left:5px; }
-
-  .pill { display:inline-block; font-size: 13px; text-transform:none; padding:3px 9px; border-radius:999px; white-space:nowrap; }
-  .pill-pendiente  { background:#FDF3DD; color:#8A5507; }
-  .pill-preparando { background:#EAF2F9; color:#2F6FA8; }
-  .pill-listo      { background:#E9F2E0; color:#3D6220; }
-  .pill-entregado  { background: var(--crema-media); color: var(--texto-suave); }
-  .pill-cancelado  { background:#F8E4E3; color:#B0563A; }
-
   .bmini { display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box;
     min-height:44px; cursor:pointer; font-family: var(--fuente-texto); font-size:14px; padding:10px 16px;
     border-radius:999px; border:1px solid var(--linea-borde); background:#fff; color: var(--texto); white-space:nowrap; }
   .bmini:hover { border-color: var(--azul-filete, #3B85C0); color: var(--azul-oscuro); }
-  .bmini[disabled] { opacity:.45; cursor:default; }
-
   .btn { cursor:pointer; }
   .btn--mini { display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box;
     min-height:44px; padding:10px 18px; font-size:14px; }
-  .oculto { display:none !important; }
-  /* Edición en ventana emergente (modal), no al fondo de la página */
-  #panel-form { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
+  #panel-form { position:fixed; inset:0; z-index:9500; background:rgba(46,66,86,.45);
     display:flex; align-items:flex-start; justify-content:center;
-    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none; margin:0;
+    padding:clamp(16px,5vh,60px) 16px; overflow:auto;
     -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
   #panel-form .modal-caja { background:#fff; border:1px solid var(--linea); border-radius: 14px;
     box-shadow:0 30px 70px -25px rgba(46,66,86,.55); padding:24px; width:min(660px,100%);
@@ -76,112 +220,81 @@
   .msg { margin-top:12px; font-size:14px; }
   .msg.error { color:#B0563A; }
   .msg.ok { color:#3D6220; }
-  .aviso { background: var(--aviso-fondo); border:1px solid var(--aviso-borde); color: var(--aviso-texto); border-radius: var(--radio); padding:12px 15px; font-size:14px; margin-bottom:16px; }
-  .nota-pie { font-size:13px; color: var(--texto-suave); margin-top:12px; }
-
-  /* Las explicaciones se leen una vez: van plegadas y no ocupan pantalla */
-  details.explica { margin: 0 0 16px; }
-  details.explica > summary { display:inline-flex; align-items:center; min-height:44px; cursor:pointer;
-    font-size:14px; font-weight:600; color: var(--azul-oscuro); }
-  details.explica > summary::marker { color: var(--texto-suave); }
-  details.explica .aviso { margin: 6px 0 0; }
-  details.explica .nota-pie { margin: 6px 0 0; }
-
-  /* Rótulo que dice de qué habla cada bloque de números: el de arriba es del
-     club entero, el de las pastillas es de lo que se está viendo. */
-  .rotulo-cifras { font-size:13px; color: var(--texto-suave); margin: 0 0 8px; }
-
-  /* --- Líneas del formulario --- */
   .linea-form { display:grid; grid-template-columns: 2.2fr 1fr .8fr 1fr auto; gap:10px; align-items:end; padding:12px 0; border-bottom:1px dashed var(--linea); }
   .linea-form label { margin-top:0; }
   @media (max-width: 820px) { .linea-form { grid-template-columns: 1fr 1fr; } .linea-form .quitar-celda { grid-column: span 2; } }
   .total-form { display:flex; justify-content:flex-end; gap:10px; align-items:baseline; margin-top:14px; font-family: var(--fuente-dato); font-size: 21px; color: var(--navy); }
   .total-form .et { font-size: 13px; text-transform:none; color: var(--texto-suave); }
-
 </style>
 </head>
-<body>
+<body class="adm-piel">
 
-<div id="admin-contenido">
-  <div class="admin-wrap">
+<div class="admin-wrap">
+  <div class="pe-wrap" id="pe">
+    <div class="pe-cab"><div><h1>Pedidos de ropa</h1><p>Cargando…</p></div></div>
+  </div>
+</div>
 
-    <!-- Cabecera (pieza 1): el total del club va aquí, en la línea de cifras.
-         Antes eran cuatro tarjetas de resumen que repetían lo que ya dicen
-         los filtros de abajo. -->
-    <div id="cabecera"></div>
+<!-- ===== HOJA DEL ENCARGO (se abre al tocar una fila) ===== -->
+<div class="pe-capa">
+  <div class="pe-velo" id="pe-velo"></div>
+  <div class="pe-hoja" id="pe-hoja" role="dialog" aria-modal="true" aria-labelledby="pe-h-nombre">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="pe-hoja-cab">
+      <span class="pe-ini" id="pe-h-ini"></span>
+      <div><h3 id="pe-h-nombre"></h3><p class="sub" id="pe-h-sub"></p></div>
+      <button type="button" class="pe-cerrar" id="pe-h-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <p class="pe-et">Lo que ha pedido</p>
+    <div id="pe-h-prendas"></div>
+    <p class="pe-et">¿En qué punto está?</p>
+    <div class="pe-estados" id="pe-h-estados" role="group" aria-label="Estado del encargo"></div>
+    <p class="pe-et">Pago</p>
+    <div class="pe-pago" id="pe-h-pago"></div>
+    <p class="pe-et">Contacto</p>
+    <div id="pe-h-contacto"></div>
+    <div class="pe-acc" id="pe-h-acc"></div>
+  </div>
+</div>
 
-    <details class="explica" id="det-catalogo">
-      <summary>De dónde salen las prendas</summary>
-      <div class="aviso" id="aviso-catalogo">
-        Control de la ropa: qué se ha pedido, qué está preparado y qué falta por repartir.
-        Los artículos salen del catálogo de la <strong>Tienda</strong> del panel; si falta alguna prenda o alguna
-        talla, se da de alta allí antes de crear el pedido.
+<!-- ===== FORMULARIO (nuevo / editar), el mismo de antes ===== -->
+<div class="panel oculto" id="panel-form">
+  <div class="modal-caja">
+  <h2 id="form-titulo" style="font-family:var(--fuente-titulo);text-transform:uppercase;font-size:21px;color:var(--navy);margin:0 0 4px;">Nuevo pedido</h2>
+  <form id="form-pedido">
+    <input type="hidden" id="p-id">
+    <div class="grid2">
+      <div>
+        <label for="p-para">Para</label>
+        <select id="p-para" required><option value="">— Elige a quién —</option></select>
       </div>
-    </details>
-
-    <!-- ===== FORMULARIO ===== -->
-    <div class="panel oculto" id="panel-form">
-      <div class="modal-caja">
-      <h2 id="form-titulo" style="font-family:var(--fuente-titulo);text-transform:uppercase;font-size:21px;color:var(--navy);margin:0 0 4px;">Nuevo pedido</h2>
-      <form id="form-pedido">
-        <input type="hidden" id="p-id">
-        <div class="grid2">
-          <div>
-            <label for="p-para">Para</label>
-            <select id="p-para" required><option value="">— Elige a quién —</option></select>
-          </div>
-          <div>
-            <label for="p-estado">Estado</label>
-            <select id="p-estado">
-              <option value="pendiente">Pendiente</option>
-              <option value="preparando">Preparando</option>
-              <option value="listo">Listo para recoger</option>
-              <option value="entregado">Entregado</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
-          </div>
-        </div>
-        <label for="p-notas">Notas</label>
-        <textarea id="p-notas" placeholder="Lo recoge la madre el jueves, pagado en efectivo…"></textarea>
-
-        <h3 style="font-family:var(--fuente-titulo);text-transform:uppercase;font-size:21px;color:var(--navy);margin:22px 0 0;">Prendas</h3>
-        <div id="lineas"></div>
-        <div style="margin-top:12px;">
-          <button class="bmini" type="button" id="anadir-linea">+ Añadir prenda</button>
-        </div>
-        <div class="total-form"><span class="et">Total</span><span id="total-form">0,00 €</span></div>
-
-        <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <button class="btn btn--primario btn--mini" type="submit">Guardar pedido</button>
-          <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
-          <span class="msg" id="msg-form"></span>
-        </div>
-      </form>
+      <div>
+        <label for="p-estado">Estado</label>
+        <select id="p-estado">
+          <option value="pendiente">Pendiente</option>
+          <option value="preparando">Preparando</option>
+          <option value="listo">Listo para recoger</option>
+          <option value="entregado">Entregado</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
       </div>
     </div>
+    <label for="p-notas">Notas</label>
+    <textarea id="p-notas" placeholder="Lo recoge la madre el jueves, pagado en efectivo…"></textarea>
 
-    <!-- ===== LISTA ===== -->
-    <div class="panel">
-      <!-- Mandos (pieza 2): una fila y solo una. Cada estado lleva su cifra
-           dentro del chip; lo demás vive en el cajón de «Filtrar». -->
-      <div id="mandos"></div>
-      <div class="cajon" id="cajon" hidden data-chips>
-        <label for="f-para">Atleta o socio</label>
-        <select id="f-para"><option value="">Todos</option></select>
-      </div>
-
-      <div id="aviso-carga"></div>
-
-      <div id="tabla"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
-      <details class="explica">
-        <summary>Qué cuenta el aviso de «ropa pendiente» del Inicio</summary>
-        <p class="nota-pie">
-          El contador «ropa pendiente» del Inicio del panel cuenta las prendas de los pedidos que están
-          pendientes, preparando o listos. En cuanto un pedido se marca como entregado, deja de contar.
-        </p>
-      </details>
+    <h3 style="font-family:var(--fuente-titulo);text-transform:uppercase;font-size:21px;color:var(--navy);margin:22px 0 0;">Prendas</h3>
+    <div id="lineas"></div>
+    <div style="margin-top:12px;">
+      <button class="bmini" type="button" id="anadir-linea">+ Añadir prenda</button>
     </div>
+    <div class="total-form"><span class="et">Total</span><span id="total-form">0,00 €</span></div>
 
+    <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn--primario btn--mini" type="submit">Guardar pedido</button>
+      <button class="btn btn--fantasma btn--mini" type="button" id="cancelar">Cancelar</button>
+      <span class="msg" id="msg-form"></span>
+    </div>
+  </form>
   </div>
 </div>
 
@@ -206,6 +319,8 @@ APOLANA_ADMIN.listo(function (sb) {
     { k: 'entregado',  t: 'Entregado' },
     { k: 'cancelado',  t: 'Cancelado' }
   ];
+  /* En los botones de la hoja, la palabra corta. */
+  var CORTO = { pendiente: 'Pendiente', preparando: 'Preparando', listo: 'Listo', entregado: 'Entregado', cancelado: 'Cancelado' };
   function etiquetaEstado(k) {
     for (var i = 0; i < ESTADOS.length; i++) if (ESTADOS[i].k === k) return ESTADOS[i].t;
     return k || '—';
@@ -213,10 +328,15 @@ APOLANA_ADMIN.listo(function (sb) {
 
   var pedidos = [], itemsPorPedido = {}, productos = [], productosPorId = {};
   var atletas = [], perfiles = [], atletasPorId = {}, perfilesPorId = {};
-  var filtroEstado = 'todos';
+  var filtroEstado = 'todos', montado = false, errorCarga = '';
   /* Qué listas auxiliares no se han podido leer. Sin ellas la pantalla no puede
      afirmar «ficha no encontrada» ni «artículo borrado»: no lo sabe. */
   var sinLeer = { personas: false, productos: false };
+
+  var ICO_TEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+  var ICO_MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>';
+  var ICO_WA = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></svg>';
+  var ICO_XLS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>';
 
   function nombreAtleta(a) { return ((a.nombre || '') + ' ' + (a.apellidos || '')).trim(); }
   function paraDe(p) {
@@ -224,18 +344,20 @@ APOLANA_ADMIN.listo(function (sb) {
     if (p.perfil_id && perfilesPorId[p.perfil_id]) return nombreAtleta(perfilesPorId[p.perfil_id]) + ' (socio)';
     if (p.atleta_id || p.perfil_id) return sinLeer.personas ? 'Nombre sin leer' : 'Ficha no encontrada';
     /* Encargo de la web sin cuenta: el nombre va en el contacto. */
-    if (p.contacto && p.contacto.nombre) return p.contacto.nombre + ' (web)';
+    if (p.contacto && p.contacto.nombre) return p.contacto.nombre;
     return 'Sin asignar';
   }
-  function claveDe(p) {
-    if (p.atleta_id) return 'a:' + p.atleta_id;
-    if (p.perfil_id) return 'p:' + p.perfil_id;
-    return '_sin';
+  function esWeb(p) { return !p.atleta_id && !p.perfil_id && p.contacto && p.contacto.nombre; }
+  function iniciales(n) {
+    var w = String(n || '').trim().split(/\s+/).filter(function (x) { return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(x); });
+    return ((w[0] ? w[0][0] : '') + (w[1] ? w[1][0] : '')).toUpperCase() || '·';
   }
+  // Teléfono → número para wa.me (solo dígitos, con prefijo país; España por defecto). Igual que en «Altas del Cubo».
+  function waNum(tel) { var t = String(tel || '').replace(/[^\d+]/g, ''); if (t.charAt(0) === '+') t = t.slice(1); else if (t.slice(0, 2) === '00') t = t.slice(2); else if (t.length === 9) t = '34' + t; return t; }
 
   // --- Carga ---
   async function cargar() {
-    $('aviso-carga').innerHTML = '';
+    errorCarga = '';
     sinLeer = { personas: false, productos: false };
     var noLeido = [];
 
@@ -256,9 +378,6 @@ APOLANA_ADMIN.listo(function (sb) {
       '<optgroup label="Socios y familias">' + perfiles.map(function (a) {
         return '<option value="p:' + a.id + '">' + esc(nombreAtleta(a)) + ' · ' + esc(a.rol) + '</option>';
       }).join('') + '</optgroup>';
-    var actualF = $('f-para').value;
-    $('f-para').innerHTML = '<option value="">Todos</option><option value="_sin">Sin asignar</option>' + opciones;
-    $('f-para').value = actualF;
     var actualP = $('p-para').value;
     $('p-para').innerHTML = '<option value="">— Elige a quién —</option>' + opciones;
     $('p-para').value = actualP;
@@ -267,75 +386,26 @@ APOLANA_ADMIN.listo(function (sb) {
     if (rpr.error) { sinLeer.productos = true; noLeido.push('el catálogo de la tienda'); }
     productos = rpr.error ? [] : (rpr.data || []);
     productosPorId = {}; productos.forEach(function (p) { productosPorId[p.id] = p; });
-    /* «No hay artículos» solo se dice si el catálogo se ha podido leer. */
-    var activos = productos.filter(function (p) { return p.activo !== false; });
-    if (!rpr.error && !activos.length) {
-      $('aviso-catalogo').innerHTML = 'Todavía no hay ningún artículo en el catálogo. Antes de crear un pedido hay que dar de alta las prendas en la sección <strong>Tienda</strong> del panel.';
-      $('det-catalogo').open = true;   // esto sí hay que verlo sin abrir nada
-    }
 
-    var tb = $('tabla');
     var rp = await sb.from('pedidos').select('id,perfil_id,atleta_id,estado,total,notas,fecha_entrega,created_at,contacto,pagado_en,pago_metodo')
       .order('created_at', { ascending: false });
     /* Sin los pedidos no hay pantalla: error con botón de reintentar, nunca
-       una tabla vacía que se lea como «no hay pedidos». */
-    if (rp.error) {
-      tb.innerHTML = ADM.error(rp.error.message, cargar);
-      pintarCabecera(null);
-      return;
-    }
+       una lista vacía que se lea como «no hay pedidos». */
+    if (rp.error) { errorCarga = rp.error.message; pedidos = []; pintar(); return; }
     pedidos = rp.data || [];
 
     /* Las prendas son las que dan el total en euros y el contador de «sin
        entregar»: si no se leen, la pantalla no puede pintar ceros. */
     var ri = await sb.from('pedido_items').select('id,pedido_id,producto_id,talla,cantidad,precio_unitario');
-    if (ri.error) {
-      tb.innerHTML = ADM.error(ri.error.message, cargar);
-      pintarCabecera(null);
-      return;
-    }
+    if (ri.error) { errorCarga = ri.error.message; pintar(); return; }
     itemsPorPedido = {};
     (ri.data || []).forEach(function (it) {
       if (!itemsPorPedido[it.pedido_id]) itemsPorPedido[it.pedido_id] = [];
       itemsPorPedido[it.pedido_id].push(it);
     });
 
-    if (noLeido.length) {
-      $('aviso-carga').innerHTML = ADM.error(
-        'Los pedidos se ven, pero no se ha podido leer ' + noLeido.join(' ni ') +
-        ', así que puede que falten nombres o nombres de prendas.', cargar);
-    }
-    pintar();
-  }
-
-  /* La línea de cifras de la cabecera. Con null dice lo que ha pasado en vez
-     de cantar ceros: no es lo mismo «no hay pedidos» que «no se han leído». */
-  function pintarCabecera(ctx) {
-    $('cabecera').innerHTML = PZ.cabecera({
-      titulo: 'Pedidos de ropa',
-      contexto: ctx == null ? 'No se han podido cargar los pedidos.' : ctx,
-      accion: { texto: 'Nuevo pedido', accion: 'nuevo' },
-      secundaria: ctx == null ? null : { texto: 'Descargar Excel', accion: 'excel' }
-    });
-  }
-
-  function baseFiltrada() {
-    var pa = $('f-para').value;
-    /* El buscador lo pinta la pieza, así que la primera vez todavía no está. */
-    var caja = $('f-buscar');
-    var q = ((caja && caja.value) || '').trim().toLowerCase();
-    return pedidos.filter(function (p) {
-      if (pa && claveDe(p) !== pa) return false;
-      if (q) {
-        var prendas = (itemsPorPedido[p.id] || []).map(function (it) {
-          var pr = productosPorId[it.producto_id];
-          return (pr ? pr.nombre : '') + ' ' + (it.talla || '');
-        }).join(' ');
-        var txt = (paraDe(p) + ' ' + (p.notas || '') + ' ' + prendas).toLowerCase();
-        if (txt.indexOf(q) === -1) return false;
-      }
-      return true;
-    });
+    pintar(noLeido);
+    if (abiertoId) pintarHoja();
   }
 
   function prendasDe(p) {
@@ -346,158 +416,264 @@ APOLANA_ADMIN.listo(function (sb) {
     if (its.length) return its.reduce(function (s, it) { return s + Number(it.cantidad || 0) * Number(it.precio_unitario || 0); }, 0);
     return Number(p.total || 0);
   }
+  function nombrePrenda(it) {
+    var pr = productosPorId[it.producto_id];
+    return pr ? pr.nombre : (sinLeer.productos ? 'Prenda sin leer' : 'Artículo borrado');
+  }
+  function cuenta(e) { return pedidos.filter(function (p) { return p.estado === e; }).length; }
 
-  /* ---------------------------------------------------------
-     La lista · piezas 2, 3 y 4
-     --------------------------------------------------------- */
-  var COLUMNAS = [
-    { texto: 'Para' },
-    { texto: 'Prendas', ancho: '260px' },
-    { texto: 'Total',   ancho: '110px', num: true },
-    { texto: 'Estado',  ancho: '150px' },
-    { texto: '',        ancho: '56px' }
-  ];
+  function visibles() {
+    var caja = $('pe-buscar');
+    var q = ((caja && caja.value) || '').trim().toLowerCase();
+    return pedidos.filter(function (p) {
+      if (filtroEstado === 'vivos' && ['pendiente', 'preparando', 'listo'].indexOf(p.estado) === -1) return false;
+      if (filtroEstado !== 'todos' && filtroEstado !== 'vivos' && p.estado !== filtroEstado) return false;
+      if (q) {
+        var c = p.contacto || {};
+        var prendas = (itemsPorPedido[p.id] || []).map(function (it) { return nombrePrenda(it) + ' ' + (it.talla || ''); }).join(' ');
+        var txt = (paraDe(p) + ' ' + (c.atleta || '') + ' ' + (c.telefono || '') + ' ' + (c.nota || '') + ' ' + (p.notas || '') + ' ' + prendas).toLowerCase();
+        if (txt.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
 
-  /* Cada estado con su tono. Son los cinco del club, no tres: el verde es
-     «hecho», el ámbar es «hay algo que hacer». */
-  var TONO = { pendiente: 'aviso', preparando: 'info', listo: 'ok', entregado: '', cancelado: 'mal' };
+  /* ---------- pantalla ----------
+     La estructura se pinta una vez y luego solo se repintan cifras, chips y
+     lista: así el buscador no pierde el foco mientras se escribe. */
+  function montar() {
+    montado = true;
+    $('pe').innerHTML =
+      '<div class="pe-cab"><div><h1>Pedidos de ropa</h1><p>Los encargos de ropa de la tienda. Cuando hagas el pedido al proveedor, descarga el Excel y pasa los encargos a «Preparando»; cuando llegue, a «Listo»; y al recogerlo, a «Entregado». Toca un encargo para cambiarlo o escribir a la familia.</p></div>' +
+        '<div class="pe-cab-acc"><button type="button" class="pe-b" id="pe-excel">' + ICO_XLS + 'Descargar Excel</button>' +
+        '<button type="button" class="pe-b prin" id="pe-nuevo">+ Nuevo pedido</button></div></div>' +
+      '<div class="pe-cifras" id="pe-cifras"></div>' +
+      '<p class="pe-resumen" id="pe-resumen"></p>' +
+      '<div id="pe-aviso"></div>' +
+      '<div class="pe-filtros">' +
+        '<input type="search" class="pe-buscar" id="pe-buscar" placeholder="Buscar por nombre, prenda o nota…" aria-label="Buscar encargo" autocomplete="off">' +
+        '<div class="pe-chips" id="pe-chips" role="group" aria-label="Estado"></div>' +
+      '</div>' +
+      '<div class="pe-pie-filtros"><span class="pe-cuenta" id="pe-cuenta" aria-live="polite"></span>' +
+        '<a class="pe-ir" href="../../tienda/" target="_blank" rel="noopener">Ver la tienda →</a></div>' +
+      '<div id="pe-lista"></div>' +
+      '<p class="pe-nota-pie">El contador «ropa pendiente» del Inicio cuenta las prendas de los encargos pendientes, preparando o listos; al marcar uno como entregado deja de contar. Las prendas salen del catálogo de la Tienda del panel: si falta alguna o alguna talla, se da de alta allí.</p>';
 
-  function pintar() {
-    var base = baseFiltrada();
+    $('pe-buscar').addEventListener('input', pintarLista);
+    $('pe-nuevo').addEventListener('click', function () { abrirForm(); });
+    $('pe-excel').addEventListener('click', function () { descargarExcel($('pe-excel')); });
+    $('pe').addEventListener('click', function (ev) {
+      var f = ev.target.closest('[data-f]');
+      if (f && (f.closest('#pe-chips') || f.classList.contains('pe-cifra'))) {
+        var v = f.getAttribute('data-f');
+        /* Pulsar la cifra que ya filtra la quita. */
+        filtroEstado = (f.classList.contains('pe-cifra') && filtroEstado === v) ? 'todos' : v;
+        pintarLista(); return;
+      }
+      if (ev.target.closest('[data-limpiar]')) { filtroEstado = 'todos'; $('pe-buscar').value = ''; pintarLista(); return; }
+      if (ev.target.closest('[data-primero]')) { abrirForm(); return; }
+      if (ev.target.closest('a')) return;
+      var fila = ev.target.closest('.pe-fila[data-id]');
+      if (fila) abrirHoja(fila.getAttribute('data-id'), fila);
+    });
+    $('pe').addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      var fila = ev.target.closest && ev.target.closest('.pe-fila[data-id]');
+      if (!fila || ev.target !== fila) return;
+      ev.preventDefault(); abrirHoja(fila.getAttribute('data-id'), fila);
+    });
+  }
 
-    /* La línea de cifras es la del club entero. Los chips cuentan lo que se
-       está viendo. Antes esto eran cuatro tarjetas arriba y unas pastillas
-       debajo diciendo números distintos a la vez. */
+  function pintar(noLeido) {
+    if (!montado) montar();
+    $('pe-excel').disabled = !!errorCarga;
+    if (errorCarga) {
+      $('pe-cifras').innerHTML = ''; $('pe-resumen').textContent = ''; $('pe-chips').innerHTML = '';
+      $('pe-lista').innerHTML = '<div class="pe-error">' + ADM.error(errorCarga, cargar) + '</div>';
+      return;
+    }
+    $('pe-aviso').innerHTML = (noLeido && noLeido.length)
+      ? '<div class="pe-error">' + ADM.error('Los pedidos se ven, pero no se ha podido leer ' + noLeido.join(' ni ') +
+          ', así que puede que falten nombres o nombres de prendas.', cargar) + '</div>'
+      : '';
+
+    var pend = cuenta('pendiente');
+    $('pe-cifras').innerHTML =
+      '<button type="button" class="pe-cifra' + (pend ? ' aviso' : '') + '" data-f="pendiente"><b>' + pend + '</b><span>pendientes de pedir</span></button>' +
+      '<button type="button" class="pe-cifra preparando" data-f="preparando"><b>' + cuenta('preparando') + '</b><span>pedidos al proveedor</span></button>' +
+      '<button type="button" class="pe-cifra listo" data-f="listo"><b>' + cuenta('listo') + '</b><span>listos para recoger</span></button>' +
+      '<button type="button" class="pe-cifra" data-f="entregado"><b>' + cuenta('entregado') + '</b><span>entregados</span></button>';
+
     var vivos = pedidos.filter(function (p) { return ['pendiente', 'preparando', 'listo'].indexOf(p.estado) !== -1; });
     var prendas = vivos.reduce(function (s, p) { return s + prendasDe(p); }, 0);
-    pintarCabecera(pedidos.length + (pedidos.length === 1 ? ' pedido' : ' pedidos') +
-      ' · ' + prendas + (prendas === 1 ? ' prenda sin entregar' : ' prendas sin entregar'));
+    var sinPagar = vivos.filter(function (p) { return !p.pagado_en; });
+    var debe = sinPagar.reduce(function (s, p) { return s + totalDe(p); }, 0);
+    $('pe-resumen').innerHTML = pedidos.length
+      ? '<b>' + prendas + '</b> ' + (prendas === 1 ? 'prenda' : 'prendas') + ' sin entregar · <b>' + esc(eur(debe)) + '</b> sin pagar' +
+        (sinPagar.length ? ' (' + sinPagar.length + (sinPagar.length === 1 ? ' encargo' : ' encargos') + ')' : '')
+      : '';
 
-    pintarMandos(base);
-
-    var filas = filtroEstado === 'todos' ? base : base.filter(function (p) { return p.estado === filtroEstado; });
-    var cont = $('tabla');
-
-    /* Dos vacíos distintos: «no hay ni un pedido» no es lo mismo que «con
-       estos filtros no sale ninguno». */
-    if (!pedidos.length) {
-      cont.innerHTML = ADM.vacio('Todavía no hay ningún pedido de ropa',
-        'Crea el primero con el botón de arriba y elige las prendas del catálogo de la Tienda.',
-        '<button type="button" class="pz-btn" data-primero>Nuevo pedido</button>',
-        '<path d="M6 8h12l-1 11.5H7z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>');
-      return;
-    }
-    if (!filas.length) {
-      cont.innerHTML = ADM.vacio('Ningún pedido encaja con estos filtros',
-        'Prueba a quitar el estado, el nombre o lo que has escrito en el buscador.',
-        '<button type="button" class="pz-btn pz-btn--borde" data-limpiar>Quitar los filtros</button>',
-        '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>');
-      return;
-    }
-
-    cont.innerHTML = PZ.tabla({ columnas: COLUMNAS, etiqueta: 'Pedidos de ropa', filas: filas.map(fila) });
-  }
-
-  /* Los mandos se repintan enteros salvo el buscador, que se deja como está
-     para no quitarle el foco a quien está escribiendo. */
-  function pintarMandos(base) {
-    var caja = $('mandos');
-    var antes = $('f-buscar');
-    var texto = antes ? antes.value : '';
-    var foco = antes && document.activeElement === antes;
-    var punto = foco ? antes.selectionStart : null;
-
-    /* Un chip que dice «0» no lleva a ninguna parte y ocupa un sitio en la
-       única fila de mandos. Solo se queda el que está puesto, para poder
-       quitarlo. */
-    var chips = [{ k: 'todos', t: 'Todos', n: base.length }].concat(ESTADOS.map(function (e) {
-      return { k: e.k, t: e.t, n: base.filter(function (p) { return p.estado === e.k; }).length };
+    /* Un chip con 0 no lleva a ninguna parte: solo se quedan los que tienen
+       algo, «Todos» y el que esté puesto. */
+    var chips = [{ k: 'todos', t: 'Todos', n: pedidos.length }].concat(ESTADOS.map(function (e) {
+      return { k: e.k, t: CORTO[e.k], n: cuenta(e.k) };
     })).filter(function (c) { return c.n > 0 || c.k === filtroEstado || c.k === 'todos'; });
-
-    caja.innerHTML = PZ.filtros({
-      buscador: { id: 'f-buscar', placeholder: 'Prenda, nombre o notas', valor: texto },
-      chips: chips.map(function (c) {
-        return { texto: c.t, cuenta: c.n, valor: c.k, activo: filtroEstado === c.k,
-                 tono: (c.k === 'pendiente' && c.n) ? 'aviso' : null };
-      }),
-      filtrar: { cuenta: $('f-para').value ? 1 : 0 }
-    });
-
-    if (foco) {
-      var ahora = $('f-buscar');
-      ahora.focus();
-      try { ahora.setSelectionRange(punto, punto); } catch (err) {}
-    }
+    $('pe-chips').innerHTML = chips.map(function (c) {
+      return '<button type="button" data-f="' + c.k + '">' + esc(c.t) + ' · ' + c.n + '</button>';
+    }).join('');
+    pintarLista();
   }
 
-  function fila(p) {
+  function filaHtml(p) {
     var its = itemsPorPedido[p.id] || [];
-    var lineas = its.length
-      ? '<ul class="lineas">' + its.map(function (it) {
-          var pr = productosPorId[it.producto_id];
-          return '<li><span class="cant">' + esc(it.cantidad) + ' ×</span> ' +
-                 esc(pr ? pr.nombre : (sinLeer.productos ? 'Prenda sin leer' : 'Artículo borrado')) +
-                 (it.talla ? '<span class="talla">' + esc(it.talla) + '</span>' : '') + '</li>';
-        }).join('') + '</ul>'
-      : '<span style="color:var(--texto-suave)">Sin prendas</span>';
-
-    /* La línea de contexto: cuándo se pidió, cuándo se entregó y la nota. */
-    var ctx = ['Pedido el ' + fechaCorta(p.created_at)];
-    if (p.estado === 'entregado' && p.fecha_entrega) ctx.push('entregado el ' + fechaCorta(p.fecha_entrega));
-    /* La ropa es por encargo (413): se paga en la oficina, con tarjeta o en efectivo. */
-    if (p.pagado_en) ctx.push('pagado ' + (PAGO_METODO[p.pago_metodo] || '') + ' el ' + fechaCorta(p.pagado_en));
-    else if (p.estado !== 'cancelado') ctx.push('sin pagar');
     var c = p.contacto || {};
-    if (c.atleta) ctx.push('para ' + c.atleta);
-    if (c.nota) ctx.push('«' + c.nota + '»');
-    if (!p.atleta_id && !p.perfil_id && (c.telefono || c.email)) ctx.push([c.telefono, c.email].filter(Boolean).join(' · '));
-    if (p.notas) ctx.push(p.notas);
-
-    /* Los cuatro mandos de la fila pasan al «⋯». En la fila solo queda el
-       estado, que es el dato que se mira. Cambiar de estado sigue estando
-       a un toque: cada estado es una opción del menú. */
-    var menu = ESTADOS.filter(function (e) { return e.k !== p.estado; }).map(function (e) {
-      /* «Listo para recoger» dentro del menú es «Listo»: el resto de la frase
-         ya lo pone «Marcar como». */
-      return { texto: 'Marcar como ' + (e.k === 'listo' ? 'listo' : e.t.toLowerCase()), accion: 'estado:' + e.k };
-    });
-    if (!p.pagado_en) {
-      menu.push({ texto: 'Pagado en la oficina · con tarjeta', accion: 'pago:tarjeta' });
-      menu.push({ texto: 'Pagado en la oficina · en efectivo', accion: 'pago:efectivo' });
-    } else if (p.pago_metodo !== 'online') {
-      menu.push({ texto: 'Quitar «pagado»', accion: 'pago:quitar' });
-    }
-    menu.push({ texto: 'Editar el pedido', accion: 'editar' });
-    menu.push({ texto: 'Borrar el pedido', accion: 'borrar', ojo: true });
-
-    return {
-      id: p.id,
-      principal: paraDe(p),
-      contexto: ctx.join(' · '),
-      celdas: [ { html: lineas }, { texto: eur(totalDe(p)), num: true } ],
-      estado: { texto: etiquetaEstado(p.estado), tono: TONO[p.estado] || '' },
-      menu: menu
-    };
+    var nom = paraDe(p);
+    var sub = [];
+    if (c.atleta && c.atleta !== nom) sub.push('para ' + c.atleta);
+    sub.push(esWeb(p) ? 'por la web el ' + fechaCorta(p.created_at) : 'pedido el ' + fechaCorta(p.created_at));
+    if (c.nota) sub.push('«' + c.nota + '»');
+    var prendas = its.length
+      ? '<ul class="pe-prendas">' + its.map(function (it) {
+          /* La talla va delante: detrás se cortaba con los nombres largos. */
+          return '<li><span class="cant">' + esc(it.cantidad) + '×</span>' +
+            (it.talla ? '<span class="talla">' + esc(it.talla) + '</span>' : '') + ' ' + esc(nombrePrenda(it)) + '</li>';
+        }).join('') + '</ul>'
+      : '<ul class="pe-prendas"><li>Sin prendas</li></ul>';
+    var pago = p.estado === 'cancelado' ? ''
+      : (p.pagado_en ? '<span class="pe-pill pagado">✓ Pagado</span>' : '<span class="pe-pill sinpagar">Sin pagar</span>');
+    return '<div class="pe-fila ' + esc(p.estado) + '" tabindex="0" data-id="' + esc(p.id) + '" aria-label="Encargo de ' + esc(nom) + ': ver qué hacer">' +
+      '<span class="pe-ini">' + esc(iniciales(nom)) + '</span>' +
+      '<span class="pe-per"><b>' + esc(nom) + '</b><small>' + esc(sub.join(' · ')) + '</small></span>' +
+      prendas +
+      '<span class="pe-total">' + esc(eur(totalDe(p))) + '</span>' +
+      '<span class="pe-pills"><span class="pe-pill ' + esc(p.estado) + '"><span class="pt"></span>' + esc(CORTO[p.estado] || p.estado) + '</span>' + pago + '</span>' +
+      '<span class="pe-flecha" aria-hidden="true">›</span>' +
+    '</div>';
   }
 
-  // --- Filtros ---
-  PZ.alPulsar('#mandos', function (accion, id, boton) {
-    if (accion === 'filtrar') {
-      var abierto = $('cajon').hidden;
-      $('cajon').hidden = !abierto;
-      boton.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+  function pintarLista() {
+    Array.prototype.forEach.call(document.querySelectorAll('#pe-chips button'), function (b) {
+      var on = b.getAttribute('data-f') === filtroEstado;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.pe-cifra[data-f]'), function (c) {
+      c.classList.toggle('on', c.getAttribute('data-f') === filtroEstado);
+    });
+    var lista = visibles();
+    $('pe-cuenta').textContent = lista.length === pedidos.length
+      ? pedidos.length + (pedidos.length === 1 ? ' encargo' : ' encargos')
+      : lista.length + ' de ' + pedidos.length + ' encargos';
+    if (!pedidos.length) {
+      $('pe-lista').innerHTML = '<div class="pe-vacio"><b>Todavía no hay ningún encargo de ropa</b>Los encargos que hagan las familias en la tienda aparecerán aquí. También puedes crear uno a mano.<br><button type="button" data-primero>+ Nuevo pedido</button></div>';
       return;
     }
-    if (accion === 'filtro') { filtroEstado = boton.getAttribute('data-pz-filtro'); pintar(); }
-  });
-  $('mandos').addEventListener('input', function (e) {
-    if (e.target.id === 'f-buscar') pintar();
-  });
-  $('f-para').addEventListener('change', pintar);
+    if (!lista.length) {
+      $('pe-lista').innerHTML = '<div class="pe-vacio"><b>Ningún encargo con este filtro</b>Prueba con otro estado o quita lo que has escrito.<br><button type="button" data-limpiar>Ver todos</button></div>';
+      return;
+    }
+    $('pe-lista').innerHTML =
+      '<div class="pe-cab-cols" aria-hidden="true"><span></span><span>Para</span><span>Prendas</span><span>Total</span><span>Estado</span><span></span></div>' +
+      '<div class="pe-lista">' + lista.map(filaHtml).join('') + '</div>';
+  }
 
-  PZ.alPulsar('#cabecera', function (accion, id, boton) {
-    if (accion === 'nuevo') abrirForm();
-    if (accion === 'excel') descargarExcel(boton);
+  /* ---------- hoja del encargo ---------- */
+  var focoPrevio = null, abiertoId = null;
+  var PAGO_METODO = { tarjeta: 'con tarjeta', efectivo: 'en efectivo', online: 'online' };
+
+  function pintarHoja() {
+    var p = pedidos.filter(function (x) { return x.id === abiertoId; })[0];
+    if (!p) { cerrarHoja(); return; }
+    var c = p.contacto || {};
+    var nom = paraDe(p);
+    $('pe-h-ini').textContent = iniciales(nom);
+    $('pe-h-nombre').textContent = nom;
+    $('pe-h-sub').textContent = [c.atleta && c.atleta !== nom ? 'para ' + c.atleta : '',
+      (esWeb(p) ? 'por la web el ' : 'pedido el ') + fechaCorta(p.created_at),
+      p.estado === 'entregado' && p.fecha_entrega ? 'entregado el ' + fechaCorta(p.fecha_entrega) : ''].filter(Boolean).join(' · ');
+
+    var its = itemsPorPedido[p.id] || [];
+    $('pe-h-prendas').innerHTML = '<div class="pe-caja">' +
+      (its.length ? its.map(function (it) {
+        return '<div class="prenda"><span>' + esc(it.cantidad) + ' × ' + esc(nombrePrenda(it)) + (it.talla ? ' · talla ' + esc(it.talla) : '') + '</span>' +
+          '<b>' + esc(eur(Number(it.cantidad || 0) * Number(it.precio_unitario || 0))) + '</b></div>';
+      }).join('') : '<div><span>Sin prendas</span><b></b></div>') +
+      '<div class="tot"><span>Total</span><b>' + esc(eur(totalDe(p))) + '</b></div></div>' +
+      (c.nota ? '<div class="pe-obs"><b>Observaciones:</b> ' + esc(c.nota) + '</div>' : '') +
+      (p.notas ? '<div class="pe-obs" style="background:#F3F7FB;border-color:#D5E3F0;color:#24476B"><b>Nota interna:</b> ' + esc(p.notas) + '</div>' : '');
+
+    $('pe-h-estados').innerHTML = ESTADOS.map(function (e) {
+      return '<button type="button" class="e-' + e.k + '" data-estado="' + e.k + '" aria-pressed="' + (p.estado === e.k ? 'true' : 'false') + '">' + esc(CORTO[e.k]) + '</button>';
+    }).join('');
+
+    /* La ropa es por encargo: se paga en la oficina, con tarjeta o en efectivo. */
+    $('pe-h-pago').innerHTML = p.pagado_en
+      ? '<div class="hecho"><span>✓ Pagado ' + esc(PAGO_METODO[p.pago_metodo] || '') + ' el ' + esc(fechaCorta(p.pagado_en)) + '</span>' +
+          (p.pago_metodo !== 'online' ? '<button type="button" data-pago="quitar">Quitar</button>' : '') + '</div>'
+      : '<button type="button" data-pago="tarjeta">Pagado con tarjeta</button><button type="button" data-pago="efectivo">Pagado en efectivo</button>';
+
+    function par(k, v) { return '<div><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
+    var hayContacto = c.nombre || c.telefono || c.email;
+    $('pe-h-contacto').innerHTML = hayContacto
+      ? '<div class="pe-caja">' + (c.nombre ? par('Quién lo pide', c.nombre) : '') + (c.telefono ? par('Teléfono', c.telefono) : '') + (c.email ? par('Correo', c.email) : '') + '</div>'
+      : '<div class="pe-caja"><div><span>' + (p.atleta_id || p.perfil_id ? 'Su teléfono y su correo están en su ficha.' : 'Sin datos de contacto.') + '</span><b></b></div></div>';
+
+    var tel = c.telefono ? String(c.telefono).replace(/\s+/g, '') : '';
+    $('pe-h-acc').innerHTML =
+      (tel ? '<a class="wa" href="https://wa.me/' + esc(waNum(tel)) + '" target="_blank" rel="noopener">' + ICO_WA + 'Escribir por WhatsApp</a>' : '') +
+      ((tel || c.email) ? '<div' + (tel && c.email ? ' class="dos"' : '') + '>' +
+        (tel ? '<a href="tel:' + esc(tel) + '">' + ICO_TEL + 'Llamar</a>' : '') +
+        (c.email ? '<a href="mailto:' + esc(c.email) + '">' + ICO_MAIL + 'Correo</a>' : '') + '</div>' : '') +
+      '<button type="button" data-hoja="editar">Editar el pedido</button>' +
+      '<button type="button" class="peligro" data-hoja="borrar">Borrar el pedido</button>';
+  }
+  function abrirHoja(id, desde) {
+    abiertoId = id;
+    focoPrevio = desde || document.activeElement;
+    pintarHoja();
+    $('pe-velo').classList.add('ver'); $('pe-hoja').classList.add('ver');
+    setTimeout(function () { $('pe-h-cerrar').focus(); }, 60);
+  }
+  function cerrarHoja() {
+    if (!$('pe-hoja').classList.contains('ver')) { abiertoId = null; return; }
+    $('pe-velo').classList.remove('ver'); $('pe-hoja').classList.remove('ver');
+    abiertoId = null;
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  $('pe-velo').addEventListener('click', cerrarHoja);
+  $('pe-h-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;   // el Escape que cierra un «¿seguro?» no cierra también lo de debajo
+    if (!$('panel-form').classList.contains('oculto')) { $('panel-form').classList.add('oculto'); return; }
+    cerrarHoja();
+  });
+
+  // Cambiar el estado: lo mismo que guardaba el menú «⋯» de antes.
+  $('pe-h-estados').addEventListener('click', async function (ev) {
+    var b = ev.target.closest('button[data-estado]');
+    if (!b || !abiertoId) return;
+    var p = pedidos.filter(function (x) { return x.id === abiertoId; })[0];
+    var nuevo = b.getAttribute('data-estado');
+    if (!p || p.estado === nuevo) return;
+    var botones = $('pe-h-estados').querySelectorAll('button');
+    Array.prototype.forEach.call(botones, function (x) { x.disabled = true; });
+    await cambiarEstado(p.id, nuevo);
+    Array.prototype.forEach.call(botones, function (x) { x.disabled = false; });
+  });
+  $('pe-h-pago').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-pago]');
+    if (b && abiertoId) marcarPago(abiertoId, b.getAttribute('data-pago'));
+  });
+  $('pe-h-acc').addEventListener('click', async function (ev) {
+    var b = ev.target.closest('button[data-hoja]');
+    if (!b || !abiertoId) return;
+    var ped = pedidos.filter(function (p) { return p.id === abiertoId; })[0];
+    if (!ped) return;
+    if (b.getAttribute('data-hoja') === 'editar') { abrirForm(ped); return; }
+    if (!await apoConfirm({ texto: '¿Borrar el pedido de ' + paraDe(ped) + '? Se borran también sus prendas y no se puede deshacer.', peligro: true })) return;
+    var d = await sb.from('pedidos').delete().eq('id', ped.id);
+    if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
+    cerrarHoja();
+    cargar();
   });
 
   /* «Descargar Excel» (Andrés, 22-oct: «exportar el excel para hacer el
@@ -528,7 +704,7 @@ APOLANA_ADMIN.listo(function (sb) {
       var suma = {}, lineas = [];
       pend.slice().sort(function (a, b) { return String(a.created_at).localeCompare(String(b.created_at)); }).forEach(function (p) {
         var c = p.contacto || {};
-        var para = c.atleta || paraDe(p).replace(/ \(web\)$/, '');
+        var para = c.atleta || paraDe(p);
         (itemsPorPedido[p.id] || []).forEach(function (it) {
           var pr = productosPorId[it.producto_id];
           var nom = pr ? pr.nombre : 'Prenda';
@@ -565,7 +741,6 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   // --- Pagado en la oficina (tarjeta o efectivo) ---
-  var PAGO_METODO = { tarjeta: 'con tarjeta', efectivo: 'en efectivo', online: 'online' };
   async function marcarPago(id, metodo) {
     var datos = metodo === 'quitar'
       ? { pagado_en: null, pago_metodo: null }
@@ -573,47 +748,18 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('pedidos').update(datos).eq('id', id);
     if (r.error) { apoToast('No se pudo apuntar el pago: ' + r.error.message, 'error'); return; }
     apoToast(metodo === 'quitar' ? 'Pago quitado.' : 'Apuntado: pagado ' + PAGO_METODO[metodo] + '.', 'ok');
-    cargar();
+    await cargar();
   }
 
-  // --- Cambiar estado desde la lista ---
+  // --- Cambiar estado ---
   async function cambiarEstado(id, nuevo) {
     var datos = { estado: nuevo };
     datos.fecha_entrega = (nuevo === 'entregado') ? hoyIso : null;
     var r = await sb.from('pedidos').update(datos).eq('id', id);
     if (r.error) { apoToast('No se pudo cambiar el estado: ' + r.error.message, 'error'); return; }
-    cargar();
+    apoToast('Estado: ' + etiquetaEstado(nuevo), 'ok');
+    await cargar();
   }
-
-  PZ.alPulsar('#tabla', async function (accion, id) {
-    if (accion.indexOf('estado:') === 0) { cambiarEstado(id, accion.slice(7)); return; }
-    if (accion.indexOf('pago:') === 0) { marcarPago(id, accion.slice(5)); return; }
-    if (accion === 'editar') {
-      var reg = pedidos.filter(function (p) { return p.id === id; })[0];
-      if (reg) abrirForm(reg);
-      return;
-    }
-    if (accion === 'borrar') {
-      var ped = pedidos.filter(function (p) { return p.id === id; })[0];
-      if (!await apoConfirm({ texto: '¿Borrar el pedido de ' + (ped ? paraDe(ped) : '') + '? Se borran también sus prendas y no se puede deshacer.', peligro: true })) return;
-      var d = await sb.from('pedidos').delete().eq('id', id);
-      if (d.error) { apoToast('No se pudo borrar: ' + d.error.message, 'error'); return; }
-      cargar();
-    }
-  });
-
-  /* Los botones de los estados vacíos (que no llevan `data-pz-accion`). */
-  $('tabla').addEventListener('click', function (e) {
-    var b = e.target.closest ? e.target.closest('button') : null;
-    if (!b) return;
-    if (b.hasAttribute('data-primero')) { abrirForm(); return; }
-    if (b.hasAttribute('data-limpiar')) {
-      $('f-para').value = ''; filtroEstado = 'todos';
-      var bu = $('f-buscar'); if (bu) bu.value = '';
-      if (window.APOLANA_FILTROS) APOLANA_FILTROS.repasar();
-      pintar();
-    }
-  });
 
   // --- Líneas del formulario ---
   function opcionesProducto(sel) {
@@ -691,13 +837,17 @@ APOLANA_ADMIN.listo(function (sb) {
   }
   $('cancelar').addEventListener('click', function () { $('panel-form').classList.add('oculto'); });
   $('panel-form').addEventListener('click', function (e) { if (e.target === this) $('panel-form').classList.add('oculto'); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('panel-form').classList.contains('oculto')) $('panel-form').classList.add('oculto'); });
   $('anadir-linea').addEventListener('click', function () { anadirLinea(); });
 
   $('form-pedido').addEventListener('submit', async function (e) {
     e.preventDefault();
     var para = $('p-para').value;
-    if (!para) { $('msg-form').textContent = 'Falta elegir para quién es el pedido.'; $('msg-form').className = 'msg error'; return; }
+    var id = $('p-id').value;
+    var previo = id ? pedidos.filter(function (p) { return p.id === id; })[0] : null;
+    /* Un encargo de la web no tiene ficha: va sin «para» y el nombre está en
+       su contacto. Al editarlo no se le obliga a elegir a nadie. */
+    var deLaWeb = previo && !previo.atleta_id && !previo.perfil_id;
+    if (!para && !deLaWeb) { $('msg-form').textContent = 'Falta elegir para quién es el pedido.'; $('msg-form').className = 'msg error'; return; }
     var lineas = leerLineas();
     if (!lineas.length) { $('msg-form').textContent = 'El pedido tiene que llevar al menos una prenda.'; $('msg-form').className = 'msg error'; return; }
 
@@ -712,13 +862,9 @@ APOLANA_ADMIN.listo(function (sb) {
     };
 
     $('msg-form').textContent = 'Guardando…'; $('msg-form').className = 'msg';
-    var id = $('p-id').value;
 
     if (id) {
-      if (datos.fecha_entrega) {
-        var previo = pedidos.filter(function (p) { return p.id === id; })[0];
-        if (previo && previo.fecha_entrega) datos.fecha_entrega = previo.fecha_entrega;
-      }
+      if (datos.fecha_entrega && previo && previo.fecha_entrega) datos.fecha_entrega = previo.fecha_entrega;
       var ru = await sb.from('pedidos').update(datos).eq('id', id);
       if (ru.error) { $('msg-form').textContent = 'Error: ' + ru.error.message; $('msg-form').className = 'msg error'; return; }
       var rd = await sb.from('pedido_items').delete().eq('pedido_id', id);
@@ -745,9 +891,8 @@ APOLANA_ADMIN.listo(function (sb) {
     filtroEstado = estadoUrl;
   }
 
-  /* El título y el botón salen ya, sin esperar a los datos: la pantalla no
-     puede aparecer vacía y luego dar un salto. */
-  pintarCabecera('Contando los pedidos…');
+  /* El título y los botones salen ya, sin esperar a los datos. */
+  montar();
   cargar();
 });
 </script>
