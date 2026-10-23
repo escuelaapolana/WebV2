@@ -210,7 +210,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("metadata[origen]", "nevera");
   params.set("payment_intent_data[metadata][referencia]", ref);
   params.set("payment_intent_data[description]", `Nevera Apolana · ${ref}`);
-  params.set("payment_intent_data[statement_descriptor_suffix]", "NEVERA");
+  // Lo que se lee en el extracto del banco: «<prefijo de la cuenta de Ítaka>* APOLANA».
+  // Antes era «NEVERA» y la gente no reconocía el cargo (23-oct): con el nombre
+  // del club lo identifican y no lo devuelven.
+  params.set("payment_intent_data[statement_descriptor_suffix]", "APOLANA");
   params.set("custom_text[submit][message]", "Nevera Apolana · bebidas de la instalación. Al pagar verás «Pagado ✓»: enséñalo si te lo piden.");
 
   const rStripe = await fetch("https://api.stripe.com/v1/checkout/sessions", {
