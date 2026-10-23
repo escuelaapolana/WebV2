@@ -48,6 +48,16 @@ const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atlet
 const RESPUESTAS_EMAIL = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 const URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com/")
   .replace(/\/*$/, "/");
+// La base también puede pedirlo (cron_llamar_edge, con x-cron-secret): así el
+// club lo manda sin tener que abrir el panel (23-oct). Mismo patrón que
+// natacion-equipacion-correo.
+const CRON_SECRET = (Deno.env.get("CRON_SECRET") ?? "").trim();
+function iguales(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
+  let dif = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) dif |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return dif === 0;
+}
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("CORREO_ORIGENES") ?? Deno.env.get("PAGOS_ORIGENES") ?? "")
@@ -175,16 +185,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) return responder({ error: "config" }, 503, origen);
   if (!BREVO_API_KEY) return responder({ ok: false, motivo: "sin-configurar" }, 200, origen);
 
-  // 1 · Quién llama
-  const cabecera = req.headers.get("Authorization") ?? "";
-  const jwt = cabecera.toLowerCase().startsWith("bearer ") ? cabecera.slice(7).trim() : "";
-  if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
-  const rU = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` },
-  });
-  if (!rU.ok) return responder({ error: "sin_sesion" }, 401, origen);
-  const puede = (await comoUsuario("es_admin", jwt)) || (await comoUsuario("es_tesoreria", jwt));
-  if (!puede) return responder({ error: "sin_permiso" }, 403, origen);
+  // 1 · Quién llama: la base con su secreto, o administración/tesorería con su sesión.
+  const secreto = (req.headers.get("x-cron-secret") ?? "").trim();
+  const esLaBase = !!(CRON_SECRET && secreto && iguales(secreto, CRON_SECRET));
+  if (!esLaBase) {
+    const cabecera = req.headers.get("Authorization") ?? "";
+    const jwt = cabecera.toLowerCase().startsWith("bearer ") ? cabecera.slice(7).trim() : "";
+    if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
+    const rU = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` },
+    });
+    if (!rU.ok) return responder({ error: "sin_sesion" }, 401, origen);
+    const puede = (await comoUsuario("es_admin", jwt)) || (await comoUsuario("es_tesoreria", jwt));
+    if (!puede) return responder({ error: "sin_permiso" }, 403, origen);
+  }
 
   // 2 · Qué alta (solo se acepta el id)
   let cuerpo: Record<string, unknown> = {};
