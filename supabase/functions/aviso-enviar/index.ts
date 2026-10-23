@@ -16,8 +16,10 @@
 //       si toca avisar o sería ruido (migración 120).
 //   3 · Los toques que la base ha dejado apuntados en una cola: que
 //       te han pedido plaza en una actividad, o que te han contestado
-//       (migraciones 131 y 136). De fuera no llega ni una palabra:
-//       solo «mira a ver si hay algo».
+//       (migraciones 131 y 136), un hueco libre en natación y los
+//       avisos que escribe el responsable de natación (mig 440). De
+//       fuera no llega ni una palabra: solo «mira a ver si hay algo».
+//       La vacía un cron cada minuto (mig 440) y, además, el portal.
 //
 // LOS TRES NIVELES (maqueta «4 · Avisos y pagos», apartado A)
 //   informativo · importante · grave. El nivel decide el color y la
@@ -482,6 +484,19 @@ const CLASES: Record<string, Texto> = {
     cuerpo: "Ya te han contestado. Míralo en tu calendario.",
     url: "portal/calendario/",
   },
+  // (mig 440) La lista de espera de natación: se ha liberado un hueco.
+  nat_hueco: {
+    titulo: "Se ha liberado un hueco en natación",
+    cuerpo: "Hay sitio en una franja que esperabas. El primero que reserve se lo queda.",
+    url: "portal/",
+  },
+  // (mig 440) Un aviso del responsable de natación. Si la base trae el
+  // asunto que escribió (texto del club, el mismo del correo), va de título.
+  nat_aviso: {
+    titulo: "Aviso de natación",
+    cuerpo: "Tienes un aviso nuevo del club. Ábrelo para leerlo.",
+    url: "portal/avisos/",
+  },
 };
 
 /** Vacía la cola: coge lo pendiente, lo reparte y apunta cómo fue. */
@@ -500,7 +515,7 @@ async function vaciarCola(): Promise<{ toques: number; enviados: number; fallido
   }
 
   const pendientes = (Array.isArray(rCola.datos) ? rCola.datos : []) as
-    { id: string; clase: string }[];
+    { id: string; clase: string; detalle?: string | null }[];
 
   for (const toque of pendientes) {
     // Otra vez la lista escrita a mano, no lo que conteste un objeto
@@ -514,17 +529,20 @@ async function vaciarCola(): Promise<{ toques: number; enviados: number; fallido
     });
     const aQuien = (Array.isArray(rQuien.datos) ? rQuien.datos : []) as Destino[];
 
+    const esAvisoNat = toque.clase === "nat_aviso";
+    const asunto = esAvisoNat ? String(toque.detalle ?? "").trim().slice(0, 90) : "";
     const r = await repartir(aQuien, JSON.stringify({
-      titulo: texto.titulo,
-      cuerpo: texto.cuerpo,
+      titulo: asunto || texto.titulo,
+      cuerpo: asunto ? "Aviso de natación. Ábrelo para leerlo entero." : texto.cuerpo,
       url: new URL(texto.url, URL_BASE).toString(),
       // El mismo tema con el que la base ha mirado si esa persona
       // quiere recibirlo, para que las dos mitades digan lo mismo.
       categoria: toque.clase === "solicitud_plaza" ? "gestion" : "entrenos",
-      nivel: "informativo",
+      nivel: toque.clase.startsWith("nat_") ? "importante" : "informativo",
       // Una etiqueta por clase: si llegaran dos seguidos, el móvil
-      // enseña uno y no dos apilados diciendo lo mismo.
-      etiqueta: `apolana-${toque.clase}`,
+      // enseña uno y no dos apilados diciendo lo mismo. Los avisos de
+      // natación son cada uno distinto: no se pisan entre ellos.
+      etiqueta: esAvisoNat ? `apolana-nat_aviso-${toque.id}` : `apolana-${toque.clase}`,
     }));
 
     // Se apunta aunque no haya salido a nadie: si no, ese recado se
