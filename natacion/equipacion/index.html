@@ -35,6 +35,11 @@
   .opciones button.no{ font-weight:600; color:#6E6656; }
   .opciones button.no[aria-pressed="true"]{ background:#6E6656; border-color:#6E6656; color:#fff; }
   .falta{ border-radius:12px; outline:2px solid #E0A82E; outline-offset:4px; }
+  /* Camisetas de más, de pago (mig 443) */
+  .extra-cam{ margin-top:10px; padding:10px 12px; border:1px dashed var(--linea-borde,#D4CBB9); border-radius:12px; background:#FBF9F4; }
+  .extra-cam .art-t{ margin-bottom:6px; }
+  .extra-cam .quitar-cam{ font:inherit; font-size:13px; font-weight:700; color:#9A3B3B; background:none; border:0; cursor:pointer; padding:4px 0; }
+  .mas-cam{ margin-top:10px; font:inherit; font-weight:700; font-size:14px; min-height:42px; padding:6px 14px; border-radius:11px; border:1px dashed #2F6FA8; background:#fff; color:#2F6FA8; cursor:pointer; }
   .rejilla{ display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
   .prod{ background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
   .prod .foto{ aspect-ratio:4/5; background:#F1EADC; }
@@ -98,10 +103,11 @@
   function nombreCorto(n){ return String(n||'').split(' ')[0]; }
   function desdeLineas(){
     N = {}; EXTRAS = [];
-    D.nadadores.forEach(function (n) { N[n.id] = { camiseta: D.respondido ? 'no' : null, gorro: D.respondido ? false : true, sudadera: (D.respondido || !n.nuevo) ? 'no' : null }; });
+    D.nadadores.forEach(function (n) { N[n.id] = { camiseta: D.respondido ? 'no' : null, extra: [], gorro: D.respondido ? false : true, sudadera: (D.respondido || !n.nuevo) ? 'no' : null }; });
     D.lineas.forEach(function (l) {
       var x = N[l.nadador_id];
-      if (l.articulo === 'camiseta' && x) x.camiseta = l.talla;
+      if (l.articulo === 'camiseta' && x && Number(l.precio) > 0) x.extra.push(l.talla);
+      else if (l.articulo === 'camiseta' && x) x.camiseta = l.talla;
       else if (l.articulo === 'gorro' && x) x.gorro = true;
       else if (l.articulo === 'sudadera' && x) x.sudadera = l.talla;
       else if (l.articulo === 'producto') EXTRAS.push({ producto_id: l.producto_id, talla: l.talla || '', cantidad: l.cantidad, nadador_id: l.nadador_id || '' });
@@ -110,11 +116,13 @@
   }
   function prod(id){ return (D.productos || []).filter(function (p) { return p.id === id; })[0]; }
   function precioSudadera(n){ return n.nuevo ? 0 : Number(D.precio_sudadera || 35); }
+  function precioCamiseta(){ return Number(D.precio_camiseta || 15); }
   function cesta(){
     var L = [];
     D.nadadores.forEach(function (n) {
       var x = N[n.id]; if (!x) return;
       if (x.camiseta && x.camiseta !== 'no') L.push({ t: 'Camiseta oficial · talla ' + x.camiseta, q: nombreCorto(n.nombre), p: 0 });
+      (x.extra || []).forEach(function (t) { if (t) L.push({ t: 'Otra camiseta oficial · talla ' + t, q: nombreCorto(n.nombre), p: precioCamiseta() }); });
       if (x.gorro) L.push({ t: 'Gorro de natación', q: nombreCorto(n.nombre), p: 0 });
       if (x.sudadera && x.sudadera !== 'no') L.push({ t: 'Chaqueta · talla ' + x.sudadera, q: nombreCorto(n.nombre), p: precioSudadera(n) });
     });
@@ -129,7 +137,8 @@
   function hayBanador(){ return EXTRAS.some(function (e) { var p = prod(e.producto_id); return p && p.banador; }); }
   function faltan(){
     var f = [];
-    D.nadadores.forEach(function (n) { var x = N[n.id]; if (!x.camiseta) f.push(n.id + ':camiseta'); if (n.nuevo && !x.sudadera) f.push(n.id + ':sudadera'); });
+    D.nadadores.forEach(function (n) { var x = N[n.id]; if (!x.camiseta) f.push(n.id + ':camiseta'); if (n.nuevo && !x.sudadera) f.push(n.id + ':sudadera');
+      (x.extra || []).forEach(function (t, i) { if (!t) f.push(n.id + ':extra' + i); }); });
     return f;
   }
 
@@ -145,7 +154,14 @@
     return '<div class="caja nad"><h3>' + esc(n.nombre) + (n.nuevo ? '<span class="chip-nuevo">Nuevo/a este año</span>' : '') + '</h3>' +
       '<div class="sub">' + esc(n.tipo === 'Máster' ? 'Máster' : 'Escuela de natación') + '</div>' +
       '<div class="art' + (f.indexOf(n.id + ':camiseta') >= 0 ? ' falta' : '') + '"><div class="art-t">Camiseta oficial del club <small>Gratis</small></div>' +
-        botones('camiseta', n.id, D.tallas, x.camiseta, 'No la necesito') + '</div>' +
+        botones('camiseta', n.id, D.tallas, x.camiseta, 'No la necesito') +
+        (x.extra || []).map(function (t, i) {
+          return '<div class="extra-cam' + (f.indexOf(n.id + ':extra' + i) >= 0 ? ' falta' : '') + '"><div class="art-t">Otra camiseta <small class="pago">' + eur(precioCamiseta()) + '</small></div>' +
+            botones('extra:' + i, n.id, D.tallas, t, '') +
+            '<button type="button" class="quitar-cam" data-quitar-cam="' + i + '" data-n="' + n.id + '">Quitar esta camiseta</button></div>';
+        }).join('') +
+        ((x.extra || []).length < 5 ? '<button type="button" class="mas-cam" data-mas-cam="' + n.id + '">+ Quiero otra camiseta (' + eur(precioCamiseta()) + ')</button>' : '') +
+      '</div>' +
       '<div class="art"><div class="art-t">Gorro de natación <small>Gratis</small></div>' +
         '<div class="opciones" data-campo="gorro" data-n="' + n.id + '"><button type="button" data-v="si" aria-pressed="' + (x.gorro ? 'true' : 'false') + '">Sí, lo necesito</button>' +
         '<button type="button" class="no" data-v="no" aria-pressed="' + (!x.gorro ? 'true' : 'false') + '">No</button></div></div>' +
@@ -187,7 +203,7 @@
     app.innerHTML =
       '<h1>Equipación de natación 2026/27</h1>' +
       '<p>' + (D.contacto ? 'Hola, ' + esc(D.contacto) + '. ' : '') + 'Elige la talla de lo que os corresponde y, si queréis, añadid bañadores o algo más de la tienda del club. ' +
-        '<b>La camiseta y el gorro son gratis para todos</b>; la chaqueta, gratis para quien se incorpora este año (al resto le sale a ' + eur(D.precio_sudadera || 35) + ' si la quiere).</p>' +
+        '<b>La camiseta y el gorro son gratis para todos</b> (si queréis más camisetas, cada una de más cuesta ' + eur(Number(D.precio_camiseta || 15)) + '); la chaqueta, gratis para quien se incorpora este año (al resto le sale a ' + eur(D.precio_sudadera || 35) + ' si la quiere).</p>' +
       '<div class="fotos-eq"><figure><img src="../../assets/img/natacion-camiseta.jpg" alt="Camiseta del club de natación"><figcaption>Camiseta</figcaption></figure>' +
         '<figure><img src="../../assets/img/tienda-chaqueta-chandal.jpg" alt="Chaqueta del club"><figcaption>Chaqueta</figcaption></figure>' +
         '<figure><img src="../../assets/img/natacion-gorro.jpg" alt="Gorro de natación del club"><figcaption>Gorro</figcaption></figure></div>' +
@@ -221,7 +237,9 @@
     var b = ev.target.closest && ev.target.closest('.opciones button');
     if (b) {
       var g = b.parentNode, campo = g.getAttribute('data-campo'), nid = g.getAttribute('data-n'), v = b.getAttribute('data-v');
-      if (campo === 'gorro') N[nid].gorro = v === 'si'; else N[nid][campo] = v;
+      if (campo === 'gorro') N[nid].gorro = v === 'si';
+      else if (campo.indexOf('extra:') === 0) N[nid].extra[Number(campo.slice(6))] = v;
+      else N[nid][campo] = v;
       formularioConScroll(); return;
     }
     var a = ev.target.closest && ev.target.closest('[data-anadir]');
@@ -233,6 +251,10 @@
       EXTRAS.push({ producto_id: p.id, talla: talla, cantidad: Number(ca.value) || 1, nadador_id: pa ? pa.value : (D.nadadores[0] || {}).id });
       a.textContent = 'Añadido ✓'; setTimeout(function () { formularioConScroll(); }, 500); return;
     }
+    var mc = ev.target.closest && ev.target.closest('[data-mas-cam]');
+    if (mc) { var xn = N[mc.getAttribute('data-mas-cam')]; if (xn.extra.length < 5) xn.extra.push(''); formularioConScroll(); return; }
+    var qc = ev.target.closest && ev.target.closest('[data-quitar-cam]');
+    if (qc) { N[qc.getAttribute('data-n')].extra.splice(Number(qc.getAttribute('data-quitar-cam')), 1); formularioConScroll(); return; }
     var q = ev.target.closest && ev.target.closest('[data-quitar]');
     if (q) { EXTRAS.splice(Number(q.getAttribute('data-quitar')), 1); formularioConScroll(); return; }
   });
@@ -245,7 +267,7 @@
     if (faltan().length) { formularioConScroll(); var e1 = document.querySelector('.falta'); if (e1) e1.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById('err').textContent = 'Te falta elegir la talla (o «No la necesito») en lo que está marcado.'; return; }
     if (hayBanador() && !compromiso) { document.getElementById('cesta').scrollIntoView({ behavior: 'smooth', block: 'center' }); err.textContent = 'Para encargar bañadores marca «Me comprometo a la compra».'; return; }
     var datos = { compromiso: compromiso, extras: EXTRAS.map(function (e) { return { producto_id: e.producto_id, talla: e.talla, cantidad: e.cantidad, nadador_id: e.nadador_id }; }),
-      nadadores: D.nadadores.map(function (n) { var x = N[n.id]; return { id: n.id, camiseta: x.camiseta === 'no' ? null : x.camiseta, gorro: !!x.gorro, sudadera: x.sudadera === 'no' ? null : x.sudadera }; }) };
+      nadadores: D.nadadores.map(function (n) { var x = N[n.id]; return { id: n.id, camiseta: x.camiseta === 'no' ? null : x.camiseta, camisetas_extra: (x.extra || []).filter(function (t) { return t; }), gorro: !!x.gorro, sudadera: x.sudadera === 'no' ? null : x.sudadera }; }) };
     b.disabled = true; b.textContent = 'Enviando…';
     rpc('natacion_equip_guardar', { p_token: token, p_datos: datos }).then(function (x) {
       if (!x.ok) { b.disabled = false; b.textContent = D.respondido ? 'Guardar cambios' : 'Enviar mi pedido'; (document.getElementById('err') || {}).textContent = (x.d && x.d.message) || 'No se ha podido guardar. Inténtalo otra vez.'; return; }
