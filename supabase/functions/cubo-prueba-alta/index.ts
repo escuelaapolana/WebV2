@@ -33,6 +33,7 @@ const TURNOS: Record<string, string> = {
 };
 // Palabra del día que aparece en el nombre del grupo, para enlazar turno→grupo.
 const DIA_EN_NOMBRE: Record<string, string> = { viernes: "Viernes", sabado: "Sábado", domingo: "Domingo" };
+const CERRADOS = new Set(["domingo"]);
 
 // Webs que pueden llamar aquí desde un navegador. Lista FIJA en el código
 // (nunca se refleja "*"): mismo criterio que las funciones acceso-*. Están el
@@ -166,11 +167,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const hijo = corta(b.hijo, 160);
   const alternativa = corta(b.alternativa, 400);
   let turnos: string[] = Array.isArray(b.turnos) ? b.turnos.filter((t: unknown) => typeof t === "string" && TURNOS[t]) : [];
-  turnos = [...new Set(turnos)];
+  // Turnos cerrados hasta nuevo aviso (24-oct: el domingo, por falta de asistentes).
+  // Aunque alguien lo mande desde una página vieja, no entra.
+  turnos = [...new Set(turnos)].filter((t) => !CERRADOS.has(t));
 
   if (!nombre || !apellidos) return responder({ error: "datos", mensaje: "Pon tu nombre y tus apellidos." }, 400, origen);
   if (!telefono) return responder({ error: "datos", mensaje: "Hace falta un teléfono de contacto." }, 400, origen);
-  if (!turnos.length) return responder({ error: "datos", mensaje: "Elige al menos un turno." }, 400, origen);
+  if (!turnos.length) return responder({ error: "datos", mensaje: "Elige al menos un turno (viernes o sábado: el domingo está cancelado por ahora)." }, 400, origen);
   if (!quien) return responder({ error: "datos", mensaje: "Dinos si eres socio, de la escuela u otro." }, 400, origen);
   if (quien === "escuela" && !hijo) return responder({ error: "datos", mensaje: "Pon el nombre de tu hijo/a de la escuela." }, 400, origen);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return responder({ error: "correo", mensaje: "Ese correo no parece válido." }, 400, origen);

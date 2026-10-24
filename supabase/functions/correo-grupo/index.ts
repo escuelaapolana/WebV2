@@ -24,6 +24,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 const BREVO_API_KEY = (Deno.env.get("BREVO_API_KEY") ?? "").trim();
+const CRON_SECRET = (Deno.env.get("CRON_SECRET") ?? "").trim();
+function iguales(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
+  let dif = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) dif |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return dif === 0;
+}
 const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gmail.com").trim();
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
 const RESPUESTAS_EMAIL = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
@@ -155,10 +162,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method !== "POST") return responder({ error: "metodo" }, 405, origen);
   if (!SUPABASE_URL || !SERVICE_KEY) return responder({ error: "config" }, 503, origen);
 
+  // Quién llama: administración con su sesión, o la base con su secreto
+  // (cron_llamar_edge, x-cron-secret), para mandarlo sin abrir el panel (24-oct).
+  const secreto = (req.headers.get("x-cron-secret") ?? "").trim();
+  const esLaBase = !!(CRON_SECRET && secreto && iguales(secreto, CRON_SECRET));
   const cab = req.headers.get("Authorization") ?? "";
   const jwt = cab.toLowerCase().startsWith("bearer ") ? cab.slice(7).trim() : "";
-  if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
-  if ((await comoUsuario("es_admin", jwt)) !== true) return responder({ error: "sin_permiso" }, 403, origen);
+  if (!esLaBase) {
+    if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
+    if ((await comoUsuario("es_admin", jwt)) !== true) return responder({ error: "sin_permiso" }, 403, origen);
+  }
 
   let c: Record<string, unknown> = {};
   try { c = await req.json(); } catch { /* vacío */ }
@@ -183,7 +196,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!BREVO_API_KEY) return responder({ ok: false, motivo: "sin-configurar" }, 200, origen);
   if (!asunto || !o.mensaje) return responder({ ok: false, motivo: "falta-texto", mensaje: "Pon el asunto y el mensaje." }, 200, origen);
   const texto = correoTexto(o);
-  const yo = await quienSoy(jwt);
+  // Desde la base no hay sesión: «en nombre de» solo sirve para el historial y la prueba.
+  const yo = esLaBase ? (c.en_nombre_de ? { email: corto(c.en_nombre_de, 120) } : null) : await quienSoy(jwt);
 
   if (accion === "prueba") {
     if (!yo?.email) return responder({ ok: false, motivo: "sin-correo" }, 200, origen);
