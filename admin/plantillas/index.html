@@ -8,296 +8,402 @@
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
-<link rel="stylesheet" href="../../assets/css/panel-piezas.css?v=3261f3f3">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
-<script src="../../assets/js/panel-piezas.js?v=16c512a9" defer></script>
 <style>
-  body { background: var(--crema); }
-
-  .pl-wrap { max-width: 1260px; margin: 0 auto; padding: 0 clamp(16px,4vw,30px) 44px; }
-
-  .btn--mini { padding: 9px 17px; font-size: 14px; }
-  .btn[disabled] { opacity: .45; cursor: default; }
-  .pl-wrap { padding-top: 18px; }
-
-  /* ---------- Aviso de "esto no envía correos" ---------- */
-  /* Se entiende el primer día y luego solo empuja hacia abajo las tres
-     columnas de trabajo, así que va plegado y con su titular a la vista. */
-  .aviso-copia {
-    background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); border-radius: var(--radio);
-    margin-bottom: 18px; font-size: 14px; color: var(--aviso-texto); line-height: 1.5;
-  }
-  .aviso-copia > summary {
-    list-style: none; cursor: pointer; user-select: none;
-    display: flex; align-items: center; gap: 9px; min-height: 44px;
-    padding: 10px 18px; border-radius: var(--radio);
-    font-size: 15px; font-weight: 600; color: var(--navy);
-  }
-  .aviso-copia > summary::-webkit-details-marker { display: none; }
-  .aviso-copia > summary::before {
-    content: ''; flex: 0 0 auto; width: 7px; height: 7px;
-    border-right: 2px solid var(--texto-suave); border-bottom: 2px solid var(--texto-suave);
-    transform: rotate(-45deg); transition: transform .15s ease;
-  }
-  .aviso-copia[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
-  .aviso-copia .dentro { padding: 0 18px 14px; }
-  .aviso-copia .dentro p { margin: 0; }
-
-  /* La ayuda de los huecos y la de las palabras del buzón: se leen una vez. */
-  .ayuda-pleg > summary {
-    list-style: none; cursor: pointer; user-select: none;
-    display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
-    font-size: 13px; color: var(--texto-suave);
-  }
-  .ayuda-pleg > summary::-webkit-details-marker { display: none; }
-  .ayuda-pleg > summary::before {
-    content: ''; flex: 0 0 auto; width: 6px; height: 6px;
-    border-right: 2px solid var(--texto-suave); border-bottom: 2px solid var(--texto-suave);
-    transform: rotate(-45deg); transition: transform .15s ease;
-  }
-  .ayuda-pleg[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
-
-  /* ---------- Dos vistas, no tres columnas ----------
-     La lista ocupa la pantalla entera; al abrir una plantilla, la que ocupa
-     la pantalla entera es la plantilla. Escribir un correo en una columna de
-     300 px no se puede. */
-  .pl-cuerpo { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 18px; align-items: start; }
-  @media (max-width: 1000px) { .pl-cuerpo { grid-template-columns: 1fr; } }
-  #vista-plantilla[hidden], #vista-lista[hidden] { display: none; }
-
-  .tarjeta {
-    background: #fff; border: 1px solid var(--linea-marcada); border-radius: var(--radio); overflow: hidden; box-shadow: var(--sombra-suave);
-  }
-  .tarj-cab {
-    padding: 12px 18px; background: var(--crema); border-bottom: 1px solid var(--crema-banda); font-size: 13px;
-    text-transform: none; color: var(--texto-suave);
-  }
-  .tarj-cuerpo { padding: 18px; }
+  /* ============================================================
+     PLANTILLAS DE CORREO · en tarjetas (24-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios» y «Pedidos»: cabecera grande,
+     cifras que filtran (todas, las que propone el buzón,
+     desactivadas), buscador + chips por apartado, una tarjeta por
+     plantilla con su asunto y su primera línea, y una HOJA INFERIOR
+     con el texto entero, el «rellenar y copiar» de siempre (a quién
+     va, los huecos, copiar o abrir en el correo) y editar /
+     desactivar. El editor es el de antes, en ventana por encima de
+     la hoja y con su «cómo queda» al lado. Mismas lecturas y
+     mismas escrituras. Prefijo pt-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .pt-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .pt-wrap *, .pt-capa *, #pt-editor * { box-sizing: border-box; }
   .oculto { display: none !important; }
 
-  /* ---------- La lista ---------- */
-  .grupo-cat {
-    padding: 14px 18px 6px; font-size: 13px; letter-spacing: .04em; text-transform: uppercase;
-    color: var(--texto-suave); background: var(--crema-banda); border-bottom: 1px solid var(--crema-media);
-  }
-  /* Cada fila: el nombre, cuándo se usa, «Abrir» y el «⋯». */
-  .item {
-    display: flex; align-items: center; gap: 14px;
-    box-sizing: border-box; padding: 12px 18px;
-    border-bottom: 1px solid var(--crema-media);
-  }
-  .item:last-child { border-bottom: 0; }
-  .item .txt { flex: 1 1 auto; min-width: 0; }
-  .item .nom { display: block; font-size: 16px; line-height: 1.35; color: var(--navy); }
-  .item .sub { display: block; font-size: 14px; line-height: 1.35; color: var(--texto-suave); margin-top: 2px; }
-  /* La que no se usa lo dice en ámbar, no en gris: es lo único de la lista
-     sobre lo que hay que decidir algo. */
-  .item .sub.apagada { color: #8A5207; }
-  .item .abrir { flex: 0 0 auto; }
+  /* --- Cabecera --- */
+  .pt-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .pt-cab > div:first-child { flex: 1 1 340px; min-width: 0; }
+  .pt-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .pt-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 66ch; }
+  .pt-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pt-b { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; text-decoration: none; }
+  .pt-b:hover { background: var(--crema,#FBF9F4); }
+  .pt-b.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .pt-b.prin:hover { background: #24364A; }
+  .pt-b.peligro { color: #9A3B3B; border-color: #EBC9C5; }
+  .pt-b.peligro:hover { background: #FDF3F2; }
+  .pt-b:disabled { opacity: .55; cursor: default; }
+  @media (max-width: 520px) { .pt-cab-acc { width: 100%; } .pt-cab-acc .pt-b { flex: 1 1 0; padding: 0 12px; } }
 
-  /* ---------- Formulario ---------- */
-  label { display: block; font-size: 13px; font-weight: 600; color: var(--navy); margin: 14px 0 5px; }
-  label:first-of-type { margin-top: 0; }
-  .tarjeta input, .tarjeta textarea, .tarjeta select {
-    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde);
-    border-radius: 10px; font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy);
-  }
-  .tarjeta input:focus, .tarjeta textarea:focus, .tarjeta select:focus { outline: 2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
-  textarea { min-height: 230px; resize: vertical; line-height: 1.55; }
-  .grid2 { display: grid; grid-template-columns: 1fr 200px; gap: 14px; }
-  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+  /* --- Cifras: pulsar una filtra la lista --- */
+  .pt-cifras { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .pt-cifra { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .pt-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .pt-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .pt-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .pt-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); line-height: 1.3; }
+  .pt-cifra.buzon b { color: #2F6FA8; }
+  .pt-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .pt-cifra.aviso b, .pt-cifra.aviso span { color: #8A5307; }
+  .pt-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .pt-cifras { gap: 8px; } .pt-cifra { padding: 10px 11px; } .pt-cifra b { font-size: 21px; } .pt-cifra span { font-size: 12.5px; } }
 
-  /* El cuadradito de marcar mide trece píxeles: con el dedo se falla más de lo
-     que se acierta. Por eso la fila entera responde al toque, con la altura de
-     un dedo, y también vale pulsar el texto. La casilla se ve igual. */
-  .fila-interruptor { display: flex; align-items: center; gap: 9px; margin: 16px 0 0;
-    min-height: 44px; cursor: pointer; }
-  .fila-interruptor input { width: auto; flex: 0 0 auto; }
-  .fila-interruptor span { margin: 0; font-weight: 500; }
+  /* --- Buscador + chips (apartado) --- */
+  .pt-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .pt-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .pt-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .pt-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .pt-chips::-webkit-scrollbar { display: none; }
+  .pt-chips button { flex: 1 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px;
+    background: none; font: inherit; font-weight: 700; font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .pt-chips button:hover { color: var(--navy,#26374B); }
+  .pt-chips button .pt { width: 8px; height: 8px; border-radius: 999px; background: var(--c); flex: 0 0 8px; }
+  .pt-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .pt-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; }
+  .pt-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); min-height: 40px; display: inline-flex; align-items: center; }
+  @media (max-width: 620px) { .pt-chips { width: 100%; border-radius: 14px; } .pt-chips button { flex: 0 0 auto; } }
 
-  .chips-var { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .chip-var { font-size: 13px; padding: 4px 10px;
-    border-radius: var(--radio-pastilla); background: var(--crema-banda);
-    border: 1px solid var(--linea-borde); color: var(--texto); cursor: pointer;
-  }
-  .chip-var:hover { background: var(--azul-suave); border-color: var(--azul-filete, #3B85C0); color: var(--azul-hover); }
-  .pie-ayuda { font-size: 13px; color: var(--texto-suave); margin-top: 7px; line-height: 1.5; }
+  /* --- Color por apartado. Primero el gris de reserva y DESPUÉS los colores. --- */
+  :where(.pt-fila, .pt-hoja-cab, .pt-chips button) { --c: #CFC6B4; --s: #F0EBE0; --t: #6E6656; }
+  .c-buzon         { --c: #3B85C0; --s: #E6F0FB; --t: #2F6FA8; }
+  .c-altas         { --c: #6FAF7E; --s: #E7F3EA; --t: #23603A; }
+  .c-cuotas        { --c: #7A5CA8; --s: #EEE8F4; --t: #543C74; }
+  .c-competiciones { --c: #B0563A; --s: #FBEAE5; --t: #8A3E28; }
+  .c-avisos        { --c: #2E8C86; --s: #E2F1EF; --t: #1F615C; }
+  .c-tienda        { --c: #C1742E; --s: #FBEEDD; --t: #86501C; }
+  .pt-fila.apagada, .pt-hoja-cab.apagada { --c: #CFC6B4; --s: #F0EBE0; --t: #8A816E; }
 
-  .barra-guardar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 20px; }
-  /* «Borrar» se separa de «Guardar» y «Cancelar»: no se pulsa por vecindad. */
-  .barra-guardar .btn--peligro { margin-left: 18px; }
-  .msg { font-size: 14px; }
-  .msg.ok { color: #4C7A28; }
-  .msg.error { color: #B0563A; }
-  /* Todo lo que se pulsa, 44 px de alto. */
-  .btn--peligro {
-    background: transparent; border: 1px solid #E0B4B0; color: #B0563A;
-    padding: 9px 17px; border-radius: var(--radio-pastilla); font-size: 14px;
-    font-family: inherit; cursor: pointer;
-    min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
-  }
-  .btn--peligro:hover { background: #FBECEB; }
+  /* --- Bloques por apartado --- */
+  .pt-grupo { margin: 22px 4px 8px; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656);
+    display: flex; align-items: baseline; gap: 8px; }
+  .pt-grupo span { font-weight: 600; letter-spacing: 0; text-transform: none; }
+  .pt-lista { container: pt-lista / inline-size; display: flex; flex-direction: column; gap: 8px; }
 
-  /* ---------- Columna derecha: copiar ---------- */
-  .campo-var { margin-bottom: 10px; }
-  .campo-var label { font-size: 13px; font-weight: 400; color: var(--texto-suave); margin: 0 0 4px;
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .pt-fila { position: relative; display: grid; grid-template-columns: 40px minmax(0,1fr) minmax(0,190px) 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid var(--c); border-radius: 14px; padding: 11px 14px 11px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .pt-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .pt-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .pt-fila.apagada { background: #FCFBF8; }
+  .pt-fila.apagada .pt-nom b { color: var(--texto-suave,#6E6656); }
+  .pt-ico { width: 40px; height: 40px; border-radius: 999px; background: var(--s); color: var(--t); display: flex; align-items: center; justify-content: center; }
+  .pt-ico svg { width: 19px; height: 19px; }
+  .pt-nom { min-width: 0; }
+  .pt-nom b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .pt-nom .asu { display: block; font-size: 13px; color: var(--texto-suave,#6E6656); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pt-nom .asu i { font-style: normal; font-weight: 700; color: var(--texto-tenue,#9A927F); }
+  /* Su primera línea, dos renglones como mucho: el texto entero, en la hoja. */
+  .pt-nom .lin { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13.5px; color: var(--texto,#3A3A3A);
+    margin-top: 3px; line-height: 1.4; overflow-wrap: anywhere; }
+  .hueco { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-size: .9em; background: #F3F7FB; color: #2F5F8A; border-radius: 4px; padding: 0 3px; }
+  .pt-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 5px; min-width: 0; align-items: center; }
+  .pt-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .pt-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .pt-pill.buzon { background: #E6F0FB; color: #2F6FA8; } .pt-pill.buzon .pt { background: #3B85C0; }
+  .pt-pill.huecos { background: #fff; color: var(--texto-suave,#6E6656); border: 1px solid var(--linea-marcada,#E4DCCB); padding: 2px 9px; }
+  .pt-pill.apagada { background: #FBF1D9; color: #8A5307; } .pt-pill.apagada .pt { background: #D9A441; }
+  .pt-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  /* Lista estrecha (móvil): icono y nombre arriba; las pastillas debajo */
+  @container pt-lista (max-width: 640px) {
+    .pt-fila { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 11px 12px 12px 10px; }
+    .pt-ico { order: 0; flex: 0 0 40px; align-self: flex-start; }
+    .pt-nom { order: 1; flex: 1 1 0; }
+    .pt-flecha { order: 2; font-size: 22px; align-self: flex-start; }
+    .pt-fila::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+    .pt-pills { order: 4; flex: 1 1 100%; justify-content: flex-start; padding-left: 52px; }
+    .pt-pills:empty { display: none; }
   }
-  .campo-var input { padding: 8px 11px; font-size: 14px; }
-  .campo-var input.sin-dato { background: var(--aviso-fondo); border-color: var(--aviso-borde); }
+  .pt-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .pt-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .pt-vacio button { margin: 10px 4px 0; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .pt-error { margin-top: 10px; }
 
-  .previo {
-    background: var(--crema); border: 1px solid var(--crema-media); border-radius: 10px;
-    padding: 14px; margin-top: 14px;
-  }
-  .previo .de { font-size: 13px; color: var(--texto-suave); margin-bottom: 8px; line-height: 1.5; }
-  .previo .de b { color: var(--navy); }
-  .previo .asunto { font-weight: 600; color: var(--navy); font-size: 15px; margin-bottom: 8px; }
-  .previo .cuerpo {
-    white-space: pre-wrap; font-size: 14px; color: var(--texto); line-height: 1.55;
-    max-height: 260px; overflow: auto;
-  }
+  /* --- Hoja inferior: leer, rellenar y copiar, editar --- */
+  .pt-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .pt-velo.ver { opacity: 1; pointer-events: auto; }
+  .pt-hoja { position: fixed; left: 50%; bottom: 0; width: min(620px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .pt-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .pt-hoja, .pt-velo, .pt-fila { transition: none; } }
+  .pt-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .pt-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .pt-hoja-cab .pt-ico { width: 48px; height: 48px; flex: 0 0 48px; }
+  .pt-hoja-cab .pt-ico svg { width: 22px; height: 22px; }
+  .pt-hoja-cab > div { flex: 1; min-width: 0; }
+  .pt-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .pt-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 4px 0 0; overflow-wrap: anywhere; line-height: 1.4; }
+  .pt-cerrar { flex: 0 0 auto; align-self: flex-start; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .pt-et { margin: 18px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  .pt-aviso { margin-top: 12px; background: #FBF1DE; border: 1px solid #E9CE9A; color: #6B4B10; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45; }
+  .pt-aviso b { color: #8A5307; }
+  .pt-nota { margin: 10px 2px 0; font-size: 13.5px; color: var(--texto-suave,#6E6656); line-height: 1.45; }
+
+  /* El correo tal y como saldrá (con los huecos sin rellenar en ámbar) */
+  .previo { background: var(--crema,#FBF9F4); border: 1px solid #EFE9DA; border-radius: 14px; padding: 14px 16px; }
+  .previo .de { font-size: 13px; color: var(--texto-suave,#6E6656); margin-bottom: 10px; line-height: 1.5; padding-bottom: 10px; border-bottom: 1px solid #EFE9DA; overflow-wrap: anywhere; }
+  .previo .de b { color: var(--navy,#26374B); }
+  .previo .asunto { font-weight: 700; color: var(--navy,#26374B); font-size: 15.5px; margin-bottom: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+  .previo .cuerpo { white-space: pre-wrap; font-size: 14.5px; color: var(--texto,#3A3A3A); line-height: 1.6; overflow-wrap: anywhere; }
   .sin-rellenar { background: #FDF3DD; color: #8A7530; border-radius: 4px; padding: 0 3px; }
 
-  .acciones-copia { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
-  .nota-mail { font-size: 13px; color: var(--texto-suave); margin-top: 9px; line-height: 1.5; }
+  /* Rellenar: a quién va y los huecos */
+  .pt-campo label, .campo-var label { display: block; font-size: 13px; font-weight: 600; color: var(--navy,#26374B); margin: 0 0 5px; }
+  .pt-campo select, .campo-var input { width: 100%; min-height: 46px; padding: 10px 13px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy,#26374B); }
+  .pt-campo select:focus, .campo-var input:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  #campos-var { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+  #campos-var .nota-mail { grid-column: 1 / -1; margin: 0; }
+  @media (max-width: 520px) { #campos-var { grid-template-columns: 1fr; } }
+  .campo-var { min-width: 0; }
+  .campo-var label { font-weight: 400; color: var(--texto-suave,#6E6656); overflow-wrap: anywhere; }
+  .campo-var input.sin-dato { background: var(--aviso-fondo,#FBF1DE); border-color: var(--aviso-borde,#E9CE9A); }
+  .nota-mail { font-size: 13px; color: var(--texto-suave,#6E6656); margin: 10px 2px 0; line-height: 1.5; }
+  .nota-mail:empty { display: none; }
 
+  .pt-acc { display: grid; gap: 8px; margin-top: 14px; }
+  .pt-acc .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pt-acc a, .pt-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px;
+    text-decoration: none; border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; width: 100%; }
+  .pt-acc a:hover, .pt-acc button:hover { background: var(--crema,#FBF9F4); }
+  .pt-acc .prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .pt-acc .prin:hover { background: #24364A; }
+  .pt-acc svg { width: 17px; height: 17px; }
+  @media (max-width: 420px) { .pt-acc .dos { grid-template-columns: 1fr; } }
+  .pt-palabras { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .pt-palabras li { font-size: 12.5px; font-weight: 600; background: #E6F0FB; color: #2F6FA8; border-radius: 999px; padding: 3px 10px; }
+
+  .msg { font-size: 14px; line-height: 1.4; }
+  .msg:empty { display: none; }
+  .msg.ok { color: #1e7a3d; }
+  .msg.error { color: #B0563A; }
+  #msg-copia { display: block; margin-top: 8px; text-align: center; }
+
+  /* --- Editor (nueva / editar): el de antes, en ventana por ENCIMA de la hoja,
+     con su «cómo queda» al lado como tenía la pantalla de antes. --- */
+  #pt-editor { position: fixed; inset: 0; z-index: 9500; background: rgba(20,30,45,.45);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: clamp(16px,5vh,60px) 16px; overflow: auto;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  #pt-editor .modal-caja { background: #fff; border-radius: 20px; color: var(--navy,#26374B);
+    box-shadow: 0 30px 70px -25px rgba(20,30,45,.6); padding: 22px clamp(16px,4vw,26px) 22px; width: min(980px,100%);
+    animation: modal-sube .2s ease; }
+  @keyframes modal-sube { from { transform: translateY(12px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #pt-editor .modal-caja { animation: none; } }
+  .pt-ed-cab { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+  .pt-ed-cab > div { flex: 1; min-width: 0; }
+  #pt-editor h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; letter-spacing: -0.01em; color: var(--navy,#26374B); margin: 0; line-height: 1.1; overflow-wrap: anywhere; }
+  .pt-ed-cab p { margin: 4px 0 0; font-size: 13.5px; color: var(--texto-suave,#6E6656); }
+  .pt-ed-cols { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 22px; align-items: start; }
+  @media (max-width: 880px) { .pt-ed-cols { grid-template-columns: 1fr; } }
+  #pt-editor label { display: block; font-size: 13px; font-weight: 600; color: var(--navy,#26374B); margin: 14px 0 5px; }
+  #pt-editor input[type=text], #pt-editor textarea, #pt-editor select {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy,#26374B); }
+  #pt-editor input:focus, #pt-editor textarea:focus, #pt-editor select:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  #pt-editor textarea { min-height: 260px; resize: vertical; line-height: 1.55; }
+  .grid2 { display: grid; grid-template-columns: minmax(0,1fr) 220px; gap: 0 14px; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+  .chips-var { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip-var { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-size: 12.5px; padding: 5px 10px; min-height: 32px;
+    border-radius: 999px; background: #F3F7FB; border: 1px solid #D5E3F0; color: #2F5F8A; cursor: pointer; }
+  .chip-var:hover { background: var(--azul-suave,#E6F0FB); border-color: var(--azul-filete,#3B85C0); }
+  .ayuda-pleg > summary { list-style: none; cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 8px; min-height: 40px;
+    font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .ayuda-pleg > summary::-webkit-details-marker { display: none; }
+  .ayuda-pleg > summary::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px;
+    border-right: 2px solid var(--texto-suave,#6E6656); border-bottom: 2px solid var(--texto-suave,#6E6656); transform: rotate(-45deg); transition: transform .15s ease; }
+  .ayuda-pleg[open] > summary::before { transform: rotate(45deg) translate(-1px,-1px); }
+  .pie-ayuda { font-size: 13px; color: var(--texto-suave,#6E6656); margin: 0 0 4px; line-height: 1.5; }
+  /* El cuadradito de marcar mide trece píxeles: la fila entera responde al toque. */
+  .fila-interruptor { display: flex !important; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px;
+    padding: 11px 13px; min-height: 46px; cursor: pointer; margin-top: 14px !important; }
+  .fila-interruptor input { width: auto; flex: 0 0 auto; margin: 0; }
+  .fila-interruptor span { margin: 0; font-weight: 500; font-size: 14px; }
+  .pt-ed-pie { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 20px; }
+  /* «Borrar» se separa de «Guardar» y «Deshacer»: no se pulsa por vecindad. */
+  .pt-ed-pie .peligro { margin-left: auto; }
+  .pt-ed-pie .msg { flex: 1 1 100%; }
+  .pt-ed-previo { position: sticky; top: 0; }
+  .pt-ed-previo .pt-et { margin-top: 14px; }
+  .pt-ed-previo .previo .cuerpo { max-height: 440px; overflow: auto; }
 </style>
 </head>
-<body>
+<body class="adm-piel">
 
-<div id="admin-contenido" class="admin-wrap">
-  <div class="pl-wrap">
-
-    <!-- Cabecera (pieza 1). Cambia con la vista: en la lista, «Nueva
-         plantilla»; dentro de una plantilla, «Guardar la plantilla». Nunca
-         dos botones azules compitiendo. -->
-    <div id="cabecera"></div>
-
-    <details class="aviso-copia">
-      <summary>Esto no manda correos: los deja listos para copiar y pegar</summary>
-      <div class="dentro">
-        <p>La web guarda los textos y te los deja listos: eliges la plantilla y la persona,
-        se rellenan los datos (nombre, grupo, importe, fecha…) y con un botón se copia el correo entero. Luego lo pegas en Gmail
-        o en tu programa de correo y lo envías tú. Así queda enviado desde la cuenta del club, con su copia y su respuesta.</p>
+<div id="admin-contenido">
+  <div class="admin-wrap">
+    <div class="pt-wrap" id="pt">
+      <div class="pt-cab">
+        <div>
+          <h1>Plantillas de correo</h1>
+          <p>Correos ya escritos, con huecos para el nombre, el grupo o el importe. No se envían solos: eliges la plantilla y la persona, se rellenan sus datos y lo copias para pegarlo en Gmail, así sale desde la cuenta del club. Toca una plantilla para leerla, copiarla o editarla.</p>
+        </div>
+        <div class="pt-cab-acc"><button type="button" class="pt-b prin" id="pt-nueva">+ Nueva plantilla</button></div>
       </div>
-    </details>
-
-    <!-- ===== VISTA 1 · LA LISTA, A PANTALLA COMPLETA ===== -->
-    <div id="vista-lista">
-      <div class="tarjeta">
-        <div id="lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+      <div class="pt-cifras" id="pt-cifras"></div>
+      <div class="pt-filtros">
+        <input type="search" class="pt-buscar" id="pt-buscar" placeholder="Buscar en el nombre, el asunto o el texto…" aria-label="Buscar plantilla" autocomplete="off">
+        <div class="pt-chips" id="pt-chips" role="group" aria-label="Apartado"></div>
       </div>
+      <div class="pt-pie-filtros"><span class="pt-cuenta" id="pt-cuenta" aria-live="polite"></span></div>
+      <div id="lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== HOJA DE LA PLANTILLA (se abre al tocar una fila) ===== -->
+<div class="pt-capa">
+  <div class="pt-velo" id="pt-velo"></div>
+  <div class="pt-hoja" id="pt-hoja" role="dialog" aria-modal="true" aria-labelledby="pt-h-nombre">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="pt-hoja-cab" id="pt-h-cab">
+      <span class="pt-ico" id="pt-h-ico"></span>
+      <div><h3 id="pt-h-nombre"></h3><p class="sub" id="pt-h-sub"></p></div>
+      <button type="button" class="pt-cerrar" id="pt-h-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div id="pt-h-aviso"></div>
+
+    <p class="pt-et">El correo</p>
+    <!-- Aquí se avisa si algún dato de relleno (grupo, correo, recibo)
+         no se ha podido leer: si no, los huecos saldrían vacíos sin más. -->
+    <div id="faltan-datos"></div>
+    <div class="previo">
+      <div class="de" id="previo-de"></div>
+      <div class="asunto" id="previo-asunto"></div>
+      <div class="cuerpo" id="previo-cuerpo"></div>
     </div>
 
-    <!-- ===== VISTA 2 · UNA PLANTILLA, A PANTALLA COMPLETA ===== -->
-    <div id="vista-plantilla" hidden>
-    <div class="pl-cuerpo">
-
-      <!-- ===== EL TEXTO ===== -->
-      <div class="tarjeta">
-        <div class="tarj-cab">El texto del correo</div>
-        <div class="tarj-cuerpo">
-          <form id="form-plantilla">
-            <div class="grid2">
-              <div>
-                <label for="p-nombre">Nombre de la plantilla</label>
-                <input type="text" id="p-nombre" required placeholder="Recordatorio de cuota">
-              </div>
-              <div>
-                <label for="p-categoria">Apartado</label>
-                <select id="p-categoria">
-                  <option value="buzon">Buzón · contestar un mensaje</option>
-                  <option value="altas">Altas y bajas</option>
-                  <option value="cuotas">Cuotas y recibos</option>
-                  <option value="competiciones">Competiciones</option>
-                  <option value="avisos">Avisos</option>
-                  <option value="tienda">Ropa y tienda</option>
-                  <option value="otros">Otros</option>
-                </select>
-              </div>
-            </div>
-
-            <label for="p-asunto">Asunto del correo</label>
-            <input type="text" id="p-asunto" required placeholder="Recordatorio de la cuota de {{nombre}}">
-
-            <label for="p-cuerpo">Cuerpo del correo</label>
-            <textarea id="p-cuerpo" required placeholder="Hola:&#10;&#10;Te recordamos que…"></textarea>
-
-            <div class="chips-var" id="chips-var"></div>
-            <details class="ayuda-pleg">
-              <summary>Cómo funcionan los huecos</summary>
-              <p class="pie-ayuda">
-                Los huecos se escriben entre dobles llaves: <code>{{nombre}}</code>, <code>{{grupo}}</code>, <code>{{importe}}</code>,
-                <code>{{fecha}}</code>… Pulsa uno de los botones de arriba para meterlo donde tengas el cursor. Al copiar el correo
-                se cambian por los datos de verdad de la persona que elijas.
-              </p>
-            </details>
-
-            <!-- El buzón ofrece «la plantilla que toca según el asunto». Aquí se
-                 decide cuál toca: si una de estas palabras sale en el asunto o en
-                 el texto del mensaje, el buzón propone esta plantilla. Están aquí
-                 y no en el código para que el club las cambie sin pedir permiso. -->
-            <label for="p-palabras">Cuándo la propone el buzón</label>
-            <input type="text" id="p-palabras"
-                   placeholder="recibo, devuelto, banco, cambio de cuenta">
-            <details class="ayuda-pleg">
-              <summary>Cómo se eligen esas palabras</summary>
-              <p class="pie-ayuda">
-                Palabras separadas por comas. Si alguna sale en el asunto o en el texto de un mensaje del
-                buzón, ahí aparecerá esta plantilla como la que toca. No hace falta poner acentos ni
-                mayúsculas. Si se deja vacío, la plantilla sigue estando pero el buzón no la propone sola.
-              </p>
-            </details>
-
-            <label class="fila-interruptor" for="p-activa">
-              <input type="checkbox" id="p-activa" checked>
-              <span>Activa (aparece en la lista para copiar)</span>
-            </label>
-
-            <!-- «Guardar la plantilla» es el botón azul de arriba, uno por
-                 pantalla. Aquí abajo solo queda deshacer y borrar. -->
-            <div class="barra-guardar">
-              <button type="button" class="btn btn--fantasma btn--mini" id="btn-cancelar">Deshacer los cambios</button>
-              <button type="button" class="btn--peligro" id="btn-borrar">Borrar la plantilla</button>
-              <span class="msg" id="msg-form"></span>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- ===== COPIAR Y PEGAR ===== -->
-      <div class="tarjeta col-copia">
-        <div class="tarj-cab">Cómo queda · copiar y pegar</div>
-        <div class="tarj-cuerpo">
-          <!-- Aquí se avisa si algún dato de relleno (grupo, correo, recibo)
-               no se ha podido leer: si no, los huecos saldrían vacíos sin más. -->
-          <div id="faltan-datos"></div>
-
-          <label for="p-destinatario">¿De quién es el correo?</label>
-          <select id="p-destinatario"><option value="">Preparando la lista…</option></select>
-
-          <div id="campos-var" style="margin-top:14px;"></div>
-
-          <div class="previo">
-            <div class="de" id="previo-de"></div>
-            <div class="asunto" id="previo-asunto"></div>
-            <div class="cuerpo" id="previo-cuerpo"></div>
-          </div>
-
-          <div class="acciones-copia">
-            <button type="button" class="btn btn--fantasma btn--mini" id="btn-copiar">Copiar el correo</button>
-            <a class="btn btn--fantasma btn--mini" id="btn-mailto" href="#">Abrir en el correo</a>
-            <span class="msg" id="msg-copia"></span>
-          </div>
-          <p class="nota-mail" id="nota-mail"></p>
-        </div>
-      </div>
-
+    <p class="pt-et">Rellenar y copiar</p>
+    <div class="pt-campo">
+      <label for="p-destinatario">¿De quién es el correo?</label>
+      <select id="p-destinatario"><option value="">Preparando la lista…</option></select>
     </div>
+    <div id="campos-var"></div>
+    <p class="nota-mail" id="nota-mail"></p>
+    <div class="pt-acc">
+      <div class="dos">
+        <button type="button" class="prin" id="btn-copiar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2.5"/><path d="M16 8V5.5A2.5 2.5 0 0 0 13.5 3h-8A2.5 2.5 0 0 0 3 5.5v8A2.5 2.5 0 0 0 5.5 16H8"/></svg>Copiar el correo</button>
+        <a id="btn-mailto" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Abrir en el correo</a>
+      </div>
+    </div>
+    <span class="msg" id="msg-copia"></span>
+
+    <div id="pt-h-buzon"></div>
+
+    <div class="pt-acc" id="pt-h-acc">
+      <button type="button" data-h="editar">Editar la plantilla</button>
+      <button type="button" data-h="activa" id="pt-h-activa">Desactivarla</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EDITOR (nueva / editar), el formulario de antes ===== -->
+<div class="oculto" id="pt-editor">
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="pt-ed-titulo">
+    <div class="pt-ed-cab">
+      <div><h2 id="pt-ed-titulo">Plantilla nueva</h2><p id="pt-ed-sub">Se copia y se pega, no se envía sola</p></div>
+      <button type="button" class="pt-cerrar" id="pt-ed-cerrar" aria-label="Cerrar sin guardar">×</button>
+    </div>
+    <div class="pt-ed-cols">
+      <form id="form-plantilla">
+        <div class="grid2">
+          <div>
+            <label for="p-nombre">Nombre de la plantilla</label>
+            <input type="text" id="p-nombre" required placeholder="Recordatorio de cuota">
+          </div>
+          <div>
+            <label for="p-categoria">Apartado</label>
+            <select id="p-categoria">
+              <option value="buzon">Buzón · contestar un mensaje</option>
+              <option value="altas">Altas y bajas</option>
+              <option value="cuotas">Cuotas y recibos</option>
+              <option value="competiciones">Competiciones</option>
+              <option value="avisos">Avisos</option>
+              <option value="tienda">Ropa y tienda</option>
+              <option value="otros">Otros</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="p-asunto">Asunto del correo</label>
+        <input type="text" id="p-asunto" required placeholder="Recordatorio de la cuota de {{nombre}}">
+
+        <label for="p-cuerpo">Cuerpo del correo</label>
+        <textarea id="p-cuerpo" required placeholder="Hola:&#10;&#10;Te recordamos que…"></textarea>
+
+        <div class="chips-var" id="chips-var"></div>
+        <details class="ayuda-pleg">
+          <summary>Cómo funcionan los huecos</summary>
+          <p class="pie-ayuda">
+            Los huecos se escriben entre dobles llaves: <code>{{nombre}}</code>, <code>{{grupo}}</code>, <code>{{importe}}</code>,
+            <code>{{fecha}}</code>… Pulsa uno de los botones de arriba para meterlo donde tengas el cursor. Al copiar el correo
+            se cambian por los datos de verdad de la persona que elijas.
+          </p>
+        </details>
+
+        <!-- El buzón ofrece «la plantilla que toca según el asunto». Aquí se
+             decide cuál toca: si una de estas palabras sale en el asunto o en
+             el texto del mensaje, el buzón propone esta plantilla. Están aquí
+             y no en el código para que el club las cambie sin pedir permiso. -->
+        <label for="p-palabras">Cuándo la propone el buzón</label>
+        <input type="text" id="p-palabras"
+               placeholder="recibo, devuelto, banco, cambio de cuenta">
+        <details class="ayuda-pleg">
+          <summary>Cómo se eligen esas palabras</summary>
+          <p class="pie-ayuda">
+            Palabras separadas por comas. Si alguna sale en el asunto o en el texto de un mensaje del
+            buzón, ahí aparecerá esta plantilla como la que toca. No hace falta poner acentos ni
+            mayúsculas. Si se deja vacío, la plantilla sigue estando pero el buzón no la propone sola.
+          </p>
+        </details>
+
+        <label class="fila-interruptor" for="p-activa">
+          <input type="checkbox" id="p-activa" checked>
+          <span>Activa (aparece en la lista para copiar)</span>
+        </label>
+
+        <div class="pt-ed-pie">
+          <button type="submit" class="pt-b prin">Guardar la plantilla</button>
+          <button type="button" class="pt-b" id="btn-cancelar">Deshacer los cambios</button>
+          <button type="button" class="pt-b peligro" id="btn-borrar">Borrar la plantilla</button>
+          <span class="msg" id="msg-form"></span>
+        </div>
+      </form>
+
+      <!-- Cómo queda: el mismo correo de la hoja, al lado mientras se escribe -->
+      <div class="pt-ed-previo">
+        <p class="pt-et">Cómo queda</p>
+        <div class="previo">
+          <div class="asunto" id="ed-previo-asunto"></div>
+          <div class="cuerpo" id="ed-previo-cuerpo"></div>
+        </div>
+        <p class="nota-mail">Los huecos en ámbar se rellenan con los datos de la persona que elijas en la hoja de la plantilla.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -319,7 +425,25 @@ APOLANA_ADMIN.listo(function (sb) {
     tienda: 'Ropa y tienda',
     otros: 'Otros'
   };
+  /* El nombre corto, para los chips. */
+  var CORTO = { buzon: 'Buzón', altas: 'Altas y bajas', cuotas: 'Cuotas y recibos', competiciones: 'Competiciones', avisos: 'Avisos', tienda: 'Ropa y tienda', otros: 'Otros' };
   var ORDEN_CAT = ['buzon', 'altas', 'cuotas', 'competiciones', 'avisos', 'tienda', 'otros'];
+
+  /* Un icono por apartado, en el círculo de la tarjeta. */
+  var ICO = {
+    buzon:         '<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5.5 5h13L21 13v6H3v-6z"/>',
+    altas:         '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M19 8v6M16 11h6"/>',
+    cuotas:        '<path d="M17.5 6.6A6.5 6.5 0 1 0 17.5 17.4"/><path d="M4 10h9M4 14h9"/>',
+    competiciones: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+    avisos:        '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    tienda:        '<path d="M8 3.5 4 6l-1.5 4L6 11.5V20h12v-8.5l3.5-1.5L20 6l-4-2.5c-.5 1.5-2 2.5-4 2.5s-3.5-1-4-2.5z"/>',
+    otros:         '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/>'
+  };
+  function icono(cat) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (ICO[cat] || ICO.otros) + '</svg>';
+  }
+  function catDe(p) { return CATEGORIAS[p.categoria] ? p.categoria : 'otros'; }
 
   // Cómo se llama cada hueco por dentro y de dónde sale su dato.
   var ETIQUETAS_VAR = {
@@ -337,7 +461,10 @@ APOLANA_ADMIN.listo(function (sb) {
   };
 
   var plantillas = [], atletas = [], gruposPorId = {}, perfilesPorId = {}, pagosPorAtleta = {};
-  var seleccionada = null;   // plantilla en el editor (null = nueva)
+  var seleccionada = null;   // la plantilla de la hoja y del editor (null = nueva)
+  var filtroCat = '';        // chip puesto ('' = todos los apartados)
+  var vista = '';            // cifra puesta: '' | 'buzon' | 'apagadas'
+  var errorCarga = '';
 
   var eurosFmt = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
   function euros(n) { return eurosFmt.format(Number(n)); }
@@ -366,125 +493,236 @@ APOLANA_ADMIN.listo(function (sb) {
     });
     return out;
   }
+  /* Quita tildes y mayúsculas para buscar. */
+  function llano(s) { return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
+  /* La primera línea que dice algo: el «Hola:» del principio no cuenta. */
+  function primeraLinea(cuerpo) {
+    var l = String(cuerpo || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    if (l.length > 1 && l[0].length <= 40 && /^(hola|buenas|buenos|estimad)/i.test(l[0])) l.shift();
+    return l[0] || '';
+  }
+  /* Los {{huecos}} de una línea, marcados (solo para leer). */
+  function conHuecos(texto) {
+    return esc(texto).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, '<span class="hueco">{{$1}}</span>');
+  }
+  function huecosDe(p) { return variablesDe((p.asunto || '') + ' ' + (p.cuerpo || '')).length; }
+  function tieneBuzon(p) { return !!(p.buzon_palabras && p.buzon_palabras.length); }
 
   // ========================================================
   // LISTA DE PLANTILLAS
   // ========================================================
-  /* Dos vistas: la lista o una plantilla. Nunca las dos a la vez, y nunca
-     tres columnas. */
-  function verLista() {
-    seleccionada = null;
-    $('vista-plantilla').hidden = true;
-    $('vista-lista').hidden = false;
-    pintarCabecera();
-    pintarLista();
-    window.scrollTo(0, 0);
-  }
-
-  function verPlantilla(p) {
-    $('vista-lista').hidden = true;
-    $('vista-plantilla').hidden = false;
-    cargarEnEditor(p);
-    window.scrollTo(0, 0);
-  }
-
-  function pintarCabecera() {
-    if (!$('vista-plantilla').hidden) {
-      $('cabecera').innerHTML = PZ.cabecera({
-        titulo: seleccionada ? seleccionada.nombre : 'Plantilla nueva',
-        contexto: seleccionada ? (CATEGORIAS[seleccionada.categoria] || 'Otros') : 'Se copia y se pega, no se envía sola',
-        secundaria: { texto: 'Volver a las plantillas', accion: 'volver' },
-        accion:     { texto: 'Guardar la plantilla',    accion: 'guardar' }
-      });
-      return;
-    }
-    var activas = plantillas.filter(function (x) { return x.activa; }).length;
-    var paradas = plantillas.length - activas;
-    $('cabecera').innerHTML = PZ.cabecera({
-      titulo: 'Plantillas de correo',
-      contexto: plantillas.length
-        ? plantillas.length + (plantillas.length === 1 ? ' plantilla' : ' plantillas') +
-          (paradas ? ' · ' + paradas + (paradas === 1 ? ' desactivada' : ' desactivadas') : ' · todas en uso')
-        : 'Se copian y se pegan, no se envían solas',
-      accion: { texto: 'Nueva plantilla', accion: 'nueva' }
+  function visibles() {
+    var q = llano($('pt-buscar').value || '').trim();
+    return plantillas.filter(function (p) {
+      if (filtroCat && catDe(p) !== filtroCat) return false;
+      if (vista === 'buzon' && !tieneBuzon(p)) return false;
+      if (vista === 'apagadas' && p.activa) return false;
+      if (q && llano(p.nombre + ' ' + p.asunto + ' ' + p.cuerpo).indexOf(q) === -1) return false;
+      return true;
     });
   }
 
-  PZ.alPulsar('#cabecera', function (accion) {
-    if (accion === 'nueva')  { verPlantilla(null); $('p-nombre').focus(); return; }
-    if (accion === 'volver') { verLista(); return; }
-    if (accion === 'guardar') {
-      /* El botón azul de arriba es el que guarda: se le pide al formulario que
-         se envíe, para no tener dos caminos distintos de guardado. */
-      if (typeof $('form-plantilla').requestSubmit === 'function') $('form-plantilla').requestSubmit();
-      else $('form-plantilla').dispatchEvent(new Event('submit', { cancelable: true }));
+  function pintar() {
+    if (errorCarga) {
+      $('pt-cifras').innerHTML = ''; $('pt-chips').innerHTML = ''; $('pt-cuenta').textContent = '';
+      $('lista').innerHTML = '<div class="pt-error">' + ADM.error(errorCarga, function () { cargarPlantillas(null); }) + '</div>';
+      return;
     }
-  });
+    var nBuzon = plantillas.filter(tieneBuzon).length;
+    var paradas = plantillas.filter(function (x) { return !x.activa; }).length;
+    $('pt-cifras').innerHTML =
+      '<button type="button" class="pt-cifra" data-v=""><b>' + plantillas.length + '</b><span>' + (plantillas.length === 1 ? 'plantilla' : 'plantillas') +
+        (plantillas.length && !paradas ? ', todas en uso' : '') + '</span></button>' +
+      '<button type="button" class="pt-cifra buzon" data-v="buzon"><b>' + nBuzon + '</b><span>las propone el buzón</span></button>' +
+      '<button type="button" class="pt-cifra' + (paradas ? ' aviso' : '') + '" data-v="apagadas"><b>' + paradas + '</b><span>' + (paradas === 1 ? 'desactivada' : 'desactivadas') + '</span></button>';
+
+    /* Un chip con 0 no lleva a ninguna parte: solo los apartados con algo,
+       «Todas» y el que esté puesto. */
+    function cuantas(c) { return plantillas.filter(function (p) { return catDe(p) === c; }).length; }
+    $('pt-chips').innerHTML = '<button type="button" data-c="">Todas · ' + plantillas.length + '</button>' +
+      ORDEN_CAT.filter(function (c) { return cuantas(c) > 0 || filtroCat === c; }).map(function (c) {
+        return '<button type="button" class="c-' + c + '" data-c="' + c + '"><span class="pt"></span>' + esc(CORTO[c]) + ' · ' + cuantas(c) + '</button>';
+      }).join('');
+    pintarLista();
+  }
+
+  function filaHtml(p) {
+    var cat = catDe(p), n = huecosDe(p);
+    var pills = [];
+    if (!p.activa) pills.push('<span class="pt-pill apagada"><span class="pt"></span>Desactivada</span>');
+    /* Lo que antes decía la línea gris: si la propone el buzón sola y
+       cuántos huecos hay que rellenar antes de copiarla. */
+    if (tieneBuzon(p)) pills.push('<span class="pt-pill buzon"><span class="pt"></span>La propone el buzón</span>');
+    pills.push('<span class="pt-pill huecos">' + (n ? n + (n === 1 ? ' hueco' : ' huecos') : 'Sin huecos') + '</span>');
+    var lin = primeraLinea(p.cuerpo);
+    return '<div class="pt-fila c-' + cat + (p.activa ? '' : ' apagada') + '" tabindex="0" role="button" data-id="' + esc(p.id) + '" aria-label="' + esc(p.nombre) + ': leer, copiar o editar">' +
+      '<span class="pt-ico">' + icono(cat) + '</span>' +
+      '<span class="pt-nom"><b>' + esc(p.nombre) + '</b>' +
+        '<span class="asu"><i>Asunto:</i> ' + conHuecos(p.asunto) + '</span>' +
+        (lin ? '<span class="lin">' + conHuecos(lin) + '</span>' : '') + '</span>' +
+      '<span class="pt-pills">' + pills.join('') + '</span>' +
+      '<span class="pt-flecha" aria-hidden="true">›</span>' +
+    '</div>';
+  }
 
   function pintarLista() {
-    var cont = $('lista');
+    if (errorCarga) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#pt-chips button'), function (b) {
+      var on = b.getAttribute('data-c') === filtroCat;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.pt-cifra[data-v]'), function (c) {
+      var v = c.getAttribute('data-v');
+      c.classList.toggle('on', !!v && v === vista);
+    });
+    var lista = visibles();
+    $('pt-cuenta').textContent = lista.length === plantillas.length
+      ? plantillas.length + (plantillas.length === 1 ? ' plantilla' : ' plantillas')
+      : lista.length + ' de ' + plantillas.length + ' plantillas';
+
     /* Vacío de verdad (se ha podido leer y no hay ninguna): se explica para qué
        sirven y se ofrece crear la primera, en vez de un gris que no lleva a nada. */
     if (!plantillas.length) {
-      cont.innerHTML = ADM.vacio('Todavía no hay ninguna plantilla',
-        'Una plantilla es un correo escrito una vez, con huecos para el nombre, el grupo o el importe. Luego se copia relleno en un momento.',
-        '<button type="button" class="pz-btn" id="vacio-nueva-pl">Nueva plantilla</button>',
-        '<path d="M4 6.5h16v11H4z"/><path d="m4 7 8 6 8-6"/>');
-      var bv = document.getElementById('vacio-nueva-pl');
-      if (bv) bv.addEventListener('click', function () { verPlantilla(null); $('p-nombre').focus(); });
+      $('lista').innerHTML = '<div class="pt-vacio"><b>Todavía no hay ninguna plantilla</b>Una plantilla es un correo escrito una vez, con huecos para el nombre, el grupo o el importe. Luego se copia relleno en un momento.<br><button type="button" data-primera>+ Nueva plantilla</button></div>';
+      return;
+    }
+    if (!lista.length) {
+      $('lista').innerHTML = '<div class="pt-vacio"><b>Ninguna plantilla con este filtro</b>Prueba con otro apartado o quita lo que has escrito.<br><button type="button" data-limpiar>Ver todas</button></div>';
       return;
     }
     var html = '';
     ORDEN_CAT.forEach(function (cat) {
-      var delGrupo = plantillas.filter(function (p) { return (p.categoria || 'otros') === cat; });
+      var delGrupo = lista.filter(function (p) { return catDe(p) === cat; });
       if (!delGrupo.length) return;
-      html += '<div class="grupo-cat">' + esc(CATEGORIAS[cat] || cat) + '</div>';
-      delGrupo.forEach(function (p) {
-        var vars = (p.variables || []).length;
-        /* La línea de debajo dice cuándo se usa: si la propone el buzón sola,
-           y cuántos huecos hay que rellenar antes de copiarla. */
-        var trozos = [];
-        if (p.buzon_palabras && p.buzon_palabras.length) trozos.push('la propone el buzón sola');
-        trozos.push(vars ? vars + (vars === 1 ? ' hueco que rellenar' : ' huecos que rellenar') : 'sin huecos');
-        html += '<div class="item">' +
-          '<span class="txt">' +
-            '<span class="nom">' + esc(p.nombre) + '</span>' +
-            '<span class="sub' + (p.activa ? '' : ' apagada') + '">' +
-              (p.activa ? '' : 'Desactivada · ') + esc(trozos.join(' · ')) + '</span>' +
-          '</span>' +
-          '<button type="button" class="pz-btn pz-btn--texto abrir" data-pz-accion="abrir" data-pz-id="' + esc(p.id) + '">Abrir</button>' +
-          '<span class="pz-td-menu" style="position:relative">' +
-            '<button type="button" class="pz-mas" aria-haspopup="menu" aria-expanded="false" ' +
-              'data-pz-menu="pz-menu-pl-' + esc(p.id) + '" aria-label="Más acciones de ' + esc(p.nombre) + '">' +
-              '<span aria-hidden="true">⋯</span></button>' +
-            '<div class="pz-menu" hidden role="menu" id="pz-menu-pl-' + esc(p.id) + '">' +
-              '<button type="button" role="menuitem" data-pz-accion="abrir" data-pz-id="' + esc(p.id) + '">Abrir</button>' +
-              '<button type="button" role="menuitem" data-pz-accion="activa" data-pz-id="' + esc(p.id) + '">' +
-                (p.activa ? 'Desactivarla' : 'Volver a activarla') + '</button>' +
-            '</div>' +
-          '</span>' +
-        '</div>';
-      });
+      html += '<p class="pt-grupo">' + esc(CATEGORIAS[cat] || cat) + ' <span>' + delGrupo.length + '</span></p>' +
+        '<div class="pt-lista">' + delGrupo.map(filaHtml).join('') + '</div>';
     });
-    cont.innerHTML = html;
+    $('lista').innerHTML = html;
   }
 
-  PZ.alPulsar('#lista', async function (accion, id) {
-    var p = plantillas.filter(function (x) { return x.id === id; })[0];
-    if (!p) return;
-    if (accion === 'abrir') { verPlantilla(p); return; }
-    if (accion === 'activa') {
-      var r = await sb.from('plantillas_email').update({ activa: !p.activa }).eq('id', id);
-      if (r.error) { apoToast('No se pudo cambiar: ' + r.error.message, 'error'); return; }
-      p.activa = !p.activa;
-      pintarCabecera();
-      pintarLista();
+  /* Un solo oyente para cabecera, cifras, chips y lista. */
+  $('pt').addEventListener('click', function (ev) {
+    var c = ev.target.closest('.pt-cifra[data-v]');
+    if (c) {
+      var v = c.getAttribute('data-v');
+      /* Pulsar la cifra que ya filtra la quita. */
+      vista = (v && vista === v) ? '' : v;
+      pintarLista(); return;
     }
+    var ch = ev.target.closest('#pt-chips button[data-c]');
+    if (ch) { filtroCat = ch.getAttribute('data-c') || ''; pintarLista(); return; }
+    if (ev.target.closest('[data-limpiar]')) { filtroCat = ''; vista = ''; $('pt-buscar').value = ''; pintarLista(); return; }
+    if (ev.target.closest('[data-primera]') || ev.target.closest('#pt-nueva')) { nuevaPlantilla(); return; }
+    var fila = ev.target.closest('.pt-fila[data-id]');
+    if (fila) {
+      var p = plantillas.filter(function (x) { return x.id === fila.getAttribute('data-id'); })[0];
+      if (p) abrirHoja(p, fila);
+    }
+  });
+  $('pt').addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var fila = ev.target.closest && ev.target.closest('.pt-fila[data-id]');
+    if (!fila || ev.target !== fila) return;
+    ev.preventDefault();
+    var p = plantillas.filter(function (x) { return x.id === fila.getAttribute('data-id'); })[0];
+    if (p) abrirHoja(p, fila);
+  });
+  $('pt-buscar').addEventListener('input', pintarLista);
+
+  // ========================================================
+  // HOJA DE LA PLANTILLA
+  // ========================================================
+  var focoPrevio = null;
+
+  function pintarHoja() {
+    var p = seleccionada;
+    if (!p) return;
+    var cat = catDe(p), n = huecosDe(p);
+    $('pt-h-cab').className = 'pt-hoja-cab c-' + cat + (p.activa ? '' : ' apagada');
+    $('pt-h-ico').innerHTML = icono(cat);
+    $('pt-h-nombre').textContent = p.nombre;
+    $('pt-h-sub').textContent = [CATEGORIAS[cat], n ? n + (n === 1 ? ' hueco que rellenar' : ' huecos que rellenar') : 'sin huecos',
+      tieneBuzon(p) ? 'la propone el buzón sola' : ''].filter(Boolean).join(' · ');
+    $('pt-h-aviso').innerHTML = p.activa ? ''
+      : '<div class="pt-aviso"><b>Desactivada.</b> No aparece en la lista para copiar del buzón. Se puede volver a activar abajo.</div>';
+    $('pt-h-buzon').innerHTML = tieneBuzon(p)
+      ? '<p class="pt-et">Cuándo la propone el buzón</p><ul class="pt-palabras">' +
+          p.buzon_palabras.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' +
+          '<p class="pt-nota">Si alguna de estas palabras sale en el asunto o en el texto de un mensaje del buzón, ahí aparece esta plantilla como la que toca.</p>'
+      : '';
+    $('pt-h-activa').textContent = p.activa ? 'Desactivarla' : 'Volver a activarla';
+  }
+
+  function abrirHoja(p, desde) {
+    focoPrevio = desde || document.activeElement;
+    $('msg-copia').textContent = '';
+    cargarEnEditor(p);
+    pintarHoja();
+    $('pt-velo').classList.add('ver'); $('pt-hoja').classList.add('ver');
+    $('pt-hoja').scrollTop = 0;
+    setTimeout(function () { $('pt-h-cerrar').focus(); }, 60);
+  }
+  function cerrarHoja() {
+    seleccionada = null;
+    if (!$('pt-hoja').classList.contains('ver')) return;
+    $('pt-velo').classList.remove('ver'); $('pt-hoja').classList.remove('ver');
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  function hojaAbierta() { return $('pt-hoja').classList.contains('ver'); }
+  $('pt-velo').addEventListener('click', cerrarHoja);
+  $('pt-h-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;   // el Escape que cierra un «¿seguro?» no cierra también lo de debajo
+    if (!$('pt-editor').classList.contains('oculto')) { cerrarEditor(); return; }
+    if (hojaAbierta()) cerrarHoja();
+  });
+
+  $('pt-h-acc').addEventListener('click', async function (ev) {
+    var b = ev.target.closest('button[data-h]');
+    if (!b || !seleccionada) return;
+    if (b.getAttribute('data-h') === 'editar') { abrirEditor(); return; }
+    /* Activar / desactivar: lo que antes estaba en el menú «⋯» de la fila. */
+    var p = seleccionada, id = p.id;
+    b.disabled = true;
+    var r = await sb.from('plantillas_email').update({ activa: !p.activa }).eq('id', id);
+    b.disabled = false;
+    if (r.error) { apoToast('No se pudo cambiar: ' + r.error.message, 'error'); return; }
+    p.activa = !p.activa;
+    /* El editor tiene cargada esta misma plantilla: que su casilla diga lo
+       mismo, para que un «Guardar» luego no la vuelva a dejar como estaba. */
+    $('p-activa').checked = !!p.activa;
+    pintar();
+    pintarHoja();
   });
 
   // ========================================================
-  // EDITOR
+  // EDITOR (ventana por encima de la hoja)
   // ========================================================
+  function abrirEditor() {
+    var p = seleccionada;
+    $('pt-ed-titulo').textContent = p ? p.nombre : 'Plantilla nueva';
+    $('pt-ed-sub').textContent = p ? (CATEGORIAS[p.categoria] || 'Otros') : 'Se copia y se pega, no se envía sola';
+    $('msg-form').textContent = ''; $('msg-form').className = 'msg';
+    $('pt-editor').classList.remove('oculto');
+    $('pt-editor').scrollTop = 0;
+    /* Como antes: solo la plantilla nueva pone el cursor en el nombre. */
+    setTimeout(function () { if (!p) $('p-nombre').focus(); else $('pt-ed-cerrar').focus(); }, 60);
+  }
+  /* Cerrar sin guardar = deshacer lo escrito (como «Volver a las plantillas»
+     de antes), para que la hoja siga enseñando lo que hay guardado. */
+  function cerrarEditor() {
+    $('pt-editor').classList.add('oculto');
+    if (seleccionada) cargarEnEditor(seleccionada);
+  }
+  function nuevaPlantilla() {
+    cerrarHoja();
+    cargarEnEditor(null);
+    abrirEditor();
+  }
+  $('pt-ed-cerrar').addEventListener('click', cerrarEditor);
+  $('pt-editor').addEventListener('click', function (e) { if (e.target === this) cerrarEditor(); });
+
   function cargarEnEditor(p) {
     seleccionada = p;
     manuales = {};
@@ -497,7 +735,6 @@ APOLANA_ADMIN.listo(function (sb) {
     $('btn-borrar').classList.toggle('oculto', !p);
     $('msg-form').textContent = '';
     pintarChipsVariables();
-    pintarCabecera();
     refrescarCopia();
   }
 
@@ -561,7 +798,9 @@ APOLANA_ADMIN.listo(function (sb) {
       return;
     }
     msg.className = 'msg ok'; msg.textContent = 'Guardada.';
+    $('pt-editor').classList.add('oculto');
     await cargarPlantillas(r.data.id);
+    if (window.apoToast) apoToast('Plantilla guardada.', 'ok');
   });
 
   $('btn-borrar').addEventListener('click', async function () {
@@ -570,6 +809,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('plantillas_email').delete().eq('id', seleccionada.id);
     if (r.error) { $('msg-form').className = 'msg error'; $('msg-form').textContent = 'No se ha podido borrar: ' + r.error.message; return; }
     seleccionada = null;
+    $('pt-editor').classList.add('oculto');
     await cargarPlantillas(null);
   });
 
@@ -666,6 +906,9 @@ APOLANA_ADMIN.listo(function (sb) {
       (a ? ' · ' + (correo ? esc(correo) : 'sin correo en la ficha') : '');
     $('previo-asunto').innerHTML = rellenarHtml(asunto, valores) || '<span class="sin-rellenar">Sin asunto</span>';
     $('previo-cuerpo').innerHTML = rellenarHtml(cuerpo, valores) || '';
+    /* El «cómo queda» del editor enseña lo mismo mientras se escribe. */
+    $('ed-previo-asunto').innerHTML = $('previo-asunto').innerHTML;
+    $('ed-previo-cuerpo').innerHTML = $('previo-cuerpo').innerHTML;
 
     var sinRellenar = variablesDe(asunto + ' ' + cuerpo).filter(function (v) { return !lleno(valores[v]); });
     var nota = [];
@@ -729,21 +972,23 @@ APOLANA_ADMIN.listo(function (sb) {
     var r = await sb.from('plantillas_email')
       .select('id,nombre,asunto,cuerpo,categoria,variables,buzon_palabras,activa')
       .order('categoria').order('nombre');
-    /* Antes esto era un texto gris sin salida y, encima, el recuento de arriba
-       se quedaba con el esqueleto puesto para siempre. Ahora: ámbar, con botón
-       de volver a intentarlo, y el recuento se calla en vez de mentir. */
+    /* Si no se leen: ámbar, con botón de volver a intentarlo, y las cifras se
+       callan en vez de mentir. */
     if (r.error) {
-      $('lista').innerHTML = ADM.error(r.error.message, function () { cargarPlantillas(idAMostrar); });
-      pintarCabecera();
+      errorCarga = r.error.message;
+      pintar();
       return;
     }
+    errorCarga = '';
     plantillas = r.data || [];
+    pintar();
     /* Al llegar se ve la LISTA, no una plantilla abierta: es lo que se viene a
        hacer. Solo se abre una si se acaba de guardar. */
     var elegida = idAMostrar
       ? (plantillas.filter(function (p) { return p.id === idAMostrar; })[0] || null)
       : null;
-    if (elegida) verPlantilla(elegida); else verLista();
+    if (elegida) abrirHoja(elegida, hojaAbierta() ? focoPrevio : null);
+    else cerrarHoja();
   }
 
   async function cargarPersonas() {
@@ -754,7 +999,7 @@ APOLANA_ADMIN.listo(function (sb) {
       sb.from('pagos').select('atleta_id,importe,fecha_vencimiento,estado,concepto').eq('anulado', false).in('estado', ['pendiente', 'impagado']).order('fecha_vencimiento')
     ]);
     var sel = $('p-destinatario');
-    /* Sin la lista de personas esta columna no sirve de nada: en vez de dejar
+    /* Sin la lista de personas el «rellenar» no sirve de nada: en vez de dejar
        un desplegable muerto, se dice qué ha pasado y se ofrece reintentar. */
     if (r[0].error) {
       sel.innerHTML = '<option value="">No se ha podido leer la lista</option>';

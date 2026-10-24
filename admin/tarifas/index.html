@@ -8,292 +8,388 @@
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
 <link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
-<link rel="stylesheet" href="../../assets/css/panel-piezas.css?v=3261f3f3">
 <script>window.APOLANA_BASE="../../";</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/admin-auth.js?v=881708bc"></script>
 <script src="../../assets/js/admin-tabbar.js?v=df4a2fba" defer></script>
-<script src="../../assets/js/panel-piezas.js?v=16c512a9" defer></script>
 <style>
-  body { background: var(--crema); }
-
-  .tar-wrap { max-width: 1240px; margin: 0 auto; padding: 18px clamp(16px,4vw,30px) 40px; }
-
-  .btn--mini { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
-    min-height: 44px; padding: 10px 17px; font-size: 14px; }
-
-  /* ---------- El cajón de «Filtrar» ----------
-     Lo que no cabe en la única fila de mandos vive aquí dentro, plegado:
-     de qué grupo son las tarifas que se están viendo. */
-  .tar-cajon {
-    border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 10px; background: #fff;
-    padding: 14px 16px; margin: 0 0 14px;
-  }
-  .tar-cajon[hidden] { display: none; }
-  .tar-cajon-tit { display: block; font-size: 15px; font-weight: 500; color: var(--navy); margin: 0 0 9px; }
-  .tar-cajon-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-
-  /* ---------- Rejilla general ---------- */
-  .tar-cuerpo { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 18px; align-items: start; }
-  @media (max-width: 980px) { .tar-cuerpo { grid-template-columns: 1fr; } }
-  /* Con la barra lateral del panel puesta, el aside «Cambio en curso» baja
-     debajo de la tabla; lo gobierna una regla única en admin-tabbar.js
-     (.admin-wrap .tar-cuerpo) para no repetirlo en cada pantalla. */
-
-  .tarjeta {
-    background: #fff; border: 1px solid var(--linea-marcada); border-radius: var(--radio); overflow: hidden; box-shadow: var(--sombra-suave);
-  }
-  .tarjeta + .tarjeta { margin-top: 16px; }
+  /* ============================================================
+     TARIFAS · precios en tarjetas (24-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios» y «Pedidos»: cabecera grande,
+     cifras que filtran (en vigor, cambian de precio, precio en
+     texto), buscador + chips por pestaña (club, escuela, Cubo,
+     campus, socio), una tarjeta por tarifa agrupada por sección
+     con el precio grande, y una HOJA INFERIOR con el precio de
+     ahora, el cambio de precio (con su fecha de entrada en vigor,
+     «dónde se nota» y el aviso por correo), el historial de esa
+     tarifa y la ficha completa. La ficha (nueva / editar) es la de
+     antes, en ventana por encima de la hoja. Mismas lecturas y
+     mismas escrituras (insert / update / tarifa_nueva_version).
+     Prefijo tf-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .tf-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .tf-wrap *, .tf-capa *, #tar-ficha * { box-sizing: border-box; }
   .oculto { display: none !important; }
-  /* Ficha de tarifa en ventana emergente (modal), no al fondo de la página */
-  #tar-ficha:not(.oculto) { position:fixed; inset:0; z-index:1000; background:rgba(46,66,86,.45);
-    display:flex; align-items:flex-start; justify-content:center;
-    padding:clamp(16px,5vh,60px) 16px; overflow:auto; border:0; border-radius:0; box-shadow:none; margin:0;
-    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
-  #tar-ficha .cuerpo-tarjeta { background:#fff; border:1px solid var(--linea); border-radius: 14px;
-    box-shadow:0 30px 70px -25px rgba(46,66,86,.55); width:min(720px,100%);
-    animation:modal-sube .2s ease; }
-  @keyframes modal-sube { from{ transform:translateY(12px); opacity:.6; } to{ transform:none; opacity:1; } }
 
-  /* ---------- Tabla de tarifas ----------
-     La forma la pone la pieza 3 (`pz-tabla`), que es la misma en las diez
-     pantallas. Aquí solo queda lo que es propio de esta: el aviso de fecha y
-     la nota, que cuelgan del concepto. */
-  /* Un precio que no es una cifra («Incluida en la cuota») necesita partir en
-     dos líneas; los euros, no. */
-  .texto-precio { white-space: normal; }
+  /* --- Cabecera --- */
+  .tf-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+  .tf-cab > div:first-child { flex: 1 1 340px; min-width: 0; }
+  .tf-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .tf-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 66ch; }
+  .tf-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tf-b { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px; padding: 0 18px; border-radius: 999px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; text-decoration: none; }
+  .tf-b:hover { background: var(--crema,#FBF9F4); }
+  .tf-b.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .tf-b.prin:hover { background: #24364A; }
+  .tf-b:disabled { opacity: .55; cursor: default; }
+  .tf-b svg { width: 16px; height: 16px; }
+  @media (max-width: 520px) { .tf-cab-acc { width: 100%; } .tf-cab-acc .tf-b { flex: 1 1 0; padding: 0 12px; } }
 
-  /* En el móvil la ficha pliega las columnas de más detrás de «Más detalles».
-     Los euros no se pliegan: son el dato al que se viene a esta pantalla. */
-  @media (max-width: 720px) {
-    #tar-filas table.pz-tabla.pz-tabla > tbody > tr > td.pz-num[data-rotulo] {
-      display: flex; gap: 10px; justify-content: space-between;
-    }
+  /* --- Cifras: pulsar una filtra la lista --- */
+  .tf-cifras { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .tf-cifra { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .tf-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .tf-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .tf-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .tf-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); line-height: 1.3; }
+  .tf-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .tf-cifra.aviso b, .tf-cifra.aviso span { color: #8A5307; }
+  .tf-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .tf-cifras { gap: 8px; } .tf-cifra { padding: 10px 11px; } .tf-cifra b { font-size: 21px; } .tf-cifra span { font-size: 12.5px; } }
+
+  /* --- Buscador + chips (pestaña) --- */
+  .tf-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0 4px; }
+  .tf-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .tf-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .tf-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .tf-chips::-webkit-scrollbar { display: none; }
+  .tf-chips button { flex: 1 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px;
+    background: none; font: inherit; font-weight: 700; font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .tf-chips button:hover { color: var(--navy,#26374B); }
+  .tf-chips button .pt { width: 8px; height: 8px; border-radius: 999px; background: var(--c); flex: 0 0 8px; }
+  .tf-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .tf-pie-filtros { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 2px 0; }
+  .tf-cuenta { font-size: 13px; color: var(--texto-suave,#6E6656); min-height: 40px; display: inline-flex; align-items: center; }
+  @media (max-width: 620px) { .tf-chips { width: 100%; border-radius: 14px; } .tf-chips button { flex: 0 0 auto; } }
+
+  /* --- Color por pestaña. Primero el gris de reserva y DESPUÉS los colores,
+     para que estos ganen. --- */
+  :where(.tf-fila, .tf-hoja-cab, .tf-chips button) { --c: #CFC6B4; --s: #F0EBE0; --t: #6E6656; }
+  .a-club    { --c: #3B85C0; --s: #E6F0FB; --t: #2F6FA8; }
+  .a-escuela { --c: #6FAF7E; --s: #E7F3EA; --t: #23603A; }
+  .a-cubo    { --c: #C1742E; --s: #FBEEDD; --t: #86501C; }
+  .a-campus  { --c: #2E8C86; --s: #E2F1EF; --t: #1F615C; }
+  .a-socio   { --c: #7A5CA8; --s: #EEE8F4; --t: #543C74; }
+  .a-hist    { --c: #8A816E; --s: #F0EBE0; --t: #6E6656; }
+
+  /* --- Bloques por sección --- */
+  .tf-grupo { margin: 22px 4px 8px; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656);
+    display: flex; align-items: baseline; gap: 8px; }
+  .tf-grupo span { font-weight: 600; letter-spacing: 0; text-transform: none; }
+  .tf-lista { container: tf-lista / inline-size; display: flex; flex-direction: column; gap: 8px; }
+
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .tf-fila { position: relative; display: grid; grid-template-columns: 40px minmax(0,1.7fr) minmax(0,1fr) 168px 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid var(--c); border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .tf-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .tf-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  /* Un precio que va a cambiar (o que aún no ha entrado) lleva la franja en ámbar. */
+  .tf-fila.cambia { border-left-color: #D9A441; }
+  .tf-ico { width: 40px; height: 40px; border-radius: 999px; background: var(--s); color: var(--t); display: flex; align-items: center; justify-content: center; }
+  .tf-ico svg { width: 19px; height: 19px; }
+  .tf-nom { min-width: 0; }
+  .tf-nom b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  /* Dos líneas como mucho: las notas largas se leen enteras en la hoja. */
+  .tf-nom small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; color: var(--texto-tenue,#9A927F);
+    margin-top: 2px; line-height: 1.35; overflow-wrap: anywhere; }
+  .tf-pills { display: flex; flex-wrap: wrap; gap: 4px 5px; min-width: 0; align-items: center; }
+  .tf-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .tf-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .tf-pill.per { background: var(--s); color: var(--t); } .tf-pill.per .pt { background: var(--c); }
+  .tf-pill.cambia { background: #FBF1D9; color: #8A5307; } .tf-pill.cambia .pt { background: #D9A441; }
+  .tf-pill.vigor { background: #E7F3EA; color: #23603A; } .tf-pill.vigor .pt { background: #3E7A34; }
+  .tf-pill.cerrada { background: #F0EBE0; color: #8A816E; }
+  .tf-pill.grupo { background: #fff; color: var(--texto-suave,#6E6656); border: 1px solid var(--linea-marcada,#E4DCCB); padding: 2px 9px; }
+  /* El precio, grande: es el dato al que se viene a esta pantalla. */
+  .tf-precio { text-align: right; min-width: 0; }
+  .tf-precio b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 20px; line-height: 1.15; white-space: nowrap;
+    letter-spacing: -0.01em; }
+  .tf-precio small { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); margin-top: 1px; }
+  .tf-precio em { display: block; font-style: normal; font-size: 12.5px; color: var(--texto-suave,#6E6656); margin-top: 2px; white-space: nowrap; }
+  .tf-precio em i { font-style: normal; font-family: var(--fuente-dato); font-weight: 700; color: var(--navy,#26374B); }
+  /* Un precio que no es una cifra («Consultar secretaría») parte en dos líneas; los euros, no. */
+  .tf-precio .txt { display: block; font-size: 14px; font-weight: 700; line-height: 1.3; color: #3E6A2E; white-space: normal; }
+  .tf-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  .tf-cab-cols { display: grid; grid-template-columns: 40px minmax(0,1.7fr) minmax(0,1fr) 168px 14px; gap: 0 14px; padding: 14px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  .tf-cab-cols span:nth-child(4) { text-align: right; }
+  /* Lista estrecha (móvil): icono, nombre y precio arriba; las pastillas debajo */
+  @container tf-lista (max-width: 640px) {
+    .tf-fila { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 11px 12px 12px 10px; }
+    .tf-ico { order: 0; flex: 0 0 40px; }
+    .tf-nom { order: 1; flex: 1 1 0; align-self: center; }
+    .tf-precio { order: 2; align-self: flex-start; max-width: 46%; }
+    .tf-precio b { font-size: 18px; }
+    .tf-precio em { white-space: normal; }
+    .tf-flecha { display: none; }
+    .tf-fila::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+    .tf-pills { order: 4; flex: 1 1 100%; padding-left: 50px; }
+    .tf-pills:empty { display: none; }
   }
+  @media (max-width: 700px) { .tf-cab-cols { display: none; } }
+  .tf-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .tf-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .tf-vacio button { margin: 10px 4px 0; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .tf-error { margin-top: 10px; }
+  .tf-nota-pie { margin: 16px 2px 0; font-size: 13px; color: var(--texto-suave,#6E6656); line-height: 1.5; }
 
-  /* Cuando la lista se queda sin nada que enseñar. */
-  .tar-nada { padding: 16px 18px; border: 1px solid var(--linea-marcada, #E4DCCB); border-radius: 12px;
-    background: #fff; font-size: 15px; line-height: 1.5; color: var(--texto); }
-
-
-  /* ---------- Panel lateral «cambio en curso» ---------- */
-  .panel-cambio { border-top: 4px solid var(--azul-filete, #3B85C0); padding: 20px 22px; }
-  .eyebrow-mono { font-size: 13px;
-    color: var(--texto-suave); text-transform: none; display: block;
-  }
-  .resumen-cambio { font-size: 15px; color: var(--navy); line-height: 1.5; margin: 12px 0 0; }
-  .resumen-cambio strong { font-weight: 600; }
-  .bloque-panel { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--crema-banda); }
-  .lista-afecta { list-style: none; margin: 8px 0 0; padding: 0; }
-  .lista-afecta li { font-size: 14px; color: var(--navy); padding: 2px 0; }
-  .vacio-panel { font-size: 14px; color: var(--texto-suave); line-height: 1.5; margin: 10px 0 0; }
-
-  .aviso-ambar {
-    background: var(--aviso-fondo); border: 1px solid var(--aviso-borde); border-radius: 14px;
-    padding: 16px 18px; margin-top: 14px;
-  }
-  .aviso-ambar b { display: block; font-size: 14px; color: var(--navy); margin-bottom: 4px; }
-  .aviso-ambar span { font-size: 13px; color: #6B5B2E; line-height: 1.45; }
-
+  /* --- Hoja inferior: lo que se hace con una tarifa (o el histórico entero) --- */
+  .tf-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .tf-velo.ver { opacity: 1; pointer-events: auto; }
+  .tf-hoja { position: fixed; left: 50%; bottom: 0; width: min(580px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .tf-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .tf-hoja, .tf-velo, .tf-fila { transition: none; } }
+  .tf-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .tf-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .tf-hoja-cab .tf-ico { width: 48px; height: 48px; flex: 0 0 48px; }
+  .tf-hoja-cab .tf-ico svg { width: 22px; height: 22px; }
+  .tf-hoja-cab > div { flex: 1; min-width: 0; }
+  .tf-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .tf-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 4px 0 0; overflow-wrap: anywhere; line-height: 1.4; }
+  .tf-cerrar { flex: 0 0 auto; align-self: flex-start; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .tf-et { margin: 18px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  /* Los dos precios de ahora, en grande */
+  .tf-precios { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-top: 14px; }
+  .tf-precios > div { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+  .tf-precios span { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); }
+  .tf-precios b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.2; margin-top: 2px; overflow-wrap: anywhere; }
+  .tf-precios small { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); margin-top: 1px; }
+  .tf-precios .uno { grid-column: 1 / -1; }
+  .tf-precios .uno b.txt { font-family: var(--fuente-texto); font-size: 18px; color: #3E6A2E; }
+  .tf-nota { margin-top: 8px; background: var(--crema,#FBF9F4); border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45; color: var(--texto,#3A3A3A); overflow-wrap: anywhere; }
+  .tf-aviso { margin-top: 8px; background: #FBF1DE; border: 1px solid #E9CE9A; color: #6B4B10; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45; }
+  .tf-aviso b { color: #8A5307; }
+  /* Cambiar el precio */
+  .tf-campos { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px 10px; }
+  .tf-campo label { display: block; font-size: 13px; font-weight: 600; color: var(--navy,#26374B); margin: 0 0 5px; }
+  .tf-campo input { width: 100%; min-height: 48px; padding: 10px 13px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px;
+    font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-size: 18px; font-weight: 700; background: #fff; color: var(--navy,#26374B); }
+  .tf-campo input[type=date] { font-family: var(--fuente-texto); font-size: 15px; font-weight: 600; }
+  .tf-campo input:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .tf-campo .ayuda { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); margin-top: 4px; }
+  .tf-campo.ancho { grid-column: 1 / -1; }
+  .tf-resumen { margin: 12px 0 0; background: #F3F7FB; border: 1px solid #D5E3F0; color: #24476B; border-radius: 12px; padding: 10px 14px; font-size: 14.5px; line-height: 1.45; }
+  .tf-resumen strong { font-weight: 700; }
+  .tf-afecta { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 5px; }
+  .tf-afecta li { font-size: 12.5px; font-weight: 600; background: #fff; color: var(--texto-suave,#6E6656); border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 3px 10px; }
+  .tf-afecta-tit { display: block; margin: 12px 2px 0; font-size: 13px; color: var(--texto-suave,#6E6656); }
   /* El cuadradito de marcar mide trece píxeles: con el dedo se falla más de lo
      que se acierta. Por eso el recuadro entero responde al toque, con la altura
-     de un dedo, y también vale pulsar el texto, que es lo que la gente hace sin
-     pensar. La casilla sigue arriba y no centrada porque aquí el texto ocupa
-     varias líneas y tiene que quedar a la altura de la primera. */
-  .fila-check, .tarjeta .fila-check { display: flex; gap: 10px; align-items: flex-start; background: #fff;
-    border: 1px solid var(--linea-marcada); border-radius: 10px; padding: 11px 13px; margin: 12px 0 0;
-    min-height: 44px; cursor: pointer; }
-  /* La casilla no se estira: la regla de los campos de la tarjeta es para los
-     recuadros de escribir, no para un cuadradito de marcar. */
-  .fila-check input, .tarjeta .fila-check input { width: auto; flex: 0 0 auto; margin: 2px 0 0; }
-  .fila-check span, .tarjeta .fila-check span { font-size: 13px; color: var(--texto); line-height: 1.45; margin: 0; font-weight: 400; }
+     de un dedo, y también vale pulsar el texto. */
+  .fila-check { display: flex; gap: 10px; align-items: flex-start; background: #fff;
+    border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; padding: 12px 13px; margin: 10px 0 0; min-height: 46px; cursor: pointer; }
+  .fila-check input { width: auto; flex: 0 0 auto; margin: 2px 0 0; min-height: 0; }
+  .fila-check span { font-size: 14px; color: var(--texto,#3A3A3A); line-height: 1.45; margin: 0; font-weight: 400; }
+  .tf-acc { display: grid; gap: 8px; margin-top: 14px; }
+  .tf-acc button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 15px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; cursor: pointer; width: 100%; }
+  .tf-acc button:hover { background: var(--crema,#FBF9F4); }
+  .tf-acc button.prin { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .tf-acc button.prin:hover { background: #24364A; }
+  .tf-acc button:disabled { opacity: .45; cursor: default; }
+  .tf-acc button[hidden] { display: none; }
+  .tf-acc svg { width: 17px; height: 17px; }
+  /* Las versiones de una tarifa (y el histórico entero) */
+  .tf-vers { background: var(--crema,#FBF9F4); border-radius: 14px; padding: 2px 14px; }
+  .tf-ver { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid #EFE9DA; }
+  .tf-ver:last-child { border-bottom: 0; }
+  .tf-ver .f { font-size: 14px; font-weight: 600; min-width: 0; }
+  .tf-ver .p { flex: 1 1 100%; font-size: 13.5px; color: var(--texto-suave,#6E6656); }
+  .tf-ver .p i { font-style: normal; font-family: var(--fuente-dato); font-weight: 700; color: var(--navy,#26374B); }
+  .tf-hist-tit { margin: 16px 2px 6px; font-size: 15px; font-weight: 700; color: var(--navy,#26374B); }
+  .tf-hist-tit:first-child { margin-top: 6px; }
 
-  /* ---------- Formularios ----------
-     Van atados a `.tarjeta` a propósito: sueltos, estos estilos también caían
-     sobre el buscador y sobre los recuadros de precio de las piezas, que
-     traen su propia medida (44 y 52 px). */
-  .tarjeta label { display: block; font-size: 13px; color: var(--texto); margin: 12px 0 5px; font-weight: 600; }
-  .tarjeta input, .tarjeta select, .tarjeta textarea {
-    width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--linea-borde);
-    border-radius: 10px; font-family: var(--fuente-texto); font-size: 15px; background: #FDFCF9; color: var(--navy);
-  }
-  .tarjeta input:focus, .tarjeta select:focus, .tarjeta textarea:focus { outline: 2px solid var(--azul-filete, #3B85C0); border-color: var(--azul-filete, #3B85C0); }
-  .tarjeta textarea { min-height: 80px; resize: vertical; }
-  .ayuda { font-size: 13px; color: var(--texto-suave); margin-top: 4px; display: block; }
-
-  .cuerpo-tarjeta { padding: 20px 22px; }
-  .cuerpo-tarjeta h2 {
-    font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 21px;
-    color: var(--navy); margin: 0 0 4px;
-  }
-  .rejilla2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .rejilla3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
-  @media (max-width: 700px) { .rejilla2, .rejilla3 { grid-template-columns: 1fr; } }
-
-  .msg { font-size: 14px; }
+  .msg { margin-top: 10px; font-size: 14px; line-height: 1.4; }
+  .msg:empty { display: none; }
   .msg.error { color: #B0563A; }
-  .msg.ok { color: #4C7A28; }
+  .msg.ok { color: #1e7a3d; }
 
-  /* ---------- Histórico ---------- */
-  .hist-bloque { padding: 16px 20px; border-bottom: 1px solid var(--crema-media); }
-  .hist-bloque:last-child { border-bottom: 0; }
-  .hist-tit { font-size: 15px; font-weight: 600; color: var(--navy); margin-bottom: 8px; }
-  .hist-fila { display: grid; grid-template-columns: 1.4fr 108px 108px 1fr; gap: 10px;
-    padding: 7px 0; border-top: 1px solid var(--crema-banda); font-size: 14px; align-items: baseline; }
-  .hist-fila .mono { font-family: var(--fuente-dato); font-size: 13px; }
-  @media (max-width: 700px) { .hist-fila { grid-template-columns: 1fr 1fr; } }
-  .pastilla { font-size: 13px;
-    padding: 3px 9px; border-radius: 999px; text-transform: none; }
-  .p-vigor { background: #E6F1DE; color: #4C7A28; }
-  .p-futura { background: var(--aviso-fondo); color: #B96F09; }
-  .p-cerrada { background: var(--crema-media); color: var(--texto-suave); }
+  /* --- Ficha completa (nueva / editar): la de antes, en ventana por ENCIMA de la hoja --- */
+  #tar-ficha { position: fixed; inset: 0; z-index: 9500; background: rgba(20,30,45,.45);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: clamp(16px,5vh,60px) 16px; overflow: auto;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+  #tar-ficha .modal-caja { background: #fff; border-radius: 20px; color: var(--navy,#26374B);
+    box-shadow: 0 30px 70px -25px rgba(20,30,45,.6); padding: 22px clamp(16px,4vw,26px) 22px; width: min(720px,100%);
+    animation: modal-sube .2s ease; }
+  @keyframes modal-sube { from { transform: translateY(12px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #tar-ficha .modal-caja { animation: none; } }
+  #tar-ficha h2 { font-family: var(--fuente-titulo); text-transform: uppercase; font-size: 22px; letter-spacing: -0.01em; color: var(--navy,#26374B); margin: 0 0 4px; line-height: 1.1; }
+  #tar-ficha label { display: block; font-size: 13px; font-weight: 600; color: var(--navy,#26374B); margin: 12px 0 5px; }
+  #tar-ficha input, #tar-ficha select, #tar-ficha textarea {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--linea-borde,#C9C0AE); border-radius: 12px;
+    font-family: var(--fuente-texto); font-size: 15px; background: #fff; color: var(--navy,#26374B); }
+  #tar-ficha input:focus, #tar-ficha select:focus, #tar-ficha textarea:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  #tar-ficha textarea { min-height: 80px; resize: vertical; }
+  #tar-ficha .fila-check { margin-top: 14px; }
+  #tar-ficha .fila-check input { width: auto; padding: 0; }
+  #tar-ficha .ayuda { font-size: 13px; color: var(--texto-suave,#6E6656); margin-top: 4px; display: block; line-height: 1.45; }
+  .rejilla2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 14px; }
+  .rejilla3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0 14px; }
+  @media (max-width: 700px) { .rejilla2, .rejilla3 { grid-template-columns: 1fr; } }
+  .tf-form-pie { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .tf-form-pie .msg { margin: 0; }
 </style>
 </head>
-<body>
+<body class="adm-piel">
 
 <div id="admin-contenido">
-  <div class="tar-wrap admin-wrap">
-
-    <!-- ===================== CABECERA (pieza 1) =====================
-         Título, la línea que dice las cifras y UNA acción principal:
-         «Nueva tarifa», que es lo que se puede hacer siempre. «Guardar»
-         no está: aparece abajo, en la franja, cuando hay algo que guardar. -->
-    <div id="tar-cabecera"></div>
-
-    <!-- ===================== MANDOS (pieza 2) =====================
-         Una fila y solo una: buscador y «Filtrar» con la cuenta de filtros
-         puestos. Las cinco pestañas de antes viven ahora dentro del cajón. -->
-    <div id="tar-mandos"></div>
-    <div class="tar-cajon" id="tar-cajon" hidden></div>
-
-    <!-- ===================== CUERPO ===================== -->
-    <div class="tar-cuerpo">
-
-      <div>
-        <!-- Tabla de tarifas vigentes (piezas 3 y 4) -->
-        <div id="tar-filas"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
-
-        <!-- Histórico -->
-        <div class="tarjeta oculto" id="tar-historico">
-          <div class="cuerpo-tarjeta" style="padding-bottom:6px;">
-            <h2 id="hist-titulo">Histórico de tarifas</h2>
-            <p class="ayuda" style="margin:0;">Cada versión con sus fechas. Al cambiar un precio no se borra el anterior: se cierra y empieza el nuevo.</p>
-          </div>
-          <div id="hist-cuerpo"></div>
+  <div class="admin-wrap">
+    <div class="tf-wrap" id="tf">
+      <div class="tf-cab">
+        <div>
+          <h1>Tarifas</h1>
+          <p>Los precios y cuotas del club<span id="tf-temporada"></span>. La web, la inscripción y los recibos los leen de aquí. Un precio nuevo no pisa al anterior: entra en vigor el día que digas y el de antes queda en el histórico. Toca una tarifa para cambiar su precio.</p>
         </div>
+        <div class="tf-cab-acc">
+          <button type="button" class="tf-b" id="tf-historico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>Histórico</button>
+          <button type="button" class="tf-b prin" id="tf-nueva">+ Nueva tarifa</button>
+        </div>
+      </div>
+      <div class="tf-cifras" id="tf-cifras"></div>
+      <div class="tf-filtros">
+        <input type="search" class="tf-buscar" id="tf-buscar" placeholder="Buscar una tarifa: velocidad, escuela, bono…" aria-label="Buscar una tarifa" autocomplete="off">
+        <div class="tf-chips" id="tf-chips" role="group" aria-label="De qué son las tarifas"></div>
+      </div>
+      <div class="tf-pie-filtros"><span class="tf-cuenta" id="tf-cuenta" aria-live="polite"></span></div>
+      <div id="tf-lista"><div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span><span class="adm-esq adm-esq--corto"></span></div></div>
+      <p class="tf-nota-pie">Los precios no se tocan a media temporada: por eso cada cambio lleva su fecha de entrada en vigor y queda registrado en el histórico, con quién lo hizo.</p>
+    </div>
+  </div>
+</div>
 
-        <!-- Ficha completa (crear / editar) -->
-        <div class="tarjeta oculto" id="tar-ficha">
-          <div class="cuerpo-tarjeta">
-            <h2 id="ficha-titulo">Nueva tarifa</h2>
-            <p class="ayuda" style="margin:0 0 6px;" id="ficha-ayuda"></p>
+<!-- ===== HOJA DE LA TARIFA (o del histórico entero) ===== -->
+<div class="tf-capa">
+  <div class="tf-velo" id="tf-velo"></div>
+  <div class="tf-hoja" id="tf-hoja" role="dialog" aria-modal="true" aria-labelledby="tf-h-titulo">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="tf-hoja-cab" id="tf-h-cab">
+      <span class="tf-ico" id="tf-h-ico"></span>
+      <div><h3 id="tf-h-titulo"></h3><p class="sub" id="tf-h-sub"></p></div>
+      <button type="button" class="tf-cerrar" id="tf-h-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div id="tf-h-cuerpo"></div>
+  </div>
+</div>
 
-            <form id="form-ficha">
-              <input type="hidden" id="f-id">
-              <input type="hidden" id="f-clave">
+<!-- ===== FICHA COMPLETA (crear / editar), la misma de antes ===== -->
+<div class="oculto" id="tar-ficha">
+  <div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="ficha-titulo">
+    <h2 id="ficha-titulo">Nueva tarifa</h2>
+    <p class="ayuda" style="margin:0 0 6px;" id="ficha-ayuda"></p>
 
-              <label for="f-concepto">Concepto</label>
-              <input type="text" id="f-concepto" required placeholder="Pista · Velocidad A">
+    <form id="form-ficha">
+      <input type="hidden" id="f-id">
+      <input type="hidden" id="f-clave">
 
-              <div class="rejilla3">
-                <div>
-                  <label for="f-ambito">Pestaña</label>
-                  <select id="f-ambito"></select>
-                </div>
-                <div>
-                  <label for="f-seccion">Afecta a la sección</label>
-                  <select id="f-seccion"></select>
-                </div>
-                <div>
-                  <label for="f-grupo">Afecta al grupo</label>
-                  <select id="f-grupo"></select>
-                </div>
-              </div>
+      <label for="f-concepto">Concepto</label>
+      <input type="text" id="f-concepto" required placeholder="Pista · Velocidad A">
 
-              <div class="rejilla2">
-                <div>
-                  <label for="f-dias">Días</label>
-                  <input type="text" id="f-dias" placeholder="3 días · M, J, S · Fines de semana">
-                </div>
-                <div>
-                  <label for="f-periodicidad">Periodicidad</label>
-                  <select id="f-periodicidad"></select>
-                </div>
-              </div>
-
-              <div class="rejilla2">
-                <div>
-                  <label for="f-socio">Precio socio (€)</label>
-                  <input type="number" id="f-socio" step="0.01" min="0" inputmode="decimal">
-                </div>
-                <div>
-                  <label for="f-socio-hasta">…hasta (€), solo si es un rango</label>
-                  <input type="number" id="f-socio-hasta" step="0.01" min="0" inputmode="decimal">
-                </div>
-              </div>
-
-              <div class="rejilla2">
-                <div>
-                  <label for="f-nosocio">Precio no socio (€)</label>
-                  <input type="number" id="f-nosocio" step="0.01" min="0" inputmode="decimal">
-                </div>
-                <div>
-                  <label for="f-nosocio-hasta">…hasta (€), solo si es un rango</label>
-                  <input type="number" id="f-nosocio-hasta" step="0.01" min="0" inputmode="decimal">
-                </div>
-              </div>
-
-              <label for="f-texto">Texto en lugar del precio</label>
-              <input type="text" id="f-texto" placeholder="Incluida en la cuota · Consultar secretaría">
-              <span class="ayuda">Solo cuando el precio no es una cifra. Si lo rellenas, la web enseña este texto y no los euros.</span>
-
-              <div class="rejilla2">
-                <div>
-                  <label for="f-desde">Entra en vigor</label>
-                  <input type="date" id="f-desde">
-                  <span class="ayuda" id="f-desde-ayuda"></span>
-                </div>
-                <div>
-                  <label for="f-orden">Orden en la tabla</label>
-                  <input type="number" id="f-orden" step="10" min="0" value="0">
-                </div>
-              </div>
-
-              <label for="f-notas">Notas</label>
-              <textarea id="f-notas" placeholder="Lo que hay que saber de esta tarifa: descuentos, condiciones, forma de pago…"></textarea>
-
-              <label class="fila-check" for="f-activo">
-                <input type="checkbox" id="f-activo" checked>
-                <span>Activa (se puede aplicar y se ve en la web)</span>
-              </label>
-
-              <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <button class="btn btn--primario btn--mini" type="submit">Guardar tarifa</button>
-                <button class="btn btn--fantasma btn--mini" type="button" id="ficha-cancelar">Cancelar</button>
-                <span class="msg" id="ficha-msg"></span>
-              </div>
-            </form>
-          </div>
+      <div class="rejilla3">
+        <div>
+          <label for="f-ambito">Pestaña</label>
+          <select id="f-ambito"></select>
+        </div>
+        <div>
+          <label for="f-seccion">Afecta a la sección</label>
+          <select id="f-seccion"></select>
+        </div>
+        <div>
+          <label for="f-grupo">Afecta al grupo</label>
+          <select id="f-grupo"></select>
         </div>
       </div>
 
-      <!-- ===================== PANEL LATERAL ===================== -->
-      <aside>
-        <div class="tarjeta panel-cambio">
-          <span class="eyebrow-mono">Cambio en curso</span>
-          <div id="panel-cuerpo">
-            <p class="vacio-panel">Todavía no hay ningún cambio. Elige una tarifa, toca «Editar» y escribe el precio nuevo.</p>
-          </div>
+      <div class="rejilla2">
+        <div>
+          <label for="f-dias">Días</label>
+          <input type="text" id="f-dias" placeholder="3 días · M, J, S · Fines de semana">
         </div>
-
-        <div class="aviso-ambar">
-          <b>Los precios no se tocan a media temporada</b>
-          <span>Por eso el cambio lleva fecha de entrada en vigor y queda registrado en el histórico, con quién lo hizo.</span>
+        <div>
+          <label for="f-periodicidad">Periodicidad</label>
+          <select id="f-periodicidad"></select>
         </div>
-      </aside>
+      </div>
 
-    </div>
+      <div class="rejilla2">
+        <div>
+          <label for="f-socio">Precio socio (€)</label>
+          <input type="number" id="f-socio" step="0.01" min="0" inputmode="decimal">
+        </div>
+        <div>
+          <label for="f-socio-hasta">…hasta (€), solo si es un rango</label>
+          <input type="number" id="f-socio-hasta" step="0.01" min="0" inputmode="decimal">
+        </div>
+      </div>
+
+      <div class="rejilla2">
+        <div>
+          <label for="f-nosocio">Precio no socio (€)</label>
+          <input type="number" id="f-nosocio" step="0.01" min="0" inputmode="decimal">
+        </div>
+        <div>
+          <label for="f-nosocio-hasta">…hasta (€), solo si es un rango</label>
+          <input type="number" id="f-nosocio-hasta" step="0.01" min="0" inputmode="decimal">
+        </div>
+      </div>
+
+      <label for="f-texto">Texto en lugar del precio</label>
+      <input type="text" id="f-texto" placeholder="Incluida en la cuota · Consultar secretaría">
+      <span class="ayuda">Solo cuando el precio no es una cifra. Si lo rellenas, la web enseña este texto y no los euros.</span>
+
+      <div class="rejilla2">
+        <div>
+          <label for="f-desde">Entra en vigor</label>
+          <input type="date" id="f-desde">
+          <span class="ayuda" id="f-desde-ayuda"></span>
+        </div>
+        <div>
+          <label for="f-orden">Orden en la tabla</label>
+          <input type="number" id="f-orden" step="10" min="0" value="0">
+        </div>
+      </div>
+
+      <label for="f-notas">Notas</label>
+      <textarea id="f-notas" placeholder="Lo que hay que saber de esta tarifa: descuentos, condiciones, forma de pago…"></textarea>
+
+      <label class="fila-check" for="f-activo">
+        <input type="checkbox" id="f-activo" checked>
+        <span>Activa (se puede aplicar y se ve en la web)</span>
+      </label>
+
+      <div class="tf-form-pie">
+        <button class="tf-b prin" type="submit">Guardar tarifa</button>
+        <button class="tf-b" type="button" id="ficha-cancelar">Cancelar</button>
+        <span class="msg" id="ficha-msg"></span>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -314,11 +410,15 @@ APOLANA_ADMIN.listo(function (sb) {
     { valor: 'campus',  nombre: 'Campus' },
     { valor: 'socio',   nombre: 'Cuota de socio' }
   ];
+  function nombreAmbito(v) {
+    for (var i = 0; i < AMBITOS.length; i++) if (AMBITOS[i].valor === v) return AMBITOS[i].nombre;
+    return v || '';
+  }
 
   var PERIODICIDADES = ['mensual', 'trimestral', 'anual', 'temporada', 'semanal', 'pago único', 'por sesión', 'bono'];
 
-  /* Cómo se llama cada sección: "nombre" para los títulos de la tabla
-     y "frase" para la lista «AFECTA A» ("Página de atletismo en pista").
+  /* Cómo se llama cada sección: "nombre" para los títulos de la lista
+     y "frase" para la lista «dónde se nota» ("Página de atletismo en pista").
      Los códigos salen de contenido_secciones; esto solo los traduce. */
   var SECCIONES = {
     'competicion':       { nombre: 'Atletismo en pista',            frase: 'atletismo en pista' },
@@ -342,6 +442,20 @@ APOLANA_ADMIN.listo(function (sb) {
   }
   function fraseSeccion(s) {
     return (SECCIONES[s] && SECCIONES[s].frase) || null;
+  }
+
+  /* Un icono por pestaña, en el círculo de la tarjeta. */
+  var ICO = {
+    club:    '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+    escuela: '<path d="M2 9.5 12 4.5l10 5-10 5z"/><path d="M6 11.5v4.5c0 1.6 2.7 3 6 3s6-1.4 6-3v-4.5"/>',
+    cubo:    '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
+    campus:  '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/>',
+    socio:   '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M5.8 16c.7-1.3 1.8-2 3.2-2s2.5.7 3.2 2M14.5 10h4M14.5 13h3"/>',
+    hist:    '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>'
+  };
+  function icono(k) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (ICO[k] || ICO.club) + '</svg>';
   }
 
   /* ---------------------------------------------------------
@@ -375,6 +489,11 @@ APOLANA_ADMIN.listo(function (sb) {
     var d = new Date(); d.setDate(d.getDate() + 1);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
+  function sumarDia(iso) {
+    var p = String(iso).slice(0, 10).split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
 
   function euros(n) {
     if (n == null || n === '') return null;
@@ -400,20 +519,23 @@ APOLANA_ADMIN.listo(function (sb) {
   }
   function conMayuscula(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; }
   function num(v) { return (v === '' || v == null) ? null : Number(v); }
+  /* Frase corta de cada cuánto se paga, para debajo del precio. */
+  var ADVERBIO = { mensual: 'al mes', trimestral: 'al trimestre', anual: 'al año', temporada: 'por temporada', semanal: 'a la semana' };
+  function cadaCuanto(p) { return p ? (ADVERBIO[p] || p) : ''; }
 
   /* ---------------------------------------------------------
      Estado de la página
      --------------------------------------------------------- */
   var estado = {
-    ambito: 'club',     // el filtro que llega puesto; vive dentro de «Filtrar»
+    ambito: '',         // el chip puesto ('' = todas)
+    vista: '',          // la cifra puesta: '' | 'cambian' | 'texto'
     filas: [],          // todas las versiones de todas las tarifas
     secciones: [],      // códigos de sección sacados de contenido_secciones
     grupos: [],
-    edicion: null,      // { id, cambios: {}, desde, avisar }
-    histClave: null,
-    cajon: false        // si el cajón de «Filtrar» está abierto
+    edicion: null,      // { id, cambios: {}, desde, avisar } · el cambio de precio de la hoja
+    hoja: null,         // null | { tipo: 'tarifa', id } | { tipo: 'historico' }
+    error: ''
   };
-  var franja = null;    // la franja de guardado, que no existe hasta que hay algo que guardar
 
   /* ---------------------------------------------------------
      Carga de datos
@@ -424,12 +546,15 @@ APOLANA_ADMIN.listo(function (sb) {
       sb.from('contenido_secciones').select('seccion').order('seccion'),
       sb.from('grupos').select('id,nombre,turno,seccion').eq('activo', true).order('nombre').order('turno', { nullsFirst: true })
     ]);
-    /* Si las tarifas no se leen, la tabla no puede quedarse vacía como si no
+    /* Si las tarifas no se leen, la lista no puede quedarse vacía como si no
        hubiera precios: sale el error en ámbar con «Volver a intentarlo». */
     if (r[0].error) {
-      $('tar-filas').innerHTML = ADM.error(r[0].error.message, cargarTodo);
+      estado.error = r[0].error.message;
+      $('tf-cifras').innerHTML = ''; $('tf-chips').innerHTML = ''; $('tf-cuenta').textContent = '';
+      $('tf-lista').innerHTML = '<div class="tf-error">' + ADM.error(r[0].error.message, cargarTodo) + '</div>';
       return;
     }
+    estado.error = '';
     estado.filas = r[0].data || [];
     // 'home' es la portada de la web, no una sección deportiva: no tiene tarifa.
     estado.secciones = (r[1].data || []).map(function (x) { return x.seccion; })
@@ -447,13 +572,13 @@ APOLANA_ADMIN.listo(function (sb) {
     estado.sinSecciones = !!r[1].error;
     estado.sinGrupos = !!r[2].error;
     pintarSelectores();
-    pintarTabla();
+    pintar();
+    if (estado.hoja) repintarHoja();
   }
 
   /* Agrupa las versiones por clave y devuelve, para cada tarifa, la
      que se aplica hoy (o la que está a punto de entrar en vigor).
-     Devuelve TODAS: quién se queda fuera lo decide el filtro, que ahora
-     vive en el cajón de «Filtrar» y no en una fila de pestañas. */
+     Devuelve TODAS: quién se queda fuera lo deciden los chips y las cifras. */
   function tarifasVigentes() {
     var hoy = hoyISO(), porClave = {};
     estado.filas.forEach(function (t) {
@@ -491,267 +616,232 @@ APOLANA_ADMIN.listo(function (sb) {
   function delAmbito(lista) {
     return !estado.ambito ? lista : lista.filter(function (t) { return t.ambito === estado.ambito; });
   }
-
-  /* ---------------------------------------------------------
-     Cabecera y mandos · piezas 1 y 2
-     --------------------------------------------------------- */
-
-  /* La línea de contexto es la que dice las cifras. Antes el mismo número
-     estaba en tres sitios —el contador del buscador, las pestañas y el
-     título—; ahora se dice una vez y aquí. */
-  function pintarCabecera(vistas, total) {
-    var ctx = 'Temporada ' + temporada();
-    if (total != null) {
-      ctx += ' · ' + (vistas === total
-        ? total + (total === 1 ? ' tarifa' : ' tarifas')
-        : vistas + ' de ' + total + ' tarifas');
-    }
-    $('tar-cabecera').innerHTML = PZ.cabecera({
-      titulo: 'Tarifas',
-      contexto: ctx,
-      /* Una sola acción principal, y es la que se puede hacer siempre.
-         «Guardar» no está aquí: vive en la franja, cuando hay qué guardar. */
-      secundaria: { texto: 'Ver histórico', accion: 'historico' },
-      accion:     { texto: 'Nueva tarifa',  accion: 'nueva' }
-    });
+  function cambiaPronto(t) { return !!(t.__proxima || t.__futura); }
+  function deLaVista(lista) {
+    if (estado.vista === 'cambian') return lista.filter(cambiaPronto);
+    if (estado.vista === 'texto') return lista.filter(function (t) { return !!t.texto_importe; });
+    return lista;
   }
 
-  /* Los mandos se pintan UNA vez: si se repintaran a cada tecleo, el
-     buscador perdería el foco a la primera letra. */
-  function pintarMandos() {
-    $('tar-mandos').innerHTML = PZ.filtros({
-      buscador: { id: 'tar-buscar', placeholder: 'Buscar una tarifa', etiqueta: 'Buscar una tarifa' },
-      filtrar:  { cuenta: estado.ambito ? 1 : 0 }
-    });
-  }
-
-  /* La cuenta de «Filtrar» dice cuántos filtros hay puestos ahí dentro, que
-     es lo único que no se ve desde fuera. */
-  function pintarCuentaFiltros() {
-    var b = $('tar-mandos').querySelector('.pz-filtrar');
-    if (!b) return;
-    var n = estado.ambito ? 1 : 0;
-    var hueco = b.querySelector('.pz-n');
-    if (!n) { if (hueco) hueco.remove(); return; }
-    if (!hueco) { hueco = document.createElement('span'); hueco.className = 'pz-n'; b.appendChild(hueco); }
-    hueco.textContent = n;
-  }
-
-  /* El cajón de «Filtrar»: dentro va lo que antes eran cinco pestañas
-     ocupando una fila entera de mandos para siempre. */
-  function pintarCajon() {
-    var todas = tarifasVigentes();
-    function cuantas(v) { return todas.filter(function (t) { return t.ambito === v; }).length; }
-    $('tar-cajon').innerHTML =
-      '<span class="tar-cajon-tit">De qué son las tarifas</span>' +
-      '<div class="tar-cajon-chips">' +
-        PZ.chip({ texto: 'Todas', cuenta: todas.length, valor: '', activo: !estado.ambito, accion: 'ambito' }) +
-        AMBITOS.map(function (a) {
-          return PZ.chip({ texto: a.nombre, cuenta: cuantas(a.valor), valor: a.valor,
-                           activo: estado.ambito === a.valor, accion: 'ambito' });
-        }).join('') +
-      '</div>';
-  }
-
-  function abrirCajon(si) {
-    estado.cajon = (si == null) ? !estado.cajon : !!si;
-    if (estado.cajon) pintarCajon();
-    $('tar-cajon').hidden = !estado.cajon;
-    var b = $('tar-mandos').querySelector('.pz-filtrar');
-    if (b) b.setAttribute('aria-expanded', estado.cajon ? 'true' : 'false');
-  }
-
-  /* Un solo oyente para la cabecera y para los mandos. */
-  PZ.alPulsar('#tar-cabecera', function (accion) {
-    if (accion === 'nueva') abrirFicha({ ambito: estado.ambito || 'club' });
-    else if (accion === 'historico') alternarHistorico();
-  });
-
-  PZ.alPulsar('#tar-mandos', function (accion) {
-    if (accion === 'filtrar') abrirCajon();
-  });
-
-  PZ.alPulsar('#tar-cajon', function (accion, id, boton) {
-    if (accion !== 'ambito') return;
-    estado.ambito = boton.getAttribute('data-pz-filtro') || '';
-    estado.edicion = null;
-    estado.histClave = null;
-    $('tar-historico').classList.add('oculto');
-    $('tar-ficha').classList.add('oculto');
-    pintarCajon();
-    pintarCuentaFiltros();
-    pintarTabla();
-    pintarPanel();
-  });
-
-  /* ---------------------------------------------------------
-     Tabla
-     --------------------------------------------------------- */
   /* Quita tildes y mayúsculas para que «natacion» encuentre «Natación». */
   function llano(s) {
-    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
   /* ---------------------------------------------------------
-     La tabla · piezas 3 y 4
-     La misma marca es tabla en el escritorio y ficha en el móvil.
+     Pantalla: cifras, chips y lista
      --------------------------------------------------------- */
-  var COLUMNAS = [
-    { texto: 'Tarifa' },
-    { texto: 'Sección',  ancho: '150px' },
-    { texto: 'Socio',    ancho: '118px', num: true },
-    { texto: 'No socio', ancho: '118px', num: true },
-    { texto: '',         ancho: '112px' },   /* «Editar» / «Hecho» */
-    { texto: '',         ancho: '56px'  }    /* el «⋯» */
-  ];
+  $('tf-temporada').textContent = ' (temporada ' + temporada() + ')';
 
-  function pintarTabla() {
-    var todas = delAmbito(tarifasVigentes());
-    var busca = llano(($('tar-buscar') && $('tar-buscar').value) || '').trim();
+  function pintar() {
+    if (estado.error) return;
+    var todas = tarifasVigentes();
+    var delChip = delAmbito(todas);
+
+    /* Las cifras cuentan lo de la pestaña puesta: así cuadran con la lista. */
+    var nCambian = delChip.filter(cambiaPronto).length;
+    var nTexto = delChip.filter(function (t) { return !!t.texto_importe; }).length;
+    $('tf-cifras').innerHTML =
+      '<button type="button" class="tf-cifra" data-v=""><b>' + delChip.length + '</b><span>' + (delChip.length === 1 ? 'tarifa en vigor' : 'tarifas en vigor') + '</span></button>' +
+      '<button type="button" class="tf-cifra' + (nCambian ? ' aviso' : '') + '" data-v="cambian"><b>' + nCambian + '</b><span>' + (nCambian === 1 ? 'cambia de precio' : 'cambian de precio') + '</span></button>' +
+      '<button type="button" class="tf-cifra" data-v="texto"><b>' + nTexto + '</b><span>con el precio en texto</span></button>';
+
+    /* Un chip con 0 no lleva a ninguna parte: solo se quedan los que tienen
+       algo, «Todas» y el que esté puesto. */
+    function cuantas(v) { return todas.filter(function (t) { return t.ambito === v; }).length; }
+    $('tf-chips').innerHTML =
+      '<button type="button" data-a="">Todas · ' + todas.length + '</button>' +
+      AMBITOS.filter(function (a) { return cuantas(a.valor) > 0 || estado.ambito === a.valor; }).map(function (a) {
+        return '<button type="button" class="a-' + esc(a.valor) + '" data-a="' + esc(a.valor) + '"><span class="pt"></span>' +
+          esc(a.nombre) + ' · ' + cuantas(a.valor) + '</button>';
+      }).join('');
+
+    pintarLista();
+  }
+
+  function pintarLista() {
+    if (estado.error) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#tf-chips button'), function (b) {
+      var on = b.getAttribute('data-a') === estado.ambito;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.tf-cifra[data-v]'), function (c) {
+      var v = c.getAttribute('data-v');
+      c.classList.toggle('on', !!v && v === estado.vista);
+    });
+
+    var todas = deLaVista(delAmbito(tarifasVigentes()));
+    var busca = llano($('tf-buscar').value || '').trim();
     var lista = !busca ? todas : todas.filter(function (t) {
       return llano(t.concepto + ' ' + (t.dias || '') + ' ' + nombreSeccion(t.seccion)).indexOf(busca) !== -1;
     });
-    var cont = $('tar-filas');
+    var cont = $('tf-lista');
 
-    pintarCabecera(lista.length, todas.length);
+    $('tf-cuenta').textContent = lista.length === todas.length
+      ? todas.length + (todas.length === 1 ? ' tarifa' : ' tarifas')
+      : lista.length + ' de ' + todas.length + ' tarifas';
 
     /* Dos vacíos distintos: no tener tarifas de este grupo no es lo mismo que
        una búsqueda que no encuentra nada. */
     if (!todas.length) {
-      cont.innerHTML = '<p class="tar-nada">Todavía no hay tarifas aquí. Empieza con «Nueva tarifa», ' +
-        'o quita el filtro para ver las de los demás grupos.</p>';
+      cont.innerHTML = '<div class="tf-vacio"><b>Todavía no hay tarifas aquí</b>Empieza con «Nueva tarifa», o quita el filtro para ver las de los demás grupos.<br>' +
+        (estado.ambito || estado.vista ? '<button type="button" data-limpiar>Ver todas</button>' : '') +
+        '<button type="button" data-primera>+ Nueva tarifa</button></div>';
       return;
     }
     if (!lista.length) {
-      cont.innerHTML = '<p class="tar-nada">Ninguna tarifa se llama así. ' +
-        '<button type="button" class="pz-btn pz-btn--texto" id="tar-limpiar">Quitar la búsqueda</button></p>';
+      cont.innerHTML = '<div class="tf-vacio"><b>Ninguna tarifa se llama así</b>Prueba con otra palabra.<br><button type="button" data-quitar-busqueda>Quitar la búsqueda</button></div>';
       return;
     }
 
-    cont.innerHTML = PZ.tabla({
-      columnas: COLUMNAS,
-      etiqueta: 'Tarifas en vigor',
-      filas: lista.map(fila)
+    /* Agrupadas por sección, en el orden de siempre. */
+    var html = '<div class="tf-cab-cols" aria-hidden="true"><span></span><span>Tarifa</span><span>Días</span><span>Precio</span><span></span></div>';
+    var actual = null, bloque = [];
+    function cerrarBloque() {
+      if (!bloque.length) return;
+      html += '<p class="tf-grupo">' + esc(actual) + ' <span>' + bloque.length + (bloque.length === 1 ? ' tarifa' : ' tarifas') + '</span></p>' +
+        '<div class="tf-lista">' + bloque.map(filaHtml).join('') + '</div>';
+      bloque = [];
+    }
+    lista.forEach(function (t) {
+      var n = nombreSeccion(t.seccion);
+      if (n !== actual) { cerrarBloque(); actual = n; }
+      bloque.push(t);
     });
+    cerrarBloque();
+    cont.innerHTML = html;
   }
 
-  /* Una tarifa, en el lenguaje de la pieza: dato principal, línea de
-     contexto, las demás columnas, y un solo «⋯» con lo que no se hace
-     todos los días. */
-  function fila(t) {
-    var editando = estado.edicion && estado.edicion.id === t.id;
-    var c = editando ? estado.edicion.cambios : {};
-
-    /* Una sola línea de contexto, como pide la pieza: los días, cada cuánto
-       se cobra, el aviso de fecha si lo hay y la nota. Antes eran dos
-       columnas medio vacías y dos renglones sueltos bajo el concepto. */
-    var aviso = null;
-    if (t.__futura) aviso = 'Entra en vigor el ' + fechaLarga(t.vigente_desde);
-    else if (t.__proxima) aviso = 'Cambia el ' + fechaLarga(t.__proxima.vigente_desde);
-    var ctx = [
-      t.dias || null,
-      t.periodicidad ? conMayuscula(t.periodicidad) : null,
-      aviso,
-      t.notas || null
-    ].filter(Boolean).join(' · ');
-
-    var socio, nosocio;
-    if (editando && !t.texto_importe) {
-      /* Los precios se editan en la fila, en campos de 44 px. La fila entera
-         crece, así que la rejilla no se rompe. */
-      socio = { num: true, html: '<input class="pz-editar" type="number" step="0.01" min="0" inputmode="decimal" ' +
-        'id="ed-socio" aria-label="Precio socio" value="' +
-        esc(c.importe_socio != null ? c.importe_socio : (t.importe_socio == null ? '' : t.importe_socio)) + '">' };
-      nosocio = { num: true, html: '<input class="pz-editar" type="number" step="0.01" min="0" inputmode="decimal" ' +
-        'id="ed-nosocio" aria-label="Precio no socio" value="' +
-        esc(c.importe_no_socio != null ? c.importe_no_socio : (t.importe_no_socio == null ? '' : t.importe_no_socio)) + '">' };
-    } else if (t.texto_importe) {
-      /* Un precio que no es una cifra («Incluida en la cuota») no cabe en un
-         recuadro de 118 px: se cambia en la ficha, que tiene sitio. */
-      socio = { num: true, html: '<span class="texto-precio">' + esc(t.texto_importe) + '</span>' };
-      nosocio = { num: true, texto: '—' };
-    } else {
-      socio = { num: true, texto: celdaSocio(t).texto };
-      nosocio = { num: true, texto: celdaNoSocio(t) };
-    }
-
-    var accion = t.texto_importe
-      ? '<button type="button" class="pz-btn pz-btn--texto" data-pz-accion="ficha" data-pz-id="' + esc(t.id) + '">Editar</button>'
-      : '<button type="button" class="pz-btn pz-btn--texto" data-pz-accion="editar" data-pz-id="' + esc(t.id) + '">' +
-        (editando ? 'Hecho' : 'Editar') + '</button>';
-
-    return {
-      id: t.id,
-      clase: editando ? 'pz-editando' : '',
-      principal: t.concepto,
-      contexto: ctx,
-      celdas: [
-        { html: esc(nombreSeccion(t.seccion)) },
-        socio,
-        nosocio,
-        { html: accion }
-      ],
-      menu: [
-        { texto: 'Ficha completa', accion: 'ficha' },
-        { texto: 'Ver el histórico', accion: 'historico-fila' }
-      ]
-    };
+  /* Línea de debajo del nombre: la nota (cada cuánto se cobra va junto al
+     precio y los días, en una pastilla). */
+  function lineaContexto(t) {
+    return t.notas || '';
+  }
+  /* Fecha corta para las pastillas: «1 sep 2027». */
+  function fechaCorta(iso) {
+    if (!iso) return '';
+    var p = String(iso).slice(0, 10).split('-');
+    return Number(p[2]) + ' ' + MESES[Number(p[1]) - 1].slice(0, 3) + ' ' + p[0];
+  }
+  function avisoFecha(t, corto) {
+    var f = corto ? fechaCorta : fechaLarga;
+    if (t.__futura) return 'Entra en vigor el ' + f(t.vigente_desde);
+    if (t.__proxima) return 'Cambia el ' + f(t.__proxima.vigente_desde);
+    return '';
+  }
+  function nombreGrupo(id) {
+    var g = estado.grupos.filter(function (x) { return x.id === id; })[0];
+    return g ? g.nombre : '';
   }
 
-  /* Buscador: filtra lo que se está viendo y actualiza la línea de cifras. */
-  $('tar-mandos').addEventListener('input', function (e) {
-    if (e.target.id === 'tar-buscar') pintarTabla();
-  });
+  function precioHtml(t) {
+    if (t.texto_importe) return '<span class="tf-precio"><span class="txt">' + esc(t.texto_importe) + '</span></span>';
+    var s = celdaSocio(t).texto, ns = celdaNoSocio(t), cada = cadaCuanto(t.periodicidad);
+    return '<span class="tf-precio"><b>' + esc(s) + '</b>' +
+      '<small>socio' + (cada ? ' · ' + esc(cada) : '') + '</small>' +
+      (ns !== '—' ? '<em>no socio <i>' + esc(ns) + '</i></em>' : '') + '</span>';
+  }
 
-  PZ.alPulsar('#tar-filas', function (accion, id) {
-    if (accion === 'editar') {
-      if (estado.edicion && estado.edicion.id === id) { estado.edicion = null; pintarTabla(); pintarPanel(); }
-      else empezarEdicion(id);
-      return;
+  function filaHtml(t) {
+    var aviso = avisoFecha(t, true);
+    var pills = [];
+    if (aviso) pills.push('<span class="tf-pill cambia"><span class="pt"></span>' + esc(aviso) + '</span>');
+    if (t.dias) pills.push('<span class="tf-pill per">' + esc(t.dias) + '</span>');
+    if (t.grupo_id && nombreGrupo(t.grupo_id)) pills.push('<span class="tf-pill grupo">Grupo ' + esc(nombreGrupo(t.grupo_id)) + '</span>');
+    var ctx = lineaContexto(t);
+    return '<div class="tf-fila a-' + esc(t.ambito) + (aviso ? ' cambia' : '') + '" tabindex="0" role="button" data-id="' + esc(t.id) + '" aria-label="' + esc(t.concepto) + ': ver y cambiar el precio">' +
+      '<span class="tf-ico">' + icono(t.ambito) + '</span>' +
+      '<span class="tf-nom"><b>' + esc(t.concepto) + '</b>' + (ctx ? '<small>' + esc(ctx) + '</small>' : '') + '</span>' +
+      '<span class="tf-pills">' + pills.join('') + '</span>' +
+      precioHtml(t) +
+      '<span class="tf-flecha" aria-hidden="true">›</span>' +
+    '</div>';
+  }
+
+  /* Un solo oyente para la cabecera, cifras, chips y lista. */
+  $('tf').addEventListener('click', function (ev) {
+    var c = ev.target.closest('.tf-cifra[data-v]');
+    if (c) {
+      var v = c.getAttribute('data-v');
+      /* Pulsar la cifra que ya filtra la quita. */
+      estado.vista = (v && estado.vista === v) ? '' : v;
+      pintarLista(); return;
     }
-    if (accion === 'ficha') { abrirFicha(estado.filas.filter(function (x) { return x.id === id; })[0]); return; }
-    if (accion === 'historico-fila') {
-      var t = estado.filas.filter(function (x) { return x.id === id; })[0];
-      if (t) verHistorico(t.clave);
-    }
+    var ch = ev.target.closest('#tf-chips button[data-a]');
+    if (ch) { estado.ambito = ch.getAttribute('data-a') || ''; pintar(); return; }
+    if (ev.target.closest('[data-limpiar]')) { estado.ambito = ''; estado.vista = ''; $('tf-buscar').value = ''; pintar(); return; }
+    if (ev.target.closest('[data-quitar-busqueda]')) { $('tf-buscar').value = ''; pintarLista(); return; }
+    if (ev.target.closest('[data-primera]') || ev.target.closest('#tf-nueva')) { abrirFicha({ ambito: estado.ambito || 'club' }); return; }
+    if (ev.target.closest('#tf-historico')) { abrirHistorico(); return; }
+    var fila = ev.target.closest('.tf-fila[data-id]');
+    if (fila) abrirTarifa(fila.getAttribute('data-id'), fila);
   });
-
-  $('tar-filas').addEventListener('click', function (e) {
-    if (e.target.id === 'tar-limpiar') { $('tar-buscar').value = ''; pintarTabla(); }
+  $('tf').addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var fila = ev.target.closest && ev.target.closest('.tf-fila[data-id]');
+    if (!fila || ev.target !== fila) return;
+    ev.preventDefault(); abrirTarifa(fila.getAttribute('data-id'), fila);
   });
-
-  /* Cada tecleo actualiza el resumen del panel y la cuenta de la franja. */
-  $('tar-filas').addEventListener('input', function (e) {
-    if (!estado.edicion) return;
-    if (e.target.id === 'ed-socio') estado.edicion.cambios.importe_socio = e.target.value;
-    else if (e.target.id === 'ed-nosocio') estado.edicion.cambios.importe_no_socio = e.target.value;
-    else return;
-    pintarPanel();
-  });
+  /* Buscador: filtra lo que se está viendo y actualiza la cuenta. */
+  $('tf-buscar').addEventListener('input', pintarLista);
 
   /* ---------------------------------------------------------
-     Cambio en curso
+     Hoja de una tarifa: precio de ahora, cambio de precio e historial
      --------------------------------------------------------- */
+  var focoPrevio = null;
+
+  function vigentePorId(id) { return tarifasVigentes().filter(function (x) { return x.id === id; })[0] || null; }
+
+  /* Prepara el cambio de precio, con la fecha que sugería la pantalla de
+     antes: el próximo 1 de septiembre, o mañana si eso ya no se puede. */
   function empezarEdicion(id) {
     var t = estado.filas.filter(function (x) { return x.id === id; })[0];
-    if (!t) return;
+    if (!t) { estado.edicion = null; return; }
     var minimo = t.vigente_desde >= hoyISO() ? sumarDia(t.vigente_desde) : manana();
     var sugerida = proximoSeptiembre() > minimo ? proximoSeptiembre() : minimo;
     estado.edicion = { id: id, cambios: {}, desde: sugerida, avisar: false };
-    $('tar-ficha').classList.add('oculto');
-    pintarTabla();
-    pintarPanel();
-    var inp = $('ed-socio');
-    if (inp) { inp.focus(); inp.select(); }
-  }
-  function sumarDia(iso) {
-    var p = String(iso).slice(0, 10).split('-');
-    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1);
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  function abrirTarifa(id, desde) {
+    focoPrevio = desde || document.activeElement;
+    estado.hoja = { tipo: 'tarifa', id: id };
+    empezarEdicion(id);
+    if (!pintarHojaTarifa()) return;
+    mostrarHoja();
+  }
+  function abrirHistorico() {
+    focoPrevio = document.activeElement;
+    estado.hoja = { tipo: 'historico' };
+    estado.edicion = null;
+    pintarHistorico();
+    mostrarHoja();
+  }
+  function mostrarHoja() {
+    $('tf-velo').classList.add('ver'); $('tf-hoja').classList.add('ver');
+    $('tf-hoja').scrollTop = 0;
+    setTimeout(function () { $('tf-h-cerrar').focus(); }, 60);
+  }
+  /* Cerrar la hoja es descartar el cambio de precio que hubiera a medias. */
+  function cerrarHoja() {
+    estado.hoja = null; estado.edicion = null;
+    if (!$('tf-hoja').classList.contains('ver')) return;
+    $('tf-velo').classList.remove('ver'); $('tf-hoja').classList.remove('ver');
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  function repintarHoja() {
+    if (!estado.hoja) return;
+    if (estado.hoja.tipo === 'historico') pintarHistorico();
+    else pintarHojaTarifa();
+  }
+  $('tf-velo').addEventListener('click', cerrarHoja);
+  $('tf-h-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (!$('tar-ficha').classList.contains('oculto')) { $('tar-ficha').classList.add('oculto'); return; }
+    if (estado.hoja) cerrarHoja();
+  });
+
   /* Frase del tipo «Velocidad B: 40 € → 42 € al mes para socios.» */
-  var ADVERBIO = { mensual: 'al mes', trimestral: 'al trimestre', anual: 'al año', temporada: 'por temporada', semanal: 'a la semana' };
   function resumenCambio(t, c) {
     var trozos = [];
     if (c.importe_socio != null && String(c.importe_socio) !== String(t.importe_socio == null ? '' : t.importe_socio)) {
@@ -788,7 +878,7 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   /* ¿Hay de verdad algo distinto de lo que había? Un precio tecleado y
-     vuelto a dejar como estaba no es un cambio, y la franja no debe salir. */
+     vuelto a dejar como estaba no es un cambio, y no se puede guardar. */
   function hayCambio(t, c) {
     if (!t || !c) return false;
     if (c.importe_socio != null && String(c.importe_socio) !== String(t.importe_socio == null ? '' : t.importe_socio)) return true;
@@ -796,53 +886,154 @@ APOLANA_ADMIN.listo(function (sb) {
     return false;
   }
 
-  function pintarPanel() {
-    var cuerpo = $('panel-cuerpo');
-    var e = estado.edicion;
-    if (!e) {
-      cuerpo.innerHTML = '<p class="vacio-panel">Todavía no hay ningún cambio. Elige una tarifa, toca «Editar» y escribe el precio nuevo.</p>';
-      if (franja) franja.cambios(0);
-      return;
-    }
-    var t = estado.filas.filter(function (x) { return x.id === e.id; })[0];
-    if (!t) { estado.edicion = null; pintarPanel(); return; }
+  /* Estado de una versión, con su pastilla (lo mismo que el histórico de antes). */
+  function estadoVersion(v, hoy) {
+    if (!v.activo) return { txt: 'Inactiva', cls: 'cerrada' };
+    if (v.vigente_desde > hoy) return { txt: 'Entra el ' + fechaLarga(v.vigente_desde), cls: 'cambia' };
+    if (!v.vigente_hasta || v.vigente_hasta > hoy) return { txt: 'En vigor', cls: 'vigor' };
+    return { txt: 'Cerrada', cls: 'cerrada' };
+  }
+  function versionesHtml(versiones) {
+    var hoy = hoyISO();
+    return '<div class="tf-vers">' + versiones.map(function (v) {
+      var e = estadoVersion(v, hoy);
+      var s = celdaSocio(v), ns = celdaNoSocio(v);
+      return '<div class="tf-ver">' +
+        '<span class="f">' + esc(fechaLarga(v.vigente_desde)) + (v.vigente_hasta ? ' → ' + esc(fechaLarga(v.vigente_hasta)) : ' → sigue') + '</span>' +
+        '<span class="tf-pill ' + e.cls + '">' + (e.cls === 'vigor' || e.cls === 'cambia' ? '<span class="pt"></span>' : '') + esc(e.txt) + '</span>' +
+        '<span class="p">Socio <i>' + esc(s.texto) + '</i> · No socio <i>' + esc(ns) + '</i></span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
 
-    cuerpo.innerHTML =
-      '<p class="resumen-cambio">' + resumenCambio(t, e.cambios) + '</p>' +
-      '<div class="bloque-panel">' +
-        '<span class="eyebrow-mono">Afecta a</span>' +
-        '<ul class="lista-afecta">' + afectaA(t).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' +
+  /* Pinta la hoja de la tarifa abierta. Devuelve false si ya no existe. */
+  function pintarHojaTarifa() {
+    var t = estado.hoja && vigentePorId(estado.hoja.id);
+    if (!t) { cerrarHoja(); return false; }
+    var e = estado.edicion;
+    if (!e || e.id !== t.id) { empezarEdicion(t.id); e = estado.edicion; }
+
+    $('tf-h-cab').className = 'tf-hoja-cab a-' + t.ambito;
+    $('tf-h-ico').innerHTML = icono(t.ambito);
+    $('tf-h-titulo').textContent = t.concepto;
+    $('tf-h-sub').textContent = [nombreSeccion(t.seccion), nombreAmbito(t.ambito), t.dias || '',
+      t.grupo_id && nombreGrupo(t.grupo_id) ? 'grupo ' + nombreGrupo(t.grupo_id) : ''].filter(Boolean).join(' · ');
+
+    var h = '';
+    /* El precio de ahora, en grande */
+    if (t.texto_importe) {
+      h += '<div class="tf-precios"><div class="uno"><span>Precio</span><b class="txt">' + esc(t.texto_importe) + '</b>' +
+        (t.periodicidad ? '<small>' + esc(conMayuscula(t.periodicidad)) + '</small>' : '') + '</div></div>';
+    } else {
+      var cada = cadaCuanto(t.periodicidad);
+      h += '<div class="tf-precios">' +
+        '<div><span>Socio</span><b>' + esc(celdaSocio(t).texto) + '</b>' + (cada ? '<small>' + esc(cada) + '</small>' : '') + '</div>' +
+        '<div><span>No socio</span><b>' + esc(celdaNoSocio(t)) + '</b>' + (cada && celdaNoSocio(t) !== '—' ? '<small>' + esc(cada) + '</small>' : '') + '</div>' +
+      '</div>';
+    }
+    if (t.__futura) h += '<div class="tf-aviso"><b>Todavía no está en vigor.</b> Entra el ' + esc(fechaLarga(t.vigente_desde)) + '.</div>';
+    if (t.__proxima) {
+      var p = t.__proxima;
+      h += '<div class="tf-aviso"><b>Cambia el ' + esc(fechaLarga(p.vigente_desde)) + '.</b> Desde entonces: socio ' +
+        esc(celdaSocio(p).texto) + ' · no socio ' + esc(celdaNoSocio(p)) + '.</div>';
+    }
+    if (t.notas) h += '<div class="tf-nota">' + esc(t.notas) + '</div>';
+
+    /* Cambiar el precio: lo mismo que antes se hacía en la fila con «Editar»,
+       el panel «Cambio en curso» y la franja de «Guardar». */
+    h += '<p class="tf-et">Cambiar el precio</p>';
+    if (t.texto_importe) {
+      /* Un precio que no es una cifra no cabe en un recuadro de euros: se
+         cambia en la ficha completa, que tiene sitio. */
+      h += '<div class="tf-nota">Esta tarifa no lleva cifra: la web enseña «' + esc(t.texto_importe) + '». Se cambia en la ficha completa.</div>' +
+        '<div class="tf-acc"><button type="button" class="prin" data-h="ficha">Abrir la ficha completa</button></div>';
+    } else {
+      var c = e.cambios;
+      h += '<div class="tf-campos">' +
+        '<div class="tf-campo"><label for="ed-socio">Socio (€)</label>' +
+          '<input type="number" step="0.01" min="0" inputmode="decimal" id="ed-socio" value="' +
+          esc(c.importe_socio != null ? c.importe_socio : (t.importe_socio == null ? '' : t.importe_socio)) + '"></div>' +
+        '<div class="tf-campo"><label for="ed-nosocio">No socio (€)</label>' +
+          '<input type="number" step="0.01" min="0" inputmode="decimal" id="ed-nosocio" value="' +
+          esc(c.importe_no_socio != null ? c.importe_no_socio : (t.importe_no_socio == null ? '' : t.importe_no_socio)) + '"></div>' +
+        '<div class="tf-campo ancho"><label for="p-desde">Entra en vigor</label>' +
+          '<input type="date" id="p-desde" value="' + esc(e.desde) + '" min="' + esc(manana()) + '">' +
+          '<span class="ayuda" id="p-desde-txt">' + esc(fechaLarga(e.desde)) + '</span></div>' +
       '</div>' +
-      '<div class="bloque-panel">' +
-        '<label for="p-desde">Entra en vigor</label>' +
-        '<input type="date" id="p-desde" value="' + esc(e.desde) + '" min="' + esc(manana()) + '">' +
-        '<span class="ayuda" id="p-desde-txt">' + esc(fechaLarga(e.desde)) + '</span>' +
-      '</div>' +
+      ((t.importe_socio_hasta != null || t.importe_no_socio_hasta != null)
+        ? '<p class="tf-afecta-tit">Aquí se cambia el primer precio del rango; el «hasta» se cambia en la ficha completa.</p>' : '') +
+      '<p class="tf-resumen" id="tf-h-resumen">' + resumenCambio(t, c) + '</p>' +
+      '<span class="tf-afecta-tit">Dónde se nota</span>' +
+      '<ul class="tf-afecta">' + afectaA(t).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' +
       '<label class="fila-check" for="p-avisar">' +
         '<input type="checkbox" id="p-avisar"' + (e.avisar ? ' checked' : '') + '>' +
         '<span>Avisar por email a los socios del grupo</span>' +
       '</label>' +
-      /* «Descartar» no se repite aquí: está en la franja de abajo, que es
-         donde está también «Guardar». */
-      '<div style="margin-top:14px;"><span class="msg" id="p-msg"></span></div>';
+      '<div class="tf-acc">' +
+        '<button type="button" class="prin" data-h="guardar" id="tf-h-guardar"' + (hayCambio(t, c) ? '' : ' disabled') + '>Guardar el precio nuevo</button>' +
+        '<button type="button" data-h="descartar" id="tf-h-descartar"' + (hayCambio(t, c) ? '' : ' hidden') + '>Descartar el cambio</button>' +
+      '</div>' +
+      '<span class="msg" id="p-msg"></span>';
+    }
 
-    $('p-desde').addEventListener('change', function () {
-      estado.edicion.desde = this.value;
-      $('p-desde-txt').textContent = fechaLarga(this.value);
-    });
-    $('p-avisar').addEventListener('change', function () { estado.edicion.avisar = this.checked; });
+    /* Su historial: antes era «Ver el histórico» en el menú «⋯» de la fila. */
+    var versiones = estado.filas.filter(function (x) { return x.clave === t.clave; })
+      .sort(function (a, b) { return a.vigente_desde < b.vigente_desde ? 1 : -1; });
+    h += '<p class="tf-et">Historial de precios</p>' + versionesHtml(versiones);
 
-    /* La franja aparece cuando hay algo que guardar, y no antes. */
-    if (franja) franja.cambios(hayCambio(t, e.cambios) ? 1 : 0);
+    if (!t.texto_importe) {
+      h += '<div class="tf-acc"><button type="button" data-h="ficha">Ficha completa: nombre, días, rango, notas…</button></div>';
+    }
+    $('tf-h-cuerpo').innerHTML = h;
+    return true;
   }
+
+  /* Al teclear un precio solo se repintan el resumen y los botones: si se
+     repintara la hoja entera, el recuadro perdería el foco a cada letra. */
+  function refrescarResumen() {
+    var e = estado.edicion;
+    var t = e && estado.filas.filter(function (x) { return x.id === e.id; })[0];
+    if (!t) return;
+    var r = $('tf-h-resumen'); if (r) r.innerHTML = resumenCambio(t, e.cambios);
+    var hay = hayCambio(t, e.cambios);
+    var g = $('tf-h-guardar'); if (g) g.disabled = !hay;
+    var d = $('tf-h-descartar'); if (d) d.hidden = !hay;
+  }
+  $('tf-h-cuerpo').addEventListener('input', function (ev) {
+    if (!estado.edicion) return;
+    if (ev.target.id === 'ed-socio') estado.edicion.cambios.importe_socio = ev.target.value;
+    else if (ev.target.id === 'ed-nosocio') estado.edicion.cambios.importe_no_socio = ev.target.value;
+    else return;
+    refrescarResumen();
+  });
+  $('tf-h-cuerpo').addEventListener('change', function (ev) {
+    if (!estado.edicion) return;
+    if (ev.target.id === 'p-desde') {
+      estado.edicion.desde = ev.target.value;
+      var tx = $('p-desde-txt'); if (tx) tx.textContent = fechaLarga(ev.target.value);
+    } else if (ev.target.id === 'p-avisar') {
+      estado.edicion.avisar = ev.target.checked;
+    }
+  });
+  $('tf-h-cuerpo').addEventListener('click', async function (ev) {
+    var b = ev.target.closest('button[data-h]');
+    if (!b || !estado.hoja || estado.hoja.tipo !== 'tarifa') return;
+    var accion = b.getAttribute('data-h');
+    if (accion === 'ficha') { abrirFicha(estado.filas.filter(function (x) { return x.id === estado.hoja.id; })[0]); return; }
+    if (accion === 'descartar') { empezarEdicion(estado.hoja.id); pintarHojaTarifa(); return; }
+    if (accion === 'guardar') {
+      b.disabled = true;
+      var bien = await guardarCambio();
+      if (!bien) { var g = $('tf-h-guardar'); if (g) g.disabled = false; }
+    }
+  });
 
   /* Guardar = crear una versión nueva. Nunca se pisa la anterior. */
   async function guardarCambio() {
     var e = estado.edicion;
     if (!e) return false;
     var t = estado.filas.filter(function (x) { return x.id === e.id; })[0];
-    var msg = $('p-msg');
-    function decir(txt, clase) { if (msg) { msg.textContent = txt; msg.className = 'msg' + (clase ? ' ' + clase : ''); } }
+    function decir(txt, clase) { var msg = $('p-msg'); if (msg) { msg.textContent = txt; msg.className = 'msg' + (clase ? ' ' + clase : ''); } }
 
     var cambios = {};
     if (e.cambios.importe_socio != null && String(e.cambios.importe_socio) !== String(t.importe_socio == null ? '' : t.importe_socio)) cambios.importe_socio = num(e.cambios.importe_socio);
@@ -856,67 +1047,34 @@ APOLANA_ADMIN.listo(function (sb) {
     decir('Guardando…');
     var r = await sb.rpc('tarifa_nueva_version', { p_id: e.id, p_desde: e.desde, p_cambios: cambios });
     if (r.error) { decir('No se pudo guardar: ' + r.error.message, 'error'); return false; }
+    var desde = e.desde;
     estado.edicion = null;
     await cargarTodo();
-    pintarPanel();
-    var c = $('panel-cuerpo');
-    c.innerHTML = '<p class="vacio-panel">Guardado. La nueva tarifa entra en vigor el ' + esc(fechaLarga(e.desde)) + ' y la anterior queda en el histórico.</p>';
+    decir('Guardado. La nueva tarifa entra en vigor el ' + fechaLarga(desde) + ' y la anterior queda en el histórico.', 'ok');
     return true;
   }
 
   /* ---------------------------------------------------------
-     Histórico
+     Histórico entero (el botón de arriba): de la pestaña puesta, o de todas
      --------------------------------------------------------- */
-  function verHistorico(clave) {
-    estado.histClave = clave || null;
-    $('tar-ficha').classList.add('oculto');
-    var hoy = hoyISO();
+  function pintarHistorico() {
+    $('tf-h-cab').className = 'tf-hoja-cab a-hist';
+    $('tf-h-ico').innerHTML = icono('hist');
+    $('tf-h-titulo').textContent = 'Histórico de tarifas';
+    $('tf-h-sub').textContent = (estado.ambito ? nombreAmbito(estado.ambito) + ' · ' : 'Todas las pestañas · ') +
+      'cada versión con sus fechas. Al cambiar un precio no se borra el anterior: se cierra y empieza el nuevo.';
     var filas = estado.filas.filter(function (t) {
-      if (clave) return t.clave === clave;
       /* Sin filtro puesto, el histórico es el de todas. */
       return !estado.ambito || t.ambito === estado.ambito;
     });
     var porClave = {};
     filas.forEach(function (t) { (porClave[t.clave] = porClave[t.clave] || []).push(t); });
-
     var claves = Object.keys(porClave).sort();
-    $('hist-titulo').textContent = clave ? 'Histórico · ' + (porClave[clave][0] || {}).concepto : 'Histórico de tarifas';
-
-    if (!claves.length) {
-      $('hist-cuerpo').innerHTML = '<div class="hist-bloque">No hay versiones que enseñar.</div>';
-    } else {
-      $('hist-cuerpo').innerHTML = claves.map(function (k) {
-        var versiones = porClave[k].slice().sort(function (a, b) { return a.vigente_desde < b.vigente_desde ? 1 : -1; });
-        return '<div class="hist-bloque">' +
-          '<div class="hist-tit">' + esc(versiones[0].concepto) + '</div>' +
-          versiones.map(function (v) {
-            var estadoTxt, clase;
-            if (!v.activo) { estadoTxt = 'Inactiva'; clase = 'p-cerrada'; }
-            else if (v.vigente_desde > hoy) { estadoTxt = 'Entra el ' + fechaLarga(v.vigente_desde); clase = 'p-futura'; }
-            else if (!v.vigente_hasta || v.vigente_hasta > hoy) { estadoTxt = 'En vigor'; clase = 'p-vigor'; }
-            else { estadoTxt = 'Cerrada'; clase = 'p-cerrada'; }
-            var s = celdaSocio(v);
-            return '<div class="hist-fila">' +
-              '<span class="mono">' + esc(fechaLarga(v.vigente_desde)) +
-                (v.vigente_hasta ? ' → ' + esc(fechaLarga(v.vigente_hasta)) : ' → sigue') + '</span>' +
-              '<span class="mono">' + esc(s.texto) + '</span>' +
-              '<span class="mono">' + esc(celdaNoSocio(v)) + '</span>' +
-              '<span><span class="pastilla ' + clase + '">' + esc(estadoTxt) + '</span></span>' +
-            '</div>';
-          }).join('') +
-        '</div>';
-      }).join('');
-    }
-    $('tar-historico').classList.remove('oculto');
-    $('tar-historico').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-
-  function alternarHistorico() {
-    if (!$('tar-historico').classList.contains('oculto') && !estado.histClave) {
-      $('tar-historico').classList.add('oculto');
-    } else {
-      verHistorico(null);
-    }
+    if (!claves.length) { $('tf-h-cuerpo').innerHTML = '<div class="tf-nota" style="margin-top:14px">No hay versiones que enseñar.</div>'; return; }
+    $('tf-h-cuerpo').innerHTML = '<div style="margin-top:6px"></div>' + claves.map(function (k) {
+      var versiones = porClave[k].slice().sort(function (a, b) { return a.vigente_desde < b.vigente_desde ? 1 : -1; });
+      return '<p class="tf-hist-tit">' + esc(versiones[0].concepto) + '</p>' + versionesHtml(versiones);
+    }).join('');
   }
 
   /* ---------------------------------------------------------
@@ -949,10 +1107,8 @@ APOLANA_ADMIN.listo(function (sb) {
 
   function abrirFicha(t) {
     t = t || {};
-    estado.edicion = null;
-    pintarTabla();
-    pintarPanel();
-    $('tar-historico').classList.add('oculto');
+    /* Como antes: abrir la ficha descarta el cambio de precio a medias. */
+    if (estado.hoja && estado.hoja.tipo === 'tarifa') { empezarEdicion(estado.hoja.id); pintarHojaTarifa(); }
 
     $('ficha-titulo').textContent = t.id ? 'Ficha de la tarifa' : 'Nueva tarifa';
     $('ficha-ayuda').textContent = t.id
@@ -962,7 +1118,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('f-id').value = t.id || '';
     $('f-clave').value = t.clave || '';
     $('f-concepto').value = t.concepto || '';
-    $('f-ambito').value = t.ambito || estado.ambito;
+    $('f-ambito').value = t.ambito || estado.ambito || 'club';
     $('f-seccion').value = t.seccion || '';
     $('f-grupo').value = t.grupo_id || '';
     $('f-dias').value = t.dias || '';
@@ -988,20 +1144,25 @@ APOLANA_ADMIN.listo(function (sb) {
     }
 
     $('ficha-msg').textContent = '';
+    $('ficha-msg').className = 'msg';
     $('tar-ficha').classList.remove('oculto');
     $('tar-ficha').scrollTop = 0;
+    setTimeout(function () { $('f-concepto').focus(); }, 60);
   }
 
   $('ficha-cancelar').addEventListener('click', function () { $('tar-ficha').classList.add('oculto'); });
   $('tar-ficha').addEventListener('click', function (e) { if (e.target === this) $('tar-ficha').classList.add('oculto'); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('tar-ficha').classList.contains('oculto')) $('tar-ficha').classList.add('oculto'); });
 
   /* Clave estable a partir del concepto (solo al crear). */
   function clavear(texto) {
     return String(texto).toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'tarifa';
   }
+
+  /* Después de guardar en la ficha, la lista se queda en la pestaña de la
+     tarifa guardada para que se vea (si había una puesta; con «Todas» ya se ve). */
+  function quedarseEnSuPestana(ambito) { if (estado.ambito) estado.ambito = ambito; }
 
   $('form-ficha').addEventListener('submit', async function (ev) {
     ev.preventDefault();
@@ -1044,9 +1205,9 @@ APOLANA_ADMIN.listo(function (sb) {
       if (!ins.data || !ins.data.length) { decir('No se ha guardado: tu cuenta no tiene permiso para tocar las tarifas.', 'error'); return; }
       decir('Guardado ✓', 'ok');
       $('tar-ficha').classList.add('oculto');
-      estado.ambito = datos.ambito;
-      pintarCuentaFiltros();
+      quedarseEnSuPestana(datos.ambito);
       await cargarTodo();
+      if (window.apoToast) apoToast('Tarifa guardada: ' + datos.concepto, 'ok');
       return;
     }
 
@@ -1059,41 +1220,29 @@ APOLANA_ADMIN.listo(function (sb) {
       return a !== b;
     });
 
+    var aviso = 'Guardado ✓';
     if (cambioPrecio) {
       var desde = $('f-desde').value;
       if (!desde) { decir('Cambias un precio: hace falta la fecha de entrada en vigor.', 'error'); return; }
       var r = await sb.rpc('tarifa_nueva_version', { p_id: id, p_desde: desde, p_cambios: datos });
       if (r.error) { decir('No se pudo guardar: ' + r.error.message, 'error'); return; }
-      decir('Versión nueva creada, en vigor desde el ' + fechaLarga(desde) + ' ✓', 'ok');
+      aviso = 'Versión nueva creada, en vigor desde el ' + fechaLarga(desde) + ' ✓';
+      decir(aviso, 'ok');
     } else {
       var u = await sb.from('tarifas').update(datos).eq('id', id).select('id');
       if (u.error) { decir('No se pudo guardar: ' + u.error.message, 'error'); return; }
       if (!u.data || !u.data.length) { decir('No se ha guardado: tu cuenta no tiene permiso para tocar las tarifas.', 'error'); return; }
-      decir('Guardado ✓', 'ok');
+      decir(aviso, 'ok');
     }
     $('tar-ficha').classList.add('oculto');
-    estado.ambito = datos.ambito;
-    pintarCuentaFiltros();
+    quedarseEnSuPestana(datos.ambito);
     await cargarTodo();
+    if (window.apoToast) apoToast(aviso, 'ok');
   });
 
   /* ---------------------------------------------------------
      Arranque
      --------------------------------------------------------- */
-  /* La franja de guardado se prepara aquí, pero no se ve: no existe hasta
-     que hay un precio cambiado. Lleva la cuenta a mano porque lo que cuenta
-     no son campos sueltos, sino tarifas tocadas. */
-  franja = PZ.franja({
-    texto: function (n) { return 'Has cambiado ' + (n === 1 ? '1 tarifa' : n + ' tarifas'); },
-    descartar: function () { estado.edicion = null; pintarTabla(); pintarPanel(); },
-    guardar: function (fin) {
-      guardarCambio().then(function (bien) { fin(bien !== false); }, function () { fin(false); });
-    }
-  });
-
-  pintarCabecera();
-  pintarMandos();
-  pintarPanel();
   cargarTodo();
 });
 </script>
