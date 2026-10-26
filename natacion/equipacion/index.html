@@ -84,7 +84,8 @@
   <div class="barra" id="barra" hidden></div>
 <script>
 /* /natacion/equipacion/?t=… · pedido de equipación de natación 2026/27, un
-   enlace por familia (mig 436). Camiseta y gorro gratis; sudadera gratis a los
+   enlace por familia (mig 436). Camiseta y gorro gratis (y de más, de pago:
+   camisetas mig 443, gorros mig 445); sudadera gratis a los
    nuevos y de pago a las renovaciones; bañadores y extras de pago. Se paga al
    llegar la ropa. Los precios los pone la base; aquí solo se enseñan. */
 (function () {
@@ -103,11 +104,12 @@
   function nombreCorto(n){ return String(n||'').split(' ')[0]; }
   function desdeLineas(){
     N = {}; EXTRAS = [];
-    D.nadadores.forEach(function (n) { N[n.id] = { camiseta: D.respondido ? 'no' : null, extra: [], gorro: D.respondido ? false : true, sudadera: (D.respondido || !n.nuevo) ? 'no' : null }; });
+    D.nadadores.forEach(function (n) { N[n.id] = { camiseta: D.respondido ? 'no' : null, extra: [], gorro: D.respondido ? false : true, gorrosExtra: 0, sudadera: (D.respondido || !n.nuevo) ? 'no' : null }; });
     D.lineas.forEach(function (l) {
       var x = N[l.nadador_id];
       if (l.articulo === 'camiseta' && x && Number(l.precio) > 0) x.extra.push(l.talla);
       else if (l.articulo === 'camiseta' && x) x.camiseta = l.talla;
+      else if (l.articulo === 'gorro' && x && Number(l.precio) > 0) x.gorrosExtra = Number(l.cantidad) || 1;   // gorros de más (mig 445)
       else if (l.articulo === 'gorro' && x) x.gorro = true;
       else if (l.articulo === 'sudadera' && x) x.sudadera = l.talla;
       else if (l.articulo === 'producto') EXTRAS.push({ producto_id: l.producto_id, talla: l.talla || '', cantidad: l.cantidad, nadador_id: l.nadador_id || '' });
@@ -117,6 +119,7 @@
   function prod(id){ return (D.productos || []).filter(function (p) { return p.id === id; })[0]; }
   function precioSudadera(n){ return n.nuevo ? 0 : Number(D.precio_sudadera || 35); }
   function precioCamiseta(){ return Number(D.precio_camiseta || 15); }
+  function precioGorro(){ return Number(D.precio_gorro || 6); }
   function cesta(){
     var L = [];
     D.nadadores.forEach(function (n) {
@@ -124,6 +127,7 @@
       if (x.camiseta && x.camiseta !== 'no') L.push({ t: 'Camiseta oficial · talla ' + x.camiseta, q: nombreCorto(n.nombre), p: 0 });
       (x.extra || []).forEach(function (t) { if (t) L.push({ t: 'Otra camiseta oficial · talla ' + t, q: nombreCorto(n.nombre), p: precioCamiseta() }); });
       if (x.gorro) L.push({ t: 'Gorro de natación', q: nombreCorto(n.nombre), p: 0 });
+      if (x.gorrosExtra) L.push({ t: (x.gorrosExtra > 1 ? x.gorrosExtra + ' × ' : '') + 'Otro gorro de natación', q: nombreCorto(n.nombre), p: precioGorro() * x.gorrosExtra });
       if (x.sudadera && x.sudadera !== 'no') L.push({ t: 'Chaqueta · talla ' + x.sudadera, q: nombreCorto(n.nombre), p: precioSudadera(n) });
     });
     EXTRAS.forEach(function (e, i) {
@@ -164,7 +168,12 @@
       '</div>' +
       '<div class="art"><div class="art-t">Gorro de natación <small>Gratis</small></div>' +
         '<div class="opciones" data-campo="gorro" data-n="' + n.id + '"><button type="button" data-v="si" aria-pressed="' + (x.gorro ? 'true' : 'false') + '">Sí, lo necesito</button>' +
-        '<button type="button" class="no" data-v="no" aria-pressed="' + (!x.gorro ? 'true' : 'false') + '">No</button></div></div>' +
+        '<button type="button" class="no" data-v="no" aria-pressed="' + (!x.gorro ? 'true' : 'false') + '">No</button></div>' +
+        (x.gorro ? Array.apply(null, Array(x.gorrosExtra || 0)).map(function () {
+          return '<div class="extra-cam"><div class="art-t">Otro gorro <small class="pago">' + eur(precioGorro()) + '</small></div>' +
+            '<button type="button" class="quitar-cam" data-quitar-gorro="' + n.id + '">Quitar este gorro</button></div>';
+        }).join('') + ((x.gorrosExtra || 0) < 5 ? '<button type="button" class="mas-cam" data-mas-gorro="' + n.id + '">+ Quiero otro gorro (' + eur(precioGorro()) + ')</button>' : '') : '') +
+      '</div>' +
       '<div class="art' + (f.indexOf(n.id + ':sudadera') >= 0 ? ' falta' : '') + '"><div class="art-t">Chaqueta del club (con capucha) ' +
         (ps === 0 ? '<small>Gratis (te incorporas este año)</small>' : '<small class="pago">' + eur(ps) + ' · opcional</small>') + '</div>' +
         botones('sudadera', n.id, D.tallas, x.sudadera, ps === 0 ? 'No la necesito' : 'No, gracias') + '</div>' +
@@ -203,7 +212,7 @@
     app.innerHTML =
       '<h1>Equipación de natación 2026/27</h1>' +
       '<p>' + (D.contacto ? 'Hola, ' + esc(D.contacto) + '. ' : '') + 'Elige la talla de lo que os corresponde y, si queréis, añadid bañadores o algo más de la tienda del club. ' +
-        '<b>La camiseta y el gorro son gratis para todos</b> (si queréis más camisetas, cada una de más cuesta ' + eur(Number(D.precio_camiseta || 15)) + '); la chaqueta, gratis para quien se incorpora este año (al resto le sale a ' + eur(D.precio_sudadera || 35) + ' si la quiere).</p>' +
+        '<b>La camiseta y el gorro son gratis para todos</b> (si queréis más, cada camiseta de más cuesta ' + eur(Number(D.precio_camiseta || 15)) + ' y cada gorro de más, ' + eur(Number(D.precio_gorro || 6)) + '); la chaqueta, gratis para quien se incorpora este año (al resto le sale a ' + eur(D.precio_sudadera || 35) + ' si la quiere).</p>' +
       '<div class="fotos-eq"><figure><img src="../../assets/img/natacion-camiseta.jpg" alt="Camiseta del club de natación"><figcaption>Camiseta</figcaption></figure>' +
         '<figure><img src="../../assets/img/tienda-chaqueta-chandal.jpg" alt="Chaqueta del club"><figcaption>Chaqueta</figcaption></figure>' +
         '<figure><img src="../../assets/img/natacion-gorro.jpg" alt="Gorro de natación del club"><figcaption>Gorro</figcaption></figure></div>' +
@@ -237,7 +246,7 @@
     var b = ev.target.closest && ev.target.closest('.opciones button');
     if (b) {
       var g = b.parentNode, campo = g.getAttribute('data-campo'), nid = g.getAttribute('data-n'), v = b.getAttribute('data-v');
-      if (campo === 'gorro') N[nid].gorro = v === 'si';
+      if (campo === 'gorro') { N[nid].gorro = v === 'si'; if (!N[nid].gorro) N[nid].gorrosExtra = 0; }
       else if (campo.indexOf('extra:') === 0) N[nid].extra[Number(campo.slice(6))] = v;
       else N[nid][campo] = v;
       formularioConScroll(); return;
@@ -255,6 +264,10 @@
     if (mc) { var xn = N[mc.getAttribute('data-mas-cam')]; if (xn.extra.length < 5) xn.extra.push(''); formularioConScroll(); return; }
     var qc = ev.target.closest && ev.target.closest('[data-quitar-cam]');
     if (qc) { N[qc.getAttribute('data-n')].extra.splice(Number(qc.getAttribute('data-quitar-cam')), 1); formularioConScroll(); return; }
+    var mg = ev.target.closest && ev.target.closest('[data-mas-gorro]');
+    if (mg) { var xg = N[mg.getAttribute('data-mas-gorro')]; if ((xg.gorrosExtra || 0) < 5) xg.gorrosExtra = (xg.gorrosExtra || 0) + 1; formularioConScroll(); return; }
+    var qg = ev.target.closest && ev.target.closest('[data-quitar-gorro]');
+    if (qg) { var xq = N[qg.getAttribute('data-quitar-gorro')]; xq.gorrosExtra = Math.max(0, (xq.gorrosExtra || 0) - 1); formularioConScroll(); return; }
     var q = ev.target.closest && ev.target.closest('[data-quitar]');
     if (q) { EXTRAS.splice(Number(q.getAttribute('data-quitar')), 1); formularioConScroll(); return; }
   });
@@ -267,7 +280,7 @@
     if (faltan().length) { formularioConScroll(); var e1 = document.querySelector('.falta'); if (e1) e1.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById('err').textContent = 'Te falta elegir la talla (o «No la necesito») en lo que está marcado.'; return; }
     if (hayBanador() && !compromiso) { document.getElementById('cesta').scrollIntoView({ behavior: 'smooth', block: 'center' }); err.textContent = 'Para encargar bañadores marca «Me comprometo a la compra».'; return; }
     var datos = { compromiso: compromiso, extras: EXTRAS.map(function (e) { return { producto_id: e.producto_id, talla: e.talla, cantidad: e.cantidad, nadador_id: e.nadador_id }; }),
-      nadadores: D.nadadores.map(function (n) { var x = N[n.id]; return { id: n.id, camiseta: x.camiseta === 'no' ? null : x.camiseta, camisetas_extra: (x.extra || []).filter(function (t) { return t; }), gorro: !!x.gorro, sudadera: x.sudadera === 'no' ? null : x.sudadera }; }) };
+      nadadores: D.nadadores.map(function (n) { var x = N[n.id]; return { id: n.id, camiseta: x.camiseta === 'no' ? null : x.camiseta, camisetas_extra: (x.extra || []).filter(function (t) { return t; }), gorro: !!x.gorro, gorros_extra: x.gorro ? (x.gorrosExtra || 0) : 0, sudadera: x.sudadera === 'no' ? null : x.sudadera }; }) };
     b.disabled = true; b.textContent = 'Enviando…';
     rpc('natacion_equip_guardar', { p_token: token, p_datos: datos }).then(function (x) {
       if (!x.ok) { b.disabled = false; b.textContent = D.respondido ? 'Guardar cambios' : 'Enviar mi pedido'; (document.getElementById('err') || {}).textContent = (x.d && x.d.message) || 'No se ha podido guardar. Inténtalo otra vez.'; return; }
