@@ -183,6 +183,26 @@
   .eq-l span.q{ color:var(--texto-suave,#6E6656); font-size:12.5px; }
   .eq-nad{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; padding:4px 0; }
   .eq-nad label{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--texto-suave,#6E6656); cursor:pointer; }
+
+  /* Envío por grupos + editor del correo (mig 444) */
+  .eq-env{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  @media (max-width:520px){ .eq-env{ grid-template-columns:1fr; } }
+  .eq-env-t{ border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:12px 14px; background:#FCFBF8; display:flex; flex-direction:column; gap:8px; }
+  .eq-env-t .t{ font-family:var(--fuente-titulo); font-size:17px; font-weight:700; color:var(--navy,#26374B); }
+  .eq-env-t .s{ font-size:13px; color:var(--texto-suave,#6E6656); line-height:1.4; }
+  .eq-env-t .cu-btn{ width:100%; }
+  .eq-env-t .hecho{ font-size:14px; font-weight:700; color:#1E5E34; }
+  .eq-ins{ display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+  .eq-ins button{ font:inherit; font-size:13px; font-weight:700; min-height:36px; padding:4px 11px; border-radius:999px; border:1px solid #D2E4F3; background:#EEF5FB; color:#1E4E79; cursor:pointer; }
+  .eq-ed textarea{ font:inherit; font-size:15.5px; line-height:1.5; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE); border-radius:11px;
+    padding:10px 12px; width:100%; box-sizing:border-box; min-height:300px; resize:vertical; background:#fff; }
+  .eq-ed textarea:focus{ outline:2px solid #BFD6EC; border-color:var(--azul); }
+  .eq-prev{ margin-top:16px; border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; overflow:hidden; }
+  .eq-prev-cab{ background:var(--crema-media,#F4EEE1); padding:9px 14px; font-size:12.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--texto-suave,#6E6656); }
+  .eq-prev-as{ padding:11px 14px 0; font-size:15px; font-weight:700; color:var(--navy,#26374B); }
+  .eq-prev-cu{ padding:4px 14px 12px; font-family:Arial,Helvetica,sans-serif; font-size:14.5px; line-height:1.6; color:#222; overflow-wrap:anywhere; }
+  .eq-prev-cu p{ margin:10px 0; }
+  .eq-prev-cu a{ color:#1E4E79; }
 </style>
 </head>
 <body>
@@ -209,8 +229,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var rp = await sb.rpc('natacion_cuotas_puede');
   if (rp.error || !rp.data){ wrap.innerHTML = '<div class="cu-card"><h2>Equipación</h2><div class="cu-cuerpo"><p style="margin:0">Esta pantalla es para quien lleva la natación.</p></div></div>'; return; }
 
-  var S = { lista: null, err: null, q: '', estado: '', abiertos: {}, ocupado: {} };
+  var S = { lista: null, err: null, q: '', estado: '', abiertos: {}, ocupado: {}, textos: {} };
   var ESTADOS = { pendiente: ['pend', 'Sin contestar'], pedido: ['camino', 'Pedido hecho'], llegado: ['activa', 'Ha llegado'], pagado: ['activa', 'Pagado'], entregado: ['cerrado', 'Entregado'] };
+  // Grupo del correo (mig 444): con algún nadador de la Escuela → Escuela; todos Máster → Máster.
+  function grupoDe(f){ var ns = f.nadadores || []; return ns.length && ns.every(function (n) { return n.tipo === 'Máster'; }) ? 'master' : 'escuela'; }
+  function mixta(f){ var t = {}; (f.nadadores || []).forEach(function (n) { t[n.tipo] = 1; }); return t['Máster'] && Object.keys(t).length > 1; }
+  async function cargarTextos(){
+    var r = await sb.from('natacion_equip_textos').select('clave,asunto,cuerpo');
+    if (!r.error) (r.data || []).forEach(function (t) { S.textos[t.clave] = t; });
+  }
   async function cargar(){
     var r = await sb.rpc('natacion_equip_listar');
     if (r.error){ S.err = r.error.message || 'No se pudo cargar.'; S.lista = []; } else {
@@ -243,17 +270,27 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function cab(){
     var L = S.lista || [], n = L.length;
     var cont = L.filter(function (f) { return f.respondido_en; }).length;
-    var sinAviso = L.filter(function (f) { return !f.avisado_en; }).length;
     var porCobrar = L.reduce(function (a, f) { return a + (f.pago_estado === 'pagado' || f.estado === 'pagado' || f.estado === 'entregado' ? 0 : Number(f.total || 0)); }, 0);
     var nuevos = L.reduce(function (a, f) { return a + (f.nadadores || []).filter(function (x) { return x.nuevo; }).length; }, 0);
+    var sinRespuesta = L.filter(function (f) { return f.avisado_en && !f.respondido_en && f.estado === 'pendiente'; }).length;
+    var nMixtas = L.filter(mixta).length;
+    function tarjetaGrupo(g, titulo){
+      var del = L.filter(function (f) { return grupoDe(f) === g; }), pend = del.filter(function (f) { return !f.avisado_en; }).length;
+      return '<div class="eq-env-t"><span class="t">' + titulo + '</span><span class="s">' + del.length + ' familias · ' + (del.length - pend) + ' con el enlace enviado</span>' +
+        (pend ? '<button type="button" class="cu-btn" data-editor="' + g + '">Revisar y enviar a ' + pend + (pend === 1 ? ' familia' : ' familias') + '</button>'
+              : '<span class="hecho">✓ Enviado a todas</span><button type="button" class="cu-btn sec peq" data-editor="' + g + '" data-solo-texto>Ver el texto</button>') + '</div>';
+    }
     return '<div class="cu-cab"><div class="cu-eyebrow">Natación</div><h1>Equipación 2026/27</h1>' +
       '<p>Cada familia elige las tallas con su enlace (camiseta y gorro gratis; chaqueta gratis a los <b>nuevos</b> y 35 € al resto) y puede encargar bañadores o algo más de la tienda. Se paga con tarjeta por el enlace cuando llega la ropa.</p></div>' +
-      '<div class="cu-card"><div class="cu-cuerpo">' +
+      '<div class="cu-card"><h2>Mandar el enlace por correo</h2><div class="cu-cuerpo">' +
         '<div class="eq-res"><span><b>' + cont + '</b> de <b>' + n + '</b> familias han contestado</span><span>· <b>' + nuevos + '</b> nadadores nuevos</span><span>· <b>' + eur(porCobrar) + '</b> por cobrar</span></div>' +
+        '<div class="eq-env">' + tarjetaGrupo('escuela', 'Escuela') + tarjetaGrupo('master', 'Máster') + '</div>' +
+        '<div class="cu-cobro-det" style="margin:0 0 10px">Antes de enviar ves el correo y puedes cambiarlo. ' + (nMixtas ? 'Las ' + nMixtas + ' familias con nadadores de Escuela y de Máster van con Escuela. ' : '') +
+          'A quien se incorpore más tarde, mándaselo desde su fila (abajo) con el texto de <b>nuevos</b>. Revisa también quién es <b>nuevo</b> (la casilla de cada nadador): a los nuevos la chaqueta les sale gratis.</div>' +
         '<div class="eq-acc">' +
-          (sinAviso ? '<button type="button" class="cu-btn" data-enviar>Mandar el enlace por correo (' + sinAviso + ' familias)</button>' : '<button type="button" class="cu-btn sec" data-recordar>Recordatorio a las que no han contestado</button>') +
+          (sinRespuesta ? '<button type="button" class="cu-btn sec" data-recordar>Recordatorio a las ' + sinRespuesta + ' que no han contestado</button>' : '') +
+          '<button type="button" class="cu-btn sec" data-editor="nuevo" data-solo-texto>Texto para nuevos</button>' +
           '<button type="button" class="cu-btn sec" data-excel>Descargar Excel</button></div>' +
-        '<div class="cu-cobro-det" style="margin-top:10px">Antes de mandar los enlaces, revisa abajo quién es <b>nuevo</b> (la casilla de cada nadador): a los nuevos la chaqueta les sale gratis.</div>' +
       '</div></div>' +
       '<div class="cu-card"><div class="cu-cuerpo">' +
         '<input type="search" class="cu-input" id="eq-q" autocomplete="off" placeholder="Buscar familia o nadador" value="' + esc(S.q) + '">' +
@@ -279,6 +316,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="eq-l" style="border:0"><b>Total</b><b>' + esc(eur(f.total)) + '</b></div>' : '<div class="cu-cobro-det" style="margin-top:0">' + (f.respondido_en ? 'No ha pedido nada.' : 'Todavía no ha contestado.') + '</div>');
       var tel = telWa(f.telefono), pago = f.estado === 'llegado' && f.pago_estado !== 'pagado' ? f.pago_enlace : null;
       h += '<div class="cu-acc">' +
+        (f.estado === 'pendiente' || f.estado === 'pedido' ? '<button type="button" class="cu-btn peq" data-editor="nuevo" data-fam="' + f.id + '">' + (f.avisado_en ? 'Volver a mandar por correo' : 'Mandar el enlace por correo') + '</button>' : '') +
         '<button type="button" class="cu-btn peq sec" data-copiar="' + f.id + '">Copiar su enlace</button>' +
         '<a class="cu-btn peq wa" style="text-decoration:none;display:inline-flex;align-items:center" target="_blank" rel="noopener" href="https://wa.me/' + esc(tel) + '?text=' + encodeURIComponent(mensajeWa(f, pago)) + '">WhatsApp' + (pago ? ' (pago)' : '') + '</a>';
       if (f.estado === 'pedido') h += '<button type="button" class="cu-btn peq" data-estado="llegado" data-id="' + f.id + '"' + (S.ocupado[f.id] ? ' disabled' : '') + '>Ha llegado · avisar</button>';
@@ -306,6 +344,127 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var d = r && r.data; if (!d && r && r.error && r.error.context && r.error.context.json) d = await r.error.context.json().catch(function(){ return null; });
     return d || {};
   }
+  /* ---------- Editor del correo (mig 444): Mario revisa/cambia el texto antes de enviar ----------
+     escuela / master: envío a las familias de ese grupo que aún no tienen el enlace.
+     nuevo: envío a UNA familia (data-fam) o, sin familia, solo el texto. */
+  var TIT = { escuela: 'Escuela', master: 'Máster', nuevo: 'nuevos' };
+  var ED = null;   // { clave, fam, solo, asunto, cuerpo, guardado }
+  function nombresLista(ns){ var l = (ns || []).map(function (n) { return pila(n.nombre); }); return l.length <= 1 ? (l[0] || 'tu nadador/a') : l.slice(0, -1).join(', ') + ' y ' + l[l.length - 1]; }
+  function destinatarios(){
+    if (!ED) return [];
+    if (ED.fam) return [porId(ED.fam)].filter(Boolean);
+    if (ED.clave === 'nuevo') return [];
+    return (S.lista || []).filter(function (f) { return grupoDe(f) === ED.clave && !f.avisado_en; });
+  }
+  function ejemplo(){
+    var d = destinatarios(); if (d.length) return d[0];
+    return (S.lista || []).filter(function (f) { return ED.clave === 'nuevo' || grupoDe(f) === ED.clave; })[0] || null;
+  }
+  // Igual que la Edge natacion-equipacion-correo (correoDeTexto): así se ve lo que llega.
+  function vista(asunto, cuerpo, f){
+    var nom = f ? pila(f.contacto) : 'Lucía', nads = f ? nombresLista(f.nadadores) : 'Lucía y Marcos', enl = f ? f.enlace : 'https://atletismoapolana.com/natacion/equipacion/?t=…';
+    var c = String(cuerpo || '').replace(/\r\n?/g, '\n');
+    c = nom ? c.replace(/\{nombre\}/g, nom) : c.replace(/,?[ \t]*\{nombre\}/g, '');
+    c = c.replace(/\{nadadores\}/g, nads);
+    if (!/\{enlace\}/.test(c)) c += '\n\n{enlace}';
+    var ps = c.split(/\n[ \t]*\n/).map(function (p) { return p.trim(); }).filter(Boolean);
+    return { asunto: String(asunto || '').replace(/\{nombre\}/g, nom).replace(/\{nadadores\}/g, nads),
+      html: ps.map(function (p) { return '<p>' + esc(p).replace(/\n/g, '<br>').replace(/\{enlace\}/g, '<a href="' + esc(enl) + '" target="_blank" rel="noopener">' + esc(enl) + '</a>') + '</p>'; }).join('') +
+        '<p>Un saludo,<br>Club Atletismo Apolana · Natación</p>' };
+  }
+  function previa(){
+    var r = vista(ED.asunto, ED.cuerpo, ejemplo()), a = document.getElementById('eq-pas'), c = document.getElementById('eq-pcu');
+    if (a) a.textContent = r.asunto; if (c) c.innerHTML = r.html;
+  }
+  function pintarEditor(){
+    var v = document.getElementById('eq-velo');
+    if (!v){ v = document.createElement('div'); v.id = 'eq-velo'; v.className = 'cu-velo'; document.body.appendChild(v); }
+    var f = ED.fam ? porId(ED.fam) : null, d = destinatarios(), ej = ejemplo();
+    var titulo = f ? 'Correo a ' + capital(f.contacto || f.email) : (ED.clave === 'nuevo' ? 'Texto para nuevos' : 'Correo a ' + TIT[ED.clave]);
+    var quien = f ? f.email + ' · ' + nombresDe(f) + (f.avisado_en ? ' · ya tenía el enlace' : '')
+      : ED.clave === 'nuevo' ? 'Es el texto que sale al mandar el enlace a una familia desde su fila (los que se incorporan más tarde). Ahí lo puedes retocar para esa familia antes de enviarlo.'
+      : (d.length ? d.length + (d.length === 1 ? ' familia' : ' familias') + ' sin el enlace.' : 'Ya lo tienen todas. Puedes cambiar el texto para la próxima vez.');
+    v.innerHTML = '<div class="cu-hoja eq-ed" role="dialog" aria-modal="true" aria-label="' + esc(titulo) + '"><h2>' + esc(titulo) + '<button type="button" data-ed-cerrar aria-label="Cerrar">×</button></h2><div class="cu-cuerpo">' +
+      '<div class="cu-cobro-det" style="margin:0 0 12px">' + esc(quien) + '</div>' +
+      '<div class="cu-campo"><label for="eq-as">Asunto</label><input id="eq-as" maxlength="200" value="' + esc(ED.asunto) + '"></div>' +
+      '<div class="cu-campo" style="margin-top:12px"><label for="eq-cu">Texto</label><textarea id="eq-cu" maxlength="6000">' + esc(ED.cuerpo) + '</textarea>' +
+        '<span class="ayuda">Donde pongas <b>{nombre}</b>, <b>{nadadores}</b> o <b>{enlace}</b> irán los de cada familia (si quitas el enlace, se pone al final). Deja una línea en blanco entre párrafos. La firma «Un saludo, Club Atletismo Apolana · Natación» va siempre.</span>' +
+        '<div class="eq-ins"><button type="button" data-ins="{nombre}">+ nombre</button><button type="button" data-ins="{nadadores}">+ nadadores</button><button type="button" data-ins="{enlace}">+ enlace</button></div></div>' +
+      '<div class="eq-prev"><div class="eq-prev-cab">Así le llega' + (ej ? ' a ' + esc(capital(ej.contacto || ej.email)) : '') + '</div><div class="eq-prev-as" id="eq-pas"></div><div class="eq-prev-cu" id="eq-pcu"></div></div>' +
+      '<div id="eq-ed-msg"></div>' +
+      '<div class="cu-acc">' +
+        '<button type="button" class="cu-btn sec" data-ed-guardar>' + (f ? 'Guardar como texto para nuevos' : 'Guardar el texto') + '</button>' +
+        '<button type="button" class="cu-btn sec" data-ed-prueba>Enviarme una prueba</button>' +
+        (ED.solo || (!f && !d.length) ? '' : '<button type="button" class="cu-btn" data-ed-enviar>' + (f ? 'Enviar a esta familia' : 'Enviar a ' + d.length + (d.length === 1 ? ' familia' : ' familias')) + '</button>') +
+      '</div></div></div>';
+    previa();
+  }
+  function abrirEditor(clave, fam, solo){
+    var t = S.textos[clave] || {};
+    ED = { clave: clave, fam: fam || null, solo: !!solo, asunto: t.asunto || '', cuerpo: t.cuerpo || '', guardado: true };
+    pintarEditor(); document.body.style.overflow = 'hidden';
+  }
+  function cerrarEditor(){
+    if (ED && !ED.guardado && !confirm('Has cambiado el texto y no lo has guardado. ¿Cerrar igualmente?')) return;
+    ED = null; var v = document.getElementById('eq-velo'); if (v) v.remove(); document.body.style.overflow = '';
+  }
+  function edMsg(cls, html){ var m = document.getElementById('eq-ed-msg'); if (m) m.innerHTML = html ? '<div class="' + cls + '">' + html + '</div>' : ''; }
+  function validar(){
+    if (!ED.asunto.trim()) { edMsg('cu-mal', 'Falta el asunto.'); return false; }
+    if (!ED.cuerpo.trim()) { edMsg('cu-mal', 'Falta el texto.'); return false; }
+    return true;
+  }
+  async function guardarTexto(){
+    if (!validar()) return false;
+    var fila = { clave: ED.clave, asunto: ED.asunto.trim(), cuerpo: ED.cuerpo.trim(), updated_at: new Date().toISOString(), updated_by: (perfil && perfil.id) || null };
+    var r = await sb.from('natacion_equip_textos').upsert(fila);
+    if (r.error) { edMsg('cu-mal', 'No se pudo guardar: ' + esc(r.error.message || '')); return false; }
+    S.textos[ED.clave] = fila; ED.guardado = true; return true;
+  }
+  async function pruebaEd(b){
+    if (!validar()) return;
+    var a = (perfil && perfil.email) || prompt('¿A qué correo te mando la prueba?'); if (!a) return;
+    var ej = ejemplo(), cuerpo = { prueba: true, a: a, clave: ED.clave, asunto: ED.asunto, texto: ED.cuerpo };
+    if (ej) cuerpo.familia = ej.id;
+    b.disabled = true; var d = await correo(cuerpo); b.disabled = false;
+    edMsg(d.ok ? 'cu-ok' : 'cu-mal', d.ok ? 'Prueba enviada a <b>' + esc(a) + '</b> con los datos de ' + esc(ej ? capital(ej.contacto || ej.email) : 'una familia de ejemplo') + '. El asunto lleva «[Prueba]» delante.'
+      : 'No salió la prueba' + (d.mensaje ? ': ' + esc(d.mensaje) : '') + '.');
+  }
+  async function enviarEd(b){
+    if (!validar()) return;
+    var f = ED.fam ? porId(ED.fam) : null, d = destinatarios();
+    if (!f && !d.length) return;
+    if (!confirm(f ? '¿Mandar el correo a ' + capital(f.contacto || f.email) + ' (' + f.email + ')?' : '¿Mandar el correo a las ' + d.length + ' familias de ' + TIT[ED.clave] + ' que aún no tienen el enlace?')) return;
+    if (!f && !(await guardarTexto())) return;     // el texto de un grupo queda guardado tal cual se envió
+    b.disabled = true; b.textContent = 'Enviando…';
+    var r = await correo(f ? { familia: f.id, asunto: ED.asunto, texto: ED.cuerpo } : { enviar: true, grupo: ED.clave, asunto: ED.asunto, texto: ED.cuerpo });
+    if (!r.ok) { b.disabled = false; b.textContent = 'Volver a intentarlo'; edMsg('cu-mal', 'No se pudo enviar' + (r.mensaje ? ': ' + esc(r.mensaje) : '') + '.'); return; }
+    ED.guardado = true; cerrarEditor();
+    toast('Enviados ' + r.enviados + ' de ' + r.total);
+    if (r.fallos && r.fallos.length) alert('No salió el correo a: ' + r.fallos.join(', ') + '\n\nMándales el enlace por WhatsApp desde su fila.');
+    await cargar(); pintar();
+  }
+  document.addEventListener('click', function (ev) {
+    var v = document.getElementById('eq-velo'); if (!v || !ED) return;
+    var t = ev.target, b; if (!t || !t.closest) return;
+    if (t === v || t.closest('[data-ed-cerrar]')) { cerrarEditor(); return; }
+    if ((b = t.closest('[data-ins]'))) {
+      var ta = document.getElementById('eq-cu'), ins = b.getAttribute('data-ins'), i = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      ta.value = ta.value.slice(0, i) + ins + ta.value.slice(ta.selectionEnd != null ? ta.selectionEnd : i);
+      ta.focus(); ta.setSelectionRange(i + ins.length, i + ins.length);
+      ED.cuerpo = ta.value; ED.guardado = false; previa(); return;
+    }
+    if (t.closest('[data-ed-guardar]')) { guardarTexto().then(function (ok) { if (ok) edMsg('cu-ok', 'Texto guardado' + (ED.fam ? ' para los próximos nuevos.' : '.')); }); return; }
+    if ((b = t.closest('[data-ed-prueba]'))) { pruebaEd(b); return; }
+    if ((b = t.closest('[data-ed-enviar]'))) { enviarEd(b); return; }
+  });
+  document.addEventListener('input', function (ev) {
+    if (!ED) return;
+    if (ev.target.id === 'eq-as') { ED.asunto = ev.target.value; ED.guardado = false; previa(); }
+    else if (ev.target.id === 'eq-cu') { ED.cuerpo = ev.target.value; ED.guardado = false; previa(); }
+  });
+  document.addEventListener('keydown', function (ev) { if (ED && ev.key === 'Escape') cerrarEditor(); });
+
   var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   function cargarXlsx(){ return window.XLSX ? Promise.resolve(window.XLSX) : new Promise(function (ok, ko) { var s = document.createElement('script'); s.src = XLSX_URL; s.onload = function(){ ok(window.XLSX); }; s.onerror = ko; document.head.appendChild(s); }); }
   var ORD = ['4','6','8','10','12','14','XS','S','M','L','XL','XXL','ÚNICA'];
@@ -337,18 +496,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   wrap.addEventListener('click', async function (ev) {
     var t = ev.target; if (!t || !t.closest) return; var b;
+    if ((b = t.closest('[data-editor]'))){ abrirEditor(b.getAttribute('data-editor'), b.getAttribute('data-fam'), b.hasAttribute('data-solo-texto')); return; }
     if ((b = t.closest('[data-abrir]'))){ var id = b.getAttribute('data-abrir'); if (S.abiertos[id]) delete S.abiertos[id]; else S.abiertos[id] = true; document.getElementById('eq-lista').innerHTML = lista(); return; }
     if ((b = t.closest('[data-est]'))){ S.estado = b.getAttribute('data-est'); pintar(); return; }
     if ((b = t.closest('[data-copiar]'))){ var f = porId(b.getAttribute('data-copiar')); if (f) copiar(f.enlace, 'Enlace copiado'); return; }
     if ((b = t.closest('[data-copiar-pago]'))){ var fp = porId(b.getAttribute('data-copiar-pago')); if (fp && fp.pago_enlace) copiar(fp.pago_enlace, 'Enlace de pago copiado'); return; }
     if ((b = t.closest('[data-excel]'))){ excel().catch(function(){ toast('No se pudo hacer el Excel'); }); return; }
-    if ((b = t.closest('[data-enviar]')) || (b = t.closest('[data-recordar]'))){
-      var rec = b.hasAttribute('data-recordar');
-      var n = rec ? (S.lista || []).filter(function (f) { return f.avisado_en && !f.respondido_en && f.estado === 'pendiente'; }).length : (S.lista || []).filter(function (f) { return !f.avisado_en; }).length;
+    if ((b = t.closest('[data-recordar]'))){
+      var n = (S.lista || []).filter(function (f) { return f.avisado_en && !f.respondido_en && f.estado === 'pendiente'; }).length;
       if (!n) { toast('No hay ninguna a la que mandárselo'); return; }
-      if (!confirm((rec ? '¿Mandar un recordatorio por correo a ' : '¿Mandar el enlace por correo a ') + n + ' familias?')) return;
+      if (!confirm('¿Mandar un recordatorio por correo a ' + n + ' familias?')) return;
       b.disabled = true; b.textContent = 'Enviando…';
-      var d = await correo(rec ? { recordar: true } : { enviar: true });
+      var d = await correo({ recordar: true });
       toast(d.ok ? 'Enviados ' + d.enviados + ' de ' + d.total : (d.mensaje || 'No se pudo enviar'));
       await cargar(); pintar(); return;
     }
@@ -377,7 +536,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   wrap.addEventListener('input', function (ev) { if (ev.target.id === 'eq-q') { S.q = ev.target.value; clearTimeout(qT); qT = setTimeout(function () { document.getElementById('eq-lista').innerHTML = lista(); }, 150); } });
 
   pintar();
-  await cargar();
+  // Quien se haya incorporado a natación desde la última vez entra en la lista (idempotente).
+  await sb.rpc('natacion_equip_preparar');
+  await Promise.all([cargar(), cargarTextos()]);
   pintar();
 });
 </script>

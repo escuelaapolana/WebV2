@@ -3,10 +3,17 @@
 // ------------------------------------------------------------
 // Mig 436 (22-oct-2026). La lanza Mario desde portal/natacion-equipacion (con
 // su sesión: tiene que pasar natacion_cuotas_puede) o la base con x-cron-secret.
-//   { enviar: true }            → a cada familia que aún no lo tiene, su enlace
+//   { enviar: true, grupo?, asunto?, texto? } → a cada familia que aún no lo
+//        tiene, su enlace. grupo: "escuela" (las mixtas van aquí) | "master".
+//   { familia: "<id>", asunto?, texto? } → el enlace a UNA familia (los que se
+//        incorporan más tarde; texto «nuevo»)
 //   { recordar: true }          → a las que lo recibieron y no han contestado
 //   { llegado: "<familia_id>" } → «ya ha llegado»: con enlace de pago si hay algo que pagar
-//   { prueba: true, a, t?, tipo? } → un ejemplo a ese correo (tipo: recordatorio | llegado)
+//   { prueba: true, a, clave?, familia?, asunto?, texto?, tipo? } → un ejemplo a ese
+//        correo (tipo: recordatorio | llegado; si no, el texto de «clave»)
+// Mig 444 (26-oct): los textos los escribe Mario (natacion_equip_textos:
+// escuela | master | nuevo) con {nombre}, {nadadores} y {enlace}; si el envío
+// trae asunto/texto, manda ese (lo que Mario tiene en pantalla).
 // Correo SENCILLO (texto, sin foto ni botón): el «boletín» cae en Promociones.
 //
 //   supabase functions deploy natacion-equipacion-correo --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
@@ -92,6 +99,38 @@ const nombresDe = (ns: any[]) => {
   return l.length <= 1 ? (l[0] || "tu nadador/a") : l.slice(0, -1).join(", ") + " y " + l[l.length - 1];
 };
 
+// ---- Textos de Mario (mig 444) ----
+type Texto = { asunto: string; cuerpo: string };
+const CLAVES = ["escuela", "master", "nuevo"];
+// La familia va con Escuela si tiene algún nadador de la Escuela; si todos son Máster, con Máster.
+const grupoDe = (ns: any[]) => (ns.length && ns.every((x) => String(x.tipo ?? "") === "Máster") ? "master" : "escuela");
+async function textoGuardado(clave: string): Promise<Texto | null> {
+  const r = await rest(`natacion_equip_textos?select=asunto,cuerpo&clave=eq.${encodeURIComponent(clave)}&limit=1`);
+  const t = Array.isArray(r.datos) ? r.datos[0] : null;
+  return t && t.asunto && t.cuerpo ? { asunto: String(t.asunto), cuerpo: String(t.cuerpo) } : null;
+}
+// Lo que viene en el envío (lo que Mario tiene en pantalla), si es válido.
+function textoDelEnvio(b: Record<string, unknown>): Texto | null {
+  const asunto = String(b.asunto ?? "").trim(), cuerpo = String(b.texto ?? "").trim();
+  if (!asunto || !cuerpo || asunto.length > 200 || cuerpo.length > 6000) return null;
+  return { asunto, cuerpo };
+}
+// Rellena {nombre}, {nadadores} y {enlace}. Sin nombre, «Hola, {nombre}:» queda «Hola:».
+function correoDeTexto(t: Texto, contacto: string, nadadores: string, enlace: string) {
+  const n = pila(contacto);
+  let c = t.cuerpo.replace(/\r\n?/g, "\n");
+  c = n ? c.replace(/\{nombre\}/g, n) : c.replace(/,?[ \t]*\{nombre\}/g, "");
+  c = c.replace(/\{nadadores\}/g, nadadores);
+  if (!/\{enlace\}/.test(c)) c += "\n\n{enlace}";
+  const firma = "Un saludo,\nClub Atletismo Apolana · Natación";
+  const texto = c.replace(/\{enlace\}/g, enlace) + "\n\n" + firma;
+  const parrafos = c.split(/\n[ \t]*\n/).map((p) => p.trim()).filter(Boolean);
+  const html = `<!doctype html><html lang="es"><body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222">
+${parrafos.map((p) => `<p>${escH(p).replace(/\n/g, "<br>").replace(/\{enlace\}/g, `<a href="${escH(enlace)}">${escH(enlace)}</a>`)}</p>`).join("\n")}
+<p>${escH(firma).replace(/\n/g, "<br>")}</p></body></html>`;
+  return { html, texto, asunto: t.asunto.replace(/\{nombre\}/g, n).replace(/\{nadadores\}/g, nadadores).trim() };
+}
+
 Deno.serve(async (req: Request) => {
   const o = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(o) });
@@ -118,11 +157,36 @@ Deno.serve(async (req: Request) => {
     const a = String(b.a ?? "").trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)) return responder({ error: "falta 'a'" }, 400, o);
     const quien = String(b.nombre ?? "Andrés");
-    const c = b.tipo === "llegado"
-      ? correoLlegado(quien, 70, `${WEB}pagar/?t=ejemplo`)
-      : correoEnlace(quien, "Lucía y Marcos", `${WEB}natacion/equipacion/?t=${String(b.t ?? "ejemplo")}`, b.tipo === "recordatorio");
-    const okp = await enviar(a, { ...c, asunto: (b.tipo ? "[Ejemplo] " : "") + c.asunto });
+    let c;
+    if (b.tipo === "llegado") c = correoLlegado(quien, 70, `${WEB}pagar/?t=ejemplo`);
+    else if (b.tipo === "recordatorio") c = correoEnlace(quien, "Lucía y Marcos", `${WEB}natacion/equipacion/?t=${String(b.t ?? "ejemplo")}`, true);
+    else {
+      // El texto que Mario tiene en pantalla (o el guardado), con los datos de una familia de ejemplo.
+      const clave = CLAVES.includes(String(b.clave)) ? String(b.clave) : "escuela";
+      const t = textoDelEnvio(b) ?? await textoGuardado(clave);
+      if (!t) return responder({ error: "sin_texto" }, 400, o);
+      let contacto = quien, nads = "Lucía y Marcos", enlace = `${WEB}natacion/equipacion/?t=ejemplo`;
+      if (typeof b.familia === "string") {
+        const rf = await rest(`natacion_equip_familias?select=contacto,token,natacion_equip_nadadores(nombre)&id=eq.${encodeURIComponent(b.familia)}&limit=1`);
+        const f = Array.isArray(rf.datos) ? rf.datos[0] : null;
+        if (f) { contacto = String(f.contacto ?? ""); nads = nombresDe(f.natacion_equip_nadadores || []); enlace = `${WEB}natacion/equipacion/?t=${f.token}`; }
+      }
+      c = correoDeTexto(t, contacto, nads, enlace);
+    }
+    const okp = await enviar(a, { ...c, asunto: "[Prueba] " + c.asunto });
     return responder({ ok: okp, prueba: true, a }, 200, o);
+  }
+
+  if (typeof b.familia === "string") {
+    const rf = await rest(`natacion_equip_familias?select=id,email,contacto,token,avisado_en,natacion_equip_nadadores(nombre)&id=eq.${encodeURIComponent(b.familia)}&limit=1`);
+    const f = Array.isArray(rf.datos) ? rf.datos[0] : null;
+    if (!f) return responder({ error: "no_existe" }, 404, o);
+    const t = textoDelEnvio(b) ?? await textoGuardado("nuevo");
+    if (!t) return responder({ error: "sin_texto" }, 400, o);
+    const okf = await enviar(String(f.email), correoDeTexto(t, String(f.contacto ?? ""), nombresDe(f.natacion_equip_nadadores || []), `${WEB}natacion/equipacion/?t=${f.token}`));
+    if (okf && !f.avisado_en) await rest(`natacion_equip_familias?id=eq.${f.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ avisado_en: new Date().toISOString() }) });
+    console.log("[natacion-equipacion-correo] familia", f.id, okf);
+    return responder({ ok: okf, enviados: okf ? 1 : 0, total: 1, fallos: okf ? [] : [String(f.email)] }, 200, o);
   }
 
   if (typeof b.llegado === "string") {
@@ -137,12 +201,23 @@ Deno.serve(async (req: Request) => {
   if (b.enviar !== true && b.recordar !== true) return responder({ error: "¿qué hago?" }, 400, o);
   if (b.enviar === true) await rest("rpc/natacion_equip_preparar", { method: "POST", body: "{}" });
   const filtro = b.enviar === true ? "avisado_en=is.null" : "avisado_en=not.is.null&respondido_en=is.null&estado=eq.pendiente";
-  const r = await rest(`natacion_equip_familias?select=id,email,contacto,token,natacion_equip_nadadores(nombre)&temporada=eq.2026/27&email=not.like.prueba-*&${filtro}`);
-  const fams: any[] = Array.isArray(r.datos) ? r.datos : [];
+  const r = await rest(`natacion_equip_familias?select=id,email,contacto,token,natacion_equip_nadadores(nombre,tipo)&temporada=eq.2026/27&email=not.like.prueba-*&${filtro}`);
+  let fams: any[] = Array.isArray(r.datos) ? r.datos : [];
+  const grupo = b.grupo === "escuela" || b.grupo === "master" ? String(b.grupo) : "";
+  if (b.enviar === true && b.grupo != null && !grupo) return responder({ error: "grupo" }, 400, o);
+  if (grupo) fams = fams.filter((f) => grupoDe(f.natacion_equip_nadadores || []) === grupo);
+  // Texto del envío: el que trae (solo con grupo) o el guardado de cada grupo.
+  const textos: Record<string, Texto | null> = {};
+  if (b.enviar === true) {
+    const delEnvio = grupo ? textoDelEnvio(b) : null;
+    for (const g of ["escuela", "master"]) textos[g] = (grupo === g && delEnvio) || await textoGuardado(g);
+  }
   let n = 0; const fallos: string[] = [];
   for (const f of fams) {
-    const okf = await enviar(String(f.email), correoEnlace(String(f.contacto ?? ""), nombresDe(f.natacion_equip_nadadores || []),
-      `${WEB}natacion/equipacion/?t=${f.token}`, b.recordar === true));
+    const ns = f.natacion_equip_nadadores || [], enlace = `${WEB}natacion/equipacion/?t=${f.token}`;
+    const t = b.enviar === true ? textos[grupoDe(ns)] : null;
+    const okf = await enviar(String(f.email), t ? correoDeTexto(t, String(f.contacto ?? ""), nombresDe(ns), enlace)
+      : correoEnlace(String(f.contacto ?? ""), nombresDe(ns), enlace, b.recordar === true));
     if (okf) {
       n++;
       await rest(`natacion_equip_familias?id=eq.${f.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" },
