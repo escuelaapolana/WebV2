@@ -101,6 +101,40 @@
   .articulo .cuerpo p { font-size: 18px; line-height: 1.75; color: var(--texto); max-width: 66ch; margin: 0 0 1.05em; }
   .articulo .cuerpo p:last-child { margin-bottom: 0; }
 
+  /* Marcas sencillas en el texto de la noticia (las pinta pintarCuerpo):
+     «## Título» → subtítulo · líneas «- …» → lista en panel crema ·
+     «> …» → frase destacada de cierre · **así** → negrita. */
+  .articulo .cuerpo h2 {
+    font-family: var(--fuente-titulo); font-weight: 700; letter-spacing: -0.015em;
+    font-size: clamp(23px, 3vw, 28px); line-height: 1.12; color: var(--navy);
+    margin: 1.7em 0 .55em; max-width: 30ch;
+  }
+  .articulo .cuerpo h2::before {
+    content: ""; display: block; width: 34px; height: 4px; border-radius: 4px;
+    background: var(--azul); margin-bottom: 12px;
+  }
+  .articulo .cuerpo strong { color: var(--navy); font-weight: 700; }
+  .articulo .cuerpo ul {
+    list-style: none; margin: 4px 0 1.3em; padding: 6px 20px; max-width: 66ch;
+    background: var(--crema-banda); border-radius: var(--radio-grande);
+    border: 1px solid var(--linea);
+  }
+  .articulo .cuerpo li {
+    position: relative; padding: 13px 0 13px 22px;
+    font-size: 17px; line-height: 1.6; color: var(--texto);
+  }
+  .articulo .cuerpo p + ul { margin-top: -.3em; }
+  .articulo .cuerpo li + li { border-top: 1px solid var(--linea); }
+  .articulo .cuerpo li::before {
+    content: ""; position: absolute; left: 2px; top: calc(13px + .8em - 4px);
+    width: 8px; height: 8px; border-radius: 50%; background: var(--azul);
+  }
+  .articulo .cuerpo .destacado {
+    font-family: var(--fuente-titulo); font-weight: 700; letter-spacing: -0.01em;
+    font-size: clamp(21px, 2.8vw, 25px); line-height: 1.3; color: var(--navy);
+    margin: 1.4em 0 1em; padding: 4px 0 4px 20px; border-left: 4px solid var(--azul);
+  }
+
   /* Galería en rejilla con relieve y zoom suave. */
   .articulo .galeria { margin-top: 30px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .articulo .galeria .marco {
@@ -269,9 +303,27 @@ document.addEventListener('DOMContentLoaded', async function () {
   var eyebrow = fechaCorta(n.fecha_publicacion) + (cat ? ' · ' + cat : '');
   var portada = n.foto_portada ? '<div class="portada"><img src="'+esc(window.APOLANA_IMG(n.foto_portada))+'" alt="'+esc(n.titulo)+'" decoding="async" fetchpriority="high"></div>' : '';
   var lead = n.excerpt ? '<p class="lead">'+esc(n.excerpt)+'</p>' : '';
-  var cuerpo = n.contenido
-    ? '<div class="cuerpo">' + String(n.contenido).split(/\n\s*\n|\n/).filter(Boolean).map(function(p){return '<p>'+esc(p)+'</p>';}).join('') + '</div>'
-    : '';
+  /* Cada línea es un párrafo, salvo las marcas sencillas: «## » subtítulo,
+     «- » o «• » elemento de lista (las seguidas van juntas), «> » frase
+     destacada y **texto** en negrita. Todo se escapa antes. Un «#» pegado
+     (#hashtag) sigue siendo texto normal. */
+  function enLinea(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); }
+  function pintarCuerpo(texto) {
+    var html = '', lista = [];
+    function cerrarLista() { if (lista.length) { html += '<ul>' + lista.join('') + '</ul>'; lista = []; } }
+    String(texto).split(/\n/).forEach(function (l) {
+      var t = l.trim(), m;
+      if (!t) return;
+      if ((m = t.match(/^[-•]\s+(.*)$/))) { lista.push('<li>' + enLinea(m[1]) + '</li>'); return; }
+      cerrarLista();
+      if ((m = t.match(/^#{2,4}\s+(.*)$/))) html += '<h2>' + enLinea(m[1]) + '</h2>';
+      else if ((m = t.match(/^>\s*(.*)$/))) html += '<p class="destacado">' + enLinea(m[1]) + '</p>';
+      else html += '<p>' + enLinea(t) + '</p>';
+    });
+    cerrarLista();
+    return html;
+  }
+  var cuerpo = n.contenido ? '<div class="cuerpo">' + pintarCuerpo(n.contenido) + '</div>' : '';
   var galeria = (Array.isArray(n.fotos_galeria) && n.fotos_galeria.length)
     ? '<div class="galeria">' + n.fotos_galeria.map(function(f){return '<div class="marco"><img src="'+esc(window.APOLANA_IMG(f))+'" alt="" loading="lazy" decoding="async"></div>';}).join('') + '</div>'
     : '';
