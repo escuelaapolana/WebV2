@@ -63,9 +63,13 @@
 
   function botonEspera(f, ctx) {
     // Solo en franjas (o niveles) sin hueco claro (completo / consultar) y con id.
+    // (mig 446) Y solo en la página de adultos: la lista de espera avisa de huecos
+    // de UN día, que se recuperan con bono, y los bonos son solo de Máster. En la
+    // Escuela, si un día no se puede venir, no se recupera.
+    if (ctx.filtro !== 'master') return '';
     if (!f.id || (f.semaforo !== 'rojo' && f.semaforo !== 'ambar' && !algunNivelSinHueco(f))) return '';
     if (!ctx.logueado) {
-      return '<span class="nat-espera-hint">¿Sin hueco? Entra a tu cuenta y te avisamos si se libera uno.</span>';
+      return '<span class="nat-espera-hint">¿Nadas en Máster y no hay hueco? Entra a tu cuenta y te avisamos si se libera uno.</span>';
     }
     var e = ctx.esperas[f.id];
     if (e) {
@@ -158,7 +162,7 @@
     var filtro = (cont.getAttribute('data-filtro') || '').toLowerCase();
     var db = window.APOLANA_DB;
     if (!db) { return setTimeout(init, 80); }  // esperar a db.js (defer)
-    var ctx = { logueado: false, esperas: {} };
+    var ctx = { logueado: false, esperas: {}, filtro: filtro };
 
     function render() {
       db.from('natacion_vacantes')
@@ -199,7 +203,8 @@
       Promise.resolve(pet).then(function (r) {
         if (a && !(r && !r.error && r.data && r.data.ok)) {
           btn.disabled = false; btn.textContent = t;
-          alert('No se ha podido apuntar. Inténtalo de nuevo.'); return;
+          // La base explica por qué (p. ej. «solo Máster», mig 446).
+          alert((r && r.error && r.error.message) || 'No se ha podido apuntar. Inténtalo de nuevo.'); return;
         }
         cargarEsperas(render);  // repinta con el estado nuevo
       }, function () {
