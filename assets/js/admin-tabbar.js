@@ -333,7 +333,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=d25ffc1f';
+      s.src = base() + 'assets/js/mundos.js?v=a99fa413';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -1091,7 +1091,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=d25ffc1f';
+      s.src = base() + 'assets/js/mundos.js?v=a99fa413';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -1108,7 +1108,7 @@
     ya = true;
 
     /* Sin buscador en la cabecera: la maqueta de admin no lo lleva arriba.
-       Se busca desde «Más» (la hoja abre con su propio buscador). */
+       Se busca desde «Menú» (la hoja abre con su propio buscador). */
     anotar(carpeta());   /* esta pantalla, para «las que más usas» */
 
     /* La lateral de escritorio se monta siempre (en móvil va display:none). */
@@ -1120,6 +1120,24 @@
     var propia = document.querySelector('.tabbar');
     if (propia && !propia.hidden && propia.children.length) return;
 
+    /* En el móvil, la MISMA barra que en las páginas de mundo del portal
+       (Resumen · Menú · Mi portal, con la hoja de mundos), que la pinta
+       mundos.js. Antes aquí salía otra (Resumen · Personas · Compes · Más) sin
+       mundos y, según la pantalla, el menú cambiaba (Andrés, 27-oct-2026).
+       Solo si el shell no la trae se queda la vieja. */
+    conShell(function (shell) {
+      if (shell.montarMovil) {
+        var r = shell.resolverURL() || { world: 'general', screenIdx: -1 };
+        shell.montarMovil(r.world, r.screenIdx);
+        document.body.classList.add('at-con-tabbar');
+      } else {
+        barraVieja();
+      }
+    });
+  }
+
+  function barraVieja() {
+    if (nodo) return;
     var act = activa();
     var html = pestanas().map(function (t) {
       return '<a href="' + t.url + '"' + (t.id === act ? ' class="activo" aria-current="page"' : '') + '>' +

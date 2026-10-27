@@ -345,64 +345,88 @@
       '.mh-stat span{font-size:12.5px;color:var(--texto-suave,#6E6656);margin-top:5px;display:block}';
 
     /* --- NAVEGACIÓN DE MUNDOS EN MÓVIL (<900px) ---------------------------
-       La lateral es solo de PC. En el móvil, dentro de un mundo, hacía falta
-       una barra para moverse: a otra sección del mundo, cambiar de mundo o
-       salir a tu portal. Antes no había NINGUNA y en una subpágina (p. ej.
-       «Asistencia») te quedabas sin salida. Solo aparece en páginas de mundo
-       del portal (body.mm-on); en el panel viejo (/admin/) manda su barra. */
+       La lateral es solo de PC. En el móvil hay UNA barra abajo, la misma en
+       las páginas de mundo del portal y en las del panel (/admin/):
+       Resumen · Menú · Mi portal. «Menú» abre una hoja con el buscador, los
+       mundos a la vista (4 por fila) y, debajo, las pantallas del mundo
+       elegido por apartados y en dos columnas. Tocar otro mundo enseña SUS
+       pantallas sin salir de donde estás (Andrés, 27-oct-2026: «cambiar de
+       mundo y ver los submenús desde el móvil es incómodo»; antes la lista era
+       larga, de una columna, con los mundos al final, y en el panel salía otra
+       barra distinta sin mundos). */
     css.textContent +=
       '.mm-tab{display:none}' +
       '.mm-sheet-bg{display:none;position:fixed;inset:0;z-index:700;background:rgba(46,66,86,.45);opacity:0;transition:opacity .18s ease}' +
       '.mm-sheet-bg.ver{opacity:1}' +
-      '.mm-sheet{position:fixed;left:0;right:0;bottom:0;z-index:701;box-sizing:border-box;max-height:86vh;overflow:auto;' +
-        '-webkit-overflow-scrolling:touch;background:var(--crema,#FBF9F4);border-top-left-radius:16px;border-top-right-radius:16px;' +
-        'box-shadow:0 -20px 44px -22px rgba(46,66,86,.55);transform:translateY(100%);transition:transform .22s ease;' +
-        'padding:16px 16px calc(20px + env(safe-area-inset-bottom))}' +
+      '.mm-sheet{position:fixed;left:0;right:0;bottom:0;z-index:701;box-sizing:border-box;max-height:90vh;overflow:auto;overscroll-behavior:contain;' +
+        '-webkit-overflow-scrolling:touch;background:var(--crema,#FBF9F4);border-top-left-radius:18px;border-top-right-radius:18px;' +
+        'box-shadow:0 -20px 44px -22px rgba(46,66,86,.55);transform:translateY(100%);transition:transform .24s cubic-bezier(.2,.8,.2,1);' +
+        'padding:10px 16px calc(22px + env(safe-area-inset-bottom))}' +
       '.mm-sheet.ver{transform:none}' +
-      '.mm-busca{position:relative;margin:6px 0 10px}' +
-      '.mm-busca svg{position:absolute;left:13px;top:50%;margin-top:-9px;width:18px;height:18px;color:var(--texto-suave,#6E6656);pointer-events:none}' +
-      '.mm-busca-inp{box-sizing:border-box;width:100%;min-height:46px;padding:12px 14px 12px 40px;border:1px solid var(--linea-borde,#D4CBB9);border-radius:12px;background:#fff;font-family:inherit;font-size:15px;color:var(--navy,#2E4256)}' +
+      // cerrándose ya no recoge toques: lo de debajo (la barra) responde en el acto
+      '.mm-sheet:not(.ver){pointer-events:none}' +
+      '.mm-asa{width:40px;height:5px;border-radius:3px;background:var(--linea-borde,#D4CBB9);margin:0 auto 10px}' +
+      '.mm-sheet-cab{display:flex;align-items:center;gap:10px;margin-bottom:12px}' +
+      '.mm-busca{flex:1 1 auto;position:relative;margin:0}' +
+      '.mm-busca svg{position:absolute;left:12px;top:50%;margin-top:-9px;width:18px;height:18px;color:var(--texto-suave,#6E6656);pointer-events:none}' +
+      '.mm-busca-inp{box-sizing:border-box;width:100%;min-height:44px;padding:11px 12px 11px 38px;border:1px solid var(--linea-borde,#D4CBB9);border-radius:12px;background:#fff;font-family:inherit;font-size:15px;color:var(--navy,#2E4256)}' +
       '.mm-busca-inp:focus{outline:2px solid var(--azul-filete,#3B85C0);border-color:var(--azul-filete,#3B85C0)}' +
-      '.mm-row .mm-rt small{display:block;font-size:12px;font-weight:400;color:var(--texto-suave,#6E6656);margin-top:1px}' +
-      '.mm-pers,.mm-nada-busca{padding:11px 13px;font-size:13.5px;color:var(--texto-suave,#6E6656)}' +
-      '.mm-sheet-cab{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:2px}' +
-      '.mm-sheet-cab h2{margin:0;font-family:var(--fuente-titulo,inherit);text-transform:uppercase;font-size:21px;line-height:1.1;color:var(--navy,#2E4256)}' +
-      '.mm-sheet-x{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:1px solid var(--linea-borde,#D4CBB9);background:#fff;color:var(--texto-suave,#6E6656);font-family:inherit;font-size:16px;line-height:1;cursor:pointer}' +
+      '.mm-sheet-x{flex:0 0 auto;width:44px;height:44px;border-radius:50%;border:1px solid var(--linea-borde,#D4CBB9);background:#fff;color:var(--texto-suave,#6E6656);font-family:inherit;font-size:16px;line-height:1;cursor:pointer}' +
+      /* mundos: 4 por fila, todos a la vista */
+      '.mm-mundos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:18px}' +
+      '.mm-mundos[hidden]{display:none}' +
+      '.mm-mb{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 3px 9px;border-radius:14px;border:1.5px solid transparent;' +
+        'background:#fff;box-shadow:0 5px 14px -12px rgba(46,66,86,.4);cursor:pointer;font-family:inherit;color:var(--navy,#2E4256);-webkit-tap-highlight-color:transparent}' +
+      '.mm-mb .q{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:color-mix(in srgb, var(--pt) 13%, #fff);color:var(--pt)}' +
+      '.mm-mb .q svg{width:20px;height:20px}' +
+      '.mm-mb .n{font-size:11.5px;font-weight:600;line-height:1.15;text-align:center;hyphens:manual;overflow-wrap:anywhere}' +
+      '.mm-mb.sel{border-color:var(--pt);background:color-mix(in srgb, var(--pt) 9%, #fff)}' +
+      '.mm-mb.sel .q{background:var(--pt);color:#fff}' +
+      /* pantallas del mundo elegido */
+      '.mm-pant{animation:mmIn .16s ease}' +
+      '@keyframes mmIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}' +
+      '.mm-pant h2{margin:0 2px 10px;font-family:var(--fuente-titulo,inherit);text-transform:uppercase;font-size:20px;line-height:1.1;color:var(--navy,#2E4256)}' +
+      '.mm-pant h2 i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--pt);margin-right:8px;vertical-align:2px}' +
       '.mm-srot{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--texto-suave,#6E6656);margin:16px 2px 8px}' +
-      '.mm-row,.mm-wrow{display:flex;align-items:center;gap:12px;min-height:48px;box-sizing:border-box;padding:10px 13px;background:#fff;' +
+      '.mm-rej{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}' +
+      '.mm-s{display:flex;align-items:center;gap:10px;min-height:52px;box-sizing:border-box;padding:9px 11px;background:#fff;border-radius:12px;' +
+        'border:1px solid var(--linea-marcada,#E4DCCB);text-decoration:none;color:var(--navy,#2E4256);font-size:14px;line-height:1.2;' +
+        'box-shadow:0 5px 14px -12px rgba(46,66,86,.32)}' +
+      '.mm-s .mm-ic{flex:0 0 20px;color:var(--pt)}' +
+      '.mm-s .mm-ic svg{width:20px;height:20px;display:block}' +
+      '.mm-s .mm-rt{min-width:0;overflow-wrap:anywhere}' +
+      '.mm-s.act{border-color:var(--pt);background:color-mix(in srgb, var(--pt) 9%, #fff);font-weight:700}' +
+      /* resultados del buscador (filas a todo lo ancho, con dónde está) */
+      '.mm-row{display:flex;align-items:center;gap:12px;min-height:48px;box-sizing:border-box;padding:10px 13px;background:#fff;' +
         'border:1px solid var(--linea-marcada,#E4DCCB);border-radius:13px;margin-bottom:8px;text-decoration:none;color:var(--navy,#2E4256);' +
         'font-size:15px;line-height:1.2;box-shadow:0 5px 14px -12px rgba(46,66,86,.32)}' +
       '.mm-row .mm-ic{flex:0 0 22px;width:22px;height:22px;display:grid;place-items:center;color:var(--mm-acento,#2F6FA8)}' +
       '.mm-row .mm-ic svg{width:20px;height:20px}' +
-      '.mm-row .mm-rt,.mm-wrow .mm-rt{flex:1 1 auto;min-width:0}' +
-      '.mm-row.act{border-color:var(--mm-acento,#2F6FA8);background:color-mix(in srgb, var(--mm-acento,#2F6FA8) 8%, #fff)}' +
-      '.mm-row.act .mm-rt{font-weight:700}' +
-      '.mm-wrow .pt{flex:0 0 auto;width:12px;height:12px;border-radius:50%;background:var(--pt);box-shadow:0 0 0 3px color-mix(in srgb, var(--pt) 16%, transparent)}' +
-      '.mm-wrow.act{border-color:var(--pt);background:color-mix(in srgb, var(--pt) 10%, #fff)}' +
-      '.mm-wrow.act .mm-rt{font-weight:700}' +
-      '.mm-salir{display:block;width:100%;text-align:center;margin-top:16px;padding:12px;background:none;border:0;' +
+      '.mm-row .mm-rt{flex:1 1 auto;min-width:0}' +
+      '.mm-row .mm-rt small{display:block;font-size:12px;font-weight:400;color:var(--texto-suave,#6E6656);margin-top:1px}' +
+      '.mm-pers,.mm-nada-busca{padding:11px 13px;font-size:13.5px;color:var(--texto-suave,#6E6656)}' +
+      '.mm-salir{display:block;width:max-content;margin:20px auto 0;padding:10px 12px;background:none;border:0;' +
         'font-family:inherit;font-size:14px;font-weight:600;color:var(--azul-oscuro,#2F6FA8);text-decoration:underline;cursor:pointer}' +
       '@media (max-width:899px){' +
-        'body.mm-on.pt-con-tabbar,body.mm-on{padding-bottom:calc(80px + env(safe-area-inset-bottom)) !important}' +
-        'body.mm-on .mm-tab{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);' +
+        'body.mm-tab-on,body.mm-tab-on.pt-con-tabbar,body.mm-tab-on.at-con-tabbar{padding-bottom:calc(84px + env(safe-area-inset-bottom)) !important}' +
+        'body.mm-tab-on .at-tabbar{display:none !important}' +
+        'body.mm-tab-on .mm-tab{display:flex;align-items:stretch;gap:2px;position:fixed;left:50%;transform:translateX(-50%);' +
           'bottom:calc(14px + env(safe-area-inset-bottom));z-index:600;box-sizing:border-box;max-width:calc(100% - 20px);' +
-          'background:rgba(255,255,255,.9);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
+          'background:rgba(255,255,255,.92);-webkit-backdrop-filter:saturate(1.4) blur(16px);backdrop-filter:saturate(1.4) blur(16px);' +
           'border:1px solid rgba(30,45,65,.08);border-radius:26px;padding:6px;' +
           'box-shadow:0 10px 26px -8px rgba(30,45,65,.28),0 2px 6px rgba(30,45,65,.10)}' +
-        '.mm-tab .mm-tb{flex:1 1 0;min-width:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
-          'min-height:52px;padding:7px 10px;border-radius:20px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
+        '.mm-tab .mm-tb{flex:1 1 0;min-width:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
+          'min-height:52px;padding:7px 12px;border-radius:20px;text-decoration:none;color:var(--texto-suave,#6E6656);' +
           'background:none;border:0;cursor:pointer;font-family:inherit}' +
         '.mm-tab .mm-tb .mm-ti{display:grid;place-items:center}' +
         '.mm-tab .mm-tb svg{width:23px;height:23px}' +
-        '.mm-tab .mm-tb span:not(.mm-ti){font-size:10.5px;font-weight:600;line-height:1.1}' +
+        '.mm-tab .mm-tb span:not(.mm-ti){font-size:10.5px;font-weight:600;line-height:1.1;white-space:nowrap}' +
         '.mm-tab .mm-tb.act{background:var(--mm-acento,#2E4256);color:#fff}' +
       '}' +
-      // En escritorio la barra de pestañas de móvil (.mm-tab) no va; pero la HOJA
-      // de secciones sí debe poder abrirse (es lo que abre el botón «Buscar» del
-      // lateral). Antes se ocultaba también la hoja, y por eso el buscador del
-      // lateral no hacía nada en PC. Cerrada, la hoja ya queda fuera (transform)
-      // y su fondo en display:none, así que no estorba.
-      '@media (min-width:900px){.mm-tab{display:none !important}}';
+      // En escritorio la barra de abajo no va; la HOJA sí (la abre «Buscar» de
+      // la lateral en el portal), centrada y sin ocupar todo el ancho.
+      '@media (min-width:900px){.mm-tab{display:none !important}' +
+        '.mm-sheet{left:50%;right:auto;width:640px;transform:translate(-50%,100%)}.mm-sheet.ver{transform:translate(-50%,0)}}';
     document.head.appendChild(css);
   }
 
@@ -745,156 +769,95 @@
         if (r && r.world === M.key) marcar(el, r.screenIdx);
       });
     },
+    /* La barra de abajo del MÓVIL (Resumen · Menú · Mi portal) con la hoja de
+       mundos, la misma del portal. La pide admin-tabbar.js en el panel. */
+    montarMovil: function (worldKey, screenIdx) {
+      var M = mundoPorClave(worldKey) || MUNDOS[0];
+      montarBarraMovil(M, function (s, idx) { return idx === screenIdx; });
+    },
     /* Lo que dice la lateral sobre su estado (para que admin-tabbar reserve
        el ancho antes de montarla y no haya salto). */
     plegado: estaPlegado
   };
 
-  /* ---------- admin con otra vista → General (mig 447) ----------
-     Un admin «de verdad» que va con otra vista (Atleta, Entrenador…) ve todos
-     los mundos (mis_mundos), pero la base no le trata como admin (es_admin mira
-     rol_activo) y General no le cargaría. Al ir a General —por la barra, la hoja
-     del móvil o entrando directo— se le devuelve antes a la vista de admin.
-     Resuelve true si ha cambiado algo (hay que recargar). */
-  function volverAAdmin() {
-    var c = window.APOLANA_DB;
-    if (!c || !c.rpc) return Promise.resolve(false);
-    return Promise.all([c.rpc('soy_admin_de_verdad'), c.rpc('es_admin')]).then(function (r) {
-      if (!(r[0] && r[0].data === true) || (r[1] && r[1].data === true)) return false;
-      return c.rpc('rol_activo_poner', { p_rol: null }).then(function (x) {
-        if (!x || x.error) return false;
-        try { sessionStorage.removeItem(CACHE_KEY); } catch (e) {}
-        return true;
-      });
-    }).catch(function () { return false; });
-  }
-  document.addEventListener('click', function (ev) {
-    var a = ev.target.closest && ev.target.closest('a[href]'), g = mundoPorClave('general');
-    if (!a || !g || ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
-    var destino;
-    try { destino = new URL(g.home, location.href).href; } catch (e) { return; }
-    if (a.href.split(/[?#]/)[0] !== destino) return;
-    ev.preventDefault();
-    volverAAdmin().then(function () { location.href = a.href; });
-  }, true);
-
-  /* ============================================================
-     Modo PORTAL (auto-montaje) — solo si la página declara el mundo
-     ============================================================ */
-  var CFG = window.APOLANA_MUNDO;
-  if (!CFG || !CFG.world) return;              // panel: solo exponemos la API
-  var M = mundoPorClave(CFG.world);
-  if (!M) return;
-  // Las páginas de portal declaran su mundo: lo recordamos para que, al volver
-  // a una página compartida del admin, la barra conserve el mundo.
-  guardarMundo(CFG.world);
-  // Entrando directo a General con otra vista: volver a admin y recargar una vez.
-  if (M.key === 'general') {
-    (function esperarDb(n) {
-      if (!(window.APOLANA_DB && window.APOLANA_DB.rpc)) { if (n < 20) setTimeout(function () { esperarDb(n + 1); }, 150); return; }
-      volverAAdmin().then(function (cambio) { if (cambio) location.reload(); });
-    })(0);
-  }
-
-  injectCSS();
-  injectPrefetch();
-
-  // La hoja de «Secciones» (la monta montarBarraMovil) sirve para buscar/ir a
-  // una pantalla; aquí la reutiliza el botón «Buscar» del lateral en escritorio.
-  var _abrirSecciones = null;
-
-  function montar() {
-    var content = CFG.contentSel ? document.querySelector(CFG.contentSel) : null;
-    if (!content) return;
-    if (document.querySelector('.mm-layout')) return;
-
-    if (CFG.home) renderHub(content, M);
-
-    document.body.classList.add('mm-on');
-    var acento = M.dot;
-
-    var side = document.createElement('aside');
-    side.className = 'mm-side' + (estaPlegado() ? ' mm-plegado' : '');
-    side.style.setProperty('--mm-acento', acento);
-    side.setAttribute('aria-label', 'Navegación del panel');
-
-    var esActivo = function (s) { return s.key === (CFG.screen || 'resumen'); };
-    var cache = leerCache();
-    var initKeys = (cache === undefined) ? [M.key] : cache;
-    side.innerHTML = sideHtml(M, esActivo, initKeys);
-    // «Buscar» (escritorio) abre la hoja de secciones/buscador de montarBarraMovil.
-    bindSide(side, { onBuscar: function () { if (_abrirSecciones) _abrirSecciones(); } });
-
-    var layout = document.createElement('div');
-    layout.className = 'mm-layout';
-    layout.style.setProperty('--mm-acento', acento);
-    content.parentNode.insertBefore(layout, content);
-    var main = document.createElement('div');
-    main.className = 'mm-main';
-    main.appendChild(content);
-    layout.appendChild(side);
-    layout.appendChild(main);
-
-    var box = side.querySelector('.mm-tira-mundos');
-    cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, M.key); });
-
-    montarBarraMovil(M);   // en móvil, la barra de navegación del mundo
-  }
-
   /* ---------- barra de mundo para MÓVIL (<900px) ----------
-     Tres pestañas: el Resumen del mundo (sus tarjetas), «Secciones» (una hoja
-     con todas las pantallas del mundo + cambiar de mundo + salir a tu portal)
-     y tu portal personal. Reemplaza a la barra personal, que aquí se oculta. */
-  var _menuIco = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
-    '<circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
-  function montarBarraMovil(M) {
+     Tres pestañas: el Resumen del mundo (sus tarjetas), «Menú» (una hoja con
+     el buscador, los mundos a la vista y las pantallas del mundo elegido por
+     apartados) y tu portal personal. La misma en el portal y en el panel: en
+     el panel la pide admin-tabbar.js (APOLANA_MUNDOS_SHELL.montarMovil) en
+     lugar de su barra vieja. `esActivo(s, idx)` dice qué pantalla del mundo
+     es la de ahora. */
+  var _abrirSecciones = null;   // la reutiliza el botón «Buscar» de la lateral (PC)
+  var _menuIco = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">' +
+    '<path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+  function montarBarraMovil(M, esActivo) {
     if (document.querySelector('.mm-tab')) return;
+    injectCSS();
     var acento = M.dot, salir = B + 'portal/';
+    var enResumen = (M.screens || []).some(function (s, idx) { return s.key === 'resumen' && esActivo(s, idx); });
 
     var bar = document.createElement('nav');
     bar.className = 'mm-tab';
     bar.style.setProperty('--mm-acento', acento);
     bar.setAttribute('aria-label', 'Navegación de ' + M.nombre);
     bar.innerHTML =
-      '<a class="mm-tb act" href="' + esc(M.home) + '"><span class="mm-ti">' + ico('grid') + '</span><span>Mundo</span></a>' +
-      '<button type="button" class="mm-tb mm-menu" aria-haspopup="dialog"><span class="mm-ti">' + _menuIco + '</span><span>Secciones</span></button>' +
+      '<a class="mm-tb' + (enResumen ? ' act' : '') + '" href="' + esc(M.home) + '"' + (enResumen ? ' aria-current="page"' : '') + '>' +
+        '<span class="mm-ti">' + ico(M.i) + '</span><span>Resumen</span></a>' +
+      '<button type="button" class="mm-tb mm-menu" aria-haspopup="dialog" aria-expanded="false"><span class="mm-ti">' + _menuIco + '</span><span>Menú</span></button>' +
       '<a class="mm-tb" href="' + esc(salir) + '"><span class="mm-ti">' + ico('user') + '</span><span>Mi portal</span></a>';
     document.body.appendChild(bar);
+    document.body.classList.add('mm-tab-on');
 
     var bg = document.createElement('div'); bg.className = 'mm-sheet-bg';
     var sheet = document.createElement('div');
     sheet.className = 'mm-sheet';
     sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true');
-    sheet.setAttribute('aria-label', 'Secciones de ' + M.nombre);
+    sheet.setAttribute('aria-label', 'Menú del panel');
     sheet.style.setProperty('--mm-acento', acento);
 
-    function screensSheet() {
-      return (M.screens || []).filter(function (s) { return s.side !== false; }).map(function (s) {
-        var act = s.key === (CFG.screen || 'resumen');
-        return '<a class="mm-row' + (act ? ' act' : '') + '" href="' + esc(s.url) + '"' +
-          (s.ext ? ' target="_blank" rel="noopener"' : '') + '>' +
-          '<span class="mm-ic">' + ico(s.i) + '</span>' +
-          '<span class="mm-rt">' + esc(s.t) + (s.ext ? ' ↗' : '') + '</span></a>';
+    function nombre(w) { return w.nombre.replace(/\s*·\s*Club$/, ''); }
+    var keysVis = leerCache();               // undefined = aún no se sabe · null = todos
+    if (keysVis === undefined) keysVis = [M.key];
+    var elegido = M.key;
+    function mundosVisibles() {
+      var list = (!keysVis) ? MUNDOS : MUNDOS.filter(function (w) { return keysVis.indexOf(w.key) !== -1; });
+      if (!list.some(function (w) { return w.key === M.key; })) list = [M].concat(list);
+      return list;
+    }
+    function mundosHtml() {
+      return mundosVisibles().map(function (w) {
+        var sel = w.key === elegido;
+        return '<button type="button" class="mm-mb' + (sel ? ' sel' : '') + '" data-w="' + esc(w.key) + '" style="--pt:' + w.dot + '"' +
+          ' aria-pressed="' + sel + '"><span class="q">' + ico(w.i) + '</span><span class="n">' + (w.corto ? w.corto : esc(nombre(w))) + '</span></button>';
       }).join('');
     }
-    function worldsSheet(keys) {
-      var list = (!keys) ? MUNDOS : MUNDOS.filter(function (w) { return keys.indexOf(w.key) !== -1; });
-      if (!list.some(function (w) { return w.key === M.key; })) {
-        var a = mundoPorClave(M.key); if (a) list = [a].concat(list);
-      }
-      return list.map(function (w) {
-        var act = w.key === M.key;
-        return '<a class="mm-wrow' + (act ? ' act' : '') + '" href="' + esc(w.home) + '" style="--pt:' + w.dot + '">' +
-          '<span class="pt"></span><span class="mm-rt">' + esc(w.nombre) + '</span></a>';
-      }).join('');
+    function pantallaHtml(s, idx, w) {
+      var act = w.key === M.key && !!esActivo(s, idx);
+      return '<a class="mm-s' + (act ? ' act' : '') + '" href="' + esc(s.url) + '"' + (act ? ' aria-current="page"' : '') +
+        (s.ext ? ' target="_blank" rel="noopener"' : '') + '>' +
+        '<span class="mm-ic">' + ico(s.i) + '</span><span class="mm-rt">' + esc(s.t) + (s.ext ? ' ↗' : '') + '</span></a>';
     }
+    function pantallasHtml(w) {
+      var lista = (w.screens || []).map(function (s, idx) { return { s: s, idx: idx }; })
+        .filter(function (o) { return o.s.side !== false; });
+      var html = '<div class="mm-pant" style="--pt:' + w.dot + '"><h2><i></i>' + esc(nombre(w)) + '</h2>' +
+        '<div class="mm-rej">' + lista.filter(function (o) { return !o.s.g; }).map(function (o) { return pantallaHtml(o.s, o.idx, w); }).join('') + '</div>';
+      var gs = [];
+      lista.forEach(function (o) { if (o.s.g && gs.indexOf(o.s.g) === -1) gs.push(o.s.g); });
+      gs.forEach(function (g) {
+        html += '<div class="mm-srot">' + esc(g) + '</div><div class="mm-rej">' +
+          lista.filter(function (o) { return o.s.g === g; }).map(function (o) { return pantallaHtml(o.s, o.idx, w); }).join('') + '</div>';
+      });
+      return html + '</div>';
+    }
+
     // ---- buscador de la hoja: páginas (de TODOS los mundos) + personas ----
     function norm(s){ return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
     var _pant = null, _personas = null, _personasW = null;
     function flatPantallas(){
       var out = [];
-      MUNDOS.forEach(function (w) {
-        var mundo = w.nombre.replace(/\s*·\s*Club$/, '');
+      mundosVisibles().forEach(function (w) {
+        var mundo = nombre(w);
         (w.screens || []).forEach(function (s) {
           if (!s.t || !s.url) return;
           var donde = s.g ? mundo + ' · ' + s.g : mundo;   // «Resumen» suelto no dice nada: «General · Dinero»
@@ -957,7 +920,7 @@
           '<span class="mm-rt">' + esc(p.t) + '<small>' + esc(p.mundo) + '</small></span></a>';
       }).join('');
       res.innerHTML =
-        (htmlP ? '<div class="mm-srot">Páginas</div>' + htmlP : '') +
+        (htmlP ? '<div class="mm-srot" style="margin-top:4px">Páginas</div>' + htmlP : '') +
         '<div class="mm-srot">Personas</div><div class="mm-pers">Buscando…</div>';
       cargarPersonas(function (lista) {
         var inp = sheet.querySelector('.mm-busca-inp');
@@ -977,51 +940,186 @@
       });
     }
 
-    function pinta(keys) {
+    function pinta() {
+      var varios = mundosVisibles().length > 1;   // con un solo mundo, la cuadrícula sobra
       sheet.innerHTML =
-        '<div class="mm-sheet-cab"><h2>' + esc(M.nombre.replace(/\s*·\s*Club$/, '')) + '</h2>' +
-          '<button type="button" class="mm-sheet-x" aria-label="Cerrar">✕</button></div>' +
-        '<div class="mm-busca">' +
+        '<div class="mm-asa" aria-hidden="true"></div>' +
+        '<div class="mm-sheet-cab"><label class="mm-busca">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
-          '<input type="search" class="mm-busca-inp" placeholder="Buscar páginas o personas…" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar"></div>' +
+          '<input type="search" class="mm-busca-inp" placeholder="Buscar páginas o personas…" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar"></label>' +
+          '<button type="button" class="mm-sheet-x" aria-label="Cerrar">✕</button></div>' +
         '<div class="mm-res" hidden></div>' +
         '<div class="mm-def">' +
-          '<div class="mm-srot">Secciones</div>' + screensSheet() +
-          '<div class="mm-srot">Cambiar de mundo</div>' + worldsSheet(keys) +
+          '<div class="mm-mundos"' + (varios ? '' : ' hidden') + ' role="group" aria-label="Mundos">' + mundosHtml() + '</div>' +
+          '<div class="mm-cuerpo">' + pantallasHtml(mundoPorClave(elegido) || M) + '</div>' +
           '<a class="mm-salir" href="' + esc(salir) + '">Salir a mi portal</a>' +
         '</div>';
-      var x = sheet.querySelector('.mm-sheet-x'); if (x) x.addEventListener('click', cerrar);
-      var inp = sheet.querySelector('.mm-busca-inp');
-      if (inp) inp.addEventListener('input', function () { buscar(inp.value); });
     }
-    var cache = leerCache();
-    pinta(cache === undefined ? [M.key] : cache);
-    cargarMisMundos(function (val) { pinta(val); });
+    pinta();
+    cargarMisMundos(function (val) {
+      keysVis = val; _pant = null;
+      if (!sheet.classList.contains('ver')) pinta();
+      else { var g = sheet.querySelector('.mm-mundos'); if (g) { g.innerHTML = mundosHtml(); g.hidden = mundosVisibles().length < 2; } }
+    });
 
     document.body.appendChild(bg);
     document.body.appendChild(sheet);
 
+    sheet.addEventListener('click', function (e) {
+      var t = e.target; if (!t || !t.closest) return;
+      var mb = t.closest('.mm-mb');
+      if (mb) {                                  // otro mundo: enseña sus pantallas aquí mismo
+        elegido = mb.getAttribute('data-w');
+        Array.prototype.forEach.call(sheet.querySelectorAll('.mm-mb'), function (b) {
+          var s = b === mb; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', String(s));
+        });
+        var cu = sheet.querySelector('.mm-cuerpo');
+        if (cu) cu.innerHTML = pantallasHtml(mundoPorClave(elegido) || M);
+        return;
+      }
+      if (t.closest('.mm-sheet-x')) { cerrar(); return; }
+      if (t.closest('a[href]')) setTimeout(cerrar, 0);   // si solo cambia el «#», que no se quede tapando
+    });
+    sheet.addEventListener('input', function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains('mm-busca-inp')) buscar(e.target.value);
+    });
+
+    // Arrastrar hacia abajo (desde arriba del todo) cierra la hoja, como el asa indica.
+    var y0 = null, dy = 0;
+    sheet.addEventListener('touchstart', function (e) {
+      y0 = (sheet.scrollTop <= 0 && e.touches.length === 1) ? e.touches[0].clientY : null; dy = 0;
+    }, { passive: true });
+    sheet.addEventListener('touchmove', function (e) {
+      if (y0 == null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 0) { sheet.style.transform = ''; sheet.style.transition = ''; return; }
+      if (e.cancelable) e.preventDefault();
+      sheet.style.transition = 'none';
+      sheet.style.transform = 'translateY(' + dy + 'px)';
+    }, { passive: false });
+    sheet.addEventListener('touchend', function () {
+      if (y0 == null) return;
+      y0 = null;
+      sheet.style.transition = ''; sheet.style.transform = '';
+      if (dy > 90) cerrar();
+      dy = 0;
+    });
+
+    var boton = bar.querySelector('.mm-menu');
     function abrir() {
+      if (!sheet.classList.contains('ver')) { elegido = M.key; pinta(); }
       bg.style.display = 'block';
       void bg.offsetWidth;                       // fuerza el reflow para que la transición se vea
-      bg.classList.add('ver'); sheet.classList.add('ver');
+      bg.classList.add('ver'); sheet.classList.add('ver'); sheet.scrollTop = 0;
       document.body.style.overflow = 'hidden';
+      boton.setAttribute('aria-expanded', 'true');
       // En escritorio, el foco al buscador para poder escribir ya mismo (en
-      // móvil no, para no abrir el teclado de golpe al mirar las secciones).
+      // móvil no, para no abrir el teclado de golpe al mirar el menú).
       if (window.innerWidth >= 900) {
         var _i = sheet.querySelector('.mm-busca-inp');
         if (_i) setTimeout(function () { try { _i.focus(); } catch (e) {} }, 80);
       }
     }
     function cerrar() {
+      if (!sheet.classList.contains('ver')) return;
       bg.classList.remove('ver'); sheet.classList.remove('ver');
       document.body.style.overflow = '';
-      setTimeout(function () { bg.style.display = 'none'; }, 220);
+      boton.setAttribute('aria-expanded', 'false');
+      setTimeout(function () { if (!sheet.classList.contains('ver')) bg.style.display = 'none'; }, 220);
     }
-    bar.querySelector('.mm-menu').addEventListener('click', abrir);
+    boton.addEventListener('click', abrir);
     _abrirSecciones = abrir;   // para el botón «Buscar» del lateral en escritorio
     bg.addEventListener('click', cerrar);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrar(); });
+    // Volver atrás con la hoja abierta (bfcache) no debe dejarla puesta ni la página bloqueada.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) cerrar(); });
+  }
+
+  /* ---------- admin con otra vista → General (mig 447) ----------
+     Un admin «de verdad» que va con otra vista (Atleta, Entrenador…) ve todos
+     los mundos (mis_mundos), pero la base no le trata como admin (es_admin mira
+     rol_activo) y General no le cargaría. Al ir a General —por la barra, la hoja
+     del móvil o entrando directo— se le devuelve antes a la vista de admin.
+     Resuelve true si ha cambiado algo (hay que recargar). */
+  function volverAAdmin() {
+    var c = window.APOLANA_DB;
+    if (!c || !c.rpc) return Promise.resolve(false);
+    return Promise.all([c.rpc('soy_admin_de_verdad'), c.rpc('es_admin')]).then(function (r) {
+      if (!(r[0] && r[0].data === true) || (r[1] && r[1].data === true)) return false;
+      return c.rpc('rol_activo_poner', { p_rol: null }).then(function (x) {
+        if (!x || x.error) return false;
+        try { sessionStorage.removeItem(CACHE_KEY); } catch (e) {}
+        return true;
+      });
+    }).catch(function () { return false; });
+  }
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href]'), g = mundoPorClave('general');
+    if (!a || !g || ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+    var destino;
+    try { destino = new URL(g.home, location.href).href; } catch (e) { return; }
+    if (a.href.split(/[?#]/)[0] !== destino) return;
+    ev.preventDefault();
+    volverAAdmin().then(function () { location.href = a.href; });
+  }, true);
+
+  /* ============================================================
+     Modo PORTAL (auto-montaje) — solo si la página declara el mundo
+     ============================================================ */
+  var CFG = window.APOLANA_MUNDO;
+  if (!CFG || !CFG.world) return;              // panel: solo exponemos la API
+  var M = mundoPorClave(CFG.world);
+  if (!M) return;
+  // Las páginas de portal declaran su mundo: lo recordamos para que, al volver
+  // a una página compartida del admin, la barra conserve el mundo.
+  guardarMundo(CFG.world);
+  // Entrando directo a General con otra vista: volver a admin y recargar una vez.
+  if (M.key === 'general') {
+    (function esperarDb(n) {
+      if (!(window.APOLANA_DB && window.APOLANA_DB.rpc)) { if (n < 20) setTimeout(function () { esperarDb(n + 1); }, 150); return; }
+      volverAAdmin().then(function (cambio) { if (cambio) location.reload(); });
+    })(0);
+  }
+
+  injectCSS();
+  injectPrefetch();
+
+  function montar() {
+    var content = CFG.contentSel ? document.querySelector(CFG.contentSel) : null;
+    if (!content) return;
+    if (document.querySelector('.mm-layout')) return;
+
+    if (CFG.home) renderHub(content, M);
+
+    document.body.classList.add('mm-on');
+    var acento = M.dot;
+
+    var side = document.createElement('aside');
+    side.className = 'mm-side' + (estaPlegado() ? ' mm-plegado' : '');
+    side.style.setProperty('--mm-acento', acento);
+    side.setAttribute('aria-label', 'Navegación del panel');
+
+    var esActivo = function (s) { return s.key === (CFG.screen || 'resumen'); };
+    var cache = leerCache();
+    var initKeys = (cache === undefined) ? [M.key] : cache;
+    side.innerHTML = sideHtml(M, esActivo, initKeys);
+    // «Buscar» (escritorio) abre la hoja de secciones/buscador de montarBarraMovil.
+    bindSide(side, { onBuscar: function () { if (_abrirSecciones) _abrirSecciones(); } });
+
+    var layout = document.createElement('div');
+    layout.className = 'mm-layout';
+    layout.style.setProperty('--mm-acento', acento);
+    content.parentNode.insertBefore(layout, content);
+    var main = document.createElement('div');
+    main.className = 'mm-main';
+    main.appendChild(content);
+    layout.appendChild(side);
+    layout.appendChild(main);
+
+    var box = side.querySelector('.mm-tira-mundos');
+    cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, M.key); });
+
+    montarBarraMovil(M, esActivo);   // en móvil, la barra de navegación del mundo
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar);
