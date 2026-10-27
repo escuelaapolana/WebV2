@@ -749,6 +749,34 @@
     plegado: estaPlegado
   };
 
+  /* ---------- admin con otra vista → General (mig 447) ----------
+     Un admin «de verdad» que va con otra vista (Atleta, Entrenador…) ve todos
+     los mundos (mis_mundos), pero la base no le trata como admin (es_admin mira
+     rol_activo) y General no le cargaría. Al ir a General —por la barra, la hoja
+     del móvil o entrando directo— se le devuelve antes a la vista de admin.
+     Resuelve true si ha cambiado algo (hay que recargar). */
+  function volverAAdmin() {
+    var c = window.APOLANA_DB;
+    if (!c || !c.rpc) return Promise.resolve(false);
+    return Promise.all([c.rpc('soy_admin_de_verdad'), c.rpc('es_admin')]).then(function (r) {
+      if (!(r[0] && r[0].data === true) || (r[1] && r[1].data === true)) return false;
+      return c.rpc('rol_activo_poner', { p_rol: null }).then(function (x) {
+        if (!x || x.error) return false;
+        try { sessionStorage.removeItem(CACHE_KEY); } catch (e) {}
+        return true;
+      });
+    }).catch(function () { return false; });
+  }
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href]'), g = mundoPorClave('general');
+    if (!a || !g || ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.shiftKey) return;
+    var destino;
+    try { destino = new URL(g.home, location.href).href; } catch (e) { return; }
+    if (a.href.split(/[?#]/)[0] !== destino) return;
+    ev.preventDefault();
+    volverAAdmin().then(function () { location.href = a.href; });
+  }, true);
+
   /* ============================================================
      Modo PORTAL (auto-montaje) — solo si la página declara el mundo
      ============================================================ */
@@ -759,6 +787,13 @@
   // Las páginas de portal declaran su mundo: lo recordamos para que, al volver
   // a una página compartida del admin, la barra conserve el mundo.
   guardarMundo(CFG.world);
+  // Entrando directo a General con otra vista: volver a admin y recargar una vez.
+  if (M.key === 'general') {
+    (function esperarDb(n) {
+      if (!(window.APOLANA_DB && window.APOLANA_DB.rpc)) { if (n < 20) setTimeout(function () { esperarDb(n + 1); }, 150); return; }
+      volverAAdmin().then(function (cambio) { if (cambio) location.reload(); });
+    })(0);
+  }
 
   injectCSS();
   injectPrefetch();
