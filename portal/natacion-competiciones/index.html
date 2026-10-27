@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Competiciones · Escuela de natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>
+  window.APOLANA_BASE = "../../";
+  /* La lateral del mundo solo para quien gestiona la natación (Mario, admin):
+     a Paloma (solo competiciones) le saldrían pantallas que no puede usar. */
+  (function(){
+    try {
+      var v = sessionStorage.getItem('apolana-mis-mundos');
+      if (v === 'todos' || (v && JSON.parse(v).indexOf('escuela-nat') !== -1))
+        window.APOLANA_MUNDO = { world: 'escuela-nat', screen: 'competiciones', contentSel: '#app' };
+    } catch (e) {}
+  })();
+</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<script src="../../assets/js/mundos.js?v=d25ffc1f" defer></script>
+<style>
+  /* Natación · Competiciones de la escuela (migs 449-451). Diseño «menos es más»
+     (maqueta aprobada 27-oct): una línea por fila + un estado; solo se enseñan
+     las excepciones; el detalle, en el panel al tocar. */
+  :root{
+    --ac:#2E8C86; --ac-osc:#1F6B66; --ac-suave:#E6F2F1;
+    --tinta:#26374B; --gris:#6E6656; --tenue:#A39B8A; --lin:#EEE8DD; --lin2:#E2DACB;
+    --ok:#2E7D4F; --av:#B2611B; --av-suave:#FFF4E5; --mal:#B3261E;
+    --s1:0 1px 2px rgba(30,45,65,.05),0 10px 24px -14px rgba(30,45,65,.25);
+  }
+  body{ background:var(--crema,#FBF9F4); }
+  #app{ max-width:760px; margin:0 auto; padding:clamp(22px,5vw,40px) clamp(16px,4vw,24px) 130px; color:var(--tinta); }
+  #app svg.i, .velo svg.i, .barra svg.i{ width:18px; height:18px; flex:0 0 auto; stroke:currentColor; fill:none; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+  .num{ font-variant-numeric:tabular-nums; }
+  .msg{ color:var(--gris); text-align:center; padding:40px 10px; }
+  .eyebrow{ font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ac-osc); }
+  #app h1{ font-family:var(--fuente-titulo); font-weight:700; font-size:clamp(30px,5vw,40px); line-height:1.04; letter-spacing:-.02em; margin:8px 0 0; color:var(--tinta); }
+  .cab{ display:flex; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:26px; }
+  .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; font:inherit; font-weight:600; font-size:15px; min-height:46px; padding:0 18px; border-radius:12px; cursor:pointer; border:1px solid transparent; background:var(--ac); color:#fff; white-space:nowrap; }
+  .btn:hover{ background:var(--ac-osc); }
+  .btn[disabled]{ opacity:.6; cursor:default; }
+  .btn.sec{ background:#fff; color:var(--tinta); border-color:var(--lin2); }
+  .btn.sec:hover{ background:#F7F4EE; }
+  .btn.peligro{ background:#fff; color:var(--mal); border-color:#F0C9C4; }
+  .link{ display:inline-flex; align-items:center; gap:6px; font:inherit; font-weight:600; font-size:14.5px; color:var(--ac-osc); background:none; border:0; padding:0; cursor:pointer; }
+  .lista{ background:#fff; border-radius:18px; box-shadow:var(--s1); overflow:hidden; }
+  .tit{ font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--tenue); margin:28px 4px 10px; }
+  .vacio{ padding:22px 20px; color:var(--gris); font-size:15px; }
+
+  .jor{ display:flex; align-items:center; gap:16px; padding:18px 20px; border-top:1px solid var(--lin); cursor:pointer; }
+  .jor:first-child{ border-top:0; }
+  .jor:hover{ background:#FCFBF8; }
+  .fecha{ width:48px; text-align:center; flex:0 0 auto; }
+  .fecha b{ display:block; font-family:var(--fuente-titulo); font-size:24px; line-height:1; }
+  .fecha small{ font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ac-osc); }
+  .jor.pasada .fecha b, .jor.pasada .fecha small{ color:var(--tenue); }
+  .jor .q{ flex:1; min-width:0; }
+  .jor .q b{ display:block; font-size:16.5px; font-weight:600; }
+  .jor .q span{ display:block; font-size:14px; color:var(--gris); margin-top:3px; }
+  .est{ font-size:13.5px; font-weight:600; color:var(--gris); white-space:nowrap; }
+  .est.av{ color:var(--av); } .est.ok{ color:var(--ok); }
+  .chev{ color:#CFC7B7; display:flex; }
+  .jor .q em{ display:none; font-style:normal; font-size:13.5px; font-weight:600; margin-top:6px; }
+  @media (max-width:560px){ .jor{ align-items:flex-start; } .jor > .est{ display:none; } .jor .q em{ display:block; }
+    .cab{ align-items:center; } .cab .btn{ min-height:42px; padding:0 14px; font-size:14px; } }
+
+  .meta{ font-size:15px; color:var(--gris); margin-top:8px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .pend{ margin:22px 0 0; background:var(--av-suave); border-radius:16px; padding:14px 18px; }
+  .pend .t{ display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; color:#7A4A10; }
+  .pend ul{ margin:8px 0 0; padding:0; list-style:none; }
+  .pend li{ display:flex; align-items:center; gap:10px; padding:6px 0; font-size:14.5px; color:#5E3F12; }
+  .pend li:before{ content:""; width:6px; height:6px; border-radius:50%; background:#D9963F; flex:0 0 auto; }
+  .pend li .link{ margin-left:auto; color:#8A5307; font-size:14px; }
+  .listo{ margin:22px 0 0; background:#EAF5EE; color:var(--ok); border-radius:16px; padding:13px 18px; font-size:14.5px; font-weight:600; }
+
+  .tabs{ display:flex; gap:4px; margin:28px 0 12px; border-bottom:1px solid var(--lin2); }
+  .tab{ font:inherit; font-size:15px; font-weight:600; color:var(--gris); background:none; border:0; border-bottom:2px solid transparent; padding:10px 6px 11px; margin-right:16px; cursor:pointer; }
+  .tab.on{ color:var(--tinta); border-bottom-color:var(--ac); }
+  .tab span{ font-weight:700; color:var(--tenue); margin-left:4px; }
+  .tab.on span{ color:var(--ac-osc); }
+
+  .nino{ display:flex; align-items:center; gap:14px; padding:14px 20px; border-top:1px solid var(--lin); cursor:pointer; }
+  .nino:first-child{ border-top:0; }
+  .nino:hover{ background:#FCFBF8; }
+  .avt{ width:38px; height:38px; border-radius:50%; background:var(--ac-suave); color:var(--ac-osc); display:grid; place-items:center; font-weight:700; font-size:13px; flex:0 0 auto; }
+  .nino.fuera .avt{ background:#FCEBE9; color:var(--mal); }
+  .nino .q{ flex:1; min-width:0; }
+  .nino .q b{ display:block; font-size:15.5px; font-weight:600; }
+  .nino .q > span{ display:block; font-size:13.5px; color:var(--gris); margin-top:2px; }
+  .falta.otra{ color:#7A4A10; background:var(--av-suave); }
+  .falta{ display:inline-block; vertical-align:2px; font-size:12px; font-weight:700; color:var(--mal); background:#FCEBE9; border-radius:6px; padding:2px 7px; margin-left:6px; }
+  .der{ text-align:right; font-size:13.5px; font-weight:600; white-space:nowrap; color:var(--gris); }
+  .der.ok{ color:var(--ok); } .der.av{ color:var(--av); } .der.mal{ color:var(--mal); }
+  .convocar{ font:inherit; font-size:14px; font-weight:600; color:var(--ac-osc); background:var(--ac-suave); border:0; border-radius:10px; padding:8px 14px; cursor:pointer; white-space:nowrap; }
+
+  .barra{ position:fixed; left:0; right:0; bottom:0; background:rgba(251,249,244,.94); backdrop-filter:blur(10px); border-top:1px solid var(--lin2); z-index:30; }
+  .barra .in{ max-width:760px; margin:0 auto; padding:12px clamp(16px,4vw,24px) calc(12px + env(safe-area-inset-bottom)); display:flex; gap:10px; }
+  .barra .btn{ flex:1; }
+
+  .velo{ position:fixed; inset:0; background:rgba(20,30,45,.35); display:none; z-index:2000; }
+  .velo.ver{ display:block; }
+  .panel{ position:absolute; top:0; right:0; bottom:0; width:min(460px,100%); background:#fff; box-shadow:-24px 0 60px -24px rgba(20,30,45,.5); display:flex; flex-direction:column; color:var(--tinta); }
+  .p-cab{ padding:22px 24px 16px; border-bottom:1px solid var(--lin); }
+  .p-cab .x{ float:right; width:36px; height:36px; border-radius:10px; border:1px solid var(--lin2); background:#fff; color:var(--gris); cursor:pointer; display:grid; place-items:center; }
+  .p-cab h3{ margin:0; font-family:var(--fuente-titulo); font-size:23px; letter-spacing:-.01em; }
+  .p-cab p{ margin:4px 0 0; font-size:14.5px; color:var(--gris); }
+  .p-cu{ padding:4px 24px 24px; overflow:auto; flex:1; }
+  .bloque{ padding:18px 0; border-bottom:1px solid var(--lin); }
+  .bloque:last-child{ border-bottom:0; }
+  .bloque h4{ margin:0 0 12px; font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--tenue); }
+  .campo{ margin-top:12px; }
+  .campo:first-child{ margin-top:0; }
+  .campo label{ display:block; font-size:13px; font-weight:600; color:var(--gris); margin-bottom:6px; }
+  .campo input, .campo select{ width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1px solid var(--lin2); border-radius:11px; padding:10px 12px; color:var(--tinta); background:#fff; }
+  .campo input:focus{ outline:2px solid #BFDFDC; border-color:var(--ac); }
+  .campo.falta-c label:after{ content:" · falta"; color:var(--mal); font-weight:700; }
+  .campo.falta-c input{ border-color:#E8B867; background:#FFFBF3; }
+  .g2{ display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  .g2 .campo:nth-child(2){ margin-top:0; }
+  @media (max-width:420px){ .g2{ grid-template-columns:1fr; } .g2 .campo:nth-child(2){ margin-top:12px; } }
+  .seg{ display:flex; background:#F3EFE7; border-radius:12px; padding:4px; gap:4px; }
+  .seg button{ flex:1; font:inherit; font-size:14.5px; font-weight:600; border:0; border-radius:9px; padding:9px 0; background:none; color:var(--gris); cursor:pointer; }
+  .seg button.on{ background:#fff; color:var(--tinta); box-shadow:0 1px 3px rgba(30,45,65,.15); }
+  .chips{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chip{ font:inherit; font-size:14.5px; font-weight:600; min-height:40px; padding:0 14px; border-radius:11px; border:1px solid var(--lin2); background:#fff; color:var(--tinta); cursor:pointer; }
+  .chip.on{ background:var(--ac); border-color:var(--ac); color:#fff; }
+  .foto-l{ font-size:14px; font-weight:600; color:var(--ac-osc); margin-top:6px; display:inline-block; }
+  details.mas summary{ cursor:pointer; font-size:14.5px; font-weight:600; color:var(--ac-osc); list-style:none; margin-top:14px; }
+  details.mas summary::-webkit-details-marker{ display:none; }
+  .hist{ list-style:none; margin:0; padding:0; }
+  .hist li{ display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--lin); font-size:14.5px; }
+  .hist li span{ color:var(--gris); }
+  .p-pie{ padding:14px 24px calc(14px + env(safe-area-inset-bottom)); border-top:1px solid var(--lin); display:flex; gap:10px; }
+  .p-pie .btn{ flex:1; }
+  .p-err{ color:var(--mal); font-size:14px; margin-top:10px; }
+  .aviso-datos{ font-size:12.5px; color:var(--tenue); margin-top:14px; line-height:1.45; }
+  .toast{ position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:var(--tinta); color:#fff; padding:11px 16px; border-radius:12px; font-size:14.5px; font-weight:600; display:none; z-index:2100; max-width:calc(100vw - 32px); }
+</style>
+</head>
+<body>
+<div id="app"><p class="msg">Cargando…</p></div>
+<div class="barra" id="barra" hidden></div>
+<div class="velo" id="velo"><aside class="panel" id="panel" role="dialog" aria-modal="true"></aside></div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var app = document.getElementById('app'), barra = document.getElementById('barra'), velo = document.getElementById('velo'), panel = document.getElementById('panel');
+  var I = { mas:'<path d="M12 5v14M5 12h14"/>', flecha:'<path d="M9 6l6 6-6 6"/>', atras:'<path d="M15 6l-6 6 6 6"/>', aviso:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>',
+    x:'<path d="M6 6l12 12M18 6L6 18"/>', descarga:'<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14"/>', wa:'<path d="M20 11.5a8.5 8.5 0 0 1-12.6 7.4L4 20l1.1-3.3A8.5 8.5 0 1 1 20 11.5z"/>',
+    lapiz:'<path d="M4 20h4L19 9l-4-4L4 16z"/>' };
+  function ic(n){ return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + I[n] + '</svg>'; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function cap(s){ return String(s||'').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, function(_, a, b){ return a + b.toUpperCase(); }); }
+  function ini(n){ var p = cap(n).split(' ').filter(Boolean); return ((p[0]||'')[0] || '') + ((p[1]||'')[0] || ''); }
+  var tt = null;
+  function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(tt); tt = setTimeout(function(){ e.style.display = 'none'; }, 2600); }
+  var DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'], MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fechaLarga(iso){ var d = new Date(iso + 'T12:00:00'); var s = DIAS[d.getDay()] + ' ' + d.getDate() + ' de ' + MESES[d.getMonth()]; return s.charAt(0).toUpperCase() + s.slice(1); }
+  function hoyISO(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function pl(n, a, b){ return n + ' ' + (n === 1 ? a : b); }
+  async function rpc(n, a){ var r = await sb.rpc(n, a || {}); if (r.error) throw new Error(r.error.message || 'No se pudo'); return r.data; }
+
+  var puede = false;
+  try { puede = await rpc('natacion_comp_puede'); } catch (e) {}
+  if (!puede) { app.innerHTML = '<p class="msg">Esta pantalla es para quien organiza las competiciones de la escuela de natación.</p>'; return; }
+
+  var S = { L: null, J: null, tab: 'conv', jid: null };
+  function catTexto(cats, todas){
+    var cs = (cats || []).map(function (k) { return (todas || []).filter(function (c) { return c.clave === k; })[0]; }).filter(Boolean);
+    if (!cs.length) return '';
+    var nombres = cs.map(function (c) { return c.nombre; }).join(' y ');
+    var desde = Math.min.apply(null, cs.map(function (c) { return c.desde; })), hasta = Math.max.apply(null, cs.map(function (c) { return c.hasta; }));
+    return { nombre: nombres, anos: desde < 2000 ? hasta + ' y antes' : desde + '-' + hasta };
+  }
+
+  /* ---------- Lista de jornadas ---------- */
+  async function cargarLista(){ S.L = await rpc('natacion_comp_listar'); }
+  function estadoJ(j, pasada){
+    if (pasada) return j.van ? ['ok', pl(j.van, 'nadador', 'nadadores')] : ['', j.convocados ? pl(j.convocados, 'convocado', 'convocados') : 'Sin convocatoria'];
+    var rev = (j.de_baja || 0) + (j.sin_datos || 0) + (j.sin_respuesta || 0);
+    if (!j.convocados) return ['', 'Sin convocar'];
+    if (rev) return ['av', pl(rev, 'cosa por revisar', 'cosas por revisar')];
+    return ['ok', 'Todo listo · ' + j.van + ' van'];
+  }
+  function jorHtml(j, pasada){
+    var d = new Date(j.fecha + 'T12:00:00'), e = estadoJ(j, pasada), ct = catTexto(j.categorias, S.L.categorias);
+    return '<div class="jor' + (pasada ? ' pasada' : '') + '" data-j="' + j.id + '"><div class="fecha"><b>' + d.getDate() + '</b><small>' + MESES[d.getMonth()].slice(0, 3) + '</small></div>' +
+      '<div class="q"><b>' + esc(j.lugar) + '</b><span>' + esc(ct.nombre || '') + '</span><em class="est ' + e[0] + '">' + esc(e[1]) + '</em></div>' +
+      '<span class="est ' + e[0] + '">' + esc(e[1]) + '</span><span class="chev">' + ic('flecha') + '</span></div>';
+  }
+  function pintarLista(){
+    barra.hidden = true;
+    var hoy = hoyISO(), prox = S.L.jornadas.filter(function (j) { return j.fecha >= hoy; }), pas = S.L.jornadas.filter(function (j) { return j.fecha < hoy; }).reverse();
+    app.innerHTML = '<div class="cab"><div><div class="eyebrow">Escuela de natación</div><h1>Competiciones</h1></div><button class="btn" data-nueva>' + ic('mas') + 'Nueva</button></div>' +
+      '<div class="tit">Próximas</div><div class="lista">' + (prox.length ? prox.map(function (j) { return jorHtml(j); }).join('') : '<div class="vacio">No hay jornadas por delante. Crea la primera con «Nueva».</div>') + '</div>' +
+      (pas.length ? '<div class="tit">Disputadas</div><div class="lista">' + pas.map(function (j) { return jorHtml(j, true); }).join('') + '</div>' : '');
+  }
+
+  /* ---------- Una jornada ---------- */
+  async function cargarJornada(id){ S.J = await rpc('natacion_comp_jornada', { p_id: id }); S.jid = id; }
+  function nino(id){ return (S.J.ninos || []).filter(function (n) { return n.id === id; })[0]; }
+  function pintarJornada(){
+    var J = S.J, j = J.jornada, ct = catTexto(j.categorias, J.categorias);
+    var conv = J.ninos.filter(function (n) { return n.convocado; }), resto = J.ninos.filter(function (n) { return !n.convocado && n.activo; });
+    var fuera = conv.filter(function (n) { return !n.activo && n.respuesta !== 'no'; }), sinResp = conv.filter(function (n) { return n.activo && n.respuesta === 'pendiente'; });
+    var falta = {}; conv.forEach(function (n) { if (n.activo && n.respuesta !== 'no') (n.falta || []).forEach(function (f) { falta[f] = (falta[f] || 0) + 1; }); });
+    var sinLic = conv.filter(function (n) { return n.activo && n.respuesta !== 'no' && !n.licencia; });
+    var pend = fuera.map(function (n) { return '<li><span><b>' + esc(cap(n.nombre)) + '</b> ya no está en la escuela y sigue convocado</span><button class="link" data-quitar="' + n.id + '">Quitar</button></li>'; });
+    Object.keys(falta).forEach(function (f) { pend.push('<li><span>A <b>' + pl(falta[f], 'convocado', 'convocados') + '</b> ' + (falta[f] === 1 ? 'le' : 'les') + ' falta ' + (f === 'foto' ? 'la foto carnet' : (f === 'fecha de nacimiento' ? 'la fecha de nacimiento' : 'el ' + f)) + '</span></li>'); });
+    if (sinResp.length) pend.push('<li><span><b>' + pl(sinResp.length, 'familia', 'familias') + '</b> sin responder</span></li>');
+    if (sinLic.length) pend.push('<li><span><b>' + pl(sinLic.length, 'convocado', 'convocados') + '</b> sin la licencia tramitada</span></li>');
+    var pasada = j.fecha < hoyISO();
+    var L = S.tab === 'conv' ? conv : resto;
+    app.innerHTML = '<button class="link" data-volver>' + ic('atras') + 'Competiciones</button>' +
+      '<h1 style="margin-top:16px">' + esc(j.lugar) + '</h1>' +
+      '<div class="meta"><span>' + esc(fechaLarga(j.fecha)) + (j.hora ? ' · ' + esc(j.hora) : '') + ' · ' + esc(ct.nombre || '') + ' (' + esc(ct.anos || '') + ')' + (j.nombre ? ' · ' + esc(j.nombre) : '') + '</span>' +
+        '<button class="link" data-editar>' + ic('lapiz') + 'Editar</button></div>' +
+      (conv.length && !pasada ? (pend.length ? '<div class="pend"><div class="t">' + ic('aviso') + 'Antes del control</div><ul>' + pend.join('') + '</ul></div>' : '<div class="listo">Todo listo: todos los convocados tienen respuesta y los datos de licencia completos.</div>') : '') +
+      '<div class="tabs"><button class="tab' + (S.tab === 'conv' ? ' on' : '') + '" data-tab="conv">Convocados<span class="num">' + conv.length + '</span></button>' +
+        '<button class="tab' + (S.tab === 'resto' ? ' on' : '') + '" data-tab="resto">Resto de la categoría<span class="num">' + resto.length + '</span></button></div>' +
+      '<div class="lista">' + (L.length ? L.map(function (n) {
+        var der = !n.convocado ? '<button class="convocar" data-convocar="' + n.id + '">Convocar</button>'
+          : !n.activo ? '<span class="der mal">Ya no está</span>'
+          : n.respuesta === 'si' ? '<span class="der ok">Va</span>' : n.respuesta === 'no' ? '<span class="der">No va</span>' : '<span class="der av">Sin responder</span>';
+        var tags = n.activo ? (n.falta || []).map(function (f) { return '<span class="falta">Falta ' + esc(f === 'fecha de nacimiento' ? 'fecha' : f) + '</span>'; }).join('') : '';
+        if (n.activo && n.en_cat === false && n.anio) tags += '<span class="falta otra">De ' + n.anio + '</span>';   // convocado de otro año
+        var sub = n.convocado ? (n.respuesta === 'no' && n.nota ? n.nota : (n.pruebas || 'Sin pruebas apuntadas')) : ((n.anio || '¿año?') + (n.nivel ? ' · ' + n.nivel : ''));
+        return '<div class="nino' + (n.activo ? '' : ' fuera') + '" data-ficha="' + n.id + '"><span class="avt">' + esc(ini(n.nombre)) + '</span><div class="q"><b>' + esc(cap(n.nombre)) + tags + '</b><span>' + esc(sub) + '</span></div>' + der + '</div>';
+      }).join('') : '<div class="vacio">' + (S.tab === 'conv' ? 'Aún no has convocado a nadie. En «Resto de la categoría» están todos los de ' + esc(ct.nombre || 'la categoría') + '.' : 'Están todos convocados.') + '</div>') + '</div>';
+    barra.hidden = false;
+    barra.innerHTML = '<div class="in"><button class="btn sec" data-wa>' + ic('wa') + 'Convocatoria</button><button class="btn" data-excel>' + ic('descarga') + 'Excel de licencias</button></div>';
+  }
+
+  /* ---------- Panel del niño ---------- */
+  var F = null;   // { ficha, n }
+  function campo(lab, k, v, falta, tipo){ return '<div class="campo' + (falta ? ' falta-c' : '') + '"><label for="f-' + k + '">' + lab + '</label><input id="f-' + k + '" data-k="' + k + '" type="' + (tipo || 'text') + '" value="' + esc(v || '') + '"></div>'; }
+  async function abrirFicha(id){
+    var n = nino(id);
+    panel.innerHTML = '<div class="p-cu"><p class="msg">Cargando…</p></div>'; velo.classList.add('ver');
+    var f;
+    try { f = await rpc('natacion_comp_ficha', { p_atleta: id }); } catch (e) { panel.innerHTML = '<div class="p-cu"><p class="msg">' + esc(e.message) + '</p></div>'; return; }
+    F = { f: f, n: n, conv: !!n.convocado, resp: n.respuesta || 'pendiente', lic: !!(f.licencia && f.licencia.tramitada) };
+    var falta = n.falta || [];
+    var jor = (f.jornadas || []).map(function (x) { return '<li>' + esc(x.lugar) + ' · ' + esc(x.fecha.slice(8, 10) + '/' + x.fecha.slice(5, 7)) + '<span>' + esc(x.pruebas || '') + '</span></li>'; }).join('');
+    panel.innerHTML =
+      '<div class="p-cab"><button class="x" data-cerrar aria-label="Cerrar">' + ic('x') + '</button><h3>' + esc(cap((f.nombre || '') + ' ' + (f.apellidos || ''))) + '</h3>' +
+        '<p>' + esc([n.anio, n.nivel].filter(Boolean).join(' · ')) + (n.activo ? '' : ' · <b style="color:var(--mal)">ya no está en la escuela</b>') + '</p></div>' +
+      '<div class="p-cu">' +
+        '<div class="bloque"><h4>En esta jornada</h4><div class="seg" data-seg="conv"><button data-v="1" class="' + (F.conv ? 'on' : '') + '">Convocado</button><button data-v="0" class="' + (F.conv ? '' : 'on') + '">No convocado</button></div>' +
+          '<div id="f-conv"' + (F.conv ? '' : ' hidden') + '>' +
+            '<div class="campo"><label for="f-pruebas">Pruebas</label><input id="f-pruebas" value="' + esc(n.pruebas || '') + '" placeholder="p. ej. 25 BZ + 50 L"></div>' +
+            '<div class="campo"><label>Respuesta de la familia</label><div class="seg" data-seg="resp"><button data-v="si" class="' + (F.resp === 'si' ? 'on' : '') + '">Va</button><button data-v="pendiente" class="' + (F.resp === 'pendiente' ? 'on' : '') + '">Sin responder</button><button data-v="no" class="' + (F.resp === 'no' ? 'on' : '') + '">No va</button></div></div>' +
+            '<div class="campo"><label for="f-nota">Nota</label><input id="f-nota" value="' + esc(n.nota || '') + '" placeholder="p. ej. va en el coche de Lorena"></div>' +
+          '</div></div>' +
+        '<div class="bloque"><h4>Licencia</h4>' +
+          '<div class="campo"><label>Licencia de la temporada</label><div class="seg" data-seg="lic"><button data-v="1" class="' + (F.lic ? 'on' : '') + '">Tramitada</button><button data-v="0" class="' + (F.lic ? '' : 'on') + '">Pendiente</button></div></div>' +
+          '<div class="g2">' + campo('DNI / NIE', 'dni', f.dni, falta.indexOf('DNI') !== -1) + campo('SIP', 'sip', f.sip, falta.indexOf('SIP') !== -1) + '</div>' +
+          '<div class="g2">' + campo('Fecha de nacimiento', 'fecha_nacimiento', f.fecha_nacimiento, falta.indexOf('fecha de nacimiento') !== -1, 'date') +
+            '<div class="campo"><label for="f-sexo">Sexo</label><select id="f-sexo" data-k="sexo"><option value=""></option><option value="mujer"' + (f.sexo === 'mujer' ? ' selected' : '') + '>Mujer</option><option value="hombre"' + (f.sexo === 'hombre' ? ' selected' : '') + '>Hombre</option></select></div></div>' +
+          campo('Foto carnet (enlace)', 'foto_carnet', f.foto_carnet, falta.indexOf('foto') !== -1) +
+          (f.foto_carnet && /^https?:/.test(f.foto_carnet) ? '<a class="foto-l" href="' + esc(f.foto_carnet) + '" target="_blank" rel="noopener">Ver la foto ↗</a>' : '') + '</div>' +
+        '<div class="bloque"><h4>Familia</h4>' + campo('Madre, padre o tutor', 'nombre_tutor', f.nombre_tutor) + campo('Teléfono', 'telefono_tutor', f.telefono_tutor, false, 'tel') +
+          '<details class="mas"><summary>Más datos del tutor</summary>' + campo('DNI del tutor', 'dni_tutor', f.dni_tutor) + campo('Correo', 'email_tutor', f.email_tutor, false, 'email') + campo('Dirección', 'direccion', f.direccion) + '</details></div>' +
+        (jor ? '<div class="bloque"><h4>Convocado esta temporada</h4><ul class="hist">' + jor + '</ul></div>' : '') +
+        '<p class="aviso-datos">Datos personales de un menor: solo para licencias y competiciones del club. Cada cambio queda registrado.</p>' +
+        '<p class="p-err" id="p-err"></p>' +
+      '</div><div class="p-pie"><button class="btn sec" data-cerrar>Cancelar</button><button class="btn" data-guardar>Guardar</button></div>';
+  }
+  function cerrarPanel(){ velo.classList.remove('ver'); F = null; }
+  async function guardarFicha(b){
+    if (!F) return;
+    b.disabled = true; b.textContent = 'Guardando…';
+    try {
+      var datos = {};
+      panel.querySelectorAll('[data-k]').forEach(function (el) {
+        var k = el.getAttribute('data-k'), v = (el.value || '').trim(), viejo = (F.f[k] == null ? '' : String(F.f[k]));
+        if (v !== viejo) datos[k] = v;
+      });
+      var licAntes = !!(F.f.licencia && F.f.licencia.tramitada);
+      if (F.lic !== licAntes) datos.licencia = { tramitada: F.lic, numero: F.f.licencia && F.f.licencia.numero || null };
+      if (Object.keys(datos).length) await rpc('natacion_comp_ficha_guardar', { p_atleta: F.f.id, p_datos: datos });
+      var pr = document.getElementById('f-pruebas'), no = document.getElementById('f-nota');
+      var m = { convocado: F.conv };
+      if (F.conv) { m.pruebas = pr ? pr.value : ''; m.respuesta = F.resp; m.nota = no ? no.value : ''; }
+      if (F.conv || F.n.convocado) await rpc('natacion_comp_marcar', { p_jornada: S.jid, p_atleta: F.f.id, p_datos: m });
+      cerrarPanel(); toast('Guardado');
+      await cargarJornada(S.jid); pintarJornada();
+    } catch (e) {
+      b.disabled = false; b.textContent = 'Guardar';
+      document.getElementById('p-err').textContent = e.message;
+    }
+  }
+
+  /* ---------- Nueva / editar jornada ---------- */
+  var JE = null;
+  function abrirJornada(j){
+    var cats = (S.L ? S.L.categorias : (S.J ? S.J.categorias : [])) || [];
+    JE = { id: j ? j.id : null, cats: j ? (j.categorias || []).slice() : [] };
+    panel.innerHTML = '<div class="p-cab"><button class="x" data-cerrar aria-label="Cerrar">' + ic('x') + '</button><h3>' + (j ? 'Editar jornada' : 'Nueva jornada') + '</h3><p>La lista de nadadores sale sola según la categoría.</p></div>' +
+      '<div class="p-cu"><div class="bloque">' +
+        '<div class="g2"><div class="campo"><label for="j-fecha">Fecha</label><input id="j-fecha" type="date" value="' + esc(j ? j.fecha : '') + '"></div>' +
+        '<div class="campo"><label for="j-hora">Hora</label><input id="j-hora" value="' + esc(j ? (j.hora || '') : '') + '" placeholder="p. ej. 16:00"></div></div>' +
+        '<div class="campo"><label for="j-lugar">Lugar</label><input id="j-lugar" value="' + esc(j ? j.lugar : '') + '" placeholder="p. ej. Petrer"></div>' +
+        '<div class="campo"><label for="j-nombre">Nombre</label><input id="j-nombre" value="' + esc(j ? (j.nombre || '') : '') + '" placeholder="p. ej. 1ª jornada"></div>' +
+        '<div class="campo"><label>Categorías</label><div class="chips">' + cats.map(function (c) {
+          return '<button type="button" class="chip' + (JE.cats.indexOf(c.clave) !== -1 ? ' on' : '') + '" data-cat="' + c.clave + '">' + esc(c.nombre) + ' · ' + (c.desde < 2000 ? c.hasta + ' y antes' : c.desde + '-' + c.hasta) + '</button>'; }).join('') + '</div></div>' +
+        '<div class="campo"><label for="j-convoca">Quién convoca</label><input id="j-convoca" value="' + esc(j ? (j.convoca || '') : 'Lorena') + '"></div>' +
+      '</div><p class="p-err" id="p-err"></p>' + (j ? '<button class="btn peligro" data-borrar style="width:100%;margin-top:6px">Borrar esta jornada</button>' : '') + '</div>' +
+      '<div class="p-pie"><button class="btn sec" data-cerrar>Cancelar</button><button class="btn" data-guardar-j>' + (j ? 'Guardar' : 'Crear jornada') + '</button></div>';
+    velo.classList.add('ver');
+  }
+  async function guardarJornada(b){
+    var d = { fecha: document.getElementById('j-fecha').value, hora: document.getElementById('j-hora').value, lugar: document.getElementById('j-lugar').value,
+              nombre: document.getElementById('j-nombre').value, convoca: document.getElementById('j-convoca').value, categorias: JE.cats };
+    b.disabled = true;
+    try {
+      var id = await rpc('natacion_comp_jornada_guardar', { p_id: JE.id, p_datos: d });
+      cerrarPanel(); toast(JE.id ? 'Jornada guardada' : 'Jornada creada');
+      await abrir(id);
+    } catch (e) { b.disabled = false; document.getElementById('p-err').textContent = e.message; }
+  }
+
+  /* ---------- Convocatoria y Excel ---------- */
+  function textoConvocatoria(){
+    var J = S.J, j = J.jornada, ct = catTexto(j.categorias, J.categorias);
+    var conv = J.ninos.filter(function (n) { return n.convocado && n.activo && n.respuesta !== 'no'; });
+    return '🏊 *' + j.lugar + '* · ' + fechaLarga(j.fecha) + (j.hora ? ' · ' + j.hora : '') + '\n' + (ct.nombre || '') + (j.nombre ? ' · ' + j.nombre : '') + '\n\n' +
+      conv.map(function (n) { return '• ' + cap(n.nombre) + (n.pruebas ? ' — ' + n.pruebas : ''); }).join('\n');
+  }
+  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  function cargarXlsx(){ return window.XLSX ? Promise.resolve(window.XLSX) : new Promise(function (ok, ko) { var s = document.createElement('script'); s.src = XLSX_URL; s.onload = function () { ok(window.XLSX); }; s.onerror = ko; document.head.appendChild(s); }); }
+  async function excel(){
+    var filas = await rpc('natacion_comp_excel', { p_jornada: S.jid });
+    var X = await cargarXlsx(), j = S.J.jornada;
+    var hoja = (filas || []).map(function (r) { return { 'Nombre': cap(r.nombre), 'Apellidos': cap(r.apellidos), 'Sexo': r.sexo || '', 'Fecha de nacimiento': r.fecha_nacimiento || '',
+      'DNI': r.dni || '', 'SIP': r.sip || '', 'Foto carnet': r.foto_carnet || '', 'Pruebas': r.pruebas || '', 'Respuesta': r.respuesta === 'si' ? 'Va' : r.respuesta === 'no' ? 'No va' : 'Sin responder',
+      'Nota': r.nota || '', 'Licencia tramitada': r.licencia ? 'Sí' : 'No', 'Tutor': r.nombre_tutor || '', 'DNI tutor': r.dni_tutor || '', 'Teléfono': r.telefono_tutor || '', 'Correo': r.email_tutor || '', 'Dirección': r.direccion || '' }; });
+    var wb = X.utils.book_new(), ws = X.utils.json_to_sheet(hoja.length ? hoja : [{ 'Nombre': 'Sin convocados' }]);
+    ws['!cols'] = [14, 22, 8, 12, 12, 12, 30, 22, 13, 26, 10, 26, 12, 12, 26, 34].map(function (w) { return { wch: w }; });
+    X.utils.book_append_sheet(wb, ws, 'Convocados');
+    X.writeFile(wb, 'Licencias ' + j.lugar + ' ' + j.fecha + '.xlsx');
+  }
+
+  /* ---------- Navegación ---------- */
+  async function abrir(id){
+    S.tab = 'conv';
+    try { await cargarJornada(id); } catch (e) { toast(e.message); return; }
+    try { history.replaceState(null, '', '?j=' + id); } catch (e) {}
+    pintarJornada(); window.scrollTo(0, 0);
+  }
+  async function volver(){
+    S.J = null; S.jid = null;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    await cargarLista(); pintarLista(); window.scrollTo(0, 0);
+  }
+
+  document.addEventListener('click', async function (ev) {
+    var t = ev.target, b; if (!t || !t.closest) return;
+    if (t === velo || t.closest('[data-cerrar]')) { cerrarPanel(); return; }
+    if ((b = t.closest('.seg button'))) {
+      var g = b.parentNode, k = g.getAttribute('data-seg'), v = b.getAttribute('data-v');
+      g.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      if (F && k === 'conv') { F.conv = v === '1'; document.getElementById('f-conv').hidden = !F.conv; }
+      if (F && k === 'resp') F.resp = v;
+      if (F && k === 'lic') F.lic = v === '1';
+      return;
+    }
+    if ((b = t.closest('[data-cat]'))) { var c = b.getAttribute('data-cat'), i = JE.cats.indexOf(c); if (i === -1) JE.cats.push(c); else JE.cats.splice(i, 1); b.classList.toggle('on'); return; }
+    if ((b = t.closest('[data-guardar]'))) { guardarFicha(b); return; }
+    if ((b = t.closest('[data-guardar-j]'))) { guardarJornada(b); return; }
+    if (t.closest('[data-borrar]')) {
+      if (!confirm('¿Borrar esta jornada y su convocatoria?')) return;
+      try { await rpc('natacion_comp_jornada_borrar', { p_id: JE.id }); cerrarPanel(); toast('Jornada borrada'); await volver(); } catch (e) { toast(e.message); }
+      return;
+    }
+    if ((b = t.closest('[data-convocar]'))) {
+      ev.stopPropagation(); b.disabled = true;
+      try { await rpc('natacion_comp_marcar', { p_jornada: S.jid, p_atleta: b.getAttribute('data-convocar'), p_datos: { convocado: true } }); var n = nino(b.getAttribute('data-convocar')); toast(cap(n.nombre).split(' ')[0] + ' convocado'); await cargarJornada(S.jid); pintarJornada(); }
+      catch (e) { b.disabled = false; toast(e.message); }
+      return;
+    }
+    if ((b = t.closest('[data-quitar]'))) {
+      ev.stopPropagation();
+      try { await rpc('natacion_comp_marcar', { p_jornada: S.jid, p_atleta: b.getAttribute('data-quitar'), p_datos: { convocado: false } }); toast('Quitado de la convocatoria'); await cargarJornada(S.jid); pintarJornada(); }
+      catch (e) { toast(e.message); }
+      return;
+    }
+    if ((b = t.closest('[data-j]'))) { abrir(b.getAttribute('data-j')); return; }
+    if (t.closest('[data-volver]')) { volver(); return; }
+    if ((b = t.closest('[data-tab]'))) { S.tab = b.getAttribute('data-tab'); pintarJornada(); return; }
+    if ((b = t.closest('[data-ficha]'))) { abrirFicha(b.getAttribute('data-ficha')); return; }
+    if (t.closest('[data-nueva]')) { abrirJornada(null); return; }
+    if (t.closest('[data-editar]')) { if (!S.L) { try { await cargarLista(); } catch (e) {} } abrirJornada(S.J.jornada); return; }
+    if (t.closest('[data-wa]')) { var txt = textoConvocatoria(); try { await navigator.clipboard.writeText(txt); toast('Convocatoria copiada: pégala en WhatsApp'); } catch (e) { prompt('Cópiala:', txt); } return; }
+    if ((b = t.closest('[data-excel]'))) { b.disabled = true; try { await excel(); } catch (e) { toast(e.message || 'No se pudo hacer el Excel'); } b.disabled = false; return; }
+  });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && velo.classList.contains('ver')) cerrarPanel(); });
+
+  try {
+    await cargarLista();
+    var q = new URLSearchParams(location.search).get('j');
+    if (q) await abrir(q); else pintarLista();
+  } catch (e) { app.innerHTML = '<p class="msg">' + esc(e.message || 'No se ha podido cargar.') + '</p>'; }
+});
+</script>
+</body>
+</html>

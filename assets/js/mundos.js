@@ -153,6 +153,7 @@
         {key:'cuotas', t:'Cuotas y cobros', i:'euro', url:B+'portal/natacion-cuotas/?tipo=Escuela', d:'La cuota de cada niño y el enlace para que la familia la domicilie.'},
         {key:'avisos', t:'Avisos a las familias', i:'megaphone', url:B+'portal/natacion-avisos/?tipo=Escuela', d:'Un aviso a una franja o a toda la escuela: llega en la app y por correo a cada familia.'},
         {key:'equipacion', t:'Equipación', i:'shirt', url:B+'portal/natacion-equipacion/', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
+        {key:'competiciones', t:'Competiciones', i:'trophy', url:B+'portal/natacion-competiciones/', d:'Jornadas y controles: quién entra en cada categoría, convocatoria, respuesta de las familias y datos de licencia.'},
         {g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
         {g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/?tipo=Escuela', d:'Quién viene a cada sesión.'},
         {t:'Ver en la web',    i:'signal',   url:B+'escuela-natacion/',                        d:'El semáforo de plazas que ven las familias.', ext:true}
