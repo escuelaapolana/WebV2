@@ -2,6 +2,8 @@
  * Club Atletismo Apolana · Comprobación diaria de «BUENO ISA» (escuela)
  * ---------------------------------------------------------------------
  * Cada día a las 9:00 y a las 12:30 lee las hojas de Isa (con los COLORES de cada fila)
+ * (mig 448, 27-oct: en la inscripción, ALTA = la fila ENTERA en verde; solo el nombre en
+ *  verde = sigue de PRUEBA. Por eso manda también «completa», mirando toda la fila.)
  * y las manda a la app (Edge `escuela-isa-sync`, migración 402), que:
  *   · quita «de prueba» a quien está en verde,
  *   · da de baja (y saca de sus grupos) a quien está en rojo,
@@ -31,6 +33,9 @@ var COLUMNAS = {
   email: /^direccion de correo/, dir: /^direccion$/, cp: /^codigo postal/, localidad: /^localidad/, obs: /^observaciones/
 };
 
+var VERDES = ['#d9ead3', '#93c47d', '#b6d7a8'];
+var ROJAS = ['#f4cccc', '#e06666', '#ea9999', '#cc0000'];
+
 function norm_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
 function txt_(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -47,6 +52,8 @@ function leerFilas_() {
     var rango = hoja.getDataRange();
     var valores = rango.getValues(), fondos = rango.getBackgrounds();
     var cab = valores[0].map(norm_), col = {};
+    // Ancho de la tabla: hasta la última columna con título (para mirar la fila ENTERA).
+    var ancho = 0; for (var k = 0; k < cab.length; k++) if (cab[k]) ancho = k + 1;
     Object.keys(COLUMNAS).forEach(function (k) {
       for (var i = 0; i < cab.length; i++) if (COLUMNAS[k].test(cab[i])) { col[k] = i; break; }
     });
@@ -55,10 +62,20 @@ function leerFilas_() {
       var g = function (k) { return col[k] === undefined ? null : txt_(v[col[k]]); };
       if (!g('nombre') && !g('ap1')) continue;
       var colores = fondos[f].slice(0, 12).filter(function (c) { return c && c.toLowerCase() !== '#ffffff'; });
+      // (mig 448) Cómo está la fila ENTERA: alta = toda en verde; baja = toda en rojo;
+      // con solo unas celdas pintadas (p. ej. el nombre) sigue de prueba.
+      var fila = fondos[f].slice(0, ancho).map(function (c) { return String(c || '').toLowerCase(); });
+      var pintadas = fila.filter(function (c) { return c && c !== '#ffffff'; }).length;
+      var verdes = fila.filter(function (c) { return VERDES.indexOf(c) !== -1; }).length;
+      var rojas = fila.filter(function (c) { return ROJAS.indexOf(c) !== -1; }).length;
+      var completa = rojas > 0 && rojas >= ancho - 3 ? 'rojo'
+        : pintadas === ancho ? (verdes * 2 >= ancho ? 'verde' : 'otro')
+        : pintadas > 0 ? 'parcial' : 'nada';
       filas.push({
         hoja: h.hoja, fila: f + 1, nombre: g('nombre'), ap1: g('ap1'), ap2: g('ap2'), nacimiento: g('nacimiento'),
         colores: colores, turno: g('turno'), sexo: g('sexo'), dni: g('dni'), tutor: g('tutor'), telefono: g('telefono'),
-        email: g('email'), direccion: [g('dir'), g('cp'), g('localidad')].filter(String).join(', ') || null, obs: g('obs')
+        email: g('email'), direccion: [g('dir'), g('cp'), g('localidad')].filter(String).join(', ') || null, obs: g('obs'),
+        completa: completa
       });
     }
   });

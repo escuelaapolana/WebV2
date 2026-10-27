@@ -63,9 +63,11 @@ function correoHtml(r: Res, prueba: boolean): string {
   const fecha = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", weekday: "long", day: "numeric", month: "long" }).format(new Date());
   const confirmados = r.cambios.filter((c) => c.tipo === "confirmado");
   const bajas = r.cambios.filter((c) => c.tipo === "baja");
+  const aPrueba = r.cambios.filter((c) => c.tipo === "a prueba");   // mig 448: fila sin acabar de pintar
   const partes = [
     confirmados.length ? `${confirmados.length} confirmado${confirmados.length === 1 ? "" : "s"}` : "",
     bajas.length ? `${bajas.length} baja${bajas.length === 1 ? "" : "s"}` : "",
+    aPrueba.length ? `${aPrueba.length} vuelve${aPrueba.length === 1 ? "" : "n"} a prueba` : "",
     r.nuevos.length ? `${r.nuevos.length} nuevo${r.nuevos.length === 1 ? "" : "s"}` : "",
     r.dudas.length ? `${r.dudas.length} por revisar` : "",
   ].filter(Boolean);
@@ -79,6 +81,7 @@ function correoHtml(r: Res, prueba: boolean): string {
         <p style="margin:0;color:#71717a;font-size:13px">${esc(fecha)} · comprobación de las 12:30${prueba ? " · prueba" : ""}${r.aplicado ? "" : " · NO aplicado (solo simulación)"}</p>
       </td></tr>
       ${bloque("Confirmados (ya no salen «de prueba»)", "#1E7A3D", confirmados.map((c) => fila(esc(bonito(c.nombre)), "")))}
+      ${bloque("Vuelven a prueba (en BUENO ISA su fila no está entera en verde)", "#8A5307", aPrueba.map((c) => fila(esc(bonito(c.nombre)), esc(c.de || ""))))}
       ${bloque("Bajas (fuera de sus grupos)", "#B3261E", bajas.map((c) => fila(esc(bonito(c.nombre)), (c.grupos && c.grupos.length) ? "Estaba en " + esc(c.grupos.join(", ")) : "")))}
       ${bloque("Nuevos sin grupo (asígnalos en el panel)", "#2F6FA8", r.nuevos.map((c) => fila(esc(c.nombre) + (c.estado === "prueba" ? " · de prueba" : ""), esc([c.nacimiento ? "nacido/a " + c.nacimiento.slice(0, 4) : "", c.turno || ""].filter(Boolean).join(" · ")))))}
       ${bloque("Por revisar (no se ha tocado)", "#8A5307", r.dudas.map((c) => fila(esc(bonito(c.nombre)), esc((c.tipo || "") + (c.de ? " · " + c.de : "")))))}
