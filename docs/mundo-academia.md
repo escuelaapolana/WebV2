@@ -118,8 +118,42 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   equivocada / buena, permisos de Mario, nota privada por la conexión).
 - **Queda**: mover una sesión a otro día desde Academia (hoy la fecha de una sesión
   guardada no se cambia: sería sustituir); el modo texto solo en bloques sin
-  columnas; los ritmos dentro del texto no se conservan al aplicar a otros. Siguiente
-  entrega: **Hoy** (dirigir la sesión en pista).
+  columnas; los ritmos dentro del texto no se conservan al aplicar a otros (desde el
+  28-oct el diálogo lo dice expresamente y marca a cada atleta afectado).
+
+**Hoy · lectura, grupos, lista e impresión (28-oct; sin cambios de base):**
+- Fecha, ‹ › y «Volver a hoy»; **Por grupos de trabajo** (para dirigir) o **Por
+  atleta**; la vista se recuerda. Mañana, sesión única y tarde en apartados propios
+  cuando hay dobles. Contadores: atletas con sesión prevista · sesiones (y por
+  momento) · ausencias · **lista** (presentes / pendientes / ausentes): previsto no
+  es asistencia ni realizado.
+- **Tarjeta de grupo**: atletas (con su lista y su restricción), objetivo (una vez si
+  es el mismo), y los bloques **en el orden del plan** con series, ritmos,
+  recuperaciones (también el descanso entre bloques), calzado, cargas y RIR. Lo
+  común sale una vez **solo si es exactamente igual**; si no, cada uno lo suyo junto
+  al bloque. Grupo de un solo bloque: ese bloque compartido y el resto «por su
+  cuenta» (o «con otro grupo»). Crear, **ajustar** (nombre, quién y qué bloque) o
+  deshacer: solo organiza; las prescripciones no se tocan.
+- **Lista** integrada (la misma `apo_pasar_lista` del panel del entrenador + la tabla
+  `ausencias`): pendiente · presente · ausente con motivo. Una ausencia conserva el
+  plan y se corrige a presente (se quita la ausencia). «Marcar presentes a los N
+  pendientes…». Guardando / guardado / error con «Reintentar» (sin duplicar).
+  Marcar la lista NO crea un entrenamiento realizado.
+- **Antes de empezar**: restricciones vigentes (Lesiones y disponibilidad; vencida la
+  revisión → «decisión pendiente de revisar»; se cierran allí, no al revisar un
+  feedback), revisiones del plan, incidencias sin revisar (parcial, no realizada,
+  molestia, feedback cambiado tras revisarlo) **de cualquier fecha**, y plegados el
+  feedback nuevo sin incidencias, «falta tu registro» y «sin feedback» (última
+  semana). Cada aviso con origen y fecha.
+- **Imprimir**: todo el día, un grupo o atletas elegidos; tabla compacta (bloque ·
+  prescripción común o de cada uno) con casillas opcionales para tiempos y
+  observaciones (cuántas, las decide quien imprime) en los bloques de trabajo; la
+  versión publicada vigente (una revisión pendiente no la sustituye); borradores solo
+  si se marcan y señalados; salud y notas privadas solo si se marcan. Sesiones
+  idénticas sin grupo salen juntas.
+- **Pendiente (registro rápido)**: tiempos por atleta y repetición, repeticiones,
+  kg, sustituciones y discrepancias atleta/entrenador necesitan una estructura nueva
+  (ver propuesta en DIARIO 28-oct); no se ha creado sin el visto bueno.
 
 ## Navegación
 
