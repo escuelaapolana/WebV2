@@ -67,8 +67,13 @@
   .eg-resumen { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
   .eg-resumen span { background:#fff; border:1px solid var(--eg-linea); border-radius:999px; padding:6px 12px; font-size:13px; color:var(--eg-suave); }
   .eg-resumen b { color:var(--eg-navy); }
+  .eg-resumen button { font:inherit; font-size:13px; line-height:inherit; background:#fff; border:1px solid var(--eg-linea); border-radius:999px; padding:6px 12px; color:var(--eg-suave); cursor:pointer; }
+  .eg-resumen button::after { content:' ›'; font-weight:800; }
   .eg-resumen .ojo { background:#FFF1DC; border-color:#EBD9B8; color:#7A5200; }
   .eg-resumen .ojo b { color:#7A5200; }
+  /* Buscando en el móvil: hueco abajo para que el buscador pueda subir arriba del todo
+     y los resultados queden encima del teclado aunque solo haya uno o dos. */
+  .admin-wrap.eg.buscando { padding-bottom:calc(100vh + 120px); }
   .eg-estado { background:#fff; border:1px solid var(--eg-linea); border-radius:14px; padding:18px; color:var(--eg-suave); }
   .eg-estado.error { color:#B3261E; }
 
@@ -169,6 +174,16 @@
   .eg-alta button { margin-top:8px; min-height:40px; border-radius:999px; border:1px solid #CFE0F1; background:#fff; color:#2F6FA8; font:inherit; font-weight:700; font-size:13.5px; padding:0 14px; cursor:pointer; }
   .eg-hoja input[type=search] { width:100%; min-height:46px; border:1px solid #E6DFD0; border-radius:12px; padding:0 12px; font:inherit; font-size:16px; color:#2E4256; margin:0 0 10px; }
   .eg-mas { font-size:12.5px; color:#6E6656; padding:8px 2px 0; }
+  /* Hoja «Sin grupo»: los que pidieron el turno y no están en ningún grupo */
+  .eg-sg { border:1px solid #E6DFD0; border-radius:14px; padding:10px 12px 12px; margin:0 0 10px; }
+  .eg-sg-cab { display:flex; align-items:center; gap:10px; }
+  .eg-sg-cab .i { flex:1; min-width:0; }
+  .eg-sg-cab .i b { display:block; font-size:15.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .eg-sg-cab .i small { display:flex; gap:5px; flex-wrap:wrap; align-items:center; font-size:12px; color:#6E6656; margin-top:2px; }
+  .eg-sg-nota { font-size:12.5px; color:#4A4437; background:#F5F1E8; border-radius:10px; padding:7px 10px; margin:8px 0 0; line-height:1.45; overflow-wrap:anywhere; }
+  .eg-sg-t { font-size:12px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#6E6656; margin:10px 0 6px; }
+  .eg-sg-otro { margin-top:8px; width:100%; min-height:42px; border:1px dashed #CFC6B3; border-radius:12px; background:#fff; color:#2F6FA8; font:inherit; font-weight:700; font-size:13.5px; cursor:pointer; }
+  .eg-volver { border:0; background:none; color:#2F6FA8; font:inherit; font-weight:700; font-size:14px; padding:2px 0 10px; cursor:pointer; }
 
   /* ---------- Aviso con «Deshacer» (sobre la barra flotante en el móvil) ---------- */
   .eg-toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%,20px); opacity:0; pointer-events:none; transition:.25s; z-index:9002; background:#2E4256; color:#fff;
@@ -241,7 +256,7 @@ APOLANA_ADMIN.listo(function () {
   var DIAS = { 1: 'lunes', 2: 'martes', 3: 'miércoles', 4: 'jueves', 5: 'viernes', 6: 'sábado', 7: 'domingo' };
   var SEMANA = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
   var LETRA = { lunes: 'L', martes: 'M', miercoles: 'X', jueves: 'J', viernes: 'V', sabado: 'S', domingo: 'D' };
-  var CAMPOS_A = 'id,nombre,apellidos,fecha_nacimiento,estado,fecha_prueba_fin,fecha_baja,telefono,telefono_tutor,nombre_tutor,aviso_salud,escuela_dias,secciones,tipo_membresia';
+  var CAMPOS_A = 'id,nombre,apellidos,fecha_nacimiento,estado,fecha_prueba_fin,fecha_baja,telefono,telefono_tutor,nombre_tutor,aviso_salud,escuela_dias,secciones,tipo_membresia,observaciones';
 
   var GTODOS = [];        // todos los grupos de la escuela (con .c color, .turno lx|mj|null y .etq «Rojo 2 · L y X»)
   var GMAP = {};          // id → grupo
@@ -254,7 +269,7 @@ APOLANA_ADMIN.listo(function () {
   var LISTAS = {};        // grupo_id → { fecha, si, tot }
   var BAJAS = [];         // dados de baja en esta visita
   var abiertos = leerAbiertos(), filtro = '', ultimo = null, ocupado = false;
-  var hojaTipo = null, fichaAbierta = null, tUltimo = null;
+  var hojaTipo = null, fichaAbierta = null, tUltimo = null, desdeSG = false;
 
   /* ---------------- utilidades ---------------- */
   function bonito(n) {
@@ -307,6 +322,32 @@ APOLANA_ADMIN.listo(function () {
   function fila(aid, gid) { return FILAS.filter(function (f) { return f.atleta_id === aid && f.grupo_id === gid; })[0]; }
   function filasTurno(aid, t) { return filasDe(aid).filter(function (f) { var g = grupo(f.grupo_id); return g && g.turno === t; }); }
   function deLaEscuela(a) { return a && a.estado !== 'baja' && (esEscuela(a) || filasDe(a.id).length > 0); }
+  /* Turno de las 17:30 que pidió la familia, sacado de su ficha: «Turno:/Horario:
+     Lunes/ miércoles 17:30…» (BUENO ISA) o «grupo deducido… (L-X Rojo 2)» (cuadre).
+     El de 18:30 (los mayores) no es de primera hora → null. */
+  function turnoPedido(a) {
+    var o = sinAcentos(a.observaciones || '');
+    if (/lunes\s*\/\s*miercoles\s+17:30|\(l-x\b/.test(o)) return 'lx';
+    if (/martes\s*\/\s*jueves\s+17:30|\(m-j\b/.test(o)) return 'mj';
+    return null;
+  }
+  // Los que pidieron ese turno y no están en NINGÚN grupo de la escuela («Sin grupo» en el buscador).
+  function sinGrupo(t) {
+    return Object.keys(ATL).map(function (k) { return ATL[k]; })
+      .filter(function (a) { return deLaEscuela(a) && !filasDe(a.id).length && turnoPedido(a) === t; })
+      .sort(function (x, y) { return nom(x).localeCompare(nom(y), 'es'); });
+  }
+  // Grupos del turno con niños de su año de nacimiento (si no hay, de un año más o menos).
+  function gruposSugeridos(a, t) {
+    var y = anio(a.fecha_nacimiento); if (!y) return [];
+    var gs = GTODOS.filter(function (g) { return g.turno === t && g.activo !== false && cuantos(g.id); });
+    for (var d = 0; d <= 1; d++) {
+      var r = gs.map(function (g) { return { g: g, n: ninosDe(g.id).filter(function (n) { var z = anio(n.a.fecha_nacimiento); return z && Math.abs(z - y) <= d; }).length }; })
+        .filter(function (x) { return x.n; }).sort(function (p, q) { return q.n - p.n || ordenGrupo(p.g, q.g); });
+      if (r.length) return r.slice(0, 3).map(function (x) { return x.g; });
+    }
+    return [];
+  }
   function ninosDe(gid) {
     return FILAS.filter(function (f) { return f.grupo_id === gid && vivo(f.atleta_id); })
       .map(function (f) { return { a: ATL[f.atleta_id], g: gid, principal: f.principal, desde: f.desde }; });
@@ -432,6 +473,7 @@ APOLANA_ADMIN.listo(function () {
     pintarAnclado(gid); pintarResultados();
     if (hojaTipo === 'nino' && fichaAbierta) { if (vivo(fichaAbierta)) hojaNino(fichaAbierta, true); else cerrarHoja(); }
     else if (hojaTipo === 'add') pintarCandidatos();
+    else if (hojaTipo === 'singrupo') hojaSinGrupo(true);
     clearTimeout(tUltimo); tUltimo = setTimeout(function () { ultimo = null; }, 1600);
   }
   function fallo(m) { $('eg-grid').innerHTML = '<div class="eg-estado error">' + esc(m) + '</div>'; }
@@ -517,8 +559,10 @@ APOLANA_ADMIN.listo(function () {
     Object.keys(enT).forEach(function (k) { if (enT[k].estado === 'prueba') pr++; });
     var llenos = GRUPOS.filter(function (g) { return !vacio(g); });
     var sinEnt = llenos.filter(function (g) { return !g.entrenador_id; }).length;
+    var sinG = sinGrupo(turnoAct).length;
     $('eg-resumen').innerHTML = '<span><b>' + tot + '</b> niños</span><span><b>' + llenos.length + '</b> grupos</span>' +
       '<span><b>' + pr + '</b> de prueba</span>' +
+      (sinG ? '<button type="button" class="ojo" data-sin-grupo><b>' + sinG + '</b> sin grupo</button>' : '<span><b>✓</b> todos con grupo</span>') +
       (sinEnt ? '<span class="ojo"><b>' + sinEnt + '</b> ' + (sinEnt === 1 ? 'grupo sin entrenador' : 'grupos sin entrenador') + '</span>' : '<span><b>✓</b> todos con entrenador</span>') +
       (BAJAS.length ? '<span><b>' + BAJAS.length + '</b> ' + (BAJAS.length === 1 ? 'baja' : 'bajas') + ' hoy</span>' : '');
 
@@ -546,6 +590,7 @@ APOLANA_ADMIN.listo(function () {
   function pintarResultados() {
     var box = $('eg-res'), q = sinAcentos(filtro.trim());
     $('eg-limpiar').hidden = !filtro;
+    document.querySelector('.admin-wrap.eg').classList.toggle('buscando', q.length >= 2);
     if (q.length < 2) { box.hidden = true; box.innerHTML = ''; return; }
     var lista = Object.keys(ATL).map(function (k) { return ATL[k]; })
       .filter(function (a) { return a.estado !== 'baja' && coincide(nom(a), q) && deLaEscuela(a); });
@@ -576,7 +621,35 @@ APOLANA_ADMIN.listo(function () {
     hojaTipo = tipo || null;
     $('eg-velo').classList.add('ver'); h.classList.add('ver');
   }
-  function cerrarHoja() { $('eg-velo').classList.remove('ver'); $('eg-hoja').classList.remove('ver'); hojaTipo = null; fichaAbierta = null; }
+  function cerrarHoja() { $('eg-velo').classList.remove('ver'); $('eg-hoja').classList.remove('ver'); hojaTipo = null; fichaAbierta = null; desdeSG = false; }
+
+  /* SIN GRUPO: los que pidieron este turno de las 17:30 y no están en ningún grupo.
+     Un toque en un grupo de su edad y entra; «Otro grupo…» abre su ficha rápida. */
+  function hojaSinGrupo(mantener) {
+    var lista = sinGrupo(turnoAct);
+    var html = '<h3>Sin grupo · ' + TITULO_TURNO[turnoAct] + '</h3>' +
+      '<div class="sub">Pidieron el turno de las 17:30 de ' + NOMBRE_TURNO[turnoAct] + ' y todavía no están en ningún grupo, así que ningún entrenador los ve al pasar lista. Toca un grupo para apuntarlos.</div>';
+    if (!lista.length) html += '<div class="info">✓ Todos los niños de este turno tienen grupo.</div>';
+    html += lista.map(function (a) {
+      var s = nom(a), y = anio(a.fecha_nacimiento);
+      var nota = (String(a.observaciones || '').match(/Formulario:\s*([^·]+)/) || [])[1];
+      nota = nota ? nota.trim() : '';
+      if (nota.length > 180) nota = nota.slice(0, 177) + '…';
+      var sug = gruposSugeridos(a, turnoAct);
+      return '<div class="eg-sg">' +
+        '<div class="eg-sg-cab"><span class="eg-av" style="background:' + color(s) + '">' + esc(ini(s)) + '</span>' +
+          '<span class="i"><b>' + esc(s) + '</b><small>' + (y ? '<span>' + y + '</span>' : '<span>Sin fecha de nacimiento</span>') + pillsNino(a, true) + '</small></span></div>' +
+        (nota ? '<div class="eg-sg-nota">Formulario: «' + esc(nota) + '»</div>' : '') +
+        (sug.length ? '<div class="eg-sg-t">De su edad</div><div class="eg-destinos">' + sug.map(function (x) {
+          var k = cuantos(x.id), en = x.entrenador_id ? nomP(PERFILES[x.entrenador_id]).split(' ')[0] : '';
+          return '<button type="button" style="--c:' + x.c + '" data-poner="' + esc(x.id) + '" data-n="' + esc(a.id) + '" data-t="' + turnoAct + '">' +
+            '<b>' + esc(x.nombre) + '</b><small>' + k + (k === 1 ? ' niño' : ' niños') + (en ? ' · ' + esc(en) : '') + '</small></button>';
+        }).join('') + '</div>' : '') +
+        '<button type="button" class="eg-sg-otro" data-sg-ficha="' + esc(a.id) + '">' + (sug.length ? 'Otro grupo…' : 'Elegir grupo…') + '</button>' +
+      '</div>';
+    }).join('');
+    abrirHoja(html, 'singrupo', mantener);
+  }
 
   /* FICHA RÁPIDA: el niño con sus grupos de los DOS turnos de las 17:30 para
      cambiarlo de un toque, y sus otros grupos de la escuela a la vista. */
@@ -584,7 +657,8 @@ APOLANA_ADMIN.listo(function () {
     var a = ATL[aid]; if (!a) return;
     var s = nom(a), y = anio(a.fecha_nacimiento), e = edad(a.fecha_nacimiento), tel = telDe(a);
     var mias = filasDe(aid);
-    var html = '<h3>' + esc(s) + '</h3>' +
+    var html = (desdeSG ? '<button type="button" class="eg-volver" data-volver-sg>‹ Volver a «Sin grupo»</button>' : '') +
+      '<h3>' + esc(s) + '</h3>' +
       '<div class="sub">' + (y ? 'Nacido/a en ' + y + (e ? ' · ' + esc(e) : '') : 'Sin fecha de nacimiento') +
         (a.nombre_tutor ? '<br>Familia: ' + esc(bonito(a.nombre_tutor)) : '') + '</div>' +
       (a.aviso_salud ? '<div class="obs">⚠︎ ' + esc(a.aviso_salud) + '</div>' : '') +
@@ -851,7 +925,10 @@ APOLANA_ADMIN.listo(function () {
     if (t.id === 'eg-toast-d') { var f = deshacer; quitarToast(); if (f) f(); return; }
     if (t.id === 'eg-velo') { cerrarHoja(); return; }
     if (t.closest('#eg-limpiar')) { filtro = ''; $('eg-buscar').value = ''; pintar(); pintarResultados(); $('eg-buscar').focus(); return; }
-    var fi = t.closest('[data-ficha]'); if (fi) { $('eg-buscar').blur(); hojaNino(fi.getAttribute('data-ficha')); return; }
+    if (t.closest('[data-sin-grupo]')) { hojaSinGrupo(); return; }
+    var sf = t.closest('[data-sg-ficha]'); if (sf) { desdeSG = true; hojaNino(sf.getAttribute('data-sg-ficha')); return; }
+    if (t.closest('[data-volver-sg]')) { desdeSG = false; hojaSinGrupo(); return; }
+    var fi = t.closest('[data-ficha]'); if (fi) { $('eg-buscar').blur(); desdeSG = false; hojaNino(fi.getAttribute('data-ficha')); return; }
     var ab = t.closest('[data-abrir]'); if (ab) { var gid = ab.getAttribute('data-abrir'); abiertos[gid] = !abiertos[gid]; guardarAbiertos(); pintarAnclado(gid); return; }
     var ce = t.closest('[data-cambiar-ent]'); if (ce) { hojaEntrenador(ce.getAttribute('data-cambiar-ent')); return; }
     var el = t.closest('[data-elegir-ent]'); if (el) { if (el.classList.contains('actual')) return; ponerEntrenador(el.getAttribute('data-g'), el.getAttribute('data-elegir-ent')); return; }
@@ -876,10 +953,13 @@ APOLANA_ADMIN.listo(function () {
   $('eg-buscar').addEventListener('input', function (e) {
     filtro = e.target.value; pintar(); pintarResultados();
     // Si se busca con la página bajada (buscador pegado arriba), los resultados se traen a la vista.
+    // En el móvil, además, el buscador sube arriba del todo y los resultados quedan justo debajo,
+    // por encima del teclado: con uno o dos, el teclado los tapaba (Andrés 28-oct).
     var box = $('eg-res');
     if (!box.hidden) {
-      var hueco = $('eg-busca').getBoundingClientRect().bottom, y = box.getBoundingClientRect().top;
-      if (y < hueco - 1 || y > window.innerHeight - 80) window.scrollBy(0, y - hueco - 4);
+      var movil = window.matchMedia && window.matchMedia('(max-width: 899px)').matches;
+      var hueco = movil ? $('eg-busca').offsetHeight : $('eg-busca').getBoundingClientRect().bottom, y = box.getBoundingClientRect().top;
+      if (movil ? Math.abs(y - hueco - 4) > 2 : (y < hueco - 1 || y > window.innerHeight - 80)) window.scrollBy(0, y - hueco - 4);
     }
   });
   $('eg-buscar').addEventListener('keydown', function (e) {
