@@ -1,6 +1,6 @@
-# Cargar en la app las planificaciones aprobadas en ChatGPT — conexión de PRUEBA construida
+# Cargar en la app las planificaciones aprobadas en ChatGPT — conexión de PRUEBA funcionando
 
-## Estado (28-oct-2026): prueba construida, solo grupo PRUEBA
+## Estado (28-oct-2026): prueba completada desde el chat de Andrés, solo grupo PRUEBA
 
 Autorizado por Andrés: tablas y función con acceso **solo al grupo «Academia AC98 ·
 PRUEBA»** (datos ficticios). Sin datos reales, sin salud y sin publicación en la
@@ -51,8 +51,30 @@ proponer revisión → repetirla → grupo real rechazado. Y **el Codex de la ap
 ChatGPT** (el mismo binario, con un servidor temporal) llamó a `estado` por el
 puente y respondió con el grupo PRUEBA. Todo lo creado en la prueba técnica se borró.
 
-**Falta (Andrés):** activar la conexión en su Mac y hacer la prueba desde su chat
-de planificación (§6). La prueba solo se da por completada cuando funcione allí.
+**Prueba COMPLETADA desde el chat de planificación de Andrés (28-oct, 18:19–21:05),**
+con su clave del Llavero (servidor `apolana_academia` en la app de ChatGPT del Mac),
+comprobado paso a paso en la base:
+1. `estado`: grupo PRUEBA, permisos y reglas.
+2. `leer_semana` 26-oct: 38 sesiones (31 publicadas, 7 borradores); vio la ausencia
+   de Dani y la revisión pendiente de César; distinguió publicado de realizado.
+3. Guardar borrador (Álex, 2-nov, «Salidas + 30») → creada, versión 1.
+4. Repetir el mismo envío → «repetido»; una sola sesión ese día.
+5. Andrés cambió el objetivo en el panel (v2) → ChatGPT intentó con la v1 →
+   **conflicto, nada guardado**, y no reintentó solo. Releyó, explicó el cambio y
+   aplicó el título sobre la v2 → v3 con los dos cambios.
+6. Revisión de una publicada (Álex, jueves 29) → **pendiente** (`via chatgpt`),
+   publicada intacta.
+7. Publicar la v3 con su huella → v4 publicada; huella v3 = v4 = actual
+   (`996d5a2d…`).
+
+Historial de esa sesión: v1 chatgpt · v2 app · v3 chatgpt · v4 chatgpt (publicada).
+Corregido sobre la marcha: la descripción de `momento` decía poco y ChatGPT puso
+«sin especificar» a una sesión única; ahora dice que lo normal es `unica`.
+Quedan en PRUEBA, como datos ficticios: esa sesión publicada y la revisión pendiente
+del jueves 29 de Álex (para probar Aplicar/Descartar en el panel).
+
+**Siguiente (decide Andrés):** abrir la Academia real exige migración explícita +
+su visto bueno; antes, cerrar definiciones (ficha, objetivos, cargas, cálculos).
 
 ---
 
