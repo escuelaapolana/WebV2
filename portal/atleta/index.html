@@ -703,6 +703,13 @@
   .dia .d-hecho { height:7px; line-height:7px; font-size:12px; font-weight:700; color: var(--verde, #3F7A4C); }
   .dia .d-hecho.personal { color: var(--navy); }
   .dia.vacio { background:#fff; }
+  /* Sesión archivada (mig 458-460): se consulta, pero no es un entreno vigente */
+  .dia.archivada { background:#fff; }
+  .dia.archivada .d-tipo { color: var(--texto-suave); font-style: italic; }
+  .aviso-archivada { display:flex; flex-direction:column; gap:3px; background:#F3F1EC; border:1px dashed #B9B1A0;
+    border-radius:12px; padding:11px 14px; margin:0 0 12px; color:#4A4438; font-size:14px; line-height:1.45; }
+  .aviso-archivada b { font-size:15px; color:#2E4256; letter-spacing:.01em; }
+  .entreno-uno.archivada .ent-tit, .entreno-uno.archivada .bloque { opacity:.75; }
   .dia.vacio .d-num { color: var(--texto-suave); font-weight:600; }
   .dia.vacio .d-tipo { color: var(--texto-suave); }
   .dia.hoy { border-color: var(--azul-filete, #3B85C0); border-width:2px; padding:7px 3px; }
@@ -839,6 +846,11 @@
 
   /* Tarjeta HOY · clavada a la maqueta: degradado navy con brillo azul en la
      esquina, esquinas generosas y la sombra fuerte de la maqueta (--s2). */
+  .hoy-card.archivada { background:#F3F1EC !important; color:#3A352B !important; border:1px dashed #B9B1A0; box-shadow:none; }
+  .hoy-card.archivada .hc-grupo, .hoy-card.archivada .hc-det { color:#5C5546 !important; }
+  .hoy-card.archivada .hc-tit { color:#2E4256 !important; }
+  .hoy-card.archivada .hc-cta { background:#fff !important; color:#2E4256 !important; border:1px solid #B9B1A0; }
+  .ti-d.archivada .ti-et { font-style:italic; }
   .hoy-card { position:relative; overflow:hidden;
     background: radial-gradient(120% 140% at 88% -20%, rgba(59,133,192,.5), transparent 55%),
                 linear-gradient(155deg, #22364C, #2E4A67);
@@ -2805,8 +2817,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      la tarjeta del entreno. `cargarSemana` (más abajo) la recoge de aquí en
      vez de volver a preguntar. Misma consulta, mismos campos. */
   var PRE_SEM = { lunes: lunesDe(todayISO), p: lanzar(sb.from('sesiones')
-        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids,origen,duracion_min')
-        .eq('publicada',true).gte('fecha',lunesDe(todayISO)).lte('fecha',addDias(lunesDe(todayISO),6))
+        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids,origen,duracion_min,version,archivada_en')
+        .or('publicada.eq.true,archivada_en.not.is.null').gte('fecha',lunesDe(todayISO)).lte('fecha',addDias(lunesDe(todayISO),6))
         .order('fecha',{ascending:true})) };
 
   // Franjas de natación de quien ha entrado: no son 'sesiones', así que se
@@ -3469,8 +3481,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var pre=(PRE_SEM && PRE_SEM.lunes===lunes) ? PRE_SEM.p : null;
       if(pre) PRE_SEM=null;
       var se=pre ? await pre : await sb.from('sesiones')
-        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids,origen,duracion_min')
-        .eq('publicada',true).gte('fecha',lunes).lte('fecha',addDias(lunes,6))
+        .select('id,fecha,dia_semana,tipo,rol,deporte,deporte_2,papel_dia,titulo,nota_razonamiento,bloques,atletas_ids,origen,duracion_min,version,archivada_en')
+        .or('publicada.eq.true,archivada_en.not.is.null').gte('fecha',lunes).lte('fecha',addDias(lunes,6))
         .order('fecha',{ascending:true});
       if(se.error) SEM_FALLO[lunes]=true; else lista=se.data||[];
     } catch(e){ SEM_FALLO[lunes]=true; }
@@ -3674,10 +3686,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     $('sem-rango').textContent=rangoTxt(lunesVis);
     var nom=['lun','mar','mié','jue','vie','sáb','dom'], html='';
     for(var i=0;i<7;i++){
-      var iso=addDias(lunesVis,i), ses=sesionesDe(iso);
+      var iso=addDias(lunesVis,i), sesTodas=sesionesDe(iso);
+      var ses=sesTodas.filter(function(s){ return !s.archivada_en; });   // las archivadas no son entreno vigente
+      var soloArch = !ses.length && sesTodas.length;
       var nd = ses.length ? [] : natDelDia(iso);
       var num=new Date(iso+'T00:00:00').getDate();
-      var cls='dia'+((ses.length||nd.length)?'':' vacio')+(iso===HOY_ISO?' hoy':'')+(iso===diaSel?' sel':'');
+      var cls='dia'+((ses.length||nd.length||soloArch)?'':' vacio')+(soloArch?' archivada':'')+(iso===HOY_ISO?' hoy':'')+(iso===diaSel?' sel':'');
       var marca, titulo;
       if(ses.length){
         var personal=ses.some(function(s){ return s.atletas_ids!=null; });
@@ -3693,6 +3707,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
               '<span class="d-tipo">'+esc(etiqueta)+'</span>';
         titulo=formatFecha(iso)+': '+(ses[0].titulo||'entrenamiento')+(ses.length>1?' (y '+(ses.length-1)+' más)':(personal?' · solo para ti':''))+
                (apuntado?' · ya apuntaste cómo te fue':'');
+      } else if(soloArch){
+        marca='<span class="d-tipo">archivada</span>';
+        titulo=formatFecha(iso)+': sesión archivada (ya no es un entrenamiento vigente)';
       } else if(nd.length){
         marca='<span class="d-punto nat" aria-hidden="true"></span><span class="d-tipo">natación</span>';
         titulo=formatFecha(iso)+': natación '+nd.map(function(p){return p.hora;}).join(', ');
@@ -4053,8 +4070,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var veces=(reg.corregido_veces>1) ? ' ('+reg.corregido_veces+' veces)' : '';
       rastro='<span class="fbl-corr">Corregido el '+esc(fechaDiaMes(String(reg.corregido_en).slice(0,10)))+veces+'</span>';
     }
+    // Una sesión archivada es solo de consulta: lo apuntado se guarda tal cual.
     partes+='<div class="fbl-pie">'+rastro+
-      '<button type="button" class="fb-corregir">Corregir lo apuntado</button></div>';
+      (s.archivada_en ? '' : '<button type="button" class="fb-corregir">Corregir lo apuntado</button>')+'</div>';
     return '<div class="fb-leer"><div class="fbl-et">Cómo te fue</div>'+partes+'</div>';
   }
 
@@ -4549,11 +4567,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          lectura: se muestra el plan, pero sin casillas ni formulario de
          feedback, para no apuntarle nada en su nombre. */
       var otro = esOtro();
-      var leer = esLeer(s) || otro;
+      /* (mig 458-460) Una sesión ARCHIVADA ya no es un entrenamiento vigente: el
+         entrenador la retiró del plan. Se ve para consultar lo apuntado, en
+         solo lectura y con el aviso arriba del todo. */
+      var arch = !!s.archivada_en;
+      var leer = esLeer(s) || otro || arch;
       /* El aviso de que se está corrigiendo va ARRIBA DEL TODO, antes que los
          ejercicios: si fuera abajo, para cuando se lee ya se han tocado los
          kilos. */
-      return '<div class="entreno-uno" data-sid="'+esc(s.id)+'">'+
+      return '<div class="entreno-uno'+(arch?' archivada':'')+'" data-sid="'+esc(s.id)+'" data-ver="'+esc(String(s.version||''))+'">'+
+             (arch?avisoArchivadaHTML(s):'')+
              (leer?'':avisoCorrigiendoHTML(s))+renderEntreno(s,todayISO,leer)+
              (otro ? '' : (leer ? fichaFeedbackLeer(s) : fichaFeedback(s)))+
              (otro ? '' : comentarioHTML(s))+'</div>';
@@ -4587,6 +4610,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       pintarVerComo();
       pintarDia(elegirDia(lunesVis, diaSel));
     };
+  }
+
+  function avisoArchivadaHTML(s){
+    return '<div class="aviso-archivada" role="note"><b>Sesión archivada</b>'+
+      '<span>Tu entrenador la retiró del plan. No es un entrenamiento vigente: se guarda solo para que consultes lo que apuntaste.</span></div>';
   }
 
   // Día que se muestra al abrir una semana: el preferido si tiene entreno; si no, el más cercano
@@ -4822,8 +4850,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
          devuelve solo los entrenamientos de los que este atleta tiene
          registro, aunque haya cambiado de grupo. */
       var q=await sb.from('sesiones')
-        .select('id,fecha,tipo,rol,deporte,deporte_2,papel_dia,titulo')
-        .eq('publicada',true).gte('fecha',desde).lte('fecha',todayISO)
+        .select('id,fecha,tipo,rol,deporte,deporte_2,papel_dia,titulo,archivada_en')
+        .or('publicada.eq.true,archivada_en.not.is.null').gte('fecha',desde).lte('fecha',todayISO)
         .order('fecha',{ascending:false});
       if(q.error) { HIST_FALLO[per]=true; return null; }
       ses=q.data||[];
@@ -4854,7 +4882,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       d.sesiones.forEach(function(s){
         deportesDe(s).forEach(function(x){ if(deportes.indexOf(x)===-1) deportes.push(x); });
         if(!papel) papel=papelDe(s);
-        if(s.titulo) textos.push(s.titulo);
+        if(s.titulo) textos.push(s.titulo+(s.archivada_en?' (sesión archivada)':''));
         var reg=HIST_REG[s.id];
         if(reg){
           apuntado=true;
@@ -5686,6 +5714,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function guardarFeedback(btn){
     var caja=btn.closest('.entreno-uno'); if(!caja) return;
     var sid=caja.getAttribute('data-sid');
+    /* La versión de la sesión que estaba en pantalla (mig 460): el registro se
+       ata a ESA, aunque el entrenador la haya cambiado mientras tanto. */
+    var verVista=parseInt(caja.getAttribute('data-ver'),10)||null;
     var msg=caja.querySelector('.fb-msg'); msg.textContent='Guardando…'; msg.className='msg fb-msg';
     function val(sel){ var e=caja.querySelector(sel); return e?e.value:''; }
     var D=DESC();
@@ -5823,6 +5854,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var durMin =clampInt(val('.fb-duracion'),0,240);
     var payload={
       sesion_id: sid, atleta_id: at.id,
+      version_vista: verVista,
       estado: estadoSel,
       estado_manual: true,
       completado_pct: pct,
@@ -5849,7 +5881,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var trFinal=(REG[sid] && REG[sid].tiempos_reales) || null;
     if(Object.keys(tiempos).length){
       var rp=await sb.rpc('apo_apuntar_ejercicios', {
-        p_sesion: sid, p_atleta: at.id, p_ejercicios: tiempos
+        p_sesion: sid, p_atleta: at.id, p_ejercicios: tiempos, p_version: verVista
       });
       if(rp.error){ msg.textContent='Error: '+rp.error.message; msg.className='msg fb-msg error'; return; }
       trFinal=(rp.data && rp.data.tiempos_reales) || null;
@@ -6213,7 +6245,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
        tocar otro día te sacaba de la pantalla; ahora te mueves por la semana
        viendo qué hay, y entras solo cuando vas a hacerlo. */
     var diaVer = DIA_OJEO || todayISO;
-    var hoySes=lista.filter(function(s){ return s.fecha===diaVer; });
+    var hoySes=lista.filter(function(s){ return s.fecha===diaVer; })
+      .sort(function(a,b){ return (a.archivada_en?1:0)-(b.archivada_en?1:0); });   // lo vigente primero
     // Natación de ese día (franja fija): se muestra tenga o no sesión de atletismo.
     var natHoy = natRowsHTML(diaVer);
     if(natHoy) html+='<div class="nat-card-inicio">'+natHoy+'</div>';
@@ -6222,6 +6255,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(hoySes.length){
       html+=hoySes.slice(0,1).map(function(s){
         var hecho=!!REG[s.id];
+        if(s.archivada_en){
+          /* (mig 458-460) Archivada: no es un entrenamiento vigente. Tarjeta clara,
+             sin «Empezar» ni «¿Cómo fue?»: solo consultar lo que se apuntó. */
+          return '<div class="hoy-card archivada">'+
+            '<div class="hc-top"><span class="hc-grupo">Sesión archivada · '+esc(formatFecha(diaVer))+'</span></div>'+
+            '<div><h2 class="hc-tit">'+esc(tituloSesion(s))+'</h2>'+
+              '<div class="hc-det">Tu entrenador la retiró del plan. Se guarda lo que apuntaste.</div></div>'+
+            '<button type="button" class="hc-cta" data-ir="'+diaVer+'">Ver lo que apunté</button>'+
+            '</div>';
+        }
         var cifras=cifrasSesion(s);
         // grupo · sitio · entrenador, con el nombre propio del grupo en ámbar
         var sub=[nombreGrupoHTML((GRUPO&&GRUPO.nombre)||''), esc(lugarGrupo()), esc(ENTRENA)].filter(Boolean).join(' · ');
@@ -6384,12 +6427,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     for(var i=0;i<7;i++){
       var iso=addDias(l,i);
-      var ses=deLaSemana.filter(function(x){ return x.fecha===iso; });
+      var sesDia=deLaSemana.filter(function(x){ return x.fecha===iso; });
+      var ses=sesDia.filter(function(x){ return !x.archivada_en; });   // archivada ≠ entreno vigente
+      var soloArch=!ses.length && sesDia.length;
       var nd = ses.length ? [] : natDelDia(iso);
       var d=new Date(iso+'T00:00:00');
-      var cls='ti-d'+((ses.length||nd.length)?'':' libre')+(iso===todayISO?' hoy':'')+(iso===(DIA_OJEO||todayISO)?' sel':'');
+      var cls='ti-d'+((ses.length||nd.length||soloArch)?'':' libre')+(soloArch?' archivada':'')+(iso===todayISO?' hoy':'')+(iso===(DIA_OJEO||todayISO)?' sel':'');
       var dentro;
-      if(ses.length){
+      if(soloArch){
+        dentro='<span class="ti-et">archivada</span>';
+      } else if(ses.length){
         var apuntado=ses.every(function(x){ return !!REG[x.id]; });
         dentro='<span class="ti-et">'+esc(deporteCorto(ses[0]))+'</span>'+
                (apuntado?'<span class="ti-ok">✓</span>':'');
@@ -6640,7 +6687,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if(dist){ serie.distancia=comaDecimal(String(dist)); serie.unidad=d.unidad; }
       if(seg) serie.tiempo=duracionTxt(seg);
       var reg={
-        sesion_id: ins.data.id, atleta_id: at.id, estado: 'completo',
+        sesion_id: ins.data.id, atleta_id: at.id, estado: 'completo', version_vista: 1,
         rpe: apuRpe,
         tiempos_reales: { libre: { fila_id:'libre', ejercicio:tit,
                                    medida: d.unidad?'distancia':'hecho', unidad: d.unidad||null,
