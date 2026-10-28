@@ -185,6 +185,16 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   borrar ninguno (`academia_discrepancias`). Lo que no se puede emparejar con
   seguridad (partes, tramos, texto libre del atleta) sale «pendiente de vincular».
 - Una sesión con datos del entrenador **se archiva en vez de borrarse**.
+- **Revisión (29-oct, mig 469)**: un conflicto entre pantallas enseña los dos
+  valores con su método, quién y cuándo; «Mantener el mío» vuelve a comprobar la
+  versión (un tercer cambio no se pisa). **Lo no guardado se conserva en el
+  aparato** (este navegador) aunque se cierre la hoja o se recargue, hasta guardarlo
+  o descartarlo: la hoja lo recupera al abrirse y Hoy avisa con «Guardarlos ahora /
+  Descartarlos». Si el navegador no deja guardar, se dice que cerrar lo pierde.
+  **Parciales y tramos**: no se comparan todavía con el atleta, porque su app solo
+  recoge un tiempo por toma (sin tramos ni partes): **pendiente**; se dice en el
+  detalle. Las discrepancias de tramo total indican que el método del atleta es
+  «no consta».
 
 ## Navegación
 
