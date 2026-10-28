@@ -68,7 +68,7 @@ function correoEnlace(contacto: string, nadadores: string, enlace: string, recor
       ? `Te recordamos que aún no nos has dicho las tallas de la equipación de natación de ${nadadores}.`
       : `Estamos preparando los pedidos de equipación de natación de esta temporada. En este enlace puedes elegir las tallas de ${nadadores} y, si queréis, encargar bañadores del club u otras prendas:{{ENLACE}}`,
     ...(recordatorio ? ["Es un momento, aquí:{{ENLACE}}"] : []),
-    "Rellénalo antes del 2 de noviembre, que es cuando hacemos el pedido. La camiseta oficial y el gorro son gratis para todos, y la chaqueta es gratis para quien se incorpora este año. No se paga nada ahora: lo que haya que pagar se paga cuando llegue la ropa, antes de recogerla.",
+    "Rellénalo antes del 4 de noviembre, que es cuando hacemos el pedido. La camiseta oficial y el gorro son gratis para todos, y la chaqueta es gratis para quien se incorpora este año. No se paga nada ahora: lo que haya que pagar se paga cuando llegue la ropa, antes de recogerla.",
     "Si tienes cualquier duda, contesta a este correo.",
   ], enlace);
   return { ...c, asunto: recordatorio ? "Recordatorio · tallas de la equipación de natación" : "Equipación de natación: elige las tallas" };
