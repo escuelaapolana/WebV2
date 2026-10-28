@@ -194,9 +194,9 @@
       screens:[
         {key:'resumen', t:'Hoy', i:'grid', url:B+'portal/academia/'},
         {key:'semana', t:'Semana', i:'calendar', url:B+'portal/academia/?v=semana', d:'Atletas por días: lo publicado, lo hecho y lo que falta por revisar.'},
+        {key:'feedback', t:'Feedback', i:'inbox', url:B+'portal/academia/?v=feedback', d:'Una bandeja para revisar lo que respondió cada atleta, tus datos de pista y tus observaciones.'},
         {g:'Entrenamiento', t:'Planificar', i:'clipboard', url:B+'portal/entrenador/#planificar', d:'Escribir, copiar y publicar las sesiones (la herramienta de siempre).'},
         {g:'Entrenamiento', t:'Pasar lista', i:'check', url:B+'portal/entrenador/#lista', d:'Quién ha venido hoy.'},
-        {g:'Entrenamiento', t:'Feedback por día', i:'inbox', url:B+'portal/entrenador/#feedback', d:'Lo que ha respondido cada atleta, día a día.'},
         {g:'Atletas', t:'Atletas', i:'people', url:B+'admin/atletas/?grupo=c288b979-cd00-4abb-96da-30fa997ef297', d:'Las fichas de los atletas de la Academia.'},
         {g:'Atletas', t:'Observaciones', i:'newspaper', url:B+'portal/entrenador/#notas', d:'Tus notas privadas sobre cada atleta.'},
         {g:'Competición y tests', t:'Tests y marcas', i:'chart', url:B+'admin/tests/', d:'Batería de tests y marcas.'},

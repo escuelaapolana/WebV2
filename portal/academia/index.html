@@ -12,14 +12,14 @@
   window.APOLANA_BASE="../../";
   (function(){
     var v = new URLSearchParams(location.search).get('v');
-    window.APOLANA_MUNDO = { world:'academia', screen: (v==='semana' ? 'semana' : 'resumen'), contentSel:'#ac', plegar: v==='semana' };
+    window.APOLANA_MUNDO = { world:'academia', screen: (v==='semana' ? 'semana' : v==='feedback' ? 'feedback' : 'resumen'), contentSel:'#ac', plegar: v==='semana' };
   })();
 </script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
-<script src="../../assets/js/mundos.js?v=26188bb1" defer></script>
+<script src="../../assets/js/mundos.js?v=6a3be92d" defer></script>
 <style>
   /* Academia AC98 · Hoy y Semana (v1 funcional).
      Criterios (docs/mundo-academia.md): el color solo para información, los
@@ -319,6 +319,22 @@
   .ac-av-t{ padding:10px 14px 2px; font-weight:700; color:var(--navy); font-size:14px; }
   .ac-av-t .quien{ color:var(--t3); font-weight:500; }
 
+  /* ===== Feedback: la bandeja ===== */
+  .fb-lista{ max-width:980px; }
+  .fb-dia{ margin:14px 2px 6px; font-size:12.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .fb-f{ display:block; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px solid var(--borde); border-radius:10px; padding:9px 12px; margin:0 0 6px; cursor:pointer; }
+  .fb-f:hover{ border-color:#9AAAD0; }
+  .fb-f.sel{ box-shadow:0 0 0 2px var(--ac); }
+  .fb-c{ display:block; font-size:14.5px; color:var(--navy); }
+  .fb-e{ display:block; margin-top:2px; }
+  .fb-x{ font-size:13.5px; color:var(--t2); }
+  .fb-cm{ display:block; font-size:13.5px; color:var(--t2); margin-top:3px; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fb-m{ display:block; font-size:12.5px; color:var(--t3); margin-top:3px; }
+  .fb-fecha{ display:inline-flex; gap:6px; align-items:center; font-size:13.5px; color:var(--t2); }
+  .ac-pos{ font-size:12.5px; color:var(--t3); }
+  .ac-fbd > summary{ cursor:pointer; color:var(--azul,#2F6FA8); font-weight:600; }
+  .ac-fbd .ac-sec{ border-top:0; padding-top:6px; }
+
   /* ===== Apuntar en pista ===== */
   .ac-toma{ position:fixed; z-index:1000; inset:0; background:rgba(46,66,86,.38); display:flex; justify-content:flex-end; }
   .ac-toma[hidden]{ display:none; }
@@ -506,7 +522,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* ---------- estado ---------- */
   var ST = {
-    vista: Q.get('v')==='semana' ? 'semana' : 'hoy',
+    vista: Q.get('v')==='semana' ? 'semana' : Q.get('v')==='feedback' ? 'feedback' : 'hoy',
+    fb: { desde: Q.get('fd') || sumar(hoyISO(), -29), hasta: Q.get('fh') || hoyISO(), atleta: Q.get('fba') || '', estado: Q.get('fe') || leer('ac-fb-estado') || 'por_revisar' },
     modo: leer('ac-modo')==='compacta' ? 'compacta' : 'detallada',
     semana: lunesDe(Q.get('w') || hoyISO()),
     dia: Q.get('d') || hoyISO(),
@@ -535,6 +552,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function urlActual(){
     var p = new URLSearchParams();
     if (ST.vista==='semana') p.set('v','semana');
+    if (ST.vista==='feedback'){
+      p.set('v','feedback');
+      if (ST.fb.desde!==sumar(hoyISO(), -29)) p.set('fd', ST.fb.desde);
+      if (ST.fb.hasta!==hoyISO()) p.set('fh', ST.fb.hasta);
+      if (ST.fb.atleta) p.set('fba', ST.fb.atleta);
+      if (ST.fb.estado!=='por_revisar') p.set('fe', ST.fb.estado);
+    }
     if (ST.g && ST.grupos.length>1) p.set('g', ST.g.grupo_id);
     if (ST.vista==='semana' && ST.semana!==lunesDe(hoyISO())) p.set('w', ST.semana);
     if (ST.vista==='hoy' && ST.dia!==hoyISO()) p.set('d', ST.dia);
@@ -549,6 +573,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* ---------- carga de datos ---------- */
   function rango(){
     if (ST.vista==='semana') return { desde: ST.semana, hasta: sumar(ST.semana, 6) };
+    if (ST.vista==='feedback') return { desde: ST.fb.desde, hasta: ST.fb.hasta < ST.fb.desde ? ST.fb.desde : ST.fb.hasta };
     return { desde: sumar(ST.dia, -7), hasta: ST.dia };   // Hoy: también la última semana, para lo pendiente
   }
   async function enTrozos(ids, fn){
@@ -593,6 +618,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     ]);
     if (r2[3].error) throw r2[3].error;
     D = { desde:R.desde, hasta:R.hasta, ses:ses, atl:atl, reg:{}, aus:r2[1], gt:gts, gtm:r2[2], sesPorId:{}, sust:{}, seg:{}, regEnt:{}, asis:{}, les:[], abiertos:[], toma:r2[5]||[], disc:r2[6]||[] };
+    if (ST.vista==='feedback' && aids.length){
+      D.notas = await enTrozos(aids, function(ids){ return sb.from('notas_atleta').select('id,atleta_id,fecha,texto,created_at').in('atleta_id', ids).gte('fecha', R.desde).lte('fecha', R.hasta); });
+    }
     if (ST.vista==='hoy'){
       var r3 = await Promise.all([
         sb.from('asistencia').select('atleta_id,presente,updated_at').eq('fecha', ST.dia).eq('grupo_id', G),
@@ -837,11 +865,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return '<option value="'+x.grupo_id+'"'+(x.grupo_id===ST.g.grupo_id?' selected':'')+'>'+esc(x.nombre)+(x.es_prueba?' (datos ficticios)':'')+'</option>'; }).join('')+'</select>' : '';
     if (esMovil()){
       return '<div class="ac-top"><h1>'+esc(titulo)+'</h1>'+(ST.g.es_prueba?'<span class="ac-prueba">Prueba · ficticio</span>':'')+'</div>'+
-        '<div class="ac-fila2">'+selG+'<span class="ac-seg" role="group" aria-label="Vista"><button type="button" data-vista="hoy" class="'+(ST.vista==='hoy'?'on':'')+'">Hoy</button><button type="button" data-vista="semana" class="'+(ST.vista==='semana'?'on':'')+'">Semana</button></span></div>';
+        '<div class="ac-fila2">'+selG+'<span class="ac-seg" role="group" aria-label="Vista"><button type="button" data-vista="hoy" class="'+(ST.vista==='hoy'?'on':'')+'">Hoy</button><button type="button" data-vista="semana" class="'+(ST.vista==='semana'?'on':'')+'">Semana</button><button type="button" data-vista="feedback" class="'+(ST.vista==='feedback'?'on':'')+'">Feedback</button></span></div>';
     }
     return '<div class="ac-top"><h1>'+esc(titulo)+'</h1>'+(ST.g.es_prueba?'<span class="ac-prueba">Grupo de prueba · datos ficticios</span>':'')+
       '<span class="ac-esp"></span>'+selG+
-      '<span class="ac-seg ac-vistas" role="group" aria-label="Vista"><button type="button" data-vista="hoy" class="'+(ST.vista==='hoy'?'on':'')+'">Hoy</button><button type="button" data-vista="semana" class="'+(ST.vista==='semana'?'on':'')+'">Semana</button></span></div>'+
+      '<span class="ac-seg ac-vistas" role="group" aria-label="Vista"><button type="button" data-vista="hoy" class="'+(ST.vista==='hoy'?'on':'')+'">Hoy</button><button type="button" data-vista="semana" class="'+(ST.vista==='semana'?'on':'')+'">Semana</button><button type="button" data-vista="feedback" class="'+(ST.vista==='feedback'?'on':'')+'">Feedback</button></span></div>'+
       (sub?'<p class="ac-sub">'+sub+'</p>':'');
   }
 
@@ -1461,22 +1489,28 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function quienRevisa(id){ return !id ? '' : (perfil && id===perfil.id) ? 'tú' : (NOMBRES[id] || 'otra persona'); }
   function pintarDetalle(s, aid, versiones, notas, priv){
     var e = estado(s, aid), r = e.r, a = atleta(aid), B = window.APOLANA_BASE || '../../';
-    var orden = ordenDelDia(s.fecha), pos = -1;
+    // En la bandeja de Feedback: anterior y siguiente de la LISTA FILTRADA (no del día)
+    var FB = ST.vista==='feedback';
+    var orden = FB ? listaFbFiltrada().map(function(x){ return { sid:x.s.id, aid:x.aid, f:x.s.fecha }; }) : ordenDelDia(s.fecha), pos = -1;
     orden.forEach(function(x,i){ if (x.sid===s.id && x.aid===aid) pos=i; });
     var prev = pos>0 ? orden[pos-1] : null, next = pos>=0 && pos<orden.length-1 ? orden[pos+1] : null;
+    var etq = function(x){ return esc(nombreDe(x.aid))+(FB && x.f ? ' · '+esc(fCorta(x.f)) : ''); };
     var cab = '<div class="cab">'+
-      (prev?'<button type="button" class="ac-btn mini" data-abrir="'+prev.sid+'|'+prev.aid+'">‹ '+esc(nombreDe(prev.aid))+'</button>':'')+
-      (next?'<button type="button" class="ac-btn mini" data-abrir="'+next.sid+'|'+next.aid+'">'+esc(nombreDe(next.aid))+' ›</button>':'')+
+      (prev?'<button type="button" class="ac-btn mini" data-abrir="'+prev.sid+'|'+prev.aid+'">‹ '+etq(prev)+'</button>':'')+
+      (next?'<button type="button" class="ac-btn mini" data-abrir="'+next.sid+'|'+next.aid+'">'+etq(next)+' ›</button>':'')+
+      (FB && pos>=0 ? '<span class="ac-pos">'+(pos+1)+' de '+orden.length+'</span>' : '')+
       '<button type="button" class="ac-btn mini x" data-cerrar="1">✕ Cerrar</button></div>';
     var vAct = versiones.filter(function(v){ return v.version===s.version; })[0];
     var vResp = r ? (versiones.filter(function(v){ return v.id===r.sesion_version_id; })[0] || versiones.filter(function(v){ return v.version===r.version_vista; })[0]) : null;
     var actual = (vAct && vAct.datos) || s;
     var h = '<div class="in"><div class="ac-quien">'+esc(a._n)+' · '+esc(fLarga(s.fecha))+(MOMENTO[s.momento]?' · '+MOMENTO[s.momento]:'')+(s.hora?' · '+hhmm(s.hora):'')+'</div>'+
       '<h3>'+esc(s.clase_dia==='descanso'?'Descanso':tituloDe(s))+'</h3>'+
-      tag(s.publicada?'t-v':'t-bor', (s.publicada?'Publicada':'Borrador')+' · versión '+s.version)+e.tags.replace(tag('t-bor','Borrador'), '');
+      tag(s.publicada?'t-v':'t-bor', (s.publicada?'Publicada':'Borrador')+' · versión '+s.version)+e.tags.replace(tag('t-bor','Borrador'), '')+
+      (FB && EST_FB[estadoFb(s, aid)] ? ' '+tag(EST_FB[estadoFb(s, aid)][1], EST_FB[estadoFb(s, aid)][0]) : '');
     /* Editar, publicar y aplicar a otros: acciones distintas. Publicar es
-       siempre la versión exacta que se está viendo. */
-    if (!s.archivada_en){
+       siempre la versión exacta que se está viendo. (En la bandeja de
+       Feedback no: allí se revisa; se planifica desde Semana.) */
+    if (!s.archivada_en && !FB){
       var acc = [];
       if (!s.publicada){
         acc.push('<button type="button" class="ac-btn mini pri" data-editar="1">Editar borrador</button>');
@@ -1496,7 +1530,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (e.au.nota?'<div>'+esc(e.au.nota)+'</div>':'')+(e.au.avisado_por_nombre?'<div class="nota">Avisó: '+esc(e.au.avisado_por_nombre)+'</div>':'')+
       '<div class="nota">Lo previsto se conserva abajo; no cuenta como sesión realizada.</div>'+
       (s.clase_dia!=='ausencia' ? '<button type="button" class="ac-link" data-aus-quitar="'+e.au.id+'" style="margin-top:6px">Quitar la ausencia</button>' : '')+'</div>';
-    else if (!s.archivada_en && s.clase_dia==='entreno') h += '<div style="margin-top:8px"><button type="button" class="ac-link" data-aus="1">Marcar ausencia de '+esc(a._n)+' este día</button><div id="ac-aus-f" hidden></div></div>';
+    else if (!s.archivada_en && s.clase_dia==='entreno' && !FB) h += '<div style="margin-top:8px"><button type="button" class="ac-link" data-aus="1">Marcar ausencia de '+esc(a._n)+' este día</button><div id="ac-aus-f" hidden></div></div>';
 
     // Intención (objetivo y exigencia prevista)
     h += '<div class="ac-sec"><b class="r">Intención</b>'+
@@ -1529,14 +1563,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (r.marcas_texto?'<div style="margin-top:6px;white-space:pre-wrap">'+esc(r.marcas_texto)+'</div>':'')+
         (tiempos?'<div class="nota">Tiempos apuntados por el atleta · método: no consta.</div>':'')+
         '<div class="nota">Enviado el '+fechaHora(r.created_at)+(r.corregido_veces?' · corregido '+plural(r.corregido_veces,'vez','veces'):'')+'. '+esc(GARANTIA[r.version_garantia]||'')+'</div>'+
+        // Datos antiguos: la limitación de correspondencia con el plan, siempre a la vista
+        (r.version_garantia==='sin_garantia' || r.version_garantia==='sobrescrita' ? '<div class="ac-aviso">Correspondencia con el plan: '+esc(GARANTIA[r.version_garantia])+' Compáralo con prudencia.</div>' : '')+
         (r.revision_anterior_en && !r.revisado_en
-          ? '<div class="ac-aviso">El atleta cambió este feedback después de que lo revisara '+esc(quienRevisa(r.revision_anterior_por))+' (el '+fechaHora(r.revision_anterior_en)+'): vuelve a estar pendiente. Lo anterior queda en el historial de correcciones.</div>' : '')+
+          ? '<div class="ac-aviso">El atleta cambió este feedback después de que '+(quienRevisa(r.revision_anterior_por)==='tú' ? 'lo revisaras tú' : 'lo revisara '+esc(quienRevisa(r.revision_anterior_por)))+' (el '+fechaHora(r.revision_anterior_en)+'): vuelve a estar pendiente. Lo anterior queda en el historial de correcciones.</div>' : '')+
         '<div style="margin-top:8px">'+(r.revisado_en
           ? '<span class="ac-tag t-hecha">Revisado el '+esc(fechaHora(r.revisado_en))+(r.revisado_por?' · '+esc(quienRevisa(r.revisado_por)):'')+'</span> <button type="button" class="ac-link" data-norevisar="'+r.id+'">Quitar revisado</button>'
-          : '<button type="button" class="ac-btn pri mini" data-revisar="'+r.id+'">Marcar como revisado</button>')+'</div></div>';
+          : '<button type="button" class="ac-btn pri mini" data-revisar="'+r.id+'">Marcar como revisado</button>'+(FB ? ' <button type="button" class="ac-btn mini" data-revisar-sig="'+r.id+'">Revisado y siguiente ›</button>' : ''))+
+        (FB ? '<div class="nota">Revisado = leído. No cierra restricciones ni incidencias y no da el entrenamiento por hecho.</div>' : '')+
+        (r.corregido_veces || r.revision_anterior_en ? '<div style="margin-top:6px"><button type="button" class="ac-link" data-fb-hist="'+r.id+'">Ver lo que respondió antes de corregirlo</button><div id="ac-fb-hist" hidden></div></div>' : '')+'</div></div>';
       var planResp = (vResp && vResp.datos) || null;
-      h += '<div class="ac-sec"><b class="r">Plan que respondió'+(vResp?' · versión '+vResp.version:'')+'</b>'+
-        (planResp ? planHTML(planResp, r) : '<div class="nota">No se guardó la versión que vio (registro anterior al historial). Se muestra el plan actual como referencia.</div>'+planHTML(actual, r))+'</div>';
+      var cuerpoPlan = (planResp ? planHTML(planResp, r) : '<div class="nota">No se guardó la versión que vio (registro anterior al historial). Se muestra el plan actual como referencia.</div>'+planHTML(actual, r));
+      h += FB ? '<div class="ac-sec"><details class="ac-dif2"><summary>Plan que respondió'+(vResp?' · versión '+vResp.version:'')+' (completo, con sus tiempos)</summary>'+cuerpoPlan+'</details></div>'
+              : '<div class="ac-sec"><b class="r">Plan que respondió'+(vResp?' · versión '+vResp.version:'')+'</b>'+cuerpoPlan+'</div>';
       if (planResp && vResp.version!==s.version){
         var df = diffHTML(planResp, actual);
         h += '<div class="ac-sec"><details class="ac-dif2"'+(Q.get('cambios')==='1'?' open':'')+'><summary>Ver cambios respecto al plan respondido ('+df.n+')</summary>'+df.html+
@@ -1544,11 +1583,20 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           '<details class="ac-dif2" style="margin-top:8px"><summary>Plan actual · versión '+s.version+'</summary>'+planHTML(actual)+'</details></div>';
       }
     } else if (s.clase_dia!=='descanso'){
-      h += '<div class="ac-sec"><b class="r">Plan · versión '+s.version+' · '+(s.publicada?'publicada':'borrador')+'</b>'+planHTML(actual)+
+      h += FB ? '<div class="ac-sec"><b class="r">Sin feedback del atleta</b>'+esc((EST_FB[estadoFb(s, aid)]||['—'])[0])+(e.pend?' · el plazo venció el '+txtPlazo(s)+'. No se da por hecha ni por no hecha.':'')+
+                '<details class="ac-dif2" style="margin-top:6px"><summary>Plan · versión '+s.version+'</summary>'+planHTML(actual)+'</details></div>'
+              : '<div class="ac-sec"><b class="r">Plan · versión '+s.version+' · '+(s.publicada?'publicada':'borrador')+'</b>'+planHTML(actual)+
         (e.pend?'<div class="nota">Sin feedback: el plazo venció el '+txtPlazo(s)+'. No se da por hecha ni por no hecha.</div>':'')+'</div>';
     }
     // Datos tomados en pista por el entrenador (aparte del feedback del atleta)
-    if (s.clase_dia!=='descanso') h += seguimientoHTML(s, aid, r, versiones);
+    if (s.clase_dia!=='descanso'){
+      var sg = seguimientoHTML(s, aid, r, versiones);
+      if (FB){
+        var nT = tomaDe(s.id, aid).length, nD = r ? discrepancias(s, aid, r).pares.length : 0;
+        sg = nT ? '<details class="ac-sec ac-fbd"'+(nD?' open':'')+'><summary>Tus datos de pista · '+plural(nT,'dato','datos')+(nD?' · '+plural(nD,'discrepancia','discrepancias'):'')+'</summary>'+sg+'</details>' : '';
+      }
+      h += sg;
+    }
     // Registro del entrenador: si el seguimiento de este atleta lo pide, o si ya hay uno.
     if (s.clase_dia!=='descanso' && !s.archivada_en && (e.modo==='registro_entrenador' || e.re)) h += seccionRegistroEntrenador(e.re);
     // Las instrucciones las lee el atleta en su app; la nota privada, solo los entrenadores.
@@ -1756,6 +1804,121 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return d;
   }
   function cerrarDialogo(){ ['ac-dlg','ac-dlg-fondo'].forEach(function(id){ var x=document.getElementById(id); if(x) x.remove(); }); }
+
+  /* ================= FEEDBACK · una bandeja para revisar =================
+     Una fila por sesión y atleta del rango: lo que respondió, tus datos de
+     pista, tus observaciones, discrepancias y cambios posteriores. Se abre
+     con el MISMO detalle y se revisa con la MISMA función
+     (academia_marcar_revisado). Revisar = haberlo leído: no cierra una
+     incidencia ni da el entrenamiento por hecho. */
+  var EST_FB = {
+    recibido:          ['Recibido · sin revisar', 't-nuevo'],
+    corregido:         ['Corregido después de revisarlo', 't-nuevo'],
+    revisado:          ['Revisado', 't-hecha'],
+    pendiente_vencido: ['Pendiente de recibir · plazo vencido', 't-rev'],
+    pendiente_plazo:   ['Pendiente de recibir · en plazo', 't-sind'],
+    no_requerido:      ['Feedback no requerido', 't-sind'],
+    registro_falta:    ['Registro del entrenador · falta el tuyo', 't-rev'],
+    registro_plazo:    ['Registro del entrenador · aún en plazo', 't-sind'],
+    registro_hecho:    ['Registro del entrenador · hecho', 't-v'],
+    ausente:           ['Ausente · no se pide feedback', 't-sind']
+  };
+  var FILTROS_FB = [['por_revisar','Por revisar (recibido o corregido)'],['recibido','Recibido sin revisar'],['corregido','Corregido después de revisarlo'],
+    ['pendiente','Pendiente de recibir'],['revisado','Revisado'],['no_requerido','Feedback no requerido'],['registro','Registro del entrenador'],['ausente','Ausente'],['todos','Todos']];
+  function estadoFb(s, aid){
+    var r = D.reg[s.id+'|'+aid];
+    if (r) return r.revisado_en ? 'revisado' : (r.revision_anterior_en ? 'corregido' : 'recibido');
+    if (ausDeSesion(s, aid)) return 'ausente';
+    var modo = modoDe(aid);
+    // En «registro del entrenador» no se pide nada al atleta: no hay «falta su feedback».
+    if (modo==='registro_entrenador') return D.regEnt[s.id+'|'+aid] ? 'registro_hecho' : (vencido(s) ? 'registro_falta' : 'registro_plazo');
+    if (modo==='no_requerido') return 'no_requerido';
+    return vencido(s) ? 'pendiente_vencido' : 'pendiente_plazo';
+  }
+  function pasaFiltroFb(est, f){
+    f = f || ST.fb.estado;
+    if (f==='todos') return true;
+    if (f==='por_revisar') return est==='recibido' || est==='corregido';
+    if (f==='pendiente') return est==='pendiente_vencido' || est==='pendiente_plazo';
+    if (f==='registro') return est.indexOf('registro_')===0;
+    return est===f;
+  }
+  function listaFb(){
+    var L = [], hoy = hoyISO();
+    D.ses.forEach(function(s){
+      if (s.clase_dia!=='entreno' || D.sust[s.id] || s.fecha > hoy) return;
+      if (!s.publicada && !tieneRegistro(s)) return;      // un borrador no se ha pedido a nadie
+      atletasDe(s).forEach(function(aid){ if (D.atl.some(function(a){ return a.id===aid; })) L.push({ s:s, aid:aid, est:estadoFb(s, aid) }); });
+    });
+    L.sort(function(a,b){ return b.s.fecha.localeCompare(a.s.fecha) || nombreDe(a.aid).localeCompare(nombreDe(b.aid),'es') || (ORD_MOM[a.s.momento]||1)-(ORD_MOM[b.s.momento]||1); });
+    return L;
+  }
+  function listaFbFiltrada(){ return listaFb().filter(function(x){ return (!ST.fb.atleta || x.aid===ST.fb.atleta) && pasaFiltroFb(x.est); }); }
+  function filaFbHTML(x){
+    var s = x.s, aid = x.aid, r = D.reg[s.id+'|'+aid], e = EST_FB[x.est] || [x.est,'t-sind'];
+    var lo = [];
+    if (r){
+      lo.push(r.estado==='a_medias' ? 'Parcial'+(r.completado_pct!=null?' '+r.completado_pct+' %':'') : r.estado==='no_hecho' ? 'No realizada'+(r.motivo_no_hecho?' ('+(NO_HECHO[r.motivo_no_hecho]||r.motivo_no_hecho)+')':'') : 'Realizada');
+      if (r.rpe) lo.push('RPE '+r.rpe);
+      var mol = molestiaTxt(r); if (mol) lo.push(mol);
+    } else if (D.regEnt[s.id+'|'+aid]){ var re = D.regEnt[s.id+'|'+aid]; lo.push((EST_RE[re.estado]||re.estado)+' (tu registro)'); }
+    var m = [];
+    var nt = tomaDe(s.id, aid).length; if (nt) m.push(plural(nt,'dato tuyo de pista','datos tuyos de pista'));
+    var dsc = r ? discrepancias(s, aid, r).pares.length : 0; if (dsc) m.push(plural(dsc,'discrepancia','discrepancias'));
+    var no = (D.notas||[]).filter(function(n){ return n.atleta_id===aid && n.fecha===s.fecha; }).length; if (no) m.push(plural(no,'observación tuya','observaciones tuyas'));
+    if (r && r.version_vista && r.version_vista < s.version) m.push('plan cambiado después (v'+r.version_vista+' → v'+s.version+')');
+    if (r && (r.version_garantia==='sin_garantia' || r.version_garantia==='sobrescrita')) m.push('registro antiguo: sin garantía de qué versión vio');
+    if (r && r.corregido_veces) m.push('el atleta lo corrigió '+plural(r.corregido_veces,'vez','veces'));
+    if (revDe(s.id)) m.push('revisión del plan pendiente');
+    var sel = abierto && abierto.sid===s.id && abierto.aid===aid;
+    return '<button type="button" class="fb-f'+(sel?' sel':'')+'" data-abrir="'+s.id+'|'+aid+'">'+
+      '<span class="fb-c"><b>'+esc(nombreDe(aid))+'</b> · '+esc(fCorta(s.fecha))+(MOMENTO[s.momento]?' · '+esc(MOMENTO[s.momento].toLowerCase()):'')+' · '+nb(esc(tituloDe(s)))+'</span>'+
+      '<span class="fb-e">'+tag(e[1], e[0])+(lo.length?' <span class="fb-x">'+esc(lo.join(' · '))+'</span>':'')+'</span>'+
+      (r && r.notas_atleta ? '<span class="fb-cm">«'+esc(r.notas_atleta)+'»</span>' : '')+
+      (m.length ? '<span class="fb-m">'+esc(m.join(' · '))+'</span>' : '')+'</button>';
+  }
+  function pintarFeedback(){
+    var L = listaFb(), F = listaFbFiltrada(), hoy = hoyISO();
+    var cuenta = {}; FILTROS_FB.forEach(function(f){ cuenta[f[0]] = L.filter(function(x){ return (!ST.fb.atleta || x.aid===ST.fb.atleta) && pasaFiltroFb(x.est, f[0]); }).length; });
+    var filtros = '<select class="ac-sel" id="fb-est" aria-label="Estado de revisión">'+FILTROS_FB.map(function(f){ return '<option value="'+f[0]+'"'+(f[0]===ST.fb.estado?' selected':'')+'>'+esc(f[1])+' ('+cuenta[f[0]]+')</option>'; }).join('')+'</select>'+
+      '<select class="ac-sel" id="fb-at" aria-label="Atleta"><option value="">Todos los atletas</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===ST.fb.atleta?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+
+      '<label class="fb-fecha">Desde <input type="date" class="ac-sel" id="fb-desde" value="'+ST.fb.desde+'" max="'+hoy+'"></label>'+
+      '<label class="fb-fecha">hasta <input type="date" class="ac-sel" id="fb-hasta" value="'+ST.fb.hasta+'" max="'+hoy+'"></label>';
+    var cuerpo = '', fechaAnt = null;
+    F.forEach(function(x){
+      if (x.s.fecha!==fechaAnt){ cuerpo += '<div class="fb-dia">'+esc(fLarga(x.s.fecha))+'</div>'; fechaAnt = x.s.fecha; }
+      cuerpo += filaFbHTML(x);
+    });
+    var nota = '<p class="ac-mini-nota">Revisar es haberlo leído: no cierra restricciones ni incidencias y no da el entrenamiento por hecho. Los atletas en «registro del entrenador» no generan avisos de falta de feedback.</p>';
+    var vacio = '<p class="ac-nada">Nada '+(ST.fb.estado==='por_revisar'?'por revisar':'con este filtro')+' entre el '+esc(fMedia(ST.fb.desde))+' y el '+esc(fMedia(ST.fb.hasta))+'.</p>';
+    if (esMovil()){
+      wrap.innerHTML = cabecera('Feedback', '')+
+        '<div class="ac-barra"><span class="ac-cifras-m" style="margin:0"><span><b>'+cuenta.por_revisar+'</b>por revisar</span><span><b>'+cuenta.pendiente+'</b>pendientes de recibir</span></span><span class="ac-esp"></span>'+
+        '<button type="button" class="ac-btn" data-filtrosm="1" aria-expanded="'+(!!ST.filtrosM)+'">Filtros '+(ST.filtrosM?'▴':'▾')+'</button></div>'+
+        (ST.filtrosM ? '<div class="ac-filtros-m"><div class="ac-barra">'+filtros+'</div>'+nota+'</div>' : '')+
+        '<div class="fb-lista">'+(cuerpo || vacio)+'</div>';
+      return;
+    }
+    wrap.innerHTML = cabecera('Feedback', 'Una bandeja para revisar: lo que respondió cada atleta, tus datos de pista, tus observaciones, discrepancias y cambios. Toca una fila para abrirla; «Revisado y siguiente» pasa a la próxima sin perder el filtro.')+
+      '<div class="ac-cifras"><span class="ac-cifra"><b>'+cuenta.por_revisar+'</b>por revisar</span><span class="ac-cifra"><b>'+cuenta.pendiente+'</b>pendientes de recibir</span><span class="ac-cifra"><b>'+cuenta.revisado+'</b>revisados</span>'+
+        (cuenta.registro?'<span class="ac-cifra"><b>'+cuenta.registro+'</b>registro del entrenador</span>':'')+(cuenta.no_requerido?'<span class="ac-cifra"><b>'+cuenta.no_requerido+'</b>no requeridos</span>':'')+'</div>'+
+      '<div class="ac-barra">'+filtros+'</div>'+nota+
+      '<div class="fb-lista">'+(cuerpo || vacio)+'</div>';
+  }
+  /* El historial de lo que el atleta respondió (sus correcciones, guardadas por la base). */
+  async function historialFeedback(r){
+    var rh = await sb.from('registros_sesion_versiones').select('n,evento,datos,cambios,creada_en,via').eq('registro_id', r.id).order('n');
+    if (rh.error) return '<div class="nota">No se pudo leer el historial: '+esc(rh.error.message)+'</div>';
+    var L = rh.data || [];
+    if (!L.length) return '<div class="nota">El atleta no lo ha corregido.</div>';
+    var CAMPO = { estado:'estado', completado_pct:'%', rpe:'RPE', notas_atleta:'comentario', molestias:'molestias', molestia_sesion:'molestia', tiempos_reales:'tiempos', marcas_texto:'marcas', duracion_min:'duración', motivo_no_hecho:'motivo' };
+    return '<ul class="ac-dif">'+L.map(function(x){
+      var d = x.datos || {}, est = d.estado==='a_medias' ? 'parcial'+(d.completado_pct!=null?' '+d.completado_pct+' %':'') : d.estado==='no_hecho' ? 'no realizada' : d.estado==='completo' ? 'realizada' : '';
+      return '<li><b>Antes de la corrección '+x.n+'</b> ('+fechaHora(x.creada_en)+(x.evento==='borrado'?' · lo borró':'')+')'+
+        (x.cambios && x.cambios.length ? ' · cambió: '+esc(x.cambios.map(function(c){ return CAMPO[c]||c; }).join(', ')) : '')+
+        '<div class="nota" style="margin-top:2px">'+esc([est, d.rpe?'RPE '+d.rpe:'', d.notas_atleta?'«'+d.notas_atleta+'»':''].filter(Boolean).join(' · ') || 'sin datos')+'</div></li>';
+    }).join('')+'</ul>';
+  }
 
   /* ================= APUNTAR EN PISTA (datos del entrenador) =================
      Lo que el entrenador apunta va a academia_toma_datos (mig 468), aparte del
@@ -2425,7 +2588,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (shell && shell.plegarPagina) shell.plegarPagina(ST.vista==='semana' && !esMovil() ? true : null);
     // La posición se conserva al repintar (p. ej. al volver del editor).
     var sc = wrap.querySelector('.ac-scroll'), pos = sc ? [sc.scrollTop, sc.scrollLeft] : null, wy = window.scrollY;
-    if (ST.vista==='semana') pintarSemana(); else pintarHoy();
+    if (ST.vista==='semana') pintarSemana(); else if (ST.vista==='feedback') pintarFeedback(); else pintarHoy();
     var sc2 = wrap.querySelector('.ac-scroll'); if (sc2 && pos){ sc2.scrollTop = pos[0]; sc2.scrollLeft = pos[1]; }
     if (wy) window.scrollTo(0, wy);
     urlActual();
@@ -2446,6 +2609,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     else if (t.id==='ac-fa'){ ST.fAtleta = t.value; pintar(); }
     else if (t.id==='ac-fg'){ ST.fGT = t.value; pintar(); }
     else if (t.id==='ac-movat'){ ST.movAtleta = t.value; pintar(); }
+    else if (t.id==='fb-est'){ ST.fb.estado = t.value; guardar('ac-fb-estado', t.value); cerrar(); pintar(); }
+    else if (t.id==='fb-at'){ ST.fb.atleta = t.value; cerrar(); pintar(); }
+    else if (t.id==='fb-desde' || t.id==='fb-hasta'){ if (t.value){ ST.fb[t.id==='fb-desde'?'desde':'hasta'] = t.value; cerrar(); recargar(); } }
   });
   wrap.addEventListener('click', async function(e){
     var b = e.target.closest('button, a'); if (!b) return;
@@ -2585,6 +2751,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (ds.abrir){ var p = ds.abrir.split('|'); abrir(p[0], p[1]); return; }
     if (ds.revisar){ await marcarRevisado(ds.revisar, true); return; }
     if (ds.norevisar){ await marcarRevisado(ds.norevisar, false); return; }
+    if (ds.revisarSig){
+      // El siguiente se decide ANTES de revisar (con el filtro «por revisar» este desaparece de la lista)
+      var Lf = listaFbFiltrada(), ix = -1; Lf.forEach(function(x,i){ if (x.s.id===abierto.sid && x.aid===abierto.aid) ix = i; });
+      var sig = ix>=0 ? (Lf[ix+1] || null) : null;
+      b.disabled = true;
+      var rr = await sb.rpc('academia_marcar_revisado', { p_registro:ds.revisarSig, p_revisado:true });
+      if (rr.error){ b.disabled = false; avisar('No se pudo: '+rr.error.message, true); return; }
+      await recargar();
+      if (sig){ avisar('Revisado · siguiente'); abrir(sig.s.id, sig.aid); } else { cerrar(); avisar('Revisado · no quedan más con este filtro'); }
+      return;
+    }
+    if (ds.fbHist){
+      var hb = document.getElementById('ac-fb-hist'); hb.hidden = !hb.hidden; if (hb.hidden) return;
+      hb.innerHTML = '<div class="nota">Cargando…</div>';
+      var rgH = D.reg[abierto.sid+'|'+abierto.aid]; hb.innerHTML = rgH ? await historialFeedback(rgH) : '';
+      return;
+    }
     var s = abierto && D.sesPorId[abierto.sid];
     if (ds.editar){ abrirEditor({ s:abierto.sid }); return; }
     if (ds.tmDetalle){ abrirToma((s.bloques||[]).map(function(b){ return b.etiqueta||''; }), [{ s:s, aid:abierto.aid }], nombreDe(abierto.aid)+' · '+tituloDe(s)); return; }

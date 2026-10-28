@@ -196,6 +196,24 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   detalle. Las discrepancias de tramo total indican que el método del atleta es
   «no consta».
 
+**Feedback · una bandeja para revisar (29-oct; sin cambios de base):**
+- Tercera vista de Academia (Hoy · Semana · **Feedback**, también en el menú del
+  mundo en lugar de «Feedback por día»). Una fila por sesión publicada y atleta del
+  rango: lo que hizo (estado, RPE, molestia), su comentario y, aparte, tus datos de
+  pista, discrepancias, tus observaciones, «plan cambiado después», correcciones y
+  la limitación de los registros antiguos («sin garantía de qué versión vio»).
+- Filtros por estado de revisión, atleta y fechas (en la dirección: se conservan
+  al recargar o volver). Estados: **feedback no requerido · pendiente de recibir (en
+  plazo / vencido) · recibido sin revisar · revisado · corregido después de
+  revisarlo**, más «registro del entrenador» (falta el tuyo / en plazo / hecho, sin
+  avisos de falta de feedback del atleta) y «ausente».
+- Se abre con **el mismo detalle**, con lo importante primero y desplegables el
+  plan respondido completo (con sus tiempos), los datos de pista y lo que el atleta
+  respondió antes de corregirlo (`registros_sesion_versiones`). Anterior/siguiente
+  de la lista filtrada («1 de N») y **«Revisado y siguiente»**, con la misma
+  `academia_marcar_revisado`. Revisar = leído: no cierra incidencias ni da el
+  entrenamiento por hecho (se dice ahí).
+
 ## Navegación
 
 ```
