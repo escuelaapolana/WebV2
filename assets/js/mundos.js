@@ -65,6 +65,7 @@
     swim:'<circle cx="16.5" cy="6.5" r="2"/><path d="M4.5 12.5l4.5-3 3 2.5 3.5-2"/><path d="M3 17c1.5 0 1.5-1.2 3-1.2s1.5 1.2 3 1.2 1.5-1.2 3-1.2 1.5 1.2 3 1.2 1.5-1.2 3-1.2 1.5 1.2 3 1.2"/>',
     float:'<circle cx="12" cy="9.5" r="5"/><circle cx="12" cy="9.5" r="2"/><path d="M3 18.5c1.5 0 1.5-1.2 3-1.2s1.5 1.2 3 1.2 1.5-1.2 3-1.2 1.5 1.2 3 1.2 1.5-1.2 3-1.2 1.5 1.2 3 1.2"/>',
     dumbbell:'<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
+    bolt:'<path d="M13.5 3L5.5 13.5h6L10.5 21l8-10.5h-6z"/>',
     stopwatch:'<circle cx="12" cy="13.5" r="7"/><path d="M12 13.5V9.8M10 3.5h4M12 3.5v3M18.2 7.3l1.3-1.3"/>',
     sprout:'<path d="M12 20v-8"/><path d="M12 12c0-3.5-2.5-6-6.5-6 0 3.8 2.6 6 6.5 6z"/><path d="M12 14c0-3.2 2.3-5.5 6-5.5 0 3.5-2.4 5.5-6 5.5z"/>',
     megaphone:'<path d="M4 10v4h3l7 4V6l-7 4H4z"/><path d="M17.5 9a4 4 0 0 1 0 6"/>',
@@ -183,6 +184,19 @@
         {g:'Competición y tests', t:'Competiciones',    i:'flag',      url:B+'admin/competiciones/', d:'Carreras e inscripciones.'},
         {g:'Competición y tests', t:'Quién va a ir',    i:'check',     url:B+'admin/confirmaciones/', d:'Confirmaciones para cada carrera.'},
         {g:'Competición y tests', t:'Liga y récords',   i:'trophy',    url:B+'admin/liga/',         d:'Liga Apolana y récords del club.'}
+      ] },
+    { key:'academia', nombre:'Academia AC98', corto:'Academia AC98', i:'bolt', dot:'#3D55A0', home:B+'portal/academia/',
+      frase:'El grupo de alto rendimiento: lo de hoy, la semana entera, el feedback y lo que hay que revisar.',
+      screens:[
+        {key:'resumen', t:'Hoy', i:'grid', url:B+'portal/academia/'},
+        {key:'semana', t:'Semana', i:'calendar', url:B+'portal/academia/?v=semana', d:'Atletas por días: lo publicado, lo hecho y lo que falta por revisar.'},
+        {g:'Entrenamiento', t:'Planificar', i:'clipboard', url:B+'portal/entrenador/#planificar', d:'Escribir, copiar y publicar las sesiones (la herramienta de siempre).'},
+        {g:'Entrenamiento', t:'Pasar lista', i:'check', url:B+'portal/entrenador/#lista', d:'Quién ha venido hoy.'},
+        {g:'Entrenamiento', t:'Feedback por día', i:'inbox', url:B+'portal/entrenador/#feedback', d:'Lo que ha respondido cada atleta, día a día.'},
+        {g:'Atletas', t:'Atletas', i:'people', url:B+'admin/atletas/?grupo=c288b979-cd00-4abb-96da-30fa997ef297', d:'Las fichas de los atletas de la Academia.'},
+        {g:'Atletas', t:'Observaciones', i:'newspaper', url:B+'portal/entrenador/#notas', d:'Tus notas privadas sobre cada atleta.'},
+        {g:'Competición y tests', t:'Tests y marcas', i:'chart', url:B+'admin/tests/', d:'Batería de tests y marcas.'},
+        {g:'Competición y tests', t:'Competiciones', i:'flag', url:B+'admin/competiciones/', d:'Carreras e inscripciones.'}
       ] },
     { key:'escuela-atl', nombre:'Escuela de atletismo', corto:'Escuela atletismo', i:'sprout', dot:'#3F7A4C', home:B+'portal/escuela-atletismo/',
       frase:'Los peques de la pista: grupos, altas de familias y reparto.',

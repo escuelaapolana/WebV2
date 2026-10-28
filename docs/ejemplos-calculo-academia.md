@@ -102,14 +102,17 @@ sesiones a 0,84 m y la misma separación.
 **F1** · Plan «2×4×120 al 82-87 %» (960 m). El atleta marca «a medias, 60 %», con el
 ✓ del bloque 1 y no el del bloque 2, y comenta «Paré en la 6.ª por el isquio».
 - **% global 60** → se guarda como declaración global. **No** se calcula 0,6 × 960.
-- Realizado identificado: bloque 1 = **480 m** (completitud `incompleto` para la
-  sesión).
+- Se muestra **«480 m confirmados; resto sin concretar»** (bloque 1). Nunca «480 m»
+  a secas como si fuera todo lo que hizo.
 - El comentario sugiere una repetición más del bloque 2 → **propuesta para confirmar**,
   no se cuenta sola.
 - Molestia: dato del atleta, con su zona, enlazado al registro.
 
 **F2** · Plan «6x150 al 85 %»; el atleta apunta **un solo tiempo** (21,5″) y nada más.
-- Confirma **1 rep. (150 m)**. Las otras 5: **ausentes** (no se dan por hechas).
+- Si ese tiempo está vinculado sin ambigüedad a una repetición de 150 m: confirma
+  **1 rep. (150 m)**. Si no se sabe a qué repetición o distancia corresponde: no
+  confirma ninguna.
+- Las demás: **sin concretar** (no se dan por hechas).
 
 **F3** · Plan con «6.º opcional si homogéneo + técnica buena + RPE ≤6».
 - Previsto: 5 obligatorias + 1 opcional, **separadas**.
@@ -131,3 +134,26 @@ tiempos con clave de bloque `cc`.
 de este registro».
 
 **G3** · Registro `vigente_al_enviar` → comparación **probable**, marcada como tal.
+
+## H. Cálculo frente a estimación, método y comparabilidad
+
+**H1** · Dos repeticiones de 150 m confirmadas → **300 m** por cálculo, **no
+estimado** (exacto a partir de datos confirmados). Datos de origen: las dos
+repeticiones.
+
+**H2** · «45′ CC a 4:55–5:15/km» sin distancia medida → minutos **45** (dato); km
+**8,6–9,2 estimados** (cálculo estimado), marcados como estimación y con su origen. Si
+solo hay «45′ CC» sin ritmo → **sin km**.
+
+**H3** · Tiempos del 23-oct: Andrés confirmó que todos fueron **manuales** → método
+`crono_manual` para ese día. Los de otros días sin confirmar → `no_consta` (no se
+extiende).
+
+**H4** · 30 m lanzado: 3,58 (12-sep, método no consta) y 3,52 (10-oct, método no
+consta) → se muestran ambos con **«comparabilidad limitada: método no consta»**, nunca
+como «mismas condiciones».
+
+## I. Lanzados con notación explícita
+
+**I1** · «3×60 lanzados, entrada 20 m + tramo 60 m» → **240 m** totales · entrada
+progresiva 60 m · lanzados 180 m.

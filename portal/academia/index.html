@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Academia AC98 · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>
+  window.APOLANA_BASE="../../";
+  (function(){
+    var v = new URLSearchParams(location.search).get('v');
+    window.APOLANA_MUNDO = { world:'academia', screen: (v==='semana' ? 'semana' : 'resumen'), contentSel:'#ac' };
+  })();
+</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<script src="../../assets/js/mundos.js?v=d2e2d2b1" defer></script>
+<style>
+  /* Academia AC98 · Hoy y Semana (v1 funcional).
+     Criterios (docs/mundo-academia.md): el color solo para información, los
+     estados siempre con texto, menos cajas y sombras, texto secundario legible. */
+  :root{ --mm-acento:#3D55A0; --ac:#3D55A0; --ac-suave:#EEF1F8; --t2:#4F493D; --t3:#5E574A; --borde:#E2DACB; --fila:#EFE9DD; }
+  body{ background:#FAF8F3; }
+  #ac{ max-width:1500px; margin:0 auto; padding:clamp(14px,3vw,22px) clamp(12px,3vw,22px) 60px; color:var(--texto,#2B2A26); font-size:15px; }
+  body.mm-tab-on #ac{ padding-bottom:120px; }
+  #ac *{ box-sizing:border-box; }
+  .ac-nada{ color:var(--t3); font-size:14.5px; padding:24px 4px; text-align:center; }
+
+  /* cabecera */
+  .ac-top{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+  .ac-top h1{ font-family:var(--fuente-titulo); font-size:clamp(23px,4vw,28px); line-height:1.1; color:var(--navy); margin:0; text-transform:none; font-weight:700; }
+  .ac-sub{ color:var(--t2); font-size:14.5px; margin:4px 0 12px; line-height:1.45; }
+  .ac-prueba{ display:inline-block; background:#FFF6D9; color:#6F5300; border:1px solid #EAD58F; border-radius:8px; font-size:13px; font-weight:600; padding:3px 9px; }
+  .ac-vistas{ margin-left:auto; }
+
+  /* controles */
+  .ac-barra{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+  .ac-btn{ font:inherit; font-size:14px; font-weight:600; border-radius:9px; padding:8px 12px; min-height:38px; border:1px solid var(--borde); background:#fff; color:var(--navy); cursor:pointer; white-space:nowrap; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+  .ac-btn:hover{ border-color:#C9BFAC; }
+  .ac-btn.pri{ background:var(--ac); border-color:var(--ac); color:#fff; }
+  .ac-btn.pel{ color:#8F3F24; }
+  .ac-btn:disabled{ opacity:.5; cursor:default; }
+  .ac-btn.mini{ font-size:13px; padding:5px 10px; min-height:32px; }
+  .ac-seg{ display:inline-flex; border:1px solid var(--borde); border-radius:9px; overflow:hidden; background:#fff; }
+  .ac-seg button{ font:inherit; font-size:14px; font-weight:600; color:var(--t3); background:none; border:0; padding:8px 12px; min-height:36px; cursor:pointer; }
+  .ac-seg button.on{ background:var(--navy); color:#fff; }
+  .ac-sel{ font:inherit; font-size:14px; padding:8px 10px; min-height:38px; border:1px solid var(--borde); border-radius:9px; background:#fff; color:var(--navy); max-width:100%; }
+  .ac-esp{ flex:1; }
+
+  /* estados con TEXTO (el color acompaña, no sustituye) */
+  .ac-tag{ display:inline-block; max-width:100%; font-size:12px; font-weight:600; line-height:1.35; border-radius:6px; padding:1px 6px; margin:3px 3px 0 0; border:1px solid transparent; white-space:normal; overflow-wrap:anywhere; vertical-align:top; }
+  .t-bor{ border:1px dashed #8EA0C8; color:#34478A; background:#fff; }
+  .t-hecha{ background:#EAF3EC; color:#2F6A3D; }
+  .t-parcial{ background:#FBF0DC; color:#8A5A0B; }
+  .t-nohecha{ background:#F7E7E1; color:#8F3F24; }
+  .t-sind{ background:#F1EDE3; color:#5E574A; }
+  .t-rev{ background:#FFF6D9; color:#6F5300; border-color:#EAD58F; }
+  .t-nuevo{ background:#E7EEFB; color:#2F4E92; }
+  .t-v{ background:#EEF1F8; color:#3D55A0; }
+
+  /* casilla de sesión */
+  .ac-cs{ display:block; width:100%; text-align:left; font:inherit; color:inherit; border:1px solid #DCE2EF; border-radius:8px; padding:5px 7px; margin:0 0 5px; background:#fff; cursor:pointer; overflow-wrap:anywhere; }
+  .ac-cs:last-child{ margin-bottom:0; }
+  .ac-cs:hover{ border-color:#9AAAD0; }
+  .ac-cs:focus-visible{ outline:2px solid var(--ac); outline-offset:1px; }
+  .ac-cs.borr{ border-style:dashed; border-color:#9AAAD0; }
+  .ac-cs .mo{ display:block; font-size:11px; font-weight:700; color:var(--t3); text-transform:uppercase; letter-spacing:.05em; }
+  .ac-cs .ti{ display:block; font-weight:700; color:var(--navy); line-height:1.25; font-size:13.5px; }
+  .ac-cs .l2{ display:block; color:var(--t2); line-height:1.3; font-size:13px; margin-top:1px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .ac-cs .l3{ display:block; color:var(--t3); font-size:12.5px; line-height:1.3; margin-top:1px; }
+  .ac-cs.des{ background:#F4F1EA; border-color:#F4F1EA; color:var(--t3); cursor:default; font-size:13px; }
+  .ac-cs.aus{ background:#FBF4EC; border-color:#EAD9C2; }
+  .ac-cs.sust{ background:#F7F5F0; border-color:#E6E0D3; opacity:.85; }
+  .ac-cs.sust .ti{ color:var(--t3); text-decoration:line-through; }
+  .ac-cs.sin{ border:1px dotted #CFC6B4; color:var(--t3); text-align:center; background:transparent; cursor:default; font-size:12.5px; }
+  .compacta .ac-cs .l2, .compacta .ac-cs .l3{ display:none; }
+  .ac-cs.sel{ box-shadow:0 0 0 2px var(--ac); }
+
+  /* tabla Semana */
+  .ac-scroll{ overflow:auto; max-height:calc(100vh - 250px); min-height:320px; border:1px solid var(--borde); border-radius:12px; background:#fff; }
+  table.ac-sem{ border-collapse:separate; border-spacing:0; width:100%; min-width:1120px; table-layout:fixed; font-size:13.5px; }
+  .ac-sem th{ position:sticky; top:0; z-index:2; background:#fff; border-bottom:1px solid var(--borde); padding:8px; text-align:left; font-weight:700; color:var(--navy); font-size:13.5px; }
+  .ac-sem th small{ display:block; font-weight:500; color:var(--t3); font-size:12px; }
+  .ac-sem td{ border-bottom:1px solid var(--fila); border-right:1px solid #F3EFE6; padding:6px; vertical-align:top; }
+  .ac-sem .at{ position:sticky; left:0; z-index:1; background:#fff; width:148px; border-right:1px solid var(--borde); }
+  .ac-sem th.at{ z-index:3; }
+  .ac-sem td.hoy{ background:#F5F7FC; }
+  .ac-sem th.hoy{ background:#EEF1F8; }
+  .ac-sem tfoot td{ position:sticky; bottom:0; z-index:1; background:#FAF8F3; font-size:12.5px; color:var(--t2); border-top:1px solid var(--borde); line-height:1.4; }
+  .ac-sem tfoot td.at{ z-index:3; font-weight:700; color:var(--navy); }
+  .ac-nom{ font-weight:700; color:var(--navy); font-size:14.5px; line-height:1.2; overflow-wrap:anywhere; }
+  .ac-nom small{ display:block; font-weight:500; color:var(--t3); font-size:12.5px; margin-top:2px; }
+  .ac-ley{ font-size:13px; color:var(--t2); margin-top:10px; line-height:1.65; }
+  .ac-ley summary{ cursor:pointer; font-weight:600; color:var(--navy); }
+
+  /* Hoy */
+  .ac-cifras{ display:flex; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
+  .ac-cifra{ border:1px solid var(--borde); background:#fff; border-radius:10px; padding:7px 12px; font-size:14px; color:var(--t2); }
+  .ac-cifra b{ font-family:var(--fuente-display); font-size:20px; color:var(--navy); margin-right:4px; }
+  .ac-grid2{ display:grid; grid-template-columns:minmax(0,1.75fr) minmax(0,1fr); gap:14px; align-items:start; }
+  .ac-caja{ background:#fff; border:1px solid var(--borde); border-radius:12px; overflow:hidden; margin-bottom:14px; }
+  .ac-caja > h2{ margin:0; padding:10px 14px; font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--t2); border-bottom:1px solid var(--borde); display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; font-family:inherit; }
+  .ac-caja > h2 small{ margin-left:auto; text-transform:none; letter-spacing:0; font-weight:500; font-size:13px; }
+  table.ac-lst{ width:100%; border-collapse:collapse; font-size:14px; }
+  .ac-lst th{ text-align:left; font-size:12.5px; color:var(--t3); font-weight:600; padding:8px 12px; border-bottom:1px solid var(--borde); }
+  .ac-lst td{ padding:9px 12px; border-bottom:1px solid var(--fila); vertical-align:top; }
+  .ac-lst tr:last-child td{ border-bottom:0; }
+  .ac-lst .ac-cs{ margin-bottom:4px; }
+  .ac-acc{ white-space:nowrap; }
+  .ac-link{ font:inherit; background:none; border:0; padding:0; color:var(--azul,#2F6FA8); font-weight:600; font-size:13.5px; cursor:pointer; text-decoration:none; margin-right:12px; }
+  .ac-pend ul{ margin:0; padding:0; }
+  .ac-pend li{ list-style:none; padding:10px 14px; border-bottom:1px solid var(--fila); font-size:14px; line-height:1.4; }
+  .ac-pend li:last-child{ border-bottom:0; }
+  .ac-pend .o{ display:block; color:var(--t3); font-size:13px; margin-top:2px; }
+  .ac-pend .q{ display:block; color:var(--t2); font-size:13.5px; margin-top:2px; }
+  .ac-pend .bt{ display:flex; gap:12px; margin-top:6px; flex-wrap:wrap; }
+  .ac-pend .vacio{ color:var(--t3); }
+  .ac-grp{ border-bottom:1px solid var(--fila); }
+  .ac-grp:last-child{ border-bottom:0; }
+  .ac-grp > summary{ list-style:none; padding:11px 14px; cursor:pointer; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .ac-grp > summary::-webkit-details-marker{ display:none; }
+  .ac-grp > summary::before{ content:'▸'; color:var(--t3); font-size:12px; }
+  .ac-grp[open] > summary::before{ content:'▾'; }
+  .ac-grp > summary b{ color:var(--navy); }
+  .ac-grp .quien{ color:var(--t2); font-size:14px; }
+  .ac-grp .dentro{ padding:0 14px 12px 32px; font-size:14px; color:var(--t2); }
+  .ac-dif{ margin:6px 0 0; padding:0; }
+  .ac-dif li{ list-style:none; padding:3px 0; }
+  .ac-sug{ background:#FAF8F3; }
+  .ac-form{ padding:12px 14px; border-top:1px solid var(--fila); display:grid; gap:8px; }
+  .ac-form label{ font-size:13.5px; color:var(--t2); }
+  .ac-form input[type=text], .ac-form textarea{ font:inherit; font-size:14.5px; border:1px solid var(--borde); border-radius:9px; padding:8px 10px; width:100%; color:var(--navy); background:#fff; }
+  .ac-checks{ display:grid; gap:4px; }
+  .ac-checks label{ display:flex; gap:8px; align-items:baseline; color:var(--navy); }
+
+  /* Detalle (lateral en PC, pantalla completa en móvil) */
+  .ac-lado{ position:fixed; z-index:650; top:0; right:0; bottom:0; width:min(460px,100%); background:#fff; border-left:1px solid var(--borde); box-shadow:-16px 0 30px -26px rgba(46,66,86,.45); overflow:auto; overscroll-behavior:contain; }
+  .ac-lado[hidden]{ display:none; }
+  .ac-lado .cab{ display:flex; align-items:center; gap:6px; padding:10px 12px; border-bottom:1px solid var(--borde); position:sticky; top:0; background:#fff; z-index:2; }
+  .ac-lado .cab .x{ margin-left:auto; }
+  .ac-lado .in{ padding:14px 16px 40px; }
+  .ac-lado h3{ margin:2px 0 4px; font-family:var(--fuente-titulo); font-size:22px; line-height:1.15; color:var(--navy); }
+  .ac-quien{ color:var(--t3); font-size:14px; }
+  .ac-sec{ border-top:1px solid var(--fila); padding:12px 0; font-size:14.5px; line-height:1.45; }
+  .ac-sec > b.r{ display:block; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--t3); margin-bottom:5px; }
+  .ac-sec .nota{ color:var(--t3); font-size:13px; margin-top:6px; }
+  .ac-cita{ color:var(--t2); }
+  .ac-aviso{ background:#FFF8E6; border:1px solid #EBD9A6; border-radius:10px; padding:9px 12px; font-size:14px; margin:10px 0 0; color:#4F3E00; }
+  .ac-ausbox{ background:#FBF4EC; border:1px solid #EAD9C2; border-radius:10px; padding:9px 12px; font-size:14px; margin:10px 0 0; }
+  .ac-plan{ font-size:14px; }
+  .ac-bl{ margin:0 0 9px; }
+  .ac-bl > b{ display:block; color:var(--navy); font-size:13.5px; }
+  .ac-bl ul{ margin:3px 0 0; padding:0 0 0 16px; }
+  .ac-bl li{ margin:2px 0; color:var(--t2); }
+  .ac-bl li .ex{ color:var(--t3); font-size:13px; }
+  .ac-bl li .det{ display:block; color:var(--t3); font-size:13px; }
+  .ac-bl li .hz{ display:inline-block; margin-left:6px; font-size:12px; font-weight:600; color:#2F6A3D; background:#EAF3EC; border-radius:6px; padding:0 6px; }
+  .ac-bl .pie{ color:var(--t3); font-size:13px; margin-top:3px; font-style:italic; }
+  .ac-dif2 > summary{ cursor:pointer; color:var(--azul,#2F6FA8); font-weight:600; }
+  .ac-menos{ background:#FBEDE8; color:#8F3F24; text-decoration:line-through; padding:2px 5px; border-radius:4px; display:block; margin-top:4px; font-size:13.5px; }
+  .ac-mas{ background:#E9F4EC; color:#2F6A3D; padding:2px 5px; border-radius:4px; display:block; margin-top:3px; font-size:13.5px; }
+  .ac-int{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:8px; }
+  .ac-int label{ font-size:13px; color:var(--t3); display:grid; gap:3px; }
+  .ac-int input, .ac-int select{ font:inherit; font-size:14px; border:1px solid var(--borde); border-radius:8px; padding:7px 9px; color:var(--navy); background:#fff; width:100%; }
+  .ac-int .ancho{ grid-column:1 / -1; }
+  .ac-obs{ border-left:3px solid #D9D2C3; padding:2px 0 2px 9px; margin:6px 0; color:var(--t2); }
+  .ac-obs small{ display:block; color:var(--t3); font-size:12.5px; }
+  .ac-fondo{ position:fixed; inset:0; z-index:640; background:rgba(46,66,86,.35); }
+  .ac-fondo[hidden]{ display:none; }
+
+  /* Diálogo (publicar, imprimir) */
+  .ac-dlg{ position:fixed; z-index:720; left:50%; top:50%; transform:translate(-50%,-50%); width:min(520px,calc(100% - 24px)); max-height:calc(100vh - 40px); overflow:auto; background:#fff; border-radius:14px; box-shadow:0 24px 60px -20px rgba(30,45,65,.55); padding:18px 18px 16px; }
+  .ac-dlg h3{ margin:0 0 6px; font-family:var(--fuente-titulo); color:var(--navy); font-size:20px; }
+  .ac-dlg p, .ac-dlg li{ font-size:14.5px; color:var(--t2); line-height:1.45; }
+  .ac-dlg .pie{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap; }
+  .ac-dlg label.op{ display:flex; gap:8px; align-items:flex-start; font-size:14.5px; color:var(--navy); margin:8px 0; }
+  .ac-dlg-fondo{ position:fixed; inset:0; z-index:710; background:rgba(46,66,86,.45); }
+
+  .ac-toast{ position:fixed; left:50%; bottom:28px; transform:translate(-50%,14px); opacity:0; transition:.22s; z-index:800; background:var(--navy,#2E4256); color:#fff; font-size:14px; padding:10px 18px; border-radius:999px; max-width:calc(100% - 32px); text-align:center; pointer-events:none; }
+  .ac-toast.ver{ opacity:1; transform:translate(-50%,0); } .ac-toast.err{ background:#B0563A; }
+  body.mm-tab-on .ac-toast{ bottom:104px; }
+
+  /* ===== Móvil ===== */
+  .ac-dias{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; margin:0 0 10px; }
+  .ac-dias button{ font:inherit; border:1px solid var(--borde); background:#fff; border-radius:10px; padding:6px 2px; font-weight:700; color:var(--t2); font-size:13.5px; text-align:center; cursor:pointer; min-height:48px; }
+  .ac-dias button small{ display:block; font-weight:500; font-size:12px; color:var(--t3); }
+  .ac-dias button.hoy{ border-color:var(--ac); }
+  .ac-dias button.on{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  .ac-dias button.on small{ color:#D6DCE8; }
+  .ac-fila-m{ background:#fff; border:1px solid var(--borde); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .ac-fila-m > .ac-nom{ margin-bottom:6px; }
+  .ac-dia-m{ font-weight:700; color:var(--navy); font-size:14px; margin:12px 0 5px; }
+  .ac-cond{ margin:0 0 10px; }
+  .ac-cond > summary{ cursor:pointer; font-weight:600; color:var(--navy); font-size:14.5px; padding:6px 0; }
+  .ac-cond .ac-barra{ margin-top:6px; }
+  .ac-avisos-m{ background:#fff; border:1px solid var(--borde); border-radius:12px; margin:0 0 12px; }
+  .ac-avisos-m > summary{ cursor:pointer; padding:11px 14px; font-weight:700; color:var(--navy); list-style:none; }
+  .ac-avisos-m > summary::-webkit-details-marker{ display:none; }
+  .ac-avisos-m > summary small{ display:block; font-weight:500; color:var(--t3); font-size:13px; margin-top:2px; }
+  .ac-avisos-m .ac-caja{ border:0; border-top:1px solid var(--borde); border-radius:0; margin:0; }
+  @media (max-width:759px){
+    .ac-grid2{ grid-template-columns:minmax(0,1fr); }
+    .ac-top h1{ font-size:23px; }
+    .ac-barra .ac-btn{ padding:8px 10px; }
+    .ac-vistas{ margin-left:0; }
+    .ac-lado{ width:100%; border-left:0; }
+    .ac-int{ grid-template-columns:minmax(0,1fr); }
+    .ac-grp .dentro{ padding-left:14px; }
+    .ac-cifras{ gap:6px; }
+    .ac-cifra{ padding:5px 9px; font-size:13px; }
+    .ac-cifra b{ font-size:17px; }
+    .ac-top{ gap:8px; }
+  }
+
+  /* Impresión: solo el entrenamiento del día */
+  #ac-imp{ display:none; }
+  @media print{
+    body.ac-imprimiendo > *:not(#ac-imp){ display:none !important; }
+    body.ac-imprimiendo{ background:#fff !important; padding:0 !important; }
+    body.ac-imprimiendo #ac-imp{ display:block; color:#000; font-size:11.5pt; line-height:1.35; }
+    #ac-imp h1{ font-size:16pt; margin:0 0 2mm; }
+    #ac-imp .imp-sub{ font-size:10pt; color:#333; margin:0 0 5mm; }
+    #ac-imp .imp-g{ border-top:1px solid #999; padding:3mm 0; break-inside:avoid; }
+    #ac-imp .imp-g h2{ font-size:13pt; margin:0 0 1mm; }
+    #ac-imp .imp-q{ font-size:10.5pt; color:#222; margin:0 0 2mm; }
+    #ac-imp .imp-bl{ margin:1.5mm 0; }
+    #ac-imp .imp-bl b{ font-size:10.5pt; }
+    #ac-imp ul{ margin:.5mm 0 0 5mm; padding:0; }
+    #ac-imp li{ margin:.4mm 0; }
+    #ac-imp .imp-ind{ margin:1mm 0 0 4mm; }
+    #ac-imp .imp-pie{ font-size:9.5pt; color:#333; border-top:1px solid #999; padding-top:2mm; margin-top:3mm; }
+    @page{ margin:12mm; }
+  }
+</style>
+</head>
+<body>
+  <div id="ac"><p class="ac-nada">Cargando…</p></div>
+  <div class="ac-fondo" id="ac-fondo" hidden></div>
+  <aside class="ac-lado" id="ac-lado" role="dialog" aria-modal="false" aria-label="Detalle de la sesión" hidden></aside>
+  <div class="ac-toast" id="ac-toast" role="status" aria-live="polite"></div>
+  <div id="ac-imp"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('ac');
+  var lado = document.getElementById('ac-lado');
+  var fondo = document.getElementById('ac-fondo');
+  var toastEl = document.getElementById('ac-toast');
+  var imp = document.getElementById('ac-imp');
+  var Q = new URLSearchParams(location.search);
+
+  /* ---------- utilidades ---------- */
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function guardar(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  var _t; function avisar(m,err){ toastEl.textContent=m; toastEl.className='ac-toast ver'+(err?' err':''); clearTimeout(_t); _t=setTimeout(function(){ toastEl.className='ac-toast'; }, err?4200:2200); }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function isoDe(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function deISO(s){ var p=String(s).split('-'); return new Date(+p[0],+p[1]-1,+p[2]); }
+  function sumar(s,n){ var d=deISO(s); d.setDate(d.getDate()+n); return isoDe(d); }
+  function lunesDe(s){ var d=deISO(s); d.setDate(d.getDate()-((d.getDay()+6)%7)); return isoDe(d); }
+  function hoyISO(){ return isoDe(new Date()); }
+  var MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var MES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var DS=['dom','lun','mar','mié','jue','vie','sáb'];
+  var DS_L=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var DS_I=['D','L','M','X','J','V','S'];
+  function fCorta(s){ var d=deISO(s); return DS[d.getDay()]+' '+d.getDate(); }
+  function fMedia(s){ var d=deISO(s); return d.getDate()+' '+MES[d.getMonth()]; }
+  function fLarga(s){ var d=deISO(s); return DS_L[d.getDay()]+' '+d.getDate()+' de '+MES_L[d.getMonth()]; }
+  function hhmm(t){ return t ? String(t).slice(0,5) : ''; }
+  function fechaHora(ts){ if(!ts) return ''; var d=new Date(ts); return d.getDate()+' '+MES[d.getMonth()]+' · '+pad(d.getHours())+':'+pad(d.getMinutes()); }
+  function plural(n, uno, varios){ return n+' '+(n===1?uno:varios); }
+  function capital(s){ s=String(s||'').trim(); if(!s) return s; if(s===s.toUpperCase()) s=s.toLowerCase().replace(/(^|\s)\S/g,function(c){return c.toUpperCase();}); return s; }
+  function esMovil(){ return window.innerWidth < 760; }
+
+  var MOMENTO = { manana:'Mañana', tarde:'Tarde', sin_especificar:'Sin especificar', unica:'' };
+  var ORD_MOM = { manana:0, unica:1, tarde:2, sin_especificar:3 };
+  var ZONA = { isquio:'isquio', soleo_gemelo:'sóleo/gemelo', rodilla:'rodilla', lumbar:'lumbar', cadera:'cadera', tobillo:'tobillo', aductor:'aductor', pie:'pie', otra:'otra zona' };
+  var MOTIVO_AUS = { viaje:'Viaje', estudios:'Estudios', trabajo:'Trabajo', enfermedad:'Enfermedad', lesion:'Lesión', otro:'Otro motivo' };
+  var NO_HECHO = { tiempo:'falta de tiempo', molestia:'molestia', enfermedad:'enfermedad', viaje:'viaje', instalacion:'instalación', cansancio:'cansancio', otro:'otro motivo' };
+  var GARANTIA = {
+    exacta:'Respondió exactamente esta versión.',
+    vigente_al_enviar:'Era la versión vigente al enviar (la app no dijo cuál tenía en pantalla).',
+    sin_garantia:'Registro antiguo: no se sabe con certeza qué versión vio.',
+    sobrescrita:'Registro antiguo: el plan cambió después y no se guardó lo que vio.'
+  };
+
+  /* ---------- estado ---------- */
+  var ST = {
+    vista: Q.get('v')==='semana' ? 'semana' : 'hoy',
+    modo: leer('ac-modo')==='compacta' ? 'compacta' : 'detallada',
+    semana: lunesDe(Q.get('w') || hoyISO()),
+    dia: Q.get('d') || hoyISO(),
+    diaMovil: null,
+    fAtleta: '', fGT: '',
+    porGrupos: Q.get('pg') ? Q.get('pg')==='1' : leer('ac-porgrupos')==='1',
+    movAtleta: '',
+    g: null, grupos: []
+  };
+  var D = null;       // datos cargados del rango
+  var REVS = [];      // revisiones pendientes de todo el grupo
+  var abierto = null; // {sid, aid}
+
+  /* ---------- grupos de Academia accesibles ---------- */
+  var rg = await sb.rpc('academia_mis_grupos');
+  ST.grupos = (rg && !rg.error && rg.data) ? rg.data : [];
+  if (!ST.grupos.length){
+    wrap.innerHTML = '<div class="ac-top"><h1>Academia AC98</h1></div><p class="ac-nada">No tienes acceso a la Academia. La ven la administración y el entrenador del grupo.</p>';
+    return;
+  }
+  (function(){
+    var pedido = Q.get('g') || leer('ac-grupo');
+    ST.g = ST.grupos.filter(function(x){ return x.grupo_id===pedido; })[0] || ST.grupos.filter(function(x){ return !x.es_prueba; })[0] || ST.grupos[0];
+  })();
+
+  function urlActual(){
+    var p = new URLSearchParams();
+    if (ST.vista==='semana') p.set('v','semana');
+    if (ST.g && ST.grupos.length>1) p.set('g', ST.g.grupo_id);
+    if (ST.vista==='semana' && ST.semana!==lunesDe(hoyISO())) p.set('w', ST.semana);
+    if (ST.vista==='hoy' && ST.dia!==hoyISO()) p.set('d', ST.dia);
+    var s = p.toString();
+    history.replaceState(null, '', location.pathname + (s?'?'+s:''));
+  }
+
+  /* ---------- carga de datos ---------- */
+  function rango(){
+    if (ST.vista==='semana') return { desde: ST.semana, hasta: sumar(ST.semana, 6) };
+    return { desde: sumar(ST.dia, -7), hasta: ST.dia };   // Hoy: también la última semana, para lo pendiente
+  }
+  async function enTrozos(ids, fn){
+    var out = [];
+    for (var i=0;i<ids.length;i+=80){
+      var r = await fn(ids.slice(i,i+80));
+      if (r.error) throw r.error;
+      out = out.concat(r.data||[]);
+    }
+    return out;
+  }
+  async function cargar(){
+    var G = ST.g.grupo_id, R = rango();
+    var res = await Promise.all([
+      sb.from('sesiones').select('id,fecha,hora,momento,clase_dia,publicada,version,titulo,objetivo,exigencia,exigencia_neuro,exigencia_meta,bloques,atletas_ids,duracion_min,archivada_en,sustituye_a,nota_razonamiento,updated_at')
+        .eq('grupo_id', G).gte('fecha', R.desde).lte('fecha', R.hasta),
+      sb.from('atletas').select('id,nombre,apellidos,nombre_corto,pruebas_principales,estado').eq('grupo_id', G),
+      sb.from('grupos_trabajo').select('id,fecha,nombre,orden,nota').eq('grupo_id', G).gte('fecha', R.desde).lte('fecha', R.hasta).order('orden'),
+      sb.from('sesiones_revisiones').select('id,sesion_id,version_base,propuesta,motivo,creada_en,via,sesiones!inner(id,fecha,titulo,atletas_ids,grupo_id,version)')
+        .eq('estado','pendiente').eq('sesiones.grupo_id', G).order('creada_en')
+    ]);
+    for (var i=0;i<res.length;i++){ if (res[i].error) throw res[i].error; }
+    var ses = res[0].data||[], atl = res[1].data||[], gts = res[2].data||[];
+    REVS = res[3].data||[];
+    var sids = ses.map(function(s){ return s.id; });
+    var conocidos = {}; atl.forEach(function(a){ conocidos[a.id]=1; });
+    var faltan = {};
+    ses.forEach(function(s){ (s.atletas_ids||[]).forEach(function(id){ if(!conocidos[id]) faltan[id]=1; }); });
+    var extra = Object.keys(faltan).length ? await enTrozos(Object.keys(faltan), function(ids){ return sb.from('atletas').select('id,nombre,apellidos,nombre_corto,pruebas_principales,estado').in('id', ids); }) : [];
+    atl = atl.concat(extra);
+    var aids = atl.map(function(a){ return a.id; });
+    var r2 = await Promise.all([
+      sids.length ? enTrozos(sids, function(ids){ return sb.from('registros_sesion').select('id,sesion_id,atleta_id,estado,completado_pct,rpe,duracion_min,molestia_sesion,molestia_localizacion,molestias,notas_atleta,marcas_texto,tiempos_reales,version_vista,version_garantia,version_nota,sesion_version_id,revisado_en,revisado_por,created_at,corregido_veces,motivo_no_hecho,nota_no_hecho,sensacion_general,momento,superficie').in('sesion_id', ids); }) : [],
+      aids.length ? enTrozos(aids, function(ids){ return sb.from('ausencias').select('id,atleta_id,fecha,motivo,motivo_tipo,sesion_id,nota,avisado_por_nombre').in('atleta_id', ids).gte('fecha', R.desde).lte('fecha', R.hasta); }) : [],
+      gts.length ? enTrozos(gts.map(function(g){ return g.id; }), function(ids){ return sb.from('grupos_trabajo_miembros').select('id,grupo_trabajo_id,sesion_id,bloque,orden').in('grupo_trabajo_id', ids).order('orden'); }) : []
+    ]);
+    D = { desde:R.desde, hasta:R.hasta, ses:ses, atl:atl, reg:{}, aus:r2[1], gt:gts, gtm:r2[2], sesPorId:{}, sust:{} };
+    r2[0].forEach(function(r){ D.reg[r.sesion_id+'|'+r.atleta_id] = r; });
+    ses.forEach(function(s){ D.sesPorId[s.id]=s; });
+    ses.forEach(function(s){ if (s.sustituye_a && !s.archivada_en) D.sust[s.sustituye_a] = s; });
+    // Las archivadas solo se ven si tienen algo registrado (lo realizado se conserva)
+    D.ses = ses.filter(function(s){ return !s.archivada_en || tieneRegistro(s); });
+    // Atletas: los activos del grupo y cualquiera con sesión en el rango
+    var conSesion = {}; D.ses.forEach(function(s){ (s.atletas_ids||[]).forEach(function(id){ conSesion[id]=1; }); });
+    D.atl = atl.filter(function(a){ return a.estado==='activo' || conSesion[a.id]; });
+    var vistos = {}; D.atl.forEach(function(a){ var n=capital(a.nombre_corto||a.nombre); vistos[n]=(vistos[n]||0)+1; });
+    D.atl.forEach(function(a){ var n=capital(a.nombre_corto||a.nombre); a._n = vistos[n]>1 ? n+' '+String(a.apellidos||'').trim().charAt(0)+'.' : n; });
+    D.atl.sort(function(a,b){ return a._n.localeCompare(b._n,'es'); });
+  }
+  function tieneRegistro(s){ return (s.atletas_ids||[]).some(function(a){ return !!D.reg[s.id+'|'+a]; }); }
+
+  /* ---------- consultas sobre los datos ---------- */
+  function atletasDe(s){ return s.atletas_ids && s.atletas_ids.length ? s.atletas_ids : D.atl.map(function(a){ return a.id; }); }
+  function sesDe(aid, f){
+    return D.ses.filter(function(s){ return s.fecha===f && atletasDe(s).indexOf(aid)!==-1; })
+      .sort(function(a,b){ return (ORD_MOM[a.momento]||1)-(ORD_MOM[b.momento]||1) || hhmm(a.hora).localeCompare(hhmm(b.hora)); });
+  }
+  function ausDia(aid, f){ return D.aus.filter(function(x){ return x.atleta_id===aid && x.fecha===f; }); }
+  function ausDeSesion(s, aid){
+    var L = ausDia(aid, s.fecha);
+    return L.filter(function(x){ return x.sesion_id===s.id; })[0] || L.filter(function(x){ return !x.sesion_id; })[0] || null;
+  }
+  function revDe(sid){ return REVS.filter(function(r){ return r.sesion_id===sid; })[0] || null; }
+  function esEntreno(s){ return s.clase_dia!=='descanso' && s.clase_dia!=='ausencia' && !D.sust[s.id] && !s.archivada_en; }
+  function atleta(aid){ return D.atl.filter(function(a){ return a.id===aid; })[0] || { id:aid, _n:'Atleta' }; }
+
+  /* Plazo del feedback: el día (más los días de margen) a la hora límite, y
+     nunca antes de que termine la sesión. */
+  function plazo(s){
+    var hl = hhmm(ST.g.feedback_hora_limite||'22:00').split(':');
+    var d = deISO(sumar(s.fecha, ST.g.feedback_dias||0)); d.setHours(+hl[0], +hl[1], 0, 0);
+    if (s.hora){ var h=hhmm(s.hora).split(':'); var fin=deISO(s.fecha); fin.setHours(+h[0], +h[1]+(s.duracion_min||90), 0, 0); if (fin>d) d=fin; }
+    return d;
+  }
+  function vencido(s){ return Date.now() > plazo(s).getTime(); }
+  function txtPlazo(s){ var p=plazo(s); return DS[p.getDay()]+' '+p.getDate()+' a las '+pad(p.getHours())+':'+pad(p.getMinutes()); }
+
+  function molestiaTxt(r){
+    if (!r) return '';
+    if (r.molestia_sesion!=null && r.molestia_sesion>=1) return 'molestia '+r.molestia_sesion+'/10'+(r.molestia_localizacion && r.molestia_localizacion!=='ninguna' ? ' · '+(ZONA[r.molestia_localizacion]||r.molestia_localizacion) : '');
+    var m = String(r.molestias||'').trim();
+    if (r.molestia_sesion==null && m && !/^(no|ninguna|nada|-)\.?$/i.test(m)) return 'molestia (ver comentario)';
+    return '';
+  }
+
+  /* ---------- texto del plan ---------- */
+  function filaPartes(f){
+    var ex = [];
+    if (f.series) ex.push(f.distancia ? f.series+'×'+f.distancia : f.series+' series');
+    else if (f.distancia) ex.push(f.distancia);
+    if (f.ritmo) ex.push(f.ritmo);
+    if (f.carga) ex.push(f.carga);
+    if (f.descanso) ex.push('rec. '+f.descanso);
+    if (f.calzado) ex.push(f.calzado);
+    return { main:String(f.ejercicio||'').trim(), extra:ex.join(' · '), det:String(f.detalle||'').trim() };
+  }
+  function filaTxt(f){ var p=filaPartes(f); return [p.main, p.extra].filter(Boolean).join(' · '); }
+  var NO_PRINC = /calentamiento|vuelta a la calma|enfriamiento|activaci/i;
+  /* Lo de la casilla: la parte principal resumida, sin cálculos. Solo junta
+     «Bloque 1/2 … Bloque 2/2» cuando dicen exactamente lo mismo. */
+  function principal(s){
+    var b = s.bloques||[];
+    var pp = b.filter(function(x){ return /principal/i.test(x.etiqueta||''); });
+    if (!pp.length) pp = b.filter(function(x){ return !NO_PRINC.test(x.etiqueta||''); });
+    if (!pp.length) pp = b;
+    var L = [];
+    pp.forEach(function(x){ (x.filas||[]).forEach(function(f){ var t=filaTxt(f); if(t) L.push(t); }); });
+    return compactar(L);
+  }
+  function compactar(L){
+    var out = [], i = 0;
+    while (i < L.length){
+      var m = /^Bloque\s+1\/(\d+):\s*(.+)$/i.exec(L[i]);
+      if (m){
+        var n = +m[1], resto = m[2], ok = n>1 && i+n<=L.length;
+        for (var k=1; ok && k<n; k++){ var mk=/^Bloque\s+(\d+)\/(\d+):\s*(.+)$/i.exec(L[i+k]); ok = !!mk && +mk[1]===k+1 && +mk[2]===n && mk[3]===resto; }
+        if (ok){ out.push(n+' bloques: '+resto); i+=n; continue; }
+      }
+      out.push(L[i]); i++;
+    }
+    return out;
+  }
+  /* Objetivo + título, sin repetir lo mismo dos veces («Preventivos ·
+     Preventivo + 15′ CC» → solo el título; «Técnica de vallas · Vallas» →
+     solo el objetivo). */
+  function tituloDe(s){
+    var t = String(s.titulo||'').trim(), o = String(s.objetivo||'').trim();
+    var tl = t.toLowerCase(), ol = o.toLowerCase();
+    if (!o) return t || 'Sesión';
+    if (!t) return o;
+    if (tl===ol || tl.indexOf(ol)!==-1 || tl.indexOf(ol.slice(0,6))===0) return t;
+    if (ol.indexOf(tl)!==-1) return o;
+    return o+' · '+t;
+  }
+  /* En la casilla, corta: «Exigencia alta · neuromuscular» (el nivel de cada
+     componente solo si difiere del global). El detalle lleva la completa. */
+  function exigCorta(s){
+    if (!s.exigencia && !s.exigencia_neuro && !s.exigencia_meta) return '';
+    var g = s.exigencia, c = [];
+    if (s.exigencia_neuro) c.push(s.exigencia_neuro===g ? 'neuromuscular' : 'neuromuscular '+s.exigencia_neuro);
+    if (s.exigencia_meta) c.push(s.exigencia_meta===g ? 'metabólica' : 'metabólica '+s.exigencia_meta);
+    return (g ? 'Exigencia '+g : 'Exigencia') + (c.length ? ' · '+c.join(' y ') : '');
+  }
+  function exigTxt(s){
+    if (!s.exigencia && !s.exigencia_neuro && !s.exigencia_meta) return '';
+    var p = [];
+    if (s.exigencia) p.push('exigencia '+s.exigencia);
+    if (s.exigencia_neuro) p.push('neuromuscular '+s.exigencia_neuro);
+    if (s.exigencia_meta) p.push('metabólica '+s.exigencia_meta);
+    return p.join(' · ');
+  }
+
+  /* ---------- estados (tres dimensiones, con texto) ---------- */
+  function tag(cls, txt){ return '<span class="ac-tag '+cls+'">'+esc(txt)+'</span>'; }
+  function estado(s, aid){
+    var r = D.reg[s.id+'|'+aid] || null, au = ausDeSesion(s, aid), rv = revDe(s.id);
+    var t = [];
+    if (s.archivada_en) t.push(tag('t-sind','Sesión archivada'));
+    // 1. Publicación
+    if (!s.publicada && !s.archivada_en) t.push(tag('t-bor','Borrador'));
+    if (rv) t.push(tag('t-rev','Revisión pendiente'));
+    if (s.sustituye_a && D.sesPorId[s.sustituye_a]) t.push(tag('t-v','Sustituye a «'+tituloDe(D.sesPorId[s.sustituye_a])+'»'));
+    // 2. Ejecución y 3. Revisión
+    var ej = null, pend = false;
+    if (r){
+      ej = r.estado==='a_medias' ? 'parcial' : r.estado==='no_hecho' ? 'nohecha' : 'hecha';
+      if (ej==='hecha') t.push(tag('t-hecha','Realizada'));
+      else if (ej==='parcial') t.push(tag('t-parcial','Parcial'+(r.completado_pct!=null?' · '+r.completado_pct+' %':'')));
+      else t.push(tag('t-nohecha','No realizada'));
+      if (!r.revisado_en) t.push(tag('t-nuevo','Feedback nuevo'));
+      var mol = molestiaTxt(r);
+      if (mol && !r.revisado_en) t.push(tag('t-rev','Revisar: '+mol));
+      if (r.version_vista && r.version_vista < s.version) t.push(tag('t-v','Plan cambiado después · v'+r.version_vista+' → v'+s.version));
+    } else if (au){
+      ej = 'ausente';
+    } else if (s.publicada && !s.archivada_en && esEntreno(s) && vencido(s)){
+      ej = 'sindatos'; pend = true;
+      t.push(tag('t-rev','Sin datos · feedback pendiente'));
+    }
+    return { r:r, au:au, rv:rv, ej:ej, pend:pend, tags:t.join('') };
+  }
+
+  /* ---------- casillas ---------- */
+  function casillaSesion(s, aid, opts){
+    opts = opts || {};
+    var mo = MOMENTO[s.momento] ? MOMENTO[s.momento]+(s.hora?' · '+hhmm(s.hora):'') : (s.hora && opts.varias ? hhmm(s.hora) : '');
+    var sel = abierto && abierto.sid===s.id && abierto.aid===aid ? ' sel' : '';
+    var data = ' data-abrir="'+s.id+'|'+aid+'"';
+    if (s.clase_dia==='descanso') return '<div class="ac-cs des">'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+'Descanso'+(!s.publicada?' '+tag('t-bor','Borrador'):'')+'</div>';
+    if (D.sust[s.id]) return '<button type="button" class="ac-cs sust'+sel+'"'+data+'>'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+'<span class="ti">'+esc(tituloDe(s))+'</span><span class="l3">Sustituida por «'+esc(tituloDe(D.sust[s.id]))+'»</span></button>';
+    var e = estado(s, aid);
+    if (s.clase_dia==='ausencia' || e.au){
+      var mot = e.au ? (MOTIVO_AUS[e.au.motivo_tipo] || e.au.motivo || 'sin motivo') : '';
+      return '<button type="button" class="ac-cs aus'+sel+'"'+data+'>'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+
+        '<span class="ti">Ausente'+(mot?' · '+esc(mot):'')+'</span>'+
+        (s.clase_dia!=='ausencia' ? '<span class="l3">Previsto: '+esc(tituloDe(s))+'</span>' : '<span class="l3">'+esc(s.titulo||'')+'</span>')+
+        (e.r ? e.tags : tag('t-nohecha','No realizada · ausencia'))+'</button>';
+    }
+    var pr = principal(s), ex = exigCorta(s);
+    return '<button type="button" class="ac-cs'+(s.publicada?'':' borr')+sel+'"'+data+'>'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+
+      '<span class="ti">'+esc(tituloDe(s))+'</span>'+
+      (pr.length ? '<span class="l2">'+esc(pr.join(' · '))+'</span>' : '')+
+      (ex ? '<span class="l3">'+esc(ex)+'</span>' : '')+
+      e.tags+'</button>';
+  }
+  function casilla(aid, f){
+    var L = sesDe(aid, f), A = ausDia(aid, f);
+    if (!L.length){
+      if (A.length){ var x=A[0]; return '<div class="ac-cs aus" style="cursor:default"><span class="ti">Ausente · '+esc(MOTIVO_AUS[x.motivo_tipo]||x.motivo||'sin motivo')+'</span><span class="l3">Sin sesión prevista</span></div>'; }
+      return '<div class="ac-cs sin">Sin planificar</div>';
+    }
+    return L.map(function(s){ return casillaSesion(s, aid, { varias:L.length>1 }); }).join('');
+  }
+  function resumenDia(f, atls){
+    var at=0, ses=0, des=0, aus=0, sin=0, bor=0;
+    atls.forEach(function(a){
+      var L = sesDe(a.id, f), A = ausDia(a.id, f);
+      var ok = L.filter(function(s){ return esEntreno(s) && !ausDeSesion(s, a.id); });
+      if (ok.length){ at++; ses += ok.length; }
+      if (L.some(function(s){ return s.clase_dia==='descanso'; })) des++;
+      if (A.length || L.some(function(s){ return s.clase_dia==='ausencia'; })) aus++;
+      if (!L.length && !A.length) sin++;
+      bor += L.filter(function(s){ return !s.publicada && !s.archivada_en; }).length;
+    });
+    return { at:at, ses:ses, des:des, aus:aus, sin:sin, bor:bor };
+  }
+  function resumenTxt(x){
+    var p = [];
+    if (x.at) p.push(plural(x.at,'atleta entrena','atletas entrenan')+' · '+plural(x.ses,'sesión','sesiones'));
+    if (x.des) p.push(plural(x.des,'descanso','descansos'));
+    if (x.aus) p.push(plural(x.aus,'ausencia','ausencias'));
+    if (x.sin) p.push(x.sin+' sin planificar');
+    if (x.bor) p.push(plural(x.bor,'borrador','borradores'));
+    return p.join(' · ') || '—';
+  }
+
+  /* ---------- filtros ---------- */
+  function atletasFiltrados(){
+    var L = D.atl;
+    if (ST.fAtleta) L = L.filter(function(a){ return a.id===ST.fAtleta; });
+    if (ST.fGT){
+      var sids = D.gtm.filter(function(m){ return m.grupo_trabajo_id===ST.fGT; }).map(function(m){ return m.sesion_id; });
+      var quien = {}; sids.forEach(function(id){ var s=D.sesPorId[id]; if(s) atletasDe(s).forEach(function(a){ quien[a]=1; }); });
+      L = L.filter(function(a){ return quien[a.id]; });
+    }
+    return L;
+  }
+
+  /* ---------- cabecera común ---------- */
+  function cabecera(titulo, sub){
+    var selG = ST.grupos.length>1 ? '<select class="ac-sel" id="ac-g" aria-label="Grupo">'+ST.grupos.map(function(x){
+      return '<option value="'+x.grupo_id+'"'+(x.grupo_id===ST.g.grupo_id?' selected':'')+'>'+esc(x.nombre)+(x.es_prueba?' (datos ficticios)':'')+'</option>'; }).join('')+'</select>' : '';
+    return '<div class="ac-top"><h1>'+esc(titulo)+'</h1>'+(ST.g.es_prueba?'<span class="ac-prueba">Grupo de prueba · datos ficticios</span>':'')+
+      '<span class="ac-esp"></span>'+selG+
+      '<span class="ac-seg ac-vistas" role="group" aria-label="Vista"><button type="button" data-vista="hoy" class="'+(ST.vista==='hoy'?'on':'')+'">Hoy</button><button type="button" data-vista="semana" class="'+(ST.vista==='semana'?'on':'')+'">Semana</button></span></div>'+
+      (sub?'<p class="ac-sub">'+sub+'</p>':'');
+  }
+
+  /* ================= SEMANA ================= */
+  function diasSemana(){ var L=[]; for (var i=0;i<7;i++) L.push(sumar(ST.semana,i)); return L; }
+  function pintarSemana(){
+    var dias = diasSemana(), hoy = hoyISO();
+    var tit = 'Semana del '+fMedia(dias[0])+' al '+fMedia(dias[6]);
+    var atls = atletasFiltrados();
+    var borr = D.ses.filter(function(s){ return !s.publicada && !s.archivada_en; });
+    var optA = '<option value="">Todos los atletas</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===ST.fAtleta?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('');
+    var optG = D.gt.length ? '<option value="">Todos los grupos de trabajo</option>'+D.gt.map(function(g){ return '<option value="'+g.id+'"'+(g.id===ST.fGT?' selected':'')+'>'+esc(g.nombre)+' · '+fCorta(g.fecha)+'</option>'; }).join('') : '';
+    var nav = '<button type="button" class="ac-btn" data-sem="-1">‹ Anterior</button><button type="button" class="ac-btn" data-sem="0">Esta semana</button><button type="button" class="ac-btn" data-sem="1">Siguiente ›</button>';
+    var filtros = '<select class="ac-sel" id="ac-fa" aria-label="Atleta">'+optA+'</select>'+(optG?'<select class="ac-sel" id="ac-fg" aria-label="Grupo de trabajo">'+optG+'</select>':'')+
+      '<span class="ac-seg" role="group" aria-label="Detalle de las casillas"><button type="button" data-modo="compacta" class="'+(ST.modo==='compacta'?'on':'')+'">Compacta</button><button type="button" data-modo="detallada" class="'+(ST.modo==='detallada'?'on':'')+'">Detallada</button></span>';
+    var publicar = borr.length ? '<button type="button" class="ac-btn pri" data-publicar="1">Publicar borradores ('+borr.length+')…</button>' : '';
+    var leyenda = '<b>Publicación:</b> «Borrador» (borde discontinuo) o publicada (sin etiqueta). · <b>Ejecución</b> (lo que dice el atleta): realizada · parcial · no realizada · sin datos. «Sin datos» no es «no hecha». · <b>Revisión:</b> feedback nuevo (sin revisar) · «sin datos · feedback pendiente» (solo cuando ya pasó el plazo: '+hhmm(ST.g.feedback_hora_limite)+' del día, y nunca antes de que acabe la sesión) · revisar (con su motivo). · «Plan cambiado después»: el atleta respondió una versión anterior. · Los descansos y las ausencias no cuentan como sesiones.';
+
+    if (esMovil()){
+      if (!ST.diaMovil || dias.indexOf(ST.diaMovil)===-1) ST.diaMovil = dias.indexOf(hoy)!==-1 ? hoy : dias[0];
+      var d = ST.diaMovil;
+      var h = cabecera(tit, '')+
+        '<div class="ac-barra">'+nav+'</div>'+
+        '<details class="ac-cond"><summary>Filtros, vista y leyenda</summary><div class="ac-barra">'+filtros+'</div>'+(publicar?'<div class="ac-barra">'+publicar+'</div>':'')+'<div class="ac-ley">'+leyenda+'</div></details>';
+      if (ST.movAtleta){
+        var a = atleta(ST.movAtleta);
+        h += '<div class="ac-barra"><button type="button" class="ac-btn" data-movat="">‹ Volver a los días</button></div>'+
+          '<div class="ac-fila-m '+ST.modo+'"><div class="ac-nom">'+esc(a._n)+'<small>Su semana</small></div>'+
+          dias.map(function(f){ return '<div class="ac-dia-m">'+fCorta(f)+(f===hoy?' · hoy':'')+'</div>'+casilla(a.id, f); }).join('')+'</div>';
+      } else {
+        h += '<div class="ac-dias" role="tablist" aria-label="Día de la semana">'+dias.map(function(f){
+            var dd = deISO(f);
+            return '<button type="button" role="tab" aria-selected="'+(f===d)+'" data-diam="'+f+'" class="'+(f===d?'on ':'')+(f===hoy?'hoy':'')+'">'+DS_I[dd.getDay()]+'<small>'+dd.getDate()+(f===hoy?' · hoy':'')+'</small></button>'; }).join('')+'</div>'+
+          '<p class="ac-sub" style="margin-top:0">'+esc(fLarga(d))+' · '+esc(resumenTxt(resumenDia(d, atls)))+'</p>'+
+          '<div class="ac-barra"><select class="ac-sel" id="ac-movat" aria-label="Ver la semana de un atleta"><option value="">Ver la semana de un atleta…</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'">'+esc(a._n)+'</option>'; }).join('')+'</select></div>'+
+          '<div class="'+ST.modo+'">'+(atls.length ? atls.map(function(a){ return '<div class="ac-fila-m"><div class="ac-nom">'+esc(a._n)+'</div>'+casilla(a.id, d)+'</div>'; }).join('') : '<p class="ac-nada">Nadie con ese filtro.</p>')+'</div>';
+      }
+      wrap.innerHTML = h;
+      return;
+    }
+
+    var h = cabecera(tit, 'Atletas en filas, días en columnas. Toca una sesión para ver el detalle.')+
+      '<div class="ac-barra">'+nav+filtros+'<span class="ac-esp"></span>'+publicar+'</div>'+
+      '<div class="ac-scroll '+ST.modo+'"><table class="ac-sem"><thead><tr><th class="at">Atleta</th>'+
+      dias.map(function(f){ return '<th class="'+(f===hoy?'hoy':'')+'">'+fCorta(f)+' '+MES[deISO(f).getMonth()]+(f===hoy?'<small>Hoy</small>':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+    if (!atls.length) h += '<tr><td class="at"></td><td colspan="7" class="ac-nada">Nadie con ese filtro.</td></tr>';
+    atls.forEach(function(a){
+      var pr = (a.pruebas_principales||[]).slice(0,3).join(' · ');
+      h += '<tr><td class="at"><div class="ac-nom">'+esc(a._n)+(pr?'<small>'+esc(pr)+'</small>':'')+'</div></td>'+
+        dias.map(function(f){ return '<td class="'+(f===hoy?'hoy':'')+'">'+casilla(a.id, f)+'</td>'; }).join('')+'</tr>';
+    });
+    h += '</tbody><tfoot><tr><td class="at">Resumen</td>'+dias.map(function(f){ return '<td class="'+(f===hoy?'hoy':'')+'">'+esc(resumenTxt(resumenDia(f, atls)))+'</td>'; }).join('')+'</tr></tfoot></table></div>'+
+      '<details class="ac-ley"><summary>Qué significa cada etiqueta</summary>'+leyenda+'</details>';
+    wrap.innerHTML = h;
+    ajustarAlto();
+  }
+  /* La tabla cabe en lo que queda de pantalla: el pie (resumen) siempre a la
+     vista y sin tapar la última fila al bajar. */
+  function ajustarAlto(){
+    var sc = wrap.querySelector('.ac-scroll'); if (!sc) return;
+    var top = sc.getBoundingClientRect().top + window.scrollY;
+    sc.style.maxHeight = Math.max(320, window.innerHeight - top - 16) + 'px';
+  }
+
+  /* ================= HOY ================= */
+  function pendientes(){
+    var hoy = ST.dia, L = [];
+    REVS.forEach(function(rv){
+      var s = rv.sesiones || {}, aid = (s.atletas_ids||[])[0];
+      L.push({ orden:0, tipo:'rev', txt:(aid?nombreDe(aid):'Sesión')+' · revisión pendiente', html:'<b>'+esc(aid?nombreDe(aid):'Sesión')+'</b> · revisión pendiente de «'+esc(s.titulo||'')+'» ('+fCorta(s.fecha)+')'+
+        '<span class="o">'+(rv.motivo?esc(rv.motivo)+' · ':'')+'propuesta '+(rv.via?'desde '+esc(rv.via)+' ':'')+'el '+fechaHora(rv.creada_en)+' sobre la versión '+rv.version_base+'</span>'+
+        '<span class="bt"><button type="button" class="ac-link" data-abrir="'+rv.sesion_id+'|'+(aid||'')+'">Ver y decidir</button></span>' });
+    });
+    D.ses.filter(function(s){ return s.fecha<=hoy; }).forEach(function(s){
+      atletasDe(s).forEach(function(aid){
+        if (!D.atl.some(function(a){ return a.id===aid; })) return;
+        var r = D.reg[s.id+'|'+aid];
+        if (r && !r.revisado_en){
+          var mol = molestiaTxt(r), incompleta = r.estado==='a_medias' || r.estado==='no_hecho';
+          var ej = r.estado==='a_medias' ? 'parcial'+(r.completado_pct!=null?' ('+r.completado_pct+' %)':'') : r.estado==='no_hecho' ? 'no realizada'+(r.motivo_no_hecho?' por '+(NO_HECHO[r.motivo_no_hecho]||r.motivo_no_hecho):'') : 'realizada';
+          var aviso = mol || (incompleta ? ej : '');
+          L.push({ orden: aviso?1:2, tipo: aviso?'aviso':'nuevo', rid:r.id, f:s.fecha, txt:nombreDe(aid)+' · '+(aviso||'feedback nuevo'), html:'<b>'+esc(nombreDe(aid))+'</b> · '+(aviso?esc(aviso):'feedback nuevo')+
+            '<span class="o">Registro de «'+esc(tituloDe(s))+'» ('+fCorta(s.fecha)+') · '+ej+(r.rpe?' · RPE '+r.rpe:'')+' · enviado '+fechaHora(r.created_at)+'</span>'+
+            (r.notas_atleta?'<span class="q">«'+esc(r.notas_atleta)+'»</span>':'')+
+            '<span class="bt"><button type="button" class="ac-link" data-revisar="'+r.id+'">Marcar revisado</button><button type="button" class="ac-link" data-abrir="'+s.id+'|'+aid+'">Abrir</button></span>' });
+        } else if (!r && s.publicada && esEntreno(s) && !ausDeSesion(s, aid) && vencido(s)){
+          L.push({ orden:3, tipo:'sinfb', f:s.fecha, txt:nombreDe(aid)+' · sin feedback ('+fCorta(s.fecha)+')', html:'<b>'+esc(nombreDe(aid))+'</b> · sin feedback de «'+esc(tituloDe(s))+'» ('+fCorta(s.fecha)+')'+
+            '<span class="o">Plazo vencido el '+txtPlazo(s)+' · no se da por hecha ni por no hecha</span>'+
+            '<span class="bt"><button type="button" class="ac-link" data-abrir="'+s.id+'|'+aid+'">Abrir</button></span>' });
+        }
+      });
+    });
+    L.sort(function(a,b){ return a.orden-b.orden || String(b.f||'').localeCompare(String(a.f||'')); });
+    return L;
+  }
+  function nombreDe(aid){ return atleta(aid)._n; }
+  /* Lo que pide atención (revisiones y avisos) va suelto, uno a uno. El
+     feedback sin avisos y lo que no tiene respuesta, plegados y con su número. */
+  function cajaPendientes(L, sinTitulo){
+    var li = function(x){ return '<li>'+x.html+'</li>'; };
+    var arriba = L.filter(function(x){ return x.tipo==='rev' || x.tipo==='aviso'; });
+    var nuevos = L.filter(function(x){ return x.tipo==='nuevo'; }), sinfb = L.filter(function(x){ return x.tipo==='sinfb'; });
+    var plegado = function(titulo, lista, extra){
+      if (!lista.length) return '';
+      return '<details class="ac-grp"'+(lista.length<=3?' open':'')+'><summary><b>'+titulo+'</b><span class="quien">'+lista.length+'</span></summary>'+
+        (extra||'')+'<ul>'+lista.map(li).join('')+'</ul></details>';
+    };
+    return '<div class="ac-caja ac-pend">'+(sinTitulo?'':'<h2>Pendiente de revisar <small>últimos 7 días, con su origen</small></h2>')+
+      (L.length ? '' : '<ul><li class="vacio">Nada pendiente de los últimos 7 días.</li></ul>')+
+      (arriba.length ? '<ul>'+arriba.map(li).join('')+'</ul>' : '')+
+      plegado('Feedback nuevo sin avisos', nuevos, nuevos.length>1 ? '<div style="padding:0 14px 8px"><button type="button" class="ac-btn mini" data-revisar-todos="1">Marcar los '+nuevos.length+' como revisados</button></div>' : '')+
+      plegado('Sin feedback (plazo vencido)', sinfb, '<div class="o" style="padding:0 14px 6px;color:var(--t3);font-size:13px">No se dan por hechas ni por no hechas.</div>')+
+      '</div>';
+  }
+  function pintarHoy(){
+    var d = ST.dia, hoy = hoyISO(), ayer = sumar(d,-1);
+    var tit = (d===hoy ? 'Hoy · ' : '') + fLarga(d);
+    tit = tit.charAt(0).toUpperCase()+tit.slice(1);
+    var res = resumenDia(d, D.atl), L = pendientes();
+    var nSin = L.filter(function(x){ return x.tipo==='sinfb'; }).length, nRev = L.length - nSin;
+    var cifras = '<div class="ac-cifras"><span class="ac-cifra"><b>'+res.at+'</b>'+(res.at===1?'atleta entrena':'atletas entrenan')+'</span><span class="ac-cifra"><b>'+res.ses+'</b>'+(res.ses===1?'sesión':'sesiones')+'</span>'+
+      (res.aus?'<span class="ac-cifra"><b>'+res.aus+'</b>'+(res.aus===1?'ausencia':'ausencias')+'</span>':'')+
+      (res.des?'<span class="ac-cifra"><b>'+res.des+'</b>'+(res.des===1?'descanso':'descansos')+'</span>':'')+
+      (res.bor?'<span class="ac-cifra"><b>'+res.bor+'</b>'+(res.bor===1?'borrador':'borradores')+'</span>':'')+
+      '<span class="ac-cifra"><b>'+nRev+'</b>que revisar</span>'+
+      (nSin?'<span class="ac-cifra"><b>'+nSin+'</b>sin feedback</span>':'')+'</div>';
+    var B = window.APOLANA_BASE || '../../';
+    var barra = '<div class="ac-barra"><button type="button" class="ac-btn" data-dia="-1" aria-label="Día anterior">‹</button>'+
+      (d!==hoy?'<button type="button" class="ac-btn" data-dia="0">Hoy</button>':'')+
+      '<button type="button" class="ac-btn" data-dia="1" aria-label="Día siguiente">›</button>'+
+      '<span class="ac-seg" role="group" aria-label="Organizar"><button type="button" data-pg="0" class="'+(ST.porGrupos?'':'on')+'">Por atleta</button><button type="button" data-pg="1" class="'+(ST.porGrupos?'on':'')+'">Por grupos de trabajo</button></span>'+
+      '<span class="ac-esp"></span><button type="button" class="ac-btn" data-imprimir="1">Imprimir el entrenamiento</button>'+
+      '<a class="ac-btn" href="'+B+'portal/entrenador/#lista">Pasar lista</a></div>';
+    var izq = ST.porGrupos ? vistaGrupos(d) : vistaIndividual(d, ayer);
+    if (esMovil()){
+      var resumenAv = L.length ? L.slice(0,2).map(function(x){ return x.txt; }).join(' · ') : 'Nada pendiente';
+      wrap.innerHTML = cabecera(tit, '') + cifras + barra +
+        '<details class="ac-avisos-m"><summary>'+plural(nRev,'cosa que revisar','cosas que revisar')+(nSin?' · '+nSin+' sin feedback':'')+'<small>'+esc(resumenAv)+(L.length>2?' …':'')+'</small></summary>'+cajaPendientes(L, true)+'</details>'+izq;
+      return;
+    }
+    wrap.innerHTML = cabecera(tit, d===hoy ? 'Lo que se entrena hoy y lo que hay que mirar, con su motivo.' : 'Otro día: '+fMedia(d)+'.') + cifras + barra +
+      '<div class="ac-grid2"><div>'+izq+'</div><div>'+cajaPendientes(L)+'</div></div>';
+  }
+  function tagsDia(aid, f){
+    var L = sesDe(aid, f), A = ausDia(aid, f);
+    if (!L.length) return A.length ? tag('t-nohecha','Ausente') : '<span class="ac-tag t-sind">Sin planificar</span>';
+    return L.map(function(s){
+      if (s.clase_dia==='descanso') return tag('t-sind','Descanso');
+      var e = estado(s, aid), mo = MOMENTO[s.momento] || '';
+      if (e.au) return '<div>'+tag('t-nohecha', (mo?mo+': ':'')+'Ausente')+'</div>';
+      return '<div>'+(mo?'<b style="font-size:12px;color:var(--t3);margin-right:4px">'+esc(mo)+'</b>':'')+(e.tags || tag('t-sind','Aún sin feedback'))+'</div>';
+    }).join('');
+  }
+  function vistaIndividual(d, ayer){
+    var atls = D.atl, B = window.APOLANA_BASE || '../../';
+    if (esMovil()){
+      return '<div class="ac-caja"><h2>Quién entrena</h2>'+atls.map(function(a){
+        var L = sesDe(a.id, d);
+        var resumen = L.length ? L.map(function(s){ return s.clase_dia==='descanso' ? 'Descanso' : tituloDe(s); }).join(' + ') : (ausDia(a.id,d).length ? 'Ausente' : 'Sin planificar');
+        return '<details class="ac-grp"><summary><b>'+esc(a._n)+'</b><span class="quien">'+esc(resumen)+'</span></summary><div class="dentro">'+
+          casilla(a.id, d)+'<div style="margin-top:8px;font-size:13px;color:var(--t3)">Ayer ('+fCorta(ayer)+'):</div>'+tagsDia(a.id, ayer)+
+          '<div style="margin-top:8px"><a class="ac-link" href="'+B+'admin/atletas/?ficha='+a.id+'">Ficha</a></div></div></details>';
+      }).join('')+'</div>';
+    }
+    return '<div class="ac-caja"><h2>Quién entrena <small>toca una sesión para ver el detalle</small></h2><table class="ac-lst"><thead><tr><th style="width:21%">Atleta</th><th>'+(d===hoyISO()?'Hoy':fCorta(d))+'</th><th style="width:27%">Ayer · '+fCorta(ayer)+'</th><th style="width:60px"></th></tr></thead><tbody>'+
+      atls.map(function(a){
+        return '<tr><td><div class="ac-nom">'+esc(a._n)+'</div></td><td class="detallada">'+casilla(a.id, d)+'</td><td>'+tagsDia(a.id, ayer)+'</td>'+
+          '<td class="ac-acc"><a class="ac-link" href="'+B+'admin/atletas/?ficha='+a.id+'">Ficha</a></td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+
+  /* ---------- grupos de trabajo (los decide el entrenador; la app solo sugiere) ---------- */
+  function filasBloque(s, etiqueta){
+    var b = (s.bloques||[]).filter(function(x){ return !etiqueta || (x.etiqueta||'')===etiqueta; });
+    return b;
+  }
+  function textoBloques(bls){ return bls.map(function(b){ return (b.etiqueta||'')+'|'+(b.filas||[]).map(filaTxt).join('¶'); }); }
+  /* Compara las sesiones de un grupo bloque a bloque: lo común una vez y lo
+     que cambia, por atleta. */
+  function comunYDiferencias(miembros){
+    // miembros: [{s, aid, bloque}]
+    var porEtiq = {}, orden = [];
+    miembros.forEach(function(m){
+      filasBloque(m.s, m.bloque).forEach(function(b){
+        var k = b.etiqueta||'';
+        if (!porEtiq[k]){ porEtiq[k] = []; orden.push(k); }
+        porEtiq[k].push({ aid:m.aid, txt:compactar((b.filas||[]).map(filaTxt)), b:b });
+      });
+    });
+    return orden.map(function(k){
+      var L = porEtiq[k], base = JSON.stringify(L[0].txt);
+      var iguales = L.length===miembros.length && L.every(function(x){ return JSON.stringify(x.txt)===base; });
+      return { etiqueta:k, iguales:iguales, items:L };
+    });
+  }
+  function vistaGrupos(d){
+    var gts = D.gt.filter(function(g){ return g.fecha===d; });
+    var U = usosGT(d), usados = U.entera;
+    var html = '';
+    gts.forEach(function(g, i){
+      var ms = miembrosGT(g);
+      var nombres = ms.map(function(m){ return nombreDe(m.aid); }).join(', ');
+      var bloque = ms.length && ms.every(function(m){ return m.bloque===ms[0].bloque; }) ? ms[0].bloque : null;
+      var cd = comunYDiferencias(ms);
+      html += '<details class="ac-grp"'+(i===0?' open':'')+'><summary><b>'+esc(g.nombre)+'</b>'+(bloque?'<span class="quien">· '+esc(bloque)+'</span>':'')+'<span class="quien">'+esc(nombres||'sin atletas')+'</span></summary><div class="dentro">'+
+        cd.map(function(c){
+          if (c.iguales) return '<div><b style="color:var(--navy)">'+esc(c.etiqueta||'Sesión')+'</b> · todos: '+esc(c.items[0].txt.join(' · '))+'</div>';
+          return '<div><b style="color:var(--navy)">'+esc(c.etiqueta||'Sesión')+'</b><ul class="ac-dif">'+agruparIguales(c.items).map(function(x){ return '<li><b>'+esc(x.quien)+'</b>: '+esc(x.txt.join(' · '))+'</li>'; }).join('')+'</ul></div>';
+        }).join('')+
+        avisosGrupo(ms, d)+
+        '<div style="margin-top:8px">'+ms.map(function(m){ return '<button type="button" class="ac-link" data-abrir="'+m.s.id+'|'+m.aid+'">'+esc(nombreDe(m.aid))+'</button>'; }).join('')+
+        '<button type="button" class="ac-link" data-gt-quitar="'+g.id+'" style="color:#8F3F24">Deshacer el grupo</button></div></div></details>';
+    });
+    // Los que no están en ningún grupo
+    var sueltos = [];
+    D.atl.forEach(function(a){ sesDe(a.id, d).forEach(function(s){ if (esEntreno(s) && !ausDeSesion(s, a.id) && !usados[s.id+'|'+a.id]) sueltos.push({ s:s, aid:a.id, parte:U.bloques[s.id+'|'+a.id] }); }); });
+    if (sueltos.length){
+      html += '<details class="ac-grp"'+(gts.length?'':' open')+'><summary><b>Sin grupo de trabajo</b><span class="quien">'+plural(sueltos.length,'sesión','sesiones')+'</span></summary><div class="dentro">'+
+        sueltos.map(function(x){ return '<div style="margin:5px 0"><button type="button" class="ac-link" data-abrir="'+x.s.id+'|'+x.aid+'">'+esc(nombreDe(x.aid))+'</button>'+esc(tituloDe(x.s))+(MOMENTO[x.s.momento]?' <span style="color:var(--t3)">('+MOMENTO[x.s.momento].toLowerCase()+')</span>':'')+
+          (x.parte?' <span style="color:var(--t3)">· en grupo: '+esc(x.parte.join(', ').toLowerCase())+'; el resto, por su cuenta</span>':'')+'</div>'; }).join('')+'</div></details>';
+    }
+    // Sugerencias: misma intención y mismo título. Solo se proponen.
+    var porClave = {};
+    sueltos.forEach(function(x){ var k = (String(x.s.objetivo||'').trim()+'|'+String(x.s.titulo||'').trim()).toLowerCase(); (porClave[k]=porClave[k]||[]).push(x); });
+    var sugs = Object.keys(porClave).map(function(k){ return porClave[k]; }).filter(function(L){ return L.length>1; });
+    var sugHtml = sugs.map(function(L, i){
+      var t = L[0].s.objetivo || L[0].s.titulo;
+      return '<div style="margin:6px 0">«'+esc(t)+'»: '+esc(L.map(function(x){ return nombreDe(x.aid); }).join(', '))+' tienen la misma sesión prevista. '+
+        '<button type="button" class="ac-link" data-sug="'+i+'">Crear este grupo</button></div>';
+    }).join('');
+    wrap._sugs = sugs;
+    var sesDia = []; D.atl.forEach(function(a){ sesDe(a.id, d).forEach(function(s){ if (esEntreno(s) && !ausDeSesion(s, a.id)) sesDia.push({ s:s, aid:a.id }); }); });
+    var etiqs = {}; sesDia.forEach(function(x){ (x.s.bloques||[]).forEach(function(b){ if (b.etiqueta) etiqs[b.etiqueta]=1; }); });
+    var form = '<details class="ac-grp"><summary><b>Nuevo grupo de trabajo</b><span class="quien">lo decides tú</span></summary><div class="ac-form">'+
+      '<label>Nombre <input type="text" id="gt-nombre" maxlength="60" placeholder="p. ej. Aceleración"></label>'+
+      '<label>Qué comparten <select class="ac-sel" id="gt-bloque"><option value="">Toda la sesión</option>'+Object.keys(etiqs).map(function(e){ return '<option>'+esc(e)+'</option>'; }).join('')+'</select></label>'+
+      '<div class="ac-checks">'+sesDia.map(function(x){ return '<label><input type="checkbox" class="gt-ses" value="'+x.s.id+'">'+esc(nombreDe(x.aid))+' · '+esc(tituloDe(x.s))+'</label>'; }).join('')+'</div>'+
+      '<div><button type="button" class="ac-btn pri mini" data-gt-crear="1">Crear grupo</button></div></div></details>';
+    return '<div class="ac-caja"><h2>Por grupos de trabajo <small>cada atleta conserva su prescripción</small></h2>'+
+      (html || '<p class="ac-nada" style="text-align:left;padding:12px 14px">Nadie entrena este día.</p>')+
+      (sugHtml ? '<div class="ac-sug" style="padding:8px 14px;border-top:1px solid var(--fila);font-size:14px;color:var(--t2)"><b style="color:var(--navy)">Sugerencias</b> (no se crean solas)'+sugHtml+'</div>' : '')+
+      (sesDia.length>1 ? form : '')+'</div>';
+  }
+  /* Miembros de un grupo de trabajo (sin los ausentes) y qué queda cubierto:
+     la sesión entera (bloque vacío) o solo algunos bloques. */
+  function miembrosGT(g){
+    return D.gtm.filter(function(m){ return m.grupo_trabajo_id===g.id; }).map(function(m){
+      var s = D.sesPorId[m.sesion_id];
+      return s ? atletasDe(s).filter(function(aid){ return !ausDeSesion(s, aid); }).map(function(aid){ return { s:s, aid:aid, bloque:m.bloque }; }) : [];
+    }).reduce(function(a,b){ return a.concat(b); }, []);
+  }
+  function usosGT(d){
+    var entera = {}, bloques = {};
+    D.gt.filter(function(g){ return g.fecha===d; }).forEach(function(g){
+      miembrosGT(g).forEach(function(m){ var k = m.s.id+'|'+m.aid; if (!m.bloque) entera[k]=1; else (bloques[k]=bloques[k]||[]).push(m.bloque); });
+    });
+    return { entera:entera, bloques:bloques };
+  }
+  function agruparIguales(items){
+    var out = [];
+    items.forEach(function(x){
+      var k = JSON.stringify(x.txt), y = out.filter(function(o){ return o.k===k; })[0];
+      if (y) y.quien += ', '+nombreDe(x.aid); else out.push({ k:k, quien:nombreDe(x.aid), txt:x.txt });
+    });
+    return out;
+  }
+  function avisosGrupo(ms, d){
+    var ayer = sumar(d,-1), av = [];
+    ms.forEach(function(m){
+      sesDe(m.aid, ayer).forEach(function(s){ var r = D.reg[s.id+'|'+m.aid]; var mol = molestiaTxt(r); if (mol) av.push('<b>'+esc(nombreDe(m.aid))+'</b>: ayer '+esc(mol)+(r.revisado_en?' (revisado)':' → revisar antes de empezar')); });
+    });
+    return av.length ? '<ul class="ac-dif">'+av.map(function(x){ return '<li>'+x+'</li>'; }).join('')+'</ul>' : '';
+  }
+  async function crearGT(nombre, fecha, sids, bloque){
+    var orden = D.gt.filter(function(g){ return g.fecha===fecha; }).length;
+    var r = await sb.from('grupos_trabajo').insert({ grupo_id:ST.g.grupo_id, fecha:fecha, nombre:nombre, orden:orden, creado_por:perfil && perfil.id }).select('id').single();
+    if (r.error) throw r.error;
+    var rows = sids.map(function(sid, i){ return { grupo_trabajo_id:r.data.id, sesion_id:sid, bloque:bloque||null, orden:i }; });
+    var r2 = await sb.from('grupos_trabajo_miembros').insert(rows);
+    if (r2.error) throw r2.error;
+  }
+
+  /* ================= DETALLE ================= */
+  function planHTML(d, r){
+    var bl = d.bloques||[];
+    if (!bl.length) return '<p class="nota">Sin contenido escrito.</p>';
+    var tr = (r && r.tiempos_reales && typeof r.tiempos_reales==='object' && !Array.isArray(r.tiempos_reales)) ? r.tiempos_reales : {};
+    return '<div class="ac-plan">'+bl.map(function(b){
+      return '<div class="ac-bl">'+(b.etiqueta?'<b>'+esc(b.etiqueta)+'</b>':'')+(b.nota_cab?'<div class="pie">'+esc(b.nota_cab)+'</div>':'')+
+        '<ul>'+(b.filas||[]).map(function(f){
+          var p = filaPartes(f), m = marcaFila(tr[f.id]);
+          return '<li>'+esc(p.main)+(p.extra?' <span class="ex">· '+esc(p.extra)+'</span>':'')+(m?'<span class="hz">'+esc(m)+'</span>':'')+(p.det?'<span class="det">'+esc(p.det)+'</span>':'')+'</li>';
+        }).join('')+'</ul>'+(b.nota_pie?'<div class="pie">'+esc(b.nota_pie)+'</div>':'')+'</div>';
+    }).join('')+'</div>';
+  }
+  function marcaFila(t){
+    if (!t || typeof t!=='object') return '';
+    var vals = (t.tiempos||[]).filter(function(v){ return v!=null && v!=='' && v!=='hecha' && v!==true; });
+    if (vals.length) return vals.join(' · ')+(t.unidad?' '+t.unidad:'');
+    var hechas = (t.series||[]).filter(function(x){ return x && x.hecha; }).length;
+    if (hechas || (t.tiempos||[]).indexOf('hecha')!==-1) return '✓ hecho';
+    return '';
+  }
+  function lineasPlan(d){
+    var L = [];
+    if (d.titulo) L.push('Título: '+d.titulo);
+    if (d.objetivo) L.push('Objetivo: '+d.objetivo);
+    var ex = exigTxt(d); if (ex) L.push('Exigencia prevista: '+ex);
+    if (d.hora) L.push('Hora: '+hhmm(d.hora));
+    if (MOMENTO[d.momento]) L.push('Momento: '+MOMENTO[d.momento]);
+    (d.bloques||[]).forEach(function(b){
+      (b.filas||[]).forEach(function(f){ var p=filaPartes(f); L.push((b.etiqueta?b.etiqueta+': ':'')+filaTxt(f)+(p.det?' ('+p.det+')':'')); });
+      if (b.nota_pie) L.push((b.etiqueta?b.etiqueta+' · ':'')+'nota: '+b.nota_pie);
+    });
+    return L;
+  }
+  function diffLineas(a, b){
+    var n=a.length, m=b.length, T=[], i, j;
+    for (i=0;i<=n;i++){ T.push(new Array(m+1).fill(0)); }
+    for (i=n-1;i>=0;i--) for (j=m-1;j>=0;j--) T[i][j] = a[i]===b[j] ? T[i+1][j+1]+1 : Math.max(T[i+1][j], T[i][j+1]);
+    var out=[]; i=0; j=0;
+    while (i<n && j<m){ if (a[i]===b[j]){ i++; j++; } else if (T[i+1][j]>=T[i][j+1]) out.push(['-',a[i++]]); else out.push(['+',b[j++]]); }
+    while (i<n) out.push(['-',a[i++]]); while (j<m) out.push(['+',b[j++]]);
+    // Antes/ahora emparejados: cada línea quitada junto a la que la sustituye
+    var par = [], k = 0;
+    while (k < out.length){
+      var menos = [], mas = [];
+      while (k < out.length){ if (out[k][0]==='-') menos.push(out[k]); else mas.push(out[k]); k++; }
+      for (var x=0; x<Math.max(menos.length, mas.length); x++){ if (menos[x]) par.push(menos[x]); if (mas[x]) par.push(mas[x]); }
+    }
+    return par;
+  }
+  function diffHTML(a, b){
+    var df = diffLineas(lineasPlan(a), lineasPlan(b));
+    if (!df.length) return { n:0, html:'<div class="nota">Sin cambios en el contenido (solo cambió la publicación u otro dato interno).</div>' };
+    return { n:df.length, html: df.map(function(x){ return '<span class="'+(x[0]==='-'?'ac-menos':'ac-mas')+'">'+(x[0]==='-'?'Antes: ':'Ahora: ')+esc(x[1])+'</span>'; }).join('') };
+  }
+
+  function ordenDelDia(f){
+    var L = [];
+    atletasFiltrados().forEach(function(a){ sesDe(a.id, f).forEach(function(s){ if (s.clase_dia!=='descanso') L.push({ sid:s.id, aid:a.id }); }); });
+    return L;
+  }
+  function cerrar(){
+    abierto = null; lado.hidden = true; fondo.hidden = true; lado.innerHTML = '';
+    wrap.querySelectorAll('.ac-cs.sel').forEach(function(x){ x.classList.remove('sel'); });
+  }
+  async function abrir(sid, aid){
+    var s = D.sesPorId[sid];
+    if (!s){
+      // p. ej. una revisión pendiente de otro día: se trae esa sesión sola
+      var rs = await sb.from('sesiones').select('id,fecha,hora,momento,clase_dia,publicada,version,titulo,objetivo,exigencia,exigencia_neuro,exigencia_meta,bloques,atletas_ids,duracion_min,archivada_en,sustituye_a,nota_razonamiento,updated_at').eq('id', sid).maybeSingle();
+      if (rs.error || !rs.data){ avisar('No se encuentra esa sesión.', true); return; }
+      s = D.sesPorId[sid] = rs.data;
+      var rr = await sb.from('registros_sesion').select('id,sesion_id,atleta_id,estado,completado_pct,rpe,duracion_min,molestia_sesion,molestia_localizacion,molestias,notas_atleta,marcas_texto,tiempos_reales,version_vista,version_garantia,version_nota,sesion_version_id,revisado_en,revisado_por,created_at,corregido_veces,motivo_no_hecho,nota_no_hecho,sensacion_general,momento,superficie').eq('sesion_id', sid);
+      (rr.data||[]).forEach(function(r){ D.reg[r.sesion_id+'|'+r.atleta_id] = r; });
+    }
+    if (!aid) aid = atletasDe(s)[0];
+    abierto = { sid:sid, aid:aid };
+    wrap.querySelectorAll('.ac-cs.sel').forEach(function(x){ x.classList.remove('sel'); });
+    var c = wrap.querySelector('[data-abrir="'+sid+'|'+aid+'"]'); if (c && c.classList.contains('ac-cs')) c.classList.add('sel');
+    lado.hidden = false; fondo.hidden = !esMovil();
+    lado.innerHTML = '<div class="cab"><button type="button" class="ac-btn x" data-cerrar="1">✕ Cerrar</button></div><div class="in"><p class="ac-nada">Cargando…</p></div>';
+    var res = await Promise.all([
+      sb.from('sesiones_versiones').select('id,version,evento,datos,vigente_desde,via').eq('sesion_id', sid).order('version'),
+      sb.from('notas_atleta').select('id,texto,fecha,created_at').eq('atleta_id', aid).eq('fecha', s.fecha).order('created_at')
+    ]);
+    if (!abierto || abierto.sid!==sid || abierto.aid!==aid) return;
+    pintarDetalle(s, aid, (res[0].data||[]), (res[1].data||[]));
+  }
+  function pintarDetalle(s, aid, versiones, notas){
+    var e = estado(s, aid), r = e.r, a = atleta(aid), B = window.APOLANA_BASE || '../../';
+    var orden = ordenDelDia(s.fecha), pos = -1;
+    orden.forEach(function(x,i){ if (x.sid===s.id && x.aid===aid) pos=i; });
+    var prev = pos>0 ? orden[pos-1] : null, next = pos>=0 && pos<orden.length-1 ? orden[pos+1] : null;
+    var cab = '<div class="cab">'+
+      (prev?'<button type="button" class="ac-btn mini" data-abrir="'+prev.sid+'|'+prev.aid+'">‹ '+esc(nombreDe(prev.aid))+'</button>':'')+
+      (next?'<button type="button" class="ac-btn mini" data-abrir="'+next.sid+'|'+next.aid+'">'+esc(nombreDe(next.aid))+' ›</button>':'')+
+      '<button type="button" class="ac-btn mini x" data-cerrar="1">✕ Cerrar</button></div>';
+    var vAct = versiones.filter(function(v){ return v.version===s.version; })[0];
+    var vResp = r ? (versiones.filter(function(v){ return v.id===r.sesion_version_id; })[0] || versiones.filter(function(v){ return v.version===r.version_vista; })[0]) : null;
+    var actual = (vAct && vAct.datos) || s;
+    var h = '<div class="in"><div class="ac-quien">'+esc(a._n)+' · '+esc(fLarga(s.fecha))+(MOMENTO[s.momento]?' · '+MOMENTO[s.momento]:'')+(s.hora?' · '+hhmm(s.hora):'')+'</div>'+
+      '<h3>'+esc(s.clase_dia==='descanso'?'Descanso':tituloDe(s))+'</h3>'+
+      tag(s.publicada?'t-v':'t-bor', (s.publicada?'Publicada':'Borrador')+' · versión '+s.version)+e.tags.replace(tag('t-bor','Borrador'), '');
+    if (s.sustituye_a && D.sesPorId[s.sustituye_a]) h += '<div class="ac-aviso">Sustituye a «'+esc(tituloDe(D.sesPorId[s.sustituye_a]))+'». La original no cuenta como «no realizada» ni esta como adicional.</div>';
+    if (D.sust[s.id]) h += '<div class="ac-aviso">Sustituida por «'+esc(tituloDe(D.sust[s.id]))+'» ('+fCorta(D.sust[s.id].fecha)+'). No cuenta como sesión.</div>';
+    if (s.archivada_en) h += '<div class="ac-aviso">Sesión archivada el '+fechaHora(s.archivada_en)+'. Se conserva por lo que el atleta registró.</div>';
+    if (e.au) h += '<div class="ac-ausbox"><b>Ausente · '+esc(MOTIVO_AUS[e.au.motivo_tipo]||e.au.motivo||'sin motivo')+'</b>'+(e.au.motivo && MOTIVO_AUS[e.au.motivo_tipo]?' · '+esc(e.au.motivo):'')+
+      (e.au.nota?'<div>'+esc(e.au.nota)+'</div>':'')+(e.au.avisado_por_nombre?'<div class="nota">Avisó: '+esc(e.au.avisado_por_nombre)+'</div>':'')+
+      '<div class="nota">Lo previsto se conserva abajo; no cuenta como sesión realizada.</div></div>';
+
+    // Intención (objetivo y exigencia prevista)
+    h += '<div class="ac-sec"><b class="r">Intención</b>'+
+      (s.objetivo||exigTxt(s) ? esc(s.objetivo||'Sin objetivo')+(exigTxt(s)?' · <span style="color:var(--t2)">'+esc(exigTxt(s))+'</span>':'') : '<span style="color:var(--t3)">Sin objetivo ni exigencia prevista.</span>')+
+      (s.archivada_en || s.clase_dia==='descanso' ? '' : ' <button type="button" class="ac-link" data-int="1">Editar</button>')+
+      '<div id="ac-int-f" hidden></div></div>';
+
+    // Revisión pendiente
+    if (e.rv){
+      var dp = diffHTML(actual, Object.assign({}, actual, e.rv.propuesta||{}));
+      h += '<div class="ac-sec"><b class="r">Revisión pendiente · sobre la versión '+e.rv.version_base+'</b>'+
+        (e.rv.motivo?'<div>'+esc(e.rv.motivo)+'</div>':'')+'<div class="nota">Propuesta '+(e.rv.via?'desde '+esc(e.rv.via)+' ':'')+'el '+fechaHora(e.rv.creada_en)+'.</div>'+
+        dp.html+
+        (e.rv.version_base!==s.version ? '<div class="ac-aviso">La sesión cambió después de proponerla (ahora es la versión '+s.version+'). Al aplicarla se rechazará: descártala y vuelve a proponerla.</div>' : '')+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button type="button" class="ac-btn pri mini" data-rev-aplicar="'+e.rv.id+'">Aplicar · pasará a versión '+(s.version+1)+'</button><button type="button" class="ac-btn mini pel" data-rev-descartar="'+e.rv.id+'">Descartar</button></div></div>';
+    }
+
+    // Lo realizado + plan respondido
+    if (r){
+      var est = r.estado==='a_medias' ? 'Parcial'+(r.completado_pct!=null?' · '+r.completado_pct+' %':'') : r.estado==='no_hecho' ? 'No realizada'+(r.motivo_no_hecho?' · '+(NO_HECHO[r.motivo_no_hecho]||r.motivo_no_hecho):'') : 'Realizada';
+      var datos = [est];
+      if (r.rpe) datos.push('RPE '+r.rpe);
+      if (r.duracion_min) datos.push(r.duracion_min+'′');
+      var mol = molestiaTxt(r); datos.push(mol ? mol.charAt(0).toUpperCase()+mol.slice(1) : 'sin molestias');
+      var tiempos = r.tiempos_reales && typeof r.tiempos_reales==='object' && Object.keys(r.tiempos_reales).some(function(k){ var t=r.tiempos_reales[k]; return t && t.tiempos && t.tiempos.some(function(v){ return v && v!=='hecha'; }); });
+      h += '<div class="ac-sec"><b class="r">Lo que hizo · respondió la versión '+(r.version_vista||'?')+'</b>'+esc(datos.join(' · '))+
+        (r.nota_no_hecho?'<div class="ac-cita">'+esc(r.nota_no_hecho)+'</div>':'')+
+        (r.notas_atleta?'<div class="ac-cita">«'+esc(r.notas_atleta)+'»</div>':'')+
+        (r.molestias && !/^(no|ninguna|nada)\.?$/i.test(String(r.molestias).trim())?'<div class="ac-cita">Molestias: «'+esc(r.molestias)+'»</div>':'')+
+        (r.marcas_texto?'<div style="margin-top:6px;white-space:pre-wrap">'+esc(r.marcas_texto)+'</div>':'')+
+        (tiempos?'<div class="nota">Tiempos apuntados por el atleta · método: no consta.</div>':'')+
+        '<div class="nota">Enviado el '+fechaHora(r.created_at)+(r.corregido_veces?' · corregido '+plural(r.corregido_veces,'vez','veces'):'')+'. '+esc(GARANTIA[r.version_garantia]||'')+'</div>'+
+        '<div style="margin-top:8px">'+(r.revisado_en
+          ? '<span class="ac-tag t-hecha">Revisado el '+esc(fechaHora(r.revisado_en))+'</span> <button type="button" class="ac-link" data-norevisar="'+r.id+'">Quitar revisado</button>'
+          : '<button type="button" class="ac-btn pri mini" data-revisar="'+r.id+'">Marcar como revisado</button>')+'</div></div>';
+      var planResp = (vResp && vResp.datos) || null;
+      h += '<div class="ac-sec"><b class="r">Plan que respondió'+(vResp?' · versión '+vResp.version:'')+'</b>'+
+        (planResp ? planHTML(planResp, r) : '<div class="nota">No se guardó la versión que vio (registro anterior al historial). Se muestra el plan actual como referencia.</div>'+planHTML(actual, r))+'</div>';
+      if (planResp && vResp.version!==s.version){
+        var df = diffHTML(planResp, actual);
+        h += '<div class="ac-sec"><details class="ac-dif2"'+(Q.get('cambios')==='1'?' open':'')+'><summary>Ver cambios respecto al plan respondido ('+df.n+')</summary>'+df.html+
+          '<div class="nota">Versión '+s.version+(vAct?' desde el '+fechaHora(vAct.vigente_desde):'')+'. El resto es igual.</div></details>'+
+          '<details class="ac-dif2" style="margin-top:8px"><summary>Plan actual · versión '+s.version+'</summary>'+planHTML(actual)+'</details></div>';
+      }
+    } else if (s.clase_dia!=='descanso'){
+      h += '<div class="ac-sec"><b class="r">Plan · versión '+s.version+' · '+(s.publicada?'publicada':'borrador')+'</b>'+planHTML(actual)+
+        (e.pend?'<div class="nota">Sin feedback: el plazo venció el '+txtPlazo(s)+'. No se da por hecha ni por no hecha.</div>':'')+'</div>';
+    }
+    if (s.nota_razonamiento) h += '<div class="ac-sec"><b class="r">Notas del entrenador (privadas)</b><div style="white-space:pre-wrap;color:var(--t2)">'+esc(s.nota_razonamiento)+'</div></div>';
+
+    // Observaciones del entrenador (notas privadas del día)
+    h += '<div class="ac-sec"><b class="r">Tus observaciones de este día</b>'+
+      (notas.length ? notas.map(function(n){ return '<div class="ac-obs">'+esc(n.texto)+'<small>'+fechaHora(n.created_at)+'</small></div>'; }).join('') : '<span style="color:var(--t3)">Sin observaciones.</span>')+
+      ' <button type="button" class="ac-link" data-obs="1">Añadir</button><div id="ac-obs-f" hidden></div></div>';
+
+    h += '<div class="ac-sec" style="display:flex;gap:8px;flex-wrap:wrap"><a class="ac-btn mini" href="'+B+'portal/entrenador/#planificar">Editar en Planificar</a><a class="ac-btn mini" href="'+B+'admin/atletas/?ficha='+aid+'">Ver ficha de '+esc(a._n)+'</a></div>';
+    h += '</div>';
+    lado.innerHTML = cab + h;
+    lado.scrollTop = 0;
+  }
+  function formIntencion(s){
+    var op = function(v){ return ['','baja','media','alta'].map(function(x){ return '<option value="'+x+'"'+(x===(v||'')?' selected':'')+'>'+(x||'—')+'</option>'; }).join(''); };
+    return '<div class="ac-int"><label class="ancho">Objetivo (breve)<input type="text" id="int-obj" maxlength="80" value="'+esc(s.objetivo||'')+'"></label>'+
+      '<label>Exigencia prevista<select id="int-ex">'+op(s.exigencia)+'</select></label>'+
+      '<label>Neuromuscular<select id="int-neu">'+op(s.exigencia_neuro)+'</select></label>'+
+      '<label>Metabólica<select id="int-met">'+op(s.exigencia_meta)+'</select></label>'+
+      '<div class="ancho" style="font-size:13px;color:var(--t3)">'+(s.publicada
+        ? 'Está publicada: se guardará como revisión pendiente sobre la versión '+s.version+' y decides después si aplicarla.'
+        : 'Es un borrador: se guarda directamente (pasará a la versión '+(s.version+1)+').')+'</div>'+
+      '<div class="ancho"><button type="button" class="ac-btn pri mini" data-int-guardar="1">'+(s.publicada?'Guardar como revisión':'Guardar')+'</button></div></div>';
+  }
+
+  /* ================= IMPRIMIR ================= */
+  function imprimir(conPrivado){
+    var d = ST.dia, gts = D.gt.filter(function(g){ return g.fecha===d; }), U = usosGT(d), usados = U.entera;
+    var secs = [];
+    function bloquesTxt(s, etiqueta, sin){
+      return filasBloque(s, etiqueta).filter(function(b){ return !sin || sin.indexOf(b.etiqueta||'')===-1; }).map(function(b){
+        return '<div class="imp-bl"><b>'+esc(b.etiqueta||'Sesión')+'</b><ul>'+(b.filas||[]).map(function(f){ var p=filaPartes(f); return '<li>'+esc(filaTxt(f))+(p.det?' — '+esc(p.det):'')+'</li>'; }).join('')+'</ul>'+(b.nota_pie?'<div>'+esc(b.nota_pie)+'</div>':'')+'</div>';
+      }).join('');
+    }
+    function intencion(s){ var ex=exigTxt(s); return (s.objetivo||ex) ? '<div class="imp-q">'+esc(s.objetivo||'')+(s.objetivo&&ex?' · ':'')+esc(ex)+'</div>' : ''; }
+    gts.forEach(function(g){
+      var ms = miembrosGT(g);
+      if (!ms.length) return;
+      var cd = comunYDiferencias(ms);
+      secs.push('<div class="imp-g"><h2>'+esc(g.nombre)+(ms[0].bloque?' · '+esc(ms[0].bloque):'')+'</h2><div class="imp-q">'+esc(ms.map(function(m){ return nombreDe(m.aid); }).join(', '))+'</div>'+
+        cd.map(function(c){
+          if (c.iguales) return '<div class="imp-bl"><b>'+esc(c.etiqueta||'Sesión')+'</b><ul>'+(c.items[0].b.filas||[]).map(function(f){ var p=filaPartes(f); return '<li>'+esc(filaTxt(f))+(p.det?' — '+esc(p.det):'')+'</li>'; }).join('')+'</ul></div>';
+          return '<div class="imp-bl"><b>'+esc(c.etiqueta||'Sesión')+'</b>'+agruparIguales(c.items).map(function(x){ return '<div class="imp-ind"><b>'+esc(x.quien)+':</b> '+esc(x.txt.join(' · '))+'</div>'; }).join('')+'</div>';
+        }).join('')+
+        (conPrivado?avisosGrupo(ms, d).replace('class="ac-dif"',''):'')+'</div>');
+    });
+    var descansos = [], ausentes = [];
+    D.atl.forEach(function(a){
+      var L = sesDe(a.id, d);
+      if (!L.length && ausDia(a.id, d).length) ausentes.push(a._n);
+      L.forEach(function(s){
+        if (s.clase_dia==='descanso'){ descansos.push(a._n); return; }
+        if (ausDeSesion(s, a.id) || s.clase_dia==='ausencia'){ ausentes.push(a._n); return; }
+        if (!esEntreno(s) || usados[s.id+'|'+a.id]) return;
+        var enGrupo = U.bloques[s.id+'|'+a.id];
+        secs.push('<div class="imp-g"><h2>'+esc(a._n)+' · '+esc(tituloDe(s))+(MOMENTO[s.momento]?' ('+MOMENTO[s.momento].toLowerCase()+(s.hora?' '+hhmm(s.hora):'')+')':'')+(!s.publicada?' · BORRADOR':'')+'</h2>'+intencion(s)+
+          (enGrupo?'<div class="imp-q">'+esc(enGrupo.join(', '))+': con su grupo de trabajo</div>':'')+bloquesTxt(s, null, enGrupo)+
+          (conPrivado && s.nota_razonamiento?'<div class="imp-q"><i>Notas: '+esc(s.nota_razonamiento)+'</i></div>':'')+'</div>');
+      });
+    });
+    var fl = fLarga(d);
+    imp.innerHTML = '<h1>'+esc(ST.g.nombre)+' · '+esc(fl.charAt(0).toUpperCase()+fl.slice(1))+'</h1>'+
+      '<div class="imp-sub">Z = zapatillas · C = clavos · // = recuperación'+(conPrivado?' · incluye avisos de salud y notas privadas':'')+'</div>'+
+      (secs.join('') || '<p>Nadie entrena este día.</p>')+
+      '<div class="imp-pie">'+(descansos.length?'Descanso: '+esc(descansos.join(', '))+'. ':'')+(ausentes.length?'Ausentes: '+esc(ausentes.join(', '))+'. ':'')+'Impreso el '+fechaHora(new Date().toISOString())+'.</div>';
+    document.body.classList.add('ac-imprimiendo');
+    var fin = function(){ document.body.classList.remove('ac-imprimiendo'); window.removeEventListener('afterprint', fin); };
+    window.addEventListener('afterprint', fin);
+    setTimeout(function(){ window.print(); }, 50);
+  }
+
+  /* ================= diálogos ================= */
+  function dialogo(html){
+    cerrarDialogo();
+    var f = document.createElement('div'); f.className='ac-dlg-fondo'; f.id='ac-dlg-fondo';
+    var d = document.createElement('div'); d.className='ac-dlg'; d.id='ac-dlg'; d.setAttribute('role','dialog'); d.setAttribute('aria-modal','true'); d.innerHTML = html;
+    document.body.appendChild(f); document.body.appendChild(d);
+    f.addEventListener('click', cerrarDialogo);
+    return d;
+  }
+  function cerrarDialogo(){ ['ac-dlg','ac-dlg-fondo'].forEach(function(id){ var x=document.getElementById(id); if(x) x.remove(); }); }
+
+  /* ================= pintar y recargar ================= */
+  function pintar(){
+    if (ST.vista==='semana') pintarSemana(); else pintarHoy();
+    urlActual();
+  }
+  async function recargar(){
+    try { await cargar(); pintar(); }
+    catch(err){ console.error(err); wrap.innerHTML = '<p class="ac-nada">No se pudo cargar: '+esc(err.message||err)+'. Vuelve a intentarlo.</p>'; }
+  }
+  async function recargarYReabrir(){
+    var ab = abierto; await recargar();
+    if (ab) abrir(ab.sid, ab.aid);
+  }
+
+  /* ================= eventos ================= */
+  wrap.addEventListener('change', function(e){
+    var t = e.target;
+    if (t.id==='ac-g'){ ST.g = ST.grupos.filter(function(x){ return x.grupo_id===t.value; })[0]; guardar('ac-grupo', t.value); ST.fAtleta=''; ST.fGT=''; cerrar(); recargar(); }
+    else if (t.id==='ac-fa'){ ST.fAtleta = t.value; pintar(); }
+    else if (t.id==='ac-fg'){ ST.fGT = t.value; pintar(); }
+    else if (t.id==='ac-movat'){ ST.movAtleta = t.value; pintar(); }
+  });
+  wrap.addEventListener('click', async function(e){
+    var b = e.target.closest('button, a'); if (!b) return;
+    var ds = b.dataset;
+    if (ds.abrir){ var p = ds.abrir.split('|'); abrir(p[0], p[1]); return; }
+    if (ds.vista){ if (ST.vista!==ds.vista){ ST.vista = ds.vista; if (ds.vista==='semana') ST.semana = lunesDe(ST.dia); cerrar(); await recargar(); } return; }
+    if (ds.sem!=null){ ST.semana = ds.sem==='0' ? lunesDe(hoyISO()) : sumar(ST.semana, 7*(+ds.sem)); ST.diaMovil=null; cerrar(); await recargar(); return; }
+    if (ds.dia!=null){ ST.dia = ds.dia==='0' ? hoyISO() : sumar(ST.dia, +ds.dia); cerrar(); await recargar(); return; }
+    if (ds.diam){ ST.diaMovil = ds.diam; pintar(); return; }
+    if (ds.movat!=null){ ST.movAtleta = ds.movat; pintar(); return; }
+    if (ds.modo){ ST.modo = ds.modo; guardar('ac-modo', ds.modo); pintar(); return; }
+    if (ds.pg!=null){ ST.porGrupos = ds.pg==='1'; guardar('ac-porgrupos', ds.pg); pintar(); return; }
+    if (ds.revisar){ await marcarRevisado(ds.revisar, true); return; }
+    if (ds.revisarTodos){
+      var ids = pendientes().filter(function(x){ return x.tipo==='nuevo'; }).map(function(x){ return x.rid; });
+      if (!ids.length || !confirm('¿Marcar como revisados '+plural(ids.length,'registro','registros')+' de feedback sin avisos? Los que traen molestias o no se hicieron enteros se quedan para que los mires uno a uno.')) return;
+      b.disabled = true;
+      var fallos = 0;
+      for (var i=0;i<ids.length;i+=8){
+        var rs = await Promise.all(ids.slice(i,i+8).map(function(id){ return sb.rpc('academia_marcar_revisado', { p_registro:id, p_revisado:true }); }));
+        rs.forEach(function(x){ if (x.error) fallos++; });
+      }
+      avisar(fallos ? 'Hecho, pero '+fallos+' no se pudieron marcar' : plural(ids.length,'registro marcado','registros marcados')+' como revisados', !!fallos);
+      recargar(); return;
+    }
+    if (ds.imprimir){
+      var dlg = dialogo('<h3>Imprimir el entrenamiento</h3><p>'+esc(fLarga(ST.dia))+': '+(D.gt.some(function(g){ return g.fecha===ST.dia; })?'por grupos de trabajo (lo común una vez y lo distinto por atleta) y':'')+' cada atleta con sus ritmos, recuperaciones y calzado.</p>'+
+        '<label class="op"><input type="checkbox" id="imp-priv"> Incluir avisos de salud y notas privadas del entrenador <span style="color:var(--t3)">(desactivado por defecto)</span></label>'+
+        '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-imp-ok="1">Imprimir</button></div>');
+      dlg.addEventListener('click', function(ev){
+        if (ev.target.closest('[data-dlg-no]')) cerrarDialogo();
+        if (ev.target.closest('[data-imp-ok]')){ var priv = document.getElementById('imp-priv').checked; cerrarDialogo(); imprimir(priv); }
+      });
+      return;
+    }
+    if (ds.publicar){
+      var borr = D.ses.filter(function(s){ return !s.publicada && !s.archivada_en; });
+      var porDia = {}; borr.forEach(function(s){ porDia[s.fecha]=(porDia[s.fecha]||0)+1; });
+      var dlg2 = dialogo('<h3>Publicar '+plural(borr.length,'borrador','borradores')+'</h3><p>Se publicará la versión actual de cada uno y los atletas la verán en su app:</p><ul>'+
+        Object.keys(porDia).sort().map(function(f){ return '<li>'+esc(fLarga(f))+': '+plural(porDia[f],'sesión','sesiones')+'</li>'; }).join('')+'</ul>'+
+        '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-pub-ok="1">Publicar</button></div>');
+      dlg2.addEventListener('click', async function(ev){
+        if (ev.target.closest('[data-dlg-no]')) cerrarDialogo();
+        var ok = ev.target.closest('[data-pub-ok]');
+        if (ok){
+          ok.disabled = true;
+          var r = await sb.from('sesiones').update({ publicada:true }).in('id', borr.map(function(s){ return s.id; })).eq('publicada', false).select('id');
+          cerrarDialogo();
+          if (r.error){ avisar('No se pudo publicar: '+r.error.message, true); return; }
+          avisar(plural((r.data||[]).length,'sesión publicada','sesiones publicadas'));
+          recargar();
+        }
+      });
+      return;
+    }
+    if (ds.sug!=null){
+      var L = (wrap._sugs||[])[+ds.sug]; if (!L) return;
+      try { await crearGT(String(L[0].s.objetivo||L[0].s.titulo).slice(0,60), ST.dia, L.map(function(x){ return x.s.id; }).filter(function(v,i,a){ return a.indexOf(v)===i; }), null); avisar('Grupo creado'); recargar(); }
+      catch(err){ avisar('No se pudo crear: '+(err.message||err), true); }
+      return;
+    }
+    if (ds.gtCrear){
+      var nombre = (document.getElementById('gt-nombre').value||'').trim();
+      var sids = Array.prototype.map.call(wrap.querySelectorAll('.gt-ses:checked'), function(x){ return x.value; }).filter(function(v,i,a){ return a.indexOf(v)===i; });
+      if (!nombre){ avisar('Ponle un nombre al grupo.', true); return; }
+      if (sids.length<2){ avisar('Marca al menos dos sesiones.', true); return; }
+      try { await crearGT(nombre, ST.dia, sids, document.getElementById('gt-bloque').value); avisar('Grupo creado'); recargar(); }
+      catch(err){ avisar('No se pudo crear: '+(err.message||err), true); }
+      return;
+    }
+    if (ds.gtQuitar){
+      if (!confirm('¿Deshacer este grupo de trabajo? Las sesiones no se tocan.')) return;
+      var r3 = await sb.from('grupos_trabajo').delete().eq('id', ds.gtQuitar);
+      if (r3.error){ avisar('No se pudo: '+r3.error.message, true); return; }
+      avisar('Grupo deshecho'); recargar();
+    }
+  });
+  async function marcarRevisado(rid, si){
+    var r = await sb.rpc('academia_marcar_revisado', { p_registro:rid, p_revisado:si });
+    if (r.error){ avisar('No se pudo: '+r.error.message, true); return; }
+    avisar(si ? 'Marcado como revisado' : 'Quitado el revisado');
+    recargarYReabrir();
+  }
+
+  lado.addEventListener('click', async function(e){
+    var b = e.target.closest('button, a'); if (!b) return;
+    var ds = b.dataset;
+    if (ds.cerrar){ cerrar(); return; }
+    if (ds.abrir){ var p = ds.abrir.split('|'); abrir(p[0], p[1]); return; }
+    if (ds.revisar){ await marcarRevisado(ds.revisar, true); return; }
+    if (ds.norevisar){ await marcarRevisado(ds.norevisar, false); return; }
+    var s = abierto && D.sesPorId[abierto.sid];
+    if (ds.int){ var f = document.getElementById('ac-int-f'); f.hidden = !f.hidden; if (!f.hidden) f.innerHTML = formIntencion(s); return; }
+    if (ds.intGuardar){
+      var v = function(id){ var x=document.getElementById(id).value.trim(); return x||null; };
+      var nuevo = { objetivo:v('int-obj'), exigencia:v('int-ex'), exigencia_neuro:v('int-neu'), exigencia_meta:v('int-met') };
+      b.disabled = true;
+      var r;
+      if (s.publicada) r = await sb.rpc('academia_revision_crear', { p_sesion:s.id, p_version_base:s.version, p_propuesta:nuevo, p_motivo:'Ajuste de la intención (objetivo y exigencia)' });
+      else r = await sb.from('sesiones').update(nuevo).eq('id', s.id).eq('version', s.version).select('id');
+      if (r.error){ b.disabled=false; avisar('No se pudo guardar: '+r.error.message, true); return; }
+      if (!s.publicada && !(r.data||[]).length){ avisar('La sesión cambió mientras tanto: vuelve a abrirla.', true); recargarYReabrir(); return; }
+      avisar(s.publicada ? 'Guardado como revisión pendiente' : 'Guardado');
+      recargarYReabrir(); return;
+    }
+    if (ds.revAplicar || ds.revDescartar){
+      var aplicar = !!ds.revAplicar;
+      if (!aplicar && !confirm('¿Descartar esta revisión? La sesión se queda como está.')) return;
+      b.disabled = true;
+      var r2 = await sb.rpc('academia_revision_resolver', { p_revision: ds.revAplicar || ds.revDescartar, p_aplicar: aplicar, p_motivo: null });
+      if (r2.error){ b.disabled=false; avisar('No se pudo: '+r2.error.message, true); return; }
+      avisar(aplicar ? 'Revisión aplicada' : 'Revisión descartada');
+      recargarYReabrir(); return;
+    }
+    if (ds.obs){
+      var fo = document.getElementById('ac-obs-f'); fo.hidden = !fo.hidden;
+      if (!fo.hidden){ fo.innerHTML = '<div class="ac-form" style="padding:8px 0 0;border:0"><textarea id="obs-txt" rows="3" maxlength="1000" placeholder="Lo que has visto hoy (privado: no lo ve el atleta)"></textarea><div><button type="button" class="ac-btn pri mini" data-obs-ok="1">Guardar observación</button></div></div>'; document.getElementById('obs-txt').focus(); }
+      return;
+    }
+    if (ds.obsOk){
+      var txt = (document.getElementById('obs-txt').value||'').trim();
+      if (!txt){ avisar('Escribe la observación.', true); return; }
+      b.disabled = true;
+      var r4 = await sb.from('notas_atleta').insert({ atleta_id:abierto.aid, autor_id:perfil && perfil.id, texto:txt, fecha:s.fecha, tipo:'otro', grupo_id:ST.g.grupo_id });
+      if (r4.error){ b.disabled=false; avisar('No se pudo guardar: '+r4.error.message, true); return; }
+      avisar('Observación guardada'); abrir(abierto.sid, abierto.aid);
+    }
+  });
+  fondo.addEventListener('click', cerrar);
+  document.addEventListener('keydown', function(e){ if (e.key==='Escape'){ if (document.getElementById('ac-dlg')) cerrarDialogo(); else if (abierto) cerrar(); } });
+  var _movil = esMovil(), _rt;
+  window.addEventListener('resize', function(){ clearTimeout(_rt); _rt = setTimeout(function(){ ajustarAlto(); if (esMovil()!==_movil){ _movil = esMovil(); if (D) pintar(); if (abierto) fondo.hidden = !esMovil(); } }, 150); });
+
+  await recargar();
+  var pedida = Q.get('abrir');
+  if (pedida && D){ var pp = pedida.split('|'); abrir(pp[0], pp[1]); }
+});
+</script>
+</body>
+</html>

@@ -59,10 +59,10 @@ Todas con la clave de la integración y limitadas a **Academia AC98**.
 |---|---|---|
 | `prueba` | Comprueba la conexión y la clave sin tocar nada. | No |
 | `contexto(semana)` | Atletas del grupo (id, nombre corto, pruebas, disponibilidad y restricciones vigentes, objetivos), sesiones de la semana (id, fecha, momento, atletas, título, clase de día, publicada, versión, archivada, si tiene registros) y seguimiento resumido. **Sin DNI, teléfonos ni correos**; en la primera prueba, **sin salud**. | No |
-| `guardar_borradores(envio)` | Crea o actualiza borradores (§4). | Sí |
-| `proponer_revision(sesion_id, version_base, cambios)` | Propone cambios a una sesión **ya publicada** (§4.4). | Sí |
+| `guardar_borradores(envio)` | Crea o actualiza borradores (§4). | **No otra vez**: pedir expresamente «guarda los borradores» ya es la autorización |
+| `proponer_revision(sesion_id, version_base, cambios)` | Propone cambios a una sesión **ya publicada** (§4.4). | No otra vez, si se ha pedido expresamente |
 | `ver_borradores(semana)` | Lo guardado, con ids, versiones y estado, para comprobar el resultado. | No |
-| `publicar(lista de {id, version_revisada})` | Publica **solo** lo indicado y **solo** si la versión no ha cambiado (§4.5). | Sí, siempre |
+| `publicar(lista de {id, version_revisada})` | Publica **solo** lo indicado y **solo** si la versión no ha cambiado (§4.5). | Solo cuando Andrés pide publicar |
 
 El mismo servicio habla **MCP** (Codex, ChatGPT) y **REST con OpenAPI** (otros
 clientes). Si cambia la conexión, el servicio no cambia.
@@ -102,6 +102,9 @@ clientes). Si cambia la conexión, el servicio no cambia.
   Mantiene su `id`, su feedback y su historial. Si la sesión cambió desde
   `version_base`, conflicto.
 - Si la sesión ya tiene registros de atletas, la revisión lo avisa expresamente.
+- **Revisar o sustituir**: ver la tabla de [mundo-academia.md](mundo-academia.md)
+  («Revisar frente a sustituir»). ChatGPT revisa; sustituir es otra operación y nunca
+  se hace sobre una sesión con registros.
 
 ### 4.5 Publicar
 

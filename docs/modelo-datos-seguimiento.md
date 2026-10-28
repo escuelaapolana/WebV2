@@ -17,7 +17,8 @@
    | Atributo | Pregunta | Valores |
    |---|---|---|
    | **Autor** | ¿Quién lo registró? | `atleta` · `entrenador` · `importacion` · `asistente` (p. ej. ChatGPT) · `sistema` |
-   | **Fuente** | ¿De dónde sale el valor? | `medicion` (con instrumento y método conocido) · `declaracion` (lo que alguien dice que hizo o usó: reps, kg, un tiempo sin método conocido) · `percepcion` (RPE, sensaciones, molestia) · `observacion` (lo que ve el entrenador) · `calculo` (lo calcula la app: estimación) |
+   | **Fuente** | ¿De dónde sale el valor? | `medicion` (con instrumento y método conocido) · `declaracion` (lo que alguien dice que hizo o usó: reps, kg, un tiempo sin método conocido) · `percepcion` (RPE, sensaciones, molestia) · `observacion` (lo que ve el entrenador) · `calculo` (lo obtiene la app a partir de otros datos) |
+   | **¿Estimado?** | ¿El resultado es exacto o aproximado? | `no` · `si`. **Calcular no es estimar**: sumar 2×150 confirmados da 300 m por cálculo, exacto. Pasar minutos y ritmo a kilómetros sí es estimar. Todo cálculo guarda sus **datos de origen**. |
    | **Método** | ¿Cómo se obtuvo? | `crono_manual` · `fotocelulas` · `gps` · `reloj` · `bascula` · `video` · `no_consta` · `no_aplica` |
    | **Correspondencia con el plan** | ¿Con qué plan casa? | `exacta` · `vigente_al_enviar` · `historica_sin_garantia` · `sobrescrita` · `sin_plan` |
    | **Completitud** | ¿Está entero? | `completo` · `incompleto` · `ausente` |
@@ -25,7 +26,10 @@
    Un atleta puede apuntar un tiempo de fotocélulas (autor `atleta`, método
    `fotocelulas`) y un entrenador uno manual (autor `entrenador`, método
    `crono_manual`). **Lo que escribe el atleta no es «manual» por defecto**: si no se
-   sabe, `no_consta`.
+   sabe, `no_consta`. **Si hay una confirmación explícita, se conserva** (p. ej. Andrés
+   confirmó que los tiempos del 23-oct eran todos manuales), **sin extenderla a otros
+   días** sin pruebas. El método lo elige quien registra el test o la sesión y se puede
+   corregir por repetición.
 3. **Cada magnitud va por separado**: metros, minutos, contactos, saltos, intentos,
    series, repeticiones y kg. **No hay un «volumen» único.**
 4. **Un metro se cuenta una sola vez** en el total. Las exposiciones (clavos, arrastre)
@@ -155,8 +159,10 @@ pendientes.
 - **Carrera principal** = la de la parte principal.
 - **Técnica** aparte, con sus minutos, metros o repeticiones. **Los metros de
   skipping o de técnica no son metros de carrera.**
-- **Flying**: la distancia total incluye la entrada. La entrada se registra como
-  **entrada progresiva**, separada de los metros específicos de aceleración.
+- **Flying / lanzados**: la distancia total incluye la entrada. La entrada se registra
+  como **entrada progresiva**, separada de los metros específicos de aceleración.
+  **Notación para lo nuevo**: «3×60 lanzados, entrada 20 m + tramo 60 m» = 240 m en
+  total. Los textos antiguos ambiguos quedan pendientes hasta confirmarlos.
 - **Exposiciones** (subconjuntos del total, no se suman encima): metros con clavos,
   metros con arrastre (y su carga), salidas de tacos.
 - **Distancia por duración y ritmo** = `calculo` (estimada). **Si solo hay minutos, no
@@ -188,7 +194,8 @@ pendientes.
 - **Unilaterales**: kg **por mancuerna** o **total**, dicho explícitamente;
   repeticiones **por lado**. **Nunca se traslada un RM bilateral a una variante
   unilateral.**
-- **Trineo**: discos añadidos y, si se conoce, la masa total.
+- **Trineo**: dos campos, **discos añadidos** y **masa total** (si se conoce). En los
+  registros antiguos («12 kg»), pendiente hasta saber cuál era.
 - Ampliación de `rm_atleta`: `variante`, `recorrido`, `unilateral`, `tipo`
   (`medido` · `estimado`), `metodo`.
 
@@ -200,8 +207,14 @@ pendientes.
   método es `no_consta`.**
 - `condiciones` en tests y marcas: cronometraje, viento, superficie, calzado,
   altura y separación de vallas, implemento y peso, variante de fuerza.
-- **Comparables solo con las mismas condiciones.** Marcas oficiales, tests y
-  referencias estimadas se muestran por separado, con su fecha.
+- **Vallas en el plan**: altura, separación, distancia a la primera valla y punto
+  final de medición. Se pueden reutilizar plantillas, pero sus valores se guardan en
+  cada versión. Si faltan, se conservan intentos y vallas franqueadas, sin inventar
+  metros.
+- **Comparables solo con las mismas condiciones.** Si una de las dos mediciones tiene
+  el método `no_consta`, se muestran ambas pero con **comparabilidad limitada o
+  pendiente**, nunca como «mismas condiciones». Marcas oficiales, tests y referencias
+  estimadas se muestran por separado, con su fecha.
 
 ## 9. Días: entreno, descanso, ausencia y sin planificar
 
@@ -216,6 +229,26 @@ pendientes.
   `otro`. Las **lesiones y restricciones** van en `lesiones_atleta`.
 - **Momento** (`sesiones.momento`): `unica` · `manana` · `tarde` · `sin_especificar`.
   En lo histórico ambiguo, `sin_especificar`: **no se inventa mañana o tarde.**
+
+## 9 bis. Intención de la sesión
+
+- **Objetivo** breve de cada sesión, que elige el entrenador: aceleración, velocidad
+  máxima, resistencia a la velocidad, ritmo de 400, fuerza-potencia…
+  (`sesiones.objetivo`).
+- **Exigencia prevista**, la valora el entrenador: baja · media · alta
+  (`sesiones.exigencia`). Cuando sea útil, se separa en neuromuscular y metabólica
+  (`exigencia_neuro`, `exigencia_meta`). **No es el RPE real ni una puntuación
+  automática.**
+- Sirve para ver de un vistazo cómo se reparte la semana y dónde se acumulan los
+  estímulos exigentes.
+
+## 9 ter. Grupos de trabajo
+
+- **Los decide el entrenador cada día.** La app puede sugerirlos (p. ej. planes
+  iguales), pero no agrupa sola.
+- **Agrupar organiza la sesión**: cada atleta conserva su prescripción y su registro.
+- Se puede agrupar por **sesión entera** o por **bloque**: pueden compartir una parte y
+  separarse después.
 
 ## 10. Perfil, objetivos y decisiones
 
@@ -248,8 +281,11 @@ pendientes.
   - **El % completado global** («70 %») se guarda como **declaración global**. **No se
     reparte** entre ejercicios ni capacidades multiplicando el plan: no sabemos qué
     bloques omitió.
-  - **Un tiempo aislado no confirma todas las repeticiones.** Solo confirma esa
-    repetición.
+  - **Un tiempo aislado no confirma todas las repeticiones.** Confirma una repetición
+    solo si está vinculado sin ambigüedad a esa repetición y distancia.
+  - **Volumen confirmado ≠ volumen total realizado.** Si se conocen 480 m de una
+    sesión incompleta, se muestra «480 m confirmados; resto sin concretar», nunca
+    como todo lo que hizo.
   - **Opcional**: solo cuenta si se confirma.
   - **Sin registro** → `ausente`.
 - **Comparación por correspondencia**:

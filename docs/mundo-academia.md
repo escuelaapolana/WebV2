@@ -1,11 +1,62 @@
-# Mundo «Academia AC98» — PROPUESTA v2 (sin construir)
+# Mundo «Academia AC98» — v1 funcional (Semana y Hoy)
 
-> 28-oct-2026 · v2 con las decisiones de Andrés (revisadas con ChatGPT).
+> 28-oct-2026 · v2 con las decisiones de Andrés (revisadas con ChatGPT). **Semana y
+> Hoy construidos** (ver §Estado); ficha, objetivos, cargas y cálculos, pendientes.
 > Requisitos: [requisitos-panel-seguimiento.md](requisitos-panel-seguimiento.md) ·
 > Modelo: [modelo-datos-seguimiento.md](modelo-datos-seguimiento.md) ·
 > Ejemplos: [ejemplos-calculo-academia.md](ejemplos-calculo-academia.md) ·
 > Conexión: [integracion-chatgpt.md](integracion-chatgpt.md).
 > Maqueta local (datos ficticios, plan real de la semana 9): `portal/_maqueta-academia/`.
+
+## Estado (28-oct-2026)
+
+**Construido:** `portal/academia/` (mundo «Academia AC98» en `assets/js/mundos.js`),
+sobre la base mínima (mig 462) y el grupo de prueba con datos ficticios (mig 463).
+
+- **Semana**: tabla atletas × días con nombres y cabecera fijos, columna de hoy,
+  ‹ Anterior · Esta semana · Siguiente ›, filtros por atleta y por grupo de trabajo,
+  Compacta/Detallada, mañana y tarde, tipos de día, sustituciones, archivadas con
+  registro, resumen por día (atletas / sesiones / descansos / ausencias / sin
+  planificar / borradores) y «Publicar borradores (N)…» con confirmación. La tabla
+  se ajusta al alto de la pantalla: el resumen siempre se ve y no tapa la última fila.
+- **Tres estados con texto**: Borrador · Realizada / Parcial · % / No realizada /
+  «Sin datos · feedback pendiente» (solo vencido el plazo, nunca antes de que acabe
+  la sesión) · Feedback nuevo · Revisar: molestia · Revisión pendiente · «Plan cambiado
+  después · v1 → v2».
+- **Hoy**: cifras (atletas entrenan · sesiones · ausencias · descansos · borradores ·
+  que revisar · sin feedback), ‹ día ›, Por atleta (hoy + ayer) o Por grupos de
+  trabajo; «Pendiente de revisar» con origen: revisiones y avisos uno a uno, el
+  feedback sin avisos y lo que no tiene respuesta plegados con su número, y «Marcar
+  los N como revisados» (solo los que no traen avisos).
+- **Grupos de trabajo**: los crea el entrenador (por sesión o por bloque); la app
+  solo sugiere (misma intención y título) y nunca agrupa sola. Un grupo por bloque
+  solo cubre ese bloque; el resto sigue siendo individual.
+- **Detalle**: lateral (PC) o pantalla completa (móvil), anterior/siguiente del día;
+  versión y publicación; intención (objetivo y exigencia: en borrador se guarda
+  directa con candado de versión; publicada → revisión pendiente); revisión
+  pendiente con antes/ahora emparejados, aplicar (versión N+1) o descartar; lo que
+  hizo y **el plan que respondió completo**, cambios respecto a él (solo
+  diferencias) y plan actual plegado; marcar/quitar revisado; observaciones del día
+  (privadas, `notas_atleta`); enlaces a Planificar y a la ficha.
+- **Imprimir**: el día por grupos de trabajo (lo común una vez, lo distinto por
+  atleta) y el resto individual, con ritmos, recuperaciones y calzado; **sin avisos
+  de salud ni notas privadas salvo que se marque**.
+- **iPhone**: Semana con los 7 días a la vista (domingo incluido) y debajo sus
+  atletas, o la semana de un atleta; filtros y leyenda plegados; Hoy con el resumen
+  de avisos desplegable; nada desborda a lo ancho; la barra inferior no tapa.
+
+**Cómo se validó:** banco de pruebas local (`portal/_maqueta-academia/real.html`, no
+se sube) que carga la misma página con los datos del grupo PRUEBA exportados con los
+permisos de Andrés; los siete casos (doble sesión, ausencia que conserva lo previsto,
+parcial, feedback nuevo y revisado, publicada con revisión pendiente, grupo con
+ritmos individuales, impresión e iPhone) en PC y a 390 px. Las escrituras de verdad
+(revisado, revisión crear/aplicar, grupos de trabajo, observación, intención con
+candado, publicar) se probaron en la base como Andrés en transacciones deshechas, y
+sin permiso (otro responsable) no se ve ni se escribe nada.
+
+**Pendiente de decidir:** los atletas que están en el grupo solo para subirles el
+entreno (no «cuentan» como Academia) salen en «sin feedback»; hace falta marcar a
+quién no se le pide feedback.
 
 ## Navegación
 
@@ -122,31 +173,46 @@ Detalle de una sesión = panel lateral (PC) · pantalla completa (móvil).
 |---|---|
 | Entrada y acceso | Nuevo mundo; admin y entrenador de Academia. Más entrenadores: tabla `grupo_entrenadores` + 3 funciones de permiso, solo para Academia (aparte, con visto bueno). |
 | Tipo de día, momento, ausencias | `sesiones.clase_dia`, `sesiones.momento` (con `sin_especificar`), `ausencias` con motivo tipificado; relleno prudente de lo antiguo. |
-| Grupos de trabajo del día | Etiqueta por sesión/atleta (p. ej. `grupo_trabajo`); **forma por decidir** (§Pendientes). |
+| Grupos de trabajo del día | Hecho: `grupos_trabajo` + `grupos_trabajo_miembros` (sesión entera o un bloque). |
 | Revisión del feedback | `registros_sesion.revisado_en` / `revisado_por`; plazo de respuesta configurable. |
 | Revisiones de sesiones publicadas | `sesiones_revisiones` (también la usa ChatGPT). |
 | Objetivos y decisiones | `atleta_objetivos` (+ historial), ampliar `notas_atleta`. |
 | Texto detallado de la casilla | Del plan: la «parte principal» resumida (sin cálculos). |
 
-## Decisiones que siguen pendientes
+## Decisiones tomadas (v2 → v3, 28-oct)
 
-1. **Grupos de trabajo de «Hoy»**: ¿los marca el entrenador en cada sesión (p. ej. un
-   campo «grupo de trabajo») o se deducen de que tengan el mismo plan ese día?
-2. **Plazo para el feedback**: ¿cuántas horas después de la sesión pasa a «feedback
-   pendiente»? (Propuesta: a las 22:00 del mismo día.)
-3. **«12 kg» en el arrastre**: ¿discos añadidos o masa total? (Cambia la exposición
-   a carga.)
-4. **«3×60 (20+60) lanzados»**: ¿los 60 m incluyen la entrada?
-5. **Altura y separación de vallas**: ¿se indican siempre en el plan? Sin ellas, las
-   sesiones de vallas no se comparan entre sí.
-6. **Más entrenadores con acceso a Academia**: ¿hace falta ya? Implica tocar
-   permisos.
-7. **Fotocélulas**: cuando lleguen, ¿quién apunta el método por sesión?
+- **Grupos de trabajo**: los decide el entrenador cada día; la app solo sugiere. Por
+  sesión o por bloque. Cada atleta conserva su prescripción y su registro.
+- **Plazo del feedback**: configurable (propuesta: 22:00 del mismo día). **Nunca se
+  marca retraso antes de que termine la sesión.**
+- **Arrastre «12 kg»**: los antiguos quedan pendientes; para lo nuevo, dos campos:
+  discos añadidos y masa total.
+- **Lanzados**: notación explícita «3×60 lanzados, entrada 20 m + tramo 60 m». Los
+  antiguos ambiguos, pendientes.
+- **Vallas**: altura, separación, distancia a la 1.ª y punto final de medición, con
+  plantillas cuyos valores se guardan en cada versión.
+- **Acceso**: de momento, admin y entrenador autorizado de Academia (sin cambios de
+  permisos).
+- **Método de cronometraje**: lo elige quien registra; se corrige por repetición; no
+  se asumirán fotocélulas al comprarlas.
+- **Intención visible**: objetivo breve y exigencia prevista (baja/media/alta,
+  neuromuscular/metabólica) en cada sesión.
+
+## Revisar frente a sustituir
+
+| | **Revisión** | **Sustitución** |
+|---|---|---|
+| Cuándo | Cambia el contenido de la **misma** sesión prevista (mismo atleta, día y franja, misma intención): ajustar series, ritmos, ejercicios… | La sesión prevista se reemplaza por **otra distinta**: otro día, otro tipo de trabajo, o el atleta hizo otro entrenamiento en su lugar. |
+| Cómo | Mismo `id`, **versión nueva**. Si está publicada: revisión en borrador vinculada; al aplicarla, versión nueva de la misma sesión. | Sesión **nueva** con `sustituye_a` = la original. La original queda «sustituida». |
+| Recuento | Una sola sesión. | La original no cuenta como «no realizada», ni la nueva como adicional. En la semana se ve la nueva con «sustituye a…». |
+| Lo realizado | Queda atado a la versión que respondió el atleta. | **No se sustituye una sesión que ya tiene registros**: lo realizado le pertenece. En ese caso se revisa, o se añade una sesión adicional explícita. |
 
 ## Fases (prioridad: Semana y Hoy)
 
 1. **Base de datos mínima**: `clase_dia`, `momento` (con `sin_especificar`),
-   ausencias tipificadas, `revisado_*`. Relleno prudente de lo antiguo.
+   ausencias tipificadas, `revisado_*`, objetivo y exigencia, grupos de trabajo,
+   revisiones de publicadas, `sustituye_a`, plazo de feedback. Relleno prudente de lo
+   antiguo.
 2. **Mundo «Academia AC98» + Semana** (compacta y detallada, tres estados, mañana y
    tarde, filtros, detalle con cambios respecto al plan respondido, publicar con
    versión). Acceso solo de admin y del entrenador de Academia.
