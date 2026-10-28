@@ -18,7 +18,7 @@
 # =====================================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."
-REPO="$PWD"
+REPO="$(pwd -P)"   # ruta real (no el acceso del Escritorio, que sincroniza iCloud)
 CODEX="/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
 SERVICIO="apolana-academia-mcp"
 NOMBRE="ChatGPT · Mac de Andrés (prueba)"
