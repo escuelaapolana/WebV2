@@ -185,3 +185,52 @@ su función.
 La propuesta de modelo debe distinguir **qué existe ya, qué hay que ampliar y qué
 requiere una tabla nueva**, e incluir cómo se tratan los registros antiguos
 incompletos sin inventar información.
+
+## Organización del mundo «Academia AC98» (Andrés, 28-oct-2026)
+
+Mundo propio del panel, junto a los demás. **Centro de planificación y seguimiento**
+de los atletas de Academia. Reutiliza atletas, sesiones, feedback, tests y demás
+registros de Supabase: **ni otra app ni datos duplicados**. Mantiene el histórico
+(fase 1) y los permisos.
+
+1. **Hoy**: quién entrena y qué hace cada uno; ausencias y disponibilidad; feedback
+   pendiente y avisos relevantes con su motivo; acceso rápido a la sesión y a la
+   ficha de cada atleta.
+2. **Planificación**: vista principal en **tabla, atletas en filas y días en
+   columnas**; el nombre del atleta visible en todas las tarjetas; dobles sesiones
+   separadas en **mañana y tarde**; distinguir **entrenamiento, descanso, ausencia y
+   sin planificar** (no contarlos todos como sesiones); abrir el detalle, editar
+   borradores, **comparar cambios** y **publicar**; conservar versiones y su relación
+   con el feedback. (Problema actual: la vista semanal muestra muchas tarjetas con
+   títulos iguales y «solo para 1», sin decir de qué atleta son.)
+3. **Atletas**: ficha individual con perfil deportivo y pruebas, objetivos de
+   temporada y a 3 años, disponibilidad habitual, decisiones vigentes,
+   planificación, ejecución, feedback, bienestar, tests, marcas y competiciones;
+   **situaciones temporales separadas del perfil estable**. Todo lo relevante sin
+   salir de la ficha.
+4. **Feedback**: plan respondido y trabajo realizado juntos; tiempos, RPE, duración,
+   molestias y comentarios; observaciones y decisiones del entrenador; filtros por
+   atleta, fecha, sesión y «pendiente de revisar»; historial de correcciones y
+   señal de datos antiguos sin garantía.
+5. **Carga y contenidos**: lo de §2, §6 y §8 de la propuesta (volumen previsto y
+   realizado por capacidad, unidades propias, sin dobles conteos, distribución
+   semanal, tendencias, cobertura de datos, conclusiones enlazadas a su origen).
+6. **Tests y marcas**: resultados, evolución y objetivos; parciales por tramo y
+   acumulados; mediciones reales, estimaciones y objetivos separados; condiciones
+   (cronometraje, viento, altura de vallas, implementos, variantes de fuerza).
+7. **Competiciones**: calendario y competiciones objetivo; pruebas previstas por
+   atleta; resultados y relación con la planificación.
+
+**Accesos:** administración y entrenadores autorizados de Academia. Los atletas
+siguen viendo solo lo suyo en su portal. **Añadir el mundo no amplía por sí solo
+permisos sobre otros grupos.**
+
+**Trabajo con ChatGPT:** consultar el seguimiento y cargar borradores mediante una
+conexión autorizada (ver [integracion-chatgpt.md](integracion-chatgpt.md)): sin
+duplicados, detectando cambios hechos entretanto, conservando el histórico, y
+publicar como operación aparte bajo instrucción de Andrés. **No se presupone que la
+conexión exista; no se comparten credenciales en el chat.**
+
+**Prioridad:** entrada «Academia AC98», vista semanal clara, ficha individual y
+feedback integrado. Después, volumen y tendencias sobre las definiciones de datos
+acordadas. Pocas pantallas claras, tablas compactas, detalle al abrir cada elemento.

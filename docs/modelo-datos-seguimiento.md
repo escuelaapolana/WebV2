@@ -10,9 +10,18 @@
 1. **La unidad es la fila del plan** (`sesiones.bloques[].filas[]`, con su `id`). El
    atleta sigue viendo el texto tal cual («3×30 flying (20+30) // 5′ C»); la
    estructura va aparte y no cambia lo que ve.
-2. **Cada número lleva su calidad**: `medido` (instrumento: fotocélula, GPS),
-   `declarado` (lo escribe el atleta o el entrenador), `estimado` (lo calcula la
-   app) o `ausente`. Nunca se presenta una estimación como dato.
+2. **Cada dato lleva cuatro dimensiones separadas** (no se mezclan en una sola
+   «calidad»):
+
+   | Dimensión | Valores |
+   |---|---|
+   | **Procedencia** | `medicion` (instrumento) · `declaracion_atleta` · `observacion_entrenador` · `estimacion` (la calcula la app) |
+   | **Método** | `crono_manual` · `fotocelulas` · `gps` · `reloj_app` · `bascula` · `video` · `sin_metodo` (p. ej. RPE) |
+   | **Correspondencia con el plan** | `exacta` · `vigente_al_enviar` · `historica_sin_garantia` · `sobrescrita` · `sin_plan` |
+   | **Completitud** | `completo` · `incompleto` · `ausente` |
+
+   Nunca se presenta una estimación como dato, ni un tiempo manual como si fuera de
+   fotocélulas.
 3. **Cada magnitud va por separado**: metros, minutos, contactos, intentos, series,
    repeticiones y kg. **No hay un «volumen» único.**
 4. **Un metro se cuenta una sola vez**: pertenece a un único tramo con un único
@@ -104,20 +113,24 @@ distribución semanal y sus **magnitudes** permitidas:
 ## 4. Previsto frente a realizado
 
 - **Previsto** = componentes de las filas de la **versión respondida**.
-- **Realizado**, por orden de preferencia y con su calidad:
+- **Realizado**, por orden de preferencia (cada valor con sus cuatro dimensiones):
   1. Lo apuntado por fila (`tiempos_reales`: series hechas, tiempos, kg, RIR) →
-     `declarado` (o `medido` si el tiempo es de células).
-  2. Si solo hay estado/% de la sesión → `estimado` (= previsto × %). **Nunca las dos
-     cosas a la vez** para la misma fila.
-  3. Sin registro → `ausente` (no «hecho»).
+     procedencia `declaracion_atleta` (o `medicion` si el tiempo es de células),
+     método el que corresponda, completitud según las series apuntadas.
+  2. Si solo hay estado/% de la sesión → procedencia `estimacion` (= previsto × %).
+     **Nunca las dos cosas a la vez** para la misma fila.
+  3. Sin registro → completitud `ausente` (no «hecho»).
 - **Sustituciones**: `sesiones.sustituye_a` (nueva) marca la sesión que reemplaza a
   otra; la original cuenta como «sustituida» y la nueva no es «adicional». Dentro de
   una fila, `cambiado_por` (ya existe) marca el ejercicio cambiado.
 - **Motivo del cambio**: del atleta, `motivo_no_hecho` / `nota_no_hecho` (existen); del
   entrenador, `sesiones.motivo_cambio` (nuevo; queda en cada versión).
 - **Opcionales**: solo cuentan si hay realizado declarado.
-- Registros **sin plan exacto** (`version_garantia` ≠ exacta): sus datos realizados
-  (RPE, tiempos, molestias) valen; quedan **fuera** del cumplimiento del plan.
+- **Correspondencia con el plan** (de `version_garantia`): la comparación exacta
+  previsto/realizado solo con `exacta`; `vigente_al_enviar`, como «probable» y marcada;
+  `historica_sin_garantia` / `sobrescrita`, sin comparación exacta. **Lo realizado de
+  todos ellos se sigue analizando** (tiempos, RPE, duración, comentarios), con sus
+  límites a la vista. No se excluye el registro entero.
 
 ## 5. Mediciones y condiciones
 
@@ -182,11 +195,14 @@ distribución semanal y sus **magnitudes** permitidas:
 
 ## 8. Registros antiguos (sin inventar)
 
-- La estructura se puede calcular sobre la versión «inicial», pero se marca
-  `plan no garantizado` y no entra en previsto frente a realizado.
-- Tiempos con claves de bloque (`cc`, `mov`, `tec`…) → no se asignan a filas: lo
-  realizado por fila queda `ausente`; se usan el RPE y lo demás de la sesión.
-- Correcciones anteriores al 28-oct: solo el contador.
+- Correspondencia con el plan: `historica_sin_garantia` o `sobrescrita`. La estructura
+  se puede calcular sobre la versión «inicial» como **referencia**, sin comparación
+  exacta con lo realizado.
+- **Lo realizado sí se analiza**: tiempos, RPE, duración, molestias y comentarios, con
+  su procedencia (`declaracion_atleta`) y sus límites.
+- Tiempos con claves de bloque (`cc`, `mov`, `tec`…) → datos de la sesión, no de una
+  fila; por fila, completitud `incompleto`.
+- Correcciones anteriores al 28-oct: se usa el valor actual; no hay historial.
 
 ## 9. Lo que se implementaría en el paso 3 (cuando lo aprobemos)
 

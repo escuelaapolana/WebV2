@@ -39,15 +39,27 @@
 
 ## Reglas para cualquier análisis (panel, informes, asistente)
 
-- **Previsto frente a realizado** solo con registros `exacta`. Los demás se
-  muestran, pero marcados («plan no garantizado») y fuera de los cálculos de
-  cumplimiento del plan.
-- Lo **realizado** declarado por el atleta (RPE, molestias, tiempos, notas) sigue
-  siendo un dato real aunque el plan no esté garantizado: se puede usar para
-  RPE, molestias y tendencias, citando el registro de origen.
-- **Nunca reconstruir** versiones o valores que no se guardaron. Si falta, se dice
-  que falta.
-- Ausencia de registro **no** significa que se hiciera lo previsto.
+Un registro antiguo **no se excluye entero** porque su plan no esté garantizado. Se
+separan dos usos:
+
+1. **Comparar previsto frente a realizado** (exacto): exige una versión del plan
+   fiable.
+   - `exacta` → comparación exacta.
+   - `vigente_al_enviar` → comparación **probable**, marcada como tal (la app no dijo
+     qué versión vio el atleta).
+   - `sin_garantia` / `sobrescrita` → **no** hay comparación exacta con el plan; se
+     enseña el plan guardado solo como referencia, con su aviso.
+2. **Analizar lo realizado** (tiempos, RPE, duración, molestias, comentarios): se usa
+   lo que sea aprovechable de **todos** los registros, también los antiguos, citando
+   el registro de origen y mostrando sus límites:
+   - tiempos con claves de bloque antiguas (`cc`, `mov`, `tec`…) → valen como dato de
+     la sesión, no de una fila concreta del plan;
+   - correcciones anteriores al 28-oct → se usa el valor actual y se avisa de que no
+     hay historial de cambios;
+   - lo que falta se dice que falta; nunca se reconstruye.
+
+Y siempre: ausencia de registro **no** significa que se hiciera lo previsto ni que
+el atleta esté bien.
 
 ## Copias de seguridad previas a la mig 458
 
