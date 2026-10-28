@@ -151,9 +151,40 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   versión publicada vigente (una revisión pendiente no la sustituye); borradores solo
   si se marcan y señalados; salud y notas privadas solo si se marcan. Sesiones
   idénticas sin grupo salen juntas.
-- **Pendiente (registro rápido)**: tiempos por atleta y repetición, repeticiones,
-  kg, sustituciones y discrepancias atleta/entrenador necesitan una estructura nueva
-  (ver propuesta en DIARIO 28-oct); no se ha creado sin el visto bueno.
+
+**Registro rápido en pista (28-oct, mig 468, autorizado por Andrés):**
+- **«Apuntar en pista…»** (en cada grupo de trabajo, en cada sesión de la vista por
+  atleta y en el detalle): una hoja con una tabla por fila del plan, **atletas en
+  filas y tomas en columnas**; las filas con partes («250 + 150») salen en columnas
+  separadas; «Tomas − +» por si hacen más o menos; **tramos** («entrada 20 m»,
+  «parcial 200») como filas extra; **kg y reps por serie** (kg totales o por
+  mancuerna; por lado si es unilateral); teclado numérico/decimal y Intro para
+  pasar a la casilla siguiente. Estado de la fila y del bloque (sin dato ·
+  realizado · parcial · no realizado), nota breve, **sustitución** (lo previsto y
+  lo que hizo) y **trabajo adicional** sin inventar filas del plan.
+- **Método de cronometraje** de la toma (manual · fotocélulas · electrónico de
+  competición · vídeo · otro · no consta), visible, aplicable a lo ya apuntado y
+  corregible dato a dato.
+- **Guardar**: cada casilla se guarda sola («Sin guardar… / Guardando… / Guardado /
+  N sin guardar · Reintentar»); ante un fallo lo escrito se queda y se reintenta sin
+  duplicar (id generado en la pantalla); si otra pantalla lo ha cambiado o creado,
+  «Mantener el mío / Usar el suyo»; aviso antes de cerrar o salir con pendientes.
+- **Base** (`academia_toma_datos`): un dato por fila atado a sesión, **versión**,
+  atleta y **id de fila** (nunca por nombre ni posición), con alcance, serie,
+  repetición, parte, tramo, magnitud y lado; texto original + número y unidad solo
+  si es inequívoco (34,52 · 1:28,5 · 1:02:30 · 34″52 · 1′28″5 · 62,5 kg);
+  lo dudoso queda marcado para aclarar. Historial de cada cambio. Escritura solo
+  por `academia_toma_guardar`; leer y escribir exige `academia_puede`.
+- **No completa nada**: ni crea feedback del atleta ni lo da por realizado; en la
+  casilla de Semana solo sale «Datos de pista».
+- **Detalle = un seguimiento**: plan respondido, feedback del atleta y, aparte,
+  «Datos tomados en pista · del entrenador» (por fila, con método, tramo, versión
+  sobre la que se tomaron y filas que ya no están en el plan), trabajo adicional,
+  sustituciones, historial y **discrepancias**: solo cuando es la misma toma, tramo
+  total, sin lado ni partes y tiempo; se decide la referencia (quién y cuándo) sin
+  borrar ninguno (`academia_discrepancias`). Lo que no se puede emparejar con
+  seguridad (partes, tramos, texto libre del atleta) sale «pendiente de vincular».
+- Una sesión con datos del entrenador **se archiva en vez de borrarse**.
 
 ## Navegación
 
