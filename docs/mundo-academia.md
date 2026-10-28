@@ -1,78 +1,161 @@
-# Mundo «Academia AC98» — PROPUESTA (sin construir)
+# Mundo «Academia AC98» — PROPUESTA v2 (sin construir)
 
-> 28-oct-2026 · Requisitos: [requisitos-panel-seguimiento.md](requisitos-panel-seguimiento.md).
-> Modelo de datos: [modelo-datos-seguimiento.md](modelo-datos-seguimiento.md).
-> Maqueta (local, datos inventados): `portal/_maqueta-academia/`.
+> 28-oct-2026 · v2 con las decisiones de Andrés (revisadas con ChatGPT).
+> Requisitos: [requisitos-panel-seguimiento.md](requisitos-panel-seguimiento.md) ·
+> Modelo: [modelo-datos-seguimiento.md](modelo-datos-seguimiento.md) ·
+> Ejemplos: [ejemplos-calculo-academia.md](ejemplos-calculo-academia.md) ·
+> Conexión: [integracion-chatgpt.md](integracion-chatgpt.md).
+> Maqueta local (datos ficticios, plan real de la semana 9): `portal/_maqueta-academia/`.
 
 ## Navegación
 
 ```
-Panel ─ tira de mundos ─ … · Atletismo pista · [Academia AC98] · Escuela atletismo …
+Panel ─ tira de mundos (PLEGABLE) ─ … · Atletismo pista · [Academia AC98] · …
                               │
-                              ├─ Hoy            (entrada del mundo)
-                              ├─ Planificación  (tabla atletas × días; detalle al tocar)
-                              ├─ Atletas        (lista → ficha individual con pestañas)
+                              ├─ Hoy            (entrada: individual · por grupos de trabajo)
+                              ├─ Semana         (tabla atletas × días: compacta · detallada)
+                              ├─ Atletas        (lista → ficha)
                               ├─ Feedback       (plan respondido + realizado, filtros)
-                              ├─ Carga y contenidos   ← fase 2 (tras acordar el modelo)
                               ├─ Tests y marcas
-                              └─ Competiciones
-Detalle de una casilla/sesión = panel lateral (no otra pantalla).
+                              ├─ Competiciones
+                              └─ Carga y contenidos   ← cuando el modelo esté validado
+Detalle de una sesión = panel lateral (PC) · pantalla completa (móvil).
 ```
 
-## Qué se reutiliza (existe hoy)
+## Criterios de diseño
 
-| Necesidad | Ya existe |
+- **Identidad azul del club**, con:
+  - menos sombras y menos cajas decorativas;
+  - texto secundario más grande y con más contraste;
+  - **el color, solo para información útil** (estado, avisos).
+- **Tira de mundos plegable y menú de Academia compacto**, para dar ancho al
+  entrenamiento.
+- **Jerarquía**: atleta → sesión → trabajo → avisos.
+- **Estados con texto**, no solo color o símbolos: cada uno tiene su etiqueta y su
+  explicación accesible.
+- **Pocas pantallas.** Se reutilizan datos y funciones existentes.
+
+## Semana (vista principal)
+
+- **Tabla atletas × días**:
+  - nombres y cabecera de días **fijos al desplazarse**;
+  - **columna de hoy** destacada suavemente;
+  - «‹ Anterior · **Esta semana** · Siguiente ›»;
+  - filtros por **atleta** y por **grupo de trabajo**;
+  - **Compacta / Detallada**.
+- **Mañana y tarde** separadas en la casilla; «sin especificar» cuando no consta.
+- **Detallada**: se entiende la sesión sin abrirla, por ejemplo «Ritmo 400 ·
+  2×(250+150) · 34–35″ / 19,5–20,5″ · Z». No se queda en títulos genéricos como
+  «Fuerza-potencia».
+- **Tres dimensiones de estado, separadas y con texto**:
+  1. **Publicación**: borrador · publicada.
+  2. **Ejecución**: realizada · parcial · no realizada · sin datos.
+  3. **Revisión**: feedback pendiente · feedback nuevo · aviso que revisar.
+
+  Un ✓ de feedback **no** significa «entrenamiento completado». El feedback se marca
+  como pendiente **solo cuando ha pasado el plazo para responder**.
+- **Tipos de día**: entreno · descanso · ausencia (con su motivo) · sin planificar.
+  Una ausencia no borra lo previsto.
+- **Resúmenes**: separan **atletas** de **sesiones**; los descansos y las ausencias
+  **no cuentan** como entrenamientos.
+
+## Hoy
+
+- **Dos vistas**: individual y **por grupos de trabajo** (p. ej. «aceleración: Álex y
+  Bruno»). Cada grupo se despliega con su entrenamiento y las diferencias de cada
+  atleta. Es la versión digital del resumen que se imprime para dirigir la sesión.
+- **Acciones**: imprimir el entrenamiento de hoy · abrir sesión · añadir observación
+  · ver ficha · **pasar lista** (lo que ya existe).
+- **Pendiente de revisar**: hechos concretos con su origen (qué registro, de cuándo).
+  Las decisiones cuya fecha de revisión llega **quedan pendientes**: no desaparecen
+  ni dan al atleta por recuperado.
+- Cifras que separan **atletas** de **sesiones** (p. ej. «9 atletas · 10 sesiones»
+  si hay dobles).
+
+## Detalle de una sesión
+
+- **Arriba**: atleta, fecha y sesión.
+- **Contenido según el momento**:
+  - si ya entrenó: lo realizado y su feedback, junto al plan respondido;
+  - si aún no: el plan actual.
+- **Observación del entrenador**, y la opción de añadirla.
+- **«Ver cambios respecto al plan respondido»**: desplegable con **solo las
+  diferencias** resaltadas. La comparación completa de versiones, solo si se pide.
+- **Navegación**: cierre visible, atleta anterior/siguiente y pantalla completa en
+  móvil.
+- **Editar y publicar dicen sobre qué versión actúan** (p. ej. «Editar la versión 2 ·
+  borrador»).
+
+## Ficha del atleta
+
+- Perfil estable separado de la **situación temporal** («Ahora»).
+- Objetivos **por temporada** (las tres próximas, prueba principal y secundarias).
+- Decisiones vigentes, con su motivo y vigencia. Al llegar la fecha de revisión,
+  pasan a **pendiente de revisar**.
+- Marcas y tests **con fecha y condiciones**, y las últimas mediciones comparables.
+- **Evolución de las últimas 4 semanas**:
+  - sesiones realizadas, cobertura del feedback, volumen por contenido, RPE y
+    molestias;
+  - se incorpora **cuando el modelo de cálculo esté validado**, sin estimaciones
+    ocultas. Hasta entonces, el hueco dice que está pendiente.
+
+## Móvil (iPhone)
+
+- **Hoy**: grupos y atletas desplegables.
+- **Semana**: se elige un día y debajo salen sus atletas, con la opción de ver la
+  semana de un atleta. **No se encoge la tabla de 7 días.**
+- **Ficha**: una columna, pestañas desplazables.
+- **Detalle**: pantalla completa.
+- Texto legible sin ampliar y controles cómodos para usar en pista.
+
+## Qué se reutiliza y qué falta
+
+| Se reutiliza | De dónde |
 |---|---|
-| Mundos, barra lateral y móvil | `assets/js/mundos.js` (añadir el mundo y su mapa de pantallas) |
-| Sesiones, versiones, archivadas, feedback, correcciones | `sesiones`, `sesiones_versiones`, `registros_sesion`, `registros_sesion_versiones` (fase 1) |
-| Planificar, duplicar semana, plantillas, pasar lista | `portal/entrenador` (formulario «Planificar», «Semana», «Calendario», copiar semana, plantillas) |
-| Feedback por día del entrenador | `portal/entrenador` sección Feedback (FBX) y descarga |
-| Ficha del atleta (resumen, notas, RM) | `portal/entrenador` «Mi grupo» → ficha (`pintarFicha`), `notas_atleta`, `rm_atleta` |
-| Ver la semana como la ve el atleta | `portal/atleta` en modo «Viendo la semana de…» (solo lectura) |
-| Lesiones y disponibilidad | `portal/lesiones` + `lesiones_atleta` |
-| Carga y bienestar | `portal/carga` + `bienestar_diario` |
-| Tests | `portal/tests`, `admin/tests`, `test_resultados`, `test_baterias` |
-| Marcas y récords | `marcas_atleta`, `admin/records` |
-| Competiciones e inscripciones | `admin/competiciones`, `admin/confirmaciones`, `competiciones`, `competicion_atleta` |
-
-## Qué falta y qué cambios de datos requiere
+| Mundos, lateral, móvil | `assets/js/mundos.js` |
+| Sesiones, versiones, feedback, correcciones, archivadas | fase 1 |
+| Planificar, copiar semana, plantillas, pasar lista | `portal/entrenador` |
+| Feedback por día, ficha, notas, RM | `portal/entrenador` |
+| Lesiones, carga y bienestar, tests, competiciones | `portal/lesiones`, `portal/carga`, `portal/tests`, `admin/competiciones` |
 
 | Falta | Cambio |
 |---|---|
-| Entrada «Academia AC98» y acceso | Nuevo mundo en `mundos.js` + `mis_mundos()`: admin y **entrenadores autorizados de Academia**. Hoy los permisos de entreno van por `grupos.entrenador_id` (un solo entrenador). Para autorizar a más, haría falta una tabla `grupo_entrenadores` y ajustar 3 funciones de permiso, **solo para Academia**: es un cambio delicado que va aparte y con tu visto bueno. |
-| Distinguir entrenamiento / descanso / ausencia / sin planificar | Hoy «Descanso», «No asiste» o «NO ENTRENA» son sesiones con título, unas veces como `carga` y otras como `descanso` (hay hasta un fartlek marcado «descanso»). Propuesta: `sesiones.clase_dia` (`entreno` · `descanso`) y las ausencias en `ausencias` (ya existe, sin uso). Rellenar lo antiguo con reglas y dejar lo dudoso **pendiente de revisar**. |
-| Mañana / tarde | Hoy solo por la hora (12 de 535 sesiones la tienen). Propuesta: `sesiones.momento` (`unica` · `manana` · `tarde`), como ya tiene `registros_sesion`. |
-| Nombre del atleta en cada tarjeta | Solo es de pantalla: `atletas_ids` ya dice de quién es (la «solo para 1» actual se cambia por el nombre). |
-| Comparar versiones | Pantalla nueva sobre `sesiones_versiones` (los datos ya están). |
-| «Pendiente de revisar» en feedback | `registros_sesion.revisado_en` / `revisado_por` (nuevo). |
-| Observaciones, decisiones y objetivos | Ampliar `notas_atleta` (clase, motivo, vigencia, evidencias) y tabla `atleta_objetivos` (modelo §6). |
-| Competiciones objetivo por atleta | Ampliar `competicion_atleta` (pruebas previstas, objetivo, prioridad) — sin uso hoy. |
-| Condiciones de tests y marcas | `condiciones` en `test_resultados` y `marcas_atleta` (modelo §5). |
-| Carga y contenidos | Tablas del modelo (`plan_filas_estructura`, `entreno_contenidos`) — fase 2. |
+| Entrada y acceso | Nuevo mundo; admin y entrenador de Academia. Más entrenadores: tabla `grupo_entrenadores` + 3 funciones de permiso, solo para Academia (aparte, con visto bueno). |
+| Tipo de día, momento, ausencias | `sesiones.clase_dia`, `sesiones.momento` (con `sin_especificar`), `ausencias` con motivo tipificado; relleno prudente de lo antiguo. |
+| Grupos de trabajo del día | Etiqueta por sesión/atleta (p. ej. `grupo_trabajo`); **forma por decidir** (§Pendientes). |
+| Revisión del feedback | `registros_sesion.revisado_en` / `revisado_por`; plazo de respuesta configurable. |
+| Revisiones de sesiones publicadas | `sesiones_revisiones` (también la usa ChatGPT). |
+| Objetivos y decisiones | `atleta_objetivos` (+ historial), ampliar `notas_atleta`. |
+| Texto detallado de la casilla | Del plan: la «parte principal» resumida (sin cálculos). |
 
-## Propuesta visual (maqueta)
+## Decisiones que siguen pendientes
 
-- **Hoy:** cuatro cifras, «Quién entrena hoy» (una fila por atleta: sesión, feedback
-  de ayer y aviso con su motivo), «Pendiente de revisar» y «No entrenan hoy».
-- **Semana:** tabla atletas × días; cada casilla con su estado (publicada,
-  borrador, descanso, ausencia, sin planificar), mañana/tarde separadas, marcas de
-  feedback (✓ · falta · molestia) y «v2» si cambió tras publicar; fila de resumen
-  que **no cuenta descansos ni ausencias como entrenos**. Al tocar: panel con el plan
-  respondido, el actual, el feedback y las acciones (comparar, ficha, editar).
-- **Ficha:** cabecera con el perfil; **«Ahora»** (situación temporal) separado del
-  perfil estable; pestañas (Resumen · Planificación y feedback · Bienestar · Tests
-  y marcas · Competiciones); objetivos, decisiones vigentes con motivo y vigencia;
-  feedback con el plan respondido; tests con condiciones y objetivo aparte.
+1. **Grupos de trabajo de «Hoy»**: ¿los marca el entrenador en cada sesión (p. ej. un
+   campo «grupo de trabajo») o se deducen de que tengan el mismo plan ese día?
+2. **Plazo para el feedback**: ¿cuántas horas después de la sesión pasa a «feedback
+   pendiente»? (Propuesta: a las 22:00 del mismo día.)
+3. **«12 kg» en el arrastre**: ¿discos añadidos o masa total? (Cambia la exposición
+   a carga.)
+4. **«3×60 (20+60) lanzados»**: ¿los 60 m incluyen la entrada?
+5. **Altura y separación de vallas**: ¿se indican siempre en el plan? Sin ellas, las
+   sesiones de vallas no se comparan entre sí.
+6. **Más entrenadores con acceso a Academia**: ¿hace falta ya? Implica tocar
+   permisos.
+7. **Fotocélulas**: cuando lleguen, ¿quién apunta el método por sesión?
 
-## Fases
+## Fases (prioridad: Semana y Hoy)
 
-1. **Definiciones** (ahora): modelo de datos, conexión con ChatGPT, accesos.
-2. **Entrada y datos base:** mundo «Academia AC98» con acceso solo de admin y del
-   entrenador de Academia; `clase_dia`, `momento`, ausencias y `revisado_*`, con
-   relleno de lo antiguo (sin inventar).
-3. **Semana clara** (tabla, estados, mañana/tarde, panel de detalle, comparar
-   versiones, publicar) + **Hoy**.
-4. **Ficha individual** + objetivos y decisiones + **Feedback integrado**.
-5. **Conexión con ChatGPT** (servicio del club + la conexión elegida), primero
-   con datos ficticios.
-6. **Carga y contenidos**, tendencias y resúmenes, sobre el modelo acordado.
+1. **Base de datos mínima**: `clase_dia`, `momento` (con `sin_especificar`),
+   ausencias tipificadas, `revisado_*`. Relleno prudente de lo antiguo.
+2. **Mundo «Academia AC98» + Semana** (compacta y detallada, tres estados, mañana y
+   tarde, filtros, detalle con cambios respecto al plan respondido, publicar con
+   versión). Acceso solo de admin y del entrenador de Academia.
+3. **Hoy** (individual y por grupos, pendiente de revisar, imprimir, pasar lista).
+4. **Ficha** (perfil · «Ahora» · objetivos por temporada · decisiones · marcas y tests
+   con condiciones) y **Feedback** integrado.
+5. **Conexión con ChatGPT**: prueba real paso a paso con datos ficticios.
+6. **Modelo de cálculo** (estructura de filas, contenidos, cargas) → **Carga y
+   contenidos**, evolución de 4 semanas y tendencias. Solo sobre lo validado.
+
+Las mejoras visuales no esperan al análisis avanzado; los cálculos automáticos sí
+esperan a que las definiciones estén cerradas.

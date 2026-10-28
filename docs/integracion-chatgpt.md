@@ -25,7 +25,7 @@ personalizado.**
 
 | Opción | Cómo | Escritura (borradores/publicar) | Encaje con «seguir en este proyecto» |
 |---|---|---|---|
-| **1. Servidor MCP en Codex** (la más prometedora) | Se añade a `~/.codex/config.toml` un `[mcp_servers.academia]` con `url` (MCP por HTTP) y la clave por variable de entorno (`bearer_token_env_var`) o por un pequeño programa local que la lee del **Llavero de macOS** (`http_headers_helper`). La clave no va en la configuración ni en el chat. | Sí: las herramientas que exponga el servidor (incluidas las de escribir). | **Alto**: aparecen en los hilos de Codex de la app, también en su proyecto. **A comprobar:** que sus chats del proyecto sean hilos de Codex (todo indica que sí) y la incidencia conocida de que la app no vea la variable de entorno (por eso, mejor el Llavero). |
+| **1. Servidor MCP en Codex** (candidata, **pendiente de prueba real**) | Se añade a `~/.codex/config.toml` un `[mcp_servers.academia]` con `url` (MCP por HTTP) y la clave por variable de entorno (`bearer_token_env_var`) o por un pequeño programa local que la lee del **Llavero de macOS** (`http_headers_helper`). La clave no va en la configuración ni en el chat. | Sí: las herramientas que exponga el servidor (incluidas las de escribir). | **Alto**: aparecen en los hilos de Codex de la app, también en su proyecto. **A comprobar:** que sus chats del proyecto sean hilos de Codex (todo indica que sí) y la incidencia conocida de que la app no vea la variable de entorno (por eso, mejor el Llavero). |
 | 2. App/conector MCP en ChatGPT (modo desarrollador) | Se registra el servidor en los ajustes de ChatGPT. | Según la ayuda oficial de OpenAI, la escritura completa es para planes **Business, Enterprise y Edu** (en beta); en **Pro**, solo lectura. | Medio: depende del plan; necesita OAuth. |
 | 3. GPT personalizado con Acciones | OpenAPI + clave de API guardada en el GPT. | Sí, con confirmación. | Bajo: obliga a planificar dentro del GPT, fuera del proyecto. Queda como alternativa. |
 
@@ -38,6 +38,9 @@ mismo.
 **Primera prueba de conexión:** con datos ficticios (un «grupo de prueba» con
 atletas inventados) y sin información de salud. La selección de datos reales y los
 permisos se cierran después.
+
+**Que exista `config.toml` no demuestra que la conexión funcione.** Se considera
+demostrada solo tras la prueba real del §6, paso a paso.
 
 **Pendiente de confirmar con Andrés antes de construir:** su plan de ChatGPT
 (Plus/Pro/Business) y que sus conversaciones del proyecto sean hilos de Codex.
@@ -52,44 +55,74 @@ Fuentes oficiales:
 
 Todas con la clave de la integración y limitadas a **Academia AC98**.
 
-| Operación | Qué hace | Confirmación en ChatGPT |
+| Operación | Qué hace | Confirmación |
 |---|---|---|
-| `GET /contexto?semana=AAAA-MM-DD` | Atletas del grupo (id, nombre corto, pruebas, disponibilidad y restricciones vigentes, objetivos), sesiones de la semana (id, fecha, mañana/tarde, atletas, título, publicada, versión, archivada, si tiene registros) y seguimiento resumido (estado, RPE, molestias, cobertura del feedback). **Sin DNI, teléfonos ni correos.** | No (solo lectura) |
-| `POST /borradores` | Crea o actualiza **borradores** de la semana con bloques y filas (§4). | Sí |
-| `GET /borradores?semana=` | Lo que hay guardado de esa semana, para comprobar el resultado. | No |
-| `POST /publicar` | Publica los borradores indicados, **solo cuando Andrés lo pide**. | Sí (siempre) |
-| `GET /prueba` | Comprueba la conexión y la clave sin tocar nada. | No |
+| `prueba` | Comprueba la conexión y la clave sin tocar nada. | No |
+| `contexto(semana)` | Atletas del grupo (id, nombre corto, pruebas, disponibilidad y restricciones vigentes, objetivos), sesiones de la semana (id, fecha, momento, atletas, título, clase de día, publicada, versión, archivada, si tiene registros) y seguimiento resumido. **Sin DNI, teléfonos ni correos**; en la primera prueba, **sin salud**. | No |
+| `guardar_borradores(envio)` | Crea o actualiza borradores (§4). | Sí |
+| `proponer_revision(sesion_id, version_base, cambios)` | Propone cambios a una sesión **ya publicada** (§4.4). | Sí |
+| `ver_borradores(semana)` | Lo guardado, con ids, versiones y estado, para comprobar el resultado. | No |
+| `publicar(lista de {id, version_revisada})` | Publica **solo** lo indicado y **solo** si la versión no ha cambiado (§4.5). | Sí, siempre |
 
-## 4. Reglas de `POST /borradores`
+El mismo servicio habla **MCP** (Codex, ChatGPT) y **REST con OpenAPI** (otros
+clientes). Si cambia la conexión, el servicio no cambia.
 
-- **Sin duplicados al repetir un envío.**
-  - Cada envío lleva un `envio_id`. Si el mismo `envio_id` llega con el mismo
-    contenido, devuelve el resultado guardado. Si llega con contenido distinto, lo
-    rechaza (tabla `api_envios`).
-  - Además, cada sesión se identifica por **atleta + fecha + mañana/tarde**: si ya
-    existe, se actualiza; no se crea otra.
-- **Sin sobrescribir cambios hechos en la app.**
-  - Para actualizar, el envío trae la `version_base` que leyó (la columna
-    `sesiones.version` ya existe).
-  - Si la sesión cambió entretanto (versión distinta), **no se toca**: se devuelve
-    «conflicto» con quién la cambió y cuándo (de `sesiones_versiones`) y su
-    contenido actual.
-  - Una sesión **ya publicada o con registros de atletas** nunca se cambia desde
-    aquí: se devuelve «conflicto: publicada/con registros».
-- **El histórico se conserva solo:** cada cambio pasa por los disparadores de la
-  fase 1 y la versión queda firmada como «ChatGPT (clave …)».
-- **Borrador = `publicada = false`.** El atleta no lo ve. Lo revisas en la app (o
-  en ChatGPT) y publicas aparte.
-- **Respuesta de cada sesión:** `id`, fecha, mañana/tarde, atletas, `version` y
-  `estado` (creada · actualizada · sin cambios · conflicto), con el motivo si hay
-  conflicto.
-- **Bloques:** el formato actual (`etiqueta`, `solo_marcar`, `filas` con
-  `ejercicio`, `detalle` y los campos opcionales `series`, `distancia`, `ritmo`,
-  `descanso`, `calzado`, `carga`). La estructura nueva (`componentes`, contenido
-  principal, etiquetas) se añadirá cuando exista (paso 3 del modelo de datos). Si
-  algo no se entiende, la fila queda «pendiente de revisión»: no se inventa.
-- **Modo prueba:** `simular: true` lo valida todo y devuelve lo que haría, sin
+## 4. Reglas
+
+### 4.1 Identidad: id estable, no «atleta + fecha + momento»
+
+- Una sesión se identifica por su **`id`** (y su `version`). Atleta, fecha y momento
+  pueden cambiar, y en una misma franja puede haber varias sesiones.
+- Para una **sesión nueva**, ChatGPT manda una **`clave_cliente`** estable que elige él
+  (p. ej. `S10-atletaX-lunes-1`). El servicio la guarda junto a la sesión que crea y
+  devuelve su `id`. Desde entonces, se trabaja con el `id`.
+
+### 4.2 Repetición de envíos (aparte de la identidad)
+
+- Cada envío lleva un **`envio_id`** (tabla `api_envios`):
+  - mismo `envio_id` y mismo contenido → devuelve el resultado ya guardado, **sin
+    duplicar**;
+  - mismo `envio_id` y contenido distinto → se rechaza.
+- Si una `clave_cliente` ya creó una sesión, otro envío con esa clave **actualiza esa
+  sesión** (por su `id`); no crea otra.
+
+### 4.3 Cambios hechos entretanto en la app
+
+- Para actualizar un borrador, el envío trae la **`version_base`** que leyó.
+- Si la sesión cambió desde entonces → **conflicto**: no se toca, y se devuelve quién la
+  cambió, cuándo y el contenido actual.
+- **Nada se sobrescribe en silencio.**
+
+### 4.4 Cambios a sesiones ya publicadas: revisión en borrador
+
+- No se toca la sesión publicada ni se crea un entrenamiento duplicado.
+- Se guarda una **revisión en borrador vinculada** (`sesiones_revisiones`: sesión
+  original, `version_base`, cambios propuestos, autor, estado).
+- Al aprobarla, se aplica **sobre la misma sesión**, que pasa a una versión nueva.
+  Mantiene su `id`, su feedback y su historial. Si la sesión cambió desde
+  `version_base`, conflicto.
+- Si la sesión ya tiene registros de atletas, la revisión lo avisa expresamente.
+
+### 4.5 Publicar
+
+- Solo cuando Andrés lo pide, y solo lo que se indique, cada sesión con la **versión
+  que revisó**.
+- Si la versión actual no coincide (alguien cambió algo después) → **no se publica**
+  esa sesión y se devuelve el motivo. Nunca se publica otra versión en silencio.
+
+### 4.6 Respuesta y formato
+
+- Cada sesión devuelve: `id`, `clave_cliente`, fecha, momento, atletas, `version`,
+  `estado` (creada · actualizada · sin cambios · conflicto · revisión propuesta) y el
+  motivo si hay conflicto.
+- **Bloques**: el formato actual (`etiqueta`, `solo_marcar`, `filas` con `ejercicio`,
+  `detalle`, `series`, `distancia`, `ritmo`, `descanso`, `calzado`, `carga`). La
+  estructura del modelo se añadirá cuando esté validada. Lo dudoso queda pendiente;
+  no se inventa.
+- **Modo prueba** (`simular: true`): lo valida todo y devuelve lo que haría, sin
   guardar.
+- **Histórico**: todo pasa por los disparadores de la fase 1; la versión queda
+  firmada como «ChatGPT (clave …)».
 
 ## 5. Seguridad
 
@@ -111,14 +144,21 @@ Todas con la clave de la integración y limitadas a **Academia AC98**.
   lo vea la asesoría y avisar a los atletas antes de activarlo. Se puede empezar
   sin enviar molestias ni bienestar.
 
-## 6. Pasos cuando se apruebe
+## 6. Prueba real (en este orden; cada paso se da por bueno antes del siguiente)
 
-1. Servicio, tablas `api_claves` / `api_envios` / `api_registro` y operaciones de
-   la base. Pruebas con `simular` y en un día de prueba sin atletas reales.
-2. Conexión elegida (§2): para la opción 1, la entrada en `~/.codex/config.toml` y la clave en el Llavero; la descripción OpenAPI queda lista por si se usa otra conexión.
-3. Prueba de punta a punta en tu ChatGPT: leer, guardar borrador, repetir el mismo
-   envío (sin duplicados), cambiar algo en la app y volver a enviar (conflicto),
-   publicar.
+Siempre con un **grupo de prueba con atletas ficticios** y **sin datos de salud**:
+
+1. **Descubrimiento y lectura**: Codex ve las herramientas del servicio y lee el
+   contexto ficticio.
+2. **Guardar y consultar** borradores.
+3. **Repetir el mismo envío** → no duplica.
+4. **Cambio concurrente**: se edita en la app un borrador y ChatGPT reenvía con la
+   versión vieja → conflicto, sin sobrescribir.
+5. **Revisión de una sesión publicada** → borrador vinculado, sin duplicar.
+6. **Publicar** cuando Andrés lo pide, con la versión revisada; y comprobar que no
+   publica si la versión cambió.
+
+La selección de datos reales y los permisos se cierran después.
 
 ## Preguntas para Andrés
 

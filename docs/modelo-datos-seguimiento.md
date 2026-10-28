@@ -1,225 +1,272 @@
-# Modelo de datos del seguimiento de Academia — PROPUESTA (sin implementar)
+# Modelo de datos del seguimiento de Academia — PROPUESTA v2 (sin implementar)
 
-> 28-oct-2026 · Para revisar con Andrés antes de construir nada.
+> 28-oct-2026 · v2 con las decisiones de Andrés (revisadas con ChatGPT).
 > Requisitos: [requisitos-panel-seguimiento.md](requisitos-panel-seguimiento.md) ·
-> Base ya hecha (historial): [historial-entrenos.md](historial-entrenos.md).
+> Histórico (fase 1, ya hecho): [historial-entrenos.md](historial-entrenos.md) ·
+> Ejemplos de cálculo: [ejemplos-calculo-academia.md](ejemplos-calculo-academia.md).
 > Ámbito: **Academia AC98**, en su propio mundo del panel.
+> **No se construyen cálculos automáticos sobre definiciones ambiguas.**
 
-## 0. Reglas que manda todo lo demás
+## 0. Reglas que mandan todo lo demás
 
 1. **La unidad es la fila del plan** (`sesiones.bloques[].filas[]`, con su `id`). El
    atleta sigue viendo el texto tal cual («3×30 flying (20+30) // 5′ C»); la
    estructura va aparte y no cambia lo que ve.
-2. **Cada dato lleva cuatro dimensiones separadas** (no se mezclan en una sola
-   «calidad»):
+2. **Cada dato lleva cinco atributos separados** (nunca se mezclan en una «calidad»):
 
-   | Dimensión | Valores |
-   |---|---|
-   | **Procedencia** | `medicion` (instrumento) · `declaracion_atleta` · `observacion_entrenador` · `estimacion` (la calcula la app) |
-   | **Método** | `crono_manual` · `fotocelulas` · `gps` · `reloj_app` · `bascula` · `video` · `sin_metodo` (p. ej. RPE) |
-   | **Correspondencia con el plan** | `exacta` · `vigente_al_enviar` · `historica_sin_garantia` · `sobrescrita` · `sin_plan` |
-   | **Completitud** | `completo` · `incompleto` · `ausente` |
+   | Atributo | Pregunta | Valores |
+   |---|---|---|
+   | **Autor** | ¿Quién lo registró? | `atleta` · `entrenador` · `importacion` · `asistente` (p. ej. ChatGPT) · `sistema` |
+   | **Fuente** | ¿De dónde sale el valor? | `medicion` (con instrumento y método conocido) · `declaracion` (lo que alguien dice que hizo o usó: reps, kg, un tiempo sin método conocido) · `percepcion` (RPE, sensaciones, molestia) · `observacion` (lo que ve el entrenador) · `calculo` (lo calcula la app: estimación) |
+   | **Método** | ¿Cómo se obtuvo? | `crono_manual` · `fotocelulas` · `gps` · `reloj` · `bascula` · `video` · `no_consta` · `no_aplica` |
+   | **Correspondencia con el plan** | ¿Con qué plan casa? | `exacta` · `vigente_al_enviar` · `historica_sin_garantia` · `sobrescrita` · `sin_plan` |
+   | **Completitud** | ¿Está entero? | `completo` · `incompleto` · `ausente` |
 
-   Nunca se presenta una estimación como dato, ni un tiempo manual como si fuera de
-   fotocélulas.
-3. **Cada magnitud va por separado**: metros, minutos, contactos, intentos, series,
-   repeticiones y kg. **No hay un «volumen» único.**
-4. **Un metro se cuenta una sola vez**: pertenece a un único tramo con un único
-   contenido principal. Las etiquetas secundarias describen, no suman.
-5. **Lo ambiguo queda pendiente** de revisión; no se inventan valores.
-6. **Lo previsto sale de la versión que respondió el atleta** (`sesion_version_id`).
-   Sin registro, lo realizado es `ausente`, no «hecho».
+   Un atleta puede apuntar un tiempo de fotocélulas (autor `atleta`, método
+   `fotocelulas`) y un entrenador uno manual (autor `entrenador`, método
+   `crono_manual`). **Lo que escribe el atleta no es «manual» por defecto**: si no se
+   sabe, `no_consta`.
+3. **Cada magnitud va por separado**: metros, minutos, contactos, saltos, intentos,
+   series, repeticiones y kg. **No hay un «volumen» único.**
+4. **Un metro se cuenta una sola vez** en el total. Las exposiciones (clavos, arrastre)
+   son **subconjuntos** de ese total, no se suman encima.
+5. **Lo ambiguo queda pendiente** de revisión; nunca se inventan valores.
+6. **Lo previsto sale de la versión que respondió el atleta**. Sin registro, lo
+   realizado es `ausente`, no «hecho».
 
 ## 1. Qué existe, qué se amplía y qué es nuevo
 
 | Pieza | Situación | Dónde |
 |---|---|---|
-| Plan por versión (lo que vio el atleta) | **Existe** (fase 1) | `sesiones_versiones`, `registros_sesion.sesion_version_id` |
+| Plan por versión y versión respondida | **Existe** (fase 1) | `sesiones_versiones`, `sesiones.version`, `registros_sesion.sesion_version_id` / `version_vista` |
 | Texto de cada fila + id estable | **Existe** | `bloques[].filas[].id / ejercicio / detalle` |
-| Campos de fila sueltos: `series`, `distancia`, `ritmo`, `descanso`, `calzado`, `carga`, `desnivel_m` | **Existe, poco usado** (en 3.206 filas de Academia: series 236, distancia 177, calzado 23, ritmo 22, descanso 13, carga 4) | se leen como «prescripción declarada» si están |
-| Lo realizado por fila: series hechas, tiempos, RIR, material, ejercicio cambiado (`cambiado_por`) | **Existe** | `registros_sesion.tiempos_reales[fila_id]` |
-| Estado de la sesión, % completado, RPE, duración, superficie, molestia y zona, motivo de no hacerla, mañana/tarde | **Existe** | `registros_sesion` |
-| Bienestar diario | **Existe** | `bienestar_diario` |
-| Disponibilidad y restricciones vigentes (lesión/molestia) | **Existe, sin uso** | `lesiones_atleta` (zona, restricción, disponibilidad, fechas) |
-| Marcas, tests, RM | **Existe** | `marcas_atleta` (`contexto`), `test_resultados` (`intentos`, `mejor`), `rm_atleta` |
-| Perfil deportivo | **Existe en la ficha** | `atletas`: pruebas principal/secundarias, especialidades, perfil velocista, pierna de ataque, pasos entre vallas, hace gym, contexto entrenador/atleta, aviso de salud |
-| Estructura de cada fila (componentes, tramos, intensidad, descansos, carga…) | **Nueva tabla** | `plan_filas_estructura` (§2) |
-| Catálogo de contenidos (objetivo principal / etiquetas / familia semanal) | **Nueva tabla** | `entreno_contenidos` (§3) |
-| Objetivos de temporada y a 3 años | **Nueva tabla** | `atleta_objetivos` (§6) |
-| Observaciones y decisiones con vigencia y motivo | **Ampliar** | `notas_atleta` (§6) |
-| Condiciones de cada medición (cronometraje, viento, superficie, implemento…) | **Ampliar** | `test_resultados.condiciones`, `marcas_atleta.condiciones` (§5) |
-| Sesión que sustituye a otra; motivo de un cambio del plan | **Ampliar** | `sesiones.sustituye_a`, `sesiones.motivo_cambio` (§4) |
-| Cronometraje de cada tiempo apuntado | **Ampliar** (dentro del JSON) | `tiempos_reales[fila].series[].crono` (§5) |
+| Campos de fila: `series`, `distancia`, `ritmo`, `descanso`, `calzado`, `carga`, `desnivel_m` | **Existe, poco usado** | se leen como prescripción si están |
+| ✓ por bloque (modo simple de Academia) | **Existe** | `solo_marcar` + lo marcado en `tiempos_reales` |
+| Lo realizado por fila: series, tiempos, RIR, material, ejercicio cambiado | **Existe** | `tiempos_reales[fila_id]` (`series`, `rir`, `material`, `cambiado_por`) |
+| Estado, % completado, RPE, duración, superficie, molestia, motivo | **Existe** | `registros_sesion` |
+| Bienestar | **Existe** | `bienestar_diario` |
+| Lesiones y restricciones | **Existe, sin uso** | `lesiones_atleta` |
+| Ausencias | **Existe, sin uso** | `ausencias` (atleta, fecha, motivo, sesión) |
+| Marcas, tests, RM | **Existe** | `marcas_atleta`, `test_resultados`, `rm_atleta` |
+| Perfil deportivo | **Existe en la ficha** | `atletas` (pruebas, especialidades, perfil, pierna de ataque, pasos…) |
+| Tipo de día y momento | **Ampliar** | `sesiones.clase_dia`, `sesiones.momento` (§9) |
+| Disponibilidad no médica (viaje, estudios, trabajo) | **Ampliar** | `ausencias` (+ motivo tipificado) — **no** en lesiones (§9) |
+| Estructura de cada fila (secuencia, componentes, tramos, cargas…) | **Nueva** | `plan_filas_estructura` + `plan_filas_estructura_cambios` (§2) |
+| Catálogo de contenidos | **Nueva** | `entreno_contenidos` (§3) |
+| Ejecución de cargas por serie | **Ampliar** (dentro del JSON) | `tiempos_reales[fila].series[].kg / lado / metodo` (§7) |
+| Referencias de RM con variante | **Ampliar** | `rm_atleta` (+ variante, recorrido, unilateral, medido/estimado) (§7) |
+| Objetivos por temporada | **Nueva** | `atleta_objetivos` + historial (§10) |
+| Observaciones y decisiones con vigencia | **Ampliar** | `notas_atleta` (§10) |
+| Condiciones de tests y marcas | **Ampliar** | `condiciones` en `test_resultados` y `marcas_atleta` (§8) |
+| Sustituciones y motivo de cambio | **Ampliar** | `sesiones.sustituye_a`, `sesiones.motivo_cambio` (§5) |
 
-## 2. Estructura de cada fila: `plan_filas_estructura` (nueva)
+## 2. Estructura de cada fila (nueva)
 
-Una interpretación **por fila y por texto**: si el texto de la fila no cambia entre
-versiones, vale la misma; si cambia, hay otra. Así la estructura queda atada a lo
-que el atleta vio, sin crear versiones nuevas de la sesión al clasificar.
+**Atada a la versión.** Cada interpretación pertenece a una fila **de una versión**
+(`sesion_version_id` + `fila_id`). Para no repetir trabajo, se reutiliza la
+interpretación de la versión anterior **solo si no ha cambiado ningún campo
+relevante de la fila**. La comparación se hace con una huella sobre texto, detalle,
+series, distancia, ritmo, descanso, calzado, carga y opcional, no solo sobre el
+texto visible.
+
+`plan_filas_estructura`:
 
 | Campo | Para qué |
 |---|---|
-| `fila_id`, `texto_hash` (único juntos), `sesion_id` | a qué fila y a qué texto exacto se refiere |
-| `componentes` (jsonb) | la prescripción desmontada (abajo) |
-| `contenido_principal`, `etiquetas[]` | clasificación (§3) |
-| `estado` | `auto` · `pendiente_revision` · `revisado` · `manual` |
-| `dudas[]` | qué no se pudo leer («¿200 m a qué % de su marca?») |
-| `origen`, `revisado_por`, `revisado_en` | lectura automática (versión del lector) o entrenador |
+| `sesion_version_id`, `fila_id` | a qué fila de qué versión pertenece |
+| `huella` | firma de todos los campos relevantes de la fila |
+| `estructura` (jsonb) | la secuencia y sus componentes (abajo) |
+| `estado` | `propuesta_auto` · `pendiente_revision` · `revisada` · `manual` |
+| `dudas[]` | qué no se pudo leer («¿60 m incluye la entrada?») |
+| `lector_version`, `revisado_por`, `revisado_en` | quién la propuso y quién la revisó |
 
-`componentes`: una fila puede tener **varios componentes** (p. ej. sentadilla + saltos
-al cajón), y cada componente varios **tramos** (entrada + lanzado; arrastre + libre).
+`plan_filas_estructura_cambios` guarda **cada reclasificación**: antes, después,
+autor, fecha y **motivo**. Así, si una reclasificación cambia un informe anterior, se
+puede saber por qué.
+
+### Secuencia y componentes
+
+Un bloque es una **secuencia de componentes** que se repite N veces:
 
 ```
+fila = { bloques: N, opcional: false,
+         secuencia: [ componente, componente, … ],
+         descanso: { entre_componentes, entre_bloques } }
+
 componente = {
   tipo: carrera | fuerza | salto | tecnica | movilidad,
-  bloques, series, reps,                 // 2×4×200 → bloques 2, series 4
-  tramos: [ { rol: entrada|trabajo|arrastre|libre, m, contenido } ],
-  duracion: { s | min },                 // cuestas 8″, CC 35′
-  intensidad: { forma: %vmax|ritmo|tiempo|%RM|RPE|RIR|zona, valor/rango, referencia },
-  descanso: { entre_reps, entre_bloques, tipo: pasivo|andando|trote },
-  calzado: Z|C, superficie, carga: { tipo: trineo|barra|mancuerna|chaleco, kg | %PC | %RM },
-  vallas: { altura_m, n_vallas, separacion_m, pasos, intentos },
-  saltos: { tipo: pogo|cmj|drop|cajón|multisalto, contactos },
-  opcional: true|false                   // «6.º opcional si…»
+  reps (por bloque), lado: ambos | por_lado,
+  tramos (carrera): [ { rol: entrada_progresiva | lanzado | arrastre | libre | trabajo, m } ],
+  duracion: { s | min },
+  intensidad: { forma, valor | rango, referencia },     // §4
+  calzado: Z | C, superficie,
+  carga: { prevista: … }                               // §7
+  vallas: { altura_m, n_vallas, separacion_m, pasos },
+  salto: { tipo, unidad: saltos | contactos },          // §6
+  contenido_principal, etiquetas[]                      // §3
 }
 ```
 
-## 3. Clasificación: `entreno_contenidos` (nueva, editable)
+## 3. Clasificación de contenidos (`entreno_contenidos`, editable)
 
-Catálogo inicial (el de la propuesta), cada uno con su **familia** para la
-distribución semanal y sus **magnitudes** permitidas:
-
-| Contenido | Familia semanal | Magnitudes |
+| Contenido | Familia semanal | Unidades |
 |---|---|---|
 | Aceleración y salidas de tacos | carrera rápida | m, reps, salidas |
-| Fuerza horizontal y arrastres | carrera rápida · fuerza | m, reps, kg / %PC |
-| Velocidad máxima | carrera rápida | m (tramo lanzado), reps |
+| Fuerza horizontal y arrastres | carrera rápida · fuerza | m (con arrastre), reps, carga |
+| Velocidad máxima | carrera rápida | m lanzados, reps |
 | Resistencia a la velocidad | carrera rápida · metabólico | m, reps |
 | Ritmo específico de competición | metabólico | m, reps, tiempos |
-| Capacidad / potencia glucolítica (**intención prevista**) | metabólico | m, reps, min |
-| Aeróbico: rodaje, intervalos, fartlek | metabólico | min, m (estimados si solo hay ritmo) |
+| Capacidad / potencia glucolítica (**intención prevista**) | metabólico | m, reps |
+| Aeróbico: rodaje, intervalos, fartlek | metabólico | min; m solo si se miden o con ritmo (estimados) |
 | Fuerza estructural / máxima / potencia / complementaria | fuerza | ejercicios, series, reps, kg, %RM |
-| Pliometría y reactividad | impactos y saltos | contactos, tipo, carga |
-| Técnica de carrera y de salidas | técnica | min, reps, intentos |
-| Técnica de vallas / altura / lanzamientos | técnica · impactos | intentos, vallas, batidas, lanzamientos |
+| Pliometría y reactividad | impactos y saltos | saltos o contactos, tipo, carga |
+| Técnica de carrera y de salidas | técnica | min, reps, intentos (sus metros no son carrera) |
+| Técnica de vallas / altura / lanzamientos | técnica · impactos | intentos, vallas, batidas, saltos, lanzamientos |
 | Movilidad, preventivos y recuperación | recuperación | min |
 
-- **Principal** = el único que recibe los metros/minutos/contactos de ese tramo.
-- **Etiquetas** = descripción («tacos», «con clavos», «test»), sin sumar.
-- La propone la lectura automática **solo cuando la regla es clara**; si depende de
-  la intensidad relativa (p. ej. un 200 m sin %), queda `pendiente_revision`.
-- **«Glucolítico» es siempre intención**: no se afirma lactato medido.
+- **Principal** = el único que recibe las unidades de ese componente o tramo.
+  **Etiquetas** = descripción («tacos», «test», «clavos»), sin sumar.
+- **Series**: el contenido se decide con el **objetivo del bloque, la distancia, la
+  intensidad, la recuperación y las referencias del atleta**. La app **propone** solo
+  cuando tiene información suficiente; el entrenador revisa y corrige.
+- **Flying**: el tramo **lanzado** se clasifica por objetivo e intensidad: **no todo
+  lanzado es velocidad máxima**. La entrada es «entrada progresiva» (§5).
+- «Glucolítico» es siempre **intención**: no se afirma lactato medido.
 
-## 4. Previsto frente a realizado
+## 4. Intensidad: formas que no se confunden
 
-- **Previsto** = componentes de las filas de la **versión respondida**.
-- **Realizado**, por orden de preferencia (cada valor con sus cuatro dimensiones):
-  1. Lo apuntado por fila (`tiempos_reales`: series hechas, tiempos, kg, RIR) →
-     procedencia `declaracion_atleta` (o `medicion` si el tiempo es de células),
-     método el que corresponda, completitud según las series apuntadas.
-  2. Si solo hay estado/% de la sesión → procedencia `estimacion` (= previsto × %).
-     **Nunca las dos cosas a la vez** para la misma fila.
-  3. Sin registro → completitud `ausente` (no «hecho»).
-- **Sustituciones**: `sesiones.sustituye_a` (nueva) marca la sesión que reemplaza a
-  otra; la original cuenta como «sustituida» y la nueva no es «adicional». Dentro de
-  una fila, `cambiado_por` (ya existe) marca el ejercicio cambiado.
-- **Motivo del cambio**: del atleta, `motivo_no_hecho` / `nota_no_hecho` (existen); del
-  entrenador, `sesiones.motivo_cambio` (nuevo; queda en cada versión).
-- **Opcionales**: solo cuentan si hay realizado declarado.
-- **Correspondencia con el plan** (de `version_garantia`): la comparación exacta
-  previsto/realizado solo con `exacta`; `vigente_al_enviar`, como «probable» y marcada;
-  `historica_sin_garantia` / `sobrescrita`, sin comparación exacta. **Lo realizado de
-  todos ellos se sigue analizando** (tiempos, RPE, duración, comentarios), con sus
-  límites a la vista. No se excluye el registro entero.
+| Forma | Ejemplo | Necesita referencia |
+|---|---|---|
+| `pct_vmax_medida` | 95 % de su velocidad máxima medida | sí: una Vmáx medida (fecha, método) |
+| `pct_vmedia_marca` | 90 % de la velocidad media de su marca de 200 m | sí: la marca concreta |
+| `pct_esfuerzo` | «al 90 %» orientativo | no |
+| `ritmo` / `tiempo_objetivo` | 34–35″; 3:25–3:30/km | no |
+| `rpe` / `rir` | RPE 7; RIR 3 | no |
+| `pct_rm` | 60–65 % RM | sí: el RM de **esa variante** (§7) |
 
-## 5. Mediciones y condiciones
+**Nuestros «al 90 %» se guardan como `pct_esfuerzo`.** Solo pasan a `%Vmáx` o a
+`%marca` si se indica la referencia. Si falta, quedan como esfuerzo orientativo o
+pendientes.
 
-- `tiempos_reales[fila].series[].crono` (nuevo, dentro del JSON): `manual` por
-  defecto (lo escribe el atleta) o `celulas`.
-- `test_resultados.condiciones` y `marcas_atleta.condiciones` (nuevo jsonb):
-  cronometraje, viento, superficie, calzado, altura de valla / implemento / variante.
-- **Comparables solo con las mismas condiciones**: no se mezclan manual y células,
-  ni alturas de valla, ni implementos o variantes de ejercicio.
-- Marcas oficiales (`contexto = competicion`), tests y referencias estimadas (p. ej.
-  un %RM calculado) se guardan y se muestran **por separado**.
+## 5. Carrera: total, principal, técnica y exposiciones
 
-## 6. Perfil, objetivos y decisiones
+- **Carrera total** = toda la carrera prevista o realizada: calentamiento y vuelta a
+  la calma corriendo incluidos.
+- **Carrera principal** = la de la parte principal.
+- **Técnica** aparte, con sus minutos, metros o repeticiones. **Los metros de
+  skipping o de técnica no son metros de carrera.**
+- **Flying**: la distancia total incluye la entrada. La entrada se registra como
+  **entrada progresiva**, separada de los metros específicos de aceleración.
+- **Exposiciones** (subconjuntos del total, no se suman encima): metros con clavos,
+  metros con arrastre (y su carga), salidas de tacos.
+- **Distancia por duración y ritmo** = `calculo` (estimada). **Si solo hay minutos, no
+  se inventan kilómetros.**
+- **Sustituciones**: `sesiones.sustituye_a` marca la sesión que reemplaza a otra; la
+  original queda como «sustituida» y la nueva **no** es adicional. Dentro de una fila,
+  `cambiado_por` (ya existe) marca el ejercicio cambiado. Motivo: del atleta,
+  `motivo_no_hecho` / `nota_no_hecho`; del entrenador, `sesiones.motivo_cambio`.
 
-- **Perfil deportivo**: se queda en `atletas` (ya tiene pruebas, especialidades,
-  perfil, pierna de ataque, pasos…). Solo se ordena cómo se muestra.
-- **Disponibilidad actual y restricciones**: `lesiones_atleta` (ya existe), lo
-  temporal separado del perfil.
-- **Objetivos**: `atleta_objetivos` (nueva): horizonte (temporada / 3 años), prueba,
-  marca objetivo, competición y fecha, estado, notas, autor.
-- **Observaciones y decisiones**: ampliar `notas_atleta` (ya existe, solo la ve el
-  cuerpo técnico) con `clase` (observación / decisión), `ambito` (carga, técnica,
-  salud, competición), `motivo`, `vigente_desde`, `vigente_hasta` y `evidencias[]`
-  (ids de registros/versiones que la sustentan). Una decisión la escribe el
-  entrenador; la app nunca la crea sola.
+## 6. Saltos, contactos y apoyos (no son equivalentes)
 
-## 7. Ejemplos reales de Academia (cómo quedarían)
+- **Saltos**: acciones discretas que se cuentan una a una (saltos al cajón, CMJ, drop
+  jump, saltos completos de altura).
+- **Contactos**: apoyos reactivos con el suelo en pliometría continua (pogos,
+  multisaltos, comba). 2×6 pogos = 12 contactos.
+- **Apoyos**: descriptor de ritmo técnico («3 apoyos entre vallas», «aproximación de
+  5-7 apoyos»). **No es volumen.**
+- Cada ejercicio de salto declara su unidad (`saltos` o `contactos`), y **no se suman
+  entre sí**.
+- **Bloques combinados**: «3 bloques de 3 sentadillas + 2 saltos» son **9 repeticiones
+  de sentadilla y 6 saltos**, con su descanso entre componentes y entre bloques. **No
+  son 15 repeticiones de fuerza.**
 
-**a) Arrastre + libre** — «Bloque 1/2: 30 m trineo + 30 m libre // 2′ dentro y 4′ entre bloques Z»
-- carrera, tramos: 30 m `arrastre` → *Fuerza horizontal*; 30 m `libre` → *Aceleración*.
-- descanso 2′ dentro, 4′ entre bloques; calzado Z; carga: trineo, **kg ausente** → duda.
-- Totales: carrera 60 m (una vez); metros con arrastre 30 m (exposición aparte).
-- «4x20 m arrastres + 4x30 m @95% + 3x60 m @90-95% + 2x150 m en 25-26''» = **una fila,
-  cuatro componentes**, cada uno con su contenido; no se suman entre magnitudes.
+## 7. Cargas: prescripción y ejecución
 
-**b) Flying** — «2x30 flying (20+30) // 5' C»
-- carrera, 2 reps; tramos: 20 m `entrada` → *Aceleración* (o etiqueta «entrada», a
-  decidir); 30 m `trabajo` → *Velocidad máxima*. Calzado C (clavos).
-- Totales: carrera 100 m; velocidad máxima 60 m; entrada 40 m (por separado).
-- «3×60 (20+60) lanzados en 7,20–7,40"» → ¿60 m incluye la entrada o se suma? **duda →
-  revisión** (no se inventa).
+- **Prescripción**: kg previstos y/o %RM, con la **referencia concreta**: qué RM
+  (`rm_atleta`): variante, recorrido, fecha, y si es medido o estimado.
+- **Ejecución**: kg realmente usados, **por serie** cuando cambien.
+- **Unilaterales**: kg **por mancuerna** o **total**, dicho explícitamente;
+  repeticiones **por lado**. **Nunca se traslada un RM bilateral a una variante
+  unilateral.**
+- **Trineo**: discos añadidos y, si se conoce, la masa total.
+- Ampliación de `rm_atleta`: `variante`, `recorrido`, `unilateral`, `tipo`
+  (`medido` · `estimado`), `metodo`.
 
-**c) Bloques de series** — «2x4x200 m en 56-60'' · Z» / «2x3x150 m al 85-88% // 2'30"-3' entre 150 y 5' entre bloques»
-- bloques 2 × series 4 × 200 m = 1.600 m (se respeta 2×4, nunca 8×200).
-- Intensidad: tiempo objetivo 56-60″ (o 85-88 %). El contenido (resistencia a la
-  velocidad / glucolítico / ritmo) depende de la referencia del atleta → si no hay
-  regla clara, `pendiente_revision`.
-- Realizado: los tiempos apuntados por serie; si faltan series, `declarado` parcial.
+## 8. Mediciones y condiciones
 
-**d) Gimnasio** — «Cargada completa 4x3 al 60-65% RM // 2′» · «Media sentadilla + saltos al cajón 3x3+2 al 75-80% RM // 3′»
-- fuerza: cargada completa, 4×3, %RM 60-65 → kg **estimados** solo si hay RM válido de
-  *ese* ejercicio en `rm_atleta`; si no, `ausente`.
-- Segunda fila = dos componentes: fuerza (media sentadilla 3×3 @75-80 %RM) +
-  pliometría (saltos al cajón 3×2 = 6 contactos).
-- Realizado: kg y RIR si el atleta los apunta (`declarado`).
+- **Método por sesión** (por defecto para sus tiempos) y **corrección por
+  repetición**. Situación real: hasta ahora los tiempos de pista son manuales, las
+  fotocélulas están pendientes de compra y no consta GPS. **En lo histórico, el
+  método es `no_consta`.**
+- `condiciones` en tests y marcas: cronometraje, viento, superficie, calzado,
+  altura y separación de vallas, implemento y peso, variante de fuerza.
+- **Comparables solo con las mismas condiciones.** Marcas oficiales, tests y
+  referencias estimadas se muestran por separado, con su fecha.
 
-**e) Vallas** — «2x3 vallas a 0,84 m · 3 apoyos // 3'» · «4-5 aproximaciones a 1ª valla // 3'»
-- técnica de vallas: 2 intentos × 3 vallas = 6 vallas franqueadas; altura 0,84 m;
-  3 apoyos; separación **ausente** (no se estiman metros).
-- «4-5 aproximaciones» → intentos 4-5 (rango previsto); realizado si se apunta.
-- Se agrupa siempre por altura y separación: 0,84 m y 0,991 m no se comparan.
+## 9. Días: entreno, descanso, ausencia y sin planificar
 
-## 8. Registros antiguos (sin inventar)
+- **Cuatro estados distintos**:
+  - `clase_dia` en la sesión: `entreno` o `descanso`;
+  - la **ausencia** va en `ausencias`;
+  - **sin planificar** = no hay sesión.
+- **Una ausencia no borra el entrenamiento previsto ni equivale a lesión.** El
+  entreno queda como previsto y no realizado, con su motivo.
+- **Disponibilidad no médica** (viajes, estudios, trabajo) va en `ausencias`, con el
+  motivo tipificado: `viaje` · `estudios` · `trabajo` · `enfermedad` · `lesion` ·
+  `otro`. Las **lesiones y restricciones** van en `lesiones_atleta`.
+- **Momento** (`sesiones.momento`): `unica` · `manana` · `tarde` · `sin_especificar`.
+  En lo histórico ambiguo, `sin_especificar`: **no se inventa mañana o tarde.**
 
-- Correspondencia con el plan: `historica_sin_garantia` o `sobrescrita`. La estructura
-  se puede calcular sobre la versión «inicial» como **referencia**, sin comparación
-  exacta con lo realizado.
-- **Lo realizado sí se analiza**: tiempos, RPE, duración, molestias y comentarios, con
-  su procedencia (`declaracion_atleta`) y sus límites.
-- Tiempos con claves de bloque (`cc`, `mov`, `tec`…) → datos de la sesión, no de una
-  fila; por fila, completitud `incompleto`.
-- Correcciones anteriores al 28-oct: se usa el valor actual; no hay historial.
+## 10. Perfil, objetivos y decisiones
 
-## 9. Lo que se implementaría en el paso 3 (cuando lo aprobemos)
+- **Perfil estable**: en `atletas`.
+- **Situación temporal**: lesiones y restricciones (`lesiones_atleta`) y ausencias.
+  Una restricción que llega a su fecha de revisión pasa a **pendiente de revisar**;
+  **no** se da al atleta por recuperado automáticamente.
+- **Objetivos** (`atleta_objetivos`, nueva):
+  - por **temporada**, para cada una de las tres próximas;
+  - por **prueba principal y secundarias**, con marca objetivo, competición o fecha
+    y estado;
+  - **con historial de cambios**: quién, cuándo y por qué.
+- **Observaciones y decisiones**: ampliar `notas_atleta` con:
+  - `clase` (`observacion` · `decision`);
+  - `ambito`;
+  - `motivo`;
+  - `vigente_desde`, `vigente_hasta` y `revisar_el`;
+  - `evidencias[]`, enlaces a los registros que la sustentan.
 
-1. Tablas `entreno_contenidos`, `plan_filas_estructura`, `atleta_objetivos`.
-2. Ampliar `notas_atleta`, `sesiones` (`sustituye_a`, `motivo_cambio`),
-   `test_resultados` / `marcas_atleta` (`condiciones`) y `tiempos_reales` (`crono`).
-3. Un lector de filas que proponga componentes y marque dudas, más una pantalla para
-   que el entrenador revise y corrija la clasificación.
-4. Permisos como el resto: entrenador de su grupo, atleta lo suyo.
+  Las decisiones las escribe el entrenador.
 
-## Preguntas para decidir
+## 11. Previsto frente a realizado
 
-1. En un flying, ¿la **entrada** cuenta como *Aceleración* o solo como «metros de
-   entrada» sin contenido?
-2. ¿Qué referencia usamos para decidir el contenido de las series (marca del atleta
-   en esa distancia, ritmo objetivo, %)? ¿Lo clasificas tú siempre en las series?
-3. ¿Los metros de calentamiento y técnica entran en «carrera» o van aparte?
-4. ¿Hay fotocélulas o GPS en algún entreno para tener datos «medidos»?
-5. ¿Quieres apuntar los kg del trineo y de las pesas en cada sesión, o basta con el
-   %RM previsto?
+- **Previsto** = estructura de la versión respondida, **separando lo obligatorio de
+  lo opcional**.
+- **Realizado**:
+  - **Por fila o bloque**, cuando se puede identificar: ✓ del bloque en el modo
+    simple, series apuntadas, tiempos, kg, RIR. Eso es lo que entra en el volumen
+    por contenido.
+  - **El % completado global** («70 %») se guarda como **declaración global**. **No se
+    reparte** entre ejercicios ni capacidades multiplicando el plan: no sabemos qué
+    bloques omitió.
+  - **Un tiempo aislado no confirma todas las repeticiones.** Solo confirma esa
+    repetición.
+  - **Opcional**: solo cuenta si se confirma.
+  - **Sin registro** → `ausente`.
+- **Comparación por correspondencia**:
+  - `exacta` → comparación exacta;
+  - `vigente_al_enviar` → comparación probable, identificada;
+  - `historica_sin_garantia` / `sobrescrita` → sin comparación exacta.
+
+  Lo realizado de todos ellos (tiempos, RPE, duración, comentarios) **se sigue
+  analizando** con sus límites. No se excluye el registro entero.
+
+## 12. Implementación (cuando se apruebe)
+
+1. Tipo de día, momento, ausencias tipificadas y relleno prudente de lo antiguo
+   (lo dudoso queda pendiente o `sin_especificar`).
+2. `entreno_contenidos`, `plan_filas_estructura` (+ cambios), ampliación de
+   `rm_atleta`, objetivos y decisiones.
+3. Lector de filas que **propone** y marca dudas, más una pantalla de revisión para el
+   entrenador.
+4. Los cálculos de volumen y tendencias, **solo** sobre lo validado en los
+   ejemplos ([ejemplos-calculo-academia.md](ejemplos-calculo-academia.md)).
