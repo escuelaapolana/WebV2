@@ -140,7 +140,9 @@
         {key:'reservas',   g:'Nadadores', t:'Reservas y abono', i:'ticket',   url:B+'portal/natacion-reservas/'},
         {key:'cuotas',     g:'Nadadores', t:'Cuotas y cobros',  i:'euro',     url:B+'portal/natacion-cuotas/', d:'La cuota de cada nadador y su enlace para domiciliarla (sin correos automáticos).'},
         {key:'avisos',     t:'Avisos',           i:'megaphone', url:B+'portal/natacion-avisos/', d:'Un aviso a una franja, a la escuela, al máster o a todos: llega en la app y por correo.'},
-        {key:'equipacion', t:'Equipación',       i:'shirt',    url:B+'portal/natacion-equipacion/', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
+        {key:'equipacion', g:'Ropa', ropa:true, t:'Pedidos de equipación', i:'shirt', url:B+'portal/natacion-equipacion/', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
+        {key:'stock',      g:'Ropa', ropa:true, t:'Stock y entregas', i:'box',   url:B+'portal/natacion-ropa/?v=stock', d:'Lo que ha llegado por albarán: a quién va, si ha pagado, si se le ha entregado y qué tallas quedan.'},
+        {key:'catalogo',   g:'Ropa', ropa:true, t:'Catálogo y precios', i:'euro', url:B+'portal/natacion-ropa/?v=catalogo', d:'Los artículos del formulario de equipación: precio, tallas y si se ofrecen.'},
         {key:'calendario', t:'Calendario',       i:'calendar', url:B+'portal/calendario-club/?world=natacion'},
         {key:'plazas',     t:'Ver en la web',    i:'signal',   url:B+'natacion/', ext:true}
       ] },
@@ -153,7 +155,9 @@
         {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
         {key:'cuotas', t:'Cuotas y cobros', i:'euro', url:B+'portal/natacion-cuotas/?tipo=Escuela', d:'La cuota de cada niño y el enlace para que la familia la domicilie.'},
         {key:'avisos', t:'Avisos a las familias', i:'megaphone', url:B+'portal/natacion-avisos/?tipo=Escuela', d:'Un aviso a una franja o a toda la escuela: llega en la app y por correo a cada familia.'},
-        {key:'equipacion', t:'Equipación', i:'shirt', url:B+'portal/natacion-equipacion/', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
+        {key:'equipacion', g:'Ropa', ropa:true, t:'Pedidos de equipación', i:'shirt', url:B+'portal/natacion-equipacion/?tipo=Escuela', d:'El pedido de ropa de natación de cada familia: tallas, nuevos, ha llegado, pagado y entregado.'},
+        {key:'stock',      g:'Ropa', ropa:true, t:'Stock y entregas', i:'box',   url:B+'portal/natacion-ropa/?v=stock&tipo=Escuela', d:'Lo que ha llegado por albarán: a quién va, si ha pagado, si se le ha entregado y qué tallas quedan.'},
+        {key:'catalogo',   g:'Ropa', ropa:true, t:'Catálogo y precios', i:'euro', url:B+'portal/natacion-ropa/?v=catalogo&tipo=Escuela', d:'Los artículos del formulario de equipación: precio, tallas y si se ofrecen.'},
         {key:'competiciones', t:'Competiciones', i:'trophy', url:B+'portal/natacion-competiciones/', d:'Jornadas y controles: quién entra en cada categoría, convocatoria, respuesta de las familias y datos de licencia.'},
         {g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/?tipo=Escuela',    d:'Horarios y calles con su cupo.'},
         {g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/?tipo=Escuela', d:'Quién viene a cada sesión.'},
@@ -658,6 +662,20 @@
     return undefined;
   }
   function guardarCache(keys) { try { sessionStorage.setItem(CACHE_KEY, keys == null ? 'todos' : JSON.stringify(keys)); } catch (e) {} }
+  /* (mig 465) Quien solo lleva la ROPA de natación (Loren) entra por Natación y
+     Escuela de natación, pero ve solo sus pantallas de ropa (`ropa:true`); su
+     «Resumen» es el pedido de equipación. mis_mundos lo marca con 'solo-ropa'. */
+  var _soloRopa = false;
+  function recortarARopa(keys) {
+    if (_soloRopa || !Array.isArray(keys) || keys.indexOf('solo-ropa') === -1) return;
+    _soloRopa = true;
+    MUNDOS.forEach(function (w) {
+      if (w.key !== 'natacion' && w.key !== 'escuela-nat') return;
+      var r = (w.screens || []).filter(function (s) { return s.ropa; });
+      if (r.length) { w.screens = r; w.home = r[0].url; }
+    });
+  }
+  recortarARopa(leerCache());
   function cargarMisMundos(onData) {
     var intentos = 0;
     (function go() {
@@ -669,7 +687,12 @@
         var keys = r.data;
         var todas = MUNDOS.every(function (w) { return keys.indexOf(w.key) !== -1; });
         var val = todas ? null : keys;   // admin (todos) -> null, a prueba de mundos futuros
-        guardarCache(val); onData(val);
+        guardarCache(val);
+        // Primera vez que se sabe que solo lleva la ropa: recargar ya con la barra recortada.
+        // (solo si la caché se ha guardado: sin sessionStorage recargaría sin fin)
+        var _c = leerCache();
+        if (!_soloRopa && Array.isArray(_c) && _c.indexOf('solo-ropa') !== -1 && window.APOLANA_MUNDO) { location.reload(); return; }
+        onData(val);
       }).catch(function () {});
     })();
   }

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ropa · Natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>
+  window.APOLANA_BASE = "../../";
+  /* Ropa de natación (mig 465): ?v=stock | ?v=catalogo. Mundo: Escuela de natación si ?tipo=Escuela; si no, Natación. */
+  (function(){
+    var q = new URLSearchParams(location.search), t = q.get('tipo');
+    var w = (t === 'Escuela') ? 'escuela-nat' : 'natacion';
+    if (!t) { try { if (sessionStorage.getItem('apo-mundo') === 'escuela-nat') w = 'escuela-nat'; } catch (e) {} }
+    window.APOLANA_ROPA_VISTA = q.get('v') === 'catalogo' ? 'catalogo' : 'stock';
+    window.APOLANA_MUNDO = { world: w, screen: window.APOLANA_ROPA_VISTA, contentSel: '#ropa' };
+  })();
+</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<script src="../../assets/js/mundos.js?v=2d6a9e68" defer></script>
+<style>
+  :root{ --mm-acento:#2F6FA8; --azul:#2F6FA8; --azul-osc:#245A8A;
+    --s1:0 3px 8px rgba(30,45,65,.09),0 12px 22px -6px rgba(30,45,65,.20); }
+  body{ background:var(--crema,#FBF9F4); }
+  #ropa{ max-width:860px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 60px; }
+  .cu-msg{ color:var(--texto-suave,#6E6656); text-align:center; padding:28px 10px; }
+
+  .cu-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--mm-acento); margin-bottom:8px; }
+  .cu-cab h1{ font-family:var(--fuente-titulo); text-transform:uppercase; font-size:clamp(27px,5vw,36px); line-height:1; color:var(--navy,#26374B); margin:0; }
+  .cu-cab p{ font-size:15px; color:var(--texto-suave,#6E6656); margin:8px 0 16px; line-height:1.45; }
+
+  /* cifras que filtran */
+  .rp-cifras{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:0 0 16px; }
+  @media (max-width:640px){ .rp-cifras{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .rp-cifra{ background:#fff; border-radius:14px; box-shadow:var(--s1); border:2px solid transparent; padding:12px 14px; text-align:left; font:inherit; cursor:pointer; color:var(--navy,#26374B); min-height:74px; }
+  .rp-cifra b{ display:block; font-family:var(--fuente-titulo); font-size:26px; line-height:1; }
+  .rp-cifra span{ display:block; font-size:13px; color:var(--texto-suave,#6E6656); margin-top:5px; }
+  .rp-cifra.on{ border-color:var(--azul); }
+
+  .cu-card{ background:#fff; border-radius:16px; box-shadow:var(--s1); overflow:hidden; margin-bottom:16px; }
+  .cu-card > h2{ margin:0; padding:13px 18px; background:var(--crema-media,#F4EEE1); border-bottom:1px solid var(--linea-marcada,#E4DCCB);
+    font-family:var(--fuente-titulo); text-transform:uppercase; font-size:18px; letter-spacing:-.01em; color:var(--navy,#26374B);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .cu-card > h2 small{ font-family:inherit; text-transform:none; font-size:13px; font-weight:600; color:var(--texto-suave,#6E6656); margin-left:auto; letter-spacing:0; }
+  .cu-cuerpo{ padding:14px 18px 16px; }
+
+  .cu-grupo-t{ padding:9px 18px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--texto-suave,#6E6656);
+    background:var(--crema,#FBF9F4); border-top:1px solid var(--linea,#EAE3D5); border-bottom:1px solid var(--linea,#EAE3D5); }
+  .cu-grupo-t:first-child{ border-top:0; }
+  .cu-grupo-t small{ text-transform:none; letter-spacing:0; font-weight:500; margin-left:4px; }
+  .cu-item{ border-top:1px solid var(--linea,#EAE3D5); }
+  .cu-grupo-t + .cu-item{ border-top:0; }
+  .cu-row{ display:flex; align-items:center; gap:10px; width:100%; min-height:58px; box-sizing:border-box; padding:9px 12px 9px 18px;
+    background:#fff; border:0; font:inherit; color:var(--navy,#26374B); text-align:left; cursor:pointer; }
+  .cu-row:hover{ background:#FCFBF8; }
+  .cu-row .foto{ flex:0 0 44px; width:44px; height:55px; border-radius:8px; background:#F5F3EE center/contain no-repeat; }
+  .cu-row .q{ flex:1; min-width:0; }
+  .cu-row .q b{ display:block; font-size:15.5px; font-weight:700; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cu-row .q b.libre{ color:#1E5E34; }
+  .cu-row .q small{ display:block; font-size:12.5px; color:var(--texto-suave,#6E6656); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cu-row .chev{ flex:0 0 auto; width:18px; text-align:center; font-size:12px; color:var(--texto-tenue,#9A927F); transition:transform .2s; }
+  .cu-item.abierto .cu-row{ background:#F4F8FC; }
+  .cu-item.abierto .cu-row .chev{ transform:rotate(180deg); }
+  .cu-det{ padding:6px 18px 16px; background:#F4F8FC; }
+
+  .cu-estado{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; border-radius:999px; padding:3px 9px; white-space:nowrap; }
+  .cu-estado.sin{ background:#E6F4EA; color:#1E5E34; }
+  .cu-estado.pend{ background:#FFF1DC; color:#7A5200; }
+  .cu-estado.camino{ background:#E3EEF8; color:#1E4E79; }
+  .cu-estado.cerrado{ background:#F1EEE7; color:#6E6656; }
+  .cu-estado.impago{ background:#FDECEA; color:#8E2A2A; }
+  .cu-estado.apag{ background:#F1EEE7; color:#6E6656; }
+
+  .cu-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
+  @media (max-width:520px){ .cu-grid{ grid-template-columns:1fr; } }
+  .cu-campo{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .cu-campo.ancho{ grid-column:1 / -1; }
+  .cu-campo label{ font-size:13px; font-weight:700; color:var(--navy,#26374B); }
+  .cu-campo .ayuda{ font-size:12.5px; color:var(--texto-suave,#6E6656); }
+  .cu-campo input, .cu-campo select, .cu-campo textarea{ font:inherit; font-size:16px; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE);
+    border-radius:11px; padding:9px 11px; background:#fff; width:100%; box-sizing:border-box; min-height:44px; }
+  .cu-campo textarea{ min-height:64px; resize:vertical; }
+  .cu-switch{ display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; color:var(--navy,#26374B); cursor:pointer; min-height:44px; }
+  .cu-switch input{ width:22px; height:22px; }
+
+  .cu-acc{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+  .cu-btn{ font:inherit; font-weight:700; font-size:14.5px; min-height:44px; padding:8px 14px; border-radius:11px; cursor:pointer; border:0; background:var(--azul); color:#fff; }
+  .cu-btn:hover{ background:var(--azul-osc); }
+  .cu-btn[disabled]{ opacity:.55; cursor:default; }
+  .cu-btn.sec{ background:#fff; color:var(--navy,#26374B); border:1px solid var(--linea-borde,#C9C0AE); }
+  .cu-btn.sec:hover{ background:var(--crema-media,#EFE9DC); }
+  .cu-btn.verde{ background:#2E7D6B; } .cu-btn.verde:hover{ background:#25695A; }
+  .cu-link{ font:inherit; font-size:14px; background:none; border:0; color:#B23B3B; text-decoration:underline; cursor:pointer; padding:0 4px; min-height:44px; }
+  .cu-sel{ font:inherit; font-size:16px; border:1px solid var(--linea-borde,#C9C0AE); border-radius:11px; padding:8px 10px; min-height:44px; background:#fff; color:var(--navy,#26374B); }
+
+  .cu-aviso{ font-size:14px; color:#7A5200; background:#FFF6E0; border:1px solid #F1DCA6; border-radius:12px; padding:10px 12px; margin-top:10px; line-height:1.45; }
+  .cu-info{ font-size:14px; color:#1E4E79; background:#EEF5FB; border:1px solid #D2E4F3; border-radius:12px; padding:10px 12px; margin-top:10px; line-height:1.45; }
+  .cu-det-t{ font-size:13.5px; color:var(--texto-suave,#6E6656); margin:8px 0 2px; line-height:1.45; }
+
+  /* tallas que quedan */
+  .rp-quedan{ display:flex; flex-direction:column; gap:8px; }
+  .rp-q{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:15px; color:var(--navy,#26374B); }
+  .rp-q .n{ font-weight:700; }
+  .rp-q .t{ font-size:13px; font-weight:700; border-radius:999px; padding:3px 10px; background:#E6F4EA; color:#1E5E34; }
+  .rp-pedido{ font-size:13.5px; color:#1E4E79; background:#EEF5FB; border:1px solid #D2E4F3; border-radius:12px; padding:8px 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .rp-pedido .cu-btn{ min-height:38px; padding:5px 12px; font-size:13.5px; }
+
+  .cu-velo{ position:fixed; inset:0; background:rgba(20,30,45,.45); z-index:2000; display:flex; align-items:flex-start; justify-content:center;
+    overflow-y:auto; padding:clamp(10px,4vh,40px) 12px 40px; }
+  .cu-hoja{ background:#fff; border-radius:18px; box-shadow:0 20px 50px rgba(20,30,45,.35); width:100%; max-width:560px; overflow:hidden; }
+  .cu-hoja > h2{ margin:0; padding:15px 18px; background:var(--crema-media,#F4EEE1); border-bottom:1px solid var(--linea-marcada,#E4DCCB);
+    font-family:var(--fuente-titulo); text-transform:uppercase; font-size:19px; color:var(--navy,#26374B); display:flex; align-items:center; gap:10px; }
+  .cu-hoja > h2 button{ margin-left:auto; font:inherit; font-size:22px; line-height:1; background:none; border:0; cursor:pointer; color:var(--texto-suave,#6E6656); padding:4px 8px; }
+  .cu-hoja .cu-cuerpo{ padding:16px 18px 18px; }
+
+  .cu-toast{ position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--navy,#26374B); color:#fff;
+    padding:10px 16px; border-radius:12px; font-size:14.5px; font-weight:600; z-index:2100; box-shadow:0 8px 24px rgba(20,30,45,.3); max-width:calc(100vw - 32px); }
+</style>
+</head>
+<body>
+  <div id="ropa"><p class="cu-msg">Cargando…</p></div>
+
+<script>
+/* Natación · Ropa (mig 465). Dos vistas:
+   · stock: lo que ha llegado por albarán, a quién va, pagado y entregado; lo
+     libre sale en el formulario de equipación («ya disponible») y se puede
+     reservar a una familia que lo ha pedido allí.
+   · catalogo: precio, tallas y si se ofrece cada artículo de natación.
+   Lo usan Mario y Loren (natacion_ropa_puede). */
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('ropa'), VISTA = window.APOLANA_ROPA_VISTA;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function eur(n){ var v=Math.round(Number(n||0)*100)/100; return v.toLocaleString('es-ES',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2})+' €'; }
+  function capital(s){ return String(s||'').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, function(_, a, b){ return a + b.toUpperCase(); }); }
+  function fecha(d){ if (!d) return ''; var p = String(d).slice(0,10).split('-'); return +p[2] + '/' + +p[1]; }
+  function img(v){ return !v ? '' : /^https?:/.test(v) ? v : '../../assets/img/' + v; }
+  var toastTmr = null;
+  function toast(t){ var el = document.querySelector('.cu-toast'); if (!el){ el = document.createElement('div'); el.className = 'cu-toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
+    el.textContent = t; el.style.display = ''; clearTimeout(toastTmr); toastTmr = setTimeout(function(){ el.style.display = 'none'; }, 2800); }
+
+  var rp = await sb.rpc('natacion_ropa_puede');
+  if (rp.error || !rp.data){ wrap.innerHTML = '<div class="cu-card"><h2>Ropa de natación</h2><div class="cu-cuerpo"><p style="margin:0">Esta pantalla es para quien lleva la ropa de natación.</p></div></div>'; return; }
+
+  var S = { stock: null, pedidos: [], productos: [], cat: null, err: null, filtro: '', abiertos: {} };
+  var METODOS = [['efectivo', 'Efectivo'], ['bizum', 'Bizum'], ['transferencia', 'Transferencia'], ['tarjeta', 'Tarjeta'], ['regalo', 'No paga']];
+  function metodoTxt(m){ var x = METODOS.filter(function (o) { return o[0] === m; })[0]; return x ? x[1] : ''; }
+
+  /* ================= STOCK ================= */
+  async function cargarStock(){
+    var r = await sb.rpc('natacion_ropa_stock_listar');
+    if (r.error) { S.err = r.error.message || 'No se pudo cargar.'; S.stock = []; return; }
+    S.err = null; S.stock = r.data.stock || []; S.pedidos = r.data.pedidos || []; S.productos = r.data.productos || [];
+  }
+  function libre(u){ return !u.persona && !u.familia_id; }
+  function pagado(u){ return !!u.pagado_en || (u.familia_id && u.familia_pagado); }
+  function cobra(u){ return Number(u.precio) > 0 && u.pago_metodo !== 'regalo'; }
+  function estado(u){
+    if (libre(u)) return ['sin', 'Libre'];
+    var pg = pagado(u) || !cobra(u);
+    if (u.entregado_en) return pg ? ['cerrado', 'Entregado'] : ['impago', 'Entregado · sin pagar'];
+    if (u.familia_id && !pagado(u)) return ['camino', 'Reservado · paga con su pedido'];
+    if (!cobra(u)) return ['camino', 'Por entregar'];
+    return pg ? ['camino', 'Pagado · por entregar'] : ['pend', 'Sin pagar'];
+  }
+  function quien(u){ return u.persona || (u.familia ? capital(u.familia) : ''); }
+  function filtrar(u){
+    if (S.filtro === 'libre') return libre(u);
+    if (S.filtro === 'sinpagar') return !libre(u) && cobra(u) && !pagado(u);
+    if (S.filtro === 'porentregar') return !libre(u) && !u.entregado_en;
+    if (S.filtro === 'revisar') return u.revisar;
+    return true;
+  }
+  function suma(f){ return (S.stock || []).filter(f).reduce(function (a, u) { return a + (Number(u.cantidad) || 1); }, 0); }
+  function pedidosDe(u){ return S.pedidos.filter(function (p) { return p.producto_id === u.producto_id && p.talla === u.talla &&
+    !(S.stock || []).some(function (x) { return x.familia_id === p.familia_id && x.producto_id === p.producto_id && x.talla === p.talla; }); }); }
+
+  function cabStock(){
+    var sinPagar = (S.stock || []).filter(function (u) { return !libre(u) && cobra(u) && !pagado(u); });
+    var eurSin = sinPagar.reduce(function (a, u) { return a + Number(u.precio) * (Number(u.cantidad) || 1); }, 0);
+    var c = [['libre', suma(libre), 'libres (se pueden vender)'], ['sinpagar', suma(function (u) { return !libre(u) && cobra(u) && !pagado(u); }), 'sin pagar · ' + eur(eurSin)],
+             ['porentregar', suma(function (u) { return !libre(u) && !u.entregado_en; }), 'por entregar'], ['revisar', (S.stock || []).filter(function (u) { return u.revisar; }).length, 'por revisar']];
+    return '<div class="cu-cab"><div class="cu-eyebrow">Natación · Ropa</div><h1>Stock y entregas</h1>' +
+      '<p>Lo que ha llegado por albarán: a quién va, si ha pagado y si se le ha entregado. Lo que queda <b>libre</b> sale en el formulario de equipación como «ya disponible».</p></div>' +
+      '<div class="rp-cifras">' + c.map(function (x) {
+        return '<button type="button" class="rp-cifra' + (S.filtro === x[0] ? ' on' : '') + '" data-filtro="' + x[0] + '"><b>' + x[1] + '</b><span>' + esc(x[2]) + '</span></button>'; }).join('') + '</div>';
+  }
+  function quedan(){
+    var L = (S.stock || []).filter(libre); if (!L.length) return '';
+    var g = {}; L.forEach(function (u) { var k = u.articulo + '|' + (u.talla || ''); (g[k] = g[k] || { u: u, n: 0 }).n += Number(u.cantidad) || 1; });
+    return '<div class="cu-card"><h2>Tallas que quedan</h2><div class="cu-cuerpo"><div class="rp-quedan">' + Object.keys(g).map(function (k) {
+      var x = g[k], peds = x.u.producto_id && x.u.talla ? pedidosDe(x.u) : [];
+      return '<div class="rp-q"><span class="n">' + esc(x.u.articulo) + '</span>' + (x.u.talla ? '<span class="t">' + esc(x.u.talla) + '</span>' : '') + '<span>× ' + x.n + '</span></div>' +
+        peds.map(function (p) {
+          return '<div class="rp-pedido">Lo ha pedido <b>' + esc(capital(p.familia || '')) + '</b>' + (p.nadador ? ' para ' + esc(capital(p.nadador).split(' ')[0]) : '') +
+            ' en el formulario.<button type="button" class="cu-btn" data-reservar="' + x.u.id + '" data-fam="' + p.familia_id + '" data-nad="' + esc(capital(p.nadador || p.familia || '')) + '">Dárselo del stock</button></div>'; }).join('');
+    }).join('') + '</div></div></div>';
+  }
+  function filaStock(u){
+    var e = estado(u), ab = !!S.abiertos[u.id], n = Number(u.cantidad) || 1;
+    var sub = [u.talla ? 'Talla ' + u.talla : '', n > 1 ? n + ' unidades' : '', cobra(u) ? eur(u.precio) : (u.precio == null ? 'sin precio' : ''),
+               u.entregado_en ? 'entregado el ' + fecha(u.entregado_en) : '', u.pagado_en ? 'pagado el ' + fecha(u.pagado_en) + (u.pago_metodo ? ' (' + metodoTxt(u.pago_metodo).toLowerCase() + ')' : '') : '']
+      .filter(Boolean).join(' · ');
+    var h = '<div class="cu-item' + (ab ? ' abierto' : '') + '"><button type="button" class="cu-row" data-abrir="' + u.id + '">' +
+      '<span class="q"><b' + (libre(u) ? ' class="libre"' : '') + '>' + (u.revisar ? '⚠︎ ' : '') + esc(libre(u) ? 'Libre' : quien(u)) + '</b><small>' + esc(sub) + '</small></span>' +
+      '<span class="cu-estado ' + e[0] + '">' + esc(e[1]) + '</span><span class="chev" aria-hidden="true">▼</span></button>';
+    if (ab) h += '<div class="cu-det">' + detalle(u) + '</div>';
+    return h + '</div>';
+  }
+  function detalle(u){
+    var n = Number(u.cantidad) || 1, id = u.id, h = '';
+    if (u.nota && u.revisar) h += '<div class="cu-aviso" style="margin-top:4px">' + esc(u.nota) + '</div>';
+    if (u.familia_id) h += '<div class="cu-det-t">Reservado del stock para el pedido de equipación de <b>' + esc(capital(u.familia || '')) + '</b>: lo paga con su pedido (' + (u.familia_pagado ? 'ya pagado' : 'aún sin pagar') + ').</div>';
+    h += '<div class="cu-grid" style="margin-top:10px">' +
+      '<div class="cu-campo"><label for="p-' + id + '">Para quién</label><input id="p-' + id + '" data-campo="persona" value="' + esc(u.persona || '') + '" placeholder="Nombre y apellido" autocomplete="off"></div>' +
+      '<div class="cu-campo"><label for="t-' + id + '">Talla</label><input id="t-' + id + '" data-campo="talla" value="' + esc(u.talla || '') + '" autocomplete="off"></div>' +
+      '<div class="cu-campo"><label for="pr-' + id + '">Precio por unidad (€)</label><input id="pr-' + id + '" data-campo="precio" type="number" inputmode="decimal" step="0.01" min="0" value="' + esc(u.precio == null ? '' : u.precio) + '"></div>' +
+      (n > 1 ? '<div class="cu-campo"><label for="s-' + id + '">¿Cuántas de estas ' + n + '?</label><input id="s-' + id + '" data-campo="separar" type="number" min="1" max="' + n + '" value="' + n + '"><span class="ayuda">Si pones menos, se separan en otra fila.</span></div>' : '') +
+      '<div class="cu-campo ancho"><label for="n-' + id + '">Nota</label><textarea id="n-' + id + '" data-campo="nota">' + esc(u.nota || '') + '</textarea></div></div>' +
+      '<div class="cu-acc"><button type="button" class="cu-btn" data-guardar="' + id + '">Guardar</button>' +
+        (u.revisar ? '<button type="button" class="cu-btn sec" data-accion="revisado" data-id="' + id + '">Ya está revisado</button>' : '') + '</div>';
+    if (!libre(u) || u.persona) {
+      h += '<div class="cu-acc">' +
+        (cobra(u) && !u.familia_id ? (u.pagado_en
+          ? '<button type="button" class="cu-btn sec" data-accion="nopagado" data-id="' + id + '">Quitar pagado</button>'
+          : '<select class="cu-sel" id="m-' + id + '" aria-label="Cómo ha pagado">' + METODOS.map(function (o) { return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join('') + '</select>' +
+            '<button type="button" class="cu-btn" data-accion="pagado" data-id="' + id + '">Ha pagado</button>') : '') +
+        (u.entregado_en ? '<button type="button" class="cu-btn sec" data-accion="noentregado" data-id="' + id + '">Quitar entregado</button>'
+                        : '<button type="button" class="cu-btn verde" data-accion="entregado" data-id="' + id + '">Entregado</button>') +
+        '<button type="button" class="cu-link" data-accion="libre" data-id="' + id + '">Dejar libre</button></div>';
+    }
+    h += '<div class="cu-acc"><button type="button" class="cu-link" data-borrar="' + id + '">Borrar esta fila</button></div>';
+    return h;
+  }
+  function listaStock(){
+    if (S.err) return '<div class="cu-card"><div class="cu-cuerpo"><div class="cu-aviso" style="margin:0">' + esc(S.err) + '</div></div></div>';
+    var L = (S.stock || []).filter(filtrar), lotes = {};
+    L.forEach(function (u) { (lotes[u.lote] = lotes[u.lote] || []).push(u); });
+    var html = Object.keys(lotes).map(function (lote) {
+      var us = lotes[lote], art = {};
+      us.forEach(function (u) { (art[u.articulo] = art[u.articulo] || []).push(u); });
+      var coste = (S.stock || []).filter(function (u) { return u.lote === lote; }).reduce(function (a, u) { return a + Number(u.coste || 0) * (Number(u.cantidad) || 1); }, 0);
+      return '<div class="cu-card"><h2>' + esc(lote) + (coste ? '<small>coste ' + esc(eur(coste)) + '</small>' : '') + '</h2><div>' + Object.keys(art).map(function (a) {
+        var n = art[a].reduce(function (x, u) { return x + (Number(u.cantidad) || 1); }, 0);
+        return '<div class="cu-grupo-t">' + esc(a) + ' <small>· ' + n + (n === 1 ? ' unidad' : ' unidades') + '</small></div>' + art[a].map(filaStock).join('');
+      }).join('') + '</div></div>';
+    }).join('');
+    return html || '<div class="cu-card"><div class="cu-cuerpo"><p class="cu-msg" style="padding:10px 0">' + (S.filtro ? 'No hay nada con ese filtro.' : 'Todavía no hay nada apuntado.') + '</p></div></div>';
+  }
+  function pintarStock(){
+    wrap.innerHTML = cabStock() + (S.filtro ? '' : quedan()) + listaStock() +
+      '<div class="cu-acc" style="margin-top:4px"><button type="button" class="cu-btn" data-nuevo>Apuntar lo que ha llegado</button>' +
+      (S.filtro ? '<button type="button" class="cu-btn sec" data-filtro="">Ver todo</button>' : '') + '</div>';
+  }
+  async function guardarStock(id, datos, ok){
+    var r = await sb.rpc('natacion_ropa_stock_guardar', { p_id: id, p_datos: datos });
+    if (r.error) { toast(r.error.message || 'No se pudo guardar'); return false; }
+    if (ok) toast(ok);
+    await cargarStock(); pintarStock(); return true;
+  }
+
+  /* hoja: apuntar lo que ha llegado */
+  function hojaNuevo(){
+    var v = document.createElement('div'); v.className = 'cu-velo'; v.id = 'rp-velo';
+    var lotes = []; (S.stock || []).forEach(function (u) { if (lotes.indexOf(u.lote) < 0) lotes.push(u.lote); });
+    v.innerHTML = '<div class="cu-hoja" role="dialog" aria-modal="true" aria-label="Apuntar lo que ha llegado"><h2>Apuntar lo que ha llegado<button type="button" data-cerrar aria-label="Cerrar">×</button></h2><div class="cu-cuerpo">' +
+      '<div class="cu-grid">' +
+      '<div class="cu-campo ancho"><label for="nv-lote">Albarán o pedido</label><input id="nv-lote" list="nv-lotes" value="' + esc(lotes[0] || '') + '" placeholder="Albarán 123 · Proveedor"><datalist id="nv-lotes">' + lotes.map(function (l) { return '<option value="' + esc(l) + '">'; }).join('') + '</datalist></div>' +
+      '<div class="cu-campo ancho"><label for="nv-prod">Artículo</label><select id="nv-prod"><option value="">Otro (lo escribo)</option>' +
+        S.productos.map(function (p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="cu-campo ancho" id="nv-art-c"><label for="nv-art">Nombre del artículo</label><input id="nv-art" autocomplete="off"></div>' +
+      '<div class="cu-campo"><label for="nv-talla">Talla</label><input id="nv-talla" autocomplete="off" placeholder="S, M, 10…"></div>' +
+      '<div class="cu-campo"><label for="nv-cant">Unidades</label><input id="nv-cant" type="number" min="1" value="1"></div>' +
+      '<div class="cu-campo"><label for="nv-coste">Coste por unidad (€)</label><input id="nv-coste" type="number" step="0.01" min="0" inputmode="decimal"><span class="ayuda">Con IVA. Opcional.</span></div>' +
+      '<div class="cu-campo"><label for="nv-precio">Precio de venta (€)</label><input id="nv-precio" type="number" step="0.01" min="0" inputmode="decimal"><span class="ayuda">Vacío = el del catálogo.</span></div>' +
+      '</div><div id="nv-msg"></div><div class="cu-acc"><button type="button" class="cu-btn" data-nv-guardar>Apuntar</button><button type="button" class="cu-btn sec" data-cerrar>Cancelar</button></div></div></div>';
+    document.body.appendChild(v); document.body.style.overflow = 'hidden';
+    v.querySelector('#nv-prod').addEventListener('change', function (ev) { v.querySelector('#nv-art-c').style.display = ev.target.value ? 'none' : ''; });
+  }
+  function cerrarHoja(){ var v = document.getElementById('rp-velo'); if (v) v.remove(); document.body.style.overflow = ''; }
+
+  /* ================= CATÁLOGO ================= */
+  async function cargarCat(){
+    var r = await sb.rpc('natacion_ropa_productos');
+    if (r.error) { S.err = r.error.message || 'No se pudo cargar.'; S.cat = []; return; }
+    S.err = null; S.cat = r.data || [];
+  }
+  function donde(p){ return p.categoria === 'banador' ? 'formulario de equipación' : (p.editable ? 'formulario de equipación y tienda de la web' : 'formulario de equipación'); }
+  function filaCat(p){
+    var ab = !!S.abiertos[p.id], h = '<div class="cu-item' + (ab ? ' abierto' : '') + '"><button type="button" class="cu-row" data-abrir="' + p.id + '">' +
+      '<span class="foto" style="background-image:url(\'' + esc(img(p.imagen)) + '\')"></span>' +
+      '<span class="q"><b>' + esc(p.nombre) + '</b><small>' + esc(eur(p.precio)) + ' · ' + esc((p.tallas || []).join(' · ') || 'talla única') + '</small></span>' +
+      '<span class="cu-estado ' + (p.activo ? 'sin' : 'apag') + '">' + (p.activo ? 'Se ofrece' : 'Apagado') + '</span><span class="chev" aria-hidden="true">▼</span></button>';
+    if (ab) {
+      h += '<div class="cu-det">';
+      if (!p.editable) h += '<div class="cu-info" style="margin-top:4px">Es ropa del club: su precio y tallas se cambian en la tienda (lo lleva Andrés). Aquí solo sale en el formulario de equipación.</div>';
+      else h += (p.descripcion ? '<div class="cu-det-t">' + esc(p.descripcion) + '</div>' : '') +
+        '<div class="cu-grid" style="margin-top:10px">' +
+        '<div class="cu-campo ancho"><label for="cn-' + p.id + '">Nombre</label><input id="cn-' + p.id + '" data-c="nombre" value="' + esc(p.nombre) + '"></div>' +
+        '<div class="cu-campo"><label for="cp-' + p.id + '">Precio (€)</label><input id="cp-' + p.id + '" data-c="precio" type="number" step="0.01" min="0" inputmode="decimal" value="' + esc(p.precio) + '"></div>' +
+        '<div class="cu-campo"><label for="ct-' + p.id + '">Tallas</label><input id="ct-' + p.id + '" data-c="tallas" value="' + esc((p.tallas || []).join(', ')) + '"><span class="ayuda">Separadas por comas.</span></div>' +
+        '<div class="cu-campo ancho"><label class="cu-switch"><input type="checkbox" data-c="activo"' + (p.activo ? ' checked' : '') + '> Se ofrece (sale en el ' + esc(donde(p)) + ')</label></div></div>' +
+        '<div class="cu-acc"><button type="button" class="cu-btn" data-cat-guardar="' + p.id + '">Guardar</button></div>';
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+  function pintarCat(){
+    if (S.err) { wrap.innerHTML = '<div class="cu-card"><div class="cu-cuerpo"><div class="cu-aviso" style="margin:0">' + esc(S.err) + '</div></div></div>'; return; }
+    var grupos = [['Bañadores', function (p) { return p.categoria === 'banador'; }], ['Ropa de natación', function (p) { return p.editable && p.categoria !== 'banador'; }],
+                  ['Ropa del club', function (p) { return !p.editable; }]];
+    wrap.innerHTML = '<div class="cu-cab"><div class="cu-eyebrow">Natación · Ropa</div><h1>Catálogo y precios</h1>' +
+      '<p>Lo que pueden pedir las familias. Los bañadores salen solo en el formulario de equipación; el resto de la ropa de natación, también en la tienda de la web (filtro «Natación»).</p></div>' +
+      '<div class="cu-card"><h2>Artículos <small>' + S.cat.length + '</small></h2><div>' + grupos.map(function (g) {
+        var L = S.cat.filter(g[1]); return L.length ? '<div class="cu-grupo-t">' + g[0] + ' <small>· ' + L.length + '</small></div>' + L.map(filaCat).join('') : '';
+      }).join('') + '</div></div>';
+  }
+
+  /* ================= eventos ================= */
+  function pintar(){ if (VISTA === 'catalogo') pintarCat(); else pintarStock(); }
+  wrap.addEventListener('click', async function (ev) {
+    var t = ev.target; if (!t || !t.closest) return; var b;
+    if ((b = t.closest('[data-abrir]'))) { var id = b.getAttribute('data-abrir'); if (S.abiertos[id]) delete S.abiertos[id]; else S.abiertos[id] = true; pintar(); return; }
+    if ((b = t.closest('[data-filtro]'))) { var f = b.getAttribute('data-filtro'); S.filtro = S.filtro === f ? '' : f; pintar(); return; }
+    if (t.closest('[data-nuevo]')) { hojaNuevo(); return; }
+    if ((b = t.closest('[data-guardar]'))) {
+      var gid = b.getAttribute('data-guardar'), box = b.closest('.cu-det'), d = {};
+      box.querySelectorAll('[data-campo]').forEach(function (el) { d[el.getAttribute('data-campo')] = el.value; });
+      var u = (S.stock || []).filter(function (x) { return x.id === gid; })[0];
+      if (d.separar && Number(d.separar) >= (Number(u.cantidad) || 1)) delete d.separar;
+      b.disabled = true; await guardarStock(gid, d, 'Guardado'); return;
+    }
+    if ((b = t.closest('[data-accion]'))) {
+      var aid = b.getAttribute('data-id'), acc = b.getAttribute('data-accion'), dd = {}, msg = '';
+      if (acc === 'pagado') { var m = document.getElementById('m-' + aid); dd = { pagado: true, pago_metodo: m ? m.value : null }; msg = 'Apuntado como pagado'; }
+      else if (acc === 'nopagado') { dd = { pagado: false }; msg = 'Quitado el pagado'; }
+      else if (acc === 'entregado') { dd = { entregado: true }; msg = 'Entregado'; }
+      else if (acc === 'noentregado') { dd = { entregado: false }; msg = 'Quitado el entregado'; }
+      else if (acc === 'revisado') { dd = { revisar: false }; msg = 'Revisado'; }
+      else if (acc === 'libre') { if (!confirm('¿Dejarlo libre? Volverá a salir en el formulario como disponible.')) return; dd = { libre: true }; msg = 'Libre'; }
+      // Si la fila tiene varias unidades y se ha puesto cuántas, la acción va solo a esas.
+      var sep = document.getElementById('s-' + aid); if (sep && Number(sep.value) >= 1) dd.separar = Number(sep.value);
+      b.disabled = true; await guardarStock(aid, dd, msg); return;
+    }
+    if ((b = t.closest('[data-reservar]'))) {
+      var rid = b.getAttribute('data-reservar'), ru = (S.stock || []).filter(function (x) { return x.id === rid; })[0];
+      if (!confirm('¿Dárselo del stock a ' + b.getAttribute('data-nad') + '? Lo paga con su pedido de equipación y no se pide al proveedor.')) return;
+      var rd = { familia_id: b.getAttribute('data-fam'), persona: b.getAttribute('data-nad') };
+      if (ru && Number(ru.cantidad) > 1) rd.separar = 1;
+      b.disabled = true; await guardarStock(rid, rd, 'Reservado del stock'); return;
+    }
+    if ((b = t.closest('[data-borrar]'))) {
+      if (!confirm('¿Borrar esta fila del stock? No se puede deshacer.')) return;
+      var r = await sb.rpc('natacion_ropa_stock_borrar', { p_id: b.getAttribute('data-borrar') });
+      if (r.error) { toast(r.error.message || 'No se pudo'); return; }
+      toast('Borrada'); await cargarStock(); pintarStock(); return;
+    }
+    if ((b = t.closest('[data-cat-guardar]'))) {
+      var pid = b.getAttribute('data-cat-guardar'), cb = b.closest('.cu-det'), pd = {};
+      cb.querySelectorAll('[data-c]').forEach(function (el) {
+        var k = el.getAttribute('data-c');
+        pd[k] = k === 'activo' ? el.checked : k === 'tallas' ? el.value.split(/[,;]+/).map(function (x) { return x.trim(); }).filter(Boolean) : el.value;
+      });
+      b.disabled = true;
+      var rc = await sb.rpc('natacion_ropa_producto_guardar', { p_id: pid, p_datos: pd });
+      if (rc.error) { b.disabled = false; toast(rc.error.message || 'No se pudo guardar'); return; }
+      toast('Guardado'); await cargarCat(); pintarCat(); return;
+    }
+  });
+  document.addEventListener('click', async function (ev) {
+    var v = document.getElementById('rp-velo'); if (!v) return;
+    var t = ev.target; if (!t || !t.closest) return;
+    if (t === v || t.closest('[data-cerrar]')) { cerrarHoja(); return; }
+    var b = t.closest('[data-nv-guardar]'); if (!b) return;
+    var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
+    var d = { lote: g('nv-lote'), producto_id: g('nv-prod'), articulo: g('nv-art'), talla: g('nv-talla'), cantidad: g('nv-cant'), coste: g('nv-coste'), precio: g('nv-precio') };
+    if (!d.producto_id && !d.articulo.trim()) { document.getElementById('nv-msg').innerHTML = '<div class="cu-aviso">Elige o escribe el artículo.</div>'; return; }
+    b.disabled = true;
+    if (await guardarStock(null, d, 'Apuntado')) cerrarHoja(); else b.disabled = false;
+  });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') cerrarHoja(); });
+
+  if (VISTA === 'catalogo') await cargarCat(); else await cargarStock();
+  pintar();
+});
+</script>
+</body>
+</html>

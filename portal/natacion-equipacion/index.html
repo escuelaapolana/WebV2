@@ -22,7 +22,7 @@
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
-<script src="../../assets/js/mundos.js?v=d2e2d2b1" defer></script>
+<script src="../../assets/js/mundos.js?v=2d6a9e68" defer></script>
 <!-- (sin ficha) --><script data-x src="../../assets/js/natacion-ficha.js?v=572b7273" defer></script>
 <style>
   :root{ --mm-acento:#2F6FA8; --azul:#2F6FA8; --azul-osc:#245A8A;
@@ -226,8 +226,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function copiar(txt, aviso){ try { await navigator.clipboard.writeText(txt); toast(aviso || 'Copiado'); } catch (e) { prompt('Cópialo:', txt); } }
   function telWa(t){ var d = String(t||'').replace(/[^\d+]/g,''); if (!d) return ''; if (d.charAt(0) === '+') return d.slice(1); if (d.length === 9) return '34' + d; return d; }
 
-  var rp = await sb.rpc('natacion_cuotas_puede');
-  if (rp.error || !rp.data){ wrap.innerHTML = '<div class="cu-card"><h2>Equipación</h2><div class="cu-cuerpo"><p style="margin:0">Esta pantalla es para quien lleva la natación.</p></div></div>'; return; }
+  var rp = await sb.rpc('natacion_ropa_puede');   // mig 465: también quien lleva la ropa (Loren)
+  if (rp.error || !rp.data){ wrap.innerHTML = '<div class="cu-card"><h2>Equipación</h2><div class="cu-cuerpo"><p style="margin:0">Esta pantalla es para quien lleva la natación o su ropa.</p></div></div>'; return; }
 
   var S = { lista: null, err: null, q: '', estado: '', abiertos: {}, ocupado: {}, textos: {} };
   var ESTADOS = { pendiente: ['pend', 'Sin contestar'], pedido: ['camino', 'Pedido hecho'], llegado: ['activa', 'Ha llegado'], pagado: ['activa', 'Pagado'], entregado: ['cerrado', 'Entregado'] };
@@ -481,7 +481,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           'Artículo': l.nombre, 'Talla': l.talla || '', 'Unidades': Number(l.cantidad) || 1, 'Importe (€)': Math.round(Number(l.precio) * (Number(l.cantidad) || 1) * 100) / 100, 'Estado': estadoDe(f)[1] });
       });
     });
-    var prov = Object.keys(suma).map(function (k) { return suma[k]; }).sort(function (a, b) { return a['Artículo'].localeCompare(b['Artículo'], 'es') || a._o - b._o; })
+    // Lo que se sirve del stock (mig 465: unidades reservadas a una familia) no se pide al proveedor.
+    var rs = await sb.rpc('natacion_ropa_stock_listar'), delStock = [];
+    ((rs.data && rs.data.stock) || []).forEach(function (u) {
+      if (!u.familia_id || !u.producto) return;
+      var k = u.producto + '|' + (u.talla || '');
+      if (suma[k]) suma[k]['Unidades'] = Math.max(0, suma[k]['Unidades'] - (Number(u.cantidad) || 1));
+      delStock.push({ 'Artículo': u.producto, 'Talla': u.talla || '—', 'Unidades': Number(u.cantidad) || 1, 'Para': capital(u.familia || '') });
+    });
+    var prov = Object.keys(suma).map(function (k) { return suma[k]; }).filter(function (r) { return r['Unidades'] > 0; }).sort(function (a, b) { return a['Artículo'].localeCompare(b['Artículo'], 'es') || a._o - b._o; })
       .map(function (r) { return { 'Artículo': r['Artículo'], 'Talla': r['Talla'], 'Unidades': r['Unidades'] }; });
     var fams = (S.lista || []).map(function (f) { return { 'Familia': capital(f.contacto || ''), 'Nadadores': nombresDe(f), 'Correo': f.email, 'Teléfono': f.telefono || '', 'Estado': estadoDe(f)[1], 'Total (€)': Number(f.total) || 0, 'Enlace': f.enlace }; });
     var wb = X.utils.book_new();
@@ -491,6 +499,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     X.utils.book_append_sheet(wb, h1, 'Para el proveedor');
     X.utils.book_append_sheet(wb, h2, 'Por nadador');
     X.utils.book_append_sheet(wb, h3, 'Familias');
+    if (delStock.length) { var h4 = X.utils.json_to_sheet(delStock); h4['!cols'] = [{ wch: 30 }, { wch: 8 }, { wch: 10 }, { wch: 26 }]; X.utils.book_append_sheet(wb, h4, 'Se sirve del stock'); }
     X.writeFile(wb, 'Equipación natación 2026-27.xlsx');
   }
 

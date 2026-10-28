@@ -2,7 +2,7 @@
 // natacion-equipacion-correo · correos del pedido de equipación de natación
 // ------------------------------------------------------------
 // Mig 436 (22-oct-2026). La lanza Mario desde portal/natacion-equipacion (con
-// su sesión: tiene que pasar natacion_cuotas_puede) o la base con x-cron-secret.
+// su sesión: tiene que pasar natacion_ropa_puede, mig 465) o la base con x-cron-secret.
 //   { enviar: true, grupo?, asunto?, texto? } → a cada familia que aún no lo
 //        tiene, su enlace. grupo: "escuela" (las mixtas van aquí) | "master".
 //   { familia: "<id>", asunto?, texto? } → el enlace a UNA familia (los que se
@@ -143,12 +143,12 @@ Deno.serve(async (req: Request) => {
   if (!ok) {
     const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
     if (jwt && jwt !== ANON_KEY) {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/natacion_cuotas_puede`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/natacion_ropa_puede`, {
         method: "POST", headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" }, body: "{}" });
       ok = r.ok && (await r.json().catch(() => false)) === true;
     }
   }
-  if (!ok) return responder({ error: "permiso", mensaje: "Solo quien lleva la natación." }, 403, o);
+  if (!ok) return responder({ error: "permiso", mensaje: "Solo quien lleva la natación o su ropa." }, 403, o);
 
   let b: Record<string, unknown> = {};
   try { b = await req.json(); } catch { /* vacío */ }
