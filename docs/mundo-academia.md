@@ -26,8 +26,9 @@ sobre la base mínima (mig 462) y el grupo de prueba con datos ficticios (mig 46
 - **Hoy**: cifras (atletas entrenan · sesiones · ausencias · descansos · borradores ·
   que revisar · sin feedback), ‹ día ›, Por atleta (hoy + ayer) o Por grupos de
   trabajo; «Pendiente de revisar» con origen: revisiones y avisos uno a uno, el
-  feedback sin avisos y lo que no tiene respuesta plegados con su número, y «Marcar
-  los N como revisados» (solo los que no traen avisos).
+  feedback sin avisos, lo que no tiene respuesta y «falta tu registro» plegados con
+  su número. **No hay «marcar todo como revisado»** (28-oct, Andrés): revisado
+  significa leído.
 - **Grupos de trabajo**: los crea el entrenador (por sesión o por bloque); la app
   solo sugiere (misma intención y título) y nunca agrupa sola. Un grupo por bloque
   solo cubre ese bloque; el resto sigue siendo individual.
@@ -54,9 +55,24 @@ ritmos individuales, impresión e iPhone) en PC y a 390 px. Las escrituras de ve
 candado, publicar) se probaron en la base como Andrés en transacciones deshechas, y
 sin permiso (otro responsable) no se ve ni se escribe nada.
 
-**Pendiente de decidir:** los atletas que están en el grupo solo para subirles el
-entreno (no «cuentan» como Academia) salen en «sin feedback»; hace falta marcar a
-quién no se le pide feedback.
+**Ajustes del 28-oct (mig 464):**
+- **Seguimiento por atleta** («Seguimiento…» en Semana, y en el detalle): feedback
+  del atleta (por defecto) · registro del entrenador · feedback no requerido. Nadie
+  sale del seguimiento ni se borra nada; la elección de cada persona la hace Andrés.
+  - *Registro del entrenador* (`academia_registros_entrenador`): realizada / parcial
+    (%) / no realizada + observación, atado a la versión de la sesión. Consta como
+    declaración del entrenador: **sin RPE ni sensaciones del atleta**. Si falta
+    pasado el plazo: «Sin datos · falta tu registro».
+  - *No requerido*: «Sin datos · feedback no requerido», sin pendiente. Si el atleta
+    responde, se ve igual.
+- **Feedback cambiado tras revisarlo**: vuelve a pendiente y guarda quién y cuándo
+  revisó la versión anterior (`revision_anterior_*`, más el historial de correcciones).
+- **Semana en PC** pliega la lateral del panel (sin cambiar la preferencia guardada).
+  Números y distancias sin partir.
+- **Casilla detallada**: una línea por fila del plan (series, ritmos, recuperaciones y
+  calzado); la exigencia, solo en el detalle.
+- **iPhone**: cabecera y controles compactos (filtros plegados; el nombre abre su
+  semana) y más margen bajo la última tarjeta para la barra flotante.
 
 ## Navegación
 

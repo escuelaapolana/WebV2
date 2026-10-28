@@ -814,7 +814,14 @@
     },
     /* Lo que dice la lateral sobre su estado (para que admin-tabbar reserve
        el ancho antes de montarla y no haya salto). */
-    plegado: estaPlegado
+    plegado: estaPlegado,
+    /* Pliega la lateral en ESTA página sin tocar la preferencia guardada
+       (p. ej. la Semana de Academia necesita todo el ancho). `null` = volver
+       a lo que tenga guardado la persona. */
+    plegarPagina: function (pleg) {
+      var side = document.querySelector('.mm-side');
+      if (side) ponerPlegado(side, pleg == null ? estaPlegado() : !!pleg);
+    }
   };
 
   /* ---------- barra de mundo para MÓVIL (<900px) ----------
@@ -1142,6 +1149,7 @@
     side.innerHTML = sideHtml(M, esActivo, initKeys);
     // «Buscar» (escritorio) abre la hoja de secciones/buscador de montarBarraMovil.
     bindSide(side, { onBuscar: function () { if (_abrirSecciones) _abrirSecciones(); } });
+    if (CFG.plegar) ponerPlegado(side, true);   // la página pide todo el ancho (sin guardar preferencia)
 
     var layout = document.createElement('div');
     layout.className = 'mm-layout';

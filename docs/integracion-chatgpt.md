@@ -1,4 +1,62 @@
-# Cargar en la app las planificaciones aprobadas en ChatGPT — PROPUESTA (sin implementar)
+# Cargar en la app las planificaciones aprobadas en ChatGPT — conexión de PRUEBA construida
+
+## Estado (28-oct-2026): prueba construida, solo grupo PRUEBA
+
+Autorizado por Andrés: tablas y función con acceso **solo al grupo «Academia AC98 ·
+PRUEBA»** (datos ficticios). Sin datos reales, sin salud y sin publicación en la
+Academia real.
+
+| Pieza | Dónde |
+|---|---|
+| Lógica (permisos, idempotencia, versiones, huellas) | `public.academia_api(hash, operación, args)` (mig 464), solo `service_role` |
+| Servidor MCP (Streamable HTTP, respuestas JSON, sin estado) | Edge `academia-mcp` (`--no-verify-jwt`; autentica con `Authorization: Bearer`) |
+| Puente local para la app de ChatGPT (Codex) | `herramientas/academia-mcp-puente.py`: lee la clave del **Llavero** y reenvía |
+| Activar / quitar en este Mac | `bash herramientas/academia-mcp-activar.sh` · `… --quitar` |
+| Claves, envíos, registro, clave_cliente | `api_claves` (solo sha256), `api_envios`, `api_registro`, `api_sesiones_cliente` |
+
+**Candado de la prueba:** `academia_api_grupos` solo devuelve grupos `es_prueba` de
+`academia_grupos`, aunque la clave incluya otros. Abrir la Academia real exigirá una
+migración explícita y el visto bueno de Andrés.
+
+**Herramientas** (el nombre que verá ChatGPT lleva delante el del servidor,
+`apolana_academia`): `estado` · `leer_semana` · `leer_sesion` ·
+`consultar_borradores` · `guardar_borradores` · `proponer_revision` ·
+`publicar_prueba`. Las lecturas no llevan molestias, comentarios del atleta ni
+motivos de ausencia.
+
+**Reglas implementadas:**
+- **Identidad:** `clave_cliente` estable por sesión nueva (`api_sesiones_cliente`).
+  Reenviar la misma sesión no la duplica: «sin_cambios» si es igual, «ya_existe» si
+  es distinta y no trae `version_base`.
+- **Repetición:** `envio_id` por petición. El mismo `envio_id` con el mismo
+  contenido devuelve la respuesta guardada (`repetido: true`); con otro contenido,
+  error.
+- **Concurrencia:** cambiar un borrador exige `version_base`; si no coincide, conflicto
+  y **no se guarda nada** del envío.
+- **Publicadas:** no se tocan; `proponer_revision` crea una revisión pendiente
+  (`via = chatgpt`) que el entrenador aplica o descarta en el panel. Una por sesión.
+- **Mover de día o de atleta** = sustituir → conflicto «otra_fecha_o_atleta».
+- **Publicar:** solo `publicar_prueba`, con `version` y `huella` (md5 del contenido
+  sin ids de fila ni publicación). Si algo no coincide, no publica nada; si
+  publica, comprueba en el historial que la versión publicada tiene la misma huella.
+- Autoría: `apolana.autor = 'chatgpt · <clave>'` en el historial de versiones;
+  `creado_por`/`autor_perfil_id` = Andrés (dueño de la clave); `generado_por_ia = true`.
+
+**Verificado (28-oct):** en seco en la base (todo el circuito) y contra la función
+desplegada con una clave técnica temporal, ya revocada: leer → guardar → repetir el
+mismo envío → mismo contenido con envío nuevo → consultar → cambiar con versión →
+cambio concurrente rechazado → publicar una versión no revisada rechazado →
+publicar la revisada (v2 → v3, huella coincide) → cambiar una publicada rechazado →
+proponer revisión → repetirla → grupo real rechazado. Y **el Codex de la app de
+ChatGPT** (el mismo binario, con un servidor temporal) llamó a `estado` por el
+puente y respondió con el grupo PRUEBA. Todo lo creado en la prueba técnica se borró.
+
+**Falta (Andrés):** activar la conexión en su Mac y hacer la prueba desde su chat
+de planificación (§6). La prueba solo se da por completada cuando funcione allí.
+
+---
+
+> El resto del documento es la propuesta original; donde difiere, manda lo de arriba.
 
 > 28-oct-2026 · Andrés prepara las planificaciones de Academia con ChatGPT. Cuando
 > las aprueba, ChatGPT las carga en la app sin copiar nada. Publicar es otra
