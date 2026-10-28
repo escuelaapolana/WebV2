@@ -3585,7 +3585,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       sb.from('asistencia').select('atleta_id,presente')
         .eq('fecha', fechaPedida).eq('grupo_id', grupoPedido).in('atleta_id', ids),
       pedir(function(){ return sb.rpc('apo_faltas_avisadas', { p_grupos: [grupoPedido], p_fecha: fechaPedida }); }),
-      sb.from('sesiones').select('id,titulo,fecha,publicada').eq('grupo_id', grupoPedido).eq('fecha', fechaPedida).order('publicada',{ascending:false}).limit(1),
+      sb.from('sesiones').select('id,titulo,fecha,publicada').eq('grupo_id', grupoPedido).eq('fecha', fechaPedida).is('archivada_en', null).order('publicada',{ascending:false}).limit(1),
       cargarNotasDia(ids, fechaPedida)
     ]);
     var asis = RL[0];
@@ -6594,7 +6594,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if(!grupoId) return;
     /* 200 en vez de 60: este desplegable ya no es solo «el de la semana
        pasada», es por donde se llega a lo de hace meses. */
-    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,deporte,deporte_2,papel_dia,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).order('fecha',{ascending:false}).limit(200);
+    var r = await sb.from('sesiones').select('id,fecha,titulo,tipo,rol,deporte,deporte_2,papel_dia,nota_razonamiento,bloques,publicada,grupo_id,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar,duracion_min').eq('grupo_id', grupoId).is('archivada_en', null).order('fecha',{ascending:false}).limit(200);
     if(r.error || !r.data){ return; }
     window.__SESIONES_GRUPO = {};
     /* Agrupados por mes: una lista de 200 fechas seguidas no se lee, y
@@ -6906,11 +6906,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var texto = 'Vas a borrar «'+comoSeLlama+'»'+(cuando?' del '+cuando:'')+'. Desaparece para todo el grupo y no se puede deshacer.';
       if(apuntados.length){
         var quien = nombresDeIds(apuntados.map(function(x){ return x.atleta_id; }), 3);
-        texto += '\n\n⚠️ OJO: ya hay '+apuntados.length+' registro'+(apuntados.length===1?'':'s')+
-                 ' apuntado'+(apuntados.length===1?'':'s')+' en este entrenamiento'+(quien?' ('+quien+')':'')+
-                 '. Si lo borras, se pierden sus series, sus tiempos y lo que escribieran. Eso no se recupera.';
+        // (mig 458) Con registros ya no se borra: se ARCHIVA. Sale del plan y del
+        // grupo, pero se guardan sus tiempos, su feedback y el plan que respondieron.
+        texto = 'Vas a quitar «'+comoSeLlama+'»'+(cuando?' del '+cuando:'')+' del plan del grupo.' +
+                '\n\nYa hay '+apuntados.length+' registro'+(apuntados.length===1?'':'s')+
+                ' apuntado'+(apuntados.length===1?'':'s')+(quien?' ('+quien+')':'')+
+                ', así que no se borra: se archiva. Sus tiempos y lo que escribieron se guardan.';
       }
-      if(!await APX.confirm(texto, { aceptar:'Borrar', peligro:true })) return;
+      if(!await APX.confirm(texto, { aceptar: apuntados.length ? 'Archivar' : 'Borrar', peligro:true })) return;
 
       var r = await sb.from('sesiones').delete().eq('id', editandoId);
       var m = $('pl-msg');
@@ -6919,7 +6922,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       limpiarFormulario();
       await cargarSesionesGrupo(g);
       refrescarDia();
-      if(m){ m.textContent='Borrado ✓ «'+comoSeLlama+'» ya no existe.'; m.className='msg ok'; }
+      if(m){ m.textContent = apuntados.length ? 'Archivado ✓ «'+comoSeLlama+'» sale del plan; sus registros se guardan.' : 'Borrado ✓ «'+comoSeLlama+'» ya no existe.'; m.className='msg ok'; }
     });
 
     /* Los clics de la tira: flechas, «Hoy» y cada día. */
@@ -7913,7 +7916,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   async function comprobarChoques(){
     if(!SEMANA || !SEMANA.sesiones.length) return;
     var fechas = SEMANA.sesiones.map(function(s){ return s.fecha; });
-    var r = await sb.from('sesiones').select('id,fecha,titulo').eq('grupo_id', SEMANA.grupo_id).in('fecha', fechas);
+    var r = await sb.from('sesiones').select('id,fecha,titulo').eq('grupo_id', SEMANA.grupo_id).in('fecha', fechas).is('archivada_en', null);
     SEMANA.existentes = {};
     if(!r.error && r.data) r.data.forEach(function(s){ SEMANA.existentes[s.fecha] = s.id; });
     pintarPrevisualizacion();
@@ -8227,7 +8230,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     sel.innerHTML = '<option value="">— elige una semana —</option>';
     SEMANAS_ORIGEN = {};
     if(!gid) return;
-    var r = await sb.from('sesiones').select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar').eq('grupo_id', gid).order('fecha', { ascending:false }).limit(250);
+    var r = await sb.from('sesiones').select('id,fecha,dia_semana,tipo,rol,titulo,nota_razonamiento,bloques,atletas_ids,abierta_inscripcion,plazas,abierta_a,hora,lugar').eq('grupo_id', gid).is('archivada_en', null).order('fecha', { ascending:false }).limit(250);
     if(r.error || !r.data) return;
     r.data.forEach(function(s){ var L = lunesDe(s.fecha); (SEMANAS_ORIGEN[L] = SEMANAS_ORIGEN[L] || []).push(s); });
     Object.keys(SEMANAS_ORIGEN).sort().reverse().forEach(function(L){
@@ -8527,7 +8530,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var r = await sb.from('sesiones')
       .select('id,fecha,hora,lugar,titulo,tipo,rol,deporte,deporte_2,papel_dia,publicada,bloques,'+
               'nota_razonamiento,atletas_ids,abierta_inscripcion,plazas,abierta_a,grupo_id,duracion_min')
-      .eq('grupo_id', SV_GRUPO).gte('fecha', SV_LUNES).lte('fecha', fin).order('fecha', { ascending:true });
+      .eq('grupo_id', SV_GRUPO).gte('fecha', SV_LUNES).lte('fecha', fin).is('archivada_en', null).order('fecha', { ascending:true });
     if(r.error){ SV_ESTADO = 'error'; pintarSemana(); return; }
     SV_SES = r.data || [];
     SV_REG = {};
@@ -9217,7 +9220,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var r = await sb.from('sesiones')
       .select('id,fecha,hora,lugar,titulo,tipo,rol,deporte,deporte_2,papel_dia,publicada,bloques,'+
               'nota_razonamiento,atletas_ids,abierta_inscripcion,grupo_id')
-      .eq('grupo_id', CV_GRUPO).gte('fecha', ini).lte('fecha', fin).order('fecha', { ascending:true });
+      .eq('grupo_id', CV_GRUPO).gte('fecha', ini).lte('fecha', fin).is('archivada_en', null).order('fecha', { ascending:true });
     if(r.error){ CV_ESTADO = 'error'; pintarCalendario(); return; }
     CV_SES = r.data || [];
 
