@@ -207,7 +207,8 @@
       screens:[
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-atletismo/'},
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-atl'},
-        {g:'Niños y grupos', t:'Grupos y listas',   i:'clipboard', url:B+'admin/escuela-grupos/',         d:'Martes y jueves: mover niños de grupo, bajas y entrenadores.'},
+        {g:'Niños y grupos', t:'Grupos y listas',   i:'clipboard', url:B+'admin/escuela-grupos/',         d:'L/X y M/J: mover niños de grupo, bajas y entrenadores.'},
+        {g:'Niños y grupos', t:'Asistencia',        i:'check',    url:B+'admin/asistencia/?seccion=escuela', d:'Quién vino y quién faltó cada día.'},
         {g:'Niños y grupos', t:'Niños y niñas',     i:'people',   url:B+'admin/atletas/?seccion=escuela', d:'Los peques inscritos.'},
         {g:'Niños y grupos', t:'Editar grupos',     i:'people',   url:B+'admin/grupos/?seccion=escuela',  d:'Nombre, horario, años y plazas de cada grupo.'},
         {g:'Altas y pruebas', t:'Altas de familias', i:'userplus', url:B+'admin/altas/?tipo=escuela',      d:'Solicitudes nuevas de las familias.'},

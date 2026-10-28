@@ -36,6 +36,18 @@
   .as-vacio { text-align:center; color:var(--texto-suave,#6E6656); padding:40px 10px; }
   .as-vacio h2 { font-family:var(--ap-titulo); color:var(--navy,#26374B); margin:0 0 6px; }
   .as-resumen { font-size:13.5px; color:var(--texto-suave,#6E6656); margin:0 0 4px; }
+  /* «No han venido nunca» (solo con ?seccion): arriba de todo, una línea por niño */
+  .as-nunca { background:#fff; border:1px solid #EDC5C1; border-top:5px solid #B3261E; border-radius:16px; box-shadow:var(--s1); padding:14px 16px 6px; margin:0 0 18px; }
+  .as-nunca h2 { font-family:var(--ap-titulo); font-weight:700; text-transform:uppercase; font-size:16px; color:#9A2F26; margin:0 0 2px; }
+  .as-nunca p { font-size:13px; color:var(--texto-suave,#6E6656); margin:0 0 8px; line-height:1.4; }
+  .as-nunca a { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 0; border-top:1px solid #F3EEE4; color:var(--navy,#26374B); text-decoration:none; }
+  .as-nunca a .i { flex:1; min-width:0; }
+  .as-nunca a b { display:block; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .as-nunca a small { display:block; font-size:12.5px; color:var(--texto-suave,#6E6656); }
+  .as-nunca a .pct { font-weight:800; color:#B3261E; font-size:13.5px; white-space:nowrap; }
+  .as-nunca a .chev { color:#B9AE97; font-size:22px; }
+  .as-nunca.ok { border-color:#CFE6D8; border-top-color:#2E9E5B; padding-bottom:14px; }
+  .as-nunca.ok p { margin:0; color:#2E7D4F; }
 </style>
 </head>
 <body>
@@ -45,6 +57,7 @@
     <a class="volver" href="../">← Volver al panel</a>
     <h1 class="saludo">Asistencia</h1>
     <p class="sub">Quién vino a entrenar cada día. Lo pasan los entrenadores desde su zona.</p>
+    <div id="as-nunca"></div>
 
     <div class="as-barra">
       <button type="button" class="as-nav" id="as-ant" aria-label="Día anterior">‹</button>
@@ -67,6 +80,24 @@ APOLANA_ADMIN.listo(function (sb) {
   var fechaSel = isoDe(new Date());
   var GRUPOS = {};   // id -> nombre (para el filtro)
 
+  /* ?seccion=escuela (desde el mundo Escuela de atletismo): solo los grupos de esa
+     sección, con sus días («Rojo 1a · L y X», que hay uno por turno), y las flechas
+     saltan al día anterior / siguiente CON lista (Andrés 28-oct: ver quién faltó los
+     días pasados). Sin ?seccion, todo sigue como antes. */
+  var SECCION = (function(){ try { return (new URLSearchParams(location.search).get('seccion') || '').toLowerCase(); } catch(e){ return ''; } })();
+  var GIDS = [];     // ids de los grupos de esa sección
+  function diasCortos(h){
+    var s = String(h||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').split('·')[0];
+    var L = { lunes:'L', martes:'M', miercoles:'X', jueves:'J', viernes:'V', sabado:'S', domingo:'D' }, out = [];
+    Object.keys(L).forEach(function(d){ if(new RegExp('\\b'+d+'\\b').test(s)) out.push(L[d]); });
+    return out.length > 1 ? out.slice(0,-1).join(', ')+' y '+out[out.length-1] : (out[0]||'');
+  }
+  function gruposFiltro(){ return $('as-grupo').value ? [$('as-grupo').value] : GIDS; }
+  if(SECCION === 'escuela'){
+    document.querySelector('.sub').textContent = 'Escuela de atletismo: quién vino y quién faltó cada día. Las flechas saltan a los días con lista.';
+    $('as-ant').setAttribute('aria-label', 'Día anterior con lista'); $('as-sig').setAttribute('aria-label', 'Día siguiente con lista');
+  }
+
   function fechaLarga(iso){
     if(!iso) return '';
     var d=new Date(iso+'T00:00:00');
@@ -77,14 +108,84 @@ APOLANA_ADMIN.listo(function (sb) {
   function addDias(iso,n){ var d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return isoDe(d); }
 
   async function cargarGrupos(){
-    var r = await sb.from('grupos').select('id,nombre').order('nombre');
+    var r = await sb.from('grupos').select('id,nombre,horario,seccion').order('nombre');
     if(!r.error && r.data){
       var sel=$('as-grupo');
-      r.data.forEach(function(g){
-        GRUPOS[g.id]=g.nombre;
-        var o=document.createElement('option'); o.value=g.id; o.textContent=g.nombre; sel.appendChild(o);
+      r.data.filter(function(g){ return !SECCION || g.seccion === SECCION; }).forEach(function(g){
+        var d = SECCION ? diasCortos(g.horario) : '';
+        GRUPOS[g.id]=g.nombre+(d ? ' · '+d : '');
+        GIDS.push(g.id);
+        var o=document.createElement('option'); o.value=g.id; o.textContent=GRUPOS[g.id]; sel.appendChild(o);
       });
     }
+  }
+  // Con sección: el día anterior / siguiente en que esos grupos pasaron lista (si no hay, un día más o menos).
+  async function saltar(n){
+    if(SECCION && GIDS.length){
+      var q = sb.from('asistencia').select('fecha').in('grupo_id', gruposFiltro());
+      q = n < 0 ? q.lt('fecha', fechaSel) : q.gt('fecha', fechaSel);
+      var r = await q.order('fecha', { ascending: n > 0 }).limit(1);
+      if(!r.error && r.data && r.data[0]){ fechaSel = r.data[0].fecha; return pintar(); }
+    }
+    fechaSel = addDias(fechaSel, n); pintar();
+  }
+  // Con sección: si hoy aún no hay lista, se abre el último día que la hubo.
+  async function inicio(){
+    await cargarGrupos();
+    if(SECCION && GIDS.length){
+      var r = await sb.from('asistencia').select('fecha').in('grupo_id', GIDS).lte('fecha', fechaSel).order('fecha', { ascending: false }).limit(1);
+      if(!r.error && r.data && r.data[0]) fechaSel = r.data[0].fecha;
+    }
+    pintar();
+    pintarNunca();
+  }
+
+  /* NO HAN VENIDO NUNCA (con sección): niños que siguen en un grupo de la sección,
+     con 2 o más listas pasadas en las últimas 6 semanas y ni un ✓ (0 %). Van arriba
+     para llamar a la familia o darles de baja (Andrés 28-oct). Tocar → su ficha
+     rápida en «Grupos y listas». */
+  var SEMANAS_NUNCA = 6, MIN_LISTAS = 2;
+  async function pintarNunca(){
+    var caja = $('as-nunca');
+    if(!SECCION || !GIDS.length){ caja.innerHTML = ''; return; }
+    var desde = addDias(isoDe(new Date()), -7*SEMANAS_NUNCA), filas = [];
+    for(var i = 0; ; i += 1000){
+      var r = await sb.from('asistencia').select('atleta_id,grupo_id,fecha,presente').in('grupo_id', GIDS).gte('fecha', desde).order('fecha').range(i, i+999);
+      if(r.error){ caja.innerHTML = ''; return; }
+      filas = filas.concat(r.data || []);
+      if((r.data || []).length < 1000) break;
+    }
+    var P = {};   // atleta → { n: listas, si: veces que vino, primera: fecha }
+    filas.forEach(function(f){
+      var p = P[f.atleta_id] = P[f.atleta_id] || { n:0, si:0, primera:f.fecha };
+      p.n++; if(f.presente) p.si++; if(f.fecha < p.primera) p.primera = f.fecha;
+    });
+    var ids = Object.keys(P).filter(function(id){ return P[id].n >= MIN_LISTAS && !P[id].si; });
+    var nunca = [];
+    if(ids.length){
+      // Solo los que siguen en algún grupo de la sección y no están de baja.
+      var rg = await sb.from('atleta_grupos').select('atleta_id,grupo_id').in('atleta_id', ids).in('grupo_id', GIDS);
+      var ra = await sb.from('atletas').select('id,nombre,apellidos,estado').in('id', ids);
+      if(rg.error || ra.error){ caja.innerHTML = ''; return; }
+      var EN = {};
+      (rg.data || []).forEach(function(x){ (EN[x.atleta_id] = EN[x.atleta_id] || []).push(GRUPOS[x.grupo_id] || ''); });
+      nunca = (ra.data || []).filter(function(a){ return a.estado !== 'baja' && EN[a.id]; }).map(function(a){
+        return { a:a, p:P[a.id], g:EN[a.id].filter(Boolean).sort().join(', ') };
+      }).sort(function(x, y){ return y.p.n - x.p.n || ((x.a.nombre||'')+' '+(x.a.apellidos||'')).localeCompare((y.a.nombre||'')+' '+(y.a.apellidos||''), 'es'); });
+    }
+    if(!nunca.length){
+      caja.innerHTML = '<div class="as-nunca ok"><p>✓ Nadie con 0 % de asistencia en las últimas '+SEMANAS_NUNCA+' semanas.</p></div>';
+      return;
+    }
+    var fc = function(iso){ var d = new Date(iso+'T00:00:00'); return d.getDate()+' '+['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()]; };
+    caja.innerHTML = '<div class="as-nunca"><h2>No han venido nunca ('+nunca.length+')</h2>'+
+      '<p>0 % de asistencia: '+MIN_LISTAS+' o más listas pasadas en las últimas '+SEMANAS_NUNCA+' semanas y ninguna vez ✓. Toca para ver su ficha, llamar a la familia o darle de baja.</p>'+
+      nunca.map(function(x){
+        var s = ((x.a.nombre||'')+' '+(x.a.apellidos||'')).trim();
+        return '<a href="'+(SECCION === 'escuela' ? '../escuela-grupos/?n=' : '../atletas/?ficha=')+encodeURIComponent(x.a.id)+'">'+
+          '<span class="i"><b>'+esc(s)+'</b><small>'+esc(x.g)+(x.a.estado === 'prueba' ? ' · de prueba' : '')+' · desde el '+esc(fc(x.p.primera))+'</small></span>'+
+          '<span class="pct">0 de '+x.p.n+'</span><span class="chev" aria-hidden="true">›</span></a>';
+      }).join('')+'</div>';
   }
 
   async function pintar(){
@@ -96,6 +197,7 @@ APOLANA_ADMIN.listo(function (sb) {
       .eq('fecha', fechaSel);
     var grupoF = $('as-grupo').value;
     if(grupoF) q = q.eq('grupo_id', grupoF);
+    else if(SECCION) q = q.in('grupo_id', GIDS.length ? GIDS : ['00000000-0000-0000-0000-000000000000']);
     var r = await q;
     if(r.error){ caja.innerHTML = '<div class="as-vacio"><h2>No se ha podido cargar</h2><p>'+esc(r.error.message)+'</p></div>'; return; }
     var filas = r.data || [];
@@ -113,7 +215,7 @@ APOLANA_ADMIN.listo(function (sb) {
     // Agrupar por grupo
     var porGrupo = {};
     filas.forEach(function(f){
-      var nom = (f.grupos && f.grupos.nombre) || GRUPOS[f.grupo_id] || '(sin grupo)';
+      var nom = GRUPOS[f.grupo_id] || (f.grupos && f.grupos.nombre) || '(sin grupo)';
       (porGrupo[nom] = porGrupo[nom] || []).push(f);
     });
     var totalVino = filas.filter(function(f){ return f.presente; }).length;
@@ -136,12 +238,12 @@ APOLANA_ADMIN.listo(function (sb) {
   }
 
   $('as-fecha').addEventListener('change', function(){ fechaSel = this.value || fechaSel; pintar(); });
-  $('as-ant').addEventListener('click', function(){ fechaSel = addDias(fechaSel,-1); pintar(); });
-  $('as-sig').addEventListener('click', function(){ fechaSel = addDias(fechaSel,1); pintar(); });
+  $('as-ant').addEventListener('click', function(){ saltar(-1); });
+  $('as-sig').addEventListener('click', function(){ saltar(1); });
   $('as-hoy').addEventListener('click', function(){ fechaSel = isoDe(new Date()); pintar(); });
   $('as-grupo').addEventListener('change', pintar);
 
-  cargarGrupos().then(pintar);
+  inicio();
 });
 </script>
 </body>
