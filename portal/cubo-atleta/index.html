@@ -215,6 +215,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return _noticias;
   }
 
+  // Días fijados en su alta del Cubo (1=lun…7=dom); [] = todos los del grupo.
+  async function diasDelCubo() {
+    try {
+      var r = await sb.from('cubo_altas').select('dias_semana,estado').eq('perfil_id', perfil.id).eq('estado', 'aprobada');
+      var d = [];
+      ((r && !r.error && r.data) || []).forEach(function (a) { (a.dias_semana || []).forEach(function (x) { if (d.indexOf(x) === -1) d.push(x); }); });
+      // Si alguna de sus altas aprobadas no tiene días fijados, cuenta todos.
+      if (((r && r.data) || []).some(function (a) { return !(a.dias_semana || []).length; })) return [];
+      return d;
+    } catch (e) { return []; }
+  }
+
   async function horarios() {
     if (_horarios) return _horarios;
     // Junta TODOS sus grupos del Cubo: el principal de su ficha y todos los de
@@ -232,14 +244,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     } catch (e) {}
     gids = gids.filter(function (v, i) { return v && gids.indexOf(v) === i; });
     if (!gids.length) { _horarios = { data: [], grupo: '', varios: false }; return _horarios; }
-    var rg = await sb.from('grupos').select('id,nombre').in('id', gids);
-    var nombres = {};
-    ((rg && rg.data) || []).forEach(function (g) { nombres[g.id] = g.nombre; });
+    var rg = await sb.from('grupos').select('id,nombre,seccion').in('id', gids);
+    var nombres = {}, esCubo = {};
+    ((rg && rg.data) || []).forEach(function (g) { nombres[g.id] = g.nombre; esCubo[g.id] = g.seccion === 'cubo'; });
     var r = await sb.from('grupo_horarios')
       .select('grupo_id,dia_semana,hora_inicio,hora_fin,lugar,nota')
       .in('grupo_id', gids).eq('activo', true)
       .order('dia_semana').order('hora_inicio');
     var data = (r && !r.error && r.data) ? r.data : [];
+    // Quien paga UN día de su grupo del Cubo (cubo_altas.dias_semana; caso Marta
+    // Papis, 28-oct: grupo de martes y jueves, viene solo el martes) solo ve ese
+    // día. Sin días marcados, todos los del grupo (como la lista de Claudia).
+    var misDias = await diasDelCubo();
+    if (misDias.length) data = data.filter(function (x) { return !esCubo[x.grupo_id] || misDias.indexOf(x.dia_semana) !== -1; });
     // Marca cada horario si es de un grupo de la prueba gratis (empieza el 2-oct)
     // y guarda el nombre del grupo para poder etiquetarlo en el calendario.
     data.forEach(function (x) {
