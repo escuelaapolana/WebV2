@@ -235,7 +235,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         return '<div class="nino' + (n.activo ? '' : ' fuera') + '" data-ficha="' + n.id + '"><span class="avt">' + esc(ini(n.nombre)) + '</span><div class="q"><b>' + esc(cap(n.nombre)) + tags + '</b><span>' + esc(sub) + '</span></div>' + der + '</div>';
       }).join('') : '<div class="vacio">' + (S.tab === 'conv' ? 'Aún no has convocado a nadie. En «Resto de la categoría» están todos los de ' + esc(ct.nombre || 'la categoría') + '.' : 'Están todos convocados.') + '</div>') + '</div>';
     barra.hidden = false;
-    barra.innerHTML = '<div class="in"><button class="btn sec" data-wa>' + ic('wa') + 'Convocatoria</button><button class="btn" data-excel>' + ic('descarga') + 'Excel de licencias</button></div>';
+    // El Excel saca la lista de la pestaña que tienes abierta (Paloma, 28-oct).
+    barra.innerHTML = '<div class="in"><button class="btn sec" data-wa>' + ic('wa') + 'Convocatoria</button><button class="btn" data-excel>' + ic('descarga') + (S.tab === 'conv' ? 'Excel de convocados' : 'Excel del resto') + '</button></div>';
   }
 
   /* ---------- Panel del niño ---------- */
@@ -337,15 +338,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
   function cargarXlsx(){ return window.XLSX ? Promise.resolve(window.XLSX) : new Promise(function (ok, ko) { var s = document.createElement('script'); s.src = XLSX_URL; s.onload = function () { ok(window.XLSX); }; s.onerror = ko; document.head.appendChild(s); }); }
   async function excel(){
-    var filas = await rpc('natacion_comp_excel', { p_jornada: S.jid });
+    // La lista de la pestaña abierta: convocados o el resto de la categoría.
+    var resto = S.tab === 'resto';
+    var filas = await rpc('natacion_comp_excel', { p_jornada: S.jid, p_que: resto ? 'resto' : 'convocados' });
     var X = await cargarXlsx(), j = S.J.jornada;
-    var hoja = (filas || []).map(function (r) { return { 'Nombre': cap(r.nombre), 'Apellidos': cap(r.apellidos), 'Sexo': r.sexo || '', 'Fecha de nacimiento': r.fecha_nacimiento || '',
-      'DNI': r.dni || '', 'SIP': r.sip || '', 'Foto carnet': r.foto_carnet || '', 'Pruebas': r.pruebas || '', 'Respuesta': r.respuesta === 'si' ? 'Va' : r.respuesta === 'no' ? 'No va' : 'Sin responder',
-      'Nota': r.nota || '', 'Licencia tramitada': r.licencia ? 'Sí' : 'No', 'Tutor': r.nombre_tutor || '', 'DNI tutor': r.dni_tutor || '', 'Teléfono': r.telefono_tutor || '', 'Correo': r.email_tutor || '', 'Dirección': r.direccion || '' }; });
-    var wb = X.utils.book_new(), ws = X.utils.json_to_sheet(hoja.length ? hoja : [{ 'Nombre': 'Sin convocados' }]);
-    ws['!cols'] = [14, 22, 8, 12, 12, 12, 30, 22, 13, 26, 10, 26, 12, 12, 26, 34].map(function (w) { return { wch: w }; });
-    X.utils.book_append_sheet(wb, ws, 'Convocados');
-    X.writeFile(wb, 'Licencias ' + j.lugar + ' ' + j.fecha + '.xlsx');
+    var hoja = (filas || []).map(function (r) {
+      var f = { 'Nombre': cap(r.nombre), 'Apellidos': cap(r.apellidos), 'Sexo': r.sexo || '', 'Fecha de nacimiento': r.fecha_nacimiento || '',
+        'DNI': r.dni || '', 'SIP': r.sip || '', 'Foto carnet': r.foto_carnet || '' };
+      if (resto) f['Nivel'] = r.nivel || '';
+      else { f['Pruebas'] = r.pruebas || ''; f['Respuesta'] = r.respuesta === 'si' ? 'Va' : r.respuesta === 'no' ? 'No va' : 'Sin responder'; f['Nota'] = r.nota || ''; }
+      f['Licencia tramitada'] = r.licencia ? 'Sí' : 'No'; f['Tutor'] = r.nombre_tutor || ''; f['DNI tutor'] = r.dni_tutor || '';
+      f['Teléfono'] = r.telefono_tutor || ''; f['Correo'] = r.email_tutor || ''; f['Dirección'] = r.direccion || '';
+      return f;
+    });
+    var titulo = resto ? 'Resto de la categoría' : 'Convocados';
+    var wb = X.utils.book_new(), ws = X.utils.json_to_sheet(hoja.length ? hoja : [{ 'Nombre': resto ? 'No queda nadie sin convocar' : 'Sin convocados' }]);
+    ws['!cols'] = (resto ? [14, 22, 8, 12, 12, 12, 30, 18, 10, 26, 12, 12, 26, 34] : [14, 22, 8, 12, 12, 12, 30, 22, 13, 26, 10, 26, 12, 12, 26, 34]).map(function (w) { return { wch: w }; });
+    X.utils.book_append_sheet(wb, ws, titulo);
+    X.writeFile(wb, titulo + ' ' + j.lugar + ' ' + j.fecha + '.xlsx');
   }
 
   /* ---------- Navegación ---------- */
