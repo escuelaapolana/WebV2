@@ -24,7 +24,7 @@
 //   de mandar nada, para no enviar nunca el texto viejo a una cuota nueva).
 // ============================================================
 
-import { esAsistente, textosCuota } from "../_shared/cuota-entreno.ts";
+import { esAsistente, esNatacion, textosCuota } from "../_shared/cuota-entreno.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
@@ -34,6 +34,15 @@ const REMITENTE_EMAIL = (Deno.env.get("CORREO_REMITENTE") ?? "andres.apolana@gma
 const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atletismo Apolana").trim();
 const RESPUESTAS_EMAIL = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 const URL_BASE = (Deno.env.get("PAGOS_URL_BASE") ?? "https://atletismoapolana.com/").replace(/\/*$/, "/");
+// 28-oct-2026 · también lo puede lanzar la base (cron_llamar_edge, cabecera
+// x-cron-secret), para mandar los enlaces de natación desde el servidor.
+const CRON_SECRET = (Deno.env.get("CRON_SECRET") ?? "").trim();
+function iguales(a: string, b: string): boolean {
+  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
+  let dif = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) dif |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return dif === 0;
+}
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("CORREO_ORIGENES") ?? Deno.env.get("PAGOS_ORIGENES") ?? "")
@@ -218,6 +227,94 @@ function correoRecordatorioHtml(nombre: string, importe: number, enlace: string)
   </body></html>`;
 }
 
+// 28-oct-2026 · NATACIÓN (origen 'natacion'): correo propio que dice lo mismo
+// que el mensaje de WhatsApp de Mario (portal/natacion-cuotas): se activa con
+// tarjeta o IBAN (lo eligen ellos, mig 430), el primer cobro al activarla (o el
+// día 5 del mes de inicio, si empieza más adelante) y después siempre el DÍA 5
+// (mig 429). El texto genérico del asistente decía «solo IBAN» y «en esa misma
+// fecha», que en natación ya no es así. Escuela → a la familia (vosotros);
+// Máster → al nadador (tú).
+const MESES_N = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+  "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+function mesAnioN(iso: string | null | undefined): string {
+  if (!iso || !/^\d{4}-\d{2}/.test(iso)) return "";
+  const [y, m] = iso.split("-").map(Number);
+  return `${MESES_N[m - 1]} de ${y}`;
+}
+function hoyMadridN(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function correoNatacion(c: Record<string, any>, enlace: string, recordatorio: boolean): { asunto: string; html: string; texto: string } {
+  const fam = /escuela/i.test(String(c.concepto ?? ""));
+  const pila0 = String(c.nombre ?? "").trim().split(/\s+/)[0] ?? "";
+  const pila = pila0 ? pila0.charAt(0).toUpperCase() + pila0.slice(1).toLowerCase() : "";
+  const imp = (Number(c.importe_cent) || 0) / 100;
+  const cargo = (Number(c.cargo_inicial_cent) || 0) / 100;
+  const tri = c.periodicidad === "trimestral";
+  const per = tri ? "al trimestre" : "al mes";
+  const cada = tri ? "cada trimestre" : "cada mes";
+  const dia5 = tri ? "el día 5 de cada trimestre" : "el día 5 de cada mes";
+  const ambos = !c.metodo || c.metodo === "ambos", tarjeta = c.metodo === "tarjeta";
+  const verbo = ambos || tarjeta ? "activarla" : "domiciliarla";
+  const hoy = hoyMadridN();
+  const futuro = !!c.inicio && String(c.inicio).slice(0, 7) > hoy.slice(0, 7);
+  const primero = cargo >= 0.5 && futuro
+    ? `Al ${verbo} se cobran <b>${eur(cargo)}</b>; después, ${eur(imp)} ${per}, ${dia5} desde el 5 de ${mesAnioN(c.inicio)}.`
+    : futuro
+    ? `El primer cobro será el <b>5 de ${mesAnioN(c.inicio)}</b>; después, ${dia5}. Al ${verbo} no se cobra nada.`
+    : `El primer cobro se hace al ${verbo} (${tri ? "el trimestre en curso" : "el mes en curso"}); después, ${dia5}.`;
+  const como = ambos
+    ? `Se hace <b>una sola vez</b>, con <b>tarjeta o con IBAN</b> (como ${fam ? "prefiráis" : "prefieras"}), y después se cobra sola ${cada}. Unos días antes de cada cobro ${fam ? "os llega" : "te llega"} un aviso por correo.`
+    : tarjeta
+    ? `Se mete la tarjeta <b>una sola vez</b> y después se cobra sola ${cada}.`
+    : `Se hace <b>una sola vez</b>: ${fam ? "metéis" : "metes"} el IBAN y después se cobra sola ${cada}.`;
+  const de = fam ? `la cuota de natación de <b>${esc(pila)}</b>` : `tu cuota de natación`;
+  const intro = recordatorio
+    ? `${fam ? "Os recordamos" : "Te recordamos"} que ${de} sigue <b>sin activar</b>. Aquí ${fam ? "tenéis" : "tienes"} el enlace:`
+    : `${fam ? "Os enviamos" : "Te enviamos"} el enlace para <b>activar</b> ${de} 🏊`;
+  const boton = ambos || tarjeta ? "Activar la cuota →" : "Domiciliar la cuota →";
+  const hasta = c.fin ? ` · hasta ${mesAnioN(c.fin)}` : "";
+  const asunto = (recordatorio ? "Recordatorio: " : "") +
+    (fam ? `cuota de natación de ${pila} · enlace para activarla` : "tu cuota de natación · enlace para activarla");
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana · Natación</td></tr>
+      <tr><td style="padding:24px 24px 6px 24px">
+        <p style="margin:0 0 14px;font-size:17px;font-weight:700;color:#26374B">¡Hola${fam || !pila ? "" : ", " + esc(pila)}!</p>
+        <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">${intro}</p>
+      </td></tr>
+      <tr><td style="padding:2px 24px 10px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">
+          <tr><td style="padding:14px 18px;color:#5C4A1E;font-size:15px;line-height:1.7">
+            <span style="font-size:13px;text-transform:uppercase;letter-spacing:.06em">Cuota</span><br>
+            <span style="font-size:22px;font-weight:700">${eur(imp)}</span> ${per}<span style="font-size:13.5px">${esc(hasta)}</span><br>
+            <span style="font-size:14px">📅 ${primero}</span>
+          </td></tr>
+        </table></td></tr>
+      <tr><td style="padding:6px 24px 6px 24px">
+        <p style="margin:0 0 14px;color:#3f3f46;line-height:1.6">✅ ${como}</p>
+      </td></tr>
+      <tr><td align="center" style="padding:4px 24px 8px 24px">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
+            <a href="${enlace}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">${boton}</a>
+          </td>
+        </tr></table></td></tr>
+      <tr><td align="center" style="padding:0 24px 18px 24px">
+        <p style="margin:0;color:#71717a;font-size:13px">La tarjeta o el IBAN se teclean en la pantalla segura de Stripe, nunca en nuestra web.</p>
+      </td></tr>
+      <tr><td style="padding:0 24px 24px 24px;border-top:1px solid #ececec">
+        <p style="margin:16px 0 0 0;color:#71717a;font-size:13px;line-height:1.5">¿Alguna duda? ${fam ? "Contestad" : "Contesta"} a este correo. ¡Gracias! 😊</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+  const quitar = (s: string) => s.replace(/<\/?b>/g, "");
+  const texto = `¡Hola${fam || !pila ? "" : ", " + pila}!\n\n${quitar(intro)}\n\nCuota: ${eur(imp)} ${per}${hasta}\n${quitar(primero)}\n\n${quitar(como)}\n\n${boton.replace(" →", "")}: ${enlace}\n\nLa tarjeta o el IBAN se teclean en la pantalla segura de Stripe, nunca en nuestra web.\n\n¿Alguna duda? ${fam ? "Contestad" : "Contesta"} a este correo.`;
+  return { asunto, html, texto };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -225,11 +322,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) return responder({ error: "config" }, 503, origen);
   if (!BREVO_API_KEY) return responder({ ok: false, motivo: "sin-configurar" }, 200, origen);
 
-  const cab = req.headers.get("Authorization") ?? "";
-  const jwt = cab.toLowerCase().startsWith("bearer ") ? cab.slice(7).trim() : "";
-  if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
-  const puede = (await comoUsuario("es_admin", jwt)) || (await comoUsuario("es_staff", jwt)) || (await comoUsuario("puede_girar", jwt));
-  if (!puede) return responder({ error: "sin_permiso" }, 403, origen);
+  const sec = (req.headers.get("x-cron-secret") ?? "").trim();
+  const porCron = !!CRON_SECRET && !!sec && iguales(sec, CRON_SECRET);
+  if (!porCron) {
+    const cab = req.headers.get("Authorization") ?? "";
+    const jwt = cab.toLowerCase().startsWith("bearer ") ? cab.slice(7).trim() : "";
+    if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
+    const puede = (await comoUsuario("es_admin", jwt)) || (await comoUsuario("es_staff", jwt)) || (await comoUsuario("puede_girar", jwt));
+    if (!puede) return responder({ error: "sin_permiso" }, 403, origen);
+  }
 
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
@@ -238,9 +339,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cuotaId = String(cuerpo.cuota_id ?? "").trim();
   if (!cuotaId) return responder({ error: "falta_cuota" }, 400, origen);
 
-  const rC = await consulta(`cuotas_entreno?select=nombre,apellidos,email,importe_cent,token,suscripcion_estado,periodicidad,concepto,metodo,inicio,fin,origen,cobro_abierto&id=eq.${encodeURIComponent(cuotaId)}&limit=1`);
+  const rC = await consulta(`cuotas_entreno?select=nombre,apellidos,email,importe_cent,token,suscripcion_estado,periodicidad,concepto,metodo,inicio,fin,origen,cobro_abierto,cargo_inicial_cent&id=eq.${encodeURIComponent(cuotaId)}&limit=1`);
   const c = Array.isArray(rC.datos) ? rC.datos[0] as { nombre: string; apellidos: string | null; email: string; importe_cent: number; token: string; suscripcion_estado: string | null; periodicidad: string | null; concepto: string | null;
-    metodo: string | null; inicio: string | null; fin: string | null; origen: string | null; cobro_abierto: boolean | null } : null;
+    metodo: string | null; inicio: string | null; fin: string | null; origen: string | null; cobro_abierto: boolean | null; cargo_inicial_cent: number | null } : null;
   if (!c) return responder({ ok: false, motivo: "no-existe" }, 200, origen);
   // Ya domiciliada (o con el mandato firmado y el 1er adeudo en camino, mig 311):
   // no se manda el enlace, que abriría otra suscripción y cobraría dos veces.
@@ -252,6 +353,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Cancelada o con el enlace cerrado: el enlace no serviría (entreno-pagar lo rechaza).
   if (c.suscripcion_estado === "cancelada" || c.cobro_abierto === false) {
     return responder({ ok: false, motivo: "cuota cerrada" }, 200, origen);
+  }
+
+  // Natación: su propio correo (tarjeta o IBAN, día 5), ver correoNatacion.
+  if (esNatacion(c)) {
+    const link = `${URL_BASE}entreno/cuota/?t=${encodeURIComponent(c.token)}`;
+    const m = correoNatacion(c, link, recordatorio);
+    try {
+      const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: { "api-key": BREVO_API_KEY, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
+          replyTo: { name: REMITENTE_NOMBRE, email: RESPUESTAS_EMAIL },
+          to: [{ email: destino }],
+          subject: m.asunto, htmlContent: m.html, textContent: m.texto,
+        }),
+      });
+      return responder({ ok: resp.ok, destino: resp.ok ? destino : undefined }, 200, origen);
+    } catch (e) {
+      return responder({ ok: false, motivo: String((e as Error).message || e) }, 200, origen);
+    }
   }
 
   // 380 · Cuota del asistente: correo propio (tarjeta o SEPA, cualquier periodicidad).
