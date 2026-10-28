@@ -4,6 +4,15 @@
 > Antes hay que revisar qué datos estructurados hacen falta y dividir el panel en fases.
 > La fase 1 (protección del histórico) ya está hecha: ver «Base que ya existe».
 
+## Ámbito y dónde vive
+
+- **Es para Academia AC98** (el grupo de velocistas): el registro de entrenos, el
+  feedback y todo este seguimiento se diseñan para ese grupo (Andrés, 28-oct-2026).
+- **Vivirá en un mundo propio «Academia AC98»** dentro del panel por mundos
+  (`assets/js/mundos.js`), con toda la información por atleta. Hoy Academia va
+  dentro de «Atletismo pista». Crear ese mundo forma parte de la primera versión
+  del panel, no de la fase 1.
+
 ## Objetivo
 
 Unificar en la app la planificación de atletismo, el feedback y el seguimiento
