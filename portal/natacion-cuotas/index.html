@@ -161,6 +161,15 @@
   .cu-campo .ayuda{ font-size:12.5px; color:var(--texto-suave,#6E6656); }
   .cu-switch{ display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; color:var(--navy,#26374B); cursor:pointer; min-height:44px; margin-top:12px; }
   .cu-switch input{ width:22px; height:22px; }
+  /* descuento familiar (28-oct) */
+  .cu-fam{ background:var(--crema,#FBF9F4); border:1px solid var(--linea-marcada,#E4DCCB); border-radius:12px; padding:11px 13px 12px; margin:0 0 14px; }
+  .cu-fam ul{ list-style:none; margin:0 0 10px; padding:0; font-size:14px; color:var(--navy,#26374B); line-height:1.5; }
+  .cu-fam li span{ color:var(--texto-suave,#6E6656); }
+  .cu-dto{ display:flex; flex-wrap:wrap; gap:6px; }
+  .cu-dto .cu-chip{ min-height:40px; padding:0 12px; font-size:13.5px; }
+  .cu-dto .cu-chip:disabled{ opacity:.45; cursor:default; }
+  .cu-fam-calc{ font-size:13.5px; color:var(--texto-suave,#6E6656); margin-top:8px; line-height:1.45; }
+  .cu-fam-calc b{ color:var(--navy,#26374B); }
   .cu-prop{ border:1px solid var(--linea-marcada,#E4DCCB); border-radius:14px; padding:12px 14px; margin-top:6px; background:#FCFBF8; }
   .cu-formula{ font-size:14px; color:var(--navy,#26374B); margin-top:10px; line-height:1.5; }
   .cu-formula b{ font-size:15px; }
@@ -360,6 +369,37 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var s = tarifaSocio(x.tipo, x.dias);
     if (s == null) return null;
     return x.tipo === 'Máster' && !x.es_socio ? s + RECARGO_NO_SOCIO : s;
+  }
+
+  // ---------- descuento familiar (Mario, 28-oct-2026) ----------
+  // «Que Adriana no tenga que ir calculando». La familia = otros nadadores
+  // activos con el mismo correo o teléfono (9 últimos dígitos). Paga entero el
+  // de tarifa más alta; el 2º −20 % y el 3º y siguientes −40 %, SOLO sobre la
+  // parte de socio (el recargo de no socio va entero). La pantalla lo propone y
+  // quien lleva la natación lo puede cambiar; sin familia, no se ofrece.
+  var DTO_FAM = [ { p:0, t:'Sin descuento' }, { p:0.20, t:'2º · −20 %' }, { p:0.40, t:'3º o más · −40 %' } ];
+  function tel9(t){ var d = String(t || '').replace(/\D/g, ''); return d.length >= 9 ? d.slice(-9) : ''; }
+  function familiaDe(x){
+    var em = String(x.email || '').trim().toLowerCase(), tl = tel9(x.telefono);
+    if (!em && !tl) return [];
+    return (S.lista || []).filter(function(o){
+      if (o.atleta_id === x.atleta_id || !o.acceso_activo || o.cuota_otra_seccion) return false;
+      return (em && String(o.email || '').trim().toLowerCase() === em) || (tl && tel9(o.telefono) === tl);
+    });
+  }
+  // Puesto en la familia (1 = paga entero): delante, los de tarifa más alta; a
+  // igual tarifa, quien ya tiene su cobro y, si no, por orden alfabético.
+  function puestoFamilia(x, fam){
+    var bx = cuotaPropuesta(x) || 0, cx = !!x.cobro_id, nx = nombreDe(x);
+    return 1 + fam.filter(function(o){
+      var bo = cuotaPropuesta(o) || 0, co = !!o.cobro_id;
+      return bo > bx || (bo === bx && (co && !cx || (co === cx && nombreDe(o) < nx)));
+    }).length;
+  }
+  // Con descuento: solo sobre la parte de socio (el recargo de no socio, entero).
+  function conDescuento(importe, per, p, x, socio){
+    var rec = (x.tipo === 'Máster' && !socio) ? (per === 'trimestral' ? 3 * RECARGO_NO_SOCIO : RECARGO_NO_SOCIO) : 0;
+    return r2((importe - rec) * (1 - p) + rec);
   }
 
   async function cargar(){
@@ -671,8 +711,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       mitad: false, alta: hoy, socio: !!x.es_socio,
       ref: '', refTocada: false, cargo: '', cargoTocado: false,
       forma: 'ambos',   // 431: 'ambos' = se cobra solo (tarjeta o IBAN) · 'mes_a_mes' = aviso y paga cada mes
-      enviando: false, err: null, hecho: null
+      enviando: false, err: null, hecho: null,
+      fam: familiaDe(x), puesto: 1, dto: null
     };
+    // Descuento familiar: se propone por su puesto en la familia. Si ya trae una
+    // cuota en la ficha, se marca el descuento que le cuadre (o ninguno: «a mano»).
+    if (F.fam.length){
+      F.puesto = puestoFamilia(x, F.fam);
+      var pAuto = F.puesto >= 3 ? 0.40 : F.puesto === 2 ? 0.20 : 0, tf = tarifaForm();
+      if (!deFicha && tf != null){ F.dto = pAuto; F.importe = numTxt(conDescuento(tf, F.per, pAuto, x, F.socio)); }
+      else F.dto = dtoQueCuadra();
+    }
     velo = document.createElement('div'); velo.className = 'cu-velo';
     velo.addEventListener('click', function(ev){ if (ev.target === velo) cerrarForm(); });
     velo.addEventListener('click', clickForm);
@@ -698,6 +747,48 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return F.per === 'trimestral' ? r2((imp + 15) / 3) : imp;   // trimestral = 3 × mensual − 15
   }
   function recargo(){ return F.x.tipo === 'Máster' && !F.socio ? RECARGO_NO_SOCIO : 0; }
+  // Cuota de tarifa SIN descuento para el periodo elegido (trimestral = 3 × mensual − 15).
+  function tarifaForm(){
+    var s = tarifaSocio(F.x.tipo, F.x.dias); if (s == null) return null;
+    var m = s + recargo();
+    return F.per === 'trimestral' ? 3 * m - 15 : m;
+  }
+  // ¿Qué descuento familiar da el importe escrito? (null = ninguno cuadra: puesto a mano)
+  function dtoQueCuadra(){
+    var tf = tarifaForm(), imp = num(F.importe);
+    if (tf == null || imp == null || isNaN(imp)) return null;
+    for (var i = 0; i < DTO_FAM.length; i++){ if (Math.abs(conDescuento(tf, F.per, DTO_FAM[i].p, F.x, F.socio) - imp) < 0.005) return DTO_FAM[i].p; }
+    return null;
+  }
+  function famHtml(){
+    if (!F.fam.length) return '';
+    var x = F.x, tf = tarifaForm();
+    var li = F.fam.map(function(o){
+      var c = o.cobro_id ? eur(o.cobro_importe) + ' ' + textoPer(o.cobro_periodicidad) + ' · ' + estadoDe(o).t.toLowerCase()
+        : (Number(o.cuota_importe) > 0 ? eur(o.cuota_importe) + ' ' + textoPer(o.cuota_periodicidad) + ' en su ficha' : 'sin cuota');
+      return '<li><b>' + esc(nombreDe(o)) + '</b> <span>· ' + esc(o.tipo === 'Escuela' ? 'Escuela' : 'Máster') + (o.dias ? ', ' + pl(o.dias, 'día', 'días') : '') + ' · ' + esc(c) + '</span></li>';
+    }).join('');
+    var pills = DTO_FAM.map(function(d){
+      var no = d.p === 0.40 && F.fam.length < 2;   // −40 % solo con 2 familiares más
+      return '<button type="button" class="cu-chip' + (F.dto === d.p ? ' on' : '') + '" data-dto="' + d.p + '"' + (no ? ' disabled title="Solo con dos familiares más en natación"' : '') + '>' + d.t + '</button>';
+    }).join('');
+    var pila = capital(String(x.nombre || '').trim().split(/\s+/)[0] || '');
+    var calc = '';
+    if (tf != null && F.dto != null && F.dto > 0){
+      var res = conDescuento(tf, F.per, F.dto, x, F.socio), rec = recargo() * (F.per === 'trimestral' ? 3 : 1);
+      calc = 'Tarifa ' + eur(tf) + ' ' + textoPer(F.per) + ' − ' + Math.round(F.dto * 100) + ' %' + (rec ? ' (sobre la parte de socio; los ' + eur(rec) + ' de no socio van enteros)' : '') + ' = <b>' + eur(res) + '</b>.';
+    } else if (F.dto === 0){
+      var pT = F.puesto >= 3 ? 0.40 : F.puesto === 2 ? 0.20 : 0;
+      calc = esc(pila) + ' paga la cuota entera' + (F.puesto === 1 ? ': es el de tarifa más alta de su familia.'
+        : (F.impDeFicha && !F.impTocado ? ' (la de su ficha)' : '') + (tf != null ? '. Como ' + F.puesto + 'º de la familia le tocaría <b>' + eur(conDescuento(tf, F.per, pT, x, F.socio)) + '</b> (−' + Math.round(pT * 100) + ' %).' : '.'));
+    } else {
+      calc = 'Cuota puesta a mano.';
+    }
+    var sug = F.puesto >= 2 ? ' · por la tarifa, ' + esc(pila) + ' es el ' + F.puesto + 'º' : '';
+    return '<div class="cu-fam"><div class="cu-sec-lab" style="margin-top:0">Familia en natación' + sug + '</div><ul>' + li + '</ul>' +
+      '<div class="cu-dto" role="group" aria-label="Descuento familiar">' + pills + '</div>' +
+      '<div class="cu-fam-calc">' + calc + '</div></div>';
+  }
   // Proporcional del mes de alta: SOLO la parte de socio; el recargo de no socio va entero (criterio de Mario).
   function calcProp(){
     var ref = refMensual(); if (ref == null || isNaN(ref) || !F.alta) return null;
@@ -797,8 +888,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var c = calcProp(), cargo = cargoFinal();
     h += '<p style="margin:0 0 12px;font-size:15px;color:var(--navy)"><b>' + esc(nombreDe(x)) + '</b> · ' + (x.tipo === 'Escuela' ? 'Escuela de natación' : 'Máster') +
       (x.dias ? ' · ' + x.dias + ' día' + (x.dias === 1 ? '' : 's') : '') + (x.tipo === 'Máster' ? (F.socio ? ' · socio/a' : ' · no socio') : '') + '</p>' +
+      famHtml() +
       '<div class="cu-grid">' +
-        '<div class="cu-campo"><label for="f-imp">Cuota</label><input id="f-imp" data-f="importe" inputmode="decimal" value="' + esc(F.importe) + '" placeholder="Ej.: 60"><span class="ayuda">En euros. ' + (F.impDeFicha ? 'La de su ficha.' : 'La de la tarifa' + (x.tipo === 'Máster' ? ' (no socio = socio + 15 €)' : '') + '.') + '</span></div>' +
+        '<div class="cu-campo"><label for="f-imp">Cuota</label><input id="f-imp" data-f="importe" inputmode="decimal" value="' + esc(F.importe) + '" placeholder="Ej.: 60"><span class="ayuda">En euros. ' + (F.dto > 0 && !F.impTocado ? 'La de la tarifa con el descuento familiar.' : F.impDeFicha ? 'La de su ficha.' : 'La de la tarifa' + (x.tipo === 'Máster' ? ' (no socio = socio + 15 €)' : '') + '.') + '</span></div>' +
         '<div class="cu-campo"><label for="f-per">Cada cuánto</label><select id="f-per" data-f="per">' +
           '<option value="mensual"' + (F.per === 'mensual' ? ' selected' : '') + '>Al mes</option>' +
           '<option value="trimestral"' + (F.per === 'trimestral' ? ' selected' : '') + '>Al trimestre</option></select></div>' +
@@ -867,7 +959,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       p_fin: F.fin,
       p_cargo_inicial: F.mitad ? cargo : null,
       p_cargo_concepto: F.mitad ? conceptoCargo() : null,
-      p_metodo: F.forma === 'mes_a_mes' ? 'mes_a_mes' : 'ambos'
+      p_metodo: F.forma === 'mes_a_mes' ? 'mes_a_mes' : 'ambos',
+      // queda escrito en la cuota por qué paga menos
+      p_descuento: (F.fam.length && F.dto > 0 && dtoQueCuadra() === F.dto)
+        ? Math.round(F.dto * 100) + ' % (' + (F.dto >= 0.4 ? '3º o más' : '2º') + ' de la familia, con ' + F.fam.map(nombreDe).join(', ') + ')' : null
     });
     F.enviando = false;
     if (r.error){ F.err = humano(r.error, 'crear cobros de natación'); pintarForm(); return; }
@@ -881,14 +976,23 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (t.closest('[data-copiar-hecho]')){ if (F && F.hecho) copiar(F.hecho.enlace); return; }
     if (t.closest('[data-copiar-msg-hecho]')){ if (F && F.hecho) copiar(mensaje(F.x, F.hecho.enlace, datosHecho()), 'Mensaje copiado'); return; }
     if (t.closest('[data-recalcular]')){ F.cargoTocado = false; F.cargo = ''; pintarForm(); return; }
+    var bd = t.closest('[data-dto]');
+    if (bd && !bd.disabled && !F.hecho){   // descuento familiar: el importe sale de la tarifa
+      F.dto = Number(bd.getAttribute('data-dto'));
+      var tf = tarifaForm();
+      if (tf != null){ F.importe = numTxt(conDescuento(tf, F.per, F.dto, F.x, F.socio)); F.impTocado = false; }
+      F.err = null; pintarForm(); return;
+    }
   }
   function inputForm(ev){
     var t = ev.target, k = t && t.getAttribute && t.getAttribute('data-f'); if (!k || !F || F.hecho) return;
     if (ev.type === 'change' && t.tagName === 'INPUT' && t.type !== 'checkbox' && t.type !== 'date') return;   // ya lo vio «input»
-    if (k === 'importe'){ F.importe = t.value; F.impTocado = true; }
+    if (k === 'importe'){ F.importe = t.value; F.impTocado = true; if (F.fam.length) F.dto = dtoQueCuadra(); }
     else if (k === 'per'){
       var antes = F.per; F.per = t.value;
-      if (antes !== F.per && !F.impTocado){   // trimestral = 3 × mensual − 15
+      if (antes !== F.per && F.fam.length && F.dto != null && tarifaForm() != null){   // con descuento familiar: desde la tarifa del periodo
+        F.importe = numTxt(conDescuento(tarifaForm(), F.per, F.dto, F.x, F.socio)); F.impTocado = false;
+      } else if (antes !== F.per && !F.impTocado){   // trimestral = 3 × mensual − 15
         var iv = num(F.importe);
         if (iv != null && !isNaN(iv) && iv > 0) F.importe = numTxt(F.per === 'trimestral' ? 3 * iv - 15 : (iv + 15) / 3);
       }
@@ -901,7 +1005,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     else if (k === 'socio'){
       F.socio = t.checked;
       // si la cuota salió de la tarifa (no de la ficha) y no se ha tocado, se recalcula
-      if (!F.impDeFicha && !F.impTocado){
+      if (F.fam.length && F.dto != null && !F.impTocado && tarifaForm() != null){
+        F.importe = numTxt(conDescuento(tarifaForm(), F.per, F.dto, F.x, F.socio));
+      } else if (!F.impDeFicha && !F.impTocado){
         var pr = cuotaPropuesta({ tipo: F.x.tipo, dias: F.x.dias, es_socio: F.socio });
         if (pr != null) F.importe = numTxt(F.per === 'trimestral' ? 3 * pr - 15 : pr);
       }
