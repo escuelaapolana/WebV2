@@ -60,7 +60,7 @@ const CAMPOS_SESION = {
   objetivo: { type: "string", description: "Objetivo breve (máx. 80), p. ej. «Ritmo 400». No inventar clasificaciones." },
   exigencia: EXIGENCIA,
   tipo_dia: { type: "string", enum: ["entreno", "descanso"] },
-  momento: { type: "string", enum: ["unica", "manana", "tarde", "sin_especificar"], description: "Para dobles sesiones: manana / tarde." },
+  momento: { type: "string", enum: ["unica", "manana", "tarde", "sin_especificar"], description: "Si ese día hay una sola sesión, «unica» (o no lo envíes: es el valor por defecto). Solo con dos sesiones el mismo día: «manana» / «tarde»; «sin_especificar» solo si hay dos y no se sabe cuál es cuál." },
   hora: { type: "string", description: "HH:MM (opcional)." },
   duracion_min: { type: "integer" },
   bloques: BLOQUES,
