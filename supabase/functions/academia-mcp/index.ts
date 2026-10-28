@@ -64,7 +64,8 @@ const CAMPOS_SESION = {
   hora: { type: "string", description: "HH:MM (opcional)." },
   duracion_min: { type: "integer" },
   bloques: BLOQUES,
-  nota_entrenador: { type: "string", description: "Nota privada del entrenador (no la ve el atleta)." },
+  instrucciones_atleta: { type: "string", description: "Instrucciones para el atleta: las LEE en su app, debajo del entrenamiento." },
+  nota_entrenador: { type: "string", description: "Nota privada del entrenador: solo la ven los entrenadores, nunca el atleta. '' la quita. No cambia la versión de la sesión." },
 };
 
 const HERRAMIENTAS = [

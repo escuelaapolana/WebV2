@@ -239,7 +239,41 @@
     .ac-dias{ margin-bottom:6px; }
     .ac-dias button{ min-height:44px; padding:4px 2px; }
     .ac-filtros-m{ background:#fff; border:1px solid var(--borde); border-radius:12px; padding:10px; margin:0 0 10px; }
+    .ac-acciones .ac-btn{ flex:1 1 auto; justify-content:center; }
+    /* En el móvil el detalle ocupa la pantalla: por encima de la barra
+       flotante (z 700), para que no tape los últimos botones. */
+    .ac-lado{ z-index:705; }
+    .ac-lado .in{ padding-bottom:calc(40px + env(safe-area-inset-bottom)); }
   }
+
+  /* Editor: el planificador, encima de la semana (no se pierde la posición) */
+  .ac-ed{ position:fixed; z-index:1000; inset:0; background:rgba(46,66,86,.38); display:flex; justify-content:flex-end; }
+  .ac-ed[hidden]{ display:none; }
+  .ac-ed-caja{ position:relative; width:min(980px,100%); height:100%; background:#fff; box-shadow:-20px 0 40px -28px rgba(30,45,65,.6); }
+  .ac-ed iframe{ border:0; width:100%; height:100%; display:block; background:#fff; }
+  .ac-ed-cargando{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--t3); font-size:15px; background:#fff; z-index:1; }
+  .ac-ed-cargando[hidden]{ display:none; }
+  body.ac-ed-abierto{ overflow:hidden; }
+  /* Acciones del detalle: editar, publicar y aplicar son botones distintos */
+  .ac-acciones{ display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 2px; }
+  button.ac-cs.sin{ cursor:pointer; }
+  button.ac-cs.sin .pl{ display:block; font-weight:600; color:var(--ac); font-size:12.5px; margin-top:1px; }
+  button.ac-cs.sin:hover{ border-color:#9AAAD0; color:var(--ac); background:#F7F9FD; }
+  button.ac-cs.des{ cursor:pointer; }
+  /* Diálogos de publicar, copiar y aplicar */
+  .ac-dlg.ancho{ width:min(760px,calc(100% - 24px)); }
+  .ac-dlg h4{ font-size:12.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--t3); margin:14px 0 6px; }
+  .ac-chips{ display:flex; flex-wrap:wrap; gap:6px 14px; }
+  .ac-chips label{ display:flex; gap:6px; align-items:center; font-size:14.5px; color:var(--navy); }
+  .ac-lista-pub{ display:grid; gap:2px; margin:8px 0 0; }
+  .ac-lista-pub label{ display:flex; gap:9px; align-items:flex-start; padding:7px 4px; border-bottom:1px solid var(--fila); font-size:14px; color:var(--navy); line-height:1.35; }
+  .ac-lista-pub label small{ display:block; color:var(--t3); font-size:12.5px; }
+  .ac-res{ margin:10px 0 0; padding:0; }
+  .ac-res li{ list-style:none; border-top:1px solid var(--fila); padding:8px 2px; font-size:14px; color:var(--t2); }
+  .ac-res li b{ color:var(--navy); }
+  .ac-res .salta{ color:#8F3F24; }
+  .ac-res .acc{ display:block; font-size:13px; color:var(--t3); margin-top:2px; }
+  .ac-mini-nota{ font-size:13px; color:var(--t3); margin:6px 0 0; line-height:1.4; }
 
   /* Impresión: solo el entrenamiento del día */
   #ac-imp{ display:none; }
@@ -266,6 +300,7 @@
   <div id="ac"><p class="ac-nada">Cargando…</p></div>
   <div class="ac-fondo" id="ac-fondo" hidden></div>
   <aside class="ac-lado" id="ac-lado" role="dialog" aria-modal="false" aria-label="Detalle de la sesión" hidden></aside>
+  <div class="ac-ed" id="ac-ed" hidden><div class="ac-ed-caja" role="dialog" aria-modal="true" aria-label="Editor de la sesión"><div class="ac-ed-cargando" id="ac-ed-carga">Abriendo el editor…</div></div></div>
   <div class="ac-toast" id="ac-toast" role="status" aria-live="polite"></div>
   <div id="ac-imp"></div>
 <script>
@@ -328,10 +363,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     modo: leer('ac-modo')==='compacta' ? 'compacta' : 'detallada',
     semana: lunesDe(Q.get('w') || hoyISO()),
     dia: Q.get('d') || hoyISO(),
-    diaMovil: null,
-    fAtleta: '', fGT: '',
+    diaMovil: Q.get('dm') || null,
+    fAtleta: Q.get('fa') || '', fGT: '',
     porGrupos: Q.get('pg') ? Q.get('pg')==='1' : leer('ac-porgrupos')==='1',
-    movAtleta: '',
+    movAtleta: Q.get('ma') || '',
     g: null, grupos: []
   };
   var D = null;       // datos cargados del rango
@@ -356,6 +391,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (ST.g && ST.grupos.length>1) p.set('g', ST.g.grupo_id);
     if (ST.vista==='semana' && ST.semana!==lunesDe(hoyISO())) p.set('w', ST.semana);
     if (ST.vista==='hoy' && ST.dia!==hoyISO()) p.set('d', ST.dia);
+    // Al volver (o recargar) se queda el mismo día, filtro y atleta.
+    if (ST.vista==='semana' && ST.fAtleta) p.set('fa', ST.fAtleta);
+    if (ST.vista==='semana' && esMovil() && ST.diaMovil) p.set('dm', ST.diaMovil);
+    if (ST.vista==='semana' && esMovil() && ST.movAtleta) p.set('ma', ST.movAtleta);
     var s = p.toString();
     history.replaceState(null, '', location.pathname + (s?'?'+s:''));
   }
@@ -567,7 +606,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var mo = MOMENTO[s.momento] ? MOMENTO[s.momento]+(s.hora?' · '+hhmm(s.hora):'') : (s.hora && opts.varias ? hhmm(s.hora) : '');
     var sel = abierto && abierto.sid===s.id && abierto.aid===aid ? ' sel' : '';
     var data = ' data-abrir="'+s.id+'|'+aid+'"';
-    if (s.clase_dia==='descanso') return '<div class="ac-cs des">'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+'Descanso'+(!s.publicada?' '+tag('t-bor','Borrador'):'')+'</div>';
+    if (s.clase_dia==='descanso') return '<button type="button" class="ac-cs des'+sel+'"'+data+'>'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+'Descanso'+(!s.publicada?' '+tag('t-bor','Borrador'):'')+(revDe(s.id)?' '+tag('t-rev','Revisión pendiente'):'')+'</button>';
     if (D.sust[s.id]) return '<button type="button" class="ac-cs sust'+sel+'"'+data+'>'+(mo?'<span class="mo">'+esc(mo)+'</span>':'')+'<span class="ti">'+esc(tituloDe(s))+'</span><span class="l3">Sustituida por «'+esc(tituloDe(D.sust[s.id]))+'»</span></button>';
     var e = estado(s, aid);
     if (s.clase_dia==='ausencia' || e.au){
@@ -589,7 +628,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var L = sesDe(aid, f), A = ausDia(aid, f);
     if (!L.length){
       if (A.length){ var x=A[0]; return '<div class="ac-cs aus" style="cursor:default"><span class="ti">Ausente · '+esc(MOTIVO_AUS[x.motivo_tipo]||x.motivo||'sin motivo')+'</span><span class="l3">Sin sesión prevista</span></div>'; }
-      return '<div class="ac-cs sin">Sin planificar</div>';
+      // Un hueco se planifica desde aquí: abre el editor con ese atleta y ese día.
+      return '<button type="button" class="ac-cs sin" data-nueva="'+aid+'|'+f+'" aria-label="Planificar '+esc(nombreDe(aid))+' el '+esc(fCorta(f))+'" title="Planificar este día">Sin planificar<span class="pl">＋ Planificar</span></button>';
     }
     return L.map(function(s){ return casillaSesion(s, aid, { varias:L.length>1 }); }).join('');
   }
@@ -656,7 +696,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="ac-seg" role="group" aria-label="Detalle de las casillas"><button type="button" data-modo="compacta" class="'+(ST.modo==='compacta'?'on':'')+'">Compacta</button><button type="button" data-modo="detallada" class="'+(ST.modo==='detallada'?'on':'')+'">Detallada</button></span>';
     var publicar = borr.length ? '<button type="button" class="ac-btn pri" data-publicar="1">Publicar borradores ('+borr.length+')…</button>' : '';
     var segBtn = '<button type="button" class="ac-btn" data-seguimiento="1">Seguimiento…</button>';
-    var leyenda = '<b>Publicación:</b> «Borrador» (borde discontinuo) o publicada (sin etiqueta). · <b>Ejecución</b> (lo que dice el atleta): realizada · parcial · no realizada · sin datos. «Sin datos» no es «no hecha». · <b>Revisión:</b> feedback nuevo (sin revisar) · «sin datos · feedback pendiente» (solo cuando ya pasó el plazo: '+hhmm(ST.g.feedback_hora_limite)+' del día, y nunca antes de que acabe la sesión) · revisar (con su motivo). · «Plan cambiado después»: el atleta respondió una versión anterior. · Los descansos y las ausencias no cuentan como sesiones.';
+    var copiarBtn = '<button type="button" class="ac-btn" data-copiar="1">Copiar semana…</button>';
+    var leyenda = '<b>Planificar:</b> toca un hueco («Sin planificar») para crear la sesión de ese atleta ese día; toca una sesión para verla, editarla o publicarla. · <b>Publicación:</b> «Borrador» (borde discontinuo) o publicada (sin etiqueta). · <b>Ejecución</b> (lo que dice el atleta): realizada · parcial · no realizada · sin datos. «Sin datos» no es «no hecha». · <b>Revisión:</b> feedback nuevo (sin revisar) · «sin datos · feedback pendiente» (solo cuando ya pasó el plazo: '+hhmm(ST.g.feedback_hora_limite)+' del día, y nunca antes de que acabe la sesión) · revisar (con su motivo). · «Plan cambiado después»: el atleta respondió una versión anterior. · Los descansos y las ausencias no cuentan como sesiones.';
 
     if (esMovil()){
       if (!ST.diaMovil || dias.indexOf(ST.diaMovil)===-1) ST.diaMovil = dias.indexOf(hoy)!==-1 ? hoy : dias[0];
@@ -667,7 +708,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="ac-barra">'+navM+'</div>'+
         (ST.filtrosM ? '<div class="ac-filtros-m"><div class="ac-barra">'+filtros+'</div>'+
           '<div class="ac-barra"><select class="ac-sel" id="ac-movat" aria-label="Ver la semana de un atleta"><option value="">Ver la semana de un atleta…</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===ST.movAtleta?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+segBtn+'</div>'+
-          (publicar?'<div class="ac-barra">'+publicar+'</div>':'')+'<details class="ac-ley"><summary>Qué significa cada etiqueta</summary>'+leyenda+'</details></div>' : '');
+          '<div class="ac-barra">'+copiarBtn+publicar+'</div>'+'<details class="ac-ley"><summary>Qué significa cada etiqueta</summary>'+leyenda+'</details></div>' : '');
       if (ST.movAtleta){
         var a = atleta(ST.movAtleta);
         h += '<div class="ac-barra"><button type="button" class="ac-btn" data-movat="">‹ Volver a los días</button></div>'+
@@ -684,8 +725,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       return;
     }
 
-    var h = cabecera(tit, 'Atletas en filas, días en columnas. Toca una sesión para ver el detalle.')+
-      '<div class="ac-barra">'+nav+filtros+segBtn+'<span class="ac-esp"></span>'+publicar+'</div>'+
+    var h = cabecera(tit, 'Atletas en filas, días en columnas. Toca una sesión para verla, editarla o publicarla; un hueco, para planificarlo.')+
+      '<div class="ac-barra">'+nav+filtros+segBtn+'<span class="ac-esp"></span>'+copiarBtn+publicar+'</div>'+
       '<div class="ac-scroll '+ST.modo+'"><table class="ac-sem"><thead><tr><th class="at">Atleta</th>'+
       dias.map(function(f){ return '<th class="'+(f===hoy?'hoy':'')+'">'+fCorta(f)+' '+MES[deISO(f).getMonth()]+(f===hoy?'<small>Hoy</small>':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
     if (!atls.length) h += '<tr><td class="at"></td><td colspan="7" class="ac-nada">Nadie con ese filtro.</td></tr>';
@@ -874,6 +915,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }).join('')+
         avisosGrupo(ms, d)+
         '<div style="margin-top:8px">'+ms.map(function(m){ return '<button type="button" class="ac-link" data-abrir="'+m.s.id+'|'+m.aid+'">'+esc(nombreDe(m.aid))+'</button>'; }).join('')+
+        (ms.length>1 ? '<button type="button" class="ac-link" data-aplicar-gt="'+g.id+'">Aplicar la de '+esc(nombreDe(ms[0].aid))+' al resto…</button>' : '')+
         '<button type="button" class="ac-link" data-gt-quitar="'+g.id+'" style="color:#8F3F24">Deshacer el grupo</button></div></div></details>';
     });
     // Los que no están en ningún grupo
@@ -1030,7 +1072,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     lado.innerHTML = '<div class="cab"><button type="button" class="ac-btn x" data-cerrar="1">✕ Cerrar</button></div><div class="in"><p class="ac-nada">Cargando…</p></div>';
     var res = await Promise.all([
       sb.from('sesiones_versiones').select('id,version,evento,datos,vigente_desde,via').eq('sesion_id', sid).order('version'),
-      sb.from('notas_atleta').select('id,texto,fecha,created_at').eq('atleta_id', aid).eq('fecha', s.fecha).order('created_at')
+      sb.from('notas_atleta').select('id,texto,fecha,created_at').eq('atleta_id', aid).eq('fecha', s.fecha).order('created_at'),
+      sb.from('sesiones_nota_privada').select('nota,actualizado_en').eq('sesion_id', sid).maybeSingle()
     ]);
     if (!abierto || abierto.sid!==sid || abierto.aid!==aid) return;
     var rg = D.reg[sid+'|'+aid], faltan = [];
@@ -1039,11 +1082,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var rn = await sb.from('perfiles').select('id,nombre').in('id', faltan);
       (rn.data||[]).forEach(function(x){ NOMBRES[x.id] = x.nombre; });
     }
-    pintarDetalle(s, aid, (res[0].data||[]), (res[1].data||[]));
+    pintarDetalle(s, aid, (res[0].data||[]), (res[1].data||[]), (res[2] && res[2].data) || null);
   }
   var NOMBRES = {};
   function quienRevisa(id){ return !id ? '' : (perfil && id===perfil.id) ? 'tú' : (NOMBRES[id] || 'otra persona'); }
-  function pintarDetalle(s, aid, versiones, notas){
+  function pintarDetalle(s, aid, versiones, notas, priv){
     var e = estado(s, aid), r = e.r, a = atleta(aid), B = window.APOLANA_BASE || '../../';
     var orden = ordenDelDia(s.fecha), pos = -1;
     orden.forEach(function(x,i){ if (x.sid===s.id && x.aid===aid) pos=i; });
@@ -1058,12 +1101,29 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var h = '<div class="in"><div class="ac-quien">'+esc(a._n)+' · '+esc(fLarga(s.fecha))+(MOMENTO[s.momento]?' · '+MOMENTO[s.momento]:'')+(s.hora?' · '+hhmm(s.hora):'')+'</div>'+
       '<h3>'+esc(s.clase_dia==='descanso'?'Descanso':tituloDe(s))+'</h3>'+
       tag(s.publicada?'t-v':'t-bor', (s.publicada?'Publicada':'Borrador')+' · versión '+s.version)+e.tags.replace(tag('t-bor','Borrador'), '');
+    /* Editar, publicar y aplicar a otros: acciones distintas. Publicar es
+       siempre la versión exacta que se está viendo. */
+    if (!s.archivada_en){
+      var acc = [];
+      if (!s.publicada){
+        acc.push('<button type="button" class="ac-btn mini pri" data-editar="1">Editar borrador</button>');
+        acc.push('<button type="button" class="ac-btn mini" data-pub-una="1">Publicar la versión '+s.version+'…</button>');
+      } else {
+        acc.push('<button type="button" class="ac-btn mini" data-editar="1">'+(e.rv ? 'Abrir en el editor' : 'Proponer un cambio')+'</button>');
+      }
+      if (s.clase_dia!=='descanso') acc.push('<button type="button" class="ac-btn mini" data-aplicar="1">Aplicar a otros atletas…</button>');
+      acc.push('<button type="button" class="ac-btn mini" data-otra="1">＋ Otra sesión este día</button>');
+      h += '<div class="ac-acciones">'+acc.join('')+'</div>';
+      if (s.publicada) h += '<div class="ac-mini-nota">Publicada: lo que cambies queda como <b>revisión pendiente</b> hasta que la apliques; el atleta sigue viendo la versión '+s.version+'.</div>';
+    }
     if (s.sustituye_a && D.sesPorId[s.sustituye_a]) h += '<div class="ac-aviso">Sustituye a «'+esc(tituloDe(D.sesPorId[s.sustituye_a]))+'». La original no cuenta como «no realizada» ni esta como adicional.</div>';
     if (D.sust[s.id]) h += '<div class="ac-aviso">Sustituida por «'+esc(tituloDe(D.sust[s.id]))+'» ('+fCorta(D.sust[s.id].fecha)+'). No cuenta como sesión.</div>';
     if (s.archivada_en) h += '<div class="ac-aviso">Sesión archivada el '+fechaHora(s.archivada_en)+'. Se conserva por lo que el atleta registró.</div>';
     if (e.au) h += '<div class="ac-ausbox"><b>Ausente · '+esc(MOTIVO_AUS[e.au.motivo_tipo]||e.au.motivo||'sin motivo')+'</b>'+(e.au.motivo && MOTIVO_AUS[e.au.motivo_tipo]?' · '+esc(e.au.motivo):'')+
       (e.au.nota?'<div>'+esc(e.au.nota)+'</div>':'')+(e.au.avisado_por_nombre?'<div class="nota">Avisó: '+esc(e.au.avisado_por_nombre)+'</div>':'')+
-      '<div class="nota">Lo previsto se conserva abajo; no cuenta como sesión realizada.</div></div>';
+      '<div class="nota">Lo previsto se conserva abajo; no cuenta como sesión realizada.</div>'+
+      (s.clase_dia!=='ausencia' ? '<button type="button" class="ac-link" data-aus-quitar="'+e.au.id+'" style="margin-top:6px">Quitar la ausencia</button>' : '')+'</div>';
+    else if (!s.archivada_en && s.clase_dia==='entreno') h += '<div style="margin-top:8px"><button type="button" class="ac-link" data-aus="1">Marcar ausencia de '+esc(a._n)+' este día</button><div id="ac-aus-f" hidden></div></div>';
 
     // Intención (objetivo y exigencia prevista)
     h += '<div class="ac-sec"><b class="r">Intención</b>'+
@@ -1116,7 +1176,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     // Registro del entrenador: si el seguimiento de este atleta lo pide, o si ya hay uno.
     if (s.clase_dia!=='descanso' && !s.archivada_en && (e.modo==='registro_entrenador' || e.re)) h += seccionRegistroEntrenador(e.re);
-    if (s.nota_razonamiento) h += '<div class="ac-sec"><b class="r">Notas del entrenador (privadas)</b><div style="white-space:pre-wrap;color:var(--t2)">'+esc(s.nota_razonamiento)+'</div></div>';
+    // Las instrucciones las lee el atleta en su app; la nota privada, solo los entrenadores.
+    if (s.nota_razonamiento) h += '<div class="ac-sec"><b class="r">Instrucciones para el atleta</b><div style="white-space:pre-wrap;color:var(--t2)">'+esc(s.nota_razonamiento)+'</div><div class="nota">Las lee en su app, debajo del entrenamiento.</div></div>';
+    if (priv && priv.nota) h += '<div class="ac-sec"><b class="r">Nota privada · solo entrenadores</b><div style="white-space:pre-wrap;color:var(--t2)">'+esc(priv.nota)+'</div></div>';
 
     // Observaciones del entrenador (notas privadas del día)
     h += '<div class="ac-sec"><b class="r">Tus observaciones de este día</b>'+
@@ -1125,7 +1187,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     h += '<div class="ac-sec"><b class="r">Seguimiento de '+esc(a._n)+'</b>'+selectorModo(aid, 'ac-modo-at')+
       '<div class="nota">'+esc(MODOS[modoDe(aid)][1])+'</div></div>';
-    h += '<div class="ac-sec" style="display:flex;gap:8px;flex-wrap:wrap"><a class="ac-btn mini" href="'+B+'portal/entrenador/#planificar">Editar en Planificar</a><a class="ac-btn mini" href="'+B+'admin/atletas/?ficha='+aid+'">Ver ficha de '+esc(a._n)+'</a></div>';
+    h += '<div class="ac-sec" style="display:flex;gap:8px;flex-wrap:wrap"><a class="ac-btn mini" href="'+B+'admin/atletas/?ficha='+aid+'">Ver ficha de '+esc(a._n)+'</a></div>';
     h += '</div>';
     lado.innerHTML = cab + h;
     lado.scrollTop = 0;
@@ -1230,11 +1292,237 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function cerrarDialogo(){ ['ac-dlg','ac-dlg-fondo'].forEach(function(id){ var x=document.getElementById(id); if(x) x.remove(); }); }
 
+  /* ================= EDITOR (el planificador, encima de la semana) =================
+     Es el mismo editor de Planificar (portal/entrenador/), abierto en un marco
+     con ?embebido=academia. La semana no se mueve: al guardar se recarga en el
+     mismo sitio y se abre el detalle de lo guardado. El marco se queda cargado
+     para que la siguiente vez se abra al momento. */
+  var ED = { fr:null };
+  function abrirEditor(p){
+    var caja = document.getElementById('ac-ed'), carga = document.getElementById('ac-ed-carga');
+    caja.hidden = false; carga.hidden = false; document.body.classList.add('ac-ed-abierto');
+    var datos = Object.assign({ g:ST.g.grupo_id }, p);
+    if (!ED.fr){
+      var q = new URLSearchParams({ embebido:'academia' });
+      Object.keys(datos).forEach(function(k){ if (datos[k]) q.set(k, datos[k]); });
+      ED.fr = document.createElement('iframe');
+      ED.fr.title = 'Editor de la sesión';
+      var url = window.APOLANA_EDITOR || ((window.APOLANA_BASE || '../../')+'portal/entrenador/');
+      ED.fr.src = url + (url.indexOf('?')===-1 ? '?' : '&') + q.toString();
+      caja.querySelector('.ac-ed-caja').appendChild(ED.fr);
+    } else {
+      ED.fr.contentWindow.postMessage({ academia:'abrir', p:datos }, location.origin);
+    }
+  }
+  function cerrarEditor(){ document.getElementById('ac-ed').hidden = true; document.body.classList.remove('ac-ed-abierto'); }
+  function editorAbierto(){ return !document.getElementById('ac-ed').hidden; }
+  window.addEventListener('message', async function(ev){
+    if (ev.origin !== location.origin || !ev.data || !ev.data.academia) return;
+    var m = ev.data;
+    if (m.academia==='abierto'){ document.getElementById('ac-ed-carga').hidden = true; return; }
+    if (m.academia==='cerrar'){ cerrarEditor(); return; }
+    if (m.academia==='guardado' || m.academia==='borrada'){
+      cerrarEditor();
+      avisar(m.academia==='borrada' ? (m.archivada ? 'Archivada: sale del plan y se guarda lo que registró' : 'Sesión borrada')
+           : m.modo==='revision' ? 'Guardado como revisión pendiente: aplícala cuando quieras'
+           : m.modo==='nota' ? 'Nota privada guardada (la sesión no cambia)'
+           : (m.ids && m.ids.length>1 ? plural(m.ids.length,'borrador creado','borradores creados') : 'Borrador guardado'));
+      await recargar();
+      if (m.academia==='guardado' && m.ids && m.ids.length){
+        var s0 = D.sesPorId[m.ids[0]];
+        if (s0) abrir(s0.id, (m.atletas && m.atletas[0]) || atletasDe(s0)[0]); else cerrar();
+      } else cerrar();
+    }
+  });
+
+  /* ================= PUBLICAR · exactamente la versión revisada ================= */
+  function dialogoPublicar(lista){
+    lista = lista.slice().sort(function(a,b){ return a.fecha.localeCompare(b.fecha) || nombreDe(atletasDe(a)[0]).localeCompare(nombreDe(atletasDe(b)[0]),'es'); });
+    var d = dialogo('<h3>'+(lista.length===1?'Publicar esta sesión':'Publicar borradores')+'</h3>'+
+      '<p>Se publica <b>exactamente la versión que ves</b> y los atletas la verán en su app. Si alguna cambia antes de pulsar, no se publica ninguna.</p>'+
+      '<div class="ac-lista-pub">'+lista.map(function(x){
+        var pr = principal(x).slice(0,2).join(' · ');
+        return '<label><input type="checkbox" class="pub-chk" value="'+x.id+'" data-v="'+x.version+'" checked><span><b>'+esc(nombreDe(atletasDe(x)[0]))+'</b> · '+esc(fCorta(x.fecha))+(MOMENTO[x.momento]?' ('+esc(MOMENTO[x.momento].toLowerCase())+')':'')+' · '+esc(x.clase_dia==='descanso'?'Descanso':tituloDe(x))+
+          ' <span class="ac-tag t-bor">versión '+x.version+'</span>'+(pr?'<small>'+nb(esc(pr))+'</small>':'')+'</span></label>';
+      }).join('')+'</div><div id="pub-res"></div>'+
+      '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-pub-ok="1">Publicar</button></div>');
+    d.classList.add('ancho');
+    var cuenta = function(){ var n = d.querySelectorAll('.pub-chk:checked').length; d.querySelector('[data-pub-ok]').textContent = n===1 ? 'Publicar 1 sesión' : 'Publicar '+n+' sesiones'; d.querySelector('[data-pub-ok]').disabled = !n; };
+    cuenta();
+    d.addEventListener('change', cuenta);
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      var ok = ev.target.closest('[data-pub-ok]'); if (!ok) return;
+      var items = Array.prototype.map.call(d.querySelectorAll('.pub-chk:checked'), function(c){ return { sesion_id:c.value, version:+c.dataset.v }; });
+      if (!items.length) return;
+      ok.disabled = true;
+      var r = await sb.rpc('academia_publicar', { p_items:items });
+      if (r.error){ ok.disabled = false; avisar('No se pudo publicar: '+r.error.message, true); return; }
+      if (r.data && r.data.ok===false){
+        d.querySelector('#pub-res').innerHTML = '<div class="ac-aviso">'+esc(r.data.mensaje)+'<ul class="ac-res">'+(r.data.conflictos||[]).map(function(c){
+          var x = D.sesPorId[c.sesion_id]; return '<li class="salta"><b>'+esc(x?nombreDe(atletasDe(x)[0])+' · '+fCorta(x.fecha):'Sesión')+'</b>: '+esc(c.motivo)+'</li>'; }).join('')+'</ul></div>';
+        d.querySelector('[data-pub-ok]').outerHTML = '<button type="button" class="ac-btn pri" data-pub-rec="1">Volver a cargar</button>';
+        d.querySelector('[data-pub-rec]').addEventListener('click', function(){ cerrarDialogo(); recargarYReabrir(); });
+        return;
+      }
+      cerrarDialogo();
+      avisar(plural((r.data && r.data.publicadas || []).length,'sesión publicada','sesiones publicadas')+' · versión exacta revisada');
+      recargarYReabrir();
+    });
+  }
+
+  /* ================= COPIAR SEMANA · solo la planificación, en borrador ================= */
+  // La misma sesión el mismo día para varios atletas, en una sola línea.
+  function agruparCopia(L){
+    var out = [], idx = {};
+    L.forEach(function(c){ var k = c.fecha+'|'+(c.momento||'')+'|'+(c.titulo||'');
+      if (!idx[k]){ idx[k] = { fecha:c.fecha, momento:c.momento, titulo:c.titulo, atletas:[] }; out.push(idx[k]); }
+      idx[k].atletas = idx[k].atletas.concat(c.atletas||[]); });
+    return out;
+  }
+  function dialogoCopiar(){
+    var dias = diasSemana(), destino = sumar(ST.semana, 7);
+    var conSes = {}; D.ses.forEach(function(x){ if (!x.archivada_en && (x.clase_dia==='entreno'||x.clase_dia==='descanso')) conSes[x.fecha] = 1; });
+    var d = dialogo('<h3>Copiar la planificación</h3>'+
+      '<p>De la semana del '+esc(fMedia(dias[0]))+' al '+esc(fMedia(dias[6]))+'. Se crea como <b>borrador</b> y con identificadores nuevos. No se copia el feedback, la asistencia, lo realizado ni las revisiones.</p>'+
+      '<h4>Días</h4><div class="ac-chips">'+dias.map(function(f, i){ return '<label><input type="checkbox" class="cp-dia" value="'+(i+1)+'"'+(conSes[f]?' checked':'')+'>'+esc(fCorta(f))+'</label>'; }).join('')+'</div>'+
+      '<h4>Atletas</h4><div class="ac-chips">'+D.atl.map(function(a){ return '<label><input type="checkbox" class="cp-at" value="'+a.id+'" checked>'+esc(a._n)+'</label>'; }).join('')+'</div>'+
+      '<div style="margin-top:6px"><button type="button" class="ac-link" data-cp-todos="1">Todos</button><button type="button" class="ac-link" data-cp-ninguno="1">Ninguno</button></div>'+
+      '<h4>Copiar a partir del</h4><input type="date" class="ac-sel" id="cp-dest" value="'+destino+'"> <span class="ac-mini-nota">El primer día de la semana va a esta fecha y el resto, igual de separados.</span>'+
+      '<div id="cp-res"></div>'+
+      '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn" data-cp-sim="1">Ver qué se copiará</button><button type="button" class="ac-btn pri" data-cp-ok="1" hidden>Copiar</button></div>');
+    d.classList.add('ancho');
+    var params = function(){
+      return { p_grupo:ST.g.grupo_id, p_desde:ST.semana, p_hasta:sumar(ST.semana,6), p_destino:document.getElementById('cp-dest').value,
+               p_atletas:Array.prototype.map.call(d.querySelectorAll('.cp-at:checked'), function(c){ return c.value; }),
+               p_dias:Array.prototype.map.call(d.querySelectorAll('.cp-dia:checked'), function(c){ return +c.value; }) };
+    };
+    var olvidar = function(){ d.querySelector('#cp-res').innerHTML = ''; d.querySelector('[data-cp-ok]').hidden = true; };
+    d.addEventListener('change', olvidar);
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      if (ev.target.closest('[data-cp-todos]') || ev.target.closest('[data-cp-ninguno]')){ var si = !!ev.target.closest('[data-cp-todos]'); d.querySelectorAll('.cp-at').forEach(function(c){ c.checked = si; }); olvidar(); return; }
+      var sim = ev.target.closest('[data-cp-sim]'), ok = ev.target.closest('[data-cp-ok]');
+      if (!sim && !ok) return;
+      var P = params();
+      if (!P.p_destino){ avisar('Elige la fecha de destino.', true); return; }
+      if (!P.p_atletas.length){ avisar('Marca al menos un atleta.', true); return; }
+      if (!P.p_dias.length){ avisar('Marca al menos un día.', true); return; }
+      (sim||ok).disabled = true;
+      var r = await sb.rpc('academia_copiar', Object.assign({ p_simular: !!sim }, P));
+      (sim||ok).disabled = false;
+      if (r.error){ avisar('No se pudo: '+r.error.message, true); return; }
+      var x = r.data || {}, crear = x.crear || x.creadas || [], saltar = x.saltar || [];
+      if (sim){
+        var nSes = crear.reduce(function(n, c){ return n + (c.atletas||[]).length; }, 0);
+        d.querySelector('#cp-res').innerHTML =
+          '<h4>Se crearán '+plural(nSes,'borrador','borradores')+'</h4>'+
+          (crear.length ? '<ul class="ac-res">'+agruparCopia(crear).map(function(c){
+            return '<li><b>'+esc(fCorta(c.fecha))+' '+esc(MES[deISO(c.fecha).getMonth()])+'</b>'+(MOMENTO[c.momento]?' ('+esc(MOMENTO[c.momento].toLowerCase())+')':'')+' · '+esc(c.titulo||'Sesión')+
+              '<span class="acc">'+esc(c.atletas.map(nombreDe).join(', '))+'</span></li>'; }).join('')+'</ul>' : '<p class="ac-mini-nota">Nada que copiar con esos días y atletas.</p>')+
+          (saltar.length ? '<h4>No se copian · ya hay algo ese día ('+saltar.length+')</h4><ul class="ac-res">'+saltar.map(function(c){
+            return '<li class="salta"><b>'+esc(nombreDe(c.atleta_id))+' · '+esc(fCorta(c.fecha))+'</b> · «'+esc(c.titulo||'Sesión')+'»<span class="acc">'+esc(c.motivo)+' Si quieres las dos, cópiala a mano como doble sesión.</span></li>'; }).join('')+'</ul>' : '');
+        var b = d.querySelector('[data-cp-ok]'); b.hidden = !nSes; b.textContent = 'Copiar '+plural(nSes,'borrador','borradores');
+        return;
+      }
+      cerrarDialogo();
+      var n = crear.reduce(function(k, c){ return k + (c.atletas||[]).length; }, 0);
+      avisar(plural(n,'borrador creado','borradores creados')+(saltar.length?' · '+saltar.length+' saltados por solaparse':''));
+      ST.semana = lunesDe(P.p_destino); ST.diaMovil = null;
+      recargar();
+    });
+  }
+
+  /* ================= APLICAR A OTROS ATLETAS ================= */
+  var CAMPOS_AP = [['titulo','Título'],['objetivo','Objetivo'],['exigencia','Exigencia prevista'],['momento','Momento y hora'],['instrucciones','Instrucciones para el atleta'],['nota_privada','Nota privada']];
+  function dialogoAplicar(s0, aid0, preMarcados){
+    var conGT = {};
+    (preMarcados||[]).forEach(function(a){ conGT[a] = 1; });
+    if (!preMarcados){
+      D.gtm.filter(function(m){ return m.sesion_id===s0.id; }).forEach(function(m){
+        D.gtm.filter(function(o){ return o.grupo_trabajo_id===m.grupo_trabajo_id; }).forEach(function(o){ var x = D.sesPorId[o.sesion_id]; if (x) atletasDe(x).forEach(function(a){ conGT[a] = 1; }); });
+      });
+    }
+    var etiquetas = []; (s0.bloques||[]).forEach(function(b){ var e = b.etiqueta||''; if (e && etiquetas.indexOf(e)===-1) etiquetas.push(e); });
+    var marcadoDef = { objetivo: !!s0.objetivo, exigencia: !!(s0.exigencia||s0.exigencia_neuro||s0.exigencia_meta) };
+    var d = dialogo('<h3>Aplicar a otros atletas</h3>'+
+      '<p>Desde la sesión de <b>'+esc(nombreDe(aid0))+'</b> del '+esc(fLarga(s0.fecha))+(MOMENTO[s0.momento]?' ('+esc(MOMENTO[s0.momento].toLowerCase())+')':'')+'. Cada atleta conserva su sesión: solo cambia lo que marques, y la de '+esc(nombreDe(aid0))+' no se toca.</p>'+
+      '<h4>Qué se aplica</h4><div class="ac-chips">'+CAMPOS_AP.map(function(c){ return '<label><input type="checkbox" class="ap-campo" value="'+c[0]+'"'+(marcadoDef[c[0]]?' checked':'')+'>'+esc(c[1])+'</label>'; }).join('')+'</div>'+
+      (etiquetas.length ? '<h4>Bloques (se sustituye el bloque con el mismo nombre)</h4><div class="ac-chips">'+etiquetas.map(function(e){ return '<label><input type="checkbox" class="ap-bloque" value="'+esc(e)+'">'+esc(e)+'</label>'; }).join('')+'</div>'+
+        '<label class="op" style="margin-top:8px"><input type="checkbox" id="ap-conservar" checked> <span>Conservar el ritmo y las observaciones de cada uno (columnas «Ritmo» y «Observaciones», fila a fila)</span></label>'+
+        '<p class="ac-mini-nota">Los ritmos escritos dentro del texto de una fila no se pueden separar: se sustituyen. Míralo en el antes / ahora de cada atleta.</p>' : '')+
+      '<h4>A quién</h4><div class="ac-chips">'+D.atl.filter(function(a){ return a.id!==aid0; }).map(function(a){ return '<label><input type="checkbox" class="ap-at" value="'+a.id+'"'+(conGT[a.id]?' checked':'')+'>'+esc(a._n)+'</label>'; }).join('')+'</div>'+
+      '<div id="ap-res"></div>'+
+      '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn" data-ap-sim="1">Ver a quién afecta</button><button type="button" class="ac-btn pri" data-ap-ok="1" hidden>Aplicar</button></div>');
+    d.classList.add('ancho');
+    var esperado = null;
+    var leer = function(sel){ return Array.prototype.map.call(d.querySelectorAll(sel+':checked'), function(c){ return c.value; }); };
+    var olvidar = function(){ esperado = null; d.querySelector('#ap-res').innerHTML = ''; d.querySelector('[data-ap-ok]').hidden = true; };
+    d.addEventListener('change', olvidar);
+    var ACC = {
+      crear: function(x){ return 'No tiene sesión ese día: se le crea un borrador.'; },
+      actualizar: function(x){ return x.cambios && Object.keys(x.cambios).length ? 'Su borrador pasa de la versión '+x.version+' a la '+(x.version+1)+'.' : 'Solo cambia su nota privada (no cambia la versión).'; },
+      revision: function(x){ return 'Está publicada: queda una revisión pendiente sobre su versión '+x.version+'. No cambia nada hasta que la apliques.'; },
+      nota_privada: function(x){ return 'Está publicada: solo cambia su nota privada (no la ve).'; },
+      sin_cambios: function(x){ return 'Ya lo tiene igual: no cambia nada.'; },
+      saltar: function(x){ return x.motivo || 'No se toca.'; }
+    };
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      var sim = ev.target.closest('[data-ap-sim]'), ok = ev.target.closest('[data-ap-ok]');
+      if (!sim && !ok) return;
+      var ats = leer('.ap-at'), campos = leer('.ap-campo'), bloques = leer('.ap-bloque');
+      if (!ats.length){ avisar('Marca a quién se aplica.', true); return; }
+      if (!campos.length && !bloques.length){ avisar('Marca qué se aplica.', true); return; }
+      var cons = document.getElementById('ap-conservar') ? document.getElementById('ap-conservar').checked : true;
+      (sim||ok).disabled = true;
+      var r = await sb.rpc('academia_aplicar', { p_origen:s0.id, p_atletas:ats, p_campos:campos, p_bloques:bloques, p_conservar:cons, p_simular:!!sim, p_esperado: ok ? esperado : null });
+      (sim||ok).disabled = false;
+      if (r.error){ avisar('No se pudo: '+r.error.message, true); return; }
+      var x = r.data || {};
+      if (x.ok===false){ d.querySelector('#ap-res').innerHTML = '<div class="ac-aviso">'+esc(x.mensaje)+'</div>'; d.querySelector('[data-ap-ok]').hidden = true; esperado = null; return; }
+      var L = x.atletas || [];
+      if (sim){
+        esperado = {};
+        L.forEach(function(y){ esperado[y.atleta_id] = { sesion_id:y.sesion_id||null, version:y.version!=null?y.version:null, accion:y.accion }; });
+        var n = L.filter(function(y){ return ['crear','actualizar','revision','nota_privada'].indexOf(y.accion)!==-1; }).length;
+        d.querySelector('#ap-res').innerHTML = '<h4>A quién afecta</h4><ul class="ac-res">'+L.map(function(y){
+          var t = y.sesion_id && D.sesPorId[y.sesion_id], cam = y.cambios || {}, dif = '';
+          if (t && Object.keys(cam).length){ var nuevo = Object.assign({}, t, cam); dif = diffHTML(t, nuevo).html; }
+          else if (!t && y.accion==='crear') dif = lineasPlan(Object.assign({ momento:s0.momento }, cam)).map(function(l){ return '<span class="ac-mas">Ahora: '+esc(l)+'</span>'; }).join('');
+          var campos = Object.keys(cam).filter(function(k){ return k!=='exigencia_neuro' && k!=='exigencia_meta' && k!=='hora'; }).map(function(k){ return ({titulo:'título',objetivo:'objetivo',exigencia:'exigencia',momento:'momento',nota_razonamiento:'instrucciones',bloques:'bloques'})[k]||k; });
+          if (y.nota_privada) campos.push('nota privada');
+          return '<li'+(y.accion==='saltar'?' class="salta"':'')+'><b>'+esc(nombreDe(y.atleta_id))+'</b>'+(campos.length && y.accion!=='saltar' && y.accion!=='sin_cambios' ? ' · '+esc(campos.join(', ')) : '')+
+            '<span class="acc">'+esc(ACC[y.accion] ? ACC[y.accion](y) : y.accion)+'</span>'+(y.accion!=='saltar' && dif ? '<details class="ac-dif2" style="margin-top:4px"><summary>Antes / ahora</summary>'+dif+'</details>' : '')+'</li>';
+        }).join('')+'</ul>';
+        var b = d.querySelector('[data-ap-ok]'); b.hidden = !n; b.textContent = n===1 ? 'Aplicar a 1 atleta' : 'Aplicar a '+n+' atletas';
+        return;
+      }
+      cerrarDialogo();
+      var nOk = L.filter(function(y){ return ['crear','actualizar','revision','nota_privada'].indexOf(y.accion)!==-1; }).length;
+      var nRev = L.filter(function(y){ return y.accion==='revision'; }).length;
+      avisar('Aplicado a '+plural(nOk,'atleta','atletas')+(nRev?' · '+plural(nRev,'revisión pendiente','revisiones pendientes'):''));
+      recargarYReabrir();
+    });
+  }
+
+  /* ================= AUSENCIA (el plan se conserva) ================= */
+  function formAusencia(){
+    return '<div class="ac-form" style="padding:8px 0 0;border:0"><label>Motivo <select class="ac-sel" id="aus-tipo">'+Object.keys(MOTIVO_AUS).map(function(k){ return '<option value="'+k+'">'+esc(MOTIVO_AUS[k])+'</option>'; }).join('')+'</select></label>'+
+      '<label>Nota (opcional)<input type="text" id="aus-nota" maxlength="300" placeholder="p. ej. Examen"></label>'+
+      '<div class="ac-mini-nota" style="margin-top:0">La sesión prevista no se borra ni se cambia: queda como «Ausente» con su plan.</div>'+
+      '<div><button type="button" class="ac-btn pri mini" data-aus-ok="1">Marcar ausencia</button></div></div>';
+  }
+
   /* ================= pintar y recargar ================= */
   function pintar(){
     var shell = window.APOLANA_MUNDOS_SHELL;
     if (shell && shell.plegarPagina) shell.plegarPagina(ST.vista==='semana' && !esMovil() ? true : null);
+    // La posición se conserva al repintar (p. ej. al volver del editor).
+    var sc = wrap.querySelector('.ac-scroll'), pos = sc ? [sc.scrollTop, sc.scrollLeft] : null, wy = window.scrollY;
     if (ST.vista==='semana') pintarSemana(); else pintarHoy();
+    var sc2 = wrap.querySelector('.ac-scroll'); if (sc2 && pos){ sc2.scrollTop = pos[0]; sc2.scrollLeft = pos[1]; }
+    if (wy) window.scrollTo(0, wy);
     urlActual();
   }
   async function recargar(){
@@ -1258,6 +1546,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var b = e.target.closest('button, a'); if (!b) return;
     var ds = b.dataset;
     if (ds.abrir){ var p = ds.abrir.split('|'); abrir(p[0], p[1]); return; }
+    if (ds.nueva){ var pn = ds.nueva.split('|'); abrirEditor({ nueva:'1', a:pn[0], f:pn[1] }); return; }
+    if (ds.copiar){ dialogoCopiar(); return; }
+    if (ds.aplicarGt){
+      var gt = D.gt.filter(function(x){ return x.id===ds.aplicarGt; })[0]; if (!gt) return;
+      var ms = miembrosGT(gt); if (ms.length<2) return;
+      dialogoAplicar(ms[0].s, ms[0].aid, ms.slice(1).map(function(m){ return m.aid; }));
+      return;
+    }
     if (ds.vista){ if (ST.vista!==ds.vista){ ST.vista = ds.vista; if (ds.vista==='semana') ST.semana = lunesDe(ST.dia); cerrar(); await recargar(); } return; }
     if (ds.sem!=null){ ST.semana = ds.sem==='0' ? lunesDe(hoyISO()) : sumar(ST.semana, 7*(+ds.sem)); ST.diaMovil=null; cerrar(); await recargar(); return; }
     if (ds.dia!=null){ ST.dia = ds.dia==='0' ? hoyISO() : sumar(ST.dia, +ds.dia); cerrar(); await recargar(); return; }
@@ -1289,26 +1585,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
       return;
     }
-    if (ds.publicar){
-      var borr = D.ses.filter(function(s){ return !s.publicada && !s.archivada_en; });
-      var porDia = {}; borr.forEach(function(s){ porDia[s.fecha]=(porDia[s.fecha]||0)+1; });
-      var dlg2 = dialogo('<h3>Publicar '+plural(borr.length,'borrador','borradores')+'</h3><p>Se publicará la versión actual de cada uno y los atletas la verán en su app:</p><ul>'+
-        Object.keys(porDia).sort().map(function(f){ return '<li>'+esc(fLarga(f))+': '+plural(porDia[f],'sesión','sesiones')+'</li>'; }).join('')+'</ul>'+
-        '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-pub-ok="1">Publicar</button></div>');
-      dlg2.addEventListener('click', async function(ev){
-        if (ev.target.closest('[data-dlg-no]')) cerrarDialogo();
-        var ok = ev.target.closest('[data-pub-ok]');
-        if (ok){
-          ok.disabled = true;
-          var r = await sb.from('sesiones').update({ publicada:true }).in('id', borr.map(function(s){ return s.id; })).eq('publicada', false).select('id');
-          cerrarDialogo();
-          if (r.error){ avisar('No se pudo publicar: '+r.error.message, true); return; }
-          avisar(plural((r.data||[]).length,'sesión publicada','sesiones publicadas'));
-          recargar();
-        }
-      });
-      return;
-    }
+    if (ds.publicar){ dialogoPublicar(D.ses.filter(function(s){ return !s.publicada && !s.archivada_en; })); return; }
     if (ds.sug!=null){
       var L = (wrap._sugs||[])[+ds.sug]; if (!L) return;
       try { await crearGT(String(L[0].s.objetivo||L[0].s.titulo).slice(0,60), ST.dia, L.map(function(x){ return x.s.id; }).filter(function(v,i,a){ return a.indexOf(v)===i; }), null); avisar('Grupo creado'); recargar(); }
@@ -1346,6 +1623,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (ds.revisar){ await marcarRevisado(ds.revisar, true); return; }
     if (ds.norevisar){ await marcarRevisado(ds.norevisar, false); return; }
     var s = abierto && D.sesPorId[abierto.sid];
+    if (ds.editar){ abrirEditor({ s:abierto.sid }); return; }
+    if (ds.otra){ abrirEditor({ nueva:'1', a:abierto.aid, f:s.fecha, m: s.momento==='manana' ? 'tarde' : s.momento==='tarde' ? 'manana' : 'tarde' }); return; }
+    if (ds.pubUna){ dialogoPublicar([s]); return; }
+    if (ds.aplicar){ dialogoAplicar(s, abierto.aid); return; }
+    if (ds.aus){ var fa = document.getElementById('ac-aus-f'); fa.hidden = !fa.hidden; if (!fa.hidden) fa.innerHTML = formAusencia(); return; }
+    if (ds.ausOk){
+      b.disabled = true;
+      var ra = await sb.from('ausencias').insert({ atleta_id:abierto.aid, fecha:s.fecha, motivo_tipo:document.getElementById('aus-tipo').value,
+        nota:(document.getElementById('aus-nota').value||'').trim() || null, registrado_por: perfil && perfil.id });
+      if (ra.error){ b.disabled = false; avisar(/ausencias_atleta_fecha_unico|duplicate/i.test(ra.error.message) ? 'Ya tiene una ausencia ese día.' : 'No se pudo: '+ra.error.message, true); return; }
+      avisar('Ausencia marcada · el plan se conserva'); recargarYReabrir(); return;
+    }
+    if (ds.ausQuitar){
+      if (!confirm('¿Quitar la ausencia? La sesión vuelve a contar como prevista.')) return;
+      b.disabled = true;
+      var rq0 = await sb.from('ausencias').delete().eq('id', ds.ausQuitar);
+      if (rq0.error){ b.disabled = false; avisar('No se pudo: '+rq0.error.message, true); return; }
+      avisar('Ausencia quitada'); recargarYReabrir(); return;
+    }
     if (ds.regent){ var fr = document.getElementById('ac-regent-f'); fr.hidden = !fr.hidden; if (!fr.hidden) fr.innerHTML = formRegistroEntrenador(D.regEnt[abierto.sid+'|'+abierto.aid]); return; }
     if (ds.regentOk){
       var marcado = lado.querySelector('input[name="re-est"]:checked');
@@ -1404,7 +1700,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (t.dataset && t.dataset.modoAt){ t.disabled = true; if (await guardarModo(t.dataset.modoAt, t.value)) recargarYReabrir(); else t.disabled = false; }
   });
   fondo.addEventListener('click', cerrar);
-  document.addEventListener('keydown', function(e){ if (e.key==='Escape'){ if (document.getElementById('ac-dlg')) cerrarDialogo(); else if (abierto) cerrar(); } });
+  document.addEventListener('keydown', function(e){ if (e.key==='Escape'){ if (editorAbierto()) return; if (document.getElementById('ac-dlg')) cerrarDialogo(); else if (abierto) cerrar(); } });
   var _movil = esMovil(), _rt;
   window.addEventListener('resize', function(){ clearTimeout(_rt); _rt = setTimeout(function(){ ajustarAlto(); if (esMovil()!==_movil){ _movil = esMovil(); if (D) pintar(); if (abierto) fondo.hidden = !esMovil(); } }, 150); });
 

@@ -74,6 +74,53 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
 - **iPhone**: cabecera y controles compactos (filtros plegados; el nombre abre su
   semana) y más margen bajo la última tarjeta para la barra flotante.
 
+**Semana / Planificar · primera entrega (28-oct, mig 467):**
+- **Un solo editor**: el de Planificar (`portal/entrenador/`) se abre **dentro de
+  Academia**, en un marco encima de la semana (`?embebido=academia`). No hay otro
+  editor. Al guardar, Academia se recarga en el mismo sitio (scroll, día, filtro) y
+  abre el detalle de lo guardado. Un hueco «Sin planificar» abre el editor con ese
+  atleta y ese día; «＋ Otra sesión este día» crea la doble sesión.
+- **Lo que el editor añade en Academia**: tipo de día (entreno/descanso), momento
+  (única/mañana/tarde/sin especificar) y hora, objetivo y exigencia (los pone el
+  entrenador, no se deducen), **instrucciones para el atleta** (`nota_razonamiento`,
+  las lee en su app) separadas de la **nota privada** (`sesiones_nota_privada`, solo
+  entrenadores; no cambia la versión), y «Para»: al crear, una sesión **individual**
+  por atleta marcado. Los bloques se escriben **en texto** con la notación de siempre
+  (una línea = una fila, tal cual; los ids de fila se conservan); un bloque con
+  columnas (series, ritmo, calzado…) se edita fila a fila. Bloques y filas se
+  **ordenan** con ↑ ↓ (también fuera de Academia). Solo se guarda lo que cambia.
+- **Protecciones**: borrador → versión nueva **solo si nadie la ha cambiado** (si no,
+  avisa y no pisa nada; lo escrito sigue en pantalla); publicada → **revisión
+  pendiente** (una por sesión); la nota privada se guarda aparte.
+- **Editar, aplicar revisión y publicar, separados**: en el detalle, «Editar
+  borrador» / «Proponer un cambio», «Aplicar · versión N+1» / «Descartar», y
+  «Publicar la versión N…». **Publicar** (una o «Publicar borradores (N)…») va por
+  `academia_publicar`: publica exactamente las versiones revisadas o **ninguna**.
+- **Copiar semana…**: días y atletas a elegir y fecha de destino; vista previa (qué
+  se crea y qué se salta por solaparse, con el motivo) antes de copiar.
+  `academia_copiar`: solo planificación, en borrador, ids nuevos; nunca feedback,
+  asistencia, ejecución ni revisiones. Repetirla no duplica.
+- **Aplicar a otros atletas…** (desde el detalle o «Aplicar la de X al resto…» en
+  un grupo de trabajo): campos (título, objetivo, exigencia, momento, instrucciones,
+  nota privada) y bloques por nombre; vista previa por atleta con lo que pasa
+  (borrador vN→vN+1, publicada → revisión, sin sesión → borrador nuevo) y el
+  antes/ahora; se aplica todo o nada (`academia_aplicar`). Opción de conservar las
+  columnas Ritmo y Observaciones de cada uno; **los ritmos escritos dentro del texto
+  no se pueden separar** y se ve en el antes/ahora.
+- **Ausencia** desde el detalle (motivo + nota) y «Quitar la ausencia»: la sesión
+  prevista no se toca.
+- **Conexión de prueba (ChatGPT)**: `nota_entrenador` iba a `nota_razonamiento`
+  (que ve el atleta); ahora va a la nota privada, y hay `instrucciones_atleta`. No
+  se había usado (0 notas en PRUEBA).
+- **Comprobado**: los 9 casos en el banco local (Academia + el editor en su marco,
+  PC y 375 px) y la lógica de base contra la base real como Andrés en transacciones
+  deshechas (copiar y repetir, aplicar con cambio simultáneo, publicar versión
+  equivocada / buena, permisos de Mario, nota privada por la conexión).
+- **Queda**: mover una sesión a otro día desde Academia (hoy la fecha de una sesión
+  guardada no se cambia: sería sustituir); el modo texto solo en bloques sin
+  columnas; los ritmos dentro del texto no se conservan al aplicar a otros. Siguiente
+  entrega: **Hoy** (dirigir la sesión en pista).
+
 ## Navegación
 
 ```
