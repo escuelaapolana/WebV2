@@ -1,6 +1,6 @@
 # Recorrido en vivo · Academia (ficha, Tests y marcas, Competiciones, Carga)
 
-Para comprobarlo en la web **con la sesión iniciada** (unos 30 minutos). Hasta
+Para comprobarlo en la web **con la sesión iniciada** (unos 30 minutos). **Alcance congelado el 29-oct**: no se añaden funciones antes de este recorrido; solo se corrige lo que falle. Hasta
 completarlo, estas pantallas **no se dan por verificadas**. Todo con el grupo
 **«Academia AC98 · PRUEBA»** (selector arriba a la derecha).
 
@@ -37,10 +37,20 @@ de darlo por validado.
 
 ## B · Escrituras, solo en el grupo PRUEBA
 
-**Pasos 7–10: el mismo caso.** Prueba **200 m lisos** · unidad **segundos** · temporada
-de planificación **2026/27** · temporada federativa **2026** · categoría **Sénior**
-(calculada) · condiciones: **viento +1,2 m/s**, cronometraje **electrónico de
-competición**, resultado **oficial**, ronda **final**, lugar «Pista ficticia (PRUEBA)».
+**Pasos 7–10: el mismo caso, en 200 m** (los tiempos de 60 m de antes, 7,20 / 7,18 /
+7,15, ya no se usan aquí; el 60 m solo aparece en el paso 14, que es otro caso). Prueba
+**200 m lisos** · unidad **segundos** · temporada de planificación **2026/27** (solo
+para el objetivo del paso 7) · condiciones: **viento +1,2 m/s**, cronometraje
+**electrónico de competición**, resultado **oficial**, ronda **final**, lugar «Pista
+ficticia (PRUEBA)».
+
+- **Categoría**: sale de la **fecha de nacimiento ficticia de Álex (10-05-2001)** y de la
+  **fecha del resultado (25-10-2026)** → temporada federativa 2026 → **Sénior**. La
+  temporada de planificación no interviene (comprobado en la base:
+  `categoria_federativa('2001-05-10','2026-10-25')` = Sénior, regla RFEA 2026 verificada).
+- **Valores**: objetivo 22,40 → 22,20 · resultado 22,61 → 22,60 · parciales de **4 tramos
+  de 50 m (0–50, 50–100, 100–150, 150–200 = 200 m exactos)**: 6,05 + 5,45 + 5,55 + 5,65 =
+  22,70 (no cuadra, +0,10) → con 5,55 en el último, 22,60 (cuadra).
 
 | # | Qué hacer | Esperado | Observado | Pasa / Falla | Incidencia |
 |---|---|---|---|---|---|
@@ -66,7 +76,7 @@ jueves pasa a contar en el feedback (2 de 4).
 | 17 | Menú → **Carga y contenidos**, grupo PRUEBA, Álex. Después cambia al grupo real. | Carrera total: previsto **1.140 m** · «Completa» (declaración global) **340 m** · sin datos **800 m**; sin «Confirmado registrado» (no hay detalle por fila). Aceleración **220 m** (propuesta de la sesión); objetivo pendiente **120 m**; ritmo específico **800 m** sin datos. Fuerza **18 reps / 6 series** por «completa»; saltos cajón **6**. Con el grupo real: «De momento funciona solo con el grupo de prueba». | | | |
 | 18 | Toca «Carrera total · «Completa»» y «Ritmo específico · Sin datos». | Lista de las filas: lun 26 y mar 27 con «fuente: atleta (declaración global: sesión completa)»; mié 28, «sin datos». | | | |
 | 19 | Anota las cifras de Carrera total y de Cobertura. «Sesiones y lectura de cada fila» → mar 27 → «Transferencia: 2x60 al 80% // 3′ Z» → «Revisar lectura…» → objetivo **Aceleración** → «Guardar la corrección». | **Cambia solo la clasificación**: Aceleración **220 → 340 m**, desaparece «Objetivo pendiente», la fila dice «Corregida». **No cambian** las cantidades ni la ejecución: Carrera total sigue **1.140 / 340 / 800**; Fuerza, saltos y minutos iguales. Cobertura: Clasificación **0 → 120 de 340 m**; Lectura del plan **0 → 1 de 14**; Feedback y Resultado conocido **sin cambios**. | | | |
-| 20 | Mira «Cobertura». | Feedback **2 de 3** (el jueves 29 aún en plazo no cuenta); Resultado conocido · repeticiones **25 de 30** («25 solo por «completa»»); distancia **340 de 1.140 m** («340 m solo por «completa»»); Cargas **0 de 6** (series hechas sin kg); Método **0 de 0**. | | | |
+| 20 | Mira «Cobertura». | Feedback **2 de 3** (el jueves 29 aún en plazo no cuenta); Resultado conocido · repeticiones **25 de 30** («25 solo por «completa»»); distancia **340 de 1.140 m** («340 m solo por «completa»»); Cargas **0 de 6** con «**6 realizadas solo por «completa» (declaración global, sin kg)**»: la ejecución viene de la declaración global y se ve; Método **0 de 0**. | | | |
 
 ## Incidencias
 

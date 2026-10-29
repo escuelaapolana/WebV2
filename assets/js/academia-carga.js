@@ -444,7 +444,7 @@
   function cobertura(sesiones, ejecPorSesion, opts){
     opts = opts || {};
     var C = { feedback:{ num:0, den:0, anticipados:0, items:[] }, registro_entrenador:null, resultado_reps:{ num:0, den:0 }, resultado_m:{ num:0, den:0 },
-              clasificacion:{ num:0, den:0 }, cargas:{ num:0, den:0, no_realizadas:0 }, metodo:{ num:0, den:0 }, lectura:{ num:0, den:0 } };
+              clasificacion:{ num:0, den:0 }, cargas:{ num:0, den:0, no_realizadas:0, global:0 }, metodo:{ num:0, den:0 }, lectura:{ num:0, den:0 } };
     var modo = opts.modo || 'feedback_atleta';
     if (modo === 'registro_entrenador') C.registro_entrenador = { num:0, den:0, anticipados:0 };
     sesiones.forEach(function(S){
@@ -465,7 +465,7 @@
         if ((x.estado === 'confirmado' || x.estado === 'global') && mq != null && !a.recuperacion) { C.clasificacion.den += mq; if (a.c.clasif === 'declarada' || a.c.clasif === 'revisada') C.clasificacion.num += mq; }
         if (a.c.clase === 'fuerza' && (a.c.pct_rm || a.c.kg)) {
           // series realizadas (con detalle o por «completa»): ¿se saben sus kg?
-          if (x.estado === 'confirmado' || x.estado === 'global') { C.cargas.den++; if (typeof x.kg === 'number') C.cargas.num++; }
+          if (x.estado === 'confirmado' || x.estado === 'global') { C.cargas.den++; if (typeof x.kg === 'number') C.cargas.num++; if (x.estado === 'global') C.cargas.global++; }
           if (x.estado === 'no_realizado') C.cargas.no_realizadas++;
         }
         (x.tiempos || []).forEach(function(t){ C.metodo.den++; if (t.metodo && t.metodo !== 'no_consta') C.metodo.num++; });
