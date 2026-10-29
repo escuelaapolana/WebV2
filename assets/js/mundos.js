@@ -198,10 +198,10 @@
         {key:'resumen', t:'Hoy', i:'grid', url:B+'portal/academia/'},
         {key:'semana', t:'Semana', i:'calendar', url:B+'portal/academia/?v=semana', d:'Atletas por días: lo publicado, lo hecho y lo que falta por revisar.'},
         {key:'feedback', t:'Feedback', i:'inbox', url:B+'portal/academia/?v=feedback', d:'Una bandeja para revisar lo que respondió cada atleta, tus datos de pista y tus observaciones.'},
-        {g:'Entrenamiento', t:'Planificar', i:'clipboard', url:B+'portal/entrenador/#planificar', d:'Escribir, copiar y publicar las sesiones (la herramienta de siempre).'},
-        {g:'Entrenamiento', t:'Pasar lista', i:'check', url:B+'portal/entrenador/#lista', d:'Quién ha venido hoy.'},
-        {g:'Atletas', t:'Atletas', i:'people', url:B+'admin/atletas/?grupo=c288b979-cd00-4abb-96da-30fa997ef297', d:'Las fichas de los atletas de la Academia.'},
-        {g:'Atletas', t:'Observaciones', i:'newspaper', url:B+'portal/entrenador/#notas', d:'Tus notas privadas sobre cada atleta.'},
+        // Todo dentro de Academia: el submenú no cambia al pasar de una pantalla a otra.
+        {g:'Entrenamiento', t:'Planificar', i:'clipboard', url:B+'portal/academia/?v=semana', d:'Se planifica desde la Semana: toca un día o «＋» y el editor se abre encima.'},
+        {g:'Entrenamiento', t:'Pasar lista', i:'check', url:B+'portal/academia/', d:'En «Hoy»: Presente o Ausente en cada atleta.'},
+        {key:'atletas', g:'Atletas', t:'Atletas', i:'people', url:B+'portal/academia/?v=atletas', d:'Cada atleta con su ficha: perfil, decisiones, objetivos, marcas y observaciones.'},
         {key:'carga', g:'Entrenamiento', t:'Carga y contenidos', i:'chart', url:B+'portal/academia/?v=carga', d:'Primera versión (grupo de prueba): previsto, confirmado y cobertura por atleta y semana.'},
         {key:'marcas', g:'Competición y tests', t:'Tests y marcas', i:'chart', url:B+'portal/academia/?v=marcas', d:'Resultados, tests con su protocolo, RM y objetivos, por atleta y por prueba.'},
         {key:'comp', g:'Competición y tests', t:'Competiciones', i:'flag', url:B+'portal/academia/?v=comp', d:'El calendario del grupo: pruebas, estado, prioridad y propósito de cada atleta, y las mínimas.'}
