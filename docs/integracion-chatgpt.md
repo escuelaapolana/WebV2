@@ -1,4 +1,40 @@
-# Cargar en la app las planificaciones aprobadas en ChatGPT — conexión de PRUEBA funcionando
+# Cargar en la app las planificaciones aprobadas en ChatGPT — conexión abierta a Academia AC98 real
+
+## Estado (29-oct-2026): Academia AC98 REAL habilitada (mig 499), con permisos acotados
+
+Encargo de Andrés: que ChatGPT pueda subir la planificación al grupo real. Habilitado
+para la clave activa («ChatGPT · Mac de Andrés», id 3f398432…) y **solo** el grupo
+**Academia AC98** (c288b979…). Ningún otro grupo.
+
+| Grupo | Permisos | Cómo |
+|---|---|---|
+| Academia AC98 (real) | leer · borradores · revisiones · publicar | `academia_api_habilitados` (motivo y fecha registrados) |
+| Academia AC98 · PRUEBA | leer · borradores · revisiones · publicar_prueba | como antes |
+
+- **Leer**: `leer_semana`, `leer_sesion`, `consultar_borradores` (con `grupo_id`: ya hay dos
+  grupos). Sin comentarios, molestias ni motivos de ausencia.
+- **Borradores** (`guardar_borradores`): crear o cambiar borradores; los atletas no los ven.
+  `clave_cliente`, `version_base` (conflicto = no escribe nada), `envio_id` (no repite).
+- **Revisiones** (`proponer_revision`): una sesión **publicada** no se toca; queda una revisión
+  pendiente que el entrenador aplica (versión nueva, historial intacto) o descarta.
+- **Publicar en el grupo real**, en dos pasos y solo con autorización expresa de Andrés:
+  1. `preparar_publicacion` (no publica): comprueba versión y huella de cada borrador y
+     devuelve un resumen y un **código de 6 caracteres** (30 min) atado a esas versiones y huellas.
+  2. `publicar`: código + `autorizacion_texto` = palabras literales de Andrés, que tienen
+     que incluir el código. Se publica exactamente lo del código; si algo cambió, nada.
+     Código usado o caducado: rechazado. Queda registrado en `academia_api_autorizaciones`
+     y en el historial de la sesión (motivo con la autorización).
+- `publicar_prueba` solo vale en PRUEBA. **No existe** ninguna operación para borrar
+  sesiones ni para tocar el feedback.
+- Probado (29-oct) en transacción deshecha: 14 casos (borrador, idempotencia, conflicto,
+  publicar_prueba en real rechazado, preparar con huella vieja, código sin incluir /
+  inventado / usado / caducado, publicar bien con huella igual, revisión, otro grupo,
+  PRUEBA intacta, borrar inexistente). En vivo por el puente: «estado» muestra los dos
+  grupos con sus permisos. Edge `academia-mcp` desplegada (versión 2026-10-29).
+- Para ver las herramientas nuevas en ChatGPT hay que abrir un chat nuevo (o reconectar).
+- Revocar el grupo real: `delete from academia_api_habilitados where grupo_id = 'c288b979-cd00-4abb-96da-30fa997ef297';`
+  (o revocar la clave entera con herramientas/academia-mcp-activar.sh --quitar).
+
 
 ## Estado (28-oct-2026): prueba completada desde el chat de Andrés, solo grupo PRUEBA
 

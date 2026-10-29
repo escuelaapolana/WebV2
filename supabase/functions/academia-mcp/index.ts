@@ -1,10 +1,14 @@
 // ============================================================
 // academia-mcp · servidor MCP de Academia para ChatGPT (Codex en la app de
-// ChatGPT para Mac). CONEXIÓN DE PRUEBA (mig 464, 28-oct-2026):
+// ChatGPT para Mac). Mig 464 (28-oct-2026, solo PRUEBA) y mig 499 (29-oct-2026):
 //
-//   · Solo el grupo «Academia AC98 · PRUEBA» (datos ficticios). La base
-//     rechaza cualquier grupo que no esté marcado es_prueba, aunque la clave
-//     lo incluyera. Sin datos de salud en las lecturas.
+//   · Grupos: los de prueba de la clave y los REALES habilitados uno a uno en
+//     academia_api_habilitados (hoy solo Academia AC98: leer, borradores,
+//     revisiones y publicar). Los permisos se comprueban por grupo en la base.
+//   · Grupo real: publicar en dos pasos (preparar_publicacion → código atado a
+//     versión y huella; publicar con el código y la autorización literal de
+//     Andrés). No hay operaciones de borrar sesiones ni de tocar feedback.
+//     Sin datos de salud en las lecturas.
 //   · Transporte «Streamable HTTP» de MCP, sin estado, respondiendo JSON
 //     (no abre flujos SSE). Autenticación: «Authorization: Bearer <clave>».
 //     De la clave solo se usa su sha256; la base la busca en api_claves.
@@ -19,17 +23,19 @@
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
-const VERSION = "2026-10-28";
+const VERSION = "2026-10-29";
 const PROTOCOLOS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 
 const INSTRUCCIONES = [
-  "Servidor de la Academia AC98 del Club Atletismo Apolana. CONEXIÓN DE PRUEBA: solo el grupo de PRUEBA, con datos ficticios.",
-  "Empieza con «estado» para ver el grupo permitido y las reglas.",
+  "Servidor de la Academia AC98 del Club Atletismo Apolana. Grupos: Academia AC98 (REAL: sus atletas ven lo que se publique) y Academia AC98 · PRUEBA (datos ficticios).",
+  "Empieza con «estado» para ver los grupos, los permisos de cada uno y las reglas.",
   "Guarda borradores solo cuando el usuario lo pida expresamente; esa petición es la autorización (no hace falta una segunda confirmación).",
   "Cada sesión nueva lleva una clave_cliente estable; cada petición de escritura, un envio_id nuevo (reutilízalo solo para reintentar exactamente lo mismo).",
   "Para cambiar un borrador manda sesion_id y version_base. Si hay conflicto de versión, vuelve a leer y enséñale al usuario qué cambió.",
   "Una sesión publicada no se cambia: se propone una revisión, que el entrenador aplica o descarta en el panel.",
-  "Publica solo si el usuario lo pide, con la version y la huella exactas que revisó.",
+  "Grupo de PRUEBA: publicar_prueba solo si el usuario lo pide, con la version y la huella exactas que revisó.",
+  "Grupo REAL: nunca publiques sin autorización expresa de Andrés. Primero preparar_publicacion (no publica: da un resumen y un código); enséñale el resumen y pídele que autorice escribiendo el código; después publicar con ese código y sus palabras literales.",
+  "Nunca se borran sesiones ni se toca el feedback de los atletas: esta conexión no puede hacerlo.",
   "No inventes la clasificación de una sesión ni calcules volúmenes o cargas: eso aún no está definido.",
 ].join("\n");
 
@@ -71,7 +77,7 @@ const CAMPOS_SESION = {
 const HERRAMIENTAS = [
   {
     name: "estado", op: "estado",
-    description: "Comprueba la conexión: clave en uso, grupos permitidos (solo el de PRUEBA, datos ficticios), permisos y reglas de uso.",
+    description: "Comprueba la conexión: clave en uso, grupos permitidos (real o de prueba, «datos_ficticios»), permisos de cada grupo y reglas de uso.",
     inputSchema: { type: "object", properties: {} },
     annotations: { title: "Estado de la conexión", readOnlyHint: true, openWorldHint: false },
   },
@@ -82,7 +88,7 @@ const HERRAMIENTAS = [
       type: "object",
       properties: {
         fecha: { type: "string", description: "Cualquier día de la semana (YYYY-MM-DD). Por defecto, hoy." },
-        grupo_id: { type: "string", description: "Opcional: solo hay un grupo permitido." },
+        grupo_id: { type: "string", description: "Grupo (mira «estado»): Academia AC98 es el REAL; el de PRUEBA tiene datos ficticios. Obligatorio si hay más de un grupo." },
       },
     },
     annotations: { title: "Leer la semana", readOnlyHint: true, openWorldHint: false },
@@ -101,7 +107,7 @@ const HERRAMIENTAS = [
       properties: {
         desde: { type: "string", description: "YYYY-MM-DD (por defecto, hace 7 días)." },
         hasta: { type: "string", description: "YYYY-MM-DD (por defecto, dentro de 4 semanas)." },
-        grupo_id: { type: "string" },
+        grupo_id: { type: "string", description: "Obligatorio si hay más de un grupo (mira «estado»)." },
       },
     },
     annotations: { title: "Consultar borradores", readOnlyHint: true, openWorldHint: false },
@@ -126,6 +132,7 @@ const HERRAMIENTAS = [
               clave_cliente: { type: "string", description: "Identificador estable que pones tú a cada sesión nueva (p. ej. «alex-2026-11-02»)." },
               sesion_id: { type: "string", description: "Para cambiar un borrador existente." },
               version_base: { type: "integer", description: "La versión que leíste del borrador que cambias." },
+              grupo_id: { type: "string", description: "Grupo de la sesión nueva (obligatorio si hay más de uno: mira «estado»)." },
               atleta_id: { type: "string" },
               fecha: { type: "string", description: "YYYY-MM-DD" },
               ...CAMPOS_SESION,
@@ -177,6 +184,45 @@ const HERRAMIENTAS = [
     },
     annotations: { title: "Publicar (solo prueba)", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
+  {
+    name: "preparar_publicacion", op: "preparar_publicacion",
+    description:
+      "Grupo REAL (Academia AC98). NO publica nada: comprueba que cada borrador está exactamente en la version y huella revisadas y devuelve un resumen " +
+      "(fecha, atleta, título, versión) y un código de autorización que caduca en 30 minutos. Enséñale el resumen a Andrés y pídele que autorice escribiendo ese código. " +
+      "Si cambias algo después, el código deja de valer: prepara otra vez.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sesiones: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { sesion_id: { type: "string" }, version: { type: "integer" }, huella: { type: "string" } },
+            required: ["sesion_id", "version", "huella"],
+          },
+        },
+      },
+      required: ["sesiones"],
+    },
+    annotations: { title: "Preparar una publicación (grupo real)", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "publicar", op: "publicar",
+    description:
+      "Grupo REAL. Úsala SOLO después de que Andrés autorice expresamente la publicación escribiendo el código que dio preparar_publicacion. " +
+      "Publica exactamente las sesiones, versiones y huellas de ese código (no las que mandes ahora); si algo cambió, no publica nada. " +
+      "autorizacion_texto = las palabras literales de Andrés (tienen que incluir el código). Queda registrado. Los atletas lo ven al momento.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        envio_id: { type: "string" },
+        codigo: { type: "string", description: "El código de 6 caracteres de preparar_publicacion." },
+        autorizacion_texto: { type: "string", description: "Las palabras literales de Andrés autorizando, con el código." },
+      },
+      required: ["envio_id", "codigo", "autorizacion_texto"],
+    },
+    annotations: { title: "Publicar con autorización (grupo real)", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
 ];
 
 const CORS = {
@@ -217,7 +263,7 @@ async function atender(m: Mensaje, hash: string): Promise<Record<string, unknown
       return ok({
         protocolVersion: PROTOCOLOS.includes(pedido) ? pedido : "2025-06-18",
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "apolana-academia", title: "Academia AC98 · Apolana (prueba)", version: VERSION },
+        serverInfo: { name: "apolana-academia", title: "Academia AC98 · Apolana", version: VERSION },
         instructions: INSTRUCCIONES,
       });
     }
