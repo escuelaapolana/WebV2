@@ -483,6 +483,17 @@
   .tm-int span{ min-width:70px; font-size:13.5px; color:var(--t2); }
   .tm-int input{ width:110px; }
   .tm-cuerpo .ac-barra{ margin-bottom:8px; }
+  .tm-parc{ font-size:13.5px; color:var(--t2); background:#FAF8F3; border-radius:8px; padding:6px 9px; margin:2px 0 4px; }
+  .tm-parc > div{ margin:1px 0; }
+  .tm-parc b{ color:var(--navy); }
+  .tm-parc small{ display:block; color:var(--t3); font-size:12px; margin-top:2px; }
+  .tm-sub2{ padding-left:14px; }
+  .tm-ok{ color:#2F6B3A; font-weight:600; }
+  .fx-warn.tm-inl{ display:inline; }
+  .tm-modelo{ background:#EEF1F8; }
+  .tm-pfila input{ width:76px; }
+  .tm-pfila span{ min-width:0; }
+  .tm-parc-int + .tm-parc-int{ margin-top:4px; }
   @media (max-width:759px){
     /* En el móvil, cada resultado es una fila corta: sin cabecera y sin casillas «no consta» vacías. */
     .tm-t, .tm-t tbody, .tm-t tr{ display:block; }
@@ -699,7 +710,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     return out;
   }
-  var COLS_REG = 'id,sesion_id,atleta_id,estado,completado_pct,rpe,duracion_min,molestia_sesion,molestia_localizacion,molestias,notas_atleta,marcas_texto,tiempos_reales,version_vista,version_garantia,version_nota,sesion_version_id,revisado_en,revisado_por,revision_anterior_en,revision_anterior_por,created_at,corregido_veces,motivo_no_hecho,nota_no_hecho,sensacion_general,momento,superficie';
+  var COLS_REG = 'id,sesion_id,atleta_id,estado,completado_pct,rpe,duracion_min,molestia_sesion,molestia_localizacion,molestias,notas_atleta,marcas_texto,tiempos_reales,tramos_atleta,version_vista,version_garantia,version_nota,sesion_version_id,revisado_en,revisado_por,revision_anterior_en,revision_anterior_por,created_at,corregido_veces,motivo_no_hecho,nota_no_hecho,sensacion_general,momento,superficie';
   var COLS_RE = 'id,sesion_id,atleta_id,estado,completado_pct,nota,sesion_version,autor_perfil_id,actualizado_en';
   async function cargar(){
     var G = ST.g.grupo_id, R = rango();
@@ -1678,7 +1689,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (r.nota_no_hecho?'<div class="ac-cita">'+esc(r.nota_no_hecho)+'</div>':'')+
         (r.notas_atleta?'<div class="ac-cita">«'+esc(r.notas_atleta)+'»</div>':'')+
         (r.molestias && !/^(no|ninguna|nada)\.?$/i.test(String(r.molestias).trim())?'<div class="ac-cita">Molestias: «'+esc(r.molestias)+'»</div>':'')+
-        (r.marcas_texto?'<div style="margin-top:6px;white-space:pre-wrap">'+esc(r.marcas_texto)+'</div>':'')+
+        (r.marcas_texto?'<div style="margin-top:6px;white-space:pre-wrap">'+esc(r.marcas_texto)+'</div>':'')+tramosAtletaHTML(s, r)+
         (tiempos?'<div class="nota">Tiempos apuntados por el atleta · método: no consta.</div>':'')+
         '<div class="nota">Enviado el '+fechaHora(r.created_at)+(r.corregido_veces?' · corregido '+plural(r.corregido_veces,'vez','veces'):'')+'. '+esc(GARANTIA[r.version_garantia]||'')+'</div>'+
         // Datos antiguos: la limitación de correspondencia con el plan, siempre a la vista
@@ -2403,22 +2414,44 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function etiquetaDato(t){
     return [t.serie ? (t.alcance==='serie'?'serie ':'toma ')+t.serie : '', t.parte || '', t.tramo && t.tramo!=='total' ? t.tramo : '', t.lado || ''].filter(Boolean).join(' · ');
   }
-  /* Discrepancias: SOLO cuando es la misma fila, la misma toma, tramo total, sin
-     lado y tiempo — lo que el atleta apunta por toma en su app. Lo demás que el
-     atleta escribió (texto libre, otras partes) queda «pendiente de vincular». */
+  /* Tramo canónico: «0-30», «0–30», «0 a 30» → «0-30»; «total»; si no, el texto tal cual. */
+  function tramoCanon(t){
+    t = String(t==null ? 'total' : t).trim().toLowerCase(); if (!t || t==='total') return 'total';
+    var m = /(\d+(?:[.,]\d+)?)\s*(?:m\s*)?(?:-|–|—|a)\s*(\d+(?:[.,]\d+)?)/.exec(t);
+    return m ? Number(m[1].replace(',', '.'))+'-'+Number(m[2].replace(',', '.')) : t;
+  }
+  /* Discrepancias, dato a dato y nunca por posición:
+     · si el atleta identificó el tiempo (fila, serie, repetición y tramo), se compara con el
+       mismo dato del entrenador, también por tramos;
+     · si no, solo la toma entera (tramo total, sin lado ni repetición) contra su tiempo de esa serie;
+     · lo demás queda «pendiente de vincular». */
   function discrepancias(s, aid, r){
     var out = { pares:[], pendientes:[] };
     var tr = r && r.tiempos_reales && typeof r.tiempos_reales==='object' ? r.tiempos_reales : {};
+    var ta = r && Array.isArray(r.tramos_atleta) ? r.tramos_atleta : [];
     tomaDe(s.id, aid).forEach(function(t){
       if (t.magnitud!=='tiempo' || t.adicional || !t.fila_id || t.valor_num==null) return;
-      var ta = tr[t.fila_id], vals = ta && Array.isArray(ta.tiempos) ? ta.tiempos : [];
+      var idA = ta.filter(function(x){ return x.fila_id===t.fila_id && Number(x.serie||0)===Number(t.serie||0) && Number(x.repeticion||0)===Number(t.repeticion||0) && tramoCanon(x.tramo || (x.desde_m!=null && x.hasta_m!=null ? x.desde_m+'-'+x.hasta_m : 'total'))===tramoCanon(t.tramo) && !t.lado; })[0];
+      if (idA){
+        var li = leerValor(idA.valor_texto, 'tiempo');
+        if (li && li.num!=null && Math.abs(li.num - t.valor_num) > 0.004) out.pares.push({ t:t, va:String(idA.valor_texto), metodoA:idA.metodo||null, tramo:tramoCanon(t.tramo) });
+        return;
+      }
+      var tf = tr[t.fila_id], vals = tf && Array.isArray(tf.tiempos) ? tf.tiempos : [];
       var va = t.serie ? vals[t.serie-1] : null, la = va!=null && va!=='' && va!=='hecha' ? leerValor(va, 'tiempo') : null;
-      if (!la || la.num==null) return;
+      if (!la || la.num==null){ if (t.tramo!=='total' && ta.length) out.pendientes.push({ t:t, va:null }); return; }
       // Con tramos, lados o partes (250 + 150) el atleta da UN valor por toma y no se sabe de qué es.
       if (t.tramo!=='total' || t.lado || t.repeticion){ out.pendientes.push({ t:t, va:va }); return; }
-      if (Math.abs(la.num - t.valor_num) > 0.004) out.pares.push({ t:t, va:String(va) });
+      if (Math.abs(la.num - t.valor_num) > 0.004) out.pares.push({ t:t, va:String(va), metodoA:null, tramo:'total' });
     });
     return out;
+  }
+  function tramosAtletaHTML(s, r){
+    var ta = r && Array.isArray(r.tramos_atleta) ? r.tramos_atleta : [];
+    if (!ta.length) return '';
+    var nomFila = function(fid){ var f = null; (s.bloques||[]).forEach(function(b){ (b.filas||[]).forEach(function(x){ if (x.id===fid) f = x; }); }); return f ? filaTxt(f) : 'fila que ya no está en el plan'; };
+    return '<div class="nota" style="margin-top:6px"><b>Tiempos que identificó el atleta</b><ul class="ac-dif">'+ta.map(function(x){
+      return '<li>'+esc(nomFila(x.fila_id))+' · '+esc([x.serie?'serie '+x.serie:'', x.repeticion?'rep. '+x.repeticion:'', 'tramo '+(x.tramo || (x.desde_m!=null ? x.desde_m+'-'+x.hasta_m : 'total')), x.medida==='paso'?'paso':''].filter(Boolean).join(' · '))+': <b>'+esc(x.valor_texto||'')+'</b> ('+esc(METODO_TXT[x.metodo]||'método no consta')+')</li>'; }).join('')+'</ul></div>';
   }
   function seguimientoHTML(s, aid, r, versiones){
     var L = tomaDe(s.id, aid);
@@ -2458,13 +2491,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (res.pares.length){
       h += '<div class="ac-aviso"><b>Discrepancias con lo que apuntó el atleta</b>'+res.pares.map(function(p){
         var dec = (D.disc||[]).filter(function(x){ return x.dato_id===p.t.id && x.valor_entrenador===p.t.valor_texto && x.valor_atleta===p.va; }).sort(function(a,b){ return a.resuelto_en<b.resuelto_en?1:-1; })[0];
-        return '<div class="ac-disc">'+esc(etiquetaDato(p.t)||'toma')+' · tramo total: atleta <b>'+esc(p.va)+'</b> (método: no consta) · entrenador <b>'+esc(p.t.valor_texto)+'</b> ('+esc(METODO_TXT[p.t.metodo]||'')+')'+
+        return '<div class="ac-disc">'+esc(etiquetaDato(p.t)||'toma')+' · tramo '+esc(p.tramo==='total'?'total':p.tramo)+': atleta <b>'+esc(p.va)+'</b> (método: '+esc(METODO_TXT[p.metodoA]||'no consta')+') · entrenador <b>'+esc(p.t.valor_texto)+'</b> ('+esc(METODO_TXT[p.t.metodo]||'')+')'+
           (dec ? '<div class="nota">Referencia: <b>'+(dec.referencia==='entrenador'?'la del entrenador':'la del atleta')+'</b> · '+(quienRevisa(dec.resuelto_por)==='tú'?'lo decidiste tú':'lo decidió '+esc(quienRevisa(dec.resuelto_por)))+' el '+fechaHora(dec.resuelto_en)+'. Se conservan los dos valores.</div>'
                : '<div><button type="button" class="ac-link" data-disc="'+p.t.id+'|entrenador|'+esc(p.va)+'">Referencia: la del entrenador</button><button type="button" class="ac-link" data-disc="'+p.t.id+'|atleta|'+esc(p.va)+'">Referencia: la del atleta</button></div>')+'</div>';
       }).join('')+'</div>';
     }
     if (res.pendientes.length || (r && r.marcas_texto && L.length)) h += '<div class="nota"><b>Pendiente de vincular:</b> '+
-      (res.pendientes.length ? plural(res.pendientes.length,'dato tuyo','datos tuyos')+' de parciales, tramos o partes no se comparan todavía: la app del atleta solo recoge un tiempo por toma (sin tramos ni partes). Pendiente. ' : '')+
+      (res.pendientes.length ? plural(res.pendientes.length,'dato tuyo','datos tuyos')+' de parciales, tramos o partes sin un dato del atleta con la misma fila, serie, repetición y tramo: no se comparan (nunca por posición). ' : '')+
       (r && r.marcas_texto ? 'Las marcas que el atleta escribió en texto libre no se comparan con las tuyas.' : '')+'</div>';
     h += '<div style="margin-top:6px"><button type="button" class="ac-link" data-tm-detalle="1">Apuntar o corregir…</button><button type="button" class="ac-link" data-tm-hist="1">Ver historial de cambios</button><div id="ac-tm-hist" hidden></div></div></div>';
     return h;
@@ -3137,11 +3170,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       aids.length ? enTrozos(aids, function(ids){ return sb.from('test_resultados').select('*,test_baterias!inner(fecha,sede,temperatura,viento,grupo_id)').in('atleta_id', ids); }) : [],
       aids.length ? enTrozos(aids, function(ids){ return sb.from('rm_atleta').select('*').in('atleta_id', ids).order('fecha_test', { ascending:false }); }) : [],
       aids.length ? enTrozos(aids, function(ids){ return sb.from('atleta_objetivos').select('*').in('atleta_id', ids); }) : [],
-      aids.length ? enTrozos(aids, function(ids){ return sb.from('atletas').select('id,nombre,apellidos,nombre_corto,fecha_nacimiento,pruebas_principales,pruebas_secundarias').in('id', ids); }) : []
+      aids.length ? enTrozos(aids, function(ids){ return sb.from('atletas').select('id,nombre,apellidos,nombre_corto,fecha_nacimiento,pruebas_principales,pruebas_secundarias').in('id', ids); }) : [],
+      aids.length ? enTrozos(aids, function(ids){ return sb.from('resultado_parciales').select('*').in('atleta_id', ids); }) : [],
+      aids.length ? enTrozos(aids, function(ids){ return sb.from('objetivo_parciales').select('*').in('atleta_id', ids); }) : []
     ]);
     [0,1,2,3,4,5].forEach(function(i){ if (r[i] && r[i].error) throw r[i].error; });
     TM = { pruebas:r[0].data||[], temporadas:r[1].data||[], catfed:r[2].data||[], protocolos:r[3].data||[], corrL:r[4].data||[], aliasL:r[5].data||[],
-           marcas:r[6]||[], tests:r[7]||[], rm:r[8]||[], obj:r[9]||[], atl:{}, pid:{}, proto:{}, corr:{}, alias:{} };
+           marcas:r[6]||[], tests:r[7]||[], rm:r[8]||[], obj:r[9]||[], parc:r[11]||[], modelos:r[12]||[], atl:{}, pid:{}, proto:{}, corr:{}, alias:{} };
     TM.pnorm = {}; TM.pruebas.forEach(function(p){ TM.pid[p.id] = p; TM.pnorm[normPrueba(p.nombre)] = p; });
     TM.protocolos.forEach(function(p){ TM.proto[p.id] = p; });
     TM.corrL.forEach(function(c){ TM.corr[c.texto_norm] = c; });
@@ -3162,6 +3197,178 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<small>'+(d>0?'+':'')+numES(Math.round(d*100)/100)+' '+u+' respecto al acordado'+(lim.length?' · orientativo: '+esc(lim.join(', ')):'')+'</small>';
   }
 
+  /* ---------- parciales reales y modelo objetivo ----------
+     Reales: solo lo medido, por intento (nunca se mezclan). Un subtramo forma parte
+     de su tramo (no se suma dos veces). Lo calculado de dos pasos se dice. Las sumas
+     y diferencias son aritmética a la vista, no se guardan. El modelo objetivo se
+     escribe a mano y se marca como modelo, nunca como medición. */
+  var CUADRA = 0.005;
+  function sTxt(n){ return n==null || isNaN(n) ? '—' : fmtValor(Math.round(n*100)/100, 's').replace(' s',''); }
+  function difTxt(a, b){ var d = Math.round((a-b)*100)/100; return Math.abs(a-b) <= CUADRA ? '<span class="tm-ok">cuadra</span>' : '<span class="fx-warn tm-inl">'+(d>0?'+':'')+numES(d)+' s: no cuadra</span>'; }
+  function tramosArbol(L){
+    // Tramos medidos: los de arriba son los que no están dentro de otro; los demás cuelgan de su tramo.
+    var T = L.filter(function(x){ return x.medida==='tramo'; }).slice().sort(function(a,b){ return a.desde_m-b.desde_m || (b.hasta_m-b.desde_m)-(a.hasta_m-a.desde_m); });
+    var top = T.filter(function(x){ return !T.some(function(y){ return y!==x && y.desde_m<=x.desde_m && y.hasta_m>=x.hasta_m && (y.hasta_m-y.desde_m)>(x.hasta_m-x.desde_m); }); });
+    return top.map(function(p){ return { p:p, hijos:T.filter(function(x){ return x!==p && x.desde_m>=p.desde_m && x.hasta_m<=p.hasta_m && top.indexOf(x)===-1; }) }; });
+  }
+  function seguidos(L, desde, hasta){
+    // ¿Cubren [desde, hasta] sin huecos ni solapes?
+    var x = desde; L.slice().sort(function(a,b){ return a.desde_m-b.desde_m; }).forEach(function(t){ x = (x!==null && Number(t.desde_m)===x) ? Number(t.hasta_m) : null; });
+    return x===hasta;
+  }
+  function parcialesHTML(L, total, distancia){
+    if (!L.length) return '';
+    var arbol = tramosArbol(L), pasos = L.filter(function(x){ return x.medida==='paso'; }).sort(function(a,b){ return a.hasta_m-b.hasta_m; });
+    var m0 = L[0], h = [];
+    var tops = arbol.map(function(n){ return n.p; });
+    if (tops.length){
+      var linea = tops.map(function(t){ return numES(t.desde_m)+'–'+numES(t.hasta_m)+' <b>'+sTxt(t.tiempo_s)+'</b>'; }).join(' · ');
+      var suma = tops.reduce(function(s, t){ return s + Number(t.tiempo_s); }, 0);
+      var cub = distancia && seguidos(tops, 0, distancia);
+      h.push('<div>Tramos: '+linea+(cub && total!=null ? ' → suma '+sTxt(suma)+' frente al total '+sTxt(total)+': '+difTxt(suma, total) : cub ? ' → suma '+sTxt(suma) : ' <span class="fx-sin">(no cubren toda la distancia: no se suman)</span>')+'</div>');
+      arbol.forEach(function(n){
+        if (!n.hijos.length) return;
+        var sh = n.hijos.reduce(function(s, t){ return s + Number(t.tiempo_s); }, 0), ok = seguidos(n.hijos, Number(n.p.desde_m), Number(n.p.hasta_m));
+        h.push('<div class="tm-sub2">'+numES(n.p.desde_m)+'–'+numES(n.p.hasta_m)+' por dentro: '+n.hijos.map(function(t){ return numES(t.desde_m)+'–'+numES(t.hasta_m)+' <b>'+sTxt(t.tiempo_s)+'</b>'; }).join(' · ')+
+          (ok ? ' → suma '+sTxt(sh)+' frente a '+sTxt(n.p.tiempo_s)+': '+difTxt(sh, Number(n.p.tiempo_s)) : ' <span class="fx-sin">(no cubren el tramo entero: no se suman)</span>')+'</div>');
+      });
+    }
+    if (pasos.length){
+      var ini = pasos[0].desde_m;
+      h.push('<div>Pasos (acumulado desde '+numES(ini)+' m): '+pasos.map(function(t, i){
+        var prev = i ? pasos[i-1] : null, calc = prev && Number(prev.desde_m)===Number(t.desde_m) ? Number(t.tiempo_s)-Number(prev.tiempo_s) : null;
+        return numES(t.hasta_m)+' m <b>'+sTxt(t.tiempo_s)+'</b>'+(calc!=null ? ' <small class="fx-sin">(tramo '+numES(prev.hasta_m)+'–'+numES(t.hasta_m)+' calculado: '+sTxt(calc)+')</small>' : '');
+      }).join(' · ')+'</div>');
+    }
+    return '<div class="tm-parc">'+h.join('')+'<small>'+esc([METODO_M[m0.metodo] ? 'método '+METODO_M[m0.metodo] : 'método no consta', m0.inicio_crono ? 'cronometraje desde '+m0.inicio_crono : 'inicio del cronometraje no consta'].join(' · '))+'</small></div>';
+  }
+  function parcialesDe(campo, id){ var L = TM.parc.filter(function(x){ return x[campo]===id; }), por = {}; L.forEach(function(x){ (por[x.intento] = por[x.intento] || []).push(x); }); return por; }
+  function bloqueParciales(campo, id, totalDe, distancia){
+    var por = parcialesDe(campo, id), ks = Object.keys(por).sort(function(a,b){ return a-b; });
+    if (!ks.length) return '';
+    return ks.map(function(k){ return '<div class="tm-parc-int">'+(ks.length>1 ? '<b>Intento '+k+'</b> ' : '')+parcialesHTML(por[k], totalDe(Number(k)), distancia)+'</div>'; }).join('');
+  }
+
+  // Intervalos de partida según la prueba: 200 → 4 × 50; 400 → 4 × 100; otras, por la distancia.
+  function presetTramos(dist){
+    if (!dist) return [];
+    var paso = dist<=100 ? (dist<=60 ? 10 : 20) : dist<=300 ? 50 : 100;
+    if (dist===200) paso = 50; if (dist===400) paso = 100;
+    var L = []; for (var x=0; x<dist; x+=paso) L.push([x, Math.min(dist, x+paso)]); return L;
+  }
+  function filaParcial(t){
+    t = t || {};
+    return '<div class="tm-int tm-pfila"><input class="ac-sel" data-p-de value="'+esc(t.desde_m!=null?numES(t.desde_m):'')+'" placeholder="desde" aria-label="Desde (m)"><span>–</span>'+
+      '<input class="ac-sel" data-p-ha value="'+esc(t.hasta_m!=null?numES(t.hasta_m):'')+'" placeholder="hasta" aria-label="Hasta (m)"><span>m</span>'+
+      '<select class="ac-sel" data-p-me><option value="tramo"'+(t.medida!=='paso'?' selected':'')+'>tramo</option><option value="paso"'+(t.medida==='paso'?' selected':'')+'>paso (acumulado)</option></select>'+
+      '<input class="ac-sel" data-p-ti value="'+esc(t.tiempo_s!=null?numES(t.tiempo_s):'')+'" placeholder="tiempo" aria-label="Tiempo (s)"><button type="button" class="ac-link" data-p-quitar>quitar</button></div>';
+  }
+  function leerFilasParc(cont){
+    var L = [], mal = '';
+    cont.querySelectorAll('.tm-pfila').forEach(function(f){
+      var g = function(sel){ return f.querySelector(sel).value.trim().replace(',', '.'); };
+      var sel = f.querySelector('[data-p-me]'), de = g('[data-p-de]'), ha = g('[data-p-ha]'), ti = g('[data-p-ti]'), me = sel ? sel.value : 'tramo';
+      if (ti==='' ) return;                               // sin tiempo: no se guarda (no es un cero)
+      if (de==='' || ha==='' || isNaN(de) || isNaN(ha) || Number(ha) <= Number(de)){ mal = 'Revisa «desde» y «hasta» (hasta mayor que desde).'; return; }
+      var ts = /^\d+:\d{2}([.,]\d+)?$/.test(ti) ? Number(ti.split(':')[0])*60 + Number(ti.split(':')[1]) : Number(ti);
+      if (isNaN(ts) || ts <= 0){ mal = 'Un tiempo no se entiende: '+ti; return; }
+      L.push({ desde_m:Number(de), hasta_m:Number(ha), medida:me, tiempo_s:ts });
+    });
+    return { L:L, mal:mal };
+  }
+  function dlgParciales(campo, reg, nombre, total, dist){
+    var por = parcialesDe(campo, reg.id), ks = Object.keys(por).map(Number).sort(function(a,b){ return a-b; });
+    var intento = ks[0] || 1;
+    var pintaFilas = function(){ var L = por[intento] || []; return (L.length ? L.slice().sort(function(a,b){ return a.desde_m-b.desde_m || a.hasta_m-b.hasta_m; }) : presetTramos(dist).map(function(x){ return { desde_m:x[0], hasta_m:x[1], medida:'tramo' }; })).map(filaParcial).join(''); };
+    var L0 = por[intento] || [];
+    var d = dialogo('<h3>Parciales · '+esc(nombre)+'</h3><p>Solo lo medido, de UN intento: no se mezclan intentos ni se deduce un tramo que no se midió (un 0–10 no sale de un 0–20). «Tramo» es el tiempo de ese tramo; «paso», el acumulado desde el inicio del cronometraje. Los subtramos (0–10, 10–30, 30–50) van dentro de su tramo y no se suman dos veces. Una fila sin tiempo no se guarda.</p>'+
+      '<div class="ac-int"><label>Intento<select id="tmp-int">'+ks.map(function(k){ return '<option value="'+k+'">Intento '+k+'</option>'; }).join('')+'<option value="'+((ks[ks.length-1]||0)+1)+'"'+(ks.length?'':' selected')+'>'+(ks.length?'Otro intento (nuevo)':'Intento 1')+'</option></select></label>'+
+      '<label>Método<select id="tmp-me"><option value="">no consta</option>'+['manual','fotocelulas','electronico_competicion','video','otro'].map(function(k){ return '<option value="'+k+'"'+(L0[0] && L0[0].metodo===k?' selected':'')+'>'+esc(METODO_M[k])+'</option>'; }).join('')+'</select></label>'+
+      '<label class="ancho">Inicio del cronometraje<input id="tmp-ic" value="'+esc(L0[0] && L0[0].inicio_crono || '')+'" placeholder="disparo, primer movimiento, célula en 0 m…"></label></div>'+
+      '<div class="tm-acc" style="margin-top:8px">'+(dist ? '<button type="button" class="ac-link" data-p-preset="1">Tramos de '+esc(numES(presetTramos(dist)[0] ? presetTramos(dist)[0][1]-presetTramos(dist)[0][0] : 0))+' m</button>' : '')+
+        '<button type="button" class="ac-link" data-p-sub="1">Subdividir 0–50 en 0–10 · 10–30 · 30–50</button><button type="button" class="ac-link" data-p-mas="1">＋ fila</button></div>'+
+      '<div id="tmp-filas">'+pintaFilas()+'</div><div class="nota" id="tmp-suma"></div>'+
+      '<div class="ac-int"><label class="ancho">Por qué se cambia (si corriges)<input id="tmp-mo"></label></div>'+
+      '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-p-ok="1">Guardar</button></div>');
+    d.classList.add('ancho');
+    var cont = document.getElementById('tmp-filas');
+    var suma = function(){ var r = leerFilasParc(cont); document.getElementById('tmp-suma').innerHTML = r.mal ? esc(r.mal) : r.L.length ? parcialesHTML(r.L, total, dist) : 'Sin tiempos todavía.'; };
+    if (ks.length) document.getElementById('tmp-int').value = String(intento);
+    suma();
+    d.addEventListener('input', suma); d.addEventListener('change', function(ev){
+      if (ev.target.id==='tmp-int'){ intento = Number(ev.target.value); cont.innerHTML = pintaFilas(); suma(); }
+    });
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      if (ev.target.closest('[data-p-quitar]')){ ev.target.closest('.tm-pfila').remove(); suma(); return; }
+      if (ev.target.closest('[data-p-mas]')){ cont.insertAdjacentHTML('beforeend', filaParcial({})); return; }
+      if (ev.target.closest('[data-p-preset]')){ cont.insertAdjacentHTML('beforeend', presetTramos(dist).map(function(x){ return filaParcial({ desde_m:x[0], hasta_m:x[1], medida:'tramo' }); }).join('')); return; }
+      if (ev.target.closest('[data-p-sub]')){ cont.insertAdjacentHTML('beforeend', [[0,10],[10,30],[30,50]].map(function(x){ return filaParcial({ desde_m:x[0], hasta_m:x[1], medida:'tramo' }); }).join('')); return; }
+      var b = ev.target.closest('[data-p-ok]'); if (!b) return;
+      var r = leerFilasParc(cont); if (r.mal){ avisar(r.mal, true); return; }
+      var claves = {}, rep = r.L.some(function(x){ var k = x.desde_m+'|'+x.hasta_m+'|'+x.medida; if (claves[k]) return true; claves[k] = 1; return false; });
+      if (rep){ avisar('Hay dos filas con el mismo tramo.', true); return; }
+      var me = document.getElementById('tmp-me').value, ic = document.getElementById('tmp-ic').value.trim();
+      var base = (por[intento] || []).map(function(x){ return { id:x.id, version:x.version }; });
+      var p = { intento:intento, base:base, motivo:document.getElementById('tmp-mo').value.trim(), parciales: r.L.map(function(x){ return Object.assign(x, { metodo:me, inicio_crono:ic }); }) };
+      p[campo] = reg.id;
+      b.disabled = true;
+      var res = await sb.rpc('parciales_guardar', { p:p });
+      if (res.error){ b.disabled = false; avisar('No se pudo: '+res.error.message, true); return; }
+      if (res.data && res.data.ok===false){ cerrarDialogo(); avisar(res.data.mensaje, true); recargar(); return; }
+      cerrarDialogo(); avisar('Parciales guardados (intento '+intento+')'); recargar();
+    });
+  }
+
+  /* Modelo objetivo: total, tramos y subdivisiones, pasos acumulados, suma y diferencia. */
+  function modeloHTML(mo, dist){
+    if (!mo) return '';
+    var L = (mo.tramos||[]).map(function(t){ return { desde_m:Number(t.desde_m), hasta_m:Number(t.hasta_m), tiempo_s: t.tiempo_s==null ? null : Number(t.tiempo_s), medida:'tramo' }; }).filter(function(t){ return t.tiempo_s!=null; });
+    var arbol = tramosArbol(L), tops = arbol.map(function(n){ return n.p; }), acum = 0;
+    var suma = tops.reduce(function(s, t){ return s + t.tiempo_s; }, 0);
+    var pasos = tops.slice().sort(function(a,b){ return a.desde_m-b.desde_m; }).map(function(t){ acum += t.tiempo_s; return numES(t.hasta_m)+' m '+sTxt(acum); }).join(' · ');
+    return '<div class="tm-parc tm-modelo"><b>Modelo objetivo</b> <span class="fx-sin">(no son mediciones'+(mo.estado!=='vigente'?' · '+esc(mo.estado):'')+')</span>'+
+      '<div>Tramos: '+(tops.length ? tops.map(function(t){ return numES(t.desde_m)+'–'+numES(t.hasta_m)+' <b>'+sTxt(t.tiempo_s)+'</b>'; }).join(' · ') : '<span class="fx-sin">sin tramos</span>')+
+      (tops.length ? (dist && !seguidos(tops, 0, dist) ? ' → suma de lo definido '+sTxt(suma)+' <span class="fx-sin">(los tramos no cubren los '+numES(dist)+' m: no se compara con el total)</span>'
+        : ' → suma '+sTxt(suma)+(mo.tiempo_total_s!=null ? ' frente al total '+sTxt(mo.tiempo_total_s)+': '+difTxt(suma, Number(mo.tiempo_total_s)) : '')) : '')+'</div>'+
+      arbol.filter(function(n){ return n.hijos.length; }).map(function(n){ var sh = n.hijos.reduce(function(s, t){ return s + t.tiempo_s; }, 0);
+        return '<div class="tm-sub2">'+numES(n.p.desde_m)+'–'+numES(n.p.hasta_m)+' por dentro: '+n.hijos.map(function(t){ return numES(t.desde_m)+'–'+numES(t.hasta_m)+' <b>'+sTxt(t.tiempo_s)+'</b>'; }).join(' · ')+' → suma '+sTxt(sh)+' frente a '+sTxt(n.p.tiempo_s)+': '+difTxt(sh, n.p.tiempo_s)+'</div>'; }).join('')+
+      (pasos ? '<div>Pasos acumulados: '+pasos+'</div>' : '')+
+      '<small>'+esc((mo.fundamento ? 'Fundamento: '+mo.fundamento+' · ' : 'Fundamento sin registrar · ')+'definido el '+fechaHora(mo.creado_en)+(mo.version>1 ? ' · '+plural(mo.version-1,'revisión','revisiones') : ''))+'</small></div>';
+  }
+  function dlgModelo(ac){
+    var mo = TM.modelos.filter(function(x){ return x.objetivo_id===ac.id; })[0] || null, p = TM.pid[ac.prueba_id] || {}, dist = Number(p.distancia_m)||0;
+    var tramos = mo ? mo.tramos : presetTramos(dist).map(function(x){ return { desde_m:x[0], hasta_m:x[1] }; });
+    var d = dialogo('<h3>Modelo de parciales · '+esc(ac.prueba)+' · '+esc(ac.temporada)+'</h3><p>Es un modelo objetivo, no una medición. Se escribe a mano: aquí no se inventan coeficientes ni proyecciones. Las sumas y las diferencias se calculan solas para comprobar que cuadra.</p>'+
+      '<div class="ac-int"><label>Tiempo objetivo total (s)<input id="tmo-to" value="'+esc(mo && mo.tiempo_total_s!=null ? numES(mo.tiempo_total_s) : ac.objetivo_num!=null ? numES(ac.objetivo_num) : '')+'"></label>'+
+      '<label>Estado<select id="tmo-es">'+['borrador','vigente','descartado'].map(function(k){ return '<option'+((mo ? mo.estado : 'borrador')===k?' selected':'')+'>'+k+'</option>'; }).join('')+'</select></label>'+
+      '<label class="ancho">Fundamento (en qué se basa)<input id="tmo-fu" value="'+esc(mo && mo.fundamento || '')+'"></label></div>'+
+      '<div class="tm-acc" style="margin-top:8px"><button type="button" class="ac-link" data-p-sub="1">Subdividir 0–50 en 0–10 · 10–30 · 30–50</button><button type="button" class="ac-link" data-p-mas="1">＋ tramo</button></div>'+
+      '<div id="tmo-filas">'+tramos.map(function(t){ return filaParcial(Object.assign({ medida:'tramo' }, t)); }).join('')+'</div><div class="nota" id="tmo-suma"></div>'+
+      (mo && mo.historial && mo.historial.length ? '<details class="ac-dif2"><summary>Revisiones ('+mo.historial.length+')</summary><ul class="ac-dif">'+mo.historial.map(function(x){ return '<li>'+esc(fechaHora(x.reemplazado_en))+': total '+esc(sTxt(x.tiempo_total_s))+' · '+esc(x.estado)+(x.fundamento?' · «'+esc(x.fundamento)+'»':'')+'</li>'; }).join('')+'</ul></details>' : '')+
+      '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-mo-ok="1">Guardar el modelo</button></div>');
+    d.classList.add('ancho');
+    d.querySelectorAll('[data-p-me]').forEach(function(x){ x.remove(); });   // en el modelo todo son tramos
+    var cont = document.getElementById('tmo-filas');
+    var leer = function(){ var r = leerFilasParc(cont), to = document.getElementById('tmo-to').value.trim().replace(',', '.'); return { r:r, total: to==='' || isNaN(to) ? null : Number(to) }; };
+    var suma = function(){ var x = leer(); document.getElementById('tmo-suma').innerHTML = x.r.mal ? esc(x.r.mal) : modeloHTML({ tramos:x.r.L, tiempo_total_s:x.total, estado:'vigente', creado_en:new Date().toISOString(), version:1 }, dist); };
+    suma(); d.addEventListener('input', suma);
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      if (ev.target.closest('[data-p-quitar]')){ ev.target.closest('.tm-pfila').remove(); suma(); return; }
+      if (ev.target.closest('[data-p-mas]')){ cont.insertAdjacentHTML('beforeend', filaParcial({ medida:'tramo' })); cont.lastElementChild.querySelector('[data-p-me]').remove(); return; }
+      if (ev.target.closest('[data-p-sub]')){ cont.insertAdjacentHTML('beforeend', [[0,10],[10,30],[30,50]].map(function(x){ return filaParcial({ desde_m:x[0], hasta_m:x[1], medida:'tramo' }); }).join('')); cont.querySelectorAll('[data-p-me]').forEach(function(s){ s.remove(); }); return; }
+      var b = ev.target.closest('[data-mo-ok]'); if (!b) return;
+      var x = leer(); if (x.r.mal){ avisar(x.r.mal, true); return; }
+      b.disabled = true;
+      var res = await sb.rpc('objetivo_parciales_guardar', { p:{ objetivo_id:ac.id, version_base: mo ? mo.version : null, tiempo_total_s:x.total, tramos:x.r.L.map(function(t){ return { desde_m:t.desde_m, hasta_m:t.hasta_m, tiempo_s:t.tiempo_s }; }),
+        fundamento:document.getElementById('tmo-fu').value.trim(), estado:document.getElementById('tmo-es').value } });
+      if (res.error){ b.disabled = false; avisar('No se pudo: '+res.error.message, true); return; }
+      if (res.data && res.data.ok===false){ cerrarDialogo(); avisar(res.data.mensaje, true); recargar(); return; }
+      cerrarDialogo(); avisar('Modelo de parciales guardado'); recargar();
+    });
+  }
+
   /* ---------- por atleta (también en su ficha) ---------- */
   function tmAtletaHTML(aid){
     var at = TM.atl[aid] || {}, fnac = at.fecha_nacimiento, tem = temporadaHoy();
@@ -3174,13 +3381,19 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (!g.comp[kc]){ g.comp[kc] = { pr:pr, L:[] }; g.ordenC.push(kc); }
       g.comp[kc].L.push(m);
     });
+    if (tem) TM.obj.filter(function(o){ return o.atleta_id===aid && o.temporada_id===tem.id && o.tipo==='acordado' && o.prueba_id && !grupos[o.prueba_id]; }).forEach(function(o){
+      grupos[o.prueba_id] = { pr:{ id:o.prueba_id, p:TM.pid[o.prueba_id], cond:{}, estado:'catalogo' }, comp:{}, ordenC:[] }; orden.push(o.prueba_id);
+    });
     var marcasH = orden.length ? orden.map(function(kp){
       var g = grupos[kp], pr = g.pr, nombreP = pr.p ? pr.p.nombre : pr.texto;
       var obj = tem && pr.id ? objetivosDe(aid, pr.id, tem.id) : [], ac = obj.filter(function(o){ return o.tipo==='acordado'; })[0], pa = obj.filter(function(o){ return o.tipo==='atleta'; })[0];
       var cab = '<div class="tm-pr"><b>'+esc(nombreP)+'</b>'+(pr.id ? '' : ' '+tag('t-rev', pr.estado==='ambigua' ? 'prueba ambigua: sin confirmar' : 'prueba sin confirmar en el catálogo'))+
         (g.ordenC.length>1 ? ' <span class="fx-warn tm-inl">'+g.ordenC.length+' grupos con distintas condiciones o método: se ven juntos, no se comparan</span>' : '')+
         (tem && pr.id ? '<span class="tm-obj">Objetivo '+esc(tem.nombre)+': '+(ac ? '<b>'+esc(ac.objetivo_texto||'—')+'</b> acordado'+(condTxt(ac.condiciones_det)?' ('+esc(condTxt(ac.condiciones_det))+')':'') : '<span class="fx-sin">acordado sin registrar</span>')+
-          (pa ? ' · propuesta del atleta: '+esc(pa.objetivo_texto||'—')+(pa.estado==='descartado'?' (retirada)':'') : '')+'</span>' : '')+'</div>';
+          (pa ? ' · propuesta del atleta: '+esc(pa.objetivo_texto||'—')+(pa.estado==='descartado'?' (retirada)':'') : '')+
+          (ac && pr.p && pr.p.unidad==='tiempo' ? ' · <button type="button" class="ac-link" data-tm-modelo="'+ac.id+'">Modelo de parciales…</button>' : '')+'</span>' : '')+'</div>'+
+        (ac ? modeloHTML(TM.modelos.filter(function(x){ return x.objetivo_id===ac.id; })[0], pr.p && Number(pr.p.distancia_m)) : '');
+      if (!g.ordenC.length) return cab + '<p class="fx-sin">Sin resultados de esta prueba.</p>';
       return cab + g.ordenC.map(function(kc){
         var c = g.comp[kc], m0 = c.L[0];
         return '<div class="tm-cg"><div class="tm-cgc">'+esc(condTxt(c.pr.cond) || 'condiciones no constan')+' · método: '+esc(METODO_M[m0.metodo] || 'no consta')+'</div>'+
@@ -3193,7 +3406,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
               '<td>'+catHTML(m, fnac, m.fecha)+'</td>'+
               '<td>'+(m.fuente_url ? '<a class="ac-link" href="'+esc(m.fuente_url)+'" target="_blank" rel="noopener">acta ↗</a>' : '')+(m.fuente_texto ? '<small>'+esc(m.fuente_texto)+'</small>' : '')+(!m.fuente_url && !m.fuente_texto ? '<span class="fx-sin">no consta</span>' : '')+
                 (m.version>1 ? '<small>corregido ('+(m.version-1)+')</small>' : '')+'</td>'+
-              '<td><button type="button" class="ac-link" data-tm-res="'+m.id+'">Corregir</button></td></tr>';
+              '<td><button type="button" class="ac-link" data-tm-res="'+m.id+'">Corregir</button>'+(c.pr.p && c.pr.p.unidad==='tiempo' ? ' <button type="button" class="ac-link" data-tm-parc="m:'+m.id+'">Parciales</button>' : '')+'</td></tr>'+
+              (function(){ var bp = bloqueParciales('marca_id', m.id, function(k){ return k===1 ? Number(m.tiempo_segundos) : null; }, c.pr.p && Number(c.pr.p.distancia_m)); return bp ? '<tr class="tm-sub"><td colspan="7">'+bp+'</td></tr>' : ''; })();
           }).join('')+'</table></div>';
       }).join('');
     }).join('') : '<p class="fx-sin">Sin resultados registrados.</p>';
@@ -3211,7 +3425,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                    : (t.intentos||[]).map(function(v){ return numES(v); }).join(' · ')+' <span class="fx-sin">(estado no consta)</span>';
           return '<tr><td>'+esc(fAnio(b.fecha))+(b.sede?'<small>'+esc(b.sede)+'</small>':'')+'</td><td><b>'+(t.no_asiste ? '—' : t.mejor!=null ? esc(numES(t.mejor))+(un?' '+esc(un):'') : '<span class="fx-sin">sin intento válido</span>')+'</b></td>'+
             '<td>'+ints+'</td><td>'+esc(METODO_M[t.metodo]||'método no consta')+(b.temperatura!=null?' · '+esc(numES(b.temperatura))+' °C':'')+(b.viento!=null?' · viento '+esc(numES(b.viento)):'')+(condTxt(t.condiciones)?' · '+esc(condTxt(t.condiciones)):'')+
-            (t.version>1?'<small>corregido ('+(t.version-1)+')</small>':'')+'</td><td><button type="button" class="ac-link" data-tm-test="'+t.id+'">Corregir</button></td></tr>';
+            (t.version>1?'<small>corregido ('+(t.version-1)+')</small>':'')+'</td><td><button type="button" class="ac-link" data-tm-test="'+t.id+'">Corregir</button>'+((pro||{}).magnitud==='tiempo' ? ' <button type="button" class="ac-link" data-tm-parc="t:'+t.id+'">Parciales</button>' : '')+'</td></tr>'+
+            (function(){ var dist = pro && pro.tramo_hasta_m!=null ? Number(pro.tramo_hasta_m) - Number(pro.tramo_desde_m||0) : null; var bp = bloqueParciales('test_resultado_id', t.id, function(k){ var it = det && det[k-1]; return it && it.estado==='valido' && it.valor!=null ? Number(it.valor) : null; }, dist);
+              return bp ? '<tr class="tm-sub"><td colspan="5">'+bp+'</td></tr>' : ''; })();
         }).join('')+'</table>';
     }).join('') : '<p class="fx-sin">Sin tests registrados.</p>';
 
@@ -3527,6 +3743,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (ds.tmRes){ dlgResultado(null, TM.marcas.filter(function(m){ return m.id===ds.tmRes; })[0]); return true; }
     if (ds.tmTest){ dlgTest(null, TM.tests.filter(function(t){ return t.id===ds.tmTest; })[0]); return true; }
     if (ds.tmRm){ dlgRM(null, TM.rm.filter(function(x){ return x.id===ds.tmRm; })[0]); return true; }
+    if (ds.tmParc){
+      var es = ds.tmParc.charAt(0)==='m', idp = ds.tmParc.slice(2);
+      if (es){ var mk = TM.marcas.filter(function(x){ return x.id===idp; })[0], prk = pruebaDe(mk); dlgParciales('marca_id', mk, (prk.p ? prk.p.nombre : mk.prueba)+' · '+(mk.tiempo_display||'')+' · '+fAnio(mk.fecha), Number(mk.tiempo_segundos), prk.p && Number(prk.p.distancia_m)); }
+      else { var tk = TM.tests.filter(function(x){ return x.id===idp; })[0], pk = TM.proto[tk.protocolo_id] || {}; dlgParciales('test_resultado_id', tk, (pk.nombre||tk.test)+' · '+fAnio(tk._fecha), null, pk.tramo_hasta_m!=null ? Number(pk.tramo_hasta_m) - Number(pk.tramo_desde_m||0) : null); }
+      return true;
+    }
+    if (ds.tmModelo){ dlgModelo(TM.obj.filter(function(o){ return o.id===ds.tmModelo; })[0]); return true; }
     if (ds.tmProto){ dlgProtocolo(ds.tmProto==='nuevo' ? null : TM.proto[ds.tmProto]); return true; }
     if (ds.tmCorrBuscar){ b.disabled = true; var rb = await sb.rpc('pruebas_correspondencias_actualizar'); if (rb.error) avisar('No se pudo: '+rb.error.message, true); else avisar('Textos revisados: '+rb.data); recargar(); return true; }
     if (ds.tmCorrOk || ds.tmCorrNo){
@@ -3877,7 +4100,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (ds.tmCerrar){ cerrarToma(false); return; }
     if (ds.tmReint){ Object.keys(TOMA.celdas).forEach(function(k){ if (TOMA.celdas[k].est==='error') TOMA.celdas[k].est = 'sucio'; }); guardarToma(); return; }
     if (ds.tmN){ var pn = ds.tmN.split('|'), op = TOMA.opc[pn[0]]; op.n = Math.max(1, Math.min(12, op.n + (+pn[1]))); pintarTomaConservando(); return; }
-    if (ds.tmTramo){ var nom = (prompt('Nombre del tramo (p. ej. «parcial 200», «entrada 20 m», «tramo 30 m»):')||'').trim().slice(0,40); if (nom && TOMA.opc[ds.tmTramo].tramos.indexOf(nom)===-1){ TOMA.opc[ds.tmTramo].tramos.push(nom); pintarTomaConservando(); } return; }
+    if (ds.tmTramo){ var nom = (prompt('Tramo en metros «desde-hasta» (p. ej. 0-30, 30-60), que es como el atleta lo identifica en su app; o un nombre si no se mide por distancia:')||'').trim().slice(0,40); if (nom && TOMA.opc[ds.tmTramo].tramos.indexOf(nom)===-1){ TOMA.opc[ds.tmTramo].tramos.push(nom); pintarTomaConservando(); } return; }
     if (ds.tmMetodoTodos){
       var n = 0;
       Object.keys(TOMA.celdas).forEach(function(k){ var c = TOMA.celdas[k]; if (c.id && c.dato && c.dato.magnitud==='tiempo' && c.dato.metodo!==TOMA.metodo){ c.metodoNuevo = TOMA.metodo; c.o = c.o || c.dato; c.est = 'sucio'; n++; } });

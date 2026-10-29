@@ -264,6 +264,44 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   parciales. Las pruebas del perfil están escritas a mano («400mv», «60») y las
   marcas con el nombre oficial: la ficha no las empareja sola.
 
+**Tests y marcas (29-oct, migs 472 y 473):**
+- `portal/academia/?v=marcas` (cuarta vista y entrada del menú del mundo): por atleta,
+  por prueba, protocolos y catálogo. La ficha del atleta usa los mismos datos y el
+  mismo dibujo.
+- **Temporada de planificación** (2026/27, 2027/28, 2028/29) con fechas
+  configurables (las cambia administración); NO es el año federativo. **Categoría
+  federativa** según la fecha de cada resultado con la regla de la RFEA (temporada =
+  año natural; 2025 y 2026 verificadas en las circulares 161/2024 y 181/2025; otro año,
+  «provisional»). Lo existente no se reclasifica: si un resultado no la tiene
+  guardada, se enseña «calculada ahora».
+- **Catálogo de pruebas** compartido (pruebas + alias + correspondencias): el texto
+  original no se toca; exactas, propuestas («400mv» → 400 m vallas), ambiguas («60»:
+  lisos o vallas, espera a una persona) y sin catálogo. La altura de valla y el peso
+  del implemento van como condiciones explícitas.
+- **Objetivos**: un único registro (`atleta_objetivos`), por temporada de
+  planificación; propuesta del atleta (desde «Mis objetivos») aparte del acordado.
+  Ya no se crean marcas de tipo «objetivo» (había 0).
+- **Resultados** (`marcas_atleta`): competición, test o entreno, estimado (con cómo
+  se estimó); valor y unidad, fecha, método, viento, condiciones, acta, autor,
+  categoría con su origen, huella de importación (no se duplica), versión e historial.
+- **Protocolos** con versión (con resultados no se reescriben: versión nueva);
+  intentos válidos / nulos / incompletos (lo ausente no es cero; el mejor sale solo
+  de los válidos). **RM** medido o estimado (fórmula y datos), variante, recorrido,
+  lateralidad; un estimado nunca calcula kilos de entreno.
+- **Comparación**: mismo grupo = misma prueba, condiciones y método; si no, se ven
+  juntos con la limitación. Diferencia con el objetivo acordado solo como resta, con
+  su limitación.
+- **Parciales reales** (`resultado_parciales`): por intento (no se mezclan), tramo
+  (consecutivo) o paso (acumulado), método e inicio del cronometraje; subtramos dentro
+  de su tramo (no se suman dos veces); sumas y «cuadra / no cuadra»; lo calculado de
+  dos pasos se dice. **Modelo objetivo** (`objetivo_parciales`): total, tramos,
+  subdivisiones, pasos, suma y diferencia; fundamento, quién y revisiones; nunca
+  como medición.
+- **Tiempos por tramo del atleta** (`registros_sesion.tramos_atleta`): en su
+  feedback (cuadro de marcas) identifica fila, serie, repetición y tramo; se compara
+  con la toma del entrenador dato a dato (tramo canónico «desde-hasta»). Nunca por
+  posición: lo que no se identifica queda «pendiente de vincular».
+
 ## Navegación
 
 ```
