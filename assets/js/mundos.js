@@ -201,6 +201,7 @@
         {g:'Entrenamiento', t:'Pasar lista', i:'check', url:B+'portal/entrenador/#lista', d:'Quién ha venido hoy.'},
         {g:'Atletas', t:'Atletas', i:'people', url:B+'admin/atletas/?grupo=c288b979-cd00-4abb-96da-30fa997ef297', d:'Las fichas de los atletas de la Academia.'},
         {g:'Atletas', t:'Observaciones', i:'newspaper', url:B+'portal/entrenador/#notas', d:'Tus notas privadas sobre cada atleta.'},
+        {key:'carga', g:'Entrenamiento', t:'Carga y contenidos', i:'chart', url:B+'portal/academia/?v=carga', d:'Primera versión (grupo de prueba): previsto, confirmado y cobertura por atleta y semana.'},
         {key:'marcas', g:'Competición y tests', t:'Tests y marcas', i:'chart', url:B+'portal/academia/?v=marcas', d:'Resultados, tests con su protocolo, RM y objetivos, por atleta y por prueba.'},
         {key:'comp', g:'Competición y tests', t:'Competiciones', i:'flag', url:B+'portal/academia/?v=comp', d:'El calendario del grupo: pruebas, estado, prioridad y propósito de cada atleta, y las mínimas.'}
       ] },

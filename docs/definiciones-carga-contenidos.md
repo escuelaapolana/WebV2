@@ -1,10 +1,35 @@
-# Carga y contenidos — definiciones para aprobar (PROPUESTA v2, sin programar)
+# Carga y contenidos — definiciones (v3: decisiones cerradas el 29-oct)
 
 > 29-oct-2026 · Parte del [modelo v2](modelo-datos-seguimiento.md) y de los
-> [ejemplos ya revisados](ejemplos-calculo-academia.md). **Nada de esto se calcula
-> todavía ni se aplica a sesiones reales**: primero se aprueban las reglas.
+> [ejemplos](ejemplos-calculo-academia.md). **v3**: las diez decisiones cerradas (§11)
+> y los ajustes generales (§0). Primera versión **solo con el grupo PRUEBA**: sin
+> índices globales, recomendaciones, proyecciones, importación de Excel ni
+> clasificación retrospectiva de lo real.
 > Objetivo: ver cuánto se ha trabajado de cada contenido y **con qué calidad de
 > información**, sin inventar una precisión que los registros no tienen.
+
+## 0. Ajustes generales (cerrados)
+
+1. **Confirmación por magnitud.** Cada magnitud se confirma por separado. «3×5
+   sentadillas hechas» confirma **15 repeticiones** con **carga desconocida**. Apuntar
+   solo «80 kg» confirma la carga de esa serie, **no** las repeticiones previstas.
+2. **Total confirmado registrado.** Resolver lo obligatorio no demuestra que se sepa
+   todo lo realizado (puede haber opcionales, sustituciones o trabajo adicional). Hasta
+   cerrar la ejecución se escribe **«total confirmado registrado»**, nunca «total
+   realizado» como si fuera exhaustivo.
+3. **Fuentes duplicadas.** El mismo esfuerzo apuntado por el atleta y por el
+   entrenador **cuenta una vez**. Si no coinciden y no está resuelto, queda **en
+   discrepancia** a la vista: no se suman los dos ni se elige uno en silencio.
+4. **Plan de referencia.** Para comparar se usa **la versión vinculada al registro**.
+   Sin registro, el previsto es el **plan vigente**, dicho así («plan vigente, sin
+   respuesta»), no como plan respondido.
+5. **Prescrito, declarado, medido, estimado.** Se guardan y enseñan por separado.
+   Una distancia prescrita y confirmada es «prescrita · confirmada», **no** una
+   medición GPS. Los km sacados de minutos y ritmo son **estimados**.
+6. **Sesión declarada «completa»** (propuesta nueva, a confirmar): confirma lo
+   **obligatorio** de su versión como «hecho» (fuente: declaración global de la
+   sesión). No confirma opcionales, ni kg, ni tiempos, ni recuperaciones. «A medias»
+   o un % no confirma nada por fila: queda **sin concretar**.
 
 ## 1. Tres cosas separadas en cada dato
 
@@ -18,8 +43,13 @@ Cada cantidad se guarda y se enseña con tres capas que **no se mezclan**:
 
 - **Una clasificación pendiente no esconde la cantidad**: «60 m confirmados ·
   objetivo pendiente».
-- Estados de la clasificación: `propuesta_auto` · `pendiente_revision` · `revisada` ·
-  `manual` (modelo v2 §2). Cambiarla deja historial y no toca la cantidad.
+- Estado de la clasificación: **declarada** (la dice el entrenador en el plan: no
+  necesita una segunda aprobación idéntica) · **propuesta** (lectura automática del
+  texto: hay que revisarla) · **revisada** (el entrenador la confirmó o la corrigió) ·
+  **pendiente** (no hay con qué decidir). Cambiarla deja historial y no toca la
+  cantidad.
+- **Posición en la sesión** (calentamiento · principal · recuperación entre esfuerzos ·
+  vuelta a la calma) va **aparte del objetivo**: dónde se hace no es para qué sirve.
 - **Cada unidad va por separado** (m, min, reps, series, kg, saltos, contactos,
   intentos, vallas, lanzamientos). No hay un «volumen» ni una «carga» únicos.
 - **Intención ≠ respuesta.** El objetivo es la **intención prevista** (la escribe o la
@@ -40,9 +70,12 @@ Cada cantidad se guarda y se enseña con tres capas que **no se mezclan**:
 
 - **Lo confirmado puede ser menor, igual o mayor que lo previsto.** Lo de más se
   enseña como **adicional**, separado; nunca se recorta al plan.
-- **El total realizado** de una sesión o semana solo es **conocido** cuando cada parte
-  prevista está confirmada o declarada no realizada. Si no, se escribe **«480 m
-  confirmados; total realizado desconocido»**.
+- Se escribe **«total confirmado registrado»** (§0.2): aunque todo lo obligatorio
+  tenga resultado conocido, puede haber opcionales, sustituciones o trabajo adicional
+  sin apuntar. Si falta parte de lo obligatorio, además: **«480 m confirmados; total
+  realizado desconocido»**.
+- **En discrepancia**: lo que atleta y entrenador apuntan distinto y no está
+  resuelto; no entra en confirmado hasta resolverlo (§0.3).
 - **Lo que falta nunca es cero** ni se rellena con el plan. «Sin datos» no es «no
   hecho».
 - Lo **opcional** solo cuenta si se confirma; si no, no está «pendiente» de nada.
@@ -96,6 +129,8 @@ Para todos los objetivos de carrera: **previsto** = la fila de la versión respo
   carrera · 60 m entrada progresiva · 180 m de velocidad máxima.
 - **Ambiguo**: B1 «2×30 flying (20+30)» sin objetivo → 100 m de carrera (40 m entrada
   progresiva + 60 m lanzados), **objetivo de los 60 m pendiente**.
+- **En realizado** significa «trabajo hecho con intención de Vmáx», no que se haya
+  demostrado alcanzar su velocidad máxima.
 
 ### 4.3 Resistencia a la velocidad
 - **Incluye**: lo que tenga ese objetivo escrito (decisión 2).
@@ -113,6 +148,11 @@ Para todos los objetivos de carrera: **previsto** = la fila de la versión respo
 - **Una sola vez**: el tramo es ritmo específico, no también resistencia.
 - **Ejemplo**: C1 «2×(250+150) 34–35″ / 19,5–20,5″ · Ritmo 400» → 800 m de ritmo
   específico.
+- **Tres cosas aparte**: **objetivo declarado** (ritmo específico de 400, si el
+  entrenador lo escribe, aunque no haya marca objetivo en la ficha) · **referencia de
+  ritmo** (conocida o pendiente) · **adecuación del ritmo** (no evaluada). Sin
+  referencia no se validan ni se calculan ritmos, pero la intención declarada se
+  conserva.
 - **Ambiguo**: el mismo texto sin objetivo ni referencia → 800 m, objetivo pendiente.
 
 ### 4.5 Glucolítico (solo intención)
@@ -128,7 +168,8 @@ Para todos los objetivos de carrera: **previsto** = la fila de la versión respo
 - **Unidad**: **min**; m solo si se miden (o km **estimados** con el ritmo, marcados
   como estimación, H2).
 - **Datos**: duración; distancia medida o ritmo.
-- **Una sola vez**: el trote de recuperación va en minutos (decisión 7).
+- **Una sola vez**: el trote de recuperación va aparte, como **recuperación entre
+  esfuerzos** (decisión 7).
 - **Ejemplo**: C2 «5×1000 en 3:25–3:30 // 2′ trote» → 5.000 m + 8 min de trote.
 - **Ambiguo**: «20′ CC» sin ritmo → 20 min, sin km.
 
@@ -141,7 +182,11 @@ Para todos los objetivos de carrera: **previsto** = la fila de la versión respo
 
 ## 5. Técnica: ejercicios técnicos y carreras con objetivo técnico
 
-Dos cosas distintas; la palabra «técnica» **no quita la distancia de carrera**:
+Dos cosas distintas; la palabra «técnica» **no quita la distancia de carrera**.
+Cuando el texto no permite distinguirlas, queda **pendiente**: no se clasifica como
+carrera todo lo que no esté en el catálogo de ejercicios técnicos. Los ejercicios
+técnicos con saltos pueden guardar también sus contactos, si se registran, sin
+duplicar acciones.
 
 | | Ejercicio técnico | Carrera con objetivo técnico |
 |---|---|---|
@@ -201,10 +246,15 @@ Dos cosas distintas; la palabra «técnica» **no quita la distancia de carrera*
 - **Ejemplo**: D1 «Cargada 4×3 al 60–65 % RM», RM 80 kg medido → 12 rep. · 48–52 kg
   previstos (cálculo).
 - **Ambiguo**: D4 RDL unilateral con solo RM bilateral → reps sí; kg ausentes.
+- **Finalidad preventiva**: un ejercicio de fuerza puede llevar la etiqueta
+  «preventivo» (nórdicos 3×5: 3 series y 15 repeticiones de fuerza, etiqueta
+  preventiva). Se cuenta una vez; la etiqueta solo sirve para filtrar.
 
 ### 6.2 Arrastres
 - Son **medio** (§3): sus metros son carrera con su objetivo (aceleración, fuerza
-  horizontal…), con la **carga** (decisión 8).
+  horizontal…), con la **carga** (discos añadidos y masa total, por separado), la
+  **superficie** y el **material** si constan (decisión 8): unos mismos kg en
+  superficies distintas no son la misma resistencia.
 
 ## 7. Saltos y lanzamientos (no de prueba)
 
@@ -220,15 +270,22 @@ acciones **de la misma modalidad y unidad**:
 | Multisaltos horizontales | contactos o saltos (decisión 5) | — |
 | Lanzamiento de balón | lanzamientos | peso del balón, posición |
 
+- **Qué es un contacto**: cada vez que el atleta toma tierra y despega, **cuente con
+  uno o con los dos pies**. Un pogo bilateral es **un** contacto, no dos. En
+  unilateral se cuentan **por pierna** y se guarda el lado.
+- Se guardan **bilateral o unilateral** y el lado cuando corresponda.
 - **Una sola vez y sin equivalencias**: 12 pogos y 15 saltos al cajón son «12
-  contactos de pogos» y «15 saltos al cajón de 60 cm», nunca «27 saltos».
+  contactos de pogos» y «15 saltos al cajón de 60 cm», nunca «27 saltos» ni una cifra
+  global de «impactos».
 - **Ejemplo**: «2×6 pogos + 3×5 cajón 60 cm» → 12 contactos (pogos) · 15 saltos
   (cajón, 60 cm).
 - **Ambiguo**: «3×10 multisaltos» → ¿contactos o saltos? Pendiente (decisión 5).
-- **Lanzamientos**: «3×6 balón 4 kg de espaldas» → 18 lanzamientos · balón 4 kg ·
-  de espaldas. Sin peso → número sí, peso ausente.
+- **Lanzamientos**: «3×6 balón 4 kg de espaldas» → **3 series y 18 lanzamientos** ·
+  balón 4 kg · de espaldas. Pueden tener objetivo de potencia o fuerza explosiva
+  aunque su unidad sea lanzamientos. No se mezclan con repeticiones de fuerza ni se
+  calcula un tonelaje común. Sin peso → número sí, peso ausente.
 
-## 8. Movilidad, preventivos y recuperación
+## 8. Movilidad, core y preventivos
 - **Incluye**: movilidad, core, preventivos, estiramientos, rodillo.
 - **Excluye**: fuerza con carga (6.1).
 - **Unidad**: **min** si el plan los da; si no, ejercicios × series × reps. No se
@@ -249,101 +306,102 @@ acciones **de la misma modalidad y unidad**:
 
 - **Ambiguo**: fila sin calzado → metros sí; «con clavos» **no consta** (no se supone).
 
-## 10. Cobertura: varios indicadores, nunca uno mezclado
+## 10. Cobertura: indicadores separados, nunca uno mezclado
 
-Cada indicador tiene su numerador y su denominador, **por atleta y periodo**. Se
-enseñan por separado y con sus números (no solo el %):
+Cada indicador tiene su numerador y su denominador, **por atleta y periodo**, sobre
+**las mismas sesiones**. Se enseñan con sus números (no solo el %). **No son
+porcentajes de cumplimiento.** Las sesiones futuras o aún en plazo **no cuentan** como
+carencias.
 
-| Indicador | Numerador | Denominador | Fuera |
+| Indicador | Numerador | Denominador | Aparte |
 |---|---|---|---|
-| **Feedback** | sesiones previstas con registro (del atleta o, si su seguimiento es por el entrenador, del entrenador) | sesiones de entreno publicadas para el atleta cuyo plazo de feedback ya pasó | descansos; días con ausencia declarada (se cuentan aparte) |
-| **Repeticiones** (por objetivo) | reps previstas obligatorias con resultado conocido (confirmadas o declaradas no hechas) | reps previstas obligatorias | opcionales y adicionales (aparte) |
-| **Distancia** (por objetivo) | m previstos obligatorios con resultado conocido | m previstos obligatorios | adicionales (aparte) |
-| **Clasificación** | m (o reps) confirmados con objetivo revisado | m (o reps) confirmados | — |
-| **Cargas** | series previstas con carga y kg apuntados | series previstas con carga | — |
+| **Feedback** | de esas sesiones, las que tienen registro del atleta | sesiones de entreno publicadas para el atleta **con el plazo vencido** | recibidos antes de que venza el plazo (se enseñan aparte); atletas con «feedback no requerido» (no exigible); descansos y ausencias declaradas |
+| **Registro del entrenador** (si el seguimiento es del entrenador) | de esas sesiones, las que tienen su registro | sus sesiones con el plazo vencido | — |
+| **Resultado conocido · repeticiones** (por objetivo) | reps obligatorias previstas con resultado conocido: hechas **o** declaradas no hechas | reps obligatorias previstas | opcionales (se confirman como hechas o no hechas, pero fuera del compromiso); adicionales |
+| **Resultado conocido · distancia** (por objetivo) | m obligatorios previstos con resultado conocido | m obligatorios previstos | ídem |
+| **Clasificación** | m (o reps) confirmados con objetivo declarado o revisado | m (o reps) confirmados | — |
+| **Cargas** | series **realizadas** con kg conocidos | series realizadas con carga prevista | series declaradas no realizadas (no necesitan kg) |
 | **Método** (tiempos) | tiempos con método conocido | tiempos apuntados | — |
+| **Lectura del plan** | filas con estructura revisada o declarada | filas previstas | — |
 
-Ejemplo de una semana de un atleta:
-
-| | Previsto | Confirmado | Adicional | Total realizado |
-|---|---|---|---|---|
-| Aceleración (m) | 360 | 300 | 0 | desconocido (60 m sin concretar) |
-| Velocidad máxima (m) | 180 | 180 | 0 | 180 m (conocido) |
-| Objetivo pendiente (m) | 120 | 120 | 30 | 150 m |
-
-Cobertura: feedback 4 de 5 sesiones · distancia 600 de 660 m previstos con resultado
-conocido · clasificación 480 de 630 m confirmados revisados · cargas 6 de 8 series.
-
+- **Plazo**: configurable por grupo (día y hora; hoy, el mismo día a las 22:00) y
+  **nunca vence antes de que acabe la sesión**.
 - Con poca cobertura las cifras se ven igual, con su aviso: una semana poco
   registrada no se lee como una semana de poca carga.
 - Dos semanas se comparan solo en lo confirmado y enseñando la cobertura de las dos.
 
-## 11. Las diez decisiones que necesito cerrar contigo
+## 11. Las diez decisiones (cerradas el 29-oct)
 
-**1. ¿Qué basta para proponer «velocidad máxima» en un lanzado?**
-Propuesta: que el título u objetivo del bloque lo diga. Sin eso, objetivo pendiente
-(los metros cuentan).
-Ejemplo: «Bloque Vmáx: 3×30 flying (20+30)» → 90 m de velocidad máxima + 60 m de
-entrada progresiva. «3×30 flying (20+30)» sin título → 90 m lanzados con objetivo
-pendiente.
+1. **Velocidad máxima.** El objetivo explícito del bloque clasifica el tramo lanzado
+   como trabajo previsto de Vmáx; la entrada progresiva va aparte. En realizado es
+   «trabajo hecho con intención de Vmáx», no velocidad máxima demostrada. Lo que
+   indica el entrenador no necesita una segunda aprobación idéntica; lo que lee la app
+   del texto queda como **propuesta**.
+   *Ej.*: sesión con objetivo «Vmáx» y «3×30 lanzados, entrada 20 + tramo 30» → 90 m
+   de Vmáx (declarada) + 60 m de entrada progresiva.
+2. **Resistencia a la velocidad y ritmo específico.** «Ritmo 400» del entrenador se
+   conserva aunque no haya marca objetivo en la ficha. Aparte: objetivo declarado ·
+   referencia de ritmo (conocida o pendiente) · adecuación (no evaluada).
+   *Ej.*: «Ritmo 400 · 2×(250+150)» sin objetivo de 400 en la ficha → 800 m de ritmo
+   específico de 400 (declarado) · referencia pendiente · adecuación no evaluada.
+3. **Progresivos de calentamiento.** Carrera total, fuera de la principal, función de
+   calentamiento; no son aceleración. La **posición** (calentamiento, principal,
+   recuperación, vuelta a la calma) va aparte del objetivo.
+   *Ej.*: «Calentamiento: 10′ CC + 4×80 progresivos» → posición calentamiento ·
+   10 min + 320 m de carrera total.
+4. **Técnica.** Ejercicio técnico y carrera completa, separados. Si el texto no lo
+   distingue: pendiente (no se clasifica como carrera lo que no esté en el catálogo).
+   Los ejercicios técnicos con saltos pueden guardar sus contactos, sin duplicar.
+   *Ej.*: «15′ CC + técnica» → 15 min de carrera de calentamiento + técnica **sin
+   cantidad** (✓ si se marca), no metros.
+5. **Saltos y contactos.** Unidad fijada por ejercicio y protocolo. Un contacto =
+   tomar tierra y despegar, con uno o dos pies (un pogo bilateral = 1). Unilateral:
+   por pierna, con su lado. Nada de una cifra global de impactos.
+   *Ej.*: «2×10 pogos» → 20 contactos (bilateral); «2×5 saltos a una pierna/lado» →
+   10 contactos por pierna.
+6. **Balón medicinal.** Lanzamientos con series, repeticiones, peso y posición; puede
+   tener objetivo de potencia. Sin tonelaje común ni mezcla con repeticiones de
+   fuerza.
+   *Ej.*: «3×6 balón 4 kg de espaldas» → 3 series · 18 lanzamientos · 4 kg · de
+   espaldas · objetivo potencia (si se declara).
+7. **Trote de recuperación.** Carrera total, como recuperación entre esfuerzos;
+   minutos y distancia conocida, por separado. 5×1000 con 2′ → **4 recuperaciones
+   previstas**. En realizado solo cuentan las confirmadas: hacer las 5 series no
+   demuestra haber trotado los 4 descansos.
+   *Ej.*: el atleta apunta las 5 series y dos descansos → 5 reps confirmadas · 2 de 4
+   recuperaciones confirmadas · 2 sin concretar.
+8. **Arrastres.** Medio arrastre; objetivo del bloque si es explícito; discos
+   añadidos y masa total por separado; superficie y material si constan. Los «12 kg»
+   antiguos no se resuelven sin confirmación.
+   *Ej.*: «3×(30 m arrastre + 60 m libre)» con objetivo «Aceleración» → 270 m de
+   aceleración, de ellos 90 m con arrastre (carga y superficie: no constan).
+9. **Familias para ver la semana**: **Carrera** (aceleración, Vmáx, resistencia a la
+   velocidad, ritmo específico, aeróbico y otras intenciones) · **Técnica** ·
+   **Fuerza** · **Saltos** · **Lanzamientos** · **Movilidad, core y preventivos**.
+   Sin «metabólico» ni «impactos». Un ejercicio tiene un objetivo principal y puede
+   tener etiquetas (p. ej. fuerza con etiqueta preventiva); se filtra por las dos
+   cosas, avisando de que las etiquetas se solapan.
+   *Ej.*: nórdicos 3×5 → Fuerza (15 reps, 3 series) con etiqueta «preventivo»; al
+   filtrar por «preventivo» salen, pero no se suman otra vez en Movilidad.
+10. **Cobertura**: los indicadores del §10, con los ajustes: feedback sobre las mismas
+    sesiones vencidas (anticipados aparte), «no requerido» fuera, registro del
+    entrenador con su nombre, «resultado conocido» (no cumplimiento), opcionales
+    fuera del compromiso, cargas solo de series realizadas, nada futuro como carencia,
+    plazo configurable que nunca vence antes de acabar la sesión.
+    *Ej.*: lunes vencido sin registro → 0 de 1; miércoles de hoy con registro antes
+    del plazo → «1 recibido antes del plazo», fuera del denominador.
 
-**2. ¿«Resistencia a la velocidad» y «ritmo específico» se proponen solos?**
-Propuesta: solo con título u objetivo del bloque; el ritmo, además, con la marca u
-objetivo acordado de referencia en la ficha.
-Ejemplo: «2×(250+150) · Ritmo 400» con objetivo acordado en 400 m → propuesta «ritmo
-específico» (a revisar). Sin objetivo de 400 en la ficha → 800 m, objetivo pendiente.
+## 12. Primera versión (solo grupo PRUEBA)
 
-**3. Progresivos y rectas de calentamiento: ¿carrera o técnica?**
-Propuesta: carrera total (no principal) con objetivo «calentamiento», salvo que el
-bloque sea de técnica o de aceleración.
-Ejemplo: «Calentamiento: 10′ trote + 4×80 progresivos» → 10 min + 320 m de carrera
-total; ninguno cuenta como aceleración.
+- Una pantalla por atleta y semana: previsto · confirmado · adicional · opcional · no
+  realizado · sin concretar · en discrepancia · cobertura de cada magnitud · desglose
+  por objetivo y por medio. Cada cifra abre las filas y registros de los que sale.
+  Lo confirmado sin clasificar se enseña igual («objetivo pendiente»).
+- La lectura del plan la propone la app y la revisa el entrenador; nada se clasifica
+  hacia atrás en lo real.
 
-**4. ¿Cuándo una carrera con «técnica» es carrera y cuándo ejercicio técnico?**
-Propuesta: ejercicio técnico = drills del catálogo (skipping, A/B…); todo lo demás
-que sea correr de verdad es carrera con objetivo técnico.
-Ejemplo: «4×(30 skipping + 20 progresivo)» → 120 m de skipping (ejercicio técnico) +
-80 m de carrera; «6×80 rectas técnicas» → 480 m de carrera con objetivo técnica.
-
-**5. Multisaltos: ¿saltos o contactos?**
-Propuesta: cada ejercicio del catálogo fija su unidad: pogos y comba en contactos;
-multisaltos horizontales en contactos (cada apoyo); saltos al cajón, CMJ y drop jump
-en saltos. Sin unidad fijada, pendiente.
-Ejemplo: «3×10 multisaltos horizontales» → 30 contactos de multisaltos; no se suman
-con «15 saltos al cajón».
-
-**6. Balón medicinal: ¿fuerza o lanzamientos?**
-Propuesta: lanzamientos, con peso y posición; no cuentan como series de fuerza
-aunque vayan en el bloque de gimnasio.
-Ejemplo: «3×6 balón 4 kg de espaldas» → 18 lanzamientos de 4 kg (de espaldas).
-
-**7. Trote de recuperación entre series**
-Propuesta: minutos de carrera total; metros solo si se dan.
-Ejemplo: «5×1000 // 2′ trote» → 5.000 m + 8 min de trote (sin metros inventados).
-
-**8. Arrastres: medio, carga y objetivo**
-Propuesta: medio «arrastre» siempre, con dos cargas (discos añadidos y masa total, la
-que se sepa); objetivo el del bloque (aceleración por defecto si el bloque es de
-aceleración; si no, pendiente). Los metros, una vez.
-Ejemplo: A1 → 120 m de aceleración, de ellos 60 m con arrastre (carga pendiente). A2
-«3×40 arrastre (12 kg)» → 120 m con arrastre; «12 kg» pendiente de saber si son discos
-o masa total.
-
-**9. Familias para ver la semana**
-Propuesta: carrera rápida (aceleración, velocidad máxima), metabólico (resistencia,
-ritmo, glucolítico, aeróbico), fuerza, impactos (saltos y lanzamientos por
-modalidad), técnica, recuperación. Solo agrupan a la vista; no suman distinto de sus
-contenidos ni mezclan unidades.
-Ejemplo: «Carrera rápida: 300 m aceleración + 180 m velocidad máxima» (no «480 m de
-carrera rápida» a secas si una parte está sin concretar).
-
-**10. Cobertura: indicadores y plazo**
-Propuesta: los seis indicadores del §10, por separado, y una sesión cuenta en el
-denominador de feedback cuando ha pasado su plazo (el del grupo, hoy 22:00 del día).
-Ejemplo: lunes con plazo vencido y sin registro → cuenta como «sin feedback»; el
-miércoles de hoy, aún en plazo → no cuenta todavía.
-
-## 12. Fuera de esta entrega
-- Programar cálculos, clasificar sesiones reales o rellenar contenidos de lo antiguo.
-- Proyecciones, tendencias, carga combinada, índices y RPE × duración.
-- Importar los Excel. La conexión de ChatGPT sigue limitada a PRUEBA.
+## 13. Fuera por ahora
+- Índices globales, recomendaciones automáticas, proyecciones, tendencias, carga
+  combinada y RPE × duración.
+- Importar los Excel y clasificar sesiones reales antiguas. La conexión de ChatGPT
+  sigue limitada a PRUEBA.

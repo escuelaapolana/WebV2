@@ -340,7 +340,7 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
 - **Protocolos por tipo** (carrera, salto, lanzamiento, fuerza, otro): cada uno pide lo
   suyo; «Falta para comparar» y «completo» solo si lo marca una persona (la base
   lo comprueba con `protocolo_faltan`). Los tests antiguos siguen sin protocolo.
-- **Mig 476 (29-oct, ajustes):** la competición cancelada o aplazada se queda en la web
+- **Mig 490 (29-oct, ajustes; numerada aparte de natación):** la competición cancelada o aplazada se queda en la web
   con su etiqueta («Cancelada»; «Aplazada · nueva fecha por confirmar» si no hay fecha)
   y no cuenta como próxima; lo «previsto» de Academia no sale a nadie como inscripción.
   Lo público del evento (nombre, fecha, sede, estado, organizador, referencia oficial)
@@ -352,6 +352,23 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   otros datos = acta corregida: se corrige el mismo resultado, con historial.
   Catálogo: 80 m lisos, 500 m y 600 m (sin suponer en qué categorías valen).
 - Recorrido para probarlo con la sesión iniciada: `docs/recorrido-en-vivo-academia.md`.
+
+**Carga y contenidos · primera versión (29-oct, mig 491, solo grupo PRUEBA):**
+- `portal/academia/?v=carga` (menú del mundo «Carga y contenidos»): por atleta y
+  semana, previsto · confirmado registrado · opcional · adicional · no realizado · sin
+  concretar · sin datos · en discrepancia, por familia (carrera, técnica, fuerza,
+  saltos, lanzamientos, movilidad), objetivo y medio, y la cobertura de cada magnitud.
+  Cada cifra abre las filas y registros de los que sale.
+- Motor aparte, `assets/js/academia-carga.js` (también se prueba con node): lee cada
+  fila y **propone** su estructura; el objetivo de la sesión, si es uno solo, es
+  **declarado**; cruza lo del atleta (✓, series, tiempos, kg, filas «libre») y lo del
+  entrenador (toma y registro) por magnitud y repetición. Un esfuerzo apuntado por los
+  dos cuenta una vez; si no coinciden, en discrepancia.
+- `plan_filas_estructura`: la lectura revisada o corregida por el entrenador (por
+  versión de la sesión y con historial). Escribir solo en grupos de prueba.
+- El plazo del feedback se cambia desde la pantalla (`academia_plazo_guardar`).
+- Reglas: `docs/definiciones-carga-contenidos.md` (v3) y casos en
+  `docs/ejemplos-calculo-academia.md` (A–J).
 
 ## Navegación
 

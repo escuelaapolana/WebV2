@@ -1,7 +1,10 @@
-# Ejemplos de cálculo — resultados esperados (para validar antes de programar)
+# Ejemplos de cálculo — resultados esperados (v3, 29-oct)
 
 > 28-oct-2026 · Textos reales de la semana 9 de Academia. Reglas en
-> [modelo-datos-seguimiento.md](modelo-datos-seguimiento.md).
+> [modelo-datos-seguimiento.md](modelo-datos-seguimiento.md) y, desde el 29-oct, en
+> [definiciones-carga-contenidos.md](definiciones-carga-contenidos.md) (v3: medio y
+> objetivo aparte, posición en la sesión, confirmación por magnitud). Los casos J son
+> nuevos. Todos se comprueban con el motor de la primera versión (grupo PRUEBA).
 > Cuando un valor no se puede saber, el resultado esperado es **«pendiente»** o
 > **«ausente»**, no un número. Los kg de los ejemplos de RM son ilustrativos.
 
@@ -14,7 +17,7 @@
 | Estructura | 3 bloques × secuencia [20 m arrastre → 20 m libre]; 90″ entre componentes, 3′ entre bloques |
 | Carrera total / principal | 120 m / 120 m |
 | Metros con arrastre (exposición, dentro del total) | 60 m |
-| Por contenido | Fuerza horizontal: 60 m · Aceleración: 60 m |
+| Por objetivo y medio (v3) | Objetivo del bloque si lo declara el entrenador (p. ej. «Aceleración» → 120 m de aceleración); si no, **pendiente**. Medio: **60 m con arrastre** (dentro de los 120 m), 60 m libres. «Fuerza horizontal» solo si el entrenador la pone como objetivo de esos 60 m. |
 | Carga | trineo, **kg ausente** → pendiente |
 | Calzado | Z (zapatillas) |
 
@@ -54,8 +57,10 @@ entrada o se suman (80 m por rep.)? **No se calcula** hasta resolverlo. Intensid
 | Vista detallada | «Ritmo 400 · 2×(250+150) · 34–35″ / 19,5–20,5″ · Z» |
 
 **C2** · «5x1000 en 3:25-3:30 // 2′ trote suave Z» → carrera principal 5.000 m ·
-`ritmo` 3:25–3:30/km · recuperación 4×2′ de trote: **8 minutos**, sin metros
-(no se inventan) · contenido propuesto: aeróbico/intervalos.
+`ritmo` 3:25–3:30/km · **4 recuperaciones previstas** de 2′ de trote: **8 minutos**
+de carrera total como recuperación entre esfuerzos, sin metros (no se inventan) ·
+objetivo propuesto: aeróbico (intervalos). En realizado solo cuentan las
+recuperaciones confirmadas (J5).
 
 **C3** · «6x150 al 85% // 3′ Z» → 900 m · intensidad `pct_esfuerzo` 85 %
 (**no** «85 % de Vmáx», porque no hay referencia).
@@ -68,8 +73,8 @@ entrada o se suman (80 m por rep.)? **No se calcula** hasta resolverlo. Intensid
 - Realizado: kg por serie si se apuntan (fuente `declaracion`, método `no_aplica`).
 
 **D2** · «Media sentadilla + saltos al cajón: 3 bloques de 3 + 2 saltos; sentadilla 75-80% RM // 3′»
-- **9 rep. de media sentadilla** (fuerza) + **6 saltos al cajón** (pliometría,
-  unidad `saltos`). **No son 15 repeticiones de fuerza.**
+- **9 rep. de media sentadilla** (fuerza) + **6 saltos al cajón** (saltos, unidad
+  `saltos`, altura del cajón: no consta). **No son 15 repeticiones de fuerza.**
 - Descanso: 3′ entre bloques; entre componentes **no consta** → pendiente si importa.
 - %RM con referencia «media sentadilla». No vale el RM de sentadilla completa.
 
@@ -157,3 +162,52 @@ como «mismas condiciones».
 
 **I1** · «3×60 lanzados, entrada 20 m + tramo 60 m» → **240 m** totales · entrada
 progresiva 60 m · lanzados 180 m.
+
+## J. Casos nuevos (29-oct)
+
+**J1 · Fuerza sin kg** · «Media sentadilla 3×5 al 75 % RM»; el atleta marca las 3
+series hechas, sin kg → **15 reps confirmadas** · carga **desconocida** · cargas: 0 de
+3 series realizadas con kg.
+
+**J2 · Solo kg** · la misma fila; el atleta apunta «80 kg» en la serie 1 sin marcarla
+hecha ni poner reps → carga conocida en la serie 1 · **reps sin concretar** (apuntar
+kg no confirma las reps previstas).
+
+**J3 · Datos duplicados** · «4x20 m salidas // 3′ C»; el atleta marca las 4
+repeticiones y el entrenador apunta las 4 en su toma → **4 reps (80 m) confirmadas,
+una vez**, con las dos fuentes a la vista. Si el entrenador apunta la 4.ª como no
+realizada → 3 confirmadas (60 m) + **1 en discrepancia (20 m)**, sin sumar ni elegir.
+
+**J4 · Opcional no concretado** · plan «5x150 + 1 opcional»; el atleta marca la fila
+hecha → **5 obligatorias confirmadas** (750 m) · opcional: **sin concretar** (fuera del
+compromiso; no cuenta mientras no se confirme como hecho o no hecho).
+
+**J5 · Recuperaciones** · «5x1000 // 2′ trote»; el atleta apunta las 5 series y 2
+descansos → 5.000 m confirmados · recuperaciones: 2 de 4 confirmadas, **2 sin
+concretar**.
+
+**J6 · Sesión declarada completa** (regla §0.6, a confirmar) · sin datos por fila → lo
+obligatorio de su versión confirmado como hecho (fuente: declaración global) · kg,
+tiempos, opcionales y recuperaciones: sin concretar.
+
+**J7 · A medias** · «a medias, 70 %» sin filas → todo **sin concretar**, con la
+declaración global «70 %»; no se calcula 0,7 × previsto.
+
+**J8 · Adicional** · fila «libre» «Correr suave · 3 km en 18:14» → **3 km adicionales
+declarados** (no previstos) · objetivo pendiente · no es GPS.
+
+**J9 · Sin registro** → previsto = **plan vigente, sin respuesta** · realizado: sin
+datos (ni hecho ni no hecho).
+
+**J10 · No realizada** · «no la he hecho: viaje» → lo obligatorio **no realizado**
+(motivo «viaje»); resultado conocido = sí.
+
+**J11 · Ritmo 400 declarado** · sesión con objetivo «Ritmo 400», sin objetivo de 400
+en la ficha → objetivo declarado: ritmo específico 400 · referencia: pendiente ·
+adecuación: no evaluada.
+
+**J12 · «15′ CC + técnica»** (calentamiento) → 15 min de carrera, posición
+calentamiento · técnica **sin cantidad** (hecho o no hecho), no metros.
+
+**J13 · Pogos** · «2×10 pogos» → **20 contactos** (bilateral: un contacto por toma
+de tierra, no dos).
