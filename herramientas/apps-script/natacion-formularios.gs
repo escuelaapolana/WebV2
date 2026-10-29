@@ -16,8 +16,8 @@
  *   1. https://script.google.com → el proyecto de BUENO ISA → «+» → «Secuencia de
  *      comandos» → llámalo «natacion» → pega este código. (También vale un proyecto
  *      nuevo: los nombres no chocan con los de BUENO ISA.)
- *   2. Pon en NAT_HOJAS el enlace de cada Excel y en NAT_TOKEN el MISMO token que
- *      el script de BUENO ISA (NO se sube a ningún sitio).
+ *   2. Pon en NAT_TOKEN el MISMO token que el script de BUENO ISA (NO se sube a
+ *      ningún sitio). Los dos Excel ya están puestos en NAT_HOJAS.
  *   3. Elige la función «instalarNatacion» y pulsa ▶ Ejecutar. Acepta los permisos.
  *   4. (Opcional) Ejecuta «probarNatacion»: lo hace todo y lo deshace; mira el registro.
  * Las columnas se buscan en la app por su TÍTULO, así que se pueden añadir preguntas.
@@ -25,10 +25,15 @@
 var NAT_URL = 'https://icaxokjsvhlreuwpyxeb.supabase.co/functions/v1/natacion-form-sync';
 var NAT_TOKEN = 'PEGA_AQUI_EL_TOKEN';
 
+// Los Excel de respuestas de Mario (compartidos con escuelaapolana@gmail.com como Lector).
+// pestana = la de las respuestas del formulario; si se le cambia el nombre, se busca sola.
 var NAT_HOJAS = [
-  { origen: 'Escuela', excel: 'PEGA_AQUI_EL_ENLACE_DEL_EXCEL_DE_LA_ESCUELA' },   // pestaña: la primera (o pon pestana: '…')
-  { origen: 'Máster',  excel: 'PEGA_AQUI_EL_ENLACE_DEL_EXCEL_DEL_MASTER' }
+  { origen: 'Escuela', excel: '1QAepVdymgDaVzyNudJsCgOOMvFP5Y2ozIxQY7jSOUeM', pestana: 'Inscripciones Escuela 2026-27' },  // «Escuela Natación Apol*Ana 2026-27 (respuestas)»
+  { origen: 'Máster',  excel: '19_x2ccTe2ArwtO8SJ53h_TwY2KL0QWbm6TO6bZusSlA', pestana: 'Respuestas de formulario 1' }      // «Master Natación Apol*Ana 2026-27 (respuestas)»
 ];
+
+// Columnas que NO salen de Google: la app no las necesita (banco, salud, foto, DNI del tutor).
+var NAT_NO_ENVIAR = /iban|entidad bancaria|titular de la cuenta|tarjeta sanitaria|(^|\W)sip(\W|$)|fotografia|de padre\/madre\/tutor/;
 
 function natId_(s) {
   var m = String(s || '').match(/\/d\/([a-zA-Z0-9_-]{20,})/);
@@ -51,15 +56,18 @@ function natLeer_() {
     if (/PEGA_AQUI/.test(h.excel)) throw new Error('Falta el enlace del Excel de ' + h.origen + ' en NAT_HOJAS.');
     var libro = SpreadsheetApp.openById(natId_(h.excel));
     var zona = libro.getSpreadsheetTimeZone() || 'Europe/Madrid';
-    var hoja = h.pestana ? libro.getSheetByName(h.pestana) : libro.getSheets()[0];
-    if (!hoja) throw new Error('No encuentro la pestaña «' + h.pestana + '» del Excel de ' + h.origen);
+    var hoja = h.pestana ? libro.getSheetByName(h.pestana) : null;
+    if (!hoja) {   // la pestaña a la que llegan las respuestas del formulario
+      hoja = libro.getSheets().filter(function (s) { try { return !!s.getFormUrl(); } catch (e) { return false; } })[0] || libro.getSheets()[0];
+    }
     var valores = hoja.getDataRange().getValues();
     if (!valores.length) return;
     var cab = valores[0].map(function (t) { return String(t || '').trim(); });
+    var fuera = cab.map(function (t) { return NAT_NO_ENVIAR.test(t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')); });
     for (var f = 1; f < valores.length; f++) {
       var datos = [];
       for (var c = 0; c < cab.length; c++) {
-        if (!cab[c]) continue;
+        if (!cab[c] || fuera[c]) continue;
         var t = natTxt_(valores[f][c], zona);
         if (t !== '') datos.push([cab[c], t]);
       }
