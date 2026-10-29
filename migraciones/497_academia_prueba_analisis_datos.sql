@@ -47,8 +47,8 @@ begin
   -- El 21, el entrenador también cronometró (manual) los dos 250.
   if not exists (select 1 from public.academia_toma_datos where sesion_id = 'a4a10000-0000-4000-8000-000000000021') then
     insert into public.academia_toma_datos (sesion_id, sesion_version, atleta_id, fila_id, alcance, serie, repeticion, magnitud, valor_texto, valor_num, unidad, metodo, estado, autor_perfil_id)
-    values ('a4a10000-0000-4000-8000-000000000021', 1, alex, 'a4a1f100-0000-4000-8000-000000000021', 'repeticion', 1, 1, 'tiempo', '34,5', 34.5, 's', 'manual', 'realizado', yo),
-           ('a4a10000-0000-4000-8000-000000000021', 1, alex, 'a4a1f200-0000-4000-8000-000000000021', 'repeticion', 1, 1, 'tiempo', '35,0', 35.0, 's', 'manual', 'realizado', yo);
+    values ('a4a10000-0000-4000-8000-000000000021', 1, alex, 'a4a1f100-0000-4000-8000-000000000021', 'repeticion', null, 1, 'tiempo', '34,5', 34.5, 's', 'manual', 'realizado', yo),
+           ('a4a10000-0000-4000-8000-000000000021', 1, alex, 'a4a1f200-0000-4000-8000-000000000021', 'repeticion', null, 1, 'tiempo', '35,0', 35.0, 's', 'manual', 'realizado', yo);
   end if;
 
   -- Marcas de 200 m de la temporada (ficticias)
