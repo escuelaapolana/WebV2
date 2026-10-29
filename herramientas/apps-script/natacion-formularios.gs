@@ -16,14 +16,21 @@
  *   1. https://script.google.com → el proyecto de BUENO ISA → «+» → «Secuencia de
  *      comandos» → llámalo «natacion» → pega este código. (También vale un proyecto
  *      nuevo: los nombres no chocan con los de BUENO ISA.)
- *   2. Pon en NAT_TOKEN el MISMO token que el script de BUENO ISA (NO se sube a
- *      ningún sitio). Los dos Excel ya están puestos en NAT_HOJAS.
+ *   2. Nada más: en el mismo proyecto usa solo el TOKEN de BUENO ISA. (Solo si lo
+ *      pones en un proyecto aparte, copia ese token en NAT_TOKEN; NO se sube a
+ *      ningún sitio.) Los dos Excel ya están puestos en NAT_HOJAS.
  *   3. Elige la función «instalarNatacion» y pulsa ▶ Ejecutar. Acepta los permisos.
  *   4. (Opcional) Ejecuta «probarNatacion»: lo hace todo y lo deshace; mira el registro.
  * Las columnas se buscan en la app por su TÍTULO, así que se pueden añadir preguntas.
  */
 var NAT_URL = 'https://icaxokjsvhlreuwpyxeb.supabase.co/functions/v1/natacion-form-sync';
-var NAT_TOKEN = 'PEGA_AQUI_EL_TOKEN';
+var NAT_TOKEN = 'PEGA_AQUI_EL_TOKEN';   // vacío/sin tocar = el TOKEN del script de BUENO ISA (mismo proyecto)
+
+function natToken_() {
+  if (NAT_TOKEN && !/PEGA_AQUI/.test(NAT_TOKEN)) return NAT_TOKEN;
+  if (typeof TOKEN !== 'undefined' && TOKEN && !/PEGA_AQUI/.test(TOKEN)) return TOKEN;
+  throw new Error('Falta el token: pon este script en el proyecto de BUENO ISA o copia su TOKEN en NAT_TOKEN.');
+}
 
 // Los Excel de respuestas de Mario (compartidos con escuelaapolana@gmail.com como Lector).
 // pestana = la de las respuestas del formulario; si se le cambia el nombre, se busca sola.
@@ -81,7 +88,7 @@ function natEnviar_(aplicar) {
   var filas = natLeer_();
   var r = UrlFetchApp.fetch(NAT_URL, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { 'x-sync-token': NAT_TOKEN },
+    headers: { 'x-sync-token': natToken_() },
     payload: JSON.stringify({ filas: filas, aplicar: aplicar })
   });
   Logger.log('Filas enviadas: ' + filas.length + ' · respuesta ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 3000));
