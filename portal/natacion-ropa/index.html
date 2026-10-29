@@ -147,7 +147,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var rp = await sb.rpc('natacion_ropa_puede');
   if (rp.error || !rp.data){ wrap.innerHTML = '<div class="cu-card"><h2>Ropa de natación</h2><div class="cu-cuerpo"><p style="margin:0">Esta pantalla es para quien lleva la ropa de natación.</p></div></div>'; return; }
 
-  var S = { stock: null, pedidos: [], productos: [], cat: null, err: null, filtro: '', abiertos: {} };
+  var S = { stock: null, pedidos: [], productos: [], cat: null, err: null, filtro: '', abiertos: {}, gente: [] };
   var METODOS = [['efectivo', 'Efectivo'], ['bizum', 'Bizum'], ['transferencia', 'Transferencia'], ['tarjeta', 'Tarjeta'], ['regalo', 'No paga']];
   function metodoTxt(m){ var x = METODOS.filter(function (o) { return o[0] === m; })[0]; return x ? x[1] : ''; }
 
@@ -156,7 +156,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var r = await sb.rpc('natacion_ropa_stock_listar');
     if (r.error) { S.err = r.error.message || 'No se pudo cargar.'; S.stock = []; return; }
     S.err = null; S.stock = r.data.stock || []; S.pedidos = r.data.pedidos || []; S.productos = r.data.productos || [];
+    // Nombres de los nadadores (Escuela y Máster) para elegir «Para quién» sin escribirlo entero.
+    // Es solo una ayuda: si no se puede leer, se escribe a mano como siempre.
+    if (!S.gente.length) {
+      var rg = await sb.rpc('natacion_equip_listar');
+      var vistos = {};
+      ((rg && rg.data) || []).forEach(function (f) { (f.nadadores || []).forEach(function (n) { var k = capital(n.nombre); if (!vistos[k]) { vistos[k] = 1; S.gente.push({ n: k, t: n.tipo || '' }); } }); });
+      S.gente.sort(function (a, b) { return a.n.localeCompare(b.n, 'es'); });
+    }
   }
+  function listaGente(){ return '<datalist id="rp-gente">' + S.gente.map(function (g) { return '<option value="' + esc(g.n) + '">' + esc(g.t) + '</option>'; }).join('') + '</datalist>'; }
   function libre(u){ return !u.persona && !u.familia_id; }
   function pagado(u){ return !!u.pagado_en || (u.familia_id && u.familia_pagado); }
   function cobra(u){ return Number(u.precio) > 0 && u.pago_metodo !== 'regalo'; }
@@ -203,7 +212,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function filaStock(u){
     var e = estado(u), ab = !!S.abiertos[u.id], n = Number(u.cantidad) || 1;
-    var sub = [u.talla ? 'Talla ' + u.talla : '', n > 1 ? n + ' unidades' : '', cobra(u) ? eur(u.precio) : (u.precio == null ? 'sin precio' : ''),
+    var sub = [u.talla ? 'Talla ' + u.talla : '', n > 1 ? n + ' unidades' : '', libre(u) ? 'sin dueño · toca para dárselo a alguien' : '', cobra(u) ? eur(u.precio) : (u.precio == null ? 'sin precio' : ''),
                u.entregado_en ? 'entregado el ' + fecha(u.entregado_en) : '', u.pagado_en ? 'pagado el ' + fecha(u.pagado_en) + (u.pago_metodo ? ' (' + metodoTxt(u.pago_metodo).toLowerCase() + ')' : '') : '']
       .filter(Boolean).join(' · ');
     var h = '<div class="cu-item' + (ab ? ' abierto' : '') + '"><button type="button" class="cu-row" data-abrir="' + u.id + '">' +
@@ -216,8 +225,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var n = Number(u.cantidad) || 1, id = u.id, h = '';
     if (u.nota && u.revisar) h += '<div class="cu-aviso" style="margin-top:4px">' + esc(u.nota) + '</div>';
     if (u.familia_id) h += '<div class="cu-det-t">Reservado del stock para el pedido de equipación de <b>' + esc(capital(u.familia || '')) + '</b>: lo paga con su pedido (' + (u.familia_pagado ? 'ya pagado' : 'aún sin pagar') + ').</div>';
+    else if (libre(u)) h += '<div class="cu-det-t">Para dárselo a alguien que lo pidió fuera del formulario (en la hoja de la piscina, por WhatsApp…): escribe su nombre en «Para quién» (sale la lista de nadadores), pon la talla y pulsa <b>Guardar</b>. Lo que pague se apunta aquí con «Ha pagado».</div>';
     h += '<div class="cu-grid" style="margin-top:10px">' +
-      '<div class="cu-campo"><label for="p-' + id + '">Para quién</label><input id="p-' + id + '" data-campo="persona" value="' + esc(u.persona || '') + '" placeholder="Nombre y apellido" autocomplete="off"></div>' +
+      '<div class="cu-campo"><label for="p-' + id + '">Para quién</label><input id="p-' + id + '" data-campo="persona" list="rp-gente" value="' + esc(u.persona || '') + '" placeholder="Escribe o elige de la lista" autocomplete="off"></div>' +
       '<div class="cu-campo"><label for="t-' + id + '">Talla</label><input id="t-' + id + '" data-campo="talla" value="' + esc(u.talla || '') + '" autocomplete="off"></div>' +
       '<div class="cu-campo"><label for="pr-' + id + '">Precio por unidad (€)</label><input id="pr-' + id + '" data-campo="precio" type="number" inputmode="decimal" step="0.01" min="0" value="' + esc(u.precio == null ? '' : u.precio) + '"></div>' +
       (n > 1 ? '<div class="cu-campo"><label for="s-' + id + '">¿Cuántas de estas ' + n + '?</label><input id="s-' + id + '" data-campo="separar" type="number" min="1" max="' + n + '" value="' + n + '"><span class="ayuda">Si pones menos, se separan en otra fila.</span></div>' : '') +
@@ -253,7 +263,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return html || '<div class="cu-card"><div class="cu-cuerpo"><p class="cu-msg" style="padding:10px 0">' + (S.filtro ? 'No hay nada con ese filtro.' : 'Todavía no hay nada apuntado.') + '</p></div></div>';
   }
   function pintarStock(){
-    wrap.innerHTML = cabStock() + (S.filtro ? '' : quedan()) + listaStock() +
+    wrap.innerHTML = listaGente() + cabStock() + (S.filtro ? '' : quedan()) + listaStock() +
       '<div class="cu-acc" style="margin-top:4px"><button type="button" class="cu-btn" data-nuevo>Apuntar lo que ha llegado</button>' +
       (S.filtro ? '<button type="button" class="cu-btn sec" data-filtro="">Ver todo</button>' : '') + '</div>';
   }
@@ -278,6 +288,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="cu-campo"><label for="nv-cant">Unidades</label><input id="nv-cant" type="number" min="1" value="1"></div>' +
       '<div class="cu-campo"><label for="nv-coste">Coste por unidad (€)</label><input id="nv-coste" type="number" step="0.01" min="0" inputmode="decimal"><span class="ayuda">Con IVA. Opcional.</span></div>' +
       '<div class="cu-campo"><label for="nv-precio">Precio de venta (€)</label><input id="nv-precio" type="number" step="0.01" min="0" inputmode="decimal"><span class="ayuda">Vacío = el del catálogo.</span></div>' +
+      '<div class="cu-campo ancho"><label for="nv-persona">Para quién <small>si ya se sabe</small></label><input id="nv-persona" list="rp-gente" autocomplete="off" placeholder="Vacío = queda libre"></div>' +
       '</div><div id="nv-msg"></div><div class="cu-acc"><button type="button" class="cu-btn" data-nv-guardar>Apuntar</button><button type="button" class="cu-btn sec" data-cerrar>Cancelar</button></div></div></div>';
     document.body.appendChild(v); document.body.style.overflow = 'hidden';
     v.querySelector('#nv-prod').addEventListener('change', function (ev) { v.querySelector('#nv-art-c').style.display = ev.target.value ? 'none' : ''; });
@@ -381,7 +392,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (t === v || t.closest('[data-cerrar]')) { cerrarHoja(); return; }
     var b = t.closest('[data-nv-guardar]'); if (!b) return;
     var g = function (id) { return (document.getElementById(id) || {}).value || ''; };
-    var d = { lote: g('nv-lote'), producto_id: g('nv-prod'), articulo: g('nv-art'), talla: g('nv-talla'), cantidad: g('nv-cant'), coste: g('nv-coste'), precio: g('nv-precio') };
+    var d = { lote: g('nv-lote'), producto_id: g('nv-prod'), articulo: g('nv-art'), talla: g('nv-talla'), cantidad: g('nv-cant'), coste: g('nv-coste'), precio: g('nv-precio'), persona: g('nv-persona') };
     if (!d.producto_id && !d.articulo.trim()) { document.getElementById('nv-msg').innerHTML = '<div class="cu-aviso">Elige o escribe el artículo.</div>'; return; }
     b.disabled = true;
     if (await guardarStock(null, d, 'Apuntado')) cerrarHoja(); else b.disabled = false;
