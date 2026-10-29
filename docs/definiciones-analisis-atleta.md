@@ -122,6 +122,14 @@ Se distinguen medición real, objetivo individual acordado, referencia externa
 | 6 | «Modelo de parciales…» → «Aprobar la versión guardada» (solo administración). | Antes de aprobar enseña la versión guardada entera, la comprobación de la base y el aviso «cuadrar no es validar». La aprobación la hace Andrés cuando lo decida. |
 | 7 | Grupo real. | En la ficha no aparece «Análisis». |
 
+**Resultado tras la revisión del PDF · 29-oct, versión 20261029163119, sesión de Andrés:**
+en vivo, 200 m lisos con «+0,40 s respecto al objetivo», evolución, todas las repeticiones,
+tabla Real / Modelo / Diferencia con el acumulado (+0,10 → +0,20 → +0,35 → +0,40), modelo
+«PRUEBA: origen ChatGPT simulado», móvil con «Merece atención» antes de las gráficas y sin
+desplazamiento lateral. La revisión previa a la aprobación se abrió y se cerró **sin
+aprobar** (en la base sigue `propuesta`, versión 2). Corregido después: las limitaciones
+salían dos veces y «preparado por tú» (commit siguiente).
+
 **Resultado · 29-oct, versión 20261029151416, sesión de Andrés:** pasos 1–5 y 7 **pasan**
 tal como están escritos (en el grupo real no sale «Análisis» ni forzando `fs=analisis`).
 Paso 6: el botón «Aprobar la versión guardada» le aparece a Andrés; **la aprobación la
