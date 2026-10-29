@@ -340,7 +340,7 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
 - **Protocolos por tipo** (carrera, salto, lanzamiento, fuerza, otro): cada uno pide lo
   suyo; «Falta para comparar» y «completo» solo si lo marca una persona (la base
   lo comprueba con `protocolo_faltan`). Los tests antiguos siguen sin protocolo.
-- **Mig 475 (29-oct, ajustes):** la competición cancelada o aplazada se queda en la web
+- **Mig 476 (29-oct, ajustes):** la competición cancelada o aplazada se queda en la web
   con su etiqueta («Cancelada»; «Aplazada · nueva fecha por confirmar» si no hay fecha)
   y no cuenta como próxima; lo «previsto» de Academia no sale a nadie como inscripción.
   Lo público del evento (nombre, fecha, sede, estado, organizador, referencia oficial)

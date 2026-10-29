@@ -1,5 +1,5 @@
 -- ===========================================================================
--- 475 · Calendario público, identidad de competiciones, catálogo y prioridades
+-- 476 · Calendario público, identidad de competiciones, catálogo y prioridades
 -- ---------------------------------------------------------------------------
 --   1) Calendario: una competición cancelada o aplazada se queda en la web con su
 --      etiqueta; «aplazada» puede no tener aún nueva fecha (fecha_por_confirmar).
