@@ -224,6 +224,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function toast(t){ var el = document.querySelector('.cu-toast'); if (!el){ el = document.createElement('div'); el.className = 'cu-toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
     el.textContent = t; el.style.display = ''; clearTimeout(toastTmr); toastTmr = setTimeout(function(){ el.style.display = 'none'; }, 2800); }
   async function copiar(txt, aviso){ try { await navigator.clipboard.writeText(txt); toast(aviso || 'Copiado'); } catch (e) { prompt('Cópialo:', txt); } }
+  function diaMes(iso){ try { return new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', timeZone: 'Europe/Madrid' }); } catch (e) { return ''; } }
   function telWa(t){ var d = String(t||'').replace(/[^\d+]/g,''); if (!d) return ''; if (d.charAt(0) === '+') return d.slice(1); if (d.length === 9) return '34' + d; return d; }
 
   var rp = await sb.rpc('natacion_ropa_puede');   // mig 465: también quien lleva la ropa (Loren)
@@ -286,7 +287,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="eq-res"><span><b>' + cont + '</b> de <b>' + n + '</b> familias han contestado</span><span>· <b>' + nuevos + '</b> nadadores nuevos</span><span>· <b>' + eur(porCobrar) + '</b> por cobrar</span></div>' +
         '<div class="eq-env">' + tarjetaGrupo('escuela', 'Escuela') + tarjetaGrupo('master', 'Máster') + '</div>' +
         '<div class="cu-cobro-det" style="margin:0 0 10px">Antes de enviar ves el correo y puedes cambiarlo. ' + (nMixtas ? 'Las ' + nMixtas + ' familias con nadadores de Escuela y de Máster van con Escuela. ' : '') +
-          'A quien se incorpore más tarde, mándaselo desde su fila (abajo) con el texto de <b>nuevos</b>. La casilla <b>Chaqueta gratis</b> de cada nadador va marcada a los nuevos; márcala también a quien se incorporó tarde y no se le dio (o quítasela a quien ya la tiene): su pedido se recalcula mientras no haya llegado.</div>' +
+          'A quien se incorpore más tarde, mándaselo desde su fila (abajo) con el texto de <b>nuevos</b>. Si a una familia no le ha llegado, ábrela y pulsa <b>Reenviar el correo</b>. La casilla <b>Chaqueta gratis</b> de cada nadador va marcada a los nuevos; márcala también a quien se incorporó tarde y no se le dio (o quítasela a quien ya la tiene): su pedido se recalcula mientras no haya llegado.</div>' +
         '<div class="eq-acc">' +
           (sinRespuesta ? '<button type="button" class="cu-btn sec" data-recordar>Recordatorio a las ' + sinRespuesta + ' que no han contestado</button>' : '') +
           '<button type="button" class="cu-btn sec" data-editor="nuevo" data-solo-texto>Texto para nuevos</button>' +
@@ -316,13 +317,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="eq-l" style="border:0"><b>Total</b><b>' + esc(eur(f.total)) + '</b></div>' : '<div class="cu-cobro-det" style="margin-top:0">' + (f.respondido_en ? 'No ha pedido nada.' : 'Todavía no ha contestado.') + '</div>');
       var tel = telWa(f.telefono), pago = f.estado === 'llegado' && f.pago_estado !== 'pagado' ? f.pago_enlace : null;
       h += '<div class="cu-acc">' +
-        (f.estado === 'pendiente' || f.estado === 'pedido' ? '<button type="button" class="cu-btn peq" data-editor="nuevo" data-fam="' + f.id + '">' + (f.avisado_en ? 'Volver a mandar por correo' : 'Mandar el enlace por correo') + '</button>' : '') +
+        // Ya se le mandó (y dice que no le ha llegado) → otra vez con el texto de su grupo; si no, el de «nuevos».
+        (f.estado === 'pendiente' || f.estado === 'pedido' ? '<button type="button" class="cu-btn peq" data-editor="' + (f.avisado_en ? grupoDe(f) : 'nuevo') + '" data-fam="' + f.id + '">' + (f.avisado_en ? 'Reenviar el correo' : 'Mandar el enlace por correo') + '</button>' : '') +
+        (f.estado === 'llegado' ? '<button type="button" class="cu-btn peq" data-reavisar="' + f.id + '">Reenviar el aviso de que ha llegado</button>' : '') +
         '<button type="button" class="cu-btn peq sec" data-copiar="' + f.id + '">Copiar su enlace</button>' +
         '<a class="cu-btn peq wa" style="text-decoration:none;display:inline-flex;align-items:center" target="_blank" rel="noopener" href="https://wa.me/' + esc(tel) + '?text=' + encodeURIComponent(mensajeWa(f, pago)) + '">WhatsApp' + (pago ? ' (pago)' : '') + '</a>';
       if (f.estado === 'pedido') h += '<button type="button" class="cu-btn peq" data-estado="llegado" data-id="' + f.id + '"' + (S.ocupado[f.id] ? ' disabled' : '') + '>Ha llegado · avisar</button>';
       if (f.estado === 'llegado' || f.estado === 'pagado') h += '<button type="button" class="cu-btn peq verde" data-estado="entregado" data-id="' + f.id + '">Entregado</button>';
       if (pago) h += '<button type="button" class="cu-btn peq sec" data-copiar-pago="' + f.id + '">Copiar enlace de pago</button>';
-      h += '</div><div class="cu-cobro-det">' + esc(f.email) + (f.telefono ? ' · ' + esc(f.telefono) : '') + (f.avisado_en ? ' · enlace enviado' : ' · enlace sin enviar') + '</div></div>';
+      h += '</div><div class="cu-cobro-det">' + esc(f.email) + (f.telefono ? ' · ' + esc(f.telefono) : '') + (f.avisado_en ? ' · enlace enviado el ' + esc(diaMes(f.avisado_en)) : ' · enlace sin enviar') + '</div></div>';
     }
     return h + '</div>';
   }
@@ -380,8 +383,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var v = document.getElementById('eq-velo');
     if (!v){ v = document.createElement('div'); v.id = 'eq-velo'; v.className = 'cu-velo'; document.body.appendChild(v); }
     var f = ED.fam ? porId(ED.fam) : null, d = destinatarios(), ej = ejemplo();
-    var titulo = f ? 'Correo a ' + capital(f.contacto || f.email) : (ED.clave === 'nuevo' ? 'Texto para nuevos' : 'Correo a ' + TIT[ED.clave]);
-    var quien = f ? f.email + ' · ' + nombresDe(f) + (f.avisado_en ? ' · ya tenía el enlace' : '')
+    var reenvio = !!(f && f.avisado_en && ED.clave !== 'nuevo');
+    var titulo = f ? (reenvio ? 'Reenviar a ' : 'Correo a ') + capital(f.contacto || f.email) : (ED.clave === 'nuevo' ? 'Texto para nuevos' : 'Correo a ' + TIT[ED.clave]);
+    var quien = reenvio ? 'Va a ' + f.email + ' · ' + nombresDe(f) + '. Se le mandó el ' + diaMes(f.avisado_en) + ' con este mismo texto: puede que esté en spam o en Promociones. Mira que el correo esté bien escrito; si no lo está, mándale el enlace por WhatsApp desde su fila.'
+      : f ? f.email + ' · ' + nombresDe(f) + (f.avisado_en ? ' · ya tenía el enlace' : '')
       : ED.clave === 'nuevo' ? 'Es el texto que sale al mandar el enlace a una familia desde su fila (los que se incorporan más tarde). Ahí lo puedes retocar para esa familia antes de enviarlo.'
       : (d.length ? d.length + (d.length === 1 ? ' familia' : ' familias') + ' sin el enlace.' : 'Ya lo tienen todas. Puedes cambiar el texto para la próxima vez.');
     v.innerHTML = '<div class="cu-hoja eq-ed" role="dialog" aria-modal="true" aria-label="' + esc(titulo) + '"><h2>' + esc(titulo) + '<button type="button" data-ed-cerrar aria-label="Cerrar">×</button></h2><div class="cu-cuerpo">' +
@@ -393,9 +398,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="eq-prev"><div class="eq-prev-cab">Así le llega' + (ej ? ' a ' + esc(capital(ej.contacto || ej.email)) : '') + '</div><div class="eq-prev-as" id="eq-pas"></div><div class="eq-prev-cu" id="eq-pcu"></div></div>' +
       '<div id="eq-ed-msg"></div>' +
       '<div class="cu-acc">' +
-        '<button type="button" class="cu-btn sec" data-ed-guardar>' + (f ? 'Guardar como texto para nuevos' : 'Guardar el texto') + '</button>' +
+        (reenvio ? '' : '<button type="button" class="cu-btn sec" data-ed-guardar>' + (f ? 'Guardar como texto para nuevos' : 'Guardar el texto') + '</button>') +
         '<button type="button" class="cu-btn sec" data-ed-prueba>Enviarme una prueba</button>' +
-        (ED.solo || (!f && !d.length) ? '' : '<button type="button" class="cu-btn" data-ed-enviar>' + (f ? 'Enviar a esta familia' : 'Enviar a ' + d.length + (d.length === 1 ? ' familia' : ' familias')) + '</button>') +
+        (ED.solo || (!f && !d.length) ? '' : '<button type="button" class="cu-btn" data-ed-enviar>' + (f ? (reenvio ? 'Reenviar' : 'Enviar a esta familia') : 'Enviar a ' + d.length + (d.length === 1 ? ' familia' : ' familias')) + '</button>') +
       '</div></div></div>';
     previa();
   }
@@ -434,13 +439,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (!validar()) return;
     var f = ED.fam ? porId(ED.fam) : null, d = destinatarios();
     if (!f && !d.length) return;
-    if (!confirm(f ? '¿Mandar el correo a ' + capital(f.contacto || f.email) + ' (' + f.email + ')?' : '¿Mandar el correo a las ' + d.length + ' familias de ' + TIT[ED.clave] + ' que aún no tienen el enlace?')) return;
+    if (!confirm(f ? '¿' + (f.avisado_en ? 'Reenviar' : 'Mandar') + ' el correo a ' + capital(f.contacto || f.email) + ' (' + f.email + ')?' : '¿Mandar el correo a las ' + d.length + ' familias de ' + TIT[ED.clave] + ' que aún no tienen el enlace?')) return;
     if (!f && !(await guardarTexto())) return;     // el texto de un grupo queda guardado tal cual se envió
     b.disabled = true; b.textContent = 'Enviando…';
     var r = await correo(f ? { familia: f.id, asunto: ED.asunto, texto: ED.cuerpo } : { enviar: true, grupo: ED.clave, asunto: ED.asunto, texto: ED.cuerpo });
     if (!r.ok) { b.disabled = false; b.textContent = 'Volver a intentarlo'; edMsg('cu-mal', 'No se pudo enviar' + (r.mensaje ? ': ' + esc(r.mensaje) : '') + '.'); return; }
     ED.guardado = true; cerrarEditor();
-    toast('Enviados ' + r.enviados + ' de ' + r.total);
+    toast(f ? 'Enviado a ' + f.email : 'Enviados ' + r.enviados + ' de ' + r.total);
     if (r.fallos && r.fallos.length) alert('No salió el correo a: ' + r.fallos.join(', ') + '\n\nMándales el enlace por WhatsApp desde su fila.');
     await cargar(); pintar();
   }
@@ -510,6 +515,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if ((b = t.closest('[data-est]'))){ S.estado = b.getAttribute('data-est'); pintar(); return; }
     if ((b = t.closest('[data-copiar]'))){ var f = porId(b.getAttribute('data-copiar')); if (f) copiar(f.enlace, 'Enlace copiado'); return; }
     if ((b = t.closest('[data-copiar-pago]'))){ var fp = porId(b.getAttribute('data-copiar-pago')); if (fp && fp.pago_enlace) copiar(fp.pago_enlace, 'Enlace de pago copiado'); return; }
+    if ((b = t.closest('[data-reavisar]'))){
+      var fr = porId(b.getAttribute('data-reavisar')); if (!fr) return;
+      if (!confirm('¿Reenviar a ' + capital(fr.contacto || fr.email) + ' (' + fr.email + ') el correo de que ha llegado la ropa' + (Number(fr.total) > 0 && fr.pago_estado !== 'pagado' ? ', con el enlace para pagar ' + eur(fr.total) : '') + '?')) return;
+      b.disabled = true; b.textContent = 'Enviando…';
+      var dr = await correo({ llegado: fr.id });
+      toast(dr.ok ? 'Reenviado a ' + fr.email : 'No salió el correo: mándale el WhatsApp');
+      b.disabled = false; b.textContent = 'Reenviar el aviso de que ha llegado'; return;
+    }
     if ((b = t.closest('[data-excel]'))){ excel().catch(function(){ toast('No se pudo hacer el Excel'); }); return; }
     if ((b = t.closest('[data-recordar]'))){
       var n = (S.lista || []).filter(function (f) { return f.avisado_en && !f.respondido_en && f.estado === 'pendiente'; }).length;
