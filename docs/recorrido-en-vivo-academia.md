@@ -78,19 +78,60 @@ jueves pasa a contar en el feedback (2 de 4).
 | 19 | Anota las cifras de Carrera total y de Cobertura. «Sesiones y lectura de cada fila» → mar 27 → «Transferencia: 2x60 al 80% // 3′ Z» → «Revisar lectura…» → objetivo **Aceleración** → «Guardar la corrección». | **Cambia solo la clasificación**: Aceleración **220 → 340 m**, desaparece «Objetivo pendiente», la fila dice «Corregida». **No cambian** las cantidades ni la ejecución: Carrera total sigue **1.140 / 340 / 800**; Fuerza, saltos y minutos iguales. Cobertura: Clasificación **0 → 120 de 340 m**; Lectura del plan **0 → 1 de 14**; Feedback y Resultado conocido **sin cambios**. | | | |
 | 20 | Mira «Cobertura». | Feedback **2 de 3** (el jueves 29 aún en plazo no cuenta); Resultado conocido · repeticiones **25 de 30** («25 solo por «completa»»); distancia **340 de 1.140 m** («340 m solo por «completa»»); Cargas **0 de 6** con «**6 realizadas solo por «completa» (declaración global, sin kg)**»: la ejecución viene de la declaración global y se ve; Método **0 de 0**. | | | |
 
+## Resultado · 29-oct-2026 (sesión de Andrés, versión 0bc7ed60)
+
+Hecho en el navegador integrado con la sesión de Andrés (admin), escritorio y 375 px.
+Las escrituras, solo en «Academia AC98 · PRUEBA»: comprobado después en la base que
+**ninguna fila escrita hoy es de un atleta o competición real** (marcas 3, parciales 4,
+objetivo 1, inscripciones 3, plan de competición 2, competición 1 de prueba, lectura 1).
+Un visitante anónimo no ve ni la competición de prueba ni sus inscripciones.
+
+| # | Observado | Pasa / Falla |
+|---|---|---|
+| 1 | En móvil la banda sale abreviada («Prueba · ficticio»), en escritorio completa. En Hoy los atletas salen solo con el nombre; «Ficticio (prueba)» en la ficha. | Pasa |
+| 2 | «Categoría federativa hoy: Sénior», «Temporada de planificación: 2026/27», sin avisos de lectura. **No decía que 2026/27 es provisional** (en la base, `confirmada = false`). | **Falla** → corregido (ver abajo), repetir tras subir |
+| 3 | «200» sin confirmar en el catálogo; **«100» sale como «ambigua»** (es una de las 6 ambiguas: más exacto que lo que esperaba el guion). «Sin registrar» donde no hay datos. | Pasa |
+| 4 | 14 protocolos con «Falta para comparar»; 6 ambiguas. «Ver usos…» de «60» enseña **nombres** de otros grupos: es lo previsto para un **admin** (`soy_admin_de_verdad`); «Atleta de otro grupo» es lo que ve quien no tiene permiso sobre ese atleta. | Pasa |
+| 5 | Leyenda A/B/C con «Ninguna prioridad cambia el entrenamiento». En «I Control ST»: «Datos públicos del evento…» y «Academia … no se publican», separados. Mes y Mínimas sin errores. | Pasa |
+| 6 | Calendario público sin «PRUEBA»; anónimo: 0 competiciones de prueba (había 0 de prueba y 82 reales). | Pasa |
+| 7 | Fila nueva «200 m lisos» con **22,20 acordado** · «1 cambio»; historial «era «22,40»». La fila «200» intacta. | Pasa |
+| 8 | Grupo «condiciones no constan · método: electrónico de competición · oficial»: **22,61**, 1,2 m/s, **Sénior · calculada al guardar** (base: `categoria_origen = calculada`), fuente «no consta»; «Objetivo 2026/27: 22,20 acordado» y «+0,41 s respecto al acordado». | Pasa |
+| 9 | Igual: «Ya estaba guardado (misma huella de importación): no se duplica». Con 22,60: «Ya estaba importado con otros datos (22,61 el 25/10/2026)… ¿Corregir…?» → «Corregido» → **22,60 · corregido (1)**; un solo resultado. | Pasa |
+| 10 | Vienen 4 tramos de 50 m (0–200). «suma 22,70 frente al total 22,60: **+0,1 s: no cuadra**»; con 5,55: «suma 22,60 … **cuadra**». En la base, 4 tramos, ningún cero; el 5,65 queda en el historial. | Pasa |
+| 11 | «Prueba · no se publica»; no pidió confirmar ningún cambio público; anónimo no la ve. | Pasa |
+| 12 | A (Álex, propósito control) y C (Bruno) en el mismo evento; «⚠ 60 m lisos a las 17:00 y 60 m vallas a las 17:15: 15 min entre una y otra. Aviso: no se cambia nada.»; «Interno de Academia: no se publica». | Pasa |
+| 13 | Sin motivo: «Escribe el motivo de cada prueba que no se hizo o se cancela» y no guarda. Con motivo: «60 m lisos No participó «prueba»». | Pasa |
+| 14 | «Oficial 7,15 final» y «No oficial 7,05 manual»; inscripción → **Realizado**; mejor marca oficial sigue 7,15. En Tests y marcas, dos grupos («se ven juntos, no se comparan»). | Pasa |
+| 15 | «fecha cambiada», «Antes era el 7 nov 2026», «⚠ … su día (7 nov 2026) queda fuera de las fechas de la competición» (las dos de Álex). Después «Cancelada» con su explicación; «2 cambios en el historial»; las 3 inscripciones intactas (base). | Pasa |
+| 16 | Web sin «Control PRUEBA». A 375 px, ficha, Tests y marcas y Competiciones sin desplazamiento lateral (ancho de página = 375). | Pasa |
+| 17 | Carrera total 1.140 / 340 / 800; aceleración 220; objetivo pendiente 120; ritmo específico 800 sin datos; fuerza 18 reps / 6 series y cajón 6 por «completa». Grupo real: «De momento funciona solo con el grupo «Academia AC98 · PRUEBA»». | Pasa |
+| 18 | «Completa»: 12 filas, 340 m = lun 26 220 + mar 27 120, todas «fuente: atleta (declaración global: sesión completa)». «Sin datos»: mié 28, 4 filas (250+150+250+150). | Pasa |
+| 19 | «Lectura corregida (queda en su historial)»; fila «Lectura corregida». Aceleración **220 → 340**, sin «Objetivo pendiente»; Carrera total **1.140 / 340 / 800**; fuerza, saltos y minutos iguales. Clasificación **0 → 120 de 340**, lectura **0 → 1 de 14**; feedback y resultado conocido sin cambios. | Pasa |
+| 20 | Feedback 2 de 3; repeticiones 25 de 30 («25 solo por «completa»»); distancia 340 de 1.140 («340 m solo por «completa»»); **Cargas 0 de 6 · «6 realizadas solo por «completa» (declaración global, sin kg)»**; método 0 de 0. | Pasa |
+
 ## Incidencias
 
 **Fallos funcionales** (se corrigen antes de validar):
 
 | Paso | Qué pasa | Datos para reproducirlo | Estado |
 |---|---|---|---|
-| | | | |
+| 2 | La cabecera de la ficha no decía que la temporada de planificación es provisional. | Álex (PRUEBA); `temporadas_planificacion` 2026/27 con `confirmada = false`. | Corregido en el código: «(provisional: fechas por confirmar)». **Repetir el paso 2 tras subirlo.** |
 
-**Mejoras de comodidad** (para después):
+**Mejoras de comodidad** (para después; alcance congelado):
 
 | Paso | Qué mejorar |
 |---|---|
-| | |
+| 9 | La diferencia sale «+0,4 s» en vez de «+0,40 s» (con 22,61 salía +0,41). |
+| 10 | Corregir un tramo deja en el historial los 4 tramos como «borrados» (se guarda el intento entero); el dato está, pero cuesta leerlo. |
+| 13 | «Escribe el motivo…» sale solo como aviso flotante, no junto a la casilla. |
+| 14 | El resultado propone la fecha de la competición aunque sea futura (7 nov) sin avisar. |
+| 16 | En el resumen de la ficha, «Pendiente: Objetivo 2026/27 sin registrar: 100, 200» convive con «200 m lisos: 22,20»: el «200» del perfil aún no está emparejado con el catálogo. Se resuelve al confirmar «200» en el Catálogo. |
+| — | Navegación duplicada (lateral + pestañas arriba) que resta espacio. *(ChatGPT)* |
+| — | Ficha: «Objetivo» y «Próximas competiciones» son tarjetas muy altas aunque tengan una línea; ajustarlas al contenido. *(ChatGPT)* |
+| — | Dentro de la ficha de Álex el lateral marca «Hoy»: debería marcar Atletas. *(ChatGPT)* |
+| — | Feedback: cabecera, explicaciones y filtros dejan el primer registro al fondo; acortar y agrupar filtros. *(ChatGPT)* |
+| — | «Desde» y «hasta» en líneas separadas: mantenerlas como un intervalo. *(ChatGPT)* |
+| — | Tests y marcas: «＋ Resultado», «Parciales» e historial son acciones pequeñas; darles más presencia sin añadir botones. *(ChatGPT)* |
 
 Cuando los 20 pasos pasen (y los fallos estén corregidos y repetidos), la ficha, Tests
 y marcas, Competiciones y Carga y contenidos quedan verificadas con sesión iniciada.
