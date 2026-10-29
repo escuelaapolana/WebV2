@@ -222,6 +222,48 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   `academia_marcar_revisado`. Revisar = leído: no cierra incidencias ni da el
   entrenamiento por hecho (se dice ahí).
 
+**Ficha del atleta · la referencia central (29-oct, mig 471):**
+- `portal/academia/?v=ficha&a=<atleta>`. Se llega desde el nombre del atleta en
+  Semana («su ficha» en el móvil) y desde el detalle de cualquier sesión («Ficha
+  de X»; la administrativa sigue enlazada aparte).
+- **Cabecera**: nombre, categoría de la temporada (por año de nacimiento, con
+  `categorias.js`), pruebas principales y secundarias; atajos a su semana, su
+  feedback, decisiones, objetivos, marcas y ficha administrativa.
+- **Resumen** (cada tarjeta abre su fuente y dice «sin registrar» si no hay nada):
+  objetivo de la temporada, próxima competición y su **prioridad A/B/C** (se elige
+  ahí; vive en `competicion_atleta.prioridad`), esta semana, últimas sesiones con su
+  estado de feedback, decisiones y restricciones vigentes y pendiente (feedback por
+  revisar, revisiones vencidas, objetivos sin registrar). Sin cargas ni análisis.
+- **Perfil y disponibilidad**: perfil estable con el último cambio (quién: atleta,
+  entrenador o administración; cuándo; por qué), disponibilidad habitual aparte de
+  los **cambios de esta semana** (ausencias + decisiones de disponibilidad, que no la
+  tocan), lo que cuenta el atleta y lo que anotas tú, e historial del perfil.
+  «Cambiar el perfil…» pide motivo obligatorio y, si se quiere, lo registra también
+  como decisión con revisión (`academia_perfil_cambiar`).
+- **Restricciones y decisiones**: las de salud se ven desde **Lesiones** (su fuente;
+  se cambian allí). Decisiones con ámbito, motivo, inicio, revisión y fin; revisar
+  (no la cierra), finalizar, anular; las pasadas plegadas en «Anteriores». Una
+  revisión vencida **no es un alta**: sigue vigente hasta revisarla.
+- **Objetivos por temporada** (la de la federación, nov–oct, con el año en que
+  acaba; tres temporadas): por prueba, referencia (marca registrada o escrita a
+  mano con fecha y condiciones), acordado y del atleta por separado, condiciones,
+  estado e historial. Si cambian la categoría o las condiciones (vallas,
+  lanzamientos) se avisa de que no se comparan. Nada se rellena solo. Lo que el
+  atleta apuntó como «objetivo» en Mis marcas se ve aparte y no cuenta como marca.
+- **Historial de entrenamiento**: las mismas filas y el mismo detalle de Feedback,
+  por fechas (plan respondido, ejecución, feedback, datos de pista, observaciones,
+  sustituciones, adicional y discrepancias). No se copia nada.
+- **Marcas, tests y fuerza**: por prueba la última y su historial, competición o
+  entreno (`marcas_atleta.contexto`), método «sin registrar» (no existe el dato),
+  categoría de entonces; tests con nombre, unidad, fecha, sede, temperatura y viento;
+  RM con ejercicio y nota. Sin comparaciones de mejora.
+- **Móvil**: una columna; primero lo pendiente y las decisiones; de la semana solo
+  lo que queda; secciones plegadas; objetivos en lista por prueba.
+- **Pendiente para «Tests y marcas»**: método de cada marca, competición / test /
+  estimación, protocolo de tests, RM test o estimación y variante, y el modelo de
+  parciales. Las pruebas del perfil están escritas a mano («400mv», «60») y las
+  marcas con el nombre oficial: la ficha no las empareja sola.
+
 ## Navegación
 
 ```
@@ -303,6 +345,8 @@ Detalle de una sesión = panel lateral (PC) · pantalla completa (móvil).
 
 ## Ficha del atleta
 
+(Construida el 29-oct: ver «Estado». La evolución de 4 semanas sigue pendiente del modelo de cálculo.)
+
 - Perfil estable separado de la **situación temporal** («Ahora»).
 - Objetivos **por temporada** (las tres próximas, prueba principal y secundarias).
 - Decisiones vigentes, con su motivo y vigencia. Al llegar la fecha de revisión,
@@ -340,7 +384,7 @@ Detalle de una sesión = panel lateral (PC) · pantalla completa (móvil).
 | Grupos de trabajo del día | Hecho: `grupos_trabajo` + `grupos_trabajo_miembros` (sesión entera o un bloque). |
 | Revisión del feedback | `registros_sesion.revisado_en` / `revisado_por`; plazo de respuesta configurable. |
 | Revisiones de sesiones publicadas | `sesiones_revisiones` (también la usa ChatGPT). |
-| Objetivos y decisiones | `atleta_objetivos` (+ historial), ampliar `notas_atleta`. |
+| Objetivos y decisiones | Hecho (mig 471): `atleta_objetivos`, `atleta_decisiones` (con historial) y `atleta_perfil_cambios`; `competicion_atleta.prioridad`. |
 | Texto detallado de la casilla | Del plan: la «parte principal» resumida (sin cálculos). |
 
 ## Decisiones tomadas (v2 → v3, 28-oct)
