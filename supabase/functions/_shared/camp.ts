@@ -105,10 +105,16 @@ export const ETQ: Record<string, Record<string, Record<string, string>>> = {
           playa_montana: "Playa / montaña", actividades: "Actividades complementarias", otros: "Otros servicios" },
   },
   sub: {
-    en: { aeropuerto: "airport transfers", diario: "daily transport", hotel: "hotel", apartments: "apartments", any: "no preference",
-          breakfast: "breakfast", lunch: "lunch", dinner: "dinner", beach: "beach", mountain: "mountain" },
-    es: { aeropuerto: "traslados aeropuerto", diario: "transporte diario", hotel: "hotel", apartments: "apartamentos", any: "sin preferencia",
-          breakfast: "desayuno", lunch: "comida", dinner: "cena", beach: "playa", mountain: "montaña" },
+    en: { aeropuerto: "airport transfers", diario: "daily hotel ↔ track", puntual: "occasional trips", hotel: "hotel", apartments: "apartments", any: "no preference",
+          breakfast: "breakfast", lunch: "lunch", dinner: "dinner", beach: "beach", mountain: "mountain",
+          lt50: "under €50 pp/night", "50-80": "€50–80 pp/night", "80-120": "€80–120 pp/night", gt120: "over €120 pp/night" },
+    es: { aeropuerto: "traslados aeropuerto", diario: "hotel ↔ pista a diario", puntual: "desplazamientos puntuales", hotel: "hotel", apartments: "apartamentos", any: "sin preferencia",
+          breakfast: "desayuno", lunch: "comida", dinner: "cena", beach: "playa", mountain: "montaña",
+          lt50: "menos de 50 €/persona y noche", "50-80": "50–80 €/persona y noche", "80-120": "80–120 €/persona y noche", gt120: "más de 120 €/persona y noche" },
+  },
+  material: {
+    en: { hurdles: "hurdles", blocks: "starting blocks", cones: "cones / markers", mats: "mats", throwing: "throwing implements", medballs: "medicine balls", other: "other" },
+    es: { hurdles: "vallas", blocks: "tacos de salida", cones: "conos / marcas", mats: "colchonetas", throwing: "artefactos de lanzamiento", medballs: "balones medicinales", other: "otro" },
   },
 };
 export function lista(grupo: string, lang: string, v: unknown): string {
@@ -120,8 +126,10 @@ export function servicioTexto(clave: string, o: any, lang: string): string {
   const partes: string[] = [];
   if (o?.aeropuerto) partes.push(s.aeropuerto);
   if (o?.diario) partes.push(s.diario);
+  if (o?.puntual) partes.push(s.puntual);
   if (o?.tipo) partes.push(s[o.tipo] ?? o.tipo);
   if (o?.habitaciones) partes.push(String(o.habitaciones));
+  if (o?.presupuesto) partes.push(s[o.presupuesto] ?? o.presupuesto);
   if (Array.isArray(o?.cuales) && o.cuales.length) partes.push(o.cuales.map((x: string) => s[x] ?? x).join(" + "));
   if (Array.isArray(o?.cual) && o.cual.length) partes.push(o.cual.map((x: string) => s[x] ?? x).join(" + "));
   if (o?.dieta) partes.push((lang === "es" ? "dieta: " : "diet: ") + o.dieta);

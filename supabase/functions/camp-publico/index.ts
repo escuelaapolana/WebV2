@@ -31,12 +31,14 @@ const M: Record<string, Record<string, string>> = {
         caducado: "This proposal has expired. Please contact us and we'll send you an updated one.",
         estado: "This proposal can no longer be accepted. Please contact us.", anulado: "This payment request has been cancelled.",
         pasarela: "The payment gateway did not respond. Please try again in a minute.", config: "Payments are not available right now.",
-        no_se_puede: "We couldn't prepare the payment." },
+        no_se_puede: "We couldn't prepare the payment.",
+        pagos_off: "Online card payment isn't available yet. We'll send you the payment details." },
   es: { enlace: "Este enlace no es válido.", nombre: "Escribe tu nombre completo para aceptar.", acepto: "Acepta las condiciones de contratación.",
         caducado: "Este presupuesto ha caducado. Escríbenos y te enviamos uno actualizado.",
         estado: "Este presupuesto ya no se puede aceptar. Escríbenos.", anulado: "Esta solicitud de pago está anulada.",
         pasarela: "La pasarela de pago no ha respondido. Vuelve a intentarlo en un minuto.", config: "El pago no está disponible ahora mismo.",
-        no_se_puede: "No se ha podido preparar el pago." },
+        no_se_puede: "No se ha podido preparar el pago.",
+        pagos_off: "El pago con tarjeta todavía no está disponible. Te enviaremos los datos para pagar." },
 };
 
 async function claveStripe(): Promise<string> {
@@ -146,10 +148,13 @@ Deno.serve(async (req) => {
     lang = p.idioma === "es" ? "es" : "en";
     const vista = { tipo: p.tipo, concepto: p.concepto, importe: p.importe, vence: p.vence, pagado: p.pagado, fecha_pago: p.fecha_pago,
       anulado: p.anulado, cancelado: p.cancelado, codigo: p.codigo, entidad: p.entidad, idioma: lang, presupuesto: p.presupuesto,
-      propuesta_token: p.propuesta_token, total: p.total, llegada: p.llegada, salida: p.salida, emisor: p.emisor };
+      propuesta_token: p.propuesta_token, total: p.total, llegada: p.llegada, salida: p.salida, emisor: p.emisor,
+      pagos_online: p.pagos_online === true };
     if (p.pagado) { await avisarCobro(t, p); return responder({ ok: true, pagado: true, pago: vista }, 200, origen); }
     if (accion === "pago") return responder({ ok: true, pago: vista }, 200, origen);
     if (p.anulado || p.cancelado) return responder({ error: "anulado", mensaje: M[lang].anulado }, 409, origen);
+    // Interruptor de Training Camps (Ajustes): apagado = no se abre Stripe.
+    if (accion === "pagar" && p.pagos_online !== true) return responder({ error: "pagos_off", mensaje: M[lang].pagos_off }, 409, origen);
 
     const KEY = await claveStripe();
     if (!KEY) return responder({ error: "config", mensaje: M[lang].config }, 503, origen);

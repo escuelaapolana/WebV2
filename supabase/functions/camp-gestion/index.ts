@@ -141,6 +141,9 @@ Deno.serve(async (req) => {
     return responder({ ok: true, correo: ok, enlace }, 200, origen);
   }
 
+  // Interruptor de Training Camps: apagado = no sale ningún enlace de pago.
+  const pagosOnline = async () => (await rest("camp_config?select=pagos_online&id=eq.1")).datos?.[0]?.pagos_online === true;
+
   // ---------------- Pedir un pago ----------------
   if (accion === "pedir_pago") {
     const r = await rpc("camp_pago_crear", { p_solicitud: b.solicitud_id, p_tipo: b.tipo, p_importe: b.importe ?? null,
@@ -152,11 +155,12 @@ Deno.serve(async (req) => {
     const rP = await rest(`camp_presupuestos?select=idioma&id=eq.${c.presupuesto_id}`, { jwt });
     c.idioma = rP.datos?.[0]?.idioma ?? s.idioma;
     let correo = false;
-    if (b.enviar !== false) {
+    const online = await pagosOnline();
+    if (b.enviar !== false && online) {
       correo = await correoPago(c, s, String(b.mensaje ?? "").trim().slice(0, 4000));
       if (correo) await rpc("camp_pago_enviado", { p_id: c.id, p_email: s.email }, jwt);
     }
-    return responder({ ok: true, correo, enlace: enlacePago(c.token, c.idioma), camp_pago: c }, 200, origen);
+    return responder({ ok: true, correo, pagos_online: online, enlace: online ? enlacePago(c.token, c.idioma) : null, camp_pago: c }, 200, origen);
   }
 
   if (accion === "reenviar_pago") {
@@ -164,6 +168,7 @@ Deno.serve(async (req) => {
     const c = r.datos?.[0];
     if (!c) return responder({ error: "datos", mensaje: "Ese pago no existe." }, 404, origen);
     if (c.situacion !== "pendiente") return responder({ error: "datos", mensaje: "Ese pago ya no está pendiente." }, 409, origen);
+    if (!(await pagosOnline())) return responder({ error: "pagos_off", mensaje: "Los pagos online de Training Camps están desactivados (Ajustes): no se envía ningún enlace." }, 409, origen);
     const rS = await rest(`camp_solicitudes?select=id,codigo,email,contacto,idioma&id=eq.${c.solicitud_id}`, { jwt });
     const s = rS.datos?.[0];
     const rP = await rest(`camp_presupuestos?select=idioma&id=eq.${c.presupuesto_id}`, { jwt });
