@@ -2933,15 +2933,16 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      ------------------------------------------------------------ */
   var RM={};   // { 'sentadilla completa': { kg: 100, fecha: '2026-03-14' } }
   function claveRM(nom){ return claveEjercicio(nom); }
-  var P_RM = lanzar(sb.from('rm_atleta').select('ejercicio,peso_kg,fecha_test')
+  var P_RM = lanzar(sb.from('rm_atleta').select('ejercicio,variante,metodo,peso_kg,fecha_test')
               .eq('atleta_id',at.id).order('fecha_test',{ascending:false, nullsFirst:false}))
     .then(function(rmq){
       if(!rmq.error && rmq.data) rmq.data.forEach(function(x){
-        if(!x.ejercicio || x.peso_kg==null) return;
-        var k=claveRM(x.ejercicio);
+        if(!x.ejercicio || x.peso_kg==null || x.metodo==='estimado') return;   // un RM estimado no pone kilos en la barra
+        var nom=x.variante ? x.ejercicio+' '+x.variante : x.ejercicio;
+        var k=claveRM(nom);
         /* Llegan de la más reciente a la más antigua, así que la primera
            que se ve de cada ejercicio es la que vale. */
-        if(!RM[k]) RM[k]={ kg:Number(x.peso_kg), fecha:x.fecha_test||'', nom:String(x.ejercicio) };
+        if(!RM[k]) RM[k]={ kg:Number(x.peso_kg), fecha:x.fecha_test||'', nom:String(nom) };
       });
     }).catch(function(){});
 
@@ -3151,7 +3152,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '</div>'+
             '<div class="grid2">'+
               '<div><label>¿Dónde se hizo?</label><select id="mk-contexto"><option value="">—</option><option value="competicion">Competición oficial</option><option value="entreno">Entrenamiento</option></select></div>'+
-              '<div><label>Tipo</label><select id="mk-tipo"><option value="">Normal</option><option value="mmp">Mejor marca personal</option><option value="temporada">Mejor de la temporada</option><option value="objetivo">Objetivo</option></select></div>'+
+              '<div><label>Tipo</label><select id="mk-tipo"><option value="">Normal</option><option value="mmp">Mejor marca personal</option><option value="temporada">Mejor de la temporada</option></select></div>'+
             '</div>'+
             '<div class="acciones"><button class="btn btn--primario" id="mk-guardar">Guardar marca</button><span class="msg" id="mk-msg"></span></div>'+
           '</div>'+
@@ -3164,6 +3165,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             '<span class="mk-tests-txt"><b>Mis tests</b>' +
             '<span>Saltos, velocidad y fuerza: tu última prueba física y cuánto has mejorado</span></span>' +
             '<span class="mk-tests-chev">&rsaquo;</span></a>'+
+          '<div id="mob-cont"></div>'+
           '<div id="marcas-cont">'+APOLANA_UI.cargando('filas',5)+'</div>'+
         '</section>'+
         '<section id="sec-pagos" hidden>'+
@@ -7076,6 +7078,79 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       });
     }
     pintarMarcas();
+    cargarMisObjetivos();
+  }
+
+
+  /* ---------- Mis objetivos ----------
+     Los mismos que ve el entrenador en la ficha (atleta_objetivos), por temporada
+     de planificación. El acordado lo pone el entrenador; aquí se consulta y se
+     propone el tuyo, que nunca sustituye al acordado. Ya no se apuntan como
+     «marcas de tipo objetivo». */
+  var MOB = { L:[], tem:[], pr:[], abierto:false, edit:null };
+  async function cargarMisObjetivos(){
+    var c=$('mob-cont'); if(!c || !at) return;
+    var r=await Promise.all([
+      sb.from('atleta_objetivos').select('id,prueba,prueba_id,temporada,temporada_id,tipo,objetivo_texto,estado,procedencia,version').eq('atleta_id', at.id),
+      sb.from('temporadas_planificacion').select('id,nombre,inicio,fin,orden').order('orden'),
+      sb.from('pruebas').select('id,nombre,disciplina').eq('ambito','atletismo').eq('activa',true).order('orden')
+    ]);
+    if(r[0].error || r[1].error || r[2].error){ c.innerHTML=''; return; }
+    MOB.L=r[0].data||[]; MOB.tem=r[1].data||[]; MOB.pr=r[2].data||[];
+    pintarMisObjetivos();
+    if(!c.dataset.escucha){ c.dataset.escucha='1'; c.addEventListener('click', clicMisObjetivos); }
+  }
+  function pintarMisObjetivos(){
+    var c=$('mob-cont'); if(!c) return;
+    var hoy=todayISO, temAct=MOB.tem.filter(function(t){ return hoy>=t.inicio && hoy<=t.fin; })[0] || MOB.tem[0];
+    var filas=[], vistos={};
+    MOB.tem.forEach(function(t){
+      MOB.L.filter(function(o){ return o.temporada_id===t.id; }).forEach(function(o){
+        var k=t.id+'|'+(o.prueba_id||o.prueba); if(vistos[k]) return; vistos[k]=1;
+        var ac=MOB.L.filter(function(x){ return x.temporada_id===t.id && x.tipo==='acordado' && (x.prueba_id||x.prueba)===(o.prueba_id||o.prueba); })[0];
+        var pa=MOB.L.filter(function(x){ return x.temporada_id===t.id && x.tipo==='atleta' && (x.prueba_id||x.prueba)===(o.prueba_id||o.prueba); })[0];
+        var sub=[t.nombre, pa ? 'tu propuesta: '+(pa.objetivo_texto||'—')+(pa.estado==='descartado'?' (retirada)':'') : ''].filter(Boolean).join(' · ');
+        filas.push('<div class="lista-fila"><span class="lf-txt"><span class="lf-nom">'+esc(o.prueba)+'</span><span class="lf-sub">'+esc(sub)+'</span></span>'+
+          (ac ? '<span class="lf-dato" title="Objetivo acordado con tu entrenador">'+esc(ac.objetivo_texto||'—')+'</span>' : '<span class="lf-sin">sin acordar</span>')+
+          (pa && pa.procedencia==='mis_marcas' && pa.estado!=='descartado' ? '<span class="lf-acc"><button type="button" class="lf-acc-b" data-mob-edit="'+pa.id+'">Cambiar</button><button type="button" class="lf-acc-b lf-acc-b--del" data-mob-ret="'+pa.id+'">Retirar</button></span>' : '')+'</div>');
+      });
+    });
+    var form='';
+    if(MOB.abierto){
+      var e=MOB.edit ? MOB.L.filter(function(x){ return x.id===MOB.edit; })[0] : null;
+      form='<div class="tarjeta" style="margin-bottom:14px">'+(e ? '<p class="vacio" style="margin:0 0 8px">'+esc(e.prueba)+' · '+esc(e.temporada)+'</p>' :
+          '<div class="grid2"><div><label>Prueba</label><select id="mob-pr"><option value="">elige…</option>'+MOB.pr.map(function(p){ return '<option value="'+p.id+'">'+esc(p.nombre)+'</option>'; }).join('')+'</select></div>'+
+          '<div><label>Temporada</label><select id="mob-tem">'+MOB.tem.map(function(t){ return '<option value="'+t.id+'"'+(temAct && t.id===temAct.id?' selected':'')+'>'+esc(t.nombre)+'</option>'; }).join('')+'</select></div></div>')+
+        '<div class="grid2"><div><label>Tu objetivo</label><input id="mob-val" value="'+esc(e ? (e.objetivo_texto||'') : '')+'" placeholder="10.95 · 1:58.4 · 6.85"></div><div><label>Nota (opcional)</label><input id="mob-no"></div></div>'+
+        '<div class="acciones"><button class="btn btn--primario" type="button" data-mob-ok="1">'+(e ? 'Guardar' : 'Proponer')+'</button><button class="btn" type="button" data-mob-no="1">Cancelar</button><span class="msg" id="mob-msg"></span></div></div>';
+    }
+    c.innerHTML='<div class="lista-tit"><span class="et">Mis objetivos</span><button type="button" class="enl" data-mob-abrir="1">Proponer uno</button></div>'+form+
+      (filas.length ? '<div class="lista-caja">'+filas.join('')+'</div>' : '<p class="vacio">Todavía no hay objetivos. Puedes proponer el tuyo: tu entrenador lo verá y decidirá con vosotros el acordado.</p>');
+  }
+  async function clicMisObjetivos(ev){
+    var t=ev.target.closest && ev.target.closest('button'); if(!t) return;
+    if(t.dataset.mobAbrir){ MOB.abierto=true; MOB.edit=null; pintarMisObjetivos(); return; }
+    if(t.dataset.mobNo){ MOB.abierto=false; MOB.edit=null; pintarMisObjetivos(); return; }
+    if(t.dataset.mobEdit){ MOB.abierto=true; MOB.edit=t.dataset.mobEdit; pintarMisObjetivos(); return; }
+    var msg=function(x, err){ var m=$('mob-msg'); if(m){ m.textContent=x; m.className='msg'+(err?' error':''); } };
+    if(t.dataset.mobRet){
+      var o=MOB.L.filter(function(x){ return x.id===t.dataset.mobRet; })[0]; if(!o) return;
+      if(!confirm('¿Retirar tu propuesta de '+o.prueba+'? El objetivo acordado no cambia.')) return;
+      var rr=await sb.rpc('mis_objetivos_proponer', { p:{ id:o.id, version_base:o.version, retirar:true } });
+      if(rr.error || (rr.data && rr.data.ok===false)){ alert((rr.error && rr.error.message) || (rr.data && rr.data.mensaje) || 'No se pudo.'); }
+      cargarMisObjetivos(); return;
+    }
+    if(t.dataset.mobOk){
+      var val=($('mob-val').value||'').trim(), nota=($('mob-no').value||'').trim(), p;
+      if(!val){ msg('Escribe tu objetivo.', true); return; }
+      if(MOB.edit){ var e=MOB.L.filter(function(x){ return x.id===MOB.edit; })[0]; p={ id:e.id, version_base:e.version, objetivo_texto:val, nota:nota }; }
+      else { if(!$('mob-pr').value){ msg('Elige la prueba.', true); return; } p={ atleta_id:at.id, prueba_id:$('mob-pr').value, temporada_id:$('mob-tem').value, objetivo_texto:val, nota:nota }; }
+      t.disabled=true; msg('Guardando…');
+      var r=await sb.rpc('mis_objetivos_proponer', { p:p });
+      if(r.error){ t.disabled=false; msg(r.error.message, true); return; }
+      if(r.data && r.data.ok===false){ t.disabled=false; msg(r.data.mensaje||'No se ha guardado.', true); return; }
+      MOB.abierto=false; MOB.edit=null; cargarMisObjetivos();
+    }
   }
 
   /* La mejor marca del año. Dos marcas de pruebas distintas no se pueden
