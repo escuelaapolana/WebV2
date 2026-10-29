@@ -80,6 +80,8 @@ jueves pasa a contar en el feedback (2 de 4).
 
 ## Resultado · 29-oct-2026 (sesión de Andrés, versión 0bc7ed60)
 
+**RECORRIDO CERRADO: 20 de 20 pasan.** Versión verificada: **20261029144217** (commit 41c651a4, publicado junto con 5b448012 de Training Camps, que no toca Academia). La ficha, Tests y marcas, Competiciones y Carga y contenidos quedan **verificadas con sesión iniciada** (solo grupo PRUEBA en Carga).
+
 Hecho en el navegador integrado con la sesión de Andrés (admin), escritorio y 375 px.
 Las escrituras, solo en «Academia AC98 · PRUEBA»: comprobado después en la base que
 **ninguna fila escrita hoy es de un atleta o competición real** (marcas 3, parciales 4,
@@ -89,7 +91,7 @@ Un visitante anónimo no ve ni la competición de prueba ni sus inscripciones.
 | # | Observado | Pasa / Falla |
 |---|---|---|
 | 1 | En móvil la banda sale abreviada («Prueba · ficticio»), en escritorio completa. En Hoy los atletas salen solo con el nombre; «Ficticio (prueba)» en la ficha. | Pasa |
-| 2 | «Categoría federativa hoy: Sénior», «Temporada de planificación: 2026/27», sin avisos de lectura. **No decía que 2026/27 es provisional** (en la base, `confirmada = false`). | **Falla** → corregido (ver abajo), repetir tras subir |
+| 2 | «Categoría federativa hoy: Sénior», «Temporada de planificación: 2026/27», sin avisos de lectura. **No decía que 2026/27 es provisional** (en la base, `confirmada = false`). Repetido en la versión 20261029144217: «2026/27 (provisional: fechas por confirmar)». | Falla → corregido → **Pasa** |
 | 3 | «200» sin confirmar en el catálogo; **«100» sale como «ambigua»** (es una de las 6 ambiguas: más exacto que lo que esperaba el guion). «Sin registrar» donde no hay datos. | Pasa |
 | 4 | 14 protocolos con «Falta para comparar»; 6 ambiguas. «Ver usos…» de «60» enseña **nombres** de otros grupos: es lo previsto para un **admin** (`soy_admin_de_verdad`); «Atleta de otro grupo» es lo que ve quien no tiene permiso sobre ese atleta. | Pasa |
 | 5 | Leyenda A/B/C con «Ninguna prioridad cambia el entrenamiento». En «I Control ST»: «Datos públicos del evento…» y «Academia … no se publican», separados. Mes y Mínimas sin errores. | Pasa |
@@ -115,7 +117,7 @@ Un visitante anónimo no ve ni la competición de prueba ni sus inscripciones.
 
 | Paso | Qué pasa | Datos para reproducirlo | Estado |
 |---|---|---|---|
-| 2 | La cabecera de la ficha no decía que la temporada de planificación es provisional. | Álex (PRUEBA); `temporadas_planificacion` 2026/27 con `confirmada = false`. | Corregido en el código: «(provisional: fechas por confirmar)». **Repetir el paso 2 tras subirlo.** |
+| 2 | La cabecera de la ficha no decía que la temporada de planificación es provisional. | Álex (PRUEBA); `temporadas_planificacion` 2026/27 con `confirmada = false`. | Corregido (commit 41c651a4) y **repetido: pasa** (29-oct, versión 20261029144217). |
 
 **Mejoras de comodidad** (para después; alcance congelado):
 
