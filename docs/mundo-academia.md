@@ -196,6 +196,14 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   detalle. Las discrepancias de tramo total indican que el método del atleta es
   «no consta».
 
+- **Lo pendiente en el aparato (29-oct, mig 470)**: va atado a la **cuenta y al grupo**
+  que lo creó (desde otra cuenta ni se ve ni se envía); al recuperarlo se manda con
+  su **versión de origen** (si alguien cambió algo, conflicto); si la sesión se
+  archivó o ya no hay permiso, la base lo dice dato a dato («archivada»,
+  «sin_permiso», «no_existe»), no guarda nada y la pantalla lo conserva con el
+  motivo. **Parciales**: pendiente hasta que el registro del atleta identifique
+  tramos.
+
 **Feedback · una bandeja para revisar (29-oct; sin cambios de base):**
 - Tercera vista de Academia (Hoy · Semana · **Feedback**, también en el menú del
   mundo en lugar de «Feedback por día»). Una fila por sesión publicada y atleta del

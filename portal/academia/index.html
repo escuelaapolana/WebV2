@@ -370,7 +370,7 @@
   .tm-c.sucio input{ border-color:#C9A227; background:#FFFCF0; }
   .tm-c.guardando input{ border-color:#9AAAD0; }
   .tm-c.guardado input{ border-color:#9CC3A4; }
-  .tm-c.error input, .tm-c.conflicto input{ border-color:#C0563A; background:#FDF3F0; }
+  .tm-c.error input, .tm-c.conflicto input, .tm-c.bloqueado input{ border-color:#C0563A; background:#FDF3F0; }
   .tm-c.amb input{ border-style:dashed; }
   .tm-c small{ display:block; font-size:11px; color:#8F3F24; max-width:150px; line-height:1.2; margin-top:1px; }
   .tm-met{ display:block; font-size:10.5px; color:#2F4E92; }
@@ -1295,7 +1295,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var pend = pendDelGrupo();
     if (pend.length){
       var dias = []; pend.forEach(function(e){ if (e.fecha && dias.indexOf(e.fecha)===-1) dias.push(e.fecha); });
+      var probs = {}; pend.forEach(function(e){ if (e.problema) probs[e.problema] = (probs[e.problema]||0) + 1; });
       izq = '<div class="ac-aviso" style="margin:0 0 12px"><b>'+plural(pend.length,'dato de pista sin guardar','datos de pista sin guardar')+' en este aparato</b> ('+esc(dias.sort().map(function(f){ return fCorta(f); }).join(', '))+'). No están en la base todavía. '+
+        (Object.keys(probs).length ? '<ul class="ac-dif">'+Object.keys(probs).map(function(pr){ return '<li>'+probs[pr]+': '+esc(pr)+'</li>'; }).join('')+'</ul>' : '')+
         '<button type="button" class="ac-btn mini pri" data-pend-guardar="1">Guardarlos ahora</button> <button type="button" class="ac-link" data-pend-descartar="1">Descartarlos</button></div>' + izq;
     }
     if (esMovil()){
@@ -1983,15 +1985,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     Object.keys(TOMA.celdas).forEach(function(k){
       var c = TOMA.celdas[k], o = c.o || c.dato; if (!o) return;
       var kk = (o.sesion_id||'')+'·'+k;
-      if (['sucio','guardando','error','conflicto'].indexOf(c.est)!==-1)
+      if (['sucio','guardando','error','conflicto','bloqueado'].indexOf(c.est)!==-1)
         m[kk] = { k:k, o:o, texto:c.texto||'', id:c.id||null, version:c.version||null, quitar:!!c.quitar,
+                  cuenta: perfil && perfil.id, problema: c.est==='bloqueado' ? (c.msg||'') : (m[kk] && m[kk].problema) || null,
                   metodo: o.magnitud==='tiempo' ? (c.metodoNuevo || (c.dato && c.dato.metodo) || TOMA.metodo) : null,
                   grupo:ST.g.grupo_id, fecha:(TOMA.miembros[0] && TOMA.miembros[0].s.fecha) || ST.dia, en:new Date().toISOString() };
       else delete m[kk];
     });
     RESPALDO_OK = escribirPend(m);
   }
-  function pendDelGrupo(){ var m = leerPend(); return Object.keys(m).filter(function(kk){ return m[kk] && m[kk].grupo===ST.g.grupo_id; }).map(function(kk){ return Object.assign({ kk:kk }, m[kk]); }); }
+  // Solo lo que creó ESTA cuenta en ESTE grupo: lo de otra cuenta ni se enseña ni se envía.
+  function pendDelGrupo(){ var m = leerPend(), yo = perfil && perfil.id; return Object.keys(m).filter(function(kk){ return m[kk] && yo && m[kk].cuenta===yo && m[kk].grupo===ST.g.grupo_id; }).map(function(kk){ return Object.assign({ kk:kk }, m[kk]); }); }
+  var PROBLEMA = { archivada:'la sesión se archivó', sin_permiso:'ya no tienes permiso sobre esa sesión', no_existe:'la sesión ya no existe' };
   /* El dato que se manda a la base para una casilla (alta, cambio o borrado). */
   function itemDato(c){
     var o = c.o || c.dato; if (!o) return null;
@@ -2027,7 +2032,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var rec = pendDelGrupo().filter(function(e){ return e.o && sids[e.o.sesion_id+'|'+e.o.atleta_id]; });
     rec.forEach(function(e){
       var c = celdas[e.k] || (celdas[e.k] = { srv:null });
-      c.o = e.o; c.texto = e.texto; c.quitar = e.quitar; c.est = 'sucio';
+      var ses = D.sesPorId[e.o.sesion_id];
+      c.o = e.o; c.texto = e.texto; c.quitar = e.quitar;
+      if (e.problema || (ses && ses.archivada_en)){ c.est = 'bloqueado'; c.msg = e.problema || PROBLEMA.archivada; }
+      else c.est = 'sucio';
       if (e.id) c.id = e.id; if (e.version) c.version = e.version;   // con la versión de entonces: si alguien cambió algo, saldrá el conflicto
       if (e.metodo && e.o.magnitud==='tiempo') c.metodoNuevo = e.metodo;
     });
@@ -2058,7 +2066,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var o = Object.assign({}, base, extra, { magnitud:mag }), k = claveDato(o), c = TOMA.celdas[k] || {};
     var est = c.est || '', v = c.texto==null ? '' : c.texto;
     var lv = (mag==='tiempo'||mag==='carga'||mag==='repeticiones') && v ? leerValor(v, mag) : null;
-    var tip = c.est==='conflicto' ? '' : c.est==='error' ? 'No guardado: '+(c.msg||'') : (lv && lv.ambiguo ? '¿'+lv.motivo+'?' : (lv && lv.num!=null && mag==='tiempo' && /:/.test(v)===false && lv.num>=60 ? fmtNum(lv.num,'s') : ''));
+    var tip = c.est==='conflicto' ? '' : c.est==='bloqueado' ? 'No se guarda: '+(c.msg||'')+'. Se conserva en este aparato.' : c.est==='error' ? 'No guardado: '+(c.msg||'') : (lv && lv.ambiguo ? '¿'+lv.motivo+'?' : (lv && lv.num!=null && mag==='tiempo' && /:/.test(v)===false && lv.num>=60 ? fmtNum(lv.num,'s') : ''));
     var met = mag==='tiempo' && c.dato && c.dato.metodo && c.dato.metodo!==TOMA.metodo ? '<span class="tm-met">'+esc(METODO_TXT[c.dato.metodo]||c.dato.metodo)+'</span>' : '';
     return '<span class="tm-c '+est+(lv && lv.ambiguo?' amb':'')+'"><input type="text" inputmode="'+(mag==='repeticiones'?'numeric':'decimal')+'" enterkeyhint="next" autocomplete="off" data-k="'+esc(k)+'" data-o="'+esc(JSON.stringify(o))+'" value="'+esc(v)+'" aria-label="'+esc(label)+'" placeholder="'+(mag==='carga'?'kg':mag==='repeticiones'?'reps':'—')+'">'+met+
       (tip?'<small>'+esc(tip)+'</small>':'')+(c.est==='conflicto'?conflictoHTML(c, k, mag):'')+'</span>';
@@ -2169,14 +2177,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var o = Object.assign({}, base, { alcance:'bloque', magnitud:mag }), k = claveDato(o), c = TOMA.celdas[k] || {};
     return '<span class="tm-c '+(c.est||'')+'"><input type="text" data-k="'+esc(k)+'" data-o="'+esc(JSON.stringify(o))+'" value="'+esc(c.texto||'')+'" maxlength="500" placeholder="'+esc(ph)+'" aria-label="'+esc(ph)+'"></span>';
   }
-  function pendientesToma(){ return TOMA ? Object.keys(TOMA.celdas).filter(function(k){ var c = TOMA.celdas[k]; return c.est==='sucio' || c.est==='guardando' || c.est==='error' || c.est==='conflicto'; }) : []; }
+  function pendientesToma(){ return TOMA ? Object.keys(TOMA.celdas).filter(function(k){ var c = TOMA.celdas[k]; return c.est==='sucio' || c.est==='guardando' || c.est==='error' || c.est==='conflicto' || c.est==='bloqueado'; }) : []; }
   function refrescarEstadoToma(){
     var el = document.getElementById('tm-estado'); if (!el || !TOMA) return;
-    var C = TOMA.celdas, n = { sucio:0, guardando:0, error:0, conflicto:0 };
+    var C = TOMA.celdas, n = { sucio:0, guardando:0, error:0, conflicto:0, bloqueado:0 };
     Object.keys(C).forEach(function(k){ if (n[C[k].est]!=null) n[C[k].est]++; });
     el.className = 'tm-estado'+(n.error||n.conflicto?' err':n.guardando||n.sucio?' gd':' ok');
     respaldarToma();
-    var dondeQueda = (n.error || n.conflicto) ? (RESPALDO_OK ? ' · se conserva en este aparato' : ' · este navegador no lo conserva si cierras') : '';
+    var dondeQueda = (n.error || n.conflicto || n.bloqueado) ? (RESPALDO_OK ? ' · se conserva en este aparato' : ' · este navegador no lo conserva si cierras') : '';
+    if (n.bloqueado && !n.error && !n.conflicto){ el.className = 'tm-estado err'; el.innerHTML = n.bloqueado+' no se pueden guardar (sesión archivada o sin permiso)'+dondeQueda; return; }
     el.innerHTML = n.error ? n.error+' sin guardar · <button type="button" class="ac-link" data-tm-reint="1">Reintentar</button>'+dondeQueda
       : n.conflicto ? n.conflicto+' en conflicto con otra pantalla'+dondeQueda
       : n.guardando ? 'Guardando…' : n.sucio ? 'Sin guardar…' : 'Guardado';
@@ -2224,6 +2233,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         c.metodoNuevo = null;
         // el dato en memoria de la página, para que el detalle lo vea al cerrar
         D.toma = (D.toma||[]).filter(function(t){ return t.id!==d.id; }); if (!d.anulado_en && d.id) D.toma.push(d);
+      } else if (PROBLEMA[x.conflicto]){
+        c.est = 'bloqueado'; c.msg = PROBLEMA[x.conflicto];
       } else {
         var su = x.dato || {};
         c.est = 'conflicto'; c.suyo = su.magnitud==='estado' ? su.estado : su.magnitud==='sustitucion' ? su.ejercicio_realizado : su.magnitud==='nota' ? su.nota : su.valor_texto;
@@ -2627,16 +2638,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if (ds.pendGuardar){
       var P = pendDelGrupo(), items = [], porId = {};
+      // Con su versión de origen: si alguien cambió algo después, saldrá como conflicto (no se pisa)
       P.forEach(function(e){ var c = { o:e.o, texto:e.texto, id:e.id, version:e.version, quitar:e.quitar, metodoNuevo:e.metodo }; var it = itemDato(c); if (it){ items.push(it); porId[it.id] = e.kk; } });
       if (!items.length){ escribirPend({}); pintar(); return; }
       b.disabled = true;
       var rp;
       try { rp = await sb.rpc('academia_toma_guardar', { p_datos: items }); if (rp.error) throw rp.error; }
       catch(err){ b.disabled = false; avisar('No se han guardado (siguen en este aparato): '+((err && err.message) || 'sin conexión'), true); return; }
-      var M = leerPend(), ok = 0, choque = 0;
-      ((rp.data && rp.data.resultados) || []).forEach(function(x){ if (x.ok){ delete M[porId[x.id]]; ok++; } else choque++; });
+      var M = leerPend(), ok = 0, choque = 0, bloq = 0;
+      ((rp.data && rp.data.resultados) || []).forEach(function(x){
+        var kk = porId[x.id]; if (!kk || !M[kk]) return;
+        if (x.ok){ delete M[kk]; ok++; }
+        else if (PROBLEMA[x.conflicto]){ M[kk].problema = PROBLEMA[x.conflicto]; bloq++; }       // se conserva y se explica
+        else { M[kk].problema = 'choca con lo guardado desde otra pantalla: ábrelo en «Apuntar…» para decidir'; choque++; }
+      });
       escribirPend(M);
-      avisar(plural(ok,'dato guardado','datos guardados')+(choque?' · '+choque+' chocan con lo guardado desde otra pantalla: abre «Apuntar…» en esa sesión para decidir':''), !!choque);
+      avisar(plural(ok,'dato guardado','datos guardados')+(choque?' · '+choque+' chocan con lo guardado desde otra pantalla':'')+(bloq?' · '+bloq+' no se pueden guardar (sesión archivada o sin permiso): siguen en este aparato':''), !!(choque||bloq));
       recargar(); return;
     }
     if (ds.pendDescartar){
