@@ -134,6 +134,7 @@
       screens:[
         {key:'resumen',    t:'Resumen',          i:'grid',     url:B+'portal/natacion/'},
         {key:'alta',       t:'Dar de alta',      i:'userplus', url:B+'portal/natacion-alta/?tipo=M%C3%A1ster', d:'Un nadador nuevo, paso a paso: datos, días, calle y cuota. Le llega el acceso por correo.', pill:'Empieza aquí'},
+        {key:'solicitudes', t:'Solicitudes',     i:'inbox',    url:B+'portal/natacion-solicitudes/', d:'Lo que llega de los formularios: quién entra de prueba, grupos completos y los mensajes para las familias.'},
         {key:'nadadores',  g:'Nadadores', t:'Nadadores',        i:'people',   url:B+'portal/natacion/?p=nadadores'},
         {key:'franjas',    g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
@@ -152,6 +153,7 @@
         {key:'resumen', t:'Resumen', i:'grid', url:B+'portal/escuela-natacion/'},
         {key:'alta', t:'Dar de alta', i:'userplus', url:B+'portal/natacion-alta/?tipo=Escuela', d:'Un niño o niña nuevo, paso a paso: datos, días, calle y cuota. A la familia le llega el acceso.', pill:'Empieza aquí'},
         {key:'calendario', t:'Calendario', i:'calendar', url:B+'portal/calendario-club/?world=escuela-nat'},
+        {key:'solicitudes', t:'Solicitudes', i:'inbox', url:B+'portal/natacion-solicitudes/?tipo=Escuela', d:'Lo que llega del formulario: quién entra de prueba, grupos completos y los mensajes para las familias.'},
         {key:'ninos', t:'Niños y niñas', i:'people', url:B+'portal/escuela-natacion/?p=ninos', d:'La lista de la escuela de natación.'},
         {key:'cuotas', t:'Cuotas y cobros', i:'euro', url:B+'portal/natacion-cuotas/?tipo=Escuela', d:'La cuota de cada niño y el enlace para que la familia la domicilie.'},
         {key:'avisos', t:'Avisos a las familias', i:'megaphone', url:B+'portal/natacion-avisos/?tipo=Escuela', d:'Un aviso a una franja o a toda la escuela: llega en la app y por correo a cada familia.'},
