@@ -100,6 +100,11 @@ Se distinguen medición real, objetivo individual acordado, referencia externa
 | 6 | «Modelo de parciales…» → «Aprobar la versión guardada» (solo administración). | Se aprueba la versión guardada; el modelo pasa a «aprobado … versión N». Cambiarlo y guardarlo lo devuelve a propuesta. |
 | 7 | Grupo real. | En la ficha no aparece «Análisis». |
 
+**Resultado · 29-oct, versión 20261029151416, sesión de Andrés:** pasos 1–5 y 7 **pasan**
+tal como están escritos (en el grupo real no sale «Análisis» ni forzando `fs=analisis`).
+Paso 6: el botón «Aprobar la versión guardada» le aparece a Andrés; **la aprobación la
+hace él** (es su validación), no se ha pulsado.
+
 ## Pendiente
 
 - Activación con atletas reales (OK de Andrés).
