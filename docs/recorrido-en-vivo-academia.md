@@ -1,57 +1,47 @@
 # Recorrido en vivo · Academia (ficha, Tests y marcas, Competiciones)
 
-Para comprobarlo en la web, con la sesión iniciada (unos 15 minutos). Todo con el
-grupo **«Academia AC98 · PRUEBA»** (selector arriba a la derecha). Si algo no sale
-como dice «Esperado», anota el número del paso y lo que se ve.
+Para comprobarlo en la web **con la sesión iniciada** (unos 20 minutos). Hasta
+completarlo, estas pantallas no se dan por verificadas en vivo. Si algo no sale como
+dice «Esperado», anota el número del paso y lo que se ve.
 
-> No crees ni cambies competiciones del calendario para probar: es el del club y se
-> ve en la web. Usa una que ya exista y apunta solo atletas de PRUEBA.
+## Cómo se reconocen los datos ficticios
 
-## A · Ficha (5 min)
+- **Grupo «Academia AC98 · PRUEBA»** (marcado como grupo de prueba): arriba sale
+  «Grupo de prueba · datos ficticios». Sus atletas se apellidan **«Ficticio (prueba)»**.
+- **Competiciones de prueba**: se crean con «＋ Competición de prueba…» estando en el
+  grupo PRUEBA. Llevan la etiqueta **«Prueba · no se publica»**: no se ven en el
+  calendario de la web, ni en el portal de nadie, ni cuentan en los recuentos. Solo
+  salen en Academia con el grupo de prueba.
+- **Resultados de prueba**: de atletas ficticios y con huella `prueba-vivo-…`.
+- Las inscripciones, prioridades y propósitos son de Academia y nunca se publican.
+- **No se toca**: ninguna competición real del calendario ni ningún atleta real.
+  Nada se borra: lo ficticio se puede dejar.
 
-1. Abre la ficha de **Álex (PRUEBA)** (desde Semana, tocando su nombre).
-   **Esperado:** «Categoría federativa hoy» y «Temporada de planificación 2026/27»;
-   ningún aviso de «No se ha podido leer todo».
-2. Resumen: tarjetas de objetivo, próximas competiciones, semana, últimas sesiones,
-   decisiones y pendiente. **Esperado:** cada una dice «sin registrar» o muestra datos.
-3. «Objetivos por temporada» → casilla de 2026/27 de su prueba → acordado `7,20` →
-   Guardar. Vuelve a abrirla y cámbialo a `7,18`. **Esperado:** se ve el acordado y
-   «1 cambio» en su historial.
+## A · Navegación y lectura (no se escribe nada)
 
-## B · Tests y marcas (5 min)
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 1 | Academia → selector de grupo → **Academia AC98 · PRUEBA**. | Banda «Grupo de prueba · datos ficticios». Atletas «Ficticio (prueba)». |
+| 2 | Semana → toca el nombre de **Álex** → su ficha. | «Categoría federativa hoy» y «Temporada de planificación 2026/27»; ningún aviso «No se ha podido leer todo». |
+| 3 | En la ficha, abre Perfil, Decisiones, Objetivos, Historial y Marcas. | Donde no hay datos dice «sin registrar»; nada inventado. |
+| 4 | Tests y marcas: Por atleta, Por prueba, Protocolos y Catálogo (solo mirar). Catálogo → «60» → «Ver usos…». | Protocolos con «Falta para comparar». Seis ambiguas pendientes. Los usos de otros grupos salen como «Atleta de otro grupo». |
+| 5 | Competiciones: Próximas, Mes y Mínimas. | Leyenda A/B/C con «Ninguna prioridad cambia el entrenamiento». En una competición real, lo público y lo de Academia salen separados. Desde aquí no se toca ninguna real. |
+| 6 | En otra pestaña, el calendario de la web (`atletismoapolana.com/calendario/`). | Sirve de referencia: no hay ninguna competición «PRUEBA». |
 
-4. Tests y marcas › Por atleta › Álex (PRUEBA) › «＋ Resultado»: 60 m lisos, `7,15`,
-   Competición, ¿Oficial? «Oficial», huella `prueba-vivo-1` → Guardar.
-5. Repite el paso 4 con la misma huella. **Esperado:** «Ya estaba guardado: no se
-   duplica».
-6. «Corregir» ese resultado a `7,14` con un motivo. **Esperado:** «corregido (1)».
-7. «Parciales» de ese resultado: 0–30 y 30–60. **Esperado:** suma y «cuadra» o «no
-   cuadra».
-8. Protocolos › «CMJ» › Completar… **Esperado:** pide lo de un salto (brazos, caída,
-   qué se calcula, sistema…) y «Falta para comparar». Cancelar si no tienes los datos.
-9. Catálogo › «60» › «Ver usos…». **Esperado:** cada uso por separado; los de otros
-   grupos salen como «Atleta de otro grupo». No decidas usos reales si no quieres.
+## B · Escrituras, solo en el grupo PRUEBA
 
-## C · Competiciones (5 min)
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 7 | Ficha de Álex → Objetivos 2026/27 → acordado `7,20` → Guardar. Vuelve a abrirlo y pon `7,18`. | Se ve el acordado; al editar sale «1 cambio» en su historial. |
+| 8 | Tests y marcas → Álex → «＋ Resultado»: 60 m lisos, `7,15`, Competición, ¿Oficial? «Oficial», huella `prueba-vivo-1`. | Aparece en su grupo, marcado «oficial». |
+| 9 | Repite el paso 8 igual. Después, otra vez con `7,14`. | Igual: «Ya estaba guardado: no se duplica». Con 7,14: pregunta si el acta ha cambiado → aceptar → «corregido (1)», el anterior en el historial. |
+| 10 | «Parciales» de ese resultado: 0–30 y 30–60. | Suma y «cuadra» o «no cuadra». |
+| 11 | Competiciones → «＋ Competición de prueba…»: `Control PRUEBA (ficticio)`, una fecha próxima, Alicante. | Sale con «Prueba · no se publica». No pide confirmar un cambio público. |
+| 12 | En ella, «＋ Atleta…»: Álex, prioridad A, propósito «Control», 60 m lisos 17:00 y 60 m vallas 17:15. Otra vez «＋ Atleta…»: Bruno, prioridad C, 60 m lisos «Previsto». | Dos prioridades distintas en el mismo evento. Aviso de horario (15 min) sin cambiar nada. El cuadro dice «Interno de Academia: no se publica». |
+| 13 | Bruno → «Editar…» → estado «No participó» sin motivo → Guardar; luego con motivo. | Sin motivo no deja; con motivo se guarda y sigue a la vista. |
+| 14 | En la prueba de Álex, «＋ Resultado» oficial; después otro «No oficial» (manual). | Los dos en la competición; la inscripción pasa a «Realizado»; en Tests y marcas, en grupos distintos. |
+| 15 | «Nombre, fecha, lugar o estado…» de la competición de prueba: cambia la fecha; después ponla «Cancelada». | «Fecha cambiada» y aviso de que el día de las pruebas queda fuera; luego «Cancelada». Las inscripciones siguen igual. |
+| 16 | Recarga el calendario de la web (paso 6) y repite en el móvil los pasos 2, 8 y 12. | En la web no aparece «Control PRUEBA». En el móvil se lee sin desplazar de lado. |
 
-10. Competiciones › Próximas: abre una competición real que ya exista → «＋ Atleta…»:
-    Álex (PRUEBA), prioridad A, propósito «Control», pruebas 60 m lisos a las 17:00 y
-    60 m vallas a las 17:15 → Guardar. **Esperado:** aviso de horario (15 min), sin
-    cambiar nada.
-11. «＋ Atleta…»: Bruno (PRUEBA), prioridad C, 60 m lisos «Previsto». **Esperado:**
-    los dos con prioridades distintas en el mismo evento.
-12. «Editar…» de Bruno: estado «No participó» sin motivo → no deja; con motivo → se
-    guarda y sigue a la vista.
-13. «＋ Resultado» en la prueba de Álex: Oficial; luego otro «No oficial» (manual).
-    **Esperado:** los dos en la competición, la inscripción en «Realizado», y en Tests y
-    marcas en grupos distintos.
-14. Semana de esa competición: **Esperado:** la competición el día que toca y «próxima…
-    en N días» junto al nombre.
-15. Mínimas › «＋ Mínima»: estado «pendiente» sin marca → se guarda; «publicada» sin
-    fuente → no deja.
-16. En el móvil: pasos 1, 4 y 10. **Esperado:** se lee sin desplazar de lado.
-
-## Después
-
-- Lo de PRUEBA se puede dejar (no sale en ningún sitio público). Si quieres limpiar
-  las inscripciones de PRUEBA, pásalas a «Cancelado» con motivo: no se borran.
+Cuando los 16 pasos estén bien (o anotado lo que falle), la ficha, Tests y marcas y
+Competiciones quedan verificadas con sesión iniciada.

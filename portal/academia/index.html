@@ -524,6 +524,10 @@
   .cp-prox{ display:block; font-size:12px; color:var(--t2); text-decoration:none; margin-top:3px; }
   .cp-fxl{ display:block; font-size:12.5px; }
   .cp-sig{ font-size:13px; color:var(--t3); margin:0; }
+  .cp-pub{ background:#F4F6FB; border-radius:9px; padding:8px 10px; margin:10px 0 4px; font-size:14px; }
+  .cp-pub > b, .cp-int > b{ color:var(--navy); }
+  .cp-pub .nota{ margin:4px 0 0; font-size:13px; color:var(--t3); }
+  .cp-int{ margin:12px 0 0; font-size:14px; }
   .cp-fp{ border:1px solid var(--borde); border-radius:10px; padding:8px 10px; margin:0 0 8px; }
   .cp-fp .ancho, .cp-fp .cp-fp-t{ grid-column:1/-1; }
   .cp-fp-t{ color:var(--navy); font-size:14.5px; }
@@ -3796,7 +3800,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       else { datos.atleta_id = v('tmr-at'); datos.huella = v('tmr-hu'); }
       if (px){ datos.participacion_id = px.id; var rl = document.getElementById('tmr-real'); datos.marcar_realizado = !!(rl && rl.checked); }
       b.disabled = true;
-      var ok = await tmRespuesta(await sb.rpc('resultado_guardar', { p:datos }), m ? 'Resultado corregido · el anterior queda en el historial' : 'Resultado guardado');
+      var rr = await sb.rpc('resultado_guardar', { p:datos });
+      // Evitar duplicados no impide corregir: si el acta ha cambiado (misma huella) o ya hay un oficial de esa ronda, se corrige el que hay.
+      var ex = !m && rr.data && (rr.data.conflicto==='acta_distinta' || rr.data.conflicto==='oficial') ? rr.data.resultado : null;
+      if (ex){
+        b.disabled = false;
+        if (!confirm(rr.data.mensaje+'\n\n¿Corregir el que ya está con lo que acabas de escribir? El anterior queda en su historial.')) return;
+        var corr = Object.assign({}, datos, { id:ex.id, version_base:ex.version, motivo: rr.data.conflicto==='acta_distinta' ? 'Acta corregida' : 'Corrección del resultado oficial', tipo:ex.tipo||'' });
+        delete corr.huella; delete corr.atleta_id;
+        // Lo que no se ha dicho ahora (oficial, ronda) se queda como estaba en el que se corrige.
+        if (datos.oficial == null) delete corr.oficial; if (!datos.ronda) delete corr.ronda;
+        rr = await sb.rpc('resultado_guardar', { p:corr });
+        await tmRespuesta(rr, 'Corregido · el anterior queda en el historial');
+        return;
+      }
+      var ok = await tmRespuesta(rr, m ? 'Resultado corregido · el anterior queda en el historial' : 'Resultado guardado');
       if (!ok) b.disabled = false;
     });
   }
@@ -4042,10 +4060,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (r[3] && r[3].error) throw r[3].error;
     var part = r[0]||[], ids = {}; part.forEach(function(x){ if (x.competicion_id) ids[x.competicion_id] = 1; });
     var k = Object.keys(ids);
-    var rc = await sb.from('competiciones').select('id,nombre,sede,fecha_inicio,fecha_fin,ambito,estado,version,historial,circular_url,notas')
+    var rc = await sb.from('competiciones').select('id,nombre,sede,fecha_inicio,fecha_fin,ambito,estado,version,historial,circular_url,notas,fecha_por_confirmar,organizador,referencia_oficial,es_prueba')
       .or('ambito.in.(pista,atletismo)'+(k.length ? ',id.in.('+k.join(',')+')' : '')).order('fecha_inicio');
     if (rc.error) throw rc.error;
-    CP = { comps:rc.data||[], part:part, plan:r[1]||[], prio:r[2].data||[], minimas: r[3] && r[3].data ? r[3].data : (CP && CP.minimas || []), cid:{} };
+    var rpc = CP && CP.puedeCal != null ? { data:CP.puedeCal } : await sb.rpc('puedo_editar_calendario');
+    // Las competiciones de prueba (no se publican) solo se ven con el grupo de prueba.
+    var comps = (rc.data||[]).filter(function(c){ return !c.es_prueba || ST.g.es_prueba; });
+    CP = { comps:comps, part:part, plan:r[1]||[], prio:r[2].data||[], minimas: r[3] && r[3].data ? r[3].data : (CP && CP.minimas || []), cid:{}, puedeCal: !!(rpc && rpc.data) };
     CP.comps.forEach(function(c){ CP.cid[c.id] = c; });
   }
   function partDe(cid, aid){ return CP.part.filter(function(x){ return x.competicion_id===cid && (!aid || x.atleta_id===aid); }).sort(function(a,b){ return (a.dia||'').localeCompare(b.dia||'') || hhmmT(a.hora).localeCompare(hhmmT(b.hora)) || String(a.prueba).localeCompare(String(b.prueba)); }); }
@@ -4063,6 +4084,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function diaDe(x){ var c = CP.cid[x.competicion_id] || {}; return x.dia || c.fecha_inicio || ''; }
   // ¿La competición (o una prueba sin día) cae en la fecha f?
   function enFecha(x, f){ if (x.dia) return x.dia===f; var c = CP.cid[x.competicion_id]||{}; return !!c.fecha_inicio && c.fecha_inicio<=f && (c.fecha_fin||c.fecha_inicio)>=f; }
+  function estadoTxt(c){ return c.estado==='cancelada' ? 'Cancelada' : c.estado==='aplazada' ? (c.fecha_por_confirmar ? 'Aplazada · nueva fecha por confirmar' : 'Aplazada') : ''; }
+  function puedoCambiar(c){ return c.es_prueba ? true : CP.puedeCal; }
   function cambioFecha(c){ return (c.historial||[]).filter(function(h){ return h.fecha_inicio && h.fecha_inicio!==c.fecha_inicio; }).slice(-1)[0] || null; }
 
   // Avisos de horario de un atleta (no se resuelve nada): dos pruebas el mismo día muy juntas o
@@ -4179,12 +4202,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   }
   function cuerpoComp(c){
     var aids = filtroAtletas(c), cf = cambioFecha(c);
-    return (c.estado!=='programada' ? '<div class="ac-aviso">Competición '+esc(EST_COMP[c.estado].toLowerCase())+'. Las inscripciones se conservan tal cual: cambia cada una si hace falta.</div>' : '')+
-      (cf ? '<p class="nota">Antes era el '+esc(fAnio(cf.fecha_inicio))+(cf.sede && cf.sede!==c.sede ? ' en '+esc(cf.sede) : '')+'.</p>' : '')+
-      (aids.length ? aids.map(function(a){ return bloqueAtletaCP(c, a); }).join('') : '<p class="fx-sin">'+(ST.cp.aid||ST.cp.cat ? 'Nadie con ese filtro.' : 'Nadie del grupo apuntado.')+'</p>')+
-      '<div class="cp-acc"><button type="button" class="ac-btn mini" data-cp-part="'+c.id+'|">＋ Atleta…</button><button type="button" class="ac-btn mini" data-cp-comp="'+c.id+'">Fecha, lugar o estado…</button>'+
+    // Lo público del evento (lo ve la web) y lo interno de Academia (no se publica), por separado.
+    var pub = [c.organizador ? 'organiza '+c.organizador : '', c.referencia_oficial ? 'ref. '+c.referencia_oficial : ''].filter(Boolean).join(' · ');
+    return '<div class="cp-pub"><b>'+(c.es_prueba ? 'Competición de prueba' : 'Datos públicos del evento')+'</b> <span class="fx-sin">'+(c.es_prueba ? 'ficticia: no se ve en la web' : 'se ven en el calendario de la web')+'</span>'+
+        (estadoTxt(c) ? '<div class="ac-aviso" style="margin:6px 0 0">'+esc(estadoTxt(c))+'. Se queda en el calendario con esa etiqueta; las inscripciones se conservan tal cual: cambia cada una si hace falta.</div>' : '')+
+        (cf ? '<p class="nota">Antes era el '+esc(fAnio(cf.fecha_inicio))+(cf.sede && cf.sede!==c.sede ? ' en '+esc(cf.sede) : '')+'.</p>' : '')+
+        (pub ? '<p class="nota">'+esc(pub)+'</p>' : '')+
+        '<div class="cp-acc">'+(puedoCambiar(c) ? '<button type="button" class="ac-btn mini" data-cp-comp="'+c.id+'">Nombre, fecha, lugar o estado…</button>' : '<span class="fx-sin">Lo cambian administración y comunicación.</span>')+
         (c.circular_url ? '<a class="ac-link" href="'+esc(c.circular_url)+'" target="_blank" rel="noopener">Circular ↗</a>' : '')+
-        ((c.historial||[]).length ? '<span class="fx-sin">'+plural(c.historial.length,'cambio','cambios')+' en el historial</span>' : '')+'</div>';
+        ((c.historial||[]).length ? '<span class="fx-sin">'+plural(c.historial.length,'cambio','cambios')+' en el historial</span>' : '')+'</div></div>'+
+      '<div class="cp-int"><b>Academia</b> <span class="fx-sin">participación, pruebas, prioridad, propósito y notas: no se publican</span></div>'+
+      (aids.length ? aids.map(function(a){ return bloqueAtletaCP(c, a); }).join('') : '<p class="fx-sin">'+(ST.cp.aid||ST.cp.cat ? 'Nadie con ese filtro.' : 'Nadie del grupo apuntado.')+'</p>')+
+      '<div class="cp-acc"><button type="button" class="ac-btn mini" data-cp-part="'+c.id+'|">＋ Atleta…</button></div>';
   }
   function itemComp(c){
     var aids = filtroAtletas(c), d = diasA(c.fecha_inicio), cf = cambioFecha(c);
@@ -4197,7 +4226,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<details class="cp-item'+(c.estado==='cancelada'?' canc':'')+'" data-cp-item="'+c.id+'"'+(ST.cp.abiertas[c.id]?' open':'')+'><summary>'+
       '<span class="cp-f"><b>'+dt.getDate()+'</b><small>'+MES[dt.getMonth()]+'</small></span>'+
       '<span class="cp-q"><b>'+esc(c.nombre)+'</b><small>'+esc(fComp(c))+(c.sede?' · '+esc(c.sede):'')+' · '+esc(diasTxt(c.fecha_inicio))+'</small>'+
-        (c.estado!=='programada' ? tag(c.estado==='cancelada'?'t-nohecha':'t-rev', EST_COMP[c.estado]) : '')+(cf ? ' '+tag('t-rev','fecha cambiada') : '')+
+        (c.es_prueba ? tag('t-bor','Prueba · no se publica')+' ' : '')+(estadoTxt(c) ? tag(c.estado==='cancelada'?'t-nohecha':'t-rev', estadoTxt(c)) : '')+(cf ? ' '+tag('t-rev','fecha cambiada') : '')+
         (chips ? '<span class="cp-chips">'+chips+'</span>' : '')+'</span></summary>'+
       '<div class="cp-in">'+cuerpoComp(c)+'</div></details>';
   }
@@ -4258,14 +4287,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var filtros = '<div class="ac-barra"><select class="ac-sel" id="cp-at" aria-label="Atleta"><option value="">Todos los atletas</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===ST.cp.aid?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+
       '<select class="ac-sel" id="cp-cat" aria-label="Categoría"><option value="">Todas las categorías</option>'+categoriasCP().map(function(k){ return '<option'+(k===ST.cp.cat?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select>'+
       '<label class="cp-solo"><input type="checkbox" id="cp-solo"'+(ST.cp.solo?' checked':'')+'> Solo con atletas del grupo</label></div>';
-    var leyenda = '<div class="cp-ley">'+CP.prio.map(function(p){ return '<span>'+prioTag(p.clave)+' <b>'+esc(p.nombre)+'</b>: '+esc(p.significado)+'</span>'; }).join('')+'<button type="button" class="ac-link" data-cp-prio="1">Cambiar significados…</button></div>';
+    var leyenda = '<div class="cp-ley">'+CP.prio.map(function(p){ return '<span>'+prioTag(p.clave)+' <b>'+esc(p.nombre)+'</b>: '+esc(p.significado)+'</span>'; }).join('')+'<span class="fx-sin">El propósito va aparte. Ninguna prioridad cambia el entrenamiento ni aplica una descarga.</span><button type="button" class="ac-link" data-cp-prio="1">Cambiar significados…</button></div>';
     if (esMovil()) leyenda = '<details class="ac-ley cp-ley-m"><summary>Qué significa A, B y C</summary>'+leyenda+'</details>';
     var cuerpo;
     if (tab==='mes') cuerpo = filtros+mesHTML();
     else if (tab==='minimas') cuerpo = minimasHTML();
     else {
       var L = compsEn(hoy, null);
-      cuerpo = filtros+'<div class="tm-acc"><button type="button" class="ac-btn mini" data-cp-comp="nueva">＋ Competición…</button></div>'+
+      cuerpo = filtros+'<div class="tm-acc">'+(ST.g.es_prueba ? '<button type="button" class="ac-btn mini" data-cp-comp="nueva">＋ Competición de prueba…</button>' : CP.puedeCal ? '<button type="button" class="ac-btn mini" data-cp-comp="nueva">＋ Competición al calendario…</button>' : '')+'</div>'+
         (L.length ? L.map(itemComp).join('') : '<p class="fx-sin">Ninguna competición próxima'+(ST.cp.aid||ST.cp.cat||ST.cp.solo?' con ese filtro':'')+'.</p>');
     }
     wrap.innerHTML = cabecera('Competiciones', 'El calendario del club con lo de cada atleta: sus pruebas, su estado, su prioridad y su propósito. Competir no cambia ningún entrenamiento: eso lo decide el entrenador.')+
@@ -4313,7 +4342,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (!aid && !libres.length){ avisar('Todo el grupo está ya en esta competición: edita a cada uno.', true); return; }
     var pl = aid ? planDe(cid, aid) : null, L = aid ? partDe(cid, aid) : [], n = 0;
     var d = dialogo('<h3>'+(aid ? esc(nombreTM(aid))+' · ' : 'Añadir atleta · ')+esc(c.nombre)+'</h3>'+
-      '<p>'+esc(fComp(c))+(c.sede?' · '+esc(c.sede):'')+'. Previsto no es inscrito. Quitar una prueba es cancelarla con su motivo: se conserva en el historial.</p>'+
+      '<p>'+esc(fComp(c))+(c.sede?' · '+esc(c.sede):'')+'. <b>Interno de Academia: no se publica en la web.</b> Previsto no es inscrito. Quitar una prueba es cancelarla con su motivo: se conserva en el historial.</p>'+
       '<div class="ac-int">'+(aid ? '' : '<label class="ancho">Atleta<select id="cpp-at">'+libres.map(function(a){ return '<option value="'+a.id+'">'+esc(a._n)+'</option>'; }).join('')+'</select></label>')+
       '<label>Prioridad<select id="cpp-pri"><option value="">sin registrar</option>'+CP.prio.map(function(p){ return '<option value="'+p.clave+'"'+(pl && pl.prioridad===p.clave?' selected':'')+'>'+esc(p.clave+' · '+p.nombre)+'</option>'; }).join('')+'</select></label>'+
       '<label>Propósito<select id="cpp-pro"><option value="">sin registrar</option>'+Object.keys(PROPOSITO).map(function(k){ return '<option value="'+k+'"'+(pl && pl.proposito===k?' selected':'')+'>'+esc(PROPOSITO[k])+'</option>'; }).join('')+'</select></label>'+
@@ -4365,33 +4394,60 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       ST.cp.abiertas[cid] = true; cerrarDialogo(); avisar('Guardado'); recargar();
     });
   }
-  function dlgCompeticion(c){
-    var nueva = !c; c = c || { estado:'programada' };
+  var CAMPO_PUB = { nombre:'Nombre', fecha_inicio:'Fecha', fecha_fin:'Hasta', sede:'Lugar', estado:'Estado', fecha_por_confirmar:'Nueva fecha por confirmar', organizador:'Organizador', referencia_oficial:'Referencia oficial' };
+  function valPub(k, v){ if (k==='estado') return EST_COMP[v]||v||'—'; if (k==='fecha_por_confirmar') return v ? 'sí' : 'no'; if ((k==='fecha_inicio' || k==='fecha_fin') && v) return fAnio(v); return v ? String(v) : '—'; }
+  function dlgCompeticion(c, pre){
+    var nueva = !c, prueba = nueva ? !!ST.g.es_prueba : !!c.es_prueba; c = c || Object.assign({ estado:'programada' }, pre||{});
     var hist = (c.historial||[]).slice().reverse();
-    var d = dialogo('<h3>'+(nueva ? 'Nueva competición' : esc(c.nombre))+'</h3><p>'+(nueva ? 'Entra en el calendario del club. Si ya existe con ese nombre y fecha, no se duplica.' : 'Es la del calendario del club: el cambio lo ve todo el mundo y queda en su historial. Las inscripciones no se tocan.')+'</p>'+
+    var d = dialogo('<h3>'+(nueva ? (prueba ? 'Nueva competición de prueba' : 'Nueva competición en el calendario') : esc(c.nombre))+'</h3>'+
+      '<p>'+(prueba ? 'Es <b>ficticia</b> (grupo de prueba): no se ve en la web ni cuenta en ningún sitio.' : '<b>Cambio público:</b> esto es el calendario del club y se ve en la web. Lo que es de Academia (quién va, pruebas, prioridad, propósito, notas) se cambia en cada atleta y no se publica.')+'</p>'+
       '<div class="ac-int"><label class="ancho">Nombre<input id="cpc-no" maxlength="160" value="'+esc(c.nombre||'')+'"></label>'+
       '<label>Desde<input type="date" id="cpc-fi" value="'+esc(c.fecha_inicio||'')+'"></label><label>Hasta <small>si dura más de un día</small><input type="date" id="cpc-ff" value="'+esc(c.fecha_fin||'')+'"></label>'+
       '<label>Lugar<input id="cpc-se" maxlength="120" value="'+esc(c.sede||'')+'"></label>'+
       '<label>Estado<select id="cpc-es">'+Object.keys(EST_COMP).map(function(k){ return '<option value="'+k+'"'+(c.estado===k?' selected':'')+'>'+esc(EST_COMP[k])+'</option>'; }).join('')+'</select></label>'+
+      '<label class="ancho op" id="cpc-pc-f"'+(c.estado==='aplazada'?'':' hidden')+'><input type="checkbox" id="cpc-pc"'+(c.fecha_por_confirmar?' checked':'')+'> La nueva fecha está por confirmar (se deja la que tenía)</label>'+
+      '<label>Organizador<input id="cpc-or" maxlength="120" value="'+esc(c.organizador||'')+'" placeholder="FACV, club…"></label>'+
+      '<label>Referencia oficial<input id="cpc-rf" maxlength="160" value="'+esc(c.referencia_oficial||'')+'" placeholder="código o enlace del calendario oficial"></label>'+
       (nueva ? '' : '<label class="ancho">Por qué cambia<input id="cpc-mo" maxlength="200" placeholder="p. ej. la federación la mueve"></label>')+'</div>'+
-      (hist.length ? '<details class="ac-dif2"><summary>Historial ('+hist.length+')</summary><ul class="ac-dif">'+hist.map(function(h){ return '<li>'+esc(fechaHora(h.cambiado_en))+': era '+esc(h.fecha_inicio ? fAnio(h.fecha_inicio) : 'sin fecha')+(h.sede?' en '+esc(h.sede):'')+' · '+esc(EST_COMP[h.estado]||h.estado||'')+(h.motivo?' · «'+esc(h.motivo)+'»':'')+'</li>'; }).join('')+'</ul></details>' : '')+
+      '<div id="cpc-dup"></div>'+
+      (hist.length ? '<details class="ac-dif2"><summary>Historial ('+hist.length+')</summary><ul class="ac-dif">'+hist.map(function(h){ return '<li>'+esc(fechaHora(h.cambiado_en))+': era '+esc(h.fecha_inicio ? fAnio(h.fecha_inicio) : 'sin fecha')+(h.sede?' en '+esc(h.sede):'')+' · '+esc(EST_COMP[h.estado]||h.estado||'')+(h.fecha_por_confirmar?' (fecha por confirmar)':'')+(h.motivo?' · «'+esc(h.motivo)+'»':'')+'</li>'; }).join('')+'</ul></details>' : '')+
       '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cancelar</button><button type="button" class="ac-btn pri" data-cpc-ok="1">Guardar</button></div>');
     d.classList.add('ancho');
-    d.addEventListener('click', async function(ev){
-      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
-      var b = ev.target.closest('[data-cpc-ok]'); if (!b) return;
+    d.addEventListener('change', function(ev){ if (ev.target.id==='cpc-es'){ document.getElementById('cpc-pc-f').hidden = ev.target.value!=='aplazada'; if (ev.target.value!=='aplazada') document.getElementById('cpc-pc').checked = false; } });
+    var enviar = async function(b, extra){
       var v = function(id){ var el = document.getElementById(id); return el ? (el.value||'').trim() : ''; };
       if (!v('cpc-no') || !v('cpc-fi')){ avisar('Pon el nombre y la fecha.', true); return; }
       if (v('cpc-ff') && v('cpc-ff') < v('cpc-fi')){ avisar('La fecha de fin es anterior a la de inicio.', true); return; }
-      var p = { nombre:v('cpc-no'), fecha_inicio:v('cpc-fi'), fecha_fin:v('cpc-ff'), sede:v('cpc-se'), estado:v('cpc-es'), motivo:v('cpc-mo') };
-      if (!nueva){ p.id = c.id; p.version_base = c.version; }
+      var p = Object.assign({ nombre:v('cpc-no'), fecha_inicio:v('cpc-fi'), fecha_fin:v('cpc-ff'), sede:v('cpc-se'), estado:v('cpc-es'),
+        fecha_por_confirmar: v('cpc-es')==='aplazada' && document.getElementById('cpc-pc').checked, organizador:v('cpc-or'), referencia_oficial:v('cpc-rf'), motivo:v('cpc-mo') }, extra||{});
+      if (!nueva){ p.id = c.id; p.version_base = c.version; } else p.es_prueba = prueba;
+      // Antes de un cambio público: qué cambiará en la web.
+      if (!prueba && !(extra && extra.confirmar_distinta)){
+        var cambios = Object.keys(CAMPO_PUB).filter(function(k){ return nueva ? !!p[k] : String(p[k]||'') !== String(c[k]==null ? '' : c[k]) && !(k==='fecha_por_confirmar' && !p[k] && !c[k]); })
+          .map(function(k){ return '· '+CAMPO_PUB[k]+': '+(nueva ? valPub(k, p[k]) : valPub(k, c[k])+' → '+valPub(k, p[k])); });
+        if (!cambios.length){ cerrarDialogo(); return; }
+        if (!confirm((nueva ? 'Se añadirá al calendario de la web:' : 'Esto cambiará en el calendario de la web (lo ve todo el mundo):')+'\n\n'+cambios.join('\n')+'\n\nLo de Academia no cambia ni se publica. ¿Guardar?')) return;
+      }
       b.disabled = true;
       var r = await sb.rpc('academia_competicion_guardar', { p:p });
-      if (r.error){ b.disabled = false; avisar('No se pudo: '+r.error.message, true); return; }
+      b.disabled = false;
+      if (r.error){ avisar('No se pudo: '+r.error.message, true); return; }
+      if (r.data && r.data.conflicto==='posible_duplicado'){
+        document.getElementById('cpc-dup').innerHTML = '<div class="ac-aviso">'+esc(r.data.mensaje)+'<ul class="ac-dif">'+(r.data.candidatos||[]).map(function(k){ return '<li><b>'+esc(k.nombre)+'</b> · '+esc(fAnio(k.fecha_inicio))+(k.sede?' · '+esc(k.sede):'')+(k.organizador?' · '+esc(k.organizador):'')+(k.referencia_oficial?' · ref. '+esc(k.referencia_oficial):'')+
+          ' <button type="button" class="ac-link" data-cpc-es-esta="'+k.id+'">Es esta</button></li>'; }).join('')+'</ul><button type="button" class="ac-btn mini" data-cpc-otra="1">Es otra distinta: crearla</button></div>';
+        return;
+      }
+      if (r.data && r.data.conflicto==='misma_referencia'){ cerrarDialogo(); avisar(r.data.mensaje, true); ST.cp.abiertas[r.data.competicion.id] = true; recargar(); return; }
       if (r.data && r.data.ok===false){ cerrarDialogo(); avisar(r.data.mensaje||'Otra pantalla la ha cambiado.', true); recargar(); return; }
-      cerrarDialogo(); avisar(r.data && r.data.repetida ? 'Ya estaba en el calendario: no se ha duplicado' : 'Guardado');
+      cerrarDialogo(); avisar(prueba ? 'Guardada (de prueba: no se publica)' : 'Guardado en el calendario');
       if (r.data && r.data.competicion) ST.cp.abiertas[r.data.competicion.id] = true;
       recargar();
+    };
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      var e1 = ev.target.closest('[data-cpc-es-esta]'); if (e1){ cerrarDialogo(); ST.cp.abiertas[e1.dataset.cpcEsEsta] = true; avisar('Es la que ya estaba: no se crea otra'); recargar(); return; }
+      var e2 = ev.target.closest('[data-cpc-otra]'); if (e2){ await enviar(e2, { confirmar_distinta:true }); return; }
+      var b = ev.target.closest('[data-cpc-ok]'); if (b) await enviar(b);
     });
   }
   function dlgPrioridades(){

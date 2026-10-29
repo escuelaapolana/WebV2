@@ -1322,16 +1322,23 @@
     /* Competiciones del club */
     try {
       var rc = await sb.from('competiciones')
-        .select('id,nombre,sede,fecha_inicio,fecha_fin,ambito,coste,circular_url,inscripcion_abierta,fecha_limite_interna')
+        .select('id,nombre,sede,fecha_inicio,fecha_fin,ambito,coste,circular_url,inscripcion_abierta,fecha_limite_interna,estado,fecha_por_confirmar')
+        .eq('es_prueba', false)
         .order('fecha_inicio', { ascending: true }).limit(500);
       if (rc.error) { console.warn('[Apolana] competiciones:', rc.error.message); }
       else if (rc.data) {
         ok = true;
         rc.data.forEach(function (c) {
           if (!c.fecha_inicio) return;
+          /* Cancelada o aplazada: se queda en el calendario (y en el histórico)
+             con la etiqueta en el propio título, para que salga en todas las
+             vistas. No abre inscripción ni cuenta como próxima competición. */
+          var canc = c.estado === 'cancelada', apl = c.estado === 'aplazada', sinFecha = apl && c.fecha_por_confirmar;
+          var etq = canc ? ' · Cancelada' : sinFecha ? ' · Aplazada (nueva fecha por confirmar)' : apl ? ' · Aplazada' : '';
+          if (canc || sinFecha) { c.inscripcion_abierta = false; }
           var plazoPasado = c.fecha_limite_interna ? (new Date(c.fecha_limite_interna).getTime() < Date.now()) : false;
           var a = apuntarRango(c.fecha_inicio, c.fecha_fin, {
-            clase: 'competicion', hora: null, titulo: limpio(c.nombre) || 'Competición',
+            clase: 'competicion', hora: null, titulo: (limpio(c.nombre) || 'Competición') + etq,
             tipoTexto: 'Competición', lugar: limpio(c.sede), grupo: '',
             /* ⚠️ Esta `seccion` NO la ha elegido nadie: se deduce del ámbito
                para poder pintar el rótulo. No es «de quién es la carrera»,
@@ -1360,7 +1367,7 @@
               limite: c.fecha_limite_interna, plazoPasado: plazoPasado
             });
           }
-          if (c.fecha_inicio >= hoyKey) {
+          if (c.fecha_inicio >= hoyKey && !canc && !sinFecha) {
             COMPES.push({ c: c, plazoPasado: plazoPasado, i: a ? a.i : null });
           }
         });

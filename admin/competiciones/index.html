@@ -355,6 +355,29 @@
         </select>
       </div>
     </div>
+    <div class="grid3">
+      <div>
+        <label for="c-estado">Estado (se ve en la web)</label>
+        <select id="c-estado">
+          <option value="programada">Programada</option>
+          <option value="aplazada">Aplazada</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+      </div>
+      <div>
+        <label for="c-organizador">Organizador</label>
+        <input type="text" id="c-organizador" placeholder="FACV, club, ayuntamiento…">
+      </div>
+      <div>
+        <label for="c-referencia">Referencia oficial</label>
+        <input type="text" id="c-referencia" placeholder="Código o enlace del calendario oficial">
+      </div>
+    </div>
+    <label class="fila-check oculto" for="c-porconfirmar" id="c-porconfirmar-f">
+      <input type="checkbox" id="c-porconfirmar">
+      <span>Aplazada y la nueva fecha está por confirmar (se deja la fecha que tenía)</span>
+    </label>
+    <div class="ayuda">Cancelada o aplazada no se borra: sigue en el calendario de la web con su etiqueta. Si cambias la fecha, queda la anterior en su historial.</div>
     <h3>Cómo se inscriben los atletas</h3>
     <label for="c-circular">Enlace donde se inscriben (web de la organización)</label>
     <input type="text" id="c-circular" placeholder="https://…" inputmode="url">
@@ -491,7 +514,7 @@ APOLANA_ADMIN.listo(function (sb) {
     var cont = $('cp-lista');
     cont.innerHTML = ADM.esqueleto(4);
     var r = await sb.from('competiciones')
-      .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta')
+      .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta,estado,fecha_por_confirmar,organizador,referencia_oficial,es_prueba')
       .order('fecha_inicio', { ascending: true });
     /* Un fallo de lectura no puede leerse como «no hay competiciones». */
     if (r.error) {
@@ -541,9 +564,12 @@ APOLANA_ADMIN.listo(function (sb) {
   }
   function estadoPill(c, i) {
     i = i || info(c);
-    return i.abierta
+    if (c.es_prueba) return '<span class="cp-pill cerrada">Prueba de Academia · no se publica</span>';
+    if (c.estado === 'cancelada') return '<span class="cp-pill cerrada">Cancelada</span>';
+    if (c.estado === 'aplazada' && c.fecha_por_confirmar) return '<span class="cp-pill plazo"><span class="pt"></span>Aplazada · fecha por confirmar</span>';
+    return (c.estado === 'aplazada' ? '<span class="cp-pill plazo"><span class="pt"></span>Aplazada</span>' : '') + (i.abierta
       ? '<span class="cp-pill abierta"><span class="pt"></span>Inscripción abierta</span>'
-      : (c.inscripcion_abierta ? '<span class="cp-pill plazo"><span class="pt"></span>Plazo pasado</span>' : '<span class="cp-pill cerrada">Cerrada</span>');
+      : (c.inscripcion_abierta ? '<span class="cp-pill plazo"><span class="pt"></span>Plazo pasado</span>' : '<span class="cp-pill cerrada">Cerrada</span>'));
   }
 
   function pintarTodo() { pintarCifras(); pintarChips(); pintarLista(); }
@@ -702,6 +728,11 @@ APOLANA_ADMIN.listo(function (sb) {
     $('c-nombre').value = c.nombre || '';
     $('c-sede').value = c.sede || '';
     $('c-fecha').value = c.fecha_inicio || '';
+    $('c-estado').value = c.estado || 'programada';
+    $('c-porconfirmar').checked = !!c.fecha_por_confirmar;
+    $('c-porconfirmar-f').classList.toggle('oculto', (c.estado || 'programada') !== 'aplazada');
+    $('c-organizador').value = c.organizador || '';
+    $('c-referencia').value = c.referencia_oficial || '';
     /* El desplegable solo ofrece tres ámbitos, pero en la base hay más (pista,
        escolar…). Si la competición tiene otro, se añade como opción para que al
        guardar se quede el que tenía y no se convierta en «Atletismo». */
@@ -724,6 +755,7 @@ APOLANA_ADMIN.listo(function (sb) {
     $('panel-form').scrollTop = 0;
   }
   function cerrarForm() { $('panel-form').classList.add('oculto'); }
+  $('c-estado').addEventListener('change', function () { $('c-porconfirmar-f').classList.toggle('oculto', this.value !== 'aplazada'); if (this.value !== 'aplazada') $('c-porconfirmar').checked = false; });
   $('nueva-comp').addEventListener('click', function(){ abrirForm(); });
   $('cancelar').addEventListener('click', cerrarForm);
   $('panel-form').addEventListener('click', function (e) { if (e.target === this) cerrarForm(); });
@@ -754,13 +786,17 @@ APOLANA_ADMIN.listo(function (sb) {
       fecha_limite_interna: deInput($('c-limite').value),
       circular_url: enlaceLimpio($('c-circular').value),
       notas: $('c-notas').value.trim() || null,
-      inscripcion_abierta: $('c-abierta').checked
+      inscripcion_abierta: $('c-abierta').checked,
+      estado: $('c-estado').value || 'programada',
+      fecha_por_confirmar: $('c-estado').value === 'aplazada' && $('c-porconfirmar').checked,
+      organizador: $('c-organizador').value.trim() || null,
+      referencia_oficial: $('c-referencia').value.trim() || null
     };
     var m = $('msg-form'); m.textContent = 'Guardando…'; m.className = 'msg';
     var id = $('c-id').value, r;
     if (id) r = await sb.from('competiciones').update(datos).eq('id', id);
     else r = await sb.from('competiciones').insert(datos);
-    if (r.error) { m.textContent = 'Error: ' + r.error.message; m.className = 'msg error'; return; }
+    if (r.error) { m.textContent = /referencia_unica/.test(r.error.message) ? 'Esa referencia oficial ya es de otra competición: puede que ya esté en el calendario.' : 'Error: ' + r.error.message; m.className = 'msg error'; return; }
     m.textContent = 'Guardado ✓'; m.className = 'msg ok';
     cerrarForm();
     cargarComps();

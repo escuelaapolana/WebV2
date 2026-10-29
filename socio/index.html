@@ -898,7 +898,8 @@ async function pintarPanelSocio(sb, perfil) {
     try {
       var ri = await sb.from('competicion_atleta').select('competicion_id,prueba,estado').eq('atleta_id', mi.id);
       if (!ri.error && ri.data) ri.data.forEach(function (x) {
-        if ((x.estado || '') === 'cancelada') return;
+        // Solo lo apuntado de verdad: «previsto» es planificación interna de Academia.
+        if (['apuntado', 'confirmada', 'realizado'].indexOf(x.estado || 'apuntado') === -1) return;
         var e = MIS_INSC[x.competicion_id] = MIS_INSC[x.competicion_id] || { pruebas: [], estado: x.estado || '' };
         if (x.prueba) e.pruebas.push(x.prueba);
       });
@@ -907,7 +908,7 @@ async function pintarPanelSocio(sb, perfil) {
   var COMPS = {};
   var MIS_COMPS = [];
   try {
-    var rc = await sb.from('competiciones').select('id,nombre,sede,fecha_inicio,ambito').order('fecha_inicio', { ascending: true });
+    var rc = await sb.from('competiciones').select('id,nombre,sede,fecha_inicio,ambito,estado,fecha_por_confirmar').eq('es_prueba', false).order('fecha_inicio', { ascending: true });
     if (!rc.error && rc.data) rc.data.forEach(function (c) {
       COMPS[c.id] = c;
       if (MIS_INSC[c.id]) MIS_COMPS.push(c);
@@ -915,7 +916,7 @@ async function pintarPanelSocio(sb, perfil) {
   } catch (e) {}
   var PROXIMA = null;
   for (var i = 0; i < MIS_COMPS.length; i++) {
-    if (MIS_COMPS[i].fecha_inicio && MIS_COMPS[i].fecha_inicio >= HOY) { PROXIMA = MIS_COMPS[i]; break; }
+    if (MIS_COMPS[i].fecha_inicio && MIS_COMPS[i].fecha_inicio >= HOY && MIS_COMPS[i].estado !== 'cancelada' && !MIS_COMPS[i].fecha_por_confirmar) { PROXIMA = MIS_COMPS[i]; break; }
   }
 
   /* Bono de El Cubo, si lo tiene */
@@ -951,7 +952,8 @@ async function pintarPanelSocio(sb, perfil) {
   MIS_COMPS.forEach(function (c) {
     if (!c.fecha_inicio || c.fecha_inicio < HOY || c.fecha_inicio > HASTA) return;
     var pr = (MIS_INSC[c.id] && MIS_INSC[c.id].pruebas) || [];
-    AGENDA.push({ fecha: c.fecha_inicio, que: limpio(c.nombre) || 'Competición', donde: limpio(c.sede), sub: pr.length ? pr.join(', ') : '', carrera: true });
+    var etq = c.estado === 'cancelada' ? ' · Cancelada' : c.estado === 'aplazada' ? (c.fecha_por_confirmar ? ' · Aplazada (nueva fecha por confirmar)' : ' · Aplazada') : '';
+    AGENDA.push({ fecha: c.fecha_inicio, que: (limpio(c.nombre) || 'Competición') + etq, donde: limpio(c.sede), sub: pr.length ? pr.join(', ') : '', carrera: true });
   });
   try {
     var re = await sb.from('eventos').select('titulo,fecha_inicio,lugar')

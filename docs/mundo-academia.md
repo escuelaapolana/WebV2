@@ -340,6 +340,17 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
 - **Protocolos por tipo** (carrera, salto, lanzamiento, fuerza, otro): cada uno pide lo
   suyo; «Falta para comparar» y «completo» solo si lo marca una persona (la base
   lo comprueba con `protocolo_faltan`). Los tests antiguos siguen sin protocolo.
+- **Mig 475 (29-oct, ajustes):** la competición cancelada o aplazada se queda en la web
+  con su etiqueta («Cancelada»; «Aplazada · nueva fecha por confirmar» si no hay fecha)
+  y no cuenta como próxima; lo «previsto» de Academia no sale a nadie como inscripción.
+  Lo público del evento (nombre, fecha, sede, estado, organizador, referencia oficial)
+  y lo interno de Academia van separados; antes de un cambio público se enseña qué
+  cambiará en la web. El calendario común lo cambian administración y comunicación
+  (`puedo_editar_calendario`), como antes. Para probar: **competiciones de prueba**
+  (`es_prueba`), invisibles fuera de Academia. Identidad: el id; nombre y fecha solo
+  avisan de un posible duplicado; la referencia oficial no se repite. Misma huella con
+  otros datos = acta corregida: se corrige el mismo resultado, con historial.
+  Catálogo: 80 m lisos, 500 m y 600 m (sin suponer en qué categorías valen).
 - Recorrido para probarlo con la sesión iniciada: `docs/recorrido-en-vivo-academia.md`.
 
 ## Navegación

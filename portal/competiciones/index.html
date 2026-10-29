@@ -312,8 +312,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     // Si vienen a una competición concreta desde el calendario, que salga aunque ya haya pasado.
     if (/^[0-9a-f-]{36}$/i.test(PEDIDA)) filtro += ',id.eq.' + PEDIDA;
     var c = await sb.from('competiciones')
-      .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta,notas')
-      .or(filtro)
+      .select('id,nombre,sede,fecha_inicio,ambito,coste,circular_url,fecha_limite_interna,inscripcion_abierta,notas,estado,fecha_por_confirmar')
+      .or(filtro).eq('es_prueba', false)
       .order('fecha_inicio', { ascending: true });
     falloComps = !!c.error;
     COMPS = (c.error ? [] : (c.data || []));
@@ -321,13 +321,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   // ---------- pintar ----------
   function tarjetaComp(c){
-    var plazoOff = pasado(c.fecha_limite_interna);
+    // Cancelada o aplazada sin fecha: se ve con su etiqueta y no se apunta nadie.
+    var canc = c.estado === 'cancelada', sinFecha = c.estado === 'aplazada' && c.fecha_por_confirmar;
+    var plazoOff = pasado(c.fecha_limite_interna) || canc || sinFecha;
     var abierta = !!c.inscripcion_abierta && !plazoOff;
     var coste = parseFloat(c.coste) || 0;
 
-    var estadoPill = abierta
-      ? '<span class="pill abierta">Inscripción abierta</span>'
-      : (plazoOff ? '<span class="pill cerrado">Plazo cerrado</span>' : '<span class="pill">Aún no abierta</span>');
+    var estadoPill = canc ? '<span class="pill cerrado">Cancelada</span>'
+      : sinFecha ? '<span class="pill cerrado">Aplazada · nueva fecha por confirmar</span>'
+      : abierta
+      ? '<span class="pill abierta">Inscripción abierta</span>' + (c.estado === 'aplazada' ? ' <span class="pill">Aplazada</span>' : '')
+      : (plazoOff ? '<span class="pill cerrado">Plazo cerrado</span>' : '<span class="pill">Aún no abierta</span>') + (c.estado === 'aplazada' ? ' <span class="pill">Aplazada</span>' : '');
 
     var destacada = (PEDIDA && c.id === PEDIDA);
     var html = '<div class="tarjeta'+(destacada?' destacada':'')+'" id="comp-'+esc(c.id)+'">' +
@@ -337,6 +341,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
     if (c.notas) html += '<p class="comp-notas">'+esc(c.notas)+'</p>';
 
+    if (canc || sinFecha) {
+      return html + '<div class="insc"><p class="te-apunta">' + (canc ? 'La competición se ha cancelado.' : 'Se ha aplazado y la nueva fecha está por confirmar.') + '</p></div></div>';
+    }
     // ---- Inscripción oficial: siempre fuera de la app ----
     html += '<div class="insc">';
     if (c.circular_url) {
