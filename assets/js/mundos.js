@@ -200,7 +200,7 @@
         {g:'Atletas', t:'Atletas', i:'people', url:B+'admin/atletas/?grupo=c288b979-cd00-4abb-96da-30fa997ef297', d:'Las fichas de los atletas de la Academia.'},
         {g:'Atletas', t:'Observaciones', i:'newspaper', url:B+'portal/entrenador/#notas', d:'Tus notas privadas sobre cada atleta.'},
         {key:'marcas', g:'Competición y tests', t:'Tests y marcas', i:'chart', url:B+'portal/academia/?v=marcas', d:'Resultados, tests con su protocolo, RM y objetivos, por atleta y por prueba.'},
-        {g:'Competición y tests', t:'Competiciones', i:'flag', url:B+'admin/competiciones/', d:'Carreras e inscripciones.'}
+        {key:'comp', g:'Competición y tests', t:'Competiciones', i:'flag', url:B+'portal/academia/?v=comp', d:'El calendario del grupo: pruebas, estado, prioridad y propósito de cada atleta, y las mínimas.'}
       ] },
     { key:'escuela-atl', nombre:'Escuela de atletismo', corto:'Escuela atletismo', i:'sprout', dot:'#3F7A4C', home:B+'portal/escuela-atletismo/',
       frase:'Los peques de la pista: grupos, altas de familias y reparto.',

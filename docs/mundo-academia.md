@@ -302,6 +302,46 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   con la toma del entrenador dato a dato (tramo canónico «desde-hasta»). Nunca por
   posición: lo que no se identifica queda «pendiente de vincular».
 
+**Competiciones y pendientes de configuración (29-oct, mig 474):**
+- `portal/academia/?v=comp` (quinta vista y entrada «Competiciones» del menú del
+  mundo): **Próximas** (lista desplegable), **Mes** (calendario; en el móvil, lista del
+  mes) y **Mínimas**. Filtros por atleta y por categoría federativa en la fecha de cada
+  competición.
+- Reutiliza el calendario (`competiciones`) y las inscripciones (`competicion_atleta`,
+  una fila por prueba). La competición guarda su estado (programada, aplazada,
+  cancelada) y el historial de nombre, fecha y sede. Crear dos veces la misma (nombre
+  y fecha) no la duplica. Ojo: es el calendario del club, el de la web.
+- **Por atleta y competición** (`competicion_plan`): prioridad A/B/C, cuyo
+  significado se ve y se cambia (`competicion_prioridades`; el texto inicial es una
+  propuesta), y propósito (campeonato objetivo, control, aprendizaje u otro escrito).
+- **Por prueba**: previsto · pendiente de confirmar · confirmado/inscrito · realizado
+  · no participó · cancelado (estos dos, con motivo); día y hora si se saben. Nada se
+  borra desde Academia; cada cambio va a `resultados_historial`. Avisos (sin cambiar
+  nada): dos pruebas del mismo día a menos de 30 min o que se pisan, dos competiciones
+  que coinciden, y el día de una prueba que queda fuera tras mover la competición.
+- **Mínimas** (`minimas`): campeonato (enlazable al calendario), temporada federativa,
+  prueba, categoría, sexo, condiciones, validez, criterio de clasificación o
+  participación, fuente y fecha de comprobación. «Pendiente» = no publicada (sin
+  marca; no se usan las de otro año). Junto a cada atleta: mejor marca oficial,
+  objetivo acordado y mínima; si la marca parece suficiente se dice que **no es una
+  clasificación** y qué falta comprobar.
+- **Resultado de una competición**: «＋ Resultado» desde la inscripción guarda una sola
+  vez en `marcas_atleta` (con `participacion_id`), separando **oficial** (acta) de **no
+  oficial** (tiempo del entrenador) y la ronda; un segundo oficial de la misma ronda se
+  rechaza. Marcar la inscripción como «realizado» es una casilla visible.
+- **Semana y ficha**: la competición aparece el día que toca (con prioridad y
+  pruebas) y la próxima, con los días que faltan, junto al nombre. No toca ningún
+  entrenamiento.
+- **Temporadas**: provisionales hasta marcarlas «confirmada»; cambiar fechas deja
+  historial y avisa antes si algún objetivo queda fuera. No se reasigna nada.
+- **Catálogo caso a caso** (`pruebas_correspondencia_usos`): «Ver usos» enseña cada uso
+  de un texto (perfil, resultado, objetivo, inscripción) y se decide uno a uno; lo
+  ambiguo no admite equivalencia para todos, ni un texto con usos decididos distinto.
+- **Protocolos por tipo** (carrera, salto, lanzamiento, fuerza, otro): cada uno pide lo
+  suyo; «Falta para comparar» y «completo» solo si lo marca una persona (la base
+  lo comprueba con `protocolo_faltan`). Los tests antiguos siguen sin protocolo.
+- Recorrido para probarlo con la sesión iniciada: `docs/recorrido-en-vivo-academia.md`.
+
 ## Navegación
 
 ```
