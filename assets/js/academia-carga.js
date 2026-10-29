@@ -464,7 +464,8 @@
         if (a.c.clase !== 'carrera' || a.recuperacion || q.m != null) { C.resultado_reps.den++; if (conocido) C.resultado_reps.num++; if (x.estado === 'global') C.resultado_reps.global = (C.resultado_reps.global||0) + 1; }
         if ((x.estado === 'confirmado' || x.estado === 'global') && mq != null && !a.recuperacion) { C.clasificacion.den += mq; if (a.c.clasif === 'declarada' || a.c.clasif === 'revisada') C.clasificacion.num += mq; }
         if (a.c.clase === 'fuerza' && (a.c.pct_rm || a.c.kg)) {
-          if (x.estado === 'confirmado') { C.cargas.den++; if (typeof x.kg === 'number') C.cargas.num++; }
+          // series realizadas (con detalle o por «completa»): ¿se saben sus kg?
+          if (x.estado === 'confirmado' || x.estado === 'global') { C.cargas.den++; if (typeof x.kg === 'number') C.cargas.num++; }
           if (x.estado === 'no_realizado') C.cargas.no_realizadas++;
         }
         (x.tiempos || []).forEach(function(t){ C.metodo.den++; if (t.metodo && t.metodo !== 'no_consta') C.metodo.num++; });
