@@ -186,9 +186,18 @@ compromiso; no cuenta mientras no se confirme como hecho o no hecho).
 descansos → 5.000 m confirmados · recuperaciones: 2 de 4 confirmadas, **2 sin
 concretar**.
 
-**J6 · Sesión declarada completa** (regla §0.6, a confirmar) · sin datos por fila → lo
-obligatorio de su versión confirmado como hecho (fuente: declaración global) · kg,
-tiempos, opcionales y recuperaciones: sin concretar.
+**J6 · Sesión declarada completa** (regla §0.6) · sin datos por fila → lo obligatorio
+de su versión en **«completa» (declaración global)**, aparte de lo confirmado · kg,
+tiempos, opcionales y recuperaciones: sin concretar. Con una parte **desmarcada**, esa
+parte queda sin concretar. En un **registro antiguo sin garantía de versión**, nada se
+reparte: todo sin concretar.
+
+**J14 · Objetivo de la sesión** · sesión «Aceleración» con calentamiento «10′ CC +
+movilidad + técnica», «Core y preventivos de isquio» y «Media sentadilla 3×5» → el
+calentamiento sigue siendo calentamiento, el core preventivo y la fuerza sin objetivo;
+las partes de carrera de la parte principal reciben «aceleración» como **propuesta**
+(de la sesión), no como declarada. Si el bloque se titula «Aceleración», entonces sí
+es declarado para sus partes de carrera.
 
 **J7 · A medias** · «a medias, 70 %» sin filas → todo **sin concretar**, con la
 declaración global «70 %»; no se calcula 0,7 × previsto.

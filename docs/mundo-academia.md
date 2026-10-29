@@ -360,8 +360,9 @@ sin permiso (otro responsable) no se ve ni se escribe nada.
   saltos, lanzamientos, movilidad), objetivo y medio, y la cobertura de cada magnitud.
   Cada cifra abre las filas y registros de los que sale.
 - Motor aparte, `assets/js/academia-carga.js` (también se prueba con node): lee cada
-  fila y **propone** su estructura; el objetivo de la sesión, si es uno solo, es
-  **declarado**; cruza lo del atleta (✓, series, tiempos, kg, filas «libre») y lo del
+  fila y **propone** su estructura; el objetivo del bloque es **declarado** y el de la
+  sesión solo una **propuesta** (calentamiento, core y fuerza conservan lo suyo);
+  «completa» sin detalle va aparte como declaración global; cruza lo del atleta (✓, series, tiempos, kg, filas «libre») y lo del
   entrenador (toma y registro) por magnitud y repetición. Un esfuerzo apuntado por los
   dos cuenta una vez; si no coinciden, en discrepancia.
 - `plan_filas_estructura`: la lectura revisada o corregida por el entrenador (por

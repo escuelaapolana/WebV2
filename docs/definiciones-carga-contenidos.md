@@ -26,10 +26,13 @@
 5. **Prescrito, declarado, medido, estimado.** Se guardan y enseñan por separado.
    Una distancia prescrita y confirmada es «prescrita · confirmada», **no** una
    medición GPS. Los km sacados de minutos y ritmo son **estimados**.
-6. **Sesión declarada «completa»** (propuesta nueva, a confirmar): confirma lo
-   **obligatorio** de su versión como «hecho» (fuente: declaración global de la
-   sesión). No confirma opcionales, ni kg, ni tiempos, ni recuperaciones. «A medias»
-   o un % no confirma nada por fila: queda **sin concretar**.
+6. **Sesión declarada «completa» sin detalle** (ajustado el 29-oct): se enseña como
+   **declaración global**, en su propia columna, **separada de lo confirmado
+   registrado**. Solo cubre lo obligatorio de su versión; no cubre opcionales, kg,
+   tiempos ni recuperaciones. **No se aplica** a registros antiguos sin garantía de
+   versión (no se reconstruyen) ni **pisa** lo que la fila dice de otra manera (una
+   parte desmarcada queda sin concretar, con su motivo). «A medias» o un % no cubre
+   nada por fila: queda **sin concretar**.
 
 ## 1. Tres cosas separadas en cada dato
 
@@ -43,7 +46,11 @@ Cada cantidad se guarda y se enseña con tres capas que **no se mezclan**:
 
 - **Una clasificación pendiente no esconde la cantidad**: «60 m confirmados ·
   objetivo pendiente».
-- Estado de la clasificación: **declarada** (la dice el entrenador en el plan: no
+- **El objetivo general de la sesión no se reparte solo** entre sus partes: es una
+  **propuesta** para las partes principales de su misma clase; el calentamiento, el
+  core y la fuerza conservan su propio tratamiento. Es **declarado** el objetivo que
+  el entrenador escribe en el bloque (o confirma al revisar la lectura).
+- Estado de la clasificación: **declarada** (la dice el entrenador en el bloque: no
   necesita una segunda aprobación idéntica) · **propuesta** (lectura automática del
   texto: hay que revisarla) · **revisada** (el entrenador la confirmó o la corrigió) ·
   **pendiente** (no hay con qué decidir). Cambiarla deja historial y no toca la

@@ -1,6 +1,6 @@
-# Recorrido en vivo · Academia (ficha, Tests y marcas, Competiciones)
+# Recorrido en vivo · Academia (ficha, Tests y marcas, Competiciones, Carga)
 
-Para comprobarlo en la web **con la sesión iniciada** (unos 20 minutos). Hasta
+Para comprobarlo en la web **con la sesión iniciada** (unos 25 minutos). Hasta
 completarlo, estas pantallas no se dan por verificadas en vivo. Si algo no sale como
 dice «Esperado», anota el número del paso y lo que se ve.
 
@@ -43,5 +43,14 @@ dice «Esperado», anota el número del paso y lo que se ve.
 | 15 | «Nombre, fecha, lugar o estado…» de la competición de prueba: cambia la fecha; después ponla «Cancelada». | «Fecha cambiada» y aviso de que el día de las pruebas queda fuera; luego «Cancelada». Las inscripciones siguen igual. |
 | 16 | Recarga el calendario de la web (paso 6) y repite en el móvil los pasos 2, 8 y 12. | En la web no aparece «Control PRUEBA». En el móvil se lee sin desplazar de lado. |
 
-Cuando los 16 pasos estén bien (o anotado lo que falle), la ficha, Tests y marcas y
-Competiciones quedan verificadas con sesión iniciada.
+## C · Carga y contenidos (solo grupo PRUEBA)
+
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 17 | Menú → **Carga y contenidos**, grupo PRUEBA, esta semana, un atleta. Cambia al grupo real. | Tablas por familia; columna **«Completa» (declaración global)** aparte de «Confirmado registrado». Con el grupo real: «De momento funciona solo con el grupo de prueba». |
+| 18 | Toca una cifra (p. ej. Carrera total · Previsto) y otra de «Completa». | Sale de qué filas viene cada parte: fecha, fila, bloque, estado y fuente («declaración global: sesión completa» donde toque). |
+| 19 | «Sesiones y lectura de cada fila» → «Revisar lectura…» de una fila de carrera de la parte principal → pon un objetivo → «Guardar la corrección». | La cifra se mueve a ese objetivo; «Lectura del plan» sube en 1; la lectura dice «Corregida». El calentamiento sigue como calentamiento. |
+| 20 | Mira «Cobertura». | Cada indicador con su «N de M»; una sesión de hoy aún en plazo no cuenta en el feedback; «Resultado conocido» dice cuánto es solo por «completa». |
+
+Cuando los 20 pasos estén bien (o anotado lo que falle), la ficha, Tests y marcas,
+Competiciones y Carga y contenidos quedan verificadas con sesión iniciada.

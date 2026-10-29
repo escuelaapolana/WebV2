@@ -18,7 +18,7 @@
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
-<script src="../../assets/js/academia-carga.js?v=d2a7149e&v=1" defer></script>
+<script src="../../assets/js/academia-carga.js?v=1fd07a73&v=1" defer></script>
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
 <script src="../../assets/js/mundos.js?v=c75c4f31" defer></script>
 <script src="../../assets/js/categorias.js?v=6e1ca5b3"></script>
@@ -4595,10 +4595,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      Sin índices globales, recomendaciones, proyecciones ni clasificación hacia atrás. */
   var CG = null;
   var CGC = window.APOLANA_CARGA;
-  var COL_CG = [['previsto','Previsto'],['confirmado','Confirmado'],['no_realizado','No realizado'],['sin_concretar','Sin concretar'],['sin_datos','Sin datos'],
+  var COL_CG = [['previsto','Previsto'],['confirmado','Confirmado'],['global','«Completa» (declaración global)'],['no_realizado','No realizado'],['sin_concretar','Sin concretar'],['sin_datos','Sin datos'],
                 ['discrepancia','En discrepancia'],['opcional_previsto','Opcional previsto'],['opcional_confirmado','Opcional hecho'],['adicional','Adicional']];
   var CLASIF_TXT = { declarada:['Declarada','t-hecha'], propuesta:['Propuesta','t-rev'], revisada:['Revisada','t-hecha'], manual:['Corregida','t-hecha'], pendiente:['Pendiente','t-sind'] };
-  var EST_X = { confirmado:'confirmado', no_realizado:'no realizado', sin_concretar:'sin concretar', sin_datos:'sin datos', discrepancia:'en discrepancia', adicional:'adicional' };
+  var EST_X = { confirmado:'confirmado', global:'solo por «completa» (declaración global)', no_realizado:'no realizado', sin_concretar:'sin concretar', sin_datos:'sin datos', discrepancia:'en discrepancia', adicional:'adicional' };
   function objTxt(k){ return k==='pendiente' || !k ? 'Objetivo pendiente' : (CGC.OBJ[k] ? CGC.OBJ[k][0] : k); }
   function cifra(v, mag){
     if (!v) return '0';
@@ -4625,7 +4625,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (datos.bloques||[]).forEach(function(b){
         (b.filas||[]).forEach(function(f){
           if (!f || !f.id || !(f.ejercicio || f.detalle)) return;
-          var E = CGC.leerFila(f, { posicion:CGC.posicionDeBloque(b.etiqueta), objetivoSesion:dec, referenciaRitmo:refRitmo });
+          // El objetivo escrito en el bloque es declarado; el de la sesión, solo una propuesta.
+          var E = CGC.leerFila(f, { posicion:CGC.posicionDeBloque(b.etiqueta), objetivoBloque:CGC.objetivoSesion(b.etiqueta), objetivoSesion:dec, referenciaRitmo:refRitmo });
           var st = (D.estructuras||[]).filter(function(e){ return e.sesion_id===s.id && e.sesion_version===vnum && e.fila_id===f.id; })[0];
           if (st){
             if (st.huella === E.texto) E = Object.assign({}, st.estructura, { fila_id:f.id, texto:E.texto, estado:st.estado, _st:st });
@@ -4673,7 +4674,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<select class="ac-sel" id="cg-at" aria-label="Atleta">'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===aid?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+
       '<button type="button" class="ac-link" data-cg-plazo="1">Plazo del feedback: '+(ST.g.feedback_dias ? '+'+ST.g.feedback_dias+' d, ' : 'el mismo día, ')+esc(hhmm(ST.g.feedback_hora_limite||'22:00'))+'</button></div>';
     if (!CG.sesiones.length){ wrap.innerHTML = h + '<p class="ac-nada">Ninguna sesión publicada para este atleta esta semana.</p>'; return; }
-    h += '<p class="nota cg-ley"><b>Confirmado registrado</b> = lo que se puede atribuir a una fila o repetición (✓, series, tiempos, kg, toma del entrenador). No dice que sea todo lo que hizo: puede haber opcionales o trabajo sin apuntar. <b>Sin concretar</b>: hay registro pero no dice esa parte. <b>Sin datos</b>: no hay registro. Las cifras previstas son prescritas, no medidas.</p>';
+    h += '<p class="nota cg-ley"><b>Confirmado registrado</b> = lo que se puede atribuir a una fila o repetición (✓, series, tiempos, kg, toma del entrenador). No dice que sea todo lo que hizo: puede haber opcionales o trabajo sin apuntar. <b>«Completa» (declaración global)</b>: el atleta dio la sesión por completa sin detalle; va aparte, no se mezcla con lo confirmado, no pisa una fila sin marcar y no se aplica a registros antiguos sin garantía de versión. <b>Sin concretar</b>: hay registro pero no dice esa parte. <b>Sin datos</b>: no hay registro. Las cifras previstas son prescritas, no medidas.</p>';
 
     // --- Carrera ---
     var fc = [{ label:'Carrera total', key:'carrera|m_total|', mag:'m' }, { label:'Carrera principal', key:'carrera|m_principal|', mag:'m', sub:true }];
@@ -4723,9 +4724,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (modo==='no_requerido' ? '<div class="cg-cob"><b>Feedback</b><span>no exigible</span><small>Su seguimiento es «feedback no requerido».</small></div>'
         : modo==='registro_entrenador' ? ind('Registro del entrenador', co.registro_entrenador, 'sesiones con plazo vencido con su registro'+(co.registro_entrenador && co.registro_entrenador.anticipados ? ' · '+co.registro_entrenador.anticipados+' antes del plazo, aparte' : ''))
         : ind('Feedback', co.feedback, 'sesiones con plazo vencido con registro del atleta'+(co.feedback.anticipados ? ' · '+co.feedback.anticipados+' recibido'+(co.feedback.anticipados>1?'s':'')+' antes del plazo, aparte' : '')))+
-      ind('Resultado conocido · repeticiones', co.resultado_reps, 'obligatorias con resultado conocido (hechas o no hechas)')+
-      ind('Resultado conocido · distancia', { num:co.resultado_m.num, den:co.resultado_m.den }, 'm obligatorios con resultado conocido')+
-      ind('Clasificación', co.clasificacion, 'm confirmados con objetivo declarado o revisado')+
+      ind('Resultado conocido · repeticiones', co.resultado_reps, 'obligatorias con resultado conocido (hechas o no hechas)'+(co.resultado_reps.global ? ' · '+co.resultado_reps.global+' solo por «completa»' : ''))+
+      ind('Resultado conocido · distancia', { num:co.resultado_m.num, den:co.resultado_m.den }, 'm obligatorios con resultado conocido'+(co.resultado_m.global ? ' · '+cifra(co.resultado_m.global, 'm')+' solo por «completa»' : ''))+
+      ind('Clasificación', co.clasificacion, 'm hechos (confirmados o por «completa») con objetivo declarado en el bloque o revisado')+
       ind('Cargas', co.cargas, 'series realizadas con kg conocidos'+(co.cargas.no_realizadas ? ' · '+co.cargas.no_realizadas+' no realizadas (no necesitan kg)' : ''))+
       ind('Método de los tiempos', co.metodo, 'tiempos apuntados con método conocido')+
       ind('Lectura del plan', co.lectura, 'filas con la lectura revisada por el entrenador')+
@@ -4743,7 +4744,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
             if (c.clase==='fuerza') q.push(c.reps+' reps'+(c.por_lado?'/lado':'')); if (c.clase==='salto') q.push(c.reps+' '+(c.unidad||'saltos o contactos'));
             if (c.clase==='lanzamiento') q.push(c.reps+' lanzamientos'); if (c.clase==='vallas') q.push(c.vallas+' vallas'); if (c.sin_cantidad) q.push('sin cantidad');
             var ct = CLASIF_TXT[cl || c.clasif] || CLASIF_TXT.pendiente;
-            return '<li>'+esc(c.texto||'')+' → '+esc(q.join(' · ') || '—')+' · '+esc(objTxt(c.objetivo))+' '+tag(ct[1], ct[0])+(c.arrastre?' · arrastre (carga '+(c.arrastre.masa_kg||c.arrastre.discos_kg ? 'conocida' : 'no consta')+')':'')+(c.clavos?' · clavos':'')+'</li>';
+            var org = { sesion:' (objetivo de la sesión)', bloque:' (objetivo del bloque)', texto:' (leída del texto)', posicion:' (por estar en el calentamiento)' }[c.origen_objetivo] || '';
+            return '<li>'+esc(c.texto||'')+' → '+esc(q.join(' · ') || '—')+' · '+esc(objTxt(c.objetivo))+' '+tag(ct[1], ct[0]+org)+(c.arrastre?' · arrastre (carga '+(c.arrastre.masa_kg||c.arrastre.discos_kg ? 'conocida' : 'no consta')+')':'')+(c.clavos?' · clavos':'')+'</li>';
           }).join('');
           return '<div class="cg-fila"><div class="cg-fila-t"><b>'+esc(E.texto)+'</b> <span class="fx-sin">'+esc(CGC.POS[E.posicion]||'')+(E.bloques>1?' · '+E.bloques+' bloques':'')+(E.opcional_reps?' · '+E.opcional_reps+' opcional':'')+'</span> '+
             (cl ? tag('t-hecha', cl==='manual'?'Lectura corregida':'Lectura revisada') : tag('t-rev','Lectura propuesta'))+
@@ -4766,7 +4768,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var rep = a.recuperacion ? 'recuperación '+a.bloque : a.adicional ? 'sin plan' : (a.opcional ? 'opcional · ' : '')+'bloque '+a.bloque+(a.rep>1?' · rep. '+a.rep:'');
         var extra = [];
         if (x.fuentes && x.fuentes.length) extra.push('fuente: '+x.fuentes.join(' + '));
-        if (x.solo_global) extra.push('solo por la declaración de la sesión');
+        if (x.nota) extra.push(x.nota);
         (x.tiempos||[]).forEach(function(t){ extra.push('tiempo '+t.valor+' ('+t.fuente+', método '+(t.metodo==='no_consta' ? 'no consta' : t.metodo)+')'); });
         if (x.kg != null) extra.push(typeof x.kg==='object' ? 'kg en discrepancia: '+x.kg.discrepancia.join(' / ') : x.kg+' kg');
         return '<li><b>'+esc(cifra(it.v, it.mag==='entrada_m'?'m':it.mag))+'</b> · '+esc(donde)+' · «'+esc(a.c.texto||'')+'» · '+esc(rep)+' · '+esc(EST_X[x.estado]||x.estado)+(extra.length?'<small>'+esc(extra.join(' · '))+'</small>':'')+'</li>';

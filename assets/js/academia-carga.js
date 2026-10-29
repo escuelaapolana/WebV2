@@ -211,19 +211,29 @@
     return c;
   }
 
-  /* Objetivo de cada componente: declarado por el entrenador (sesión con un
-     solo objetivo, en la parte principal y de su misma clase) o propuesto. */
+  /* Objetivo de cada componente.
+     · Declarado: el que el entrenador escribe en el BLOQUE (su etiqueta) para las
+       partes de su misma clase.
+     · El objetivo general de la SESIÓN no se reparte solo: es una propuesta para
+       las partes principales de su clase, y calentamiento, core y fuerza conservan
+       su propio tratamiento.
+     · Lo demás, propuesta de la lectura del texto o pendiente. */
+  function encaja(dec, c){
+    var fam = CLASE_FAM[c.clase];
+    return !!(dec && OBJ[dec.clave] && (OBJ[dec.clave][1] === fam || (dec.clave === 'tecnica_vallas' && c.clase === 'vallas') || (dec.clave === 'preventivo' && c.clase === 'movilidad')));
+  }
+  function ponObjetivo(c, dec, clasif, origen, ctx){
+    c.objetivo = dec.clave; c.clasif = clasif; c.origen_objetivo = origen; if (dec.detalle) c.objetivo_detalle = dec.detalle;
+    if (dec.clave === 'ritmo') { c.referencia = ctx.referenciaRitmo ? 'conocida' : 'pendiente'; c.adecuacion = 'no_evaluada'; }
+  }
   function clasificar(E, ctx){
-    var dec = ctx.objetivoSesion || null;
+    var decB = ctx.objetivoBloque || null, decS = ctx.objetivoSesion || null;
     E.componentes.forEach(function(c){
-      var fam = CLASE_FAM[c.clase];
       c.posicion = E.posicion;
-      if (E.posicion === 'calentamiento' && c.clase === 'carrera') { c.objetivo = 'calentamiento'; c.clasif = 'declarada'; return; }
-      if (dec && E.posicion === 'principal' && OBJ[dec.clave] && (OBJ[dec.clave][1] === fam || (dec.clave === 'tecnica_vallas' && c.clase === 'vallas') || (dec.clave === 'preventivo' && c.clase === 'movilidad'))) {
-        c.objetivo = dec.clave; c.clasif = 'declarada'; if (dec.detalle) c.objetivo_detalle = dec.detalle;
-        if (dec.clave === 'ritmo') { c.referencia = ctx.referenciaRitmo ? 'conocida' : 'pendiente'; c.adecuacion = 'no_evaluada'; }
-        return;
-      }
+      // el calentamiento es posición y función, no el objetivo de la sesión
+      if (E.posicion === 'calentamiento' && c.clase === 'carrera') { c.objetivo = 'calentamiento'; c.clasif = 'declarada'; c.origen_objetivo = 'posicion'; return; }
+      if (E.posicion === 'principal' && encaja(decB, c)) { ponObjetivo(c, decB, 'declarada', 'bloque', ctx); return; }
+      if (E.posicion === 'principal' && encaja(decS, c) && c.clase === 'carrera') { ponObjetivo(c, decS, 'propuesta', 'sesion', ctx); return; }
       // propuestas de la app (hay que revisarlas)
       var p = null;
       if (c.clase === 'carrera') {
@@ -233,7 +243,7 @@
         else if (c.min != null) p = 'aerobico';
       } else if (c.clase === 'movilidad') p = c.etiquetas && c.etiquetas[0] === 'preventivo' ? 'preventivo' : 'movilidad';
       else if (c.clase === 'vallas') p = 'tecnica_vallas';
-      c.objetivo = p; c.clasif = p ? 'propuesta' : 'pendiente';
+      c.objetivo = p; c.clasif = p ? 'propuesta' : 'pendiente'; if (p) c.origen_objetivo = 'texto';
     });
   }
 
@@ -290,6 +300,10 @@
     var reg = fuentes.reg || null, toma = (fuentes.toma || []).filter(function(t){ return !t.anulado_en; }), ent = fuentes.regEnt || null;
     var TR = reg && reg.tiempos_reales && typeof reg.tiempos_reales === 'object' ? reg.tiempos_reales : {};
     var globalAt = !reg ? 'sin_datos' : reg.estado === 'completo' ? 'completo' : reg.estado === 'no_hecho' ? 'no_hecho' : 'parcial';
+    // «Completa» sin detalle solo se lee como declaración global si su registro está atado
+    // sin dudas a la versión del plan; en registros antiguos sin esa garantía no se reparte.
+    var versionSegura = !!(reg && reg.sesion_version_id && reg.version_garantia === 'exacta');
+    if (globalAt === 'completo' && !versionSegura) globalAt = 'completo_sin_garantia';
     var globalEnt = !ent ? null : ent.estado;
     var out = [];
     filas.forEach(function(F){
@@ -297,7 +311,7 @@
       var tomaF = toma.filter(function(x){ return x.fila_id === E.fila_id; });
       var oblig = A.filter(function(a){ return !a.recuperacion && !a.opcional; });
       A.forEach(function(a){
-        var at = null, en = null, kg = null, kgEnt = null, repsDecl = null, tiempos = [];   // cada tiempo con su fuente y su método
+        var at = null, en = null, kg = null, kgEnt = null, repsDecl = null, tiempos = [], contra = false;   // cada tiempo con su fuente y su método
         // --- lo del atleta ---
         if (tr) {
           var S = Array.isArray(tr.series) ? tr.series : [];
@@ -307,6 +321,7 @@
           } else if (tr.medida === 'hecho') {
             var h = S[0] && S[0].hecha;
             if (h === true && !a.opcional) at = 'hecho';
+            else if (h === false && !a.opcional) contra = true;          // desmarcado a propósito
           } else {
             // una entrada por serie (fuerza) o por repetición (carrera), en orden
             var idx = a.c.clase === 'carrera' ? (a.opcional ? oblig.length + (a.bloque - E.bloques) - 1 : oblig.indexOf(a)) : a.bloque - 1;
@@ -317,12 +332,13 @@
               var tieneT = s.tiempo != null && String(s.tiempo).trim() !== '';
               if (tieneT) tiempos.push({ fuente:'atleta', valor:s.tiempo, metodo:'no_consta' });
               if (s.hecha === true || repsDecl != null || tieneT) at = 'hecho';
-              else if (s.hecha === false && kg == null) at = null;
+              else if (s.hecha === false) contra = true;                   // esa serie, sin marcar
             }
           }
         }
         if (!at && !a.opcional && !a.recuperacion) {
-          if (globalAt === 'completo') at = 'hecho_global';
+          // la declaración global no pisa lo que la fila dice de otra manera
+          if (globalAt === 'completo' && !contra) at = 'hecho_global';
           else if (globalAt === 'no_hecho') at = 'no';
         }
         if (!at && a.recuperacion && globalAt === 'no_hecho') at = 'no';
@@ -342,16 +358,20 @@
         if (!en && !a.opcional && !a.recuperacion && globalEnt) en = globalEnt === 'realizado' ? 'hecho_global' : globalEnt === 'no_realizado' ? 'no' : null;
         // --- una sola vez: coinciden o queda en discrepancia ---
         var hechoAt = at === 'hecho' || at === 'hecho_global', hechoEn = en === 'hecho' || en === 'hecho_global';
+        var detalleAt = at === 'hecho', detalleEn = en === 'hecho';
         var estado, fuente = [];
-        if (at) fuente.push(at === 'hecho_global' ? 'atleta (sesión completa)' : 'atleta');
-        if (en) fuente.push(en === 'hecho_global' ? 'entrenador (sesión)' : 'entrenador');
+        if (at) fuente.push(at === 'hecho_global' ? 'atleta (declaración global: sesión completa)' : 'atleta');
+        if (en) fuente.push(en === 'hecho_global' ? 'entrenador (declaración global de la sesión)' : 'entrenador');
         if ((hechoAt && en === 'no') || (at === 'no' && hechoEn)) estado = 'discrepancia';
-        else if (hechoAt || hechoEn) estado = 'confirmado';
+        else if (detalleAt || detalleEn) estado = 'confirmado';
+        else if (hechoAt || hechoEn) estado = 'global';           // solo por «completa»: se enseña aparte
         else if (at === 'no' || en === 'no') estado = 'no_realizado';
         else if (reg || ent || tomaF.length) estado = 'sin_concretar';
         else estado = 'sin_datos';
+        var nota = contra && globalAt === 'completo' ? 'la sesión dice «completa» pero esta parte está sin marcar: no se da por hecha'
+                 : globalAt === 'completo_sin_garantia' && !detalleAt && !a.opcional ? 'registro sin garantía de versión: «completa» no se reparte por filas' : null;
         var kgFinal = kg != null && kgEnt != null && kg !== kgEnt ? { discrepancia:[kg, kgEnt] } : (kg != null ? kg : kgEnt);
-        out.push({ a:a, estado:estado, fuentes:fuente, kg:kgFinal, reps:repsDecl, tiempos:tiempos,
+        out.push({ a:a, estado:estado, fuentes:fuente, kg:kgFinal, reps:repsDecl, tiempos:tiempos, nota:nota,
                    solo_global: (at === 'hecho_global' && en !== 'hecho') || (en === 'hecho_global' && at !== 'hecho') });
       });
     });
@@ -372,7 +392,7 @@
   }
 
   /* ---------- resumen: cada cifra con su estado y de dónde sale ---------- */
-  var COLS = ['previsto','confirmado','opcional_previsto','opcional_confirmado','adicional','no_realizado','sin_concretar','sin_datos','discrepancia'];
+  var COLS = ['previsto','confirmado','global','opcional_previsto','opcional_confirmado','adicional','no_realizado','sin_concretar','sin_datos','discrepancia'];
   function cajon(){ var o = {}; COLS.forEach(function(k){ o[k] = 0; }); o.items = {}; COLS.forEach(function(k){ o.items[k] = []; }); return o; }
   function sumar(caja, col, v, item){ if (v == null || isNaN(v)) return; caja[col] += v; caja.items[col].push(item); }
 
@@ -437,12 +457,12 @@
       }
       (ejecPorSesion[S.id] || []).forEach(function(x){
         var a = x.a; if (a.adicional || a.opcional) return;
-        var q = cantidades(a), conocido = x.estado === 'confirmado' || x.estado === 'no_realizado';
-        if (!S.vencida && x.estado !== 'confirmado' && x.estado !== 'no_realizado') return;
+        var q = cantidades(a), conocido = x.estado === 'confirmado' || x.estado === 'no_realizado' || x.estado === 'global';
+        if (!S.vencida && !conocido) return;
         var mq = q.m != null ? (Array.isArray(q.m) ? q.m[0] : q.m) + (q.entrada_m || 0) : null;
-        if (mq != null) { C.resultado_m.den += mq; if (conocido) C.resultado_m.num += mq; }
-        if (a.c.clase !== 'carrera' || a.recuperacion || q.m != null) { C.resultado_reps.den++; if (conocido) C.resultado_reps.num++; }
-        if (x.estado === 'confirmado' && mq != null && !a.recuperacion) { C.clasificacion.den += mq; if (a.c.clasif === 'declarada' || a.c.clasif === 'revisada') C.clasificacion.num += mq; }
+        if (mq != null) { C.resultado_m.den += mq; if (conocido) C.resultado_m.num += mq; if (x.estado === 'global') C.resultado_m.global = (C.resultado_m.global||0) + mq; }
+        if (a.c.clase !== 'carrera' || a.recuperacion || q.m != null) { C.resultado_reps.den++; if (conocido) C.resultado_reps.num++; if (x.estado === 'global') C.resultado_reps.global = (C.resultado_reps.global||0) + 1; }
+        if ((x.estado === 'confirmado' || x.estado === 'global') && mq != null && !a.recuperacion) { C.clasificacion.den += mq; if (a.c.clasif === 'declarada' || a.c.clasif === 'revisada') C.clasificacion.num += mq; }
         if (a.c.clase === 'fuerza' && (a.c.pct_rm || a.c.kg)) {
           if (x.estado === 'confirmado') { C.cargas.den++; if (typeof x.kg === 'number') C.cargas.num++; }
           if (x.estado === 'no_realizado') C.cargas.no_realizadas++;
