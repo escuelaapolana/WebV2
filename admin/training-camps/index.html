@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Camps · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<script src="../../assets/js/admin-auth.js?v=881708bc"></script>
+<script src="../../assets/js/admin-tabbar.js?v=af4093ec" defer></script>
+<style>
+  /* ============================================================
+     TRAINING CAMPS · concentraciones de equipos extranjeros (29-oct-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios» y «Pruebas de pista»: cabecera grande,
+     cifras que filtran, buscador + filtros, una tarjeta por expediente con
+     la franja de su estado. Al tocar una se abre el expediente en un panel
+     lateral (pantalla completa en el móvil) con sus pestañas: Resumen ·
+     Presupuestos · Pagos · Seguimiento · Tareas · Archivos.
+     Datos: tablas camp_* (mig 492-493) + Edge Function camp-gestion.
+     Prefijo tc-.
+     ============================================================ */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .tc-wrap { max-width: 1060px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .tc-wrap *, .tc-capa *, .tc-dlg * { box-sizing: border-box; }
+  .tc-cab { display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+  .tc-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); margin: 2px 0 4px; line-height: 1; }
+  .tc-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 66ch; }
+  .tc-cab a { color: var(--azul-oscuro,#2A5E8C); }
+  .tc-cab-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .tc-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 15px; border-radius: 12px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; color: var(--navy,#26374B); font: inherit; font-weight: 700; font-size: 14px;
+    cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .tc-btn:hover { background: var(--crema,#FBF9F4); }
+  .tc-btn:focus-visible, .tc-cifra:focus-visible, .tc-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .tc-btn.pri { background: var(--azul,#2F6FA8); border-color: var(--azul,#2F6FA8); color: #fff; }
+  .tc-btn.pri:hover { background: var(--azul-hover,#1E4E78); }
+  .tc-btn.ok { background: #2F7A45; border-color: #2F7A45; color: #fff; }
+  .tc-btn.peligro { color: #8A3B32; border-color: #E8C9C2; }
+  .tc-btn.mini { min-height: 34px; padding: 0 11px; font-size: 13px; border-radius: 10px; }
+  .tc-btn:disabled { opacity: .55; cursor: not-allowed; }
+  .tc-btn svg { width: 16px; height: 16px; flex: 0 0 16px; }
+
+  /* Vistas */
+  .tc-vistas { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    margin: 18px 0 4px; max-width: 100%; overflow-x: auto; scrollbar-width: none; width: max-content; }
+  .tc-vistas::-webkit-scrollbar { display: none; }
+  .tc-vistas button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 700; font-size: 14px;
+    color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .tc-vistas button.on { background: var(--navy,#26374B); color: #fff; }
+
+  /* Cifras */
+  .tc-cifras { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; margin: 16px 0 6px; }
+  .tc-cifra { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; background: #fff;
+    border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .tc-cifra b { display: block; font-family: var(--fuente-dato,'JetBrains Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .tc-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .tc-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; } .tc-cifra.aviso b, .tc-cifra.aviso span { color: #8A5307; }
+  .tc-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 760px) { .tc-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .tc-cifra b { font-size: 21px; } }
+
+  /* Filtros */
+  .tc-filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 4px; }
+  .tc-filtros input, .tc-filtros select, .tc-campo input, .tc-campo select, .tc-campo textarea, .tc-lin input, .tc-lin select {
+    min-height: 44px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; padding: 0 12px; font: inherit; font-size: 15px;
+    background: #fff; color: var(--navy,#26374B); min-width: 0; }
+  .tc-filtros input:focus, .tc-filtros select:focus, .tc-campo :is(input,select,textarea):focus, .tc-lin :is(input,select):focus {
+    outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .tc-filtros .q { flex: 1 1 240px; }
+  .tc-filtros .f { flex: 0 1 auto; }
+  .tc-filtros label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--texto-suave,#6E6656); }
+  .tc-cuenta { display: block; font-size: 13px; color: var(--texto-suave,#6E6656); margin: 6px 2px 0; min-height: 20px; }
+  @media (max-width: 620px) { .tc-filtros .f { flex: 1 1 calc(50% - 8px); } }
+
+  /* Filas */
+  .tc-lista { container: tc-lista / inline-size; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .tc-fila { display: grid; grid-template-columns: minmax(0,1.7fr) 170px minmax(0,1.1fr) 120px 14px; gap: 0 14px; align-items: center; background: #fff;
+    border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid #CFC6B4; border-radius: 14px; padding: 11px 14px 11px 12px; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .tc-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .tc-fila.g-nueva { border-left-color: #3B85C0; } .tc-fila.g-curso { border-left-color: #8C7BC2; } .tc-fila.g-enviado { border-left-color: #D9A441; }
+  .tc-fila.g-cobro { border-left-color: #D97A41; } .tc-fila.g-ok { border-left-color: #6FAF7E; } .tc-fila.g-fin { background: #FCFBF8; }
+  .tc-per { min-width: 0; }
+  .tc-per b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .tc-per small { display: block; font-size: 13px; color: var(--texto-suave,#6E6656); margin-top: 2px; }
+  .tc-per .cod { font-family: var(--fuente-dato,'JetBrains Mono',monospace); font-size: 12px; color: var(--azul,#2F6FA8); }
+  .tc-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .tc-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .tc-pill.g-nueva { background: #E6F0FB; color: #2F6FA8; } .tc-pill.g-nueva .pt { background: #3B85C0; }
+  .tc-pill.g-curso { background: #EFEBF8; color: #5A4A93; } .tc-pill.g-curso .pt { background: #8C7BC2; }
+  .tc-pill.g-enviado { background: #FBF1D9; color: #8A5307; } .tc-pill.g-enviado .pt { background: #D9A441; }
+  .tc-pill.g-cobro { background: #FCE9DC; color: #96471A; } .tc-pill.g-cobro .pt { background: #D97A41; }
+  .tc-pill.g-ok { background: #E7F3EA; color: #23603A; } .tc-pill.g-ok .pt { background: #3E7A34; }
+  .tc-pill.p-pagado { background: #E7F3EA; color: #23603A; } .tc-pill.p-pendiente { background: #FBF1D9; color: #8A5307; }
+  .tc-pill.p-vencido { background: #FBE6E2; color: #8A3B32; } .tc-pill.p-anulado { background: #F0EBE0; color: #8A816E; text-decoration: line-through; }
+  .tc-fechas { font-size: 13.5px; min-width: 0; }
+  .tc-fechas b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tc-fechas small { color: var(--texto-suave,#6E6656); font-size: 12.5px; }
+  .tc-din { text-align: right; font-family: var(--fuente-dato,'JetBrains Mono',monospace); font-size: 13px; line-height: 1.35; }
+  .tc-din small { display: block; font-family: var(--fuente-texto); color: var(--texto-suave,#6E6656); font-size: 12px; }
+  .tc-flecha { color: #B5AC99; font-size: 20px; text-align: right; }
+  .tc-marca { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 1px 7px;
+    border-radius: 999px; background: #F0EBE0; color: #8A816E; vertical-align: 2px; }
+  .tc-marca.tarea { background: #FBE6E2; color: #8A3B32; }
+  @container tc-lista (max-width: 680px) {
+    .tc-fila { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 12px; }
+    .tc-per { flex: 1 1 0; order: 0; } .tc-flecha { order: 1; }
+    .tc-fila::after { content: ""; order: 2; flex-basis: 100%; height: 0; }
+    .tc-pill { order: 3; } .tc-fechas { order: 4; flex: 1 1 auto; } .tc-din { order: 5; margin-left: auto; }
+  }
+  .tc-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE);
+    border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .tc-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+
+  /* Tarjetas genéricas (Próximos, Ajustes, bloques del expediente) */
+  .tc-tarj { background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; overflow: hidden; margin-top: 12px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .tc-tarj > h3 { margin: 0; padding: 11px 16px; background: var(--crema-banda,#F1EADC); font-size: 12.5px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--texto-suave,#6E6656); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .tc-tarj > h3 .tc-btn { text-transform: none; letter-spacing: 0; }
+  .tc-tarj .cuerpo { padding: 14px 16px; }
+  .tc-aviso { background: var(--aviso-fondo,#FDF5DF); border: 1px solid var(--aviso-borde,#EBDCAE); color: var(--aviso-texto,#4A4335); border-radius: 12px;
+    padding: 11px 14px; font-size: 14px; line-height: 1.5; margin-top: 12px; }
+  .tc-aviso b { color: var(--aviso-titulo,#7A6A2B); }
+  .tc-aviso.azul { background: #EAF2F9; border-color: #CFE2F1; color: #1E4E78; }
+  .tc-aviso.azul b { color: #1E4E78; }
+  .tc-aviso.verde { background: #EDF5EE; border-color: #CBE0CE; color: #23603A; }
+  .tc-aviso.verde b { color: #23603A; }
+
+  /* Próximos */
+  .tc-prox { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; margin-top: 10px; }
+  .tc-prox .tc-tarj { margin: 0; cursor: pointer; }
+  .tc-prox .cuenta-atras { font-family: var(--fuente-dato); font-size: 28px; font-weight: 700; line-height: 1; }
+  .tc-prox .cuenta-atras small { font-family: var(--fuente-texto); font-size: 13px; font-weight: 600; color: var(--texto-suave,#6E6656); margin-left: 6px; }
+  .tc-barra { height: 8px; border-radius: 99px; background: #EFE9DC; overflow: hidden; margin: 10px 0 4px; }
+  .tc-barra i { display: block; height: 100%; background: #3E7A34; border-radius: 99px; }
+
+  /* Calendario */
+  .tc-cal-cab { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; flex-wrap: wrap; }
+  .tc-cal-cab h2 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; text-transform: capitalize; min-width: 180px; }
+  .tc-cal-ley { display: flex; gap: 14px; font-size: 13px; color: var(--texto-suave,#6E6656); margin-left: auto; flex-wrap: wrap; }
+  .tc-cal-ley i { display: inline-block; width: 22px; height: 10px; border-radius: 4px; vertical-align: -1px; margin-right: 5px; }
+  .tc-cal { background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; overflow: hidden; }
+  .tc-cal-dias { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--crema-banda,#F1EADC); font-size: 12px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--texto-suave,#6E6656); }
+  .tc-cal-dias span { padding: 8px 10px; }
+  .tc-sem { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: min-content; grid-auto-flow: row dense; min-height: 96px;
+    border-top: 1px solid #EFE9DA; position: relative; padding-bottom: 6px; }
+  .tc-sem .dia { grid-row: 1; padding: 6px 10px 2px; font-size: 13px; font-family: var(--fuente-dato); color: var(--texto-suave,#6E6656);
+    border-left: 1px solid #F3EEE3; }
+  .tc-sem .dia:first-child { border-left: 0; }
+  .tc-sem .dia.fuera { color: #C9C0AE; } .tc-sem .dia.hoy { color: #fff; }
+  .tc-sem .dia.hoy span { background: var(--azul,#2F6FA8); border-radius: 99px; padding: 1px 7px; }
+  .tc-bar { margin: 2px 3px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; cursor: pointer; border: 0; text-align: left; font-family: inherit; min-height: 22px; }
+  .tc-bar.conf { background: #3E7A34; color: #fff; }
+  .tc-bar.prev { background: #FBF1D9; color: #8A5307; border: 1px dashed #D9A441; }
+  .tc-bar.fin { background: #EFE9DC; color: #8A816E; }
+  .tc-cal-movil { display: none; }
+  @media (max-width: 640px) { .tc-cal { display: none; } .tc-cal-movil { display: block; } }
+
+  /* Ajustes */
+  .tc-rejilla { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 14px; }
+  .tc-rejilla .ancho { grid-column: 1 / -1; }
+  @media (max-width: 620px) { .tc-rejilla { grid-template-columns: 1fr; } }
+  .tc-campo { display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; font-weight: 700; color: var(--texto-suave,#6E6656); min-width: 0; }
+  .tc-campo small { font-weight: 400; font-size: 12.5px; }
+  .tc-campo textarea { min-height: 90px; padding: 10px 12px; line-height: 1.45; resize: vertical; }
+  .tc-campo textarea.legal { min-height: 380px; font-family: var(--fuente-dato); font-size: 13px; }
+  .tc-campo .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tc-chk { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; color: var(--navy,#26374B); font-weight: 600; line-height: 1.4; }
+  .tc-chk input { width: 20px; height: 20px; margin-top: 1px; flex: 0 0 20px; accent-color: var(--azul,#2F6FA8); }
+  .tc-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .tc-gal figure { margin: 0; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; overflow: hidden; background: #FBF9F4; }
+  .tc-gal figure.oculta { opacity: .55; }
+  .tc-gal .med { aspect-ratio: 16/10; background: #EFE9DC center/cover no-repeat; display: flex; align-items: center; justify-content: center; color: #8A816E; font-weight: 700; font-size: 13px; }
+  .tc-gal figcaption { padding: 8px 10px; display: grid; gap: 6px; }
+  .tc-gal figcaption input { min-height: 36px; font-size: 13.5px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 9px; padding: 0 9px; font: inherit; }
+  .tc-gal .fila-acc { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tc-prev-legal { border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; padding: 4px 18px 14px; max-height: 460px; overflow: auto; font-size: 14px; line-height: 1.55; color: var(--texto,#4A4437); }
+  .tc-prev-legal h4 { font-size: 15px; color: var(--navy,#26374B); margin: 16px 0 6px; }
+  .tc-prev-legal ul { padding-left: 20px; margin: 6px 0; }
+
+  /* ===== Panel del expediente ===== */
+  .tc-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .tc-velo.ver { opacity: 1; pointer-events: auto; }
+  .tc-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(900px, 100%); z-index: 9001; background: var(--crema,#FBF9F4); color: var(--navy,#26374B);
+    transform: translateX(102%); transition: transform .25s var(--ease-panel, ease); display: flex; flex-direction: column; visibility: hidden;
+    box-shadow: -12px 0 40px rgba(20,30,45,.25); }
+  .tc-panel.ver { transform: none; visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .tc-panel, .tc-velo, .tc-fila { transition: none; } }
+  .tc-p-cab { background: #fff; border-bottom: 1px solid var(--linea-marcada,#E4DCCB); padding: 14px clamp(14px,3vw,24px) 0; }
+  .tc-p-top { display: flex; gap: 12px; align-items: flex-start; }
+  .tc-p-top > div { flex: 1; min-width: 0; }
+  .tc-p-top h2 { margin: 2px 0 2px; font-family: var(--fuente-titulo); font-size: clamp(20px,4vw,26px); line-height: 1.12; overflow-wrap: anywhere; }
+  .tc-p-top .sub { font-size: 13.5px; color: var(--texto-suave,#6E6656); }
+  .tc-p-top .cod { font-family: var(--fuente-dato); font-size: 12.5px; color: var(--azul,#2F6FA8); font-weight: 700; }
+  .tc-cerrar { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 22px; line-height: 1; cursor: pointer; }
+  .tc-p-estado { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 0; }
+  .tc-p-estado select { min-height: 38px; border-radius: 10px; border: 1px solid var(--linea-marcada,#E4DCCB); font: inherit; font-weight: 700; font-size: 14px;
+    padding: 0 10px; background: #fff; color: var(--navy,#26374B); max-width: 100%; }
+  .tc-tabs { display: flex; gap: 2px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
+  .tc-tabs::-webkit-scrollbar { display: none; }
+  .tc-tabs button { border: 0; background: none; font: inherit; font-weight: 700; font-size: 14px; color: var(--texto-suave,#6E6656); padding: 10px 12px 11px;
+    border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+  .tc-tabs button.on { color: var(--navy,#26374B); border-bottom-color: var(--azul,#2F6FA8); }
+  .tc-tabs button .n { display: inline-block; min-width: 19px; padding: 0 5px; border-radius: 99px; background: #F0EBE0; font-size: 11.5px; margin-left: 4px; }
+  .tc-tabs button .n.rojo { background: #FBE6E2; color: #8A3B32; }
+  .tc-p-cuerpo { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 4px clamp(14px,3vw,24px) 40px; }
+  .tc-datos { margin: 0; }
+  .tc-datos div { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid #EFE9DA; font-size: 14.5px; }
+  .tc-datos div:last-child { border-bottom: 0; }
+  .tc-datos dt { color: var(--texto-suave,#6E6656); }
+  .tc-datos dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; white-space: pre-line; }
+  @media (max-width: 560px) { .tc-datos div { grid-template-columns: 1fr; gap: 2px; } }
+  .tc-acc { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  /* Presupuestos y pagos */
+  .tc-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid #EFE9DA; }
+  .tc-item:last-child { border-bottom: 0; }
+  .tc-item .t b { font-size: 15px; } .tc-item .t small { display: block; color: var(--texto-suave,#6E6656); font-size: 13px; margin-top: 2px; }
+  .tc-item .imp { font-family: var(--fuente-dato); font-weight: 700; font-size: 15px; text-align: right; }
+  .tc-item .tc-acc { grid-column: 1 / -1; margin-top: 2px; }
+  .tc-resumen-din { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+  .tc-resumen-din div { background: var(--crema,#FBF9F4); border-radius: 12px; padding: 10px 12px; }
+  .tc-resumen-din b { display: block; font-family: var(--fuente-dato); font-size: 17px; }
+  .tc-resumen-din span { font-size: 12.5px; color: var(--texto-suave,#6E6656); }
+  @media (max-width: 560px) { .tc-resumen-din { grid-template-columns: 1fr 1fr; } }
+
+  /* Editor de presupuesto */
+  .tc-lineas { display: flex; flex-direction: column; gap: 8px; }
+  .tc-lineas { display: flex; flex-direction: column; gap: 8px; container: tc-lin / inline-size; }
+  .tc-lin { display: grid; grid-template-columns: 170px minmax(0,1fr) 38px; gap: 6px 8px; align-items: start;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; padding: 10px; }
+  .tc-lin input, .tc-lin select { min-height: 40px; font-size: 14px; padding: 0 9px; width: 100%; border-radius: 9px; }
+  .tc-lin .desc { display: grid; gap: 5px; }
+  .tc-lin .desc input:first-child { font-weight: 600; }
+  .tc-lin .desc input + input { font-size: 13px; color: var(--texto-suave,#6E6656); min-height: 36px; }
+  .tc-lin .quitar { width: 38px; height: 40px; border-radius: 9px; border: 1px solid #E8C9C2; background: #fff; color: #8A3B32; cursor: pointer; font-size: 18px; }
+  .tc-lin .nums { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, minmax(0,1fr)) 120px; gap: 8px; align-items: end; }
+  .tc-lin .nums label, .tc-lin .nums .tot { display: grid; gap: 3px; font-size: 11.5px; font-weight: 700; color: var(--texto-suave,#6E6656); min-width: 0; }
+  .tc-lin .nums .int input { background: #FFF8EE; border-color: #EBD9B8; }
+  .tc-lin .nums .tot { text-align: right; }
+  .tc-lin .nums .tot b { font-family: var(--fuente-dato); font-size: 15px; color: var(--navy,#26374B); line-height: 40px; }
+  @container tc-lin (max-width: 620px) {
+    .tc-lin { grid-template-columns: minmax(0,1fr) 38px; }
+    .tc-lin select[data-k="categoria"] { grid-column: 1; }
+    .tc-lin .quitar { grid-column: 2; grid-row: 1; }
+    .tc-lin .desc { grid-column: 1 / -1; }
+    .tc-lin .nums { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  }
+  .tc-totales { margin-left: auto; max-width: 420px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 8px 16px; margin-top: 12px; }
+  .tc-totales div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 14.5px; }
+  .tc-totales div b { font-family: var(--fuente-dato); }
+  .tc-totales .total { border-top: 2px solid var(--navy,#26374B); margin-top: 4px; padding-top: 9px; font-size: 17px; font-weight: 800; }
+  .tc-totales .int { color: #8A5307; font-size: 13.5px; border-top: 1px dashed #E9CE9A; }
+  .tc-editor-pie { position: sticky; bottom: -40px; background: linear-gradient(transparent, var(--crema,#FBF9F4) 30%); padding: 18px 0 14px; display: flex; gap: 8px;
+    justify-content: flex-end; flex-wrap: wrap; }
+
+  /* Registro */
+  .tc-reg { list-style: none; margin: 0; padding: 0; }
+  .tc-reg li { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid #EFE9DA; }
+  .tc-reg .ico { width: 34px; height: 34px; border-radius: 50%; background: #EFE9DC; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .tc-reg .ico.nota { background: #FDF5DF; } .tc-reg .ico.comunicacion { background: #EAF2F9; } .tc-reg .ico.pago { background: #E7F3EA; }
+  .tc-reg .ico.estado { background: #EFEBF8; } .tc-reg .ico.presupuesto { background: #FBF1D9; }
+  .tc-reg .txt { font-size: 14.5px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+  .tc-reg small { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); margin-top: 3px; }
+  .tc-tarea { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #EFE9DA; }
+  .tc-tarea input { width: 22px; height: 22px; margin-top: 1px; accent-color: #2F7A45; flex: 0 0 22px; }
+  .tc-tarea .t { flex: 1; font-size: 14.5px; }
+  .tc-tarea.hecha .t { color: var(--texto-suave,#6E6656); text-decoration: line-through; }
+  .tc-tarea small { display: block; font-size: 12.5px; color: var(--texto-suave,#6E6656); }
+  .tc-tarea small.vencida { color: #8A3B32; font-weight: 700; }
+
+  /* Diálogo */
+  .tc-dlg { position: fixed; inset: 0; z-index: 9500; background: rgba(20,30,45,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .tc-dlg form { background: #fff; color: var(--navy,#26374B); border-radius: 18px; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto;
+    padding: 20px 20px 16px; box-shadow: 0 30px 60px -20px rgba(20,30,45,.5); display: grid; gap: 12px; }
+  .tc-dlg h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 21px; }
+  .tc-dlg .err { color: #8A3B32; font-size: 14px; font-weight: 600; min-height: 0; }
+  .tc-dlg .bots { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
+  .tc-dlg .ayuda { font-size: 13.5px; color: var(--texto-suave,#6E6656); line-height: 1.45; margin: 0; }
+  @media (max-width: 560px) { .tc-dlg { align-items: flex-end; padding: 0; } .tc-dlg form { border-radius: 18px 18px 0 0; max-height: 92vh; } }
+</style>
+</head>
+<body class="adm-piel">
+
+<div class="admin-wrap">
+  <div class="tc-wrap" id="tc">
+    <div class="tc-cab"><div><h1>Training Camps</h1><p>Cargando…</p></div></div>
+  </div>
+</div>
+
+<div class="tc-capa">
+  <div class="tc-velo" id="tc-velo"></div>
+  <aside class="tc-panel" id="tc-panel" role="dialog" aria-modal="true" aria-labelledby="tc-p-titulo">
+    <div class="tc-p-cab" id="tc-p-cab"></div>
+    <div class="tc-p-cuerpo" id="tc-p-cuerpo"></div>
+  </aside>
+</div>
+
+<script>
+APOLANA_ADMIN.listo(function (sb) {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  var URL_WEB = 'https://atletismoapolana.com/';
+
+  /* ---------------- catálogos ---------------- */
+  var ESTADOS = [
+    ['nueva','Nueva solicitud'], ['pendiente_info','Pendiente de información'], ['disponibilidad','Estudiando disponibilidad'],
+    ['preparando','Preparando presupuesto'], ['enviado','Presupuesto enviado'], ['pendiente_senal','Pendiente de señal'],
+    ['confirmada','Reserva confirmada'], ['pendiente_final','Pendiente de pago final'], ['pagada','Pagada'],
+    ['en_curso','En curso'], ['finalizada','Finalizada'], ['cancelada','Cancelada']];
+  var ESTXT = {}; ESTADOS.forEach(function (e) { ESTXT[e[0]] = e[1]; });
+  var GRUPO = { nueva:'nueva', pendiente_info:'curso', disponibilidad:'curso', preparando:'curso', enviado:'enviado', pendiente_senal:'cobro',
+    confirmada:'ok', pendiente_final:'cobro', pagada:'ok', en_curso:'ok', finalizada:'fin', cancelada:'fin' };
+  var CONFIRMADOS = ['confirmada','pendiente_final','pagada','en_curso'];
+  var ETQ = {
+    modalidades: { sprints:'Velocidad', hurdles:'Vallas', middle:'Medio fondo', long:'Fondo', jumps:'Saltos', throws:'Lanzamientos', combined:'Combinadas', walk:'Marcha', trail:'Trail / montaña', other:'Otras' },
+    dias: { mon:'Lun', tue:'Mar', wed:'Mié', thu:'Jue', fri:'Vie', sat:'Sáb', sun:'Dom' },
+    horario: { morning:'Mañana (8:15–14:00)', afternoon:'Tarde (15:15–17:15)', evening:'Noche (18:30–21:45)' },
+    instalaciones: { track:'Pista', throws:'Lanzamientos', jumps:'Saltos', gym:'Gimnasio / fuerza', other:'Otras' },
+    idioma_com: { en:'Inglés', es:'Español', fr:'Francés', de:'Alemán', it:'Italiano', pt:'Portugués', nl:'Neerlandés', other:'Otro' },
+    sino: { yes:'Sí', no:'No', unsure:'No lo sabe' },
+    servicios: { transporte:'Transporte', alojamiento:'Alojamiento', comidas:'Comidas', fisio:'Fisioterapia', entrenadores:'Entrenadores',
+      playa_montana:'Playa / montaña', actividades:'Actividades complementarias', otros:'Otros servicios' },
+    sub: { aeropuerto:'traslados aeropuerto', diario:'transporte diario', hotel:'hotel', apartments:'apartamentos', any:'sin preferencia',
+      breakfast:'desayuno', lunch:'comida', dinner:'cena', beach:'playa', mountain:'montaña' },
+    origen: { web:'Formulario web', concejalia:'Derivada por la Concejalía', correo:'Correo', telefono:'Teléfono', otro:'Otro' }
+  };
+  var CATS = [['instalaciones','Instalaciones / pista'], ['gimnasio','Gimnasio'], ['material','Material'], ['transporte','Transporte'],
+    ['entrenadores','Entrenadores'], ['servicios','Servicios adicionales'], ['otros','Otros conceptos']];
+  var CATXT = {}; CATS.forEach(function (c) { CATXT[c[0]] = c[1]; });
+  var PRE_EST = { borrador:'Borrador', enviado:'Enviado', aceptado:'Aceptado', rechazado:'Rechazado', sustituido:'Sustituido', anulado:'Anulado' };
+  var PRE_G = { borrador:'curso', enviado:'enviado', aceptado:'ok', rechazado:'fin', sustituido:'fin', anulado:'fin' };
+  var REG_ICO = { nota:'✎', comunicacion:'✉', estado:'↻', sistema:'•', presupuesto:'€', pago:'✓', archivo:'📎', tarea:'☐' };
+  var CANALES = { email:'Correo', whatsapp:'WhatsApp', telefono:'Teléfono', reunion:'Reunión', videollamada:'Videollamada', otro:'Otro' };
+
+  /* ---------------- utilidades ---------------- */
+  function hoy() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date()); }
+  function sumaDias(f, n) { var d = new Date(f + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function diasEntre(a, b) { return Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000); }
+  var MES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fCorta(f) { if (!f) return ''; var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f); return m ? (+m[3]) + ' ' + MES[+m[2] - 1] + ' ' + m[1] : ''; }
+  function fSinAnio(f) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f || ''); return m ? (+m[3]) + ' ' + MES[+m[2] - 1] : ''; }
+  function rango(a, b) { if (!a) return 'Sin fechas'; if (!b) return fCorta(a); return (a.slice(0, 4) === b.slice(0, 4) ? fSinAnio(a) : fCorta(a)) + ' – ' + fCorta(b); }
+  function fHora(ts) { try { return new Date(ts).toLocaleString('es-ES', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+  function eur(n) { return (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
+  function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+  function toast(m, t) { if (window.apoToast) apoToast(m, t || 'ok'); else alert(m); }
+  function fallo(e) { toast(String((e && (e.message || e.mensaje)) || e || 'Error'), 'error'); }
+  async function confirmar(o) { if (window.apoConfirm) return window.apoConfirm(o); return window.confirm((o.titulo || '') + '\n\n' + (o.texto || '')); }
+  function waNum(tel) { var t = String(tel || '').replace(/[^\d+]/g, ''); if (t.charAt(0) === '+') t = t.slice(1); else if (t.slice(0, 2) === '00') t = t.slice(2); else if (t.length === 9) t = '34' + t; return t; }
+  async function copiar(txt) { try { await navigator.clipboard.writeText(txt); toast('Enlace copiado'); } catch (e) { window.prompt('Copia el enlace:', txt); } }
+  function lista(g, v) { return (v || []).map(function (x) { return ETQ[g][x] || x; }).join(', '); }
+  function servTxt(o) {
+    var p = [];
+    if (o.aeropuerto) p.push(ETQ.sub.aeropuerto); if (o.diario) p.push(ETQ.sub.diario);
+    if (o.tipo) p.push(ETQ.sub[o.tipo] || o.tipo); if (o.habitaciones) p.push(o.habitaciones);
+    if (o.cuales && o.cuales.length) p.push(o.cuales.map(function (x) { return ETQ.sub[x] || x; }).join(' + '));
+    if (o.cual && o.cual.length) p.push(o.cual.map(function (x) { return ETQ.sub[x] || x; }).join(' + '));
+    if (o.dieta) p.push('dieta: ' + o.dieta); if (o.detalle) p.push(o.detalle);
+    return p.join(' · ') || 'Sí';
+  }
+  async function gestion(accion, cuerpo) {
+    var r = await sb.functions.invoke('camp-gestion', { body: Object.assign({ accion: accion }, cuerpo || {}) });
+    if (r.error) { var m = ''; try { var j = await r.error.context.json(); m = j.mensaje || ''; } catch (e) {} throw new Error(m || 'No se ha podido hacer.'); }
+    return r.data;
+  }
+  function abrirPdf(b64, nombre) {
+    var bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
+    var a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener';
+    if (/iPhone|iPad|Android/i.test(navigator.userAgent)) a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  /* ---------------- diálogo con formulario ---------------- */
+  function dialogo(o) {
+    return new Promise(function (resolve) {
+      var capa = document.createElement('div');
+      capa.className = 'tc-dlg';
+      capa.innerHTML = '<form novalidate role="dialog" aria-modal="true" aria-labelledby="tc-dlg-t"' + (o.ancho ? ' style="width:min(' + o.ancho + 'px,100%)"' : '') + '>' +
+        '<h3 id="tc-dlg-t">' + esc(o.titulo) + '</h3>' + (o.html || '') + '<p class="err" role="alert" hidden></p>' +
+        '<div class="bots"><button type="button" class="tc-btn" data-no>Cancelar</button>' +
+        '<button type="submit" class="tc-btn ' + (o.peligro ? 'peligro' : 'pri') + '">' + esc(o.ok || 'Guardar') + '</button></div></form>';
+      document.body.appendChild(capa);
+      var f = capa.querySelector('form'), prev = document.activeElement;
+      function cerrar(v) { document.removeEventListener('keydown', tecla, true); capa.remove(); if (prev && prev.focus) try { prev.focus(); } catch (e) {} resolve(v); }
+      function tecla(ev) { if (ev.key === 'Escape') { ev.stopPropagation(); cerrar(null); } }
+      document.addEventListener('keydown', tecla, true);
+      capa.addEventListener('mousedown', function (ev) { if (ev.target === capa) cerrar(null); });
+      f.querySelector('[data-no]').addEventListener('click', function () { cerrar(null); });
+      if (o.alAbrir) o.alAbrir(f);
+      f.addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        var d = {};
+        Array.prototype.forEach.call(f.elements, function (el) {
+          if (!el.name) return;
+          if (el.type === 'checkbox') d[el.name] = el.checked;
+          else if (el.type === 'radio') { if (el.checked) d[el.name] = el.value; }
+          else d[el.name] = el.value.trim();
+        });
+        var err = o.validar ? o.validar(d, f) : '';
+        var caja = f.querySelector('.err');
+        if (err) { caja.textContent = err; caja.hidden = false; return; }
+        if (o.alEnviar) {
+          var b = f.querySelector('[type=submit]'); b.disabled = true; var t = b.textContent; b.textContent = 'Un momento…';
+          try { await o.alEnviar(d); } catch (e) { b.disabled = false; b.textContent = t; caja.textContent = (e && e.message) || 'No se ha podido.'; caja.hidden = false; return; }
+        }
+        cerrar(d);
+      });
+      setTimeout(function () { var p = f.querySelector('input:not([type=hidden]):not([type=checkbox]),textarea,select'); if (p) p.focus(); }, 40);
+    });
+  }
+  function campo(label, inner, ayuda, clase) {
+    return '<label class="tc-campo' + (clase ? ' ' + clase : '') + '">' + esc(label) + inner + (ayuda ? '<small>' + ayuda + '</small>' : '') + '</label>';
+  }
+
+  /* ---------------- estado ---------------- */
+  var S = { sol: [], pre: [], pag: [], tar: [], cfg: null, cond: [], gal: [], vista: 'lista', cifra: 'activas', q: '', pais: '', estado: '', desde: '', hasta: '',
+    prueba: false, mes: hoy().slice(0, 7), abierto: null, tab: 'resumen', reg: [], arch: [], editor: null };
+  var qs = new URLSearchParams(location.search);
+  if (['lista','calendario','proximos','ajustes'].indexOf(qs.get('v')) >= 0) S.vista = qs.get('v');
+
+  async function cargar() {
+    var rs = await Promise.all([
+      sb.from('camp_solicitudes').select('*').order('creado_en', { ascending: false }),
+      sb.from('camp_presupuestos').select('id,solicitud_id,version,numero,estado,idioma,total,senal,saldo,valido_hasta,saldo_vence,enviado_en,aceptado_en,aceptado_nombre,aceptado_por,token,titulo,creado_en').order('version'),
+      sb.from('camp_pagos_v').select('*').order('creado_en'),
+      sb.from('camp_tareas').select('*').order('vence', { nullsFirst: false }),
+      sb.from('camp_config').select('*').eq('id', 1).maybeSingle()
+    ]);
+    var e = rs.filter(function (r) { return r.error; })[0];
+    if (e) { $('tc').innerHTML = '<div class="tc-cab"><div><h1>Training Camps</h1></div></div>' + ADM.error(e.error.message, cargar); return false; }
+    S.sol = rs[0].data || []; S.pre = rs[1].data || []; S.pag = rs[2].data || []; S.tar = rs[3].data || []; S.cfg = rs[4].data;
+    return true;
+  }
+  function presDe(id) { return S.pre.filter(function (p) { return p.solicitud_id === id; }); }
+  function aceptadoDe(id) { return presDe(id).filter(function (p) { return p.estado === 'aceptado'; }).pop() || null; }
+  function pagosDe(id) { return S.pag.filter(function (p) { return p.solicitud_id === id; }); }
+  function tareasDe(id) { return S.tar.filter(function (t) { return t.solicitud_id === id; }); }
+  function tareasPend(id) { return tareasDe(id).filter(function (t) { return !t.hecha_en; }); }
+  function vencidas(id) { var h = hoy(); return tareasPend(id).filter(function (t) { return t.vence && t.vence <= h; }).length; }
+  function dinero(id) {
+    var a = aceptadoDe(id), ps = pagosDe(id).filter(function (p) { return p.situacion !== 'anulado'; });
+    var cobrado = ps.filter(function (p) { return p.situacion === 'pagado'; }).reduce(function (s, p) { return s + Number(p.importe); }, 0);
+    var pedido = ps.reduce(function (s, p) { return s + Number(p.importe); }, 0);
+    var prox = ps.filter(function (p) { return p.situacion === 'pendiente'; }).sort(function (x, y) { return (x.vence || '9') < (y.vence || '9') ? -1 : 1; })[0] || null;
+    return { total: a ? Number(a.total) : null, cobrado: r2(cobrado), pedido: r2(pedido), pendiente: r2(pedido - cobrado), prox: prox, aceptado: a };
+  }
+
+  /* ---------------- montaje ---------------- */
+  function montar() {
+    var pub = URL_WEB + 'training-camps/';
+    $('tc').innerHTML =
+      '<div class="tc-cab"><div><h1>Training Camps</h1><p>Concentraciones de clubes y equipos extranjeros en Alicante: solicitudes, presupuestos, pagos y calendario. ' +
+      'La página pública va <b>solo por enlace</b> (no sale en los menús): <a href="' + pub + '" target="_blank" rel="noopener">/training-camps/</a>.</p></div>' +
+      '<div class="tc-cab-acc"><button type="button" class="tc-btn" data-copiar="' + pub + '">Copiar enlace público</button>' +
+      '<button type="button" class="tc-btn pri" id="tc-nuevo">＋ Expediente a mano</button></div></div>' +
+      '<div class="tc-vistas" role="tablist" id="tc-vistas">' +
+      [['lista','Expedientes'],['calendario','Calendario'],['proximos','Próximos'],['ajustes','Ajustes']].map(function (v) {
+        return '<button type="button" role="tab" data-vista="' + v[0] + '">' + v[1] + '</button>'; }).join('') + '</div>' +
+      '<div id="tc-vista"></div>';
+    $('tc-vistas').addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-vista]'); if (!b) return;
+      S.vista = b.getAttribute('data-vista');
+      var u = new URL(location.href); u.searchParams.set('v', S.vista); u.searchParams.delete('id'); history.replaceState(null, '', u);
+      pintar();
+    });
+    $('tc').addEventListener('click', function (ev) {
+      var c = ev.target.closest('[data-copiar]'); if (c) { copiar(c.getAttribute('data-copiar')); return; }
+      var f = ev.target.closest('[data-abrir]'); if (f && !ev.target.closest('a,button:not([data-abrir])')) abrir(f.getAttribute('data-abrir'));
+    });
+    $('tc').addEventListener('keydown', function (ev) {
+      if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches && ev.target.matches('.tc-fila[data-abrir]')) { ev.preventDefault(); abrir(ev.target.getAttribute('data-abrir')); }
+    });
+    $('tc-nuevo').addEventListener('click', nuevoExpediente);
+  }
+  function pintar() {
+    Array.prototype.forEach.call(document.querySelectorAll('#tc-vistas button'), function (b) {
+      var on = b.getAttribute('data-vista') === S.vista; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    if (S.vista === 'calendario') pintarCalendario();
+    else if (S.vista === 'proximos') pintarProximos();
+    else if (S.vista === 'ajustes') pintarAjustes();
+    else pintarLista();
+  }
+
+  /* =========================== LISTA =========================== */
+  var CIFRAS = [
+    ['nueva', 'nuevas sin contestar', function (s) { return s.estado === 'nueva'; }],
+    ['marcha', 'en estudio / presupuesto', function (s) { return ['pendiente_info','disponibilidad','preparando','enviado'].indexOf(s.estado) >= 0; }],
+    ['cobro', 'pendientes de cobro', function (s) { return ['pendiente_senal','pendiente_final'].indexOf(s.estado) >= 0; }],
+    ['conf', 'confirmadas', function (s) { return CONFIRMADOS.indexOf(s.estado) >= 0; }],
+    ['tareas', 'con tareas vencidas', function (s) { return vencidas(s.id) > 0; }]
+  ];
+  function base() { return S.sol.filter(function (s) { return S.prueba || !s.es_prueba; }); }
+  function visibles() {
+    var q = S.q.toLowerCase();
+    var c = CIFRAS.filter(function (x) { return x[0] === S.cifra; })[0];
+    return base().filter(function (s) {
+      if (c && !c[2](s)) return false;
+      if (S.cifra === 'activas' && ['finalizada','cancelada'].indexOf(s.estado) >= 0 && !S.estado) return false;
+      if (S.estado && s.estado !== S.estado) return false;
+      if (S.pais && (s.pais || '') !== S.pais) return false;
+      if (S.desde && (s.salida || s.llegada || '') < S.desde) return false;
+      if (S.hasta && (s.llegada || '9999') > S.hasta) return false;
+      if (q && [s.entidad, s.contacto, s.email, s.codigo, s.pais, s.telefono].join(' ').toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    }).sort(function (a, b) {
+      var oa = a.estado === 'nueva' ? 0 : 1, ob = b.estado === 'nueva' ? 0 : 1;
+      if (oa !== ob) return oa - ob;
+      return (a.llegada || '9999') < (b.llegada || '9999') ? -1 : 1;
+    });
+  }
+  function pintarLista() {
+    var paises = Array.from(new Set(base().map(function (s) { return s.pais || ''; }).filter(Boolean))).sort();
+    $('tc-vista').innerHTML =
+      '<div class="tc-cifras" id="tc-cifras"></div>' +
+      '<div class="tc-filtros">' +
+        '<input type="search" class="q" id="tc-q" placeholder="Buscar grupo, contacto, correo o código…" aria-label="Buscar" value="' + esc(S.q) + '" autocomplete="off">' +
+        '<select class="f" id="tc-pais" aria-label="País"><option value="">Todos los países</option>' + paises.map(function (p) { return '<option' + (p === S.pais ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>' +
+        '<select class="f" id="tc-estado" aria-label="Estado"><option value="">Todos los estados</option>' + ESTADOS.map(function (e) { return '<option value="' + e[0] + '"' + (e[0] === S.estado ? ' selected' : '') + '>' + esc(e[1]) + '</option>'; }).join('') + '</select>' +
+        '<input type="date" class="f" id="tc-desde" aria-label="Desde" title="Estancias desde" value="' + esc(S.desde) + '">' +
+        '<input type="date" class="f" id="tc-hasta" aria-label="Hasta" title="Estancias hasta" value="' + esc(S.hasta) + '">' +
+        '<label class="chk"><input type="checkbox" id="tc-prueba"' + (S.prueba ? ' checked' : '') + '> Ver las de prueba</label>' +
+      '</div><span class="tc-cuenta" id="tc-cuenta" aria-live="polite"></span><div id="tc-lista"></div>';
+    pintarCifras(); pintarFilas();
+    $('tc-q').addEventListener('input', function () { S.q = this.value; pintarFilas(); });
+    $('tc-pais').addEventListener('change', function () { S.pais = this.value; pintarFilas(); });
+    $('tc-estado').addEventListener('change', function () { S.estado = this.value; if (S.estado) S.cifra = 'todas'; pintarCifras(); pintarFilas(); });
+    $('tc-desde').addEventListener('change', function () { S.desde = this.value; pintarFilas(); });
+    $('tc-hasta').addEventListener('change', function () { S.hasta = this.value; pintarFilas(); });
+    $('tc-prueba').addEventListener('change', function () { S.prueba = this.checked; pintarLista(); });
+    $('tc-cifras').addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-c]'); if (!b) return;
+      S.cifra = S.cifra === b.getAttribute('data-c') ? 'activas' : b.getAttribute('data-c'); S.estado = '';
+      $('tc-estado').value = ''; pintarCifras(); pintarFilas();
+    });
+  }
+  function pintarCifras() {
+    var bs = base();
+    $('tc-cifras').innerHTML = CIFRAS.map(function (c) {
+      var n = bs.filter(c[2]).length;
+      var aviso = (c[0] === 'nueva' || c[0] === 'tareas') && n > 0;
+      return '<button type="button" class="tc-cifra' + (aviso ? ' aviso' : '') + (S.cifra === c[0] ? ' on' : '') + '" data-c="' + c[0] + '"><b>' + n + '</b><span>' + c[1] + '</span></button>';
+    }).join('');
+  }
+  function filaHtml(s) {
+    var g = GRUPO[s.estado] || 'fin', d = dinero(s.id), nv = vencidas(s.id), h = hoy();
+    var falta = s.llegada ? diasEntre(h, s.llegada) : null;
+    var cuando = s.llegada ? (falta > 0 ? 'llegan en ' + falta + ' días' : (s.salida && s.salida >= h ? 'están aquí' : 'ya pasó')) : '';
+    var din = d.total != null
+      ? '<b>' + eur(d.total) + '</b><small>' + (d.cobrado ? 'cobrado ' + eur(d.cobrado) : 'sin cobrar') + '</small>'
+      : (presDe(s.id).length ? '<small>presupuesto sin aceptar</small>' : '<small>sin presupuesto</small>');
+    return '<div class="tc-fila g-' + g + '" tabindex="0" data-abrir="' + s.id + '" aria-label="' + esc(s.entidad) + ': abrir el expediente">' +
+      '<span class="tc-per"><b>' + esc(s.entidad) + (s.es_prueba ? '<span class="tc-marca">prueba</span>' : '') + (nv ? '<span class="tc-marca tarea">' + nv + ' tarea' + (nv > 1 ? 's' : '') + '</span>' : '') + '</b>' +
+        '<small><span class="cod">' + esc(s.codigo) + '</span> · ' + esc([s.pais, s.contacto].filter(Boolean).join(' · ')) + '</small></span>' +
+      '<span class="tc-pill g-' + g + '"><span class="pt"></span>' + esc(ESTXT[s.estado] || s.estado) + '</span>' +
+      '<span class="tc-fechas"><b>' + esc(rango(s.llegada, s.salida)) + '</b><small>' + esc([(s.n_atletas || 0) + (s.n_entrenadores || 0) + ' personas', cuando].filter(Boolean).join(' · ')) + '</small></span>' +
+      '<span class="tc-din">' + din + '</span><span class="tc-flecha" aria-hidden="true">›</span></div>';
+  }
+  function pintarFilas() {
+    var l = visibles(), total = base().length;
+    $('tc-cuenta').textContent = l.length === total ? total + (total === 1 ? ' expediente' : ' expedientes') : l.length + ' de ' + total + ' expedientes';
+    if (!total) { $('tc-lista').innerHTML = '<div class="tc-vacio"><b>Todavía no hay solicitudes</b>Cuando un equipo rellene el formulario de la página pública (o crees un expediente a mano) aparecerá aquí.</div>'; return; }
+    $('tc-lista').innerHTML = l.length ? '<div class="tc-lista">' + l.map(filaHtml).join('') + '</div>'
+      : '<div class="tc-vacio"><b>Nada con estos filtros</b>Prueba con otro estado, país o fechas.</div>';
+  }
+
+  /* =========================== CALENDARIO =========================== */
+  function pintarCalendario() {
+    var y = +S.mes.slice(0, 4), m = +S.mes.slice(5, 7) - 1;
+    var primero = new Date(Date.UTC(y, m, 1)), offset = (primero.getUTCDay() + 6) % 7;
+    var inicio = new Date(Date.UTC(y, m, 1 - offset));
+    var ultimo = new Date(Date.UTC(y, m + 1, 0));
+    var semanas = Math.ceil((offset + ultimo.getUTCDate()) / 7);
+    var h = hoy(), ini = inicio.toISOString().slice(0, 10), fin = sumaDias(ini, semanas * 7 - 1);
+    var camps = base().filter(function (s) { return s.llegada && s.estado !== 'cancelada' && s.llegada <= fin && (s.salida || s.llegada) >= ini; });
+    var clase = function (s) { return CONFIRMADOS.indexOf(s.estado) >= 0 ? 'conf' : s.estado === 'finalizada' ? 'fin' : 'prev'; };
+    var html = '<div class="tc-cal-cab"><button type="button" class="tc-btn mini" data-mes="-1" aria-label="Mes anterior">‹</button>' +
+      '<h2>' + primero.toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' }) + '</h2>' +
+      '<button type="button" class="tc-btn mini" data-mes="1" aria-label="Mes siguiente">›</button><button type="button" class="tc-btn mini" data-mes="0">Hoy</button>' +
+      '<div class="tc-cal-ley"><span><i style="background:#3E7A34"></i>Confirmada</span><span><i style="background:#FBF1D9;border:1px dashed #D9A441"></i>Prevista (sin confirmar)</span><span><i style="background:#EFE9DC"></i>Finalizada</span></div></div>' +
+      '<div class="tc-cal"><div class="tc-cal-dias">' + ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>';
+    for (var w = 0; w < semanas; w++) {
+      var a = sumaDias(ini, w * 7), b = sumaDias(a, 6);
+      html += '<div class="tc-sem">';
+      for (var d = 0; d < 7; d++) {
+        var f = sumaDias(a, d);
+        html += '<div class="dia' + (+f.slice(5, 7) - 1 !== m ? ' fuera' : '') + (f === h ? ' hoy' : '') + '" style="grid-column:' + (d + 1) + '"><span>' + (+f.slice(8)) + '</span></div>';
+      }
+      camps.filter(function (s) { return s.llegada <= b && (s.salida || s.llegada) >= a; }).sort(function (x, z) { return x.llegada < z.llegada ? -1 : 1; }).forEach(function (s) {
+        var c0 = Math.max(0, diasEntre(a, s.llegada)), c1 = Math.min(6, diasEntre(a, s.salida || s.llegada));
+        html += '<button type="button" class="tc-bar ' + clase(s) + '" style="grid-column:' + (c0 + 1) + ' / ' + (c1 + 2) + '" data-abrir="' + s.id + '" title="' +
+          esc(s.entidad + ' · ' + rango(s.llegada, s.salida) + ' · ' + ESTXT[s.estado]) + '">' + esc(s.entidad) + ' · ' + ((s.n_atletas || 0) + (s.n_entrenadores || 0)) + '</button>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    var delMes = camps.filter(function (s) { return s.llegada <= S.mes + '-31' && (s.salida || s.llegada) >= S.mes + '-01'; });
+    html += '<div class="tc-cal-movil">' + (delMes.length ? '<div class="tc-lista">' + delMes.map(filaHtml).join('') + '</div>' : '<div class="tc-vacio"><b>Ninguna concentración este mes</b></div>') + '</div>';
+    if (!camps.length) html += '<div class="tc-aviso azul" style="margin-top:12px">Este mes no hay concentraciones previstas ni confirmadas.</div>';
+    $('tc-vista').innerHTML = html;
+    $('tc-vista').querySelector('.tc-cal-cab').addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-mes]'); if (!b) return;
+      var n = +b.getAttribute('data-mes');
+      if (n === 0) S.mes = hoy().slice(0, 7);
+      else { var dd = new Date(Date.UTC(y, m + n, 1)); S.mes = dd.toISOString().slice(0, 7); }
+      pintarCalendario();
+    });
+  }
+
+  /* =========================== PRÓXIMOS =========================== */
+  function pintarProximos() {
+    var h = hoy();
+    var conf = base().filter(function (s) { return CONFIRMADOS.indexOf(s.estado) >= 0 && (s.salida || s.llegada || '9') >= h; })
+      .sort(function (a, b) { return (a.llegada || '9') < (b.llegada || '9') ? -1 : 1; });
+    var prev = base().filter(function (s) { return ['enviado','pendiente_senal'].indexOf(s.estado) >= 0; })
+      .sort(function (a, b) { return (a.llegada || '9') < (b.llegada || '9') ? -1 : 1; });
+    function tarjeta(s) {
+      var d = dinero(s.id), falta = s.llegada ? diasEntre(h, s.llegada) : null, pct = d.total ? Math.min(100, Math.round(d.cobrado / d.total * 100)) : 0;
+      var g = GRUPO[s.estado];
+      return '<div class="tc-tarj" data-abrir="' + s.id + '" tabindex="0"><h3><span>' + esc(s.codigo) + '</span><span class="tc-pill g-' + g + '"><span class="pt"></span>' + esc(ESTXT[s.estado]) + '</span></h3>' +
+        '<div class="cuerpo"><b style="font-size:17px;display:block">' + esc(s.entidad) + '</b><small style="color:var(--texto-suave)">' + esc([s.pais, s.contacto].filter(Boolean).join(' · ')) + '</small>' +
+        '<div style="margin:12px 0 6px" class="cuenta-atras">' + (falta == null ? '—' : falta > 0 ? falta + '<small>días para llegar</small>' : '<small>están aquí</small>') + '</div>' +
+        '<div style="font-size:14px">' + esc(rango(s.llegada, s.salida)) + ' · ' + ((s.n_atletas || 0) + (s.n_entrenadores || 0)) + ' personas</div>' +
+        (d.total != null ? '<div class="tc-barra" title="Cobrado"><i style="width:' + pct + '%"></i></div><div style="font-size:13px;color:var(--texto-suave)">Cobrado ' + eur(d.cobrado) + ' de ' + eur(d.total) +
+          (d.prox ? ' · próximo: ' + eur(d.prox.importe) + (d.prox.vence ? ' el ' + fSinAnio(d.prox.vence) : '') : '') + '</div>' : '') +
+        (tareasPend(s.id).length ? '<div style="font-size:13px;margin-top:6px">' + tareasPend(s.id).length + ' tarea(s) pendiente(s)</div>' : '') +
+        '</div></div>';
+    }
+    $('tc-vista').innerHTML =
+      '<h2 style="font-family:var(--fuente-titulo);font-size:20px;margin:20px 0 4px">Confirmadas</h2>' +
+      (conf.length ? '<div class="tc-prox">' + conf.map(tarjeta).join('') + '</div>' : '<div class="tc-vacio"><b>Ninguna concentración confirmada por delante</b>Se confirman al cobrar la señal con la disponibilidad aprobada.</div>') +
+      '<h2 style="font-family:var(--fuente-titulo);font-size:20px;margin:26px 0 4px">Pendientes de confirmar</h2>' +
+      (prev.length ? '<div class="tc-prox">' + prev.map(tarjeta).join('') + '</div>' : '<div class="tc-vacio"><b>Nada pendiente de confirmar</b>Aquí salen las que tienen presupuesto enviado o esperan la señal.</div>');
+  }
+
+  /* =========================== AJUSTES =========================== */
+  async function pintarAjustes() {
+    $('tc-vista').innerHTML = ADM.esqueleto(4);
+    var rs = await Promise.all([sb.from('camp_condiciones').select('*').order('version', { ascending: false }),
+      sb.from('camp_galeria').select('*').order('orden').order('creado_en')]);
+    if (rs[0].error || rs[1].error) { $('tc-vista').innerHTML = ADM.error((rs[0].error || rs[1].error).message, pintarAjustes); return; }
+    S.cond = rs[0].data || []; S.gal = rs[1].data || [];
+    var g = S.cfg || {}, em = g.emisor || {};
+    var borr = S.cond.filter(function (c) { return c.estado === 'borrador'; })[0], pub = S.cond.filter(function (c) { return c.estado === 'publicada'; })[0];
+    var editable = borr || pub || { texto_en: '', texto_es: '' };
+    var impuestos = (g.impuestos || []).map(function (i) { return i.nombre + ' = ' + i.pct; }).join('\n');
+    $('tc-vista').innerHTML =
+      (g.revisado ? '' : '<div class="tc-aviso"><b>Valores de partida sin confirmar.</b> La señal (30 %), los plazos y el IVA por defecto (21 %) son una propuesta: revísalos (y el IVA con la asesoría) y marca «Revisado».</div>') +
+      '<div class="tc-tarj"><h3>Cobro y presupuestos</h3><div class="cuerpo"><form id="tc-cfg" class="tc-rejilla">' +
+        campo('Señal', '<span class="dos"><select name="senal_tipo"><option value="porcentaje"' + (g.senal_tipo === 'porcentaje' ? ' selected' : '') + '>Porcentaje del total</option><option value="importe"' + (g.senal_tipo === 'importe' ? ' selected' : '') + '>Importe fijo (€)</option></select>' +
+          '<input name="senal_valor" type="number" min="0" step="0.01" value="' + esc(g.senal_valor) + '"></span>', 'Valor por defecto de cada presupuesto nuevo (se puede cambiar en cada uno).') +
+        campo('Días para pagar la señal', '<input name="senal_dias_pago" type="number" min="1" max="60" value="' + esc(g.senal_dias_pago) + '">', 'Desde que se pide.') +
+        campo('Resto: días antes de la llegada', '<input name="saldo_dias_antes" type="number" min="0" max="365" value="' + esc(g.saldo_dias_antes) + '">', 'Fecha límite del pago final.') +
+        campo('Validez del presupuesto (días)', '<input name="validez_dias" type="number" min="1" max="365" value="' + esc(g.validez_dias) + '">') +
+        campo('Tipos de impuesto', '<textarea name="impuestos" rows="3">' + esc(impuestos) + '</textarea>', 'Uno por línea: «nombre = %». Ej.: IVA 21 % = 21') +
+        campo('Impuesto por defecto (%)', '<input name="impuesto_defecto" type="number" min="0" max="100" step="0.01" value="' + esc(g.impuesto_defecto) + '">') +
+        campo('Nota de impuestos en el PDF (inglés)', '<textarea name="nota_impuestos_en" rows="2">' + esc(g.nota_impuestos_en || '') + '</textarea>', 'Por ejemplo, la mención de una exención. Vacío = no sale.') +
+        campo('Nota de impuestos en el PDF (castellano)', '<textarea name="nota_impuestos_es" rows="2">' + esc(g.nota_impuestos_es || '') + '</textarea>') +
+        campo('Forma de pago (inglés)', '<textarea name="formas_pago_en" rows="2">' + esc(g.formas_pago_en || '') + '</textarea>') +
+        campo('Forma de pago (castellano)', '<textarea name="formas_pago_es" rows="2">' + esc(g.formas_pago_es || '') + '</textarea>') +
+        campo('Emisor: nombre', '<input name="em_nombre" value="' + esc(em.nombre || '') + '">') + campo('Emisor: NIF', '<input name="em_nif" value="' + esc(em.nif || '') + '">') +
+        campo('Emisor: dirección', '<input name="em_direccion" value="' + esc(em.direccion || '') + '">', '', 'ancho') +
+        campo('Emisor: correo que sale en el PDF', '<input name="em_email" type="email" value="' + esc(em.email || '') + '">') + campo('Emisor: web', '<input name="em_web" value="' + esc(em.web || '') + '">') +
+        campo('Avisos de solicitudes, aceptaciones y cobros a', '<input name="correo_avisos" type="email" value="' + esc(g.correo_avisos || '') + '" placeholder="vacío = andres.apolana (el de siempre)">', '', 'ancho') +
+        '<label class="tc-chk ancho"><input type="checkbox" name="revisado"' + (g.revisado ? ' checked' : '') + '> Revisado: estos valores son los buenos</label>' +
+        '<div class="ancho"><button type="submit" class="tc-btn pri">Guardar los ajustes</button></div></form></div></div>' +
+
+      '<div class="tc-tarj"><h3><span>Condiciones de contratación · ' + (borr ? 'borrador v' + borr.version : pub ? 'vigente v' + pub.version : 'sin texto') + '</span>' +
+        '<a class="tc-btn mini" href="' + URL_WEB + 'training-camps/terms/" target="_blank" rel="noopener">Ver la página</a></h3><div class="cuerpo">' +
+        '<div class="tc-aviso" style="margin-top:0"><b>Borrador pendiente de asesoría.</b> Se muestran con la marca «Draft / Borrador» mientras no se publiquen. Cada presupuesto guarda la versión que acepta el cliente. ' +
+        '<b>{senal}</b>, <b>{senal_dias}</b>, <b>{saldo_dias}</b> y <b>{validez_dias}</b> se rellenan solos con los ajustes de arriba.' + (borr && borr.nota ? '<br><i>' + esc(borr.nota) + '</i>' : '') + '</div>' +
+        '<form id="tc-cond" class="tc-rejilla" style="margin-top:12px">' +
+        campo('Inglés', '<textarea class="legal" name="texto_en">' + esc(editable.texto_en) + '</textarea>') +
+        campo('Castellano (prevalece)', '<textarea class="legal" name="texto_es">' + esc(editable.texto_es) + '</textarea>') +
+        '<p class="ancho" style="margin:0;font-size:13px;color:var(--texto-suave)">Formato: «## Título» para cada apartado, una línea en blanco entre párrafos y «- » para las listas.</p>' +
+        '<div class="ancho tc-acc" style="margin:0"><button type="submit" class="tc-btn pri">' + (borr ? 'Guardar el borrador' : 'Guardar como borrador nuevo') + '</button>' +
+        (borr ? '<button type="button" class="tc-btn" id="tc-cond-pub">Publicar como vigente…</button>' : '') + '</div></form>' +
+        (S.cond.length > 1 ? '<p style="font-size:13px;color:var(--texto-suave);margin:12px 0 0">Versiones: ' + S.cond.map(function (c) { return 'v' + c.version + ' (' + c.estado + ')'; }).join(' · ') + '</p>' : '') +
+        '</div></div>' +
+
+      '<div class="tc-tarj"><h3><span>Galería de la página pública</span><span class="tc-acc" style="margin:0"><label class="tc-btn mini" style="cursor:pointer">Subir fotos o vídeos<input type="file" id="tc-gal-subir" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple hidden></label>' +
+        '<button type="button" class="tc-btn mini" id="tc-gal-url">Añadir enlace (YouTube…)</button></span></h3><div class="cuerpo">' +
+        (S.gal.length ? '<div class="tc-gal">' + S.gal.map(galHtml).join('') + '</div>'
+          : '<div class="tc-vacio" style="margin:0"><b>Sin fotos todavía</b>Mientras esté vacía, la página enseña las fotos del estadio y de El Cubo que ya tiene la web. Fotos hasta 50 MB; vídeos en MP4 (mejor cortos).</div>') +
+        '</div></div>';
+
+    $('tc-cfg').addEventListener('submit', guardarAjustes);
+    $('tc-cond').addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      var f = ev.target, r = await sb.rpc('camp_condiciones_guardar', { p_texto_en: f.texto_en.value, p_texto_es: f.texto_es.value, p_nota: borr ? borr.nota : null });
+      if (r.error) return fallo(r.error);
+      toast('Borrador guardado'); pintarAjustes();
+    });
+    if ($('tc-cond-pub')) $('tc-cond-pub').addEventListener('click', async function () {
+      if (!await confirmar({ titulo: 'Publicar las condiciones', texto: 'Pasarán a ser las vigentes y dejarán de salir como borrador. Hazlo solo cuando la asesoría las haya revisado. Los presupuestos ya aceptados conservan su versión.', confirmar: 'Publicar' })) return;
+      var r = await sb.rpc('camp_condiciones_publicar'); if (r.error) return fallo(r.error);
+      toast('Condiciones publicadas'); pintarAjustes();
+    });
+    $('tc-gal-subir').addEventListener('change', subirGaleria);
+    $('tc-gal-url').addEventListener('click', anadirEnlaceGaleria);
+    $('tc-vista').querySelector('.tc-gal') && $('tc-vista').querySelector('.tc-gal').addEventListener('click', accionGaleria);
+    $('tc-vista').querySelector('.tc-gal') && $('tc-vista').querySelector('.tc-gal').addEventListener('change', accionGaleria);
+  }
+  async function guardarAjustes(ev) {
+    ev.preventDefault();
+    var f = ev.target, imp = [];
+    var malos = f.impuestos.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean).filter(function (l) {
+      var m = /^(.+?)\s*=\s*([\d.,]+)$/.exec(l); if (!m) return true; imp.push({ nombre: m[1].trim(), pct: Number(m[2].replace(',', '.')) }); return false; });
+    if (malos.length || !imp.length) return toast('Revisa los tipos de impuesto: «nombre = %», uno por línea.', 'error');
+    var p = { senal_tipo: f.senal_tipo.value, senal_valor: f.senal_valor.value, senal_dias_pago: f.senal_dias_pago.value, saldo_dias_antes: f.saldo_dias_antes.value,
+      validez_dias: f.validez_dias.value, impuestos: imp, impuesto_defecto: f.impuesto_defecto.value, nota_impuestos_en: f.nota_impuestos_en.value,
+      nota_impuestos_es: f.nota_impuestos_es.value, formas_pago_en: f.formas_pago_en.value, formas_pago_es: f.formas_pago_es.value,
+      emisor: { nombre: f.em_nombre.value.trim(), nif: f.em_nif.value.trim(), direccion: f.em_direccion.value.trim(), email: f.em_email.value.trim(), web: f.em_web.value.trim() },
+      correo_avisos: f.correo_avisos.value, revisado: f.revisado.checked };
+    var r = await sb.rpc('camp_config_guardar', { p: p });
+    if (r.error) return fallo(r.error);
+    S.cfg = r.data; toast('Ajustes guardados'); pintarAjustes();
+  }
+  function galHtml(x) {
+    var med = x.tipo === 'foto' ? '<div class="med" style="background-image:url(\'' + esc(x.url) + '\')"></div>'
+      : x.tipo === 'video' ? '<video class="med" src="' + esc(x.url) + '" preload="metadata" muted playsinline></video>'
+      : '<a class="med" href="' + esc(x.url) + '" target="_blank" rel="noopener">▶ Enlace de vídeo</a>';
+    return '<figure class="' + (x.visible ? '' : 'oculta') + '" data-gal="' + x.id + '">' + med + '<figcaption>' +
+      '<input data-k="titulo_en" placeholder="Pie de foto (inglés)" value="' + esc(x.titulo_en || '') + '">' +
+      '<input data-k="titulo_es" placeholder="Pie de foto (castellano)" value="' + esc(x.titulo_es || '') + '">' +
+      '<div class="fila-acc"><input data-k="orden" type="number" style="width:70px" title="Orden" value="' + esc(x.orden) + '">' +
+      '<button type="button" class="tc-btn mini" data-g="visible">' + (x.visible ? 'Ocultar' : 'Mostrar') + '</button>' +
+      '<button type="button" class="tc-btn mini peligro" data-g="borrar">Quitar</button></div></figcaption></figure>';
+  }
+  async function accionGaleria(ev) {
+    var fig = ev.target.closest('[data-gal]'); if (!fig) return;
+    var id = fig.getAttribute('data-gal'), x = S.gal.filter(function (g) { return g.id === id; })[0];
+    if (ev.type === 'change' && ev.target.matches('[data-k]')) {
+      var k = ev.target.getAttribute('data-k'), cambio = {}; cambio[k] = k === 'orden' ? (+ev.target.value || 0) : (ev.target.value.trim() || null);
+      var r = await sb.from('camp_galeria').update(cambio).eq('id', id); if (r.error) return fallo(r.error); toast('Guardado'); return;
+    }
+    var b = ev.target.closest('[data-g]'); if (!b || ev.type !== 'click') return;
+    if (b.getAttribute('data-g') === 'visible') {
+      var r2_ = await sb.from('camp_galeria').update({ visible: !x.visible }).eq('id', id); if (r2_.error) return fallo(r2_.error); pintarAjustes();
+    } else {
+      if (!await confirmar({ titulo: 'Quitar de la galería', texto: 'Deja de salir en la página y se borra el archivo subido.', peligro: true, confirmar: 'Quitar' })) return;
+      if (x.ruta) await sb.storage.from('training-camps-galeria').remove([x.ruta]);
+      var r3 = await sb.from('camp_galeria').delete().eq('id', id); if (r3.error) return fallo(r3.error); pintarAjustes();
+    }
+  }
+  async function subirGaleria(ev) {
+    var fs = Array.prototype.slice.call(ev.target.files || []); if (!fs.length) return;
+    toast('Subiendo ' + fs.length + ' archivo(s)…', 'info');
+    var orden = S.gal.reduce(function (m, g) { return Math.max(m, g.orden || 0); }, 0);
+    for (var i = 0; i < fs.length; i++) {
+      var f = fs[i];
+      if (f.size > 50 * 1024 * 1024) { toast(f.name + ': pasa de 50 MB', 'error'); continue; }
+      var ext = (f.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+      var ruta = 'galeria/' + Date.now() + '-' + i + '.' + ext;
+      var up = await sb.storage.from('training-camps-galeria').upload(ruta, f, { contentType: f.type, upsert: false });
+      if (up.error) { fallo(up.error); continue; }
+      var url = sb.storage.from('training-camps-galeria').getPublicUrl(ruta).data.publicUrl;
+      var r = await sb.from('camp_galeria').insert({ tipo: /^video\//.test(f.type) ? 'video' : 'foto', url: url, ruta: ruta, orden: ++orden });
+      if (r.error) fallo(r.error);
+    }
+    toast('Galería actualizada'); pintarAjustes();
+  }
+  async function anadirEnlaceGaleria() {
+    await dialogo({ titulo: 'Añadir un enlace', ok: 'Añadir',
+      html: campo('Dirección', '<input name="url" type="url" placeholder="https://www.youtube.com/watch?v=…">', 'YouTube o Vimeo (se ve incrustado) o una foto ya publicada (https).') +
+        campo('Pie (inglés)', '<input name="en">') + campo('Pie (castellano)', '<input name="es">'),
+      validar: function (d) { return /^https:\/\//.test(d.url) ? '' : 'Pon una dirección que empiece por https://'; },
+      alEnviar: async function (d) {
+        var tipo = /youtu\.?be|vimeo\.com/.test(d.url) ? 'enlace' : /\.(mp4|webm|mov)(\?|$)/i.test(d.url) ? 'video' : 'foto';
+        var r = await sb.from('camp_galeria').insert({ tipo: tipo, url: d.url, titulo_en: d.en || null, titulo_es: d.es || null, orden: S.gal.length + 1 });
+        if (r.error) throw r.error;
+      } }) && pintarAjustes();
+  }
+
+  /* =========================== EXPEDIENTE NUEVO =========================== */
+  function nuevoExpediente() {
+    dialogo({ titulo: 'Expediente a mano', ok: 'Crear',
+      html: '<p class="ayuda">Para las solicitudes que llegan por correo, por teléfono o derivadas por la Concejalía. Luego puedes completar los datos.</p>' +
+        campo('Club, equipo o entidad', '<input name="entidad" required>') +
+        '<div class="tc-rejilla">' + campo('País', '<input name="pais">') + campo('Origen', '<select name="origen"><option value="concejalia">Derivada por la Concejalía</option><option value="correo">Correo</option><option value="telefono">Teléfono</option><option value="otro">Otro</option></select>') +
+        campo('Persona de contacto', '<input name="contacto" required>') + campo('Correo', '<input name="email" type="email" required>') +
+        campo('Teléfono / WhatsApp', '<input name="telefono">') + campo('Idioma de los correos', '<select name="idioma"><option value="en">Inglés</option><option value="es">Castellano</option></select>') +
+        campo('Llegada', '<input name="llegada" type="date">') + campo('Salida', '<input name="salida" type="date">') +
+        campo('Atletas', '<input name="n_atletas" type="number" min="0">') + campo('Entrenadores', '<input name="n_entrenadores" type="number" min="0">') + '</div>' +
+        campo('Lo que piden', '<textarea name="comentarios" rows="4"></textarea>'),
+      validar: function (d) {
+        if (!d.entidad || !d.contacto) return 'Pon la entidad y la persona de contacto.';
+        if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.email)) return 'Pon un correo válido.';
+        if (d.llegada && d.salida && d.salida < d.llegada) return 'La salida es antes que la llegada.';
+        return '';
+      },
+      alEnviar: async function (d) {
+        var r = await sb.from('camp_solicitudes').insert({ entidad: d.entidad, pais: d.pais || null, origen: d.origen, contacto: d.contacto, email: d.email.toLowerCase(),
+          telefono: d.telefono || null, idioma: d.idioma, idioma_com: d.idioma, llegada: d.llegada || null, salida: d.salida || null,
+          n_atletas: d.n_atletas ? +d.n_atletas : null, n_entrenadores: d.n_entrenadores ? +d.n_entrenadores : null, comentarios: d.comentarios || null }).select().single();
+        if (r.error) throw r.error;
+        await cargar(); pintar(); abrir(r.data.id);
+      } });
+  }
+
+  /* =========================== PANEL DEL EXPEDIENTE =========================== */
+  var focoPrevio = null;
+  async function abrir(id, tab) {
+    var s = S.sol.filter(function (x) { return x.id === id; })[0];
+    if (!s) { toast('Ese expediente no existe o no lo puedes ver.', 'error'); return; }
+    if (S.abierto !== id) { focoPrevio = document.activeElement; S.tab = tab || 'resumen'; S.editor = null; }
+    else if (tab) S.tab = tab;
+    S.abierto = id;
+    var u = new URL(location.href); u.searchParams.set('id', id); history.replaceState(null, '', u);
+    $('tc-velo').classList.add('ver'); $('tc-panel').classList.add('ver');
+    pintarCabPanel(); $('tc-p-cuerpo').innerHTML = ADM.esqueleto(4);
+    var rs = await Promise.all([sb.from('camp_registro').select('*').eq('solicitud_id', id).order('creado_en', { ascending: false }),
+      sb.from('camp_archivos').select('*').eq('solicitud_id', id).order('creado_en', { ascending: false })]);
+    S.reg = rs[0].data || []; S.arch = rs[1].data || [];
+    pintarPanel();
+    setTimeout(function () { var c = $('tc-p-cerrar'); if (c) c.focus(); }, 60);
+  }
+  function cerrarPanel() {
+    if (!$('tc-panel').classList.contains('ver')) return;
+    $('tc-velo').classList.remove('ver'); $('tc-panel').classList.remove('ver');
+    S.abierto = null; S.editor = null;
+    var u = new URL(location.href); u.searchParams.delete('id'); history.replaceState(null, '', u);
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  $('tc-velo').addEventListener('click', cerrarPanel);
+  // Con el editor abierto, Escape no cierra (no se pierden los cambios sin querer).
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && !S.editor && !document.querySelector('.tc-dlg') && !document.querySelector('.apo-modal-fondo')) cerrarPanel(); });
+
+  async function refrescar() { await cargar(); if (S.vista !== 'ajustes') pintar(); if (S.abierto) await abrir(S.abierto); }
+
+  function sAbierta() { return S.sol.filter(function (x) { return x.id === S.abierto; })[0]; }
+  function pintarCabPanel() {
+    var s = sAbierta(); if (!s) return;
+    var g = GRUPO[s.estado], tel = s.telefono ? String(s.telefono).replace(/\s+/g, '') : '';
+    var np = presDe(s.id).length, npg = pagosDe(s.id).filter(function (p) { return p.situacion !== 'anulado'; }).length, nt = tareasPend(s.id).length, nv = vencidas(s.id);
+    $('tc-p-cab').innerHTML =
+      '<div class="tc-p-top"><div><span class="cod">' + esc(s.codigo) + '</span>' + (s.es_prueba ? '<span class="tc-marca">prueba</span>' : '') +
+      '<h2 id="tc-p-titulo">' + esc(s.entidad) + '</h2><div class="sub">' + esc([s.pais, s.contacto, rango(s.llegada, s.salida)].filter(Boolean).join(' · ')) + '</div></div>' +
+      '<button type="button" class="tc-cerrar" id="tc-p-cerrar" aria-label="Cerrar">×</button></div>' +
+      '<div class="tc-p-estado"><span class="tc-pill g-' + g + '"><span class="pt"></span>' + esc(ESTXT[s.estado]) + '</span>' +
+      '<select id="tc-p-estado" aria-label="Cambiar el estado">' + ESTADOS.map(function (e) { return '<option value="' + e[0] + '"' + (e[0] === s.estado ? ' selected' : '') + '>' + esc(e[1]) + '</option>'; }).join('') + '</select>' +
+      '<a class="tc-btn mini" href="mailto:' + esc(s.email) + '">Correo</a>' + (tel ? '<a class="tc-btn mini" href="https://wa.me/' + esc(waNum(tel)) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+      '<button type="button" class="tc-btn mini" data-acc="correo">Escribir desde el club…</button></div>' +
+      '<nav class="tc-tabs" id="tc-tabs">' + [['resumen','Resumen'],['presupuestos','Presupuestos',np],['pagos','Pagos',npg],['seguimiento','Seguimiento'],['tareas','Tareas',nt,nv],['archivos','Archivos',S.arch.length]].map(function (t) {
+        return '<button type="button" data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? 'on' : '') + '">' + t[1] + (t[2] ? '<span class="n' + (t[3] ? ' rojo' : '') + '">' + t[2] + '</span>' : '') + '</button>'; }).join('') + '</nav>';
+    $('tc-p-cerrar').addEventListener('click', cerrarPanel);
+    $('tc-tabs').addEventListener('click', function (ev) { var b = ev.target.closest('[data-tab]'); if (!b) return; S.tab = b.getAttribute('data-tab'); S.editor = null; pintarPanel(); });
+    $('tc-p-estado').addEventListener('change', cambiarEstado);
+    $('tc-p-cab').querySelector('[data-acc="correo"]').addEventListener('click', escribirCorreo);
+  }
+  function pintarPanel() {
+    pintarCabPanel();
+    var s = sAbierta(); if (!s) return;
+    var c = $('tc-p-cuerpo');
+    if (S.editor) return pintarEditor();
+    if (S.tab === 'presupuestos') c.innerHTML = tabPresupuestos(s);
+    else if (S.tab === 'pagos') c.innerHTML = tabPagos(s);
+    else if (S.tab === 'seguimiento') c.innerHTML = tabSeguimiento(s);
+    else if (S.tab === 'tareas') c.innerHTML = tabTareas(s);
+    else if (S.tab === 'archivos') c.innerHTML = tabArchivos(s);
+    else c.innerHTML = tabResumen(s);
+    c.scrollTop = 0;
+  }
+
+  async function cambiarEstado(ev) {
+    var s = sAbierta(), nuevo = ev.target.value;
+    if (nuevo === s.estado) return;
+    if (nuevo === 'cancelada') {
+      var d = await dialogo({ titulo: 'Cancelar el expediente', ok: 'Cancelar el expediente', peligro: true,
+        html: '<p class="ayuda">Los pagos pedidos que no se han cobrado se anulan (sus enlaces dejan de funcionar). Lo ya cobrado se queda: si hay que devolver algo, se hace en Stripe y se anota aquí.</p>' +
+          campo('Motivo', '<textarea name="motivo" rows="3"></textarea>'),
+        validar: function (x) { return x.motivo ? '' : 'Escribe el motivo.'; },
+        alEnviar: async function (x) { var r = await sb.rpc('camp_cancelar', { p_id: s.id, p_motivo: x.motivo }); if (r.error) throw r.error; } });
+      if (!d) { ev.target.value = s.estado; return; }
+    } else {
+      if (CONFIRMADOS.indexOf(nuevo) >= 0 && CONFIRMADOS.indexOf(s.estado) < 0) {
+        var ok = await confirmar({ titulo: 'Confirmar a mano', texto: 'Normalmente la reserva se confirma sola al cobrar la señal con la disponibilidad aprobada. ¿La pasas a «' + ESTXT[nuevo] + '» a mano?', confirmar: 'Sí, cambiar' });
+        if (!ok) { ev.target.value = s.estado; return; }
+      }
+      var r = await sb.from('camp_solicitudes').update({ estado: nuevo }).eq('id', s.id);
+      if (r.error) { ev.target.value = s.estado; return fallo(r.error); }
+    }
+    toast('Estado: ' + ESTXT[nuevo]); refrescar();
+  }
+
+  async function escribirCorreo() {
+    var s = sAbierta();
+    await dialogo({ titulo: 'Escribir al cliente', ok: 'Enviar', ancho: 620,
+      html: '<p class="ayuda">Sale de info@ con el diseño del club (cabecera en ' + (s.idioma === 'es' ? 'castellano' : 'inglés') + '); las respuestas te llegan a ti. Queda en el seguimiento.</p>' +
+        campo('Para', '<input value="' + esc(s.contacto + ' <' + s.email + '>') + '" disabled>') + campo('Asunto', '<input name="asunto">') +
+        campo('Mensaje', '<textarea name="mensaje" rows="9"></textarea>', 'Escríbelo en el idioma del cliente.'),
+      validar: function (d) { return d.asunto && d.mensaje ? '' : 'Escribe el asunto y el mensaje.'; },
+      alEnviar: async function (d) { await gestion('correo', { solicitud_id: s.id, asunto: d.asunto, mensaje: d.mensaje }); toast('Correo enviado'); await refrescar(); } });
+  }
+
+  /* ---------- Resumen ---------- */
+  function siguientePaso(s) {
+    var d = dinero(s.id), a = d.aceptado, ps = pagosDe(s.id).filter(function (p) { return p.situacion !== 'anulado'; });
+    var senal = ps.filter(function (p) { return p.tipo === 'senal'; })[0], saldo = ps.filter(function (p) { return p.tipo === 'saldo'; })[0];
+    var env = presDe(s.id).filter(function (p) { return p.estado === 'enviado'; }).pop();
+    switch (s.estado) {
+      case 'nueva': return ['Contesta y estudia la disponibilidad', 'Escríbeles (o pídeles lo que falte) y mira con el estadio si caben esas franjas. Luego prepara el presupuesto.', 'presupuestos', 'Preparar presupuesto'];
+      case 'pendiente_info': return ['Esperando datos del cliente', 'Cuando contesten, anótalo en Seguimiento y sigue.', 'seguimiento', 'Anotar respuesta'];
+      case 'disponibilidad': return ['Comprobando disponibilidad', 'Confirma las franjas con el estadio y prepara el presupuesto.', 'presupuestos', 'Preparar presupuesto'];
+      case 'preparando': return ['Prepara y envía el presupuesto', 'Ponle los conceptos y envíaselo: le llega con el PDF y un enlace para aceptarlo.', 'presupuestos', 'Ir a presupuestos'];
+      case 'enviado': return ['Esperando la aceptación', env ? 'Presupuesto ' + env.numero + ' enviado' + (env.valido_hasta ? ', válido hasta el ' + fCorta(env.valido_hasta) : '') + '. Si lo aceptan por correo, márcalo aceptado a mano.' : 'Esperando respuesta.', 'presupuestos', 'Ver presupuestos'];
+      case 'pendiente_senal': return senal ? ['Esperando la señal', 'Pedida ' + eur(senal.importe) + (senal.vence ? ', vence el ' + fCorta(senal.vence) : '') + (s.disponibilidad_ok_en ? '.' : '. Falta además aprobar la disponibilidad.'), 'pagos', 'Ver pagos']
+        : ['Aprueba la disponibilidad y pide la señal', 'El cliente ha aceptado' + (a ? ' ' + a.numero : '') + '. No se cobra nada hasta que pidas la señal.', 'pagos', 'Pedir la señal'];
+      case 'confirmada': return saldo ? ['Pago final pedido', '', 'pagos', 'Ver pagos'] : ['Reserva confirmada', 'Pide el pago final' + (a && a.saldo_vence ? ' (antes del ' + fCorta(a.saldo_vence) + ')' : '') + '.', 'pagos', 'Pedir el pago final'];
+      case 'pendiente_final': return ['Esperando el pago final', saldo ? eur(saldo.importe) + (saldo.vence ? ', vence el ' + fCorta(saldo.vence) : '') : '', 'pagos', 'Ver pagos'];
+      case 'pagada': return ['Todo cobrado', 'Prepara la llegada: horarios, transporte, contactos. Cuando lleguen, pásala a «En curso».', 'tareas', 'Ver tareas'];
+      case 'en_curso': return ['Están entrenando aquí', 'Al terminar, pásala a «Finalizada».', null, null];
+      default: return null;
+    }
+  }
+  function tabResumen(s) {
+    var p = siguientePaso(s), serv = s.servicios || {};
+    var dl = function (filas) { return '<dl class="tc-datos">' + filas.filter(function (f) { return f[1] !== '' && f[1] != null; }).map(function (f) { return '<div><dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>'; };
+    var noches = s.llegada && s.salida ? diasEntre(s.llegada, s.salida) : null;
+    return (p ? '<div class="tc-aviso azul" style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b>Siguiente paso: ' + esc(p[0]) + '.</b> ' + esc(p[1]) + '</span>' +
+        (p[2] ? '<button type="button" class="tc-btn mini pri" data-ir="' + p[2] + '">' + esc(p[3]) + '</button>' : '') + '</div>' : '') +
+      (s.estado === 'cancelada' && s.cancelado_motivo ? '<div class="tc-aviso">Cancelada: ' + esc(s.cancelado_motivo) + '</div>' : '') +
+      '<div class="tc-tarj"><h3><span>Grupo y contacto</span><button type="button" class="tc-btn mini" data-acc="editar">Editar datos</button></h3><div class="cuerpo">' + dl([
+        ['Entidad', s.entidad], ['País', s.pais], ['Contacto', s.contacto], ['Correo', s.email], ['Teléfono / WhatsApp', s.telefono],
+        ['Idioma de comunicación', (ETQ.idioma_com[s.idioma_com] || s.idioma_com || '') + (s.idioma_com_otro ? ' (' + s.idioma_com_otro + ')' : '')],
+        ['Correos del club en', s.idioma === 'es' ? 'Castellano' : 'Inglés'],
+        ['Participantes', (s.n_atletas != null ? s.n_atletas + ' atletas' : '') + (s.n_entrenadores != null ? ' · ' + s.n_entrenadores + ' entrenadores' : '')],
+        ['Modalidades', lista('modalidades', s.modalidades) + (s.modalidades_otro ? ' (' + s.modalidades_otro + ')' : '')],
+        ['Origen', ETQ.origen[s.origen] || s.origen], ['Recibida', fHora(s.creado_en)]]) + '</div></div>' +
+      '<div class="tc-tarj"><h3>Fechas y entrenamientos</h3><div class="cuerpo">' + dl([
+        ['Fechas', rango(s.llegada, s.salida) + (noches ? ' (' + noches + ' noches)' : '') + (s.fechas_flexibles ? ' · flexibles' : '')],
+        ['Días', lista('dias', s.dias)], ['Horario preferido', lista('horario', s.horario)], ['Sesiones al día', s.sesiones_dia],
+        ['Dividir en grupos', (ETQ.sino[s.dividir] || '') + (s.grupos ? ' · ' + s.grupos + ' grupos' : '') + (s.grupos_detalle ? ' · ' + s.grupos_detalle : '')],
+        ['Instalaciones', lista('instalaciones', s.instalaciones) + (s.instalaciones_otro ? ' (' + s.instalaciones_otro + ')' : '')],
+        ['Gimnasio', (ETQ.sino[s.gimnasio] || '') + (s.gimnasio_detalle ? ' · ' + s.gimnasio_detalle : '')], ['Material', s.material]]) + '</div></div>' +
+      '<div class="tc-tarj"><h3>Servicios adicionales</h3><div class="cuerpo">' +
+        (Object.keys(serv).length ? dl(Object.keys(serv).map(function (k) { return [ETQ.servicios[k] || k, servTxt(serv[k] || {})]; })) : '<p style="margin:0;color:var(--texto-suave)">No ha pedido servicios adicionales.</p>') + '</div></div>' +
+      ((s.necesidades || s.comentarios) ? '<div class="tc-tarj"><h3>Información adicional</h3><div class="cuerpo">' + dl([['Necesidades especiales', s.necesidades], ['Comentarios', s.comentarios]]) + '</div></div>' : '') +
+      '<p style="font-size:12.5px;color:var(--texto-suave);margin:12px 2px 0">' + (s.privacidad_en ? 'Aceptó la política de privacidad el ' + esc(fHora(s.privacidad_en)) + '. ' : '') +
+      '<label style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" data-acc="prueba"' + (s.es_prueba ? ' checked' : '') + '> Es de prueba (no cuenta en las cifras)</label></p>';
+  }
+  async function editarDatos() {
+    var s = sAbierta();
+    await dialogo({ titulo: 'Editar datos', ok: 'Guardar', ancho: 640,
+      html: '<div class="tc-rejilla">' + campo('Entidad', '<input name="entidad" value="' + esc(s.entidad) + '">', '', 'ancho') + campo('País', '<input name="pais" value="' + esc(s.pais || '') + '">') +
+        campo('Contacto', '<input name="contacto" value="' + esc(s.contacto) + '">') + campo('Correo', '<input name="email" type="email" value="' + esc(s.email) + '">') +
+        campo('Teléfono', '<input name="telefono" value="' + esc(s.telefono || '') + '">') +
+        campo('Correos del club en', '<select name="idioma"><option value="en"' + (s.idioma === 'en' ? ' selected' : '') + '>Inglés</option><option value="es"' + (s.idioma === 'es' ? ' selected' : '') + '>Castellano</option></select>') +
+        campo('Llegada', '<input name="llegada" type="date" value="' + esc(s.llegada || '') + '">') + campo('Salida', '<input name="salida" type="date" value="' + esc(s.salida || '') + '">') +
+        campo('Atletas', '<input name="n_atletas" type="number" min="0" value="' + esc(s.n_atletas == null ? '' : s.n_atletas) + '">') +
+        campo('Entrenadores', '<input name="n_entrenadores" type="number" min="0" value="' + esc(s.n_entrenadores == null ? '' : s.n_entrenadores) + '">') + '</div>' +
+        campo('Comentarios', '<textarea name="comentarios" rows="3">' + esc(s.comentarios || '') + '</textarea>'),
+      validar: function (d) { if (!d.entidad || !d.contacto) return 'La entidad y el contacto no pueden quedar vacíos.'; if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.email)) return 'Correo no válido.'; if (d.llegada && d.salida && d.salida < d.llegada) return 'La salida es antes que la llegada.'; return ''; },
+      alEnviar: async function (d) {
+        var r = await sb.from('camp_solicitudes').update({ entidad: d.entidad, pais: d.pais || null, contacto: d.contacto, email: d.email.toLowerCase(), telefono: d.telefono || null,
+          idioma: d.idioma, llegada: d.llegada || null, salida: d.salida || null, n_atletas: d.n_atletas === '' ? null : +d.n_atletas,
+          n_entrenadores: d.n_entrenadores === '' ? null : +d.n_entrenadores, comentarios: d.comentarios || null }).eq('id', s.id);
+        if (r.error) throw r.error;
+        await sb.from('camp_registro').insert({ solicitud_id: s.id, tipo: 'sistema', texto: 'Datos del expediente editados a mano' });
+        toast('Guardado'); await refrescar();
+      } });
+  }
+
+  /* ---------- Presupuestos ---------- */
+  function tabPresupuestos(s) {
+    var ps = presDe(s.id).slice().reverse();
+    var hay = ps.some(function (p) { return p.estado === 'borrador'; });
+    return '<div class="tc-acc"><button type="button" class="tc-btn pri" data-acc="pre-nuevo"' + (s.estado === 'cancelada' ? ' disabled' : '') + '>＋ ' + (ps.length ? 'Presupuesto nuevo (en blanco)' : 'Crear el presupuesto') + '</button></div>' +
+      (hay ? '<div class="tc-aviso azul">Hay un borrador sin enviar: el cliente no lo ve hasta que pulses «Enviar».</div>' : '') +
+      '<div class="tc-tarj"><h3>Versiones</h3><div class="cuerpo">' + (ps.length ? ps.map(function (p) {
+        var b = [];
+        b.push('<button type="button" class="tc-btn mini" data-pre="pdf" data-id="' + p.id + '">Ver PDF</button>');
+        if (p.estado === 'borrador') { b.unshift('<button type="button" class="tc-btn mini" data-pre="editar" data-id="' + p.id + '">Editar</button>'); b.push('<button type="button" class="tc-btn mini pri" data-pre="enviar" data-id="' + p.id + '">Enviar al cliente…</button>'); }
+        if (p.estado === 'enviado') { b.push('<button type="button" class="tc-btn mini" data-pre="enviar" data-id="' + p.id + '">Reenviar…</button>', '<button type="button" class="tc-btn mini ok" data-pre="aceptado" data-id="' + p.id + '">Marcar aceptado…</button>', '<button type="button" class="tc-btn mini" data-pre="rechazado" data-id="' + p.id + '">Rechazado…</button>'); }
+        if (p.token) b.push('<button type="button" class="tc-btn mini" data-copiar="' + URL_WEB + 'training-camps/proposal/?t=' + p.token + '&lang=' + p.idioma + '">Copiar enlace del cliente</button>');
+        if (p.estado !== 'borrador') b.push('<button type="button" class="tc-btn mini" data-pre="copiar" data-id="' + p.id + '">Nueva versión a partir de esta</button>');
+        if (['borrador','enviado','aceptado'].indexOf(p.estado) >= 0) b.push('<button type="button" class="tc-btn mini peligro" data-pre="anulado" data-id="' + p.id + '">Anular…</button>');
+        var det = [fCorta(p.creado_en.slice(0, 10)), p.idioma === 'es' ? 'castellano' : 'inglés'];
+        if (p.enviado_en) det.push('enviado ' + fCorta(p.enviado_en.slice(0, 10)));
+        if (p.aceptado_en) det.push('aceptado ' + fCorta(p.aceptado_en.slice(0, 10)) + (p.aceptado_por === 'cliente' ? ' por ' + (p.aceptado_nombre || 'el cliente') + ' (enlace)' : ' (a mano)'));
+        if (p.estado === 'enviado' && p.valido_hasta) det.push('válido hasta ' + fCorta(p.valido_hasta) + (p.valido_hasta < hoy() ? ' — CADUCADO' : ''));
+        return '<div class="tc-item"><div class="t"><b>' + esc(p.numero) + '</b> <span class="tc-pill g-' + PRE_G[p.estado] + '"><span class="pt"></span>' + PRE_EST[p.estado] + '</span>' +
+          (p.titulo ? '<small>' + esc(p.titulo) + '</small>' : '') + '<small>' + esc(det.join(' · ')) + '</small></div>' +
+          '<div class="imp">' + eur(p.total) + '<small style="display:block;font-family:var(--fuente-texto);font-weight:400;font-size:12px;color:var(--texto-suave)">señal ' + eur(p.senal) + '</small></div>' +
+          '<div class="tc-acc">' + b.join('') + '</div></div>';
+      }).join('') : '<p style="margin:0;color:var(--texto-suave)">Todavía no hay presupuesto. Créalo con los conceptos (pista, gimnasio, transporte…): los precios son solo internos hasta que lo envíes.</p>') + '</div></div>';
+  }
+  async function accionPresupuesto(acc, id) {
+    var s = sAbierta(), p = S.pre.filter(function (x) { return x.id === id; })[0];
+    if (acc === 'editar') return abrirEditor(id);
+    if (acc === 'copiar') {
+      if (p.estado === 'aceptado' && !await confirmar({ titulo: 'Nueva versión', texto: 'Este presupuesto ya está aceptado. Si envías una versión nueva y la aceptan, sustituirá a esta.', confirmar: 'Crear versión' })) return;
+      var r = await sb.rpc('camp_presupuesto_guardar', { p: { solicitud_id: s.id, copiar_de: id } });
+      if (r.error) return fallo(r.error);
+      await cargar(); return abrirEditor(r.data.id);
+    }
+    if (acc === 'pdf') {
+      toast('Preparando el PDF…', 'info');
+      try { var d = await gestion('pdf', { presupuesto_id: id }); abrirPdf(d.pdf, d.nombre); } catch (e) { fallo(e); }
+      return;
+    }
+    if (acc === 'enviar') {
+      await dialogo({ titulo: 'Enviar ' + p.numero, ok: 'Enviar', ancho: 620,
+        html: '<p class="ayuda">Le llega un correo en <b>' + (p.idioma === 'es' ? 'castellano' : 'inglés') + '</b> con el PDF adjunto y un botón para ver y aceptar el presupuesto. Una vez enviado ya no se edita: los cambios van en una versión nueva.</p>' +
+          '<div class="tc-resumen-din"><div><b>' + eur(p.total) + '</b><span>total</span></div><div><b>' + eur(p.senal) + '</b><span>señal</span></div><div><b>' + eur(p.saldo) + '</b><span>resto</span></div><div><b>' + esc(fSinAnio(p.valido_hasta)) + '</b><span>válido hasta</span></div></div>' +
+          campo('Para', '<input name="para" type="email" value="' + esc(s.email) + '">') +
+          campo('Mensaje (opcional)', '<textarea name="mensaje" rows="5" placeholder="Si lo dejas vacío, va un texto estándar."></textarea>', 'Escríbelo en el idioma del cliente.'),
+        validar: function (d) { return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.para) ? '' : 'Correo no válido.'; },
+        alEnviar: async function (d) {
+          var res = await gestion('enviar_presupuesto', { presupuesto_id: id, para: d.para, mensaje: d.mensaje });
+          if (res.correo) toast('Enviado a ' + d.para);
+          else { toast('Marcado como enviado, pero el correo no ha salido: comparte el enlace a mano.', 'error'); copiar(res.enlace); }
+          await refrescar();
+        } });
+      return;
+    }
+    if (acc === 'aceptado' || acc === 'rechazado' || acc === 'anulado') {
+      var titulos = { aceptado: 'Marcar ' + p.numero + ' como aceptado', rechazado: 'Marcar ' + p.numero + ' como rechazado', anulado: 'Anular ' + p.numero };
+      var ayudas = { aceptado: 'Cuando lo acepten por correo o por teléfono. El expediente pasa a «Pendiente de señal» (no se cobra nada todavía).',
+        rechazado: 'El cliente no lo quiere.', anulado: 'Deja de valer (su enlace dirá que ya no está disponible).' };
+      await dialogo({ titulo: titulos[acc], ok: acc === 'aceptado' ? 'Marcar aceptado' : acc === 'rechazado' ? 'Marcar rechazado' : 'Anular', peligro: acc !== 'aceptado',
+        html: '<p class="ayuda">' + ayudas[acc] + '</p>' + campo(acc === 'aceptado' ? '¿Quién lo acepta y cómo?' : 'Motivo', '<input name="m" placeholder="' + (acc === 'aceptado' ? 'Thomas, por correo del 30-oct' : '') + '">'),
+        validar: function (d) { return d.m ? '' : 'Escribe un detalle.'; },
+        alEnviar: async function (d) { var r = await sb.rpc('camp_presupuesto_marcar', { p_id: id, p_estado: acc, p_motivo: d.m }); if (r.error) throw r.error; toast('Hecho'); await refrescar(); } });
+    }
+  }
+
+  /* ---------- Editor de presupuesto ---------- */
+  function ivas() { return ((S.cfg && S.cfg.impuestos) || [{ nombre: 'IVA 21 %', pct: 21 }, { nombre: 'Sin IVA', pct: 0 }]); }
+  async function abrirEditor(id) {
+    var s = sAbierta();
+    if (id) {
+      var r = await sb.from('camp_presupuestos').select('*').eq('id', id).single();
+      if (r.error) return fallo(r.error);
+      S.editor = JSON.parse(JSON.stringify(r.data));
+    } else {
+      var g = S.cfg || {};
+      S.editor = { id: null, solicitud_id: s.id, numero: '(nuevo)', idioma: s.idioma, titulo: '', llegada: s.llegada, salida: s.salida,
+        participantes: (s.n_atletas || 0) + (s.n_entrenadores || 0) || '', valido_hasta: sumaDias(hoy(), g.validez_dias || 15),
+        saldo_vence: s.llegada ? (function () { var v = sumaDias(s.llegada, -(g.saldo_dias_antes || 30)); return v < hoy() ? hoy() : v; })() : '',
+        senal_tipo: g.senal_tipo || 'porcentaje', senal_valor: g.senal_valor == null ? 30 : g.senal_valor, notas_cliente: '', notas_internas: '', lineas: [] };
+      // Propuesta de líneas según lo que pidieron (sin precio: lo pones tú).
+      var iva = g.impuesto_defecto == null ? 21 : Number(g.impuesto_defecto), L = [];
+      if ((s.instalaciones || []).indexOf('track') >= 0 || !(s.instalaciones || []).length) L.push({ categoria: 'instalaciones', descripcion: s.idioma === 'es' ? 'Acceso a la pista · Estadio Joaquín Villar' : 'Track access · Estadio Joaquín Villar' });
+      if (s.gimnasio === 'yes' || (s.instalaciones || []).indexOf('gym') >= 0) L.push({ categoria: 'gimnasio', descripcion: s.idioma === 'es' ? 'Sesiones de fuerza en El Cubo' : 'Strength sessions at El Cubo' });
+      var sv = s.servicios || {};
+      if (sv.transporte) L.push({ categoria: 'transporte', descripcion: s.idioma === 'es' ? 'Transporte' : 'Transport', detalle: servTxt(sv.transporte) });
+      if (sv.entrenadores) L.push({ categoria: 'entrenadores', descripcion: s.idioma === 'es' ? 'Entrenadores y asistencia técnica' : 'Coaching & technical support' });
+      ['alojamiento','comidas','fisio','playa_montana','actividades','otros'].forEach(function (k) { if (sv[k]) L.push({ categoria: 'servicios', descripcion: ETQ.servicios[k], detalle: servTxt(sv[k]) }); });
+      S.editor.lineas = L.map(function (l) { return Object.assign({ cantidad: 1, unidad: '', precio: '', iva: iva, coste: '' }, l); });
+    }
+    pintarEditor();
+  }
+  function calc(e) {
+    var base = 0, tasas = {}, coste = 0, hayCoste = false;
+    e.lineas.forEach(function (l) {
+      var imp = r2((Number(l.cantidad) || 0) * (Number(l.precio) || 0)); base += imp;
+      var k = String(Number(l.iva) || 0); tasas[k] = (tasas[k] || 0) + imp;
+      if (l.coste !== '' && l.coste != null && !isNaN(Number(l.coste))) { hayCoste = true; coste += r2(l.coste); }
+    });
+    var desg = Object.keys(tasas).sort(function (a, b) { return b - a; }).map(function (k) { return { pct: +k, base: r2(tasas[k]), cuota: r2(tasas[k] * k / 100) }; });
+    var impuestos = desg.reduce(function (s, d) { return s + d.cuota; }, 0), total = r2(base + impuestos);
+    var senal = e.senal_tipo === 'importe' ? Math.min(Number(e.senal_valor) || 0, total) : r2(total * Math.min(Number(e.senal_valor) || 0, 100) / 100);
+    return { base: r2(base), desg: desg, impuestos: r2(impuestos), total: total, senal: r2(senal), saldo: r2(total - senal), coste: hayCoste ? r2(coste) : null };
+  }
+  function lineaHtml(l, i) {
+    var opIva = ivas().map(function (x) { return '<option value="' + x.pct + '"' + (Number(x.pct) === Number(l.iva) ? ' selected' : '') + '>' + esc(x.nombre) + '</option>'; }).join('');
+    if (!ivas().some(function (x) { return Number(x.pct) === Number(l.iva); })) opIva += '<option value="' + esc(l.iva) + '" selected>' + esc(l.iva) + ' %</option>';
+    return '<div class="tc-lin" data-i="' + i + '">' +
+      '<select data-k="categoria" aria-label="Categoría">' + CATS.map(function (c) { return '<option value="' + c[0] + '"' + (c[0] === l.categoria ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select>' +
+      '<span class="desc"><input data-k="descripcion" placeholder="Concepto (lo ve el cliente)" value="' + esc(l.descripcion || '') + '" aria-label="Concepto">' +
+      '<input data-k="detalle" placeholder="Detalle (opcional, también lo ve)" value="' + esc(l.detalle || '') + '" aria-label="Detalle"></span>' +
+      '<button type="button" class="quitar" data-quitar="' + i + '" aria-label="Quitar línea">×</button>' +
+      '<div class="nums">' +
+        '<label>Cantidad<input data-k="cantidad" type="number" min="0" step="any" inputmode="decimal" value="' + esc(l.cantidad) + '"></label>' +
+        '<label>Unidad<input data-k="unidad" placeholder="sesiones" value="' + esc(l.unidad || '') + '"></label>' +
+        '<label>Precio u. (sin imp.)<input data-k="precio" type="number" min="0" step="0.01" inputmode="decimal" value="' + esc(l.precio) + '" placeholder="€"></label>' +
+        '<label>Impuesto<select data-k="iva">' + opIva + '</select></label>' +
+        '<label class="int" title="Lo que te cuesta a ti la línea entera. NO lo ve el cliente">Coste interno (línea)<input data-k="coste" type="number" min="0" step="0.01" inputmode="decimal" value="' + esc(l.coste == null ? '' : l.coste) + '" placeholder="solo tú"></label>' +
+        '<span class="tot">Importe<b data-tot>' + eur(r2((Number(l.cantidad) || 0) * (Number(l.precio) || 0))) + '</b></span>' +
+      '</div></div>';
+  }
+  function totalesHtml(e) {
+    var c = calc(e), margen = c.coste != null ? r2(c.base - c.coste) : null;
+    return '<div><span>Base imponible</span><b>' + eur(c.base) + '</b></div>' +
+      c.desg.map(function (d) { return '<div><span>Impuesto ' + d.pct + ' % sobre ' + eur(d.base) + '</span><b>' + eur(d.cuota) + '</b></div>'; }).join('') +
+      '<div class="total"><span>Total</span><b>' + eur(c.total) + '</b></div>' +
+      '<div><span>Señal' + (e.senal_tipo === 'porcentaje' ? ' (' + (Number(e.senal_valor) || 0) + ' %)' : '') + '</span><b>' + eur(c.senal) + '</b></div>' +
+      '<div><span>Resto' + (e.saldo_vence ? ' (antes del ' + fCorta(e.saldo_vence) + ')' : '') + '</span><b>' + eur(c.saldo) + '</b></div>' +
+      (c.coste != null ? '<div class="int"><span>Coste interno (solo tú)</span><b>' + eur(c.coste) + '</b></div><div class="int"><span>Margen sobre la base</span><b>' + eur(margen) + (c.base ? ' · ' + Math.round(margen / c.base * 100) + ' %' : '') + '</b></div>' : '');
+  }
+  function pintarEditor() {
+    var e = S.editor, s = sAbierta();
+    $('tc-p-cuerpo').innerHTML =
+      '<div class="tc-acc" style="justify-content:space-between;align-items:center"><button type="button" class="tc-btn mini" data-acc="ed-volver">‹ Volver al expediente</button>' +
+        '<span style="font-family:var(--fuente-dato);font-weight:700;color:var(--azul)">' + esc(e.numero) + ' · borrador</span></div>' +
+      '<div class="tc-aviso" style="margin-top:10px">Precios <b>sin impuestos</b>. El «coste interno» (fondo crema) es solo para ti: no sale en el PDF, ni en el enlace, ni en ningún correo.</div>' +
+      '<div class="tc-tarj"><h3>Cabecera</h3><div class="cuerpo"><div class="tc-rejilla" id="tc-ed-cab">' +
+        campo('Idioma del presupuesto', '<select data-c="idioma"><option value="en"' + (e.idioma === 'en' ? ' selected' : '') + '>Inglés</option><option value="es"' + (e.idioma === 'es' ? ' selected' : '') + '>Castellano</option></select>') +
+        campo('Título (opcional)', '<input data-c="titulo" value="' + esc(e.titulo || '') + '" placeholder="Spring training camp 2027">') +
+        campo('Llegada', '<input data-c="llegada" type="date" value="' + esc(e.llegada || '') + '">') + campo('Salida', '<input data-c="salida" type="date" value="' + esc(e.salida || '') + '">') +
+        campo('Participantes', '<input data-c="participantes" type="number" min="0" value="' + esc(e.participantes == null ? '' : e.participantes) + '">') +
+        campo('Válido hasta', '<input data-c="valido_hasta" type="date" value="' + esc(e.valido_hasta || '') + '">') +
+        campo('Señal', '<span class="dos"><select data-c="senal_tipo"><option value="porcentaje"' + (e.senal_tipo === 'porcentaje' ? ' selected' : '') + '>% del total</option><option value="importe"' + (e.senal_tipo === 'importe' ? ' selected' : '') + '>Importe (€)</option></select>' +
+          '<input data-c="senal_valor" type="number" min="0" step="0.01" value="' + esc(e.senal_valor) + '"></span>') +
+        campo('Resto: pagar antes del', '<input data-c="saldo_vence" type="date" value="' + esc(e.saldo_vence || '') + '">') +
+      '</div></div></div>' +
+      '<div class="tc-tarj"><h3><span>Conceptos</span><span class="tc-acc" style="margin:0"><select id="tc-ed-cat" aria-label="Categoría de la línea nueva" style="min-height:34px;border-radius:9px;border:1px solid var(--linea-marcada);font:inherit;font-size:13px">' +
+        CATS.map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; }).join('') + '</select><button type="button" class="tc-btn mini" data-acc="ed-linea">＋ Línea</button></span></h3><div class="cuerpo">' +
+        '<div class="tc-lineas" id="tc-ed-lineas">' + (e.lineas.length ? e.lineas.map(lineaHtml).join('') : '<p style="margin:0;color:var(--texto-suave)">Sin conceptos. Añade la primera línea.</p>') + '</div>' +
+        '<div class="tc-totales" id="tc-ed-tot">' + totalesHtml(e) + '</div></div></div>' +
+      '<div class="tc-tarj"><h3>Notas</h3><div class="cuerpo"><div class="tc-rejilla">' +
+        campo('Observaciones para el cliente (salen en el PDF)', '<textarea data-c="notas_cliente" rows="4" placeholder="' + (e.idioma === 'es' ? 'El alojamiento no está incluido…' : 'Accommodation is not included…') + '">' + esc(e.notas_cliente || '') + '</textarea>') +
+        campo('Notas internas (solo el panel)', '<textarea data-c="notas_internas" rows="4" placeholder="Acuerdo de pista, proveedores, márgenes…">' + esc(e.notas_internas || '') + '</textarea>') +
+      '</div></div></div>' +
+      '<div class="tc-editor-pie"><button type="button" class="tc-btn" data-acc="ed-volver">Descartar cambios</button><button type="button" class="tc-btn" data-acc="ed-pdf">Guardar y ver PDF</button>' +
+        '<button type="button" class="tc-btn pri" data-acc="ed-guardar">Guardar borrador</button></div>';
+    var c = $('tc-p-cuerpo');
+    c.oninput = c.onchange = function (ev) {
+      var t = ev.target;
+      if (t.hasAttribute('data-c')) { S.editor[t.getAttribute('data-c')] = t.value; if (/senal|saldo/.test(t.getAttribute('data-c'))) $('tc-ed-tot').innerHTML = totalesHtml(S.editor); return; }
+      var fila = t.closest('.tc-lin'); if (!fila || !t.hasAttribute('data-k')) return;
+      var l = S.editor.lineas[+fila.getAttribute('data-i')]; l[t.getAttribute('data-k')] = t.value;
+      fila.querySelector('[data-tot]').textContent = eur(r2((Number(l.cantidad) || 0) * (Number(l.precio) || 0)));
+      $('tc-ed-tot').innerHTML = totalesHtml(S.editor);
+    };
+  }
+  function lineasLimpias() {
+    return S.editor.lineas.map(function (l) {
+      return { id: l.id || null, categoria: l.categoria, descripcion: String(l.descripcion || '').trim(), detalle: String(l.detalle || '').trim() || null,
+        cantidad: l.cantidad === '' ? null : Number(l.cantidad), unidad: String(l.unidad || '').trim() || null, precio: l.precio === '' ? null : Number(l.precio),
+        iva: Number(l.iva) || 0, coste: l.coste === '' || l.coste == null ? null : Number(l.coste) };
+    });
+  }
+  async function guardarEditor(verPdf) {
+    var e = S.editor, ls = lineasLimpias();
+    for (var i = 0; i < ls.length; i++) {
+      if (!ls[i].descripcion) return toast('Línea ' + (i + 1) + ': falta el concepto.', 'error');
+      if (!(ls[i].cantidad > 0)) return toast('Línea ' + (i + 1) + ': la cantidad tiene que ser mayor que 0.', 'error');
+      if (ls[i].precio == null || ls[i].precio < 0) return toast('Línea ' + (i + 1) + ': falta el precio.', 'error');
+    }
+    var p = { idioma: e.idioma, titulo: e.titulo || '', llegada: e.llegada || '', salida: e.salida || '', participantes: e.participantes === '' ? '' : String(e.participantes),
+      valido_hasta: e.valido_hasta || '', saldo_vence: e.saldo_vence || '', senal_tipo: e.senal_tipo, senal_valor: String(e.senal_valor), notas_cliente: e.notas_cliente || '',
+      notas_internas: e.notas_internas || '', lineas: ls };
+    if (e.id) p.id = e.id; else p.solicitud_id = e.solicitud_id;
+    var r = await sb.rpc('camp_presupuesto_guardar', { p: p });
+    if (r.error) return fallo(r.error);
+    S.editor = JSON.parse(JSON.stringify(r.data));
+    toast('Borrador guardado · total ' + eur(r.data.total));
+    await cargar(); pintarCabPanel();
+    if (verPdf) { try { var d = await gestion('pdf', { presupuesto_id: r.data.id }); abrirPdf(d.pdf, d.nombre); } catch (er) { fallo(er); } }
+    pintarEditor();
+  }
+
+  /* ---------- Pagos ---------- */
+  function tabPagos(s) {
+    var d = dinero(s.id), a = d.aceptado, ps = pagosDe(s.id), h = hoy();
+    var activos = ps.filter(function (p) { return p.situacion !== 'anulado'; });
+    var haySenal = activos.some(function (p) { return p.tipo === 'senal'; }), haySaldo = activos.some(function (p) { return p.tipo === 'saldo'; });
+    var dispo = s.disponibilidad_ok_en
+      ? '<div class="tc-aviso verde" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span><b>Disponibilidad aprobada</b> el ' + esc(fHora(s.disponibilidad_ok_en)) + (s.disponibilidad_nota ? ' · ' + esc(s.disponibilidad_nota) : '') + '</span><button type="button" class="tc-btn mini" data-acc="dispo-no">Retirar</button></div>'
+      : '<div class="tc-aviso" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span><b>Disponibilidad sin aprobar.</b> La reserva se confirma sola cuando la señal está cobrada <i>y</i> la disponibilidad aprobada.</span><button type="button" class="tc-btn mini ok" data-acc="dispo-si">Aprobar disponibilidad…</button></div>';
+    return dispo +
+      (a ? '<div class="tc-tarj"><h3>Dinero · ' + esc(a.numero) + ' (aceptado)</h3><div class="cuerpo"><div class="tc-resumen-din">' +
+        '<div><b>' + eur(d.total) + '</b><span>total</span></div><div><b>' + eur(d.cobrado) + '</b><span>cobrado</span></div>' +
+        '<div><b>' + eur(d.pendiente) + '</b><span>pedido sin cobrar</span></div><div><b>' + eur(r2(d.total - d.pedido)) + '</b><span>sin pedir todavía</span></div></div>' +
+        '<div class="tc-acc"><button type="button" class="tc-btn pri" data-acc="pedir-senal"' + (haySenal || s.estado === 'cancelada' ? ' disabled' : '') + '>Pedir la señal (' + eur(a.senal) + ')…</button>' +
+        '<button type="button" class="tc-btn" data-acc="pedir-saldo"' + (haySaldo || s.estado === 'cancelada' ? ' disabled' : '') + '>Pedir el pago final…</button>' +
+        '<button type="button" class="tc-btn" data-acc="pedir-otro"' + (s.estado === 'cancelada' ? ' disabled' : '') + '>Otro pago…</button></div>' +
+        '<p style="font-size:13px;color:var(--texto-suave);margin:10px 0 0">Pedir un pago crea el recibo y su enlace (Stripe de Apolana). <b>No se cobra nada</b> hasta que el cliente paga; se da por cobrado solo cuando Stripe lo confirma. Los recibos salen también en Dinero.</p></div></div>'
+        : '<div class="tc-aviso azul">Para pedir pagos hace falta un presupuesto <b>aceptado</b> (por el cliente desde su enlace o marcado a mano).</div>') +
+      '<div class="tc-tarj"><h3>Pagos pedidos</h3><div class="cuerpo">' + (ps.length ? ps.map(function (p) {
+        var sit = p.situacion === 'pendiente' && p.vence && p.vence < h ? 'vencido' : p.situacion;
+        var txt = { pagado: 'Cobrado', pendiente: 'Pendiente', vencido: 'Vencido', anulado: 'Anulado' }[sit];
+        var det = [];
+        if (p.vence) det.push('vence ' + fCorta(p.vence));
+        if (p.situacion === 'pagado') det.push('cobrado ' + fCorta(p.fecha_pago) + ' · ' + (p.metodo || '') + (p.numero_recibo ? ' · recibo ' + p.numero_recibo : ''));
+        if (p.enviado_en) det.push('enlace enviado ' + fCorta(p.enviado_en.slice(0, 10)));
+        if (p.anulado_motivo) det.push('anulado: ' + p.anulado_motivo);
+        var b = [];
+        if (p.situacion === 'pendiente') b.push('<button type="button" class="tc-btn mini" data-copiar="' + URL_WEB + 'training-camps/pay/?t=' + p.token + '">Copiar enlace</button>',
+          '<button type="button" class="tc-btn mini" data-pago="reenviar" data-id="' + p.id + '">' + (p.enviado_en ? 'Reenviar' : 'Enviar') + ' por correo</button>',
+          '<button type="button" class="tc-btn mini ok" data-pago="manual" data-id="' + p.id + '">Cobrado por transferencia…</button>',
+          '<button type="button" class="tc-btn mini peligro" data-pago="anular" data-id="' + p.id + '">Anular…</button>');
+        return '<div class="tc-item"><div class="t"><b>' + esc(p.concepto) + '</b> <span class="tc-pill p-' + sit + '">' + txt + '</span><small>' + esc(det.join(' · ')) + '</small></div>' +
+          '<div class="imp">' + eur(p.importe) + '</div>' + (b.length ? '<div class="tc-acc">' + b.join('') + '</div>' : '') + '</div>';
+      }).join('') : '<p style="margin:0;color:var(--texto-suave)">Todavía no se ha pedido ningún pago.</p>') + '</div></div>';
+  }
+  async function pedirPago(tipo) {
+    var s = sAbierta(), d = dinero(s.id), a = d.aceptado, g = S.cfg || {};
+    var imp = tipo === 'senal' ? a.senal : tipo === 'saldo' ? r2(a.total - d.pedido) : '';
+    var vence = tipo === 'senal' ? sumaDias(hoy(), g.senal_dias_pago || 7) : tipo === 'saldo' ? (a.saldo_vence || '') : '';
+    var nombre = { senal: 'la señal', saldo: 'el pago final', otro: 'otro pago' }[tipo];
+    await dialogo({ titulo: 'Pedir ' + nombre, ok: 'Crear el pago', ancho: 600,
+      html: (tipo === 'senal' && !s.disponibilidad_ok_en ? '<div class="tc-aviso" style="margin:0">Aún no has aprobado la disponibilidad. Puedes pedir la señal igual: la reserva se confirmará cuando la apruebes.</div>' : '') +
+        '<div class="tc-rejilla">' + campo('Importe (€)', '<input name="importe" type="number" min="0.01" step="0.01" value="' + esc(imp) + '">') +
+        campo('Fecha límite', '<input name="vence" type="date" value="' + esc(vence) + '">') + '</div>' +
+        (tipo === 'otro' ? campo('Concepto', '<input name="concepto" placeholder="Training camp ' + esc(s.codigo) + ' · Extra transport">') : '') +
+        '<label class="tc-chk"><input type="checkbox" name="enviar" checked> Enviarle ahora el enlace por correo (en ' + (a.idioma === 'es' ? 'castellano' : 'inglés') + ')</label>' +
+        campo('Mensaje (opcional)', '<textarea name="mensaje" rows="3"></textarea>', 'Va encima del botón de pagar. En el idioma del cliente.'),
+      validar: function (x) { if (!(Number(x.importe) > 0)) return 'Pon el importe.'; if (tipo === 'otro' && !x.concepto) return 'Pon el concepto.'; return ''; },
+      alEnviar: async function (x) {
+        var res = await gestion('pedir_pago', { solicitud_id: s.id, tipo: tipo, importe: Number(x.importe), vence: x.vence || null, concepto: x.concepto || null, enviar: x.enviar, mensaje: x.mensaje });
+        if (x.enviar && !res.correo) { toast('Pago creado, pero el correo no ha salido: te copio el enlace.', 'error'); copiar(res.enlace); }
+        else toast(x.enviar ? 'Pago creado y enlace enviado' : 'Pago creado: copia el enlace para mandarlo');
+        await refrescar();
+      } });
+  }
+  async function accionPago(acc, id) {
+    var p = S.pag.filter(function (x) { return x.id === id; })[0];
+    if (acc === 'reenviar') { try { var r = await gestion('reenviar_pago', { camp_pago_id: id }); toast(r.correo ? 'Enlace enviado' : 'No ha salido el correo', r.correo ? 'ok' : 'error'); await refrescar(); } catch (e) { fallo(e); } return; }
+    if (acc === 'manual') {
+      await dialogo({ titulo: 'Registrar el cobro de «' + p.concepto + '»', ok: 'Registrar cobro',
+        html: '<p class="ayuda">Para cuando paguen por transferencia u otra vía. Queda en el libro de cobros con su número de recibo y el expediente avanza solo.</p>' +
+          '<div class="tc-rejilla">' + campo('Forma de pago', '<select name="metodo"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="otro">Otro</option></select>') +
+          campo('Fecha', '<input name="fecha" type="date" value="' + hoy() + '">') + '</div>' + campo('Nota', '<input name="nota" placeholder="Transferencia del 30-oct, ref…">'),
+        alEnviar: async function (d) { var r = await sb.rpc('camp_pago_manual', { p_id: id, p_metodo: d.metodo, p_fecha: d.fecha || null, p_nota: d.nota || null }); if (r.error) throw r.error; toast('Cobro registrado'); await refrescar(); } });
+      return;
+    }
+    if (acc === 'anular') {
+      await dialogo({ titulo: 'Anular «' + p.concepto + '»', ok: 'Anular', peligro: true,
+        html: '<p class="ayuda">El enlace deja de funcionar y el recibo pendiente sale del libro de cobros. Si ya lo hubieran pagado no se puede anular.</p>' + campo('Motivo', '<input name="motivo">'),
+        validar: function (d) { return d.motivo ? '' : 'Escribe el motivo.'; },
+        alEnviar: async function (d) { var r = await sb.rpc('camp_pago_anular', { p_id: id, p_motivo: d.motivo }); if (r.error) throw r.error; toast('Pago anulado'); await refrescar(); } });
+    }
+  }
+  async function disponibilidad(ok) {
+    var s = sAbierta();
+    if (!ok) {
+      if (!await confirmar({ titulo: 'Retirar la disponibilidad', texto: 'El expediente no cambia de estado, pero queda anotado.', confirmar: 'Retirar' })) return;
+      var r = await sb.rpc('camp_disponibilidad', { p_id: s.id, p_ok: false, p_nota: null }); if (r.error) return fallo(r.error); toast('Retirada'); return refrescar();
+    }
+    await dialogo({ titulo: 'Aprobar la disponibilidad', ok: 'Aprobar',
+      html: '<p class="ayuda">Confirmas que la pista, El Cubo y los servicios están disponibles para sus fechas. Si la señal ya está cobrada, la reserva queda confirmada.</p>' + campo('Nota (opcional)', '<input name="nota" placeholder="Pista confirmada con el estadio: L-X-S mañanas">'),
+      alEnviar: async function (d) { var r = await sb.rpc('camp_disponibilidad', { p_id: s.id, p_ok: true, p_nota: d.nota || null }); if (r.error) throw r.error; toast('Disponibilidad aprobada'); await refrescar(); } });
+  }
+
+  /* ---------- Seguimiento ---------- */
+  function tabSeguimiento() {
+    return '<div class="tc-tarj"><h3>Anotar</h3><div class="cuerpo"><form id="tc-reg-form" class="tc-rejilla">' +
+      campo('Qué es', '<select name="tipo"><option value="nota">Nota interna</option><option value="comunicacion">Comunicación con el cliente</option></select>') +
+      '<span class="tc-rejilla" style="gap:8px" id="tc-reg-com" hidden>' + campo('Canal', '<select name="canal">' + Object.keys(CANALES).map(function (k) { return '<option value="' + k + '">' + CANALES[k] + '</option>'; }).join('') + '</select>') +
+        campo('Sentido', '<select name="sentido"><option value="entrante">Nos escriben / llaman</option><option value="saliente">Les escribimos / llamamos</option></select>') + '</span>' +
+      campo('Texto', '<textarea name="texto" rows="3" placeholder="Qué se ha hablado, qué falta…"></textarea>', '', 'ancho') +
+      '<div class="ancho"><button type="submit" class="tc-btn pri">Anotar</button></div></form></div></div>' +
+      '<div class="tc-tarj"><h3>Historial</h3><div class="cuerpo"><ul class="tc-reg">' + (S.reg.length ? S.reg.map(function (r) {
+        var meta = [fHora(r.creado_en)];
+        if (r.canal) meta.push(CANALES[r.canal] + (r.sentido === 'entrante' ? ' · recibido' : r.sentido === 'saliente' ? ' · enviado' : ''));
+        return '<li><span class="ico ' + r.tipo + '" aria-hidden="true">' + (REG_ICO[r.tipo] || '•') + '</span><div><div class="txt">' + esc(r.texto) + '</div><small>' + esc(meta.join(' · ')) + '</small></div></li>';
+      }).join('') : '<li>Sin movimientos.</li>') + '</ul></div></div>';
+  }
+
+  /* ---------- Tareas ---------- */
+  function tabTareas(s) {
+    var ts = tareasDe(s.id).slice().sort(function (a, b) { return (!!a.hecha_en - !!b.hecha_en) || ((a.vence || '9') < (b.vence || '9') ? -1 : 1); }), h = hoy();
+    return '<div class="tc-tarj"><h3>Nueva tarea</h3><div class="cuerpo"><form id="tc-tarea-form" class="tc-rejilla">' +
+      campo('Qué hay que hacer', '<input name="texto" placeholder="Reservar el autobús del aeropuerto">', '', 'ancho') + campo('Para cuándo', '<input name="vence" type="date">') +
+      '<div style="align-self:end"><button type="submit" class="tc-btn pri">Añadir</button></div></form></div></div>' +
+      '<div class="tc-tarj"><h3>Tareas</h3><div class="cuerpo">' + (ts.length ? ts.map(function (t) {
+        var venc = !t.hecha_en && t.vence && t.vence <= h;
+        return '<label class="tc-tarea' + (t.hecha_en ? ' hecha' : '') + '"><input type="checkbox" data-tarea="' + t.id + '"' + (t.hecha_en ? ' checked' : '') + '><span class="t">' + esc(t.texto) +
+          '<small class="' + (venc ? 'vencida' : '') + '">' + (t.vence ? (venc ? 'Vencida · ' : 'Para el ') + fCorta(t.vence) : 'Sin fecha') + (t.auto ? ' · automática' : '') + (t.hecha_en ? ' · hecha ' + fHora(t.hecha_en) : '') + '</small></span>' +
+          (t.auto ? '' : '<button type="button" class="tc-btn mini peligro" data-borrar-tarea="' + t.id + '" aria-label="Borrar tarea">×</button>') + '</label>';
+      }).join('') : '<p style="margin:0;color:var(--texto-suave)">Sin tareas.</p>') + '</div></div>';
+  }
+
+  /* ---------- Archivos ---------- */
+  function tabArchivos() {
+    return '<div class="tc-tarj"><h3><span>Archivos del expediente</span><label class="tc-btn mini pri" style="cursor:pointer">Adjuntar…<input type="file" id="tc-arch" multiple hidden></label></h3><div class="cuerpo">' +
+      '<p style="margin:0 0 6px;font-size:13px;color:var(--texto-suave)">Privados (solo administración). Hasta 25 MB cada uno. Los PDF de los presupuestos enviados se guardan aquí solos.</p>' +
+      (S.arch.length ? S.arch.map(function (a) {
+        return '<div class="tc-item"><div class="t"><b>' + esc(a.nombre) + '</b><small>' + esc([a.descripcion, fHora(a.creado_en), a.tamano ? Math.max(1, Math.round(a.tamano / 1024)) + ' KB' : ''].filter(Boolean).join(' · ')) + '</small></div>' +
+          '<div class="tc-acc" style="grid-column:auto;margin:0"><button type="button" class="tc-btn mini" data-arch="ver" data-id="' + a.id + '">Abrir</button>' +
+          (a.origen === 'presupuesto' ? '' : '<button type="button" class="tc-btn mini peligro" data-arch="borrar" data-id="' + a.id + '">Borrar</button>') + '</div></div>';
+      }).join('') : '<p style="margin:0;color:var(--texto-suave)">Sin archivos.</p>') + '</div></div>';
+  }
+
+  /* ---------- eventos del panel ---------- */
+  $('tc-p-cuerpo').addEventListener('click', async function (ev) {
+    var t = ev.target, b;
+    if ((b = t.closest('[data-copiar]'))) return copiar(b.getAttribute('data-copiar'));
+    if ((b = t.closest('[data-ir]'))) {
+      var ir = b.getAttribute('data-ir'); S.tab = ir; pintarPanel();
+      var s0 = sAbierta();
+      if (ir === 'presupuestos' && !presDe(s0.id).length) abrirEditor(null);
+      if (ir === 'pagos' && aceptadoDe(s0.id)) {
+        var activo = function (tipo) { return pagosDe(s0.id).some(function (p) { return p.tipo === tipo && p.situacion !== 'anulado'; }); };
+        if (!activo('senal')) pedirPago('senal');
+        else if (s0.estado === 'confirmada' && !activo('saldo')) pedirPago('saldo');
+      }
+      return;
+    }
+    if ((b = t.closest('[data-pre]'))) return accionPresupuesto(b.getAttribute('data-pre'), b.getAttribute('data-id'));
+    if ((b = t.closest('[data-pago]'))) return accionPago(b.getAttribute('data-pago'), b.getAttribute('data-id'));
+    if ((b = t.closest('[data-quitar]'))) { S.editor.lineas.splice(+b.getAttribute('data-quitar'), 1); return pintarEditor(); }
+    if ((b = t.closest('[data-borrar-tarea]'))) {
+      ev.preventDefault();
+      var rb = await sb.from('camp_tareas').delete().eq('id', b.getAttribute('data-borrar-tarea')); if (rb.error) return fallo(rb.error); return refrescar();
+    }
+    if ((b = t.closest('[data-arch]'))) {
+      var a = S.arch.filter(function (x) { return x.id === b.getAttribute('data-id'); })[0];
+      if (b.getAttribute('data-arch') === 'ver') {
+        var su = await sb.storage.from('training-camps').createSignedUrl(a.ruta, 300); if (su.error) return fallo(su.error); window.open(su.data.signedUrl, '_blank', 'noopener'); return;
+      }
+      if (!await confirmar({ titulo: 'Borrar archivo', texto: a.nombre, peligro: true })) return;
+      await sb.storage.from('training-camps').remove([a.ruta]);
+      var rd = await sb.from('camp_archivos').delete().eq('id', a.id); if (rd.error) return fallo(rd.error); toast('Borrado'); return refrescar();
+    }
+    if ((b = t.closest('[data-acc]'))) {
+      var acc = b.getAttribute('data-acc');
+      if (acc === 'editar') return editarDatos();
+      if (acc === 'pre-nuevo') return abrirEditor(null);
+      if (acc === 'ed-volver') { S.editor = null; S.tab = 'presupuestos'; return pintarPanel(); }
+      if (acc === 'ed-linea') { S.editor.lineas.push({ categoria: $('tc-ed-cat').value, descripcion: '', detalle: '', cantidad: 1, unidad: '', precio: '', iva: (S.cfg && S.cfg.impuesto_defecto != null) ? Number(S.cfg.impuesto_defecto) : 21, coste: '' }); pintarEditor(); var ls = document.querySelectorAll('.tc-lin [data-k="descripcion"]'); if (ls.length) ls[ls.length - 1].focus(); return; }
+      if (acc === 'ed-guardar') return guardarEditor(false);
+      if (acc === 'ed-pdf') return guardarEditor(true);
+      if (acc === 'pedir-senal') return pedirPago('senal');
+      if (acc === 'pedir-saldo') return pedirPago('saldo');
+      if (acc === 'pedir-otro') return pedirPago('otro');
+      if (acc === 'dispo-si') return disponibilidad(true);
+      if (acc === 'dispo-no') return disponibilidad(false);
+    }
+  });
+  $('tc-p-cuerpo').addEventListener('change', async function (ev) {
+    var t = ev.target;
+    if (t.matches('[data-tarea]')) {
+      var r = await sb.from('camp_tareas').update(t.checked ? { hecha_en: new Date().toISOString() } : { hecha_en: null, hecha_por: null }).eq('id', t.getAttribute('data-tarea'));
+      if (r.error) return fallo(r.error); return refrescar();
+    }
+    if (t.matches('[data-acc="prueba"]')) {
+      var r2_ = await sb.from('camp_solicitudes').update({ es_prueba: t.checked }).eq('id', S.abierto); if (r2_.error) return fallo(r2_.error); toast('Guardado'); return refrescar();
+    }
+    if (t.id === 'tc-arch') {
+      var fs = Array.prototype.slice.call(t.files || []), s = sAbierta();
+      for (var i = 0; i < fs.length; i++) {
+        var f = fs[i]; if (f.size > 25 * 1024 * 1024) { toast(f.name + ': pasa de 25 MB', 'error'); continue; }
+        var limpio = f.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').slice(-80);
+        var ruta = s.id + '/' + Date.now() + '-' + limpio;
+        var up = await sb.storage.from('training-camps').upload(ruta, f, { contentType: f.type || 'application/octet-stream' });
+        if (up.error) { fallo(up.error); continue; }
+        var ri = await sb.from('camp_archivos').insert({ solicitud_id: s.id, ruta: ruta, nombre: f.name, mime: f.type || null, tamano: f.size });
+        if (ri.error) fallo(ri.error);
+      }
+      toast('Archivos adjuntados'); return refrescar();
+    }
+    if (t.form && t.form.id === 'tc-reg-form' && t.name === 'tipo') { $('tc-reg-com').hidden = t.value !== 'comunicacion'; }
+  });
+  $('tc-p-cuerpo').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    var f = ev.target, s = sAbierta(), r;
+    if (f.id === 'tc-reg-form') {
+      if (!f.texto.value.trim()) return toast('Escribe algo.', 'error');
+      var com = f.tipo.value === 'comunicacion';
+      r = await sb.from('camp_registro').insert({ solicitud_id: s.id, tipo: f.tipo.value, canal: com ? f.canal.value : null, sentido: com ? f.sentido.value : null, texto: f.texto.value.trim() });
+      if (r.error) return fallo(r.error); toast('Anotado'); return refrescar();
+    }
+    if (f.id === 'tc-tarea-form') {
+      if (!f.texto.value.trim()) return toast('Escribe la tarea.', 'error');
+      r = await sb.from('camp_tareas').insert({ solicitud_id: s.id, texto: f.texto.value.trim(), vence: f.vence.value || null });
+      if (r.error) return fallo(r.error); toast('Tarea añadida'); return refrescar();
+    }
+  });
+
+  /* ---------------- arranque ---------------- */
+  (async function () {
+    if (!await cargar()) return;
+    montar(); pintar();
+    var id = qs.get('id');
+    if (id) { var tab = qs.get('tab'); abrir(id, tab); }
+  })();
+});
+</script>
+</body>
+</html>

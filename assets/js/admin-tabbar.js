@@ -333,7 +333,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=c75c4f31';
+      s.src = base() + 'assets/js/mundos.js?v=931d5a25';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -1091,7 +1091,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=c75c4f31';
+      s.src = base() + 'assets/js/mundos.js?v=931d5a25';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;

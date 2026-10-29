@@ -125,6 +125,7 @@
         {g:'Web y tienda', t:'La web',          i:'globe',     url:B+'admin/paginas/',     d:'Páginas, textos y fotos de la web.'},
         {g:'Web y tienda', t:'Pedidos de la tienda', i:'box', url:B+'admin/pedidos/', d:'Los encargos de ropa: su estado y si ya se pagaron en la oficina.'},
         {g:'Web y tienda', t:'Nevera',          i:'bottle',    url:B+'admin/nevera/',      d:'Las bebidas pagadas con el QR: ventas, precios y el QR para imprimir.'},
+        {g:'Training Camps', t:'Training Camps', i:'globe',    url:B+'admin/training-camps/', d:'Concentraciones de equipos extranjeros: solicitudes, presupuestos, pagos y calendario.'},
         {g:'Accesos y datos', t:'Acceso a los mundos', i:'shuffle', url:B+'admin/mundos/',    d:'Quién entra a cada mundo (Natación, Cubo…).'},
         {g:'Accesos y datos', t:'Quién entra al panel', i:'key', url:B+'admin/usuarios/',  d:'Cuentas, roles y permisos.', hub:false},
         {g:'Accesos y datos', t:'Datos del club',  i:'clipboard', url:B+'admin/documentos/',  d:'Documentos y datos legales.'}

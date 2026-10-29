@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Secure payment · Training camps · Club Atletismo Apolana</title>
+<!-- Página privada del cliente (llega con su enlace): nunca indexable. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<link rel="stylesheet" href="../../assets/css/training-camps.css?v=5dd3752d">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/training-camps.js?v=802bc0a7"></script>
+<script src="../../assets/js/datos.js?v=68359eb9" defer></script>
+<script src="../../assets/js/apolana.js?v=cc5a5ec1" defer></script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=4fd9379b" defer></script>
+<style>
+  /* ============================================================
+     PAGO DEL CLIENTE · /training-camps/pay/?t=…
+     Un pago pedido (señal, resto u otro) → Stripe de Apolana (camp-publico).
+     Al volver de Stripe se PREGUNTA A STRIPE si está cobrado: abrir esta
+     página no marca nada como pagado. Prefijo tq-.
+     ============================================================ */
+  .tq-main { padding-block: clamp(28px, 5vw, 56px) clamp(56px, 8vw, 96px); }
+  .tq-card { max-width: 620px; margin-inline: auto; background: #fff; border-radius: 22px; box-shadow: var(--tc-sombra, 0 26px 50px -32px rgba(46,66,86,.5)); overflow: hidden; }
+  .tq-card__cab { background: var(--crema-banda); padding: 14px clamp(20px, 4vw, 30px); font-size: 12.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-suave); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .tq-card__cab .tc-mono { letter-spacing: 0; text-transform: none; color: var(--azul); }
+  .tq-card__cuerpo { padding: clamp(22px, 4vw, 32px); display: grid; gap: 18px; }
+  .tq-concepto { margin: 0; font-family: var(--fuente-titulo); font-size: clamp(22px, 3.4vw, 28px); color: var(--navy); line-height: 1.15; }
+  .tq-importe { font-family: var(--fuente-dato); font-size: clamp(38px, 7vw, 52px); font-weight: 700; color: var(--navy); line-height: 1; letter-spacing: -.02em; }
+  .tq-importe small { display: block; font-family: var(--fuente-texto); font-size: 14px; font-weight: 600; color: var(--texto-suave); letter-spacing: 0; margin-top: 8px; }
+  .tq-seguro { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--texto-suave); line-height: 1.5; margin: 0; }
+  .tq-seguro svg { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 1px; }
+  .tq-ok { text-align: center; display: grid; gap: 10px; justify-items: center; padding: 8px 0; }
+  .tq-ok .tic { width: 64px; height: 64px; border-radius: 50%; background: var(--verde-fondo); color: var(--verde); display: flex; align-items: center; justify-content: center; }
+  .tq-ok h2 { margin: 0; font-family: var(--fuente-titulo); font-size: 26px; color: var(--navy); }
+  .tq-ok p { margin: 0; color: var(--texto); line-height: 1.6; max-width: 46ch; }
+  .tq-cargando { padding: 60px 0; text-align: center; color: var(--texto-suave); }
+</style>
+</head>
+<body>
+
+<apolana-cabecera></apolana-cabecera>
+
+<main class="tc-page">
+  <div class="tc-bar">
+    <div class="tc-wrap">
+      <span class="tc-bar__label"><b data-i18n="bar.label">Training camps</b> · Alicante</span>
+      <div class="tc-lang" role="group" aria-label="Language · Idioma">
+        <button type="button" class="tc-lang__btn" data-tc-set="en" lang="en" aria-label="English" title="English" aria-pressed="true">EN</button>
+        <button type="button" class="tc-lang__btn" data-tc-set="es" lang="es" aria-label="Español" title="Español" aria-pressed="false">ES</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tc-hero-shell">
+    <section class="tc-hero tc-hero--compact" aria-labelledby="tq-titulo">
+      <div class="tc-hero__inner">
+        <p class="tc-hero__eyebrow" id="tq-ante" data-i18n="hero.eyebrow">Club Atletismo Apolana · Training camps</p>
+        <h1 class="tc-hero__title" id="tq-titulo" data-i18n="hero.title">Secure payment</h1>
+      </div>
+    </section>
+  </div>
+
+  <div class="tc-wrap tq-main" id="tq" aria-live="polite">
+    <p class="tq-cargando" data-i18n="cargando">Loading…</p>
+  </div>
+</main>
+
+<apolana-pie></apolana-pie>
+
+<script>
+(function () {
+  'use strict';
+  function db() { return window.APOLANA_DB || null; }
+  TC.add({ es: { 'bar.label': 'Concentraciones', 'hero.eyebrow': 'Club Atletismo Apolana · Concentraciones', 'hero.title': 'Pago seguro', 'cargando': 'Cargando…' } });
+  var T = {
+    en: { enlace: 'This payment link is not valid. Please contact us and we will send you a new one.', red: 'We could not load the payment. Please try again in a moment.',
+      tipo: { senal: 'Deposit', saldo: 'Final payment', otro: 'Payment' }, camp: 'Training camp', vence: 'Due by {d}', pagar: 'Pay {i} securely',
+      seguro: 'Card payment processed by Stripe. Club Atletismo Apolana never sees your card details.', propuesta: 'View your proposal',
+      ok_t: 'Payment received', ok_p: 'Thank you. We have received {i} for training camp {c}. You will also get a confirmation by email.',
+      ok_senal: 'The booking is confirmed once availability has been confirmed by the club; we will write to you.',
+      ya: 'This payment was received on {d}.', comprobando: 'Confirming your payment with Stripe…',
+      pendiente_t: 'We are still waiting for Stripe to confirm the payment', pendiente_p: 'This can take a minute. If you completed the payment, you don\'t need to do anything else: we\'ll email you as soon as it is confirmed.', otra: 'Check again',
+      cancel_t: 'Payment cancelled', cancel_p: 'Nothing has been charged. You can try again whenever you like.',
+      anulado_t: 'This payment request is no longer valid', anulado_p: 'Please contact us if you have any questions.' },
+    es: { enlace: 'Este enlace de pago no es válido. Escríbenos y te enviamos uno nuevo.', red: 'No hemos podido cargar el pago. Vuelve a intentarlo en un momento.',
+      tipo: { senal: 'Señal', saldo: 'Pago final', otro: 'Pago' }, camp: 'Concentración', vence: 'Antes del {d}', pagar: 'Pagar {i} de forma segura',
+      seguro: 'Pago con tarjeta procesado por Stripe. El Club Atletismo Apolana nunca ve los datos de tu tarjeta.', propuesta: 'Ver tu propuesta',
+      ok_t: 'Pago recibido', ok_p: 'Gracias. Hemos recibido {i} de la concentración {c}. Te llegará también una confirmación por correo.',
+      ok_senal: 'La reserva queda confirmada cuando el club confirme la disponibilidad; te escribiremos.',
+      ya: 'Este pago se recibió el {d}.', comprobando: 'Comprobando tu pago con Stripe…',
+      pendiente_t: 'Stripe todavía no ha confirmado el pago', pendiente_p: 'Puede tardar un minuto. Si completaste el pago, no tienes que hacer nada más: te escribiremos en cuanto se confirme.', otra: 'Comprobar otra vez',
+      cancel_t: 'Pago cancelado', cancel_p: 'No se ha cobrado nada. Puedes volver a intentarlo cuando quieras.',
+      anulado_t: 'Esta solicitud de pago ya no es válida', anulado_p: 'Escríbenos si tienes cualquier duda.' }
+  };
+  var MES = { en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], es: ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'] };
+  var qs = new URLSearchParams(location.search), token = qs.get('t') || '', vuelta = qs.get('pago') || '';
+  var P = null, estado = 'ver';   // ver · comprobando · pendiente · cancelado
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  function L() { return T[TC.lang()] || T.en; }
+  function r(s, o) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return o[k] == null ? '' : o[k]; }); }
+  function fecha(f) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f || ''); return m ? (+m[3]) + ' ' + MES[TC.lang()][+m[2] - 1] + ' ' + m[1] : ''; }
+  function eur(n) { var es = TC.lang() === 'es', s = (Number(n) || 0).toLocaleString(es ? 'es-ES' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: true }); return es ? s + ' €' : '€' + s; }
+  var ICO_OK = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>';
+  var ICO_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
+  function aviso(tipo, titulo, texto) { return '<div class="tc-note tc-note--' + tipo + '" role="status" style="max-width:620px;margin:0 auto 18px"><div><b>' + esc(titulo) + '</b>' + (texto ? '<br>' + esc(texto) : '') + '</div></div>'; }
+  async function llamar(accion) {
+    var x = await db().functions.invoke('camp-publico', { body: { accion: accion, t: token, lang: TC.lang() } });
+    if (x.error) { var m = ''; try { var j = await x.error.context.json(); m = j.mensaje || ''; } catch (e) {} throw new Error(m || L().red); }
+    return x.data;
+  }
+  function pintar() {
+    var t = L(), p = P;
+    document.getElementById('tq-ante').textContent = t.camp + ' ' + p.codigo + ' · ' + p.entidad;
+    var cab = '<div class="tq-card__cab"><span>' + esc(t.tipo[p.tipo] || t.tipo.otro) + '</span><span class="tc-mono">' + esc(p.codigo) + (p.presupuesto ? ' · ' + esc(p.presupuesto) : '') + '</span></div>';
+    var prop = p.propuesta_token ? '<a class="tc-link-btn" href="../proposal/?t=' + esc(p.propuesta_token) + '&lang=' + TC.lang() + '">' + esc(t.propuesta) + ' →</a>' : '';
+    var cuerpo;
+    if (p.pagado) {
+      cuerpo = '<div class="tq-ok"><span class="tic">' + ICO_OK + '</span><h2>' + esc(t.ok_t) + '</h2><p>' + esc(estado === 'recien' ? r(t.ok_p, { i: eur(p.importe), c: p.codigo }) : r(t.ya, { d: fecha(p.fecha_pago) })) + '</p>' +
+        (p.tipo === 'senal' && estado === 'recien' ? '<p>' + esc(t.ok_senal) + '</p>' : '') + prop + '</div>';
+    } else if (p.anulado || p.cancelado) {
+      document.getElementById('tq').innerHTML = aviso('warn', t.anulado_t, t.anulado_p); return;
+    } else if (estado === 'comprobando') {
+      cuerpo = '<p class="tq-cargando" style="padding:20px 0">' + esc(t.comprobando) + '</p>';
+    } else {
+      cuerpo = '<p class="tq-concepto">' + esc(p.concepto) + '</p>' +
+        '<div class="tq-importe">' + eur(p.importe) + (p.vence ? '<small>' + esc(r(t.vence, { d: fecha(p.vence) })) + '</small>' : '') + '</div>' +
+        '<button type="button" class="btn btn--primario tc-btn--lg tc-btn--block" id="tq-pagar">' + esc(r(t.pagar, { i: eur(p.importe) })) + '</button>' +
+        '<p class="tq-seguro">' + ICO_LOCK + '<span>' + esc(t.seguro) + '</span></p>' + prop;
+    }
+    var extra = estado === 'pendiente' ? aviso('warn', t.pendiente_t, t.pendiente_p).replace('</div></div>', '<br><button type="button" class="btn btn--fantasma" id="tq-otra" style="margin-top:10px">' + esc(t.otra) + '</button></div></div>')
+      : estado === 'cancelado' ? aviso('warn', t.cancel_t, t.cancel_p) : '';
+    document.getElementById('tq').innerHTML = extra + '<div class="tq-card">' + cab + '<div class="tq-card__cuerpo">' + cuerpo + '</div></div>';
+    var b = document.getElementById('tq-pagar');
+    if (b) b.addEventListener('click', async function () {
+      b.disabled = true; var txt = b.textContent; b.textContent = '…';
+      try { var d = await llamar('pagar'); if (d.pagado) { P.pagado = true; pintar(); return; } location.href = d.url; }
+      catch (e) { b.disabled = false; b.textContent = txt; alert(e.message); }
+    });
+    var o = document.getElementById('tq-otra');
+    if (o) o.addEventListener('click', function () { comprobar(1); });
+  }
+  // Al volver de Stripe: preguntar a Stripe (por la Edge Function) unas cuantas veces.
+  async function comprobar(intentos) {
+    estado = 'comprobando'; pintar();
+    for (var i = 0; i < intentos; i++) {
+      try {
+        var d = await llamar('comprobar');
+        if (d.pago) P = d.pago;
+        if (d.pagado) { P.pagado = true; estado = 'recien'; pintar(); return; }
+      } catch (e) { /* se reintenta */ }
+      await new Promise(function (ok) { setTimeout(ok, 2500); });
+    }
+    estado = 'pendiente'; pintar();
+  }
+  async function cargar() {
+    if (!/^[0-9a-f]{40,128}$/i.test(token)) { document.getElementById('tq').innerHTML = aviso('warn', L().enlace, ''); return; }
+    try {
+      var d = await llamar('pago');
+      P = d.pago;
+      if (!qs.get('lang') && P.idioma && P.idioma !== TC.lang()) TC.setLang(P.idioma);
+      // Que una recarga no vuelva a «comprobar»: se quita ?pago= de la dirección.
+      if (vuelta) { var u = new URL(location.href); u.searchParams.delete('pago'); history.replaceState(null, '', u); }
+      if (vuelta === 'hecho' && !P.pagado) return comprobar(5);
+      if (vuelta === 'hecho' && P.pagado) estado = 'recien';
+      if (vuelta === 'cancelado') estado = 'cancelado';
+      pintar();
+    } catch (e) { document.getElementById('tq').innerHTML = aviso('warn', e.message || L().enlace, ''); }
+  }
+  TC.onChange(function () { if (P) pintar(); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cargar); else cargar();
+})();
+</script>
+</body>
+</html>
