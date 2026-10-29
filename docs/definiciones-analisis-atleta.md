@@ -36,10 +36,10 @@ conclusiones, no cambia entrenamientos y no genera decisiones.
    no está justificado). Lo pendiente o incompleto se ve siempre, sea cual sea el
    porcentaje.
 3. **Revisión cercana**: **21 días**, criterio organizativo **configurable** por
-   grupo (`academia_grupos.revision_cercana_dias`). Se separan **«próxima
-   revisión»** (en los próximos 21 días) y **«revisión vencida»** (la fecha ya ha
-   llegado, también si es hoy: igual que en el resumen de la ficha). Ninguna
-   finaliza una decisión: sigue vigente hasta que alguien la revisa.
+   grupo (`academia_grupos.revision_cercana_dias`). Con la fecha de
+   **Europe/Madrid**: antes de hoy, **«Revisión vencida»**; hoy, **«Revisar hoy»**;
+   después y dentro del plazo, **«Próxima revisión»** (también en el resumen de la
+   ficha). Ninguno cierra la decisión: sigue vigente hasta que alguien la revisa.
 4. **Sesiones comparables**: se compara el **bloque o ejercicio relevante**, no el
    número de versión ni necesariamente la sesión entera. Se miran distancias,
    repeticiones, bloques, recuperaciones, intensidad prescrita, salida, calzado,
@@ -53,7 +53,29 @@ conclusiones, no cambia entrenamientos y no genera decisiones.
    fecha, versión y aprobación (quién, cuándo, qué versión). Para aprobarlo, los
    tramos principales tienen que ser seguidos desde 0, sumar el total, y cada
    subdivisión tiene que cubrir su tramo y sumar su tiempo. Editar un modelo
-   aprobado lo devuelve a propuesta.
+   aprobado lo devuelve a propuesta. Antes de aprobar se enseña la versión guardada
+   entera (total, tramos, subdivisiones, sumas, fundamento, limitaciones, origen y
+   versión) con el aviso: **cuadrar matemáticamente no es estar validado
+   deportivamente**. El modelo ficticio de PRUEBA se etiqueta **«PRUEBA: origen
+   ChatGPT simulado»** (`chatgpt_simulado`, solo admitido en grupos de prueba).
+
+## Revisión del PDF (29-oct) · cómo queda
+
+- Gráficas: la explicación coincide con el eje («más arriba = mejor (menos tiempo)»).
+- Diferencias uniformes: «+0,40 s respecto al objetivo» (también en Tests y marcas).
+- «0» = cero de verdad · «—» = no aplica · «sin dato» = no hay registro.
+- «Sin resultados registrados», salvo que se sepa que no hubo competiciones.
+- Lo futuro o aún en plazo es **«por llegar»**: ni es falta de registro ni baja la cobertura.
+- Trabajo por estado: con detalle · por «completa» · adicional · no realizado · en
+  discrepancia · sin concretar · sin datos · por llegar; lo adicional puede superar lo previsto.
+- Nada de «poco» o «insuficiente» sin referencia acordada para ese atleta y fase.
+- Progresos y fortalezas con datos (sin causas), además de diferencias y pendientes.
+- Sesiones comparables: todas las repeticiones en orden, con la prescripción comparada
+  (distancias, repeticiones, recuperaciones, intensidad) y las condiciones.
+- Parciales: Real / Modelo / Diferencia y la diferencia acumulada en cada paso.
+- Cobertura de kg por series (no por repeticiones).
+- Móvil: «Merece atención» antes de las gráficas y resumen breve.
+- Prueba principal o secundaria a elegir; los parciales solo donde aplican (carreras).
 
 ## Marcas comparables
 
@@ -92,12 +114,12 @@ Se distinguen medición real, objetivo individual acordado, referencia externa
 
 | # | Qué hacer | Esperado |
 |---|---|---|
-| 1 | Ficha de Álex → «Análisis». | Periodo 5 oct – 1 nov y hora del cálculo. Cuatro frases; «Cómo responde»: mejor 22,60 a 0,40 s; «Bloque 1/2…» 1.er tiempo 34,8 → 34,6 → 34,4 (RPE 8 · 8 · 8). «Conviene revisar»: 1 vencida (26 oct), 1 próxima (12 nov), modelo sin aprobar, parciales de un intento. |
+| 1 | Ficha de Álex → «Análisis» → prueba **200 m lisos**. | Periodo 5 oct – 1 nov y hora del cálculo. Cuatro frases; «Cómo responde»: mejor 22,60, +0,40 s respecto al objetivo; evolución 22,95 → 22,78 → 22,60; «bloque 1/2…» 7 oct 34,8 · 20,4; 14 oct 34,6 · 20,3; 21 oct 34,4 · 20,2 (RPE 8 · 8 · 8). «Conviene revisar»: 1 vencida (26 oct), 1 próxima (12 nov), modelo sin aprobar, parciales de un intento. |
 | 2 | «ver datos ›» de «Cómo responde». | Entran 22,95 · 22,78 · 22,60 (la mejor); aparte 22,84 (viento +2,6) y 22,1 (manual). |
 | 3 | Gráficas. | Marcas sin unir con la línea del objetivo 22,20; parciales +0,10 · +0,10 · +0,15 · +0,05 con «propuesta de ChatGPT · sin aprobar». |
 | 4 | Merece atención. | Observado (100–150, +0,15, un intento, modelo sin aprobar) · Por comprobar (mié 28 sin registro) · Decisión («Sin clavos…», revisión vencida el 26 oct, sigue vigente). |
 | 5 | Plegables. | Trabajo por semanas con huecos; «Bloque 1/2» y «2/2» por separado, «comparabilidad por confirmar» (falta salida y método); cobertura N de M (%) sin avisos; aspectos en 3 grupos; referencias sin estimación. |
-| 6 | «Modelo de parciales…» → «Aprobar la versión guardada» (solo administración). | Se aprueba la versión guardada; el modelo pasa a «aprobado … versión N». Cambiarlo y guardarlo lo devuelve a propuesta. |
+| 6 | «Modelo de parciales…» → «Aprobar la versión guardada» (solo administración). | Antes de aprobar enseña la versión guardada entera, la comprobación de la base y el aviso «cuadrar no es validar». La aprobación la hace Andrés cuando lo decida. |
 | 7 | Grupo real. | En la ficha no aparece «Análisis». |
 
 **Resultado · 29-oct, versión 20261029151416, sesión de Andrés:** pasos 1–5 y 7 **pasan**
@@ -108,6 +130,5 @@ hace él** (es su validación), no se ha pulsado.
 ## Pendiente
 
 - Activación con atletas reales (OK de Andrés).
-- Que ChatGPT pueda registrar la propuesta de modelo por su conexión de prueba
-  (hoy la registra Andrés marcándola «de ChatGPT»).
-- Los ajustes de la «revisión del PDF» que mencionó ChatGPT (no llegaron).
+- Que ChatGPT pueda leer modelos y proponerlos por su conexión de prueba: propuesta
+  en docs/propuesta-conexion-modelos-parciales.md (sin activar).

@@ -461,6 +461,16 @@
   .an-inl{ color:var(--t3); font-size:12px; }
   .an-gr td{ background:var(--crema,#FBF9F4); font-weight:700; color:var(--navy); font-size:12px; letter-spacing:.04em; text-transform:uppercase; }
   .an-pend{ margin:8px 0 0; padding-left:18px; }
+  .an-prs{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 12px; }
+  .an-pr{ font:inherit; font-size:13.5px; padding:5px 11px; border:1px solid var(--borde); border-radius:999px; background:#fff; color:var(--navy); cursor:pointer; }
+  .an-pr small{ color:var(--t3); font-size:11.5px; }
+  .an-pr.act{ background:var(--navy); color:#fff; border-color:var(--navy); } .an-pr.act small{ color:#dfe5ee; }
+  .an-pr.off{ cursor:default; color:var(--t3); border-style:dashed; }
+  .an-tot td{ font-weight:700; color:var(--navy); }
+  .an-ley.an-ad{ background:#2E7D6B; border-radius:2px; width:14px; } .an-ley.an-dis{ border:2px solid #C2661C; border-radius:2px; width:14px; box-sizing:border-box; }
+  .an-ley.an-sc{ background:#E4DED2; border-radius:2px; width:14px; } .an-ley.an-pl{ border:1.5px dotted #8C8577; border-radius:2px; width:14px; box-sizing:border-box; }
+  .an-revm{ border:1px solid var(--borde); border-radius:10px; padding:10px 12px; margin:8px 0; background:#fff; }
+  .an-revm .an-aviso{ background:#FBEFC9; border:1px solid #E8D48A; color:#5C4300; border-radius:8px; padding:8px 10px; margin:8px 0; font-size:13.5px; }
   .an-refs{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
   .an-refs > div{ border:1px solid var(--fila); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:3px; }
   .an-refs > div.an-vacia{ border-style:dashed; border-color:#C9C1B1; }
@@ -779,7 +789,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cp: { tab: ['proximas','mes','minimas'].indexOf(Q.get('ct'))!==-1 ? Q.get('ct') : 'proximas', aid: Q.get('ca') || '', cat: Q.get('cc') || '', solo: Q.get('cs')==='1',
           mes: /^\d{4}-\d{2}$/.test(Q.get('cm')||'') ? Q.get('cm') : hoyISO().slice(0,7), abiertas:{}, ver: Q.get('ci') || null },
     tm: { tab: ['atleta','prueba','protocolos','catalogo'].indexOf(Q.get('t'))!==-1 ? Q.get('t') : 'atleta', aid: Q.get('ta') || '', prueba: Q.get('tp') || '' },
-    fx: { aid: Q.get('a') || '', desde: Q.get('xd') || sumar(hoyISO(), -27), hasta: Q.get('xh') || hoyISO(), sub: Q.get('fs')==='analisis' ? 'analisis' : '' },
+    fx: { aid: Q.get('a') || '', desde: Q.get('xd') || sumar(hoyISO(), -27), hasta: Q.get('xh') || hoyISO(), sub: Q.get('fs')==='analisis' ? 'analisis' : '', pr: Q.get('ap') || '' },
     fb: { desde: Q.get('fd') || sumar(hoyISO(), -29), hasta: Q.get('fh') || hoyISO(), atleta: Q.get('fba') || '', estado: Q.get('fe') || leer('ac-fb-estado') || 'por_revisar' },
     modo: leer('ac-modo')==='compacta' ? 'compacta' : 'detallada',
     semana: lunesDe(Q.get('w') || hoyISO()),
@@ -821,6 +831,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (ST.fx.desde!==sumar(hoyISO(), -27)) p.set('xd', ST.fx.desde);
       if (ST.fx.hasta!==hoyISO()) p.set('xh', ST.fx.hasta);
       if (ST.fx.sub) p.set('fs', ST.fx.sub);
+      if (ST.fx.sub && ST.fx.pr) p.set('ap', ST.fx.pr);
     }
     if (ST.vista==='marcas'){
       p.set('v','marcas');
@@ -3021,7 +3032,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var decV = FX.dec.filter(function(d){ return d.estado==='vigente'; });
     var lesV = FX.les.filter(function(l){ return !l.resuelta; });
     var pendRev = listaFb().filter(function(x){ return x.aid===aid && (x.est==='recibido' || x.est==='corregido'); }).length;
-    var vencidas = decV.filter(function(d){ return d.revision && d.revision <= hoy; }).length + lesV.filter(function(l){ return l.fecha_revision && l.fecha_revision <= hoy; }).length;
+    var vencidas = decV.filter(function(d){ return d.revision && d.revision < hoy; }).length + lesV.filter(function(l){ return l.fecha_revision && l.fecha_revision < hoy; }).length;
+    var revHoy = decV.filter(function(d){ return d.revision===hoy; }).length + lesV.filter(function(l){ return l.fecha_revision===hoy; }).length;
     var sinObj = !tem ? [] : filasP.filter(function(f){ return f.tipoP==='principal' && !objetivosFila(f, tem.id).ac; }).map(function(f){ return f.texto; });
     var tarjeta = function(t, cuerpo, ir){ return '<div class="fx-card"><h3>'+esc(t)+(ir?' <span class="fx-ir">'+ir+'</span>':'')+'</h3>'+cuerpo+'</div>'; };
     var T = {};
@@ -3035,11 +3047,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     T.sem = tarjeta(esMovil() ? 'Lo que queda de semana' : 'Esta semana', semana.length ? '<ul>'+semana.map(function(s){ var e = estado(s, aid); return '<li><button type="button" class="ac-link" data-abrir="'+s.id+'|'+aid+'">'+esc(fCorta(s.fecha))+(MOMENTO[s.momento]?' ('+esc(MOMENTO[s.momento].toLowerCase())+')':'')+'</button>'+esc(s.clase_dia==='descanso'?'Descanso':tituloDe(s))+(!s.publicada?' '+tag('t-bor','Borrador'):'')+(e.au?' '+tag('t-nohecha','Ausente'):'')+'</li>'; }).join('')+'</ul>' : SIN, '<button type="button" class="ac-link" data-fx-semana="1">abrir</button>');
     T.ult = tarjeta('Últimas sesiones y feedback', ultimas.length ? '<ul>'+ultimas.map(function(x){ var e = EST_FB[x.est]||[x.est,'t-sind']; return '<li><button type="button" class="ac-link" data-abrir="'+x.s.id+'|'+aid+'">'+esc(fCorta(x.s.fecha))+'</button>'+esc(tituloDe(x.s))+' '+tag(e[1], e[0])+'</li>'; }).join('')+'</ul>' : SIN, '<button type="button" class="ac-link" data-fx-feedback="1">abrir</button>');
     T.dec = tarjeta('Decisiones y restricciones vigentes', (decV.length||lesV.length) ? '<ul>'+lesV.map(function(l){ return '<li><b>Lesiones:</b> '+esc([l.zona, DISPO[l.disponibilidad]||l.disponibilidad].filter(Boolean).join(' · '))+(l.restriccion?' · «'+esc(l.restriccion)+'»':'')+(l.fecha_revision && l.fecha_revision<=hoy?' '+tag('t-rev','revisión vencida: sigue vigente'):'')+'</li>'; }).join('')+
-        decV.map(function(d){ return '<li><b>'+esc(AMBITO[d.ambito]||d.ambito)+':</b> '+esc(d.decision)+(d.revision && d.revision<=hoy?' '+tag('t-rev','revisión vencida'):'')+'</li>'; }).join('')+'</ul>' : '<span class="fx-sin">ninguna</span>', '<a href="#fx-decisiones">abrir</a>');
+        decV.map(function(d){ return '<li><b>'+esc(AMBITO[d.ambito]||d.ambito)+':</b> '+esc(d.decision)+(d.revision && d.revision<hoy?' '+tag('t-rev','revisión vencida'):d.revision===hoy?' '+tag('t-rev','revisar hoy'):'')+'</li>'; }).join('')+'</ul>' : '<span class="fx-sin">ninguna</span>', '<a href="#fx-decisiones">abrir</a>');
     T.pen = tarjeta('Pendiente', '<ul>'+(pendRev?'<li><button type="button" class="ac-link" data-fx-feedback="1">'+plural(pendRev,'feedback por revisar','feedbacks por revisar')+'</button></li>':'')+
         (vencidas?'<li><a class="ac-link" href="#fx-decisiones">'+plural(vencidas,'revisión vencida','revisiones vencidas')+'</a> '+(vencidas===1?'(no es un alta: sigue vigente hasta revisarla)':'(no son altas: siguen vigentes hasta revisarlas)')+'</li>':'')+
+        (revHoy?'<li><a class="ac-link" href="#fx-decisiones">'+plural(revHoy,'decisión para revisar hoy','decisiones para revisar hoy')+'</a> (sigue vigente hasta revisarla)</li>':'')+
         (sinObj.length?'<li><a class="ac-link" href="#fx-objetivos">Objetivo '+tAct+' sin registrar: '+esc(sinObj.join(', '))+'</a></li>':'')+
-        (!pendRev && !vencidas && !sinObj.length ? '<li class="fx-sin">nada pendiente</li>' : '')+'</ul>');
+        (!pendRev && !vencidas && !revHoy && !sinObj.length ? '<li class="fx-sin">nada pendiente</li>' : '')+'</ul>');
     // En el móvil, primero lo que pide atención; de la semana, solo lo que queda.
     var rs = '<div class="fx-grid">'+(esMovil() ? [T.pen, T.dec, T.obj, T.comp, T.sem, T.ult] : [T.obj, T.comp, T.sem, T.ult, T.dec, T.pen]).join('')+'</div>';
     h += '<section class="fx-sec fx-res" id="fx-resumen"><div class="fx-in">'+rs+'</div></section>';
@@ -3258,6 +3271,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if (ds.fxSub){ ST.fx.sub = ds.fxSub==='analisis' ? 'analisis' : ''; cerrar(); window.scrollTo(0,0); await recargar(); return true; }
     if (ds.anVer && AN && AN.det[ds.anVer]){ var dv = dialogo(AN.det[ds.anVer]+'<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cerrar</button></div>'); dv.classList.add('ancho'); dv.addEventListener('click', function(e2){ if (e2.target.closest('[data-dlg-no]')) cerrarDialogo(); }); return true; }
+    if (ds.anPrueba){ ST.fx.pr = ds.anPrueba; urlActual(); pintarFicha(); return true; }
     if (ds.anModelo && AN && AN.obj){ var ob = Object.assign({}, AN.obj, { temporada: AN.tem ? AN.tem.nombre : '' }); dlgModelo(ob); return true; }
     if (ds.fxSemana){ ST.vista = 'semana'; ST.semana = lunesDe(hoyISO()); ST.fAtleta = FX.aid; ST.movAtleta = FX.aid; ST.diaMovil = null; cerrar(); window.scrollTo(0,0); await recargar(); return true; }
     if (ds.fxFeedback){ ST.vista = 'feedback'; ST.fb.atleta = FX.aid; ST.fb.estado = 'todos'; ST.fb.desde = ST.fx.desde; ST.fb.hasta = ST.fx.hasta; cerrar(); window.scrollTo(0,0); await recargar(); return true; }
@@ -3408,7 +3422,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var lim = []; if (!Object.keys(ac.condiciones_det||{}).length && Object.keys(pr.cond||{}).length) lim.push('condiciones del objetivo sin registrar');
     if (Object.keys(ac.condiciones_det||{}).length && condTxt(ac.condiciones_det)!==condTxt(pr.cond)) return '<small class="fx-warn">otras condiciones que el objetivo: no se comparan</small>';
     if (!m.metodo) lim.push('método no consta');
-    return '<small>'+(d>0?'+':'')+numES(Math.round(d*100)/100)+' '+u+' respecto al acordado'+(lim.length?' · orientativo: '+esc(lim.join(', ')):'')+'</small>';
+    return '<small>'+(d>0?'+':'')+numES(Math.round(d*100)/100, u==='s'?2:null)+' '+u+' respecto al acordado'+(lim.length?' · orientativo: '+esc(lim.join(', ')):'')+'</small>';
   }
 
   /* ---------- parciales reales y modelo objetivo ----------
@@ -3555,6 +3569,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function estadoModelo(mo){
     if (!mo) return '';
     if (mo.estado==='vigente') return 'aprobado'+(mo.aprobado_en ? ' el '+fechaHora(mo.aprobado_en) : '')+(mo.aprobado_por ? ' por '+quienRevisa(mo.aprobado_por) : '')+' · versión '+mo.aprobado_version;
+    if (mo.origen==='chatgpt_simulado') return 'PRUEBA: origen ChatGPT simulado · '+(mo.estado==='borrador' ? 'borrador' : 'propuesta')+' sin aprobar';
     var org = mo.origen==='chatgpt' ? 'de ChatGPT' : mo.origen==='otro' ? 'de otra fuente' : 'del entrenador';
     return (mo.estado==='borrador' ? 'borrador' : 'propuesta')+' '+org+' · sin aprobar';
   }
@@ -3565,7 +3580,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var tramos = mo ? mo.tramos : presetTramos(dist).map(function(x){ return { desde_m:x[0], hasta_m:x[1] }; });
     var d = dialogo('<h3>Modelo de parciales · '+esc(ac.prueba)+' · '+esc(ac.temporada)+'</h3><p>Es un modelo objetivo, no una medición. Se escribe a mano: aquí no se inventan coeficientes ni proyecciones. Las sumas y las diferencias se calculan solas para comprobar que cuadra.</p>'+
       '<div class="ac-int"><label>Tiempo objetivo total (s)<input id="tmo-to" value="'+esc(mo && mo.tiempo_total_s!=null ? numES(mo.tiempo_total_s) : ac.objetivo_num!=null ? numES(ac.objetivo_num) : '')+'"></label>'+
-      '<label>Quién lo prepara<select id="tmo-or">'+[['entrenador','El entrenador'],['chatgpt','Propuesta de ChatGPT'],['otro','Otra fuente']].map(function(k){ return '<option value="'+k[0]+'"'+((mo ? mo.origen : 'entrenador')===k[0]?' selected':'')+'>'+k[1]+'</option>'; }).join('')+'</select></label>'+
+      '<label>Quién lo prepara<select id="tmo-or">'+[['entrenador','El entrenador'],['chatgpt','Propuesta de ChatGPT'],['otro','Otra fuente']].concat(ST.g.es_prueba || (mo && mo.origen==='chatgpt_simulado') ? [['chatgpt_simulado','PRUEBA: origen ChatGPT simulado']] : []).map(function(k){ return '<option value="'+k[0]+'"'+((mo ? mo.origen : 'entrenador')===k[0]?' selected':'')+'>'+k[1]+'</option>'; }).join('')+'</select></label>'+
       '<label>Estado<select id="tmo-es">'+[['propuesta','Propuesta'],['borrador','Borrador'],['descartado','Descartado']].map(function(k){ return '<option value="'+k[0]+'"'+((mo && mo.estado!=='vigente' ? mo.estado : 'propuesta')===k[0]?' selected':'')+'>'+k[1]+'</option>'; }).join('')+'</select></label>'+
       '<label class="ancho">Fundamento (en qué se basa)<input id="tmo-fu" value="'+esc(mo && mo.fundamento || '')+'"></label>'+
       '<label class="ancho">Limitaciones (qué no sabe o no tiene en cuenta)<input id="tmo-li" value="'+esc(mo && mo.limitaciones || '')+'"></label></div>'+
@@ -3587,8 +3602,25 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (ev.target.closest('[data-p-mas]')){ cont.insertAdjacentHTML('beforeend', filaParcial({ medida:'tramo' })); cont.lastElementChild.querySelector('[data-p-me]').remove(); return; }
       if (ev.target.closest('[data-p-sub]')){ cont.insertAdjacentHTML('beforeend', [[0,10],[10,30],[30,50]].map(function(x){ return filaParcial({ desde_m:x[0], hasta_m:x[1], medida:'tramo' }); }).join('')); cont.querySelectorAll('[data-p-me]').forEach(function(s){ s.remove(); }); return; }
       var ba = ev.target.closest('[data-mo-aprobar]');
+      if (ba && !ba.dataset.moAprobar2){
+        // Antes de aprobar: la versión GUARDADA entera (total, tramos, subdivisiones, sumas,
+        // fundamento, limitaciones, origen, autor y versión) y la comprobación de la base.
+        ba.disabled = true;
+        var rc = await sb.rpc('objetivo_parciales_comprobar', { p_tramos:mo.tramos, p_total:mo.tiempo_total_s });
+        var cq = rc.data || {};
+        var panel = document.createElement('div'); panel.className = 'an-revm';
+        panel.innerHTML = '<h4 style="margin:0 0 4px">Antes de aprobar · versión guardada '+mo.version+'</h4>'+
+          '<p class="nota" style="margin:0">Total <b>'+esc(sTxt(mo.tiempo_total_s))+'</b> · origen: '+esc(estadoModelo(mo))+' · preparado por '+esc(quienRevisa(mo.autor_perfil_id)||'—')+' el '+esc(fechaHora(mo.creado_en))+(mo.version>1 ? ' · última versión del '+esc(fechaHora(mo.actualizado_en)) : '')+'</p>'+
+          modeloHTML(mo, dist)+
+          '<p class="nota">Limitaciones: '+(mo.limitaciones ? esc(mo.limitaciones) : '<span class="fx-sin">sin registrar</span>')+'</p>'+
+          '<p class="nota">Comprobación de la base: '+(cq.cuadra ? '<span class="tm-ok">cuadra</span> (tramos seguidos, subdivisiones dentro de su tramo, suma igual al total)' : '<span class="fx-warn">no cuadra</span>: '+esc((cq.mensajes||[]).join(' ')))+'</p>'+
+          '<div class="an-aviso">Que cuadre matemáticamente <b>no</b> significa que esté validado deportivamente. Apruébalo solo si das por bueno el reparto. No cambia el objetivo acordado.</div>'+
+          '<div class="pie"><button type="button" class="ac-btn" data-mo-volver="1">Volver</button>'+(cq.cuadra ? '<button type="button" class="ac-btn pri" data-mo-aprobar="1" data-mo-aprobar2="1">Apruebo la versión '+mo.version+'</button>' : '')+'</div>';
+        d.querySelector('.pie').replaceWith(panel); panel.scrollIntoView({ block:'nearest' });
+        return;
+      }
+      if (ev.target.closest('[data-mo-volver]')){ cerrarDialogo(); dlgModelo(ac); return; }
       if (ba){
-        if (!confirm('¿Aprobar la versión guardada ('+mo.version+') de este modelo? Si has cambiado algo en este cuadro sin guardar, no entra en la aprobación.')) return;
         ba.disabled = true;
         var ra = await sb.rpc('objetivo_parciales_aprobar', { p:{ id:mo.id, version_base:mo.version } });
         if (ra.error){ ba.disabled = false; avisar('No se pudo: '+ra.error.message, true); return; }
@@ -4735,55 +4767,88 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
      Reglas: docs/definiciones-analisis-atleta.md. Solo lee: el motor
      (assets/js/academia-analisis.js) ordena lo registrado y aquí se pinta. Cada
      frase dice su periodo y abre los datos de los que sale; lo que falta se ve
-     como hueco, nunca como cero. No puntúa, no diagnostica y no propone decisiones. */
+     como hueco, nunca como cero. No puntúa, no diagnostica, no deduce causas y no
+     propone decisiones. «0» es cero de verdad, «—» no aplica y «sin dato» es que
+     no hay registro. */
   var ANC = window.APOLANA_ANALISIS;
   var AN = null;
   function vientoCuenta(p){ return !!p && ((p.disciplina==='velocidad' || p.disciplina==='vallas') && Number(p.distancia_m) > 0 && Number(p.distancia_m) <= 200 || /longitud|triple/i.test(p.nombre||'')); }
+  function conParciales(p){ return !!p && p.unidad==='tiempo' && Number(p.distancia_m) > 0; }
+  function listaPruebas(v){ return Array.isArray(v) ? v : String(v||'').split(/[,;]/).map(function(x){ return x.trim(); }).filter(Boolean); }
+  /* Pruebas que se pueden analizar: las del perfil (principal o secundaria) que
+     están en el catálogo y las de sus objetivos acordados de la temporada. */
+  function pruebasAnalisis(a, tem){
+    var L = [], ya = {};
+    var add = function(pid, tipo, txt){ if (!pid){ L.push({ id:null, tipo:tipo, txt:txt }); return; } if (ya[pid]) return; ya[pid] = 1; L.push({ id:pid, tipo:tipo, txt:TM.pid[pid].nombre }); };
+    listaPruebas(a.pruebas_principales).forEach(function(t){ add(pruebaDe({ prueba:t }).id, 'principal', t); });
+    listaPruebas(a.pruebas_secundarias).forEach(function(t){ add(pruebaDe({ prueba:t }).id, 'secundaria', t); });
+    if (tem) FX.obj.filter(function(o){ return o.atleta_id===a.id && o.temporada_id===tem.id && o.tipo==='acordado' && o.estado!=='descartado' && o.prueba_id && TM.pid[o.prueba_id]; })
+      .forEach(function(o){ add(o.prueba_id, 'objetivo', o.prueba); });
+    return L;
+  }
   function construirAnalisis(){
-    var a = FX.a, aid = a.id, hoy = hoyISO(), tem = temporadaHoy(), lu = lunesDe(hoy);
+    var a = FX.a, aid = a.id, hoy = ANC.hoyMadrid(), tem = temporadaHoy(), lu = lunesDe(hoy);
     var semanas = [sumar(lu, -21), sumar(lu, -14), sumar(lu, -7), lu];
     var X = { aid:aid, hoy:hoy, tem:tem, semanas:semanas, desde:semanas[0], hasta:sumar(lu, 6), calculado:new Date(), det:{} };
-    var objs = tem ? FX.obj.filter(function(o){ return o.atleta_id===aid && o.temporada_id===tem.id && o.tipo==='acordado' && o.estado!=='descartado'; }) : [];
-    X.obj = objs.filter(function(o){ return o.prueba_id; })[0] || objs[0] || null;
-    X.pr = X.obj && X.obj.prueba_id ? TM.pid[X.obj.prueba_id] : null;
+    X.pruebas = pruebasAnalisis(a, tem);
+    var conId = X.pruebas.filter(function(p){ return p.id; });
+    X.prSel = conId.filter(function(p){ return p.id===ST.fx.pr; })[0] || conId.filter(function(p){ return p.tipo==='principal'; })[0] || conId[0] || null;
+    X.pr = X.prSel ? TM.pid[X.prSel.id] : null;
+    X.unidad = X.pr && X.pr.unidad==='distancia' ? 'm' : 's';
+    X.obj = X.pr && tem ? objetivosDe(aid, X.pr.id, tem.id).filter(function(o){ return o.tipo==='acordado' && o.estado!=='descartado'; })[0] || null : null;
     X.prox = CP.part.filter(function(x){ return x.atleta_id===aid; }).map(function(x){ return x.competicion_id; }).filter(function(v, i, L){ return L.indexOf(v)===i; })
       .map(function(cid){ return CP.cid[cid]; }).filter(function(c){ return c && c.estado!=='cancelada' && c.fecha_inicio && (c.fecha_fin||c.fecha_inicio) >= hoy; })
       .sort(function(x, y){ return x.fecha_inicio.localeCompare(y.fecha_inicio); })[0] || null;
-    // Trabajo: el mismo motor que Carga y contenidos, por semanas y en total
-    X.sem = semanas.map(function(w){ return construirCarga(aid, w, sumar(w, 6)); });
-    X.tot = construirCarga(aid, X.desde, X.hasta);
-    // Marcas comparables de la prueba del objetivo (últimos 12 meses)
+    // Trabajo: el mismo motor que Carga y contenidos; lo futuro o aún en plazo, «por llegar»
+    var enPlazo = function(s){ return !s || !vencido(s); };
+    X.sem = semanas.map(function(w){ var C = construirCarga(aid, w, sumar(w, 6)); C.T = ANC.trabajoCarrera(C.X, enPlazo); return C; });
+    X.tot = construirCarga(aid, X.desde, X.hasta); X.tot.T = ANC.trabajoCarrera(X.tot.X, enPlazo);
+    // Marcas de la prueba elegida (últimos 12 meses)
     X.desdeM = sumar(hoy, -365);
-    var mk = X.pr ? FX.marcas.filter(function(m){ return m.atleta_id===aid && m.tipo!=='objetivo' && m.fecha && m.fecha >= X.desdeM && m.fecha <= hoy && pruebaDe(m).id===X.pr.id; }) : [];
-    X.mc = ANC.marcasComparables(mk, { vientoCuenta:vientoCuenta(X.pr), menosEsMejor: X.pr ? !X.pr.mas_es_mejor : true });
-    // Parciales: el resultado más reciente de esa prueba que los tenga, con su intento más completo
+    X.mk = X.pr ? FX.marcas.filter(function(m){ return m.atleta_id===aid && m.tipo!=='objetivo' && m.fecha && m.fecha >= X.desdeM && m.fecha <= hoy && pruebaDe(m).id===X.pr.id; }) : [];
+    X.mc = ANC.marcasComparables(X.mk, { vientoCuenta:vientoCuenta(X.pr), menosEsMejor: X.pr ? !X.pr.mas_es_mejor : true });
+    // Parciales: solo donde aplican; el resultado más reciente que los tenga, con su intento más completo
     X.modelo = X.obj ? (TM.modelos||[]).filter(function(m){ return m.objetivo_id===X.obj.id && m.estado!=='descartado'; })[0] || null : null;
-    var conParc = mk.filter(function(m){ return (TM.parc||[]).some(function(p){ return p.marca_id===m.id; }); }).sort(function(x, y){ return String(y.fecha).localeCompare(String(x.fecha)); })[0] || null;
-    if (conParc){
-      var rows = TM.parc.filter(function(p){ return p.marca_id===conParc.id; }), ints = {};
-      rows.forEach(function(p){ ints[p.intento] = (ints[p.intento]||0) + 1; });
-      var it = Object.keys(ints).sort(function(x, y){ return ints[y]-ints[x] || x-y; })[0];
-      X.parc = { marca:conParc, intento:+it, intentos:Object.keys(ints).length, r:ANC.parcialesFrenteModelo(rows.filter(function(p){ return String(p.intento)===String(it); }), X.modelo) };
+    if (conParciales(X.pr)){
+      var cp = X.mk.filter(function(m){ return (TM.parc||[]).some(function(p){ return p.marca_id===m.id; }); }).sort(function(x, y){ return String(y.fecha).localeCompare(String(x.fecha)); })[0] || null;
+      if (cp){
+        var rows = TM.parc.filter(function(p){ return p.marca_id===cp.id; }), ints = {};
+        rows.forEach(function(p){ ints[p.intento] = (ints[p.intento]||0) + 1; });
+        var it = Object.keys(ints).sort(function(x, y){ return ints[y]-ints[x] || x-y; })[0];
+        X.parc = { marca:cp, intento:+it, intentos:Object.keys(ints).length, r:ANC.parcialesFrenteModelo(rows.filter(function(p){ return String(p.intento)===String(it); }), X.modelo) };
+      }
     }
     // Sesiones comparables (por fila relevante, no por título ni versión)
-    var S = X.tot.sesiones.map(function(s){ return Object.assign({}, s, { X: X.tot.porSesion[s.id] || [] }); });
-    X.comp = ANC.sesionesComparables(S);
+    X.comp = ANC.sesionesComparables(X.tot.sesiones.map(function(s){ return Object.assign({}, s, { X: X.tot.porSesion[s.id] || [] }); }));
     // Revisiones de decisiones (criterio del grupo; ninguna se cierra sola)
     X.rev = ANC.revisiones(FX.dec, hoy, ST.g.revision_cercana_dias || 21);
     // Lo pendiente: sesiones con el plazo vencido y sin registro, discrepancias abiertas
     X.sinReg = X.tot.sesiones.filter(function(s){ return s.vencida && !s.futura && !s.reg && !s.regEnt && !(s.toma||[]).length; });
     var sids = X.tot.sesiones.map(function(s){ return s.id; });
     X.disc = (D.disc||[]).filter(function(d){ return !d.resuelto_en && (D.toma||[]).some(function(t){ return t.id===d.dato_id && t.atleta_id===aid && sids.indexOf(t.sesion_id)!==-1; }); });
+    // Evolución de las marcas comparables (descriptiva; sin causas)
+    var P = X.mc.principal;
+    if (P && P.n >= 2){ var f0 = P.marcas[0], fN = P.marcas[P.n-1]; X.evo = { de:f0, a:fN, dif: Math.round((fN.v - f0.v)*100)/100 }; X.evo.mejora = X.pr && !X.pr.mas_es_mejor ? X.evo.dif < 0 : X.evo.dif > 0; }
     return X;
   }
-  function anMag(C, k){ return (C.R.porMagnitud[k] || {}); }
-  function anCifra(v){ return v ? cifra(v, '') : '·'; }
+  var ETQ_T = { confirmado:'Con detalle', global:'Por «completa»', adicional:'Adicional', no_realizado:'No realizado', discrepancia:'En discrepancia', sin_concretar:'Sin concretar', sin_datos:'Sin datos', por_llegar:'Por llegar' };
+  function anCelda(v, aplica){ return v ? esc(cifra(v, '')) : (aplica ? '0' : '<span class="fx-sin">—</span>'); }
   function anVer(key, html){ AN.det[key] = html; return ' <button type="button" class="ac-link an-ver" data-an-ver="'+key+'">ver datos ›</button>'; }
   function anFecha(f){ return f ? fMedia(f)+(f.slice(0,4)!==hoyISO().slice(0,4) ? ' '+f.slice(0,4) : '') : '—'; }
+  function anVal(v, u){ return u==='m' ? numES(v, 2)+' m' : sTxt(v); }
+  function anDif(d, u){ return (d>0?'+':d<0?'−':'')+numES(Math.abs(d), 2)+' '+(u||'s'); }
   function anMarcaTxt(m){ return [anFecha(m.fecha), ANC.METODO[m.metodo||'no_consta'], m.viento!=null ? (m.viento>0?'+':'')+numES(m.viento, 1)+' m/s' : null, m.oficial===true ? 'oficial' : m.oficial===false ? 'no oficial' : null, m.sede].filter(Boolean).join(' · '); }
+  function anSinDato(){ return '<span class="fx-sin">sin dato</span>'; }
+  /* Repeticiones de un caso comparable, en orden: «1.ª 250 m 34,8 · 2.ª 150 m 20,4». */
+  function anReps(c, soloFuente){
+    var porRep = {}; c.tiempos.forEach(function(t){ if (soloFuente && t.fuente!==soloFuente) return; (porRep[t.rep] = porRep[t.rep] || []).push(t); });
+    return Object.keys(porRep).sort(function(x, y){ return x-y; }).map(function(k){ return { rep:+k, m:porRep[k][0].m, t:porRep[k] }; });
+  }
+  function anFuenteComun(g){ var fu = ['atleta', 'entrenador'].filter(function(f){ return g.casos.filter(function(c){ return c.tiempos.length; }).every(function(c){ return c.tiempos.some(function(t){ return t.fuente===f; }); }); }); return fu[0] || null; }
 
   function svgMarcas(X){
-    var P = X.mc.principal; if (!P || !P.marcas.length) return '<p class="fx-sin">Sin marcas comparables de '+esc(X.pr ? X.pr.nombre : 'su prueba')+' en los últimos 12 meses.</p>';
+    var P = X.mc.principal;
+    if (!P || !P.marcas.length) return '<p class="fx-sin">'+(X.mk.length ? plural(X.mk.length, 'resultado registrado', 'resultados registrados')+' en 12 meses, ninguno comparable (ver motivos abajo).' : 'Sin resultados registrados de '+esc(X.pr ? X.pr.nombre : 'esta prueba')+' en 12 meses.')+'</p>';
     var W = 560, H = 210, x0 = 54, x1 = W - 16, y0 = 26, y1 = H - 30, menos = !X.pr.mas_es_mejor;
     var vals = P.marcas.map(function(x){ return x.v; }); if (X.obj && X.obj.objetivo_num!=null) vals.push(Number(X.obj.objetivo_num));
     var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), pad = Math.max((hi-lo)*0.15, 0.05);
@@ -4793,12 +4858,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var xp = function(f){ return x0 + (deISO(f).getTime()-t0) / (t1-t0) * (x1-x0); };
     var yp = function(v){ var r = (v-lo)/(hi-lo); return menos ? y0 + r*(y1-y0) : y1 - r*(y1-y0); };
     var g = '';
-    for (var tk = lo; tk <= hi + paso/2; tk += paso) (function(v){ var y = yp(v); g += '<line x1="'+x0+'" y1="'+y+'" x2="'+x1+'" y2="'+y+'" stroke="#EFE9DD"/><text x="'+(x0-6)+'" y="'+(y+4)+'" text-anchor="end">'+esc(sTxt(Math.round(v*100)/100))+'</text>'; })(tk);
+    for (var tk = lo; tk <= hi + paso/2; tk += paso) (function(v){ var y = yp(v); g += '<line x1="'+x0+'" y1="'+y+'" x2="'+x1+'" y2="'+y+'" stroke="#EFE9DD"/><text x="'+(x0-6)+'" y="'+(y+4)+'" text-anchor="end">'+esc(numES(Math.round(v*100)/100, 2))+'</text>'; })(tk);
     for (var k=0;k<=12;k+=3){ var d = deISO(X.desdeM); d.setMonth(d.getMonth()+k); var f = isoDe(d); if (f > X.hoy) f = X.hoy; g += '<text x="'+xp(f)+'" y="'+(H-8)+'" text-anchor="middle">'+esc(MES[deISO(f).getMonth()])+'</text>'; }
-    if (X.obj && X.obj.objetivo_num!=null){ var yo = yp(Number(X.obj.objetivo_num)); g += '<line x1="'+x0+'" y1="'+yo+'" x2="'+x1+'" y2="'+yo+'" stroke="#3D55A0" stroke-width="1.5" stroke-dasharray="6 4"/><text x="'+x1+'" y="'+(yo-6)+'" text-anchor="end" fill="#3D55A0" font-weight="600">objetivo acordado '+esc(sTxt(X.obj.objetivo_num))+'</text>'; }
+    if (X.obj && X.obj.objetivo_num!=null){ var yo = yp(Number(X.obj.objetivo_num)); g += '<line x1="'+x0+'" y1="'+yo+'" x2="'+x1+'" y2="'+yo+'" stroke="#3D55A0" stroke-width="1.5" stroke-dasharray="6 4"/><text x="'+x1+'" y="'+(yo-6)+'" text-anchor="end" fill="#3D55A0" font-weight="600">objetivo acordado '+esc(anVal(X.obj.objetivo_num, X.unidad))+'</text>'; }
     P.marcas.forEach(function(x){ var cx = xp(x.m.fecha), cy = yp(x.v), mej = P.mejor && x===P.mejor;
-      g += '<circle cx="'+cx+'" cy="'+cy+'" r="5.5" fill="'+(x.por_confirmar.length?'#fff':'#2E4256')+'" stroke="#2E4256" stroke-width="2"/><text x="'+cx+'" y="'+(cy-10)+'" text-anchor="middle" fill="#2E4256" font-weight="'+(mej?700:500)+'">'+esc(sTxt(x.v))+'</text>'; });
-    return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Marcas comparables de '+X.pr.nombre+': '+P.marcas.map(function(x){ return sTxt(x.v)+' el '+anFecha(x.m.fecha); }).join(', ')+(X.obj && X.obj.objetivo_num!=null ? '. Objetivo acordado '+sTxt(X.obj.objetivo_num) : ''))+'">'+g+'</svg>';
+      g += '<circle cx="'+cx+'" cy="'+cy+'" r="5.5" fill="'+(x.por_confirmar.length?'#fff':'#2E4256')+'" stroke="#2E4256" stroke-width="2"/><text x="'+cx+'" y="'+(cy-10)+'" text-anchor="middle" fill="#2E4256" font-weight="'+(mej?700:500)+'">'+esc(anVal(x.v, X.unidad))+'</text>'; });
+    return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Marcas comparables de '+X.pr.nombre+': '+P.marcas.map(function(x){ return anVal(x.v, X.unidad)+' el '+anFecha(x.m.fecha); }).join(', ')+(X.obj && X.obj.objetivo_num!=null ? '. Objetivo acordado '+anVal(X.obj.objetivo_num, X.unidad) : ''))+'">'+g+'</svg>';
   }
   function svgParciales(r){
     var F = r.filas; if (!F.length) return '';
@@ -4811,164 +4876,200 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (f.modelo!=null && f.real!=null) g += '<line x1="'+xp(f.modelo)+'" y1="'+y+'" x2="'+xp(f.real)+'" y2="'+y+'" stroke="#C9C1B1" stroke-width="3"/>';
       if (f.modelo!=null) g += '<circle cx="'+xp(f.modelo)+'" cy="'+y+'" r="6" fill="#fff" stroke="#3D55A0" stroke-width="2.5"/>';
       if (f.real!=null) g += '<circle cx="'+xp(f.real)+'" cy="'+y+'" r="6" fill="#C2661C"/>';
-      g += '<text x="'+(W-4)+'" y="'+(y+4)+'" text-anchor="end" fill="#2E4256" font-weight="700">'+(f.dif!=null ? esc((f.dif>0?'+':'')+numES(f.dif, 2)) : '—')+'</text>';
+      g += '<text x="'+(W-4)+'" y="'+(y+4)+'" text-anchor="end" fill="#2E4256" font-weight="700">'+(f.dif!=null ? esc(anDif(f.dif, 's')) : '—')+'</text>';
     });
-    return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Tramos: '+F.map(function(f){ return f.desde_m+'–'+f.hasta_m+' real '+sTxt(f.real)+(f.modelo!=null?' modelo '+sTxt(f.modelo):''); }).join('; '))+'"><text x="'+x0+'" y="12">'+esc(sTxt(lo))+' s</text><text x="'+x1+'" y="12" text-anchor="end">'+esc(sTxt(hi))+' s</text>'+g+'</svg>';
+    return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Tramos: '+F.map(function(f){ return f.desde_m+'–'+f.hasta_m+' real '+sTxt(f.real)+(f.modelo!=null?' modelo '+sTxt(f.modelo)+' diferencia '+anDif(f.dif, 's'):''); }).join('; '))+'"><text x="'+x0+'" y="12">'+esc(sTxt(lo))+' s</text><text x="'+x1+'" y="12" text-anchor="end">'+esc(sTxt(hi))+' s</text><text x="'+(W-4)+'" y="12" text-anchor="end" font-weight="600">Diferencia</text>'+g+'</svg>';
   }
+  // Barras por semana: lo previsto repartido por estado; lo adicional, encima; la raya marca lo previsto.
+  var CAPAS_T = [['confirmado','#3D55A0'],['global','url(#an-rayas)'],['no_realizado','#8C8577'],['discrepancia','#fff|#C2661C'],['sin_concretar','#E4DED2'],['sin_datos','none|#8C8577|4 3'],['por_llegar','none|#C9C1B1|1 3']];
   function svgSemanas(X){
     var W = 480, H = 200, x0 = 46, base = H - 28, top = 18, bw = 64, gap = (W - x0 - 4*bw) / 4, g = '';
-    var vals = X.sem.map(function(C){ var k = anMag(C, 'carrera|m_total|'); return { p:k.previsto||0, c:k.confirmado||0, g:k.global||0, n:k.no_realizado||0, s:(k.sin_datos||0)+(k.sin_concretar||0), d:k.discrepancia||0 }; });
-    var max = Math.max.apply(null, vals.map(function(v){ return v.p; }).concat([1]));
+    var vals = X.sem.map(function(C){ return C.T.total; });
+    var max = Math.max.apply(null, vals.map(function(v){ return (v.previsto||0) + (v.adicional||0); }).concat([1]));
     var hh = function(v){ return v / max * (base - top); };
     g += '<line x1="'+x0+'" y1="'+base+'" x2="'+(W-4)+'" y2="'+base+'" stroke="#C9C1B1"/><text x="'+(x0-6)+'" y="'+(top+4)+'" text-anchor="end">'+esc(cifra(max, ''))+'</text>';
     vals.forEach(function(v, i){
       var x = x0 + gap/2 + i*(bw+gap), y = base;
-      [['c','#3D55A0',''],['g','url(#an-rayas)',''],['n','#8C8577','']].forEach(function(t){ var h = hh(v[t[0]]); if (h > 0){ y -= h; g += '<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+h+'" fill="'+t[1]+'"/>'; } });
-      var rest = hh(v.s + v.d); if (rest > 0){ y -= rest; g += '<rect x="'+(x+1)+'" y="'+y+'" width="'+(bw-2)+'" height="'+rest+'" fill="none" stroke="#8C8577" stroke-width="1.5" stroke-dasharray="4 3"/>'; }
+      CAPAS_T.forEach(function(c){ var h = hh(v[c[0]]||0); if (h <= 0) return; y -= h; var p = c[1].split('|');
+        g += '<rect x="'+(x+1)+'" y="'+y+'" width="'+(bw-2)+'" height="'+h+'" fill="'+p[0]+'"'+(p[1] ? ' stroke="'+p[1]+'" stroke-width="1.5"'+(p[2] ? ' stroke-dasharray="'+p[2]+'"' : '') : '')+'/>'; });
+      if (v.adicional){ var ha = hh(v.adicional); y -= ha; g += '<rect x="'+(x+1)+'" y="'+y+'" width="'+(bw-2)+'" height="'+ha+'" fill="#2E7D6B"/>'; }
+      if (v.previsto){ var yp = base - hh(v.previsto); g += '<line x1="'+(x-4)+'" y1="'+yp+'" x2="'+(x+bw+4)+'" y2="'+yp+'" stroke="#2E4256" stroke-width="2"/>'; }
       g += '<text x="'+(x+bw/2)+'" y="'+(H-10)+'" text-anchor="middle">'+esc(fMedia(X.semanas[i]))+'</text>';
     });
-    return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Metros de carrera por semana: '+vals.map(function(v, i){ return fMedia(X.semanas[i])+' previstos '+v.p+', con detalle '+v.c+', por completa '+v.g+', sin datos '+v.s; }).join('; '))+'"><defs><pattern id="an-rayas" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#FBE9D2"/><line x1="0" y1="0" x2="0" y2="6" stroke="#C2661C" stroke-width="2.5"/></pattern></defs>'+g+'</svg>';
+    return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Metros de carrera por semana: '+vals.map(function(v, i){ return fMedia(X.semanas[i])+': previstos '+(v.previsto||0)+', '+Object.keys(ETQ_T).filter(function(k){ return v[k]; }).map(function(k){ return ETQ_T[k].toLowerCase()+' '+v[k]; }).join(', '); }).join('; '))+'"><defs><pattern id="an-rayas" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#FBE9D2"/><line x1="0" y1="0" x2="0" y2="6" stroke="#C2661C" stroke-width="2.5"/></pattern></defs>'+g+'</svg>';
   }
+  function tablaTrabajo(filas, primera){
+    var cols = ['confirmado','global','adicional','no_realizado','discrepancia','sin_concretar','sin_datos','por_llegar'].filter(function(k){ return k==='confirmado' || filas.some(function(f){ return f[1][k]; }); });
+    return '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>'+esc(primera)+'</th><th>Previsto</th>'+cols.map(function(k){ return '<th>'+esc(ETQ_T[k])+'</th>'; }).join('')+'</tr>'+
+      filas.map(function(f){ var o = f[1], ap = !!(o.previsto || o.adicional); return '<tr'+(f[2]?' class="an-tot"':'')+'><td>'+esc(f[0])+'</td><td>'+anCelda(o.previsto, !!o.previsto)+'</td>'+cols.map(function(k){ return '<td>'+anCelda(o[k], k==='adicional' ? true : ap && !!o.previsto)+'</td>'; }).join('')+'</tr>'; }).join('')+'</table></div>';
+  }
+  var LEY_T = '<p class="nota an-leyt"><span class="an-ley an-c"></span> con detalle · <span class="an-ley an-g"></span> por «completa» (declaración global) · <span class="an-ley an-ad"></span> adicional · <span class="an-ley an-n"></span> no realizado · <span class="an-ley an-dis"></span> en discrepancia (sin resolver) · <span class="an-ley an-sc"></span> sin concretar · <span class="an-ley an-s"></span> sin datos · <span class="an-ley an-pl"></span> por llegar (futuro o en plazo: no es falta). La raya marca lo previsto; lo adicional puede pasarla. En las tablas, «0» es cero y «—» no aplica.</p>';
 
   function analisisHTML(){
     var X = AN = construirAnalisis(); X.det = {};
-    var hoy = X.hoy, periodo = fMedia(X.desde)+' – '+fMedia(X.hasta), hora = pad(X.calculado.getHours())+':'+pad(X.calculado.getMinutes());
-    var Pm = X.mc.principal, kT = anMag(X.tot, 'carrera|m_total|');
+    var mov = esMovil(), hoy = X.hoy, periodo = fMedia(X.desde)+' – '+fMedia(X.hasta), hora = pad(X.calculado.getHours())+':'+pad(X.calculado.getMinutes());
+    var Pm = X.mc.principal, kT = X.tot.T.total, u = X.unidad;
     var h = '<p class="nota an-per">Periodo: <b>'+esc(periodo)+'</b> (4 semanas) · calculado hoy a las '+esc(hora)+' · solo lee: no guarda nada ni cambia entrenamientos. Primera versión, solo con el grupo de prueba.</p>';
+    // ---- prueba que se analiza ----
+    h += '<div class="an-prs" role="group" aria-label="Prueba que se analiza"><span class="an-et">Prueba</span>'+(X.pruebas.length ? X.pruebas.map(function(p){
+        if (!p.id) return '<span class="an-pr off" title="No está en el catálogo: confírmala en Tests y marcas › Catálogo">'+esc(p.txt)+' <small>sin confirmar</small></span>';
+        var act = X.prSel && p.id===X.prSel.id;
+        return '<button type="button" class="an-pr'+(act?' act':'')+'" data-an-prueba="'+p.id+'"'+(act?' aria-pressed="true"':'')+'>'+esc(p.txt)+' <small>'+esc(p.tipo==='objetivo' ? 'con objetivo' : p.tipo)+'</small></button>';
+      }).join('') : '<span class="fx-sin">sin pruebas en el perfil</span>')+'</div>';
 
     // ---- En corto: 4 frases, cada una con sus datos ----
-    var f1 = X.obj ? '<b>'+esc(X.obj.prueba)+'</b> · objetivo acordado <span class="an-num">'+esc(X.obj.objetivo_texto || sTxt(X.obj.objetivo_num))+'</span> para '+esc(X.tem.nombre)+'.'
-               : '<span class="fx-sin">Objetivo '+esc(X.tem ? X.tem.nombre : '')+' sin acordar.</span>';
-    f1 += X.prox ? ' Próxima: '+esc(X.prox.nombre)+', '+esc(fMedia(X.prox.fecha_inicio))+((planDe(X.prox.id, X.aid)||{}).prioridad ? ' (prioridad '+esc(planDe(X.prox.id, X.aid).prioridad)+')' : '')+'.' : ' <span class="fx-sin">Sin competición prevista.</span>';
-    var d1 = '<h3>Qué preparamos</h3><p>Objetivo <b>acordado</b> y vigente de la temporada de planificación de hoy (nunca el texto del perfil) y la próxima competición no cancelada en la que está apuntado.</p>'+
-      (X.obj ? '<table class="fx-t"><tr><th>Objetivo</th><td>'+esc(X.obj.prueba)+' · '+esc(X.obj.objetivo_texto||sTxt(X.obj.objetivo_num))+' · '+esc(X.obj.estado)+'<small>versión '+X.obj.version+' · '+esc(fechaHora(X.obj.actualizado_en||X.obj.creado_en))+'</small></td></tr></table>' : '<p class="fx-sin">sin objetivo acordado</p>')+
+    var difObj = Pm && Pm.mejor && X.obj && X.obj.objetivo_num!=null ? Math.round((Pm.mejor.v - Number(X.obj.objetivo_num))*100)/100 : null;
+    var f1 = X.pr ? (X.obj ? '<b>'+esc(X.pr.nombre)+'</b> · objetivo acordado <span class="an-num">'+esc(X.obj.objetivo_texto || anVal(X.obj.objetivo_num, u))+'</span> para '+esc(X.tem.nombre)+'.'
+                          : '<b>'+esc(X.pr.nombre)+'</b> · <span class="fx-sin">objetivo '+esc(X.tem ? X.tem.nombre : '')+' sin acordar.</span>') : '<span class="fx-sin">Ninguna prueba del perfil está en el catálogo.</span>';
+    var fc = X.prox ? ' Próxima: '+esc(X.prox.nombre)+', '+esc(fMedia(X.prox.fecha_inicio))+((planDe(X.prox.id, X.aid)||{}).prioridad ? ' (prioridad '+esc(planDe(X.prox.id, X.aid).prioridad)+')' : '')+'.' : ' <span class="fx-sin">Sin competición prevista.</span>';
+    var d1 = '<h3>Qué preparamos</h3><p>Objetivo <b>acordado</b> y vigente de la temporada de planificación de hoy para la prueba elegida (nunca el texto del perfil) y la próxima competición no cancelada en la que está apuntado.</p>'+
+      (X.obj ? '<table class="fx-t"><tr><th>Objetivo</th><td>'+esc(X.obj.prueba)+' · '+esc(X.obj.objetivo_texto||anVal(X.obj.objetivo_num, u))+' · '+esc(X.obj.estado)+'<small>versión '+X.obj.version+' · '+esc(fechaHora(X.obj.actualizado_en||X.obj.creado_en))+'</small></td></tr></table>' : '<p class="fx-sin">sin objetivo acordado para esta prueba</p>')+
       (X.prox ? '<p>Competición: '+esc(X.prox.nombre)+' · '+esc(fMedia(X.prox.fecha_inicio))+(X.prox.es_prueba?' · de prueba':'')+'</p>' : '');
-    var f2 = kT.previsto ? 'Carrera: <span class="an-num">'+esc(cifra(kT.previsto, 'm'))+'</span> previstos; <span class="an-num">'+esc(anCifra(kT.confirmado))+'</span> confirmados con detalle, <span class="an-num">'+esc(anCifra(kT.global))+'</span> solo por «completa», <span class="an-num">'+esc(anCifra((kT.sin_datos||0)+(kT.sin_concretar||0)))+'</span> sin datos'+(kT.no_realizado ? ', '+esc(cifra(kT.no_realizado,''))+' no realizados' : '')+(kT.discrepancia ? ', '+esc(cifra(kT.discrepancia,''))+' en discrepancia (sin resolver)' : '')+'.'
-               : '<span class="fx-sin">Sin carrera prevista en el periodo.</span>';
-    var d2 = '<h3>Trabajo registrado · carrera (m)</h3><p>Las cifras de Carga y contenidos sumadas en '+esc(periodo)+'. Solo metros de carrera: fuerza, saltos y minutos van aparte y nunca se suman a esto.</p>'+
-      '<table class="fx-t fx-w"><tr><th>Semana</th><th>Previsto</th><th>Con detalle</th><th>Por «completa»</th><th>No realizado</th><th>Sin datos</th><th>En discrepancia</th></tr>'+
-      X.sem.map(function(C, i){ var k = anMag(C, 'carrera|m_total|'); return '<tr><td>'+esc(fMedia(X.semanas[i]))+'</td><td>'+anCifra(k.previsto)+'</td><td>'+anCifra(k.confirmado)+'</td><td>'+anCifra(k.global)+'</td><td>'+anCifra(k.no_realizado)+'</td><td>'+anCifra((k.sin_datos||0)+(k.sin_concretar||0))+'</td><td>'+anCifra(k.discrepancia)+'</td></tr>'; }).join('')+'</table>';
-    var g0 = X.comp[0];
-    var f3 = Pm && Pm.mejor ? 'Mejor marca comparable <span class="an-num">'+esc(sTxt(Pm.mejor.v))+'</span> ('+esc(anFecha(Pm.mejor.m.fecha))+')'+(X.obj && X.obj.objetivo_num!=null ? ': a <span class="an-num">'+esc(numES(Math.abs(Pm.mejor.v - X.obj.objetivo_num), 2))+' s</span> del objetivo' : '')+'.'
-               : '<span class="fx-sin">Sin marcas comparables en 12 meses.</span>';
-    if (g0){ var pr1 = g0.casos.filter(function(c){ return c.tiempos.length; });
-      f3 += pr1.length ? ' En «'+esc(g0.texto)+'», 1.er tiempo: '+pr1.map(function(c){ return esc(c.tiempos[0].valor); }).join(' → ')+(pr1.some(function(c){ return c.rpe!=null; }) ? ' (RPE '+pr1.map(function(c){ return c.rpe!=null ? c.rpe : '—'; }).join(' · ')+')' : '')+'.' : ''; }
-    var m3 = (Pm ? plural(Pm.n, 'marca comparable', 'marcas comparables') : '0 marcas comparables')+' · '+(g0 ? plural(g0.conDatos, 'fila comparable con datos', 'filas comparables con datos') : 'sin sesiones comparables');
-    var d3 = '<h3>Cómo responde · de dónde sale</h3><p>Marcas de '+esc(X.pr ? X.pr.nombre : 'su prueba')+' de los últimos 12 meses: entran las del mismo cronometraje, oficiales o no por separado, mismas condiciones y viento legal. Lo demás, aparte con su motivo.</p>'+
-      (Pm ? '<table class="fx-t fx-w"><tr><th>Marca</th><th>Fecha y condiciones</th><th>¿Entra?</th></tr>'+Pm.marcas.map(function(x){ return '<tr><td class="an-n">'+esc(sTxt(x.v))+'</td><td>'+esc(anMarcaTxt(x.m))+'</td><td>Sí'+(x===Pm.mejor?' · la mejor':'')+(x.por_confirmar.length?' <small>'+esc(x.por_confirmar.join(', '))+'</small>':'')+'</td></tr>'; }).join('')+
-        X.mc.aparte.map(function(x){ return '<tr><td class="an-n">'+esc(x.m.tiempo_display || sTxt(x.m.tiempo_segundos))+'</td><td>'+esc(anMarcaTxt(x.m))+'</td><td>Aparte <small>'+esc(x.motivo)+'</small></td></tr>'; }).join('')+'</table>' : '<p class="fx-sin">ninguna</p>')+
-      '<p class="nota">Grupo usado: '+esc(Pm ? Pm.etiqueta : '—')+'. '+(Pm && Pm.evolucion==='descriptiva' ? 'Con '+Pm.n+' marcas se enseña su evolución de forma descriptiva: no es un patrón.' : 'Pocas marcas para hablar de evolución.')+'</p>';
+    var trozos = [['confirmado','con detalle'],['global','solo por «completa»'],['adicional','adicionales'],['no_realizado','no realizados'],['discrepancia','en discrepancia (sin resolver)'],['sin_concretar','sin concretar'],['sin_datos','sin datos'],['por_llegar','por llegar']]
+      .filter(function(t){ return kT[t[0]] || t[0]==='confirmado'; }).map(function(t){ return '<span class="an-num">'+esc(cifra(kT[t[0]]||0, ''))+'</span> '+t[1]; });
+    var f2 = kT.previsto ? 'Carrera: <span class="an-num">'+esc(cifra(kT.previsto, 'm'))+'</span> previstos; '+trozos.join(', ')+'.' : '<span class="fx-sin">Sin carrera prevista en el periodo.</span>';
+    var d2 = '<h3>Trabajo registrado · carrera (m)</h3><p>Las cifras de Carga y contenidos en '+esc(periodo)+'. Solo metros de carrera: fuerza, saltos y minutos van aparte y nunca se suman a esto. Lo futuro o aún en plazo va en «por llegar» y no cuenta como falta.</p>'+
+      tablaTrabajo(X.sem.map(function(C, i){ return ['Semana del '+fMedia(X.semanas[i]), C.T.total]; }).concat([['Total', kT, true]]), 'Semana');
+    var g0 = X.comp[0], fu0 = g0 ? anFuenteComun(g0) : null;
+    var f3 = Pm && Pm.mejor ? 'Mejor marca comparable <span class="an-num">'+esc(anVal(Pm.mejor.v, u))+'</span> ('+esc(anFecha(Pm.mejor.m.fecha))+')'+(difObj!=null ? ': <span class="an-num">'+esc(anDif(difObj, u))+'</span> respecto al objetivo' : '')+'.'
+               : (X.mk.length ? '<span class="fx-sin">'+plural(X.mk.length, 'resultado registrado', 'resultados registrados')+', ninguno comparable.</span>' : '<span class="fx-sin">Sin resultados registrados de esta prueba en 12 meses.</span>');
+    if (X.evo) f3 += ' '+(Pm.n >= 3 ? 'Evolución' : 'De una a otra')+': '+Pm.marcas.map(function(x){ return esc(anVal(x.v, u)); }).join(' → ')+' ('+esc(anDif(X.evo.dif, u))+' entre la primera y la última).';
+    if (g0 && fu0){ var cs = g0.casos.filter(function(c){ return c.tiempos.length; });
+      f3 += ' En «'+esc(g0.prescripcion)+'» (tiempos del '+fu0+'): '+cs.map(function(c){ return esc(fMedia(c.fecha))+' '+anReps(c, fu0).map(function(r){ return esc(r.t[0].valor); }).join(' · '); }).join('; ')+(cs.some(function(c){ return c.rpe!=null; }) ? ' (RPE '+cs.map(function(c){ return c.rpe!=null ? c.rpe : 'sin dato'; }).join(' · ')+')' : '')+'.'; }
+    var m3 = (Pm ? plural(Pm.n, 'marca comparable', 'marcas comparables') : '0 marcas comparables')+' · '+(g0 ? plural(g0.conDatos, 'sesión comparable con datos', 'sesiones comparables con datos') : 'sin sesiones comparables');
+    var d3 = '<h3>Cómo responde · de dónde sale</h3><p>Resultados de '+esc(X.pr ? X.pr.nombre : 'la prueba')+' de los últimos 12 meses: entran los del mismo cronometraje, oficiales o no por separado, mismas condiciones y viento legal. Lo demás, aparte con su motivo.</p>'+
+      (X.mk.length ? '<table class="fx-t fx-w"><tr><th>Resultado</th><th>Fecha y condiciones</th><th>¿Entra?</th></tr>'+(Pm ? Pm.marcas.map(function(x){ return '<tr><td class="an-n">'+esc(anVal(x.v, u))+'</td><td>'+esc(anMarcaTxt(x.m))+'</td><td>Sí'+(x===Pm.mejor?' · la mejor':'')+(x.por_confirmar.length?' <small>'+esc(x.por_confirmar.join(', '))+'</small>':'')+'</td></tr>'; }).join('') : '')+
+        X.mc.aparte.map(function(x){ return '<tr><td class="an-n">'+esc(x.m.tiempo_display || anVal(x.m.tiempo_segundos, u))+'</td><td>'+esc(anMarcaTxt(x.m))+'</td><td>Aparte <small>'+esc(x.motivo)+'</small></td></tr>'; }).join('')+'</table>' : '<p class="fx-sin">sin resultados registrados</p>')+
+      '<p class="nota">Grupo usado: '+esc(Pm ? Pm.etiqueta : '—')+'. '+(Pm && Pm.evolucion==='descriptiva' ? 'Con '+Pm.n+' resultados comparables se enseña su evolución de forma descriptiva: no es un patrón ni dice por qué.' : 'Con '+(Pm ? Pm.n : 0)+' resultado'+((Pm ? Pm.n : 0)===1?'':'s')+' comparable'+((Pm ? Pm.n : 0)===1?'':'s')+' no se describe evolución (hacen falta 3).')+'</p>';
     var rv = X.rev, f4 = [];
     if (rv.vencidas.length) f4.push(plural(rv.vencidas.length, 'revisión vencida', 'revisiones vencidas')+' ('+rv.vencidas.map(function(d){ return fMedia(d.revision); }).join(', ')+')');
+    if (rv.hoy.length) f4.push(plural(rv.hoy.length, 'decisión para revisar hoy', 'decisiones para revisar hoy'));
     if (rv.proximas.length) f4.push(plural(rv.proximas.length, 'revisión próxima', 'revisiones próximas')+' ('+rv.proximas.map(function(d){ return fMedia(d.revision); }).join(', ')+')');
     if (X.modelo && X.modelo.estado!=='vigente') f4.push('modelo de parciales sin aprobar');
     if (X.parc && X.parc.intentos===1) f4.push('parciales de un solo intento');
-    var d4 = '<h3>Conviene revisar</h3><p>Decisiones vigentes cuya revisión ha llegado (vencidas) o llega en los próximos '+rv.dias+' días (criterio del grupo). Ninguna se cierra sola: siguen vigentes hasta que alguien las revisa.</p>'+
-      '<table class="fx-t fx-w"><tr><th>Decisión</th><th>Desde</th><th>Revisión</th><th></th></tr>'+rv.vencidas.concat(rv.proximas).map(function(d){ return '<tr><td>'+esc(d.decision)+(d.motivo?'<small>Motivo: '+esc(d.motivo)+'</small>':'')+'</td><td>'+esc(fMedia(d.inicio))+'</td><td>'+esc(fMedia(d.revision))+'</td><td>'+(d.revision<=hoy ? tag('t-rev','vencida') : tag('t-sind','próxima'))+'</td></tr>'; }).join('')+
-      (rv.vencidas.length||rv.proximas.length ? '' : '<tr><td colspan="4" class="fx-sin">ninguna</td></tr>')+'</table>'+(rv.sinFecha.length ? '<p class="nota">'+plural(rv.sinFecha.length, 'decisión vigente sin fecha de revisión', 'decisiones vigentes sin fecha de revisión')+'.</p>' : '');
-    h += '<section class="an-card"><h2 class="an-cab">En corto<span>cada frase abre sus datos</span></h2><div class="an-res">'+
-      '<div><span class="an-et">Qué preparamos</span><p>'+f1+'</p><small>'+esc(X.tem ? 'Temporada '+X.tem.nombre : '')+anVer('obj', d1)+'</small></div>'+
-      '<div><span class="an-et">Trabajo registrado</span><p>'+f2+'</p><small>'+esc(periodo)+' · solo metros'+anVer('trab', d2)+'</small></div>'+
-      '<div><span class="an-et">Cómo responde</span><p>'+f3+'</p><small>'+esc(m3)+anVer('resp', d3)+'</small></div>'+
-      '<div><span class="an-et">Conviene revisar</span><p>'+(f4.length ? esc(f4.join(' · '))+'.' : '<span class="fx-sin">Nada pendiente de revisar.</span>')+'</p><small>criterio: '+rv.dias+' días'+anVer('rev', d4)+'</small></div>'+
+    var revTag = function(d){ return d.revision < hoy ? tag('t-rev','revisión vencida') : d.revision===hoy ? tag('t-rev','revisar hoy') : tag('t-sind','próxima revisión'); };
+    var d4 = '<h3>Conviene revisar</h3><p>Decisiones vigentes con la revisión antes de hoy (vencida), hoy, o en los próximos '+rv.dias+' días (criterio del grupo). Fecha de Europe/Madrid. Ninguna se cierra sola: siguen vigentes hasta que alguien las revisa.</p>'+
+      '<table class="fx-t fx-w"><tr><th>Decisión</th><th>Desde</th><th>Revisión</th><th></th></tr>'+rv.vencidas.concat(rv.hoy, rv.proximas).map(function(d){ return '<tr><td>'+esc(d.decision)+(d.motivo?'<small>Motivo: '+esc(d.motivo)+'</small>':'')+'</td><td>'+esc(fMedia(d.inicio))+'</td><td>'+esc(fMedia(d.revision))+'</td><td>'+revTag(d)+'</td></tr>'; }).join('')+
+      (rv.vencidas.length||rv.hoy.length||rv.proximas.length ? '' : '<tr><td colspan="4" class="fx-sin">ninguna</td></tr>')+'</table>'+(rv.sinFecha.length ? '<p class="nota">'+plural(rv.sinFecha.length, 'decisión vigente sin fecha de revisión', 'decisiones vigentes sin fecha de revisión')+'.</p>' : '');
+    // En el móvil, cada frase en corto; el detalle, en «ver datos».
+    var b1 = X.pr ? esc(X.pr.nombre)+(X.obj ? ' · objetivo <span class="an-num">'+esc(X.obj.objetivo_texto||anVal(X.obj.objetivo_num, u))+'</span>' : ' · sin objetivo') : '<span class="fx-sin">sin prueba</span>';
+    var b2 = kT.previsto ? '<span class="an-num">'+esc(cifra(kT.previsto, 'm'))+'</span> previstos · <span class="an-num">'+esc(cifra(kT.confirmado||0, ''))+'</span> con detalle' : '<span class="fx-sin">sin carrera prevista</span>';
+    var b3 = Pm && Pm.mejor ? 'Mejor <span class="an-num">'+esc(anVal(Pm.mejor.v, u))+'</span>'+(difObj!=null ? ' · '+esc(anDif(difObj, u))+' respecto al objetivo' : '') : '<span class="fx-sin">sin resultados comparables</span>';
+    var b4 = f4.length ? esc(f4.slice(0, 2).join(' · ')) : '<span class="fx-sin">nada pendiente</span>';
+    var resumen = '<section class="an-card"><h2 class="an-cab">En corto<span>'+(mov ? 'toca «ver datos»' : 'cada frase abre sus datos')+'</span></h2><div class="an-res">'+
+      '<div><span class="an-et">Qué preparamos</span><p>'+(mov ? b1 : f1+fc)+'</p><small>'+esc(X.tem ? 'Temporada '+X.tem.nombre : '')+anVer('obj', d1)+'</small></div>'+
+      '<div><span class="an-et">Trabajo registrado</span><p>'+(mov ? b2 : f2)+'</p><small>'+esc(periodo)+' · solo metros'+anVer('trab', d2)+'</small></div>'+
+      '<div><span class="an-et">Cómo responde</span><p>'+(mov ? b3 : f3)+'</p><small>'+esc(m3)+anVer('resp', d3)+'</small></div>'+
+      '<div><span class="an-et">Conviene revisar</span><p>'+(mov ? b4 : (f4.length ? esc(f4.join(' · '))+'.' : '<span class="fx-sin">Nada pendiente de revisar.</span>'))+'</p><small>criterio: '+rv.dias+' días'+anVer('rev', d4)+'</small></div>'+
       '</div></section>';
 
     // ---- Dos gráficas ----
-    var gm = '<section class="an-card"><h2 class="an-cab">'+esc(X.pr ? X.pr.nombre : 'Marcas')+' · marcas comparables<span>12 meses · '+esc(Pm ? Pm.etiqueta : '')+'</span></h2><div class="an-in">'+svgMarcas(X)+
-      '<p class="nota">'+(X.pr && !X.pr.mas_es_mejor ? 'Más arriba = mejor (menos tiempo). ' : 'Más arriba = mejor. ')+'Puntos sin unir: entre una marca y otra no hay datos. Punto hueco = alguna condición por confirmar. '+(X.mc.aparte.length ? 'Aparte, sin mezclar: '+esc(X.mc.aparte.map(function(x){ return (x.m.tiempo_display||sTxt(x.m.tiempo_segundos))+' ('+anFecha(x.m.fecha)+', '+x.motivo.split(':')[0]+')'; }).join(' · '))+'.' : '')+'</p></div></section>';
+    var gm = '<section class="an-card"><h2 class="an-cab">'+esc(X.pr ? X.pr.nombre : 'Marcas')+' · resultados comparables<span>12 meses'+(Pm ? ' · '+esc(Pm.etiqueta) : '')+'</span></h2><div class="an-in">'+svgMarcas(X)+
+      (Pm ? '<p class="nota">'+(X.pr && !X.pr.mas_es_mejor ? 'Más arriba = mejor (menos tiempo). ' : 'Más arriba = mejor. ')+'Puntos sin unir: entre un resultado y otro no hay datos. Punto hueco = alguna condición por confirmar.</p>' : '')+
+      (X.mc.aparte.length ? '<p class="nota">Aparte, sin mezclar: '+esc(X.mc.aparte.map(function(x){ return (x.m.tiempo_display||anVal(x.m.tiempo_segundos, u))+' ('+anFecha(x.m.fecha)+', '+x.motivo.split(':')[0]+')'; }).join(' · '))+'.</p>' : '')+'</div></section>';
     var gp;
-    if (X.parc){ var r = X.parc.r, mo = X.modelo;
-      gp = '<section class="an-card"><h2 class="an-cab">Parciales · real frente al modelo<span>'+esc(anFecha(X.parc.marca.fecha))+' · intento '+X.parc.intento+(X.parc.intentos>1?' de '+X.parc.intentos:'')+'</span></h2><div class="an-in">'+svgParciales(r)+
-        '<p class="nota"><span class="an-ley an-real"></span> real · <span class="an-ley an-mod"></span> modelo '+(mo ? '<b>'+esc(estadoModelo(mo))+'</b>' : '<span class="fx-sin">sin modelo</span>')+'</p>'+
-        '<p class="nota">Pasos: real '+esc(r.pasosReal.map(function(p){ return p.t==null ? '—' : sTxt(p.t); }).join(' · '))+(mo ? ' / modelo '+esc(r.pasosModelo.map(function(p){ return p.t==null ? '—' : sTxt(p.t); }).join(' · ')) : '')+'. Suma de tramos '+esc(sTxt(r.sumaReal))+' frente a '+esc(X.parc.marca.tiempo_display||sTxt(X.parc.marca.tiempo_segundos))+'; las subdivisiones no se suman dos veces.'+(r.sinPar.length ? ' '+plural(r.sinPar.length, 'tramo del modelo sin medir', 'tramos del modelo sin medir')+'.' : '')+'</p>'+
-        '<p class="nota">'+(X.parc.intentos===1 ? 'Un solo intento: describe esa carrera, no un patrón.' : '')+' <button type="button" class="ac-link" data-an-modelo="1">Modelo de parciales…</button></p></div></section>';
-    } else gp = '<section class="an-card"><h2 class="an-cab">Parciales<span></span></h2><div class="an-in"><p class="fx-sin">Ningún resultado de '+esc(X.pr ? X.pr.nombre : 'su prueba')+' con parciales en 12 meses.</p>'+(X.obj ? '<button type="button" class="ac-link" data-an-modelo="1">Modelo de parciales…</button>' : '')+'</div></section>';
-    h += '<div class="an-dos">'+gm+gp+'</div>';
+    if (!conParciales(X.pr)) gp = '<section class="an-card"><h2 class="an-cab">Parciales<span></span></h2><div class="an-in"><p class="fx-sin">Los parciales no aplican a '+esc(X.pr ? X.pr.nombre : 'esta prueba')+'.</p></div></section>';
+    else if (X.parc){ var r = X.parc.r, mo = X.modelo;
+      var tabla = '<div class="fx-scroll"><table class="fx-t fx-w an-tp"><tr><th>Tramo</th><th>Real</th><th>Modelo</th><th>Diferencia</th><th>Paso real</th><th>Paso modelo</th><th>Diferencia acumulada</th></tr>'+r.filas.map(function(f, i){
+          var pr = r.pasosReal[i], pm = r.pasosModelo[i], da = pr && pm && pr.t!=null && pm.t!=null ? Math.round((pr.t-pm.t)*100)/100 : null;
+          return '<tr><td>'+esc(numES(f.desde_m)+'–'+numES(f.hasta_m))+' m</td><td class="an-n">'+esc(sTxt(f.real))+'</td><td class="an-n">'+(f.modelo!=null ? esc(sTxt(f.modelo)) : (mo ? anSinDato() : '<span class="fx-sin">—</span>'))+'</td><td class="an-n">'+(f.dif!=null ? esc(anDif(f.dif, 's')) : '<span class="fx-sin">—</span>')+'</td>'+
+            '<td class="an-n">'+(pr && pr.t!=null ? esc(sTxt(pr.t)) : anSinDato())+'</td><td class="an-n">'+(pm && pm.t!=null ? esc(sTxt(pm.t)) : (mo ? anSinDato() : '<span class="fx-sin">—</span>'))+'</td><td class="an-n">'+(da!=null ? esc(anDif(da, 's')) : '<span class="fx-sin">—</span>')+'</td></tr>'; }).join('')+'</table></div>';
+      gp = '<section class="an-card"><h2 class="an-cab">Parciales · real, modelo y diferencia<span>'+esc(anFecha(X.parc.marca.fecha))+' · intento '+X.parc.intento+(X.parc.intentos>1?' de '+X.parc.intentos:'')+'</span></h2><div class="an-in">'+svgParciales(r)+
+        '<p class="nota"><span class="an-ley an-real"></span> Real · <span class="an-ley an-mod"></span> Modelo '+(mo ? '<b>'+esc(estadoModelo(mo))+'</b>' : '<span class="fx-sin">(sin modelo)</span>')+' · Diferencia = real − modelo.</p>'+tabla+
+        '<p class="nota">Suma de tramos '+esc(sTxt(r.sumaReal))+' frente al resultado '+esc(X.parc.marca.tiempo_display||sTxt(X.parc.marca.tiempo_segundos))+'; las subdivisiones no se suman dos veces.'+(r.sinPar.length ? ' '+plural(r.sinPar.length, 'tramo del modelo sin medir', 'tramos del modelo sin medir')+'.' : '')+(X.parc.intentos===1 ? ' Un solo intento: describe esa carrera, no un patrón.' : '')+
+        ' <button type="button" class="ac-link" data-an-modelo="1">Modelo de parciales…</button></p></div></section>';
+    } else gp = '<section class="an-card"><h2 class="an-cab">Parciales<span></span></h2><div class="an-in"><p class="fx-sin">Sin parciales registrados de '+esc(X.pr ? X.pr.nombre : 'esta prueba')+' en 12 meses.</p>'+(X.obj ? '<button type="button" class="ac-link" data-an-modelo="1">Modelo de parciales…</button>' : '')+'</div></section>';
+    var graficas = '<div class="an-dos">'+gm+gp+'</div>';
 
     // ---- Hasta 3 asuntos: observado · por comprobar · decisión ----
     var asu = [];
     if (X.parc && X.parc.r.mayor && X.modelo){ var M = X.parc.r.mayor;
-      asu.push(['obs', 'Observado', 'En la carrera del '+anFecha(X.parc.marca.fecha)+', la mayor diferencia con el modelo está en '+numES(M.desde_m)+'–'+numES(M.hasta_m)+' m ('+(M.dif>0?'+':'')+numES(M.dif, 2)+' s).',
-        'Base: '+plural(X.parc.r.filas.length, 'tramo', 'tramos')+' de un resultado. Límite: '+(X.parc.intentos===1 ? 'un solo intento' : X.parc.intentos+' intentos')+(X.modelo.estado!=='vigente' ? '; el modelo es una propuesta sin aprobar' : '')+'. No dice por qué.', 'resp']);
-    } else if (Pm && Pm.evolucion==='descriptiva'){
-      asu.push(['obs', 'Observado', Pm.n+' marcas comparables de '+X.pr.nombre+': '+Pm.marcas.map(function(x){ return sTxt(x.v); }).join(' → ')+'.', 'Evolución descriptiva ('+Pm.etiqueta+'), no un patrón.', 'resp']);
-    } else if (g0 && g0.evolucion==='descriptiva'){
-      asu.push(['obs', 'Observado', g0.conDatos+' filas comparables con datos en «'+g0.texto+'».', 'Evolución descriptiva; '+(g0.estado==='comparable' ? 'condiciones iguales' : 'comparabilidad por confirmar'), 'comp']);
+      asu.push(['obs', 'Observado', 'En la carrera del '+anFecha(X.parc.marca.fecha)+', la mayor diferencia con el modelo está en '+numES(M.desde_m)+'–'+numES(M.hasta_m)+' m ('+anDif(M.dif, 's')+').',
+        'Base: '+plural(X.parc.r.filas.length, 'tramo', 'tramos')+' de un resultado. Límite: '+(X.parc.intentos===1 ? 'un solo intento' : X.parc.intentos+' intentos')+(X.modelo.estado!=='vigente' ? '; el modelo está sin aprobar' : '')+'. No dice por qué.', 'resp']);
+    } else if (X.evo && Pm.n >= 3){
+      asu.push(['obs', 'Observado', Pm.n+' resultados comparables de '+X.pr.nombre+': '+Pm.marcas.map(function(x){ return anVal(x.v, u); }).join(' → ')+'.', 'Evolución descriptiva ('+Pm.etiqueta+'), no un patrón; no dice por qué.', 'resp']);
     }
     if (X.sinReg.length) asu.push(['com', 'Por comprobar', plural(X.sinReg.length, 'sesión con el plazo vencido sin registro', 'sesiones con el plazo vencido sin registro')+' ('+X.sinReg.map(function(s){ return fCorta(s.s.fecha); }).join(', ')+').', 'Falta saber si se hicieron: no se dan por no hechas.', 'cob']);
-    else if (X.disc.length) asu.push(['com', 'Por comprobar', plural(X.disc.length, 'discrepancia sin resolver', 'discrepancias sin resolver')+' entre atleta y entrenador.', 'No se suman como valor resuelto.', 'cob']);
-    else if (g0 && g0.estado!=='comparable') asu.push(['com', 'Por comprobar', 'Comparabilidad por confirmar en «'+g0.texto+'».', g0.estado==='condiciones_distintas' ? 'Condiciones distintas: '+g0.distintas.join(', ')+'.' : 'Falta: '+g0.faltan.join(', ')+'.', 'comp']);
-    else if (X.modelo && X.modelo.estado!=='vigente') asu.push(['com', 'Por comprobar', 'El modelo de parciales es una '+estadoModelo(X.modelo)+'.', 'No se usa como vigente hasta que lo apruebe Andrés.', 'resp']);
-    var dv = rv.vencidas[0] || rv.proximas[0];
-    if (dv) asu.push(['dec', 'Decisión del entrenador', dv.decision+'.', (dv.motivo ? 'Motivo: «'+dv.motivo+'». ' : '')+'Desde el '+fMedia(dv.inicio)+' · '+(dv.revision<=hoy ? 'revisión vencida el '+fMedia(dv.revision)+': sigue vigente hasta revisarla' : 'se revisa el '+fMedia(dv.revision))+'.', 'rev']);
-    h += '<section class="an-card"><h2 class="an-cab">Merece atención<span>máximo 3 · lo demás, abajo</span></h2>'+(asu.length ? '<div class="an-asu">'+asu.slice(0, 3).map(function(x){
+    else if (X.disc.length) asu.push(['com', 'Por comprobar', plural(X.disc.length, 'discrepancia sin resolver', 'discrepancias sin resolver')+' entre atleta y entrenador.', 'No se dan como valor resuelto.', 'cob']);
+    else if (g0 && g0.estado!=='comparable') asu.push(['com', 'Por comprobar', 'Comparabilidad por confirmar en «'+g0.prescripcion+'».', g0.estado==='condiciones_distintas' ? 'Condiciones distintas: '+g0.distintas.join(', ')+'.' : 'Falta: '+g0.faltan.join(', ')+'.', 'comp']);
+    else if (X.modelo && X.modelo.estado!=='vigente') asu.push(['com', 'Por comprobar', 'Modelo de parciales: '+estadoModelo(X.modelo)+'.', 'No se usa como vigente hasta que lo apruebe Andrés.', 'resp']);
+    var dv = rv.vencidas[0] || rv.hoy[0] || rv.proximas[0];
+    if (dv) asu.push(['dec', 'Decisión del entrenador', dv.decision+'.', (dv.motivo ? 'Motivo: «'+dv.motivo+'». ' : '')+'Desde el '+fMedia(dv.inicio)+' · '+(dv.revision < hoy ? 'revisión vencida el '+fMedia(dv.revision)+': sigue vigente hasta revisarla' : dv.revision===hoy ? 'revisar hoy: sigue vigente hasta revisarla' : 'próxima revisión el '+fMedia(dv.revision))+'.', 'rev']);
+    var atencion = '<section class="an-card"><h2 class="an-cab">Merece atención<span>máximo 3 · lo demás, abajo</span></h2>'+(asu.length ? '<div class="an-asu">'+asu.slice(0, 3).map(function(x){
         return '<div><span class="an-tag an-'+x[0]+'">'+esc(x[1])+'</span><b>'+esc(x[2])+'</b><small>'+esc(x[3])+'</small><button type="button" class="ac-link" data-an-ver="'+x[4]+'">ver datos ›</button></div>'; }).join('')+'</div>'
       : '<p class="fx-sin an-in">Nada que destacar con los datos de este periodo.</p>')+'</section>';
+    // En el móvil, lo que merece atención antes que las gráficas.
+    h += resumen + (mov ? atencion + graficas : graficas + atencion);
 
     // ---- Plegables ----
-    // Trabajo por contenido
-    var objsC = Object.keys(X.tot.R.porMagnitud).filter(function(k){ return k.indexOf('carrera|m|')===0; }).map(function(k){ return k.split('|')[2]; });
-    var trab = svgSemanas(X)+
-      '<p class="nota"><span class="an-ley an-c"></span> confirmado con detalle · <span class="an-ley an-g"></span> solo por «completa» (declaración global) · <span class="an-ley an-n"></span> no realizado · <span class="an-ley an-s"></span> sin datos o en discrepancia (hueco, no cero). La altura total es lo previsto.</p>'+
-      '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Objetivo (4 semanas, m)</th><th>Previsto</th><th>Con detalle</th><th>Por «completa»</th><th>No realizado</th><th>Sin datos</th><th>En discrepancia</th></tr>'+
-      objsC.map(function(o){ var k = anMag(X.tot, 'carrera|m|'+o); return '<tr><td>'+esc(objTxt(o))+'</td><td>'+anCifra(k.previsto)+'</td><td>'+anCifra(k.confirmado)+'</td><td>'+anCifra(k.global)+'</td><td>'+anCifra(k.no_realizado)+'</td><td>'+anCifra((k.sin_datos||0)+(k.sin_concretar||0))+'</td><td>'+anCifra(k.discrepancia)+'</td></tr>'; }).join('')+
-      '<tr><th>Carrera total</th><th>'+anCifra(kT.previsto)+'</th><th>'+anCifra(kT.confirmado)+'</th><th>'+anCifra(kT.global)+'</th><th>'+anCifra(kT.no_realizado)+'</th><th>'+anCifra((kT.sin_datos||0)+(kT.sin_concretar||0))+'</th><th>'+anCifra(kT.discrepancia)+'</th></tr></table></div>';
+    var objsT = Object.keys(X.tot.T).filter(function(k){ return k!=='total' && k!=='adicional'; });
+    var trab = svgSemanas(X)+LEY_T+tablaTrabajo(objsT.map(function(o){ return [objTxt(o), X.tot.T[o]]; }).concat(X.tot.T.adicional ? [['Adicional (no previsto)', X.tot.T.adicional]] : []).concat([['Carrera total', kT, true]]), 'Objetivo (4 semanas, m)');
     var otras = [];
     Object.keys(X.tot.R.porMagnitud).forEach(function(k){ var p = k.split('|'); if (p[0]==='fuerza' && p[1]==='reps') otras.push(['Fuerza · repeticiones · '+objTxt(p[2]).toLowerCase(), k]); if (p[0]==='saltos') otras.push(['Saltos · '+p[2]+' · '+(p[1]==='saltos_o_contactos'?'unidad pendiente':p[1]), k]); if (p[0]==='lanzamientos') otras.push(['Lanzamientos · '+p[2], k]); });
-    if (otras.length) trab += '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Otras unidades (cada una por separado)</th><th>Previsto</th><th>Con detalle</th><th>Por «completa»</th><th>Sin datos</th></tr>'+otras.map(function(o){ var k = anMag(X.tot, o[1]); return '<tr><td>'+esc(o[0])+'</td><td>'+anCifra(k.previsto)+'</td><td>'+anCifra(k.confirmado)+'</td><td>'+anCifra(k.global)+'</td><td>'+anCifra((k.sin_datos||0)+(k.sin_concretar||0))+'</td></tr>'; }).join('')+'</table></div>';
-    // Sesiones comparables
+    if (otras.length) trab += '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Otras unidades (cada una por separado)</th><th>Previsto</th><th>Con detalle</th><th>Por «completa»</th><th>No realizado</th><th>Sin datos o sin concretar</th></tr>'+otras.map(function(o){ var k = X.tot.R.porMagnitud[o[1]] || {}, ap = !!k.previsto;
+        return '<tr><td>'+esc(o[0])+'</td><td>'+anCelda(k.previsto, ap)+'</td><td>'+anCelda(k.confirmado, ap)+'</td><td>'+anCelda(k.global, ap)+'</td><td>'+anCelda(k.no_realizado, ap)+'</td><td>'+anCelda((k.sin_datos||0)+(k.sin_concretar||0), ap)+'</td></tr>'; }).join('')+'</table></div>';
+    // Sesiones comparables: todas las repeticiones, en orden, con lo que se compara
     var comp = X.comp.length ? X.comp.map(function(g){
       var est = g.estado==='comparable' ? tag('t-hecha', 'comparable') : g.estado==='por_confirmar' ? tag('t-rev', 'comparabilidad por confirmar') : tag('t-rev', 'condiciones distintas');
-      return '<div class="an-grupo"><b>«'+esc(g.texto)+'»</b> '+est+'<small>'+plural(g.casos.length, 'vez prescrita', 'veces prescrita')+' · '+plural(g.conDatos, 'con datos', 'con datos')+' · '+plural(g.intentos, 'repetición hecha', 'repeticiones hechas')+
-        (g.faltan.length ? ' · falta: '+esc(g.faltan.join(', ')) : '')+(g.distintas.length ? ' · distintas: '+esc(g.distintas.join(', ')) : '')+(g.evolucion==='descriptiva' ? ' · evolución descriptiva, no un patrón' : '')+'</small>'+
-        '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Día</th><th>Tiempos (fuente · método)</th><th>Hechas</th><th>RPE</th><th>Comentario del atleta</th></tr>'+g.casos.map(function(c){
-          var sin = !c.registro;
+      return '<div class="an-grupo"><b>'+esc(g.prescripcion)+'</b> '+est+'<small>Se compara: distancias, repeticiones, recuperaciones e intensidad prescritas (iguales en todas) · '+esc(ANC.CONDS[g.clase].map(function(k){ return ANC.COND_TXT[k]; }).join(', '))+
+        (g.faltan.length ? ' · falta: '+esc(g.faltan.join(', ')) : '')+(g.distintas.length ? ' · distintas: '+esc(g.distintas.join(', ')) : '')+'</small>'+
+        '<small>'+plural(g.casos.length, 'vez prescrita', 'veces prescrita')+' · '+plural(g.conDatos, 'con datos', 'con datos')+' · '+plural(g.intentos, 'repetición hecha', 'repeticiones hechas')+(g.evolucion==='descriptiva' ? ' · evolución descriptiva, no un patrón' : ' · con menos de 3 no se describe evolución')+'</small>'+
+        '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Día</th><th>Repeticiones en orden (fuente · método)</th><th>Hechas</th><th>RPE</th><th>Comentario del atleta</th></tr>'+g.casos.map(function(c){
+          var sin = !c.registro, R = anReps(c);
           return '<tr><td><button type="button" class="ac-link" data-abrir="'+c.sid+'|'+X.aid+'">'+esc(fCorta(c.fecha))+'</button><small>'+esc(c.titulo||'')+'</small></td>'+
-            '<td>'+(c.tiempos.length ? c.tiempos.map(function(t){ return '<span class="an-n">'+esc(t.valor)+'</span> <small class="an-inl">'+esc(t.fuente+' · '+(ANC.METODO[t.metodo]||t.metodo))+'</small>'; }).join('<br>') : '<span class="fx-sin">'+(sin ? (c.vencida ? 'sin registro (plazo vencido)' : 'sin registro') : 'sin tiempos')+'</span>')+'</td>'+
-            '<td>'+(sin ? '<span class="fx-sin">—</span>' : c.hechas+' de '+c.previstas)+'</td><td>'+(c.rpe!=null ? c.rpe : '<span class="fx-sin">—</span>')+'</td><td>'+(c.comentario ? '«'+esc(c.comentario)+'»' : '<span class="fx-sin">—</span>')+'</td></tr>'; }).join('')+'</table></div></div>'; }).join('')
+            '<td>'+(R.length ? R.map(function(r){ return '<div><span class="an-inl">'+r.rep+'.ª'+(r.m!=null?' · '+r.m+' m':'')+'</span> '+r.t.map(function(t){ return '<span class="an-n">'+esc(t.valor)+'</span> <small class="an-inl">'+esc(t.fuente+' · '+(ANC.METODO[t.metodo]||t.metodo))+'</small>'; }).join(' / ')+'</div>'; }).join('') : (sin ? '<span class="fx-sin">'+(c.vencida ? 'sin registro (plazo vencido)' : 'por llegar')+'</span>' : anSinDato()))+'</td>'+
+            '<td>'+(sin ? anSinDato() : c.hechas+' de '+c.previstas)+'</td><td>'+(c.rpe!=null ? c.rpe : anSinDato())+'</td><td>'+(c.comentario ? '«'+esc(c.comentario)+'»' : anSinDato())+'</td></tr>'; }).join('')+'</table></div></div>'; }).join('')
       : '<p class="fx-sin">Ninguna fila se ha prescrito igual dos veces en el periodo.</p>';
-    comp += '<p class="nota">Se compara la fila (bloque o ejercicio) por su prescripción: repeticiones, metros, recuperaciones e intensidad; el título y las notas no cuentan. Condiciones que se miran: salida, calzado, superficie y método (carrera); variante y recorrido (fuerza); altura y separaciones (vallas). RPE y comentarios, tal cual: no se convierten en conclusión.</p>';
+    comp += '<p class="nota">El título y las notas no cuentan. RPE y comentarios, tal cual: no se convierten en conclusión.</p>';
     // Cobertura
     var cob = '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Semana</th><th>Feedback</th><th>Resultado conocido · m</th><th>Resultado conocido · repeticiones</th><th>Series con kg</th></tr>'+X.sem.map(function(C, i){ var c = C.cob;
-        return '<tr><td>'+esc(fMedia(X.semanas[i]))+'</td><td>'+esc(ANC.cobTxt(c.feedback.num, c.feedback.den))+(c.feedback.anticipados ? '<small>+'+c.feedback.anticipados+' en plazo</small>' : '')+'</td><td>'+esc(ANC.cobTxt(c.resultado_m.num, c.resultado_m.den, 'm'))+(c.resultado_m.global ? '<small>'+esc(cifra(c.resultado_m.global, 'm'))+' solo por «completa»</small>' : '')+'</td><td>'+esc(ANC.cobTxt(c.resultado_reps.num, c.resultado_reps.den))+'</td><td>'+esc(ANC.cobTxt(c.cargas.num, c.cargas.den))+(c.cargas.global ? '<small>'+c.cargas.global+' solo por «completa»</small>' : '')+'</td></tr>'; }).join('')+'</table></div>'+
-      '<p class="nota">Siempre N de M y porcentaje, sin umbral de aviso. Lo futuro y lo que sigue en plazo no cuenta como carencia.</p>'+
+        return '<tr><td>'+esc(fMedia(X.semanas[i]))+'</td><td>'+esc(ANC.cobTxt(c.feedback.num, c.feedback.den))+(c.feedback.anticipados ? '<small>+'+c.feedback.anticipados+' antes del plazo</small>' : '')+'</td><td>'+esc(ANC.cobTxt(c.resultado_m.num, c.resultado_m.den, 'm'))+(c.resultado_m.global ? '<small>'+esc(cifra(c.resultado_m.global, 'm'))+' solo por «completa»</small>' : '')+'</td><td>'+esc(ANC.cobTxt(c.resultado_reps.num, c.resultado_reps.den))+'</td><td>'+esc(ANC.cobTxt(c.cargas.num, c.cargas.den))+(c.cargas.global ? '<small>'+c.cargas.global+' solo por «completa»</small>' : '')+'</td></tr>'; }).join('')+'</table></div>'+
+      '<p class="nota">Siempre N de M y porcentaje, sin umbral de aviso. Lo futuro y lo que sigue en plazo no entra: ni cuenta como falta ni baja la cobertura. Los kg se cuentan por series.</p>'+
       '<ul class="an-pend">'+(X.sinReg.length ? '<li>'+plural(X.sinReg.length, 'sesión', 'sesiones')+' con el plazo vencido sin registro: '+X.sinReg.map(function(s){ return '<button type="button" class="ac-link" data-abrir="'+s.id+'|'+X.aid+'">'+esc(fCorta(s.s.fecha))+'</button>'; }).join(', ')+'</li>' : '')+
       (X.disc.length ? '<li>'+plural(X.disc.length, 'discrepancia sin resolver', 'discrepancias sin resolver')+' (no se dan como valor resuelto)</li>' : '')+
       (X.tot.sesiones.some(function(s){ return s.reg && s.reg.version_garantia && s.reg.version_garantia!=='exacta'; }) ? '<li>Registros sin garantía de versión exacta: su «completa» no se reparte por filas.</li>' : '')+
       (!X.sinReg.length && !X.disc.length ? '<li class="fx-sin">Nada pendiente de registro.</li>' : '')+'</ul>';
-    // Aspectos a trabajar
+    // Aspectos a trabajar (y progresos con datos)
     var fila = function(a, e, c, f, d){ return '<tr><td>'+esc(a)+'</td><td>'+e+'</td><td>'+esc(c)+'</td><td>'+esc(f)+'</td><td>'+d+'</td></tr>'; };
     var nin = '<span class="fx-sin">ninguna vinculada</span>';
     var asp = '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Aspecto</th><th>Evidencia</th><th>Certeza o límite</th><th>Qué falta medir</th><th>Decisión del entrenador</th></tr>';
+    var prog = [];
+    if (X.evo && X.evo.mejora) prog.push(fila(X.pr.nombre, esc(Pm.marcas.map(function(x){ return anVal(x.v, u); }).join(' → '))+' ('+esc(anDif(X.evo.dif, u))+')', plural(Pm.n, 'resultado comparable', 'resultados comparables')+' ('+Pm.etiqueta+')'+(Pm.n < 3 ? '; con 2 no se describe evolución' : ''), '—', nin));
+    X.comp.forEach(function(g){ var fu = anFuenteComun(g); if (g.evolucion!=='descriptiva' || !fu) return; var cs = g.casos.filter(function(c){ return c.tiempos.length; });
+      var pri = cs.map(function(c){ var R = anReps(c, fu); return R.length ? parseFloat(String(R[0].t[0].valor).replace(',', '.')) : null; });
+      if (pri.some(function(v){ return v==null; }) || !(pri[pri.length-1] < pri[0])) return;
+      prog.push(fila(g.prescripcion, '1.ª repetición: '+esc(cs.map(function(c){ return anReps(c, fu)[0].t[0].valor; }).join(' → '))+(cs.every(function(c){ return c.rpe!=null; }) ? ' · RPE '+esc(cs.map(function(c){ return c.rpe; }).join(' · ')) : ''), plural(cs.length, 'sesión', 'sesiones')+' con datos; '+(g.estado==='comparable' ? 'condiciones iguales' : 'comparabilidad por confirmar'), g.faltan.length ? 'Registrar '+g.faltan.join(' y ') : '—', nin)); });
+    if (prog.length) asp += '<tr class="an-gr"><td colspan="5">Progresos y fortalezas con datos (sin deducir causas)</td></tr>'+prog.join('');
     asp += '<tr class="an-gr"><td colspan="5">Rendimiento frente a su objetivo</td></tr>';
-    if (X.obj && Pm && Pm.mejor) asp += fila(X.obj.prueba, 'Mejor '+esc(sTxt(Pm.mejor.v))+' frente a '+esc(X.obj.objetivo_texto||sTxt(X.obj.objetivo_num))+' acordado', plural(Pm.n, 'marca comparable', 'marcas comparables')+' ('+Pm.etiqueta+')', Pm.n < 3 ? 'Más marcas comparables' : '—', nin);
-    else asp += fila(X.obj ? X.obj.prueba : 'Objetivo', '<span class="fx-sin">'+(X.obj ? 'sin marcas comparables' : 'sin objetivo acordado')+'</span>', '—', X.obj ? 'Una marca en condiciones comparables' : 'Acordar el objetivo', nin);
-    if (X.parc && X.parc.r.mayor && X.modelo) asp += fila('Tramo '+numES(X.parc.r.mayor.desde_m)+'–'+numES(X.parc.r.mayor.hasta_m)+' m', (X.parc.r.mayor.dif>0?'+':'')+esc(numES(X.parc.r.mayor.dif, 2))+' s sobre el modelo ('+esc(anFecha(X.parc.marca.fecha))+')', (X.parc.intentos===1 ? '1 intento: solo describe esa carrera' : X.parc.intentos+' intentos')+(X.modelo.estado!=='vigente' ? '; modelo sin aprobar' : ''), 'Parciales en más carreras, con el mismo método', nin);
-    asp += '<tr class="an-gr"><td colspan="5">Contenidos según lo registrado (poco registrado no es deficiente)</td></tr>';
-    objsC.map(function(o){ return [o, anMag(X.tot, 'carrera|m|'+o)]; }).filter(function(x){ return x[1].previsto; }).sort(function(x, y){ return x[1].previsto - y[1].previsto; }).slice(0, 4).forEach(function(x){
-      var k = x[1]; asp += fila(objTxt(x[0]), esc(cifra(k.previsto, 'm'))+' previstos en 4 semanas ('+ANC.pct(k.previsto, kT.previsto||0)+' % de la carrera)', 'Es lo planificado, no lo que sabe hacer'+((k.sin_datos||k.sin_concretar) ? '; '+cifra((k.sin_datos||0)+(k.sin_concretar||0), 'm')+' sin datos' : ''), '—', nin); });
+    if (X.obj && Pm && Pm.mejor) asp += fila(X.pr.nombre, 'Mejor '+esc(anVal(Pm.mejor.v, u))+' · '+esc(anDif(difObj, u))+' respecto al objetivo ('+esc(X.obj.objetivo_texto||anVal(X.obj.objetivo_num, u))+')', plural(Pm.n, 'resultado comparable', 'resultados comparables')+' ('+Pm.etiqueta+')', Pm.n < 3 ? 'Más resultados comparables' : '—', nin);
+    else asp += fila(X.pr ? X.pr.nombre : 'Prueba', '<span class="fx-sin">'+(X.obj ? (X.mk.length ? 'sin resultados comparables' : 'sin resultados registrados') : 'sin objetivo acordado')+'</span>', '—', X.obj ? 'Un resultado en condiciones comparables' : 'Acordar el objetivo', nin);
+    if (X.parc && X.parc.r.mayor && X.modelo) asp += fila('Tramo '+numES(X.parc.r.mayor.desde_m)+'–'+numES(X.parc.r.mayor.hasta_m)+' m', esc(anDif(X.parc.r.mayor.dif, 's'))+' respecto al modelo ('+esc(anFecha(X.parc.marca.fecha))+')', (X.parc.intentos===1 ? '1 intento: solo describe esa carrera' : X.parc.intentos+' intentos')+(X.modelo.estado!=='vigente' ? '; modelo sin aprobar' : ''), 'Parciales en más carreras, con el mismo método', nin);
+    asp += '<tr class="an-gr"><td colspan="5">Contenidos en lo planificado y registrado (sin referencia acordada para esta fase: se describe, no se califica)</td></tr>';
+    objsT.map(function(o){ return [o, X.tot.T[o]]; }).filter(function(x){ return x[1].previsto; }).sort(function(x, y){ return x[1].previsto - y[1].previsto; }).forEach(function(x){
+      var k = x[1], sd = (k.sin_datos||0)+(k.sin_concretar||0);
+      asp += fila(objTxt(x[0]), esc(cifra(k.previsto, 'm'))+' previstos en 4 semanas ('+ANC.pct(k.previsto, kT.previsto||0)+' % de la carrera prevista)', 'Es lo planificado, no lo que sabe hacer'+(sd ? '; '+cifra(sd, 'm')+' sin datos o sin concretar' : '')+(k.por_llegar ? '; '+cifra(k.por_llegar, 'm')+' por llegar' : ''), '—', nin); });
     asp += '<tr class="an-gr"><td colspan="5">Capacidades todavía sin evaluar</td></tr>';
     var desde12 = sumar(hoy, -365), sinEval = 0;
-    if (!(TM.rm||[]).some(function(r){ return r.atleta_id===X.aid && r.fecha_test && r.fecha_test >= desde12; })){ sinEval++; asp += fila('Fuerza máxima', '<span class="fx-sin">sin RM medido en 12 meses</span>', 'No se estima nada', 'Un RM con protocolo', nin); }
+    if (!(TM.rm||[]).some(function(r){ return r.atleta_id===X.aid && r.fecha_test && r.fecha_test >= desde12; })){ sinEval++; asp += fila('Fuerza máxima', '<span class="fx-sin">sin RM registrado en 12 meses</span>', 'No se estima nada', 'Un RM con protocolo', nin); }
     (TM.protocolos||[]).filter(function(p){ return p.activo!==false; }).forEach(function(p){
       if (sinEval >= 4) return;
       var hay = (TM.tests||[]).some(function(t){ return t.atleta_id===X.aid && t.protocolo_id===p.id && (t._fecha||'') >= desde12; });
-      if (!hay){ sinEval++; asp += fila(p.nombre, '<span class="fx-sin">sin test en 12 meses</span>', p.completo ? 'Protocolo completo' : 'Protocolo por completar', p.completo ? 'Medirlo' : 'Completar el protocolo y medir', nin); }
+      if (!hay){ sinEval++; asp += fila(p.nombre, '<span class="fx-sin">sin test registrado en 12 meses</span>', p.completo ? 'Protocolo completo' : 'Protocolo por completar', p.completo ? 'Medirlo' : 'Completar el protocolo y medir', nin); }
     });
-    asp += '</table></div><p class="nota">Sin puntuaciones ni semáforos. Una capacidad poco trabajada en lo registrado no demuestra que el atleta sea deficiente en ella.</p>';
+    asp += '</table></div><p class="nota">Sin puntuaciones ni semáforos. Que algo aparezca poco en lo registrado no dice que el atleta sea deficiente en ello.</p>';
     // Referencias
     var mins = X.pr ? (CP.minimas||[]).filter(function(m){ return m.prueba_id===X.pr.id; }) : [];
     var ref = '<div class="an-refs">'+
-      '<div><span class="an-et">Medición real</span>'+(Pm && Pm.mejor ? '<b class="an-num">'+esc(sTxt(Pm.mejor.v))+'</b><small>'+esc(anMarcaTxt(Pm.mejor.m))+'</small>' : '<span class="fx-sin">sin marcas comparables</span>')+'</div>'+
-      '<div><span class="an-et">Objetivo individual acordado</span>'+(X.obj ? '<b class="an-num">'+esc(X.obj.objetivo_texto||sTxt(X.obj.objetivo_num))+'</b><small>'+esc(X.tem.nombre)+'</small>' : '<span class="fx-sin">sin acordar</span>')+'</div>'+
-      '<div class="'+(mins.length?'':'an-vacia')+'"><span class="an-et">Referencia externa</span>'+(mins.length ? mins.slice(0, 2).map(function(m){ return '<b class="an-num">'+esc(m.valor_texto||sTxt(m.valor))+'</b><small>'+esc([m.campeonato, m.categoria, m.fuente_url ? 'fuente: '+m.fuente_url : 'fuente no consta'].filter(Boolean).join(' · '))+'</small>'; }).join('') : '<span class="fx-sin">ninguna cargada</span><small>Ej.: una mínima, con su circular y su periodo</small>')+'</div>'+
+      '<div><span class="an-et">Medición real</span>'+(Pm && Pm.mejor ? '<b class="an-num">'+esc(anVal(Pm.mejor.v, u))+'</b><small>'+esc(anMarcaTxt(Pm.mejor.m))+'</small>' : '<span class="fx-sin">sin resultados comparables</span>')+'</div>'+
+      '<div><span class="an-et">Objetivo individual acordado</span>'+(X.obj ? '<b class="an-num">'+esc(X.obj.objetivo_texto||anVal(X.obj.objetivo_num, u))+'</b><small>'+esc(X.tem.nombre)+'</small>' : '<span class="fx-sin">sin acordar</span>')+'</div>'+
+      '<div class="'+(mins.length?'':'an-vacia')+'"><span class="an-et">Referencia externa</span>'+(mins.length ? mins.slice(0, 2).map(function(m){ return '<b class="an-num">'+esc(m.valor_texto||anVal(m.valor, u))+'</b><small>'+esc([m.campeonato, m.categoria, m.fuente_url ? 'fuente: '+m.fuente_url : 'fuente no consta'].filter(Boolean).join(' · '))+'</small>'; }).join('') : '<span class="fx-sin">ninguna cargada</span><small>Ej.: una mínima, con su circular y su periodo</small>')+'</div>'+
       '<div class="an-vacia"><span class="an-et">Estimación de un modelo</span><span class="fx-sin">no se calcula</span><small>Hace falta un modelo identificado y revisado</small></div></div>'+
       '<p class="nota">Sin equivalencias del tipo «para correr X necesita saltar Y». Manual y electrónico nunca en la misma tendencia.</p>';
     h += '<div class="an-pleg">'+
-      '<details class="fx-sec"><summary><h2>Trabajo por contenido</h2><span class="fx-ex">metros, repeticiones y contactos por separado</span></summary><div class="fx-in">'+trab+'</div></details>'+
+      '<details class="fx-sec"><summary><h2>Trabajo por contenido</h2><span class="fx-ex">metros por estado · otras unidades aparte</span></summary><div class="fx-in">'+trab+'</div></details>'+
       '<details class="fx-sec"><summary><h2>Respuesta a sesiones comparables</h2><span class="fx-ex">'+(X.comp.length ? plural(X.comp.length, 'fila comparable', 'filas comparables') : 'ninguna')+'</span></summary><div class="fx-in">'+comp+'</div></details>'+
       '<details class="fx-sec"><summary><h2>Cobertura de datos</h2><span class="fx-ex">'+esc('feedback '+ANC.cobTxt(X.tot.cob.feedback.num, X.tot.cob.feedback.den))+'</span></summary><div class="fx-in">'+cob+'</div></details>'+
-      '<details class="fx-sec"><summary><h2>Aspectos a trabajar</h2><span class="fx-ex">rendimiento · contenidos · sin evaluar</span></summary><div class="fx-in">'+asp+'</div></details>'+
+      '<details class="fx-sec"><summary><h2>Aspectos a trabajar</h2><span class="fx-ex">'+(prog.length ? 'progresos · ' : '')+'rendimiento · contenidos · sin evaluar</span></summary><div class="fx-in">'+asp+'</div></details>'+
       '<details class="fx-sec"><summary><h2>Referencias deportivas</h2><span class="fx-ex">'+(mins.length ? plural(mins.length, 'referencia externa', 'referencias externas') : 'ninguna externa cargada')+'</span></summary><div class="fx-in">'+ref+'</div></details>'+
       '</div>';
     AN.det.comp = '<h3>Sesiones comparables</h3>'+comp; AN.det.cob = '<h3>Cobertura de datos</h3>'+cob;

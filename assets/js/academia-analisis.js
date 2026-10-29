@@ -144,6 +144,21 @@
     return { salida:salida, calzado: calz ? String(calz).toUpperCase() : null, superficie: reg && reg.superficie || null, metodo:metodo,
              variante:null, recorrido:null, altura: c0.altura_m != null ? c0.altura_m : (c0.altura_cm != null ? c0.altura_cm : null), separacion: c0.separacion_m != null ? c0.separacion_m : null };
   }
+  function prescripcionTxt(E){
+    var comps = (E.componentes || []).filter(function(c){ return c.clase && c.clase !== 'pendiente'; });
+    var parte = comps.map(function(c){
+      var t = c.clase === 'fuerza' ? (c.ejercicio || 'fuerza') + ' ' + (c.reps || '?') + ' reps' : c.clase === 'salto' ? (c.modalidad || 'salto') + ' ' + (c.reps || '?') : (c.reps > 1 ? c.reps + '×' : '') + (c.m != null ? c.m + ' m' : '');
+      if (c.tiempo_obj) t += ' (' + c.tiempo_obj.join('-') + '″)';
+      if (c.ritmo_km) t += ' en ' + c.ritmo_km.join('-') + '/km';
+      if (c.pct_esfuerzo) t += ' al ' + [].concat(c.pct_esfuerzo).join('-') + ' %';
+      if (c.pct_rm) t += ' al ' + [].concat(c.pct_rm).join('-') + ' % RM';
+      if (c.rir != null) t += ' RIR ' + c.rir;
+      if (c.salidas) t += ' · salidas';
+      return t;
+    }).join(' + ');
+    var b = E.bloques || 1, bq = /^\s*bloque\s*(\d+\s*\/\s*\d+)/i.exec(E.texto || '');
+    return (bq ? 'bloque ' + bq[1].replace(/\s/g, '') + ': ' : '') + (b > 1 ? b + '×(' + parte + ')' : parte) + (E.recuperacion ? ' · rec. ' + String(E.recuperacion.texto).replace(/\s*[ZC]$/, '') : '');
+  }
   /* sesiones: [{ s:{id,fecha,titulo}, reg, vencida, futura, filas:[{estructura, fila, bloque}], X:[ejecutados] }] */
   function sesionesComparables(sesiones){
     var G = {};
@@ -159,7 +174,7 @@
         var hechos = X.filter(function(x){ return x.estado === 'confirmado' || x.estado === 'global'; }).length;
         var conocidos = X.filter(function(x){ return x.estado === 'confirmado' || x.estado === 'global' || x.estado === 'no_realizado'; }).length;
         var tiempos = []; X.forEach(function(x, i){ (x.tiempos || []).forEach(function(t){ tiempos.push({ rep:i + 1, m:x.a.c && x.a.c.m, valor:t.valor, num:num(t.valor), fuente:t.fuente, metodo:t.metodo }); }); });
-        var g = G[k] = G[k] || { clave:k, clase:clase, texto:E.texto, casos:[] };
+        var g = G[k] = G[k] || { clave:k, clase:clase, texto:E.texto, prescripcion:prescripcionTxt(E), casos:[] };
         g.casos.push({ sid:S.s.id, fecha:S.s.fecha, titulo:S.s.titulo, fila_id:E.fila_id, texto:E.texto, cond:condicionesDe(E, F.fila, S.reg, X),
                        registro: !!(S.reg || S.regEnt || (S.toma || []).length), vencida:!!S.vencida,
                        hechas:hechos, conocidas:conocidos, previstas:X.length, tiempos:tiempos,
@@ -191,31 +206,59 @@
   }
 
   /* ---------- 4 · Revisiones de decisiones ----------
-     «Vencida»: la fecha de revisión ya ha llegado. «Próxima»: dentro de los días del
-     grupo. Ninguna cierra la decisión: sigue vigente hasta que alguien la revisa. */
+     Con la fecha de Europe/Madrid: «vencida» (antes de hoy), «revisar hoy» y
+     «próxima» (dentro de los días del grupo). Ninguna cierra la decisión: sigue
+     vigente hasta que alguien la revisa. */
+  function hoyMadrid(){
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Madrid', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date()); }
+    catch (e) { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  }
   function sumarDias(iso, n){ var d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function revisiones(decisiones, hoy, dias){
     dias = dias || 21;
-    var lim = sumarDias(hoy, dias), V = [], P = [], S = [];
+    var lim = sumarDias(hoy, dias), V = [], H = [], P = [], S = [];
     (decisiones || []).filter(function(d){ return d.estado === 'vigente'; }).forEach(function(d){
       if (!d.revision) S.push(d);
-      else if (d.revision <= hoy) V.push(d);
+      else if (d.revision < hoy) V.push(d);
+      else if (d.revision === hoy) H.push(d);
       else if (d.revision <= lim) P.push(d);
     });
     var f = function(a, b){ return String(a.revision).localeCompare(String(b.revision)); };
-    return { vencidas:V.sort(f), proximas:P.sort(f), sinFecha:S, dias:dias, hasta:lim };
+    return { vencidas:V.sort(f), hoy:H, proximas:P.sort(f), sinFecha:S, dias:dias, hasta:lim };
   }
 
-  /* ---------- 5 · Cobertura: siempre N de M y porcentaje, sin umbral ---------- */
+  /* ---------- 5 · Trabajo de carrera (metros) ----------
+     Lo previsto se reparte en: con detalle · por «completa» · no realizado · en
+     discrepancia (sin resolver) · sin concretar (hay registro, pero no dice esta parte) ·
+     sin datos (plazo vencido, sin registro) · por llegar (futuro o
+     aún en plazo: no es falta de registro). Lo adicional va aparte y puede hacer
+     que lo realizado supere lo previsto. Solo metros: nada de minutos ni reps. */
+  var COLS_T = ['previsto', 'confirmado', 'global', 'adicional', 'no_realizado', 'discrepancia', 'sin_concretar', 'sin_datos', 'por_llegar'];
+  function trabajoCarrera(X, enPlazo){
+    var T = { total:{} }, add = function(k, col, v){ var o = T[k] = T[k] || {}; o[col] = (o[col] || 0) + v; T.total[col] = (T.total[col] || 0) + v; };
+    (X || []).forEach(function(x){
+      var a = x.a || {}, c = a.c || {};
+      if (a.adicional) { var m0 = x.cantidad_declarada && x.cantidad_declarada.m; if (m0) add('adicional', 'adicional', m0); return; }
+      if (c.clase !== 'carrera' || a.opcional) return;
+      var m = c.m != null ? c.m : null; if (m == null && !c.entrada_m) return;
+      var partes = []; if (m != null) partes.push([c.objetivo || 'pendiente', m]); if (c.entrada_m) partes.push(['entrada', c.entrada_m]);
+      var col = x.estado === 'confirmado' ? 'confirmado' : x.estado === 'global' ? 'global' : x.estado === 'no_realizado' ? 'no_realizado' : x.estado === 'discrepancia' ? 'discrepancia'
+              : (enPlazo && enPlazo(x.s)) ? 'por_llegar' : x.estado === 'sin_concretar' ? 'sin_concretar' : 'sin_datos';
+      partes.forEach(function(p){ add(p[0], 'previsto', p[1]); add(p[0], col, p[1]); });
+    });
+    return T;
+  }
+
+  /* ---------- 6 · Cobertura: siempre N de M y porcentaje, sin umbral ---------- */
   function pct(n, d){ return d ? Math.round(n * 100 / d) : null; }
   function cobTxt(n, d, unidad){
-    if (!d) return 'sin nada que medir';
+    if (!d) return 'no aplica';
     var f = function(x){ return unidad === 'm' ? String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' m' : String(Math.round(x * 10) / 10).replace('.', ','); };
     return f(n) + ' de ' + f(d) + ' (' + pct(n, d) + ' %)';
   }
 
   var API = { METODO:METODO, CONDS:CONDS, COND_TXT:COND_TXT, coma:coma, marcasComparables:marcasComparables, parcialesFrenteModelo:parcialesFrenteModelo,
               tramosDe:tramosDe, principales:principales, clavePrescripcion:clavePrescripcion, sesionesComparables:sesionesComparables,
-              revisiones:revisiones, sumarDias:sumarDias, pct:pct, cobTxt:cobTxt };
+              revisiones:revisiones, hoyMadrid:hoyMadrid, sumarDias:sumarDias, pct:pct, cobTxt:cobTxt, prescripcionTxt:prescripcionTxt, COLS_T:COLS_T, trabajoCarrera:trabajoCarrera };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.APOLANA_ANALISIS = API;
 })(this);
