@@ -19,7 +19,7 @@
 <script src="../../assets/js/db.js?v=4fd9379b" defer></script>
 <script src="../../assets/js/portal-auth.js?v=0f941fcf"></script>
 <script src="../../assets/js/academia-carga.js?v=989e6da7&v=1" defer></script>
-<script src="../../assets/js/academia-analisis.js?v=9f12a405&v=1" defer></script>
+<script src="../../assets/js/academia-analisis.js?v=cba08e2c&v=1" defer></script>
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
 <script src="../../assets/js/mundos.js?v=931d5a25" defer></script>
 <script src="../../assets/js/categorias.js?v=6e1ca5b3"></script>
@@ -468,7 +468,7 @@
   .an-pr.off{ cursor:default; color:var(--t3); border-style:dashed; }
   .an-tot td{ font-weight:700; color:var(--navy); }
   .an-ley.an-ad{ background:#2E7D6B; border-radius:2px; width:14px; } .an-ley.an-dis{ border:2px solid #C2661C; border-radius:2px; width:14px; box-sizing:border-box; }
-  .an-ley.an-sc{ background:#E4DED2; border-radius:2px; width:14px; } .an-ley.an-pl{ border:1.5px dotted #8C8577; border-radius:2px; width:14px; box-sizing:border-box; }
+  .an-ley.an-sc{ background:#E4DED2; border-radius:2px; width:14px; } .an-ley.an-ep{ background:#EEF1F8; border:1.5px dashed #8FA0CF; border-radius:2px; width:14px; box-sizing:border-box; } .an-ley.an-pl{ border:1.5px dotted #8C8577; border-radius:2px; width:14px; box-sizing:border-box; }
   .an-revm{ border:1px solid var(--borde); border-radius:10px; padding:10px 12px; margin:8px 0; background:#fff; }
   .an-revm .an-aviso{ background:#FBEFC9; border:1px solid #E8D48A; color:#5C4300; border-radius:8px; padding:8px 10px; margin:8px 0; font-size:13.5px; }
   .an-refs{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
@@ -4800,9 +4800,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       .map(function(cid){ return CP.cid[cid]; }).filter(function(c){ return c && c.estado!=='cancelada' && c.fecha_inicio && (c.fecha_fin||c.fecha_inicio) >= hoy; })
       .sort(function(x, y){ return x.fecha_inicio.localeCompare(y.fecha_inicio); })[0] || null;
     // Trabajo: el mismo motor que Carga y contenidos; lo futuro o aún en plazo, «por llegar»
-    var enPlazo = function(s){ return !s || !vencido(s); };
-    X.sem = semanas.map(function(w){ var C = construirCarga(aid, w, sumar(w, 6)); C.T = ANC.trabajoCarrera(C.X, enPlazo); return C; });
-    X.tot = construirCarga(aid, X.desde, X.hasta); X.tot.T = ANC.trabajoCarrera(X.tot.X, enPlazo);
+    // Sesión futura = «por llegar»; pasada con el feedback aún en plazo = «pendiente de registro · en plazo».
+    var momento = function(s){ return !s || s.fecha > hoyISO() ? 'futura' : !vencido(s) ? 'en_plazo' : 'vencida'; };
+    X.sem = semanas.map(function(w){ var C = construirCarga(aid, w, sumar(w, 6)); C.T = ANC.trabajoCarrera(C.X, momento); return C; });
+    X.tot = construirCarga(aid, X.desde, X.hasta); X.tot.T = ANC.trabajoCarrera(X.tot.X, momento);
     // Marcas de la prueba elegida (últimos 12 meses)
     X.desdeM = sumar(hoy, -365);
     X.mk = X.pr ? FX.marcas.filter(function(m){ return m.atleta_id===aid && m.tipo!=='objetivo' && m.fecha && m.fecha >= X.desdeM && m.fecha <= hoy && pruebaDe(m).id===X.pr.id; }) : [];
@@ -4831,7 +4832,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (P && P.n >= 2){ var f0 = P.marcas[0], fN = P.marcas[P.n-1]; X.evo = { de:f0, a:fN, dif: Math.round((fN.v - f0.v)*100)/100 }; X.evo.mejora = X.pr && !X.pr.mas_es_mejor ? X.evo.dif < 0 : X.evo.dif > 0; }
     return X;
   }
-  var ETQ_T = { confirmado:'Con detalle', global:'Por «completa»', adicional:'Adicional', no_realizado:'No realizado', discrepancia:'En discrepancia', sin_concretar:'Sin concretar', sin_datos:'Sin datos', por_llegar:'Por llegar' };
+  var ETQ_T = { confirmado:'Con detalle', global:'Por «completa»', adicional:'Adicional', no_realizado:'No realizado', discrepancia:'En discrepancia', sin_concretar:'Sin concretar', sin_datos:'Sin datos', en_plazo:'Pendiente de registro · en plazo', por_llegar:'Por llegar' };
   function anCelda(v, aplica){ return v ? esc(cifra(v, '')) : (aplica ? '0' : '<span class="fx-sin">—</span>'); }
   function anVer(key, html){ AN.det[key] = html; return ' <button type="button" class="ac-link an-ver" data-an-ver="'+key+'">ver datos ›</button>'; }
   function anFecha(f){ return f ? fMedia(f)+(f.slice(0,4)!==hoyISO().slice(0,4) ? ' '+f.slice(0,4) : '') : '—'; }
@@ -4881,7 +4882,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Tramos: '+F.map(function(f){ return f.desde_m+'–'+f.hasta_m+' real '+sTxt(f.real)+(f.modelo!=null?' modelo '+sTxt(f.modelo)+' diferencia '+anDif(f.dif, 's'):''); }).join('; '))+'"><text x="'+x0+'" y="12">'+esc(sTxt(lo))+' s</text><text x="'+x1+'" y="12" text-anchor="end">'+esc(sTxt(hi))+' s</text><text x="'+(W-4)+'" y="12" text-anchor="end" font-weight="600">Diferencia</text>'+g+'</svg>';
   }
   // Barras por semana: lo previsto repartido por estado; lo adicional, encima; la raya marca lo previsto.
-  var CAPAS_T = [['confirmado','#3D55A0'],['global','url(#an-rayas)'],['no_realizado','#8C8577'],['discrepancia','#fff|#C2661C'],['sin_concretar','#E4DED2'],['sin_datos','none|#8C8577|4 3'],['por_llegar','none|#C9C1B1|1 3']];
+  var CAPAS_T = [['confirmado','#3D55A0'],['global','url(#an-rayas)'],['no_realizado','#8C8577'],['discrepancia','#fff|#C2661C'],['sin_concretar','#E4DED2'],['sin_datos','none|#8C8577|4 3'],['en_plazo','#EEF1F8|#8FA0CF|2 2'],['por_llegar','none|#C9C1B1|1 3']];
   function svgSemanas(X){
     var W = 480, H = 200, x0 = 46, base = H - 28, top = 18, bw = 64, gap = (W - x0 - 4*bw) / 4, g = '';
     var vals = X.sem.map(function(C){ return C.T.total; });
@@ -4899,11 +4900,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<svg class="an-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc('Metros de carrera por semana: '+vals.map(function(v, i){ return fMedia(X.semanas[i])+': previstos '+(v.previsto||0)+', '+Object.keys(ETQ_T).filter(function(k){ return v[k]; }).map(function(k){ return ETQ_T[k].toLowerCase()+' '+v[k]; }).join(', '); }).join('; '))+'"><defs><pattern id="an-rayas" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#FBE9D2"/><line x1="0" y1="0" x2="0" y2="6" stroke="#C2661C" stroke-width="2.5"/></pattern></defs>'+g+'</svg>';
   }
   function tablaTrabajo(filas, primera){
-    var cols = ['confirmado','global','adicional','no_realizado','discrepancia','sin_concretar','sin_datos','por_llegar'].filter(function(k){ return k==='confirmado' || filas.some(function(f){ return f[1][k]; }); });
+    var cols = ['confirmado','global','adicional','no_realizado','discrepancia','sin_concretar','sin_datos','en_plazo','por_llegar'].filter(function(k){ return k==='confirmado' || filas.some(function(f){ return f[1][k]; }); });
     return '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>'+esc(primera)+'</th><th>Previsto</th>'+cols.map(function(k){ return '<th>'+esc(ETQ_T[k])+'</th>'; }).join('')+'</tr>'+
       filas.map(function(f){ var o = f[1], ap = !!(o.previsto || o.adicional); return '<tr'+(f[2]?' class="an-tot"':'')+'><td>'+esc(f[0])+'</td><td>'+anCelda(o.previsto, !!o.previsto)+'</td>'+cols.map(function(k){ return '<td>'+anCelda(o[k], k==='adicional' ? true : ap && !!o.previsto)+'</td>'; }).join('')+'</tr>'; }).join('')+'</table></div>';
   }
-  var LEY_T = '<p class="nota an-leyt"><span class="an-ley an-c"></span> con detalle · <span class="an-ley an-g"></span> por «completa» (declaración global) · <span class="an-ley an-ad"></span> adicional · <span class="an-ley an-n"></span> no realizado · <span class="an-ley an-dis"></span> en discrepancia (sin resolver) · <span class="an-ley an-sc"></span> sin concretar · <span class="an-ley an-s"></span> sin datos · <span class="an-ley an-pl"></span> por llegar (futuro o en plazo: no es falta). La raya marca lo previsto; lo adicional puede pasarla. En las tablas, «0» es cero y «—» no aplica.</p>';
+  var LEY_T = '<p class="nota an-leyt"><span class="an-ley an-c"></span> con detalle · <span class="an-ley an-g"></span> por «completa» (declaración global) · <span class="an-ley an-ad"></span> adicional · <span class="an-ley an-n"></span> no realizado · <span class="an-ley an-dis"></span> en discrepancia (sin resolver) · <span class="an-ley an-sc"></span> sin concretar · <span class="an-ley an-s"></span> sin datos (plazo vencido) · <span class="an-ley an-ep"></span> pendiente de registro · en plazo · <span class="an-ley an-pl"></span> por llegar (sesión futura). Estas dos últimas no son falta de registro. La raya marca lo previsto; lo adicional puede pasarla. En las tablas, «0» es cero y «—» no aplica.</p>';
 
   function analisisHTML(){
     var X = AN = construirAnalisis(); X.det = {};
@@ -4925,10 +4926,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var d1 = '<h3>Qué preparamos</h3><p>Objetivo <b>acordado</b> y vigente de la temporada de planificación de hoy para la prueba elegida (nunca el texto del perfil) y la próxima competición no cancelada en la que está apuntado.</p>'+
       (X.obj ? '<table class="fx-t"><tr><th>Objetivo</th><td>'+esc(X.obj.prueba)+' · '+esc(X.obj.objetivo_texto||anVal(X.obj.objetivo_num, u))+' · '+esc(X.obj.estado)+'<small>versión '+X.obj.version+' · '+esc(fechaHora(X.obj.actualizado_en||X.obj.creado_en))+'</small></td></tr></table>' : '<p class="fx-sin">sin objetivo acordado para esta prueba</p>')+
       (X.prox ? '<p>Competición: '+esc(X.prox.nombre)+' · '+esc(fMedia(X.prox.fecha_inicio))+(X.prox.es_prueba?' · de prueba':'')+'</p>' : '');
-    var trozos = [['confirmado','con detalle'],['global','solo por «completa»'],['adicional','adicionales'],['no_realizado','no realizados'],['discrepancia','en discrepancia (sin resolver)'],['sin_concretar','sin concretar'],['sin_datos','sin datos'],['por_llegar','por llegar']]
+    var trozos = [['confirmado','con detalle'],['global','solo por «completa»'],['adicional','adicionales'],['no_realizado','no realizados'],['discrepancia','en discrepancia (sin resolver)'],['sin_concretar','sin concretar'],['sin_datos','sin datos'],['en_plazo','pendientes de registro · en plazo'],['por_llegar','por llegar']]
       .filter(function(t){ return kT[t[0]] || t[0]==='confirmado'; }).map(function(t){ return '<span class="an-num">'+esc(cifra(kT[t[0]]||0, ''))+'</span> '+t[1]; });
     var f2 = kT.previsto ? 'Carrera: <span class="an-num">'+esc(cifra(kT.previsto, 'm'))+'</span> previstos; '+trozos.join(', ')+'.' : '<span class="fx-sin">Sin carrera prevista en el periodo.</span>';
-    var d2 = '<h3>Trabajo registrado · carrera (m)</h3><p>Las cifras de Carga y contenidos en '+esc(periodo)+'. Solo metros de carrera: fuerza, saltos y minutos van aparte y nunca se suman a esto. Lo futuro o aún en plazo va en «por llegar» y no cuenta como falta.</p>'+
+    var d2 = '<h3>Trabajo registrado · carrera (m)</h3><p>Las cifras de Carga y contenidos en '+esc(periodo)+'. Solo metros de carrera: fuerza, saltos y minutos van aparte y nunca se suman a esto. Lo futuro va en «por llegar» y lo pasado con el feedback aún en plazo en «pendiente de registro · en plazo»: ninguno cuenta como falta.</p>'+
       tablaTrabajo(X.sem.map(function(C, i){ return ['Semana del '+fMedia(X.semanas[i]), C.T.total]; }).concat([['Total', kT, true]]), 'Semana');
     var g0 = X.comp[0], fu0 = g0 ? anFuenteComun(g0) : null;
     var f3 = Pm && Pm.mejor ? 'Mejor marca comparable <span class="an-num">'+esc(anVal(Pm.mejor.v, u))+'</span> ('+esc(anFecha(Pm.mejor.m.fecha))+')'+(difObj!=null ? ': <span class="an-num">'+esc(anDif(difObj, u))+'</span> respecto al objetivo' : '')+'.'
@@ -5017,14 +5018,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Día</th><th>Repeticiones en orden (fuente · método)</th><th>Hechas</th><th>RPE</th><th>Comentario del atleta</th></tr>'+g.casos.map(function(c){
           var sin = !c.registro, R = anReps(c);
           return '<tr><td><button type="button" class="ac-link" data-abrir="'+c.sid+'|'+X.aid+'">'+esc(fCorta(c.fecha))+'</button><small>'+esc(c.titulo||'')+'</small></td>'+
-            '<td>'+(R.length ? R.map(function(r){ return '<div><span class="an-inl">'+r.rep+'.ª'+(r.m!=null?' · '+r.m+' m':'')+'</span> '+r.t.map(function(t){ return '<span class="an-n">'+esc(t.valor)+'</span> <small class="an-inl">'+esc(t.fuente+' · '+(ANC.METODO[t.metodo]||t.metodo))+'</small>'; }).join(' / ')+'</div>'; }).join('') : (sin ? '<span class="fx-sin">'+(c.vencida ? 'sin registro (plazo vencido)' : 'por llegar')+'</span>' : anSinDato()))+'</td>'+
+            '<td>'+(R.length ? R.map(function(r){ return '<div><span class="an-inl">'+r.rep+'.ª'+(r.m!=null?' · '+r.m+' m':'')+'</span> '+r.t.map(function(t){ return '<span class="an-n">'+esc(t.valor)+'</span> <small class="an-inl">'+esc(t.fuente+' · '+(ANC.METODO[t.metodo]||t.metodo))+'</small>'; }).join(' / ')+'</div>'; }).join('') : (sin ? '<span class="fx-sin">'+(c.vencida ? 'sin registro (plazo vencido)' : 'pendiente de registro · en plazo')+'</span>' : anSinDato()))+'</td>'+
             '<td>'+(sin ? anSinDato() : c.hechas+' de '+c.previstas)+'</td><td>'+(c.rpe!=null ? c.rpe : anSinDato())+'</td><td>'+(c.comentario ? '«'+esc(c.comentario)+'»' : anSinDato())+'</td></tr>'; }).join('')+'</table></div></div>'; }).join('')
       : '<p class="fx-sin">Ninguna fila se ha prescrito igual dos veces en el periodo.</p>';
     comp += '<p class="nota">El título y las notas no cuentan. RPE y comentarios, tal cual: no se convierten en conclusión.</p>';
     // Cobertura
     var cob = '<div class="fx-scroll"><table class="fx-t fx-w"><tr><th>Semana</th><th>Feedback</th><th>Resultado conocido · m</th><th>Resultado conocido · repeticiones</th><th>Series con kg</th></tr>'+X.sem.map(function(C, i){ var c = C.cob;
         return '<tr><td>'+esc(fMedia(X.semanas[i]))+'</td><td>'+esc(ANC.cobTxt(c.feedback.num, c.feedback.den))+(c.feedback.anticipados ? '<small>+'+c.feedback.anticipados+' antes del plazo</small>' : '')+'</td><td>'+esc(ANC.cobTxt(c.resultado_m.num, c.resultado_m.den, 'm'))+(c.resultado_m.global ? '<small>'+esc(cifra(c.resultado_m.global, 'm'))+' solo por «completa»</small>' : '')+'</td><td>'+esc(ANC.cobTxt(c.resultado_reps.num, c.resultado_reps.den))+'</td><td>'+esc(ANC.cobTxt(c.cargas.num, c.cargas.den))+(c.cargas.global ? '<small>'+c.cargas.global+' solo por «completa»</small>' : '')+'</td></tr>'; }).join('')+'</table></div>'+
-      '<p class="nota">Siempre N de M y porcentaje, sin umbral de aviso. Lo futuro y lo que sigue en plazo no entra: ni cuenta como falta ni baja la cobertura. Los kg se cuentan por series.</p>'+
+      '<p class="nota">Siempre N de M y porcentaje, sin umbral de aviso. Ni lo «por llegar» (sesiones futuras) ni lo «pendiente de registro · en plazo» (pasadas con el feedback aún en plazo) entran en lo exigible: no bajan la cobertura. Los kg se cuentan por series.</p>'+
       '<ul class="an-pend">'+(X.sinReg.length ? '<li>'+plural(X.sinReg.length, 'sesión', 'sesiones')+' con el plazo vencido sin registro: '+X.sinReg.map(function(s){ return '<button type="button" class="ac-link" data-abrir="'+s.id+'|'+X.aid+'">'+esc(fCorta(s.s.fecha))+'</button>'; }).join(', ')+'</li>' : '')+
       (X.disc.length ? '<li>'+plural(X.disc.length, 'discrepancia sin resolver', 'discrepancias sin resolver')+' (no se dan como valor resuelto)</li>' : '')+
       (X.tot.sesiones.some(function(s){ return s.reg && s.reg.version_garantia && s.reg.version_garantia!=='exacta'; }) ? '<li>Registros sin garantía de versión exacta: su «completa» no se reparte por filas.</li>' : '')+
@@ -5047,7 +5048,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     asp += '<tr class="an-gr"><td colspan="5">Contenidos en lo planificado y registrado (sin referencia acordada para esta fase: se describe, no se califica)</td></tr>';
     objsT.map(function(o){ return [o, X.tot.T[o]]; }).filter(function(x){ return x[1].previsto; }).sort(function(x, y){ return x[1].previsto - y[1].previsto; }).forEach(function(x){
       var k = x[1], sd = (k.sin_datos||0)+(k.sin_concretar||0);
-      asp += fila(objTxt(x[0]), esc(cifra(k.previsto, 'm'))+' previstos en 4 semanas ('+ANC.pct(k.previsto, kT.previsto||0)+' % de la carrera prevista)', 'Es lo planificado, no lo que sabe hacer'+(sd ? '; '+cifra(sd, 'm')+' sin datos o sin concretar' : '')+(k.por_llegar ? '; '+cifra(k.por_llegar, 'm')+' por llegar' : ''), '—', nin); });
+      asp += fila(objTxt(x[0]), esc(cifra(k.previsto, 'm'))+' previstos en 4 semanas ('+ANC.pct(k.previsto, kT.previsto||0)+' % de la carrera prevista)', 'Es lo planificado, no lo que sabe hacer'+(sd ? '; '+cifra(sd, 'm')+' sin datos o sin concretar' : '')+(k.en_plazo ? '; '+cifra(k.en_plazo, 'm')+' pendientes de registro en plazo' : '')+(k.por_llegar ? '; '+cifra(k.por_llegar, 'm')+' por llegar' : ''), '—', nin); });
     asp += '<tr class="an-gr"><td colspan="5">Capacidades todavía sin evaluar</td></tr>';
     var desde12 = sumar(hoy, -365), sinEval = 0;
     if (!(TM.rm||[]).some(function(r){ return r.atleta_id===X.aid && r.fecha_test && r.fecha_test >= desde12; })){ sinEval++; asp += fila('Fuerza máxima', '<span class="fx-sin">sin RM registrado en 12 meses</span>', 'No se estima nada', 'Un RM con protocolo', nin); }

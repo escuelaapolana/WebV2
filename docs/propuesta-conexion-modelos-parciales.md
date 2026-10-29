@@ -62,11 +62,41 @@ estado `pendiente · adoptada · rechazada`, historial). Andrés la ve en
 **«Rechazar»**. La aprobación sigue siendo un paso suyo aparte.
 - Ventaja: una propuesta nunca sustituye ni desaprueba un modelo que Andrés ya tiene.
 
+**Decidido (29-oct): propuestas del asistente separadas del modelo del entrenador.**
+Al **adoptar** una propuesta:
+- queda **vinculada a su origen y versión** (`propuesta_id` + versión de la propuesta en
+  el modelo, y el modelo en la propuesta);
+- se **conserva el historial** de los dos (la propuesta pasa a «adoptada», no se borra);
+- **no se duplica**: una propuesta solo se adopta una vez, y adoptar otra vez el mismo
+  contenido no crea nada nuevo;
+- **no toca el objetivo acordado** (`atleta_objetivos`);
+- **adoptar ≠ aprobar**: el modelo adoptado queda como propuesta sin aprobar; la
+  aprobación deportiva sigue siendo el paso aparte de Andrés (con su revisión previa).
+
 Alternativa más simple: escribir directamente en `objetivo_parciales` como
 `propuesta` **solo si no hay modelo o el actual no está aprobado**. Desventaja: pisa
 el borrador del entrenador y un modelo aprobado bloquea cualquier propuesta.
 
-## 4 · Qué haría falta (cuando se active)
+## 4 · Pendiente para activarla (autorización aparte de Andrés)
+
+Ya hecho y aprovechable: candado de prueba de `academia_api` (probado el 28-oct),
+`objetivo_parciales_comprobar` (sumas y subdivisiones) y la revisión previa a aprobar
+(en vivo el 29-oct), origen/limitaciones/aprobación del modelo (mig 496).
+
+Falta:
+1. Migración: `objetivo_parciales_propuestas` (con `clave_cliente` única, `version_base`,
+   estado pendiente/adoptada/rechazada, historial) y vínculo en `objetivo_parciales`.
+2. `academia_api`: `leer_modelos_parciales` y `proponer_modelo_parciales` (simular por
+   defecto; guardar solo con `guardar:true`).
+3. Funciones de pantalla `propuesta_adoptar` / `propuesta_rechazar` (solo entrenador o
+   administración; adoptar ≠ aprobar).
+4. Edge `academia-mcp`: las dos herramientas y desplegar.
+5. Diálogo del modelo: bloque «Propuestas del asistente» (adoptar / rechazar).
+6. Pruebas en transacción deshecha: duplicado, versión cambiada, no cuadra, grupo real
+   rechazado, intento de aprobar o de tocar el objetivo rechazado; y una prueba desde el
+   chat de ChatGPT, guardando solo lo que Andrés pida.
+
+## 5 · Qué haría falta (detalle)
 
 - Migración: tabla de propuestas + RLS (leer: quien puede ver al atleta; escribir: solo
   por la función) + `academia_api` con las dos operaciones (candado de prueba).

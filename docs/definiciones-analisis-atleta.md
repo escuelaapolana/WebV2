@@ -65,7 +65,8 @@ conclusiones, no cambia entrenamientos y no genera decisiones.
 - Diferencias uniformes: «+0,40 s respecto al objetivo» (también en Tests y marcas).
 - «0» = cero de verdad · «—» = no aplica · «sin dato» = no hay registro.
 - «Sin resultados registrados», salvo que se sepa que no hubo competiciones.
-- Lo futuro o aún en plazo es **«por llegar»**: ni es falta de registro ni baja la cobertura.
+- Sesiones futuras: **«Por llegar»**. Sesiones pasadas con el feedback aún en plazo:
+  **«Pendiente de registro · en plazo»**. Ninguna es falta de registro ni baja la cobertura exigible.
 - Trabajo por estado: con detalle · por «completa» · adicional · no realizado · en
   discrepancia · sin concretar · sin datos · por llegar; lo adicional puede superar lo previsto.
 - Nada de «poco» o «insuficiente» sin referencia acordada para ese atleta y fase.
@@ -135,8 +136,25 @@ tal como están escritos (en el grupo real no sale «Análisis» ni forzando `fs
 Paso 6: el botón «Aprobar la versión guardada» le aparece a Andrés; **la aprobación la
 hace él** (es su validación), no se ha pulsado.
 
+## Antes de activar con atletas reales (autorización aparte de Andrés)
+
+Alcance de la v1 **cerrado** el 29-oct. Ya comprobado: motor (47 comprobaciones), banco
+local (PC y 375 px), en vivo con sesión (PRUEBA), aislamiento (en el grupo real no
+aparece ni forzando `fs=analisis`).
+
+Falta, sin rediseñar:
+1. OK de Andrés y decidir con qué grupo (Academia AC98) y qué atletas.
+2. Quitar la condición `ST.g.es_prueba` (pestaña y carga de datos) para ese grupo, y la
+   frase «Primera versión, solo con el grupo de prueba». Carga y contenidos, que da las
+   cifras de trabajo, también está solo en PRUEBA: va en el mismo paso.
+3. Leer los datos reales sin escribir nada: registros antiguos «sin garantía de versión»
+   (no reparten «completa»), perfiles con pruebas sin confirmar en el catálogo (sin
+   prueba elegible no hay gráficas), atletas sin objetivo acordado.
+4. Repasar con 2–3 atletas reales en vivo, solo lectura, y apuntar lo que no cuadre.
+5. Confirmar las fechas de la temporada de planificación (siguen provisionales).
+
 ## Pendiente
 
-- Activación con atletas reales (OK de Andrés).
+- Activación con atletas reales: ver arriba.
 - Que ChatGPT pueda leer modelos y proponerlos por su conexión de prueba: propuesta
   en docs/propuesta-conexion-modelos-parciales.md (sin activar).

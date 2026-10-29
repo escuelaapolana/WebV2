@@ -230,11 +230,13 @@
   /* ---------- 5 · Trabajo de carrera (metros) ----------
      Lo previsto se reparte en: con detalle · por «completa» · no realizado · en
      discrepancia (sin resolver) · sin concretar (hay registro, pero no dice esta parte) ·
-     sin datos (plazo vencido, sin registro) · por llegar (futuro o
-     aún en plazo: no es falta de registro). Lo adicional va aparte y puede hacer
-     que lo realizado supere lo previsto. Solo metros: nada de minutos ni reps. */
-  var COLS_T = ['previsto', 'confirmado', 'global', 'adicional', 'no_realizado', 'discrepancia', 'sin_concretar', 'sin_datos', 'por_llegar'];
-  function trabajoCarrera(X, enPlazo){
+     sin datos (plazo vencido, sin registro) · pendiente de registro · en plazo (sesión
+     pasada cuyo feedback aún está en plazo) · por llegar (sesión futura). Ninguna de las
+     dos últimas es falta de registro. Lo adicional va aparte y puede hacer que lo
+     realizado supere lo previsto. Solo metros: nada de minutos ni reps.
+     momento(s) → 'futura' | 'en_plazo' | otra cosa (plazo vencido). */
+  var COLS_T = ['previsto', 'confirmado', 'global', 'adicional', 'no_realizado', 'discrepancia', 'sin_concretar', 'sin_datos', 'en_plazo', 'por_llegar'];
+  function trabajoCarrera(X, momento){
     var T = { total:{} }, add = function(k, col, v){ var o = T[k] = T[k] || {}; o[col] = (o[col] || 0) + v; T.total[col] = (T.total[col] || 0) + v; };
     (X || []).forEach(function(x){
       var a = x.a || {}, c = a.c || {};
@@ -243,7 +245,8 @@
       var m = c.m != null ? c.m : null; if (m == null && !c.entrada_m) return;
       var partes = []; if (m != null) partes.push([c.objetivo || 'pendiente', m]); if (c.entrada_m) partes.push(['entrada', c.entrada_m]);
       var col = x.estado === 'confirmado' ? 'confirmado' : x.estado === 'global' ? 'global' : x.estado === 'no_realizado' ? 'no_realizado' : x.estado === 'discrepancia' ? 'discrepancia'
-              : (enPlazo && enPlazo(x.s)) ? 'por_llegar' : x.estado === 'sin_concretar' ? 'sin_concretar' : 'sin_datos';
+              : null;
+      if (!col) { var mo = momento ? momento(x.s) : null; col = mo === 'futura' ? 'por_llegar' : mo === 'en_plazo' ? 'en_plazo' : x.estado === 'sin_concretar' ? 'sin_concretar' : 'sin_datos'; }
       partes.forEach(function(p){ add(p[0], 'previsto', p[1]); add(p[0], col, p[1]); });
     });
     return T;
