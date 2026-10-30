@@ -142,7 +142,21 @@ Alcance de la v1 **cerrado** el 29-oct. Ya comprobado: motor (47 comprobaciones)
 local (PC y 375 px), en vivo con sesión (PRUEBA), aislamiento (en el grupo real no
 aparece ni forzando `fs=analisis`).
 
-Falta, sin rediseñar:
+**Activado con Academia AC98 (30-oct)**, con todos sus atletas (Andrés: «¿por qué no con todos?»).
+Probado antes en el banco local con los datos reales (solo lectura). Dos fallos que solo se veían
+con datos reales, arreglados: las carreras por minutos («40′ CC») no guardaban los minutos (se
+mezclaban como la misma prescripción y el aviso salía «en «»»), y la frase de tiempos de «Cómo
+responde» salía vacía cuando la primera prescripción comparable no tenía tiempos (fuerza).
+Motor: 50 comprobaciones.
+
+Lo que falta para que dé todo (son datos, no código):
+- Confirmar las correspondencias de pruebas (Tests y marcas › Catálogo): el perfil dice «800»,
+  «60», «Altura»… y hasta que una persona las confirma no hay prueba elegible ni gráficas. Las
+  marcas con el nombre exacto del catálogo ya se reconocen solas.
+- Objetivos acordados de la temporada (ninguno real a 30-oct).
+- Confirmar las fechas de la temporada 2026/27 (siguen provisionales).
+
+Lo de antes de activar, para el registro:
 1. OK de Andrés y decidir con qué grupo (Academia AC98) y qué atletas.
 2. Quitar la condición `ST.g.es_prueba` (pestaña y carga de datos) para ese grupo, y la
    frase «Primera versión, solo con el grupo de prueba». Carga y contenidos, que da las
@@ -155,6 +169,6 @@ Falta, sin rediseñar:
 
 ## Pendiente
 
-- Activación con atletas reales: ver arriba.
+- Activación con atletas reales: HECHA el 30-oct (ver arriba lo que falta de datos).
 - Que ChatGPT pueda leer modelos y proponerlos por su conexión de prueba: propuesta
   en docs/propuesta-conexion-modelos-parciales.md (sin activar).

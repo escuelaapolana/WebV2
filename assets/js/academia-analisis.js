@@ -125,7 +125,7 @@
     var comps = (E.componentes || []).filter(function(c){ return c.clase && c.clase !== 'pendiente'; });
     if (!comps.length) return null;
     var parte = comps.map(function(c){
-      return [c.clase, c.m, c.reps, c.tiempo_obj && c.tiempo_obj.join('-'), c.ritmo_km && c.ritmo_km.join('-'), c.pct_esfuerzo && JSON.stringify(c.pct_esfuerzo),
+      return [c.clase, c.m, c.min, c.reps, c.tiempo_obj && c.tiempo_obj.join('-'), c.ritmo_km && c.ritmo_km.join('-'), c.pct_esfuerzo && JSON.stringify(c.pct_esfuerzo),
               c.pct_rm && JSON.stringify(c.pct_rm), c.rir, c.clase === 'fuerza' ? normTxt(c.ejercicio) : '', c.modalidad, c.salidas ? 'salidas' : '', c.arrastre ? 'arrastre' : '',
               c.progresivo ? 'prog' : '', c.peso_kg, c.vallas, c.entrada_m].map(function(v){ return v == null ? '' : String(v); }).join('/');
     }).join('+');
@@ -147,7 +147,7 @@
   function prescripcionTxt(E){
     var comps = (E.componentes || []).filter(function(c){ return c.clase && c.clase !== 'pendiente'; });
     var parte = comps.map(function(c){
-      var t = c.clase === 'fuerza' ? (c.ejercicio || 'fuerza') + ' ' + (c.reps || '?') + ' reps' : c.clase === 'salto' ? (c.modalidad || 'salto') + ' ' + (c.reps || '?') : (c.reps > 1 ? c.reps + '×' : '') + (c.m != null ? c.m + ' m' : '');
+      var t = c.clase === 'fuerza' ? (c.ejercicio || 'fuerza') + ' ' + (c.reps || '?') + ' reps' : c.clase === 'salto' ? (c.modalidad || 'salto') + ' ' + (c.reps || '?') : (c.reps > 1 ? c.reps + '×' : '') + (c.m != null ? c.m + ' m' : c.min != null ? c.min + '′' : '');
       if (c.tiempo_obj) t += ' (' + c.tiempo_obj.join('-') + '″)';
       if (c.ritmo_km) t += ' en ' + c.ritmo_km.join('-') + '/km';
       if (c.pct_esfuerzo) t += ' al ' + [].concat(c.pct_esfuerzo).join('-') + ' %';
@@ -155,7 +155,9 @@
       if (c.rir != null) t += ' RIR ' + c.rir;
       if (c.salidas) t += ' · salidas';
       return t;
-    }).join(' + ');
+    }).filter(Boolean).join(' + ');
+    // Sin cantidades que mostrar (p. ej. «rodaje suave»): el texto tal cual lo escribió el entrenador
+    if (!parte) return String(E.texto || 'sin cantidad').trim();
     var b = E.bloques || 1, bq = /^\s*bloque\s*(\d+\s*\/\s*\d+)/i.exec(E.texto || '');
     return (bq ? 'bloque ' + bq[1].replace(/\s/g, '') + ': ' : '') + (b > 1 ? b + '×(' + parte + ')' : parte) + (E.recuperacion ? ' · rec. ' + String(E.recuperacion.texto).replace(/\s*[ZC]$/, '') : '');
   }
