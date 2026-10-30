@@ -51,7 +51,7 @@ const CODIGOS = {
   dias: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
   horario: ["morning", "afternoon", "evening"],
   instalaciones: ["track", "throws", "jumps", "gym", "other"],   // «gym» lo manda aún el formulario v1
-  material: ["hurdles", "blocks", "cones", "mats", "throwing", "medballs", "other"],
+  material: ["hurdles", "minihurdles", "blocks", "batons", "cones", "ladders", "sleds", "mats", "throwing", "medballs", "other"],
 };
 const DURACIONES = [60, 90, 120, 150];
 const sub = (v: unknown, ok: string[]) => Array.from(new Set((Array.isArray(v) ? v : []).map(String).filter((x) => ok.includes(x))));

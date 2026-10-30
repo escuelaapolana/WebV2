@@ -113,8 +113,8 @@ export const ETQ: Record<string, Record<string, Record<string, string>>> = {
           lt50: "menos de 50 €/persona y noche", "50-80": "50–80 €/persona y noche", "80-120": "80–120 €/persona y noche", gt120: "más de 120 €/persona y noche" },
   },
   material: {
-    en: { hurdles: "hurdles", blocks: "starting blocks", cones: "cones / markers", mats: "mats", throwing: "throwing implements", medballs: "medicine balls", other: "other" },
-    es: { hurdles: "vallas", blocks: "tacos de salida", cones: "conos / marcas", mats: "colchonetas", throwing: "artefactos de lanzamiento", medballs: "balones medicinales", other: "otro" },
+    en: { hurdles: "hurdles", minihurdles: "mini hurdles", blocks: "starting blocks", batons: "relay batons", cones: "cones / markers", ladders: "agility ladders", sleds: "resistance sleds", mats: "mats", throwing: "throwing implements", medballs: "medicine balls", other: "other" },
+    es: { hurdles: "vallas", minihurdles: "vallitas", blocks: "tacos de salida", batons: "testigos", cones: "conos / chinos", ladders: "escaleras de coordinación", sleds: "arrastres", mats: "colchonetas", throwing: "artefactos de lanzamiento", medballs: "balones medicinales", other: "otro" },
   },
 };
 export function lista(grupo: string, lang: string, v: unknown): string {
