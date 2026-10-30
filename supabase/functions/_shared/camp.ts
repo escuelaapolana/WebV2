@@ -114,7 +114,7 @@ export const ETQ: Record<string, Record<string, Record<string, string>>> = {
   },
   material: {
     en: { hurdles: "hurdles", minihurdles: "mini hurdles", blocks: "starting blocks", batons: "relay batons", cones: "cones / markers", ladders: "agility ladders", sleds: "resistance sleds", mats: "mats", throwing: "throwing implements", medballs: "medicine balls", other: "other" },
-    es: { hurdles: "vallas", minihurdles: "vallitas", blocks: "tacos de salida", batons: "testigos", cones: "conos / chinos", ladders: "escaleras de coordinación", sleds: "arrastres", mats: "colchonetas", throwing: "artefactos de lanzamiento", medballs: "balones medicinales", other: "otro" },
+    es: { hurdles: "vallas", minihurdles: "vallitas", blocks: "tacos de salida", batons: "testigos", cones: "conos / chinos", ladders: "escaleras de coordinación", sleds: "arrastres", mats: "esterillas", throwing: "artefactos de lanzamiento", medballs: "balones medicinales", other: "otro" },
   },
 };
 export function lista(grupo: string, lang: string, v: unknown): string {
