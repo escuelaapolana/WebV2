@@ -1,0 +1,11 @@
+-- ===========================================================================
+-- 501 · hay_excepcion() abierta a quien tiene sesión
+-- ---------------------------------------------------------------------------
+-- La revisión de la mañana (30-oct) avisó: _nat_proxima_clase (natación,
+-- mig 475) es de las que se ejecutan con los permisos de quien llama y usa
+-- hay_excepcion(), que desde la mig 059 solo tenían el servidor y postgres.
+-- Con sesión iniciada daba «permission denied for function hay_excepcion».
+-- hay_excepcion solo responde sí/no a «¿ese día hay festivo o cierre?» (dato
+-- que ya es público en el calendario), así que se abre a authenticated.
+-- ===========================================================================
+grant execute on function public.hay_excepcion(date, uuid, text, text) to authenticated;
