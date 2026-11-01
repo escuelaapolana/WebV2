@@ -1,14 +1,15 @@
 #!/bin/bash
 # =====================================================================
-# Activa la conexión de PRUEBA de Academia en la app de ChatGPT de este Mac.
+# Activa (o renueva) la conexión de Academia AC98 en la app de ChatGPT de este Mac.
 #
 #   bash herramientas/academia-mcp-activar.sh
 #
 #   1. Genera una clave nueva. NO se muestra en pantalla ni se guarda en
 #      ningún fichero.
 #   2. La guarda en el Llavero del Mac (servicio «apolana-academia-mcp»).
-#   3. Registra en la base SOLO su huella (sha256), con acceso únicamente al
-#      grupo «Academia AC98 · PRUEBA». Revoca la clave anterior de este Mac.
+#   3. Registra en la base SOLO su huella (sha256), con acceso únicamente a
+#      Academia AC98 (leer, borradores, revisiones; publicar solo con código).
+#      Revoca la clave anterior de este Mac.
 #   4. Añade el servidor «apolana_academia» a Codex (~/.codex/config.toml),
 #      que arranca el puente local herramientas/academia-mcp-puente.py.
 #   5. Comprueba la conexión.
@@ -22,7 +23,9 @@ REPO="$(pwd -P)"   # ruta real (no el acceso del Escritorio, que sincroniza iClo
 CODEX="/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
 SERVICIO="apolana-academia-mcp"
 NOMBRE="ChatGPT · Mac de Andrés (prueba)"
-GRUPO_PRUEBA="9fefd649-2fa2-4036-a4c0-dffe29a7bdee"
+# El grupo de PRUEBA se borró el 1-nov-2026. La clave entra en Academia AC98 real por
+# academia_api_habilitados (mig 499): al renovarla se le vuelve a dar ese permiso.
+GRUPO_ACADEMIA="c288b979-cd00-4abb-96da-30fa997ef297"
 
 [ -x "$CODEX" ] || { echo "✗ No encuentro la app de ChatGPT en /Applications."; exit 1; }
 [ -f .secrets/psql.sh ] || { echo "✗ Falta .secrets/psql.sh (acceso a la base)."; exit 1; }
@@ -48,12 +51,17 @@ bash .secrets/psql.sh -q -v ON_ERROR_STOP=1 <<SQL
 begin;
 update api_claves set revocada_en = now() where nombre = '$NOMBRE' and revocada_en is null;
 insert into api_claves (nombre, hash, grupos, permisos, creada_por)
-values ('$NOMBRE', '$HUELLA', array['$GRUPO_PRUEBA']::uuid[],
-        '{leer,borradores,revisiones,publicar_prueba}',
+values ('$NOMBRE', '$HUELLA', '{}'::uuid[],
+        '{leer,borradores,revisiones}',
         (select id from perfiles where email = 'andres.apolana@gmail.com' limit 1));
+-- Academia AC98 real: leer, borradores y revisiones; publicar solo con su código (mig 499).
+insert into academia_api_habilitados (clave_id, grupo_id, permisos, habilitado_por, motivo)
+select k.id, '$GRUPO_ACADEMIA', '{leer,borradores,revisiones,publicar}', k.creada_por,
+       'Renovación de la clave: mismo permiso que el 29-oct-2026 (planificación de Academia AC98; publicar solo con autorización expresa de Andrés)'
+  from api_claves k where k.nombre = '$NOMBRE' and k.hash = '$HUELLA';
 commit;
 SQL
-echo "✓ Registrada en la base (solo el grupo PRUEBA). La clave anterior de este Mac, si había, queda revocada."
+echo "✓ Registrada en la base (Academia AC98: leer, borradores, revisiones y publicar con código). La clave anterior de este Mac, si había, queda revocada."
 
 # 4. Servidor en Codex (si ya estaba, se sustituye)
 "$CODEX" mcp remove apolana_academia >/dev/null 2>&1 || true
@@ -63,8 +71,8 @@ echo "✓ Servidor «apolana_academia» añadido a Codex."
 # 5. Comprobación (lee la clave del Llavero, como hará la app)
 RES=$(echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"estado","arguments":{}}}' \
   | /usr/bin/python3 "$REPO/herramientas/academia-mcp-puente.py")
-if echo "$RES" | grep -q '"datos_ficticios": true'; then
-  echo "✓ Conexión comprobada: responde el grupo «Academia AC98 · PRUEBA»."
+if echo "$RES" | grep -q 'Academia AC98'; then
+  echo "✓ Conexión comprobada: responde el grupo «Academia AC98»."
   echo
   echo "Ahora cierra la app de ChatGPT del todo (⌘Q) y vuelve a abrirla."
 else
