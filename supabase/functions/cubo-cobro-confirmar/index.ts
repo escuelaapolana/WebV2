@@ -12,9 +12,8 @@ const SERVICE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const STRIPE_KEY =
-  Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ??
-  Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+// Solo la de Apolana (auditoría 1-nov: sin respaldo a la genérica, que es de Ítaka).
+const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("PAGOS_ORIGENES") ?? "")

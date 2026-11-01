@@ -13,7 +13,7 @@
 // idempotente: se puede lanzar las veces que haga falta. NO cobra ni
 // cancela nada; solo lee Stripe y actualiza fechas/estado.
 //
-// Solo la puede llamar el club (admin/tesorería/contabilidad/junta).
+// Solo la puede llamar el club (admin/tesorería/contabilidad; junta ya no, auditoría 1-nov).
 //
 // Mig 391 · MODO PROGRAMADO: pg_cron la llama cada mañana (7:00 de Madrid) con
 // la cabecera `x-cron-secret` = secreto CRON_SECRET (el mismo valor que está en
@@ -277,7 +277,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const rP = await rest(`perfiles?select=rol,rol_activo,roles&email=eq.${encodeURIComponent(correo)}&limit=1`);
     const p = Array.isArray(rP.datos) ? rP.datos[0] : null;
     roles = [p?.rol, p?.rol_activo, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
-    const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad", "junta"].includes(r));
+    // Auditoría 1-nov: fuera junta. Contabilidad puede re-sincronizar (copiar
+    // el estado de Stripe), pero no cambiar fechas en Stripe (ver «aplicar»).
+    const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad"].includes(r));
     if (!esAdmin) return responder({ error: "no_admin", mensaje: "Solo el club puede re-sincronizar." }, 403, origen);
   }
 
@@ -306,8 +308,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // `fin` (sin `fin`: tras el cobro de abril). Ningún cobro se acorta.
   if (cuerpo.recolocar === true) {
     const aplicar = cuerpo.aplicar === true;
-    // Cambiar fechas en Stripe: solo admin / tesorería / contabilidad (junta solo mira).
-    if (aplicar && !roles.some((r) => ["admin", "tesoreria", "contabilidad"].includes(r))) {
+    // Cambiar fechas en Stripe (decide hasta cuándo se cobra): solo admin y
+    // tesorería (auditoría 1-nov: fuera contabilidad; junta ya no entra).
+    if (aplicar && !roles.some((r) => ["admin", "tesoreria"].includes(r))) {
       return responder({ error: "no_admin", mensaje: "Solo administración o tesorería pueden cambiar fechas en Stripe." }, 403, origen);
     }
     const lista: Array<Record<string, unknown>> = [];

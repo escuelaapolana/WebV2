@@ -131,6 +131,36 @@ async function rpc(nombre: string, args: Record<string, unknown>) {
   return { ok: r.ok, datos };
 }
 
+// Modo efectivo del sistema ('prueba' | 'real'), de la base. Auditoría 1-nov:
+// falla CERRADO → si no se puede leer la config, se asume 'real' (así un evento
+// de prueba nunca confirma un pago real por un fallo puntual de lectura).
+async function modoEfectivo(): Promise<string> {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/pagos_config?select=modo&id=eq.1&limit=1`,
+      { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+    );
+    if (!r.ok) return "real";
+    const filas = await r.json().catch(() => null);
+    const modo = Array.isArray(filas) ? filas[0]?.modo : null;
+    return modo ? String(modo).toLowerCase() : "real";
+  } catch { return "real"; }
+}
+
+// Céntimos que de verdad se cobraron, según el aviso (504: pagos_confirmar no
+// confirma si no cuadran con el importe del pago). Sesión de Checkout →
+// amount_total (o el importe original si Stripe convirtió la moneda); cobro
+// (payment_intent) → amount_received. Si no viene, null (= no se comprueba).
+function importeCobrado(o: Record<string, any> | null | undefined): number | null {
+  if (!o) return null;
+  const conv = o.currency_conversion?.amount_total;
+  const bruto = o.object === "payment_intent"
+    ? (o.amount_received ?? o.amount)
+    : (conv ?? o.amount_total);
+  const n = Number(bruto);
+  return bruto != null && Number.isFinite(n) ? Math.round(n) : null;
+}
+
 // De un aviso de Stripe, sacar CON QUÉ PAGO casarlo.
 function referenciaDe(objeto: Record<string, any> | null | undefined): string | null {
   if (!objeto) return null;
@@ -174,6 +204,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response("Aviso ilegible.", { status: 400 });
   }
 
+  // Auditoría 1-nov (igual que cubo-webhook): con el secreto de PRUEBA puesto,
+  // un evento de test (livemode=false) con una referencia real confirmaría un
+  // recibo/bono/alta sin dinero. En modo 'real' se descartan. Solo se consulta
+  // la config si el evento es de prueba; los reales pasan sin mirar nada.
+  if (evento.livemode === false && (await modoEfectivo()) === "real") {
+    console.warn("Evento de PRUEBA (livemode=false) recibido en modo REAL: descartado.");
+    return new Response("Evento de prueba en modo real.", { status: 400 });
+  }
+
   const tipo: string = evento.type ?? "";
   const eventoId: string = evento.id ?? "";
   const objeto = evento.data?.object ?? null;
@@ -201,6 +240,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           p_session: objeto?.id ?? null,
           p_intent: typeof objeto?.payment_intent === "string" ? objeto.payment_intent : null,
           p_evento: eventoId,
+          p_importe: importeCobrado(objeto),
         })).datos;
       } else {
         // Métodos que tardan (algunos adeudos): aún no está cobrado.
@@ -219,6 +259,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_session: tipo.startsWith("checkout") ? (objeto?.id ?? null) : null,
         p_intent: tipo.startsWith("payment_intent") ? (objeto?.id ?? null) : null,
         p_evento: eventoId,
+        p_importe: importeCobrado(objeto),
       })).datos;
       break;
     }

@@ -261,11 +261,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   params.set("metadata[referencia]", referencia);
 
+  // ANTI DOBLE SUSCRIPCIÓN (auditoría 1-nov): doble clic o dos pestañas abrían
+  // DOS pasarelas y, si se pagaban las dos, dos suscripciones (la primera seguía
+  // cobrando sin verse). Con una clave de idempotencia estable por alta y por
+  // tramo de 30 min, Stripe devuelve LA MISMA sesión en vez de crear otra. (Los
+  // tramos empiezan en punto y en media, así que nunca cruzan el cambio de mes
+  // del ancla.) Si aun así llegaran dos suscripciones, cubo-webhook cancela la
+  // segunda (dobleSuscripcionCubo).
+  const tramo = Math.floor(Date.now() / (30 * 60 * 1000));
   const rStripe = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${STRIPE_KEY}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": `apolana-cubo-pagar-${alta.id}-${tramo}`,
     },
     body: params.toString(),
   });

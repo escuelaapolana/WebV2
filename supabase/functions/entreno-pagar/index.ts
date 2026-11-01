@@ -98,6 +98,15 @@ async function resumen(texto: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -112,7 +121,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (cuerpo.ping === true) return responder({ ok: true, tarjeta: true, anual: true, inicio: true }, 200, origen);
 
   // --- Freno anti-abuso por origen (no enumerar tokens) ---
-  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+  const dedonde = await resumen(ipDelCliente(req) || "sin-origen");
   const ritmo = await rest(`rpc/alta_ritmo`, {
     method: "POST",
     body: JSON.stringify({ p_tipo: "entreno-pagar", p_origen: dedonde, p_max: 40 }),
@@ -316,7 +325,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const sesion = await rStripe.json().catch(() => null);
   if (!rStripe.ok || !sesion?.url) {
     console.error("Stripe rechazó la sesión de entreno:", sesion?.error?.message ?? rStripe.status);
-    return responder({ error: "pasarela", mensaje: "La pasarela no ha respondido. Vuelve a intentarlo en un minuto.", detalle: sesion?.error?.message ?? null }, 502, origen);
+    return responder({ error: "pasarela", mensaje: "La pasarela no ha respondido. Vuelve a intentarlo en un minuto." }, 502, origen);
   }
 
   return responder({ url: sesion.url, referencia, importe_cent: importeCent, modo }, 200, origen);

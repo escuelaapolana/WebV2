@@ -12,7 +12,7 @@
 // última factura pagada = último cobro) y rellena lo que falte. Es
 // idempotente: se puede lanzar las veces que haga falta.
 //
-// Solo la puede llamar el club (admin/tesorería/contabilidad/junta).
+// Solo la puede llamar el club (admin/tesorería/contabilidad; junta ya no, auditoría 1-nov).
 //
 // CLAVES (secretos de Supabase): STRIPE_SECRET_KEY_APOLANA /
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY
@@ -104,7 +104,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const rP = await rest(`perfiles?select=rol,rol_activo,roles&email=eq.${encodeURIComponent(correo)}&limit=1`);
   const p = Array.isArray(rP.datos) ? rP.datos[0] : null;
   const roles: string[] = [p?.rol, p?.rol_activo, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
-  const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad", "junta"].includes(r));
+  // Auditoría 1-nov: fuera junta (solo copia el estado de Stripe a la base;
+  // no cobra nada, por eso contabilidad sigue pudiendo).
+  const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad"].includes(r));
   if (!esAdmin) return responder({ error: "no_admin", mensaje: "Solo el club puede re-sincronizar." }, 403, origen);
 
   // 2 · Qué fichas: una (alta_id) o todas las que tienen suscripción

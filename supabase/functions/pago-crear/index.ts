@@ -22,7 +22,8 @@
 // CLAVES
 //   Se leen de las variables de entorno de Supabase. En este archivo
 //   no hay ni puede haber ninguna:
-//     STRIPE_SECRET_KEY          (la pones tú en Supabase)
+//     STRIPE_SECRET_KEY_APOLANA       (live de Apolana; la pones tú en Supabase)
+//     STRIPE_SECRET_KEY_APOLANA_TEST  (test de Apolana, para modo 'prueba')
 //     SUPABASE_URL               (la pone Supabase sola)
 //     SUPABASE_SERVICE_ROLE_KEY  (la pone Supabase sola)
 //     SUPABASE_ANON_KEY          (la pone Supabase sola)
@@ -45,9 +46,9 @@ const ANON_KEY =
 // Claves de Apolana (live / test), igual que cubo-pagar / socio-pagar. Se elige
 // por `pagos_config.modo`. Antes se usaba una clave genérica STRIPE_SECRET_KEY que
 // estaba en modo PRUEBA → ningún recibo se podía pagar con tarjeta real (a la gente
-// le salía la pantalla de test y le rechazaba las tarjetas). Se deja como último
-// recurso por compatibilidad, pero manda la de Apolana.
-const SK_LIVE = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+// le salía la pantalla de test y le rechazaba las tarjetas). Auditoría 1-nov: ya
+// NO hay respaldo a la genérica (es la de Ítaka): sin la de Apolana, no se cobra.
+const SK_LIVE = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 const SK_TEST = Deno.env.get("STRIPE_SECRET_KEY_APOLANA_TEST") ?? "";
 
 // A dónde vuelve la persona desde Stripe. Si es un bono de El Cubo,

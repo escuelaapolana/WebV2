@@ -95,7 +95,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const cab = req.headers.get("Authorization") ?? "";
   const jwt = cab.toLowerCase().startsWith("bearer ") ? cab.slice(7).trim() : "";
   if (!jwt) return responder({ error: "sin_sesion" }, 401, origen);
-  const puede = (await comoUsuario("es_admin", jwt)) || (await comoUsuario("es_staff", jwt)) || (await comoUsuario("puede_girar", jwt));
+  // Auditoría 1-nov: solo admin y quien lleva el dinero (tesorería/contabilidad).
+  // Antes es_staff: cualquier entrenador podía mandar correos de cobro.
+  const puede = (await comoUsuario("es_admin", jwt)) || (await comoUsuario("ve_dinero", jwt)) || (await comoUsuario("puede_girar", jwt));
   if (!puede) return responder({ error: "sin_permiso" }, 403, origen);
 
   let cuerpo: Record<string, unknown> = {};
@@ -138,7 +140,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }),
     });
     const ok = resp.ok;
-    return responder({ ok, destino: ok ? destino : undefined }, 200, origen);
+    return responder({ ok }, 200, origen);
   } catch (e) {
     return responder({ ok: false, motivo: String((e as Error).message || e) }, 200, origen);
   }

@@ -139,18 +139,35 @@ async function patchAltaSocioFiltro(filtro: string, cambios: Record<string, unkn
 }
 
 // Modo efectivo del sistema ('prueba' | 'real'), SIEMPRE de la base (igual que
-// socio-pagar). Ante cualquier fallo de lectura, 'prueba' (no endurecer de más:
-// así nunca se rompe el flujo de test si la consulta falla puntualmente).
+// socio-pagar). Auditoría 1-nov: falla CERRADO → ante cualquier fallo de
+// lectura se asume 'real', para que un evento de PRUEBA nunca toque datos
+// reales por un fallo puntual de la consulta. (Solo se mira con eventos de
+// test; los reales no dependen de esto.)
 async function modoEfectivo(): Promise<string> {
   try {
     const r = await fetch(
       `${SUPABASE_URL}/rest/v1/pagos_config?select=modo&id=eq.1&limit=1`,
       { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
     );
-    if (!r.ok) return "prueba";
-    const filas = await r.json().catch(() => []);
-    return String(filas?.[0]?.modo ?? "prueba").toLowerCase();
-  } catch { return "prueba"; }
+    if (!r.ok) return "real";
+    const filas = await r.json().catch(() => null);
+    const modo = Array.isArray(filas) ? filas[0]?.modo : null;
+    return modo ? String(modo).toLowerCase() : "real";
+  } catch { return "real"; }
+}
+
+// Céntimos que de verdad se cobraron, según el aviso (mig 504: pagos_confirmar
+// no confirma si no cuadran con el importe del pago). Sesión de Checkout →
+// amount_total (o el original si Stripe convirtió la moneda); cobro
+// (payment_intent) → amount_received. Si no viene, null (= no se comprueba).
+function importeCobrado(o: Record<string, any> | null | undefined): number | null {
+  if (!o) return null;
+  const conv = o.currency_conversion?.amount_total;
+  const bruto = o.object === "payment_intent"
+    ? (o.amount_received ?? o.amount)
+    : (conv ?? o.amount_total);
+  const n = Number(bruto);
+  return bruto != null && Number.isFinite(n) ? Math.round(n) : null;
 }
 
 const idDe = (v: unknown): string | null =>
@@ -417,13 +434,13 @@ async function manejarRecibo(tipo: string, objeto: Record<string, any>, eventoId
   switch (tipo) {
     case "checkout.session.completed":
       if (objeto?.payment_status === "paid")
-        await rpcServicio("pagos_confirmar", { p_referencia: ref, p_session: ses, p_evento: eventoId });
+        await rpcServicio("pagos_confirmar", { p_referencia: ref, p_session: ses, p_evento: eventoId, p_importe: importeCobrado(objeto) });
       break;
     case "checkout.session.async_payment_succeeded":
-      await rpcServicio("pagos_confirmar", { p_referencia: ref, p_session: ses, p_evento: eventoId });
+      await rpcServicio("pagos_confirmar", { p_referencia: ref, p_session: ses, p_evento: eventoId, p_importe: importeCobrado(objeto) });
       break;
     case "payment_intent.succeeded":
-      await rpcServicio("pagos_confirmar", { p_referencia: ref, p_intent: idDe(objeto), p_evento: eventoId });
+      await rpcServicio("pagos_confirmar", { p_referencia: ref, p_intent: idDe(objeto), p_evento: eventoId, p_importe: importeCobrado(objeto) });
       break;
     case "checkout.session.async_payment_failed":
       await rpcServicio("pagos_marcar", { p_referencia: ref, p_estado: "fallido", p_evento: eventoId });
@@ -579,6 +596,105 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
   return true;
 }
 
+// ============================================================
+// PAGO SUELTO DEL CUBO (cubo-cobro-pagar; referencia cubocobro-<id>) — aditivo.
+// Auditoría 1-nov: antes se marcaba «pagado» al terminar la pasarela aunque el
+// dinero no hubiera entrado (SEPA tarda días y puede fallar). Ahora:
+//   completed con payment_status 'paid'  → pagado
+//   completed sin pagar (SEPA en camino)  → sigue pendiente
+//   async_payment_succeeded               → pagado
+//   async_payment_failed                  → sigue pendiente (se puede volver a pagar)
+// Se atiende ANTES de casar con un alta: una sesión de pago suelto no suele
+// llevar cliente ni suscripción y, si no, se quedaba «sin forma de casarlo».
+// ============================================================
+function cobroSueltoDe(objeto: Record<string, any>): string | null {
+  if (objeto.object !== "checkout.session" || objeto.mode !== "payment") return null;
+  const meta = objeto.metadata?.cobro_id;
+  if (typeof meta === "string" && meta) return meta;
+  const ref = objeto.client_reference_id;
+  if (typeof ref === "string" && ref.startsWith("cubocobro-")) return ref.slice("cubocobro-".length);
+  return null;
+}
+async function manejarCobroSuelto(tipo: string, objeto: Record<string, any>): Promise<boolean> {
+  const cobroId = cobroSueltoDe(objeto);
+  if (!cobroId) return false;
+  const marcarPagado = () => patchCobro(String(cobroId), {
+    estado: "pagado",
+    pagado_en: new Date().toISOString(),
+    stripe_payment_intent: idDe(objeto.payment_intent),
+  });
+  switch (tipo) {
+    case "checkout.session.completed":
+      if (objeto.payment_status === "paid") await marcarPagado();
+      else console.log(`Pago suelto ${cobroId}: pasarela terminada pero aún sin cobrar (${objeto.payment_status}); sigue pendiente.`);
+      break;
+    case "checkout.session.async_payment_succeeded":
+      await marcarPagado();
+      break;
+    case "checkout.session.async_payment_failed":
+      console.warn(`Pago suelto ${cobroId}: el adeudo ha fallado; sigue pendiente.`);
+      break;
+    default:
+      break;
+  }
+  return true;
+}
+
+// ============================================================
+// DOBLE SUSCRIPCIÓN DEL CUBO (dos pestañas, doble clic…) — aditivo.
+// Igual que en la cuota de entreno (manejarEntreno): si el alta ya tiene OTRA
+// suscripción que sigue cobrando (active/trialing), la que llega ahora sobra:
+// se cancela al momento y NO toca la fila. Si la vieja ya no cobra (cancelada,
+// impagada…), la nueva la sustituye como hasta ahora. Devuelve true si el
+// evento era de la duplicada y ya está atendido.
+// ============================================================
+async function subCobrando(subId: string, livemode: boolean): Promise<boolean | null> {
+  const key = livemode ? SK_LIVE : SK_TEST;
+  if (!key || !subId) return null;
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  if (!r.ok) return r.status === 404 ? false : null;
+  const s = await r.json().catch(() => null);
+  if (!s) return null;
+  return ["active", "trialing"].includes(String(s.status ?? ""));
+}
+async function dobleSuscripcionCubo(
+  tipo: string, objeto: Record<string, any>, filtro: string, livemode: boolean,
+): Promise<boolean> {
+  const subEvento: string | null = tipo.startsWith("customer.subscription.")
+    ? (typeof objeto.id === "string" ? objeto.id : null)
+    : (idDe(objeto.subscription) ?? idDe(objeto.parent?.subscription_details?.subscription));
+  if (!subEvento) return false;
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/cubo_altas?select=id,stripe_subscription_id,suscripcion_estado&${filtro}&limit=1`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+  );
+  const filas = r.ok ? await r.json().catch(() => []) : [];
+  const alta = Array.isArray(filas) ? filas[0] : null;
+  const actual: string | null = alta?.stripe_subscription_id ?? null;
+  if (!alta || !actual || actual === subEvento) return false;
+
+  let viva = await subCobrando(actual, livemode);
+  if (viva === null) viva = String(alta.suscripcion_estado ?? "") === "activa";
+  if (!viva) {
+    // La vieja ya no cobra: un borrado de OTRA suscripción no toca nada; el
+    // resto de eventos de la nueva siguen su camino (la sustituye).
+    return tipo === "customer.subscription.deleted";
+  }
+  if (tipo === "checkout.session.completed" || tipo === "customer.subscription.created") {
+    console.error(`REVISAR · alta del Cubo ${alta.id}: llegó una 2ª suscripción (${subEvento}) con la ${actual} activa → se cancela la nueva.` +
+      " Si ya se cobró algo en ella, REEMBOLSARLO en Stripe.");
+    await cancelarSubAhora(subEvento, livemode);
+  }
+  if ((tipo === "invoice.paid" || tipo === "invoice.payment_succeeded") && Number(objeto.amount_paid ?? 0) > 0) {
+    console.error(`REVISAR · alta del Cubo ${alta.id}: cobro ${objeto.id} en la suscripción duplicada ${subEvento} → reembolsar en Stripe.`);
+    try { await registrarCobroCubo(objeto, filtro); }
+    catch (e) { console.error("No se pudo registrar el cobro duplicado del Cubo:", objeto.id, e); }
+  }
+  return true;
+}
+
 // ¿A qué fila casamos el aviso? Por referencia (cubo-<id de alta>), o por
 // la suscripción, o por el cliente de Stripe. Devuelve el filtro PostgREST.
 function filtroDe(objeto: Record<string, any>): string | null {
@@ -696,7 +812,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case "checkout.session.completed": {
         const pi = idDe(objeto.payment_intent);
         if (objeto.payment_status === "paid") {
-          await rpcServicio("pagos_confirmar", { p_referencia: refSocio, p_session: ses, p_intent: pi, p_evento: eventoId });
+          await rpcServicio("pagos_confirmar", { p_referencia: refSocio, p_session: ses, p_intent: pi, p_evento: eventoId, p_importe: importeCobrado(objeto) });
           if (pi) await patchAltaSocioFiltro(`id=eq.${encodeURIComponent(altaId)}`, { stripe_pago_ref: pi });
         } else {
           await patchAltaSocioFiltro(
@@ -707,7 +823,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         break;
       }
       case "checkout.session.async_payment_succeeded": {
-        await rpcServicio("pagos_confirmar", { p_referencia: refSocio, p_session: ses, p_evento: eventoId });
+        await rpcServicio("pagos_confirmar", { p_referencia: refSocio, p_session: ses, p_evento: eventoId, p_importe: importeCobrado(objeto) });
         break;
       }
       case "checkout.session.async_payment_failed": {
@@ -734,11 +850,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({ recibido: true, recibo: true }), { status: 200 });
   }
 
+  // --- PAGO SUELTO DEL CUBO (cubocobro-<id>) ---
+  if (await manejarCobroSuelto(tipo, objeto)) {
+    return new Response(JSON.stringify({ recibido: true, cobro: true }), { status: 200 });
+  }
+
   const filtro = filtroDe(objeto);
   if (!filtro) {
     console.log(`Aviso ${tipo} sin forma de casarlo con un alta: se ignora.`);
     return new Response(JSON.stringify({ recibido: true, ignorado: true }), { status: 200 });
   }
+
+  // --- 2ª suscripción para la misma alta con otra activa: se cancela la nueva ---
+  try {
+    if (await dobleSuscripcionCubo(tipo, objeto, filtro, evento.livemode !== false)) {
+      return new Response(JSON.stringify({ recibido: true, duplicada: true }), { status: 200 });
+    }
+  } catch (e) { console.error("Comprobación de doble suscripción del Cubo:", objeto.id, e); }
 
   let hecho: Record<string, unknown> | null = null;
 
@@ -762,24 +890,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           ...(pagado ? { suscripcion_estado: "activa" } : {}),
         };
       } else if (objeto.mode === "payment") {
-        // Pago puntual («ponle un pago»): marcar el cobro como cobrado.
-        // El id del cobro viaja en metadata Y en client_reference_id
-        // (cubocobro-<id>): se prueban las dos por robustez.
-        let cobroId: string | null =
-          (objeto.metadata?.cobro_id as string | undefined) ?? null;
-        const ref = objeto.client_reference_id;
-        if (!cobroId && typeof ref === "string" && ref.startsWith("cubocobro-")) {
-          cobroId = ref.slice("cubocobro-".length);
-        }
-        if (cobroId) {
-          await patchCobro(String(cobroId), {
-            estado: "pagado",
-            pagado_en: new Date().toISOString(),
-            stripe_payment_intent: idDe(objeto.payment_intent),
-          });
-        } else {
-          console.error("checkout.session.completed (payment) sin cobro_id:", JSON.stringify(objeto.metadata), objeto.client_reference_id);
-        }
+        // Pago puntual («ponle un pago»): se atiende arriba (manejarCobroSuelto),
+        // solo si Stripe dice 'paid'. Si llega aquí es que no traía cobro_id.
+        console.error("checkout.session.completed (payment) sin cobro_id:", JSON.stringify(objeto.metadata), objeto.client_reference_id);
       }
       break;
     }

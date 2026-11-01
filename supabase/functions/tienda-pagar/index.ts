@@ -133,6 +133,20 @@ ${lineas.map((l) => `<tr><td style="padding:7px 8px;border-bottom:1px solid #eee
   }
 }
 
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
+// Freno por IP (auditoría 1-nov: sin él se podían crear encargos y mandar
+// correos sin límite). Mismo patrón que cubo-alta, con la tabla rate_limit_log.
+const TOPE_ENCARGOS = 8;           // encargos por IP…
+const VENTANA_MIN = 15;            // …cada 15 minutos
+
 // Solo se le acepta al navegador el carrito y el contacto; nada de dinero.
 function limpiarItems(bruto: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(bruto)) return [];
@@ -202,6 +216,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ---------------------------------------------------------------
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
+
+  // Honeypot (campo oculto «website» del formulario): una persona no lo
+  // rellena. Si llega con algo es un bot: se finge éxito y no se crea nada.
+  if (String(cuerpo.website ?? "").trim() !== "") {
+    return responder({ ok: true, efectivo: true, encargo: true, total: 0 }, 200, origen);
+  }
+
+  // Freno por IP. Si no hay IP (llamada rara), se deja pasar (fail-open, como cubo-alta).
+  const ipCliente = ipDelCliente(req);
+  if (ipCliente) {
+    const desde = new Date(Date.now() - VENTANA_MIN * 60000).toISOString();
+    const rRate = await consulta(
+      `rate_limit_log?select=id&accion=eq.tienda-pagar&ip=eq.${encodeURIComponent(ipCliente)}` +
+      `&creado_en=gt.${encodeURIComponent(desde)}`,
+    );
+    const intentos = Array.isArray(rRate.datos) ? rRate.datos.length : 0;
+    if (intentos >= TOPE_ENCARGOS) {
+      return responder({ error: "rate", mensaje: "Demasiados encargos desde tu conexión. Prueba de nuevo dentro de un rato." }, 429, origen);
+    }
+    await consulta("rate_limit_log", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ ip: ipCliente, accion: "tienda-pagar" }),
+    });
+  }
 
   const items = limpiarItems(cuerpo.items ?? cuerpo.carrito);
   const contacto = limpiarContacto(cuerpo.contacto);

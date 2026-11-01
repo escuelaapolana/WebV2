@@ -60,9 +60,9 @@ const URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.c
 
 // Lista FIJA de webs (nunca "*"), mismo criterio que cubo-baja / cubo-pago.
 const ORIGENES_OK = [
-  "https://escuelaapolana.github.io",
   "https://atletismoapolana.com",
   "https://www.atletismoapolana.com",
+  "https://escuelaapolana.github.io",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
 ];

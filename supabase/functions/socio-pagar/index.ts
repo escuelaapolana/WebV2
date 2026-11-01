@@ -93,6 +93,15 @@ async function resumen(texto: string): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -106,7 +115,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Sin esto se podían ENUMERAR las referencias SOC-… (oráculo de quién es socio y
   // quién ha pagado). El freno corta el aporreo (con tu propia referencia, recién
   // obtenida de tu alta, nunca llegas al tope).
-  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+  const dedonde = await resumen(ipDelCliente(req) || "sin-origen");
   const ritmo = await consulta(`rpc/alta_ritmo`, {
     method: "POST",
     body: JSON.stringify({ p_tipo: "socio-pagar", p_origen: dedonde, p_max: 40 }),
@@ -148,10 +157,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // --- 3 · El alta, por su referencia (para casarlo y coger el correo) ---
   const rAlta = await consulta(
-    `altas_socio?select=id,referencia,email,nombre,apellidos,pago_estado&referencia=eq.${encodeURIComponent(referencia)}&order=created_at.desc&limit=1`,
+    `altas_socio?select=id,referencia,email,nombre,apellidos,pago_estado,stripe_session_id&referencia=eq.${encodeURIComponent(referencia)}&order=created_at.desc&limit=1`,
   );
   const alta = Array.isArray(rAlta.datos) ? rAlta.datos[0] as {
     id: string; referencia: string; email: string; nombre: string; apellidos: string; pago_estado: string;
+    stripe_session_id: string | null;
   } : null;
   if (!alta) {
     return responder({ error: "sin_alta", mensaje: "No encontramos tu alta. Escríbenos y lo dejamos listo." }, 404, origen);
@@ -180,6 +190,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- 4 · La sesión de Stripe (TARJETA, de una vez) ---
   const refPago = `socio-${alta.id}`;
 
+  // ANTI DOBLE COBRO (auditoría 1-nov): si ya hay una pasarela de este alta
+  // ABIERTA y sin caducar (doble clic, otra pestaña, volver atrás), se devuelve
+  // ESA misma en vez de abrir otra. Si Stripe dice que ya se completó, no se
+  // abre ninguna. Si no se puede comprobar, se sigue como siempre.
+  if (alta.stripe_session_id) {
+    try {
+      const rExist = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(alta.stripe_session_id)}`,
+        { headers: { Authorization: `Bearer ${STRIPE_KEY}` } },
+      );
+      const ses = rExist.ok ? await rExist.json().catch(() => null) : null;
+      const ahora = Math.floor(Date.now() / 1000);
+      if (ses && ses.status === "open" && ses.url && Number(ses.expires_at ?? 0) > ahora + 120) {
+        return responder({ url: ses.url, referencia: refPago, importe_cent: Number(ses.amount_total ?? importeCent), modo, reutilizada: true }, 200, origen);
+      }
+      if (ses && ses.status === "complete" && alta.pago_estado !== "fallido") {
+        return responder({ error: "ya_pagado", mensaje: "Ya has domiciliado el pago de tu alta: el cobro está en camino. No hace falta volver a pagar." }, 409, origen);
+      }
+    } catch (e) {
+      console.warn("socio-pagar: no se pudo comprobar la sesión anterior:", e);
+    }
+  }
+
   // Registramos el pago en `pagos_online` (si no existía ya con esa referencia),
   // para que al confirmar Stripe, el webhook → pagos_confirmar → pagos_aplicar_efecto
   // pueda marcar el alta como pagada. El importe y el alta van de la base, no del
@@ -197,6 +230,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       metadatos: { alta_id: alta.id, alta_ref: referencia },
     }),
   });
+  // Si el pago ya existía de un intento anterior y el precio del alta cambió
+  // desde entonces, se pone al día (pagos_confirmar compara el importe cobrado
+  // con este, mig 504). Nunca toca un pago ya cobrado.
+  await consulta(
+    `pagos_online?referencia=eq.${encodeURIComponent(refPago)}&estado=neq.pagado&importe_centimos=neq.${importeCent}`,
+    { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ importe_centimos: importeCent }) },
+  );
 
   const params = new URLSearchParams();
   params.set("mode", "payment");
@@ -218,9 +258,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
   params.set("metadata[alta_ref]", referencia);
   params.set("metadata[alta_id]", alta.id);
 
+  // Doble clic simultáneo (las dos peticiones llegan antes de guardar la
+  // sesión): misma clave de idempotencia por alta y tramo de 30 min → Stripe
+  // devuelve la MISMA sesión en vez de crear dos.
+  const tramo = Math.floor(Date.now() / (30 * 60 * 1000));
   const rStripe = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${STRIPE_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      Authorization: `Bearer ${STRIPE_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": `apolana-socio-pagar-${alta.id}-${importeCent}-${tramo}`,
+    },
     body: params.toString(),
   });
   const sesion = await rStripe.json().catch(() => null);

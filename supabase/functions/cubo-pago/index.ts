@@ -107,8 +107,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const rP = await rest(`perfiles?select=rol,rol_activo,roles&email=eq.${encodeURIComponent(correo)}&limit=1`);
   const p = Array.isArray(rP.datos) ? rP.datos[0] : null;
   const roles: string[] = [p?.rol, p?.rol_activo, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
-  const esAdmin = roles.some((r) => ["admin", "tesoreria", "contabilidad", "junta"].includes(r));
-  if (!esAdmin) return responder({ error: "no_admin", mensaje: "Solo el club puede ajustar los pagos." }, 403, origen);
+  // Auditoría 1-nov: aquí se CARGAN importes a la tarjeta de la persona, así que
+  // solo administración y tesorería (ni junta ni contabilidad, que solo miran).
+  const esAdmin = roles.some((r) => ["admin", "tesoreria"].includes(r));
+  if (!esAdmin) return responder({ error: "no_admin", mensaje: "Solo administración o tesorería pueden ajustar los pagos." }, 403, origen);
 
   // 2 · Datos de la ficha + la acción
   let cuerpo: Record<string, any> = {};
