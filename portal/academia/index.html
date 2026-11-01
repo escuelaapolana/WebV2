@@ -21,7 +21,7 @@
 <script src="../../assets/js/academia-carga.js?v=989e6da7&v=1" defer></script>
 <script src="../../assets/js/academia-analisis.js?v=51bb5b76&v=1" defer></script>
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
-<script src="../../assets/js/mundos.js?v=1d8d8652" defer></script>
+<script src="../../assets/js/mundos.js?v=7acbece5" defer></script>
 <script src="../../assets/js/categorias.js?v=6e1ca5b3"></script>
 <style>
   /* Academia AC98 · Hoy y Semana (v1 funcional).
@@ -749,6 +749,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* ---------- utilidades ---------- */
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function urlSegura(u){ u = String(u==null?'':u).trim(); return (/^https?:\/\//i.test(u) || /^\/(?!\/)/.test(u) || /^\.{1,2}\//.test(u)) ? u : ''; }
   function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function guardar(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
   var _t; function avisar(m,err){ toastEl.textContent=m; toastEl.className='ac-toast ver'+(err?' err':''); clearTimeout(_t); _t=setTimeout(function(){ toastEl.className='ac-toast'; }, err?4200:2200); }
@@ -800,7 +801,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
           mes: /^\d{4}-\d{2}$/.test(Q.get('cm')||'') ? Q.get('cm') : hoyISO().slice(0,7), abiertas:{}, ver: Q.get('ci') || null },
     tm: { tab: ['atleta','prueba','protocolos','catalogo'].indexOf(Q.get('t'))!==-1 ? Q.get('t') : 'atleta', aid: Q.get('ta') || '', prueba: Q.get('tp') || '' },
     fx: { aid: Q.get('a') || '', desde: Q.get('xd') || sumar(hoyISO(), -27), hasta: Q.get('xh') || hoyISO(), sub: Q.get('fs')==='analisis' ? 'analisis' : '', pr: Q.get('ap') || '' },
-    fb: { desde: Q.get('fd') || sumar(hoyISO(), -29), hasta: Q.get('fh') || hoyISO(), atleta: Q.get('fba') || '', estado: Q.get('fe') || leer('ac-fb-estado') || 'por_revisar' },
+    fb: { desde: /^\d{4}-\d{2}-\d{2}$/.test(Q.get('fd')||'') ? Q.get('fd') : sumar(hoyISO(), -29), hasta: /^\d{4}-\d{2}-\d{2}$/.test(Q.get('fh')||'') ? Q.get('fh') : hoyISO(), atleta: Q.get('fba') || '', estado: Q.get('fe') || leer('ac-fb-estado') || 'por_revisar' },
     modo: leer('ac-modo')==='compacta' ? 'compacta' : 'detallada',
     semana: lunesDe(Q.get('w') || hoyISO()),
     dia: Q.get('d') || hoyISO(),
@@ -1860,6 +1861,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       if (!s.publicada){
         acc.push('<button type="button" class="ac-btn mini pri" data-editar="1">Editar borrador</button>');
         acc.push('<button type="button" class="ac-btn mini" data-pub-una="1">Publicar la versión '+s.version+'…</button>');
+        acc.push('<button type="button" class="ac-btn mini pel" data-bor-descartar="1">Descartar borrador</button>');
       } else {
         acc.push('<button type="button" class="ac-btn mini" data-editar="1">'+(e.rv ? 'Abrir en el editor' : 'Proponer un cambio')+'</button>');
       }
@@ -2227,8 +2229,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var cuenta = {}; FILTROS_FB.forEach(function(f){ cuenta[f[0]] = L.filter(function(x){ return (!ST.fb.atleta || x.aid===ST.fb.atleta) && pasaFiltroFb(x.est, f[0]); }).length; });
     var filtros = '<select class="ac-sel" id="fb-est" aria-label="Estado de revisión">'+FILTROS_FB.map(function(f){ return '<option value="'+f[0]+'"'+(f[0]===ST.fb.estado?' selected':'')+'>'+esc(f[1])+' ('+cuenta[f[0]]+')</option>'; }).join('')+'</select>'+
       '<select class="ac-sel" id="fb-at" aria-label="Atleta"><option value="">Todos los atletas</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===ST.fb.atleta?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+
-      '<label class="fb-fecha">Desde <input type="date" class="ac-sel" id="fb-desde" value="'+ST.fb.desde+'" max="'+hoy+'"></label>'+
-      '<label class="fb-fecha">hasta <input type="date" class="ac-sel" id="fb-hasta" value="'+ST.fb.hasta+'" max="'+hoy+'"></label>';
+      '<label class="fb-fecha">Desde <input type="date" class="ac-sel" id="fb-desde" value="'+esc(ST.fb.desde)+'" max="'+hoy+'"></label>'+
+      '<label class="fb-fecha">hasta <input type="date" class="ac-sel" id="fb-hasta" value="'+esc(ST.fb.hasta)+'" max="'+hoy+'"></label>';
     var cuerpo = '', fechaAnt = null;
     F.forEach(function(x){
       if (x.s.fecha!==fechaAnt){ cuerpo += '<div class="fb-dia">'+esc(fLarga(x.s.fecha))+'</div>'; fechaAnt = x.s.fecha; }
@@ -3716,7 +3718,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                 (m.competicion_id && TM.compN && TM.compN[m.competicion_id] ? '<small>'+esc(TM.compN[m.competicion_id].nombre)+(m.ronda ? ' · '+esc(RONDA[m.ronda]||m.ronda) : '')+'</small>' : m.ronda ? '<small>'+esc(RONDA[m.ronda]||m.ronda)+'</small>' : '')+'</td>'+
               '<td>'+(m.viento!=null ? esc(numES(m.viento))+' m/s' : '<span class="fx-sin">no consta</span>')+'</td>'+
               '<td>'+catHTML(m, fnac, m.fecha)+'</td>'+
-              '<td>'+(m.fuente_url ? '<a class="ac-link" href="'+esc(m.fuente_url)+'" target="_blank" rel="noopener">acta ↗</a>' : '')+(m.fuente_texto ? '<small>'+esc(m.fuente_texto)+'</small>' : '')+(!m.fuente_url && !m.fuente_texto ? '<span class="fx-sin">no consta</span>' : '')+
+              '<td>'+(urlSegura(m.fuente_url) ? '<a class="ac-link" href="'+esc(urlSegura(m.fuente_url))+'" target="_blank" rel="noopener">acta ↗</a>' : '')+(m.fuente_texto ? '<small>'+esc(m.fuente_texto)+'</small>' : '')+(!m.fuente_url && !m.fuente_texto ? '<span class="fx-sin">no consta</span>' : '')+
                 (m.version>1 ? '<small>corregido ('+(m.version-1)+')</small>' : '')+'</td>'+
               '<td><button type="button" class="ac-link" data-tm-res="'+m.id+'">Corregir</button>'+(c.pr.p && c.pr.p.unidad==='tiempo' ? ' <button type="button" class="ac-link" data-tm-parc="m:'+m.id+'">Parciales</button>' : '')+'</td></tr>'+
               (function(){ var bp = bloqueParciales('marca_id', m.id, function(k){ return k===1 ? Number(m.tiempo_segundos) : null; }, c.pr.p && Number(c.pr.p.distancia_m)); return bp ? '<tr class="tm-sub"><td colspan="7">'+bp+'</td></tr>' : ''; })();
@@ -4328,7 +4330,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (r.e==='sin_sexo') return '<span class="fx-sin">el sexo del atleta no consta: no se puede elegir</span>';
     if (r.e==='otro_sexo') return '<span class="fx-sin">registrada solo para el otro sexo</span>'+nueva;
     if (r.e==='otras_condiciones') return '<span class="fx-sin">la registrada es con otras condiciones ('+esc(condTxt(m.condiciones)||'sin condiciones')+')</span>'+nueva;
-    var fuente = (m.fuente_url ? '<a class="ac-link" href="'+esc(m.fuente_url)+'" target="_blank" rel="noopener">fuente ↗</a> ' : '')+(m.fuente_texto ? esc(m.fuente_texto)+' ' : '')+(m.comprobada_en ? '· comprobada el '+esc(fAnio(m.comprobada_en)) : '');
+    var fuente = (urlSegura(m.fuente_url) ? '<a class="ac-link" href="'+esc(urlSegura(m.fuente_url))+'" target="_blank" rel="noopener">fuente ↗</a> ' : '')+(m.fuente_texto ? esc(m.fuente_texto)+' ' : '')+(m.comprobada_en ? '· comprobada el '+esc(fAnio(m.comprobada_en)) : '');
     if (r.e==='pendiente') return tag('t-rev','pendiente de publicación')+'<small>'+esc(m.campeonato)+' '+m.temporada_federativa+': no se usan las de otro año</small>';
     if (r.e==='no_exige') return 'No exige mínima<small>'+fuente+(m.criterio ? ' · criterio: '+esc(m.criterio) : '')+'</small>';
     var val = '<b>'+esc(m.valor_texto || fmtValor(m.valor, TM.pid[m.prueba_id] && TM.pid[m.prueba_id].unidad==='tiempo' ? 's' : 'm'))+'</b>';
@@ -4466,7 +4468,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
               '<td>'+(m.estado==='publicada' ? '<b>'+esc(m.valor_texto||'')+'</b>' : m.estado==='pendiente' ? tag('t-rev','pendiente de publicación') : 'no exige mínima')+'</td>'+
               '<td>'+(m.validez_desde||m.validez_hasta ? esc((m.validez_desde?fAnio(m.validez_desde):'…')+' – '+(m.validez_hasta?fAnio(m.validez_hasta):'…')) : '<span class="fx-sin">no consta</span>')+'</td>'+
               '<td>'+(m.criterio ? esc(m.criterio) : '<span class="fx-sin">no consta</span>')+'</td>'+
-              '<td>'+(m.fuente_url ? '<a class="ac-link" href="'+esc(m.fuente_url)+'" target="_blank" rel="noopener">enlace ↗</a>' : '')+(m.fuente_texto?'<small>'+esc(m.fuente_texto)+'</small>':'')+(m.comprobada_en?'<small>comprobada el '+esc(fAnio(m.comprobada_en))+'</small>':'')+(!m.fuente_url && !m.fuente_texto ? '<span class="fx-sin">no consta</span>' : '')+'</td>'+
+              '<td>'+(urlSegura(m.fuente_url) ? '<a class="ac-link" href="'+esc(urlSegura(m.fuente_url))+'" target="_blank" rel="noopener">enlace ↗</a>' : '')+(m.fuente_texto?'<small>'+esc(m.fuente_texto)+'</small>':'')+(m.comprobada_en?'<small>comprobada el '+esc(fAnio(m.comprobada_en))+'</small>':'')+(!m.fuente_url && !m.fuente_texto ? '<span class="fx-sin">no consta</span>' : '')+'</td>'+
               '<td><button type="button" class="ac-link" data-cp-minima="'+m.id+'">Editar</button></td></tr>';
           }).join('')+'</table>';
       }).join('') : '<p class="fx-sin">Sin mínimas registradas.</p>');
@@ -5550,6 +5552,18 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if (ds.otra){ abrirEditor({ nueva:'1', a:abierto.aid, f:s.fecha, m: s.momento==='manana' ? 'tarde' : s.momento==='tarde' ? 'manana' : 'tarde' }); return; }
     if (ds.pubUna){ dialogoPublicar([s]); return; }
+    /* Descartar un borrador (p. ej. uno que dejó ChatGPT y no se quiere). Solo
+       borradores: lo publicado se cambia con revisiones. Si tuviera registros,
+       la base lo archiva en vez de borrarlo (trg_sesiones_a_archivar). */
+    if (ds.borDescartar){
+      if (s.publicada) return;
+      if (!confirm('¿Descartar este borrador? El atleta no lo ha visto y desaparece del plan.')) return;
+      b.disabled = true;
+      var rbd = await sb.from('sesiones').delete().eq('id', s.id).eq('publicada', false);
+      if (rbd.error){ b.disabled = false; avisar('No se pudo descartar: '+rbd.error.message, true); return; }
+      avisar('Borrador descartado');
+      cerrar(); await recargar(); return;
+    }
     if (ds.aplicar){ dialogoAplicar(s, abierto.aid); return; }
     if (ds.aus){ var fa = document.getElementById('ac-aus-f'); fa.hidden = !fa.hidden; if (!fa.hidden) fa.innerHTML = formAusencia(); return; }
     if (ds.ausOk){

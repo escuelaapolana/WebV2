@@ -69,18 +69,15 @@ const SERVICE_KEY =
 // se cogiera, cualquiera podría pedir un enlace del club que lleve a
 // su propia web y quedarse con la sesión de quien lo pulse.
 const WEBS_DEL_CLUB = [
-  // El dominio viejo va primero a propósito: es el que URL_BASE usa para el
-  // enlace mágico y el que ya está autorizado en Supabase Auth. GitHub Pages
-  // redirige solo de él al dominio nuevo, así que el enlace acaba en
-  // atletismoapolana.com igual. El dominio nuevo se añade para que el login
-  // FUNCIONE desde él (si no, «Origen no permitido»).
-  "https://escuelaapolana.github.io/WebV2/",
-  "https://escuelaapolana.github.io/apolana-club/",
+  // El dominio nuevo va primero (auditoría 1-nov): es el que se devuelve en
+  // CORS cuando el origen no está en la lista. El viejo sigue admitido.
   "https://atletismoapolana.com/",
   "https://www.atletismoapolana.com/",
+  "https://escuelaapolana.github.io/WebV2/",
+  "https://escuelaapolana.github.io/apolana-club/",
 ];
 
-const URL_BASE = (Deno.env.get("ACCESO_URL_BASE") ?? WEBS_DEL_CLUB[0]).replace(/\/*$/, "/");
+const URL_BASE = (Deno.env.get("ACCESO_URL_BASE") ?? "https://escuelaapolana.github.io/WebV2/").replace(/\/*$/, "/");
 // A dónde vuelve el enlace del correo: el dominio nuevo (ya está en la lista de
 // Redirect URLs de Supabase Auth), así aterriza DIRECTO en /portal/ y no rebota
 // por la home. Antes iba a URL_BASE (dominio viejo), que no estaba permitido y
@@ -100,7 +97,7 @@ function origenesPermitidos(): string[] {
     .split(",").map((s) => s.trim()).filter(Boolean);
   // Las webs del club (solo el dominio, sin la carpeta) y el servidor de casa.
   const deLasWebs = WEBS_DEL_CLUB.map((u) => new URL(u).origin);
-  return [...new Set([...puestos, ...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000"])];
+  return [...new Set([...deLasWebs, ...puestos, "http://localhost:8000", "http://127.0.0.1:8000"])];
 }
 
 function cors(origen: string | null): Record<string, string> {
@@ -227,6 +224,15 @@ async function mandarEnlace(email: string): Promise<boolean> {
 // ============================================================
 // LA PUERTA
 // ============================================================
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (peticion) => {
   const origen = peticion.headers.get("origin");
 
@@ -266,7 +272,7 @@ Deno.serve(async (peticion) => {
 
   try {
     const dedonde = await resumen(
-      peticion.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen",
+      ipDelCliente(peticion) || "sin-origen",
     );
 
     // 1 · ¿Se puede pedir, o ya se ha pedido demasiadas veces?

@@ -63,9 +63,16 @@
     return t || 'Panel';
   }
 
+  /* Sin sesión no se enseña el armazón del panel (lateral, cabecera de la
+     pantalla, barra de abajo) debajo de la caja de acceso: igual que /admin/.
+     Muchas pantallas no tienen #admin-contenido y todo cuelga de .admin-wrap,
+     así que se oculta por clase hasta que arranque() confirma el acceso. */
+  document.documentElement.classList.add('adm-sin-sesion');
+
   // CSS mínimo del login y la barra superior (para no depender de nada más)
   var css = document.createElement('style');
   css.textContent =
+    'html.adm-sin-sesion .admin-wrap,html.adm-sin-sesion .at-tabbar{display:none !important}' +
     'html,body{max-width:100%;overflow-x:hidden}' +
     /* --- Barra superior: misma altura, tipografía y colores que la del panel principal --- */
     '.adm-top{background:#2E4256;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px clamp(14px,4vw,40px);min-height:60px;flex-wrap:nowrap;width:100%;box-sizing:border-box;user-select:none;-webkit-user-select:none}' +
@@ -603,6 +610,7 @@
         }
       }
       login.style.display = 'none';
+      document.documentElement.classList.remove('adm-sin-sesion');
       barra(s.data.session.user.email);
       /* La franja «Estás como …», pegada arriba y sin botón de cerrar. */
       montarPapeles();

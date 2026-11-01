@@ -29,9 +29,9 @@ const DIAS: Record<string, string> = {
 };
 
 const ORIGENES_OK = [
-  "https://escuelaapolana.github.io",
   "https://atletismoapolana.com",
   "https://www.atletismoapolana.com",
+  "https://escuelaapolana.github.io",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
 ];
@@ -105,6 +105,15 @@ async function avisarClub(d: { nombre: string; telefono: string; dia: string; me
   } catch (e) { console.error("[pista-prueba] aviso:", e); }
 }
 
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req) => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -119,7 +128,7 @@ Deno.serve(async (req) => {
 
   // 0 · Anti-spam (honeypot + límite por IP)
   if (String(b.website ?? "").trim() !== "") return responder({ ok: true }, 200, origen);
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  const ip = ipDelCliente(req);
   if (ip) {
     const desde = new Date(Date.now() - 15 * 60000).toISOString();
     const rRate = await rest(`rate_limit_log?select=id&accion=eq.pista-prueba&ip=eq.${encodeURIComponent(ip)}&creado_en=gt.${encodeURIComponent(desde)}`);

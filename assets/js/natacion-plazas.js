@@ -10,8 +10,8 @@
     rojo:  { t: 'Completo', c: 'rojo' }
   };
   function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m];
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
     });
   }
   function hhmm(h) { return String(h).slice(0, 5); }

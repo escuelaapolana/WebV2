@@ -4,8 +4,8 @@
 // Cuando alguien se hace socio (formulario /socio/alta/), además de
 // guardar su alta (eso lo hace `enviar_alta_socio`), aquí se le crea la
 // CUENTA para entrar a su zona (noticias + actividades). Rol 'socio'.
-//   · Si el correo ya tiene cuenta, no se duplica: se le añade el papel
-//     'socio' y se le dice que entre con su contraseña de siempre.
+//   · Si el correo ya tiene cuenta, no se duplica ni se tocan sus papeles.
+//     La respuesta es siempre {ok:true}: no delata si el correo ya existía.
 //   · La contraseña NUNCA pasa por la base: la teclea la persona y va a
 //     Supabase Auth. Mínimo 8 caracteres.
 // Se despliega SIN verificar JWT (es un alta pública):
@@ -77,6 +77,15 @@ async function enviarEnlace(email: string): Promise<void> {
   } catch (e) { console.error("[socio-cuenta] enlace:", e); }
 }
 
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -96,7 +105,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // 0 · Freno anti-abuso por origen (mismo patrón que acceso-enlace): sin esto,
   //     cualquiera podía crear cuentas en masa o enumerar correos aporreando
   //     esta puerta. 30 por origen y hora; de sobra para un alta de verdad.
-  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+  const dedonde = await resumen(ipDelCliente(req) || "sin-origen");
   const ritmo = await rest(`rpc/alta_ritmo`, {
     method: "POST",
     body: JSON.stringify({ p_tipo: "socio-cuenta", p_origen: dedonde, p_max: 30 }),
@@ -158,5 +167,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const verificar = conocido && !yaExistia;
   if (verificar) await enviarEnlace(email);
-  return responder({ ok: true, ya_existia: yaExistia, verificar }, 200, origen);
+  // Respuesta IGUAL pase lo que pase (auditoría 1-nov): ni «ya existía» ni
+  // «verificar» salen fuera, para que nadie use esta puerta para saber si un
+  // correo tiene cuenta o es del club. El front enseña un texto neutro.
+  return responder({ ok: true }, 200, origen);
 });

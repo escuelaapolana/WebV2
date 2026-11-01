@@ -3,7 +3,7 @@
 // ------------------------------------------------------------
 // QUÉ HACE
 //   Desde el panel, el club pulsa «Enviar horarios» de un nadador. Esta función
-//   comprueba que quien llama es del club (admin/entrenador/responsable), lee de
+//   comprueba que quien llama gestiona natación (admin o responsable gestor), lee de
 //   la base los horarios de ese nadador (sus franjas de natación) + su código de
 //   acceso, y manda un correo a la familia (email del tutor, o el suyo) con los
 //   horarios y el enlace directo a «mi plaza». El destinatario y los datos salen
@@ -77,11 +77,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!rU.ok) return responder({ error: "sesion" }, 401, origen);
   const correoQuien: string = ((await rU.json().catch(() => null))?.email ?? "").toLowerCase();
   if (!correoQuien) return responder({ error: "sesion" }, 401, origen);
-  const rP = await rest(`perfiles?select=rol,rol_activo,roles&email=eq.${encodeURIComponent(correoQuien)}&limit=1`);
-  const p = Array.isArray(rP.datos) ? rP.datos[0] : null;
-  const roles: string[] = [p?.rol, p?.rol_activo, ...(Array.isArray(p?.roles) ? p.roles : [])].filter(Boolean);
-  const permitido = roles.some((r) => ["admin", "tesoreria", "contabilidad", "junta", "coordinador", "entrenador", "responsable"].includes(r));
-  if (!permitido) return responder({ error: "no_permiso", mensaje: "Solo el club puede enviar horarios." }, 403, origen);
+  // Permiso (auditoría 1-nov): solo admin o responsable gestor de natación
+  // (soy_gestor_natacion() ya incluye es_admin()). Se pregunta a la base CON LA
+  // SESIÓN de quien llama. Antes valía cualquier entrenador/responsable/junta.
+  const rPer = await fetch(`${SUPABASE_URL}/rest/v1/rpc/soy_gestor_natacion`, {
+    method: "POST",
+    headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const permitido = rPer.ok && (await rPer.json().catch(() => false)) === true;
+  if (!permitido) return responder({ error: "no_permiso", mensaje: "Solo quien gestiona la natación puede enviar horarios." }, 403, origen);
 
   // --- 2 · Qué nadador: por código (del panel) o por atleta_id ---
   let cuerpo: { codigo?: string; atleta_id?: string } = {};

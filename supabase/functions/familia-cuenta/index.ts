@@ -36,16 +36,16 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const PORTAL = Deno.env.get("ACCESO_REDIRECT_PORTAL") ?? "https://atletismoapolana.com/portal/";
 
 const WEBS_DEL_CLUB = [
-  "https://escuelaapolana.github.io/WebV2/",
   "https://atletismoapolana.com/",
   "https://www.atletismoapolana.com/",
+  "https://escuelaapolana.github.io/WebV2/",
 ];
 
 function origenesPermitidos(): string[] {
   const puestos = (Deno.env.get("ACCESO_ORIGENES") ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
   const deLasWebs = WEBS_DEL_CLUB.map((u) => new URL(u).origin);
-  return [...new Set([...puestos, ...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000"])];
+  return [...new Set([...deLasWebs, ...puestos, "http://localhost:8000", "http://127.0.0.1:8000"])];
 }
 
 function cors(origen: string | null): Record<string, string> {

@@ -9,8 +9,9 @@
 //        incorporan más tarde; texto «nuevo»)
 //   { recordar: true }          → a las que lo recibieron y no han contestado
 //   { llegado: "<familia_id>" } → «ya ha llegado»: con enlace de pago si hay algo que pagar
-//   { prueba: true, a, clave?, familia?, asunto?, texto?, tipo? } → un ejemplo a ese
-//        correo (tipo: recordatorio | llegado; si no, el texto de «clave»)
+//   { prueba: true, clave?, familia?, asunto?, texto?, tipo? } → un ejemplo al correo
+//        de QUIEN LLAMA (su sesión; `a` solo cuenta si llama la base con x-cron-secret)
+//        (tipo: recordatorio | llegado; si no, el texto de «clave»)
 // Mig 444 (26-oct): los textos los escribe Mario (natacion_equip_textos:
 // escuela | master | nuevo) con {nombre}, {nadadores} y {enlace}; si el envío
 // trae asunto/texto, manda ese (lo que Mario tiene en pantalla).
@@ -29,9 +30,27 @@ const REMITENTE_NOMBRE = (Deno.env.get("CORREO_REMITENTE_NOMBRE") ?? "Club Atlet
 const RESPUESTAS = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 const WEB = "https://atletismoapolana.com/";
 
+// Webs que pueden llamar desde un navegador (auditoría 1-nov: antes se
+// reflejaba cualquier origen). Lista fija + CORREO_ORIGENES (suma, no sustituye).
+const ORIGENES_OK = [...new Set([
+  "https://atletismoapolana.com", "https://www.atletismoapolana.com", "https://escuelaapolana.github.io",
+  ...(Deno.env.get("CORREO_ORIGENES") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  "http://localhost:8000", "http://127.0.0.1:8000",
+])];
 function cors(o: string | null): Record<string, string> {
-  return { "Access-Control-Allow-Origin": o ?? "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  const valor = o && ORIGENES_OK.includes(o) ? o : ORIGENES_OK[0];
+  return { "Access-Control-Allow-Origin": valor, "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
     "Access-Control-Allow-Methods": "POST, OPTIONS", "Vary": "Origin" };
+}
+// El correo de quien llama, sacado de SU sesión (no del cuerpo de la petición).
+async function correoDeLaSesion(jwt: string): Promise<string> {
+  if (!jwt) return "";
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}` } });
+    if (!r.ok) return "";
+    const u = await r.json();
+    return String(u?.email ?? "").trim().toLowerCase();
+  } catch { return ""; }
 }
 const responder = (d: unknown, s: number, o: string | null) =>
   new Response(JSON.stringify(d), { status: s, headers: { ...cors(o), "Content-Type": "application/json; charset=utf-8" } });
@@ -139,10 +158,13 @@ Deno.serve(async (req: Request) => {
 
   // ¿Quién llama? cron (secreto) o Mario/admin con su sesión.
   const sec = (req.headers.get("x-cron-secret") ?? "").trim();
-  let ok = !!(CRON_SECRET && sec && iguales(sec, CRON_SECRET));
+  const esLaBase = !!(CRON_SECRET && sec && iguales(sec, CRON_SECRET));
+  let ok = esLaBase;
+  let jwtUsuario = "";
   if (!ok) {
     const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
     if (jwt && jwt !== ANON_KEY) {
+      jwtUsuario = jwt;
       const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/natacion_ropa_puede`, {
         method: "POST", headers: { apikey: ANON_KEY || SERVICE_KEY, Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" }, body: "{}" });
       ok = r.ok && (await r.json().catch(() => false)) === true;
@@ -154,8 +176,11 @@ Deno.serve(async (req: Request) => {
   try { b = await req.json(); } catch { /* vacío */ }
 
   if (b.prueba === true) {
-    const a = String(b.a ?? "").trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)) return responder({ error: "falta 'a'" }, 400, o);
+    // La prueba va SIEMPRE al correo de quien la pide (su sesión), como en
+    // correo-grupo / natacion-aviso; el campo `a` del cuerpo se ignora. Solo la
+    // base (x-cron-secret, sin sesión) puede decir a qué correo.
+    const a = esLaBase ? String(b.a ?? "").trim().toLowerCase() : await correoDeLaSesion(jwtUsuario);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)) return responder({ error: "sin_correo", mensaje: "No sabemos tu correo para mandarte la prueba." }, 400, o);
     const quien = String(b.nombre ?? "Andrés");
     let c;
     if (b.tipo === "llegado") c = correoLlegado(quien, 70, `${WEB}pagar/?t=ejemplo`);

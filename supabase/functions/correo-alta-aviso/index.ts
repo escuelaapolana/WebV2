@@ -10,9 +10,11 @@
 //   mandar el correo dos veces.
 //
 // SEGURIDAD
-//   · Es pública (la rellena gente sin sesión), pero SOLO escribe a la
-//     dirección fija de administración (env CORREO_ADMIN). Nadie elige el
-//     destinatario.
+//   · La llama pago-webhook con la clave de servicio al confirmarse el alta
+//     en Stripe. Sin esa clave (o x-cron-secret) solo envía si el alta ya
+//     consta pagada / en_camino en la base (auditoría 1-nov).
+//   · SOLO escribe a la dirección fija de administración (env CORREO_ADMIN)
+//     y al propio socio. Nadie elige el destinatario.
 //   · Los datos y las fotos se leen de la base por la referencia; el
 //     navegador solo dice qué alta.
 //   · Idempotente: si el alta ya se avisó, no repite.
@@ -35,6 +37,15 @@ const CORREO_ADMIN = (Deno.env.get("CORREO_ADMIN") ?? "administracion@atletismoa
 const CORREO_URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoapolana.com").replace(/\/+$/, "");
 const BUCKET = "altas-documentos";
 const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
+const CRON_SECRET = (Deno.env.get("CRON_SECRET") ?? "").trim();
+
+// Comparación de secretos en tiempo constante.
+function iguales(x: string, y: string): boolean {
+  const ea = new TextEncoder().encode(x), eb = new TextEncoder().encode(y);
+  let dif = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) dif |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return dif === 0;
+}
 
 function cors(origen: string | null): Record<string, string> {
   const permitidos = (Deno.env.get("CORREO_ORIGENES") ?? Deno.env.get("PAGOS_ORIGENES") ?? "")
@@ -131,6 +142,15 @@ function correoSocioHtml(d: { nombre: string; referencia: string; secciones: str
   </body></html>`;
 }
 
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -138,17 +158,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!SUPABASE_URL || !SERVICE_KEY) return responder({ ok: false, motivo: "config" }, 200, origen);
   if (!BREVO_API_KEY) return responder({ ok: false, motivo: "sin-configurar" }, 200, origen);
 
+  // ¿Quién llama? (auditoría 1-nov) El aviso lleva IBAN, DNI y enlaces a las
+  // fotos, así que solo sale si lo pide el servidor —pago-webhook con la clave
+  // de servicio, o la base con x-cron-secret— o si el alta YA consta pagada o
+  // con el adeudo en marcha en la base. Antes bastaba la referencia SOC-… y
+  // salía antes de cobrar.
+  const tok = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const sec = (req.headers.get("x-cron-secret") ?? "").trim();
+  const deConfianza = !!(SERVICE_KEY && tok && iguales(tok, SERVICE_KEY)) ||
+    !!(CRON_SECRET && sec && iguales(sec, CRON_SECRET));
+
   // Freno anti-abuso por origen (mismo patrón que socio-cuenta / socio-pagar):
   // sin esto, cualquiera podía aporrear esta puerta con referencias SOC-…
   // ajenas y usar la respuesta como oráculo (existe / ya avisada). 30 por
   // origen y hora: de sobra para las altas de verdad, incluso varias seguidas
   // desde la misma conexión del club.
-  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
-  const ritmo = await rest("POST", "rpc/alta_ritmo", { p_tipo: "correo-alta-aviso", p_origen: dedonde, p_max: 30 });
+  const dedonde = await resumen(ipDelCliente(req) || "sin-origen");
   // Si se pasa del ritmo se corta EN SILENCIO con el mismo {ok:true}: ni
   // siquiera se le dice que hay un freno. El alta ya está guardada y el panel
   // la enseña igual; como mucho no sale el correo de un envío repetido.
-  if (ritmo.datos !== true) return responder({ ok: true }, 200, origen);
+  // (El servidor no pasa por el freno: el webhook llega siempre desde la misma
+  // red y no debe quedarse sin aviso por las peticiones de otros.)
+  if (!deConfianza) {
+    const ritmo = await rest("POST", "rpc/alta_ritmo", { p_tipo: "correo-alta-aviso", p_origen: dedonde, p_max: 30 });
+    if (ritmo.datos !== true) return responder({ ok: true }, 200, origen);
+  }
 
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
@@ -163,6 +197,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const rAlta = await rest("GET", `altas_socio?select=*&referencia=eq.${encodeURIComponent(referencia)}&limit=1`);
   const a = Array.isArray(rAlta.datos) ? (rAlta.datos[0] as Record<string, unknown>) : null;
   if (!a) return responder({ ok: true }, 200, origen);
+  // Sin clave de servicio/secreto, solo si el alta ya está pagada o con el
+  // adeudo SEPA en marcha. Misma respuesta {ok:true} que el resto (sin oráculo).
+  if (!deConfianza && !["pagado", "en_camino"].includes(String(a.pago_estado ?? ""))) {
+    return responder({ ok: true }, 200, origen);
+  }
 
   // 2 · Reclamar el aviso de forma atómica: solo si aún no se ha enviado.
   const reclamo = await rest(

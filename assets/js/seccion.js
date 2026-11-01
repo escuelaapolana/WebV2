@@ -1153,9 +1153,10 @@
 
   function escHtml(t) {
     return String(t == null ? '' : t)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-  function escAttr(t) { return escHtml(t).replace(/"/g, '&quot;'); }
+  function escAttr(t) { return escHtml(t); }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () { arranca(); ultimasDeLaSeccion(); });

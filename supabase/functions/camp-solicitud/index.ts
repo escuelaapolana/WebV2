@@ -90,6 +90,45 @@ function horarioFilas(d: any): [string, string][] {
     ["Sesiones al día", Number.isFinite(d.sesiones_dia) ? String(d.sesiones_dia) + (d.duracion ? ` · unos ${d.duracion} min` : "") : (d.duracion ? `unos ${d.duracion} min` : "")]];
 }
 
+// ---- Acuses (auditoría 1-nov) ----
+// Como mucho 3 acuses al día al MISMO correo destinatario: sin esto, el
+// formulario servía para mandar correos del club a cualquier dirección en
+// bucle. Se cuenta en rate_limit_log (accion 'acuse:camp-solicitud') con una huella
+// del correo, no el correo en claro. Si la base no contesta, no se frena.
+async function huellaCorreo(email: string): Promise<string> {
+  const bytes = new TextEncoder().encode("acuse·" + email.trim().toLowerCase());
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function acusePermitido(email: string): Promise<boolean> {
+  try {
+    const h = await huellaCorreo(email);
+    const desde = new Date(Date.now() - 24 * 3600000).toISOString();
+    const r = await rest(`rate_limit_log?select=id&accion=eq.${encodeURIComponent("acuse:camp-solicitud")}&ip=eq.${h}&creado_en=gt.${encodeURIComponent(desde)}`);
+    if ((Array.isArray(r.datos) ? r.datos.length : 0) >= 3) return false;
+    await rest("rate_limit_log", { method: "POST", body: JSON.stringify({ ip: h, accion: "acuse:camp-solicitud" }) });
+    return true;
+  } catch { return true; }
+}
+// Quita enlaces y dominios (http…, www…, algo.com) de un texto que escribe el
+// público y que va DENTRO del acuse (nombre, entidad): así nadie mete su
+// enlace en un correo que sale con la firma del club.
+function sinEnlaces(t: string): string {
+  return String(t ?? "")
+    .replace(/(https?:\/\/|www\.)\S*/gi, " ")
+    .replace(/\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}\b(\/\S*)?/gi, " ")
+    .replace(/\s{2,}/g, " ").trim();
+}
+
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req) => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -107,7 +146,7 @@ Deno.serve(async (req) => {
   if (String(b.website ?? "").trim() !== "") return responder({ ok: true }, 200, origen);
   const t0 = Number(b.t0);
   if (Number.isFinite(t0) && t0 > 0 && Date.now() - t0 < 4000) return responder({ ok: true }, 200, origen);
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  const ip = ipDelCliente(req);
   if (ip) {
     const desde = new Date(Date.now() - 60 * 60000).toISOString();
     const r = await rest(`rate_limit_log?select=id&accion=eq.camp-solicitud&ip=eq.${encodeURIComponent(ip)}&creado_en=gt.${encodeURIComponent(desde)}`);
@@ -256,16 +295,20 @@ Deno.serve(async (req) => {
   const avisado = await enviarCorreo({ para: await correoClub(), asunto: `Training camp · ${codigo} · ${d.entidad} (${d.pais})`, html: htmlClub, responderA: d.email });
 
   const L = lang === "es";
+  // En el acuse (sale con la firma del club a lo que haya escrito el público)
+  // van el contacto y la entidad SIN enlaces ni dominios (auditoría 1-nov).
+  const contactoAcuse = sinEnlaces(d.contacto);
+  const entidadAcuse = sinEnlaces(d.entidad);
   const htmlCliente = correoHtml({
     lang, titulo: L ? "Hemos recibido tu solicitud" : "We've received your request",
     parrafos: [
-      L ? `Hola, ${esc(d.contacto)}:` : `Hello ${esc(d.contacto)},`,
+      L ? `Hola, ${esc(contactoAcuse)}:` : `Hello ${esc(contactoAcuse)},`,
       L ? "Gracias por pensar en Alicante para vuestra concentración. Vamos a estudiar la disponibilidad de las instalaciones y los servicios que nos pides, y te enviaremos una propuesta a medida."
         : "Thank you for considering Alicante for your training camp. We'll check the availability of the facilities and services you've asked for and send you a tailor-made proposal.",
     ],
     filas: [
       [L ? "Referencia" : "Reference", codigo],
-      [L ? "Entidad" : "Organisation", d.entidad],
+      [L ? "Entidad" : "Organisation", entidadAcuse],
       [L ? "Fechas" : "Dates", `${fechaTxt(d.llegada, lang)} – ${fechaTxt(d.salida, lang)}`],
       [L ? "Participantes" : "Participants", L ? `${d.n_atletas} atletas · ${d.n_entrenadores} entrenadores` : `${d.n_atletas} athletes · ${d.n_entrenadores} coaches`],
       [L ? "Modalidades" : "Disciplines", lista("modalidades", lang, d.modalidades)],
@@ -276,13 +319,16 @@ Deno.serve(async (req) => {
       L ? "Un saludo,<br><b>Club Atletismo Apolana</b>" : "Kind regards,<br><b>Club Atletismo Apolana</b>",
     ],
   });
-  const acuse = await enviarCorreo({
-    para: d.email, nombre: d.contacto, html: htmlCliente,
+  // Tope: 3 acuses al día al mismo correo (auditoría 1-nov).
+  const acuseOk = await acusePermitido(d.email);
+  const acuse = acuseOk ? await enviarCorreo({
+    para: d.email, nombre: contactoAcuse || undefined, html: htmlCliente,
     asunto: L ? `Hemos recibido tu solicitud · ${codigo}` : `We've received your training camp request · ${codigo}`,
-  });
+  }) : false;
   await rest("camp_registro", { method: "POST", body: JSON.stringify({
     solicitud_id: id, tipo: "comunicacion", canal: "email", sentido: "saliente",
-    texto: acuse ? `Acuse de recibo enviado a ${d.email} (${lang === "es" ? "castellano" : "inglés"})` : `El acuse de recibo a ${d.email} NO ha salido`,
+    texto: acuse ? `Acuse de recibo enviado a ${d.email} (${lang === "es" ? "castellano" : "inglés"})`
+      : acuseOk ? `El acuse de recibo a ${d.email} NO ha salido` : `Acuse de recibo a ${d.email} NO enviado: ya se le mandaron 3 hoy`,
     datos: { automatico: true, aviso_club: avisado },
   }) });
 

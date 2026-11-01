@@ -111,7 +111,7 @@
   function $(sel, dentro) { return (dentro || document).querySelector(sel); }
   function esc(t) {
     return String(t == null ? '' : t)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function limpio(t) { return String(t == null ? '' : t).trim(); }
 

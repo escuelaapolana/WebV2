@@ -31,9 +31,9 @@ const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 // dominio actual (GitHub Pages), el dominio nuevo y el servidor local de
 // pruebas. Si algún día se sirve la web desde otro dominio, se añade aquí.
 const ORIGENES_OK = [
-  "https://escuelaapolana.github.io",
   "https://atletismoapolana.com",
   "https://www.atletismoapolana.com",
+  "https://escuelaapolana.github.io",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
 ];

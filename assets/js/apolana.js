@@ -127,8 +127,9 @@ const ICONO = {
    un botón verde de WhatsApp en la cabecera se lee como publicidad. */
 function whatsappCabeceraHTML() {
   const w = (window.APOLANA && window.APOLANA.contacto && window.APOLANA.contacto.whatsapp) || null;
-  if (!w || !w.url) return '';
-  return `<a class="cab-whatsapp" href="${w.url}" target="_blank" rel="noopener"
+  const wurl = w && enlaceSeguro(w.url);
+  if (!wurl) return '';
+  return `<a class="cab-whatsapp" href="${escaparHTML(wurl)}" target="_blank" rel="noopener"
              title="Escríbenos por WhatsApp al ${escaparHTML(w.usuario || '')}">
             ${ICONO.whatsapp}<span>Pregúntanos</span></a>`;
 }
@@ -212,7 +213,7 @@ class ApolanaCabecera extends HTMLElement {
 function escaparHTML(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /* Solo se aceptan enlaces normales (http, https) o de la propia web.
@@ -557,10 +558,10 @@ function redesFilasHTML(clase) {
     c.tiktok    && { k:'tiktok',    url:c.tiktok.url,    cuenta:c.tiktok.usuario    || '@escuela.apolana',  red:'TikTok' },
     c.facebook  && { k:'facebook',  url:c.facebook.url,  cuenta:'/' + String(c.facebook.usuario || '').replace(/^\//, ''), red:'Facebook' },
     c.whatsapp  && { k:'whatsapp',  url:c.whatsapp.url,  cuenta:c.whatsapp.usuario  || '',                  red:'WhatsApp' }
-  ].filter(Boolean);
+  ].filter(r => r && enlaceSeguro(r.url));
   if (!lista.length) return '';
   return `<div class="redes-filas ${clase || ''}">` + lista.map(r =>
-    `<a class="red-fila" href="${escaparHTML(r.url)}" target="_blank" rel="noopener">` +
+    `<a class="red-fila" href="${escaparHTML(enlaceSeguro(r.url))}" target="_blank" rel="noopener">` +
       `<span class="red-icono">${ICONO[r.k]}</span>` +
       `<span class="red-cuenta">${escaparHTML(r.cuenta)}</span>` +
       `<span class="red-nombre">${escaparHTML(r.red)}</span>` +

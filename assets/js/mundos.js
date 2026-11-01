@@ -687,7 +687,8 @@
       var c = window.APOLANA_DB;
       if (!c || !c.rpc) { if (intentos++ < 6) setTimeout(go, 400); return; }
       var listo = (c.auth && c.auth.getSession) ? c.auth.getSession() : Promise.resolve();
-      listo.then(function () { return c.rpc('mis_mundos'); }).then(function (r) {
+      /* Sin sesión no se pregunta: mis_mundos no está abierta a visitantes y solo dejaba un 401 en consola. */
+      listo.then(function (g) { if (c.auth && c.auth.getSession && !(g && g.data && g.data.session)) return null; return c.rpc('mis_mundos'); }).then(function (r) {
         if (!r || r.error || !Array.isArray(r.data)) return;
         var keys = r.data;
         var todas = MUNDOS.every(function (w) { return keys.indexOf(w.key) !== -1; });

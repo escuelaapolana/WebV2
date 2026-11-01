@@ -53,9 +53,9 @@ const SLOT_A_GRUPO: Record<string, string> = {
 // dominio actual (GitHub Pages), el dominio nuevo y el servidor local de
 // pruebas. Si algún día se sirve la web desde otro dominio, se añade aquí.
 const ORIGENES_OK = [
-  "https://escuelaapolana.github.io",
   "https://atletismoapolana.com",
   "https://www.atletismoapolana.com",
+  "https://escuelaapolana.github.io",
   "http://localhost:8000",
   "http://127.0.0.1:8000",
 ];
@@ -135,6 +135,8 @@ async function enviarConfirmacion(d: DatosCorreo): Promise<void> {
   // Sin clave de Brevo, no se manda (y el alta no se entera): igual que el
   // resto de correos del club, es un extra que nunca bloquea ni rompe.
   if (!BREVO_API_KEY || !d.email) return;
+  if (!(await acusePermitido(d.email))) { console.log("[cubo-alta] acuse: tope diario de ese correo"); return; }
+  d = { ...d, nombre: sinEnlaces(d.nombre) };
   try {
     const asunto = d.lista ? "Lista de espera · El Cubo" : "Te has apuntado a El Cubo ✅";
     const r = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -170,6 +172,45 @@ async function enviarEnlace(email: string): Promise<void> {
   } catch (e) { console.error("[cubo-alta] enlace:", e); }
 }
 
+// ---- Acuses (auditoría 1-nov) ----
+// Como mucho 3 acuses al día al MISMO correo destinatario: sin esto, el
+// formulario servía para mandar correos del club a cualquier dirección en
+// bucle. Se cuenta en rate_limit_log (accion 'acuse:cubo-alta') con una huella
+// del correo, no el correo en claro. Si la base no contesta, no se frena.
+async function huellaCorreo(email: string): Promise<string> {
+  const bytes = new TextEncoder().encode("acuse·" + email.trim().toLowerCase());
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function acusePermitido(email: string): Promise<boolean> {
+  try {
+    const h = await huellaCorreo(email);
+    const desde = new Date(Date.now() - 24 * 3600000).toISOString();
+    const r = await rest(`rate_limit_log?select=id&accion=eq.${encodeURIComponent("acuse:cubo-alta")}&ip=eq.${h}&creado_en=gt.${encodeURIComponent(desde)}`);
+    if ((Array.isArray(r.datos) ? r.datos.length : 0) >= 3) return false;
+    await rest("rate_limit_log", { method: "POST", body: JSON.stringify({ ip: h, accion: "acuse:cubo-alta" }) });
+    return true;
+  } catch { return true; }
+}
+// Quita enlaces y dominios (http…, www…, algo.com) de un texto que escribe el
+// público y que va DENTRO del acuse (nombre, entidad): así nadie mete su
+// enlace en un correo que sale con la firma del club.
+function sinEnlaces(t: string): string {
+  return String(t ?? "")
+    .replace(/(https?:\/\/|www\.)\S*/gi, " ")
+    .replace(/\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}\b(\/\S*)?/gi, " ")
+    .replace(/\s{2,}/g, " ").trim();
+}
+
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -193,7 +234,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ ok: true, ya_existia: false, perfil_id: null, lista_espera: false }, 200, origen);
   }
   // Límite por IP (crear cuentas es lo más sensible). Fail-open si no hay IP.
-  const ipCliente = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  const ipCliente = ipDelCliente(req);
   if (ipCliente) {
     const desde = new Date(Date.now() - 15 * 60000).toISOString();
     const rRate = await rest(

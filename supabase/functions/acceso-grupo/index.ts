@@ -34,10 +34,10 @@ const SERVICE_KEY =
 const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 
 const WEBS_DEL_CLUB = [
-  "https://escuelaapolana.github.io/WebV2/",
-  "https://escuelaapolana.github.io/apolana-club/",
   "https://atletismoapolana.com/",
   "https://www.atletismoapolana.com/",
+  "https://escuelaapolana.github.io/WebV2/",
+  "https://escuelaapolana.github.io/apolana-club/",
 ];
 
 function origenesPermitidos(): string[] {
@@ -46,7 +46,7 @@ function origenesPermitidos(): string[] {
   const puestos = (Deno.env.get("ACCESO_ORIGENES") ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
   const deLasWebs = WEBS_DEL_CLUB.map((u) => new URL(u).origin);
-  return [...new Set([...puestos, ...deLasWebs, "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8137"])];
+  return [...new Set([...deLasWebs, ...puestos, "http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:8137"])];
 }
 
 function cors(origen: string | null): Record<string, string> {
@@ -116,6 +116,15 @@ async function enviarEnlace(email: string): Promise<void> {
 }
 
 // ============================================================
+// IP real del que llama (auditoría 1-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (peticion) => {
   const origen = peticion.headers.get("origin");
 
@@ -162,7 +171,7 @@ Deno.serve(async (peticion) => {
 
   try {
     // 1 · Límite de peticiones (mismo control que el acceso por enlace).
-    const dedonde = await resumen(peticion.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+    const dedonde = await resumen(ipDelCliente(peticion) || "sin-origen");
     const sePuede = await rpc("acceso_pedir_apuntar", { p_email: email, p_origen: dedonde });
     if (sePuede !== true) {
       return responder({ ok: false, error: "Demasiados intentos. Prueba dentro de un rato." }, 429, origen);
@@ -175,49 +184,28 @@ Deno.serve(async (peticion) => {
     }
 
     // 3 · ¿Ya tiene cuenta? Entonces no se crea otra: que entre normal.
+    //     La respuesta es la MISMA que si se crea (auditoría 1-nov): no se
+    //     delata si un correo ya tiene cuenta.
     if (await yaTieneCuenta(email)) {
-      return responder({ ok: true, ya_existe: true }, 200, origen);
+      return responder({ ok: true }, 200, origen);
     }
 
-    // 3b · ¿ES UN ENTRENADOR INVITADO? Entonces NO es un atleta: se le crea la
-    //      cuenta de técnico y se le pone como entrenador del grupo del código.
-    //      La INVITACIÓN (`invitaciones_equipo`) es la que le da ese derecho:
-    //      sin ella, aunque tenga el código, entra como un atleta más. Así el
-    //      formulario vale para los dos —Cristian y sus atletas usan el mismo—
-    //      sin que nadie pueda hacerse entrenador por su cuenta.
-    let esStaff = false;
+    // 3b · ¿Tiene una invitación de ENTRENADOR/coordinador pendiente? Antes
+    //      aquí se le creaba la cuenta de técnico y se le ponía de entrenador
+    //      del grupo. Ya NO (auditoría 1-nov): dar cuenta de staff lo hace el
+    //      admin desde el panel. Tampoco se le hace ficha de atleta (no lo es):
+    //      no se crea nada y se contesta igual que siempre.
     const inv = await api(
       `/rest/v1/invitaciones_equipo?email=eq.${encodeURIComponent(email)}&usado_en=is.null&select=rol`,
     );
     if (inv.ok) {
       const filas = await inv.json();
-      esStaff = Array.isArray(filas) &&
+      const esStaff = Array.isArray(filas) &&
         filas.some((x: { rol?: string }) => x.rol === "entrenador" || x.rol === "coordinador");
-    }
-    if (esStaff) {
-      const conocidoT = await correoDelClub(email);
-      const crearT = await api(`/auth/v1/admin/users`, {
-        method: "POST",
-        body: JSON.stringify(conocidoT
-          ? { email, email_confirm: true, user_metadata: { nombre, apellidos } }
-          : { email, password, email_confirm: true, user_metadata: { nombre, apellidos } }),
-      });
-      if (!crearT.ok) {
-        console.error("[acceso-grupo] cuenta staff:", crearT.status, await crearT.text());
-        return responder({ ok: false, error: "No se pudo crear la cuenta. Inténtalo otra vez." }, 500, origen);
+      if (esStaff) {
+        console.log("[acceso-grupo] invitación de staff pendiente: no se crea nada (lo hace el admin)");
+        return responder({ ok: true }, 200, origen);
       }
-      const uid = (await crearT.json())?.id;
-      // Se le pone como entrenador del grupo cuyo código ha usado. `entrenador_id`
-      // apunta a `perfiles`, y el perfil del nuevo usuario tiene su mismo id.
-      if (uid) {
-        await api(`/rest/v1/grupos?id=eq.${grupoId}`, {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({ entrenador_id: uid }),
-        });
-      }
-      if (conocidoT) await enviarEnlace(email);
-      return responder({ ok: true, entrenador: true, verificar: conocidoT }, 200, origen);
     }
 
     // 4 · El entrenador del grupo, para dejarlo puesto en la ficha.
@@ -282,7 +270,8 @@ Deno.serve(async (peticion) => {
     }
 
     if (conocido) await enviarEnlace(email);
-    return responder({ ok: true, verificar: conocido }, 200, origen);
+    // Igual que si ya tenía cuenta: no se dice si el correo era del club.
+    return responder({ ok: true }, 200, origen);
   } catch (e) {
     console.error("[acceso-grupo]", e);
     return responder({ ok: false, error: "Algo ha fallado. Inténtalo otra vez en un momento." }, 500, origen);
