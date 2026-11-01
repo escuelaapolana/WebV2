@@ -34,7 +34,7 @@ function responder(cuerpo: unknown, estado: number, origen: string | null): Resp
   });
 }
 async function esAdminStaff(jwt: string): Promise<boolean> {
-  for (const rpc of ["es_admin", "es_staff"]) {
+  for (const rpc of ["es_admin", "ve_dinero"]) { // admin o tesorería/contabilidad (antes es_staff: cualquier entrenador veía DNI de pagadores)
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${rpc}`, {
         method: "POST",

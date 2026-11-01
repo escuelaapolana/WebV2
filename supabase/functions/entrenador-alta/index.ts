@@ -166,6 +166,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!ficha.fecha_nacimiento) return responder({ ok: false, error: "Pon tu fecha de nacimiento (día, mes y año)." }, 400, origen);
   if (!ficha.dni) return responder({ ok: false, error: "Pon tu DNI." }, 400, origen);
 
+  // Anti-bots: campo trampa o formulario rellenado en menos de 5 s → fingimos
+  // éxito y NO se crea nada (antes la RPC fingía, pero aquí se creaba la cuenta).
+  if (String(c.apellido_de_soltera ?? "").trim() !== "" || Number(c.segundos ?? 0) < 5) {
+    return responder({ ok: true, ya: "nuevo", verificar: false }, 200, origen);
+  }
+  // Freno por IP (crea cuentas). IP real: la de Cloudflare o el último salto
+  // de x-forwarded-for (el primero lo puede poner el propio cliente).
+  const ipCliente = (req.headers.get("cf-connecting-ip") ??
+    (req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+  if (ipCliente) {
+    const desde = new Date(Date.now() - 60 * 60000).toISOString();
+    const rr = await api(`/rest/v1/rate_limit_log?select=id&accion=eq.entrenador-alta&ip=eq.${encodeURIComponent(ipCliente)}&creado_en=gt.${encodeURIComponent(desde)}`);
+    const previos = rr.ok ? await rr.json().catch(() => []) : [];
+    if (Array.isArray(previos) && previos.length >= 5) {
+      return responder({ ok: false, error: "Demasiados intentos desde tu conexión. Prueba de nuevo dentro de un rato." }, 429, origen);
+    }
+    await api(`/rest/v1/rate_limit_log`, { method: "POST", body: JSON.stringify({ ip: ipCliente, accion: "entrenador-alta" }) });
+  }
+
   try {
     // 1 · Invitación de entrenador (anti-bots + rol dentro del RPC).
     const r = await rpc("alta_entrenador", {
@@ -180,10 +199,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // ¿Existe ya la cuenta? Si no, se crea (sin contraseña si el correo ya es del club).
+    // Si la cuenta YA existía no se toca nada de ella (antes se le pisaban
+    // teléfono y ficha con lo que mandase cualquiera) y se responde igual que a
+    // un correo del club: enlace al correo real. Así no se delata quién tiene cuenta.
     let ya = "nuevo";
     let verificar = false;
-    if (r.ya === "perfil" || await yaTieneCuenta(email)) {
-      ya = "cuenta";
+    let creada = false;
+    if (await yaTieneCuenta(email)) {
+      await enviarEnlace(email);
+      verificar = true;
     } else {
       const conocido = await correoDelClub(email);
       const crear = await api(`/auth/v1/admin/users`, {
@@ -196,13 +220,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.error("[entrenador-alta] crear cuenta:", crear.status, await crear.text());
         return responder({ ok: false, error: "No se pudo crear la cuenta. Inténtalo otra vez." }, 500, origen);
       }
+      creada = true;
       if (conocido) { await enviarEnlace(email); verificar = true; }
     }
 
     // 4 · Guardar la ficha (teléfono al perfil + datos sensibles a
     //     entrenador_ficha). Best-effort: la cuenta ya está, no bloquea.
-    try { await guardarFicha(email, ficha); }
-    catch (e) { console.error("[entrenador-alta] ficha:", e); }
+    //     Solo si la cuenta se acaba de crear en ESTA petición.
+    if (creada) {
+      try { await guardarFicha(email, ficha); }
+      catch (e) { console.error("[entrenador-alta] ficha:", e); }
+    }
 
     return responder({ ok: true, ya, verificar }, 200, origen);
   } catch (e) {
