@@ -647,6 +647,22 @@
   .tm-int span{ min-width:70px; font-size:13.5px; color:var(--t2); }
   .tm-int input{ width:110px; }
   .tm-cuerpo .ac-barra{ margin-bottom:8px; }
+  /* Tests y marcas · Todo el grupo */
+  .tg-scroll{ max-height:none; min-height:0; }
+  table.tg-t{ border-collapse:separate; border-spacing:0; width:100%; font-size:14px; }
+  .tg-t th{ position:sticky; top:0; z-index:2; background:#fff; border-bottom:1px solid var(--borde); padding:10px 12px; text-align:right; font-weight:700; vertical-align:bottom; white-space:nowrap; }
+  .tg-t th .ac-link{ margin:0; font-size:13.5px; }
+  .tg-t th small{ display:block; font-weight:500; color:var(--t3); font-size:11.5px; }
+  .tg-t td{ padding:9px 12px; border-bottom:1px solid var(--fila); text-align:right; vertical-align:top; white-space:nowrap; }
+  .tg-t tr:last-child td{ border-bottom:0; }
+  .tg-t .at{ position:sticky; left:0; z-index:1; background:#fff; text-align:left; border-right:1px solid var(--borde); }
+  .tg-t th.at{ z-index:3; }
+  .tg-t .ac-nom{ text-decoration:none; font-size:14.5px; }
+  .tg-v{ display:block; color:var(--navy); font-variant-numeric:tabular-nums; }
+  .tg-v.viejo{ color:var(--t3); font-weight:500; }
+  .tg-d, .tg-f, .tg-n{ display:block; font-size:12px; color:var(--t3); font-variant-numeric:tabular-nums; }
+  .tg-d{ font-weight:600; }
+  .tg-d.ok{ color:#2F6A3D; }
   .tm-parc{ font-size:13.5px; color:var(--t2); background:#FAF8F3; border-radius:8px; padding:6px 9px; margin:2px 0 4px; }
   .tm-parc > div{ margin:1px 0; }
   .tm-parc b{ color:var(--navy); }
@@ -729,8 +745,9 @@
     @page{ margin:12mm; }
   }
 </style>
+<link rel="stylesheet" href="../../assets/css/academia-rediseno.css?v=e2d67231&v=3">
 </head>
-<body>
+<body class="ac-diseno">
   <div id="ac"><p class="ac-nada">Cargando…</p></div>
   <div class="ac-fondo" id="ac-fondo" hidden></div>
   <aside class="ac-lado" id="ac-lado" role="dialog" aria-modal="false" aria-label="Detalle de la sesión" hidden></aside>
@@ -799,7 +816,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     cg: { aid: Q.get('cga') || '' },
     cp: { tab: ['proximas','mes','minimas'].indexOf(Q.get('ct'))!==-1 ? Q.get('ct') : 'proximas', aid: Q.get('ca') || '', cat: Q.get('cc') || '', solo: Q.get('cs')==='1',
           mes: /^\d{4}-\d{2}$/.test(Q.get('cm')||'') ? Q.get('cm') : hoyISO().slice(0,7), abiertas:{}, ver: Q.get('ci') || null },
-    tm: { tab: ['atleta','prueba','protocolos','catalogo'].indexOf(Q.get('t'))!==-1 ? Q.get('t') : 'atleta', aid: Q.get('ta') || '', prueba: Q.get('tp') || '' },
+    tm: { tab: ['grupo','atleta','prueba','protocolos','catalogo'].indexOf(Q.get('t'))!==-1 ? Q.get('t') : 'grupo', ord: '', solo: Q.get('tv')!=='todos', aid: Q.get('ta') || '', prueba: Q.get('tp') || '' },
     fx: { aid: Q.get('a') || '', desde: Q.get('xd') || sumar(hoyISO(), -27), hasta: Q.get('xh') || hoyISO(), sub: Q.get('fs')==='analisis' ? 'analisis' : '', pr: Q.get('ap') || '' },
     fb: { desde: /^\d{4}-\d{2}-\d{2}$/.test(Q.get('fd')||'') ? Q.get('fd') : sumar(hoyISO(), -29), hasta: /^\d{4}-\d{2}-\d{2}$/.test(Q.get('fh')||'') ? Q.get('fh') : hoyISO(), atleta: Q.get('fba') || '', estado: Q.get('fe') || leer('ac-fb-estado') || 'por_revisar' },
     modo: leer('ac-modo')==='compacta' ? 'compacta' : 'detallada',
@@ -846,7 +863,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if (ST.vista==='marcas'){
       p.set('v','marcas');
-      if (ST.tm.tab!=='atleta') p.set('t', ST.tm.tab);
+      if (ST.tm.tab!=='grupo') p.set('t', ST.tm.tab);
       if (ST.tm.aid) p.set('ta', ST.tm.aid);
       if (ST.tm.prueba) p.set('tp', ST.tm.prueba);
     }
@@ -3909,11 +3926,58 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
   }
 
+  /* «Todo el grupo»: cada atleta con lo último de cada test y lo que ha cambiado
+     frente a su resultado anterior del mismo test. Es lectura: no guarda nada. */
+  var TG_ORDEN = ['cmj','rsi','sj','abalakov','drop_jump','10m','30m_tacos','30_lanzado','60m','150m','150m_tacos','300m','500m','1000m','salto_horizontal','balon_medicinal'];
+  function tgDec(u){ return u==='cm' ? 1 : 2; }
+  function tgNum(v, u){ return Number(v).toLocaleString('es-ES', { minimumFractionDigits:tgDec(u), maximumFractionDigits:tgDec(u) }); }
+  function tmGrupoHTML(){
+    var atl = D.atl.filter(function(a){ return a.estado==='activo'; }), ids = {}; atl.forEach(function(a){ ids[a.id] = 1; });
+    var L = TM.tests.filter(function(t){ return ids[t.atleta_id] && !t.no_asiste && t.mejor!=null && t._fecha; });
+    if (!L.length) return '<p class="fx-sin">Todavía no hay tests apuntados en el grupo.</p>';
+    var proC = {}; TM.protocolos.forEach(function(p){ if (!proC[p.clave] || p.version > proC[p.clave].version) proC[p.clave] = p; });
+    var por = {}, ult = '';   // por[atleta][clave] = resultados del más nuevo al más viejo
+    L.forEach(function(t){ ((por[t.atleta_id] = por[t.atleta_id] || {})[t.test] = por[t.atleta_id][t.test] || []).push(t); if (t._fecha > ult) ult = t._fecha; });
+    Object.keys(por).forEach(function(a){ Object.keys(por[a]).forEach(function(k){ por[a][k].sort(function(x, y){ return x._fecha < y._fecha ? 1 : -1; }); }); });
+    var claves = TG_ORDEN.filter(function(k){ return L.some(function(t){ return t.test===k; }); }).concat(L.map(function(t){ return t.test; }).filter(function(k, i, A){ return TG_ORDEN.indexOf(k)<0 && A.indexOf(k)===i; }));
+    var recientes = claves.filter(function(k){ return L.some(function(t){ return t.test===k && t._fecha===ult; }); });
+    var cols = ST.tm.solo && recientes.length ? recientes : claves;
+    var menos = function(k){ return !!(proC[k] && proC[k].menos_es_mejor); }, uni = function(k){ return proC[k] ? (proC[k].unidad||'') : ''; };
+    var dif = function(R, k){
+      if (!R || R.length<2 || R[0]._fecha===R[1]._fecha) return null;
+      var d = Number(R[0].mejor) - Number(R[1].mejor); return { d:d, mejor: Math.abs(d)<1e-9 ? null : (menos(k) ? d<0 : d>0) };
+    };
+    var filas = atl.filter(function(a){ return por[a.id]; });
+    if (ST.tm.ord && cols.indexOf(ST.tm.ord)>=0){
+      var k0 = ST.tm.ord, v = function(a){ var R = por[a.id][k0]; return R ? Number(R[0].mejor) : null; };
+      filas.sort(function(x, y){ var a = v(x), b = v(y); if (a==null) return 1; if (b==null) return -1; return menos(k0) ? a-b : b-a; });
+    }
+    var celda = function(a, k){
+      var R = por[a.id][k]; if (!R) return '<td class="num"><span class="tg-n">·</span></td>';
+      var u = uni(k), x = dif(R, k), nuevo = R[0]._fecha===ult;
+      return '<td class="num"><b class="tg-v'+(nuevo?'':' viejo')+'">'+esc(tgNum(R[0].mejor, u))+'</b>'+
+        (x ? '<span class="tg-d'+(x.mejor ? ' ok' : '')+'">'+(x.mejor===null ? '=' : (x.d>0?'+':'−')+esc(tgNum(Math.abs(x.d), u)))+'</span>'
+           : '<span class="tg-f">'+esc(nuevo && R.length<2 ? 'primera vez' : fMedia(R[0]._fecha))+'</span>')+'</td>';
+    };
+    var cmjD = atl.map(function(a){ return por[a.id] && dif(por[a.id].cmj, 'cmj'); }).filter(Boolean);
+    var hechos = {}; L.forEach(function(t){ if (t._fecha===ult) hechos[t.atleta_id] = 1; });
+    var h = '<div class="ac-cifras"><span class="ac-cifra"><b>'+Object.keys(hechos).length+'</b>atletas con tests el '+esc(fMedia(ult))+'</span>'+
+      (cmjD.length ? '<span class="ac-cifra"><b>'+cmjD.filter(function(x){ return x.mejor; }).length+' de '+cmjD.length+'</b>mejoran el CMJ</span>' : '')+'</div>';
+    h += '<div class="ac-barra"><div class="ac-seg"><button type="button" data-tg-solo="1" class="'+(ST.tm.solo?'on':'')+'">Los del '+esc(fMedia(ult))+'</button><button type="button" data-tg-solo="0" class="'+(!ST.tm.solo?'on':'')+'">Todos los tests</button></div></div>';
+    h += '<div class="ac-scroll tg-scroll"><table class="tg-t"><thead><tr><th class="at">Atleta</th>'+cols.map(function(k){
+      var p = proC[k], n = p ? p.nombre.replace(' salida de tacos',' tacos').replace(' desde tacos',' tacos').replace('Test RSI 10 pogos','RSI 10 pogos') : k;
+      return '<th class="num"><button type="button" class="ac-link" data-tg-ord="'+esc(k)+'" title="Ordenar por este test">'+esc(n)+(ST.tm.ord===k?' ↓':'')+'</button>'+(uni(k) ? '<small>'+esc(uni(k))+'</small>' : '')+'</th>';
+    }).join('')+'</tr></thead><tbody>'+filas.map(function(a){
+      return '<tr><td class="at"><a class="ac-nom" href="'+urlFicha(a.id)+'">'+esc(a._n)+'</a></td>'+cols.map(function(k){ return celda(a, k); }).join('')+'</tr>';
+    }).join('')+'</tbody></table></div>';
+    return h+'<p class="ac-ley">Arriba, lo último de cada uno; debajo, cuánto ha cambiado frente a su resultado anterior del mismo test (en verde si es a mejor). En gris, la marca de quien no lo repitió el '+esc(fMedia(ult))+'. Toca el nombre de un test para ordenar; el de un atleta, para su ficha. Los resultados sin protocolo apuntado se comparan por el nombre del test.</p>';
+  }
+
   function pintarMarcas(){
     var tab = ST.tm.tab, aid = ST.tm.aid && D.atl.some(function(a){ return a.id===ST.tm.aid; }) ? ST.tm.aid : (D.atl[0] && D.atl[0].id);
     var nRev = TM.corrL.filter(function(c){ return c.estado==='ambigua'||c.estado==='propuesta'||c.estado==='sin_catalogo'; }).length;
-    var tabs = [['atleta','Por atleta'],['prueba','Por prueba'],['protocolos','Protocolos'],['catalogo','Catálogo'+(nRev ? ' ('+nRev+')' : '')]];
-    var cuerpo = tab==='prueba' ? tmPruebaHTML() : tab==='protocolos' ? tmProtocolosHTML() : tab==='catalogo' ? tmCatalogoHTML()
+    var tabs = [['grupo','Todo el grupo'],['atleta','Por atleta'],['prueba','Por prueba'],['protocolos','Protocolos'],['catalogo','Catálogo'+(nRev ? ' ('+nRev+')' : '')]];
+    var cuerpo = tab==='grupo' ? tmGrupoHTML() : tab==='prueba' ? tmPruebaHTML() : tab==='protocolos' ? tmProtocolosHTML() : tab==='catalogo' ? tmCatalogoHTML()
       : '<div class="ac-barra"><select class="ac-sel" id="tm-atleta" aria-label="Atleta">'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===aid?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+
         (aid ? '<a class="ac-link" href="'+urlFicha(aid)+'">Su ficha ›</a>' : '')+'</div>'+(aid ? tmAtletaHTML(aid) : '<p class="fx-sin">Sin atletas.</p>');
     wrap.innerHTML = cabecera(esMovil() ? 'Tests y marcas' : 'Tests y marcas', 'Resultados de competición, tests y estimaciones, con su procedencia, método y condiciones, y los objetivos al lado. Nada se compara si cambian el protocolo, las condiciones o el método.')+
@@ -4181,6 +4245,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   async function clicMarcas(b, ds){
     if (ds.tmTab){ ST.tm.tab = ds.tmTab; pintar(); return true; }
+    if (ds.tgOrd){ ST.tm.ord = ST.tm.ord===ds.tgOrd ? '' : ds.tgOrd; pintar(); return true; }
+    if (ds.tgSolo){ ST.tm.solo = ds.tgSolo==='1'; pintar(); return true; }
     if (ds.tmAtleta){ ST.tm.tab = 'atleta'; ST.tm.aid = ds.tmAtleta; pintar(); return true; }
     if (ds.tmNuevo){ var a = ds.aid || ST.tm.aid; if (ds.tmNuevo==='resultado') dlgResultado(a); else if (ds.tmNuevo==='test') dlgTest(a); else dlgRM(a); return true; }
     if (ds.tmRes){ dlgResultado(null, TM.marcas.filter(function(m){ return m.id===ds.tmRes; })[0]); return true; }
