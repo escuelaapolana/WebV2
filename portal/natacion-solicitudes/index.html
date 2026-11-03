@@ -115,9 +115,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   var NIVELES = ['Iniciación', 'Desarrollo', 'Perfeccionamiento'];
   // Piscina según el día (Andrés, 30-oct): de lunes a jueves Monte Tossal, los viernes
-  // Vía Parque. El sábado está sin confirmar: sin nombre. Se puede cambiar en el propio
-  // mensaje antes de mandarlo.
-  function piscina(dia){ return dia >= 1 && dia <= 4 ? 'la piscina Monte Tossal' : dia === 5 ? 'la piscina Vía Parque' : 'la piscina'; }
+  // Vía Parque. El sábado (Máster 8:30), Tossal según el formulario del Máster. Se puede
+  // cambiar en el propio mensaje antes de mandarlo.
+  function piscina(dia){ return dia >= 1 && dia <= 4 || dia === 6 ? 'la piscina Monte Tossal' : dia === 5 ? 'la piscina Vía Parque' : 'la piscina'; }
+  // «Leo + Lorena» → «La clase la llevan Leo y Lorena.»
+  function monitoresTxt(m){
+    var l = String(m || '').split(/\s*(?:\+|,|\/|\sy\s)\s*/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if (!l.length) return '';
+    return (l.length === 1 ? 'La clase la lleva ' : 'La clase la llevan ') + (l.length === 1 ? l[0] : l.slice(0, -1).join(', ') + ' y ' + l[l.length - 1]) + '.';
+  }
   var TARIFA_SOCIO = { 1:35, 2:45, 3:55 };   // respaldo; se leen de natacion_alta_cuota
   var RECARGO_NO_SOCIO = 15;                 // €/mes (45 €/trimestre)
 
@@ -165,7 +171,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var rs = await sb.from('natacion_solicitudes').select('*').order('creado_en', { ascending:false }).limit(1000);
     if (rs.error){ wrap.innerHTML = '<p class="ns-vacio">No se pudieron leer las solicitudes: ' + esc(humano(rs.error)) + '</p>'; return false; }
     S.lista = rs.data || [];
-    var rf = await sb.from('natacion_franjas').select('id,dia,hora,grupo,activa').order('dia').order('hora');
+    var rf = await sb.from('natacion_franjas').select('id,dia,hora,grupo,activa,monitores').order('dia').order('hora');
     S.franjas = {}; (rf.data || []).forEach(function(f){ S.franjas[f.id] = f; });
     // días por semana (para la cuota) y código (para abrir su ficha)
     var acc = S.lista.map(function(s){ return s.acceso_id; }).filter(Boolean);
@@ -200,11 +206,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var esc_ = s.origen !== 'Máster', hola = '¡Hola' + (saludo(s) ? ', ' + saludo(s) : '') + '!';
     var nino = primero(s.nombre), grupo = pideTxt(s);
     if (que === 'prueba'){
-      var f = s.franjas && s.franjas[0] ? S.franjas[s.franjas[0]] : null;
+      // Mensaje del primer día del club (Andrés, 30-oct) + el día de la prueba. La franja,
+      // la del día de la prueba (si pide varias); la piscina y el monitor, los de esa franja.
+      var mias = (s.franjas || []).map(function(id){ return S.franjas[id]; }).filter(Boolean);
+      var dow = s.fecha_prueba ? (function(p){ var d = new Date(+p[0], +p[1]-1, +p[2]).getDay(); return d === 0 ? 7 : d; })(String(s.fecha_prueba).slice(0,10).split('-')) : 0;
+      var f = mias.filter(function(x){ return x.dia === dow; })[0] || mias[0] || null;
       var cuando = (s.fecha_prueba ? 'el ' + fechaLarga(s.fecha_prueba) : 'el próximo ' + (f ? DIAS[f.dia] : '')) + (f ? ' a las ' + hhmm(f.hora) : '');
+      var pis = piscina(f && f.dia).replace(/^la /, ''), mon = monitoresTxt(f && f.monitores);
+      var comun = '• *Qué traer:* bañador, gorro, toalla, chanclas y gafas de agua.\n' +
+        '• No hay taquillas: después de cambiarse en el vestuario, se entra a la piscina con la mochila y se deja junto a la zona de entrenamiento.\n\n';
+      var fin = 'Para cualquier cuestión, nos dice. ¡Nos vemos en el agua! 💦\n\nNatación Apolana';
       return esc_
-        ? hola + ' Genial: ' + nino + ' puede venir a hacer la clase de prueba ' + cuando + ' en ' + piscina(f && f.dia) + '. Cualquier duda, nos dices.\n\nUn saludo,\nNatación Apolana'
-        : hola + ' Genial: puedes venir a hacer la clase de prueba ' + cuando + ' en ' + piscina(f && f.dia) + '. Cualquier duda, nos dices.\n\nUn saludo,\nNatación Apolana';
+        ? hola + ' 👋 Hemos recibido su formulario de la Escuela de Natación de Apolana. ¡Nos alegramos mucho!\n\n' +
+          nino + ' puede venir a hacer su *clase de prueba ' + cuando + '* en la *' + pis + '*.' + (mon ? ' ' + mon : '') + '\n\n' +
+          'Información a tener en cuenta:\n' +
+          '• Estén *15 minutos antes* en la recepción de la instalación, para poder acceder con ' + nino + ' a los vestuarios e indicarles el lugar de encuentro.\n' +
+          '• *Acceso a la piscina:* si han ido antes a alguna piscina municipal, puede que les pidan su número de abonado para vincularlo con el Club Apolana y que no les cobren la entrada. ' +
+          'Si no, tiene que venir el padre, la madre o el tutor legal con su DNI o pasaporte *original* (a veces piden el libro de familia) y el de ' + nino + '. Con eso les dan de alta en el momento, sin coste.\n' +
+          comun + 'Toda la información, en https://atletismoapolana.com/escuela-natacion/\n' + fin
+        : hola + ' 👋 Hemos recibido su formulario de Natación Máster de Apolana. ¡Nos alegramos mucho!\n\n' +
+          'Puede venir a hacer su *clase de prueba ' + cuando + '* en la *' + pis + '*.' + (mon ? ' ' + mon : '') + '\n\n' +
+          'Información a tener en cuenta:\n' +
+          '• Esté *15 minutos antes* en la recepción de la instalación, para poder acceder a los vestuarios e indicarle el lugar de encuentro.\n' +
+          '• *Acceso a la piscina:* si ha ido antes a alguna piscina municipal, puede que le pidan su número de abonado para vincularlo con el Club Apolana y que no le cobren la entrada. ' +
+          'Si no, traiga su DNI o pasaporte *original* y le dan de alta en el momento, sin coste.\n' +
+          comun + 'Toda la información, en https://atletismoapolana.com/natacion/\n' + fin;
     }
     if (que === 'formaliza'){
       var dias = S.dias[s.acceso_id] || (s.franjas || []).length || 1;
@@ -491,9 +517,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') cerrarHoja(); });
 
   if (await cargar()){
-    pintar();
+    // ?id=… (el botón de cada persona en el correo de la mañana): abre su hoja, con el
+    // mensaje y el botón de WhatsApp, y la lista de detrás en su apartado.
     var abrir = params.get('id');
-    if (abrir){ var s1 = S.lista.filter(function(x){ return x.id === abrir; })[0]; if (s1){ await cargarHuecos(s1.origen); abrirHoja(abrir); } }
+    var s1 = abrir ? S.lista.filter(function(x){ return x.id === abrir; })[0] : null;
+    if (s1 && !params.get('v')){ var v1 = VISTAS.filter(function(x){ return x.de.indexOf(s1.estado) !== -1; })[0]; if (v1) S.vista = v1.k; }
+    pintar();
+    if (s1){ await cargarHuecos(s1.origen); abrirHoja(abrir); }
+    else if (abrir) toast('Esa solicitud ya no está', true);
   }
 });
 </script>

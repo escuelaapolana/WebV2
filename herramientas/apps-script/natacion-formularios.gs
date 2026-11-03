@@ -1,13 +1,14 @@
 /**
  * Club Atletismo Apolana · Solicitudes de natación (formularios de escuela y máster)
  * ---------------------------------------------------------------------------------
- * Cada día a las 9:00 lee los Excel de RESPUESTAS de los dos formularios de natación
+ * Cada hora, de 8:00 a 21:00, lee los Excel de RESPUESTAS de los dos formularios de natación
  * y los manda a la app (Edge `natacion-form-sync`, migración 475), que:
  *   · guarda cada respuesta nueva UNA vez (las que ya había el primer día quedan
  *     como «anteriores» y no se tocan),
  *   · si el grupo que pide tiene hueco, le da de alta DE PRUEBA en esa franja,
  *   · si está completo o falta algún dato, lo deja «por revisar»,
- *   · y le manda a Andrés un correo con lo que haya que mirar.
+ *   · y le manda a Andrés un correo con lo que haya que mirar (solo si hay algo nuevo:
+ *     cada cosa se avisa una vez), con un botón por persona que abre su mensaje.
  * Todo se lleva en Natación › Solicitudes (portal/natacion-solicitudes).
  *
  * INSTALAR (una vez, con la cuenta escuelaapolana@gmail.com):
@@ -21,6 +22,9 @@
  *      ningún sitio.) Los dos Excel ya están puestos en NAT_HOJAS.
  *   3. Elige la función «instalarNatacion» y pulsa ▶ Ejecutar. Acepta los permisos.
  *   4. (Opcional) Ejecuta «probarNatacion»: lo hace todo y lo deshace; mira el registro.
+ * ACTUALIZAR (p. ej. el paso de «cada día a las 9:00» a «cada hora», 3-nov-2026): abre
+ *   «natacion» en el mismo proyecto, borra todo, pega este código, guarda y vuelve a
+ *   ejecutar «instalarNatacion» (quita la programación vieja y pone la nueva).
  * Las columnas se buscan en la app por su TÍTULO, así que se pueden añadir preguntas.
  */
 var NAT_URL = 'https://icaxokjsvhlreuwpyxeb.supabase.co/functions/v1/natacion-form-sync';
@@ -95,19 +99,27 @@ function natEnviar_(aplicar) {
   if (r.getResponseCode() !== 200) throw new Error('La app respondió ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 300));
 }
 
-/** La que corre cada día a las 9:00. */
-function comprobarNatacion() { natEnviar_(true); }
+// Horas en las que se mira (hora de Madrid): de 8:00 a 21:00. De noche no corre.
+var NAT_DESDE = 8, NAT_HASTA = 21;
+
+/** La que corre cada hora (solo de NAT_DESDE a NAT_HASTA). */
+function comprobarNatacion() {
+  var h = Number(Utilities.formatDate(new Date(), 'Europe/Madrid', 'H'));
+  if (h < NAT_DESDE || h > NAT_HASTA) return;
+  natEnviar_(true);
+}
 
 /** Para probar: la app lo hace todo y lo deshace (no da altas ni manda correo). */
 function probarNatacion() { natEnviar_(false); }
 
-/** Ejecutar UNA vez: deja programada la lectura diaria a las 9:00 (hora de Madrid).
- *  Se puede volver a ejecutar sin miedo: borra la programación anterior y la pone de nuevo. */
+/** Ejecutar UNA vez: deja programada la lectura cada hora (de 8:00 a 21:00, hora de Madrid).
+ *  Se puede volver a ejecutar sin miedo: borra la programación anterior (también la
+ *  diaria de las 9:00 de antes) y la pone de nuevo. */
 function instalarNatacion() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'comprobarNatacion') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('comprobarNatacion').timeBased().everyDays(1).atHour(9).nearMinute(0).inTimezone('Europe/Madrid').create();
+  ScriptApp.newTrigger('comprobarNatacion').timeBased().everyHours(1).create();
   natLeer_();   // para que pida los permisos ahora y avise si falta algún Excel
-  Logger.log('Listo: cada día sobre las 9:00.');
+  Logger.log('Listo: cada hora, de ' + NAT_DESDE + ':00 a ' + NAT_HASTA + ':00.');
 }

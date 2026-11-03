@@ -84,8 +84,18 @@ function bloque(titulo: string, color: string, filas: string[]): string {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">${filas.join("")}</table>
       </td></tr>`;
 }
-function fila(principal: string, detalle: string): string {
-  return `<tr><td style="padding:10px 16px;border-bottom:1px solid #e7dcc4;font-size:14px;line-height:1.45"><b style="color:#26374B">${principal}</b>${detalle ? `<br><span style="color:#6E6656;font-size:12.5px">${detalle}</span>` : ""}</td></tr>`;
+// Cada persona con su botón: abre su hoja en la app (?id=), con el mensaje ya escrito y
+// el botón de WhatsApp (que lo deja marcado como mandado).
+const BOTON: Record<Aviso["que"], string> = {
+  prueba: "Mandarle el mensaje por WhatsApp",
+  probo: "Preguntarle si se queda",
+  revisar: "Decidir",
+  plazo: "Decidir",
+};
+function fila(a: Aviso, detalle: string): string {
+  const url = `${PANEL}?id=${encodeURIComponent(a.id)}`;
+  return `<tr><td style="padding:10px 16px;border-bottom:1px solid #e7dcc4;font-size:14px;line-height:1.45"><b style="color:#26374B">${quien(a)}</b>${detalle ? `<br><span style="color:#6E6656;font-size:12.5px">${detalle}</span>` : ""}
+    <br><a href="${url}" style="display:inline-block;margin-top:8px;background-color:${a.que === "prueba" || a.que === "probo" ? "#1E7A3D" : "#26374B"};color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;padding:8px 14px;border-radius:9px">${esc(BOTON[a.que])} →</a></td></tr>`;
 }
 function quien(a: Aviso): string {
   const anio = a.nacimiento ? ` (${String(a.nacimiento).slice(0, 4)})` : "";
@@ -110,17 +120,17 @@ function correoHtml(av: Aviso[]): string {
         <p style="margin:0 0 6px;font-size:17px;font-weight:700;color:#26374B">Natación: ${esc(partes.join(" · "))}</p>
         <p style="margin:0;color:#71717a;font-size:13px">${esc(hoy)} · formularios de la escuela y del máster</p>
       </td></tr>
-      ${bloque("De prueba: mándales el mensaje con el día", "#1E7A3D", prueba.map((a) => fila(quien(a),
+      ${bloque("De prueba: mándales el mensaje con el día", "#1E7A3D", prueba.map((a) => fila(a,
         esc([a.franjas || "", a.fecha_prueba ? "prueba el " + dia(a.fecha_prueba) : ""].filter(Boolean).join(" · ")))))}
-      ${bloque("Por revisar: dales grupo o ponlos en espera", "#8A5307", revisar.map((a) => fila(quien(a),
+      ${bloque("Por revisar: dales grupo o ponlos en espera", "#8A5307", revisar.map((a) => fila(a,
         esc([a.motivo || "", a.pide ? "Pide: " + a.pide : ""].filter(Boolean).join(" · ")))))}
-      ${bloque("Ya vinieron a su clase de prueba: pregúntales si se quedan", "#2F6FA8", probo.map((a) => fila(quien(a),
+      ${bloque("Ya vinieron a su clase de prueba: pregúntales si se quedan", "#2F6FA8", probo.map((a) => fila(a,
         esc([a.franjas || "", a.vino_el ? "vino el " + dia(a.vino_el) : ""].filter(Boolean).join(" · ")))))}
-      ${bloque("Cumplen los 15 días de espera: ¿hay hueco ya?", "#B3261E", plazo.map((a) => fila(quien(a),
+      ${bloque("Cumplen los 15 días de espera: ¿hay hueco ya?", "#B3261E", plazo.map((a) => fila(a,
         esc([a.pide ? "Pide: " + a.pide : "", a.espera_hasta ? "plazo: " + dia(a.espera_hasta) : ""].filter(Boolean).join(" · ")))))}
       <tr><td style="padding:14px 24px 24px 24px">
         <a href="${PANEL}" style="display:inline-block;background-color:#26374B;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 18px;border-radius:10px">Abrir las solicitudes</a>
-        <p style="margin:14px 0 0;color:#a1a1aa;font-size:11.5px">Cada cosa se avisa una sola vez. Los mensajes para las familias están en la pantalla, listos para WhatsApp.</p>
+        <p style="margin:14px 0 0;color:#a1a1aa;font-size:11.5px">Cada cosa se avisa una sola vez. El botón de cada persona abre su mensaje ya escrito, listo para WhatsApp.</p>
       </td></tr>
     </table>
   </td></tr></table></body></html>`;
@@ -128,7 +138,7 @@ function correoHtml(av: Aviso[]): string {
 
 async function enviarCorreo(av: Aviso[]): Promise<boolean> {
   if (!BREVO_API_KEY || !av.length) return false;
-  const texto = av.map((a) => `- ${a.que.toUpperCase()}: ${bonito(a.nombre)} (${a.origen})${a.motivo ? " · " + a.motivo : ""}`).join("\n")
+  const texto = av.map((a) => `- ${a.que.toUpperCase()}: ${bonito(a.nombre)} (${a.origen})${a.motivo ? " · " + a.motivo : ""}\n  ${PANEL}?id=${a.id}`).join("\n")
     + `\n\n${PANEL}`;
   try {
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
