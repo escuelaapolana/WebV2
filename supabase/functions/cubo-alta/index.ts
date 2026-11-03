@@ -288,7 +288,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // vigente NO nos inventamos uno: se para el alta antes de crear nada.
   const rPrecio = await rest(`rpc/cubo_precio`, {
     method: "POST",
-    body: JSON.stringify({ p_dias: dias, p_reducido: reducido }),
+    // [509] el sábado es gratis para socios y familias de la escuela; al resto
+    // le suma un día (2 + sábado = 3 días).
+    body: JSON.stringify({ p_dias: dias + (sabado && !reducido ? 1 : 0), p_reducido: reducido }),
   });
   const precio = Number(rPrecio.datos);
   if (!rPrecio.ok || rPrecio.datos === null || !Number.isFinite(precio) || precio <= 0) {
@@ -423,7 +425,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       nombre, apellidos, dni: dni || null, telefono,
       hijo: hijo || null, direccion: direccion || null,
       horario: SLOT_A_GRUPO[slot], dias, dias_semana: diasSemana, precio_mes: precio,
-      nota: [nota, sabado ? "También los sábados 9:00 (fuerza, gratis)." : ""].filter(Boolean).join(" · ") || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
+      nota: [nota, sabado ? (reducido ? "También los sábados 9:00 (fuerza, gratis)." : "También los sábados 9:00 (cuenta como un día más).") : ""].filter(Boolean).join(" · ") || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
       perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
   });
