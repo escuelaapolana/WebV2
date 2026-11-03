@@ -271,6 +271,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const diasSemana = dias === 2
     ? diasDelSlot
     : (diasDelSlot.indexOf(diaUno) !== -1 ? [diaUno] : null);
+  // Sábado 9:00 (fuerza, gratis): extra que no cambia la cuota (mig 508).
+  const sabado = b.sabado === true || b.sabado === "true";
   const email = corta(b.email, 160).toLowerCase();
   const password = String(b.password ?? "");
 
@@ -401,6 +403,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  // Sábado gratis: se engancha siempre (no tiene aforo de turno).
+  if (atletaId && sabado) {
+    const rSab = await rest(`rpc/cubo_sabado_grupo`, { method: "POST", body: "{}" });
+    const sabId = typeof rSab.datos === "string" ? rSab.datos : null;
+    if (sabId) {
+      await rest("atleta_grupos", {
+        method: "POST",
+        headers: { Prefer: "resolution=ignore-duplicates" },
+        body: JSON.stringify({ atleta_id: atletaId, grupo_id: sabId, principal: false }),
+      });
+    }
+  }
+
   // ---- 7 · Registro del alta (para la lista del club), enlazado a la cuenta ----
   await rest("cubo_altas", {
     method: "POST",
@@ -408,7 +423,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       nombre, apellidos, dni: dni || null, telefono,
       hijo: hijo || null, direccion: direccion || null,
       horario: SLOT_A_GRUPO[slot], dias, dias_semana: diasSemana, precio_mes: precio,
-      nota: nota || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
+      nota: [nota, sabado ? "También los sábados 9:00 (fuerza, gratis)." : ""].filter(Boolean).join(" · ") || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
       perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
   });
