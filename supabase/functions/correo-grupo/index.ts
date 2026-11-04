@@ -8,8 +8,13 @@
 //       accion: 'vista' | 'prueba' | 'enviar',
 //       grupo_ids: uuid[], excluir?: string[] (correos que no),
 //       asunto, titular?, mensaje, firma?,
-//       destacados?: [{ tipo: 'rojo'|'verde'|'azul'|'ambar', etiqueta, texto }]
+//       destacados?: [{ tipo: 'rojo'|'verde'|'azul'|'ambar', etiqueta, texto,
+//                       boton?, url? }]   ← url solo de atletismoapolana.com
 //     }
+//   · PERSONAL (4-nov-2026, solo desde la base o admin): en vez de grupos,
+//     `personal: [{ email, mensaje, destacados }]` = un correo distinto a cada
+//     uno (p. ej. sus propios enlaces de pago). Asunto, titular y firma comunes.
+//     En «prueba» se mandan todos a quien llama (o a `en_nombre_de`).
 //     vista  → { html, destinatarios:[{nombre,email}] }  (no envía nada)
 //     prueba → se lo manda SOLO a quien está usando el panel
 //     enviar → a todos los del grupo menos `excluir`, uno a uno (nadie ve
@@ -73,7 +78,8 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (m) => ({ "&": "
 const corto = (s: unknown, n: number) => String(s ?? "").trim().slice(0, n);
 const pareceCorreo = (s: string) => /^[^\s@,;]{1,64}@[^\s@,;]{1,190}\.[a-z]{2,}$/i.test(s);
 
-type Destacado = { tipo: string; etiqueta: string; texto: string };
+type Destacado = { tipo: string; etiqueta: string; texto: string; boton?: string; url?: string };
+const urlDelClub = (u: unknown) => { const x = corto(u, 400); return /^https:\/\/atletismoapolana\.com\/[^\s"'<>]*$/.test(x) ? x : ""; };
 const COLORES: Record<string, { fondo: string; borde: string; etq: string }> = {
   rojo: { fondo: "#FBEDEA", borde: "#B3261E", etq: "#8A3B32" },
   verde: { fondo: "#EAF3E3", borde: "#4E8A3E", etq: "#3F6F32" },
@@ -91,7 +97,10 @@ function correoHtml(o: { titular: string; mensaje: string; firma: string; destac
     const c = COLORES[d.tipo] ?? COLORES.azul;
     return `<tr><td bgcolor="${c.fondo}" style="background-color:${c.fondo};padding:14px 16px;border-left:4px solid ${c.borde};border-radius:6px;">` +
       (d.etiqueta ? `<div style="font-size:12px;color:${c.etq};text-transform:uppercase;letter-spacing:.5px;">${esc(d.etiqueta)}</div>` : "") +
-      `<div style="font-size:17px;font-weight:bold;color:#2E4256;margin-top:3px;">${esc(d.texto)}</div></td></tr>` +
+      `<div style="font-size:17px;font-weight:bold;color:#2E4256;margin-top:3px;">${esc(d.texto)}</div>` +
+      (d.url ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;"><tr><td bgcolor="#2E4256" style="background-color:#2E4256;border-radius:8px;">` +
+        `<a href="${esc(d.url)}" style="display:inline-block;padding:11px 20px;color:#ffffff;font-weight:bold;font-size:15px;text-decoration:none;">${esc(d.boton || "Abrir")}</a></td></tr></table>` : "") +
+      `</td></tr>` +
       `<tr><td style="height:10px;line-height:10px;font-size:0;">&nbsp;</td></tr>`;
   }).join("");
   const firma = esc(o.firma).replace(/\n/g, "<br>");
@@ -112,7 +121,7 @@ ${firma ? `<p style="margin:14px 0 0;">${firma}</p>` : ""}
 }
 function correoTexto(o: { titular: string; mensaje: string; firma: string; destacados: Destacado[] }): string {
   return [o.titular, "", o.mensaje.trim(), "",
-    ...o.destacados.map((d) => `${d.etiqueta ? d.etiqueta.toUpperCase() + ": " : ""}${d.texto}`),
+    ...o.destacados.map((d) => `${d.etiqueta ? d.etiqueta.toUpperCase() + ": " : ""}${d.texto}${d.url ? "\n" + d.url : ""}`),
     "", o.firma].join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -156,6 +165,13 @@ async function mandar(email: string, asunto: string, html: string, texto: string
   } catch { return false; }
 }
 
+function leerDestacados(v: unknown): Destacado[] {
+  return (Array.isArray(v) ? v : []).slice(0, 5)
+    .map((d: Record<string, unknown>) => ({ tipo: corto(d?.tipo, 10), etiqueta: corto(d?.etiqueta, 60), texto: corto(d?.texto, 160),
+      boton: corto(d?.boton, 40), url: urlDelClub(d?.url) }))
+    .filter((d: Destacado) => d.texto);
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origen) });
@@ -184,11 +200,40 @@ Deno.serve(async (req: Request): Promise<Response> => {
     titular: corto(c.titular, 150),
     mensaje: corto(c.mensaje, 6000),
     firma: corto(c.firma ?? "Club Atletismo Apolana", 200),
-    destacados: (Array.isArray(c.destacados) ? c.destacados : []).slice(0, 5)
-      .map((d: Record<string, unknown>) => ({ tipo: corto(d?.tipo, 10), etiqueta: corto(d?.etiqueta, 60), texto: corto(d?.texto, 160) }))
-      .filter((d: Destacado) => d.texto),
+    destacados: leerDestacados(c.destacados),
   };
   const html = correoHtml(o);
+
+  // Correos PERSONALES: uno distinto a cada persona (mensaje y cajas propios).
+  if (Array.isArray(c.personal)) {
+    if (!BREVO_API_KEY) return responder({ ok: false, motivo: "sin-configurar" }, 200, origen);
+    if (!asunto) return responder({ ok: false, motivo: "falta-texto", mensaje: "Pon el asunto." }, 200, origen);
+    const items = (c.personal as Array<Record<string, unknown>>).slice(0, MAX_DESTINATARIOS)
+      .map((x) => ({ email: corto(x?.email, 160).toLowerCase(), o: { ...o, mensaje: corto(x?.mensaje, 6000), destacados: leerDestacados(x?.destacados) } }))
+      .filter((x) => pareceCorreo(x.email) && x.o.mensaje);
+    if (!items.length) return responder({ ok: false, motivo: "sin-destinatarios" }, 200, origen);
+    if (accion === "vista") return responder({ ok: true, html: items.map((x) => correoHtml(x.o)), destinatarios: items.map((x) => x.email) }, 200, origen);
+    const yoP = esLaBase ? (c.en_nombre_de ? { email: corto(c.en_nombre_de, 120) } : null) : await quienSoy(jwt);
+    const prueba = accion === "prueba";
+    if (prueba && !yoP?.email) return responder({ ok: false, motivo: "sin-correo" }, 200, origen);
+    if (!prueba && accion !== "enviar") return responder({ error: "accion" }, 400, origen);
+    const enviadosP: string[] = []; const fallidosP: string[] = [];
+    for (const x of items) {
+      const ok = prueba
+        ? await mandar(yoP!.email, `[PRUEBA · ${x.email}] ${asunto}`, correoHtml(x.o), correoTexto(x.o))
+        : await mandar(x.email, asunto, correoHtml(x.o), correoTexto(x.o));
+      (ok ? enviadosP : fallidosP).push(x.email);
+    }
+    if (!prueba) {
+      await rest("correos_grupo", {
+        method: "POST", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ enviado_por: null, enviado_email: yoP?.email ?? null, grupo_ids: [], asunto, titular: o.titular || null,
+          n_enviados: enviadosP.length, n_fallidos: fallidosP.length, destinatarios: enviadosP }),
+      });
+    }
+    return responder({ ok: fallidosP.length === 0, prueba, enviados: enviadosP.length, fallidos: fallidosP }, 200, origen);
+  }
+
   const destinatarios = await destinatariosDe(grupoIds);
 
   if (accion === "vista") return responder({ ok: true, html, destinatarios }, 200, origen);
