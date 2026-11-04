@@ -50,13 +50,13 @@
       'background:none;color:var(--texto-suave,#6E6656);font-family:inherit;font-size:17px;line-height:1;',
       'cursor:pointer;display:inline-flex;align-items:center;justify-content:center;',
       '-webkit-tap-highlight-color:transparent}',
-    '.apf-chip button:hover{background:#EFE9DC;color:var(--navy,#2E4256)}',
+    '.apf-chip button:hover{background:var(--crema-media,#EFE9DC);color:var(--navy,#2E4256)}',
     '.apf-chip button:focus-visible{outline:2px solid var(--azul-oscuro,#2F6FA8);outline-offset:2px}',
     /* «Quitar filtros» es el tercer nivel de botón: solo texto en azul */
     '.apf-quitar{min-height:40px;padding:8px 10px;border:0;border-radius:999px;background:none;',
       'color:var(--azul-oscuro,#2F6FA8);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;',
       '-webkit-tap-highlight-color:transparent}',
-    '.apf-quitar:hover{background:#EFE9DC}',
+    '.apf-quitar:hover{background:var(--crema-media,#EFE9DC)}',
     '@media (max-width:620px){.apf-chip .apf-txt{max-width:22ch}}'
   ].join('');
 

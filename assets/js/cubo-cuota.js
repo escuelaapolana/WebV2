@@ -126,9 +126,9 @@
     if (document.getElementById('cb-pausa-css')) return;
     var st = document.createElement('style'); st.id = 'cb-pausa-css';
     st.textContent =
-      '.cb-pausa{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:#F1EADC;color:#26374B;font-size:13.5px;line-height:1.5}' +
+      '.cb-pausa{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:var(--crema-banda,#F1EADC);color:#26374B;font-size:13.5px;line-height:1.5}' +
       '.cb-pausa b{color:#26374B}.cb-pausa.ok{background:#E8F3EA}.cb-pausa.no{background:#F7E4DE}' +
-      '.cb-pausa-elige{margin:10px 0 0;padding:12px 14px;border:1px solid #E4DCCB;border-radius:12px;background:#fff}' +
+      '.cb-pausa-elige{margin:10px 0 0;padding:12px 14px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:12px;background:#fff}' +
       '.cb-pausa-elige label{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:14px;color:#26374B;cursor:pointer}' +
       '.cb-pausa-elige label small{display:block;color:#6E6656;font-size:12.5px}' +
       '.cb-pausa-elige input{margin-top:3px;accent-color:#2F6FA8}' +

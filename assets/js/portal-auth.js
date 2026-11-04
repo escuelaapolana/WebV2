@@ -844,7 +844,7 @@
   function conPapeles(cuando) {
     if (window.APOLANA_PAPELES) { cuando(); return; }
     var s = document.createElement('script');
-    s.src = base() + 'assets/js/papeles.js?v=5b9903d7';
+    s.src = base() + 'assets/js/papeles.js?v=edf62981';
     s.async = true;
     s.addEventListener('load', cuando);
     s.addEventListener('error', function () { /* sin píldora, pero el portal sigue vivo */ });
@@ -854,7 +854,7 @@
   var css = document.createElement('style');
   css.textContent =
     /* --- tarjeta de acceso (maqueta 19b · pantalla A) --- */
-    '.pt-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid #EAE3D5;border-radius:14px;padding:30px 26px 24px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
+    '.pt-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid var(--linea,#EAE3D5);border-radius:14px;padding:30px 26px 24px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
     /* Cabecera azul marino con el escudo (15-oct): quien entra reconoce
        su app desde el primer segundo, igual que la barra de dentro. El
        escudo va sobre un disco blanco, como en la barra y en las camisetas. */
@@ -906,7 +906,7 @@
     /* --- la otra puerta: pedir un enlace ------------------------------
        Deja de ser la forma de entrar y pasa a ser la forma de darse de
        alta (y la salida para quien no se acuerda de la contraseña). */
-    '.pt-otra{margin-top:16px;padding-top:14px;border-top:1px solid #EAE3D5;text-align:center}' +
+    '.pt-otra{margin-top:16px;padding-top:14px;border-top:1px solid var(--linea,#EAE3D5);text-align:center}' +
     '.pt-otra[hidden]{display:none}' +
     '.pt-otra .pt-nota{margin:0}' +
     /* La casilla que hay que rellenar se enciende un momento. Decir «escribe tu
@@ -951,13 +951,13 @@
     '.pt-espera .msg{margin-top:10px}' +
     '.pt-sep{display:flex;align-items:center;gap:12px;margin:18px 0 12px}' +
     '.pt-sep span{font-family:var(--fuente-texto);font-size:13px;color:#6E6656}' +
-    '.pt-sep i{flex:1;height:1px;background:#E4DCCB;display:block}' +
+    '.pt-sep i{flex:1;height:1px;background:var(--linea-marcada,#E4DCCB);display:block}' +
     '.pt-publico{display:flex;flex-direction:column;gap:8px}' +
-    '.pt-publico a{background:#fff;border:1px solid #E4DCCB;border-radius:10px;padding:10px 16px;min-height:44px;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#2E4256;text-decoration:none}' +
+    '.pt-publico a{background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:10px;padding:10px 16px;min-height:44px;box-sizing:border-box;display:flex;justify-content:space-between;align-items:center;font-size:15px;color:#2E4256;text-decoration:none}' +
     '.pt-publico a:hover{border-color:#C9D9E7}' +
     '.pt-publico a b{font-weight:400}' +
     '.pt-publico a i{color:#6E6656;font-style:normal}' +
-    '.pt-pie{margin-top:18px;padding-top:16px;border-top:1px solid #EAE3D5;display:flex;flex-direction:column;gap:8px}' +
+    '.pt-pie{margin-top:18px;padding-top:16px;border-top:1px solid var(--linea,#EAE3D5);display:flex;flex-direction:column;gap:8px}' +
     '.pt-pie span{font-size:14px;color:#4A4437;text-align:center}' +
     '.pt-pie a{border:1px solid #C9D9E7;color:#2F6FA8;text-align:center;padding:13px;border-radius:999px;font-size:15px;font-weight:600;text-decoration:none}' +
     '.pt-pie a:hover{background:#EAF2F9}' +
@@ -1050,17 +1050,17 @@
        body para que nada desborde a lo ancho recorta lo que se sale por
        abajo, y en una pantalla corta el menú se quedaba sin «Salir». */
     '.pt-menu{position:fixed;z-index:9100;right:clamp(14px,4vw,40px);min-width:236px;max-width:calc(100vw - 28px);' +
-      'padding:6px;border:1px solid #E4DCCB;border-radius:14px;background:#fff;' +
+      'padding:6px;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;background:#fff;' +
       'box-shadow:0 18px 40px -22px rgba(46,66,86,.6)}' +
     '.pt-menu[hidden]{display:none}' +
-    '.pt-menu .pt-quien{display:block;padding:9px 13px 10px;border-bottom:1px solid #EFE9DC;margin-bottom:5px}' +
+    '.pt-menu .pt-quien{display:block;padding:9px 13px 10px;border-bottom:1px solid var(--crema-media,#EFE9DC);margin-bottom:5px}' +
     '.pt-menu .pt-quien b{display:block;font-size:15px;font-weight:600;color:#2E4256;line-height:1.3}' +
     '.pt-menu .pt-quien small{display:block;font-size:13px;color:#6E6656;line-height:1.4;word-break:break-all}' +
     '.pt-menu a,.pt-menu button{display:flex;align-items:center;width:100%;box-sizing:border-box;min-height:44px;' +
       'padding:10px 13px;border:0;border-radius:8px;background:none;color:#4A4437;font-family:inherit;' +
       'font-size:15px;text-align:left;text-decoration:none;cursor:pointer;white-space:nowrap}' +
-    '.pt-menu a:hover,.pt-menu button:hover{background:#EFE9DC;color:#2E4256}' +
-    '.pt-menu .pt-salir{gap:10px;margin-top:6px;padding-top:12px;border-top:1px solid #EFE9DC;' +
+    '.pt-menu a:hover,.pt-menu button:hover{background:var(--crema-media,#EFE9DC);color:#2E4256}' +
+    '.pt-menu .pt-salir{gap:10px;margin-top:6px;padding-top:12px;border-top:1px solid var(--crema-media,#EFE9DC);' +
       'border-radius:0;color:#2F6FA8;font-weight:600}' +
     '.pt-menu .pt-salir svg{flex:0 0 19px}' +
     '.pt-menu .pt-salir:hover{background:#EAF2F9;color:#1E4E78}' +
@@ -1088,13 +1088,13 @@
     /* --- hoja de cambio de perfil (maqueta 19b · pantalla C) --- */
     '.pt-hoja{position:fixed;inset:0;background:rgba(46,66,86,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9000;animation:pt-fondo-in 180ms ease}' +
     '@keyframes pt-fondo-in{from{opacity:0}to{opacity:1}}' +
-    '.pt-hoja .caja{background:#FBF9F4;width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px;animation:pt-caja-sube var(--dur-entrada,220ms) var(--ease-salida,cubic-bezier(.23,1,.32,1))}' +
+    '.pt-hoja .caja{background:var(--crema,#FBF9F4);width:min(460px,100%);max-height:88vh;overflow:auto;border-radius:14px 14px 0 0;padding:20px 20px 26px;animation:pt-caja-sube var(--dur-entrada,220ms) var(--ease-salida,cubic-bezier(.23,1,.32,1))}' +
     '@keyframes pt-caja-sube{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}' +
     '@media(min-width:640px){.pt-hoja{align-items:center}.pt-hoja .caja{border-radius:14px}}' +
     '.pt-hoja .cab{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}' +
     '.pt-hoja h2{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:28px;line-height:1.05;color:#2E4256;margin:0}' +
     '.pt-hoja .cerrar{display:inline-flex;align-items:center;min-height:44px;background:none;border:0;padding:0 4px;color:#2F6FA8;font-size:15px;font-family:inherit;cursor:pointer}' +
-    '.pt-hoja .fila{display:flex;align-items:center;gap:12px;min-height:44px;background:#fff;border:1px solid #E4DCCB;border-radius:14px;padding:12px 14px;margin-bottom:8px;text-decoration:none}' +
+    '.pt-hoja .fila{display:flex;align-items:center;gap:12px;min-height:44px;background:#fff;border:1px solid var(--linea-marcada,#E4DCCB);border-radius:14px;padding:12px 14px;margin-bottom:8px;text-decoration:none}' +
     '.pt-hoja .fila:hover{border-color:#C9D9E7}' +
     '.pt-hoja .fila.activa{border-color:#3B85C0;background:#EAF2F9}' +
     '.pt-hoja .ini{width:36px;height:36px;flex:0 0 36px;border-radius:50%;background:#EAF2F9;color:#2F6FA8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}' +
@@ -1102,7 +1102,7 @@
     '.pt-hoja .txt b{display:block;font-size:15px;color:#2E4256;font-weight:600}' +
     '.pt-hoja .txt small{display:block;font-size:13px;line-height:1.4;color:#6E6656}' +
     '.pt-hoja .chev{color:#6E6656}' +
-    '.pt-hoja .acciones{margin-top:14px;border-top:1px solid #EAE3D5;padding-top:10px;display:flex;flex-direction:column;gap:2px}' +
+    '.pt-hoja .acciones{margin-top:14px;border-top:1px solid var(--linea,#EAE3D5);padding-top:10px;display:flex;flex-direction:column;gap:2px}' +
     '.pt-hoja .acciones button{display:block;width:100%;min-height:44px;background:none;border:0;text-align:left;padding:11px 2px;font-size:15px;font-family:inherit;color:#2F6FA8;cursor:pointer}' +
     '.pt-hoja .nota{font-size:13px;color:#6E6656;margin:10px 2px 0}' +
     /* --- los cuatro estados de cualquier bloque (fundamentos 28f) --- */
@@ -3056,7 +3056,7 @@
           'align-items:center;justify-content:center;gap:18px;text-align:center;padding:28px;' +
           'background:var(--app-fondo,#FDFDFB);font-family:inherit;color:#2E4256';
         transicion.innerHTML =
-          '<div style="width:38px;height:38px;border-radius:50%;border:3px solid #E4DCCB;border-top-color:#2E4256;animation:ptSpin .8s linear infinite"></div>' +
+          '<div style="width:38px;height:38px;border-radius:50%;border:3px solid var(--linea-marcada,#E4DCCB);border-top-color:#2E4256;animation:ptSpin .8s linear infinite"></div>' +
           '<div style="font-family:var(--fuente-titulo,inherit);font-weight:700;text-transform:uppercase;font-size:20px;line-height:1.1">' +
             (quien === '1' ? 'Cambiando de vista…' : ('Cargando ' + quien + '…')) + '</div>';
         var st = document.createElement('style');

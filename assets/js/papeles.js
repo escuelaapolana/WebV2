@@ -131,7 +131,7 @@
       'max-height:90vh;overflow-y:auto;animation:papUp .35s cubic-bezier(.2,.7,.2,1)}' +
     '.pap-caja:focus{outline:none}' +
     '@keyframes papUp{from{transform:translateY(34px);opacity:0}to{transform:none;opacity:1}}' +
-    '.pap-caja .pap-tir{width:40px;height:5px;border-radius:999px;background:#E4DCCB;margin:2px auto 14px}' +
+    '.pap-caja .pap-tir{width:40px;height:5px;border-radius:999px;background:var(--linea-marcada,#E4DCCB);margin:2px auto 14px}' +
     '.pap-cab{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}' +
     '.pap-cab .pap-quien{font-size:14px;color:var(--texto-suave,#6E6656);display:block}' +
     '.pap-cab h3{font-family:var(--fuente-titulo,"Barlow Condensed",sans-serif);font-weight:700;' +
@@ -293,7 +293,7 @@
       'align-items:center;justify-content:center;gap:18px;text-align:center;padding:28px;' +
       'background:var(--app-fondo,#FDFDFB);font-family:inherit;color:#2E4256';
     ov.innerHTML =
-      '<div class="pap-tr-spin" style="width:38px;height:38px;border-radius:50%;border:3px solid #E4DCCB;' +
+      '<div class="pap-tr-spin" style="width:38px;height:38px;border-radius:50%;border:3px solid var(--linea-marcada,#E4DCCB);' +
         'border-top-color:#2E4256;animation:papSpin .8s linear infinite"></div>' +
       '<div style="font-family:var(--fuente-titulo,inherit);font-weight:700;text-transform:uppercase;font-size:20px;line-height:1.1">' +
         'Cambiando a ' + esc(titulo || 'otra vista') + '…</div>';

@@ -346,7 +346,7 @@
       'border:1px solid #C9C0AE;background:#fff;color:var(--navy,#2E4256);font-family:inherit;font-size:15px}',
     '@keyframes cf-brillo{0%{background-position:200% 0}100%{background-position:-200% 0}}',
     '.cf-esq{display:block;height:12px;border-radius:999px;margin:10px 0;',
-      'background:linear-gradient(90deg,#EFE9DC 25%,#F7F3EA 50%,#EFE9DC 75%);background-size:200% 100%;',
+      'background:linear-gradient(90deg,var(--crema-media,#EFE9DC) 25%,#F7F3EA 50%,var(--crema-media,#EFE9DC) 75%);background-size:200% 100%;',
       'animation:cf-brillo 1.25s linear infinite}',
     '.cf-esq--l{width:82%}.cf-esq--m{width:60%}.cf-esq--c{width:38%}',
     '@media (prefers-reduced-motion:reduce){.cf-esq{animation:none}}',

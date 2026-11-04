@@ -1253,7 +1253,7 @@
     /* --- 1 · cargando: bloques con la forma del dato, nunca «Cargando…» en gris --- */
     '@keyframes adm-brillo{0%{background-position:200% 0}100%{background-position:-200% 0}}',
     '.adm-esq{display:block;height:12px;border-radius:999px;margin:9px 0;' +
-      'background:linear-gradient(90deg,#EFE9DC 25%,#F7F3EA 50%,#EFE9DC 75%);background-size:200% 100%;' +
+      'background:linear-gradient(90deg,var(--crema-media,#EFE9DC) 25%,#F7F3EA 50%,var(--crema-media,#EFE9DC) 75%);background-size:200% 100%;' +
       'animation:adm-brillo 1.25s linear infinite}',
     '.adm-esq--corto{width:38%}.adm-esq--medio{width:64%}.adm-esq--largo{width:86%}',
     '.adm-cargando{padding:4px 0}',

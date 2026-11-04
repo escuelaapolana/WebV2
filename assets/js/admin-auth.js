@@ -51,7 +51,7 @@
   function montarPapeles() {
     if (window.APOLANA_PAPELES) return;
     var s = document.createElement('script');
-    s.src = base() + 'assets/js/papeles.js?v=5b9903d7';
+    s.src = base() + 'assets/js/papeles.js?v=edf62981';
     s.async = true;
     s.addEventListener('error', function () { /* sin interruptor, pero la página entera sigue viva */ });
     document.head.appendChild(s);
@@ -97,7 +97,7 @@
     '@media(max-width:560px){.adm-top .der{gap:7px}.adm-top .der .ir-web{padding:8px 12px}}' +
     '@media(max-width:560px){.adm-top{padding:8px 14px;gap:8px;min-height:56px}.adm-top .der{gap:4px}.adm-top a.volver .txt{display:none}.adm-top a.volver{padding:10px}.adm-top .sep{display:none}.adm-top .marca{font-size:18px}.adm-top button{padding:10px 15px}.adm-top a.ir-web{padding:10px 6px}}' +
     /* --- Caja de acceso: mismo aire que la del portal --- */
-    '.adm-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid #EAE3D5;border-radius:20px;padding:30px 26px 26px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
+    '.adm-login{max-width:420px;margin:6vh auto;background:#fff;border:1px solid var(--linea,#EAE3D5);border-radius:20px;padding:30px 26px 26px;box-shadow:0 26px 50px -32px rgba(46,66,86,.5)}' +
     '.adm-login .adm-logo{display:block;margin:0 auto 8px;height:58px;width:auto}' +
     '.adm-login h1{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:38px;line-height:.98;color:#2E4256;margin:0 0 6px;text-align:center}' +
     '.adm-login .lema{color:#5E5849;margin:0 0 16px;text-align:center;font-size:15px;line-height:1.5}' +
