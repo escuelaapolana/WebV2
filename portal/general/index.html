@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
 <link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://icaxokjsvhlreuwpyxeb.supabase.co" crossorigin>
 <link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
 <link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=5f881ca4">
 <script>
@@ -80,29 +81,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var B = window.APOLANA_BASE || '../../';
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
-  // Recuentos del día a día (admin/staff). Si no hay permiso, vuelve {}.
-  var counts = {};
-  try { var r = await sb.rpc('general_resumen'); if (r && !r.error && r.data) counts = r.data; } catch (e) {}
-  // Encargos de la tienda sin confirmar (22-oct, Andrés: «¿me salen los pedidos de ropa?»).
-  try { var rpd = await sb.from('pedidos').select('id', { count:'exact', head:true }).eq('estado', 'pendiente'); if (rpd && !rpd.error) counts.pedidos = rpd.count || 0; } catch (e) {}
-
-  // --- KPIs del club (mismos criterios que la home de antes) ---
   var hoy = new Date();
   var hoyIso = hoy.getFullYear() + '-' + ('0'+(hoy.getMonth()+1)).slice(-2) + '-' + ('0'+hoy.getDate()).slice(-2);
   var anoTemp = (hoy.getMonth()+1) >= 7 ? hoy.getFullYear() : hoy.getFullYear()-1;   // la temporada arranca el 1-jul
   var temporadaIso = anoTemp + '-07-01';
+
+  // Las cinco consultas van A LA VEZ (4-nov: antes iban una detrás de otra y
+  // la pantalla esperaba ~0,7 s de más). Cada una falla por su cuenta: si una
+  // no tiene permiso o da error, su hueco queda en «—» y el resto se pinta.
+  function intento(p){ return Promise.resolve(p).then(function(r){ return (r && !r.error) ? r : null; }, function(){ return null; }); }
+  var res = await Promise.all([
+    // Recuentos del día a día (admin/staff). Si no hay permiso, vuelve {}.
+    intento(sb.rpc('general_resumen')),
+    // Encargos de la tienda sin confirmar (22-oct, Andrés: «¿me salen los pedidos de ropa?»).
+    intento(sb.from('pedidos').select('id', { count:'exact', head:true }).eq('estado', 'pendiente')),
+    // Recuento por SECCIÓN (cada una con su fuente real, RPC gated por admin).
+    // Antes era «357 socios activos +357» — falso: contaba todos los atletas.
+    intento(sb.rpc('general_secciones')),
+    intento(sb.from('competiciones').select('id', { count:'exact', head:true }).gte('fecha_inicio', hoyIso).eq('es_prueba', false).neq('estado', 'cancelada')),
+    intento(sb.from('pagos').select('estado,fecha_vencimiento').in('estado', ['pendiente','impagado']))
+  ]);
+  var r = res[0], rpd = res[1], rs = res[2], rc = res[3], rp = res[4];
+
+  var counts = (r && r.data) ? r.data : {};
+  if (rpd) counts.pedidos = rpd.count || 0;
+
+  // --- KPIs del club (mismos criterios que la home de antes) ---
   var kpi = { cuotas:'—', compes:'—' };
-  // Recuento por SECCIÓN (cada una con su fuente real, RPC gated por admin).
-  // Antes era «357 socios activos +357» — falso: contaba todos los atletas.
-  var sec = {};
-  try { var rs = await sb.rpc('general_secciones'); if (rs && !rs.error && rs.data) sec = rs.data; } catch (e) {}
-  try { var rc = await sb.from('competiciones').select('id', { count:'exact', head:true }).gte('fecha_inicio', hoyIso).eq('es_prueba', false).neq('estado', 'cancelada'); if (rc && !rc.error) kpi.compes = rc.count || 0; } catch (e) {}
-  try {
-    var rp = await sb.from('pagos').select('estado,fecha_vencimiento').in('estado', ['pendiente','impagado']);
-    if (rp && !rp.error && rp.data) {
-      kpi.cuotas = rp.data.filter(function(p){ return p.estado === 'impagado' || (p.estado === 'pendiente' && p.fecha_vencimiento && p.fecha_vencimiento < hoyIso); }).length;
-    }
-  } catch (e) {}
+  var sec = (rs && rs.data) ? rs.data : {};
+  if (rc) kpi.compes = rc.count || 0;
+  if (rp && rp.data) {
+    kpi.cuotas = rp.data.filter(function(p){ return p.estado === 'impagado' || (p.estado === 'pendiente' && p.fecha_vencimiento && p.fecha_vencimiento < hoyIso); }).length;
+  }
   // Cada tarjeta lleva el color de su mundo, para que no sea monocromo.
   function kcard(n, etq, color){
     return '<div class="g-kpi"'+(color?' style="border-top:3px solid '+color+'"':'')+'><b>'+esc(n==null?'—':n)+'</b><span>'+etq+'</span></div>';
