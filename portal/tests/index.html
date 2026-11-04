@@ -618,7 +618,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // esta pantalla lo único que hace es no enseñar botones que iban
   // a fallar.
   // ============================================================
-  var MIS_FICHAS = [], FICHA = null, TOMAS = {}, ABIERTA = null;
+  var MIS_FICHAS = [], FICHA = null, TOMAS = {}, ABIERTA = null, RMS = {};
   var BAT_ABIERTA = null, RES_ABIERTA = {};   // la batería del día para que el atleta apunte, y sus marcas en ella
 
   function cabeceraMis(){
@@ -683,8 +683,35 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         fecha: String(fe).slice(0,10), sede: (f.test_baterias.sede||'')
       });
     });
+    // Su fuerza (RM): medido o estimado, tal como lo apunta el entrenador.
+    RMS = {};
+    var rm = await sb.from('rm_atleta').select('atleta_id,ejercicio,variante,recorrido,metodo,peso_kg,fecha_test,formula,datos_estimacion')
+      .in('atleta_id', MIS_FICHAS.map(function(f){ return f.id; }));
+    (rm.data||[]).forEach(function(x){ if(x.peso_kg!=null) (RMS[x.atleta_id] = RMS[x.atleta_id] || []).push(x); });
     await cargarBateriaAbierta();
     pintarMisResultados();
+  }
+
+  /* Fuerza: un ejercicio (con su variante y si es medido o estimado) por fila;
+     medido y estimado no se mezclan al comparar. */
+  function kgTxt(v){ v = Number(v); return (v % 1 ? v.toFixed(1).replace('.', ',') : String(v))+' kg'; }
+  function bloqueFuerza(fichaId){
+    var L = (RMS[fichaId]||[]).slice().sort(function(a, b){ return String(a.fecha_test).localeCompare(String(b.fecha_test)); });
+    if(!L.length) return '';
+    var grupos = {}, orden = [];
+    L.forEach(function(x){ var k = [x.ejercicio, x.variante||'', x.metodo||''].join('|').toLowerCase(); if(!grupos[k]){ grupos[k] = []; orden.push(k); } grupos[k].push(x); });
+    return '<p class="rotulo">Fuerza</p><div class="caja-filas">'+orden.map(function(k){
+      var G = grupos[k], u = G[G.length-1], an = G.length>1 ? G[G.length-2] : null, de = u.datos_estimacion || {};
+      var nom = u.ejercicio+(u.variante ? ' · '+u.variante : '');
+      var como = u.metodo==='estimado' ? 'Estimado'+(de.carga_kg ? ' con '+kgTxt(de.carga_kg)+' × '+de.repeticiones : '') : 'Medido';
+      var dif = an ? Number(u.peso_kg) - Number(an.peso_kg) : null;
+      return '<div class="mt"><div class="cab-mt" style="cursor:default">'+
+        '<span class="nom">'+esc(nom)+' <small style="font-weight:400;color:var(--texto-suave)">1RM</small></span>'+
+        '<span class="dato">'+esc(kgTxt(u.peso_kg))+'</span>'+
+        '<span class="cuando">'+esc(como+' · '+fCorta(String(u.fecha_test).slice(0,10)))+'</span>'+
+        '<span class="comova">'+(dif!=null && Math.abs(dif)>0.04 ? '<span style="font-size:13px;font-weight:600;color:'+(dif>0?'#2F6A3D':'var(--texto-suave)')+'">'+(dif>0?'+':'−')+esc(kgTxt(Math.abs(dif)))+'</span>' : '')+'</span>'+
+      '</div></div>';
+    }).join('')+'</div><p class="sub" style="margin:8px 0 14px">El 1RM estimado sale de una serie de varias repeticiones; el medido, de una sola. No se mezclan al comparar.</p>';
   }
 
   // Envoltorio común: cabecera + lo que toque debajo.
@@ -917,7 +944,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         }).join('');
     }
 
-    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+bloqueApuntar()+cuerpo+bloqueRadiografia(FICHA.id)+avisoOtroPapel()+'</div>';
+    wrap.innerHTML = '<div class="tt-pad">'+cabeceraMis()+chips+bloqueApuntar()+cuerpo+bloqueFuerza(FICHA.id)+bloqueRadiografia(FICHA.id)+avisoOtroPapel()+'</div>';
 
     wrap.querySelectorAll('[data-ficha]').forEach(function(b){
       b.addEventListener('click', async function(){
