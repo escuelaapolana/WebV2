@@ -563,6 +563,15 @@ async function vaciarCola(): Promise<{ toques: number; enviados: number; fallido
 }
 
 // ============================================================
+// IP real del que llama (revisión 4-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
 
@@ -618,7 +627,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // (los dispara la web), así que el único tope que cabe aquí es por origen.
   // No frena el camino de abajo (escribir un aviso en el panel), que ya lleva
   // su propia barrera de sesión y permiso.
-  const dedonde = await resumen(req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "sin-origen");
+  const dedonde = await resumen(ipDelCliente(req) || "sin-origen");
 
   // ---------------------------------------------------------------
   // 0.b.1 · ¿VIENEN A VACIAR LA COLA? · las peticiones de plaza

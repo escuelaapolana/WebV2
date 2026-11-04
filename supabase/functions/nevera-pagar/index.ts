@@ -144,6 +144,15 @@ async function comprobar(ref: string, origen: string | null): Promise<Response> 
   return responder(estado, 200, origen);
 }
 
+// IP real del que llama (revisión 4-nov): la pone Cloudflare en
+// cf-connecting-ip; si faltara, el ÚLTIMO salto de x-forwarded-for. El PRIMER
+// valor de x-forwarded-for lo puede escribir el propio cliente y no frena nada.
+function ipDelCliente(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return ((req.headers.get("x-forwarded-for") ?? "").split(",").pop() ?? "").trim();
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const origen = req.headers.get("origin");
 
@@ -165,7 +174,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return responder({ error: "no_activado", mensaje: "El pago con tarjeta no está activado. Usa el datáfono de la nevera." }, 503, origen);
   }
 
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "?";
+  const ip = ipDelCliente(req) || "?";
   if (demasiadas(ip)) {
     return responder({ error: "espera", mensaje: "Demasiados intentos seguidos. Espera unos minutos." }, 429, origen);
   }

@@ -418,6 +418,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // ---- 6.b · ¿Es de verdad socio / familia de la escuela? (revisión 4-nov,
+  //          mig 516). Las casillas las marca el navegador. No se rechaza a
+  //          nadie: si la base no lo confirma, el alta lleva un aviso para
+  //          comprobarlo antes de aprobarla. ----
+  let avisoReducido = "";
+  if (reducido) {
+    const rC = await rest(`rpc/cubo_reducido_confirmado`, {
+      method: "POST",
+      body: JSON.stringify({ p_email: email, p_dni: dni || null, p_telefono: telefono || null, p_hijo: hijo || null }),
+    });
+    const c = (rC.ok && rC.datos && typeof rC.datos === "object") ? rC.datos as Record<string, unknown> : null;
+    const confirmado = !!c && ((socio && c.socio === true) || (escuela && c.escuela === true));
+    if (!confirmado) {
+      avisoReducido = `⚠️ Marca «${socio ? "socio" : "familia de la escuela"}» y no lo hemos encontrado en la base (ni por correo, DNI, teléfono ni hijo): comprobar antes de aprobar; si no lo es, su cuota es la general.`;
+      console.log("[cubo-alta] reducido sin confirmar", rC.estado);
+    }
+  }
+
   // ---- 7 · Registro del alta (para la lista del club), enlazado a la cuenta ----
   await rest("cubo_altas", {
     method: "POST",
@@ -425,7 +443,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       nombre, apellidos, dni: dni || null, telefono,
       hijo: hijo || null, direccion: direccion || null,
       horario: SLOT_A_GRUPO[slot], dias, dias_semana: diasSemana, precio_mes: precio,
-      nota: [nota, sabado ? (reducido ? "También los sábados 9:00 (fuerza, gratis)." : "También los sábados 9:00 (cuenta como un día más).") : ""].filter(Boolean).join(" · ") || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
+      nota: [avisoReducido, nota, sabado ? (reducido ? "También los sábados 9:00 (fuerza, gratis)." : "También los sábados 9:00 (cuenta como un día más).") : ""].filter(Boolean).join(" · ") || null, es_escuela: escuela, es_socio: socio, estado: "pendiente",
       perfil_id: perfilId, atleta_id: atletaId, lista_espera: enListaEspera,
     }),
   });
