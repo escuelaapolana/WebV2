@@ -253,6 +253,10 @@
     css.setAttribute('data-piel', 'mundos');
     css.textContent =
       '@view-transition{navigation:auto}' +
+      /* foto de la pantalla del mundo (en todos los tamaños): lo real se monta
+         debajo, invisible, hasta que está listo */
+      '.mm-main{position:relative}' +
+      '.mm-main>.mm-foto-tapado{position:absolute!important;left:0!important;right:0!important;top:0!important;visibility:hidden!important;pointer-events:none!important}' +
       /* La barra lateral NO se anima en la transición: se queda quieta (sin
          deslizarse). Solo el contenido hace crossfade. */
       '::view-transition-group(mm-lateral){animation:none}' +
@@ -1172,6 +1176,104 @@
     cargarMisMundos(function (val) { if (box) box.innerHTML = worldsHtml(val, M.key); });
 
     montarBarraMovil(M, esActivo);   // en móvil, la barra de navegación del mundo
+    fotoDelMundo(content);
+  }
+
+  /* ---------- FOTO DE LA PANTALLA DEL MUNDO (4-nov-2026) ----------
+     Al tocar un mundo en el lateral, su pantalla salía medio segundo en
+     blanco con «Cargando…» mientras pedía los datos. Ahora, la primera vez
+     que se termina de pintar se guarda una COPIA (sessionStorage, solo esta
+     pestaña) y la próxima vez se enseña al instante mientras llegan los datos
+     de verdad; en cuanto llegan, se cambia por lo real. Igual que la «foto de
+     la pantalla» de las 4 pestañas del portal (portal-auth.js).
+     · Es solo un dibujo: no se puede pulsar (inert), sin ids, sin scripts.
+     · Solo de la MISMA cuenta (va su id en la copia), nunca en «ver como»,
+       nunca con parámetros en la dirección. Caduca a los 15 min.
+     · Nunca se guarda un «Cargando…», un esqueleto ni un error.
+     · Tope: si a los 3 s no han llegado los datos, la copia se quita igual.
+     · Se borra al salir y al cambiar de vista (prefijo 'apo-pant-').
+     · INTERRUPTOR: en un aparato, localStorage 'apolana-sin-foto' = '1'. */
+  function fotoCuenta() {
+    var cajas = [];
+    try { cajas.push(sessionStorage); } catch (e) {}
+    try { cajas.push(localStorage); } catch (e) {}
+    for (var c = 0; c < cajas.length; c++) {
+      try {
+        for (var i = 0; i < cajas[c].length; i++) {
+          var k = cajas[c].key(i);
+          if (!k || !/-auth-token$/.test(k)) continue;
+          var s = JSON.parse(cajas[c].getItem(k) || 'null');
+          if (s && s.user && s.user.id) return s.user.id;
+        }
+      } catch (e) {}
+    }
+    return '';
+  }
+  function fotoDelMundo(content) {
+    try {
+      if (!content || !content.parentNode || location.search) return;
+      try { if (localStorage.getItem('apolana-sin-foto') === '1') return; } catch (e) {}
+      try { if (sessionStorage.getItem('apo-como')) return; } catch (e) {}
+      if (/[?&]como=/.test(location.href)) return;
+      var yo = fotoCuenta();
+      if (!yo || typeof MutationObserver === 'undefined') return;
+      var k = 'apo-pant-mm-' + location.pathname;
+      var copia = null, tope = 0, quieto = 0, guardada = false, obs = null;
+      var lista = function () {
+        var t = content.textContent || '';
+        return content.getElementsByTagName('*').length > 4 && !content.querySelector('.ap-esq,[data-esq]') &&
+          !/Cargando(…|\.\.\.)/.test(t) && !/No hemos podido/.test(t);
+      };
+      var quitar = function () {
+        if (tope) { clearTimeout(tope); tope = 0; }
+        if (copia && copia.parentNode) copia.parentNode.removeChild(copia);
+        copia = null;
+        content.classList.remove('mm-foto-tapado');
+      };
+      var guardar = function () {
+        if (guardada || !lista()) return;
+        guardada = true;
+        if (obs) obs.disconnect();
+        try {
+          var html = content.innerHTML;
+          if (html.length > 300000) { sessionStorage.removeItem(k); return; }
+          sessionStorage.setItem(k, JSON.stringify({ t: Date.now(), cuenta: yo, html: html }));
+        } catch (e) { try { sessionStorage.removeItem(k); } catch (e2) {} }
+      };
+      /* Pintar la copia (si hay una buena y la pantalla aún no está lista). */
+      var o = null;
+      try { o = JSON.parse(sessionStorage.getItem(k) || 'null'); } catch (e) {}
+      if (o && o.cuenta === yo && typeof o.html === 'string' && o.html && (Date.now() - (o.t || 0)) < 15 * 60000 && !lista()) {
+        copia = document.createElement('div');
+        copia.className = 'mm-foto';
+        copia.setAttribute('aria-hidden', 'true');
+        copia.setAttribute('inert', '');
+        copia.innerHTML = o.html;
+        var fuera = copia.querySelectorAll('script,iframe,video,audio,object,embed');
+        for (var i = fuera.length - 1; i >= 0; i--) fuera[i].parentNode.removeChild(fuera[i]);
+        var conId = copia.querySelectorAll('[id],[name],[autofocus]');
+        for (var j = 0; j < conId.length; j++) { conId[j].removeAttribute('id'); conId[j].removeAttribute('name'); conId[j].removeAttribute('autofocus'); }
+        content.classList.add('mm-foto-tapado');
+        content.parentNode.insertBefore(copia, content);
+        tope = setTimeout(quitar, 3000);
+      } else if (o && (o.cuenta !== yo || (Date.now() - (o.t || 0)) >= 15 * 60000)) {
+        try { sessionStorage.removeItem(k); } catch (e) {}
+      }
+      /* Vigilar: destapar lo real en cuanto está listo y guardar la copia
+         cuando la pantalla se queda quieta. */
+      var mirar = function () {
+        if (!lista()) return;
+        if (copia) quitar();
+        clearTimeout(quieto);
+        quieto = setTimeout(guardar, 700);
+      };
+      obs = new MutationObserver(mirar);
+      obs.observe(content, { childList: true, subtree: true, characterData: true });
+      mirar();
+      setTimeout(function () { if (obs && !guardada) obs.disconnect(); quitar(); }, 20000);
+    } catch (e) {
+      try { content.classList.remove('mm-foto-tapado'); var f = document.querySelector('.mm-foto'); if (f) f.parentNode.removeChild(f); } catch (e2) {}
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar);
