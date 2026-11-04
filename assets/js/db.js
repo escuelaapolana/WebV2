@@ -218,6 +218,14 @@
     try {
       db.auth.onAuthStateChange(function (evento) {
         if (evento === 'SIGNED_OUT' || evento === 'USER_UPDATED') olvidar();
+        /* Al salir, fuera también las copias de pantalla (mundos.js, portal-auth.js). */
+        if (evento === 'SIGNED_OUT') {
+          try {
+            var fuera = [];
+            for (var i = 0; i < sessionStorage.length; i++) { var k = sessionStorage.key(i); if (k && k.indexOf('apo-pant-') === 0) fuera.push(k); }
+            fuera.forEach(function (k) { sessionStorage.removeItem(k); });
+          } catch (e) {}
+        }
       });
     } catch (e) {}
 

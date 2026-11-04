@@ -256,7 +256,7 @@
       /* foto de la pantalla del mundo (en todos los tamaños): lo real se monta
          debajo, invisible, hasta que está listo */
       '.mm-main{position:relative}' +
-      '.mm-main>.mm-foto-tapado{position:absolute!important;left:0!important;right:0!important;top:0!important;visibility:hidden!important;pointer-events:none!important}' +
+      '.mm-foto-tapado{opacity:0!important;pointer-events:none!important}' +
       /* La barra lateral NO se anima en la transición: se queda quieta (sin
          deslizarse). Solo el contenido hace crossfade. */
       '::view-transition-group(mm-lateral){animation:none}' +
@@ -826,6 +826,9 @@
     /* Lo que dice la lateral sobre su estado (para que admin-tabbar reserve
        el ancho antes de montarla y no haya salto). */
     plegado: estaPlegado,
+    /* Copia instantánea de la pantalla mientras llegan los datos (ver
+       fotoDelMundo). La usa admin-tabbar.js con el contenido del panel. */
+    foto: function (content, opts) { injectCSS(); fotoDelMundo(content, opts); },
     /* Pliega la lateral en ESTA página sin tocar la preferencia guardada
        (p. ej. la Semana de Academia necesita todo el ancho). `null` = volver
        a lo que tenga guardado la persona. */
@@ -1209,7 +1212,13 @@
     }
     return '';
   }
-  function fotoDelMundo(content) {
+  /* opts.pre: prefijo de la clave ('apo-pant-mm-' portal, 'apo-pant-adm-' panel).
+     opts.siempre: el panel arranca con su estructura VACÍA (no dice
+     «Cargando…»), así que allí la copia se pinta siempre y se quita en cuanto
+     la pantalla CAMBIA y queda lista, o tras 0,8 s sin cambios (pantallas
+     que no piden nada): nunca tapa una pantalla que ya está bien. */
+  function fotoDelMundo(content, opts) {
+    opts = opts || {};
     try {
       if (!content || !content.parentNode || location.search) return;
       try { if (localStorage.getItem('apolana-sin-foto') === '1') return; } catch (e) {}
@@ -1217,21 +1226,25 @@
       if (/[?&]como=/.test(location.href)) return;
       var yo = fotoCuenta();
       if (!yo || typeof MutationObserver === 'undefined') return;
-      var k = 'apo-pant-mm-' + location.pathname;
-      var copia = null, tope = 0, quieto = 0, guardada = false, obs = null;
+      var k = (opts.pre || 'apo-pant-mm-') + location.pathname;
+      var inicial = content.innerHTML;
+      var copia = null, tope = 0, quieto = 0, calma = 0, revisar = 0, guardada = false, obs = null;
+      /* innerText = solo lo que se ve (no cuenta plantillas ocultas). */
       var lista = function () {
-        var t = content.textContent || '';
+        var t = content.innerText || content.textContent || '';
         return content.getElementsByTagName('*').length > 4 && !content.querySelector('.ap-esq,[data-esq]') &&
           !/Cargando(…|\.\.\.)/.test(t) && !/No hemos podido/.test(t);
       };
+      var cambiada = function () { return content.innerHTML !== inicial; };
       var quitar = function () {
         if (tope) { clearTimeout(tope); tope = 0; }
+        if (calma) { clearTimeout(calma); calma = 0; }
         if (copia && copia.parentNode) copia.parentNode.removeChild(copia);
         copia = null;
         content.classList.remove('mm-foto-tapado');
       };
       var guardar = function () {
-        if (guardada || !lista()) return;
+        if (guardada || !lista() || (opts.siempre && !cambiada())) return;
         guardada = true;
         if (obs) obs.disconnect();
         try {
@@ -1240,10 +1253,12 @@
           sessionStorage.setItem(k, JSON.stringify({ t: Date.now(), cuenta: yo, html: html }));
         } catch (e) { try { sessionStorage.removeItem(k); } catch (e2) {} }
       };
-      /* Pintar la copia (si hay una buena y la pantalla aún no está lista). */
+      /* Pintar la copia (si hay una buena). */
       var o = null;
       try { o = JSON.parse(sessionStorage.getItem(k) || 'null'); } catch (e) {}
-      if (o && o.cuenta === yo && typeof o.html === 'string' && o.html && (Date.now() - (o.t || 0)) < 15 * 60000 && !lista()) {
+      if (o && o.cuenta === yo && typeof o.html === 'string' && o.html && (Date.now() - (o.t || 0)) < 15 * 60000 && (opts.siempre || !lista()) &&
+          /* Si llega tarde (la página ya lleva rato pintada), no se tapa nada. */
+          !(opts.siempre && window.performance && performance.now() > 700)) {
         copia = document.createElement('div');
         copia.className = 'mm-foto';
         copia.setAttribute('aria-hidden', 'true');
@@ -1253,21 +1268,32 @@
         for (var i = fuera.length - 1; i >= 0; i--) fuera[i].parentNode.removeChild(fuera[i]);
         var conId = copia.querySelectorAll('[id],[name],[autofocus]');
         for (var j = 0; j < conId.length; j++) { conId[j].removeAttribute('id'); conId[j].removeAttribute('name'); conId[j].removeAttribute('autofocus'); }
+        /* La copia va ENCIMA de lo real, en su mismo sitio y ancho, y DETRÁS en
+           el orden del documento: así, si la página busca un elemento por su
+           clase mientras tanto, encuentra el de verdad y no el de la copia. */
+        var par = content.parentNode;
+        try { if (getComputedStyle(par).position === 'static') par.style.position = 'relative'; } catch (e) {}
+        var cs = getComputedStyle(content);
+        copia.style.cssText = 'position:absolute;z-index:6;box-sizing:border-box;top:' + content.offsetTop + 'px;left:' + content.offsetLeft +
+          'px;width:' + content.offsetWidth + 'px;padding:' + cs.padding + ';background:var(--crema,#f6f7f9)';
         content.classList.add('mm-foto-tapado');
-        content.parentNode.insertBefore(copia, content);
+        par.insertBefore(copia, content.nextSibling);
         tope = setTimeout(quitar, 3000);
+        if (opts.siempre) calma = setTimeout(quitar, 800);
       } else if (o && (o.cuenta !== yo || (Date.now() - (o.t || 0)) >= 15 * 60000)) {
         try { sessionStorage.removeItem(k); } catch (e) {}
       }
       /* Vigilar: destapar lo real en cuanto está listo y guardar la copia
          cuando la pantalla se queda quieta. */
       var mirar = function () {
-        if (!lista()) return;
+        revisar = 0;
+        if (copia && opts.siempre) { clearTimeout(calma); calma = setTimeout(quitar, 800); }
+        if (!lista() || (opts.siempre && !cambiada())) return;
         if (copia) quitar();
         clearTimeout(quieto);
         quieto = setTimeout(guardar, 700);
       };
-      obs = new MutationObserver(mirar);
+      obs = new MutationObserver(function () { if (!revisar) revisar = setTimeout(mirar, 60); });
       obs.observe(content, { childList: true, subtree: true, characterData: true });
       mirar();
       setTimeout(function () { if (obs && !guardada) obs.disconnect(); quitar(); }, 20000);

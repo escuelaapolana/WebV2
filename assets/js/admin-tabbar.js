@@ -333,7 +333,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=767f9a65';
+      s.src = base() + 'assets/js/mundos.js?v=1b1c43b0';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -1075,6 +1075,9 @@
       var r = shell.resolverURL() || { world: 'general', screenIdx: -1 };
       /* «Buscar» de la tira abre la hoja de siempre (pantallas + personas). */
       shell.montarEn(caja, r.world, r.screenIdx, { onBuscar: function () { abrir(true); } });
+      /* Copia instantánea de esta pantalla mientras llegan sus datos (4-nov-2026,
+         ver fotoDelMundo en mundos.js). */
+      try { if (shell.foto) shell.foto(main, { pre: 'apo-pant-adm-', siempre: true }); } catch (e) {}
       caja.addEventListener('click', function (e) {
         var a = e.target.closest ? e.target.closest('a[href]') : null;
         if (a) anotar(clave(a.getAttribute('href')));
@@ -1091,7 +1094,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=767f9a65';
+      s.src = base() + 'assets/js/mundos.js?v=1b1c43b0';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
