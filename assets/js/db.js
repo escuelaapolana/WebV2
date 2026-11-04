@@ -181,6 +181,92 @@
   });
 
   /* ============================================================
+     «¿QUIÉN ERES?» GUARDADO UNOS MINUTOS (4-nov-2026)
+     ------------------------------------------------------------
+     Cada pantalla preguntaba lo mismo al entrar (si eres admin, tus papeles,
+     tus mundos…): 6 peticiones idénticas en cada cambio de pantalla. Ahora
+     la respuesta se guarda en ESTA pestaña (sessionStorage) 3 minutos, con
+     la cuenta en la clave, y dentro de una misma página se pregunta una vez.
+     · Solo RPC SIN argumentos de esta lista, y solo respuestas sin error.
+     · Solo sirve para PINTAR: los permisos los sigue decidiendo la base (RLS).
+     · Se borra al cambiar de vista (papeles.js deja 'apolana.cambiando'), al
+       salir o entrar con otra cuenta, y al tocar papeles, mundos o perfiles
+       desde la app (para que lo nuevo se vea al momento).
+     · «Ver como…» pregunta con ver_como_leer (con argumentos): no pasa por aquí.
+     ============================================================ */
+  (function () {
+    var db = window.APOLANA_DB;
+    if (!db || typeof db.rpc !== 'function') return;
+    var GUARDABLES = { es_admin: 1, es_staff: 1, soy_admin_de_verdad: 1, mis_papeles: 1, mis_mundos: 1, mis_secciones_responsable: 1 };
+    var DURA = 3 * 60 * 1000, PRE = 'apo-rpc-';
+    var CLAVE_SESION = 'sb-' + String(URL).replace(/^https?:\/\//, '').split('.')[0] + '-auth-token';
+    var enCurso = {};
+    function cuenta() {
+      try { var s = JSON.parse(ALMACEN.getItem(CLAVE_SESION) || 'null'); return (s && s.user && s.user.id) || ''; } catch (e) { return ''; }
+    }
+    function olvidar() {
+      enCurso = {};
+      try {
+        var borrar = [];
+        for (var i = 0; i < sessionStorage.length; i++) { var k = sessionStorage.key(i); if (k && k.indexOf(PRE) === 0) borrar.push(k); }
+        borrar.forEach(function (k) { sessionStorage.removeItem(k); });
+      } catch (e) {}
+    }
+    window.APOLANA_DB.olvidarQuienSoy = olvidar;
+    /* Viene de cambiar de vista: lo guardado con la vista anterior no vale. */
+    try { if (sessionStorage.getItem('apolana.cambiando')) olvidar(); } catch (e) {}
+    try {
+      db.auth.onAuthStateChange(function (evento) {
+        if (evento === 'SIGNED_OUT' || evento === 'USER_UPDATED') olvidar();
+      });
+    } catch (e) {}
+
+    var rpcOriginal = db.rpc.bind(db);
+    var TOCA_PAPELES = /(rol|papel|mundo|responsable|perfil|vista|acceso)/i;
+    db.rpc = function (nombre, args, opts) {
+      /* portal-auth.js llama rpc(fn, undefined, undefined): vale igual. */
+      var guardable = GUARDABLES[nombre] && (args === undefined || args === null) && !(opts && (opts.head || opts.count || opts.get));
+      if (!guardable) {
+        /* Una RPC que CAMBIA papeles, mundos o la vista (rol_activo_poner,
+           perfil_roles_poner…): lo guardado deja de valer. Las de leer, no. */
+        var n = String(nombre);
+        if (TOCA_PAPELES.test(n) && /_(poner|quitar|asignar|aplicar|cambiar|dar|borrar|guardar)$/.test(n)) olvidar();
+        return rpcOriginal.apply(null, arguments);
+      }
+      var yo = cuenta();
+      if (!yo) return rpcOriginal(nombre);
+      var clave = PRE + yo + '-' + nombre;
+      try {
+        var g = JSON.parse(sessionStorage.getItem(clave) || 'null');
+        if (g && (Date.now() - g.t) < DURA) return Promise.resolve({ data: g.data, error: null, status: 200, statusText: 'OK', count: null });
+      } catch (e) {}
+      if (enCurso[clave]) return enCurso[clave];
+      var p = Promise.resolve(rpcOriginal(nombre)).then(function (r) {
+        delete enCurso[clave];
+        if (r && !r.error && cuenta() === yo) {
+          try { sessionStorage.setItem(clave, JSON.stringify({ t: Date.now(), data: r.data })); } catch (e) {}
+        }
+        return r;
+      }, function (e) { delete enCurso[clave]; throw e; });
+      enCurso[clave] = p;
+      return p;
+    };
+
+    /* Escribir en tablas de perfiles, papeles o mundos también lo invalida. */
+    var fromOriginal = db.from.bind(db);
+    db.from = function (tabla) {
+      var qb = fromOriginal.apply(null, arguments);
+      if (qb && TOCA_PAPELES.test(String(tabla))) {
+        ['insert', 'update', 'upsert', 'delete'].forEach(function (m) {
+          var f = qb[m];
+          if (typeof f === 'function') qb[m] = function () { olvidar(); return f.apply(qb, arguments); };
+        });
+      }
+      return qb;
+    };
+  })();
+
+  /* ============================================================
      AVISAR AL CLUB DE QUE HA ENTRADO ALGO
      ------------------------------------------------------------
      Antes, un alta o un pedido llegaba a la base y ahí se quedaba
