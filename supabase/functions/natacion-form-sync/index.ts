@@ -94,11 +94,14 @@ function fechaLarga(iso?: string | null): string {
   return DIAS[dow(String(iso))] + " " + (+p[2]) + " de " + MESES[+p[1] - 1];
 }
 function hhmm(h: unknown): string { return String(h ?? "").slice(0, 5); }
-// Por la FECHA (4-nov): de octubre a mayo, todos los días en Vía Parque; en verano
-// (junio a septiembre), Monte Tossal, como dice la web.
-function piscina(fecha?: string | null): string {
-  const m = fecha ? +String(fecha).slice(5, 7) : new Date().getMonth() + 1;
-  return m >= 6 && m <= 9 ? "la piscina Monte Tossal" : "la piscina Vía Parque";
+// Por la FECHA (4-nov): de octubre a mayo, de lunes a viernes en Vía Parque y el sábado
+// (Máster 8:30, la única) en Monte Tossal; en verano (junio a septiembre), Monte Tossal,
+// como dice la web. Sin fecha, vale el día de la franja.
+function piscina(fecha?: string | null, dia?: number | null): string {
+  const p = fecha ? String(fecha).slice(0, 10).split("-") : null;
+  const m = p ? +p[1] : new Date().getMonth() + 1;
+  const sab = p ? new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay() === 6 : dia === 6;
+  return (m >= 6 && m <= 9) || sab ? "la piscina Monte Tossal" : "la piscina Vía Parque";
 }
 function monitoresTxt(m?: string | null): string {
   const l = String(m ?? "").split(/\s*(?:\+|,|\/|\sy\s)\s*/).map((x) => x.trim()).filter(Boolean);
@@ -130,7 +133,7 @@ function mensaje(a: Aviso, que: "prueba" | "formaliza" | "espera" | "sin_hueco",
   if (que === "prueba") {
     const f = franjaPrueba(a);
     const cuando = (a.fecha_prueba ? "el " + fechaLarga(a.fecha_prueba) : "el próximo " + (f ? DIAS[f.dia] : "")) + (f ? " a las " + hhmm(f.hora) : "");
-    const pis = piscina(a.fecha_prueba).replace(/^la /, ""), mon = monitoresTxt(f && f.monitores);
+    const pis = piscina(a.fecha_prueba, f && f.dia).replace(/^la /, ""), mon = monitoresTxt(f && f.monitores);
     const comun = "• *Qué traer:* bañador, gorro, toalla, chanclas y gafas de agua.\n" +
       "• No hay taquillas: después de cambiarse en el vestuario, se entra a la piscina con la mochila y se deja junto a la zona de entrenamiento.\n\n";
     const fin = "Para cualquier cuestión, nos dice. ¡Nos vemos en el agua! 💦\n\nNatación Apolana";
@@ -218,7 +221,7 @@ function agendaHtml(ag: Cita[]): string {
   return Object.keys(porDia).sort().map((f) => {
     const filas = porDia[f].map((c) => {
       const calle = c.calle ? (c.calle === "Vaso" ? "vaso" : "calle " + String(c.calle).replace("C", "")) : "";
-      const donde = [hhmm(c.hora), piscina(c.fecha).replace(/^la piscina /, ""), c.monitores ? "con " + c.monitores.replace(/\s*\+\s*/g, " y ") : ""].filter(Boolean).join(" · ");
+      const donde = [hhmm(c.hora), piscina(c.fecha, c.dia).replace(/^la piscina /, ""), c.monitores ? "con " + c.monitores.replace(/\s*\+\s*/g, " y ") : ""].filter(Boolean).join(" · ");
       const que = [c.nivel || "", calle].filter(Boolean).join(", ");
       return `<tr><td style="padding:8px 14px;border-top:1px solid #e7dcc4;font-size:13.5px;line-height:1.45">
           <b style="color:#26374B">${esc(donde)}</b><br>${quien(c.nombre, c.nacimiento, c.origen)}${que ? ` · ${esc(que)}` : ""}
