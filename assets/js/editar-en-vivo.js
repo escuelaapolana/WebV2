@@ -723,7 +723,7 @@
     return new Promise(function (resolve) {
       if (window.APOLANA_BIBLIO) return resolve(window.APOLANA_BIBLIO);
       var s = document.createElement('script');
-      s.src = (window.APOLANA_BASE || '../') + 'assets/js/biblioteca.js?v=36c254f1';
+      s.src = (window.APOLANA_BASE || '../') + 'assets/js/biblioteca.js?v=72cb17b0';
       s.onload = function () { resolve(window.APOLANA_BIBLIO || null); };
       s.onerror = function () { resolve(null); };
       document.head.appendChild(s);
@@ -796,6 +796,7 @@
       try {
         var pid = null;
         try { var rp = await sb.rpc('mi_perfil_id'); if (!rp.error) pid = rp.data || null; } catch (e) {}
+        if (window.APOLANA_REDUCIR_FOTO) file = await window.APOLANA_REDUCIR_FOTO(file);   // fotos ≤1920 px (tráfico de Supabase)
         var limpio2 = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
         var ruta = BIB.CARPETA_BIBLIO + '/' + Date.now() + '-' + limpio2;
         var up = await sb.storage.from(BIB.CUBO_PRIVADO).upload(ruta, file, { cacheControl: '3600', upsert: false });

@@ -372,6 +372,37 @@
     return /^https?:\/\//.test(v) ? v : b + "assets/img/" + v;
   };
 
+  /* Reduce una foto ANTES de subirla a la web (5-nov-2026: Supabase avisó de
+     exceso de tráfico; la cabecera del cross pesaba 5,7 MB y se descargaba
+     entera en cada visita). Lado mayor como mucho 1920 px, JPEG al 82 %.
+     Devuelve otro File ya reducido, o EL MISMO si no hace falta (ya es
+     pequeña), si no es una foto (PDF, SVG, GIF…) o si el navegador no la
+     sabe abrir (p. ej. HEIC fuera de Safari): nunca impide subir.
+     Los PNG (logos con fondo transparente) siguen siendo PNG. */
+  window.APOLANA_REDUCIR_FOTO = async function (file, opciones) {
+    var o = opciones || {};
+    var lado = o.lado || 1920, calidad = o.calidad || 0.82;
+    try {
+      var tipo = String((file && file.type) || "").toLowerCase();
+      if (!/^image\/(jpeg|jpg|png|webp|heic|heif)$/.test(tipo)) return file;
+      var bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+      var w = bmp.width, h = bmp.height, k = Math.min(1, lado / Math.max(w, h));
+      if (k === 1 && file.size <= 600 * 1024) { if (bmp.close) bmp.close(); return file; }
+      var png = tipo === "image/png";
+      var c = document.createElement("canvas");
+      c.width = Math.round(w * k); c.height = Math.round(h * k);
+      var ctx = c.getContext("2d");
+      if (!png) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); }
+      ctx.drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      var salida = png ? "image/png" : "image/jpeg";
+      var blob = await new Promise(function (ok) { c.toBlob(ok, salida, png ? undefined : calidad); });
+      if (!blob || blob.size >= file.size) return file;
+      var nombre = String(file.name || "foto").replace(/\.(jpe?g|png|webp|heic|heif)$/i, "") + (png ? ".png" : ".jpg");
+      return new File([blob], nombre, { type: salida, lastModified: Date.now() });
+    } catch (e) { return file; }
+  };
+
   /* Ayudante: noticias publicadas, de más nueva a más antigua
      (o null si algo falla). Sin límite = todas. */
   window.APOLANA_DB.noticias = async function (limite) {

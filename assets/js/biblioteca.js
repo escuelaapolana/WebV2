@@ -221,7 +221,26 @@
        subir. Es el caso de la foto que está en dos huecos a la vez. */
     if (!foto.publicada_ruta) {
       var copiada = false;
+      /* 5-nov-2026: lo que se publica va REDUCIDO (≤1920 px). En la
+         biblioteca hay originales de varios MB y cada visita a la web los
+         descargaba enteros de Supabase. Si se puede reducir, se sube la
+         versión reducida; si no (o no compensa), se copia como siempre. */
       try {
+        if (window.APOLANA_REDUCIR_FOTO) {
+          var orig = await sb.storage.from(CUBO_PRIVADO).download(foto.ruta);
+          if (!orig.error && orig.data) {
+            var fOrig = new File([orig.data], foto.ruta.split('/').pop(), { type: orig.data.type || 'image/jpeg' });
+            var fRed = await window.APOLANA_REDUCIR_FOTO(fOrig);
+            if (fRed !== fOrig) {
+              var upR = await sb.storage.from(CUBO_PUBLICO).upload(destino, fRed, {
+                cacheControl: '2592000', upsert: true, contentType: fRed.type
+              });
+              copiada = !upR.error;
+            }
+          }
+        }
+      } catch (e) {}
+      if (!copiada) try {
         var c = await sb.storage.from(CUBO_PRIVADO)
           .copy(foto.ruta, destino, { destinationBucket: CUBO_PUBLICO });
         copiada = !c.error;
