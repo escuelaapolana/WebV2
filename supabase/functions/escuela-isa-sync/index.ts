@@ -150,6 +150,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: "base", detalle: t.slice(0, 300) }, 500);
   }
   const res = JSON.parse(t) as Res;
+  // (mig 518) Con la «Marca temporal» de cada fila se rehace la curva día a día
+  // de la temporada en curso («Ritmo de inscripciones» del Histórico). Si falla,
+  // no estropea la sincronización: solo se queda sin actualizar la gráfica.
+  if (aplicar) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/escuela_ritmo_registrar`, {
+        method: "POST",
+        headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_token: token, p_filas: filas }),
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (e) { console.error("[escuela-isa-sync] ritmo:", e); }
+  }
   // Las dudas se repiten cada día hasta que alguien las resuelve: solo provocan
   // correo si son NUEVAS respecto a la comprobación aplicada anterior.
   let dudasNuevas = res.dudas.length;

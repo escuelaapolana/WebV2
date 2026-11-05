@@ -30,7 +30,8 @@ var HOJAS = [
 var COLUMNAS = {
   nombre: /^nombre alumno/, ap1: /^primer apellido/, ap2: /^segundo apellido/, nacimiento: /^fecha de nacimiento/,
   turno: /^turno/, sexo: /^sexo/, dni: /^dni alumno/, tutor: /^datos del padre/, telefono: /^telefono/,
-  email: /^direccion de correo/, dir: /^direccion$/, cp: /^codigo postal/, localidad: /^localidad/, obs: /^observaciones/
+  email: /^direccion de correo/, dir: /^direccion$/, cp: /^codigo postal/, localidad: /^localidad/, obs: /^observaciones/,
+  marca: /^marca temporal/   // (5-nov-2026) día en que se apuntó → gráfica «Ritmo de inscripciones»
 };
 
 var VERDES = ['#d9ead3', '#93c47d', '#b6d7a8'];
@@ -75,7 +76,7 @@ function leerFilas_() {
         hoja: h.hoja, fila: f + 1, nombre: g('nombre'), ap1: g('ap1'), ap2: g('ap2'), nacimiento: g('nacimiento'),
         colores: colores, turno: g('turno'), sexo: g('sexo'), dni: g('dni'), tutor: g('tutor'), telefono: g('telefono'),
         email: g('email'), direccion: [g('dir'), g('cp'), g('localidad')].filter(String).join(', ') || null, obs: g('obs'),
-        completa: completa
+        completa: completa, marca: g('marca')
       });
     }
   });
