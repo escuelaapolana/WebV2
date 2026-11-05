@@ -174,10 +174,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function estado(u){
     if (libre(u)) return ['sin', 'Libre'];
     var pg = pagado(u) || !cobra(u);
-    if (u.entregado_en) return pg ? ['cerrado', 'Entregado'] : ['impago', 'Entregado · sin pagar'];
+    if (u.entregado_en) return pg ? ['cerrado', 'Entregado'] : ['impago', u.pago_enlace ? 'Entregado · pago pedido' : 'Entregado · sin pagar'];
     if (u.familia_id && !pagado(u)) return ['camino', 'Reservado · paga con su pedido'];
     if (!cobra(u)) return ['camino', 'Por entregar'];
-    return pg ? ['camino', 'Pagado · por entregar'] : ['pend', 'Sin pagar'];
+    if (pg) return ['camino', 'Pagado · por entregar'];
+    return u.pago_enlace ? ['pend', 'Pago pedido · sin pagar'] : ['pend', 'Sin pagar'];
   }
   function quien(u){ return u.persona || (u.familia ? capital(u.familia) : ''); }
   function filtrar(u){
@@ -197,7 +198,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var c = [['libre', suma(libre), 'libres (se pueden vender)'], ['sinpagar', suma(function (u) { return !libre(u) && cobra(u) && !pagado(u); }), 'sin pagar · ' + eur(eurSin)],
              ['porentregar', suma(function (u) { return !libre(u) && !u.entregado_en; }), 'por entregar'], ['revisar', (S.stock || []).filter(function (u) { return u.revisar; }).length, 'por revisar']];
     return '<div class="cu-cab"><div class="cu-eyebrow">Natación · Ropa</div><h1>Stock y entregas</h1>' +
-      '<p>Lo que ha llegado por albarán: a quién va, si ha pagado y si se le ha entregado. Lo que queda <b>libre</b> sale en el formulario de equipación como «ya disponible».</p></div>' +
+      '<p>Lo que ha llegado por albarán: a quién va, si ha pagado y si se le ha entregado. Lo que queda <b>libre</b> sale en el formulario de equipación como «ya disponible».</p>' +
+      '<div class="cu-info" style="margin:0 0 16px"><b>Al dar una prenda:</b> ábrela, escribe <b>Para quién</b> y el precio, pulsa <b>Guardar</b> y luego <b>Entregado</b>. Si paga en el momento (Bizum, efectivo), elige cómo y pulsa <b>Ha pagado</b>. Si no, pulsa <b>Pedir el pago</b> y mándale el enlace por WhatsApp para pagar con tarjeta: se marca sola cuando pague. ¿Algo que no está en la lista (un gorro)? <b>Apuntar lo que ha llegado</b>, abajo del todo.</div></div>' +
       '<div class="rp-cifras">' + c.map(function (x) {
         return '<button type="button" class="rp-cifra' + (S.filtro === x[0] ? ' on' : '') + '" data-filtro="' + x[0] + '"><b>' + x[1] + '</b><span>' + esc(x[2]) + '</span></button>'; }).join('') + '</div>';
   }
@@ -215,7 +217,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function filaStock(u){
     var e = estado(u), ab = !!S.abiertos[u.id], n = Number(u.cantidad) || 1;
     var sub = [u.talla ? 'Talla ' + u.talla : '', n > 1 ? n + ' unidades' : '', libre(u) ? 'sin dueño · toca para dárselo a alguien' : '', cobra(u) ? eur(u.precio) : (u.precio == null ? 'sin precio' : ''),
-               u.entregado_en ? 'entregado el ' + fecha(u.entregado_en) : '', u.pagado_en ? 'pagado el ' + fecha(u.pagado_en) + (u.pago_metodo ? ' (' + metodoTxt(u.pago_metodo).toLowerCase() + ')' : '') : '']
+               u.entregado_en ? 'entregado el ' + fecha(u.entregado_en) : '', u.pagado_en ? 'pagado el ' + fecha(u.pagado_en) + (u.pago_metodo ? ' (' + metodoTxt(u.pago_metodo).toLowerCase() + ')' : '') : '',
+               !u.pagado_en && u.pago_enlace ? 'enlace de pago enviado' : '']
       .filter(Boolean).join(' · ');
     var h = '<div class="cu-item' + (ab ? ' abierto' : '') + '"><button type="button" class="cu-row" data-abrir="' + u.id + '">' +
       '<span class="q"><b' + (libre(u) ? ' class="libre"' : '') + '>' + (u.revisar ? '⚠︎ ' : '') + esc(libre(u) ? 'Libre' : quien(u)) + '</b><small>' + esc(sub) + '</small></span>' +
@@ -236,6 +239,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="cu-campo ancho"><label for="n-' + id + '">Nota</label><textarea id="n-' + id + '" data-campo="nota">' + esc(u.nota || '') + '</textarea></div></div>' +
       '<div class="cu-acc"><button type="button" class="cu-btn" data-guardar="' + id + '">Guardar</button>' +
         (u.revisar ? '<button type="button" class="cu-btn sec" data-accion="revisado" data-id="' + id + '">Ya está revisado</button>' : '') + '</div>';
+    if (u.persona && !u.familia_id && cobra(u) && !u.pagado_en) h += bloqueCobro(u);
     if (!libre(u) || u.persona) {
       h += '<div class="cu-acc">' +
         (cobra(u) && !u.familia_id ? (u.pagado_en
@@ -248,6 +252,24 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     h += '<div class="cu-acc"><button type="button" class="cu-link" data-borrar="' + id + '">Borrar esta fila</button></div>';
     return h;
+  }
+  /* Pedir el pago (mig 521): enlace para pagar con tarjeta + WhatsApp ya escrito. */
+  function telWa(t){ var d = String(t || '').replace(/\D/g, ''); if (d.length === 9) d = '34' + d; return d.length >= 11 ? d : ''; }
+  function textoPago(u){
+    var n = Number(u.cantidad) || 1;
+    return 'Hola, ' + capital(String(u.persona || '').split(' ')[0]) + '. Te escribimos de natación del Club Atletismo Apolana.\n\n' +
+      'Para pagar ' + (n > 1 ? n + ' × ' : 'el ') + u.articulo + (u.talla ? ' (talla ' + u.talla + ')' : '') + ', son *' + eur(Number(u.precio) * n) + '*. ' +
+      'Puedes pagarlo con tarjeta aquí:\n' + u.pago_enlace + '\n\n¡Gracias!';
+  }
+  function bloqueCobro(u){
+    var h = '<div class="cu-info" style="margin-top:12px"><b>Cobrar ' + esc(eur(Number(u.precio) * (Number(u.cantidad) || 1))) + '</b><br>';
+    if (!u.pago_enlace) return h + 'Si se lo lleva sin pagar, pulsa <b>Pedir el pago</b>: se crea un enlace para pagar con tarjeta y se lo mandas por WhatsApp. Cuando pague, esta prenda se marca sola como pagada. Si te paga por Bizum o en efectivo, usa <b>Ha pagado</b> (abajo).' +
+      '<div class="cu-acc" style="margin-top:8px"><button type="button" class="cu-btn" data-cobro="' + u.id + '">Pedir el pago</button></div></div>';
+    var tel = telWa(u.telefono), wa = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(textoPago(u));
+    return h + 'Enlace de pago creado. Mándaselo por WhatsApp; cuando pague con tarjeta, esta prenda se marca sola como pagada.' +
+      '<div style="font-size:13px;word-break:break-all;margin-top:6px;color:#26374B">' + esc(u.pago_enlace) + '</div>' +
+      '<div class="cu-acc" style="margin-top:8px"><a class="cu-btn verde" style="color:#fff;text-decoration:none;display:inline-flex;align-items:center" target="_blank" rel="noopener" href="' + esc(wa) + '">WhatsApp' + (tel ? '' : ' (elige el contacto)') + '</a>' +
+      '<button type="button" class="cu-btn sec" data-copiar="' + u.id + '">Copiar mensaje</button></div></div>';
   }
   function listaStock(){
     if (S.err) return '<div class="cu-card"><div class="cu-cuerpo"><div class="cu-aviso" style="margin:0">' + esc(S.err) + '</div></div></div>';
@@ -362,6 +384,17 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // Si la fila tiene varias unidades y se ha puesto cuántas, la acción va solo a esas.
       var sep = document.getElementById('s-' + aid); if (sep && Number(sep.value) >= 1) dd.separar = Number(sep.value);
       b.disabled = true; await guardarStock(aid, dd, msg); return;
+    }
+    if ((b = t.closest('[data-cobro]'))) {
+      var cid = b.getAttribute('data-cobro'); b.disabled = true;
+      var rc0 = await sb.rpc('natacion_ropa_stock_cobro', { p_id: cid });
+      if (rc0.error) { b.disabled = false; toast(rc0.error.message || 'No se pudo crear el enlace'); return; }
+      toast('Enlace de pago creado'); S.abiertos[cid] = true; await cargarStock(); pintarStock(); return;
+    }
+    if ((b = t.closest('[data-copiar]'))) {
+      var cu = (S.stock || []).filter(function (x) { return x.id === b.getAttribute('data-copiar'); })[0]; if (!cu) return;
+      try { await navigator.clipboard.writeText(textoPago(cu)); toast('Mensaje copiado'); } catch (e) { toast('No se pudo copiar'); }
+      return;
     }
     if ((b = t.closest('[data-reservar]'))) {
       var rid = b.getAttribute('data-reservar'), ru = (S.stock || []).filter(function (x) { return x.id === rid; })[0];
