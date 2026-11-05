@@ -162,15 +162,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (accion === "cuota") {
     if (!Number.isFinite(importe) || importe <= 0) return responder({ error: "datos", mensaje: "Pon una cuota válida." }, 400, origen);
     // Hace falta el item de la suscripción y el producto de su precio actual.
-    const rSub = await stripe(`subscriptions/${encodeURIComponent(sub)}?expand[]=items.data.price`, "GET");
+    const rSub = await stripe(`subscriptions/${encodeURIComponent(sub)}?expand[]=items.data.price.product`, "GET");
     if (!rSub.ok) return responder({ error: "pasarela", mensaje: "No se ha podido leer la suscripción." }, 502, origen);
     const item = rSub.datos?.items?.data?.[0];
-    const producto: string = item?.price?.product ?? "";
+    const prod = item?.price?.product;
+    const producto: string = (typeof prod === "string" ? prod : prod?.id) ?? "";
     if (!item?.id || !producto) return responder({ error: "pasarela", mensaje: "No se ha podido identificar el precio actual." }, 502, origen);
-    // Precio nuevo (mensual) para ese producto.
+    // Precio nuevo (mensual). Si el producto está archivado (los que crea el
+    // pago al vuelo con price_data salen inactivos), Stripe no deja usarlo:
+    // entonces el precio nuevo lleva su propio producto (product_data).
+    const prodActivo = typeof prod === "object" && prod ? prod.active !== false : true;
+    const nombreProd: string = (typeof prod === "object" && prod?.name) ? prod.name : "Cuota El Cubo";
     const rPrice = await stripe("prices", "POST", {
       currency: "eur", unit_amount: String(Math.abs(importe)),
-      "recurring[interval]": "month", product: producto,
+      "recurring[interval]": "month",
+      ...(prodActivo ? { product: producto } : { "product_data[name]": nombreProd }),
     });
     if (!rPrice.ok) return responder({ error: "pasarela", mensaje: "No se ha podido crear el precio nuevo." }, 502, origen);
     const precioId: string = rPrice.datos?.id ?? "";
