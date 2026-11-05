@@ -94,6 +94,22 @@
   .hs-g .hs-frase.actuar { color: #6B5227; }
   .hs-g p.hs-sin { margin: 0; font-size: 15px; line-height: 1.5; color: var(--texto-suave,#6E6656); }
 
+  /* --- Ritmo de inscripciones (líneas por temporada) --- */
+  .hs-ritmo { gap: 12px; }
+  .hs-ritmo-mandos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+  .hs-ritmo-mandos .hs-chips button { min-height: 34px; font-size: 13px; }
+  .hs-ritmo-ley { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; color: var(--texto,#4A4437); }
+  .hs-ritmo-ley span { display: inline-flex; align-items: center; gap: 7px; }
+  .hs-ritmo-ley i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+  .hs-ritmo-ley b { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 600; color: var(--navy,#26374B); }
+  .hs-ritmo-graf { position: relative; width: 100%; touch-action: pan-y; }
+  .hs-ritmo-graf svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .hs-ritmo-graf .eje { font: 11px var(--fuente-dato,'IBM Plex Mono',monospace); fill: var(--texto-suave,#6E6656); }
+  .hs-ritmo-graf .rej { stroke: var(--linea,#EDE6D7); stroke-width: 1; }
+  .hs-ritmo-graf .cur { stroke: var(--navy,#26374B); stroke-width: 1; stroke-dasharray: 3 3; }
+  .hs-ritmo-dato { font-size: 14px; line-height: 1.45; color: var(--texto-suave,#6E6656); border-top: 1px solid var(--linea,#EDE6D7); padding-top: 11px; min-height: 44px; }
+  .hs-ritmo-dato b { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); color: var(--navy,#26374B); font-weight: 600; }
+
   /* Barras planas: sin degradados, sin sombras, sin radios */
   .hs-barras { --rot: 66px; display: flex; flex-direction: column; gap: 8px; }
   .hs-barras .fila { display: flex; align-items: center; gap: 11px; }
@@ -275,6 +291,12 @@
 
       <div class="hs-bloque"><h2>Qué dicen los datos</h2><span id="hs-graf-sub"></span></div>
       <div class="hs-graficas" id="graficas"></div>
+
+      <!-- Ritmo de inscripciones día a día (Excel «Estadística general escuela», 5-nov-2026) -->
+      <div class="hs-bloque"><h2>Ritmo de inscripciones</h2><span>Escuela del club · día a día desde el primer día de inscripción</span></div>
+      <div class="hs-g hs-ritmo" id="ritmo">
+        <div class="adm-cargando"><span class="adm-esq adm-esq--largo"></span><span class="adm-esq adm-esq--medio"></span></div>
+      </div>
 
       <div id="hs-temporadas" hidden>
         <div class="hs-bloque"><h2>Temporada a temporada</h2><span>El guión (—) es «ese dato no se recogió», no un cero.</span></div>
@@ -879,6 +901,122 @@ APOLANA_ADMIN.listo(function (sb) {
     }, 180);
   });
   cargar();
+
+  /* ---------- Ritmo de inscripciones día a día ----------
+     Una línea por temporada (acumulado de inscritos según el día de campaña:
+     día 1 = primer día con inscripciones). Sirve para ver «a estas alturas,
+     cómo íbamos otros años». Datos: escuela_inscripciones_dia (mig 517). */
+  (function ritmo() {
+    var COLORES = ['#26374B', '#D9A441', '#6FAF7E', '#9AA7B4', '#B5655B'];
+    var MEDIDAS = { total_acum: 'Total apuntados', nuevas_acum: 'Nuevas', renov_acum: 'Renovaciones' };
+    var R = { serie: {}, temps: [], medida: 'total_acum', tramo: 60, dia: null };
+    var caja = $('ritmo');
+
+    function nombreT(t) { return String(t).replace('.', '-'); }
+    function valor(t, d) {   // último valor conocido hasta el día d (el Excel deja huecos)
+      var v = null, fs = R.serie[t] || [];
+      for (var i = 0; i < fs.length && fs[i].n_dia <= d; i++) if (fs[i][R.medida] != null) v = fs[i][R.medida];
+      return v;
+    }
+    function fechaDe(t, d) {
+      var f = (R.serie[t] || []).filter(function (x) { return x.n_dia === d; })[0];
+      if (!f) return '';
+      var p = String(f.fecha).split('-');
+      return Number(p[2]) + '/' + Number(p[1]);
+    }
+
+    function pinta() {
+      var maxDia = 0;
+      R.temps.forEach(function (t) { (R.serie[t] || []).forEach(function (f) { if (f.n_dia > maxDia) maxDia = f.n_dia; }); });
+      var hasta = R.tramo === 0 ? maxDia : Math.min(R.tramo, maxDia);
+      var maxV = 0;
+      R.temps.forEach(function (t) { for (var d = 1; d <= hasta; d++) { var v = valor(t, d); if (v != null && v > maxV) maxV = v; } });
+      maxV = Math.max(10, Math.ceil(maxV / 50) * 50);
+      var W = 640, H = 260, L = 38, B = 24, T = 8, Rm = 8;
+      function x(d) { return L + (d - 1) / Math.max(1, hasta - 1) * (W - L - Rm); }
+      function y(v) { return T + (1 - v / maxV) * (H - T - B); }
+      var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Inscritos acumulados por día de campaña, una línea por temporada">';
+      for (var k = 0; k <= 4; k++) {
+        var vv = maxV * k / 4;
+        svg += '<line class="rej" x1="' + L + '" x2="' + (W - Rm) + '" y1="' + y(vv) + '" y2="' + y(vv) + '"/>' +
+               '<text class="eje" x="' + (L - 6) + '" y="' + (y(vv) + 4) + '" text-anchor="end">' + Math.round(vv) + '</text>';
+      }
+      var paso = hasta <= 60 ? 10 : 30;
+      for (var d0 = 1; d0 <= hasta; d0 += paso) svg += '<text class="eje" x="' + x(d0) + '" y="' + (H - 6) + '" text-anchor="middle">' + d0 + '</text>';
+      R.temps.slice().reverse().forEach(function (t) {
+        var i = R.temps.indexOf(t), pts = [];
+        for (var d = 1; d <= hasta; d++) { var v = valor(t, d); if (v != null) pts.push(x(d).toFixed(1) + ',' + y(v).toFixed(1)); }
+        svg += '<polyline fill="none" stroke="' + COLORES[i % COLORES.length] + '" stroke-width="' + (i === 0 ? 3 : 2) +
+               '" stroke-linejoin="round" stroke-linecap="round" points="' + pts.join(' ') + '"/>';
+      });
+      var dia = R.dia && R.dia <= hasta ? R.dia : hasta;
+      svg += '<line class="cur" x1="' + x(dia) + '" x2="' + x(dia) + '" y1="' + T + '" y2="' + (H - B) + '"/>';
+      R.temps.forEach(function (t, i) {
+        var v = valor(t, dia);
+        if (v != null) svg += '<circle cx="' + x(dia) + '" cy="' + y(v) + '" r="4" fill="#fff" stroke="' + COLORES[i % COLORES.length] + '" stroke-width="2"/>';
+      });
+      svg += '</svg>';
+
+      var ley = R.temps.map(function (t, i) {
+        var v = valor(t, dia);
+        return '<span><i style="background:' + COLORES[i % COLORES.length] + '"></i>' + esc(nombreT(t)) + ' <b>' + (v == null ? '—' : num(v)) + '</b></span>';
+      }).join('');
+      var a = valor(R.temps[0], dia), b = R.temps[1] ? valor(R.temps[1], dia) : null;
+      var frase = 'Día <b>' + dia + '</b> de inscripción' + (fechaDe(R.temps[0], dia) ? ' (' + esc(fechaDe(R.temps[0], dia)) + ' en ' + esc(nombreT(R.temps[0])) + ')' : '') + '. ';
+      if (a != null && b != null) {
+        var dif = a - b;
+        frase += esc(MEDIDAS[R.medida]) + ': ' + esc(nombreT(R.temps[0])) + ' iba ' +
+          (dif === 0 ? 'igual que' : '<b>' + (dif > 0 ? '+' : '') + num(dif) + '</b> respecto a') + ' ' + esc(nombreT(R.temps[1])) + '.';
+      }
+      frase += ' <span style="white-space:nowrap">Toca o pasa el dedo por la gráfica para ver otro día.</span>';
+
+      caja.innerHTML =
+        '<div><div class="hs-tit">¿Cómo vamos respecto a otros años?</div>' +
+        '<div class="hs-mide">Acumulado de inscripciones según el día de campaña (día 1 = primer día de inscripción de cada temporada).</div></div>' +
+        '<div class="hs-ritmo-mandos">' +
+          '<div class="hs-chips" id="ritmo-medida">' + Object.keys(MEDIDAS).map(function (m) {
+            return '<button type="button" data-m="' + m + '" class="' + (m === R.medida ? 'on' : '') + '" aria-pressed="' + (m === R.medida) + '">' + esc(MEDIDAS[m]) + '</button>';
+          }).join('') + '</div>' +
+          '<div class="hs-chips" id="ritmo-tramo">' + [[60, 'Primeros 60 días'], [0, 'Toda la temporada']].map(function (o) {
+            return '<button type="button" data-t="' + o[0] + '" class="' + (o[0] === R.tramo ? 'on' : '') + '" aria-pressed="' + (o[0] === R.tramo) + '">' + o[1] + '</button>';
+          }).join('') + '</div>' +
+        '</div>' +
+        '<div class="hs-ritmo-ley">' + ley + '</div>' +
+        '<div class="hs-ritmo-graf" id="ritmo-graf">' + svg + '</div>' +
+        '<div class="hs-ritmo-dato">' + frase + '</div>';
+
+      var g = $('ritmo-graf');
+      function mover(ev) {
+        var r = g.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width * W;
+        var d = Math.round(1 + (px - L) / (W - L - Rm) * (hasta - 1));
+        d = Math.max(1, Math.min(hasta, d));
+        if (d !== R.dia) { R.dia = d; pinta(); }
+      }
+      g.addEventListener('pointerdown', mover);
+      g.addEventListener('pointermove', function (ev) { if (ev.pointerType === 'mouse' || ev.buttons) mover(ev); });
+    }
+
+    caja.addEventListener('click', function (e) {
+      var m = e.target.closest('[data-m]'), t = e.target.closest('[data-t]');
+      if (m) { R.medida = m.getAttribute('data-m'); pinta(); }
+      if (t) { R.tramo = Number(t.getAttribute('data-t')); R.dia = null; pinta(); }
+    });
+
+    async function cargarRitmo() {
+      var r = await sb.from('escuela_inscripciones_dia')
+        .select('temporada,n_dia,fecha,nuevas_acum,renov_acum,total_acum')
+        .eq('programa', 'escuela').order('temporada', { ascending: false }).order('n_dia', { ascending: true });
+      if (r.error) { caja.innerHTML = ADM.error(r.error.message, cargarRitmo); return; }
+      R.serie = {}; R.temps = [];
+      (r.data || []).forEach(function (f) {
+        if (!R.serie[f.temporada]) { R.serie[f.temporada] = []; R.temps.push(f.temporada); }
+        R.serie[f.temporada].push(f);
+      });
+      if (!R.temps.length) { caja.innerHTML = '<p class="hs-sin">Todavía no hay inscripciones día a día cargadas.</p>'; return; }
+      pinta();
+    }
+    cargarRitmo();
+  })();
 });
 </script>
 
