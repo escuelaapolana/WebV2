@@ -656,6 +656,15 @@
   .tg-tira{ display:block; }
   .tg-t .tg-sep td{ background:#f7f8fa; font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--t3); padding:7px 12px; }
   .an-volver{ margin:0 0 6px; }
+  /* Curvas por carga */
+  .cv-svg{ display:block; width:100%; height:auto; margin:4px 0 6px; }
+  .cv-eje{ fill:var(--t3); font-size:12px; } .cv-lbl{ fill:var(--navy); font-size:12.5px; font-weight:600; }
+  .cv-in{ padding:12px 18px 14px; } .cv-caja{ margin-top:18px; }
+  .cv-ley2{ display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; color:var(--t2); margin:0 0 4px; }
+  .cv-ley2 i{ display:inline-block; width:14px; height:3px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+  .cv-pt{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; }
+  .cv-lect{ margin:12px 0 4px; padding-left:18px; color:var(--t2); font-size:14px; } .cv-lect li{ margin:4px 0; }
+  .cv-ley{ margin-top:0; }
   /* Tests y marcas · Todo el grupo */
   .tg-scroll{ max-height:none; min-height:0; }
   table.tg-t{ border-collapse:separate; border-spacing:0; width:100%; font-size:14px; }
@@ -4008,6 +4017,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }).join('')+'</tr></thead><tbody>'+filas.map(function(a){
       return '<tr><td class="at"><a class="ac-nom" href="'+urlFicha(a.id)+'">'+esc(a._n)+'</a></td>'+cols.map(function(k){ return celda(a, k); }).join('')+'</tr>';
     }).join('')+'</tbody></table></div>';
+    h += curvasGrupoHTML(ST.cvTest);
     return h+'<p class="ac-ley">Arriba, lo último de cada uno; debajo, cuánto ha cambiado frente a su resultado anterior del mismo test (en verde si es a mejor). En gris, la marca de quien no lo repitió el '+esc(fMedia(ult))+'. Toca el nombre de un test para ordenar; el de un atleta, para su ficha. Los resultados sin protocolo apuntado se comparan por el nombre del test.</p>';
   }
 
@@ -4068,6 +4078,127 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<p class="nota">En verde, a mejor. En la última columna, cada punto gris es un compañero con ese test y el azul es este atleta (a la derecha, mejor marca): es un dato del grupo, no una nota. Los resultados sin protocolo apuntado se comparan por el nombre del test. En fuerza, medido y estimado van por separado.</p></div></section>';
   }
 
+  /* ---------- CURVAS POR CARGA (salto con barra con encoder, balón por pesos) ----------
+     Para los tests que guardan un resultado por carga en intentos [{peso, i1…, mejor}].
+     Se pinta el mejor de cada carga unido por una línea, cada intento como un hueco y la
+     recta que mejor encaja; con otra sesión anterior, su línea en gris para comparar. */
+  var CURVA_TESTS = ['salto_barra', 'balon_medicinal'];
+  var CURVA_COL = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#6250d6','#e34948'];
+  function cvNum(v, d){ return Number(v).toLocaleString('es-ES', { minimumFractionDigits:d, maximumFractionDigits:d }); }
+  function cvPuntos(row){
+    return (Array.isArray(row.intentos) ? row.intentos : []).filter(function(p){ return p && p.peso!=null; }).map(function(p){
+      var I = Object.keys(p).filter(function(k){ return /^i\d+$/.test(k); }).map(function(k){ return Number(p[k]); }).filter(function(x){ return isFinite(x); });
+      var v = p.mejor!=null ? Number(p.mejor) : (I.length ? Math.max.apply(null, I) : null);
+      return { k:Number(p.peso), v:v, I:I };
+    }).filter(function(p){ return p.v!=null && isFinite(p.v); }).sort(function(a, b){ return a.k - b.k; });
+  }
+  function cvRecta(P){
+    if (P.length < 2) return null;
+    var n = P.length, mx = P.reduce(function(t, p){ return t+p.k; }, 0)/n, my = P.reduce(function(t, p){ return t+p.v; }, 0)/n, sxy = 0, sxx = 0;
+    P.forEach(function(p){ sxy += (p.k-mx)*(p.v-my); sxx += (p.k-mx)*(p.k-mx); });
+    if (!sxx) return null; var m = sxy/sxx; return { m:m, b:my - m*mx };
+  }
+  /* Por atleta: la sesión más reciente y la anterior de este test */
+  function cvSesiones(clave, aids){
+    var por = {};
+    (TM.tests||[]).forEach(function(t){
+      if (t.test!==clave || t.no_asiste || !t._fecha || (aids && aids.indexOf(t.atleta_id)<0)) return;
+      var P = cvPuntos(t); if (!P.length) return;
+      (por[t.atleta_id] = por[t.atleta_id] || []).push({ f:t._fecha, P:P });
+    });
+    Object.keys(por).forEach(function(a){ por[a].sort(function(x, y){ return x.f < y.f ? 1 : -1; }); });
+    return por;
+  }
+  function cvEsc(min, max, dec){
+    var r = (max - min) || Math.abs(max) || 1; min -= r*0.08; max += r*0.08; r = max - min; var paso = Math.pow(10, Math.floor(Math.log10(r/6))), m = r/6/paso;
+    paso *= m > 5 ? 10 : m > 2 ? 5 : m > 1 ? 2 : 1;
+    return { y0: Math.floor(min/paso)*paso, y1: Math.ceil(max/paso)*paso, paso: paso };
+  }
+  function cvSVG(series, o){
+    o = o || {}; var mv = esMovil(), W = o.W || (mv ? 420 : 760), H = o.H ? (mv ? Math.round(o.H*0.9) : o.H) : (mv ? 320 : 380), L = mv ? 40 : 54, R = o.R ? (mv ? Math.min(o.R, 16) : o.R) : (mv ? 84 : 96), T = 18, B = 40, d = o.dec==null ? 2 : o.dec;
+    var ks = [], vs = [];
+    series.forEach(function(s){ s.P.concat(s.prev||[]).forEach(function(p){ if (ks.indexOf(p.k)<0) ks.push(p.k); vs.push(p.v); if (o.todos) p.I.forEach(function(x){ vs.push(x); }); }); });
+    if (!ks.length) return '';
+    ks.sort(function(a, b){ return a-b; });
+    var e = cvEsc(Math.min.apply(null, vs), Math.max.apply(null, vs), d), sp = (ks[ks.length-1] - ks[0]) || ks[0] || 1, x0 = Math.max(0, ks[0] - sp*0.12), x1 = ks[ks.length-1] + sp*0.06;
+    var X = function(k){ return L + (k-x0)/(x1-x0)*(W-L-R); }, Y = function(v){ return T + (1-(v-e.y0)/((e.y1-e.y0)||1))*(H-T-B); };
+    var h = '<svg class="cv-svg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(o.aria||'Curva por carga')+'">';
+    for (var v = e.y0, i = 0; v <= e.y1 + 1e-9 && i < 20; v += e.paso, i++){ var vv = Math.round(v*1000)/1000; h += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(vv)+'" y2="'+Y(vv)+'" stroke="#edf0f4"/><text class="cv-eje" x="'+(L-8)+'" y="'+(Y(vv)+4)+'" text-anchor="end">'+esc(cvNum(vv, e.paso < 0.1 ? 2 : e.paso < 1 ? 1 : 0))+'</text>'; }
+    ks.forEach(function(k){ h += '<text class="cv-eje" x="'+X(k)+'" y="'+(H-B+20)+'" text-anchor="middle">'+esc(cvNum(k, 0))+' kg</text>'; });
+    if (o.unidad) h += '<text class="cv-eje" x="'+L+'" y="'+(T-6)+'">'+esc(o.unidad)+'</text>';
+    var lin = function(P){ return P.map(function(p){ return X(p.k)+','+Y(p.v); }).join(' '); };
+    series.forEach(function(s){
+      if (s.prev && s.prev.length) h += '<polyline points="'+lin(s.prev)+'" fill="none" stroke="#aeb8c4" stroke-width="2" stroke-dasharray="5 4"/>'+s.prev.map(function(p){ return '<circle cx="'+X(p.k)+'" cy="'+Y(p.v)+'" r="4" fill="#aeb8c4"><title>'+esc((s.n||'')+' · '+cvNum(p.k,0)+' kg · '+(s.prevF ? fMedia(s.prevF) : 'antes')+': '+cvNum(p.v, d))+'</title></circle>'; }).join('');
+      if (o.recta){ var r = cvRecta(s.P); if (r){ var a = s.P[0].k*0.8, b = s.P[s.P.length-1].k*1.03; h += '<line x1="'+X(a)+'" x2="'+X(b)+'" y1="'+Y(r.b+r.m*a)+'" y2="'+Y(r.b+r.m*b)+'" stroke="'+s.c+'" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>'; } }
+      if (o.todos) s.P.forEach(function(p){ p.I.forEach(function(x){ h += '<circle cx="'+X(p.k)+'" cy="'+Y(x)+'" r="3.5" fill="none" stroke="'+s.c+'" stroke-width="1.5" opacity=".55"/>'; }); });
+      h += '<polyline points="'+lin(s.P)+'" fill="none" stroke="'+s.c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+      s.P.forEach(function(p){ h += '<circle cx="'+X(p.k)+'" cy="'+Y(p.v)+'" r="5" fill="'+s.c+'" stroke="#fff" stroke-width="2"><title>'+esc((s.n ? s.n+' · ' : '')+cvNum(p.k,0)+' kg · mejor '+cvNum(p.v, d)+(p.I.length>1 ? ' · intentos '+p.I.map(function(x){ return cvNum(x, d); }).join(' / ') : ''))+'</title></circle>'; });
+    });
+    if (o.etiq){   // nombre al final de cada línea, separando los que caen juntos
+      var fin = series.map(function(s){ var u = s.P[s.P.length-1]; return { s:s, x:X(u.k), y:Y(u.v), t:s.n+' '+cvNum(u.v, d) }; }).sort(function(a, b){ return a.y - b.y; });
+      for (var j = 1; j < fin.length; j++) if (fin[j].y - fin[j-1].y < 14) fin[j].y = fin[j-1].y + 14;
+      fin.forEach(function(z){ h += '<text class="cv-lbl" x="'+(z.x+10)+'" y="'+(z.y+4)+'">'+esc(z.t)+'</text>'; });
+    }
+    return h+'</svg>';
+  }
+  function cvInfo(clave){ var p = tgProto()[clave] || {}; return { nombre: clave==='salto_barra' ? 'Salto con barra' : clave==='balon_medicinal' ? 'Balón medicinal' : (p.nombre||clave), unidad: p.unidad || (clave==='salto_barra' ? 'm/s' : 'm'), dec: 2, paso: clave==='balon_medicinal' ? 1 : 10, que: clave==='salto_barra' ? 'velocidad según la carga' : 'distancia según el peso' }; }
+  /* Frases que salen de los datos: solo hechos */
+  function cvLectura(n, P, prev, u, d){
+    var L = [], a = P[0], z = P[P.length-1];
+    if (P.length >= 2){
+      L.push('<b>'+esc(n)+'</b>: de '+cvNum(a.k,0)+' a '+cvNum(z.k,0)+' kg pasa de '+cvNum(a.v, d)+' a '+cvNum(z.v, d)+' '+esc(u)+' ('+(a.v ? '−'+Math.round((a.v - z.v)/a.v*100)+' %' : '')+').');
+      var peor = null; for (var i = 1; i < P.length; i++){ var c = P[i-1].v - P[i].v; if (!peor || c > peor.c) peor = { c:c, a:P[i-1].k, b:P[i].k }; }
+      if (peor && peor.c > 0) L.push('Donde más cae: entre '+cvNum(peor.a,0)+' y '+cvNum(peor.b,0)+' kg (−'+cvNum(peor.c, d)+').');
+    }
+    if (prev && prev.length){
+      var comun = P.filter(function(p){ return prev.some(function(q){ return q.k===p.k; }); });
+      if (comun.length) L.push('Frente a la sesión anterior, a la misma carga: '+comun.map(function(p){ var q = prev.filter(function(x){ return x.k===p.k; })[0], df = p.v - q.v; return cvNum(p.k,0)+' kg '+(Math.abs(df)<0.005 ? '=' : (df>0?'+':'−')+cvNum(Math.abs(df), d)); }).join(' · ')+'.');
+    }
+    return L;
+  }
+  function cvTabla(filas, ks, u, d, paso){
+    paso = paso || 10;
+    return '<div class="fx-scroll"><table class="tg-t tg-an"><thead><tr><th>Atleta</th>'+ks.map(function(k){ return '<th class="num">'+esc(cvNum(k,0))+' kg</th>'; }).join('')+'<th class="num">Pérdida</th><th class="num">'+(paso===1 ? 'Por kg' : 'Por cada '+paso+' kg')+'</th></tr></thead><tbody>'+
+      filas.map(function(f){
+        var r = cvRecta(f.P), a = f.P[0], z = f.P[f.P.length-1];
+        return '<tr><td><span class="cv-pt" style="background:'+f.c+'"></span><b>'+esc(f.n)+'</b>'+(f.f ? ' <small>'+esc(fMedia(f.f))+'</small>' : '')+'</td>'+ks.map(function(k){ var p = f.P.filter(function(x){ return x.k===k; })[0]; return '<td class="num">'+(p ? '<b class="tg-v">'+esc(cvNum(p.v, d))+'</b>' : '<span class="tg-n">·</span>')+'</td>'; }).join('')+
+          '<td class="num">'+(f.P.length>1 && a.v ? '−'+Math.round((a.v - z.v)/a.v*100)+' %<span class="tg-f">'+esc(cvNum(a.k,0)+'→'+cvNum(z.k,0))+' kg</span>' : '<span class="tg-n">·</span>')+'</td>'+
+          '<td class="num">'+(r ? esc((r.m<0?'−':'+')+cvNum(Math.abs(r.m*paso), d))+' '+esc(u) : '<span class="tg-n">·</span>')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  /* En el análisis de un atleta: una tarjeta por test con cargas */
+  function curvasAtletaHTML(aid){
+    return CURVA_TESTS.map(function(clave){
+      var S = cvSesiones(clave, [aid])[aid]; if (!S || !S.length) return '';
+      var inf = cvInfo(clave), P = S[0].P, prev = S[1] ? S[1].P : null, c = CURVA_COL[0];
+      var s = { n:'', c:c, P:P, prev:prev, prevF: S[1] && S[1].f };
+      return '<section class="an-card"><h2 class="an-cab">'+esc(inf.nombre)+' · '+esc(inf.que)+'<span>'+esc(fMedia(S[0].f))+(prev ? ' · en gris, el '+esc(fMedia(S[1].f)) : '')+'</span></h2><div class="an-in">'+
+        cvSVG([s], { todos:true, recta:true, unidad:inf.unidad, dec:inf.dec, R:24, H:300, aria:inf.nombre+' según la carga' })+
+        '<p class="nota cv-ley">Relleno: el mejor de cada carga · hueco: cada intento · discontinua: la recta que mejor encaja'+(prev ? ' · gris: la sesión anterior' : '')+'.</p>'+
+        cvTabla([{ n:'Ahora', c:c, P:P, f:S[0].f }].concat(prev ? [{ n:'Antes', c:'#aeb8c4', P:prev, f:S[1].f }] : []), P.concat(prev||[]).map(function(p){ return p.k; }).filter(function(k, i, A){ return A.indexOf(k)===i; }).sort(function(a, b){ return a-b; }), inf.unidad, inf.dec, inf.paso)+
+        '<ul class="cv-lect">'+cvLectura(atleta(aid)._n || 'Este atleta', P, prev, inf.unidad, inf.dec).map(function(x){ return '<li>'+x+'</li>'; }).join('')+'</ul>'+
+        '<p class="nota">Pendiente: cuánto se pierde por '+(inf.paso===1 ? 'cada kg' : 'cada '+inf.paso+' kg')+' más (recta de mínimos cuadrados). Con una sola sesión es una foto de partida, no una tendencia; se compara siempre a la misma carga.</p></div></section>';
+    }).join('');
+  }
+  /* Del grupo: la última sesión de cada uno, todos en la misma gráfica */
+  function curvasGrupoHTML(sel){
+    var atl = (D.atl||[]).filter(function(a){ return a.estado==='activo'; }), aids = atl.map(function(a){ return a.id; });
+    var hay = CURVA_TESTS.filter(function(k){ return Object.keys(cvSesiones(k, aids)).length; });
+    if (!hay.length) return '';
+    var clave = hay.indexOf(sel)>=0 ? sel : hay[0], inf = cvInfo(clave), por = cvSesiones(clave, aids);
+    var filas = atl.filter(function(a){ return por[a.id]; }).sort(function(a, b){ return por[b.id][0].P[0].v - por[a.id][0].P[0].v; }).slice(0, 8)
+      .map(function(a, i){ return { n:a._n, c:CURVA_COL[i], P:por[a.id][0].P, f:por[a.id][0].f, prev: por[a.id][1] ? por[a.id][1].P : null }; });
+    var ks = []; filas.forEach(function(f){ f.P.forEach(function(p){ if (ks.indexOf(p.k)<0) ks.push(p.k); }); }); ks.sort(function(a, b){ return a-b; });
+    var lect = []; filas.forEach(function(f){ lect = lect.concat(cvLectura(f.n, f.P, f.prev, inf.unidad, inf.dec).slice(0, f.prev ? 3 : 2)); });
+    return '<section class="ac-caja cv-caja"><h2>'+esc(inf.nombre)+' · '+esc(inf.que)+'<small>la última sesión de cada uno · el mejor de cada carga</small></h2><div class="cv-in">'+
+      (hay.length>1 ? '<div class="ac-seg" style="margin-bottom:10px">'+hay.map(function(k){ return '<button type="button" data-cv-test="'+k+'" class="'+(k===clave?'on':'')+'">'+esc(cvInfo(k).nombre)+'</button>'; }).join('')+'</div>' : '')+
+      '<div class="cv-ley2">'+filas.map(function(f){ return '<span><i style="background:'+f.c+'"></i>'+esc(f.n)+'</span>'; }).join('')+'</div>'+
+      cvSVG(filas, { etiq:true, unidad:inf.unidad, dec:inf.dec, aria:inf.nombre+' del grupo según la carga' })+
+      cvTabla(filas, ks, inf.unidad, inf.dec, inf.paso)+
+      '<ul class="cv-lect">'+lect.map(function(x){ return '<li>'+x+'</li>'; }).join('')+'</ul>'+
+      '<p class="nota">Las cargas son las mismas en kilos para todos: a quien pesa menos le pesan más en relación con su peso. Toca un punto para ver los intentos.</p></div></section>';
+  }
+
   /* ---------- ANÁLISIS DEL GRUPO: todo de un vistazo; cada atleta abre el suyo ---------- */
   function pintarAnalisisGrupo(){
     var hoy = hoyISO(), lu = lunesDe(hoy), d7 = sumar(hoy, -7);
@@ -4105,6 +4236,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     h += '<section class="ac-caja"><h2>Para mirar<small>solo lo que se sale de lo normal</small></h2>'+(para.length ? '<div class="ac-pend"><ul>'+para.slice(0, 8).map(function(x){
       return '<li><a class="ac-link" href="'+urlFicha(x.a.id)+'&fs=analisis"><b>'+esc(x.a._n)+'</b></a> · '+esc(x.t)+'<span class="o">'+esc(x.s)+'</span></li>'; }).join('')+'</ul></div>' : '<p class="ac-nada">Nada fuera de lo normal.</p>')+'</section>';
     h += '<div class="ac-scroll tg-scroll"><table class="tg-t"><thead><tr><th class="at">Atleta</th><th class="num">Feedback<small>4 semanas</small></th><th class="num">RPE<small>medio</small></th><th class="num">Último<small>feedback</small></th><th class="num">CMJ<small>cm</small></th><th class="num">RSI<small>10 pogos</small></th><th class="num">Revisar</th></tr></thead><tbody>'+filas.join('')+'</tbody></table></div>';
+    h += curvasGrupoHTML(ST.cvTest);
     h += '<p class="ac-ley">Feedback: sesiones con el plazo ya vencido que tienen respuesta del atleta (o tu registro), N de M, sin umbral. RPE: media de lo que respondieron. En CMJ y RSI, lo último y debajo el cambio frente al anterior (en verde, a mejor). Lo de cada atleta, con sus marcas, parciales y carga, en su análisis.</p>';
     wrap.innerHTML = h;
     wrap.querySelectorAll('tr[data-an-ir]').forEach(function(tr){ tr.addEventListener('click', function(e){ if (!e.target.closest('a')) location.href = urlFicha(tr.getAttribute('data-an-ir'))+'&fs=analisis'; }); });
@@ -4384,6 +4516,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (ds.tmTab){ ST.tm.tab = ds.tmTab; pintar(); return true; }
     if (ds.tgOrd){ ST.tm.ord = ST.tm.ord===ds.tgOrd ? '' : ds.tgOrd; pintar(); return true; }
     if (ds.tgSolo){ ST.tm.solo = ds.tgSolo==='1'; pintar(); return true; }
+    if (ds.cvTest){ ST.cvTest = ds.cvTest; pintar(); return true; }
     if (ds.tmAtleta){ ST.tm.tab = 'atleta'; ST.tm.aid = ds.tmAtleta; pintar(); return true; }
     if (ds.tmNuevo){ var a = ds.aid || ST.tm.aid; if (ds.tmNuevo==='resultado') dlgResultado(a); else if (ds.tmNuevo==='test') dlgTest(a); else dlgRM(a); return true; }
     if (ds.tmRes){ dlgResultado(null, TM.marcas.filter(function(m){ return m.id===ds.tmRes; })[0]); return true; }
@@ -5317,7 +5450,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<div class="'+(mins.length?'':'an-vacia')+'"><span class="an-et">Referencia externa</span>'+(mins.length ? mins.slice(0, 2).map(function(m){ return '<b class="an-num">'+esc(m.valor_texto||anVal(m.valor, u))+'</b><small>'+esc([m.campeonato, m.categoria, m.fuente_url ? 'fuente: '+m.fuente_url : 'fuente no consta'].filter(Boolean).join(' · '))+'</small>'; }).join('') : '<span class="fx-sin">ninguna cargada</span><small>Ej.: una mínima, con su circular y su periodo</small>')+'</div>'+
       '<div class="an-vacia"><span class="an-et">Estimación de un modelo</span><span class="fx-sin">no se calcula</span><small>Hace falta un modelo identificado y revisado</small></div></div>'+
       '<p class="nota">Sin equivalencias del tipo «para correr X necesita saltar Y». Manual y electrónico nunca en la misma tendencia.</p>';
-    h += analisisTestsHTML(X.aid);
+    h += analisisTestsHTML(X.aid) + curvasAtletaHTML(X.aid);
     h += '<div class="an-pleg">'+
       '<details class="fx-sec"><summary><h2>Trabajo por contenido</h2><span class="fx-ex">metros por estado · otras unidades aparte</span></summary><div class="fx-in">'+trab+'</div></details>'+
       '<details class="fx-sec"><summary><h2>Respuesta a sesiones comparables</h2><span class="fx-ex">'+(X.comp.length ? plural(X.comp.length, 'fila comparable', 'filas comparables') : 'ninguna')+'</span></summary><div class="fx-in">'+comp+'</div></details>'+
@@ -5573,7 +5706,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var ds = b.dataset;
     if (ST.vista==='carga' && CG && await clicCarga(b, ds)) return;
     if ((ST.vista==='comp' || ST.vista==='ficha') && CP && TM && await clicComp(b, ds)) return;
-    if ((ST.vista==='marcas' || ST.vista==='ficha' || ST.vista==='comp') && TM && await clicMarcas(b, ds)) return;
+    if ((ST.vista==='marcas' || ST.vista==='ficha' || ST.vista==='comp' || ST.vista==='analisis') && TM && await clicMarcas(b, ds)) return;
     if (ST.vista==='ficha' && FX && await clicFicha(b, ds, e)) return;
     if (ds.abrir){ var p = ds.abrir.split('|'); abrir(p[0], p[1]); return; }
     if (ds.nueva){ var pn = ds.nueva.split('|'); abrirEditor({ nueva:'1', a:pn[0], f:pn[1] }); return; }
