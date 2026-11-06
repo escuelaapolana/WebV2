@@ -478,6 +478,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       grupo:'Saltos', ayuda:'Salto horizontal a pies juntos. Mejor de 3.' },
     { k:'balon_medicinal', corto:'B. medic.', nombre:'Balón medicinal', unidad:'m', dec:2, intentos:3, menosMejor:false, pesos:[3,4,5],
       grupo:'Lanzamientos', ayuda:'Lanzamiento hacia delante con las dos manos. Dos intentos por cada peso.' },
+    { k:'triple_did', corto:'Triple DID', nombre:'Triple pies juntos D-I-D', unidad:'m', dec:2, intentos:3, menosMejor:false,
+      grupo:'Saltos', ayuda:'Triple desde parado a pies juntos: derecha, izquierda, derecha. Se mide hasta la última huella.' },
+    { k:'triple_idi', corto:'Triple IDI', nombre:'Triple pies juntos I-D-I', unidad:'m', dec:2, intentos:3, menosMejor:false,
+      grupo:'Saltos', ayuda:'Triple desde parado a pies juntos: izquierda, derecha, izquierda. Se mide hasta la última huella.' },
+    { k:'salto_barra', corto:'Salto barra', nombre:'Salto con barra (encoder)', unidad:'m/s', dec:2, intentos:3, menosMejor:false, pesos:[8,12,20,30],
+      grupo:'Saltos', ayuda:'Sentadilla con salto con la barra en los hombros: el encoder mide la velocidad de cada salto. Se compara siempre a la misma carga.' },
     { k:'drop_jump', corto:'Drop jump', nombre:'Drop jump', unidad:'cm', dec:1, pares:true, menosMejor:false,
       grupo:'Saltos', ayuda:'Caída desde el cajón y salto reactivo. En cada intento: altura del cajón y altura del salto, en cm.' }
   ];
@@ -827,16 +833,26 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function pruebasDe(fichaId){
     var filas = (TOMAS[fichaId]||[]).slice().sort(function(a,b){ return a.fecha<b.fecha?-1:(a.fecha>b.fecha?1:0); });
     var mapa = {}, orden = [];
+    // Los tests con varias cargas (balón, salto con barra) van por carga: así siempre se compara a la misma.
+    var porCarga = [];
     filas.forEach(function(f){
       var t = testPorClave(f.test);
+      if(t.pesos && Array.isArray(f.intentos) && f.intentos.length && f.intentos[0] && typeof f.intentos[0]==='object' && f.intentos[0].peso!=null){
+        f.intentos.forEach(function(p){ if(p.mejor==null) return;
+          porCarga.push({ test:f.test+'@'+p.peso, peso:p.peso, t:t, mejor:Number(p.mejor), intentos:[p], formato:null, falta:false, fecha:f.fecha, sede:f.sede }); });
+      } else porCarga.push(f);
+    });
+    filas = porCarga;
+    filas.forEach(function(f){
+      var t = f.t ? Object.assign({}, f.t, { nombre: f.t.nombre+' · '+String(f.peso).replace('.', ',')+' kg', pesos:null }) : testPorClave(f.test);
       var k = f.test + (t.serie ? '|'+(f.formato||6) : '');
       if(!mapa[k]){ mapa[k] = { clave:k, t:t, formato:f.formato, tomas:[] }; orden.push(k); }
       mapa[k].tomas.push(f);
     });
     // En el orden de la lista de tests, no en el que lleguen de la base.
     orden.sort(function(a,b){
-      var ia = TESTS.indexOf(mapa[a].t), ib = TESTS.indexOf(mapa[b].t);
-      return ia===ib ? String(a).localeCompare(String(b)) : ia-ib;
+      var ia = TESTS.indexOf(testPorClave(String(a).split('@')[0].split('|')[0])), ib = TESTS.indexOf(testPorClave(String(b).split('@')[0].split('|')[0]));
+      return ia===ib ? ((Number(String(a).split('@')[1])||0) - (Number(String(b).split('@')[1])||0) || String(a).localeCompare(String(b))) : ia-ib;
     });
     return orden.map(function(k){ return mapa[k]; });
   }

@@ -3033,7 +3033,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     await cargarTM([aid]);   // marcas, tests, RM, objetivos, catálogo y temporadas: lo mismo que Tests y marcas
     await cargarCP([aid], true);   // sus competiciones: lo mismo que Competiciones
     var tgIds = (D.atl||[]).filter(function(x){ return x.estado==='activo' || x.id===aid; }).map(function(x){ return x.id; });
-    var tgR = ST.fx.sub==='analisis' && tgIds.length ? await enTrozos(tgIds, function(ids){ return sb.from('test_resultados').select('atleta_id,test,mejor,no_asiste,test_baterias!inner(fecha)').in('atleta_id', ids); }) : [];
+    var tgR = ST.fx.sub==='analisis' && tgIds.length ? await enTrozos(tgIds, function(ids){ return sb.from('test_resultados').select('atleta_id,test,mejor,intentos,no_asiste,test_baterias!inner(fecha)').in('atleta_id', ids); }) : [];
     var rmG = ST.fx.sub==='analisis' && tgIds.length ? await enTrozos(tgIds, function(ids){ return sb.from('rm_atleta').select('atleta_id,ejercicio,variante,metodo,peso_kg,fecha_test,datos_estimacion').in('atleta_id', ids); }) : [];
     FX = { aid:aid, a:r[0].data, cambios:r[1].data||[], dec:r[2].data||[], obs:r[3].data||[], obj:TM.obj, les:r[4].data||[], marcas:TM.marcas, ausSem:r[6].data||[], tg:tgR, rmg:rmG,
            errores: r.filter(function(x){ return x && x.error; }).map(function(x){ return x.error.message; }) };
@@ -3946,21 +3946,41 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
 
   /* «Todo el grupo»: cada atleta con lo último de cada test y lo que ha cambiado
      frente a su resultado anterior del mismo test. Es lectura: no guarda nada. */
-  var TG_ORDEN = ['cmj','rsi','sj','abalakov','drop_jump','10m','30m_tacos','30_lanzado','60m','150m','150m_tacos','300m','500m','1000m','salto_horizontal','balon_medicinal'];
+  var TG_ORDEN = ['cmj','rsi','sj','abalakov','drop_jump','salto_barra','10m','30m_tacos','30_lanzado','60m','150m','150m_tacos','300m','500m','1000m','salto_horizontal','triple_did','triple_idi','balon_medicinal'];
+  /* Los tests con varias cargas (balón, salto con barra) guardan un resultado por carga en
+     intentos [{peso, i1…, mejor}]: se separan en «clave@peso» para comparar siempre a la misma carga. */
+  function tgExpandir(L){
+    var out = [];
+    (L||[]).forEach(function(t){
+      var I = t.intentos;
+      if (Array.isArray(I) && I.length && I[0] && typeof I[0]==='object' && I[0].peso!=null){
+        I.forEach(function(p){
+          var v = p.mejor!=null ? Number(p.mejor) : Math.max.apply(null, Object.keys(p).filter(function(k){ return /^i\d+$/.test(k); }).map(function(k){ return Number(p[k]); }).filter(function(x){ return isFinite(x); }));
+          if (isFinite(v)) out.push(Object.assign({}, t, { test: t.test+'@'+p.peso, mejor: v }));
+        });
+      } else out.push(t);
+    });
+    return out;
+  }
+  function tgPro(proC, k){ var b = String(k).split('@'), p = proC[b[0]]; if (!p) return null; return b[1] ? Object.assign({}, p, { nombre: p.nombre+' · '+String(b[1]).replace('.', ',')+' kg' }) : p; }
+  function tgOrdenar(keys){
+    var u = keys.filter(function(k, i, A){ return A.indexOf(k)===i; }), pos = function(k){ var i = TG_ORDEN.indexOf(String(k).split('@')[0]); return i<0 ? 99 : i; };
+    return u.sort(function(a, b){ return pos(a)-pos(b) || (Number(String(a).split('@')[1])||0) - (Number(String(b).split('@')[1])||0) || String(a).localeCompare(String(b)); });
+  }
   function tgDec(u){ return u==='cm' ? 1 : 2; }
   function tgNum(v, u){ var d = u==='kg' ? (Number(v) % 1 ? 1 : 0) : tgDec(u); return Number(v).toLocaleString('es-ES', { minimumFractionDigits:d, maximumFractionDigits:d }); }
   function tmGrupoHTML(){
     var atl = D.atl.filter(function(a){ return a.estado==='activo'; }), ids = {}; atl.forEach(function(a){ ids[a.id] = 1; });
-    var L = TM.tests.filter(function(t){ return ids[t.atleta_id] && !t.no_asiste && t.mejor!=null && t._fecha; });
+    var L = tgExpandir(TM.tests).filter(function(t){ return ids[t.atleta_id] && !t.no_asiste && t.mejor!=null && t._fecha; });
     if (!L.length) return '<p class="fx-sin">Todavía no hay tests apuntados en el grupo.</p>';
     var proC = {}; TM.protocolos.forEach(function(p){ if (!proC[p.clave] || p.version > proC[p.clave].version) proC[p.clave] = p; });
     var por = {}, ult = '';   // por[atleta][clave] = resultados del más nuevo al más viejo
     L.forEach(function(t){ ((por[t.atleta_id] = por[t.atleta_id] || {})[t.test] = por[t.atleta_id][t.test] || []).push(t); if (t._fecha > ult) ult = t._fecha; });
     Object.keys(por).forEach(function(a){ Object.keys(por[a]).forEach(function(k){ por[a][k].sort(function(x, y){ return x._fecha < y._fecha ? 1 : -1; }); }); });
-    var claves = TG_ORDEN.filter(function(k){ return L.some(function(t){ return t.test===k; }); }).concat(L.map(function(t){ return t.test; }).filter(function(k, i, A){ return TG_ORDEN.indexOf(k)<0 && A.indexOf(k)===i; }));
+    var claves = tgOrdenar(L.map(function(t){ return t.test; }));
     var recientes = claves.filter(function(k){ return L.some(function(t){ return t.test===k && t._fecha===ult; }); });
     var cols = ST.tm.solo && recientes.length ? recientes : claves;
-    var menos = function(k){ return !!(proC[k] && proC[k].menos_es_mejor); }, uni = function(k){ return proC[k] ? (proC[k].unidad||'') : ''; };
+    var menos = function(k){ var p = tgPro(proC, k); return !!(p && p.menos_es_mejor); }, uni = function(k){ var p = tgPro(proC, k); return p ? (p.unidad||'') : ''; };
     var dif = function(R, k){
       if (!R || R.length<2 || R[0]._fecha===R[1]._fecha) return null;
       var d = Number(R[0].mejor) - Number(R[1].mejor); return { d:d, mejor: Math.abs(d)<1e-9 ? null : (menos(k) ? d<0 : d>0) };
@@ -3983,7 +4003,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (cmjD.length ? '<span class="ac-cifra"><b>'+cmjD.filter(function(x){ return x.mejor; }).length+' de '+cmjD.length+'</b>mejoran el CMJ</span>' : '')+'</div>';
     h += '<div class="ac-barra"><div class="ac-seg"><button type="button" data-tg-solo="1" class="'+(ST.tm.solo?'on':'')+'">Los del '+esc(fMedia(ult))+'</button><button type="button" data-tg-solo="0" class="'+(!ST.tm.solo?'on':'')+'">Todos los tests</button></div></div>';
     h += '<div class="ac-scroll tg-scroll"><table class="tg-t"><thead><tr><th class="at">Atleta</th>'+cols.map(function(k){
-      var p = proC[k], n = p ? p.nombre.replace(' salida de tacos',' tacos').replace(' desde tacos',' tacos').replace('Test RSI 10 pogos','RSI 10 pogos') : k;
+      var p = tgPro(proC, k), n = p ? p.nombre.replace(' salida de tacos',' tacos').replace(' desde tacos',' tacos').replace('Test RSI 10 pogos','RSI 10 pogos').replace('Salto con barra (encoder)','Salto con barra').replace('Balón medicinal','Balón').replace('Triple pies juntos ','Triple ') : k;
       return '<th class="num"><button type="button" class="ac-link" data-tg-ord="'+esc(k)+'" title="Ordenar por este test">'+esc(n)+(ST.tm.ord===k?' ↓':'')+'</button>'+(uni(k) ? '<small>'+esc(uni(k))+'</small>' : '')+'</th>';
     }).join('')+'</tr></thead><tbody>'+filas.map(function(a){
       return '<tr><td class="at"><a class="ac-nom" href="'+urlFicha(a.id)+'">'+esc(a._n)+'</a></td>'+cols.map(function(k){ return celda(a, k); }).join('')+'</tr>';
@@ -3994,7 +4014,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* Tests por atleta y clave, del más nuevo al más viejo (la fecha es la de su batería). */
   function tgIndice(L){
     var por = {};
-    (L||[]).forEach(function(t){
+    tgExpandir(L).forEach(function(t){
       if (t.no_asiste || t.mejor==null) return; var f = t._fecha || (t.test_baterias||{}).fecha; if (!f) return;
       var x = { v:Number(t.mejor), f:f }; ((por[t.atleta_id] = por[t.atleta_id] || {})[t.test] = por[t.atleta_id][t.test] || []).push(x);
     });
@@ -4002,7 +4022,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return por;
   }
   function tgProto(){ var proC = {}; (TM.protocolos||[]).forEach(function(p){ if (!proC[p.clave] || p.version > proC[p.clave].version) proC[p.clave] = p; }); return proC; }
-  function tgNombre(p, k){ return p ? p.nombre.replace(' salida de tacos',' tacos').replace(' desde tacos',' tacos').replace('Test RSI 10 pogos','RSI 10 pogos') : k; }
+  function tgNombre(p, k){ return p ? p.nombre.replace(' salida de tacos',' tacos').replace(' desde tacos',' tacos').replace('Test RSI 10 pogos','RSI 10 pogos').replace('Salto con barra (encoder)','Salto con barra').replace('Balón medicinal','Balón').replace('Triple pies juntos ','Triple ') : k; }
   function tgCambio(R, menos){   // {d, mejor} entre el último y el anterior de otra fecha
     if (!R || R.length<2 || R[0].f===R[1].f) return null;
     var d = R[0].v - R[1].v; return { d:d, mejor: Math.abs(d)<1e-9 ? null : (menos ? d<0 : d>0) };
@@ -4021,7 +4041,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   /* Sección «Tests · cómo ha cambiado» del Análisis de un atleta */
   function analisisTestsHTML(aid){
     var por = tgIndice(FX && FX.tg && FX.tg.length ? FX.tg : TM.tests), mio = por[aid] || {}, proC = tgProto();
-    var claves = TG_ORDEN.filter(function(k){ return mio[k]; }).concat(Object.keys(mio).filter(function(k){ return TG_ORDEN.indexOf(k)<0; }));
+    var claves = tgOrdenar(Object.keys(mio));
     // Fuerza: por ejercicio + variante + medido/estimado (no se mezclan)
     var RMs = (FX && FX.rmg && FX.rmg.length ? FX.rmg : (TM.rm||[])).filter(function(x){ return x.peso_kg!=null && x.fecha_test; });
     var rmK = function(x){ return [x.ejercicio, x.variante||'', x.metodo||''].join('|').toLowerCase(); };
@@ -4038,7 +4058,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     });
     if (!claves.length && !filasRM.length) return '<section class="an-card"><h2 class="an-cab">Tests · cómo ha cambiado<span></span></h2><div class="an-in"><p class="fx-sin">Sin tests apuntados todavía.</p></div></section>';
     var filas = claves.map(function(k){
-      var R = mio[k], p = proC[k], u = p ? (p.unidad||'') : '', menos = !!(p && p.menos_es_mejor), x = tgCambio(R, menos);
+      var R = mio[k], p = tgPro(proC, k), u = p ? (p.unidad||'') : '', menos = !!(p && p.menos_es_mejor), x = tgCambio(R, menos);
       return '<tr><td><b>'+esc(tgNombre(p, k))+'</b>'+(u?' <small>'+esc(u)+'</small>':'')+'</td>'+
         '<td class="num"><b class="tg-v">'+esc(tgNum(R[0].v, u))+'</b><span class="tg-f">'+esc(fMedia(R[0].f))+'</span></td>'+
         '<td class="num">'+(x ? esc(tgNum(R[1].v, u))+'<span class="tg-f">'+esc(fMedia(R[1].f))+'</span>' : '<span class="fx-sin">primera vez</span>')+'</td>'+
