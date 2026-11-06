@@ -60,12 +60,16 @@ Deno.serve(async (req: Request) => {
   const t = String(cuerpo.t ?? "").trim();
   if (!/^[0-9a-f]{40,128}$/i.test(t)) return responder({ error: "enlace", mensaje: "Este enlace no es válido." }, 400, origen);
 
-  const rCfg = await rest("pagos_config?select=modo&id=eq.1&limit=1");
+  const rCfg = await rest("pagos_config?select=modo,ropa_natacion_cobro&id=eq.1&limit=1");
   const modo = String(rCfg.datos?.[0]?.modo ?? "prueba").toLowerCase();
+  const ropaAbierta = rCfg.datos?.[0]?.ropa_natacion_cobro === true;   // mig 523
   const rR = await rest(`pagos?select=id,estado,anulado,importe,concepto,atleta_id,cuota_entreno_id&token_pago=eq.${t}&limit=1`);
   const rec = Array.isArray(rR.datos) ? rR.datos[0] : null;
   if (!rec) return responder({ error: "enlace", mensaje: "Este enlace no es válido." }, 404, origen);
   const ropa = esRopa(rec.concepto);
+  if (ropa && !ropaAbierta && cuerpo.comprobar !== true) {
+    return responder({ error: "parado", mensaje: "El pago de la ropa todavía no está abierto. Te avisaremos cuando se pueda pagar." }, 409, origen);
+  }
   const KEY = ropa ? SK_ITAKA : (modo === "real" ? SK_LIVE : SK_TEST);
   if (!KEY) return responder({ error: "config", mensaje: "El pago no está disponible ahora mismo." }, 503, origen);
   if (rec.anulado) return responder({ error: "anulado", mensaje: "Este recibo está anulado. Si crees que es un error, escríbenos." }, 409, origen);
