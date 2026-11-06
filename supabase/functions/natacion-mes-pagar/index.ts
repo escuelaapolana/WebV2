@@ -13,7 +13,9 @@
 //                              (pagos_confirmar, idempotente). Así el
 //                              «Pagado ✓» sale al volver aunque el webhook tarde.
 // El webhook de siempre (cubo-webhook → pagos_confirmar) deja el recibo PAGADO.
-// Claves: STRIPE_SECRET_KEY_APOLANA (+ _TEST), por pagos_config.modo.
+// Claves: STRIPE_SECRET_KEY_APOLANA (+ _TEST), por pagos_config.modo. La ROPA
+// («Equipación de natación…», «Ropa de natación…») va por STRIPE_SECRET_KEY
+// (ÍTAKA) y la confirma pago-webhook.
 //
 //   supabase functions deploy natacion-mes-pagar --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
@@ -22,6 +24,11 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SECRET_KEY") ?? "";
 const SK_LIVE = Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "";
 const SK_TEST = Deno.env.get("STRIPE_SECRET_KEY_APOLANA_TEST") ?? "";
+// La ROPA (equipación y prendas del stock de natación) la vende ÍTAKA, no el
+// club: su dinero va a la cuenta de Stripe de Ítaka (la misma clave que la
+// nevera; la confirma el webhook `pago-webhook`, que firma con Ítaka). 5-nov-2026.
+const SK_ITAKA = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+const esRopa = (concepto: string) => /^(Equipación de natación|Ropa de natación)/i.test(concepto ?? "");
 const URL_BASE = "https://atletismoapolana.com/";
 
 function cors(origen: string | null): Record<string, string> {
@@ -55,12 +62,12 @@ Deno.serve(async (req: Request) => {
 
   const rCfg = await rest("pagos_config?select=modo&id=eq.1&limit=1");
   const modo = String(rCfg.datos?.[0]?.modo ?? "prueba").toLowerCase();
-  const KEY = modo === "real" ? SK_LIVE : SK_TEST;
-  if (!KEY) return responder({ error: "config", mensaje: "El pago no está disponible ahora mismo." }, 503, origen);
-
   const rR = await rest(`pagos?select=id,estado,anulado,importe,concepto,atleta_id,cuota_entreno_id&token_pago=eq.${t}&limit=1`);
   const rec = Array.isArray(rR.datos) ? rR.datos[0] : null;
   if (!rec) return responder({ error: "enlace", mensaje: "Este enlace no es válido." }, 404, origen);
+  const ropa = esRopa(rec.concepto);
+  const KEY = ropa ? SK_ITAKA : (modo === "real" ? SK_LIVE : SK_TEST);
+  if (!KEY) return responder({ error: "config", mensaje: "El pago no está disponible ahora mismo." }, 503, origen);
   if (rec.anulado) return responder({ error: "anulado", mensaje: "Este recibo está anulado. Si crees que es un error, escríbenos." }, 409, origen);
   if (rec.estado === "pagado") return responder({ pagado: true }, 200, origen);
 
@@ -103,13 +110,13 @@ Deno.serve(async (req: Request) => {
   p.set("line_items[0][price_data][currency]", "eur");
   p.set("line_items[0][price_data][unit_amount]", String(pago.importe_centimos));
   p.set("line_items[0][price_data][product_data][name]", pago.concepto);
-  p.set("line_items[0][price_data][product_data][description]", `Club Atletismo Apolana · ${pago.referencia}`);
+  p.set("line_items[0][price_data][product_data][description]", `${ropa ? "Ítaka · ropa del Club Apolana" : "Club Atletismo Apolana"} · ${pago.referencia}`);
   p.set("metadata[referencia]", pago.referencia);
   p.set("payment_intent_data[metadata][referencia]", pago.referencia);
   p.set("payment_intent_data[description]", `${pago.concepto} · ${pago.referencia}`);
   const rS = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `apolana-${pago.referencia}` },
+    headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/x-www-form-urlencoded", "Idempotency-Key": `${ropa ? "itaka" : "apolana"}-${pago.referencia}` },
     body: p.toString(),
   });
   const ses = await rS.json().catch(() => null);

@@ -115,6 +115,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const rows = await db(`cubo_altas?select=nombre,apellidos,telefono,email,dni,horario,stripe_customer_id&stripe_customer_id=in.(${list})`);
         for (const r of rows) if (r.stripe_customer_id) porCustomer[r.stripe_customer_id] = r;
       }
+      // Cuotas de entreno (pista, Academia, natación) también son suscripciones:
+      // antes salían todas como «Cubo» (Andrés, 5-nov-2026: Juan Asensi).
+      const porCuota: Record<string, any> = {};
+      if (customers.size) {
+        const list = [...customers].map((c) => `"${c}"`).join(",");
+        const cuotas = await db(`cuotas_entreno?select=nombre,apellidos,email,concepto,origen,atleta_id,stripe_customer_id&stripe_customer_id=in.(${list})`);
+        const ids = [...new Set(cuotas.map((c: any) => c.atleta_id).filter(Boolean))];
+        const atl: Record<string, any> = {}, grp: Record<string, string> = {};
+        if (ids.length) {
+          for (const a of await db(`atletas?select=id,telefono,dni,grupo_id&id=in.(${ids.join(",")})`)) atl[a.id] = a;
+          const gids = [...new Set(Object.values(atl).map((a: any) => a.grupo_id).filter(Boolean))];
+          if (gids.length) for (const g of await db(`grupos?select=id,nombre&id=in.(${gids.join(",")})`)) grp[g.id] = g.nombre;
+        }
+        for (const c of cuotas) {
+          if (!c.stripe_customer_id || porCustomer[c.stripe_customer_id]) continue;
+          const a = atl[c.atleta_id] || {};
+          const nat = /nataci/i.test(c.concepto || "") || c.origen === "natacion" || c.origen === "asistente";
+          const g = a.grupo_id ? grp[a.grupo_id] : "";
+          porCuota[c.stripe_customer_id] = {
+            nombre: c.nombre, apellidos: c.apellidos, email: c.email, telefono: a.telefono || "", dni: a.dni || "",
+            seccion: nat ? "Natación" : (g ? (/academia/i.test(g) ? g : "Atletismo pista · " + g) : "Atletismo pista"),
+            concepto: (c.concepto || "Cuota de entrenamiento").replace(/\s*·\s*temporada.*$/i, ""),
+          };
+        }
+      }
       if (emails.size) {
         const list = [...emails].map((e) => `"${e}"`).join(",");
         const rows = await db(`atletas?select=nombre,apellidos,telefono,email,dni&email=in.(${list})`);
@@ -128,14 +153,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const bd = s.billing_details || {};
         const em = (bd.email || s.receipt_email || "").toLowerCase().trim();
         const mCubo = (typeof s.customer === "string" && porCustomer[s.customer]) || null;
-        const m = mCubo || (em && porEmail[em]) || null;
+        const mCuota = (!mCubo && typeof s.customer === "string" && porCuota[s.customer]) || null;
+        const m = mCubo || mCuota || (em && porEmail[em]) || null;
         const esCargo = t.type === "charge" || t.type === "payment";
         let concepto = s.description || s.calculated_statement_descriptor || t.description || t.type;
         let nombre = m ? [m.nombre, m.apellidos].filter(Boolean).join(" ").trim() : (bd.name || "");
         let seccion = (mCubo && mCubo.horario) || "";
 
         const esSub = mCubo || /subscription|invoice/i.test(concepto);
-        if (esSub) {                                   // cuota del Cubo (suscripción)
+        if (mCuota) {                                  // cuota de entreno (pista, Academia, natación)
+          concepto = mCuota.concepto + " · " + mesAno(fISO(t.created));
+          seccion = mCuota.seccion;
+        } else if (esSub) {                                   // cuota del Cubo (suscripción)
           concepto = "Cuota entrenamiento Cubo · " + mesAno(fISO(t.created));
           if (!seccion) seccion = "El Cubo";
         } else if (!m && !esCargo) {                   // comisión/ajuste de Stripe, no es una persona
