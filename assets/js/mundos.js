@@ -202,6 +202,7 @@
         {g:'Entrenamiento', t:'Planificar', i:'clipboard', url:B+'portal/academia/?v=semana', d:'Se planifica desde la Semana: toca un día o «＋» y el editor se abre encima.'},
         {g:'Entrenamiento', t:'Pasar lista', i:'check', url:B+'portal/academia/', d:'En «Hoy»: Presente o Ausente en cada atleta.'},
         {key:'atletas', g:'Atletas', t:'Atletas', i:'people', url:B+'portal/academia/?v=atletas', d:'Cada atleta con su ficha: perfil, decisiones, objetivos, marcas y observaciones.'},
+        {key:'radiografia', g:'Atletas', t:'Radiografía', i:'clipboard', url:B+'portal/academia/?v=radiografia', d:'Lo bueno, lo que hay que mejorar y qué haría con cada atleta. Solo la ve el entrenador del grupo.'},
         {key:'analisis', g:'Atletas', t:'Análisis', i:'chart', url:B+'portal/academia/?v=analisis', d:'Todo el grupo de un vistazo (feedback, esfuerzo, tests y lo que conviene revisar) y, al tocar a cada uno, su análisis completo.'},
         {key:'carga', g:'Entrenamiento', t:'Carga y contenidos', i:'chart', url:B+'portal/academia/?v=carga', d:'Previsto, confirmado y cobertura por atleta y semana.'},
         {key:'marcas', g:'Competición y tests', t:'Tests y marcas', i:'chart', url:B+'portal/academia/?v=marcas', d:'Resultados, tests con su protocolo, RM y objetivos, por atleta y por prueba.'},
