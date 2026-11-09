@@ -411,6 +411,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       S.err = null; S.lista = r.data || [];
       // 431 · «mes a mes»: el enlace que se manda es el del recibo del periodo.
       S.lista.forEach(function(x){ if (x.cobro_metodo === 'mes_a_mes') x.enlace = x.mes_enlace || null; });
+      // 526 · recibos sueltos sin pagar de cada nadador (si falla, la lista sigue igual).
+      var rr = await sb.rpc('natacion_recibos_pendientes');
+      S.recibos = {};
+      ((rr && rr.data) || []).forEach(function(c){ (S.recibos[c.atleta_id] = S.recibos[c.atleta_id] || []).push(c); });
     }
   }
 
@@ -533,14 +537,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var X = await cargarXlsx();
       var cobros = (r.data || []).map(function(c){
         return { 'Fecha': fecha(c.fecha), 'Estado': ESTADO_COBRO[c.estado] || c.estado || '', 'Nadador': capital(c.nadador), 'Tipo': c.tipo || '',
-          'Concepto': c.concepto || '', 'Importe (€)': Number(c.importe) || 0, 'Forma de pago': FORMA[c.metodo] || c.metodo || '',
+          'Concepto': c.concepto || '', 'Mes que paga': c.periodo ? MESES[+c.periodo.split('-')[1] - 1] + ' ' + c.periodo.split('-')[0] : '', 'Importe (€)': Number(c.importe) || 0, 'Forma de pago': FORMA[c.metodo] || c.metodo || '',
           'Nº recibo': c.numero_recibo || '', 'Fecha de cobro': fecha(c.fecha_pago), 'Vencimiento': fecha(c.vencimiento) };
       });
       var pagado = cobros.filter(function(c){ return c['Estado'] === 'Pagado'; }).reduce(function(a, c){ return a + c['Importe (€)']; }, 0);
       var h1 = X.utils.json_to_sheet(cobros.length ? cobros : [{ 'Fecha': '', 'Estado': 'Sin cobros de natación entre el ' + ddmm(E.desde) + ' y el ' + ddmm(E.hasta) }],
         { cellDates: true, dateNF: 'dd/mm/yyyy' });
       if (cobros.length) X.utils.sheet_add_json(h1, [{}, { 'Concepto': 'Total pagado', 'Importe (€)': r2(pagado) }], { skipHeader: true, origin: -1, header: Object.keys(cobros[0]) });
-      h1['!cols'] = [{wch:11},{wch:11},{wch:30},{wch:9},{wch:52},{wch:11},{wch:14},{wch:11},{wch:13},{wch:12}];
+      h1['!cols'] = [{wch:11},{wch:11},{wch:30},{wch:9},{wch:52},{wch:16},{wch:11},{wch:14},{wch:11},{wch:13},{wch:12}];
       var cuotas = (S.lista || []).filter(function(x){ return x.cobro_id || Number(x.cuota_importe) > 0; }).map(function(x){
         return { 'Nadador': nombreDe(x), 'Tipo': x.tipo || '', 'Días': x.dias || '', 'Socio': x.tipo === 'Máster' ? (x.es_socio ? 'Sí' : 'No') : '',
           'Cuota de la ficha (€)': x.cuota_importe != null ? Number(x.cuota_importe) : '', 'Cada': x.cuota_importe != null ? textoPer(x.cuota_periodicidad) : '',
@@ -570,6 +574,21 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     return '<span class="imp">' + esc(eur(v)) + '<small>' + esc(perCorta(per)) + '</small></span>';
   }
   // Fila compacta (siempre a la vista) + detalle (solo si está desplegada).
+  function recibosDe(id){ return (S.recibos && S.recibos[id]) || []; }
+  function recibosTxt(id){ var L = recibosDe(id); return 'debe ' + L.map(function(c){ return MESES[+String(c.periodo).split('-')[1] - 1] || 'recibo'; }).join(' y '); }
+  function msgRecibo(x, c){
+    return '¡Hola! Os paso el enlace para pagar el recibo de natación de ' + capital(String(x.nombre || '').split(' ')[0]) + ':\n\n' +
+      c.concepto + ': *' + eur(c.importe) + '*\n' + c.enlace + '\n\nEs un pago único con tarjeta. Cualquier duda, me decís. ¡Gracias!';
+  }
+  function recibosHtml(x){
+    var L = recibosDe(x.atleta_id); if (!L.length) return '';
+    return '<div class="cu-sec-lab">Recibos sin pagar</div>' + L.map(function(c){
+      var wa = 'https://wa.me/' + telWa(x.telefono) + '?text=' + encodeURIComponent(msgRecibo(x, c));
+      return '<div class="cu-cobro-det" style="margin-top:0"><b>' + esc(c.periodo ? MESES[+c.periodo.split('-')[1] - 1] + ' de ' + c.periodo.split('-')[0] : c.concepto) + ' · ' + esc(eur(c.importe)) + '</b>' + (c.avisado ? ' · correo enviado el ' + esc(ddmm(c.avisado)) : ' · sin avisar') + '</div>' +
+        '<div class="cu-acc" style="margin-top:6px"><a class="cu-btn peq wa" href="' + esc(wa) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">Reenviar por WhatsApp</a>' +
+        '<button type="button" class="cu-btn peq sec" data-recibo-msg="' + esc(c.pago_id) + '" data-atleta="' + esc(x.atleta_id) + '">Copiar mensaje</button></div>';
+    }).join('');
+  }
   function filaHtml(x){
     var id = x.atleta_id, e = estadoDe(x), abierto = !!S.abiertos[id];
     var sub = (x.tipo === 'Escuela' ? 'Escuela' : 'Máster') + ' · ' + (x.dias ? pl(x.dias, 'día', 'días') : 'sin franja') +
@@ -577,7 +596,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (x.cuota_otra_seccion ? ' · otra sección' : '');
     return '<div class="cu-item' + (abierto ? ' abierto' : '') + '" data-fila="' + esc(id) + '">' +
       '<button type="button" class="cu-row" data-abrir="' + esc(id) + '" aria-expanded="' + (abierto ? 'true' : 'false') + '">' +
-        '<span class="q"><b>' + esc(nombreDe(x)) + '</b><small>' + esc(sub) + (S.edit[id] ? ' · <span class="sg">sin guardar</span>' : '') + '</small></span>' +
+        '<span class="q"><b>' + esc(nombreDe(x)) + '</b><small>' + esc(sub) + (S.edit[id] ? ' · <span class="sg">sin guardar</span>' : '') + (recibosDe(id).length ? ' · <span class="sg">' + esc(recibosTxt(id)) + '</span>' : '') + '</small></span>' +
         '<span class="d">' + impFila(x) + '<span class="cu-estado ' + e.k + '">' + esc(e.t) + '</span></span>' +
         '<span class="chev" aria-hidden="true">▼</span>' +
       '</button>' +
@@ -609,6 +628,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (x.cuota_periodicidad && ['mensual', 'trimestral'].indexOf(x.cuota_periodicidad) === -1 && !ed ? '<div class="cu-cobro-det">Apuntada ' + esc(textoPer(x.cuota_periodicidad)) + '.</div>' : '') +
         (malNum ? '<div class="cu-cobro-det" style="color:#B23B3B">Escribe un importe entre 0 y 2.000 €.</div>' : '');
     }
+    h += recibosHtml(x);
     // cobro domiciliado (la pastilla de estado ya va en la fila)
     h += '<div class="cu-sec-lab">' + (x.cobro_metodo === 'mes_a_mes' ? 'Cobro mes a mes' : 'Domiciliación') + '</div>';
     if (!x.cobro_id) h += '<div class="cu-cobro-det" style="margin-top:0">' + (pideCobro(x) ? 'Aún no tiene cobro: crea su enlace y pásaselo.' : 'Sin cobro creado.') + '</div>';
@@ -1033,6 +1053,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if ((b = t.closest('[data-rango]'))){ var rg = rango(b.getAttribute('data-rango')); S.exp.desde = rg[0]; S.exp.hasta = rg[1]; pintarExp(); return; }
     if ((b = t.closest('[data-exportar]'))){ if (!S.exp.cargando) exportar(); return; }
+    if ((b = t.closest('[data-recibo-msg]'))){ var xr = porId(b.getAttribute('data-atleta')), cr = xr && recibosDe(xr.atleta_id).filter(function(c){ return c.pago_id === b.getAttribute('data-recibo-msg'); })[0]; if (cr) copiar(msgRecibo(xr, cr), 'Mensaje copiado'); return; }
     if ((b = t.closest('[data-copiar]'))){ var x = porId(b.getAttribute('data-copiar')); if (x && x.enlace) copiar(x.enlace); return; }
     if ((b = t.closest('[data-copiar-msg]'))){ var xm = porId(b.getAttribute('data-copiar-msg')); if (xm && xm.enlace) copiar(mensaje(xm, xm.enlace, datosCobro(xm)), 'Mensaje copiado'); return; }
     if ((b = t.closest('[data-crear]'))){ abrirForm(b.getAttribute('data-crear')); return; }
