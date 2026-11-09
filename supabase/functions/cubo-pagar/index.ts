@@ -159,9 +159,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ---- 2 · Su alta del Cubo: de ahí sale el precio (nunca del navegador) ----
   const rAlta = await rest(
     `cubo_altas?select=id,precio_mes,primer_pago_cent,stripe_subscription_id,suscripcion_estado,nombre,apellidos,cobro_abierto` +
-    `&perfil_id=eq.${perfilId}&order=created_at.desc&limit=1`,
+    `&perfil_id=eq.${perfilId}&order=created_at.desc`,
   );
-  const alta = Array.isArray(rAlta.datos) ? rAlta.datos[0] : null;
+  // La alta que manda, igual que en la app (cubo-cuota.js): activa > con cobro
+  // abierto > la más reciente. Antes cogía siempre la última y, si era un
+  // duplicado rechazado, decía «cobro cerrado» a quien veía su botón (Beatriz, 9-nov).
+  const filasAlta: any[] = Array.isArray(rAlta.datos) ? rAlta.datos : [];
+  const alta = filasAlta.find((a) => a.suscripcion_estado === "activa")
+    ?? filasAlta.find((a) => a.cobro_abierto === true)
+    ?? filasAlta[0] ?? null;
   if (!alta) {
     return responder({
       error: "sin_alta",
