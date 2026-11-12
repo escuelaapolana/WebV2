@@ -223,14 +223,24 @@ APOLANA_ADMIN.listo(async function (sb) {
     { k:'30_lanzado', corto:'30 lanz.', nombre:'30 m lanzado', unidad:'s',  dec:2, menosMejor:true },
     { k:'150m',       corto:'150 lanz.', nombre:'150 m lanzado', unidad:'s',  dec:2, menosMejor:true },
     { k:'cmj',        corto:'CMJ',      nombre:'CMJ',          unidad:'cm', dec:1, menosMejor:false },
+    { k:'cmj_30',     corto:'CMJ +30 %', nombre:'CMJ con +30 % del peso', unidad:'cm', dec:1, menosMejor:false },
     { k:'sj',         corto:'SJ',       nombre:'SJ',           unidad:'cm', dec:1, menosMejor:false },
     { k:'abalakov',   corto:'ABK',      nombre:'Abalakov',     unidad:'cm', dec:1, menosMejor:false },
     { k:'rsi',        corto:'RSI 10',   nombre:'Test RSI 10 pogos', unidad:'', unidadLarga:'índice', dec:2, menosMejor:false, serie:true },
     { k:'10m',        corto:'10 tacos', nombre:'10 m salida de tacos', unidad:'s',  dec:2, menosMejor:true },
     { k:'30m_tacos',  corto:'30 tacos', nombre:'30 m desde tacos',  unidad:'s',  dec:2, menosMejor:true },
+    { k:'30m_parado', corto:'30 parado', nombre:'30 m desde parado', unidad:'s',  dec:2, menosMejor:true },
     { k:'60m',        corto:'60 lanz.', nombre:'60 m lanzado',       unidad:'s',  dec:2, menosMejor:true },
+    { k:'80m',        corto:'80 m',     nombre:'80 m',              unidad:'s',  dec:2, menosMejor:true },
+    { k:'120m',       corto:'120 m',    nombre:'120 m',             unidad:'s',  dec:2, menosMejor:true },
+    { k:'200m',       corto:'200 parado', nombre:'200 m desde parado', unidad:'s', dec:2, menosMejor:true },
+    { k:'250m',       corto:'250 m',    nombre:'250 m',             unidad:'s',  dec:2, menosMejor:true },
+    { k:'300m_lanzado', corto:'300 lanz.', nombre:'300 m lanzado',   unidad:'s',  dec:2, menosMejor:true },
+    { k:'350m',       corto:'350 m',    nombre:'350 m',             unidad:'s',  dec:2, menosMejor:true },
     { k:'300m',       corto:'300 m',    nombre:'300 m',             unidad:'s',  dec:2, menosMejor:true },
+    { k:'600m',       corto:'600 m',    nombre:'600 m',             unidad:'s',  dec:1, menosMejor:true },
     { k:'1000m',      corto:'1000 m',   nombre:'1000 m',            unidad:'s',  dec:1, menosMejor:true },
+    { k:'vam',        corto:'VAM',      nombre:'VAM (test progresivo)', unidad:'km/h', dec:2, menosMejor:false },
     { k:'salto_horizontal', corto:'S. horiz.', nombre:'Salto horizontal', unidad:'m', dec:2, menosMejor:false },
     { k:'balon_medicinal',  corto:'B. medic.', nombre:'Balón medicinal',  unidad:'m', dec:2, menosMejor:false },
     { k:'drop_jump',  corto:'Drop jump', nombre:'Drop jump',        unidad:'cm', dec:1, menosMejor:false, pares:true }
@@ -244,13 +254,18 @@ APOLANA_ADMIN.listo(async function (sb) {
     return p.length===3 ? (parseInt(p[2],10)+' '+MESES[parseInt(p[1],10)-1]+' '+p[0].slice(2)) : String(iso);
   }
   function num(v,d){ return (v==null||isNaN(v)) ? '—' : Number(v).toFixed(d).replace('.',','); }
+  // Tiempos de un minuto o más, en minutos: 200 s → 3:20,0.
+  function minSeg(v,d){ v = Number(Number(v).toFixed(d)); var m = Math.floor(v/60), r = v - m*60;
+    return m+':'+(r<10?'0':'')+r.toFixed(d).replace('.',','); }
   function conUnidad(v,t){
     if(v==null||isNaN(v)) return '—';
+    if(t.unidad==='s' && Number(v)>=60) return minSeg(v,t.dec);
     var u = t.unidad || t.unidadLarga || '';
     return num(v,t.dec) + (u ? '<u> '+esc(u)+'</u>' : '');
   }
   function textoUnidad(v,t){
     if(v==null||isNaN(v)) return '—';
+    if(t.unidad==='s' && Number(v)>=60) return minSeg(v,t.dec);
     var u = t.unidad || t.unidadLarga || '';
     return num(v,t.dec) + (u ? ' '+u : '');
   }
@@ -514,13 +529,15 @@ APOLANA_ADMIN.listo(async function (sb) {
 
       if(!ids.length){ $('tabla-bateria').innerHTML = '<p class="vacio">Ningún atleta con ese nombre en esta batería.</p>'; return; }
 
-      var cabeceras = TESTS.map(function(t){
+      // Solo las columnas de los tests que se hicieron en esta batería.
+      var COLS = TESTS.filter(function(t){ return ids.some(function(id){ return porAtleta[id][t.k]; }); });
+      var cabeceras = COLS.map(function(t){
         return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>';
       }).join('');
 
       var cuerpo = ids.map(function(id){
         var a = ATLETAS[id], fila = porAtleta[id];
-        var celdas = TESTS.map(function(t){
+        var celdas = COLS.map(function(t){
           var r = fila[t.k];
           var etiqueta = t.nombre + (t.unidad ? ' ('+t.unidad+')' : '');
           if(!r) return '<td class="dato" data-et="'+esc(etiqueta)+'"><span class="falta">sin dato</span></td>';
@@ -639,10 +656,12 @@ APOLANA_ADMIN.listo(async function (sb) {
       var ids = Object.keys(porBat).sort(function(x,y){ return FECHA[x]<FECHA[y] ? 1 : -1; });
       if(!ids.length){ $('tabla-atleta').innerHTML = '<p class="vacio">Este atleta no aparece en ninguna batería.</p>'; return; }
 
-      var cab = TESTS.map(function(t){ return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>'; }).join('');
+      // Solo las columnas de los tests que ha hecho alguna vez.
+      var COLS = TESTS.filter(function(t){ return ids.some(function(bid){ return porBat[bid][t.k]; }); });
+      var cab = COLS.map(function(t){ return '<th>'+esc(t.corto)+' · '+esc(t.unidad || t.unidadLarga || '')+'</th>'; }).join('');
       var cuerpo = ids.map(function(bid, i){
         var fila = porBat[bid];
-        var celdas = TESTS.map(function(t){
+        var celdas = COLS.map(function(t){
           var r = fila[t.k];
           if(!r) return '<td class="dato"><span class="falta">—</span></td>';
           if(r.no_asiste) return '<td class="dato"><span class="falta">no asiste</span></td>';
