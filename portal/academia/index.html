@@ -1305,7 +1305,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<span class="ac-seg" role="group" aria-label="Detalle de las casillas"><button type="button" data-modo="compacta" class="'+(ST.modo==='compacta'?'on':'')+'">Compacta</button><button type="button" data-modo="detallada" class="'+(ST.modo==='detallada'?'on':'')+'">Detallada</button></span>';
     var publicar = borr.length ? '<button type="button" class="ac-btn pri" data-publicar="1">Publicar borradores ('+borr.length+')…</button>' : '';
     var segBtn = '<button type="button" class="ac-btn" data-seguimiento="1">Seguimiento…</button>';
-    var copiarBtn = '<button type="button" class="ac-btn" data-copiar="1">Copiar semana…</button>';
+    var sacarBtn = '<button type="button" class="ac-btn" data-sacar="1">Sacar la semana…</button>';
+    var copiarBtn = '<button type="button" class="ac-btn" data-copiar="1">Duplicar semana…</button>';
     var leyenda = '<b>Planificar:</b> toca un hueco («Sin planificar») para crear la sesión de ese atleta ese día; toca una sesión para verla, editarla o publicarla. · <b>Publicación:</b> «Borrador» (borde discontinuo) o publicada (sin etiqueta). · <b>Ejecución</b> (lo que dice el atleta): realizada · parcial · no realizada · sin datos. «Sin datos» no es «no hecha». · <b>Revisión:</b> feedback nuevo (sin revisar) · «sin datos · feedback pendiente» (solo cuando ya pasó el plazo: '+hhmm(ST.g.feedback_hora_limite)+' del día, y nunca antes de que acabe la sesión) · revisar (con su motivo). · «Plan cambiado después»: el atleta respondió una versión anterior. · Los descansos y las ausencias no cuentan como sesiones.';
 
     if (esMovil()){
@@ -1313,7 +1314,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var d = ST.diaMovil;
       var navM = '<button type="button" class="ac-btn" data-sem="-1" aria-label="Semana anterior">‹</button><button type="button" class="ac-btn" data-sem="0">Esta semana</button><button type="button" class="ac-btn" data-sem="1" aria-label="Semana siguiente">›</button>'+
         '<span class="ac-esp"></span><button type="button" class="ac-btn" data-filtrosm="1" aria-expanded="'+(!!ST.filtrosM)+'">Filtros '+(ST.filtrosM?'▴':'▾')+'</button>';
-      var h = cabecera(fMedia(dias[0])+' – '+fMedia(dias[6]), '')+
+      // «Sacar…» a la vista en el título: en la barra de abajo no cabe junto a «Filtros».
+      var h = cabecera(fMedia(dias[0])+' – '+fMedia(dias[6]), '').replace('</h1>', '</h1><button type="button" class="ac-btn" data-sacar="1" style="margin-left:auto;align-self:center">Sacar…</button>')+
         '<div class="ac-barra">'+navM+'</div>'+
         (ST.filtrosM ? '<div class="ac-filtros-m"><div class="ac-barra">'+filtros+'</div>'+
           '<div class="ac-barra"><select class="ac-sel" id="ac-movat" aria-label="Ver la semana de un atleta"><option value="">Ver la semana de un atleta…</option>'+D.atl.map(function(a){ return '<option value="'+a.id+'"'+(a.id===ST.movAtleta?' selected':'')+'>'+esc(a._n)+'</option>'; }).join('')+'</select>'+segBtn+'</div>'+
@@ -1335,7 +1337,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
 
     var h = cabecera(tit, 'Atletas en filas, días en columnas. Toca una sesión para verla, editarla o publicarla; un hueco, para planificarlo.')+
-      '<div class="ac-barra">'+nav+filtros+segBtn+'<span class="ac-esp"></span>'+copiarBtn+publicar+'</div>'+
+      '<div class="ac-barra">'+nav+filtros+segBtn+'<span class="ac-esp"></span>'+sacarBtn+copiarBtn+publicar+'</div>'+
       '<div class="ac-scroll '+ST.modo+'"><table class="ac-sem"><thead><tr><th class="at">Atleta</th>'+
       dias.map(function(f){ return '<th class="'+(f===hoy?'hoy':'')+'">'+fCorta(f)+' '+MES[deISO(f).getMonth()]+(f===hoy?'<small>Hoy</small>':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
     if (!atls.length) h += '<tr><td class="at"></td><td colspan="7" class="ac-nada">Nadie con ese filtro.</td></tr>';
@@ -2933,6 +2935,147 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       avisar(plural(n,'borrador creado','borradores creados')+(saltar.length?' · '+saltar.length+' saltados por solaparse':''));
       ST.semana = lunesDe(P.p_destino); ST.diaMovil = null;
       recargar();
+    });
+  }
+
+  /* ================= SACAR LA SEMANA · copiar el texto o bajar un Excel =================
+     Andrés (16-nov-2026): «cuando quiero descargar o copiar todo lo de la semana no me
+     deja». «Duplicar semana…» copia la planificación a otra semana; esto SACA la semana
+     que se está viendo: en texto (para WhatsApp, ChatGPT, un correo) o en una hoja.
+     Lo publicado; los borradores solo si se marcan, y salen marcados. Sin notas privadas
+     ni datos de salud. Los atletas con la misma sesión exacta salen juntos, una vez. */
+  var SACAR_EN_LINEA = /^(calentamiento|test)/i;
+  function semanaParaSacar(o){
+    return diasSemana().map(function(f){
+      var grupos = [], porFirma = {}, desc = [], aus = [];
+      o.atletas.forEach(function(aid){
+        var L = sesDe(aid, f);
+        var ent = L.filter(function(s){ return esEntrenoDia(s) && (s.publicada || o.borradores) && !ausDeSesion(s, aid); });
+        if (!ent.length){
+          if (ausDia(aid, f).length) aus.push(nombreDe(aid));
+          else if (L.some(function(s){ return s.clase_dia==='descanso' && !s.archivada_en; })) desc.push(nombreDe(aid));
+          return;
+        }
+        ent.forEach(function(s){
+          var bl = (s.bloques||[]).map(function(b){ return { et:(b.etiqueta||'')+(b.matiz?' — '+b.matiz:''), lin:lineasDe(b), pie:b.nota_pie||'' }; })
+            .filter(function(b){ return b.lin.length; });
+          var k = JSON.stringify([s.momento, s.hora||'', tituloDe(s), !!s.publicada, s.nota_razonamiento||'', bl]);
+          if (!porFirma[k]){ porFirma[k] = { s:s, titulo:tituloDe(s), bloques:bl, quien:[] }; grupos.push(porFirma[k]); }
+          porFirma[k].quien.push(nombreDe(aid));
+        });
+      });
+      return { fecha:f, grupos:grupos, descanso:desc, ausentes:aus };
+    });
+  }
+  function momentoSacar(s){ return MOMENTO[s.momento] ? ' ('+MOMENTO[s.momento].toLowerCase()+(s.hora?' '+hhmm(s.hora):'')+')' : ''; }
+  function textoSemana(S){
+    var dias = diasSemana();
+    var L = [String(ST.g.nombre||'Academia').toUpperCase()+' · Semana del '+fMedia(dias[0])+' al '+fMedia(dias[6]), 'Z = zapatillas · C = clavos · // = recuperación'];
+    S.forEach(function(d){
+      if (!d.grupos.length && !d.descanso.length && !d.ausentes.length) return;
+      L.push('', '======== '+fLarga(d.fecha).toUpperCase()+' ========');
+      d.grupos.forEach(function(g){
+        L.push('', g.quien.join(', ')+' · '+g.titulo+momentoSacar(g.s)+(g.s.publicada?'':' [BORRADOR]'));
+        g.bloques.forEach(function(b){
+          if (SACAR_EN_LINEA.test(b.et) && b.lin.every(function(x){ return x.length<=40; })) L.push(b.et+': '+b.lin.join(' · '));
+          else { L.push(b.et+':'); b.lin.forEach(function(x){ L.push('- '+x); }); }
+          if (b.pie) L.push('  '+b.pie);
+        });
+        if (g.s.nota_razonamiento) L.push('Instrucciones: '+g.s.nota_razonamiento);
+      });
+      if (d.descanso.length) L.push('', 'Descanso: '+d.descanso.join(', '));
+      if (d.ausentes.length) L.push((d.descanso.length?'':'\n')+'No vienen: '+d.ausentes.join(', '));
+    });
+    return L.join('\n');
+  }
+  function filasSemana(S){
+    var R = [['Día','Atletas','Sesión','Bloque','Contenido']];
+    S.forEach(function(d){
+      var primero = true, dia = fLarga(d.fecha); dia = dia.charAt(0).toUpperCase()+dia.slice(1);
+      var pon = function(fila){ if (primero){ fila[0] = dia; primero = false; } R.push(fila); };
+      d.grupos.forEach(function(g){
+        var cab = true;
+        g.bloques.forEach(function(b){
+          b.lin.concat(b.pie ? [b.pie] : []).forEach(function(x, i){
+            pon(['', cab ? g.quien.join(', ') : '', cab ? g.titulo+momentoSacar(g.s)+(g.s.publicada?'':' [BORRADOR]') : '', i===0 ? b.et : '', x]);
+            cab = false;
+          });
+        });
+        if (g.s.nota_razonamiento) pon(['', '', '', 'Instrucciones', g.s.nota_razonamiento]);
+      });
+      if (d.descanso.length) pon(['', d.descanso.join(', '), 'Descanso', '', '']);
+      if (d.ausentes.length) pon(['', d.ausentes.join(', '), 'No vienen', '', '']);
+    });
+    return R;
+  }
+  function cargarXLSX(){
+    return new Promise(function(res){
+      if (window.XLSX) return res(true);
+      var sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      sc.onload = function(){ res(!!window.XLSX); }; sc.onerror = function(){ res(false); };
+      document.head.appendChild(sc);
+    });
+  }
+  function bajarFichero(nombre, blob){
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre;
+    document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }
+  function copiarTextoSacar(ta){
+    var txt = ta.value;
+    var aMano = function(){
+      try { ta.focus(); ta.select(); ta.setSelectionRange(0, txt.length); return document.execCommand('copy'); } catch(e){ return false; }
+    };
+    var ok = function(){ avisar('Semana copiada: pégala donde quieras'); };
+    var mal = function(){ avisar('No he podido copiarla sola: el texto está seleccionado, cópialo a mano.', true); ta.focus(); ta.select(); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, function(){ aMano() ? ok() : mal(); });
+    else aMano() ? ok() : mal();
+  }
+  function dialogoSacar(){
+    var dias = diasSemana();
+    var hayBor = D.ses.some(function(s){ return esEntrenoDia(s) && !s.publicada && dias.indexOf(s.fecha)!==-1; });
+    var marcado = function(a){ return !ST.fAtleta || ST.fAtleta===a.id; };
+    var d = dialogo('<h3>Sacar la semana</h3>'+
+      '<p>Del '+esc(fMedia(dias[0]))+' al '+esc(fMedia(dias[6]))+'. Lo que está <b>publicado</b>, para copiarlo (WhatsApp, ChatGPT, un correo) o bajarlo en una hoja de Excel. Sin notas privadas ni datos de salud.</p>'+
+      '<h4>Atletas</h4><div class="ac-chips">'+D.atl.map(function(a){ return '<label><input type="checkbox" class="sc-at" value="'+a.id+'"'+(marcado(a)?' checked':'')+'>'+esc(a._n)+'</label>'; }).join('')+'</div>'+
+      '<div style="margin-top:6px"><button type="button" class="ac-link" data-sc-todos="1">Todos</button><button type="button" class="ac-link" data-sc-ninguno="1">Ninguno</button></div>'+
+      (hayBor ? '<label class="op" style="margin-top:8px"><input type="checkbox" id="sc-bor"> Incluir los borradores (salen marcados [BORRADOR])</label>' : '')+
+      '<h4>Así sale</h4><textarea id="sc-txt" class="ac-sel" readonly style="width:100%;min-height:240px;font:13px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;overflow:auto"></textarea>'+
+      '<div class="pie"><button type="button" class="ac-btn" data-dlg-no="1">Cerrar</button><button type="button" class="ac-btn" data-sc-xlsx="1">Descargar Excel</button><button type="button" class="ac-btn pri" data-sc-copiar="1">Copiar el texto</button></div>');
+    d.classList.add('ancho');
+    var opciones = function(){
+      return { atletas: Array.prototype.map.call(d.querySelectorAll('.sc-at:checked'), function(c){ return c.value; }),
+               borradores: !!(d.querySelector('#sc-bor') && d.querySelector('#sc-bor').checked) };
+    };
+    var S, pintar = function(){
+      var o = opciones(); S = semanaParaSacar(o);
+      var hay = S.some(function(x){ return x.grupos.length; });
+      d.querySelector('#sc-txt').value = !o.atletas.length ? 'Marca al menos un atleta.' : hay ? textoSemana(S) : 'No hay nada publicado esta semana para esos atletas.'+(hayBor && !o.borradores ? ' Hay borradores: márcalos para incluirlos.' : '');
+      d.querySelectorAll('[data-sc-copiar],[data-sc-xlsx]').forEach(function(b){ b.disabled = !hay; });
+    };
+    pintar();
+    d.addEventListener('change', pintar);
+    d.addEventListener('click', async function(ev){
+      if (ev.target.closest('[data-dlg-no]')){ cerrarDialogo(); return; }
+      if (ev.target.closest('[data-sc-todos]') || ev.target.closest('[data-sc-ninguno]')){ var si = !!ev.target.closest('[data-sc-todos]'); d.querySelectorAll('.sc-at').forEach(function(c){ c.checked = si; }); pintar(); return; }
+      if (ev.target.closest('[data-sc-copiar]')){ copiarTextoSacar(d.querySelector('#sc-txt')); return; }
+      var bx = ev.target.closest('[data-sc-xlsx]');
+      if (!bx) return;
+      var R = filasSemana(S), nombre = 'Academia-semana-'+dias[0].slice(8,10)+'-'+MES[deISO(dias[0]).getMonth()];
+      bx.disabled = true; var t0 = bx.textContent; bx.textContent = 'Preparando…';
+      var ok = await cargarXLSX();
+      bx.disabled = false; bx.textContent = t0;
+      if (ok){
+        var ws = XLSX.utils.aoa_to_sheet(R);
+        ws['!cols'] = [{wch:22},{wch:26},{wch:36},{wch:18},{wch:80}];
+        var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, ('Semana '+fMedia(dias[0])).slice(0,31));
+        XLSX.writeFile(wb, nombre+'.xlsx');
+      } else {
+        // Sin la librería (sin conexión a cdnjs): la misma hoja en CSV, que Excel y Numbers abren igual.
+        var csv = R.map(function(f){ return f.map(function(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }).join(';'); }).join('\r\n');
+        bajarFichero(nombre+'.csv', new Blob(['﻿'+csv+'\r\n'], { type:'text/csv;charset=utf-8;' }));
+      }
+      avisar('Hoja descargada');
     });
   }
 
@@ -6109,6 +6252,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       avisar('Grupo guardado (las sesiones no cambian)'); recargar(); return;
     }
     if (ds.copiar){ dialogoCopiar(); return; }
+    if (ds.sacar){ dialogoSacar(); return; }
     if (ds.aplicarGt){
       var gt = D.gt.filter(function(x){ return x.id===ds.aplicarGt; })[0]; if (!gt) return;
       var ms = miembrosGT(gt); if (ms.length<2) return;
