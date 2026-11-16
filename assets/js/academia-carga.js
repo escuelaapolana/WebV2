@@ -86,8 +86,26 @@
     if ((m = /^([A-Za-zÁÉÍÓÚáéíóúñÑ ]{3,30}):\s*/.exec(t)) && !/^\d/.test(t)) { etiqueta = m[1].trim(); t = t.slice(m[0].length); }
 
     var comps = [];
+    // 0) Carrera por kilómetros: «10 km CC a 4:50-5:15/km», «Tirada 16 km CC», «2 km en 7:40»
+    //    («Completar 11 km del día» es el total del día, no se suma aquí)
+    if ((m = /^(?:tirada\s+(?:de\s+)?)?(\d+(?:[.,]\d+)?)\s*km\b([^+]*)/i.exec(t))) {
+      var ck = { clase:'carrera', reps:1, m:Math.round(num(m[1]) * 1000), km_rodaje:/\bcc\b|tirada|rodaje|trote/i.test(t), texto:m[0].trim() };
+      var rk = /(\d+:\d{2})\s*-\s*(\d+:\d{2})\s*\/\s*km/.exec(m[2] || '');
+      if (rk) ck.ritmo_km = [rk[1], rk[2]];
+      comps.push(ck);
+      t.slice(m[0].length).split('+').map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(x){ comps.push(extra(x, E)); });
+    }
+    // 0 bis) «4 bloques: 20 m arrastre + 20 m libre»: N bloques de esas partes
+    else if ((m = /^(\d+)\s*bloques?\s*:\s*(.+)$/i.exec(t)) && m[2].split('+').every(function(x){ return /^\s*\d/.test(x); })) {
+      if (prefB == null) E.bloques = +m[1];
+      m[2].split('+').forEach(function(x){ comps.push(componenteCarrera(x.trim(), E)); });
+    }
+    // 0 ter) Pirámide «100-200-300-200-100 en …»: cada tramo una vez
+    else if ((m = /^pir[aá]mide\s+((?:\d+\s*-\s*)+\d+)/i.exec(t))) {
+      m[1].split('-').forEach(function(d){ comps.push(componenteCarrera(d.trim() + ' m', E)); });
+    }
     // 1) Carrera por minutos: «45′ CC a 4:55-5:15/km», «50-55′ CC», «15′ CC + técnica»
-    if ((m = /^(\d+(?:[.,]\d+)?)(?:\s*-\s*(\d+(?:[.,]\d+)?))?\s*′\s*(cc|trote|rodaje|carrera continua)\b([^+]*)/i.exec(t))) {
+    else if ((m = /^(\d+(?:[.,]\d+)?)(?:\s*-\s*(\d+(?:[.,]\d+)?))?\s*′\s*(cc|trote|rodaje|carrera continua)\b([^+]*)/i.exec(t))) {
       var c = { clase:'carrera', reps:1, min:rango(m[1], m[2]), texto:m[0].trim() };
       var rit = /(\d+:\d{2})\s*-\s*(\d+:\d{2})\s*\/\s*km/.exec(m[4] || '');
       if (rit) c.ritmo_km = [rit[1], rit[2]];
@@ -130,7 +148,12 @@
         // «Media sentadilla + saltos al cajón 3x(3+2) al 75-80% RM»: un ejercicio por número
         var ejs = antes.split('+').map(function(x){ return x.trim(); });
         dentro.forEach(function(n, i){ comps.push(componenteEjercicio(ejs[i] || ejs[ejs.length - 1], +n, i === 0 ? despues : '', E)); });
-      } else dentro.forEach(function(x){ comps.push(componenteCarrera(x, E)); });
+      } else dentro.forEach(function(x){
+        // «2x(5x200 en 31,5″)»: dentro va una serie, no una distancia suelta
+        var sx = /^(\d+)\s*x\s*(\d+)\s*(?:m\b)?/.exec(x);
+        if (sx) { var cr = componenteCarrera(sx[2] + ' m ' + x.slice(sx[0].length), E); cr.reps = +sx[1]; comps.push(cr); }
+        else comps.push(componenteCarrera(x, E));
+      });
     }
     // 5) Fuerza «Media cargada 3x3 al 60-65% RM», «Tren superior 3x8 RIR 3»
     else if ((m = /^([A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]{2,40}?)\s+(\d+)\s*x\s*(\d+)(\s*\/\s*(?:pierna|lado))?\s*(.*)$/i.exec(t)) && !/\bm\b/.test(m[5].split(/al|rir/i)[0])) {
@@ -240,7 +263,7 @@
         if (c.lanzado) p = 'vmax';
         else if (c.salidas || c.arrastre) p = 'aceleracion';
         else if (c.libre && E.componentes.some(function(x){ return x.arrastre; })) p = 'aceleracion';
-        else if (c.min != null) p = 'aerobico';
+        else if (c.min != null || c.km_rodaje) p = 'aerobico';
       } else if (c.clase === 'movilidad') p = c.etiquetas && c.etiquetas[0] === 'preventivo' ? 'preventivo' : 'movilidad';
       else if (c.clase === 'vallas') p = 'tecnica_vallas';
       c.objetivo = p; c.clasif = p ? 'propuesta' : 'pendiente'; if (p) c.origen_objetivo = 'texto';
