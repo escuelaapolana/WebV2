@@ -328,6 +328,10 @@
     var versionSegura = !!(reg && reg.sesion_version_id && reg.version_garantia === 'exacta');
     if (globalAt === 'completo' && !versionSegura) globalAt = 'completo_sin_garantia';
     var globalEnt = !ent ? null : ent.estado;
+    // «Sin marcar» solo dice «no lo hice» si marcó algo en la sesión. Si dice «completa» y no tachó
+    // ningún bloque (pasa en el modo simple), los ✓ vacíos no contradicen su declaración global.
+    var marcoAlgo = Object.keys(TR).some(function(k){ var S = TR[k] && Array.isArray(TR[k].series) ? TR[k].series : [];
+      return S.some(function(x){ return x && (x.hecha === true || (x.tiempo != null && String(x.tiempo).trim() !== '') || (x.reps != null && String(x.reps).trim() !== '') || (x.peso != null && String(x.peso).trim() !== '')); }); });
     var out = [];
     filas.forEach(function(F){
       var E = F.estructura, A = F.atomos, tr = TR[E.fila_id] || null;
@@ -344,7 +348,7 @@
           } else if (tr.medida === 'hecho') {
             var h = S[0] && S[0].hecha;
             if (h === true && !a.opcional) at = 'hecho';
-            else if (h === false && !a.opcional) contra = true;          // desmarcado a propósito
+            else if (h === false && !a.opcional && marcoAlgo) contra = true;   // desmarcado a propósito (marcó otras)
           } else {
             // una entrada por serie (fuerza) o por repetición (carrera), en orden
             var idx = a.c.clase === 'carrera' ? (a.opcional ? oblig.length + (a.bloque - E.bloques) - 1 : oblig.indexOf(a)) : a.bloque - 1;
@@ -355,7 +359,7 @@
               var tieneT = s.tiempo != null && String(s.tiempo).trim() !== '';
               if (tieneT) tiempos.push({ fuente:'atleta', valor:s.tiempo, metodo:'no_consta' });
               if (s.hecha === true || repsDecl != null || tieneT) at = 'hecho';
-              else if (s.hecha === false) contra = true;                   // esa serie, sin marcar
+              else if (s.hecha === false && marcoAlgo) contra = true;      // esa serie, sin marcar (marcó otras)
             }
           }
         }
