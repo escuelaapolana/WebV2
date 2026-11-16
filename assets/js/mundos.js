@@ -190,6 +190,7 @@
         {g:'Competición y tests', t:'Tests y pruebas',  i:'clipboard', url:B+'admin/tests/',        d:'Batería de tests y marcas.'},
         {g:'Competición y tests', t:'Competiciones',    i:'flag',      url:B+'admin/competiciones/', d:'Carreras e inscripciones.'},
         {g:'Competición y tests', t:'Quién va a ir',    i:'check',     url:B+'admin/confirmaciones/', d:'Confirmaciones para cada carrera.'},
+        {g:'Competición y tests', t:'Bonos de competición', i:'euro', url:B+'admin/bonos/', d:'Lo que ha pagado cada atleta para sus competiciones y lo que le queda.'},
         {g:'Competición y tests', t:'Liga y récords',   i:'trophy',    url:B+'admin/liga/',         d:'Liga Apolana y récords del club.'}
       ] },
     { key:'academia', nombre:'Academia AC98', corto:'Academia AC98', i:'bolt', dot:'#3D55A0', home:B+'portal/academia/',
@@ -747,7 +748,7 @@
     grupos:'general', mundos:'general', campo:'general', buzon:'general', automatizaciones:'general',
     cubo:'cubo', 'cubo-altas':'cubo', 'cubo-prueba':'cubo', asistencia:'cubo',
     natacion:'natacion',
-    tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista', 'cuotas-entreno':'pista',
+    tests:'pista', pruebas:'pista', competiciones:'pista', confirmaciones:'pista', liga:'pista', records:'pista', palmares:'pista', retos:'pista', 'cuotas-entreno':'pista', bonos:'pista',
     repartir:'escuela-atl', historico:'escuela-atl', 'escuela-grupos':'escuela-atl', altas:'general',
     eventos:'comunicacion', enlaces:'general', redes:'comunicacion', plantillas:'comunicacion', noticias:'comunicacion', 'avisos-push':'comunicacion'
   };

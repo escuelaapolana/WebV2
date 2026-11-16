@@ -74,7 +74,7 @@
     importar: svg('<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'),
     confirmaciones: svg('<path d="M4 12.5l5 5L20 6.5"/>'),
     altas: svg('<path d="M3 13l3-8h12l3 8"/><path d="M3 13v5h18v-5h-6a3 3 0 0 1-6 0z"/>'),
-    dinero: IC.dinero, cobros: IC.dinero, 'pagos-online': IC.dinero, tarifas: IC.dinero, 'cuotas-entreno': IC.dinero,
+    dinero: IC.dinero, cobros: IC.dinero, 'pagos-online': IC.dinero, tarifas: IC.dinero, 'cuotas-entreno': IC.dinero, bonos: IC.dinero,
     pedidos: _caja, cubo: _caja, 'cubo-altas': _caja,
     eventos: svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'),
     competiciones: _trofeo, liga: _trofeo, retos: _trofeo, records: _trofeo,
@@ -333,7 +333,7 @@
     } catch (e) {}
     try {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=df02a3bd';
+      s.src = base() + 'assets/js/mundos.js?v=402d6f5e';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;
@@ -1094,7 +1094,7 @@
     _shellCbs.push(cb);
     if (!document.querySelector('script[data-mundos-shell]')) {
       var s = document.createElement('script');
-      s.src = base() + 'assets/js/mundos.js?v=df02a3bd';
+      s.src = base() + 'assets/js/mundos.js?v=402d6f5e';
       s.setAttribute('data-mundos-shell', '1');
       s.onload = function () {
         var sh = window.APOLANA_MUNDOS_SHELL;

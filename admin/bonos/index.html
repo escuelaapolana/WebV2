@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bonos de competición · Panel Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://icaxokjsvhlreuwpyxeb.supabase.co" crossorigin>
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=5f881ca4">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=421f991c" defer></script>
+<script src="../../assets/js/admin-auth.js?v=c8d43e54"></script>
+<script src="../../assets/js/admin-tabbar.js?v=549bb868" defer></script>
+<style>
+  /* ============================================================
+     BONOS DE COMPETICIÓN (16-nov-2026)
+     ------------------------------------------------------------
+     Mismo lenguaje que «Socios»: cabecera grande, cifras que
+     filtran, buscador + chips, una tarjeta por solicitud con la
+     franja de color de su estado, y una hoja inferior para
+     llamar, escribir por WhatsApp y cambiar el estado. Lo único
+     que se guarda sigue siendo el estado (pista_pruebas.estado).
+     Prefijo bo-.
+     ============================================================ */
+  /* Necesario para que admin-tabbar.js monte la barra lateral de escritorio. */
+  .admin-wrap { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .bo-wrap { max-width: 1000px; margin: 0 auto; padding: clamp(16px,3vw,26px) clamp(14px,4vw,26px) 110px; color: var(--navy,#26374B); }
+  .bo-wrap *, .bo-capa * { box-sizing: border-box; }
+  .bo-cab h1 { font-family: var(--fuente-titulo,'Bricolage Grotesque',sans-serif); font-weight: 700; text-transform: uppercase;
+    letter-spacing: -0.01em; font-size: clamp(24px,5vw,34px); color: var(--navy,#26374B); margin: 2px 0 4px; line-height: 1; }
+  .bo-cab p { color: var(--texto-suave,#6E6656); font-size: 15px; margin: 6px 0 0; line-height: 1.45; max-width: 70ch; }
+  .bo-cab a { color: var(--azul-oscuro,#2A5E8C); }
+
+  /* --- Cifras: pulsar una filtra la lista --- */
+  .bo-cifras { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 18px 0 6px; }
+  .bo-cifra { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 12px 24px -20px rgba(30,45,65,.35); }
+  .bo-cifra:hover { border-color: var(--linea-borde,#C9C0AE); }
+  .bo-cifra:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .bo-cifra b { display: block; font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 24px; line-height: 1.15; }
+  .bo-cifra span { font-size: 13px; color: var(--texto-suave,#6E6656); }
+  .bo-cifra.nueva b { color: #2F6FA8; } .bo-cifra.convertido b { color: #3E7A34; } .bo-cifra.descartado b { color: #8A816E; }
+  .bo-cifra.aviso { background: #FBF1DE; border-color: #E9CE9A; }
+  .bo-cifra.aviso b, .bo-cifra.aviso span { color: #8A5307; }
+  .bo-cifra.on { border-color: var(--navy,#26374B); box-shadow: inset 0 0 0 1px var(--navy,#26374B); }
+  @media (max-width: 620px) { .bo-cifras { grid-template-columns: repeat(2, minmax(0,1fr)); } .bo-cifra b { font-size: 21px; } }
+
+  /* --- Buscador + chips --- */
+  .bo-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0 4px; }
+  .bo-buscar { flex: 1 1 260px; min-width: 0; min-height: 48px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; padding: 0 14px;
+    font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); }
+  .bo-buscar:focus { outline: 2px solid var(--azul-filete,#3B85C0); border-color: var(--azul-filete,#3B85C0); }
+  .bo-chips { display: flex; gap: 4px; background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; padding: 4px;
+    max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .bo-chips::-webkit-scrollbar { display: none; }
+  .bo-chips button { flex: 1 0 auto; min-height: 38px; padding: 0 13px; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 700;
+    font-size: 13.5px; color: var(--texto-suave,#6E6656); cursor: pointer; white-space: nowrap; }
+  .bo-chips button:hover { color: var(--navy,#26374B); }
+  .bo-chips button.on { background: var(--navy,#26374B); color: #fff; }
+  .bo-cuenta { display: block; font-size: 13px; color: var(--texto-suave,#6E6656); margin: 4px 2px 0; min-height: 20px; }
+  @media (max-width: 620px) { .bo-chips { width: 100%; border-radius: 14px; } }
+
+  /* --- Fila-tarjeta: toda ella abre la hoja --- */
+  .bo-lista { container: bo-lista / inline-size; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .bo-fila { position: relative; display: grid; grid-template-columns: 40px minmax(0,1.6fr) 120px minmax(0,1fr) 150px 14px; gap: 0 14px; align-items: center;
+    background: #fff; border: 1px solid var(--linea-marcada,#E4DCCB); border-left: 4px solid #CFC6B4; border-radius: 14px; padding: 10px 14px 10px 12px;
+    cursor: pointer; box-shadow: 0 1px 2px rgba(30,45,65,.05), 0 10px 22px -20px rgba(30,45,65,.4); transition: box-shadow .15s, transform .15s; }
+  .bo-fila:hover { box-shadow: 0 1px 2px rgba(30,45,65,.06), 0 16px 26px -18px rgba(30,45,65,.45); transform: translateY(-1px); }
+  .bo-fila:focus-visible { outline: 3px solid var(--azul-filete,#3B85C0); outline-offset: 2px; }
+  .bo-fila.nueva { border-left-color: #3B85C0; }
+  .bo-fila.contactado { border-left-color: #D9A441; }
+  .bo-fila.convertido { border-left-color: #6FAF7E; }
+  .bo-fila.descartado { border-left-color: #CFC6B4; background: #FCFBF8; }
+  .bo-fila.descartado .bo-per b { color: var(--texto-suave,#6E6656); }
+  .bo-ini { width: 40px; height: 40px; border-radius: 999px; background: #EAF2FA; color: var(--azul-oscuro,#2A5E8C); display: flex; align-items: center;
+    justify-content: center; font-family: var(--fuente-titulo); font-weight: 700; font-size: 14px; }
+  .bo-fila.descartado .bo-ini { background: #F0EBE0; color: #8A816E; }
+  .bo-per { min-width: 0; }
+  .bo-per b { display: block; font-size: 15.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .bo-per small { display: block; font-size: 13px; color: var(--texto-tenue,#9A927F); margin-top: 1px; }
+  .bo-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 3px 10px 3px 9px; border-radius: 999px;
+    background: #F0EBE0; color: #6E6656; white-space: nowrap; justify-self: start; }
+  .bo-pill .pt { width: 7px; height: 7px; border-radius: 999px; background: #9A927F; flex: 0 0 7px; }
+  .bo-pill.nueva { background: #E6F0FB; color: #2F6FA8; } .bo-pill.nueva .pt { background: #3B85C0; }
+  .bo-pill.contactado { background: #FBF1D9; color: #8A5307; } .bo-pill.contactado .pt { background: #D9A441; }
+  .bo-pill.convertido { background: #E7F3EA; color: #23603A; } .bo-pill.convertido .pt { background: #3E7A34; }
+  .bo-dia { font-size: 13.5px; color: var(--texto-suave,#6E6656); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bo-tel { position: relative; z-index: 1; justify-self: start; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px 0 10px;
+    border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 999px; color: var(--azul-oscuro,#1E4E78); text-decoration: none; font-size: 13.5px;
+    font-variant-numeric: tabular-nums; background: #fff; white-space: nowrap; }
+  .bo-tel:hover { background: #F2F7FC; border-color: #CFE2F1; }
+  .bo-tel svg { width: 15px; height: 15px; flex: 0 0 15px; }
+  .bo-tel.sin { color: var(--texto-tenue,#9A927F); border-style: dashed; cursor: default; }
+  .bo-flecha { color: #B5AC99; font-size: 20px; line-height: 1; text-align: right; }
+  .bo-cab-cols { display: grid; grid-template-columns: 40px minmax(0,1.6fr) 120px minmax(0,1fr) 150px 14px; gap: 0 14px; padding: 12px 14px 0 16px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-tenue,#9A927F); }
+  @container bo-lista (max-width: 640px) {
+    .bo-fila { display: flex; flex-wrap: wrap; gap: 8px 10px; padding: 11px 12px 12px 10px; }
+    .bo-ini { order: 0; flex: 0 0 40px; }
+    .bo-per { order: 1; flex: 1 1 0; }
+    .bo-flecha { order: 2; font-size: 22px; }
+    .bo-fila::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+    .bo-pill { order: 4; }
+    .bo-dia { order: 5; align-self: center; flex: 1 1 0; min-width: 0; }
+    .bo-tel { order: 6; margin-left: auto; }
+    .bo-tel.sin { display: none; }
+  }
+  @media (max-width: 700px) { .bo-cab-cols { display: none; } }
+  .bo-vacio { text-align: center; color: var(--texto-suave,#6E6656); padding: 30px 18px; background: #fff; border: 1px dashed var(--linea-borde,#C9C0AE); border-radius: 14px; margin-top: 10px; line-height: 1.5; }
+  .bo-vacio b { display: block; color: var(--navy,#26374B); font-size: 16px; margin-bottom: 4px; }
+  .bo-vacio button { margin-top: 10px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--linea-borde,#C9C0AE); background: #fff;
+    font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+
+  /* --- Hoja inferior --- */
+  .bo-velo { position: fixed; inset: 0; background: rgba(20,30,45,.45); z-index: 9000; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .bo-velo.ver { opacity: 1; pointer-events: auto; }
+  .bo-hoja { position: fixed; left: 50%; bottom: 0; width: min(560px,100%); transform: translate(-50%,105%); z-index: 9001; background: #fff; color: var(--navy,#26374B);
+    border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom)); transition: transform .25s ease; max-height: 92vh; overflow: auto;
+    overscroll-behavior: contain; box-shadow: 0 -10px 40px rgba(20,30,45,.25); visibility: hidden; }
+  .bo-hoja.ver { transform: translate(-50%,0); visibility: visible; }
+  @media (prefers-reduced-motion: reduce) { .bo-hoja, .bo-velo, .bo-fila { transition: none; } }
+  .bo-hoja .asa { width: 42px; height: 5px; border-radius: 9px; background: #DDD5C4; margin: 2px auto 12px; }
+  .bo-hoja-cab { display: flex; align-items: center; gap: 12px; }
+  .bo-hoja-cab .bo-ini { width: 48px; height: 48px; flex: 0 0 48px; font-size: 16px; }
+  .bo-hoja-cab > div { flex: 1; min-width: 0; }
+  .bo-hoja h3 { margin: 0; font-family: var(--fuente-titulo); font-size: 22px; line-height: 1.15; overflow-wrap: anywhere; }
+  .bo-hoja .sub { color: var(--texto-suave,#6E6656); font-size: 13.5px; margin: 3px 0 0; }
+  .bo-cerrar { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff;
+    color: var(--texto-suave,#6E6656); font-size: 20px; line-height: 1; cursor: pointer; }
+  .bo-datos { margin: 14px 0 4px; background: var(--crema,#FBF9F4); border-radius: 14px; padding: 4px 14px; }
+  .bo-datos div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #EFE9DA; font-size: 14.5px; }
+  .bo-datos div:last-child { border-bottom: 0; }
+  .bo-datos span { color: var(--texto-suave,#6E6656); flex: 0 0 auto; }
+  .bo-datos b { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+  .bo-et { margin: 16px 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--texto-suave,#6E6656); }
+  .bo-estados { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
+  .bo-estados button { min-height: 46px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; font-size: 13.5px;
+    font-weight: 700; color: var(--navy,#26374B); cursor: pointer; padding: 4px 6px; line-height: 1.15; }
+  .bo-estados button:hover { background: var(--crema,#FBF9F4); }
+  .bo-estados button[aria-pressed="true"] { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .bo-estados button[aria-pressed="true"].e-nueva { background: #2F6FA8; border-color: #2F6FA8; }
+  .bo-estados button[aria-pressed="true"].e-contactado { background: #A86A10; border-color: #A86A10; }
+  .bo-estados button[aria-pressed="true"].e-convertido { background: #2F7A45; border-color: #2F7A45; }
+  .bo-estados button[aria-pressed="true"].e-descartado { background: #8A816E; border-color: #8A816E; }
+  .bo-estados button:disabled { opacity: .6; cursor: wait; }
+  @media (max-width: 400px) { .bo-estados { grid-template-columns: 1fr 1fr; } }
+  .bo-acc { display: grid; gap: 8px; margin-top: 14px; }
+  .bo-acc a { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 12px; font-weight: 700; font-size: 15px;
+    text-decoration: none; border: 1px solid var(--linea-marcada,#E4DCCB); color: var(--navy,#26374B); background: #fff; }
+  .bo-acc a:hover { background: var(--crema,#FBF9F4); }
+  .bo-acc a.wa { background: #1F8F4E; border-color: #1F8F4E; color: #fff; }
+  .bo-acc a.wa:hover { background: #187A41; }
+  .bo-acc .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bo-acc svg { width: 17px; height: 17px; }
+  .bo-ayuda { margin: 12px 2px 0; font-size: 13px; color: var(--texto-suave,#6E6656); line-height: 1.45; }
+  .bo-ayuda a { color: var(--azul-oscuro,#2A5E8C); }
+</style>
+<style>
+  .bo-fila { grid-template-columns: 40px minmax(0,1.6fr) 140px minmax(0,1fr) 14px; }
+  .bo-cab-cols { grid-template-columns: 40px minmax(0,1.6fr) 140px minmax(0,1fr) 14px; }
+  .bo-fila.neg { border-left-color: #C2412D; } .bo-fila.cero { border-left-color: #D9A441; } .bo-fila.ok { border-left-color: #6FAF7E; }
+  .bo-saldo { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; font-size: 17px; white-space: nowrap; }
+  .bo-saldo.neg { color: #B23A26; } .bo-saldo.cero { color: #8A5307; } .bo-saldo.ok { color: #23603A; }
+  .bo-cifra.neg b { color: #B23A26; }
+  .bo-grande { display:flex; align-items: baseline; gap: 10px; margin: 14px 0 2px; }
+  .bo-grande b { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-size: 34px; line-height: 1; }
+  .bo-grande span { color: var(--texto-suave,#6E6656); font-size: 14px; }
+  .bo-movs { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 14px; overflow: hidden; }
+  .bo-movs li { display: grid; grid-template-columns: 62px minmax(0,1fr) auto 32px; gap: 10px; align-items: center; padding: 9px 10px 9px 12px; border-bottom: 1px solid #EFE9DA; font-size: 14px; }
+  .bo-movs li:last-child { border-bottom: 0; }
+  .bo-movs .f { color: var(--texto-suave,#6E6656); font-size: 13px; white-space: nowrap; }
+  .bo-movs .c { min-width: 0; overflow-wrap: anywhere; }
+  .bo-movs .i { font-family: var(--fuente-dato,'IBM Plex Mono',monospace); font-weight: 700; white-space: nowrap; }
+  .bo-movs .i.mas { color: #23603A; } .bo-movs .i.menos { color: var(--navy,#26374B); }
+  .bo-movs button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid transparent; background: none; color: #B5AC99; font-size: 18px; cursor: pointer; }
+  .bo-movs button:hover { border-color: #E9C3BB; color: #B23A26; background: #FDF3F1; }
+  .bo-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .bo-tabs button { min-height: 44px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; font-weight: 700; color: var(--navy,#26374B); cursor: pointer; }
+  .bo-tabs button[aria-pressed="true"] { background: var(--navy,#26374B); border-color: var(--navy,#26374B); color: #fff; }
+  .bo-form { display: grid; gap: 10px; margin-top: 10px; }
+  .bo-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; color: var(--texto-suave,#6E6656); }
+  .bo-form input, .bo-form select { min-height: 46px; border: 1px solid var(--linea-marcada,#E4DCCB); border-radius: 12px; padding: 0 12px; font: inherit; font-size: 16px; background: #fff; color: var(--navy,#26374B); width: 100%; }
+  .bo-form [hidden] { display: none; }
+  .bo-form .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .bo-guardar { min-height: 48px; border-radius: 12px; border: 0; background: var(--navy,#26374B); color: #fff; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .bo-guardar:disabled { opacity: .6; cursor: wait; }
+  .bo-nuevo { min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--navy,#26374B); background: var(--navy,#26374B); color: #fff; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .bo-sugs { display: grid; gap: 6px; margin-top: 8px; max-height: 260px; overflow: auto; }
+  .bo-sugs button { text-align: left; min-height: 44px; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--linea-marcada,#E4DCCB); background: #fff; font: inherit; color: var(--navy,#26374B); cursor: pointer; }
+  .bo-sugs button small { display: block; color: var(--texto-tenue,#9A927F); font-size: 12.5px; }
+  @container bo-lista (max-width: 640px) {
+    .bo-fila { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+    .bo-saldo { order: 2; margin-left: auto; }
+    .bo-dia { order: 5; flex-basis: 100%; padding-left: 50px; }
+  }
+</style>
+</head>
+<body class="adm-piel">
+
+<div class="admin-wrap">
+  <div class="bo-wrap" id="bo">
+    <div class="bo-cab"><h1>Bonos de competición</h1><p>Cargando…</p></div>
+  </div>
+</div>
+
+<div class="bo-capa">
+  <div class="bo-velo" id="bo-velo"></div>
+  <div class="bo-hoja" id="bo-hoja" role="dialog" aria-modal="true" aria-labelledby="bo-h-nombre">
+    <div class="asa" aria-hidden="true"></div>
+    <div class="bo-hoja-cab">
+      <span class="bo-ini" id="bo-h-ini"></span>
+      <div><h3 id="bo-h-nombre"></h3><p class="sub" id="bo-h-sub"></p></div>
+      <button type="button" class="bo-cerrar" id="bo-h-cerrar" aria-label="Cerrar">×</button>
+    </div>
+    <div id="bo-h-cuerpo"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   BONOS DE COMPETICIÓN (16-nov-2026)
+   ------------------------------------------------------------
+   El bono en euros de cada atleta para pagar sus competiciones
+   (sub-18 para arriba). Antes vivía en un Excel de Andrés: pagan
+   20-30 € y se va restando lo de cada competición (controles 5 €,
+   Natalia Marco 8 €, Cto. de España 10 €…).
+   Tablas de la mig 012 que nunca se habían usado:
+     bono_movimientos  (+ recarga / − competición)
+     bono_saldo        (vista: suma por atleta)
+   El atleta (o su familia) ve su saldo en su app; aquí lo mueve
+   el staff («staff mueve el bono»: admin o su entrenador).
+   ============================================================ */
+APOLANA_ADMIN.listo(function (sb) {
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); };
+  var COSTE_ESTANDAR = 5;
+  var MOVS = [], ATLETAS = {}, TODOS = [], COMPS = [], filtro = 'todos', montado = false;
+  var EXTRA = {};   // atletas abiertos a mano sin movimientos todavía
+
+  function eur(n) { n = Number(n) || 0; return (n < 0 ? '−' : '') + Math.abs(n).toLocaleString('es-ES', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; }
+  function hoy() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function fCorta(s) { if (!s) return ''; var t = String(s).slice(0, 10).split('-'); var M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']; return (+t[2]) + ' ' + M[+t[1] - 1] + (t[0] !== String(new Date().getFullYear()) ? ' ' + t[0].slice(2) : ''); }
+  function nombreDe(a) { var n = ((a && a.nombre) || '') + ' ' + ((a && a.apellidos) || ''); n = n.trim().toLowerCase().replace(/(^|[\s-])\S/g, function (x) { return x.toUpperCase(); }); return n || 'Sin nombre'; }
+  function iniciales(n) { var p = String(n || '').trim().split(/\s+/); return ((p[0] ? p[0][0] : '') + (p[1] ? p[1][0] : '')).toUpperCase() || '·'; }
+  function claseSaldo(s) { return s < 0 ? 'neg' : (s < COSTE_ESTANDAR ? 'cero' : 'ok'); }
+
+  async function cargar() {
+    var r = await Promise.all([
+      sb.from('bono_movimientos').select('id,atleta_id,concepto,importe,competicion_id,fecha,created_at').order('fecha', { ascending: false }).order('created_at', { ascending: false }),
+      sb.from('atletas').select('id,nombre,apellidos,estado').neq('estado', 'baja').order('nombre'),
+      sb.from('competiciones').select('id,nombre,fecha_inicio,coste,ambito').in('ambito', ['pista', 'atletismo']).gte('fecha_inicio', '2025-09-01').order('fecha_inicio')
+    ]);
+    var err = r[0].error || r[1].error;
+    if (err) { $('bo').innerHTML = '<div class="bo-cab"><h1>Bonos de competición</h1></div>' + ADM.error(err.message, cargar); montado = false; return; }
+    MOVS = r[0].data || [];
+    TODOS = r[1].data || [];
+    COMPS = (r[2] && r[2].data) || [];
+    ATLETAS = {};
+    TODOS.forEach(function (a) { ATLETAS[a.id] = a; });
+    // Quien tiene movimientos pero está de baja también tiene que salir.
+    var faltan = MOVS.map(function (m) { return m.atleta_id; }).filter(function (id, i, arr) { return !ATLETAS[id] && arr.indexOf(id) === i; });
+    if (faltan.length) {
+      var rb = await sb.from('atletas').select('id,nombre,apellidos,estado').in('id', faltan);
+      (rb.data || []).forEach(function (a) { ATLETAS[a.id] = a; });
+    }
+    if (!montado) montar(); else { pintarCifras(); pintarLista(); }
+    if (abiertoId) pintarHoja();
+  }
+
+  function resumen() {
+    var por = {};
+    MOVS.forEach(function (m) {
+      var x = por[m.atleta_id] || (por[m.atleta_id] = { id: m.atleta_id, saldo: 0, pagado: 0, comps: 0, ultima: '' });
+      x.saldo += Number(m.importe);
+      if (Number(m.importe) > 0) x.pagado += Number(m.importe); else x.comps++;
+      if (!x.ultima || m.fecha > x.ultima) x.ultima = m.fecha;
+    });
+    Object.keys(EXTRA).forEach(function (id) { if (!por[id]) por[id] = { id: id, saldo: 0, pagado: 0, comps: 0, ultima: '' }; });
+    return Object.keys(por).map(function (k) { var x = por[k]; x.saldo = Math.round(x.saldo * 100) / 100; x.atleta = ATLETAS[k]; return x; });
+  }
+
+  function visibles() {
+    var q = ($('bo-buscar').value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return resumen().filter(function (x) {
+      if (filtro === 'neg' && !(x.saldo < 0)) return false;
+      if (filtro === 'poco' && !(x.saldo >= 0 && x.saldo < COSTE_ESTANDAR)) return false;
+      if (filtro === 'ok' && !(x.saldo >= COSTE_ESTANDAR)) return false;
+      if (q && nombreDe(x.atleta).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(q) === -1) return false;
+      return true;
+    }).sort(function (a, b) { return a.saldo - b.saldo || nombreDe(a.atleta).localeCompare(nombreDe(b.atleta), 'es'); });
+  }
+
+  function pintarCifras() {
+    var R = resumen();
+    var neg = R.filter(function (x) { return x.saldo < 0; });
+    var poco = R.filter(function (x) { return x.saldo >= 0 && x.saldo < COSTE_ESTANDAR; });
+    var deuda = neg.reduce(function (s, x) { return s - x.saldo; }, 0);
+    var total = R.reduce(function (s, x) { return s + Math.max(0, x.saldo); }, 0);
+    $('bo-cifras').innerHTML =
+      '<button type="button" class="bo-cifra" data-f="todos"><b>' + R.length + '</b><span>atletas con bono</span></button>' +
+      '<button type="button" class="bo-cifra bo-cifra' + (neg.length ? ' neg aviso' : '') + '" data-f="neg"><b>' + neg.length + '</b><span>en negativo' + (deuda ? ' · deben ' + eur(deuda) : '') + '</span></button>' +
+      '<button type="button" class="bo-cifra" data-f="poco"><b>' + poco.length + '</b><span>sin saldo para otra</span></button>' +
+      '<button type="button" class="bo-cifra convertido" data-f="ok"><b>' + eur(total) + '</b><span>de saldo a favor</span></button>';
+  }
+
+  function filaHtml(x) {
+    var c = claseSaldo(x.saldo), n = nombreDe(x.atleta);
+    var quedan = x.saldo >= COSTE_ESTANDAR ? '≈ ' + Math.floor(x.saldo / COSTE_ESTANDAR) + ' control' + (Math.floor(x.saldo / COSTE_ESTANDAR) === 1 ? '' : 'es') : (x.saldo < 0 ? 'debe ' + eur(-x.saldo) : 'recargar');
+    return '<div class="bo-fila ' + c + '" tabindex="0" data-id="' + esc(x.id) + '">' +
+      '<span class="bo-ini">' + esc(iniciales(n)) + '</span>' +
+      '<span class="bo-per"><b>' + esc(n) + '</b><small>' + esc((x.atleta && x.atleta.estado === 'baja' ? 'de baja · ' : '') + 'pagado ' + eur(x.pagado) + ' · ' + x.comps + (x.comps === 1 ? ' competición' : ' competiciones')) + '</small></span>' +
+      '<span class="bo-saldo ' + c + '">' + eur(x.saldo) + '</span>' +
+      '<span class="bo-dia">' + esc(quedan) + (x.ultima ? ' · último apunte ' + fCorta(x.ultima) : '') + '</span>' +
+      '<span class="bo-flecha" aria-hidden="true">›</span></div>';
+  }
+
+  function pintarLista() {
+    Array.prototype.forEach.call(document.querySelectorAll('.bo-cifra[data-f]'), function (c) { c.classList.toggle('on', c.getAttribute('data-f') === filtro && filtro !== 'todos'); });
+    var lista = visibles();
+    $('bo-cuenta').textContent = lista.length + (lista.length === 1 ? ' atleta' : ' atletas');
+    if (!lista.length) {
+      $('bo-lista').innerHTML = '<div class="bo-vacio"><b>Nadie con este filtro</b>' + (resumen().length ? 'Prueba con otro filtro o quita la búsqueda.' : 'Pulsa «Añadir atleta» para apuntar el primer bono.') + '</div>';
+      return;
+    }
+    $('bo-lista').innerHTML = '<div class="bo-cab-cols" aria-hidden="true"><span></span><span>Atleta</span><span>Saldo</span><span>Le da para</span><span></span></div>' +
+      '<div class="bo-lista">' + lista.map(filaHtml).join('') + '</div>';
+  }
+
+  function montar() {
+    montado = true;
+    $('bo').innerHTML =
+      '<div class="bo-cab"><h1>Bonos de competición</h1><p>Lo que ha pagado cada atleta para sus competiciones y lo que se ha ido gastando. Las competiciones de sub-18 para arriba cuestan (controles 5 €, Campeonatos de España 10 €…): se paga un bono y se va restando. Toca a un atleta para <b>apuntar un pago</b> o <b>una competición</b>. Cada atleta ve su saldo en su app.</p></div>' +
+      '<div class="bo-cifras" id="bo-cifras"></div>' +
+      '<div class="bo-filtros">' +
+        '<input type="search" class="bo-buscar" id="bo-buscar" placeholder="Buscar atleta…" aria-label="Buscar atleta" autocomplete="off">' +
+        '<button type="button" class="bo-nuevo" id="bo-nuevo">+ Añadir atleta</button>' +
+      '</div>' +
+      '<span class="bo-cuenta" id="bo-cuenta" aria-live="polite"></span>' +
+      '<div id="bo-lista"></div>';
+    $('bo-buscar').addEventListener('input', pintarLista);
+    $('bo-nuevo').addEventListener('click', function () { abrirHoja(null, this); });
+    $('bo').addEventListener('click', function (ev) {
+      var f = ev.target.closest('.bo-cifra[data-f]');
+      if (f) { var v = f.getAttribute('data-f'); filtro = (filtro === v) ? 'todos' : v; pintarLista(); return; }
+      var fila = ev.target.closest('.bo-fila[data-id]');
+      if (fila) abrirHoja(fila.getAttribute('data-id'), fila);
+    });
+    $('bo').addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      var fila = ev.target.closest && ev.target.closest('.bo-fila[data-id]');
+      if (!fila || ev.target !== fila) return;
+      ev.preventDefault(); abrirHoja(fila.getAttribute('data-id'), fila);
+    });
+    pintarCifras(); pintarLista();
+  }
+
+  /* ---------- hoja ---------- */
+  var focoPrevio = null, abiertoId = null, modo = 'comp';
+  function opcionesComps() {
+    var h = hoy();
+    var desde = new Date(); desde.setDate(desde.getDate() - 75);
+    var d0 = desde.toISOString().slice(0, 10);
+    var lista = COMPS.filter(function (c) { return c.fecha_inicio >= d0; });
+    return '<option value="">— Elige la competición —</option>' + lista.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(fCorta(c.fecha_inicio) + ' · ' + c.nombre) + (Number(c.coste) > 0 ? ' · ' + eur(c.coste) : '') + '</option>';
+    }).join('') + '<option value="otra">Otra (escribirla)</option>';
+  }
+  function pintarBuscador() {
+    $('bo-h-ini').textContent = '+';
+    $('bo-h-nombre').textContent = 'Añadir atleta';
+    $('bo-h-sub').textContent = 'Busca a quien vas a apuntar un bono.';
+    $('bo-h-cuerpo').innerHTML = '<div class="bo-form"><input type="search" id="bo-h-q" placeholder="Nombre o apellido…" autocomplete="off"></div><div class="bo-sugs" id="bo-h-sugs"></div>';
+    var q = $('bo-h-q');
+    function sugs() {
+      var t = (q.value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (t.length < 2) { $('bo-h-sugs').innerHTML = ''; return; }
+      var r = TODOS.filter(function (a) { return nombreDe(a).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(t) !== -1; }).slice(0, 12);
+      $('bo-h-sugs').innerHTML = r.map(function (a) { return '<button type="button" data-elegir="' + esc(a.id) + '">' + esc(nombreDe(a)) + '</button>'; }).join('') || '<p class="bo-ayuda">Nadie con ese nombre.</p>';
+    }
+    q.addEventListener('input', sugs);
+    setTimeout(function () { q.focus(); }, 80);
+  }
+  function pintarHoja() {
+    if (!abiertoId) { pintarBuscador(); return; }
+    var a = ATLETAS[abiertoId] || {};
+    var n = nombreDe(a);
+    var movs = MOVS.filter(function (m) { return m.atleta_id === abiertoId; });
+    var saldo = Math.round(movs.reduce(function (s, m) { return s + Number(m.importe); }, 0) * 100) / 100;
+    $('bo-h-ini').textContent = iniciales(n);
+    $('bo-h-nombre').textContent = n;
+    $('bo-h-sub').textContent = (a.estado === 'baja' ? 'De baja · ' : '') + movs.length + (movs.length === 1 ? ' apunte' : ' apuntes');
+    var c = claseSaldo(saldo);
+    var h = '<div class="bo-grande"><b class="bo-saldo ' + c + '">' + eur(saldo) + '</b><span>' +
+      (saldo < 0 ? 'debe ' + eur(-saldo) : saldo >= COSTE_ESTANDAR ? 'le da para ≈ ' + Math.floor(saldo / COSTE_ESTANDAR) + ' controles' : 'no le llega para otra') + '</span></div>';
+    h += '<p class="bo-et">Apuntar</p><div class="bo-tabs" role="group">' +
+      '<button type="button" data-modo="comp" aria-pressed="' + (modo === 'comp') + '">Una competición</button>' +
+      '<button type="button" data-modo="pago" aria-pressed="' + (modo === 'pago') + '">Un pago</button></div>';
+    if (modo === 'comp') {
+      h += '<form class="bo-form" id="bo-form">' +
+        '<label>Competición<select id="bo-f-comp">' + opcionesComps() + '</select></label>' +
+        '<label id="bo-f-otra-l" hidden>Nombre de la competición<input type="text" id="bo-f-otra" placeholder="Control Tipo A · Alicante"></label>' +
+        '<div class="dos"><label>Cuesta (€)<input type="number" id="bo-f-imp" min="0" step="0.5" value="' + COSTE_ESTANDAR + '" inputmode="decimal"></label>' +
+        '<label>Fecha<input type="date" id="bo-f-fecha" value="' + hoy() + '"></label></div>' +
+        '<button type="submit" class="bo-guardar">Restar del bono</button></form>';
+    } else {
+      h += '<form class="bo-form" id="bo-form">' +
+        '<div class="dos"><label>Ha pagado (€)<input type="number" id="bo-f-imp" min="0" step="0.5" value="20" inputmode="decimal"></label>' +
+        '<label>Fecha<input type="date" id="bo-f-fecha" value="' + hoy() + '"></label></div>' +
+        '<label>Nota (opcional)<input type="text" id="bo-f-nota" placeholder="Bizum, en mano…"></label>' +
+        '<button type="submit" class="bo-guardar">Sumar al bono</button></form>';
+    }
+    h += '<p class="bo-et">Movimientos</p>';
+    h += movs.length ? '<ul class="bo-movs">' + movs.map(function (m) {
+      var mas = Number(m.importe) > 0;
+      return '<li><span class="f">' + esc(fCorta(m.fecha)) + '</span><span class="c">' + esc(m.concepto) + '</span>' +
+        '<span class="i ' + (mas ? 'mas' : 'menos') + '">' + (mas ? '+' : '') + eur(m.importe) + '</span>' +
+        '<button type="button" data-borrar="' + esc(m.id) + '" aria-label="Quitar este apunte" title="Quitar este apunte">×</button></li>';
+    }).join('') + '</ul>' : '<p class="bo-ayuda">Todavía no tiene apuntes.</p>';
+    $('bo-h-cuerpo').innerHTML = h;
+    var sel = $('bo-f-comp');
+    if (sel) sel.addEventListener('change', function () {
+      var v = sel.value; $('bo-f-otra-l').hidden = v !== 'otra';
+      var comp = COMPS.filter(function (x) { return x.id === v; })[0];
+      if (comp) { $('bo-f-imp').value = Number(comp.coste) > 0 ? Number(comp.coste) : (/espa[ñn]a/i.test(comp.nombre) ? 10 : COSTE_ESTANDAR); if (comp.fecha_inicio) $('bo-f-fecha').value = comp.fecha_inicio; }
+      if (v === 'otra') setTimeout(function () { $('bo-f-otra').focus(); }, 30);
+    });
+  }
+  function abrirHoja(id, desde) {
+    abiertoId = id; modo = 'comp';
+    focoPrevio = desde || document.activeElement;
+    pintarHoja();
+    $('bo-velo').classList.add('ver'); $('bo-hoja').classList.add('ver');
+    if (id) setTimeout(function () { $('bo-h-cerrar').focus(); }, 60);
+  }
+  function cerrarHoja() {
+    if (!$('bo-hoja').classList.contains('ver')) return;
+    $('bo-velo').classList.remove('ver'); $('bo-hoja').classList.remove('ver');
+    abiertoId = null;
+    if (focoPrevio && focoPrevio.focus && document.body.contains(focoPrevio)) focoPrevio.focus();
+  }
+  $('bo-velo').addEventListener('click', cerrarHoja);
+  $('bo-h-cerrar').addEventListener('click', cerrarHoja);
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') cerrarHoja(); });
+
+  $('bo-h-cuerpo').addEventListener('click', async function (ev) {
+    var el = ev.target.closest('[data-elegir]');
+    if (el) { var id = el.getAttribute('data-elegir'); EXTRA[id] = 1; abiertoId = id; modo = 'pago'; pintarHoja(); pintarCifras(); pintarLista(); return; }
+    var t = ev.target.closest('[data-modo]');
+    if (t) { modo = t.getAttribute('data-modo'); pintarHoja(); return; }
+    var b = ev.target.closest('[data-borrar]');
+    if (b) {
+      var m = MOVS.filter(function (x) { return x.id === b.getAttribute('data-borrar'); })[0];
+      if (!m) return;
+      var ok = window.apoConfirm ? await apoConfirm({ titulo: 'Quitar este apunte', texto: m.concepto + ' (' + eur(m.importe) + '). El saldo se recalcula.', confirmar: 'Quitar', peligro: true }) : true;
+      if (!ok) return;
+      var r = await sb.from('bono_movimientos').delete().eq('id', m.id).select('id');
+      if (r.error || !(r.data || []).length) { apoToast('No se pudo quitar: ' + ((r.error && r.error.message) || 'sin permiso'), 'error'); return; }
+      apoToast('Apunte quitado', 'ok'); cargar();
+    }
+  });
+
+  $('bo-h-cuerpo').addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    if (!abiertoId) return;
+    var imp = Number(String($('bo-f-imp').value).replace(',', '.'));
+    if (!(imp > 0)) { apoToast('Pon un importe mayor que 0', 'error'); return; }
+    var fila = { atleta_id: abiertoId, fecha: $('bo-f-fecha').value || hoy() };
+    if (modo === 'comp') {
+      var v = $('bo-f-comp').value;
+      if (!v) { apoToast('Elige la competición', 'error'); return; }
+      if (v === 'otra') {
+        var nom = ($('bo-f-otra').value || '').trim();
+        if (!nom) { apoToast('Escribe el nombre de la competición', 'error'); return; }
+        fila.concepto = nom;
+      } else {
+        var comp = COMPS.filter(function (x) { return x.id === v; })[0];
+        fila.concepto = comp ? comp.nombre : 'Competición'; fila.competicion_id = v;
+      }
+      fila.importe = -imp;
+    } else {
+      var nota = ($('bo-f-nota').value || '').trim();
+      fila.concepto = 'Pago del bono' + (nota ? ' · ' + nota : '');
+      fila.importe = imp;
+    }
+    var btn = ev.target.querySelector('.bo-guardar'); btn.disabled = true;
+    var r = await sb.from('bono_movimientos').insert(fila).select('id');
+    btn.disabled = false;
+    if (r.error) { apoToast('No se pudo guardar: ' + r.error.message, 'error'); return; }
+    delete EXTRA[abiertoId];
+    apoToast(modo === 'comp' ? 'Restado del bono' : 'Sumado al bono', 'ok');
+    cargar();
+  });
+
+  cargar();
+});
+</script>
+</body>
+</html>
