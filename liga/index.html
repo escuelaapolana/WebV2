@@ -185,6 +185,30 @@
   table.lg tr.podio-2 td.pos { color:#8A8A8A; }
   table.lg tr.podio-3 td.pos { color:#A5703F; }
   table.lg td.cero { color: var(--texto-tenue); }
+  /* ---- Al tocar un nombre: sus pruebas debajo ---- */
+  table.lg tr.lg-fila { cursor:pointer; }
+  table.lg tr.lg-fila:hover td { background: var(--azul-suave); }
+  table.lg tr.lg-fila td.nombre .lg-flecha { display:inline-block; margin-left:6px; font-size:11px; color: var(--texto-tenue); transition: transform .2s; }
+  table.lg tr.lg-fila.abierta td.nombre .lg-flecha { transform: rotate(90deg); }
+  table.lg tr.lg-det td { background: var(--azul-suave); padding:4px 14px 14px; }
+  .lg-pod { cursor:pointer; }
+  .lg-podio-det { margin:-6px 0 18px; background:#fff; border-radius:16px; padding:14px 18px; box-shadow: var(--sombra-pro); }
+  .lg-pruebas { list-style:none; margin:0; padding:0; max-width:620px; }
+  .lg-pruebas li { display:grid; grid-template-columns: 76px 1fr auto; gap:4px 12px; align-items:baseline;
+    padding:9px 0; border-bottom:1px solid var(--linea); font-size:14px; }
+  .lg-pruebas li:last-child { border-bottom:0; }
+  .lg-pruebas .f { color: var(--texto-suave); font-variant-numeric: tabular-nums; white-space:nowrap; }
+  .lg-pruebas .c { color: var(--texto); min-width:0; overflow-wrap:anywhere; }
+  .lg-pruebas .c small { display:block; color: var(--texto-suave); font-size:12.5px; }
+  .lg-pruebas .p { font-family: var(--fuente-dato); font-weight:700; color: var(--navy); white-space:nowrap; text-align:right; }
+  .lg-pruebas .p.no { font-weight:400; color: var(--texto-tenue); }
+  .lg-det-tit { font-weight:600; color: var(--navy); font-size:14px; margin:6px 0 2px; }
+  .lg-det-nota { font-size:12.5px; color: var(--texto-suave); margin:8px 0 0; max-width:620px; }
+  @media (max-width: 980px) {
+    table.lg tr.lg-det { background: var(--azul-suave); margin-top:-6px; padding:6px 14px 10px; }
+    table.lg tr.lg-det td { padding:0; background:transparent; }
+    .lg-pruebas li { grid-template-columns: 64px 1fr auto; }
+  }
   table.lg .fin { display:inline-block; font-family: var(--fuente-texto); font-weight:400; text-transform:none;
     font-size:12px; background:#F6EBD6; color:#8A5307; border-radius:999px; padding:2px 9px; vertical-align:middle; }
 
@@ -243,6 +267,7 @@
   }
   .lg-buscar input:focus { border-color: var(--azul-filete, #3B85C0); outline:none; box-shadow:0 0 0 3px var(--azul-suave); }
   .lg-mas { display:flex; justify-content:center; padding-top:14px; }
+  .lg-mas[hidden], .lg-buscar[hidden], .lg-podio[hidden], .lg-podio-det[hidden], .lg-sub[hidden] { display:none; }
   .lg-mas button {
     font-family:inherit; font-size:15px; font-weight:600; color: var(--navy);
     background:#fff; border:1px solid #C9C0AE; border-radius: var(--radio-pastilla);
@@ -296,15 +321,13 @@
   <section class="seccion seccion--blanca">
     <div class="contenedor">
       <h2 class="titulo titulo--grande" data-texto="liga.clasificacion.titulo">Clasificación</h2>
-      <!-- La clasificación oficial de esta edición se publica en PDF (general y
-           podium) y se actualiza cada mes. Los enlaces van los primeros. -->
-      <p class="intro" style="max-width:720px;margin:-2px 0 16px;" data-texto="liga.clasificacion.nota">La clasificación oficial se publica en PDF y se actualiza cada mes.</p>
-      <div class="lg-accesos" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;">
-        <a class="btn btn--primario" href="https://drive.google.com/file/d/1OhSZEqviOeV1gLsTlWPxBuqrK7jGOb-U/view" target="_blank" rel="noopener" data-texto="liga.clasificacion.pdf_general">Ver la clasificación general</a>
-      </div>
+      <!-- Antes había un PDF del Drive (se quedaba viejo). La tabla de abajo es
+           la clasificación en directo: se recalcula al validar cada prueba. -->
+      <p class="intro" style="max-width:720px;margin:-2px 0 20px;" data-texto="liga.clasificacion.nota2">Se actualiza sola cada vez que el club valida una prueba. Toca un nombre para ver sus pruebas.</p>
       <!-- El podio sale de la tabla: tres tarjetas, la primera en navy con el
            número en ámbar. Sin dorados ni medallas. La tabla empieza en el 4º. -->
       <div class="lg-podio" id="lg-podio" hidden></div>
+      <div class="lg-podio-det" id="lg-podio-det" hidden></div>
       <div class="lg-tabs" id="lg-tabs" role="group" aria-label="Ver la clasificación">
         <button type="button" data-modo="general"    aria-pressed="true" data-texto="liga.tabs.general">General</button>
         <button type="button" data-modo="disciplina" aria-pressed="false" data-texto="liga.tabs.disciplina">Por disciplina</button>
@@ -530,6 +553,35 @@
   function fLarga(f) { if (!f) return ''; var t = String(f).slice(0,10).split('-'); return t.length===3 ? (parseInt(t[2],10)+' de '+MESES[parseInt(t[1],10)-1]+' de '+t[0]) : f; }
 
   var FILAS = [], modo = 'general', sub = '';
+  /* Pruebas de cada persona (al tocar su nombre). Se cargan aparte: si fallan,
+     la clasificación sigue funcionando igual. */
+  var PRUEBAS = null, ABIERTO = '';
+  var PRINCIPAL = { duatlon:'triatlon', aquabike:'triatlon', acuatlon:'triatlon', marcha_nordica:'trail' };
+  function fCorta(iso) { var t = String(iso || '').slice(0, 10).split('-'); return t.length === 3 ? (+t[2]) + ' ' + MESES[+t[1] - 1].slice(0, 3) : ''; }
+  function detalleHtml(nombre) {
+    if (PRUEBAS === null) return '<p class="lg-det-nota">Cargando sus pruebas…</p>';
+    var lista = PRUEBAS[nombre] || [];
+    if (modo === 'disciplina' && sub) {
+      var d = sub.replace(/^p_/, '');
+      lista = lista.filter(function (x) { return (PRINCIPAL[x.disciplina] || x.disciplina) === d; });
+    }
+    if (!lista.length) return '<p class="lg-det-nota">No tiene pruebas validadas' + (modo === 'disciplina' ? ' en esta disciplina.' : '.') + '</p>';
+    var algunaNo = lista.some(function (x) { return !x.cuenta; });
+    return '<ul class="lg-pruebas">' + lista.map(function (x) {
+      return '<li><span class="f">' + esc(fCorta(x.fecha)) + '</span>' +
+        '<span class="c">' + esc(x.competicion) + '<small>' + esc(x.modalidad) + '</small></span>' +
+        '<span class="p' + (x.cuenta ? '' : ' no') + '">' + (x.cuenta ? x.puntos + ' pts' : 'no suma*') + '</span></li>';
+    }).join('') + '</ul>' +
+    (algunaNo ? '<p class="lg-det-nota">* En atletismo y natación solo suman las dos mejores pruebas de cada competición.</p>' : '') +
+    '<p class="lg-det-nota">Los bonus (mes, constancia y multideporte) van aparte, en su columna.</p>';
+  }
+  function filaDet(f, cols) {
+    return ABIERTO === f.nombre ? '<tr class="lg-det"><td colspan="' + cols + '">' + detalleHtml(f.nombre) + '</td></tr>' : '';
+  }
+  function abreFila(f) {
+    return ' lg-fila' + (ABIERTO === f.nombre ? ' abierta' : '') + '" data-nombre="' + esc(f.nombre) + '" aria-expanded="' + (ABIERTO === f.nombre) + '';
+  }
+  var FLECHA = ' <span class="lg-flecha" aria-hidden="true">▶</span>';
 
   function pintarCabeceras() {
     var t = $('lg-tabla').querySelector('thead');
@@ -590,14 +642,18 @@
     var caja = $('lg-podio');
     if (!caja) return;
     PODIO = [];
-    if (modo !== 'general' || busca || base.length < 3) { caja.hidden = true; caja.innerHTML = ''; return; }
+    var det = $('lg-podio-det');
+    if (modo !== 'general' || busca || base.length < 3) { caja.hidden = true; caja.innerHTML = ''; det.hidden = true; return; }
+    var enPodio = base.slice(0, 3).filter(function (f) { return f.nombre === ABIERTO; })[0];
+    det.hidden = !enPodio;
+    det.innerHTML = enPodio ? '<p class="lg-det-tit">' + esc(enPodio.nombre) + '</p>' + detalleHtml(enPodio.nombre) : '';
     PODIO = base.slice(0, 3);
     caja.hidden = false;
     caja.innerHTML = PODIO.map(function (f, i) {
       var meta = [f.categoria || ''];
       if (f.pruebas) meta.push(f.pruebas + (f.pruebas === 1 ? ' prueba' : ' pruebas'));
       if (f.finisher) meta.push('camiseta finisher');
-      return '<div class="lg-pod lg-pod--' + (i + 1) + '">' +
+      return '<div class="lg-pod lg-pod--' + (i + 1) + '" role="button" tabindex="0" data-nombre="' + esc(f.nombre) + '">' +
         '<span class="puesto">' + (i + 1) + '</span>' +
         '<span class="quien">' + esc(f.nombre) + '</span>' +
         '<span class="marca">' + f.total + '<span class="uni">puntos</span></span>' +
@@ -623,11 +679,11 @@
       var pos = 0, anterior = null, mismo = 0;
       tb.innerHTML = filas.slice(0, visibles).map(function (f) {
         mismo++; if (f[sub] !== anterior) { pos = mismo; anterior = f[sub]; }
-        return '<tr class="podio-' + pos + '">' +
+        return '<tr class="podio-' + pos + abreFila(f) + '">' +
           '<td class="pos">' + pos + '</td>' +
-          '<td class="nombre">' + esc(f.nombre) + '</td>' +
+          '<td class="nombre">' + esc(f.nombre) + FLECHA + '</td>' +
           '<td class="cat">' + esc(f.categoria) + '</td>' +
-          '<td class="num total" data-etiqueta="Puntos">' + f[sub] + '</td></tr>';
+          '<td class="num total" data-etiqueta="Puntos">' + f[sub] + '</td></tr>' + filaDet(f, 4);
       }).join('') || '<tr><td colspan="4"><div class="lg-vacio">' +
         (busca ? 'Nadie con ese nombre ha puntuado en esta disciplina.' : 'Nadie ha puntuado todavía en esta disciplina.') +
         '</div></td></tr>';
@@ -646,9 +702,11 @@
     base.slice(0, desde).forEach(function (f) { k++; if (f.total !== ant) { p = k; ant = f.total; } });
     tb.innerHTML = base.slice(desde, desde + visibles).map(function (f) {
       k++; if (f.total !== ant) { p = k; ant = f.total; }
-      return '<tr class="podio-' + p + '">' +
+      /* Buscando en la general, el puesto es el de verdad, no el de la lista filtrada. */
+      if (busca && modo === 'general' && f.posicion) p = f.posicion;
+      return '<tr class="podio-' + p + abreFila(f) + '">' +
         '<td class="pos">' + p + '</td>' +
-        '<td class="nombre">' + esc(f.nombre) + (f.finisher ? ' <span class="fin">finisher</span>' : '') + '</td>' +
+        '<td class="nombre">' + esc(f.nombre) + (f.finisher ? ' <span class="fin">finisher</span>' : '') + FLECHA + '</td>' +
         '<td class="cat">' + esc(f.categoria) + '</td>' +
         COLS.map(function (c) {
           return '<td class="num' + (f[c.k] ? '' : ' cero') + '" data-etiqueta="' + c.t + '">' + f[c.k] + '</td>';
@@ -656,18 +714,40 @@
         '<td class="num' + (f.bonus ? '' : ' cero') + '" data-etiqueta="Bonus">' + f.bonus + '</td>' +
         (ajustes ? '<td class="num' + (f.ajustes ? '' : ' cero') + '" data-etiqueta="Ajustes">' + f.ajustes + '</td>' : '') +
         '<td class="num total">' + f.total + '</td>' +
-        '<td class="num" data-etiqueta="Pruebas">' + f.pruebas + '</td></tr>';
+        '<td class="num" data-etiqueta="Pruebas">' + f.pruebas + '</td></tr>' + filaDet(f, 12);
     }).join('') || '<tr><td colspan="12"><div class="lg-vacio">' +
       (busca ? 'Nadie con ese nombre en esta vista.' : 'Todavía no hay nadie en esta categoría.') +
       '</div></td></tr>';
     pintarMas(base.length - desde, Math.min(visibles, base.length - desde));
   }
 
+  function alternar(nombre) {
+    ABIERTO = (ABIERTO === nombre) ? '' : nombre;
+    pintarFilas();
+  }
+  $('lg-tabla').querySelector('tbody').addEventListener('click', function (e) {
+    var tr = e.target.closest ? e.target.closest('tr.lg-fila') : null;
+    if (tr) alternar(tr.getAttribute('data-nombre'));
+  });
+  $('lg-podio').addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('.lg-pod[data-nombre]') : null;
+    if (c) alternar(c.getAttribute('data-nombre'));
+  });
+  $('lg-podio').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var c = e.target.closest ? e.target.closest('.lg-pod[data-nombre]') : null;
+    if (c) { e.preventDefault(); alternar(c.getAttribute('data-nombre')); }
+  });
+
   $('lg-mas').querySelector('button').addEventListener('click', function () {
     visibles += TOPE; pintarFilas();
   });
   $('lg-q').addEventListener('input', function (e) {
-    busca = e.target.value.trim(); visibles = TOPE; pintarFilas();
+    busca = e.target.value.trim(); visibles = TOPE;
+    /* Si la búsqueda deja a una sola persona, sus pruebas salen ya abiertas. */
+    var una = busca ? filtra(FILAS) : [];
+    if (una.length === 1) ABIERTO = una[0].nombre;
+    pintarFilas();
   });
 
   function pintar() { visibles = TOPE; pintarCabeceras(); pintarSub(); pintarFilas(); }
@@ -784,6 +864,15 @@
     FILAS = (rc && rc.data) || [];
     pintarCifras(edicion, FILAS);
     pintar();
+
+    sb.rpc('liga_pruebas_publicas_fn').then(function (r) {
+      if (r.error) { console.warn('[Apolana] pruebas de la liga:', r.error.message || r.error); PRUEBAS = {}; }
+      else {
+        PRUEBAS = {};
+        (r.data || []).forEach(function (x) { (PRUEBAS[x.nombre] = PRUEBAS[x.nombre] || []).push(x); });
+      }
+      if (ABIERTO) pintarFilas();
+    }, function () { PRUEBAS = {}; if (ABIERTO) pintarFilas(); });
 
     var rb = await sb.from('liga_baremo_publico').select('*').order('orden')
       .then(null, function () { return { error: true }; });
