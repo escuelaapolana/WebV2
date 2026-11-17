@@ -174,7 +174,7 @@
         {g:'Socios del Cubo', t:'Integrantes',     i:'people',   url:B+'admin/atletas/?seccion=cubo', d:'Quién entrena en el Cubo.'},
         {g:'Socios del Cubo', t:'Grupos y turnos', i:'calendar', url:B+'admin/grupos/?seccion=cubo',  d:'Grupos fijos y sus días.'},
         {g:'Socios del Cubo', t:'Cuotas y pagos',  i:'ticket',   url:B+'admin/cubo-altas/',           d:'Cuotas mensuales, cobros y altas.'},
-        {g:'Entrenos', t:'Asistencia',      i:'check',    url:B+'admin/asistencia/',           d:'Quién vino a entrenar cada día.'},
+        {g:'Entrenos', t:'Asistencia',      i:'check',    url:B+'admin/asistencia/?seccion=cubo', d:'Quién vino a entrenar cada día.'},
         {g:'Entrenos', t:'Fuerza gratis',   i:'sparkle',  url:B+'admin/cubo-prueba/',          d:'Los turnos gratis de prueba.'},
         {g:'Entrenos', t:'Clases y bonos',  i:'box',      url:B+'admin/cubo/',                 d:'Clases, bonos y ocupación.'}
       ] },

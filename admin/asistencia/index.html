@@ -50,6 +50,17 @@
   .as-nunca a .chev { color:#B9AE97; font-size:22px; }
   .as-nunca.ok { border-color:#CFE6D8; border-top-color:#2E9E5B; padding-bottom:14px; }
   .as-nunca.ok p { margin:0; color:#2E7D4F; }
+
+  /* El Cubo (17-nov): media del mes por grupo, sobria. */
+  .as-mes { background:#fff; border:1px solid var(--linea,#e6e6e8); border-radius:10px; padding:12px 16px 10px; margin:0 0 18px; }
+  .as-mes h2 { font-size:15px; margin:0 0 8px; color:var(--navy); }
+  .as-mes-f { display:grid; grid-template-columns:minmax(110px,170px) 1fr auto; align-items:center; gap:12px; padding:5px 0; font-size:14px; color:var(--navy); }
+  .as-mes-f .b { display:block; height:6px; background:#eeeef0; border-radius:99px; overflow:hidden; }
+  .as-mes-f .b em { display:block; height:100%; background:#5b7590; border-radius:99px; }
+  .as-mes-f .v { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .as-mes-f .v small { color:var(--texto-suave); }
+  .as-mes p { font-size:12.5px; color:var(--texto-suave); margin:6px 0 0; }
+  @media (max-width:560px){ .as-mes-f { grid-template-columns:1fr auto; } .as-mes-f .b { grid-column:1 / -1; grid-row:2; } }
 </style>
 </head>
 <body>
@@ -60,6 +71,7 @@
     <h1 class="saludo">Asistencia</h1>
     <p class="sub">Quién vino a entrenar cada día. Lo pasan los entrenadores desde su zona.</p>
     <div id="as-nunca"></div>
+    <div id="as-mes"></div>
 
     <div class="as-barra">
       <button type="button" class="as-nav" id="as-ant" aria-label="Día anterior">‹</button>
@@ -95,6 +107,13 @@ APOLANA_ADMIN.listo(function (sb) {
     return out.length > 1 ? out.slice(0,-1).join(', ')+' y '+out[out.length-1] : (out[0]||'');
   }
   function gruposFiltro(){ return $('as-grupo').value ? [$('as-grupo').value] : GIDS; }
+  /* El Cubo (17-nov, rediseño): como la Escuela (saltar a días con lista, «no han
+     venido nunca») + la media de este mes por grupo y un atajo a Pasar lista. */
+  if(SECCION === 'cubo'){
+    document.querySelector('.sub').innerHTML = 'Quién vino a entrenar cada día. La lista se pasa desde <a href="../../portal/cubo-lista/">Pasar lista →</a>';
+    var vv = document.querySelector('.as-wrap > .volver'); if(vv) vv.remove();
+    $('as-ant').setAttribute('aria-label', 'Día anterior con lista'); $('as-sig').setAttribute('aria-label', 'Día siguiente con lista');
+  }
   if(SECCION === 'escuela'){
     document.querySelector('.sub').textContent = 'Escuela de atletismo: quién vino y quién faltó cada día. Las flechas saltan a los días con lista.';
     $('as-ant').setAttribute('aria-label', 'Día anterior con lista'); $('as-sig').setAttribute('aria-label', 'Día siguiente con lista');
@@ -115,6 +134,7 @@ APOLANA_ADMIN.listo(function (sb) {
       var sel=$('as-grupo');
       r.data.filter(function(g){ return !SECCION || g.seccion === SECCION; }).forEach(function(g){
         var d = SECCION ? diasCortos(g.horario) : '';
+        if(SECCION === 'cubo'){ d = ''; }   // «L y X 17:30» ya lleva sus días
         GRUPOS[g.id]=g.nombre+(d ? ' · '+d : '');
         GIDS.push(g.id);
         var o=document.createElement('option'); o.value=g.id; o.textContent=GRUPOS[g.id]; sel.appendChild(o);
@@ -140,6 +160,34 @@ APOLANA_ADMIN.listo(function (sb) {
     }
     pintar();
     pintarNunca();
+    pintarMes();
+  }
+
+  /* ESTE MES POR GRUPO (Cubo): media de personas que VINIERON por sesión con
+     lista pasada en el mes en curso (lo de la maqueta). */
+  async function pintarMes(){
+    var caja = $('as-mes');
+    if(SECCION !== 'cubo' || !GIDS.length){ caja.innerHTML = ''; return; }
+    var hoy = new Date(), ini = hoy.getFullYear()+'-'+(hoy.getMonth()<9?'0':'')+(hoy.getMonth()+1)+'-01';
+    var r = await sb.from('asistencia').select('grupo_id,fecha,presente').in('grupo_id', GIDS).gte('fecha', ini).lte('fecha', isoDe(hoy));
+    if(r.error){ caja.innerHTML = ''; return; }
+    var S = {};   // grupo → { fecha → presentes }
+    (r.data||[]).forEach(function(f){ var g = S[f.grupo_id] = S[f.grupo_id] || {}; g[f.fecha] = (g[f.fecha]||0) + (f.presente?1:0); });
+    var filas = Object.keys(S).map(function(gid){
+      var fechas = Object.keys(S[gid]).filter(function(d){ return S[gid][d] > 0; });
+      var tot = fechas.reduce(function(s,d){ return s + S[gid][d]; }, 0);
+      return { nom: String(GRUPOS[gid]||'').replace(/^El Cubo\s*·\s*/i,''), media: fechas.length ? tot/fechas.length : 0, ses: fechas.length };
+    }).filter(function(x){ return x.ses; }).sort(function(a,b){ return a.nom.localeCompare(b.nom); });
+    if(!filas.length){ caja.innerHTML = ''; return; }
+    var max = Math.max.apply(null, filas.map(function(x){ return x.media; })) || 1;
+    var mes = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][hoy.getMonth()];
+    caja.innerHTML = '<div class="as-mes"><h2>Este mes por grupo</h2>'+
+      filas.map(function(x){
+        var m = Math.round(x.media*10)/10;
+        return '<div class="as-mes-f"><span class="n">'+esc(x.nom)+'</span><i class="b"><em style="width:'+Math.round(x.media/max*100)+'%"></em></i>'+
+          '<span class="v"><b>'+String(m).replace('.',',')+'</b> <small>de media · '+x.ses+' '+(x.ses===1?'sesión':'sesiones')+'</small></span></div>';
+      }).join('')+
+      '<p>Personas que vinieron, de media, en cada sesión con lista de '+mes+'.</p></div>';
   }
 
   /* NO HAN VENIDO NUNCA (con sección): niños que siguen en un grupo de la sección,
@@ -232,7 +280,7 @@ APOLANA_ADMIN.listo(function (sb) {
           '<span class="pin '+(f.presente?'si':'no')+'">'+(f.presente?'✓':'✕')+'</span>'+
           '<span class="nombre">'+esc(n)+'</span></li>';
       }
-      html += '<div class="grupo"><h2>'+esc(nom.replace(/^El Cubo\s*·\s*/i,'El Cubo · '))+'</h2>'+
+      html += '<div class="grupo"><h2>'+esc(SECCION === 'cubo' ? nom.replace(/^El Cubo\s*·\s*/i,'') : nom.replace(/^El Cubo\s*·\s*/i,'El Cubo · '))+'</h2>'+
         '<p class="cuenta">Vinieron '+vino.length+' · faltaron '+falto.length+'</p>'+
         '<ul class="lista">'+vino.map(fila).join('')+falto.map(fila).join('')+'</ul></div>';
     });
