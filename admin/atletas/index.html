@@ -583,6 +583,16 @@
     .pl-fila .gchip { font-size: 12.5px; padding: 3px 9px; }
     .pl-fila .cg-btn { opacity: 1; min-width: 32px; min-height: 30px; margin-left: 0; font-size: 15px; border: 1px solid var(--linea-marcada); border-radius: 999px; }
   }
+
+  /* El Cubo · Integrantes (17-nov): estado del Cubo y cuota, en una línea. */
+  .cubo-est { display: inline-block; font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; background: #F3F3F4; color: #4b5563; }
+  .cubo-est.ok { background: #E7F3EA; color: #2F6B3E; }
+  .cubo-est.pend { background: #FDF1DD; color: #8A5307; }
+  .cubo-est.mal { background: #F7E4DE; color: #9A4A2E; }
+  .cubo-est.prueba { background: #EEF1F5; color: #4a5a6e; }
+  .cubo-cuota { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--navy); white-space: nowrap; }
+  .cubo-cuota small { font-weight: 400; color: var(--texto-suave); margin-left: 1px; }
+  .cubo-cuota.sin { color: var(--texto-suave); font-weight: 400; }
 </style>
 </head>
 <body>
@@ -954,7 +964,64 @@ APOLANA_ADMIN.listo(function (sb) {
     if (m) m.innerHTML = '<a href="./" style="color:inherit;text-decoration:none">Personas</a> › <span class="aqui">' + nom + '</span>';
     try { document.title = nom + ' · Panel Apolana'; } catch (e) {}
     document.body.setAttribute('data-seccion', SECCION_URL);
+    /* El Cubo (17-nov, rediseño): la pantalla es «Integrantes» y la columna de
+       pagos enseña la cuota del Cubo (ver CUBO_ALTA más abajo). */
+    if (SECCION_URL === 'cubo') {
+      if (t) t.textContent = 'Integrantes';
+      try { document.title = 'Integrantes · El Cubo · Panel Apolana'; } catch (e) {}
+      var cp = document.querySelector('.pl-cab .c-pago'); if (cp) cp.textContent = 'Cuota';
+    }
   })();
+  /* ---- El Cubo: estado y cuota de cada integrante, de su alta (cubo_altas) ----
+     Mismas reglas que Cuotas y pagos (admin/cubo-altas · clasificar). Quien
+     no tiene alta pero va a la Fuerza gratis sale como «Fuerza gratis». */
+  var CUBO_ON = SECCION_URL === 'cubo';
+  var CUBO_ALTA = {}, CUBO_GRATIS = {};
+  async function cargarCubo() {
+    if (!CUBO_ON) return;
+    var r = await sb.from('cubo_altas').select('atleta_id,perfil_id,horario,dias_semana,precio_mes,estado,suscripcion_estado,pago_externo,lista_espera,cobro_abierto,baja_solicitada');
+    CUBO_ALTA = {};
+    if (!r.error && r.data) r.data.forEach(function (x) {
+      var orden = function (y) { return y.suscripcion_estado === 'cancelada' || y.estado === 'rechazada' ? 0 : 1; };
+      [x.atleta_id && 'a:' + x.atleta_id, x.perfil_id && 'p:' + x.perfil_id].forEach(function (k) {
+        if (k && (!CUBO_ALTA[k] || orden(x) > orden(CUBO_ALTA[k]))) CUBO_ALTA[k] = x;
+      });
+    });
+    var rp = await sb.from('cubo_prueba').select('atleta_id,perfil_id,estado').neq('estado', 'cancelado');
+    CUBO_GRATIS = {};
+    if (!rp.error && rp.data) rp.data.forEach(function (x) { if (x.atleta_id) CUBO_GRATIS['a:' + x.atleta_id] = 1; if (x.perfil_id) CUBO_GRATIS['p:' + x.perfil_id] = 1; });
+  }
+  function cuboAltaDe(a) { return CUBO_ALTA['a:' + a.id] || (a.perfil_id && CUBO_ALTA['p:' + a.perfil_id]) || null; }
+  var CUBO_EST = {
+    pagado: ['ok', 'Pagando'], efectivo: ['ok', 'Paga en efectivo'], sinpagar: ['pend', 'Sin pagar'], impago: ['mal', 'Impago'],
+    prueba: ['prueba', 'De prueba'], espera: ['sin', 'En espera'], baja: ['sin', 'De baja'], porAceptar: ['pend', 'Por aceptar'], gratis: ['sin', 'Fuerza gratis']
+  };
+  function cuboEstado(a) {
+    var x = cuboAltaDe(a);
+    if (!x) return (CUBO_GRATIS['a:' + a.id] || (a.perfil_id && CUBO_GRATIS['p:' + a.perfil_id])) ? 'gratis' : null;
+    if (x.suscripcion_estado === 'cancelada' || x.estado === 'rechazada') return 'baja';
+    if (x.suscripcion_estado === 'activa') return 'pagado';
+    if (x.suscripcion_estado === 'impago') return 'impago';
+    if (x.pago_externo) return 'efectivo';
+    if (x.lista_espera) return 'espera';
+    if (x.cobro_abierto) return 'sinpagar';
+    if (x.estado === 'aprobada') return 'prueba';
+    return 'porAceptar';
+  }
+  var DIA_C = { 1: 'lun', 2: 'mar', 3: 'mié', 4: 'jue', 5: 'vie', 6: 'sáb', 7: 'dom' };
+  function cuboEstadoHtml(a) {
+    var k = cuboEstado(a);
+    if (!k) return estadoHtml(a.estado);
+    var d = CUBO_EST[k], x = cuboAltaDe(a);
+    var dias = x && x.dias_semana && x.dias_semana.length ? x.dias_semana.slice().sort().map(function (n) { return DIA_C[n] || n; }).join(' · ') : '';
+    return '<span class="cubo-est ' + d[0] + '">' + esc(d[1]) + '</span>' +
+      (x && x.baja_solicitada && k === 'pagado' ? '<span class="papel-sub">Pide la baja</span>' : (dias ? '<span class="papel-sub">' + esc(dias) + '</span>' : ''));
+  }
+  function cuboCuotaHtml(a) {
+    var x = cuboAltaDe(a), k = cuboEstado(a);
+    if (!x || !(x.precio_mes > 0) || k === 'baja') return '<span class="cubo-cuota sin">—</span>';
+    return '<span class="cubo-cuota">' + esc(String(x.precio_mes)) + '\u00a0€<small>/mes</small></span>';
+  }
   function deSeccion(a, sec) {
     if (!sec) return true;
     var ids = gruposDe(a);
@@ -1478,8 +1545,10 @@ APOLANA_ADMIN.listo(function (sb) {
           '<span class="pl-nomb"><span class="nom">' + esc(nombreCompleto(a)) + '</span>' +
           '<span class="sub">' + esc(sub) + '<span class="pl-papel-m">' + (sub ? ' · ' : '') + esc(papelTxt(papelDe(a))) + '</span></span>' + '</span></span></span>' +
         '<span class="c-gr">' + celdaGrupos(a) + '</span>' +
-        '<span class="c-est">' + estadoHtml(a.estado) + '<span class="papel-sub">' + esc(papelTxt(papelDe(a))) + '</span></span>' +
-        '<span class="c-pago">' + pagoHtml(a) + '</span>' +
+        (CUBO_ON
+          ? '<span class="c-est">' + cuboEstadoHtml(a) + '</span><span class="c-pago">' + cuboCuotaHtml(a) + '</span>'
+          : '<span class="c-est">' + estadoHtml(a.estado) + '<span class="papel-sub">' + esc(papelTxt(papelDe(a))) + '</span></span>' +
+            '<span class="c-pago">' + pagoHtml(a) + '</span>') +
         '<span class="c-ir" aria-hidden="true">›</span>' +
       '</div>';
     }).join('');
@@ -1592,6 +1661,7 @@ APOLANA_ADMIN.listo(function (sb) {
       .order('apellidos');
     var pG = sb.from('atleta_grupos').select('atleta_id,grupo_id,principal,desde');
     var pM = PUEDE_DINERO_P.then(function (puede) { return puede ? cargarMovs() : null; });
+    var pC = cargarCubo().catch(function () {});
     var r = await pA;
     if (r.error) { tb.innerHTML = ADM.error(humanoErr(r.error), cargar); return; }
     TODOS = r.data || [];
@@ -1613,6 +1683,7 @@ APOLANA_ADMIN.listo(function (sb) {
       });
     }
     try { await pM; } catch (e) { SIN_RECIBOS = true; }
+    await pC;
     await pP;
     rellenarFiltros();
     pintar();
