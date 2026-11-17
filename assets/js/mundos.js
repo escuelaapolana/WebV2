@@ -758,6 +758,8 @@
   // esas páginas compartidas cuando la URL no dice de qué mundo vienen.
   var SHARED = { atletas: 1, grupos: 1 };
   function guardarMundo(w) { try { if (w) sessionStorage.setItem('apo-mundo', w); } catch (e) {} }
+  /* <html data-mundo> para la piel clara por mundo (piel-neutra.css, 17-nov-2026). */
+  function marcarMundo(w) { try { if (w) document.documentElement.setAttribute('data-mundo', w); } catch (e) {} }
   function mundoGuardado() { try { return sessionStorage.getItem('apo-mundo') || ''; } catch (e) { return ''; } }
   function resolverURL() {
     if (location.pathname.indexOf('/admin/') === -1) return null;
@@ -782,7 +784,7 @@
         else res = { world: (COARSE[folderOnly] || mundoGuardado() || 'general'), screenIdx: -1 };
       }
     }
-    if (res) guardarMundo(res.world);
+    if (res) { guardarMundo(res.world); marcarMundo(res.world); }
     return res;
   }
 
@@ -1133,6 +1135,7 @@
   // Las páginas de portal declaran su mundo: lo recordamos para que, al volver
   // a una página compartida del admin, la barra conserve el mundo.
   guardarMundo(CFG.world);
+  marcarMundo(CFG.world);
   // Entrando directo a General con otra vista: volver a admin y recargar una vez.
   if (M.key === 'general') {
     (function esperarDb(n) {

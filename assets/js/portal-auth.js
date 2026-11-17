@@ -24,6 +24,21 @@
      madre que además tiene ficha de atleta).
    ============================================================ */
 (function () {
+  /* Piel clara por mundo (17-nov-2026): marca <html data-mundo="…"> CUANTO ANTES
+     (antes de pintar la barra) para que piel-neutra.css aplique la piel clara
+     sin parpadeo en los mundos que ya la llevan (Cubo y Academia). mundos.js
+     lo confirma después con el mundo resuelto de verdad. */
+  try {
+    (function () {
+      var w = (window.APOLANA_MUNDO && window.APOLANA_MUNDO.world) || '';
+      if (!w) {
+        var f = (location.pathname.match(/\/admin\/([^\/]+)\//) || [])[1] || '';
+        var q = location.search || '';
+        if ({ cubo: 1, 'cubo-altas': 1, 'cubo-prueba': 1, asistencia: 1 }[f] || /[?&](seccion|world)=cubo\b/.test(q)) w = 'cubo';
+      }
+      if (w) document.documentElement.setAttribute('data-mundo', w);
+    })();
+  } catch (e) {}
   /* FLUIDEZ · Transiciones suaves entre páginas del portal: el CONTENIDO hace
      crossfade y las barras de arriba (.pt-top) y abajo (.pt-tabbar) se quedan
      QUIETAS, así no parpadean al cambiar de pestaña. Es progresivo: el navegador
