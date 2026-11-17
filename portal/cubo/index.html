@@ -12,8 +12,11 @@
 <link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=5f881ca4">
 <script>
   window.APOLANA_BASE="../../";
-  /* El «Resumen» de este mundo lo pinta assets/js/mundos.js desde su mapa (home:true). */
-  window.APOLANA_MUNDO = { world:"cubo", screen:"resumen", home:true, contentSel:"#w" };
+  /* Sin home:true — este Resumen lo pintamos aquí con datos en vivo (16-nov-2026,
+     como en la maqueta del rediseño): cifras · hoy · lo que necesita una revisión ·
+     ocupación de los grupos · herramientas. Si no hay permiso para leer las altas
+     (quien no es admin), cae a la portada de siempre (tarjetas + cifras del mundo). */
+  window.APOLANA_MUNDO = { world:"cubo", screen:"resumen", contentSel:"#w" };
 </script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
 <script src="../../assets/js/db.js?v=421f991c" defer></script>
@@ -21,15 +24,281 @@
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
 <script src="../../assets/js/mundos.js?v=402d6f5e" defer></script>
 <style>
+  :root{ --mm-acento:#B5714A; }
   body{ background:var(--crema,#FBF9F4); }
-  #w{ max-width:820px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 40px; }
+  #w{ max-width:900px; margin:0 auto; padding:clamp(16px,4vw,26px) clamp(14px,4vw,24px) 40px; }
+  .c-msg{ color:var(--texto-suave,#6E6656); text-align:center; padding:26px 10px; }
+
+  /* Cifras */
+  .c-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0 0 26px; }
+  .c-kpi{ display:block; text-decoration:none; color:inherit; background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); padding:15px 16px; }
+  .c-kpi b{ display:block; font-family:var(--fuente-titulo); font-weight:700; font-size:30px; line-height:1; color:var(--navy,#2E4256); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .c-kpi span{ display:block; font-size:13px; color:var(--texto-suave,#6E6656); margin-top:4px; line-height:1.3; }
+
+  /* Tarjeta genérica de bloque */
+  .c-box{ background:#fff; border:1px solid var(--linea,#EDE6D7); border-radius:14px; box-shadow:var(--sombra-suave,0 10px 22px -16px rgba(46,66,86,.5)); margin:0 0 26px; overflow:hidden; }
+  .c-box-cab{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:13px 16px; border-bottom:1px solid var(--linea,#EDE6D7); background:#FAFAFA; }
+  .c-box-cab h2{ margin:0; font-size:16px; color:var(--navy,#2E4256); }
+  .c-box-cab a{ font-size:13px; font-weight:600; color:var(--azul-oscuro,#2F6FA8); text-decoration:none; white-space:nowrap; }
+  .c-nada{ padding:14px 16px; font-size:14px; color:var(--texto-suave,#6E6656); }
+
+  /* Hoy: una fila por grupo */
+  .c-hoy{ display:flex; align-items:center; gap:14px; padding:12px 16px; border-top:1px solid var(--linea,#EDE6D7); }
+  .c-hoy:first-of-type{ border-top:0; }
+  .c-hoy .h{ font-variant-numeric:tabular-nums; font-weight:700; color:var(--navy,#2E4256); min-width:92px; }
+  .c-hoy .q{ flex:1 1 auto; min-width:0; }
+  .c-hoy .q b{ display:block; color:var(--navy,#2E4256); }
+  .c-hoy .q small{ color:var(--texto-suave,#6E6656); font-size:13px; }
+  .c-est{ font-size:12px; font-weight:700; border-radius:999px; padding:3px 10px; white-space:nowrap; }
+  .c-est.ok{ background:#E7F3EA; color:#2F6B3E; }
+  .c-est.pend{ background:#FDF1DD; color:#8A5307; }
+  .c-est.luego{ background:#F1F1F3; color:#5F6470; }
+  .c-btn{ font-size:13px; font-weight:700; color:#fff; background:var(--azul-oscuro,#2F6FA8); border-radius:9px; padding:7px 12px; text-decoration:none; white-space:nowrap; }
+  .c-btn.sec{ background:#fff; color:var(--azul-oscuro,#2F6FA8); border:1px solid #D7DEE8; }
+  .c-cancel{ padding:12px 16px; background:#FDF1DD; color:#8A5307; font-size:14px; }
+
+  /* Necesita una revisión: solo lo que tiene algo */
+  .c-rev{ display:flex; align-items:center; gap:13px; padding:11px 16px; border-top:1px solid var(--linea,#EDE6D7); text-decoration:none; color:inherit; }
+  .c-rev:first-of-type{ border-top:0; }
+  .c-rev:hover{ background:#FAFAFA; }
+  .c-rev b{ font-family:var(--fuente-titulo); font-size:22px; color:#8A5307; min-width:26px; text-align:center; line-height:1; }
+  .c-rev span{ flex:1 1 auto; color:var(--navy,#2E4256); font-size:14px; }
+  .c-rev i{ font-style:normal; font-size:13px; font-weight:600; color:var(--azul-oscuro,#2F6FA8); white-space:nowrap; }
+
+  /* Ocupación */
+  .c-oc{ padding:6px 16px 12px; }
+  .c-oc-f{ display:grid; grid-template-columns:minmax(120px,190px) 1fr auto; align-items:center; gap:12px; padding:7px 0; }
+  .c-oc-f .n{ font-size:14px; color:var(--navy,#2E4256); }
+  .c-oc-f .n small{ display:block; color:var(--texto-suave,#6E6656); font-size:12px; }
+  .c-bar{ height:9px; background:#EEEEF0; border-radius:99px; overflow:hidden; }
+  .c-bar i{ display:block; height:100%; background:var(--azul-oscuro,#2F6FA8); border-radius:99px; }
+  .c-bar.lleno i{ background:#B96F09; }
+  .c-oc-f .v{ font-variant-numeric:tabular-nums; font-size:13.5px; color:var(--navy,#2E4256); white-space:nowrap; min-width:58px; text-align:right; }
+  .c-oc-f .v b{ font-size:15px; }
+  .c-oc-nota{ font-size:12.5px; color:var(--texto-suave,#6E6656); margin:6px 0 0; }
+
+  @media (max-width:640px){
+    .c-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .c-kpi{ padding:11px 13px; }
+    .c-kpi b{ font-size:24px; }
+    .c-hoy{ flex-wrap:wrap; gap:6px 12px; }
+    .c-hoy .h{ min-width:0; }
+    .c-hoy .q{ flex-basis:100%; order:3; }
+    .c-hoy .c-est{ margin-left:auto; }
+    .c-hoy .c-btn{ order:4; }
+    .c-oc-f{ grid-template-columns:1fr auto; gap:4px 10px; }
+    .c-oc-f .c-bar{ grid-column:1 / -1; grid-row:2; }
+  }
 </style>
 </head>
 <body>
-  <div id="w"></div>
+  <div id="w"><p class="c-msg">Cargando…</p></div>
 <script>
-  /* Asegura sesión + cabecera navy del portal (redirige si no hay sesión). */
-  if (window.APOLANA_PORTAL && APOLANA_PORTAL.listo) APOLANA_PORTAL.listo(function(){});
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('w');
+  var B = window.APOLANA_BASE || '../../';
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function pad(n){ return (n<10?'0':'')+n; }
+  var hoy = new Date();
+  var hoyIso = hoy.getFullYear()+'-'+pad(hoy.getMonth()+1)+'-'+pad(hoy.getDate());
+  var mesIni = hoyIso.slice(0,7)+'-01';
+  var D = hoy.getDay()===0 ? 7 : hoy.getDay();          // 1 = lunes … 7 = domingo
+  var DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var DSEM = {1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo'};
+  function sinPrefijo(n){ return String(n||'').replace(/^El Cubo\s*·\s*/i,''); }
+  // «1.320 €» (toLocaleString('es-ES') no pone el punto en números de 4 cifras).
+  function euros(n){ var v=Math.round(Number(n||0)*100)/100, e=Math.trunc(v), c=Math.round((v-e)*100);
+    return String(e).replace(/\B(?=(\d{3})+(?!\d))/g,'.')+(c?','+pad(c):'')+'\u00a0€'; }
+
+  var shell = window.APOLANA_MUNDOS_SHELL;
+  var cabHTML = '<div class="mh-cab"><div class="mh-eyebrow">Mundo</div>'+
+    '<h1><span class="pt-g"></span>El Cubo</h1>'+
+    '<p>Socios que entrenan: grupos fijos, cuotas y asistencia.</p></div>';
+  var hubHTML = '<p class="mh-rot">Herramientas de este mundo</p>' + (shell && shell.hubHTML ? shell.hubHTML('cubo') : '');
+
+  /* ---- Mismas reglas que portal/cubo-lista y admin/cubo-altas (no inventar otras) ---- */
+  function esGratis(g){ return !!g && /fuerza\s*gratis/i.test(g.nombre||''); }
+  function turnoDe(g){
+    var s = ((g.nombre||'')+' '+(g.horario||'')).toLowerCase();
+    if(s.indexOf('viernes')>=0) return 'viernes';
+    if(s.indexOf('sábado')>=0 || s.indexOf('sabado')>=0) return 'sabado';
+    if(s.indexOf('domingo')>=0) return 'domingo';
+    return null;
+  }
+  function diasDelGrupo(g){
+    var n=(g.nombre||'').toLowerCase();
+    if(n.indexOf('l y x')>=0) return [1,3];
+    if(n.indexOf('m y j')>=0) return [2,4];
+    if(n.indexOf('viernes')>=0) return [5];
+    if(n.indexOf('sábado')>=0||n.indexOf('sabado')>=0) return [6];
+    if(n.indexOf('domingo')>=0) return [7];
+    return [];
+  }
+  function vieneEseDia(a,dia,g){
+    if(a.dias_semana && a.dias_semana.length) return a.dias_semana.indexOf(dia)!==-1;
+    var dg=diasDelGrupo(g); return !dg.length || dg.indexOf(dia)!==-1;
+  }
+  function horaTxt(g){
+    var m = /(\d{1,2}[:.]\d{2})\s*[–-]\s*(\d{1,2}[:.]\d{2})/.exec(g.horario||'');
+    if(m) return m[1]+'–'+m[2];
+    var m2 = /(\d{1,2})[:.h](\d{2})/.exec((g.nombre||'')+' '+(g.horario||''));
+    return m2 ? m2[1]+':'+m2[2] : '';
+  }
+  function minutosIni(g){
+    var m = /(\d{1,2})[:.h](\d{2})/.exec((g.horario||'')+' '+(g.nombre||''));
+    return m ? (+m[1])*60+(+m[2]) : null;
+  }
+  // admin/cubo-altas · clasificar(): a qué casilla va cada alta.
+  function clasificar(a){
+    if(a.suscripcion_estado==='cancelada') return null;
+    if(a.suscripcion_estado==='activa') return 'pagado';
+    if(a.suscripcion_estado==='impago') return 'impago';
+    if(a.pago_externo) return 'efectivo';
+    if(a.lista_espera) return 'espera';
+    if(a.cobro_abierto) return 'sinpagar';
+    if((a.estado||'')==='aprobada') return 'prueba';
+    return null;
+  }
+
+  function intento(p){ return Promise.resolve(p).then(function(r){ return (r && !r.error) ? r : null; }, function(){ return null; }); }
+  var rg = await intento(sb.from('grupos').select('id,nombre,horario').eq('seccion','cubo').eq('activo',true).order('nombre'));
+  var GR = (rg && rg.data) || [];
+  var gids = GR.map(function(g){ return g.id; });
+  var res = await Promise.all([
+    intento(sb.from('cubo_altas').select('id,horario,estado,lista_espera,suscripcion_estado,pago_externo,cobro_abierto,precio_mes,dias_semana,perfil_id,baja_solicitada')),
+    intento(sb.rpc('cubo_aforos')),
+    intento(sb.rpc('general_resumen')),
+    gids.length ? intento(sb.from('asistencia').select('grupo_id,presente').eq('fecha', hoyIso).in('grupo_id', gids)) : null,
+    intento(sb.from('cubo_prueba').select('turnos,estado,perfil_id').neq('estado','cancelado')),
+    intento(sb.from('cubo_ausencias').select('perfil_id').eq('fecha', hoyIso)),
+    intento(sb.from('cubo_pausas').select('alta_id,mes,stripe_aplicada_en').eq('estado','aprobada').eq('mes', mesIni)),
+    intento(sb.rpc('dia_cancelado', { p_fecha: hoyIso, p_seccion: 'cubo' })),
+    intento(sb.from('cubo_prueba_asistencia').select('turno,presente').eq('fecha', hoyIso)),
+    gids.length ? intento(sb.from('atleta_grupos').select('grupo_id').in('grupo_id', gids)) : null,
+    intento(sb.rpc('es_admin'))
+  ]);
+  var ra=res[0], rafo=res[1], rres=res[2], rasis=res[3], rprue=res[4], raus=res[5], rpau=res[6], rcan=res[7], rpa=res[8], rag=res[9], radm=res[10];
+
+  /* Sin permiso para leer las altas (no es admin, o con otra vista puesta): la
+     portada de siempre. Ojo: sin permiso la RLS no da error, devuelve vacío. */
+  if(!ra || !(radm && radm.data === true)){
+    wrap.innerHTML = cabHTML + '<div class="mh-stats" data-mh-stats></div>' + hubHTML;
+    var rs = await intento(sb.rpc('mundo_stats', { p_world:'cubo' }));
+    var box = wrap.querySelector('[data-mh-stats]');
+    if(rs && Array.isArray(rs.data) && box) box.innerHTML = rs.data.map(function(s){ return '<div class="mh-stat"><b>'+esc(s.n)+'</b><span>'+esc(s.l)+'</span></div>'; }).join('');
+    return;
+  }
+
+  var ALTAS = ra.data || [];
+  var G = {prueba:[],sinpagar:[],pagado:[],impago:[],efectivo:[],espera:[]};
+  ALTAS.forEach(function(a){ var k=clasificar(a); if(k) G[k].push(a); });
+  var pendientes = ALTAS.filter(function(a){ return (a.estado||'pendiente')==='pendiente'; }).length;
+  var integrantes = G.pagado.length+G.efectivo.length+G.prueba.length+G.sinpagar.length+G.impago.length;
+  var pagando = G.pagado.length+G.efectivo.length;
+  var cuotaMes = G.pagado.concat(G.efectivo).reduce(function(s,a){ return s+(a.precio_mes>0?a.precio_mes:0); },0);
+  var bajas = G.pagado.filter(function(a){ return !!a.baja_solicitada; }).length;
+  var cnt = (rres && rres.data) || {};
+
+  var URL_ALTAS = B+'admin/cubo-altas/';
+  var kpiHTML = '<div class="c-kpis">'+
+    '<a class="c-kpi" href="'+esc(URL_ALTAS)+'"><b>'+integrantes+'</b><span>Integrantes</span></a>'+
+    '<a class="c-kpi" href="'+esc(URL_ALTAS)+'"><b>'+pagando+'</b><span>Pagando</span></a>'+
+    '<a class="c-kpi" href="'+esc(URL_ALTAS)+'"><b>'+G.prueba.length+'</b><span>De prueba</span></a>'+
+    '<a class="c-kpi" href="'+esc(B+'admin/dinero/')+'"><b>'+euros(cuotaMes)+'</b><span>En cuotas al mes</span></a>'+
+  '</div>';
+
+  /* ---- Hoy ---- */
+  var AUS={}, PAUSA={}, ASIS={}, ASISG={};
+  ((raus&&raus.data)||[]).forEach(function(x){ if(x.perfil_id) AUS[x.perfil_id]=true; });
+  ((rpau&&rpau.data)||[]).forEach(function(x){ if(x.alta_id && (x.stripe_aplicada_en || hoyIso < mesIni.slice(0,7)+'-05')) PAUSA[x.alta_id]=true; });
+  ((rasis&&rasis.data)||[]).forEach(function(x){ var o=ASIS[x.grupo_id]||(ASIS[x.grupo_id]={n:0,p:0}); o.n++; if(x.presente) o.p++; });
+  ((rpa&&rpa.data)||[]).forEach(function(x){ var o=ASISG[x.turno]||(ASISG[x.turno]={n:0,p:0}); o.n++; if(x.presente) o.p++; });
+  var PRUEBA = (rprue&&rprue.data)||[];
+  var CANCEL = (rcan&&rcan.data)||{};
+  function esperados(g){
+    if(esGratis(g)){ var t=turnoDe(g); return PRUEBA.filter(function(p){ return (p.turnos||[]).indexOf(t)!==-1 && !AUS[p.perfil_id]; }).length; }
+    return ALTAS.filter(function(a){ return a.estado==='aprobada' && a.horario===g.nombre && !a.lista_espera && a.suscripcion_estado!=='cancelada' && vieneEseDia(a,D,g) && !AUS[a.perfil_id] && !PAUSA[a.id]; }).length;
+  }
+  var deHoy = GR.filter(function(g){
+    var d = diasDelGrupo(g); if(!d.length){ var t=turnoDe(g); d = t==='viernes'?[5]:t==='sabado'?[6]:t==='domingo'?[7]:[]; }
+    return d.indexOf(D)!==-1;
+  }).sort(function(a,b){ return (minutosIni(a)||0)-(minutosIni(b)||0); });
+  var ahoraMin = hoy.getHours()*60+hoy.getMinutes();
+  var filasHoy;
+  if(CANCEL.cancelado){
+    filasHoy = '<div class="c-cancel">Hoy no hay entreno'+(CANCEL.motivo?': '+esc(CANCEL.motivo):'')+'.</div>';
+  } else if(!deHoy.length){
+    filasHoy = '<p class="c-nada">Hoy no entrena ningún grupo del Cubo.</p>';
+  } else {
+    filasHoy = deHoy.map(function(g){
+      var n = esperados(g);
+      var a = esGratis(g) ? ASISG[turnoDe(g)] : ASIS[g.id];
+      var ini = minutosIni(g);
+      // Pasada = al menos un «presente». Las marcas de «no viene» puestas antes de
+      // empezar no cuentan como lista pasada.
+      var pasada = !!(a && a.p);
+      var est = pasada ? '<span class="c-est ok">Lista pasada · vinieron '+a.p+' de '+Math.max(n,a.p)+'</span>'
+        : (ini!=null && ahoraMin < ini) ? '<span class="c-est luego">A las '+esc(horaTxt(g).split('–')[0])+'</span>'
+        : '<span class="c-est pend">Sin pasar</span>';
+      var url = B+'portal/cubo-lista/?grupo='+encodeURIComponent(g.id);
+      return '<div class="c-hoy"><span class="h">'+esc(horaTxt(g))+'</span>'+
+        '<div class="q"><b>'+esc(sinPrefijo(g.nombre))+'</b><small>'+n+(n===1?' persona prevista':' personas previstas')+'</small></div>'+
+        est+'<a class="c-btn'+(pasada?' sec':'')+'" href="'+esc(url)+'">'+(pasada?'Ver lista':'Pasar lista')+'</a></div>';
+    }).join('');
+  }
+  var hoyHTML = '<section class="c-box"><div class="c-box-cab"><h2>Hoy · '+DIAS[hoy.getDay()]+', '+hoy.getDate()+' de '+MESES[hoy.getMonth()]+'</h2>'+
+    '<a href="'+esc(B+'portal/calendario-club/?world=cubo')+'">Calendario →</a></div>'+filasHoy+'</section>';
+
+  /* ---- Necesita una revisión (solo lo que tiene algo) ---- */
+  var REV = [
+    { n:pendientes,                         t:'Altas nuevas por revisar' },
+    { n:G.sinpagar.length,                  t:'En el grupo, sin pagar todavía' },
+    { n:G.impago.length,                    t:'Impago: el cobro de la cuota ha fallado' },
+    { n:parseInt(cnt.cubo_prueba_decidir,10)||0, t:'De prueba que ya han hecho sus 2 entrenos (escríbeles)' },
+    { n:parseInt(cnt.cubo_pausas,10)||0,    t:'Piden pausar un mes la cuota' },
+    { n:bajas,                              t:'Piden la baja' },
+    { n:G.espera.length,                    t:'En lista de espera' }
+  ].filter(function(x){ return x.n>0; });
+  var revHTML = '<section class="c-box"><div class="c-box-cab"><h2>Necesita una revisión</h2></div>'+
+    (REV.length ? REV.map(function(x){
+      return '<a class="c-rev" href="'+esc(URL_ALTAS)+'"><b>'+x.n+'</b><span>'+esc(x.t)+'</span><i>Ver →</i></a>';
+    }).join('') : '<p class="c-nada">Todo al día: nada pendiente en el Cubo.</p>')+'</section>';
+
+  /* ---- Ocupación de los grupos (misma cuenta que admin/cubo-altas) ---- */
+  var AFORO = {}; ((rafo&&rafo.data)||[]).forEach(function(x){ AFORO[x.grupo_id]=x.aforo; });
+  var CUENTA = {}; ((rag&&rag.data)||[]).forEach(function(x){ CUENTA[x.grupo_id]=(CUENTA[x.grupo_id]||0)+1; });
+  function fila(nombre, sub, n, lim){
+    var lleno = n>=lim, pct = Math.min(100, Math.round(n/lim*100));
+    return '<div class="c-oc-f"><span class="n">'+esc(nombre)+(sub?'<small>'+esc(sub)+'</small>':'')+'</span>'+
+      '<div class="c-bar'+(lleno?' lleno':'')+'"><i style="width:'+pct+'%"></i></div>'+
+      '<span class="v"><b>'+n+'</b>/'+lim+(lleno?' · completo':'')+'</span></div>';
+  }
+  var ocHTML = GR.map(function(g){
+    var lim = AFORO[g.id]>0 ? AFORO[g.id] : 20;
+    var nom = sinPrefijo(g.nombre);
+    var altasG = ALTAS.filter(function(a){ return a.horario===g.nombre && a.estado==='aprobada' && !a.lista_espera && a.suscripcion_estado!=='cancelada'; });
+    var dias = [];
+    altasG.forEach(function(a){ (a.dias_semana||[]).forEach(function(d){ if(dias.indexOf(d)===-1) dias.push(d); }); });
+    // Solo los días propios del grupo (si hay quien tiene marcado un día de más,
+    // p. ej. un sábado en «L y X», no sale como fila suelta del grupo).
+    var propios = diasDelGrupo(g);
+    if(propios.length) dias = dias.filter(function(d){ return propios.indexOf(d)!==-1; });
+    dias.sort(function(x,y){ return x-y; });
+    if(dias.length>=2){
+      return dias.map(function(d){
+        var n = altasG.filter(function(a){ var ds=a.dias_semana||[]; return !ds.length || ds.indexOf(d)!==-1; }).length;
+        return fila(nom, DSEM[d]||'', n, lim);
+      }).join('');
+    }
+    return fila(nom, '', CUENTA[g.id]||0, lim);
+  }).join('');
+  var ocupHTML = GR.length ? '<section class="c-box"><div class="c-box-cab"><h2>Ocupación de los grupos</h2>'+
+    '<a href="'+esc(B+'admin/grupos/?seccion=cubo')+'">Grupos →</a></div><div class="c-oc">'+ocHTML+
+    '<p class="c-oc-nota">Plazas ocupadas sobre el aforo de cada grupo (pagando y de prueba).</p></div></section>' : '';
+
+  wrap.innerHTML = cabHTML + kpiHTML + hoyHTML + revHTML + ocupHTML + hubHTML;
+});
 </script>
 </body>
 </html>

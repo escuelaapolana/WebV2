@@ -97,11 +97,15 @@
   td.c-num { font-family: var(--fuente-dato); font-size: 13.5px; color: var(--texto-suave); white-space: nowrap; }
   tbody tr.sel { background: #F2F7FC; }
   /* Grupos: todos, el principal primero y marcado */
-  .gchips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-  .gchip { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; line-height: 1.2; padding: 4px 9px;
-           border-radius: 999px; background: var(--crema, #FBF9F4); border: 1px solid var(--linea-marcada); color: var(--texto); }
-  .gchip.prin { background: #EAF2FA; border-color: #CFE2F1; color: var(--navy); font-weight: 600; }
-  .gchip.prin::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--azul, #2F6FA8); }
+  /* 17-nov: etiquetas compactas, una línea cada una (nombre corto, el largo en
+     el title) y en gris neutro; el principal, con su punto azul y en negrita. */
+  .gchips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .gchip { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+           font-size: 12.5px; line-height: 1.3; padding: 3px 9px; border-radius: 999px;
+           background: #F3F3F4; border: 1px solid #E6E6E8; color: var(--texto); }
+  .gchip.prin { background: #F3F3F4; border-color: #E6E6E8; color: var(--navy); font-weight: 600; }
+  .gchip.off { opacity: .55; font-weight: 400; }   /* grupo cerrado (activo = false) */
+  .gchip.prin::before { content: ""; display: inline-block; vertical-align: 1px; width: 6px; height: 6px; margin-right: 6px; border-radius: 999px; background: var(--azul, #2F6FA8); }
   .papel-sub { display: block; font-size: 13px; color: var(--texto-suave); margin-top: 3px; }
   /* Estado de pago: punto + palabra (+ importe), nunca solo color */
   .pago { display: inline-flex; flex-direction: column; gap: 1px; font-size: 14px; color: var(--navy); }
@@ -1030,7 +1034,7 @@ APOLANA_ADMIN.listo(function (sb) {
        esto, la lista enseñaba «Azul 2» dos veces seguidas y elegir uno u
        otro era echarlo a suertes: media escuela acabaría en el turno
        equivocado y en la lista de asistencia del día que no es. */
-    var r = await sb.from('grupos').select('id,nombre,turno,seccion')
+    var r = await sb.from('grupos').select('id,nombre,turno,seccion,activo')
       .order('nombre').order('turno', { nullsFirst: true });
     var sel = $('a-grupo'), filtro = $('f-grupo');
     if (!r.error && r.data) {
@@ -1386,13 +1390,29 @@ APOLANA_ADMIN.listo(function (sb) {
     });
   }
 
+  /* Nombre corto para la etiqueta de la lista: sin «El Cubo · » (ya lo dice la
+     columna Estado) y sin repetir los días si el nombre ya los lleva («L y X
+     17:30 · lunes y miércoles» → «L y X 17:30»). El nombre entero va en el title. */
+  function grupoCorto(id) {
+    var g = null;
+    for (var k = 0; k < GRUPOS.length; k++) { if (GRUPOS[k].id === id) { g = GRUPOS[k]; break; } }
+    if (!g) return gruposById[id] || 'otro grupo';
+    var n = String(g.nombre || '').trim().replace(/^El Cubo\s*·\s*/i, '');
+    if (/\b(L y X|M y J|lunes|martes|miércoles|jueves|viernes|sábado|domingo)\b/i.test(n)) return n;
+    var dias = window.APOLANA_TURNO ? window.APOLANA_TURNO(g.turno) : '';
+    return dias ? n + ' · ' + dias : n;
+  }
+
   /* La columna «Grupos»: TODOS, el principal primero y marcado. */
   function celdaGrupos(a) {
     var ids = gruposDe(a);
     var txt = !ids.length ? '<span class="nada">Sin grupo</span>'
       : ids.map(function (id, i) {
-          return '<span class="gchip' + (i === 0 ? ' prin' : '') + '"' + (i === 0 ? ' title="Grupo principal"' : '') + '>' +
-            esc(gruposById[id] || 'otro grupo') + '</span>';
+          var largo = gruposById[id] || 'otro grupo';
+          var cerrado = GRUPOS.some(function (g) { return g.id === id && g.activo === false; });
+          return '<span class="gchip' + (i === 0 ? ' prin' : '') + (cerrado ? ' off' : '') + '" title="' +
+            esc(largo + (i === 0 ? ' · grupo principal' : '') + (cerrado ? ' · grupo cerrado' : '')) + '">' +
+            esc(grupoCorto(id)) + '</span>';
         }).join('');
     /* Botón de cambio rápido: cambia el grupo principal desde la lista, sin
        abrir la ficha entera (conserva los demás grupos y pide confirmar). */
