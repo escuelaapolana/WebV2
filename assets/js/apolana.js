@@ -645,7 +645,7 @@ class ApolanaPie extends HTMLElement {
           <a href="${ruta('/legal/condiciones/')}">Condiciones de uso</a>
           <a href="${ruta('/legal/cookies/')}">Cookies</a>
         </div>
-        <div class="pie-credito">© ${anio} Club Atletismo Apolana · Creada por <strong>Andrés Clavero Giménez</strong></div>
+        <div class="pie-credito">© ${anio} Club Atletismo Apol-Ana (Club Atletismo Apolana) · NIF G-03845500 · Creada por <strong>Andrés Clavero Giménez</strong></div>
       </footer>`;
   }
 }
