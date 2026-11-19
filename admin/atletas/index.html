@@ -2031,12 +2031,18 @@ APOLANA_ADMIN.listo(function (sb) {
   async function asistenciaNatacion(a, desde, hasta) {
     var rr = await Promise.all([
       sb.from('natacion_accesos').select('id').eq('atleta_id', a.id),
-      sb.from('natacion_inscripciones').select('franja_id,acceso_id').eq('atleta_id', a.id).eq('activa', true)
+      sb.from('natacion_inscripciones').select('franja_id,acceso_id,desde,created_at').eq('atleta_id', a.id).eq('activa', true)
     ]);
     if (rr[0].error && rr[1].error) return null;
-    var acc = {}, fr = {};
+    var acc = {}, fr = {}, inicio = {};
     (rr[0].data || []).forEach(function (x) { acc[x.id] = 1; });
-    (rr[1].data || []).forEach(function (x) { fr[x.franja_id] = 1; if (x.acceso_id) acc[x.acceso_id] = 1; });
+    (rr[1].data || []).forEach(function (x) {
+      fr[x.franja_id] = 1; if (x.acceso_id) acc[x.acceso_id] = 1;
+      // (mig 536) Solo cuentan las listas desde que empezó en esa franja: el día de su
+      // prueba (desde) o, si no hay, el día que se le dio la plaza.
+      var ini = x.desde || String(x.created_at || '').slice(0, 10);
+      if (ini && (!inicio[x.franja_id] || ini < inicio[x.franja_id])) inicio[x.franja_id] = ini;
+    });
     var accIds = Object.keys(acc), frIds = Object.keys(fr);
     if (!accIds.length && !frIds.length) return null;
     var r2 = await Promise.all([
@@ -2044,10 +2050,11 @@ APOLANA_ADMIN.listo(function (sb) {
       accIds.length ? sb.from('natacion_ausencias').select('fecha,franja_id').in('acceso_id', accIds).gte('fecha', desde).lte('fecha', hasta) : Promise.resolve({ data: [] })
     ]);
     if (r2[0].error && r2[1].error) return null;
-    var aus = r2[1].data || [], ausSet = {};
+    var aus = (r2[1].data || []).filter(function (x) { return !(x.franja_id && inicio[x.franja_id] && x.fecha < inicio[x.franja_id]); }), ausSet = {};
     aus.forEach(function (x) { ausSet[x.fecha + '|' + (x.franja_id || '')] = 1; ausSet[x.fecha + '|'] = 1; });
     var dias = [], pres = 0;
     (r2[0].data || []).forEach(function (l) {
+      if (inicio[l.franja_id] && l.fecha < inicio[l.franja_id]) return;   // aún no venía
       var falta = ausSet[l.fecha + '|' + l.franja_id] || ausSet[l.fecha + '|'];
       if (!falta) { pres++; dias.push({ fecha: l.fecha, presente: true }); }
     });
