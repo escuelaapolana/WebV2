@@ -121,6 +121,26 @@ function fila(etiqueta: string, valor: unknown): string {
     `<td style="padding:6px 10px;color:#18181b"><b>${esc(v)}</b></td></tr>`;
 }
 
+// Hasta cuándo cubre la primera cuota (para que Isa no pase una renovación
+// que ya está pagada). La renovación es cada DICIEMBRE. Regla del club (19-nov):
+// quien se da de alta en noviembre o diciembre paga la cuota del AÑO QUE VIENE
+// (130 € = 125 € + 5 € de pista) → cubre hasta diciembre del año siguiente y
+// la renovación de este diciembre NO se le pasa. Las altas reducidas de antes
+// (35 €) solo cubrían hasta este diciembre. Se mira el importe para no
+// confundir una cosa con otra.
+function cobertura(altaISO: unknown, importeCent: number): { hasta: number; saltar: number | null } {
+  const f = new Date(String(altaISO ?? ""));
+  const fecha = isNaN(f.getTime()) ? new Date() : f;
+  // Fecha en hora de España (el alta del 31-dic a las 23:30 es de diciembre).
+  const partes = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "numeric" })
+    .formatToParts(fecha);
+  const anio = Number(partes.find((p) => p.type === "year")?.value ?? fecha.getFullYear());
+  const mes = Number(partes.find((p) => p.type === "month")?.value ?? fecha.getMonth() + 1);
+  const cuotaEntera = importeCent >= 12500;
+  if (cuotaEntera && mes >= 11) return { hasta: anio + 1, saltar: anio };
+  return { hasta: anio, saltar: null };
+}
+
 // Correo de CONFIRMACIÓN para el propio socio (no el aviso a administración).
 function correoSocioHtml(d: { nombre: string; referencia: string; secciones: string }): string {
   const sec = d.secciones && d.secciones.trim()
@@ -222,6 +242,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const nombreCompleto = `${a.nombre ?? ""} ${a.apellidos ?? ""}`.trim();
 
+  // 3b · Lo que ha pagado y hasta cuándo es socio (para la renovación de Isa).
+  //      Si no se encuentra el pago, el correo sale igual, sin este recuadro.
+  let bloquePago = "";
+  let textoPago = "";
+  try {
+    const rPago = await rest("GET",
+      `pagos_online?select=importe_centimos,estado&referencia=eq.${encodeURIComponent(`socio-${a.id}`)}&limit=1`);
+    const p = Array.isArray(rPago.datos) ? rPago.datos[0] as { importe_centimos?: number; estado?: string } : null;
+    const cent = Math.round(Number(p?.importe_centimos ?? 0));
+    if (cent > 0) {
+      const eur = (cent / 100).toLocaleString("es-ES", { minimumFractionDigits: cent % 100 ? 2 : 0, maximumFractionDigits: 2 });
+      const { hasta, saltar } = cobertura(a.created_at, cent);
+      const comoPaga = p?.estado === "pagado" ? "cobrada" : "domiciliada (el banco la cobra en unos días)";
+      const lineaSaltar = saltar
+        ? `<p style="margin:8px 0 0;font-size:15px;font-weight:700;color:#9a3412">No pasarle la renovación de diciembre de ${saltar}: ya tiene pagado ${hasta}.</p>`
+        : "";
+      bloquePago =
+        `<div style="margin:0 0 18px;padding:14px 16px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa">` +
+        `<p style="margin:0;font-size:16px;font-weight:700;color:#18181b">Ha pagado ${esc(eur)} € · socio/a hasta diciembre de ${hasta}</p>` +
+        `<p style="margin:4px 0 0;font-size:13px;color:#52525b">Primera cuota ${esc(comoPaga)} por domiciliación SEPA.` +
+        (saltar ? ` Incluye la cuota de ${hasta} (125 €) y 5 € de entradas a la pista de lo que queda de ${saltar}.` : "") + `</p>` +
+        lineaSaltar +
+        `</div>`;
+      textoPago = `Ha pagado ${eur} € · socio/a hasta diciembre de ${hasta}.` +
+        (saltar ? ` NO pasarle la renovación de diciembre de ${saltar}.` : "") + " ";
+    }
+  } catch (e) {
+    console.warn("correo-alta-aviso: no se pudo leer el pago:", e);
+  }
+
   const docs: string[] = [];
   if (dniA) docs.push(`<a href="${esc(dniA)}" style="color:#0b5d3b">DNI (anverso)</a>`);
   if (dniB) docs.push(`<a href="${esc(dniB)}" style="color:#0b5d3b">DNI (reverso)</a>`);
@@ -270,6 +320,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e4e4e7">
       <div style="background:#0b5d3b;color:#fff;padding:18px 24px;font-size:17px;font-weight:700">Nueva alta de socio</div>
       <div style="padding:22px 24px">
+        ${bloquePago}
         <p style="margin:0 0 14px;color:#3f3f46">Ha entrado un alta de socio nueva desde la web. Datos:</p>
         <table style="border-collapse:collapse;width:100%;font-size:14px">${filas}</table>
         ${bloqueDocs}
@@ -278,7 +329,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     </div>
   </body></html>`;
 
-  const texto = `Nueva alta de socio (${a.referencia}): ${nombreCompleto}, DNI ${a.dni}, ${a.email}, tel ${a.telefono}. ` +
+  const texto = textoPago + `Nueva alta de socio (${a.referencia}): ${nombreCompleto}, DNI ${a.dni}, ${a.email}, tel ${a.telefono}. ` +
     `IBAN ${a.iban ?? "-"} (titular ${a.titular_cuenta ?? "-"}). Documentos: ${[dniA, dniB, carnet].filter(Boolean).join(" ") || "ninguno"}`;
 
   // 4 · Enviar a administración por Brevo.
@@ -291,7 +342,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
         to: [{ email: CORREO_ADMIN }],
         replyTo: a.email ? { email: String(a.email) } : undefined,
-        subject: `Nueva alta de socio · ${nombreCompleto || a.referencia}`,
+        subject: `Nueva alta de socio · ${nombreCompleto || a.referencia}${textoPago.includes("NO pasarle") ? " · ya pagado el año que viene" : ""}`,
         htmlContent: html,
         textContent: texto,
       }),
