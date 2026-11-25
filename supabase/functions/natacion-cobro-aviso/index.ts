@@ -24,6 +24,11 @@
 //      (pagos.recordatorio_pago_en).
 // body { prueba_mes: true, a: "correo@…" } → un ejemplo de ese correo.
 //
+// MIG 537 · DÍA 21 ({ aviso21: true }, cron del 21 a las 9:00): correo a TODAS las familias
+//   que pagan por la app. Activadas que cobran el día 5 que viene → aviso de cobro; enlaces sin
+//   activar (con plaza) → «actívala antes del día 5». No repite (cuotas_entreno.aviso21_mes).
+//   { aviso21: true, simular: true } solo lista; con prueba + a, un ejemplo de cada a ese correo.
+//
 //   supabase functions deploy natacion-cobro-aviso --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
 
@@ -140,6 +145,104 @@ function correoMes(x: { nadador: string; concepto: string; importe: number; venc
   return { html, texto, asunto: `${x.recordatorio ? "Recordatorio · " : ""}Cuota de natación · ${x.concepto.split(" · ").slice(-1)[0]} · ${eur(x.importe)}` };
 }
 
+// MIG 537 · Correo del día 21 a quien tiene el enlace SIN ACTIVAR: «actívala antes del día 5».
+function correo21Pendiente(x: { nadador: string; importe: number; periodicidad: string | null; cargo: number | null; cargoConcepto: string | null; dia5: string; enlace: string }) {
+  const [, m, d] = x.dia5.split("-").map(Number);
+  const dia = `${d} de ${MESES[m - 1]}`;
+  const cada = x.periodicidad === "trimestral" ? "al trimestre" : x.periodicidad === "anual" ? "al año" : "al mes";
+  const fila = (k: string, v: string) => `<tr><td style="padding:7px 12px;color:#71717a;white-space:nowrap;font-size:14px">${escH(k)}</td><td style="padding:7px 12px;color:#18181b;font-size:15px"><b>${escH(v)}</b></td></tr>`;
+  const html = `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana · Natación</td></tr>
+      <tr><td style="padding:22px 24px 6px 24px">
+        <p style="margin:0 0 10px;font-size:17px;font-weight:700;color:#26374B">Falta activar la cuota de natación</p>
+        <p style="margin:0 0 6px;color:#3f3f46;line-height:1.6">Hola. Las cuotas de natación ya se pagan desde la web del club y se cobran el <b>día 5 de cada mes</b>. La de <b>${escH(x.nadador)}</b> todavía está sin activar: <b>actívala antes del ${escH(dia)}</b>, por favor.</p>
+      </td></tr>
+      <tr><td style="padding:6px 24px 6px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">
+          ${fila("Nadador/a", x.nadador)}${fila("Cuota", `${eur(x.importe)} ${cada}`)}${x.cargo ? fila("Al activarla", `${eur(x.cargo)}${x.cargoConcepto ? " · " + x.cargoConcepto : ""}`) : ""}${fila("Activar antes del", dia)}
+        </table></td></tr>
+      <tr><td align="center" style="padding:18px 24px 6px 24px">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td bgcolor="#2F6FA8" style="background-color:#2F6FA8;border-radius:10px">
+            <a href="${escH(x.enlace)}" style="display:inline-block;padding:14px 30px;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px">Activar mi cuota →</a>
+          </td></tr></table>
+      </td></tr>
+      <tr><td style="padding:12px 24px 22px 24px">
+        <p style="margin:0 0 8px;color:#3f3f46;line-height:1.6">Se paga con tarjeta o con cuenta bancaria (IBAN): se pone <b>una sola vez</b> y después se cobra sola.</p>
+        <p style="margin:0;color:#71717a;font-size:13px;line-height:1.5">Si ya la has activado, ignora este correo. ¿Alguna dificultad? Contesta a este correo y te ayudamos.</p>
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+  const texto = `Falta activar la cuota de natación de ${x.nadador} (${eur(x.importe)} ${cada}). Las cuotas se cobran el día 5 de cada mes: actívala antes del ${dia} en ${x.enlace} (tarjeta o IBAN, una sola vez). Si ya lo has hecho, ignora este correo.`;
+  return { html, texto, asunto: `Falta activar la cuota de natación de ${x.nadador} · antes del ${dia}` };
+}
+
+// MIG 537 · Día 21: aviso a TODAS las familias que pagan natación por la app.
+//   · activadas cuyo próximo cobro (según Stripe) es el día 5 que viene → aviso de cobro;
+//   · enlaces sin activar (con plaza) → «actívala antes del día 5».
+// body { aviso21: true }                          → la pasada de verdad (cron del día 21).
+// body { aviso21: true, simular: true }           → solo dice a quién le llegaría (no manda).
+// body { aviso21: true, prueba: true, a: "…" }    → un ejemplo de cada correo a ese correo.
+async function aviso21(cuerpo: Record<string, unknown>) {
+  const simular = cuerpo.simular === true;
+  const prueba = cuerpo.prueba === true;
+  const a = String(cuerpo.a ?? "").trim().toLowerCase();
+  if (prueba && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)) return json({ error: "falta 'a' (correo de prueba)" }, 400);
+  const hoy = ymdMadrid(Math.floor(Date.now() / 1000));
+  const [hy, hm, hd] = hoy.split("-").map(Number);
+  const my = hd > 5 ? (hm === 12 ? hy + 1 : hy) : hy, mm = hd > 5 ? (hm % 12) + 1 : hm;
+  const dia5 = `${my}-${String(mm).padStart(2, "0")}-05`;
+  const mesClave = dia5.slice(0, 7);
+  const marcar = (id: string) => rest(`cuotas_entreno?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ aviso21_mes: mesClave }) });
+  const activas: any[] = [], pendientes: any[] = [];
+  let ejemploActiva = false, ejemploPend = false;
+
+  // 1 · Activadas: el aviso de cobro si su próximo cobro es ese día 5.
+  const rA = await rest("cuotas_entreno?select=id,nombre,apellidos,email,periodicidad,metodo,fin,stripe_subscription_id,aviso21_mes" +
+    "&origen=eq.natacion&stripe_subscription_id=not.is.null&suscripcion_estado=in.(activa,en_camino)");
+  for (const q of (Array.isArray(rA.datos) ? rA.datos : [])) {
+    if (prueba && ejemploActiva) break;
+    const nadador = capital(`${q.nombre ?? ""} ${q.apellidos ?? ""}`.trim());
+    const s = await sub(q.stripe_subscription_id);
+    if (!s || ["canceled", "incomplete_expired"].includes(String(s.status))) { activas.push({ nadador, nada: "sin suscripción viva" }); continue; }
+    const prox = proximoDe(s);
+    const fecha = prox > 0 ? ymdMadrid(prox) : "";
+    if (fecha !== dia5) { activas.push({ nadador, fecha, nada: "no cobra ese día 5" }); continue; }
+    if (Number(s.cancel_at) > 0 && Number(s.cancel_at) <= prox) { activas.push({ nadador, nada: "se para antes" }); continue; }
+    const importe = Number(s.items?.data?.[0]?.price?.unit_amount ?? 0);
+    if (!q.email || !(importe > 0)) { activas.push({ nadador, error: !q.email ? "sin correo" : "sin importe" }); continue; }
+    if (!prueba && q.aviso21_mes === mesClave) { activas.push({ nadador, nada: "ya avisado" }); continue; }
+    const datos = { nadador, fecha, importe, periodo: periodo(fecha, q.periodicidad), concepto: "", tarjeta: q.metodo === "tarjeta",
+      fin: q.fin ? (() => { const [fy, fm, fd] = String(q.fin).split("-").map(Number); return `${fd} de ${MESES[fm - 1]} de ${fy}`; })() : null };
+    if (simular) { activas.push({ nadador, fecha, importe, se_enviaria: true }); continue; }
+    const ok = await enviar(prueba ? a : String(q.email), correo(datos));
+    if (prueba) { ejemploActiva = true; activas.push({ nadador, ejemplo: ok }); continue; }
+    if (ok) await marcar(q.id);
+    activas.push({ nadador, fecha, enviado: ok });
+  }
+
+  // 2 · Enlaces sin activar (con plaza): «actívala antes del día 5».
+  const rP = await rest("rpc/natacion_aviso21_pendientes", { method: "POST", body: "{}" });
+  for (const q of (Array.isArray(rP.datos) ? rP.datos : [])) {
+    if (prueba && ejemploPend) break;
+    const nadador = capital(`${q.nombre ?? ""} ${q.apellidos ?? ""}`.trim());
+    if (!prueba && q.aviso21_mes === mesClave) { pendientes.push({ nadador, nada: "ya avisado" }); continue; }
+    if (simular) { pendientes.push({ nadador, se_enviaria: true }); continue; }
+    const c = correo21Pendiente({ nadador, importe: Number(q.importe_cent) || 0, periodicidad: q.periodicidad,
+      cargo: Number(q.cargo_inicial_cent) || null, cargoConcepto: q.cargo_inicial_concepto ?? null, dia5,
+      enlace: `https://atletismoapolana.com/entreno/cuota/?t=${q.token}&m=1` });
+    const ok = await enviar(prueba ? a : String(q.email), c);
+    if (prueba) { ejemploPend = true; pendientes.push({ nadador, ejemplo: ok }); continue; }
+    if (ok) await marcar(q.id);
+    pendientes.push({ nadador, enviado: ok });
+  }
+  console.log("[natacion-cobro-aviso] aviso21", hoy, dia5, JSON.stringify({ activas, pendientes }));
+  return json({ ok: true, aviso21: true, hoy, dia5, simular, prueba, activas, pendientes });
+}
+
 async function enviar(a: string, c: { html: string; texto: string; asunto: string }) {
   const r = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -162,6 +265,8 @@ Deno.serve(async (req: Request) => {
   if (!sec || !iguales(sec, CRON_SECRET)) return json({ error: "secreto" }, 401);
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
+  // --- 537 · correo del día 21 ---
+  if (cuerpo.aviso21 === true) return await aviso21(cuerpo);
   const prueba = cuerpo.prueba === true;
   // --- 431 · ejemplo del correo «mes a mes» ---
   if (cuerpo.prueba_mes === true) {
