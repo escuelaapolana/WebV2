@@ -260,14 +260,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
         : "";
       bloquePago =
         `<div style="margin:0 0 18px;padding:14px 16px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa">` +
-        `<p style="margin:0;font-size:16px;font-weight:700;color:#18181b">Ha pagado ${esc(eur)} € · socio/a hasta diciembre de ${hasta}</p>` +
+        `<p style="margin:0;font-size:16px;font-weight:700;color:#18181b">Ha pagado ${esc(eur)} € · ` +
+          (saltar ? `socio/a todo el año ${hasta} (desde hoy hasta diciembre de ${hasta})` : `socio/a hasta diciembre de ${hasta}`) + `</p>` +
         `<p style="margin:4px 0 0;font-size:13px;color:#52525b">Primera cuota ${esc(comoPaga)} por domiciliación SEPA.` +
         (saltar ? (cent > 12500
           ? ` Incluye la cuota de ${hasta} (125 €) y ${esc(((cent - 12500) / 100).toLocaleString("es-ES"))} € por lo que queda de ${saltar}.`
           : ` Es la cuota de ${hasta}: se ha dado de alta a final de ${saltar} y le vale ya para el año que viene.`) : "") + `</p>` +
         lineaSaltar +
         `</div>`;
-      textoPago = `Ha pagado ${eur} € · socio/a hasta diciembre de ${hasta}.` +
+      textoPago = `Ha pagado ${eur} € · ` + (saltar ? `socio/a todo el año ${hasta} (desde hoy hasta diciembre de ${hasta}).` : `socio/a hasta diciembre de ${hasta}.`) +
         (saltar ? ` NO pasarle la renovación de diciembre de ${saltar}.` : "") + " ";
     }
   } catch (e) {
@@ -344,7 +345,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
         to: [{ email: CORREO_ADMIN }],
         replyTo: a.email ? { email: String(a.email) } : undefined,
-        subject: `Nueva alta de socio · ${nombreCompleto || a.referencia}${textoPago.includes("NO pasarle") ? " · ya pagado el año que viene" : ""}`,
+        subject: `Nueva alta de socio · ${nombreCompleto || a.referencia}${(textoPago.match(/socio\/a todo el año (\d{4})/) ? " · socio/a todo " + textoPago.match(/socio\/a todo el año (\d{4})/)![1] : "")}`,
         htmlContent: html,
         textContent: texto,
       }),
