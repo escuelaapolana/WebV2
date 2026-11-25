@@ -19,6 +19,8 @@
    [mig 360] «Pausar un mes»: con la cuota ACTIVA, lee `cubo_pausa_mia()` y
    deja pedir la pausa (`cubo_pausa_solicitar`) o retirarla
    (`cubo_pausa_anular`). La aprueba el club (Edge cubo-pausa).
+   [25-nov] «Cambiar la tarjeta»: con la cuota ACTIVA, Edge `cubo-tarjeta`
+   (abrir → Stripe en modo setup; al volver, aplicar → tarjeta de la cuota).
    ============================================================ */
 (function () {
   'use strict';
@@ -75,7 +77,7 @@
         ? fechaLarga(alta.ultimo_cobro) : '';
       var baja = alta.baja_solicitada
         ? '<p class="fina">Has pedido la baja. El club la tramitará y dejará de cobrarte. Si fue un error, escríbenos.</p>'
-        : '<p class="fina">¿Cambiar de tarjeta? Escríbenos. ¿Quieres darte de baja? Pídela con al menos <b>15 días de antelación</b> al siguiente cobro y el club la tramita. ' +
+        : '<p class="fina">¿Quieres darte de baja? Pídela con al menos <b>15 días de antelación</b> al siguiente cobro y el club la tramita. ' +
           '<button type="button" class="enlace" id="cb-baja">Solicitar la baja</button></p>' +
           '<p class="pago-msg" id="cb-baja-msg" hidden></p>';
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
@@ -84,7 +86,12 @@
         '<div class="pagos">' +
           '<div class="pago"><span>Próximo pago</span><b>' + (prox ? esc(prox) : 'Por confirmar') + '</b></div>' +
           (ult ? '<div class="pago"><span>Último pago</span><b>' + esc(ult) + '</b></div>' : '') +
-        '</div>' + (alta.baja_solicitada ? '' : bloquePausa(pausa)) + baja +
+        '</div>' +
+        // Cambiar la tarjeta (Edge cubo-tarjeta): la persona lo hace sola, en Stripe.
+        '<p class="fina">¿Tu tarjeta ha caducado o quieres pagar con otra? ' +
+          '<button type="button" class="enlace" id="cb-tarjeta">Cambiar la tarjeta</button></p>' +
+        '<p class="pago-msg" id="cb-tarjeta-msg" hidden></p>' +
+        (alta.baja_solicitada ? '' : bloquePausa(pausa)) + baja +
       '</div>';
     }
 
@@ -243,6 +250,64 @@
     });
   }
 
+  // Cambiar la tarjeta: abre Stripe en modo «guardar tarjeta» (no cobra nada).
+  function engancharTarjeta(sb, el) {
+    var bt = el.querySelector('#cb-tarjeta');
+    if (!bt) return;
+    bt.addEventListener('click', function () {
+      var txt = bt.textContent;
+      var msg = el.querySelector('#cb-tarjeta-msg');
+      var fallo = function (t) {
+        bt.disabled = false; bt.textContent = txt;
+        if (msg) { msg.hidden = false; msg.textContent = t; }
+      };
+      bt.disabled = true; bt.textContent = 'Abriendo…';
+      sb.functions.invoke('cubo-tarjeta', { body: { accion: 'abrir', desde: 'mas' } }).then(function (r) {
+        if (r.error) {
+          var ctx = r.error.context;
+          return (ctx && ctx.json ? ctx.json() : Promise.resolve(null))
+            .catch(function () { return null; })
+            .then(function (d) { fallo((d && d.mensaje) || 'No hemos podido abrir el cambio de tarjeta. Inténtalo en un minuto.'); });
+        }
+        if (!r.data || !r.data.url) { fallo('No hemos podido abrir el cambio de tarjeta. Inténtalo de nuevo.'); return; }
+        window.location.href = r.data.url; // a la página segura de Stripe
+      }).catch(function () { fallo('No hemos podido conectar. Inténtalo en un minuto.'); });
+    });
+  }
+
+  // Al volver de Stripe (?tarjeta=hecha&sid=… / ?tarjeta=cancelada): se aplica
+  // la tarjeta y se devuelve el aviso que va encima de la cuota. Una sola vez.
+  var _vueltaTarjeta = null;
+  function vueltaTarjeta(sb) {
+    if (_vueltaTarjeta) return _vueltaTarjeta;
+    var qs = new URLSearchParams(location.search);
+    var t = qs.get('tarjeta'), sid = qs.get('sid');
+    if (!t) return (_vueltaTarjeta = Promise.resolve(''));
+    qs.delete('tarjeta'); qs.delete('sid');
+    history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash);
+    var caja = function (ok, html) {
+      return '<p class="tarjeta-aviso" style="margin:0 0 12px;padding:11px 13px;border-radius:12px;font-size:14px;line-height:1.45;' +
+        (ok ? 'background:#EDF5EC;border:1px solid #BFD9BB;color:#2E5A2A' : 'background:#FBF0EC;border:1px solid #E6C4B5;color:#8A4A2E') +
+        '">' + html + '</p>';
+    };
+    if (t !== 'hecha' || !sid) {
+      return (_vueltaTarjeta = Promise.resolve(caja(false, 'Has salido sin cambiar la tarjeta. Tu cuota sigue con la de antes.')));
+    }
+    _vueltaTarjeta = sb.functions.invoke('cubo-tarjeta', { body: { accion: 'aplicar', session_id: sid } }).then(function (r) {
+      if (r.error || !r.data || !r.data.ok) {
+        var ctx = r.error && r.error.context;
+        return (ctx && ctx.json ? ctx.json() : Promise.resolve(null)).catch(function () { return null; }).then(function (d) {
+          return caja(false, esc((d && d.mensaje) || 'No hemos podido confirmar el cambio. Si en unos minutos no ves la tarjeta nueva, escríbenos.'));
+        });
+      }
+      var fin = r.data.ultimas4 ? ' acabada en <b>' + esc(r.data.ultimas4) + '</b>' : '';
+      return caja(true, '✅ <b>Tarjeta cambiada.</b> Los próximos cobros de tu cuota irán a la tarjeta' + fin + '.');
+    }).catch(function () {
+      return caja(false, 'No hemos podido confirmar el cambio. Si en unos minutos no ves la tarjeta nueva, escríbenos.');
+    });
+    return _vueltaTarjeta;
+  }
+
   // Solicitar la baja: la pide la persona, el club la tramita.
   function engancharBaja(sb, perfil, el) {
     var b = el.querySelector('#cb-baja');
@@ -298,10 +363,13 @@
 
   async function render(sb, perfil, el) {
     if (!el) return false;
-    var d = await cargar(sb, perfil);
+    var res = await Promise.all([cargar(sb, perfil), vueltaTarjeta(sb)]);
+    var d = res[0];
     estiloPausa();   // también trae el estilo de los enlaces-botón (baja), haya pausa o no
-    el.innerHTML = bloqueCuota(d.alta, d.abierto, d.pausa);
+    el.innerHTML = (res[1] || '') + bloqueCuota(d.alta, d.abierto, d.pausa);
+    _vueltaTarjeta = Promise.resolve('');   // el aviso sale una vez; al repintar ya no
     engancharPago(sb, el);
+    engancharTarjeta(sb, el);
     engancharBaja(sb, perfil, el);
     engancharPausa(sb, perfil, el);
     return !!d.alta;

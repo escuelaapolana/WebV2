@@ -405,6 +405,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       otrasHTML() +
       '<p class="rotulo">Noticias del club</p>' +
       '<div id="cb-noticias"><div class="ap-esq" data-esq="filas:2"></div></div>';
+    vueltaTarjeta();   // vuelta de «Cambiar la tarjeta» (?tarjeta=hecha&sid=…)
 
     montarApuntarme();
     var res = await Promise.all([horarios(), cuota(), noticias()]);
@@ -619,7 +620,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         ? fechaLarga(alta.ultimo_cobro) : '';
       var baja = alta.baja_solicitada
         ? '<p class="fina">Has pedido la baja. El club la tramitará y dejará de cobrarte. Si fue un error, escríbenos.</p>'
-        : '<p class="fina">¿Cambiar de tarjeta? Escríbenos. ¿Quieres darte de baja? Pídela con al menos <b>15 días de antelación</b> al siguiente cobro y el club la tramita. ' +
+        : '<p class="fina">¿Quieres darte de baja? Pídela con al menos <b>15 días de antelación</b> al siguiente cobro y el club la tramita. ' +
           '<button type="button" class="enlace" id="cb-baja" data-activa="1">Solicitar la baja</button></p>' +
           '<p class="pago-msg" id="cb-baja-msg" hidden></p>';
       return '<div class="cuota"><h2>Tu cuota mensual</h2>' +
@@ -628,7 +629,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="pagos">' +
           '<div class="pago"><span>Próximo pago</span><b>' + (prox ? esc(prox) : 'Por confirmar') + '</b></div>' +
           (ult ? '<div class="pago"><span>Último pago</span><b>' + esc(ult) + '</b></div>' : '') +
-        '</div>' + baja +
+        '</div>' +
+        '<p class="fina">¿Tu tarjeta ha caducado o quieres pagar con otra? ' +
+          '<button type="button" class="enlace" id="cb-tarjeta">Cambiar la tarjeta</button></p>' +
+        '<p class="pago-msg" id="cb-tarjeta-msg" hidden></p>' + baja +
       '</div>';
     }
 
@@ -677,6 +681,53 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         console.warn('[Apolana] cubo-pagar:', e && e.message ? e.message : e);
       });
     });
+  }
+
+  // Cambiar la tarjeta (Edge cubo-tarjeta): abre Stripe en modo «guardar tarjeta».
+  function engancharTarjeta() {
+    var bt = $('cb-tarjeta');
+    if (!bt) return;
+    bt.addEventListener('click', function () {
+      var txt = bt.textContent, msg = $('cb-tarjeta-msg');
+      var fallo = function (t) { bt.disabled = false; bt.textContent = txt; if (msg) { msg.hidden = false; msg.textContent = t; } };
+      bt.disabled = true; bt.textContent = 'Abriendo…';
+      sb.functions.invoke('cubo-tarjeta', { body: { accion: 'abrir', desde: 'cubo-atleta' } }).then(function (r) {
+        if (r.error) {
+          var ctx = r.error.context;
+          return (ctx && ctx.json ? ctx.json() : Promise.resolve(null)).catch(function () { return null; })
+            .then(function (d) { fallo((d && d.mensaje) || 'No hemos podido abrir el cambio de tarjeta. Inténtalo en un minuto.'); });
+        }
+        if (!r.data || !r.data.url) { fallo('No hemos podido abrir el cambio de tarjeta. Inténtalo de nuevo.'); return; }
+        window.location.href = r.data.url;
+      }).catch(function () { fallo('No hemos podido conectar. Inténtalo en un minuto.'); });
+    });
+  }
+
+  // Al volver de Stripe con la tarjeta nueva: se aplica y se avisa arriba.
+  function vueltaTarjeta() {
+    var qs = new URLSearchParams(location.search);
+    var t = qs.get('tarjeta'), sid = qs.get('sid');
+    if (!t) return;
+    qs.delete('tarjeta'); qs.delete('sid');
+    history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash);
+    var poner = function (ok, html) {
+      var cb = $('cb'); if (!cb) return;
+      var d = document.createElement('div');
+      d.className = 'cb-vuelta ' + (ok ? 'ok' : 'ko');
+      d.innerHTML = (ok ? '✅ ' : '⚠️ ') + '<span>' + html + '</span>';
+      cb.insertBefore(d, cb.firstChild);
+    };
+    if (t !== 'hecha' || !sid) { poner(false, 'Has salido sin cambiar la tarjeta. Tu cuota sigue con la de antes.'); return; }
+    sb.functions.invoke('cubo-tarjeta', { body: { accion: 'aplicar', session_id: sid } }).then(function (r) {
+      if (r.error || !r.data || !r.data.ok) {
+        var ctx = r.error && r.error.context;
+        return (ctx && ctx.json ? ctx.json() : Promise.resolve(null)).catch(function () { return null; }).then(function (d) {
+          poner(false, esc((d && d.mensaje) || 'No hemos podido confirmar el cambio. Si en unos minutos no ves la tarjeta nueva, escríbenos.'));
+        });
+      }
+      var fin = r.data.ultimas4 ? ' acabada en <b>' + esc(r.data.ultimas4) + '</b>' : '';
+      poner(true, '<b>Tarjeta cambiada.</b> Los próximos cobros de tu cuota irán a la tarjeta' + fin + '.');
+    }).catch(function () { poner(false, 'No hemos podido confirmar el cambio. Si en unos minutos no ves la tarjeta nueva, escríbenos.'); });
   }
 
   // Solicitar la baja (opción B): el padre la pide, el club la tramita.
@@ -912,6 +963,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var res = await cuota();
     $('cb-cuota').innerHTML = bloqueCuota(res.alta, !!(res.alta && res.alta.cobro_abierto));
     engancharPago();
+    engancharTarjeta();
     engancharBaja();
   }
 

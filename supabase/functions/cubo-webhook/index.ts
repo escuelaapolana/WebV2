@@ -26,6 +26,7 @@
 
 import { planificar, finPeriodo as finPeriodoSub, isoMadrid, cargosPendientes, textoCargos } from "../_shared/cubo-pausa.ts";
 import { cancelAtExacto, cobroEnPagos, finUnixDe } from "../_shared/cuota-entreno.ts";
+import { aplicarTarjeta, PREFIJO_TARJETA } from "../_shared/cubo-tarjeta.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -838,6 +839,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
         break;
     }
     return new Response(JSON.stringify({ recibido: true, socio: true }), { status: 200 });
+  }
+
+  // --- CAMBIO DE TARJETA DEL CUBO (Checkout en modo setup, cubotarjeta-<alta>) ---
+  // La persona cambia ella la tarjeta desde la app (Edge cubo-tarjeta). Aquí se
+  // aplica también, por si cerró la pestaña antes de volver. Repetirlo no hace
+  // daño. No toca el estado de la cuota: eso lo siguen contando los recibos.
+  if (objeto.object === "checkout.session" && objeto.mode === "setup") {
+    const refT = String(objeto.client_reference_id ?? objeto.metadata?.referencia ?? "");
+    if (refT.startsWith(PREFIJO_TARJETA)) {
+      if (tipo === "checkout.session.completed") {
+        const key = evento.livemode !== false ? SK_LIVE : SK_TEST;
+        try {
+          const res = await aplicarTarjeta(key, String(objeto.id ?? ""), async (id) => {
+            if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+            const r = await fetch(
+              `${SUPABASE_URL}/rest/v1/cubo_altas?select=id,perfil_id,stripe_customer_id,stripe_subscription_id&id=eq.${id}&limit=1`,
+              { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+            );
+            const f = await r.json().catch(() => []);
+            return Array.isArray(f) && f[0] ? f[0] : null;
+          });
+          if (!res.ok) console.warn(`Cambio de tarjeta del Cubo sin aplicar (${refT}): ${res.codigo} · ${res.mensaje}`);
+        } catch (e) { console.error("Cambio de tarjeta del Cubo:", refT, e); }
+      }
+      return new Response(JSON.stringify({ recibido: true, tarjeta: true }), { status: 200 });
+    }
   }
 
   // --- CUOTA DE ENTRENO (suscripción SEPA trimestral, referencia entreno-<id>) ---
