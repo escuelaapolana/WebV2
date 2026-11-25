@@ -9,6 +9,11 @@
 //   DNI, y lo manda a administración. Marca el alta como avisada para no
 //   mandar el correo dos veces.
 //
+//   Además (mig 538, 25-nov): si con ese correo ya entrenaba en el Cubo con la
+//   cuota activa, le pone el papel «socio» y le baja la cuota a tarifa de socio
+//   en Stripe (_shared/cubo-socio.ts). El correo lo cuenta y va con copia a
+//   Andrés (CORREO_RESPUESTAS). Con los pagos en modo prueba solo lo simula.
+//
 // SEGURIDAD
 //   · La llama pago-webhook con la clave de servicio al confirmarse el alta
 //     en Stripe. Sin esa clave (o x-cron-secret) solo envía si el alta ya
@@ -20,10 +25,13 @@
 //   · Idempotente: si el alta ya se avisó, no repite.
 //
 // CLAVES (las pone Supabase, ninguna vive aquí):
-//   BREVO_API_KEY, CORREO_REMITENTE, CORREO_REMITENTE_NOMBRE, CORREO_ADMIN
+//   BREVO_API_KEY, CORREO_REMITENTE, CORREO_REMITENTE_NOMBRE, CORREO_ADMIN,
+//   CORREO_RESPUESTAS, STRIPE_SECRET_KEY_APOLANA
 //
 // Deploy: supabase functions deploy correo-alta-aviso --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
+
+import { cuboAlHacerseSocio } from "../_shared/cubo-socio.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -38,6 +46,10 @@ const CORREO_URL_BASE = (Deno.env.get("CORREO_URL_BASE") ?? "https://atletismoap
 const BUCKET = "altas-documentos";
 const SAL = Deno.env.get("ACCESO_SAL") ?? "apolana-acceso";
 const CRON_SECRET = (Deno.env.get("CRON_SECRET") ?? "").trim();
+// Las cuotas del Cubo son live: para el ajuste al hacerse socio (mig 538).
+const STRIPE_KEY = (Deno.env.get("STRIPE_SECRET_KEY_APOLANA") ?? "").trim();
+// Andrés (lleva el Cubo): va en copia cuando el alta toca una cuota del Cubo.
+const CORREO_ANDRES = (Deno.env.get("CORREO_RESPUESTAS") ?? "andres.apolana@gmail.com").trim();
 
 // Comparación de secretos en tiempo constante.
 function iguales(x: string, y: string): boolean {
@@ -275,6 +287,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.warn("correo-alta-aviso: no se pudo leer el pago:", e);
   }
 
+  // 3c · Si ya entrenaba en el Cubo, se hace socio allí también (mig 538):
+  //      papel «socio» + cuota a tarifa de socio en Stripe. Corre UNA vez
+  //      (detrás del reclamo del paso 2). Si falla, el correo sale igual.
+  let bloqueCubo = "";
+  let textoCubo = "";
+  try {
+    const rCfg = await rest("GET", "pagos_config?select=modo&id=eq.1&limit=1");
+    const modo = Array.isArray(rCfg.datos) && rCfg.datos[0] ? String(rCfg.datos[0].modo ?? "") : "";
+    const ajuste = await cuboAlHacerseSocio({
+      rest, stripeKey: STRIPE_KEY, email: String(a.email ?? ""), altaSocioId: String(a.id),
+      referencia: String(a.referencia ?? ""), simular: modo !== "real" || !STRIPE_KEY,
+    });
+    if (ajuste) {
+      await rest("PATCH", `altas_socio?id=eq.${encodeURIComponent(String(a.id))}`, { cubo_ajuste: ajuste }, { Prefer: "return=minimal" });
+      if (ajuste.cubo.length) {
+        const lineas = ajuste.cubo.map((c) => {
+          if (c.estado === "bajada") return `Cuota del Cubo (${c.horario}) bajada de ${c.antes} € a ${c.despues} €/mes desde el próximo recibo.${c.motivo ? " " + c.motivo : ""}`;
+          if (c.estado === "ya_reducida") return `Cuota del Cubo (${c.horario}): ya pagaba la tarifa reducida (${c.antes} €/mes); solo se le marca socio.`;
+          if (c.estado === "revisar") return `Cuota del Cubo (${c.horario}): ${c.motivo}`;
+          return `Cuota del Cubo (${c.horario}): NO se ha podido bajar (${c.motivo}). Cámbiala a mano a ${c.despues} € en el panel.`;
+        });
+        const aMano = ajuste.cubo.some((c) => c.estado === "revisar" || c.estado === "error");
+        bloqueCubo =
+          `<div style="margin:0 0 18px;padding:14px 16px;border-radius:10px;background:${aMano ? "#fef2f2" : "#ecfdf5"};border:1px solid ${aMano ? "#fecaca" : "#a7f3d0"}">` +
+          `<p style="margin:0;font-size:16px;font-weight:700;color:#18181b">Ya estaba en el Cubo${aMano ? " · revisar a mano" : " · ajustado solo"}</p>` +
+          lineas.map((l) => `<p style="margin:4px 0 0;font-size:14px;color:#3f3f46">${esc(l)}</p>`).join("") +
+          `<p style="margin:6px 0 0;font-size:12px;color:#71717a">Ya tiene el papel de socio en la app. Si el banco devuelve el alta, llegará un aviso para volver a subirle la cuota.</p>` +
+          `</div>`;
+        textoCubo = "Ya estaba en el Cubo: " + lineas.join(" ") + " ";
+      }
+    }
+  } catch (e) {
+    console.error("correo-alta-aviso: el ajuste del Cubo falló:", e);
+  }
+
   const docs: string[] = [];
   if (dniA) docs.push(`<a href="${esc(dniA)}" style="color:#0b5d3b">DNI (anverso)</a>`);
   if (dniB) docs.push(`<a href="${esc(dniB)}" style="color:#0b5d3b">DNI (reverso)</a>`);
@@ -324,6 +371,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       <div style="background:#0b5d3b;color:#fff;padding:18px 24px;font-size:17px;font-weight:700">Nueva alta de socio</div>
       <div style="padding:22px 24px">
         ${bloquePago}
+        ${bloqueCubo}
         <p style="margin:0 0 14px;color:#3f3f46">Ha entrado un alta de socio nueva desde la web. Datos:</p>
         <table style="border-collapse:collapse;width:100%;font-size:14px">${filas}</table>
         ${bloqueDocs}
@@ -332,7 +380,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     </div>
   </body></html>`;
 
-  const texto = textoPago + `Nueva alta de socio (${a.referencia}): ${nombreCompleto}, DNI ${a.dni}, ${a.email}, tel ${a.telefono}. ` +
+  const texto = textoPago + textoCubo + `Nueva alta de socio (${a.referencia}): ${nombreCompleto}, DNI ${a.dni}, ${a.email}, tel ${a.telefono}. ` +
     `IBAN ${a.iban ?? "-"} (titular ${a.titular_cuenta ?? "-"}). Documentos: ${[dniA, dniB, carnet].filter(Boolean).join(" ") || "ninguno"}`;
 
   // 4 · Enviar a administración por Brevo.
@@ -344,6 +392,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         sender: { name: REMITENTE_NOMBRE, email: REMITENTE_EMAIL },
         to: [{ email: CORREO_ADMIN }],
+        ...(bloqueCubo && CORREO_ANDRES && CORREO_ANDRES !== CORREO_ADMIN ? { cc: [{ email: CORREO_ANDRES }] } : {}),
         replyTo: a.email ? { email: String(a.email) } : undefined,
         subject: `Nueva alta de socio · ${nombreCompleto || a.referencia}${(textoPago.match(/socio\/a todo el año (\d{4})/) ? " · socio/a todo " + textoPago.match(/socio\/a todo el año (\d{4})/)![1] : "")}`,
         htmlContent: html,

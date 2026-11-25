@@ -27,6 +27,7 @@
 import { planificar, finPeriodo as finPeriodoSub, isoMadrid, cargosPendientes, textoCargos } from "../_shared/cubo-pausa.ts";
 import { cancelAtExacto, cobroEnPagos, finUnixDe } from "../_shared/cuota-entreno.ts";
 import { aplicarTarjeta, PREFIJO_TARJETA } from "../_shared/cubo-tarjeta.ts";
+import { avisarAjusteDevuelto } from "../_shared/cubo-socio.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY =
@@ -785,6 +786,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       if (altaId) {
         await rpcServicio("pagos_marcar", { p_referencia: `socio-${altaId}`, p_estado: "reembolsado", p_evento: String(evento.id ?? "") });
         await patchAltaSocioFiltro(`id=eq.${encodeURIComponent(altaId)}`, { pago_estado: "devuelto" });
+        // Si al firmar se le bajó la cuota del Cubo, aviso a Andrés (mig 538).
+        await avisarAjusteDevuelto({ supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY, altaId, motivo: "devuelto" })
+          .catch((e) => console.error("aviso ajuste Cubo:", e));
         return new Response(JSON.stringify({ recibido: true, socio: true, devuelto: true }), { status: 200 });
       }
     }
@@ -833,6 +837,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
           `id=eq.${encodeURIComponent(altaId)}&pago_estado=in.(pendiente,en_camino)`,
           { pago_estado: "fallido" },
         );
+        await avisarAjusteDevuelto({ supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY, altaId, motivo: "rechazado" })
+          .catch((e) => console.error("aviso ajuste Cubo:", e));
         break;
       }
       default:
