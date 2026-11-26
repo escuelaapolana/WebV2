@@ -264,18 +264,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const eurTxt = (cent: number) => (cent / 100).toLocaleString("es-ES", { minimumFractionDigits: cent % 100 ? 2 : 0, maximumFractionDigits: 2 }) + " €";
   // NATACIÓN (22-oct-2026): el primer pago hoy y luego SIEMPRE el día 5.
   const nat = esNatacion(c) ? planNatacion(c, importeCent) : null;
+  // Mig 545 · NATACIÓN: los recibos sin pagar (p. ej. octubre suelto) se pagan
+  // en esta misma pasarela, como precios únicos. El webhook los marca pagados
+  // (ids en la metadata de la suscripción) y no los cuenta dos veces.
+  let recibos: { id: string; concepto: string; importe: number }[] = [];
   if (nat) {
+    const rR = await rest(`pagos?select=id,concepto,importe,notas&atleta_id=eq.${encodeURIComponent(c.atleta_id)}` +
+      `&estado=in.(pendiente,impagado)&anulado=is.false&token_pago=not.is.null&concepto=ilike.*nataci*&order=periodo.asc&limit=12`);
+    recibos = (Array.isArray(rR.datos) ? rR.datos : [])
+      .filter((p: any) => !/^(equipaci|ropa)/i.test(String(p.concepto ?? "")) && !String(p.notas ?? "").startsWith("stripe:") && Number(p.importe) >= 0.5)
+      .map((p: any) => ({ id: String(p.id), concepto: String(p.concepto), importe: Math.round(Number(p.importe) * 100) }));
+  }
+  const recibosCent = recibos.reduce((t, x) => t + x.importe, 0);
+  if (nat) {
+    let k = 1;
     if (nat.hoyCent >= 50) {
-      params.set("line_items[1][quantity]", "1");
-      params.set("line_items[1][price_data][currency]", "eur");
-      params.set("line_items[1][price_data][unit_amount]", String(nat.hoyCent));
-      params.set("line_items[1][price_data][product_data][name]", `${nat.hoyConcepto} · Club Atletismo Apolana`);
+      params.set(`line_items[${k}][quantity]`, "1");
+      params.set(`line_items[${k}][price_data][currency]`, "eur");
+      params.set(`line_items[${k}][price_data][unit_amount]`, String(nat.hoyCent));
+      params.set(`line_items[${k}][price_data][product_data][name]`, `${nat.hoyConcepto} · Club Atletismo Apolana`);
+      k++;
     }
+    for (const x of recibos) {
+      params.set(`line_items[${k}][quantity]`, "1");
+      params.set(`line_items[${k}][price_data][currency]`, "eur");
+      params.set(`line_items[${k}][price_data][unit_amount]`, String(x.importe));
+      params.set(`line_items[${k}][price_data][product_data][name]`, `Recibo pendiente · ${x.concepto}`);
+      k++;
+    }
+    if (recibos.length) params.set("subscription_data[metadata][recibos]", recibos.map((x) => x.id).join(","));
     params.set("subscription_data[trial_end]", String(nat.trialEnd));
     const primerDia5 = new Date(nat.trialEnd * 1000).toISOString().slice(0, 10);
     const cadaTxt = c.periodicidad === "mensual" ? "cada mes" : c.periodicidad === "anual" ? "cada año" : "cada 3 meses";
+    const hoyTotal = (nat.hoyCent >= 50 ? nat.hoyCent : 0) + recibosCent;
     params.set("custom_text[submit][message]",
-      (nat.hoyCent >= 50 ? `Hoy se cobran ${eurTxt(nat.hoyCent)} (${nat.hoyConcepto}). ` : "Hoy no se cobra nada. ") +
+      (hoyTotal > 0
+        ? `Hoy se cobran ${eurTxt(hoyTotal)}: ` + [nat.hoyCent >= 50 ? `${nat.hoyConcepto} (${eurTxt(nat.hoyCent)})` : "",
+            ...recibos.map((x) => `${x.concepto.split(" · ").slice(-1)[0]} pendiente (${eurTxt(x.importe)})`)].filter(Boolean).join(" + ") + ". "
+        : "Hoy no se cobra nada. ") +
       `Después, ${eurTxt(importeCent)} el día ${DIA_COBRO_NATACION} ${cadaTxt}, desde el ${fechaLarga(primerDia5)}` +
       (c.fin ? `; se para sola el ${fechaLarga(c.fin)}.` : "."));
   } else if (cargoIni >= 50) {

@@ -298,9 +298,10 @@ const fechaMadrid = (d: Date): string =>
 
 async function registrarCobroStripe(
   objeto: Record<string, any>, atletaId: string | null, concepto: string, metodo: "tarjeta" | "domiciliado", periodo: string | null,
+  descontarCent = 0,   // mig 545: lo que de esa factura eran recibos pendientes (ya apuntados aparte)
 ) {
   const invId = String(objeto.id ?? "");
-  const importe = (Number(objeto.amount_paid ?? 0) || 0) / 100;
+  const importe = Math.max(0, (Number(objeto.amount_paid ?? 0) || 0) - descontarCent) / 100;
   if (!invId.startsWith("in_") || importe <= 0) return;   // factura de 0 € (prueba gratis): no es dinero
   await rpcServicio("dinero_registrar_cobro_stripe", {
     p_factura: invId,
@@ -319,7 +320,25 @@ async function registrarCobroEntreno(objeto: Record<string, any>, cuota: Record<
   // cobro» (mig 380) con su concepto, su periodo real y tarjeta o domiciliado.
   const inicio = Number(objeto.lines?.data?.[0]?.period?.start ?? objeto.created ?? 0);
   const x = cobroEnPagos(cuota, inicio);
-  await registrarCobroStripe(objeto, cuota.atleta_id ?? null, x.concepto, x.metodo, x.periodo);
+  // Mig 545 · NATACIÓN: si al activar la cuota se pagaron también recibos
+  // pendientes (líneas «Recibo pendiente · …»), se marcan pagados esos recibos
+  // y su importe NO se cuenta otra vez en la fila de la cuota.
+  const lineasRecibo = (Array.isArray(objeto.lines?.data) ? objeto.lines.data : [])
+    .filter((l: any) => String(l?.description ?? "").includes("Recibo pendiente ·"));
+  let descontar = 0;
+  if (lineasRecibo.length) {
+    descontar = lineasRecibo.reduce((t: number, l: any) => t + (Number(l?.amount ?? 0) || 0), 0);
+    const ids = String(objeto.subscription_details?.metadata?.recibos ?? objeto.parent?.subscription_details?.metadata?.recibos ?? "")
+      .split(",").map((v) => v.trim()).filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+    if (ids.length) {
+      await rpcServicio("natacion_recibos_cobrados_stripe", {
+        p_ids: ids, p_factura: String(objeto.id ?? ""), p_fecha: fechaMadrid(fechaCobro(objeto)), p_metodo: x.metodo,
+      });
+    } else {
+      console.error("Factura con «Recibo pendiente» pero sin metadata.recibos:", objeto.id);
+    }
+  }
+  await registrarCobroStripe(objeto, cuota.atleta_id ?? null, x.concepto, x.metodo, x.periodo, descontar);
 }
 
 // Cubo: cada recibo cobrado de la suscripción deja su fila en `pagos`.
