@@ -355,24 +355,30 @@ async function resumenSemanal(cuerpo: Record<string, unknown>) {
     return persona(x.nombre, `Paga por transferencia: sin justificante de ${escH(meses)} (${escH(eur(Math.round(Number(x.total) * 100)))}). Si ya lo mandó, márcalo con «Ha pagado».`, m, x.tel); });
   const sin = (d.sin_activar ?? []).map((x: any) => persona(x.nombre,
     `Enlace sin activar desde el ${escH(String(x.creado).split("-").reverse().join("/"))} (${escH(eur(Math.round(Number(x.importe) * 100)))} ${x.periodicidad === "trimestral" ? "al trimestre" : "al mes"}).`, msgActivar(x), x.tel));
-  const total = rev.length + imp.length + rec.length + tra.length + sin.length;
+  // 546 · Han dejado de venir (plaza activa, 0 clases en 3 semanas, o plaza sin listas nunca).
+  const dej = (d.dejaron ?? []).map((x: any) => persona(x.nombre,
+    `Plaza: ${escH(x.horario)}. ` + (x.sin_listas ? "En ese horario <b>nunca se le ha pasado lista</b> (¿ficha duplicada o plaza olvidada?)."
+      : `${x.ultima ? `Último día que vino: <b>${escH(String(x.ultima).split("-").reverse().join("/"))}</b>` : "<b>No ha venido ningún día con lista</b>"}; en las últimas 3 semanas, 0 de ${escH(x.listas21)} clases.`) +
+    ` ${x.cuota ? "Tiene cuota." : "Sin cuota."} ¿Sigue o se le da de baja y se libera la plaza?`, null, x.tel));
+  const total = rev.length + imp.length + rec.length + tra.length + sin.length + dej.length;
   const hoy = String(d.hoy ?? "");
   const intro = total
     ? `Buenos días. Esto es lo que hay que revisar esta semana en natación (${total}). Cada caso lleva el mensaje que toca según el criterio acordado (día 8, 15 y 25) y un botón para mandarlo por WhatsApp.`
-    : "Buenos días. Esta semana no hay nada pendiente en natación: ni bajas que revisar, ni impagos, ni enlaces sin activar. 🎉";
+    : "Buenos días. Esta semana no hay nada pendiente en natación: ni bajas que revisar, ni impagos, ni enlaces sin activar, ni plazas de gente que ya no viene. 🎉";
   const html = marco("Natación · lo que hay que revisar esta semana", intro,
     bloque("Bajas y situaciones que revisar", "Baja médica: revisar cada 4 semanas; si pasa de 2 meses y hay lista de espera, decidir la plaza.", rev) +
     bloque("Cobros rechazados", "", imp) + bloque("Recibos sin pagar", "", rec) + bloque("Transferencias sin justificante", "", tra) +
-    bloque("Enlaces sin activar", "Aquí no se habla de impagos: solo hay que terminar el trámite.", sin));
-  const texto = `Natación · lo que hay que revisar esta semana (${hoy}): ${rev.length} situaciones, ${imp.length} cobros rechazados, ${rec.length} recibos sin pagar, ${tra.length} transferencias sin justificante, ${sin.length} enlaces sin activar. Detalle en Natación → Cuotas y cobros.`;
+    bloque("Enlaces sin activar", "Aquí no se habla de impagos: solo hay que terminar el trámite.", sin) +
+    bloque("Han dejado de venir", "Tienen plaza pero no vienen. Si no siguen, darles de baja libera la plaza.", dej));
+  const texto = `Natación · lo que hay que revisar esta semana (${hoy}): ${rev.length} situaciones, ${imp.length} cobros rechazados, ${rec.length} recibos sin pagar, ${tra.length} transferencias sin justificante, ${sin.length} enlaces sin activar, ${dej.length} han dejado de venir. Detalle en Natación → Cuotas y cobros.`;
   const c = { html, texto, asunto: `Natación · revisar esta semana${total ? ` (${total})` : ": todo al día"}` };
   const a = String(cuerpo.a ?? "").trim().toLowerCase();
   const destinos = a ? [a] : DESTINOS_RESUMEN;
-  if (cuerpo.simular === true) return json({ ok: true, semanal: true, simular: true, destinos, cuenta: { revisar: rev.length, impagos: imp.length, recibos: rec.length, transferencias: tra.length, sin_activar: sin.length } });
+  if (cuerpo.simular === true) return json({ ok: true, semanal: true, simular: true, destinos, cuenta: { revisar: rev.length, impagos: imp.length, recibos: rec.length, transferencias: tra.length, sin_activar: sin.length, dejaron: dej.length } });
   const res: Record<string, boolean> = {};
   for (const x of destinos) res[x] = await enviar(x, c);
   console.log("[natacion-cobro-aviso] semanal", hoy, JSON.stringify(res));
-  return json({ ok: true, semanal: true, enviado: res, cuenta: { revisar: rev.length, impagos: imp.length, recibos: rec.length, transferencias: tra.length, sin_activar: sin.length } });
+  return json({ ok: true, semanal: true, enviado: res, cuenta: { revisar: rev.length, impagos: imp.length, recibos: rec.length, transferencias: tra.length, sin_activar: sin.length, dejaron: dej.length } });
 }
 
 // Día 19: a Andrés, qué saldrá el 21 (simulación) + un ejemplo de cada correo.

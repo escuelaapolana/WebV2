@@ -352,6 +352,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     guardando: {},
     sit: {},           // 543 · atleta_id → situaciones (baja médica, pausa…)
     sitForm: {},       // 543 · atleta_id → true: formulario «Pausar o apuntar» abierto
+    hist: {},          // 547 · atleta_id → recibos (historial de pagos); histAb: desplegados
+    histAb: {},
     tarifas: { 'Máster': null, 'Escuela': null },
     exp: { abierto: false, desde: '', hasta: '', cargando: false }   // «Descargar Excel»
   };
@@ -606,6 +608,38 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<button type="button" class="cu-btn peq verde" data-recibo-pagado="' + esc(c.pago_id) + '" data-atleta="' + esc(x.atleta_id) + '">Ha pagado (transferencia)</button></div>';
     }).join('');
   }
+  // ---------- 547 · historial de pagos (lo pagado y lo pendiente) ----------
+  function perTxt(per){ var p = String(per || '').split('-'); return p.length === 2 ? capital(MESES[+p[1] - 1]) + ' ' + p[0] : ''; }
+  function histHtml(x){
+    var id = x.atleta_id, L = S.hist[id], ab = !!S.histAb[id], cuerpo;
+    if (!ab) cuerpo = '';
+    else if (L === undefined) cuerpo = '<div class="cu-cobro-det">Cargando…</div>';
+    else if (L === null) cuerpo = '<div class="cu-cobro-det" style="color:#B23B3B">No se ha podido cargar.</div>';
+    else if (!L.length) cuerpo = '<div class="cu-cobro-det">No tiene ningún recibo registrado en la app.</div>';
+    else {
+      var pag = 0, deb = 0;
+      L.forEach(function(c){ if (c.estado === 'pagado') pag += Number(c.importe) || 0; else deb += Number(c.importe) || 0; });
+      var td = 'style="padding:6px 8px;border-bottom:1px solid var(--linea,#E6DFD0);vertical-align:top"';
+      var est = function(c){ return c.estado === 'pagado' ? '<span class="cu-estado activa" style="margin:0;font-size:12px;padding:2px 8px">Pagado</span>' : (c.vence && c.vence < hoyISO() ? '<span class="cu-estado impago" style="margin:0;font-size:12px;padding:2px 8px">Sin pagar</span>' : '<span class="cu-estado camino" style="margin:0;font-size:12px;padding:2px 8px">Pendiente</span>'); };
+      cuerpo = '<div class="cu-cobro-det" style="margin:4px 0 6px"><b>Pagado: ' + esc(eur(pag)) + '</b> · ' + (deb ? '<b style="color:#B23B3B">Pendiente: ' + esc(eur(deb)) + '</b>' : 'nada pendiente') + ' · ' + L.length + ' recibo' + (L.length === 1 ? '' : 's') + '</div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:520px">' +
+        '<tr style="text-align:left;color:var(--texto-tenue,#9A927F)"><th ' + td + '>Periodo</th><th ' + td + '>Concepto</th><th ' + td + '>Importe</th><th ' + td + '>Estado</th><th ' + td + '>Vence</th><th ' + td + '>Pagado el</th><th ' + td + '>Recibo</th></tr>' +
+        L.map(function(c){
+          return '<tr><td ' + td + '>' + esc(perTxt(c.periodo) || '—') + '</td><td ' + td + '>' + esc(c.concepto || '') + (c.metodo ? '<br><small style="color:var(--texto-tenue,#9A927F)">' + esc(c.metodo) + '</small>' : '') +
+            (c.enlace ? '<br><a href="' + esc(c.enlace) + '" target="_blank" rel="noopener" style="font-size:12px">enlace de pago</a>' : '') + '</td>' +
+            '<td ' + td + '><b>' + esc(eur(c.importe)) + '</b></td><td ' + td + '>' + est(c) + '</td><td ' + td + '>' + esc(c.vence ? ddmm(c.vence) : '—') + '</td>' +
+            '<td ' + td + '>' + esc(c.pagado_el ? ddmm(c.pagado_el) : '—') + '</td><td ' + td + '>' + esc(c.numero_recibo || '—') + '</td></tr>';
+        }).join('') + '</table></div>' +
+        '<div class="cu-cobro-det">Lo de antes de la app (SportMember) no sale aquí.</div>';
+    }
+    return '<details class="cu-hist" data-hist="' + esc(id) + '"' + (ab ? ' open' : '') + ' style="margin-top:12px"><summary class="cu-sec-lab" style="cursor:pointer;margin:0">Historial de pagos</summary>' + cuerpo + '</details>';
+  }
+  async function cargarHist(id){
+    var r = await sb.rpc('natacion_pagos_de', { p_atleta: id });
+    S.hist[id] = r.error ? null : (r.data || []);
+    if (S.histAb[id]) pintarFila(id);
+  }
+
   // ---------- 543 · situaciones y pausa ----------
   var TIPOS_SIT = { baja_medica:'Baja médica', ausencia:'Ausencia temporal', exencion:'Exención', rebaja:'Rebaja', transferencia:'Transferencia', otra:'Otra' };
   function sitAbiertas(id){ return ((S.sit && S.sit[id]) || []).filter(function(v){ return v.estado === 'abierta'; }); }
@@ -742,6 +776,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     h += recibosHtml(x);
     h += sitHtml(x);   // 543
+    h += histHtml(x);  // 547
     // cobro domiciliado (la pastilla de estado ya va en la fila)
     h += '<div class="cu-sec-lab">' + (esTransf(x) ? 'Cobro por transferencia' : x.cobro_metodo === 'mes_a_mes' ? 'Cobro mes a mes' : 'Domiciliación') + '</div>';
     if (!x.cobro_id) h += '<div class="cu-cobro-det" style="margin-top:0">' + (pideCobro(x) ? 'Aún no tiene cobro: crea su enlace y pásaselo.' : 'Sin cobro creado.') + '</div>';
@@ -1253,6 +1288,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
   });
   wrap.addEventListener('toggle', function(ev){ if (ev.target && ev.target.id === 'cu-exp') S.exp.abierto = ev.target.open; }, true);
+  // 547 · historial de pagos: se carga al desplegarlo (y se vuelve a pedir cada vez que se abre)
+  wrap.addEventListener('toggle', function(ev){
+    var d = ev.target, id = d && d.getAttribute && d.getAttribute('data-hist'); if (!id) return;
+    if (d.open === !!S.histAb[id]) return;
+    if (d.open){ S.histAb[id] = true; delete S.hist[id]; pintarFila(id); cargarHist(id); }
+    else { delete S.histAb[id]; }
+  }, true);
   wrap.addEventListener('keydown', function(ev){
     var id = ev.target.getAttribute && ev.target.getAttribute('data-cuota');
     if (id && ev.key === 'Enter'){ ev.preventDefault(); guardarCuota(id); }
