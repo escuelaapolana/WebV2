@@ -29,6 +29,10 @@
 //   activar (con plaza) → «actívala antes del día 5». No repite (cuotas_entreno.aviso21_mes).
 //   { aviso21: true, simular: true } solo lista; con prueba + a, un ejemplo de cada a ese correo.
 //
+// MIG 542 · TRANSFERENCIA: si la cuota «mes a mes» tiene transferencia=true, el correo del recibo
+//   lleva el IBAN del club, el concepto «APELLIDOS NOMBRE - MES» y «contesta con el justificante»
+//   (y, de reserva, el enlace para pagar con tarjeta). { prueba_transf: true, a } manda un ejemplo.
+//
 //   supabase functions deploy natacion-cobro-aviso --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
 // ============================================================
 
@@ -143,6 +147,40 @@ function correoMes(x: { nadador: string; concepto: string; importe: number; venc
   </td></tr></table></body></html>`;
   const texto = `${titulo}. ${intro.replace(/<\/?b>/g, "")} Importe: ${eur(x.importe)} (${x.concepto}). Pagar: ${x.enlace}`;
   return { html, texto, asunto: `${x.recordatorio ? "Recordatorio · " : ""}Cuota de natación · ${x.concepto.split(" · ").slice(-1)[0]} · ${eur(x.importe)}` };
+}
+
+// MIG 542 · Recibo de una cuota que se paga POR TRANSFERENCIA: IBAN + concepto + justificante.
+const IBAN_CLUB = "ES32 0081 1057 5300 0110 4916";
+function correoTransf(x: { nadador: string; conceptoBanco: string; concepto: string; importe: number; vence: string; enlace: string; recordatorio: boolean }) {
+  const [, m, d] = x.vence.split("-").map(Number);
+  const dia = `${d} de ${MESES[m - 1]}`;
+  const fila = (k: string, v: string) => `<tr><td style="padding:7px 12px;color:#71717a;white-space:nowrap;font-size:14px">${escH(k)}</td><td style="padding:7px 12px;color:#18181b;font-size:15px"><b>${escH(v)}</b></td></tr>`;
+  const titulo = x.recordatorio ? "Recordatorio: cuota de natación pendiente" : "Cuota de natación de este mes";
+  const intro = x.recordatorio
+    ? `Te recordamos que la cuota de natación de <b>${escH(x.nadador)}</b> sigue pendiente (vencía el ${escH(dia)}). Si ya hiciste la transferencia, mándanos el justificante y lo marcamos.`
+    : `Te pasamos la cuota de natación de <b>${escH(x.nadador)}</b>. Haz la transferencia <b>antes del ${escH(dia)}</b> con estos datos:`;
+  const html = `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">Club Atletismo Apolana · Natación</td></tr>
+      <tr><td style="padding:22px 24px 6px 24px">
+        <p style="margin:0 0 10px;font-size:17px;font-weight:700;color:#26374B">${escH(titulo)}</p>
+        <p style="margin:0 0 6px;color:#3f3f46;line-height:1.6">Hola. ${intro}</p>
+      </td></tr>
+      <tr><td style="padding:6px 24px 6px 24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#F1EADC" style="background-color:#F1EADC;border-radius:10px">
+          ${fila("Importe", eur(x.importe))}${fila("Cuenta (Banco Sabadell)", IBAN_CLUB)}${fila("Concepto", x.conceptoBanco)}${fila("Antes del", dia)}
+        </table></td></tr>
+      <tr><td style="padding:14px 24px 4px 24px">
+        <p style="margin:0;color:#3f3f46;line-height:1.6"><b>Después, contesta a este correo con el justificante</b> (o mándalo por WhatsApp) y lo damos por pagado.</p>
+      </td></tr>
+      <tr><td style="padding:12px 24px 22px 24px">
+        <p style="margin:0;color:#71717a;font-size:13px;line-height:1.5">${escH(x.concepto)}. Si lo prefieres, también puedes pagarlo con tarjeta aquí: <a href="${escH(x.enlace)}" style="color:#2F6FA8">pagar con tarjeta</a>. Si ya lo has pagado, ignora este correo.</p>
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+  const texto = `${titulo}. ${intro.replace(/<\/?b>/g, "")} Importe: ${eur(x.importe)}. Cuenta (Banco Sabadell): ${IBAN_CLUB}. Concepto: ${x.conceptoBanco}. Contesta a este correo con el justificante (o mándalo por WhatsApp). Con tarjeta: ${x.enlace}`;
+  return { html, texto, asunto: `${x.recordatorio ? "Recordatorio · " : ""}Cuota de natación · ${x.concepto.split(" · ").slice(-1)[0]} · ${eur(x.importe)} (transferencia)` };
 }
 
 // MIG 537 · Correo del día 21 a quien tiene el enlace SIN ACTIVAR: «actívala antes del día 5».
@@ -276,6 +314,15 @@ Deno.serve(async (req: Request) => {
       importe: 4500, vence: "2026-11-05", enlace: "https://atletismoapolana.com/pagar/?t=ejemplo", recordatorio: false }));
     return json({ ok, prueba_mes: true, a });
   }
+  // --- 542 · ejemplo del correo de transferencia ---
+  if (cuerpo.prueba_transf === true) {
+    const a = String(cuerpo.a ?? "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a)) return json({ error: "falta 'a'" }, 400);
+    const ok = await enviar(a, correoTransf({ nadador: "Nombre del nadador", conceptoBanco: "APELLIDOS NOMBRE - DICIEMBRE 2026",
+      concepto: "Cuota de escuela de natación · diciembre 2026", importe: 3500, vence: "2026-12-05",
+      enlace: "https://atletismoapolana.com/pagar/?t=ejemplo", recordatorio: false }));
+    return json({ ok, prueba_transf: true, a });
+  }
   const destinoPrueba = String(cuerpo.a ?? "").trim().toLowerCase();
   if (prueba && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(destinoPrueba)) return json({ error: "falta 'a' (correo de prueba)" }, 400);
 
@@ -318,7 +365,7 @@ Deno.serve(async (req: Request) => {
   const rG = await rest("rpc/natacion_recibos_generar", { method: "POST", body: "{}" });
   if (!rG.ok) console.error("[natacion-cobro-aviso] natacion_recibos_generar:", JSON.stringify(rG.datos));
   const rM = await rest("pagos?select=id,concepto,importe,fecha_vencimiento,token_pago,aviso_pago_en,recordatorio_pago_en,cuota_entreno_id," +
-    "cuotas_entreno(nombre,apellidos,email,metodo,suscripcion_estado)&cuota_entreno_id=not.is.null&estado=neq.pagado&anulado=is.false&token_pago=not.is.null");
+    "cuotas_entreno(nombre,apellidos,email,metodo,suscripcion_estado,transferencia)&cuota_entreno_id=not.is.null&estado=neq.pagado&anulado=is.false&token_pago=not.is.null");
   for (const p of (Array.isArray(rM.datos) ? rM.datos : [])) {
     const q = p.cuotas_entreno;
     if (!q || q.metodo !== "mes_a_mes" || q.suscripcion_estado === "cancelada" || !p.fecha_vencimiento) continue;
@@ -330,11 +377,14 @@ Deno.serve(async (req: Request) => {
     else if (p.aviso_pago_en && !p.recordatorio_pago_en && faltan <= -3) tipo = "recordatorio";
     if (!tipo) continue;
     if (!q.email) { mes.push({ nadador, error: "sin correo" }); continue; }
-    const ok = await enviar(String(q.email), correoMes({ nadador, concepto: p.concepto, importe: Math.round(Number(p.importe) * 100),
-      vence: String(p.fecha_vencimiento), enlace, recordatorio: tipo === "recordatorio" }));
+    const base = { nadador, concepto: p.concepto, importe: Math.round(Number(p.importe) * 100),
+      vence: String(p.fecha_vencimiento), enlace, recordatorio: tipo === "recordatorio" };
+    // 542 · Concepto para el banco: «APELLIDOS NOMBRE - MES» (lo pidió Mario).
+    const conceptoBanco = `${q.apellidos ?? ""} ${q.nombre ?? ""}`.trim().toUpperCase() + " - " + String(p.concepto).split(" · ").slice(-1)[0].toUpperCase();
+    const ok = await enviar(String(q.email), q.transferencia ? correoTransf({ ...base, conceptoBanco }) : correoMes(base));
     if (ok) await rest(`pagos?id=eq.${p.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" },
       body: JSON.stringify(tipo === "aviso" ? { aviso_pago_en: new Date().toISOString() } : { recordatorio_pago_en: new Date().toISOString() }) });
-    mes.push({ nadador, concepto: p.concepto, tipo, enviado: ok });
+    mes.push({ nadador, concepto: p.concepto, tipo, transferencia: !!q.transferencia, enviado: ok });
   }
   if (mes.length) salida.push({ mes_a_mes: mes });
   console.log("[natacion-cobro-aviso]", hoy, JSON.stringify(salida));

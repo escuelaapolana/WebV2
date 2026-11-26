@@ -412,6 +412,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // 431 · «mes a mes»: el enlace que se manda es el del recibo del periodo.
       S.lista.forEach(function(x){ if (x.cobro_metodo === 'mes_a_mes') x.enlace = x.mes_enlace || null; });
       // 526 · recibos sueltos sin pagar de cada nadador (si falla, la lista sigue igual).
+      // 542 · cuotas que se pagan por transferencia (si falla, se sigue sin la marca).
+      var rt = await sb.rpc('natacion_cuotas_transferencia');
+      S.transf = {}; ((rt && rt.data) || []).forEach(function(v){ S.transf[typeof v === 'string' ? v : (v && v.natacion_cuotas_transferencia)] = true; });
       var rr = await sb.rpc('natacion_recibos_pendientes');
       S.recibos = {};
       ((rr && rr.data) || []).forEach(function(c){ (S.recibos[c.atleta_id] = S.recibos[c.atleta_id] || []).push(c); });
@@ -421,14 +424,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ---------- estados del cobro ----------
   var MES3 = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   function mesCorto(per){ var p = String(per || '').split('-'); return p.length === 2 ? MES3[+p[1] - 1] : ''; }
+  function esTransf(x){ return !!(x && x.cobro_id && S.transf && S.transf[x.cobro_id]); }
   function estadoDe(x){
     if (!x.cobro_id) return { k:'sin', t:'Sin cobro' };
     if (x.cobro_metodo === 'mes_a_mes'){   // 431: paga cada mes con el aviso
-      var mc = mesCorto(x.mes_periodo);
-      if (!x.mes_periodo) return { k:'camino', t:'Mes a mes' };
-      if (x.mes_estado === 'pagado') return { k:'activa', t:'Mes a mes · ' + mc + ' pagado' };
-      if (x.mes_vence && x.mes_vence < hoyISO()) return { k:'impago', t:'Mes a mes · ' + mc + ' sin pagar' };
-      return { k:'camino', t:'Mes a mes · ' + mc + ' por pagar' };
+      var mc = mesCorto(x.mes_periodo), mm = esTransf(x) ? 'Transferencia' : 'Mes a mes';
+      if (!x.mes_periodo) return { k:'camino', t: mm };
+      if (x.mes_estado === 'pagado') return { k:'activa', t: mm + ' · ' + mc + ' pagado' };
+      if (x.mes_vence && x.mes_vence < hoyISO()) return { k:'impago', t: mm + ' · ' + mc + ' sin pagar' };
+      return { k:'camino', t: mm + ' · ' + mc + ' por pagar' };
     }
     if (x.cobro_estado === 'pendiente') return x.cobro_abierto === false ? { k:'cerrado', t:'Enlace cerrado' } : { k:'pend', t:'Enlace pendiente' };
     if (x.cobro_estado === 'en_camino') return { k:'camino', t:'En camino' };
@@ -549,7 +553,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         return { 'Nadador': nombreDe(x), 'Tipo': x.tipo || '', 'Días': x.dias || '', 'Socio': x.tipo === 'Máster' ? (x.es_socio ? 'Sí' : 'No') : '',
           'Cuota de la ficha (€)': x.cuota_importe != null ? Number(x.cuota_importe) : '', 'Cada': x.cuota_importe != null ? textoPer(x.cuota_periodicidad) : '',
           'Domiciliación': estadoDe(x).t, 'Importe domiciliado (€)': x.cobro_importe != null ? Number(x.cobro_importe) : '',
-          'Cada ': x.cobro_id ? textoPer(x.cobro_periodicidad) : '', 'Forma': x.cobro_id ? (x.cobro_metodo === 'tarjeta' ? 'Tarjeta' : x.cobro_metodo === 'ambos' ? 'Tarjeta o IBAN (aún sin elegir)' : x.cobro_metodo === 'mes_a_mes' ? 'Mes a mes (aviso y pago con tarjeta)' : 'Domiciliación SEPA') : '',
+          'Cada ': x.cobro_id ? textoPer(x.cobro_periodicidad) : '', 'Forma': x.cobro_id ? (x.cobro_metodo === 'tarjeta' ? 'Tarjeta' : x.cobro_metodo === 'ambos' ? 'Tarjeta o IBAN (aún sin elegir)' : x.cobro_metodo === 'mes_a_mes' ? (esTransf(x) ? 'Transferencia (aviso cada mes con el IBAN)' : 'Mes a mes (aviso y pago con tarjeta)') : 'Domiciliación SEPA') : '',
           'Desde': x.cobro_inicio ? mesAnio(x.cobro_inicio) : '', 'Hasta': x.cobro_fin ? mesAnio(x.cobro_fin) : '',
           'Primer cargo (€)': x.cobro_cargo_inicial != null ? Number(x.cobro_cargo_inicial) : '', 'Baja': x.acceso_activo ? '' : 'De baja' };
       });
@@ -576,7 +580,14 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // Fila compacta (siempre a la vista) + detalle (solo si está desplegada).
   function recibosDe(id){ return (S.recibos && S.recibos[id]) || []; }
   function recibosTxt(id){ var L = recibosDe(id); return 'debe ' + L.map(function(c){ return MESES[+String(c.periodo).split('-')[1] - 1] || 'recibo'; }).join(' y '); }
+  var IBAN_CLUB = 'ES32 0081 1057 5300 0110 4916';
   function msgRecibo(x, c){
+    if (esTransf(x)){
+      var cb = (String(x.nombre || '').toUpperCase()) + ' - ' + String(c.concepto || '').split(' · ').slice(-1)[0].toUpperCase();
+      return '¡Hola! Os paso la cuota de natación de ' + capital(String(x.nombre || '').split(' ')[0]) + ':\n\n' +
+        c.concepto + ': *' + eur(c.importe) + '*\n\n1. Transferencia a Banco Sabadell *' + IBAN_CLUB + '*\n   Concepto: ' + cb +
+        '\n2. Mandadme el justificante por aquí.\n\nSi lo preferís, también se puede pagar con tarjeta: ' + c.enlace + '\n\n¡Gracias!';
+    }
     return '¡Hola! Os paso el enlace para pagar el recibo de natación de ' + capital(String(x.nombre || '').split(' ')[0]) + ':\n\n' +
       c.concepto + ': *' + eur(c.importe) + '*\n' + c.enlace + '\n\nEs un pago único con tarjeta. Cualquier duda, me decís. ¡Gracias!';
   }
@@ -586,7 +597,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var wa = 'https://wa.me/' + telWa(x.telefono) + '?text=' + encodeURIComponent(msgRecibo(x, c));
       return '<div class="cu-cobro-det" style="margin-top:0"><b>' + esc(c.periodo ? MESES[+c.periodo.split('-')[1] - 1] + ' de ' + c.periodo.split('-')[0] : c.concepto) + ' · ' + esc(eur(c.importe)) + '</b>' + (c.avisado ? ' · correo enviado el ' + esc(ddmm(c.avisado)) : ' · sin avisar') + '</div>' +
         '<div class="cu-acc" style="margin-top:6px"><a class="cu-btn peq wa" href="' + esc(wa) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">Reenviar por WhatsApp</a>' +
-        '<button type="button" class="cu-btn peq sec" data-recibo-msg="' + esc(c.pago_id) + '" data-atleta="' + esc(x.atleta_id) + '">Copiar mensaje</button></div>';
+        '<button type="button" class="cu-btn peq sec" data-recibo-msg="' + esc(c.pago_id) + '" data-atleta="' + esc(x.atleta_id) + '">Copiar mensaje</button>' +
+        '<button type="button" class="cu-btn peq verde" data-recibo-pagado="' + esc(c.pago_id) + '" data-atleta="' + esc(x.atleta_id) + '">Ha pagado (transferencia)</button></div>';
     }).join('');
   }
   function filaHtml(x){
@@ -630,12 +642,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     h += recibosHtml(x);
     // cobro domiciliado (la pastilla de estado ya va en la fila)
-    h += '<div class="cu-sec-lab">' + (x.cobro_metodo === 'mes_a_mes' ? 'Cobro mes a mes' : 'Domiciliación') + '</div>';
+    h += '<div class="cu-sec-lab">' + (esTransf(x) ? 'Cobro por transferencia' : x.cobro_metodo === 'mes_a_mes' ? 'Cobro mes a mes' : 'Domiciliación') + '</div>';
     if (!x.cobro_id) h += '<div class="cu-cobro-det" style="margin-top:0">' + (pideCobro(x) ? 'Aún no tiene cobro: crea su enlace y pásaselo.' : 'Sin cobro creado.') + '</div>';
     if (x.cobro_id){
       var det = eur(x.cobro_importe) + ' ' + textoPer(x.cobro_periodicidad) +
         (x.cobro_inicio ? ' desde ' + mesAnio(x.cobro_inicio) : '') + (x.cobro_fin ? ' hasta ' + mesAnio(x.cobro_fin) : '') +
-        (x.cobro_metodo === 'tarjeta' ? ' · con tarjeta' : x.cobro_metodo === 'mes_a_mes' ? ' · mes a mes (aviso por correo cada ' + (x.cobro_periodicidad === 'trimestral' ? 'trimestre' : 'mes') + ')' : '') +
+        (x.cobro_metodo === 'tarjeta' ? ' · con tarjeta' : x.cobro_metodo === 'mes_a_mes' ? (esTransf(x) ? ' · por transferencia (le llega cada ' + (x.cobro_periodicidad === 'trimestral' ? 'trimestre' : 'mes') + ' un correo con el IBAN; cuando mande el justificante, «Ha pagado»)' : ' · mes a mes (aviso por correo cada ' + (x.cobro_periodicidad === 'trimestral' ? 'trimestre' : 'mes') + ')') : '') +
         (x.cobro_cargo_inicial ? ' · primer cargo ' + eur(x.cobro_cargo_inicial) : '');
       h += '<div class="cu-cobro-det" style="margin-top:0">' + esc(det) + '</div>';
     }
@@ -650,6 +662,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if (x.codigo){
       h += '<button type="button" class="cu-btn peq sec" data-ficha="' + esc(id) + '">Abrir su ficha</button>';
+    }
+    // 542 · pasar a transferencia: enlaces sin activar o cuotas «mes a mes».
+    if (x.cobro_id && (x.cobro_metodo === 'mes_a_mes' || (x.cobro_estado === 'pendiente' && x.cobro_anulable))){
+      h += esTransf(x) ? '<button type="button" class="cu-link" data-transf="' + esc(id) + '" data-si="0">Ya no paga por transferencia</button>'
+                       : '<button type="button" class="cu-btn peq sec" data-transf="' + esc(id) + '" data-si="1">Paga por transferencia</button>';
     }
     if (x.cobro_anulable){
       h += '<button type="button" class="cu-link" data-anular="' + esc(id) + '">Anular este cobro</button>';
@@ -703,6 +720,32 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (r.error){ pintarFila(id); toast(humano(r.error, 'cambiar cuotas')); return; }
     x.cuota_importe = imp; x.cuota_periodicidad = ed.per; delete S.edit[id];
     pintarFila(id); toast('Cuota guardada: ' + eur(imp) + ' ' + textoPer(ed.per));
+  }
+
+  // ---------- 542 · transferencia ----------
+  async function pasarTransf(id, si){
+    var x = porId(id); if (!x || !x.cobro_id) return;
+    var txt = si
+      ? '¿' + nombreDe(x) + ' paga por transferencia?\n\nCada ' + (x.cobro_periodicidad === 'trimestral' ? 'trimestre' : 'mes') + ' le llegará un correo con el importe, el IBAN del club y «contesta con el justificante». Cuando lo mande, pulsas «Ha pagado».' +
+        (x.cobro_metodo !== 'mes_a_mes' ? '\n\nSu enlace de domiciliación deja de valer' + (x.cobro_cargo_inicial ? ' y se crea ya el recibo del primer cargo (' + eur(x.cobro_cargo_inicial) + ').' : '.') : '')
+      : '¿' + nombreDe(x) + ' deja de pagar por transferencia?\n\nSeguirá «mes a mes»: el aviso llevará el botón para pagar con tarjeta.';
+    if (!confirm(txt)) return;
+    var r = await sb.rpc('natacion_cobro_transferencia', { p_cuota: x.cobro_id, p_si: !!si });
+    if (r.error){ toast(humano(r.error, 'cambiar cómo se paga')); return; }
+    toast(si ? 'Hecho: paga por transferencia.' : 'Hecho: vuelve a pagar con tarjeta mes a mes.');
+    await cargar(); pintarLista();
+  }
+  async function marcarPagado(pagoId, atletaId){
+    var x = porId(atletaId), c = x && recibosDe(atletaId).filter(function(k){ return k.pago_id === pagoId; })[0];
+    if (!c) return;
+    var f = prompt('¿Ha pagado ' + nombreDe(x) + ' el recibo de ' + c.concepto + ' (' + eur(c.importe) + ') por transferencia?\n\nFecha de la transferencia (AAAA-MM-DD):', hoyISO());
+    if (f == null) return;
+    f = String(f).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)){ toast('Escribe la fecha como AAAA-MM-DD.'); return; }
+    var r = await sb.rpc('natacion_recibo_marcar_pagado', { p_pago: pagoId, p_metodo: 'transferencia', p_fecha: f });
+    if (r.error){ toast(humano(r.error, 'marcar cobros')); return; }
+    toast('Marcado como pagado: ' + eur(c.importe) + (r.data && r.data.numero_recibo ? ' · recibo ' + r.data.numero_recibo : '') + '.');
+    await cargar(); pintarLista();
   }
 
   // ---------- anular ----------
@@ -1053,6 +1096,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if ((b = t.closest('[data-rango]'))){ var rg = rango(b.getAttribute('data-rango')); S.exp.desde = rg[0]; S.exp.hasta = rg[1]; pintarExp(); return; }
     if ((b = t.closest('[data-exportar]'))){ if (!S.exp.cargando) exportar(); return; }
+    if ((b = t.closest('[data-recibo-pagado]'))){ marcarPagado(b.getAttribute('data-recibo-pagado'), b.getAttribute('data-atleta')); return; }
+    if ((b = t.closest('[data-transf]'))){ pasarTransf(b.getAttribute('data-transf'), b.getAttribute('data-si') === '1'); return; }
     if ((b = t.closest('[data-recibo-msg]'))){ var xr = porId(b.getAttribute('data-atleta')), cr = xr && recibosDe(xr.atleta_id).filter(function(c){ return c.pago_id === b.getAttribute('data-recibo-msg'); })[0]; if (cr) copiar(msgRecibo(xr, cr), 'Mensaje copiado'); return; }
     if ((b = t.closest('[data-copiar]'))){ var x = porId(b.getAttribute('data-copiar')); if (x && x.enlace) copiar(x.enlace); return; }
     if ((b = t.closest('[data-copiar-msg]'))){ var xm = porId(b.getAttribute('data-copiar-msg')); if (xm && xm.enlace) copiar(mensaje(xm, xm.enlace, datosCobro(xm)), 'Mensaje copiado'); return; }
