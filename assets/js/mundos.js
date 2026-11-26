@@ -139,6 +139,7 @@
         {key:'nadadores',  g:'Nadadores', t:'Nadadores',        i:'people',   url:B+'portal/natacion/?p=nadadores'},
         {key:'franjas',    g:'Horarios y asistencia', t:'Franjas y cupos',  i:'calendar', url:B+'portal/natacion-gestion/'},
         {key:'asistencia', g:'Horarios y asistencia', t:'Asistencia',       i:'check',    url:B+'portal/natacion-asistencia/'},
+        {key:'historial',  g:'Horarios y asistencia', t:'Asistencia por nadador', i:'clock', url:B+'portal/natacion-historial/', d:'Escribe un nombre y ves sus días mes a mes: cuándo vino, avisos y lo que le queda por recuperar.'},
         {key:'reservas',   g:'Nadadores', t:'Reservas y abono', i:'ticket',   url:B+'portal/natacion-reservas/'},
         {key:'cuotas',     g:'Nadadores', t:'Cuotas y cobros',  i:'euro',     url:B+'portal/natacion-cuotas/', d:'La cuota de cada nadador y su enlace para domiciliarla (sin correos automáticos).'},
         {key:'avisos',     t:'Avisos',           i:'megaphone', url:B+'portal/natacion-avisos/', d:'Un aviso a una franja, a la escuela, al máster o a todos: llega en la app y por correo.'},

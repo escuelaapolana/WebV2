@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Asistencia por nadador · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://icaxokjsvhlreuwpyxeb.supabase.co" crossorigin>
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=1f31f2b9">
+<script>window.APOLANA_BASE="../../";
+  window.APOLANA_MUNDO = { world:'natacion', screen:'historial', contentSel:'#nh' };</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=421f991c" defer></script>
+<script src="../../assets/js/portal-auth.js?v=6d9f20a8"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<script src="../../assets/js/mundos.js?v=873b208e" defer></script>
+<script src="../../assets/js/natacion-ficha.js?v=a6438386" defer></script>
+<!--
+  ASISTENCIA POR NADADOR (26-nov-2026, petición de Mario)
+  Escribes el nombre y ves, mes a mes, los días que vino (su día fijo o
+  «recupera»), los avisos, las faltas y lo que le queda por recuperar.
+  La cuenta la hace APOLANA_NAT_FICHA.asistenciaHTML (la misma que sale al
+  final de la ficha del nadador): un solo sitio con la lógica.
+-->
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; }
+  body { background:var(--crema,#FBF9F4); }
+  .nh-wrap { max-width:680px; margin:0 auto; padding:clamp(18px,4vw,26px) clamp(14px,4vw,26px) 60px; }
+  .nh-wrap h1 { font-family:var(--ap-titulo); font-size:clamp(24px,5.5vw,32px); line-height:1.05; margin:4px 0 4px; color:var(--navy,#26374B); }
+  .nh-sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 14px; }
+  .nh-q { width:100%; box-sizing:border-box; font:inherit; font-size:17px; padding:13px 14px; border:1.5px solid var(--linea-marcada,#E4DCCB); border-radius:12px; background:#fff; color:var(--navy,#26374B); }
+  .nh-res { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .nh-r { text-align:left; border:1px solid var(--linea,#EAE3D5); background:#fff; border-radius:12px; padding:11px 14px; font:inherit; font-size:15px; cursor:pointer; color:var(--navy,#26374B); display:flex; justify-content:space-between; gap:8px; }
+  .nh-r small { color:var(--texto-suave,#6E6656); }
+  .nh-card { background:#fff; border:1px solid var(--linea,#EAE3D5); border-radius:14px; padding:14px 16px; margin-top:14px; box-shadow:0 2px 6px rgba(30,45,65,.06),0 10px 20px -10px rgba(30,45,65,.2); }
+  .nh-card h2 { margin:0 0 8px; font-size:18px; color:var(--navy,#26374B); display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .nh-card h2 button { border:1px solid var(--linea,#EAE3D5); background:#fff; border-radius:10px; font:inherit; font-size:13px; padding:5px 10px; cursor:pointer; color:#2F6FA8; }
+  .nh-vacio { color:var(--texto-suave,#6E6656); font-size:14px; padding:8px 2px; }
+</style>
+</head>
+<body>
+  <div class="nh-wrap" id="nh"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('nh');
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function norm(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
+  function capital(s){ return String(s||'').toLowerCase().replace(/(^|[\s-])(\p{L})/gu, function(_, a, b){ return a + b.toUpperCase(); }); }
+  if (window.APOLANA_NAT_FICHA) APOLANA_NAT_FICHA.init(sb);
+
+  wrap.innerHTML = '<h1>Asistencia por nadador</h1><p class="nh-sub">Escribe el nombre y ves, mes a mes, los días que vino, los avisos y lo que le queda por recuperar.</p>' +
+    '<input class="nh-q" id="nh-q" type="search" placeholder="Nombre o apellido…" autocomplete="off" autofocus>' +
+    '<div class="nh-res" id="nh-res"><div class="nh-vacio">Cargando nadadores…</div></div><div id="nh-ver"></div>';
+
+  var ra = await sb.from('natacion_accesos').select('id,codigo,nombre,activo').order('nombre');
+  if (ra.error){ document.getElementById('nh-res').innerHTML = '<div class="nh-vacio">No se ha podido leer la lista de nadadores (¿tienes acceso a natación?).</div>'; return; }
+  var ACC = (ra.data || []).filter(function(a){ return a.nombre; });
+  var q = document.getElementById('nh-q');
+
+  function pintarRes(){
+    var t = norm(q.value), res = document.getElementById('nh-res');
+    if (t.length < 2){ res.innerHTML = '<div class="nh-vacio">'+ACC.length+' nadadores. Escribe al menos dos letras.</div>'; return; }
+    var L = ACC.filter(function(a){ return t.split(/\s+/).every(function(p){ return norm(a.nombre).indexOf(p) !== -1; }); }).slice(0, 12);
+    res.innerHTML = L.length ? L.map(function(a){ return '<button type="button" class="nh-r" data-acc="'+a.id+'"><span>'+esc(capital(a.nombre))+'</span><small>'+(a.activo===false?'ya no nada':esc(a.codigo||''))+'</small></button>'; }).join('')
+                             : '<div class="nh-vacio">Nadie con ese nombre.</div>';
+  }
+  async function ver(id){
+    var a = ACC.filter(function(x){ return x.id === id; })[0]; if (!a) return;
+    var v = document.getElementById('nh-ver');
+    v.innerHTML = '<div class="nh-card"><h2>'+esc(capital(a.nombre))+(a.codigo?'<button type="button" data-ficha="'+esc(a.codigo)+'">Abrir su ficha</button>':'')+'</h2><div class="nh-vacio">Cargando…</div></div>';
+    var html = await APOLANA_NAT_FICHA.asistenciaHTML(a.id);
+    v.querySelector('.nh-card').innerHTML = '<h2>'+esc(capital(a.nombre))+(a.codigo?'<button type="button" data-ficha="'+esc(a.codigo)+'">Abrir su ficha</button>':'')+'</h2>'+(html || '<div class="nh-vacio">Sin datos de asistencia.</div>');
+    try { history.replaceState(null, '', '?acc='+encodeURIComponent(id)); } catch(e){}
+  }
+  q.addEventListener('input', pintarRes);
+  wrap.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-acc]'); if (b){ ver(b.getAttribute('data-acc')); document.getElementById('nh-ver').scrollIntoView({ behavior:'smooth', block:'start' }); return; }
+    var f = ev.target.closest('[data-ficha]'); if (f){ APOLANA_NAT_FICHA.abrir({ codigo: f.getAttribute('data-ficha') }); }
+  });
+  pintarRes();
+  var pre = new URLSearchParams(location.search).get('acc'); if (pre) ver(pre);
+});
+</script>
+</body>
+</html>

@@ -355,6 +355,8 @@
 
   window.APOLANA_NAT_FICHA = {
     init: function(client){ sb = client; },
+    /* Para portal/natacion-historial: la asistencia por meses de un acceso, sin abrir la ficha. */
+    asistenciaHTML: async function(accesoId){ if (!sb) return ''; css(); await franjas(); return cargarAsistencia({ acceso_id: accesoId }); },
     abrir: async function(opts){
       opts = opts || {};
       if (!sb){ return; }
