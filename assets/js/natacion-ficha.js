@@ -48,6 +48,11 @@
       '.nfi-bg{position:fixed;inset:0;z-index:9000;background:rgba(46,66,86,.5);display:flex;align-items:flex-start;justify-content:center;' +
         'padding:clamp(12px,5vh,52px) 12px;overflow:auto;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);}' +
       '.nfi-bg[hidden]{display:none}' +
+      '.nfi-asis-saldo{margin:2px 0 8px;font-size:14px}.nfi-mes{border:1px solid #e3e6ea;border-radius:10px;margin:0 0 6px;background:#fff}' +
+      '.nfi-mes summary{cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;gap:8px;font-size:14px;list-style:none}.nfi-mes summary::-webkit-details-marker{display:none}' +
+      '.nfi-mes summary span{color:#5f6874;font-size:13px}.nfi-mes ul{list-style:none;margin:0;padding:0 12px 8px}' +
+      '.nfi-d{font-size:13.5px;padding:4px 0;border-top:1px dashed #edf0f2}.nfi-d span{display:inline-block;min-width:54px;font-weight:600}.nfi-d small{color:#8a929c;margin-left:4px}' +
+      '.nfi-d.vino{color:#2f6b45}.nfi-d.aviso{color:#9a6a12}.nfi-d.falta{color:#a33a3a}.nfi-d.reserva,.nfi-d.sinlista{color:#5f6874}' +
       '.nfi-caja{background:#fff;border-radius:16px;box-shadow:0 30px 70px -25px rgba(46,66,86,.6);width:min(560px,100%);padding:18px 18px 20px;' +
         "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
       '.nfi-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px}' +
@@ -135,10 +140,95 @@
         '<button type="button" class="nfi-x" aria-label="Cerrar">✕</button></div>' +
       contactoHtml(e) +
       '<div class="nfi-rot">Sus franjas</div>' + filas + add +
+      '<div class="nfi-rot">Asistencia por meses</div><div class="nfi-asis">' + (e.asisHtml || '<p class="nfi-vacio">Cargando…</p>') + '</div>' +
       '<button type="button" class="nfi-enviar">✉ Enviar acceso a la familia</button>' +
       '<button type="button" class="nfi-baja">Dar de baja de natación (ya no nada)</button>' +
       '<p class="nfi-msg"></p>' +
     '</div>';
+  }
+
+  /* ===== Asistencia por meses (26-nov-2026, petición de Mario) =====
+     Los días que ha venido cada mes, sin puntear: su día fijo, las
+     recuperaciones (días reservados con bono), los avisos de que no va y las
+     faltas que puso el monitor; cuántas sesiones fijas le tocaban ese mes y lo
+     que le queda por recuperar (saldo del bono, Máster).
+     Se deduce igual que en Pasar lista: un día cuenta como «vino» si esa
+     franja tiene la lista pasada y él no está en natacion_ausencias. Las
+     plazas quitadas también cuentan para los meses de atrás. */
+  var MES_N = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var DIA_C = ['dom','lun','mar','mié','jue','vie','sáb'];
+  function pad2(n){ return (n<10?'0':'')+n; }
+  function isoD(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+  function dParse(s){ var p = String(s).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+  async function cargarAsistencia(e){
+    var hoy = new Date(), hoyS = isoD(hoy), d0 = new Date(hoy.getFullYear(), hoy.getMonth()-3, 1), desde = isoD(d0);
+    var rr = await Promise.all([
+      sb.from('natacion_inscripciones').select('franja_id,activa,desde,created_at').eq('acceso_id', e.acceso_id),
+      sb.from('natacion_reservas').select('fecha,franja_id,estado').eq('acceso_id', e.acceso_id).gte('fecha', desde),
+      sb.from('natacion_ausencias').select('fecha,franja_id,origen').eq('acceso_id', e.acceso_id).gte('fecha', desde),
+      sb.from('natacion_abonos').select('saldo').eq('acceso_id', e.acceso_id).maybeSingle()
+    ]);
+    if (rr[0].error && rr[1].error && rr[2].error) return '<p class="nfi-vacio">No se ha podido leer la asistencia.</p>';
+    var ins = rr[0].data || [], res = (rr[1].data || []).filter(function(r){ return r.estado !== 'cancelada'; }), aus = rr[2].data || [];
+    var saldo = rr[3] && !rr[3].error && rr[3].data ? rr[3].data.saldo : null;
+    // Plaza quitada (activa=false): no se guarda cuándo se quitó, así que solo
+    // cuenta como su día fijo hasta el último aviso o falta en esa franja (la
+    // prueba de que seguía yendo ese día). Sin avisos, no cuenta.
+    var finAus = {}; aus.forEach(function(a){ if (a.franja_id && (!finAus[a.franja_id] || a.fecha > finAus[a.franja_id])) finAus[a.franja_id] = a.fecha; });
+    var ini = {}, fin = {};
+    ins.forEach(function(x){
+      if (!x.activa && !finAus[x.franja_id]) return;
+      var i0 = x.desde || String(x.created_at||'').slice(0,10);
+      if (!ini[x.franja_id] || i0 < ini[x.franja_id]) ini[x.franja_id] = i0;
+      if (x.activa) fin[x.franja_id] = '9999'; else if (fin[x.franja_id] !== '9999' && (!fin[x.franja_id] || finAus[x.franja_id] > fin[x.franja_id])) fin[x.franja_id] = finAus[x.franja_id];
+    });
+    var frs = {}; ins.forEach(function(x){ frs[x.franja_id] = 1; }); res.forEach(function(r){ frs[r.franja_id] = 1; });
+    var ids = Object.keys(frs), listas = [];
+    if (ids.length){ var rl = await sb.from('natacion_lista').select('franja_id,fecha').in('franja_id', ids).gte('fecha', desde).lte('fecha', hoyS); listas = (rl && !rl.error && rl.data) || []; }
+    var ausK = {}; aus.forEach(function(a){ ausK[a.fecha+'|'+(a.franja_id||'')] = a; });
+    var resK = {}; res.forEach(function(r){ resK[r.fecha+'|'+r.franja_id] = r; });
+    var ev = [], usados = {};
+    listas.forEach(function(l){
+      var k = l.fecha+'|'+l.franja_id, fijo = !!(ini[l.franja_id] && ini[l.franja_id] <= l.fecha && l.fecha <= fin[l.franja_id] && !resK[k]), rv = resK[k];
+      if (!fijo && !rv) return;
+      var a = ausK[k] || ausK[l.fecha+'|'];
+      if (a){ usados[a.fecha+'|'+(a.franja_id||'')] = 1; ev.push({ f:l.fecha, t: a.origen==='monitor' ? 'falta' : 'aviso', rec:!!rv, fr:l.franja_id }); }
+      else ev.push({ f:l.fecha, t:'vino', rec:!!rv, fr:l.franja_id });
+      if (rv) usados['r|'+k] = 1;
+    });
+    aus.forEach(function(a){ var k = a.fecha+'|'+(a.franja_id||''); if (!usados[k]) ev.push({ f:a.fecha, t: a.origen==='monitor' ? 'falta' : 'aviso', fr:a.franja_id }); });
+    res.forEach(function(r){ var k = r.fecha+'|'+r.franja_id; if (!usados['r|'+k]) ev.push({ f:r.fecha, t: r.fecha >= hoyS ? 'reserva' : 'sinlista', rec:true, fr:r.franja_id }); });
+    // Sesiones fijas que le tocaban cada mes (solo plazas activas, desde que empezó)
+    var activas = ins.filter(function(x){ return x.activa; });
+    function tocaban(y, m){
+      var n = 0, fin = new Date(y, m+1, 0).getDate();
+      for (var dd = 1; dd <= fin; dd++){ var dt = new Date(y, m, dd), ds = isoD(dt), wd = dt.getDay() || 7;
+        activas.forEach(function(x){ var f = FR[x.franja_id]; if (f && f.dia === wd && (!ini[x.franja_id] || ini[x.franja_id] <= ds)) n++; }); }
+      return n;
+    }
+    var meses = [];
+    for (var i = 0; i < 4; i++){ var dm = new Date(hoy.getFullYear(), hoy.getMonth()-i, 1); meses.push({ y:dm.getFullYear(), m:dm.getMonth() }); }
+    var ETQ = { vino:'vino', aviso:'avisó que no iba', falta:'faltó', reserva:'reservado', sinlista:'reservado · sin lista pasada' };
+    var h = '';
+    if (saldo != null) h += '<p class="nfi-asis-saldo">'+(saldo===1?'Le queda':'Le quedan')+' <b>'+saldo+'</b> '+(saldo===1?'sesión':'sesiones')+' por recuperar (bono).</p>';
+    if (!activas.length) h += '<p class="nfi-nota">Ahora no tiene plaza fija activa: abajo salen igual los días que vino.</p>';
+    meses.forEach(function(M, i){
+      var pre = M.y+'-'+pad2(M.m+1), L = ev.filter(function(x){ return x.f.slice(0,7) === pre; }).sort(function(a,b){ return a.f < b.f ? -1 : 1; });
+      var vino = L.filter(function(x){ return x.t==='vino'; }).length, toc = activas.length ? tocaban(M.y, M.m) : null;
+      if (!L.length && i > 0) return;
+      h += '<details class="nfi-mes"'+(i===0?' open':'')+'><summary><b>'+MES_N[M.m]+(M.y!==hoy.getFullYear()?' '+M.y:'')+'</b><span>vino '+vino+(toc!=null?' · le tocaban '+toc:'')+'</span></summary>'+
+        (L.length ? '<ul>'+L.map(function(x){ var dt = dParse(x.f), f = FR[x.fr];
+          return '<li class="nfi-d '+x.t+'"><span>'+DIA_C[dt.getDay()]+' '+dt.getDate()+'</span>'+esc(ETQ[x.t])+(x.rec && x.t!=='reserva' && x.t!=='sinlista' ? ' · recupera' : '')+(f?' <small>'+esc(DIAS[f.dia].slice(0,3).toLowerCase()+' '+hhmm(f.hora))+'</small>':'')+'</li>'; }).join('')+'</ul>'
+          : '<p class="nfi-vacio">Sin listas pasadas este mes.</p>')+'</details>';
+    });
+    return h || '<p class="nfi-vacio">Sin datos de asistencia.</p>';
+  }
+  async function pintarAsistencia(){
+    var e = estado; if (!e || !e.acceso_id) return;
+    var html; try { html = await cargarAsistencia(e); } catch(x){ html = '<p class="nfi-vacio">No se ha podido leer la asistencia.</p>'; }
+    if (estado !== e) return;
+    e.asisHtml = html;
+    var c = bg && bg.querySelector('.nfi-asis'); if (c) c.innerHTML = html;
   }
 
   // Datos de contacto (se guardan al salir de cada casilla). Escuela: los del
@@ -159,7 +249,7 @@
                    : '<p class="nfi-nota">Esta persona no está unida a su ficha: únela desde Natación › Franjas y cupos («🔗 Unir a su ficha»).</p>');
   }
 
-  async function recargar(){ estado = await cargar(estado.codigo) || estado; render(); if (onCambio) { try { onCambio(); } catch(e){} } }
+  async function recargar(){ var prevAs = estado && estado.asisHtml; estado = await cargar(estado.codigo) || estado; if (prevAs && !estado.asisHtml) estado.asisHtml = prevAs; render(); pintarAsistencia(); if (onCambio) { try { onCambio(); } catch(e){} } }
 
   async function guardar(prom, ok){
     msg('Guardando…');
@@ -275,6 +365,7 @@
       if (opts.nombre && !estado.nombre) estado.nombre = opts.nombre;
       if (!bg) montar();
       render();
+      pintarAsistencia();
     }
   };
 })();
