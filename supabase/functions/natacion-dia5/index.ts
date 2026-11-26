@@ -32,6 +32,7 @@ function iguales(a: string, b: string): boolean {
   return dif === 0;
 }
 const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "Content-Type": "application/json" } });
+const ahoraUnix = () => Math.floor(Date.now() / 1000);
 const aFecha = (u?: number | null) => (u && u > 0 ? new Date(u * 1000).toISOString() : null);
 const ymdMadrid = (u: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(u * 1000));
 
@@ -63,6 +64,43 @@ Deno.serve(async (req: Request) => {
   let cuerpo: Record<string, unknown> = {};
   try { cuerpo = await req.json(); } catch { /* vacío */ }
   const aplicar = cuerpo.aplicar === true;
+
+  // Modo UNA cuota (26-nov-2026, caso Enzo): { cuota_id, nuevo: "AAAA-MM-DD" }
+  // pone su próximo cobro en ese día (08:00 UTC), sin cobrar ni devolver el
+  // hueco (trial_end + proration none), y recoloca la parada en su `fin`.
+  if (typeof cuerpo.cuota_id === "string" && typeof cuerpo.nuevo === "string") {
+    const mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cuerpo.nuevo);
+    if (!mm) return json({ error: "nuevo debe ser AAAA-MM-DD" }, 400);
+    const r1 = await rest(`cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,fin,origen&id=eq.${encodeURIComponent(cuerpo.cuota_id)}`);
+    const c = Array.isArray(r1.datos) ? r1.datos[0] : null;
+    if (!c?.stripe_subscription_id || c.origen !== "natacion") return json({ error: "cuota sin suscripción de natación" }, 404);
+    const g = await stripe("GET", `subscriptions/${encodeURIComponent(c.stripe_subscription_id)}`);
+    const s = g.datos;
+    if (!g.ok || !s || ["canceled", "incomplete_expired"].includes(String(s.status))) return json({ error: `Stripe: ${s?.status ?? g.estado}` }, 409);
+    const nuevo = diaDeMes(Number(mm[1]), Number(mm[2]), 0, Number(mm[3]));
+    if (nuevo <= ahoraUnix() + 49 * 3600) return json({ error: "fecha demasiado cerca" }, 400);
+    const x = cancelAtExacto({ ...s, billing_cycle_anchor: nuevo }, finUnixDe(c.fin));
+    if ("error" in x) return json({ error: x.error }, 409);
+    const fila: Record<string, unknown> = {
+      quien: `${c.nombre ?? ""} ${c.apellidos ?? ""}`.trim(), estado: s.status,
+      antes: aFecha(proximoDe(s)), despues: aFecha(nuevo), cancel_antes: aFecha(s.cancel_at), cancel_despues: aFecha(x.cancelAt), cobros_restantes: x.cobros,
+    };
+    if (aplicar) {
+      const u = await stripe("POST", `subscriptions/${encodeURIComponent(s.id)}`, `trial_end=${nuevo}&proration_behavior=none`);
+      if (!u.ok) return json({ ...fila, error: u.datos?.error?.message ?? `Stripe ${u.estado}` }, 502);
+      const v = await stripe("POST", `subscriptions/${encodeURIComponent(s.id)}`, `cancel_at=${x.cancelAt}&proration_behavior=none`);
+      if (!v.ok) fila.error_parada = v.datos?.error?.message ?? `Stripe ${v.estado}`;
+      const fin = await stripe("GET", `subscriptions/${encodeURIComponent(s.id)}`);
+      fila.comprobado = { estado: fin.datos?.status, proximo: aFecha(proximoDe(fin.datos)), ancla: aFecha(fin.datos?.billing_cycle_anchor), cancel_at: aFecha(fin.datos?.cancel_at) };
+      await rest(`cuotas_entreno?id=eq.${encodeURIComponent(c.id)}`, {
+        method: "PATCH", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ proximo_cobro: aFecha(nuevo), cancel_programado: v.ok }),
+      });
+      fila.aplicado = true;
+    }
+    console.log("[natacion-dia5] una cuota", aplicar ? "APLICADO" : "simulación", JSON.stringify(fila));
+    return json({ ok: true, aplicar, cuota: fila });
+  }
 
   const rA = await rest("cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,fin,periodicidad,suscripcion_estado" +
     "&origen=eq.natacion&stripe_subscription_id=not.is.null&suscripcion_estado=in.(activa,en_camino)");
