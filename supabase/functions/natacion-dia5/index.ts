@@ -65,6 +65,41 @@ Deno.serve(async (req: Request) => {
   try { cuerpo = await req.json(); } catch { /* vacío */ }
   const aplicar = cuerpo.aplicar === true;
 
+  // Modo ENLAZAR (26-nov-2026): cuotas de natación «activas» sin
+  // stripe_subscription_id. Busca en Stripe las suscripciones de su cliente y
+  // casa la que lleva metadata.cuota_id = la cuota. Sin aplicar, solo lista;
+  // con aplicar, guarda el id y el próximo cobro (no toca Stripe).
+  if (cuerpo.enlazar === true) {
+    const rE = await rest("cuotas_entreno?select=id,nombre,apellidos,stripe_customer_id" +
+      "&origen=eq.natacion&suscripcion_estado=eq.activa&stripe_subscription_id=is.null&stripe_customer_id=not.is.null");
+    const filas: any[] = [];
+    for (const c of (Array.isArray(rE.datos) ? rE.datos : [])) {
+      const quien = `${c.nombre ?? ""} ${c.apellidos ?? ""}`.trim();
+      const g = await stripe("GET", `subscriptions?customer=${encodeURIComponent(c.stripe_customer_id)}&status=all&limit=20`);
+      const subs: any[] = Array.isArray(g.datos?.data) ? g.datos.data : [];
+      const resumen = subs.map((s) => ({
+        id: s.id, estado: s.status, cuota_id: s.metadata?.cuota_id ?? null, es_esta: s.metadata?.cuota_id === c.id,
+        importe: (s.items?.data?.[0]?.price?.unit_amount ?? 0) / 100, cada: `${s.items?.data?.[0]?.price?.recurring?.interval_count ?? "?"} ${s.items?.data?.[0]?.price?.recurring?.interval ?? "?"}`,
+        proximo: aFecha(proximoDe(s)), cancel_at: aFecha(s.cancel_at),
+      }));
+      const buenas = subs.filter((s) => s.metadata?.cuota_id === c.id && !["canceled", "incomplete_expired"].includes(String(s.status)));
+      const fila: Record<string, unknown> = { cuota: c.id, quien, error_stripe: g.ok ? undefined : g.estado, suscripciones: resumen };
+      if (buenas.length === 1) {
+        fila.enlazar_con = buenas[0].id;
+        if (aplicar) {
+          const p = await rest(`cuotas_entreno?id=eq.${encodeURIComponent(c.id)}&stripe_subscription_id=is.null`, {
+            method: "PATCH", headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ stripe_subscription_id: buenas[0].id, proximo_cobro: aFecha(proximoDe(buenas[0])), cancel_programado: !!buenas[0].cancel_at }),
+          });
+          fila.aplicado = p.ok;
+        }
+      } else fila.sin_enlazar = buenas.length ? "más de una viva para esta cuota" : "ninguna viva con esta cuota";
+      filas.push(fila);
+    }
+    console.log("[natacion-dia5] enlazar", aplicar ? "APLICADO" : "simulación", JSON.stringify(filas));
+    return json({ ok: true, aplicar, cuotas: filas });
+  }
+
   // Modo UNA cuota (26-nov-2026, caso Enzo): { cuota_id, nuevo: "AAAA-MM-DD" }
   // pone su próximo cobro en ese día (08:00 UTC), sin cobrar ni devolver el
   // hueco (trial_end + proration none), y recoloca la parada en su `fin`.
