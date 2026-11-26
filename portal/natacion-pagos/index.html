@@ -58,6 +58,19 @@
   .np-acc { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
   .np-vacio { padding:22px 16px; color:var(--texto-suave,#6E6656); font-size:14px; }
   .np-nota { font-size:12.5px; color:var(--texto-tenue,#9A927F); margin-top:10px; }
+  .np-tabs { display:flex; gap:6px; margin:0 0 10px; }
+  .np-tab { font:inherit; font-weight:700; font-size:14.5px; padding:9px 14px; border-radius:10px; border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy,#26374B); cursor:pointer; }
+  .np-tab.on { background:var(--navy,#26374B); color:#fff; border-color:var(--navy,#26374B); }
+  table.np-per { min-width:640px; }
+  tr.np-p { cursor:pointer; }
+  tr.np-p:hover td, tr.np-p.ab td { background:#F7F4EC; }
+  tr.np-p:focus-visible { outline:2px solid #2F6FA8; outline-offset:-2px; }
+  .np-nom2 { color:#2F6FA8; }
+  .np-chev { color:var(--texto-tenue,#9A927F); font-size:12px; text-align:right; }
+  tr.np-hist > td { padding:0 10px 12px; background:#F7F4EC; border-top:0; }
+  .np-hist-in { background:#fff; border:1px solid var(--linea,#EAE3D5); border-radius:12px; overflow-x:auto; }
+  .np-hist-t { padding:10px 12px 4px; font-size:14px; color:var(--navy,#26374B); }
+  table.np-mini { min-width:720px; font-size:13.5px; }
   .np-toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--navy,#26374B); color:#fff; padding:11px 16px; border-radius:12px; font-size:14px; z-index:99; max-width:90vw; }
 </style>
 </head>
@@ -79,7 +92,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var EST_TXT = { pagado:'Pagado', sinpagar:'Sin pagar', pendiente:'Pendiente' };
   var FORMA_TXT = { tarjeta:'Tarjeta', domiciliado:'Domiciliación', transferencia:'Transferencia', efectivo:'Efectivo', otro:'Otro' };
 
-  var S = { L: null, err: null, mes: '', estado: '', tipo: '', forma: '', q: '' };
+  var S = { L: null, err: null, mes: '', estado: '', tipo: '', forma: '', q: '', vista: 'nadador', ab: {} };   // vista: 'nadador' | 'recibos'
   (function(){ var u = new URLSearchParams(location.search); S.q = u.get('q') || ''; S.mes = u.get('mes') || ''; S.estado = u.get('estado') || ''; })();
 
   async function cargar(){
@@ -121,29 +134,65 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       '<label>Buscar<input id="f-q" type="search" placeholder="Nombre o concepto…" value="' + esc(S.q) + '" autocomplete="off"></label>' +
       '<button type="button" class="np-btn" id="f-csv">Descargar CSV</button>' +
       ((S.mes || S.estado || S.tipo || S.forma || S.q) ? '<button type="button" class="np-btn" id="f-limpiar">Quitar filtros</button>' : '') + '</div>';
+    h += '<div class="np-tabs" role="tablist">' +
+      '<button type="button" role="tab" class="np-tab' + (S.vista === 'nadador' ? ' on' : '') + '" data-vista="nadador" aria-selected="' + (S.vista === 'nadador') + '">Por nadador</button>' +
+      '<button type="button" role="tab" class="np-tab' + (S.vista === 'recibos' ? ' on' : '') + '" data-vista="recibos" aria-selected="' + (S.vista === 'recibos') + '">Todos los recibos</button></div>';
     h += '<div class="np-card">';
     if (S.L == null) h += '<div class="np-vacio">Cargando pagos…</div>';
     else if (S.err) h += '<div class="np-vacio" style="color:#B23B3B">' + esc(S.err) + '</div>';
     else if (!L.length) h += '<div class="np-vacio">No hay recibos con esos filtros.</div>';
+    else if (S.vista === 'nadador') h += porNadador(L);
     else {
       h += '<div class="np-tabla-w"><table class="np"><tr><th>Nadador</th><th>Concepto</th><th>Periodo</th><th>Importe</th><th>Estado</th><th>Vence</th><th>Pagado el</th><th>Forma</th><th>Recibo</th></tr>';
       h += L.map(function(p){
-        var e = estadoDe(p);
-        var acc = p.estado !== 'pagado'
-          ? '<div class="np-acc">' + (p.enlace ? '<button type="button" class="np-btn" data-copiar="' + esc(p.enlace) + '">Copiar enlace</button>' : '') +
-            '<button type="button" class="np-btn verde" data-pagado="' + esc(p.id) + '" data-forma="transferencia">Pagó por transferencia</button>' +
-            '<button type="button" class="np-btn" data-pagado="' + esc(p.id) + '" data-forma="efectivo">En efectivo</button></div>' : '';
-        return '<tr><td><button type="button" class="np-nom" data-nadador="' + esc(p.nadador) + '">' + esc(p.nadador) + '</button><br><small>' + esc(p.tipo || '') + (p.transferencia ? ' · paga por transferencia' : '') + '</small></td>' +
-          '<td>' + esc(corto(p.concepto)) + acc + '</td><td>' + esc(mesTxt(p.periodo)) + '</td><td><b>' + eur(p.importe) + '</b></td>' +
-          '<td><span class="np-est ' + e + '">' + EST_TXT[e] + '</span></td><td>' + ddmm(p.vence) + '</td><td>' + ddmm(p.pagado_el) + '</td>' +
-          '<td>' + esc(p.estado === 'pagado' ? (FORMA_TXT[p.metodo] || p.metodo || '—') : (p.transferencia ? 'Transferencia' : '—')) + '</td><td>' + esc(p.numero_recibo || '—') + '</td></tr>';
+        return '<tr><td><button type="button" class="np-nom" data-nadador="' + esc(p.atleta_id) + '">' + esc(p.nadador) + '</button><br><small>' + esc(p.tipo || '') + (p.transferencia ? ' · paga por transferencia' : '') + '</small></td>' +
+          celdasRecibo(p, true) + '</tr>';
       }).join('');
       h += '<tr class="tot"><td colspan="3">Total · ' + L.length + ' recibos</td><td>' + eur(cob + sin + pen) + '</td><td colspan="5">Cobrado ' + eur(cob) + ' · por cobrar ' + eur(sin + pen) + '</td></tr></table></div>';
     }
-    h += '</div><p class="np-nota">Solo están los recibos de la app: lo cobrado antes en SportMember no sale aquí. Pulsa un nombre para ver solo sus pagos. Los cobros automáticos de Stripe aparecen solos cuando se cobran.</p>';
+    h += '</div><p class="np-nota">Solo están los recibos de la app: lo cobrado antes en SportMember no sale aquí. En «Por nadador», pulsa a alguien para ver su historial completo. Los cobros automáticos de Stripe aparecen solos cuando se cobran.</p>';
     var foco = document.activeElement && document.activeElement.id === 'f-q';
     wrap.innerHTML = h;
     if (foco){ var b = document.getElementById('f-q'); if (b){ b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch(e){} } }
+  }
+  // Celdas de un recibo (en «Todos los recibos» y dentro del historial de cada nadador).
+  function celdasRecibo(p, conConcepto){
+    var e = estadoDe(p);
+    var acc = p.estado !== 'pagado'
+      ? '<div class="np-acc">' + (p.enlace ? '<button type="button" class="np-btn" data-copiar="' + esc(p.enlace) + '">Copiar enlace</button>' : '') +
+        '<button type="button" class="np-btn verde" data-pagado="' + esc(p.id) + '" data-forma="transferencia">Pagó por transferencia</button>' +
+        '<button type="button" class="np-btn" data-pagado="' + esc(p.id) + '" data-forma="efectivo">En efectivo</button></div>' : '';
+    return '<td>' + esc(corto(p.concepto)) + acc + '</td><td>' + esc(mesTxt(p.periodo)) + '</td><td><b>' + eur(p.importe) + '</b></td>' +
+      '<td><span class="np-est ' + e + '">' + EST_TXT[e] + '</span></td><td>' + ddmm(p.vence) + '</td><td>' + ddmm(p.pagado_el) + '</td>' +
+      '<td>' + esc(p.estado === 'pagado' ? (FORMA_TXT[p.metodo] || p.metodo || '—') : (p.transferencia ? 'Transferencia' : '—')) + '</td><td>' + esc(p.numero_recibo || '—') + '</td>';
+  }
+  // POR NADADOR: una fila por persona (pagado, debe, último pago) y, al pulsar, su historial completo.
+  function porNadador(L){
+    var G = {};
+    L.forEach(function(p){
+      var g = G[p.atleta_id] || (G[p.atleta_id] = { id: p.atleta_id, nombre: p.nadador, tipo: p.tipo, transf: false, pag: 0, deb: 0, n: 0, ult: '', L: [] });
+      g.L.push(p); g.n++; if (p.transferencia) g.transf = true;
+      if (p.estado === 'pagado'){ g.pag += Number(p.importe) || 0; if ((p.pagado_el || '') > g.ult) g.ult = p.pagado_el; }
+      else g.deb += Number(p.importe) || 0;
+    });
+    var arr = Object.keys(G).map(function(k){ return G[k]; }).sort(function(a, b){ return (b.deb > 0) - (a.deb > 0) || a.nombre.localeCompare(b.nombre, 'es'); });
+    var h = '<div class="np-tabla-w"><table class="np np-per"><tr><th>Nadador</th><th>Pagado</th><th>Debe</th><th>Recibos</th><th>Último pago</th><th>Estado</th><th></th></tr>';
+    arr.forEach(function(g){
+      var ab = !!S.ab[g.id];
+      h += '<tr class="np-p' + (ab ? ' ab' : '') + '" data-abrir="' + esc(g.id) + '" tabindex="0" role="button" aria-expanded="' + ab + '">' +
+        '<td><b class="np-nom2">' + esc(g.nombre) + '</b><br><small>' + esc(g.tipo || '') + (g.transf ? ' · paga por transferencia' : '') + '</small></td>' +
+        '<td><b style="color:#2E7D4F">' + eur(g.pag) + '</b></td><td>' + (g.deb ? '<b style="color:#B23B3B">' + eur(g.deb) + '</b>' : '—') + '</td>' +
+        '<td>' + g.n + '</td><td>' + ddmm(g.ult) + '</td>' +
+        '<td>' + (g.deb ? '<span class="np-est sinpagar">Debe ' + eur(g.deb) + '</span>' : '<span class="np-est pagado">Al día</span>') + '</td>' +
+        '<td class="np-chev">' + (ab ? '▲' : '▼') + '</td></tr>';
+      if (ab){
+        var Lp = g.L.slice().sort(function(a, b){ return String(b.periodo || '').localeCompare(String(a.periodo || '')); });
+        h += '<tr class="np-hist"><td colspan="7"><div class="np-hist-in"><div class="np-hist-t">Historial de ' + esc(g.nombre.split(' ')[0]) + ' · pagado ' + eur(g.pag) + (g.deb ? ' · <b style="color:#B23B3B">debe ' + eur(g.deb) + '</b>' : ' · al día') + '</div>' +
+          '<table class="np np-mini"><tr><th>Concepto</th><th>Periodo</th><th>Importe</th><th>Estado</th><th>Vence</th><th>Pagado el</th><th>Forma</th><th>Recibo</th></tr>' +
+          Lp.map(function(p){ return '<tr>' + celdasRecibo(p) + '</tr>'; }).join('') + '</table></div></td></tr>';
+      }
+    });
+    return h + '</table></div>';
   }
   function csv(){
     var L = filtrados(), cel = function(v){ v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -164,6 +213,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     await cargar(); pintar();
   }
 
+  wrap.addEventListener('keydown', function(ev){
+    var b = ev.target.closest && ev.target.closest('[data-abrir]');
+    if (b && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); var id = b.getAttribute('data-abrir'); if (S.ab[id]) delete S.ab[id]; else S.ab[id] = true; pintar(); var n = wrap.querySelector('[data-abrir="' + id + '"]'); if (n) n.focus(); }
+  });
   wrap.addEventListener('change', function(ev){
     var t = ev.target;
     if (t.id === 'f-mes'){ S.mes = t.value; pintar(); }
@@ -175,7 +228,11 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   wrap.addEventListener('input', function(ev){ if (ev.target.id === 'f-q'){ S.q = ev.target.value; clearTimeout(tmr); tmr = setTimeout(pintar, 150); } });
   wrap.addEventListener('click', function(ev){
     var b;
-    if ((b = ev.target.closest('[data-nadador]'))){ S.q = b.getAttribute('data-nadador'); S.mes = ''; pintar(); return; }
+    if ((b = ev.target.closest('[data-vista]'))){ S.vista = b.getAttribute('data-vista'); pintar(); return; }
+    if ((b = ev.target.closest('[data-nadador]'))){ var aid = b.getAttribute('data-nadador'); S.vista = 'nadador'; S.ab = {}; S.ab[aid] = true; pintar();
+      var fr = wrap.querySelector('[data-abrir="' + aid + '"]'); if (fr) try { fr.scrollIntoView({ block: 'center' }); } catch(e){} return; }
+    if (ev.target.closest('.np-hist')) { /* dentro del historial: solo sus botones */ }
+    else if ((b = ev.target.closest('[data-abrir]'))){ var id = b.getAttribute('data-abrir'); if (S.ab[id]) delete S.ab[id]; else S.ab[id] = true; pintar(); return; }
     if ((b = ev.target.closest('[data-pagado]'))){ marcar(b.getAttribute('data-pagado'), b.getAttribute('data-forma')); return; }
     if ((b = ev.target.closest('[data-copiar]'))){ var u = b.getAttribute('data-copiar'); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function(){ toast('Enlace copiado'); }, function(){ prompt('Copia el enlace:', u); }); return; }
     if (ev.target.id === 'f-csv'){ csv(); return; }
