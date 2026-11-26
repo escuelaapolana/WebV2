@@ -328,7 +328,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         var precio = !Number(l.precio) ? 'Gratis' : (l.sin_cargo ? '<s>' + esc(eur(imp)) + '</s> sin cargo' : esc(eur(imp)));
         // (mig 539) cada artículo se entrega y se cobra por separado
         var ctr = l.id ? '<span class="eq-lc">' +
-          (Number(l.precio) ? '<button type="button" class="eq-t gr' + (l.sin_cargo ? ' on' : '') + '" data-lsin="' + l.id + '" title="Que no se le cobre este artículo">' + (l.sin_cargo ? 'Sin cargo' : 'De pago') + '</button>' : '') +
+          (Number(l.precio) ? '<button type="button" class="eq-t gr' + (l.sin_cargo ? ' on' : '') + '" data-lsin="' + l.id + '" title="Que no se le cobre este artículo">' + (l.sin_cargo ? 'Sin cargo' : 'De pago') + '</button>'
+                            : '<button type="button" class="eq-t gr on" data-lcobrar="' + l.id + '" title="Iba gratis: pasarlo a de pago">Gratis · cobrar</button>') +
           '<button type="button" class="eq-t' + (dado ? ' on' : '') + '" data-lent="' + l.id + '"' + (f.estado === 'entregado' && !l.entregado_en ? ' disabled title="Todo el pedido está marcado como entregado"' : '') + '>' + (dado ? '✓ Entregado' + (l.entregado_en ? ' ' + esc(diaMes(l.entregado_en)) : '') : 'Entregar') + '</button></span>' : '';
         return '<div class="eq-l' + (dado ? ' dado' : '') + '"><span>' + esc((l.cantidad > 1 ? l.cantidad + ' × ' : '') + l.nombre + (l.talla && l.talla !== 'ÚNICA' ? ' · ' + l.talla : '')) + (n ? ' <span class="q">· ' + esc(pila(n.nombre)) + '</span>' : '') + '</span><span class="eq-lc"><b>' + precio + '</b>' + ctr + '</span></div>'; }).join('') +
         '<div class="eq-l" style="border:0"><b>Total</b><b>' + esc(eur(f.total)) + '</b></div>' : '<div class="cu-cobro-det" style="margin-top:0">' + (f.respondido_en ? 'No ha pedido nada.' : 'Todavía no ha contestado.') + '</div>');
@@ -548,6 +549,22 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       b.disabled = true; b.textContent = 'Enviando…';
       var d = await correo({ recordar: true });
       toast(d.ok ? 'Enviados ' + d.enviados + ' de ' + d.total : (d.mensaje || 'No se pudo enviar'));
+      await cargar(); pintar(); return;
+    }
+    if ((b = t.closest('[data-lcobrar]'))){
+      // (mig 540) un artículo que iba gratis pasa a ser de pago
+      var lc = b.getAttribute('data-lcobrar'), lnc = null, flc = null; (S.lista || []).forEach(function (f) { (f.lineas || []).forEach(function (x) { if (x.id === lc) { lnc = x; flc = f; } }); });
+      if (!lnc) return;
+      var sug = { camiseta: 15, gorro: 6, sudadera: 35 }[lnc.articulo] || '';
+      var pr = prompt('¿Cuánto se cobra «' + lnc.nombre + '»' + (lnc.cantidad > 1 ? ' (cada uno, hay ' + lnc.cantidad + ')' : '') + '? En euros:', String(sug));
+      if (pr == null) return;
+      var precio = Number(String(pr).replace(',', '.').replace(/[^\d.]/g, ''));
+      if (!(precio > 0)) { toast('Precio no válido'); return; }
+      b.disabled = true;
+      var rc = await sb.rpc('natacion_equip_linea_set', { p_linea: lc, p_precio: precio });
+      if (rc.error) { toast(rc.error.message || 'No se pudo'); b.disabled = false; return; }
+      var dc2 = rc.data || {};
+      toast(dc2.aviso || ('De pago: ' + eur(precio) + ' · el pedido suma ' + eur(dc2.total)));
       await cargar(); pintar(); return;
     }
     if ((b = t.closest('[data-lent]')) || (b = t.closest('[data-lsin]'))){
