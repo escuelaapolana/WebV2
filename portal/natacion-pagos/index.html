@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pagos · Natación · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://icaxokjsvhlreuwpyxeb.supabase.co" crossorigin>
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=1f31f2b9">
+<script>window.APOLANA_BASE="../../";
+  window.APOLANA_MUNDO = { world:'natacion', screen:'pagos', contentSel:'#np' };</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=421f991c" defer></script>
+<script src="../../assets/js/portal-auth.js?v=6d9f20a8"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<script src="../../assets/js/mundos.js?v=f5350c87" defer></script>
+<!--
+  NATACIÓN → PAGOS (26-nov-2026, Andrés: «una sección de dinero dentro de
+  natación», como «Pagos generados» de SportMember)
+  Todos los recibos de natación de la app: lo cobrado y lo pendiente, con
+  filtros por mes, estado, sección y forma de pago, totales, el enlace de los
+  pendientes y «Marcar pagado» (transferencia o efectivo). RPC
+  natacion_pagos_listar (mig 548) y natacion_recibo_marcar_pagado (mig 542).
+  Lo cobrado antes de la app (SportMember) no está aquí.
+-->
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; }
+  body { background:var(--crema,#FBF9F4); }
+  .np-wrap { max-width:1100px; margin:0 auto; padding:clamp(18px,4vw,26px) clamp(14px,4vw,26px) 60px; }
+  .np-wrap h1 { font-family:var(--ap-titulo); font-size:clamp(24px,5.5vw,32px); line-height:1.05; margin:4px 0 4px; color:var(--navy,#26374B); }
+  .np-sub { font-size:14px; color:var(--texto-suave,#6E6656); margin:0 0 14px; }
+  .np-cifras { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:0 0 14px; }
+  @media (max-width:560px){ .np-cifras{ gap:6px; } .np-cifra{ padding:9px 10px; } .np-cifra b{ font-size:17px; } .np-cifra small{ font-size:10.5px; letter-spacing:.02em; } .np-cifra span{ font-size:12px; } }
+  .np-cifra { background:#fff; border:1px solid var(--linea,#EAE3D5); border-radius:14px; padding:12px 14px; box-shadow:0 2px 6px rgba(30,45,65,.06),0 10px 20px -10px rgba(30,45,65,.2); }
+  .np-cifra small { display:block; font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--texto-tenue,#9A927F); }
+  .np-cifra b { display:block; font-size:24px; color:var(--navy,#26374B); margin-top:2px; }
+  .np-cifra span { font-size:13px; color:var(--texto-suave,#6E6656); }
+  .np-cifra.verde b { color:#2E7D4F; } .np-cifra.rojo b { color:#B23B3B; }
+  .np-filtros { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; align-items:end; }
+  .np-filtros label { display:grid; gap:3px; font-size:12px; color:var(--texto-suave,#6E6656); }
+  .np-filtros select, .np-filtros input { font:inherit; font-size:14.5px; padding:9px 10px; border:1.5px solid var(--linea-marcada,#E4DCCB); border-radius:10px; background:#fff; color:var(--navy,#26374B); min-height:42px; }
+  .np-filtros input { min-width:200px; }
+  .np-btn { font:inherit; font-weight:700; font-size:13.5px; min-height:36px; padding:6px 12px; border-radius:10px; cursor:pointer; border:1px solid var(--linea-borde,#C9C0AE); background:#fff; color:var(--navy,#26374B); }
+  .np-btn.verde { background:#2E7D4F; color:#fff; border-color:#2E7D4F; }
+  .np-card { background:#fff; border:1px solid var(--linea,#EAE3D5); border-radius:14px; box-shadow:0 2px 6px rgba(30,45,65,.06),0 10px 20px -10px rgba(30,45,65,.2); overflow:hidden; }
+  .np-tabla-w { overflow-x:auto; }
+  table.np { width:100%; border-collapse:collapse; font-size:14px; min-width:860px; }
+  table.np th { text-align:left; font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--texto-tenue,#9A927F); background:var(--crema-media,#F4F0E7); padding:9px 10px; white-space:nowrap; }
+  table.np td { padding:9px 10px; border-top:1px solid var(--linea,#EAE3D5); vertical-align:top; color:var(--navy,#26374B); }
+  table.np td small { color:var(--texto-suave,#6E6656); }
+  table.np tr.tot td { font-weight:700; background:var(--crema-media,#F4F0E7); }
+  .np-nom { background:none; border:0; padding:0; font:inherit; font-weight:700; color:#2F6FA8; cursor:pointer; text-align:left; }
+  .np-est { display:inline-block; font-size:12px; font-weight:700; border-radius:999px; padding:3px 9px; white-space:nowrap; }
+  .np-est.pagado { background:#E3F3E8; color:#2E7D4F; } .np-est.sinpagar { background:#FBE6E6; color:#B23B3B; } .np-est.pendiente { background:#E3EEF8; color:#1E4E79; }
+  .np-acc { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .np-vacio { padding:22px 16px; color:var(--texto-suave,#6E6656); font-size:14px; }
+  .np-nota { font-size:12.5px; color:var(--texto-tenue,#9A927F); margin-top:10px; }
+  .np-toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--navy,#26374B); color:#fff; padding:11px 16px; border-radius:12px; font-size:14px; z-index:99; max-width:90vw; }
+</style>
+</head>
+<body>
+  <div class="np-wrap" id="np"></div>
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('np');
+  var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function norm(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
+  function eur(n){ var v = Number(n)||0; return v.toLocaleString('es-ES', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; }
+  function hoyISO(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function ddmm(iso){ if (!iso) return '—'; var p = String(iso).slice(0,10).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function mesTxt(per){ var p = String(per||'').split('-'); return p.length === 2 ? MESES[+p[1]-1].charAt(0).toUpperCase() + MESES[+p[1]-1].slice(1) + ' ' + p[0] : '—'; }
+  function toast(t){ var e = document.createElement('div'); e.className = 'np-toast'; e.textContent = t; document.body.appendChild(e); setTimeout(function(){ e.remove(); }, 3800); }
+  function estadoDe(p){ return p.estado === 'pagado' ? 'pagado' : (p.vence && p.vence < hoyISO() ? 'sinpagar' : 'pendiente'); }
+  function corto(c){ return String(c || '').replace(/ · temporada [^·]+/, ''); }
+  var EST_TXT = { pagado:'Pagado', sinpagar:'Sin pagar', pendiente:'Pendiente' };
+  var FORMA_TXT = { tarjeta:'Tarjeta', domiciliado:'Domiciliación', transferencia:'Transferencia', efectivo:'Efectivo', otro:'Otro' };
+
+  var S = { L: null, err: null, mes: '', estado: '', tipo: '', forma: '', q: '' };
+  (function(){ var u = new URLSearchParams(location.search); S.q = u.get('q') || ''; S.mes = u.get('mes') || ''; S.estado = u.get('estado') || ''; })();
+
+  async function cargar(){
+    var r = await sb.rpc('natacion_pagos_listar');
+    if (r.error){ S.err = /42501|natación/i.test(r.error.message || '') ? 'No tienes acceso a los pagos de natación.' : 'No se han podido cargar los pagos: ' + r.error.message; S.L = []; }
+    else { S.err = null; S.L = r.data || []; }
+  }
+  function filtrados(){
+    var t = norm(S.q);
+    return (S.L || []).filter(function(p){
+      if (S.mes && p.periodo !== S.mes) return false;
+      if (S.estado && estadoDe(p) !== S.estado && !(S.estado === 'debe' && p.estado !== 'pagado')) return false;
+      if (S.tipo && p.tipo !== S.tipo) return false;
+      if (S.forma && (p.metodo || '') !== S.forma) return false;
+      if (t && t.split(/\s+/).some(function(w){ return norm(p.nadador + ' ' + p.concepto).indexOf(w) === -1; })) return false;
+      return true;
+    });
+  }
+  function opcMeses(){
+    var vistos = {}; (S.L || []).forEach(function(p){ if (p.periodo) vistos[p.periodo] = 1; });
+    return '<option value="">Todos los meses</option>' + Object.keys(vistos).sort().reverse().map(function(m){ return '<option value="' + m + '"' + (S.mes === m ? ' selected' : '') + '>' + esc(mesTxt(m)) + '</option>'; }).join('');
+  }
+  function sel(id, val, opciones){ return '<select id="' + id + '">' + opciones.map(function(o){ return '<option value="' + o[0] + '"' + (val === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>'; }
+
+  function pintar(){
+    var L = filtrados(), cob = 0, nCob = 0, sin = 0, nSin = 0, pen = 0, nPen = 0;
+    L.forEach(function(p){ var e = estadoDe(p), v = Number(p.importe) || 0;
+      if (e === 'pagado'){ cob += v; nCob++; } else if (e === 'sinpagar'){ sin += v; nSin++; } else { pen += v; nPen++; } });
+    var h = '<h1>Pagos</h1><p class="np-sub">Lo que se ha cobrado y lo que falta por cobrar en natación' + (S.mes ? ' en ' + esc(mesTxt(S.mes).toLowerCase()) : '') + '.</p>';
+    h += '<div class="np-cifras">' +
+      '<div class="np-cifra verde"><small>Cobrado</small><b>' + eur(cob) + '</b><span>' + nCob + ' recibo' + (nCob === 1 ? '' : 's') + '</span></div>' +
+      '<div class="np-cifra rojo"><small>Sin pagar (vencido)</small><b>' + eur(sin) + '</b><span>' + nSin + ' recibo' + (nSin === 1 ? '' : 's') + '</span></div>' +
+      '<div class="np-cifra"><small>Pendiente (aún no vence)</small><b>' + eur(pen) + '</b><span>' + nPen + ' recibo' + (nPen === 1 ? '' : 's') + '</span></div></div>';
+    h += '<div class="np-filtros">' +
+      '<label>Mes<select id="f-mes">' + opcMeses() + '</select></label>' +
+      '<label>Estado' + sel('f-estado', S.estado, [['', 'Todos'], ['pagado', 'Pagados'], ['debe', 'Sin cobrar (todo)'], ['sinpagar', 'Sin pagar (vencidos)'], ['pendiente', 'Pendientes (no vencidos)']]) + '</label>' +
+      '<label>Sección' + sel('f-tipo', S.tipo, [['', 'Escuela y Máster'], ['Escuela', 'Escuela'], ['Máster', 'Máster']]) + '</label>' +
+      '<label>Forma de pago' + sel('f-forma', S.forma, [['', 'Todas'], ['tarjeta', 'Tarjeta'], ['domiciliado', 'Domiciliación'], ['transferencia', 'Transferencia'], ['efectivo', 'Efectivo']]) + '</label>' +
+      '<label>Buscar<input id="f-q" type="search" placeholder="Nombre o concepto…" value="' + esc(S.q) + '" autocomplete="off"></label>' +
+      '<button type="button" class="np-btn" id="f-csv">Descargar CSV</button>' +
+      ((S.mes || S.estado || S.tipo || S.forma || S.q) ? '<button type="button" class="np-btn" id="f-limpiar">Quitar filtros</button>' : '') + '</div>';
+    h += '<div class="np-card">';
+    if (S.L == null) h += '<div class="np-vacio">Cargando pagos…</div>';
+    else if (S.err) h += '<div class="np-vacio" style="color:#B23B3B">' + esc(S.err) + '</div>';
+    else if (!L.length) h += '<div class="np-vacio">No hay recibos con esos filtros.</div>';
+    else {
+      h += '<div class="np-tabla-w"><table class="np"><tr><th>Nadador</th><th>Concepto</th><th>Periodo</th><th>Importe</th><th>Estado</th><th>Vence</th><th>Pagado el</th><th>Forma</th><th>Recibo</th></tr>';
+      h += L.map(function(p){
+        var e = estadoDe(p);
+        var acc = p.estado !== 'pagado'
+          ? '<div class="np-acc">' + (p.enlace ? '<button type="button" class="np-btn" data-copiar="' + esc(p.enlace) + '">Copiar enlace</button>' : '') +
+            '<button type="button" class="np-btn verde" data-pagado="' + esc(p.id) + '" data-forma="transferencia">Pagó por transferencia</button>' +
+            '<button type="button" class="np-btn" data-pagado="' + esc(p.id) + '" data-forma="efectivo">En efectivo</button></div>' : '';
+        return '<tr><td><button type="button" class="np-nom" data-nadador="' + esc(p.nadador) + '">' + esc(p.nadador) + '</button><br><small>' + esc(p.tipo || '') + (p.transferencia ? ' · paga por transferencia' : '') + '</small></td>' +
+          '<td>' + esc(corto(p.concepto)) + acc + '</td><td>' + esc(mesTxt(p.periodo)) + '</td><td><b>' + eur(p.importe) + '</b></td>' +
+          '<td><span class="np-est ' + e + '">' + EST_TXT[e] + '</span></td><td>' + ddmm(p.vence) + '</td><td>' + ddmm(p.pagado_el) + '</td>' +
+          '<td>' + esc(p.estado === 'pagado' ? (FORMA_TXT[p.metodo] || p.metodo || '—') : (p.transferencia ? 'Transferencia' : '—')) + '</td><td>' + esc(p.numero_recibo || '—') + '</td></tr>';
+      }).join('');
+      h += '<tr class="tot"><td colspan="3">Total · ' + L.length + ' recibos</td><td>' + eur(cob + sin + pen) + '</td><td colspan="5">Cobrado ' + eur(cob) + ' · por cobrar ' + eur(sin + pen) + '</td></tr></table></div>';
+    }
+    h += '</div><p class="np-nota">Solo están los recibos de la app: lo cobrado antes en SportMember no sale aquí. Pulsa un nombre para ver solo sus pagos. Los cobros automáticos de Stripe aparecen solos cuando se cobran.</p>';
+    var foco = document.activeElement && document.activeElement.id === 'f-q';
+    wrap.innerHTML = h;
+    if (foco){ var b = document.getElementById('f-q'); if (b){ b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch(e){} } }
+  }
+  function csv(){
+    var L = filtrados(), cel = function(v){ v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var filas = [['Nadador', 'Sección', 'Concepto', 'Periodo', 'Importe', 'Estado', 'Vence', 'Pagado el', 'Forma', 'Recibo']].concat(L.map(function(p){
+      return [p.nadador, p.tipo || '', corto(p.concepto), mesTxt(p.periodo), String(p.importe).replace('.', ','), EST_TXT[estadoDe(p)], ddmm(p.vence), ddmm(p.pagado_el), FORMA_TXT[p.metodo] || p.metodo || '', p.numero_recibo || ''];
+    }));
+    var blob = new Blob(['﻿' + filas.map(function(f){ return f.map(cel).join(';'); }).join('\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pagos-natacion' + (S.mes ? '-' + S.mes : '') + '.csv'; a.click();
+  }
+  async function marcar(id, forma){
+    var p = (S.L || []).filter(function(x){ return x.id === id; })[0]; if (!p) return;
+    var f = prompt('¿' + p.nadador + ' ha pagado ' + p.concepto + ' (' + eur(p.importe) + ') ' + (forma === 'efectivo' ? 'en efectivo' : 'por transferencia') + '?\n\nFecha del pago (AAAA-MM-DD):', hoyISO());
+    if (f == null) return; f = String(f).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)){ toast('Escribe la fecha como AAAA-MM-DD.'); return; }
+    var r = await sb.rpc('natacion_recibo_marcar_pagado', { p_pago: id, p_metodo: forma, p_fecha: f });
+    if (r.error){ toast('No se ha podido: ' + (r.error.message || 'error')); return; }
+    toast('Marcado como pagado' + (r.data && r.data.numero_recibo ? ' · recibo ' + r.data.numero_recibo : '') + '.');
+    await cargar(); pintar();
+  }
+
+  wrap.addEventListener('change', function(ev){
+    var t = ev.target;
+    if (t.id === 'f-mes'){ S.mes = t.value; pintar(); }
+    else if (t.id === 'f-estado'){ S.estado = t.value; pintar(); }
+    else if (t.id === 'f-tipo'){ S.tipo = t.value; pintar(); }
+    else if (t.id === 'f-forma'){ S.forma = t.value; pintar(); }
+  });
+  var tmr = null;
+  wrap.addEventListener('input', function(ev){ if (ev.target.id === 'f-q'){ S.q = ev.target.value; clearTimeout(tmr); tmr = setTimeout(pintar, 150); } });
+  wrap.addEventListener('click', function(ev){
+    var b;
+    if ((b = ev.target.closest('[data-nadador]'))){ S.q = b.getAttribute('data-nadador'); S.mes = ''; pintar(); return; }
+    if ((b = ev.target.closest('[data-pagado]'))){ marcar(b.getAttribute('data-pagado'), b.getAttribute('data-forma')); return; }
+    if ((b = ev.target.closest('[data-copiar]'))){ var u = b.getAttribute('data-copiar'); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(function(){ toast('Enlace copiado'); }, function(){ prompt('Copia el enlace:', u); }); return; }
+    if (ev.target.id === 'f-csv'){ csv(); return; }
+    if (ev.target.id === 'f-limpiar'){ S.mes = S.estado = S.tipo = S.forma = S.q = ''; pintar(); return; }
+  });
+
+  pintar();
+  await cargar();
+  pintar();
+});
+</script>
+</body>
+</html>
