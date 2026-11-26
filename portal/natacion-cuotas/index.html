@@ -350,6 +350,8 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     edit: {},          // atleta_id → { importe, per } mientras se edita la cuota de la ficha
     abiertos: {},      // atleta_id → true: filas desplegadas
     guardando: {},
+    sit: {},           // 543 · atleta_id → situaciones (baja médica, pausa…)
+    sitForm: {},       // 543 · atleta_id → true: formulario «Pausar o apuntar» abierto
     tarifas: { 'Máster': null, 'Escuela': null },
     exp: { abierto: false, desde: '', hasta: '', cargando: false }   // «Descargar Excel»
   };
@@ -415,6 +417,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       // 542 · cuotas que se pagan por transferencia (si falla, se sigue sin la marca).
       var rt = await sb.rpc('natacion_cuotas_transferencia');
       S.transf = {}; ((rt && rt.data) || []).forEach(function(v){ S.transf[typeof v === 'string' ? v : (v && v.natacion_cuotas_transferencia)] = true; });
+      // 543 · situaciones (si falla, la lista sigue igual).
+      var rs = await sb.rpc('natacion_situaciones_listar');
+      S.sit = {}; ((rs && rs.data) || []).forEach(function(v){ (S.sit[v.atleta_id] = S.sit[v.atleta_id] || []).push(v); });
       var rr = await sb.rpc('natacion_recibos_pendientes');
       S.recibos = {};
       ((rr && rr.data) || []).forEach(function(c){ (S.recibos[c.atleta_id] = S.recibos[c.atleta_id] || []).push(c); });
@@ -601,6 +606,101 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<button type="button" class="cu-btn peq verde" data-recibo-pagado="' + esc(c.pago_id) + '" data-atleta="' + esc(x.atleta_id) + '">Ha pagado (transferencia)</button></div>';
     }).join('');
   }
+  // ---------- 543 · situaciones y pausa ----------
+  var TIPOS_SIT = { baja_medica:'Baja médica', ausencia:'Ausencia temporal', exencion:'Exención', rebaja:'Rebaja', transferencia:'Transferencia', otra:'Otra' };
+  function sitAbiertas(id){ return ((S.sit && S.sit[id]) || []).filter(function(v){ return v.estado === 'abierta'; }); }
+  function mesTxt(iso){ return iso ? MESES[+String(iso).slice(5, 7) - 1] + ' ' + String(iso).slice(0, 4) : ''; }
+  function sitTxt(id){
+    var L = sitAbiertas(id); if (!L.length) return '';
+    var v = L[0], vencida = v.revisar_el && v.revisar_el <= hoyISO();
+    return ' · <span class="sg">' + esc((TIPOS_SIT[v.tipo] || v.tipo).toLowerCase() + (v.sin_cobro ? ' · en pausa' : '') + (vencida ? ' · revisar' : '')) + '</span>';
+  }
+  function mesesOpc(desdeIso, sel, conNuevoAviso){
+    var h = conNuevoAviso ? '<option value=""' + (!sel ? ' selected' : '') + '>Hasta nuevo aviso</option>' : '', p = partes(desdeIso);
+    for (var i = 0; i < 9; i++){
+      var m = p.m + i, y = p.y + Math.floor((m - 1) / 12); m = ((m - 1) % 12) + 1;
+      var v = y + '-' + String(m).padStart(2, '0');
+      h += '<option value="' + v + '"' + (sel === v ? ' selected' : '') + '>' + capital(MESES[m - 1]) + ' ' + y + '</option>';
+    }
+    return h;
+  }
+  function sitHtml(x){
+    var id = x.atleta_id, L = sitAbiertas(id), h = '';
+    if (L.length || S.sitForm[id]) h += '<div class="cu-sec-lab">Situación</div>';
+    L.forEach(function(v){
+      var cobro = v.sin_cobro ? 'Sin cobrar ' + (v.cobro_hasta ? 'de ' + mesTxt(v.cobro_desde) + ' a ' + mesTxt(v.cobro_hasta) : 'desde ' + mesTxt(v.cobro_desde) + ' hasta nuevo aviso') + '. ' : '';
+      var rev = v.revisar_el ? (v.revisar_el <= hoyISO() ? '<b style="color:#B23B3B">Toca revisarla (' + esc(ddmm(v.revisar_el)) + ')</b>. ' : 'Revisar el ' + esc(ddmm(v.revisar_el)) + '. ') : '';
+      h += '<div class="cu-cobro-det" style="margin-top:0"><b>' + esc(TIPOS_SIT[v.tipo] || v.tipo) + '</b>: ' + esc(v.motivo) + '<br>' + esc(cobro) + rev +
+        esc(v.guarda_plaza ? 'Plaza guardada.' : 'Plaza libre.') + ' <span style="color:var(--texto-tenue,#9A927F)">(' + esc(v.creado_por || '') + ', ' + esc(ddmm(String(v.creado_en).slice(0, 10))) + ')</span></div>' +
+        '<div class="cu-acc" style="margin-top:6px">' +
+          (v.sin_cobro ? '<button type="button" class="cu-btn peq" data-sit-reanudar="' + esc(v.id) + '" data-atleta="' + esc(id) + '">Reanudar el cobro</button>'
+                       : '<button type="button" class="cu-btn peq sec" data-sit-cerrar="' + esc(v.id) + '" data-atleta="' + esc(id) + '">Cerrar</button>') +
+          '<button type="button" class="cu-btn peq sec" data-sit-posponer="' + esc(v.id) + '" data-atleta="' + esc(id) + '">Revisar dentro de 4 semanas</button></div>';
+    });
+    if (S.sitForm[id]){
+      var hoy = partes(hoyISO()), mIni = hoy.d > 5 ? (hoy.m === 12 ? (hoy.y + 1) + '-01' : hoy.y + '-' + String(hoy.m + 1).padStart(2, '0')) : hoy.y + '-' + String(hoy.m).padStart(2, '0');
+      var dRev = new Date(); dRev.setDate(dRev.getDate() + 28);
+      var rev = dRev.getFullYear() + '-' + String(dRev.getMonth() + 1).padStart(2, '0') + '-' + String(dRev.getDate()).padStart(2, '0');
+      var tieneCobro = !!x.cobro_id;
+      h += '<div class="cu-sitf" data-sit-form="' + esc(id) + '" style="border:1px solid var(--linea-borde,#C9C0AE);border-radius:12px;padding:12px;margin-top:8px;display:grid;gap:8px">' +
+        '<label style="display:grid;gap:4px;font-size:13px">Qué pasa<select data-sf="tipo">' + Object.keys(TIPOS_SIT).filter(function(k){ return k !== 'transferencia'; }).map(function(k){ return '<option value="' + k + '">' + TIPOS_SIT[k] + '</option>'; }).join('') + '</select></label>' +
+        '<label style="display:grid;gap:4px;font-size:13px">Motivo (se queda apuntado)<input data-sf="motivo" placeholder="p. ej. pruebas de rodilla y cadera; no viene en diciembre"></label>' +
+        (tieneCobro
+          ? '<label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" data-sf="sincobro" checked> No cobrarle</label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:13px"><label style="display:grid;gap:4px">Desde<select data-sf="desde">' + mesesOpc(hoyISO(), mIni, false) + '</select></label>' +
+            '<label style="display:grid;gap:4px">Hasta (incluido)<select data-sf="hasta">' + mesesOpc(hoyISO(), mIni, true) + '</select></label></div>'
+          : '<div class="cu-cobro-det" style="margin:0">No tiene cobro vivo: solo se apunta la situación.</div>') +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;font-size:13px"><label style="display:grid;gap:4px">Revisar el<input type="date" data-sf="revisar" value="' + rev + '"></label>' +
+        '<label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" data-sf="plaza" checked> Guardarle la plaza</label></div>' +
+        '<div class="cu-acc" style="margin-top:2px"><button type="button" class="cu-btn peq verde" data-sit-guardar="' + esc(id) + '">Guardar</button>' +
+        '<button type="button" class="cu-btn peq sec" data-sit-form-cerrar="' + esc(id) + '">Cancelar</button></div>' +
+        '<div class="cu-cobro-det" style="margin:0">Ausencia por motivos personales: normalmente sin guardar la plaza. Baja médica: plaza guardada y revisión cada 4 semanas.</div>' +
+      '</div>';
+    }
+    return h;
+  }
+  async function guardarSit(id){
+    var x = porId(id), f = wrap.querySelector('[data-sit-form="' + id + '"]'); if (!x || !f) return;
+    var val = function(k){ var e = f.querySelector('[data-sf="' + k + '"]'); return e ? (e.type === 'checkbox' ? e.checked : e.value) : null; };
+    var tipo = val('tipo'), motivo = String(val('motivo') || '').trim(), sinCobro = !!val('sincobro') && !!x.cobro_id;
+    if (!motivo){ toast('Escribe el motivo.'); return; }
+    var desde = val('desde'), hasta = val('hasta') || null;
+    if (sinCobro && hasta && hasta < desde){ toast('«Hasta» no puede ser antes que «desde».'); return; }
+    if (sinCobro && !confirm('¿No cobrar a ' + nombreDe(x) + ' ' + (hasta ? 'de ' + mesTxt(desde + '-01') + ' a ' + mesTxt(hasta + '-01') : 'desde ' + mesTxt(desde + '-01') + ' hasta nuevo aviso') + '?\n\nMotivo: ' + motivo)) return;
+    var b = f.querySelector('[data-sit-guardar]'); if (b){ b.disabled = true; b.textContent = 'Guardando…'; }
+    var r;
+    if (sinCobro){
+      r = await sb.functions.invoke('natacion-pausa', { body: { accion: 'pausar', atleta_id: id, tipo: tipo, motivo: motivo, desde_mes: desde, hasta_mes: hasta, revisar_el: val('revisar') || null, guarda_plaza: !!val('plaza') } });
+      var msg = r && r.error ? await errFn(r.error) : null;
+      if (msg){ if (b){ b.disabled = false; b.textContent = 'Guardar'; } toast(msg); return; }
+      toast('Hecho. ' + ((r.data && r.data.detalle) || ''));
+    } else {
+      r = await sb.rpc('natacion_situacion_guardar', { p_atleta: id, p_tipo: tipo, p_motivo: motivo, p_revisar_el: val('revisar') || null, p_guarda_plaza: !!val('plaza') });
+      if (r.error){ if (b){ b.disabled = false; b.textContent = 'Guardar'; } toast(humano(r.error, 'apuntar situaciones')); return; }
+      toast('Apuntado.');
+    }
+    delete S.sitForm[id]; await cargar(); pintarLista();
+  }
+  async function errFn(e){
+    try { if (e && e.context && e.context.json){ var j = await e.context.json(); if (j && j.mensaje) return j.mensaje; } } catch(_){}
+    return 'No se ha podido: ' + ((e && e.message) || 'error');
+  }
+  async function reanudarSit(sid, id){
+    var x = porId(id); if (!confirm('¿Reanudar el cobro de ' + (x ? nombreDe(x) : 'este nadador') + '?\n\nVuelve a cobrarse con normalidad desde el próximo día 5.')) return;
+    var r = await sb.functions.invoke('natacion-pausa', { body: { accion: 'reanudar', situacion_id: sid } });
+    var msg = r && r.error ? await errFn(r.error) : null;
+    if (msg){ toast(msg); return; }
+    toast('Cobro reanudado.'); await cargar(); pintarLista();
+  }
+  async function cerrarSit(sid, posponer){
+    var d = new Date(); d.setDate(d.getDate() + 28);
+    var rev = posponer ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') : null;
+    var nota = prompt(posponer ? 'Nota de la revisión (opcional):' : '¿Cerrar esta situación? Nota (opcional):', '');
+    if (nota == null) return;
+    var r = await sb.rpc('natacion_situacion_cerrar', { p_id: sid, p_nota: nota, p_revisar_el: rev });
+    if (r.error){ toast(humano(r.error, 'cerrar situaciones')); return; }
+    toast(posponer ? 'Se revisará el ' + ddmm(rev) + '.' : 'Cerrada.'); await cargar(); pintarLista();
+  }
   function filaHtml(x){
     var id = x.atleta_id, e = estadoDe(x), abierto = !!S.abiertos[id];
     var sub = (x.tipo === 'Escuela' ? 'Escuela' : 'Máster') + ' · ' + (x.dias ? pl(x.dias, 'día', 'días') : 'sin franja') +
@@ -608,7 +708,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       (x.cuota_otra_seccion ? ' · otra sección' : '');
     return '<div class="cu-item' + (abierto ? ' abierto' : '') + '" data-fila="' + esc(id) + '">' +
       '<button type="button" class="cu-row" data-abrir="' + esc(id) + '" aria-expanded="' + (abierto ? 'true' : 'false') + '">' +
-        '<span class="q"><b>' + esc(nombreDe(x)) + '</b><small>' + esc(sub) + (S.edit[id] ? ' · <span class="sg">sin guardar</span>' : '') + (recibosDe(id).length ? ' · <span class="sg">' + esc(recibosTxt(id)) + '</span>' : '') + '</small></span>' +
+        '<span class="q"><b>' + esc(nombreDe(x)) + '</b><small>' + esc(sub) + (S.edit[id] ? ' · <span class="sg">sin guardar</span>' : '') + (recibosDe(id).length ? ' · <span class="sg">' + esc(recibosTxt(id)) + '</span>' : '') + sitTxt(id) + '</small></span>' +
         '<span class="d">' + impFila(x) + '<span class="cu-estado ' + e.k + '">' + esc(e.t) + '</span></span>' +
         '<span class="chev" aria-hidden="true">▼</span>' +
       '</button>' +
@@ -641,6 +741,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         (malNum ? '<div class="cu-cobro-det" style="color:#B23B3B">Escribe un importe entre 0 y 2.000 €.</div>' : '');
     }
     h += recibosHtml(x);
+    h += sitHtml(x);   // 543
     // cobro domiciliado (la pastilla de estado ya va en la fila)
     h += '<div class="cu-sec-lab">' + (esTransf(x) ? 'Cobro por transferencia' : x.cobro_metodo === 'mes_a_mes' ? 'Cobro mes a mes' : 'Domiciliación') + '</div>';
     if (!x.cobro_id) h += '<div class="cu-cobro-det" style="margin-top:0">' + (pideCobro(x) ? 'Aún no tiene cobro: crea su enlace y pásaselo.' : 'Sin cobro creado.') + '</div>';
@@ -660,8 +761,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (!x.cobro_id && x.acceso_activo){
       h += '<button type="button" class="cu-btn peq' + (pideCobro(x) ? '' : ' sec') + '" data-crear="' + esc(id) + '">Crear enlace de pago</button>';
     }
+    if (!S.sitForm[id]) h += '<button type="button" class="cu-btn peq sec" data-sit-form-abrir="' + esc(id) + '">' + (x.cobro_id ? 'Pausar la cuota o apuntar baja' : 'Apuntar baja o situación') + '</button>';   // 543
     if (x.codigo){
-      h += '<button type="button" class="cu-btn peq sec" data-ficha="' + esc(id) + '">Abrir su ficha</button>';
+      h += '<button type="button" class="cu-btn peq sec" data-ficha=""' + esc(id) + '">Abrir su ficha</button>';
     }
     // 542 · pasar a transferencia: enlaces sin activar o cuotas «mes a mes».
     if (x.cobro_id && (x.cobro_metodo === 'mes_a_mes' || (x.cobro_estado === 'pendiente' && x.cobro_anulable))){
@@ -1096,6 +1198,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     }
     if ((b = t.closest('[data-rango]'))){ var rg = rango(b.getAttribute('data-rango')); S.exp.desde = rg[0]; S.exp.hasta = rg[1]; pintarExp(); return; }
     if ((b = t.closest('[data-exportar]'))){ if (!S.exp.cargando) exportar(); return; }
+    if ((b = t.closest('[data-sit-form-abrir]'))){ S.sitForm[b.getAttribute('data-sit-form-abrir')] = true; pintarFila(b.getAttribute('data-sit-form-abrir')); return; }
+    if ((b = t.closest('[data-sit-form-cerrar]'))){ delete S.sitForm[b.getAttribute('data-sit-form-cerrar')]; pintarFila(b.getAttribute('data-sit-form-cerrar')); return; }
+    if ((b = t.closest('[data-sit-guardar]'))){ guardarSit(b.getAttribute('data-sit-guardar')); return; }
+    if ((b = t.closest('[data-sit-reanudar]'))){ reanudarSit(b.getAttribute('data-sit-reanudar'), b.getAttribute('data-atleta')); return; }
+    if ((b = t.closest('[data-sit-cerrar]'))){ cerrarSit(b.getAttribute('data-sit-cerrar'), false); return; }
+    if ((b = t.closest('[data-sit-posponer]'))){ cerrarSit(b.getAttribute('data-sit-posponer'), true); return; }
     if ((b = t.closest('[data-recibo-pagado]'))){ marcarPagado(b.getAttribute('data-recibo-pagado'), b.getAttribute('data-atleta')); return; }
     if ((b = t.closest('[data-transf]'))){ pasarTransf(b.getAttribute('data-transf'), b.getAttribute('data-si') === '1'); return; }
     if ((b = t.closest('[data-recibo-msg]'))){ var xr = porId(b.getAttribute('data-atleta')), cr = xr && recibosDe(xr.atleta_id).filter(function(c){ return c.pago_id === b.getAttribute('data-recibo-msg'); })[0]; if (cr) copiar(msgRecibo(xr, cr), 'Mensaje copiado'); return; }

@@ -31,6 +31,10 @@
 //
 // MIG 542 · TRANSFERENCIA: si la cuota «mes a mes» tiene transferencia=true, el correo del recibo
 //   lleva el IBAN del club, el concepto «APELLIDOS NOMBRE - MES» y «contesta con el justificante»
+//
+// MIG 544 · { semanal: true } (lunes 9:00) → resumen a Mario y Adriana; { pre21: true } (día 19, 9:00) →
+//   a Andrés, a quién le llegará el correo del 21 y con qué importe + un ejemplo de cada. Ambos admiten
+//   { a: "correo" } para mandarlo solo ahí y { simular: true } (semanal) para contar sin enviar.
 //   (y, de reserva, el enlace para pagar con tarjeta). { prueba_transf: true, a } manda un ejemplo.
 //
 //   supabase functions deploy natacion-cobro-aviso --no-verify-jwt --project-ref icaxokjsvhlreuwpyxeb
@@ -71,6 +75,13 @@ async function rest(ruta: string, init: RequestInit = {}) {
 async function sub(id: string) {
   const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${STRIPE_KEY}` } });
   return r.ok ? await r.json().catch(() => null) : null;
+}
+// 543 · ¿El cobro de esa fecha cae en una pausa de Stripe (pause_collection)?
+function enPausa(s: any, prox: number): boolean {
+  const pc = s?.pause_collection;
+  if (!pc) return false;
+  const r = Number(pc.resumes_at ?? 0);
+  return !(r > 0) || r > prox;
 }
 function proximoDe(s: any): number {
   if (s?.status === "trialing" && Number(s.trial_end) > 0) return Number(s.trial_end);
@@ -249,6 +260,7 @@ async function aviso21(cuerpo: Record<string, unknown>) {
     const prox = proximoDe(s);
     const fecha = prox > 0 ? ymdMadrid(prox) : "";
     if (fecha !== dia5) { activas.push({ nadador, fecha, nada: "no cobra ese día 5" }); continue; }
+    if (enPausa(s, prox)) { activas.push({ nadador, fecha, nada: "cuota en pausa" }); continue; }
     if (Number(s.cancel_at) > 0 && Number(s.cancel_at) <= prox) { activas.push({ nadador, nada: "se para antes" }); continue; }
     const importe = Number(s.items?.data?.[0]?.price?.unit_amount ?? 0);
     if (!q.email || !(importe > 0)) { activas.push({ nadador, error: !q.email ? "sin correo" : "sin importe" }); continue; }
@@ -281,6 +293,114 @@ async function aviso21(cuerpo: Record<string, unknown>) {
   return json({ ok: true, aviso21: true, hoy, dia5, simular, prueba, activas, pendientes });
 }
 
+// ============================================================
+// MIG 544 · RESUMEN DE LOS LUNES (Mario y Adriana) y AVISO PREVIO AL DÍA 21 (Andrés)
+// ============================================================
+const DESTINOS_RESUMEN = ["mario.apolana@gmail.com", "garsaladri@gmail.com"];
+const IBAN_TXT = "ES32 0081 1057 5300 0110 4916";
+const mesLargo = (per: string) => { const [y, m] = String(per).split("-").map(Number); return m ? `${MESES[m - 1]}` : per; };
+const listaMeses = (csv: string) => { const L = String(csv || "").split(",").filter(Boolean).map(mesLargo); return L.length > 1 ? L.slice(0, -1).join(", ") + " y " + L[L.length - 1] : (L[0] ?? ""); };
+const telWa = (t: string | null) => { const d = String(t || "").replace(/\D/g, ""); return d ? (d.length === 9 ? "34" + d : d) : ""; };
+const pila = (n: string) => capital(String(n || "").split(" ")[0] || "");
+
+// Mensajes (criterio de Mario aprobado el 26-nov: sin fechas fijas, enlace al final).
+function msgActivar(x: any) {
+  return `Buenos días.\n\nTe escribo porque estamos revisando la activación de las cuotas de natación en la nueva web de Apolana y vemos que todavía tienes pendiente completar este trámite para ${pila(x.nombre)}.\n\nComo sabes, estamos trasladando toda la gestión desde SportMember a nuestra propia plataforma y necesitamos que todos los nadadores tengan su cuota activada para poder gestionar los pagos.\n\nTe agradecería que, cuando puedas, entres en el enlace y completes la activación. Es un trámite sencillo que solo tendrás que hacer una vez.\n\nSi tienes cualquier dificultad, me lo dices y te ayudo encantado.\n\nMuchas gracias.\nUn saludo.\n\n${x.enlace}`;
+}
+function msgImpago(x: any, nivel: number, meses: string, transf: boolean) {
+  const pago = transf ? `\n\nPuedes hacer la transferencia a Banco Sabadell ${IBAN_TXT} (concepto: ${String(x.nombre).toUpperCase()} - ${meses.toUpperCase()}) y mandarme el justificante, o pagar con tarjeta aquí:` : "\n\nPuedes pagarlo aquí:";
+  if (nivel === 1) return `Buenos días.\n\nTe escribo porque la cuota de natación de ${meses} de ${pila(x.nombre)} todavía aparece pendiente. Puede que sea un despiste o que el cobro no se haya podido completar.${pago}\n${x.enlace}\n\nSi ya lo has hecho o tienes cualquier dificultad, dímelo y lo miramos.\n\nMuchas gracias.\nUn saludo.`;
+  if (nivel === 2) return `Buenos días.\n\nTe escribo de nuevo porque, según nuestros registros, sigue pendiente la cuota de natación de ${meses} de ${pila(x.nombre)}.\n\nYa te habíamos enviado un aviso, pero de momento no tenemos constancia del pago ni hemos recibido respuesta.\n\nTe agradecería que pudieras regularizarlo en los próximos 7 días o, si hay alguna dificultad, que te pusieras en contacto conmigo para buscar una solución.\n\nComo estamos organizando los grupos y las plazas de natación, necesitamos mantener las cuotas al día.\n\nSi ya lo has pagado, házmelo saber para comprobarlo con Administración.${pago}\n${x.enlace}\n\nMuchas gracias.\nUn saludo.`;
+  return `Buenos días.\n\nTe escribo de nuevo porque, según nuestros registros, siguen pendientes las cuotas de natación de ${meses} de ${pila(x.nombre)}.\n\nComo ya te hemos enviado avisos y todavía no hemos recibido respuesta, necesitamos regularizar esta situación.\n\nEntendemos que puede haber circunstancias particulares que lo hayan impedido. En ese caso, te agradecería que me lo contaras para valorar cómo solucionarlo.\n\nTe agradeceríamos que regularizaras los pagos pendientes, o contactaras conmigo, en los próximos 7 días. De no recibir respuesta, tendremos que revisar la continuidad de la plaza, ya que no podemos mantener indefinidamente plazas reservadas con mensualidades pendientes.\n\nSi ya has hecho algún pago, comunícamelo para que podamos comprobarlo.${pago}\n${x.enlace}\n\nGracias por tu comprensión.\nUn saludo.`;
+}
+const NIVEL_TXT = ["", "Mensaje 1 · recordatorio amistoso", "Mensaje 2 · con plazo de 7 días", "Mensaje 3 · último aviso antes de revisar la plaza"];
+const TIPO_TXT: Record<string, string> = { baja_medica: "Baja médica", ausencia: "Ausencia temporal", exencion: "Exención", rebaja: "Rebaja", transferencia: "Transferencia", otra: "Otra" };
+
+function bloque(titulo: string, sub: string, items: string[]) {
+  if (!items.length) return "";
+  return `<tr><td style="padding:18px 24px 4px 24px"><p style="margin:0;font-size:16px;font-weight:700;color:#26374B">${escH(titulo)} · ${items.length}</p>${sub ? `<p style="margin:2px 0 0;color:#71717a;font-size:13px">${escH(sub)}</p>` : ""}</td></tr>` + items.join("");
+}
+function persona(nombre: string, linea: string, msg: string | null, tel: string | null, extra = "") {
+  const wa = msg && telWa(tel) ? `https://wa.me/${telWa(tel)}?text=${encodeURIComponent(msg)}` : "";
+  return `<tr><td style="padding:8px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e4e4e7;border-radius:10px"><tr><td style="padding:10px 12px">
+    <p style="margin:0;font-size:15px;color:#18181b"><b>${escH(nombre)}</b>${tel ? ` · <span style="color:#71717a">${escH(tel)}</span>` : ""}</p>
+    <p style="margin:3px 0 0;font-size:13.5px;color:#3f3f46;line-height:1.5">${linea}</p>${extra}
+    ${msg ? `<details style="margin-top:6px"><summary style="cursor:pointer;color:#2F6FA8;font-size:13px">Ver el mensaje</summary><pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:#3f3f46;background:#F1EADC;border-radius:8px;padding:10px;margin:6px 0 0">${escH(msg)}</pre></details>` : ""}
+    ${wa ? `<p style="margin:8px 0 0"><a href="${escH(wa)}" style="display:inline-block;background:#25D366;color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:7px 12px;border-radius:8px">Mandar por WhatsApp</a></p>` : ""}
+  </td></tr></table></td></tr>`;
+}
+function marco(titulo: string, intro: string, cuerpo: string) {
+  return `<!doctype html><html lang="es"><body style="margin:0;background-color:#f4f4f5;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#18181b">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5"><tr><td align="center">
+    <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background-color:#ffffff;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+      <tr><td bgcolor="#26374B" style="background-color:#26374B;color:#ffffff;padding:20px 24px;font-size:18px;font-weight:700">${escH(titulo)}</td></tr>
+      <tr><td style="padding:18px 24px 0 24px"><p style="margin:0;color:#3f3f46;line-height:1.6">${intro}</p></td></tr>
+      ${cuerpo}
+      <tr><td style="padding:18px 24px 22px 24px"><p style="margin:0;color:#71717a;font-size:12.5px;line-height:1.5">Todo esto se ve también en el portal: Natación → Cuotas y cobros. Para pausar una cuota o apuntar una baja, abre la fila del nadador.</p></td></tr>
+    </table></td></tr></table></body></html>`;
+}
+
+async function resumenSemanal(cuerpo: Record<string, unknown>) {
+  const r = await rest("rpc/natacion_resumen_semanal", { method: "POST", body: "{}" });
+  if (!r.ok) return json({ error: "base", detalle: r.datos }, 500);
+  const d = r.datos ?? {};
+  const rev = (d.revisar ?? []).map((v: any) => persona(v.nombre,
+    `${escH(TIPO_TXT[v.tipo] ?? v.tipo)}: ${escH(v.motivo)}<br>${v.sin_cobro ? `Sin cobrar${v.cobro_hasta ? ` hasta ${escH(mesLargo(String(v.cobro_hasta).slice(0, 7)))}` : " hasta nuevo aviso"}. ` : ""}` +
+    `${v.revisar_el ? `<b>Revisar el ${escH(String(v.revisar_el).split("-").reverse().join("/"))}</b>. ` : ""}${v.mas_de_2_meses ? "<b style=\"color:#B23B3B\">Lleva más de 2 meses de baja: decidir si se mantiene la plaza.</b> " : ""}${v.guarda_plaza ? "Plaza guardada." : "Plaza libre."}`, null, null));
+  const imp = (d.impagos ?? []).map((x: any) => { const m = msgImpago(x, x.nivel, "este mes", false);
+    return persona(x.nombre, `Cobro rechazado en Stripe (${escH(eur(Math.round(Number(x.importe) * 100)))} ${x.periodicidad === "trimestral" ? "al trimestre" : "al mes"}). Toca: <b>${escH(NIVEL_TXT[x.nivel])}</b>.`, m, x.tel); });
+  const rec = (d.recibos ?? []).filter((x: any) => !x.transferencia).map((x: any) => { const meses = listaMeses(x.meses), m = msgImpago(x, x.nivel, meses, false);
+    return persona(x.nombre, `Debe ${escH(meses)} (${escH(eur(Math.round(Number(x.total) * 100)))}). Toca: <b>${escH(NIVEL_TXT[x.nivel])}</b>.`, m, x.tel); });
+  const tra = (d.recibos ?? []).filter((x: any) => x.transferencia).map((x: any) => { const meses = listaMeses(x.meses), m = msgImpago(x, x.nivel, meses, true);
+    return persona(x.nombre, `Paga por transferencia: sin justificante de ${escH(meses)} (${escH(eur(Math.round(Number(x.total) * 100)))}). Si ya lo mandó, márcalo con «Ha pagado».`, m, x.tel); });
+  const sin = (d.sin_activar ?? []).map((x: any) => persona(x.nombre,
+    `Enlace sin activar desde el ${escH(String(x.creado).split("-").reverse().join("/"))} (${escH(eur(Math.round(Number(x.importe) * 100)))} ${x.periodicidad === "trimestral" ? "al trimestre" : "al mes"}).`, msgActivar(x), x.tel));
+  const total = rev.length + imp.length + rec.length + tra.length + sin.length;
+  const hoy = String(d.hoy ?? "");
+  const intro = total
+    ? `Buenos días. Esto es lo que hay que revisar esta semana en natación (${total}). Cada caso lleva el mensaje que toca según el criterio acordado (día 8, 15 y 25) y un botón para mandarlo por WhatsApp.`
+    : "Buenos días. Esta semana no hay nada pendiente en natación: ni bajas que revisar, ni impagos, ni enlaces sin activar. 🎉";
+  const html = marco("Natación · lo que hay que revisar esta semana", intro,
+    bloque("Bajas y situaciones que revisar", "Baja médica: revisar cada 4 semanas; si pasa de 2 meses y hay lista de espera, decidir la plaza.", rev) +
+    bloque("Cobros rechazados", "", imp) + bloque("Recibos sin pagar", "", rec) + bloque("Transferencias sin justificante", "", tra) +
+    bloque("Enlaces sin activar", "Aquí no se habla de impagos: solo hay que terminar el trámite.", sin));
+  const texto = `Natación · lo que hay que revisar esta semana (${hoy}): ${rev.length} situaciones, ${imp.length} cobros rechazados, ${rec.length} recibos sin pagar, ${tra.length} transferencias sin justificante, ${sin.length} enlaces sin activar. Detalle en Natación → Cuotas y cobros.`;
+  const c = { html, texto, asunto: `Natación · revisar esta semana${total ? ` (${total})` : ": todo al día"}` };
+  const a = String(cuerpo.a ?? "").trim().toLowerCase();
+  const destinos = a ? [a] : DESTINOS_RESUMEN;
+  if (cuerpo.simular === true) return json({ ok: true, semanal: true, simular: true, destinos, cuenta: { revisar: rev.length, impagos: imp.length, recibos: rec.length, transferencias: tra.length, sin_activar: sin.length } });
+  const res: Record<string, boolean> = {};
+  for (const x of destinos) res[x] = await enviar(x, c);
+  console.log("[natacion-cobro-aviso] semanal", hoy, JSON.stringify(res));
+  return json({ ok: true, semanal: true, enviado: res, cuenta: { revisar: rev.length, impagos: imp.length, recibos: rec.length, transferencias: tra.length, sin_activar: sin.length } });
+}
+
+// Día 19: a Andrés, qué saldrá el 21 (simulación) + un ejemplo de cada correo.
+async function pre21(cuerpo: Record<string, unknown>) {
+  const sim = await (await aviso21({ aviso21: true, simular: true })).json();
+  const act = (sim.activas ?? []).filter((x: any) => x.se_enviaria);
+  const pen = (sim.pendientes ?? []).filter((x: any) => x.se_enviaria);
+  const fuera = (sim.activas ?? []).filter((x: any) => x.error);
+  const dia5 = String(sim.dia5 ?? "");
+  const [, m5] = dia5.split("-").map(Number);
+  const li = (t: string) => `<li style="margin:2px 0">${t}</li>`;
+  const cuerpoHtml = `<tr><td style="padding:12px 24px">
+    <p style="margin:0 0 6px;font-weight:700;color:#26374B">Aviso de cobro del 5 de ${escH(MESES[(m5 || 1) - 1])} · ${act.length}</p>
+    <ul style="margin:0 0 12px;padding-left:18px;color:#3f3f46;font-size:14px">${act.map((x: any) => li(`${escH(x.nadador)} · <b>${escH(eur(Number(x.importe)))}</b>`)).join("") || li("Nadie")}</ul>
+    <p style="margin:0 0 6px;font-weight:700;color:#26374B">«Falta activar la cuota» · ${pen.length}</p>
+    <ul style="margin:0 0 12px;padding-left:18px;color:#3f3f46;font-size:14px">${pen.map((x: any) => li(escH(x.nadador))).join("") || li("Nadie")}</ul>
+    ${fuera.length ? `<p style="margin:0 0 6px;font-weight:700;color:#B23B3B">No les llegará por un problema · ${fuera.length}</p><ul style="margin:0 0 12px;padding-left:18px;color:#3f3f46;font-size:14px">${fuera.map((x: any) => li(`${escH(x.nadador)}: ${escH(x.error)}`)).join("")}</ul>` : ""}
+    <p style="margin:8px 0 0;color:#3f3f46;font-size:14px;line-height:1.6">Te llegan aparte <b>un ejemplo de cada correo</b> tal como lo verán. Si algún importe no cuadra, corrígelo antes del día 21 a las 9:00 (o dímelo y lo cambio).</p>
+  </td></tr>`;
+  const c = { html: marco("Natación · revisa el correo del día 21", `El <b>día 21 a las 9:00</b> saldrán estos correos a las familias de natación:`, cuerpoHtml),
+    texto: `El día 21 saldrán ${act.length} avisos de cobro y ${pen.length} «falta activar». Revisa los importes.`,
+    asunto: `Natación · el día 21 salen ${act.length + pen.length} correos: revisa los importes` };
+  const a = String(cuerpo.a ?? "").trim().toLowerCase() || RESPUESTAS;
+  const ok = await enviar(a, c);
+  const ej = await (await aviso21({ aviso21: true, prueba: true, a })).json();
+  return json({ ok, pre21: true, a, activas: act.length, pendientes: pen.length, ejemplos: ej });
+}
+
 async function enviar(a: string, c: { html: string; texto: string; asunto: string }) {
   const r = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -305,6 +425,9 @@ Deno.serve(async (req: Request) => {
   try { cuerpo = await req.json(); } catch { /* vacío */ }
   // --- 537 · correo del día 21 ---
   if (cuerpo.aviso21 === true) return await aviso21(cuerpo);
+  // --- 544 · resumen de los lunes y aviso previo al 21 ---
+  if (cuerpo.semanal === true) return await resumenSemanal(cuerpo);
+  if (cuerpo.pre21 === true) return await pre21(cuerpo);
   const prueba = cuerpo.prueba === true;
   // --- 431 · ejemplo del correo «mes a mes» ---
   if (cuerpo.prueba_mes === true) {
@@ -339,6 +462,7 @@ Deno.serve(async (req: Request) => {
     const prox = proximoDe(s);
     if (!(prox > 0)) { salida.push({ nadador, nada: "sin próximo cobro" }); continue; }
     if (Number(s.cancel_at) > 0 && Number(s.cancel_at) <= prox) { salida.push({ nadador, nada: "se para antes del próximo cobro" }); continue; }
+    if (enPausa(s, prox)) { salida.push({ nadador, nada: "cuota en pausa" }); continue; }
     const fecha = ymdMadrid(prox);
     const faltan = diasEntre(hoy, fecha);
     const importe = Number(s.items?.data?.[0]?.price?.unit_amount ?? 0);
