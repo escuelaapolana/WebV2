@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crono · Portal Apolana</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="../../assets/img/favicon-escudo.png">
+<link rel="apple-touch-icon" href="../../assets/img/apple-touch-icon.png">
+<link rel="preconnect" href="https://icaxokjsvhlreuwpyxeb.supabase.co" crossorigin>
+<link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
+<link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=1f31f2b9">
+<script>window.APOLANA_BASE="../../";</script>
+<script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
+<script src="../../assets/js/db.js?v=421f991c" defer></script>
+<script src="../../assets/js/portal-auth.js?v=6d9f20a8"></script>
+<script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
+<!--
+  MODO CRONO (26-nov-2026, encargo de Andrés)
+  El entrenador, cronómetro en mano, mete el tiempo de cada serie de un atleta:
+  una casilla grande, Intro o «Siguiente» guarda y salta a la siguiente serie.
+  Escribe en academia_toma_datos con la MISMA función y las MISMAS claves que
+  «Apuntar en pista» de portal/academia (alcance repetición, serie, repetición
+  = parte, tramo total, magnitud tiempo): lo que se apunta aquí sale allí y al
+  revés. No toca el feedback del atleta ni completa nada.
+  Lo que no llega a guardarse (sin cobertura) queda en este aparato
+  (localStorage) y se reintenta solo.
+-->
+<style>
+  :root { --ap-titulo:'Bricolage Grotesque',system-ui,sans-serif; --dato:var(--fuente-dato,'IBM Plex Mono',ui-monospace,monospace);
+    --navy:#22496d; --tx:#2b3138; --t2:#5f6874; --linea:#dfe3e8; --ok:#2f7d4f; --mal:#B23B3B; --amb:#a86a12;
+    --s1:0 2px 6px rgba(30,45,65,.08),0 10px 20px -8px rgba(30,45,65,.22); }
+  body { background:#f4f5f7; color:var(--tx); }
+  .cr { max-width:620px; margin:0 auto; padding:14px clamp(12px,4vw,22px) 120px; }
+  .cr-cab { display:flex; align-items:center; gap:8px; margin:4px 0 10px; }
+  .cr-cab h1 { font-family:var(--ap-titulo); font-size:26px; line-height:1; margin:0; flex:1; color:var(--navy); }
+  .cr-dia { display:flex; align-items:center; gap:4px; font-size:14px; color:var(--t2); }
+  .cr-dia button { border:1px solid var(--linea); background:#fff; border-radius:10px; width:34px; height:34px; font-size:18px; cursor:pointer; color:var(--navy); }
+  .cr-met { font-size:13px; color:var(--t2); margin:0 0 12px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .cr-met select { font:inherit; border:1px solid var(--linea); border-radius:8px; padding:3px 6px; background:#fff; }
+  .cr-chips { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px; scrollbar-width:none; }
+  .cr-chip { flex:none; border:1.5px solid var(--linea); background:#fff; border-radius:999px; padding:10px 16px; font:inherit; font-size:16px; font-weight:600; color:var(--tx); cursor:pointer; }
+  .cr-chip.on { background:var(--navy); border-color:var(--navy); color:#fff; }
+  .cr-chip small { font-weight:500; opacity:.75; margin-left:4px; }
+  .cr-card { background:#fff; border:1px solid var(--linea); border-radius:14px; box-shadow:var(--s1); padding:12px 14px; margin-bottom:12px; }
+  .cr-filas { display:flex; flex-direction:column; gap:6px; }
+  .cr-fila { text-align:left; border:1px solid var(--linea); background:#fff; border-radius:12px; padding:10px 12px; font:inherit; font-size:15px; color:var(--tx); cursor:pointer; display:flex; gap:8px; align-items:center; }
+  .cr-fila.on { border-color:var(--navy); box-shadow:inset 0 0 0 1.5px var(--navy); }
+  .cr-fila span { flex:1; }
+  .cr-fila em { font-style:normal; font-size:12.5px; color:var(--t2); white-space:nowrap; }
+  .cr-fila .bl { display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--t2); }
+  .cr-ver { font-size:13px; color:var(--navy); background:none; border:0; padding:6px 0 0; cursor:pointer; text-decoration:underline; }
+  .cr-tit { font-size:15px; font-weight:600; margin:0 0 10px; }
+  .cr-tit small { display:block; font-weight:400; color:var(--t2); font-size:13px; }
+  .cr-series { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:8px; margin-bottom:12px; }
+  .cr-s { border:1.5px solid var(--linea); background:#fafbfc; border-radius:12px; padding:8px 6px; text-align:center; cursor:pointer; font:inherit; color:var(--tx); }
+  .cr-s b { display:block; font-family:var(--dato); font-size:19px; font-weight:600; min-height:24px; }
+  .cr-s small { display:block; font-size:11.5px; color:var(--t2); }
+  .cr-s.on { border-color:var(--navy); background:#eef3f8; }
+  .cr-s.ok b { color:var(--ok); }
+  .cr-s.pend b { color:var(--amb); }
+  .cr-s.err { border-color:var(--mal); }
+  .cr-s.mas { border-style:dashed; color:var(--t2); font-size:24px; }
+  .cr-in { display:flex; gap:8px; align-items:stretch; }
+  .cr-in input { flex:1; min-width:0; font-family:var(--dato); font-size:34px; font-weight:600; text-align:center; padding:12px 8px; border:2px solid var(--navy); border-radius:14px; color:var(--tx); background:#fff; }
+  .cr-in button { border:0; border-radius:14px; background:var(--navy); color:#fff; font:inherit; font-size:17px; font-weight:600; padding:0 18px; cursor:pointer; }
+  .cr-ayuda { font-size:12.5px; color:var(--t2); margin:6px 2px 0; min-height:16px; }
+  .cr-ayuda.mal { color:var(--mal); }
+  .cr-pend { position:fixed; left:50%; transform:translateX(-50%); bottom:96px; background:var(--amb); color:#fff; border-radius:999px; padding:8px 14px; font-size:13.5px; border:0; box-shadow:var(--s1); z-index:30; cursor:pointer; }
+  .cr-vacio { text-align:center; color:var(--t2); padding:30px 10px; }
+  .cr-toast { position:fixed; left:50%; bottom:150px; transform:translate(-50%,10px); opacity:0; transition:.2s; background:var(--navy); color:#fff; padding:9px 15px; border-radius:999px; font-size:14px; z-index:40; pointer-events:none; }
+  .cr-toast.ver { opacity:1; transform:translate(-50%,0); }
+  .cr-toast.err { background:var(--mal); }
+</style>
+</head>
+<body>
+<div class="cr" id="cr"><div class="cr-vacio">Cargando…</div></div>
+<div class="cr-toast" id="cr-toast"></div>
+
+<script>
+APOLANA_PORTAL.listo(async function (sb, perfil) {
+  var wrap = document.getElementById('cr');
+  function pad(n){ return (n<10?'0':'')+n; }
+  function iso(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  var DIAS=['dom','lun','mar','mié','jue','vie','sáb'], MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  function fCorta(s){ var p=s.split('-'), d=new Date(+p[0],+p[1]-1,+p[2]); return (s===iso(new Date())?'hoy · ':'')+DIAS[d.getDay()]+' '+d.getDate()+' '+MESES[d.getMonth()]; }
+  function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){ var r=Math.random()*16|0; return (c==='x'?r:(r&3|8)).toString(16); })); }
+  var tt; function toast(m, err){ var t=document.getElementById('cr-toast'); t.textContent=m; t.className='cr-toast ver'+(err?' err':''); clearTimeout(tt); tt=setTimeout(function(){ t.className='cr-toast'; }, 2200); }
+  function lsGet(k, d){ try { var v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); } catch(e){ return d; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+
+  var METODOS = [['manual','Manual'],['fotocelulas','Fotocélulas'],['video','Vídeo'],['otro','Otro'],['no_consta','No consta']];
+  var ST = { fecha: iso(new Date()), metodo: lsGet('cr-metodo','manual'), ses:[], at:{}, toma:[], aid:null, fila:{}, activa:null, extra:{} };
+  try { var qf = new URLSearchParams(location.search).get('fecha'); if (qf && /^\d{4}-\d{2}-\d{2}$/.test(qf)) ST.fecha = qf; } catch(e){}
+
+  /* Tiempo como lo entiende Academia (academia_leer_valor): 17,8 · 17.8 · 1:28,5 */
+  function leerTiempo(t){
+    t = String(t||'').replace(/\s+/g,'').replace(/(s|seg)$/i,'');
+    var m;
+    if (/^\d{1,3}([.,]\d{1,3})?$/.test(t)) return +t.replace(',','.');
+    if ((m = /^(\d{1,3}):(\d{2})(?:[.,](\d{1,3}))?$/.exec(t)) && +m[2] < 60) return +m[1]*60 + +(m[2]+(m[3]?'.'+m[3]:''));
+    return null;
+  }
+  function fmt(t){ return String(t||'').replace('.',','); }
+
+  /* Cuántas series y partes sugiere el texto de la fila (igual que Apuntar en pista). */
+  function estructura(f){
+    var txt = String((f && f.ejercicio) || '').replace(/^Bloque\s+\d+\s*\/\s*\d+\s*:\s*/i, '');
+    var nucleo = txt.split('//')[0], n = parseInt(f && f.series, 10), m;
+    if (!(n > 0) && (m = /^\s*(\d{1,2})\s*[x×]\s*/.exec(nucleo))) n = +m[1];
+    if (!(n > 0)) n = 1;
+    nucleo = nucleo.replace(/^\s*\d{1,2}\s*[x×]\s*/, '').trim().replace(/^\((.*)\)$/, '$1');
+    var piezas = nucleo.split('+').map(function(p){ return p.trim(); });
+    var partes = (piezas.length>=2 && piezas.length<=4 && piezas.every(function(p){ return /^\d/.test(p); })) ? piezas.map(function(p){ return (/^\d+(?:[.,]\d+)?\s*m?/.exec(p)||[''])[0].trim(); }) : [''];
+    return { n:Math.min(n, 12), partes:partes };
+  }
+  /* ¿Fila que se cronometra? Carreras con distancia o tiempo; fuera gimnasio, saltos, movilidad. */
+  function cronometrable(f){
+    var t = String(f && f.ejercicio || '').toLowerCase();
+    if (/\bkg\b|%\s*rm|\brm\b|sentadilla|press|peso muerto|cargada|arrancada|hip thrust|remo|dominada|zancada|core|movilidad|gomas|estiramiento|salto|cajón|cajon|lanzamiento|bal[oó]n|nórdico|nordico|copenhague|plancha|dead bug/.test(t)) return false;
+    return /\d{2,4}\s*m\b|\b\d{2,4}\b|flying|salida|tacos|series|vallas/.test(t);
+  }
+  function nombre(aid){ var a = ST.at[aid]; return a ? (a.nombre_corto || a.nombre || '?') : '?'; }
+  function sesDe(aid){ return ST.ses.filter(function(s){ return (s.atletas_ids||[]).indexOf(aid)!==-1; }); }
+  function clave(o){ return [o.atleta_id,o.sesion_id,o.fila_id,'repeticion',o.serie||0,o.repeticion||0,'total','tiempo',''].join('|'); }
+  function datoDe(o){ var k = clave(o); return ST.toma.filter(function(t){ return clave(t)===k; })[0] || null; }
+
+  /* ---- pendientes en este aparato ---- */
+  var PK = 'cr-pendientes';
+  function pend(){ return lsGet(PK, {}); }
+  function setPend(m){ lsSet(PK, m); pintarPend(); }
+  function pintarPend(){
+    var n = Object.keys(pend()).length, b = document.getElementById('cr-pend');
+    if (!n){ if (b) b.remove(); return; }
+    if (!b){ b = document.createElement('button'); b.id='cr-pend'; b.className='cr-pend'; b.onclick = reintentar; document.body.appendChild(b); }
+    b.textContent = n+(n===1?' tiempo sin guardar':' tiempos sin guardar')+' · reintentar';
+  }
+
+  async function cargar(){
+    wrap.innerHTML = '<div class="cr-vacio">Cargando…</div>';
+    var rg = await sb.from('academia_grupos').select('grupo_id');
+    var gids = (rg.data||[]).map(function(x){ return x.grupo_id; });
+    if (!gids.length){ wrap.innerHTML = cab()+'<div class="cr-card cr-vacio">No llevas ningún grupo de Academia o Velocidad.</div>'; enganchar(); return; }
+    var rs = await sb.from('sesiones').select('id,grupo_id,fecha,atletas_ids,bloques,version,clase_dia,momento,titulo,archivada_en').in('grupo_id', gids).eq('fecha', ST.fecha).is('archivada_en', null);
+    ST.ses = (rs.data||[]).filter(function(s){ return s.clase_dia!=='descanso' && (s.bloques||[]).length && (s.atletas_ids||[]).length; });
+    var aids = []; ST.ses.forEach(function(s){ (s.atletas_ids||[]).forEach(function(a){ if (aids.indexOf(a)===-1) aids.push(a); }); });
+    ST.at = {};
+    if (aids.length){
+      var ra = await sb.from('atletas').select('id,nombre,apellidos,nombre_corto').in('id', aids);
+      (ra.data||[]).forEach(function(a){ ST.at[a.id] = a; });
+      var rt = await sb.from('academia_toma_datos').select('id,sesion_id,atleta_id,fila_id,alcance,serie,repeticion,parte,tramo,magnitud,valor_texto,version,lado,adicional').in('sesion_id', ST.ses.map(function(s){ return s.id; })).is('anulado_en', null).eq('magnitud','tiempo');
+      ST.toma = (rt.data||[]).filter(function(t){ return !t.adicional && !t.lado && (t.tramo||'total')==='total'; });
+    } else ST.toma = [];
+    aids.sort(function(a,b){ return nombre(a).localeCompare(nombre(b),'es'); });
+    ST.aids = aids;
+    if (aids.indexOf(ST.aid)===-1) ST.aid = lsGet('cr-ultimo', null);
+    if (aids.indexOf(ST.aid)===-1) ST.aid = aids[0] || null;
+    ST.activa = null;
+    pintar();
+  }
+
+  function cab(){
+    return '<div class="cr-cab"><h1>⏱ Crono</h1><div class="cr-dia"><button type="button" data-dia="-1" aria-label="Día anterior">‹</button><span>'+esc(fCorta(ST.fecha))+'</span><button type="button" data-dia="1" aria-label="Día siguiente">›</button></div></div>'+
+      '<div class="cr-met">Cronometraje <select id="cr-metodo">'+METODOS.map(function(m){ return '<option value="'+m[0]+'"'+(m[0]===ST.metodo?' selected':'')+'>'+m[1]+'</option>'; }).join('')+'</select> · los tiempos salen también en Academia → «Datos tomados en pista».</div>';
+  }
+
+  function filasDe(aid){
+    var out = [];
+    sesDe(aid).forEach(function(s){ (s.bloques||[]).forEach(function(b){ if (b.solo_marcar && !/principal/i.test(b.etiqueta||'')) return;
+      (b.filas||[]).forEach(function(f){ if (f && f.id) out.push({ s:s, b:b, f:f, crono: cronometrable(f) }); }); }); });
+    return out;
+  }
+  function cuantas(x){ var aid = ST.aid; return ST.toma.filter(function(t){ return t.atleta_id===aid && t.sesion_id===x.s.id && t.fila_id===x.f.id; }).length; }
+
+  function pintar(){
+    var h = cab();
+    if (!ST.aids.length){ wrap.innerHTML = h+'<div class="cr-card cr-vacio">No hay entrenamientos de Academia o Velocidad este día.</div>'; enganchar(); return; }
+    h += '<div class="cr-chips">'+ST.aids.map(function(a){ return '<button type="button" class="cr-chip'+(a===ST.aid?' on':'')+'" data-at="'+a+'">'+esc(nombre(a))+'</button>'; }).join('')+'</div>';
+    var L = filasDe(ST.aid), verTodo = !!ST.verTodo;
+    var vis = L.filter(function(x){ return verTodo || x.crono || cuantas(x); });
+    var selK = ST.fila[ST.aid];
+    if (!selK || !L.some(function(x){ return x.s.id+'|'+x.f.id===selK; })){ var pr = vis[0]; selK = pr ? pr.s.id+'|'+pr.f.id : null; ST.fila[ST.aid] = selK; }
+    h += '<div class="cr-card"><div class="cr-filas">'+(vis.length ? vis.map(function(x){ var k = x.s.id+'|'+x.f.id, n = cuantas(x);
+      return '<button type="button" class="cr-fila'+(k===selK?' on':'')+'" data-fila="'+k+'"><span><i class="bl" style="font-style:normal">'+esc(x.b.etiqueta||'')+'</i>'+esc(x.f.ejercicio||'')+'</span>'+(n?'<em>'+n+' ✓</em>':'')+'</button>'; }).join('')
+      : '<div class="cr-vacio" style="padding:10px">No veo series que cronometrar.</div>')+'</div>'+
+      (L.length > vis.length || verTodo ? '<button type="button" class="cr-ver" data-vertodo="1">'+(verTodo?'Ver solo lo que se cronometra':'Ver todas las filas ('+L.length+')')+'</button>' : '')+'</div>';
+    var x = L.filter(function(y){ return y.s.id+'|'+y.f.id===selK; })[0];
+    if (x) h += hojaSeries(x);
+    wrap.innerHTML = h;
+    enganchar();
+    var inp = document.getElementById('cr-v'); if (inp && ST.foco){ inp.focus(); ST.foco = false; }
+  }
+
+  function tomasDe(x){
+    var e = estructura(x.f), k = x.s.id+'|'+x.f.id+'|'+ST.aid, n = Math.max(e.n, ST.extra[k]||0);
+    ST.toma.forEach(function(t){ if (t.atleta_id===ST.aid && t.sesion_id===x.s.id && t.fila_id===x.f.id && t.serie > n) n = t.serie; });
+    var P = pend(); Object.keys(P).forEach(function(pk){ var o = P[pk].o; if (o && o.atleta_id===ST.aid && o.sesion_id===x.s.id && o.fila_id===x.f.id && o.serie > n) n = o.serie; });
+    var L = [];
+    for (var s=1; s<=n; s++) e.partes.forEach(function(p, pi){ L.push({ serie:s, rep: e.partes.length>1 ? pi+1 : null, parte: p||null, label: (e.partes.length>1 ? s+'·'+p : 'Serie '+s) }); });
+    return L;
+  }
+  function objDe(x, c){ return { sesion_id:x.s.id, atleta_id:ST.aid, fila_id:x.f.id, bloque:x.b.etiqueta||null, alcance:'repeticion', serie:c.serie, repeticion:c.rep, parte:c.parte, tramo:'total', magnitud:'tiempo' }; }
+  function valorDe(o){ var P = pend()[clave(o)]; if (P) return { v:P.texto, est:P.error?'err':'pend' }; var d = datoDe(o); return d ? { v:d.valor_texto, est:'ok' } : { v:'', est:'' }; }
+
+  function hojaSeries(x){
+    var L = tomasDe(x);
+    if (ST.activa==null || ST.activa >= L.length){ var i0 = 0; while (i0 < L.length && valorDe(objDe(x, L[i0])).v) i0++; ST.activa = Math.min(i0, L.length-1); }
+    var c = L[ST.activa], vAct = valorDe(objDe(x, c)).v || '';
+    var h = '<div class="cr-card"><p class="cr-tit">'+esc(nombre(ST.aid))+' · '+esc(x.f.ejercicio||'')+'<small>Escribe el tiempo y pulsa Intro o «Siguiente»: se guarda y pasa a la siguiente serie. Toca una serie para corregirla.</small></p>';
+    h += '<div class="cr-series">'+L.map(function(c2, i){ var r = valorDe(objDe(x, c2));
+      return '<button type="button" class="cr-s'+(i===ST.activa?' on':'')+(r.est?' '+r.est:'')+'" data-serie="'+i+'"><b>'+esc(r.v ? fmt(r.v) : '—')+'</b><small>'+esc(c2.label)+'</small></button>'; }).join('')+
+      '<button type="button" class="cr-s mas" data-mas="1" aria-label="Una serie más">+</button></div>';
+    h += '<div class="cr-in"><input id="cr-v" type="text" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="'+esc(c.label)+'" value="'+esc(vAct)+'"><button type="button" data-guardar="1">Siguiente</button></div>'+
+      '<p class="cr-ayuda" id="cr-ayuda">'+(vAct?'Para borrar este tiempo, vacía la casilla y pulsa Siguiente.':'')+'</p></div>';
+    ST.x = x; ST.L = L;
+    return h;
+  }
+
+  /* ---- guardar ---- */
+  async function enviar(items){
+    var r = await sb.rpc('academia_toma_guardar', { p_datos: items });
+    if (r.error) throw r.error;
+    return (r.data && r.data.resultados) || [];
+  }
+  function aplicar(res){
+    var P = pend();
+    res.forEach(function(rr){
+      var d = rr.dato; if (!d) return;
+      var k = clave(d);
+      if (rr.ok){
+        ST.toma = ST.toma.filter(function(t){ return t.id!==d.id && clave(t)!==k; });
+        if (!d.anulado_en) ST.toma.push(d);
+        delete P[k];
+      } else {
+        // Otra pantalla ya lo apuntó o lo cambió: NO se pisa. Se enseña lo
+        // guardado y se suelta lo de este aparato (se puede volver a escribir).
+        delete P[k];
+        if (!d.anulado_en){ ST.toma = ST.toma.filter(function(t){ return clave(t)!==k; }); ST.toma.push(d); }
+        toast(rr.mensaje || 'No se ha guardado', true);
+      }
+    });
+    setPend(P);
+  }
+  function itemDe(o, texto){
+    var d = datoDe(o);
+    if (d){
+      if (!texto) return { id:d.id, version_base:d.version, anular:true };
+      return { id:d.id, version_base:d.version, valor_texto:texto, metodo:ST.metodo, parte:o.parte };
+    }
+    if (!texto) return null;
+    var P = pend()[clave(o)];
+    return Object.assign({ id: (P && P.id) || uuid(), valor_texto:texto, metodo:ST.metodo }, o);
+  }
+  async function guardarActual(){
+    var x = ST.x, L = ST.L; if (!x || !L) return;
+    var inp = document.getElementById('cr-v'), texto = String(inp.value||'').trim(), ay = document.getElementById('cr-ayuda');
+    if (texto && leerTiempo(texto)==null){ ay.textContent = 'No lo entiendo como tiempo: escribe 17,8 o 1:28,5'; ay.className = 'cr-ayuda mal'; return; }
+    var o = objDe(x, L[ST.activa]), it = itemDe(o, texto);
+    if (it){
+      var P = pend(); P[clave(o)] = { o:o, texto:texto, id:it.id, item:it }; setPend(P);
+      try { aplicar(await enviar([it])); }
+      catch(e){ var P2 = pend(); if (P2[clave(o)]) P2[clave(o)].error = null; setPend(P2); toast('Sin conexión: queda guardado en el móvil y se reintenta', true); }
+    }
+    if (ST.activa < L.length-1) ST.activa++;
+    ST.foco = true;
+    pintar();
+  }
+  async function reintentar(){
+    var P = pend(), ks = Object.keys(P); if (!ks.length) return;
+    var items = ks.map(function(k){ var e = P[k], d = datoDe(e.o); if (d) return e.texto ? { id:d.id, version_base:d.version, valor_texto:e.texto, metodo:ST.metodo, parte:e.o.parte } : { id:d.id, version_base:d.version, anular:true }; return e.texto ? Object.assign({ id:e.id, valor_texto:e.texto, metodo:ST.metodo }, e.o) : null; }).filter(Boolean);
+    ks.forEach(function(k){ if (!P[k].texto && !datoDe(P[k].o)) delete P[k]; }); setPend(P);
+    if (!items.length){ pintar(); return; }
+    try { aplicar(await enviar(items)); toast('Guardado'); } catch(e){ toast('Sigue sin conexión', true); }
+    pintar();
+  }
+
+  function enganchar(){
+    wrap.querySelectorAll('[data-dia]').forEach(function(b){ b.onclick = function(){ var p = ST.fecha.split('-'), d = new Date(+p[0],+p[1]-1,+p[2]); d.setDate(d.getDate() + +b.dataset.dia); ST.fecha = iso(d); cargar(); }; });
+    var ms = document.getElementById('cr-metodo'); if (ms) ms.onchange = function(){ ST.metodo = ms.value; lsSet('cr-metodo', ms.value); };
+    wrap.querySelectorAll('[data-at]').forEach(function(b){ b.onclick = function(){ ST.aid = b.dataset.at; lsSet('cr-ultimo', ST.aid); ST.activa = null; pintar(); }; });
+    wrap.querySelectorAll('[data-fila]').forEach(function(b){ b.onclick = function(){ ST.fila[ST.aid] = b.dataset.fila; ST.activa = null; ST.foco = true; pintar(); }; });
+    wrap.querySelectorAll('[data-serie]').forEach(function(b){ b.onclick = function(){ ST.activa = +b.dataset.serie; ST.foco = true; pintar(); }; });
+    var mas = wrap.querySelector('[data-mas]'); if (mas) mas.onclick = function(){ var k = ST.x.s.id+'|'+ST.x.f.id+'|'+ST.aid; ST.extra[k] = Math.max(ST.extra[k]||0, ST.L.length/estructura(ST.x.f).partes.length) + 1; ST.activa = ST.L.length; ST.foco = true; pintar(); };
+    var vt = wrap.querySelector('[data-vertodo]'); if (vt) vt.onclick = function(){ ST.verTodo = !ST.verTodo; pintar(); };
+    var g = wrap.querySelector('[data-guardar]'); if (g) g.onclick = guardarActual;
+    var inp = document.getElementById('cr-v'); if (inp) inp.onkeydown = function(e){ if (e.key==='Enter'){ e.preventDefault(); guardarActual(); } };
+  }
+
+  window.addEventListener('online', reintentar);
+  pintarPend();
+  await cargar();
+  if (Object.keys(pend()).length) reintentar();
+});
+</script>
+</body>
+</html>
