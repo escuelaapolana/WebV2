@@ -744,7 +744,12 @@ APOLANA_ADMIN.listo(function (sb) {
       var bj=a.baja_solicitada?'<span class="cq-pill p-impago">Pide la baja · '+esc(fecha(a.baja_solicitada))+'</span> ':'';
       // «Cambiar cuota» a mano también aquí (25-nov): antes solo estaba en
       // «Altas por revisar → Aprobadas». (Al hacerse socio ya se baja sola.)
-      var accP = a.suscripcion_estado==='activa' ? '<button type="button" class="pr-chip off" data-pago-cuota="'+esc(a.id)+'">Cambiar cuota</button>' : '';
+      // «Pausar un mes» desde aquí (26-nov, mig 550): sin el plazo del día 20 que
+      // tiene la persona; queda aprobada y puesta en Stripe de una vez.
+      var accP = a.suscripcion_estado==='activa'
+        ? '<button type="button" class="pr-chip off" data-pago-cuota="'+esc(a.id)+'">Cambiar cuota</button>'+
+          (a.baja_solicitada ? '' : '<button type="button" class="pr-chip off" data-pausar-mes="'+esc(a.id)+'">Pausar un mes</button>')
+        : '';
       return base(hor+ult, accP, '<span class="cq-imp">'+(a.precio_mes>0?a.precio_mes:'—')+' €/mes</span>', bj+(pz?pz+' ':'')+'<span class="cq-pill p-pagado">Pagado · socio</span>');
     }
     if(estado==='impago'){
@@ -879,6 +884,34 @@ APOLANA_ADMIN.listo(function (sb) {
     var d=await pausaInvocar({ accion:'aprobar', pausa_id:id }, btn); if(!d) return;
     await cargarPausas(); pintar();
     toast(d.stripe==='pausada' ? 'Pausa aprobada · Stripe no cobrará ese mes' : 'Pausa aprobada · se pondrá en Stripe tras el cobro del mes anterior');
+  }
+  // «Pausar un mes» desde la fila de «Pagando» (mig 550): el club elige el mes
+  // (sin el plazo del día 20), se crea la solicitud en su nombre y se aprueba al
+  // momento con cubo-pausa (que la pone en Stripe y le manda el correo).
+  async function pausarMesAdmin(id, btn){
+    var a = ALTAS.filter(function(x){ return x.id===id; })[0];
+    var nom = a ? ((a.nombre||'')+' '+(a.apellidos||'')).trim() : 'esta persona';
+    var NM=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    var hoy=new Date(new Date().toLocaleString('en-US',{timeZone:'Europe/Madrid'}));
+    var ops=[];
+    for(var k=(hoy.getDate()<=4?0:1); ops.length<3; k++){
+      var f=new Date(hoy.getFullYear(), hoy.getMonth()+k, 1);
+      ops.push({ iso:f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0')+'-01', txt:NM[f.getMonth()]+' '+f.getFullYear() });
+    }
+    var v=prompt('¿Qué mes no se le cobra a '+nom+'?\n\n'+ops.map(function(o,i){ return (i+1)+' = '+o.txt; }).join('\n')+
+      '\n\nEscribe el número. (Máximo un mes por temporada; queda aprobado y puesto en Stripe ya, y le llega el correo de confirmación.)', '1');
+    if(v==null) return;
+    var o=ops[Number(String(v).trim())-1];
+    if(!o){ toast('Escribe 1, 2 o 3.','error'); return; }
+    var txt=btn.textContent; btn.disabled=true; btn.textContent='…';
+    var r=await sb.rpc('cubo_pausa_crear_admin',{ p_alta:id, p_mes:o.iso });
+    btn.disabled=false; btn.textContent=txt;
+    if(r.error || !(r.data && r.data.ok)){ toast((r.error&&r.error.message)||(r.data&&r.data.error)||'No se ha podido.','error'); return; }
+    if(r.data.ya_estaba && r.data.estado==='aprobada'){ toast(o.txt.charAt(0).toUpperCase()+o.txt.slice(1)+' ya estaba en pausa'); await cargarPausas(); pintar(); return; }
+    var d=await pausaInvocar({ accion:'aprobar', pausa_id:r.data.id }, btn);
+    await cargarPausas(); pintar();
+    if(!d){ toast('La pausa de '+o.txt+' ha quedado pedida pero sin aprobar: apruébala en «Por resolver».','error'); return; }
+    toast(d.stripe==='pausada' ? 'Pausado '+o.txt+' · Stripe no cobrará ese mes' : 'Pausado '+o.txt+' · se pondrá en Stripe tras el cobro del mes anterior');
   }
   async function pausaAplicar(id, btn){
     var d=await pausaInvocar({ accion:'aplicar', pausa_id:id }, btn); if(!d) return;
@@ -1587,6 +1620,8 @@ APOLANA_ADMIN.listo(function (sb) {
     if(ps){ pagoSaltar(ps.getAttribute('data-pago-saltar'), ps); return; }
     var pc=ev.target.closest?ev.target.closest('[data-pago-cargo]'):null;
     if(pc){ pagoCargo(pc.getAttribute('data-pago-cargo'), pc); return; }
+    var pm=ev.target.closest?ev.target.closest('[data-pausar-mes]'):null;
+    if(pm){ pausarMesAdmin(pm.getAttribute('data-pausar-mes'), pm); return; }
     var pq=ev.target.closest?ev.target.closest('[data-pago-cuota]'):null;
     if(pq){ pagoCuota(pq.getAttribute('data-pago-cuota'), pq); return; }
     var prp=ev.target.closest?ev.target.closest('.pr-chip[data-paso]'):null;
