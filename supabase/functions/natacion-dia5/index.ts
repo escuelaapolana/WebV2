@@ -106,7 +106,12 @@ Deno.serve(async (req: Request) => {
   if (typeof cuerpo.cuota_id === "string" && typeof cuerpo.nuevo === "string") {
     const mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cuerpo.nuevo);
     if (!mm) return json({ error: "nuevo debe ser AAAA-MM-DD" }, 400);
-    const r1 = await rest(`cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,fin,origen&id=eq.${encodeURIComponent(cuerpo.cuota_id)}`);
+    // Opcionales: importe_cent (nuevo precio por periodo) y fin (AAAA-MM-DD), p. ej. para alargar una cuota.
+    const importeNuevo = cuerpo.importe_cent == null ? null : Math.round(Number(cuerpo.importe_cent));
+    if (importeNuevo != null && !(importeNuevo >= 50)) return json({ error: "importe_cent no válido" }, 400);
+    const finNuevo = typeof cuerpo.fin === "string" ? cuerpo.fin : null;
+    if (finNuevo != null && !/^\d{4}-\d{2}-\d{2}$/.test(finNuevo)) return json({ error: "fin debe ser AAAA-MM-DD" }, 400);
+    const r1 = await rest(`cuotas_entreno?select=id,nombre,apellidos,stripe_subscription_id,fin,origen,importe_cent,nota,concepto&id=eq.${encodeURIComponent(cuerpo.cuota_id)}`);
     const c = Array.isArray(r1.datos) ? r1.datos[0] : null;
     if (!c?.stripe_subscription_id || c.origen !== "natacion") return json({ error: "cuota sin suscripción de natación" }, 404);
     const g = await stripe("GET", `subscriptions/${encodeURIComponent(c.stripe_subscription_id)}`);
@@ -114,22 +119,50 @@ Deno.serve(async (req: Request) => {
     if (!g.ok || !s || ["canceled", "incomplete_expired"].includes(String(s.status))) return json({ error: `Stripe: ${s?.status ?? g.estado}` }, 409);
     const nuevo = diaDeMes(Number(mm[1]), Number(mm[2]), 0, Number(mm[3]));
     if (nuevo <= ahoraUnix() + 49 * 3600) return json({ error: "fecha demasiado cerca" }, 400);
-    const x = cancelAtExacto({ ...s, billing_cycle_anchor: nuevo }, finUnixDe(c.fin));
+    const x = cancelAtExacto({ ...s, billing_cycle_anchor: nuevo }, finUnixDe(finNuevo ?? c.fin));
     if ("error" in x) return json({ error: x.error }, 409);
+    const item = s.items?.data?.[0];
     const fila: Record<string, unknown> = {
       quien: `${c.nombre ?? ""} ${c.apellidos ?? ""}`.trim(), estado: s.status,
+      importe_antes: (item?.price?.unit_amount ?? 0) / 100, importe_despues: (importeNuevo ?? item?.price?.unit_amount ?? 0) / 100,
+      fin_antes: c.fin, fin_despues: finNuevo ?? c.fin,
       antes: aFecha(proximoDe(s)), despues: aFecha(nuevo), cancel_antes: aFecha(s.cancel_at), cancel_despues: aFecha(x.cancelAt), cobros_restantes: x.cobros,
     };
     if (aplicar) {
-      const u = await stripe("POST", `subscriptions/${encodeURIComponent(s.id)}`, `trial_end=${nuevo}&proration_behavior=none`);
+      const q = new URLSearchParams({ trial_end: String(nuevo), proration_behavior: "none" });
+      if (importeNuevo != null) {
+        const rec = item?.price?.recurring;
+        if (!item?.id || !item?.price?.product || !rec?.interval) return json({ ...fila, error: "suscripción sin precio legible" }, 409);
+        q.set("items[0][id]", item.id);
+        q.set("items[0][price_data][currency]", String(item.price.currency ?? "eur"));
+        q.set("items[0][price_data][product]", String(item.price.product));
+        q.set("items[0][price_data][unit_amount]", String(importeNuevo));
+        q.set("items[0][price_data][recurring][interval]", String(rec.interval));
+        q.set("items[0][price_data][recurring][interval_count]", String(rec.interval_count ?? 1));
+      }
+      let u = await stripe("POST", `subscriptions/${encodeURIComponent(s.id)}`, q.toString());
+      // Los productos que nacen en la pasarela (product_data) quedan archivados y
+      // Stripe no deja colgarles un precio nuevo: se crea un producto con su nombre.
+      if (!u.ok && importeNuevo != null && /inactive/i.test(String(u.datos?.error?.message ?? ""))) {
+        const pv = await stripe("GET", `products/${encodeURIComponent(String(item.price.product))}`);
+        const pn = await stripe("POST", "products", new URLSearchParams({ name: String(pv.datos?.name || c.concepto || "Cuota de natación") }).toString());
+        if (pn.ok && pn.datos?.id) {
+          q.set("items[0][price_data][product]", pn.datos.id);
+          fila.producto_nuevo = pn.datos.id;
+          u = await stripe("POST", `subscriptions/${encodeURIComponent(s.id)}`, q.toString());
+        }
+      }
       if (!u.ok) return json({ ...fila, error: u.datos?.error?.message ?? `Stripe ${u.estado}` }, 502);
       const v = await stripe("POST", `subscriptions/${encodeURIComponent(s.id)}`, `cancel_at=${x.cancelAt}&proration_behavior=none`);
       if (!v.ok) fila.error_parada = v.datos?.error?.message ?? `Stripe ${v.estado}`;
       const fin = await stripe("GET", `subscriptions/${encodeURIComponent(s.id)}`);
-      fila.comprobado = { estado: fin.datos?.status, proximo: aFecha(proximoDe(fin.datos)), ancla: aFecha(fin.datos?.billing_cycle_anchor), cancel_at: aFecha(fin.datos?.cancel_at) };
+      fila.comprobado = { estado: fin.datos?.status, proximo: aFecha(proximoDe(fin.datos)), ancla: aFecha(fin.datos?.billing_cycle_anchor), cancel_at: aFecha(fin.datos?.cancel_at), importe: (fin.datos?.items?.data?.[0]?.price?.unit_amount ?? 0) / 100 };
+      const cambios: Record<string, unknown> = { proximo_cobro: aFecha(nuevo), cancel_programado: v.ok };
+      if (importeNuevo != null) cambios.importe_cent = importeNuevo;
+      if (finNuevo != null) cambios.fin = finNuevo;
+      if (typeof cuerpo.nota === "string" && cuerpo.nota.trim()) cambios.nota = `${c.nota ?? ""} · ${cuerpo.nota.trim()}`.replace(/^ · /, "");
       await rest(`cuotas_entreno?id=eq.${encodeURIComponent(c.id)}`, {
-        method: "PATCH", headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ proximo_cobro: aFecha(nuevo), cancel_programado: v.ok }),
+        method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(cambios),
       });
       fila.aplicado = true;
     }
