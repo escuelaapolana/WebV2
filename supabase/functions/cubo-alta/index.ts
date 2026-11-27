@@ -368,8 +368,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ---- 6 · Ficha de atleta (tipo cubo) en su grupo ----
   let atletaId: string | null = null;
-  const rAt = await rest(`atletas?select=id,grupo_id,tipo_membresia&perfil_id=eq.${perfilId}&limit=1`);
-  const yaFicha = Array.isArray(rAt.datos) ? rAt.datos[0] : null;
+  // Una cuenta puede llevar VARIAS fichas: la de la madre o el padre y las de
+  // sus hijos de la escuela (todas con el mismo perfil_id). Antes se cogía la
+  // primera que saliera y el Cubo de Sonia Antón quedó unido a la ficha de su
+  // hijo Leo (27-nov): su asistencia era la del niño. Ahora solo se reutiliza
+  // la ficha que es DE ESTA PERSONA (mismo nombre de pila, sin tildes); si no
+  // hay ninguna, se crea la suya.
+  const pila = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().split(/\s+/)[0] || "";
+  const rAt = await rest(`atletas?select=id,nombre,grupo_id,tipo_membresia&perfil_id=eq.${perfilId}`);
+  const fichas = Array.isArray(rAt.datos) ? rAt.datos as Array<{ id: string; nombre: string; grupo_id: string | null; tipo_membresia: string | null }> : [];
+  const yaFicha = fichas.find((f) => pila(f.nombre) && pila(f.nombre) === pila(nombre)) ?? null;
   if (yaFicha) {
     atletaId = yaFicha.id;
     // No pisamos una membresía existente (socio/escuela): solo rellenamos huecos.

@@ -285,8 +285,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   //     madre socia que se apunta con el correo del hijo), y engancharía la
   //     cuenta a la ficha equivocada. Si no tiene ficha propia, se crea una.
   let atletaId: string | null = null;
-  const rAt = await rest(`atletas?select=id,tipo_membresia&perfil_id=eq.${perfilId}&limit=1`);
-  const ficha = Array.isArray(rAt.datos) ? rAt.datos[0] : null;
+  //     Y de las fichas de esa cuenta, solo la de ESTA persona (mismo nombre de
+  //     pila): una cuenta familiar lleva también las fichas de los hijos de la
+  //     escuela, y coger la primera unía el Cubo de la madre a la del niño
+  //     (Sonia Antón y su hijo Leo, 27-nov).
+  const pila = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().split(/\s+/)[0] || "";
+  const rAt = await rest(`atletas?select=id,nombre,tipo_membresia&perfil_id=eq.${perfilId}`);
+  const fichasCta = Array.isArray(rAt.datos) ? rAt.datos as Array<{ id: string; nombre: string; tipo_membresia: string | null }> : [];
+  const ficha = fichasCta.find((f) => pila(f.nombre) && pila(f.nombre) === pila(nombre)) ?? null;
   if (ficha) {
     atletaId = ficha.id;
     if (!ficha.tipo_membresia) await rest(`atletas?id=eq.${ficha.id}`, { method: "PATCH", body: JSON.stringify({ tipo_membresia: "cubo" }) });
