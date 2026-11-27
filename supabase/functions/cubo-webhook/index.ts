@@ -547,7 +547,7 @@ async function manejarEntreno(tipo: string, objeto: Record<string, any>, livemod
     }
     case "invoice.paid":
     case "invoice.payment_succeeded": {
-      const finPeriodo = objeto.lines?.data?.[0]?.period?.end ?? objeto.period_end;
+      const finPeriodo = finDePeriodo(objeto);
       // Factura de 0 € (arranque de una cuota con mes de inicio futuro, mig 380):
       // no es un cobro → ni «último cobro» ni fila en `pagos`.
       if (!(Number(objeto.amount_paid ?? 0) > 0)) {
@@ -742,6 +742,15 @@ function estadoDe(estadoStripe: string): "activa" | "impago" | "cancelada" | nul
   if (estadoStripe === "canceled" || estadoStripe === "incomplete_expired") return "cancelada";
   return null;
 }
+// Fin del periodo que cubre un recibo: el MÁS TARDÍO de sus líneas. Antes se
+// miraba solo la primera, y si era un ajuste o un cargo suelto (que acaba el
+// mismo día) el «próximo cobro» se quedaba en el día del recibo y la revisión
+// de la mañana avisaba de un cobro vencido que sí estaba pagado (Evelin, 5-nov).
+function finDePeriodo(objeto: any): number | undefined {
+  const fines = (objeto?.lines?.data ?? []).map((l: any) => Number(l?.period?.end)).filter((n: number) => n > 0);
+  return fines.length ? Math.max(...fines) : objeto?.period_end;
+}
+
 const aFecha = (ts: unknown): string | null =>
   Number.isFinite(Number(ts)) && Number(ts) > 0 ? new Date(Number(ts) * 1000).toISOString() : null;
 
@@ -952,7 +961,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Entró un recibo mensual (o el primero, el del 21). Al día.
     case "invoice.paid":
     case "invoice.payment_succeeded": {
-      const finPeriodo = objeto.lines?.data?.[0]?.period?.end ?? objeto.period_end;
+      const finPeriodo = finDePeriodo(objeto);
       hecho = {
         suscripcion_estado: "activa",
         stripe_customer_id: idDe(objeto.customer),
