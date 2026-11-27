@@ -25,7 +25,7 @@
 <script src="../../assets/js/portal-auth.js?v=6d9f20a8"></script>
 <script src="../../assets/js/portal-tabbar.js?v=f353584b" defer></script>
 <script src="../../assets/js/mundos.js?v=f5350c87" defer></script>
-<script src="../../assets/js/natacion-ficha.js?v=a6438386" defer></script>
+<script src="../../assets/js/natacion-ficha.js?v=2dc237c3" defer></script>
 <style>
   :root{ --mm-acento:#2F6FA8; }
   body{ background:var(--crema,#FBF9F4); }
@@ -153,7 +153,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   var S = {
     tipo: (params.get('tipo') === 'Escuela' || params.get('tipo') === 'Máster') ? params.get('tipo') : '',
     vista: params.get('v') || '',
-    lista: [], franjas: {}, huecos: { 'Escuela': [], 'Máster': [] }, tarifas: { 'Escuela': null, 'Máster': null },
+    lista: [], plz: {}, franjas: {}, huecos: { 'Escuela': [], 'Máster': [] }, tarifas: { 'Escuela': null, 'Máster': null },
     dias: {}, codigos: {}, abierta: null
   };
 
@@ -336,20 +336,39 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // ------------------------------------------------------------ hoja
   function cerrarHoja(){ var v = document.getElementById('ns-velo'); if (v) v.remove(); S.abierta = null; document.body.style.overflow = ''; }
 
-  function opcionesFranja(s){
+  function opcionesFranja(s, sel){
     var porFr = {};
     (S.huecos[s.origen] || []).forEach(function(h){ (porFr[h.franja_id] = porFr[h.franja_id] || { f:h, calles:[] }).calles.push(h); });
     return Object.keys(porFr).map(function(id){
       var x = porFr[id], libres = x.calles.reduce(function(a, c){ return a + Math.max(0, c.libres || 0); }, 0);
-      var pedida = (s.franjas_pedidas || []).indexOf(id) !== -1;
-      return '<option value="' + esc(id) + '"' + (pedida ? ' selected' : '') + '>' + esc(DIAS[x.f.dia] + ' ' + hhmm(x.f.hora) + ' · ' + (libres ? libres + ' libre' + (libres === 1 ? '' : 's') : 'completo') + (pedida ? ' · la que pide' : '')) + '</option>';
+      var pedida = (s.franjas_pedidas || []).indexOf(id) !== -1, elegida = sel ? id === sel : pedida;
+      return '<option value="' + esc(id) + '"' + (elegida ? ' selected' : '') + '>' + esc(DIAS[x.f.dia] + ' ' + hhmm(x.f.hora) + ' · ' + (libres ? libres + ' libre' + (libres === 1 ? '' : 's') : 'completo') + (pedida ? ' · la que pide' : '')) + '</option>';
     }).join('');
   }
-  function opcionesCalle(s, franja){
+  function opcionesCalle(s, franja, selCalle){
     return (S.huecos[s.origen] || []).filter(function(h){ return h.franja_id === franja; }).map(function(h){
       var lab = (h.calle === 'Vaso' ? 'Vaso' : 'Calle ' + String(h.calle).replace('C','')) + ' · ' + (h.nivel || '') + ' · ' + (h.fijos || 0) + ' de ' + (h.cupo || 0);
-      return '<option value="' + esc(h.calle) + '"' + (s.nivel && h.nivel === s.nivel ? ' selected' : '') + '>' + esc(lab) + '</option>';
+      var elegida = selCalle ? h.calle === selCalle : (s.nivel && h.nivel === s.nivel);
+      return '<option value="' + esc(h.calle) + '"' + (elegida ? ' selected' : '') + '>' + esc(lab) + '</option>';
     }).join('');
+  }
+
+  // (mig 551) Horario en que se queda: empieza con el de la prueba y se puede cambiar.
+  function plzDe(s){
+    if (!S.plz[s.id]) S.plz[s.id] = (Array.isArray(s.plazas) ? s.plazas : []).map(function(p){ return { franja: p.franja, calle: p.calle, nivel: p.nivel || s.nivel }; });
+    return S.plz[s.id];
+  }
+  function plzHTML(s){
+    var filas = plzDe(s).map(function(p, i){
+      return '<div class="ns-grid ns-plz" data-i="' + i + '">' +
+        '<div class="ns-campo"><label>Día y hora</label><select class="ns-plz-fr">' + opcionesFranja(s, p.franja) + '</select></div>' +
+        '<div class="ns-campo"><label>Calle</label><select class="ns-plz-ca">' + opcionesCalle(s, p.franja, p.calle) + '</select></div>' +
+        '<div class="ns-botones" style="grid-column:1 / -1;margin-top:0"><button type="button" class="ns-btn sec" data-plz-quitar="' + i + '">Quitar este día</button></div></div>';
+    }).join('');
+    return '<div class="ns-rot">Horario en que se queda</div>' +
+      '<p class="ns-que"><small>Ahora solo sale en la lista de su día de prueba. Al pulsar «Se queda» entra en estas franjas.</small></p>' +
+      (filas || '<p class="ns-motivo">Pon al menos un día.</p>') +
+      '<div class="ns-botones"><button type="button" class="ns-btn sec" data-plz-mas>+ Otro día</button></div>';
   }
 
   function campo(id, lab, val, tipo, falta, ancho){
@@ -361,7 +380,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     S.abierta = id;
     var esc_ = s.origen !== 'Máster', m = mensajeQueToca(s), h = '';
     var estadoTxt = {
-      revisar:'Por revisar', prueba:'De prueba' + (s.fecha_prueba ? ': el ' + fechaLarga(s.fecha_prueba) : ''),
+      revisar:'Por revisar', prueba:'De prueba' + (s.fecha_prueba ? ': el ' + fechaLarga(s.fecha_prueba) : '') + (s.plazas ? ' (solo sale en la lista de ese día)' : ''),
       probo:'Vino a la prueba' + (s.vino_el ? ' el ' + fechaLarga(s.vino_el) : ''), espera:'En espera hasta el ' + fechaLarga(s.espera_hasta),
       formaliza:'Se queda: falta crear su cuota', alta:'Alta (ya tiene su cuota)', no_sigue:'No sigue', sin_hueco:'Cerrada: sin hueco',
       descartada:'Descartada', anterior:'Anterior: llegó antes de conectar el formulario'
@@ -393,14 +412,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
         '<div class="ns-campo"><label for="ns-calle">Calle</label><select id="ns-calle">' + opcionesCalle(s, frSel) + '</select></div>' +
         '<div class="ns-campo"><label for="ns-nivel">Nivel</label><select id="ns-nivel">' + NIVELES.map(function(n){ return '<option' + (n === (s.nivel || 'Iniciación') ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
         '</div><div class="ns-botones"><button type="button" class="ns-btn" data-acc="asignar">Dar de alta de prueba</button></div>' +
-        '<p class="ns-que" style="margin-top:6px"><small>Si la calle está completa, entra igual: lo decides tú.</small></p>';
+        '<p class="ns-que" style="margin-top:6px"><small>Solo saldrá en la lista de su día de prueba; entra en la franja cuando le des a «Se queda». Si la calle está completa, entra igual: lo decides tú.</small></p>';
     }
+    if (s.estado === 'probo' && s.plazas) h += plzHTML(s);
     var acc = [];
     if (s.estado === 'anterior') acc.push(['procesar', 'Meterla en el circuito', 'sec']);
     if (s.estado === 'revisar') acc.push(['espera', 'Sin hueco: en espera 15 días', 'sec']);
     if (s.estado === 'espera') acc.push(['sin_hueco', 'Sigue sin hueco: cerrar', 'sec']);
     if (s.estado === 'prueba') acc.push(['vino', 'Vino a la prueba', 'sec']);
-    if (s.estado === 'probo') acc.push(['se_queda', 'Se queda', '']);
+    if (s.estado === 'probo') acc.push(['se_queda', s.plazas ? 'Se queda en este horario' : 'Se queda', '']);
     if (s.estado === 'prueba' || s.estado === 'probo' || s.estado === 'formaliza') acc.push(['no_sigue', 'No sigue (quitarle)', 'peligro']);
     if (['revisar','espera','anterior'].indexOf(s.estado) !== -1) acc.push(['descartar', 'Descartar (repetida o no procede)', 'peligro']);
     if (['sin_hueco','no_sigue','descartada','alta'].indexOf(s.estado) !== -1) acc.push(['reabrir', 'Volver a revisar', 'sec']);
@@ -441,8 +461,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     document.body.style.overflow = 'hidden';
   }
 
-  async function accion(id, acc, datos){
+  async function accion(id, acc, datos, callarLlena){
     var r = await sb.rpc('natacion_solicitud_accion', { p_id: id, p_accion: acc, p_datos: datos || {} });
+    S.ultimoError = r.error ? (r.error.message || '') : null;
+    if (r.error && callarLlena && /CALLE LLENA/i.test(r.error.message || '')) return null;
     if (r.error){ var e = document.getElementById('ns-err'); if (e) e.innerHTML = '<p class="ns-err">' + esc(humano(r.error)) + '</p>'; toast(humano(r.error), true); return null; }
     var nueva = r.data;
     for (var i = 0; i < S.lista.length; i++) if (S.lista[i].id === id) S.lista[i] = nueva;
@@ -476,6 +498,15 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
       var s = S.lista.filter(function(x){ return x.id === S.abierta; })[0];
       document.getElementById('ns-calle').innerHTML = opcionesCalle(s, ev.target.value);
     }
+    if (ev.target.classList && (ev.target.classList.contains('ns-plz-fr') || ev.target.classList.contains('ns-plz-ca')) && S.abierta){
+      var sP = S.lista.filter(function(x){ return x.id === S.abierta; })[0], fila = ev.target.closest('.ns-plz'), iP = +fila.getAttribute('data-i');
+      var pP = plzDe(sP)[iP];
+      if (ev.target.classList.contains('ns-plz-fr')){
+        pP.franja = ev.target.value; pP.calle = null;
+        fila.querySelector('.ns-plz-ca').innerHTML = opcionesCalle(sP, pP.franja);
+        pP.calle = fila.querySelector('.ns-plz-ca').value || null;
+      } else pP.calle = ev.target.value;
+    }
     if (ev.target.id === 'ns-fp' && S.abierta){
       var id = S.abierta;
       accion(id, 'datos', { fecha_prueba: ev.target.value }).then(function(n){ if (n){ toast('Día de la prueba cambiado'); pintar(); abrirHoja(id); } });
@@ -503,8 +534,34 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var fi = ev.target.closest('[data-ficha]');
     if (fi && window.APOLANA_NAT_FICHA){ var s0 = S.lista.filter(function(x){ return x.id === id; })[0];
       window.APOLANA_NAT_FICHA.abrir({ codigo: fi.getAttribute('data-ficha'), nombre: s0 ? nombreDe(s0) : '', onCambio: function(){ refrescar(id); } }); return; }
+    var pq = ev.target.closest('[data-plz-quitar]');
+    if (pq){ var sQ = S.lista.filter(function(x){ return x.id === id; })[0]; plzDe(sQ).splice(+pq.getAttribute('data-plz-quitar'), 1); abrirHoja(id); return; }
+    if (ev.target.closest('[data-plz-mas]')){
+      var sM = S.lista.filter(function(x){ return x.id === id; })[0], hu = (S.huecos[sM.origen] || [])[0];
+      if (!hu){ toast('No hay franjas para elegir', true); return; }
+      plzDe(sM).push({ franja: hu.franja_id, calle: null, nivel: sM.nivel });
+      abrirHoja(id);
+      var filas = document.querySelectorAll('.ns-plz'), ult = filas[filas.length - 1];
+      if (ult) plzDe(sM)[plzDe(sM).length - 1].calle = ult.querySelector('.ns-plz-ca').value || null;
+      return;
+    }
     var a = ev.target.closest('[data-acc]'); if (!a) return;
     var acc = a.getAttribute('data-acc'), datos = {};
+    if (acc === 'se_queda'){
+      var sS = S.lista.filter(function(x){ return x.id === id; })[0];
+      if (sS && sS.plazas){
+        // lo que se ve en pantalla manda (por si no se ha tocado ningún desplegable)
+        document.querySelectorAll('.ns-plz').forEach(function(el){
+          var p = plzDe(sS)[+el.getAttribute('data-i')]; if (!p) return;
+          p.franja = el.querySelector('.ns-plz-fr').value || p.franja; p.calle = el.querySelector('.ns-plz-ca').value || p.calle;
+        });
+        var plz = plzDe(sS).filter(function(p){ return p.franja && p.calle; });
+        if (!plz.length){ toast('Pon al menos un día con su calle', true); return; }
+        var vistos = {}, rep2 = plz.some(function(p){ if (vistos[p.franja]) return true; vistos[p.franja] = 1; return false; });
+        if (rep2){ toast('Hay un día repetido', true); return; }
+        datos = { plazas: plz };
+      }
+    }
     if (acc === 'asignar'){
       datos = { franja: (document.getElementById('ns-fr') || {}).value, calle: (document.getElementById('ns-calle') || {}).value, nivel: (document.getElementById('ns-nivel') || {}).value };
       if (!datos.franja || !datos.calle){ toast('Elige franja y calle', true); return; }
@@ -512,19 +569,31 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     if (acc === 'datos'){
       ['nombre','apellidos','fecha_nac','tutor','email','telefono','nota'].forEach(function(k){ var el = document.getElementById('d-' + k); if (el) datos[k] = el.value; });
     }
-    if (acc === 'no_sigue' && !confirm('¿Quitarle de la franja? Si no nada en ningún otro horario, se le da de baja en natación.')) return;
+    if (acc === 'no_sigue'){
+      var sN = S.lista.filter(function(x){ return x.id === id; })[0];
+      var txtN = (sN && sN.plazas && sN.estado !== 'formaliza')
+        ? '¿No sigue? Se quita de la lista de su día de prueba (si aún no ha llegado) y, si no nada en ningún otro horario, se le da de baja en natación.'
+        : '¿Quitarle de la franja? Si no nada en ningún otro horario, se le da de baja en natación.';
+      if (!confirm(txtN)) return;
+    }
     if (acc === 'descartar' && !confirm('¿Descartar esta solicitud?')) return;
     a.disabled = true;
-    var n = await accion(id, acc, datos);
+    var n = await accion(id, acc, datos, acc === 'se_queda');
+    if (!n && acc === 'se_queda' && S.ultimoError && /CALLE LLENA/i.test(S.ultimoError)){
+      if (confirm(S.ultimoError.replace(/^.*CALLE LLENA:\s*/i, 'Calle llena: ') + '\n\n¿Le meto igualmente?')){
+        datos.confirmar = true; n = await accion(id, acc, datos);
+      }
+    }
     a.disabled = false;
     if (!n) return;
+    if (acc === 'se_queda') delete S.plz[id];
     var txt = { asignar:'Dado de alta de prueba', procesar:'Metida en el circuito', espera:'En espera 15 días: mándale el mensaje', sin_hueco:'Cerrada: mándale el mensaje',
-      vino:'Apuntado: vino a la prueba', se_queda:'Se queda: créale la cuota', no_sigue:'Quitado de la franja', descartar:'Descartada', reabrir:'Vuelve a «Por revisar»', datos:'Datos guardados' }[acc];
+      vino:'Apuntado: vino a la prueba', se_queda:'Se queda: ya está en su horario. Créale la cuota', no_sigue:'Quitado de la franja', descartar:'Descartada', reabrir:'Vuelve a «Por revisar»', datos:'Datos guardados' }[acc];
     toast(txt || 'Hecho');
     // la vista sigue a la solicitud
     var v2 = VISTAS.filter(function(x){ return x.de.indexOf(n.estado) !== -1; })[0];
     if (v2 && acc !== 'datos') S.vista = v2.k;
-    if (acc === 'asignar' || acc === 'procesar' || acc === 'no_sigue') await refrescar(id); else { pintar(); abrirHoja(id); }
+    if (acc === 'asignar' || acc === 'procesar' || acc === 'no_sigue' || acc === 'se_queda') await refrescar(id); else { pintar(); abrirHoja(id); }
   });
   document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') cerrarHoja(); });
 

@@ -164,7 +164,7 @@
     var hoy = new Date(), hoyS = isoD(hoy), d0 = new Date(hoy.getFullYear(), hoy.getMonth()-3, 1), desde = isoD(d0);
     var rr = await Promise.all([
       sb.from('natacion_inscripciones').select('franja_id,activa,desde,created_at').eq('acceso_id', e.acceso_id),
-      sb.from('natacion_reservas').select('fecha,franja_id,estado').eq('acceso_id', e.acceso_id).gte('fecha', desde),
+      sb.from('natacion_reservas').select('fecha,franja_id,estado,tipo,asistio').eq('acceso_id', e.acceso_id).gte('fecha', desde),
       sb.from('natacion_ausencias').select('fecha,franja_id,origen').eq('acceso_id', e.acceso_id).gte('fecha', desde),
       sb.from('natacion_abonos').select('saldo').eq('acceso_id', e.acceso_id).maybeSingle()
     ]);
@@ -191,13 +191,14 @@
     listas.forEach(function(l){
       var k = l.fecha+'|'+l.franja_id, fijo = !!(ini[l.franja_id] && ini[l.franja_id] <= l.fecha && l.fecha <= fin[l.franja_id] && !resK[k]), rv = resK[k];
       if (!fijo && !rv) return;
-      var a = ausK[k] || ausK[l.fecha+'|'];
-      if (a){ usados[a.fecha+'|'+(a.franja_id||'')] = 1; ev.push({ f:l.fecha, t: a.origen==='monitor' ? 'falta' : 'aviso', rec:!!rv, fr:l.franja_id }); }
-      else ev.push({ f:l.fecha, t:'vino', rec:!!rv, fr:l.franja_id });
+      var a = ausK[k] || ausK[l.fecha+'|'], rq = rv ? (rv.tipo==='prueba' ? 'prueba' : true) : false;
+      if (a){ usados[a.fecha+'|'+(a.franja_id||'')] = 1; ev.push({ f:l.fecha, t: a.origen==='monitor' ? 'falta' : 'aviso', rec:rq, fr:l.franja_id }); }
+      else if (rv && rv.asistio === false) ev.push({ f:l.fecha, t:'falta', rec:rq, fr:l.franja_id });   // (mig 551) prueba marcada «no vino»
+      else ev.push({ f:l.fecha, t:'vino', rec:rq, fr:l.franja_id });
       if (rv) usados['r|'+k] = 1;
     });
     aus.forEach(function(a){ var k = a.fecha+'|'+(a.franja_id||''); if (!usados[k]) ev.push({ f:a.fecha, t: a.origen==='monitor' ? 'falta' : 'aviso', fr:a.franja_id }); });
-    res.forEach(function(r){ var k = r.fecha+'|'+r.franja_id; if (!usados['r|'+k]) ev.push({ f:r.fecha, t: r.fecha >= hoyS ? 'reserva' : 'sinlista', rec:true, fr:r.franja_id }); });
+    res.forEach(function(r){ var k = r.fecha+'|'+r.franja_id; if (!usados['r|'+k]) ev.push({ f:r.fecha, t: r.fecha >= hoyS ? 'reserva' : 'sinlista', rec: r.tipo==='prueba' ? 'prueba' : true, fr:r.franja_id }); });
     // Sesiones fijas que le tocaban cada mes (solo plazas activas, desde que empezó)
     var activas = ins.filter(function(x){ return x.activa; });
     function tocaban(y, m){
@@ -218,7 +219,7 @@
       if (!L.length && i > 0) return;
       h += '<details class="nfi-mes"'+(i===0?' open':'')+'><summary><b>'+MES_N[M.m]+(M.y!==hoy.getFullYear()?' '+M.y:'')+'</b><span>vino '+vino+(toc!=null?' · le tocaban '+toc:'')+'</span></summary>'+
         (L.length ? '<ul>'+L.map(function(x){ var dt = dParse(x.f), f = FR[x.fr];
-          return '<li class="nfi-d '+x.t+'"><span>'+DIA_C[dt.getDay()]+' '+dt.getDate()+'</span>'+esc(ETQ[x.t])+(x.rec && x.t!=='reserva' && x.t!=='sinlista' ? ' · recupera' : '')+(f?' <small>'+esc(DIAS[f.dia].slice(0,3).toLowerCase()+' '+hhmm(f.hora))+'</small>':'')+'</li>'; }).join('')+'</ul>'
+          return '<li class="nfi-d '+x.t+'"><span>'+DIA_C[dt.getDay()]+' '+dt.getDate()+'</span>'+esc(ETQ[x.t])+(x.rec==='prueba' ? ' · prueba' : x.rec && x.t!=='reserva' && x.t!=='sinlista' ? ' · recupera' : '')+(f?' <small>'+esc(DIAS[f.dia].slice(0,3).toLowerCase()+' '+hhmm(f.hora))+'</small>':'')+'</li>'; }).join('')+'</ul>'
           : '<p class="nfi-vacio">Sin listas pasadas este mes.</p>')+'</details>';
     });
     return h || '<p class="nfi-vacio">Sin datos de asistencia.</p>';

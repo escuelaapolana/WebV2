@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="../../assets/css/apolana.css?v=3f7ff4ee">
 <link rel="stylesheet" href="../../assets/css/piel-neutra.css?v=1f31f2b9">
 <link rel="stylesheet" href="../../assets/css/panel-piezas.css?v=3261f3f3">
-<link rel="stylesheet" href="../../assets/css/pasar-lista.css?v=0b79665b">
+<link rel="stylesheet" href="../../assets/css/pasar-lista.css?v=c64a2bb5">
 <script>window.APOLANA_BASE="../../";
   window.APOLANA_MUNDO = { world:'natacion', screen:'asistencia', contentSel:'#na' };</script>
 <script src="../../assets/js/supabase.js?v=a02b231d" defer></script>
@@ -189,8 +189,10 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
                est: a ? 'no' : (MARCAS[k] || (pasada ? 'si' : '')) };
     });
     (RES[f.id]||[]).forEach(function(r){
-      var k = 'r:'+r.id;
-      out.push({ k:k, tipo:'res', r:r, nombre:bonito(r.nombre), calle:r.calle||'—', est: MARCAS[k] || (pasada ? 'si' : '') });
+      var k = 'r:'+r.id, prueba = r.tipo==='prueba';
+      // (mig 551) la de prueba se guarda en la base: vale lo guardado (vino / no vino)
+      var guardado = prueba ? (r.asistio===true ? 'si' : r.asistio===false ? 'no' : '') : '';
+      out.push({ k:k, tipo:'res', prueba:prueba, r:r, nombre:bonito(r.nombre), calle:r.calle||'—', est: guardado || MARCAS[k] || (pasada ? 'si' : '') });
     });
     return out;
   }
@@ -267,8 +269,9 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var calles = Object.keys(porCalle).sort(function(a,b){ return (ORDEN_CALLE[a]||9)-(ORDEN_CALLE[b]||9) || (a<b?-1:1); });
     var bloques = calles.map(function(cl){
       var lst = porCalle[cl].sort(function(a,b){ return (a.nombre||'').toLowerCase() < (b.nombre||'').toLowerCase() ? -1 : 1; });
-      var bono = lst.filter(function(x){ return x.tipo==='res'; }).length;
-      return '<div class="pl-blq"><div class="cab"><b>'+esc(nombreCalle(cl))+'</b><span>'+pl(lst.length-bono,'nadador','nadadores')+(bono?' · +'+bono+' bono':'')+'</span></div>'+
+      var bono = lst.filter(function(x){ return x.tipo==='res' && !x.prueba; }).length;
+      var prue = lst.filter(function(x){ return x.tipo==='res' && x.prueba; }).length;
+      return '<div class="pl-blq"><div class="cab"><b>'+esc(nombreCalle(cl))+'</b><span>'+pl(lst.length-bono-prue,'nadador','nadadores')+(bono?' · +'+bono+' bono':'')+(prue?' · +'+prue+' de prueba':'')+'</span></div>'+
         lst.map(filaHTML).join('')+'</div>';
     }).join('') || '<p class="pl-vacio">Nadie apuntado a esta franja.</p>';
 
@@ -306,7 +309,7 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   function filaHTML(x){
     var pills = '', extra = '', meta = '';
     if (x.tipo==='res'){
-      meta = '<span class="pl-pill pl-p-rec">★ Por bono</span>';
+      meta = x.prueba ? '<span class="pl-pill pl-p-prueba">🆕 Prueba · solo hoy</span>' : '<span class="pl-pill pl-p-rec">★ Por bono</span>';
     } else {
       meta = x.nivel ? esc(x.nivel) : '';
       if (!x.m.acceso_id) pills += ' <span class="pl-pill pl-p-gris">Ficha sin enlazar</span>';
@@ -333,6 +336,13 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
   // momento (como hasta ahora); los ✓ son de este móvil hasta «Guardar lista».
   async function marcar(k, v, filaEl){
     var x = buscar(k); if (!x) return;
+    if (x.tipo==='res' && x.prueba){   // (mig 551) vino / no vino de la prueba: se guarda al momento
+      var nuevo = (x.est===v) ? null : (v==='si');
+      if (filaEl) filaEl.setAttribute('aria-busy','true');
+      var rp = await sb.rpc('natacion_prueba_asistio', { p_reserva: x.r.id, p_vino: nuevo });
+      if (rp.error){ toast('No se pudo guardar: '+rp.error.message,'err'); pintar(); return; }
+      x.r.asistio = nuevo; delete MARCAS[k]; guardarMarcas(); pintar(); return;
+    }
     if (x.tipo==='res'){ if (MARCAS[k]===v) delete MARCAS[k]; else MARCAS[k]=v; guardarMarcas(); pintar(); return; }
     var m = x.m;
     if (filaEl) filaEl.setAttribute('aria-busy','true');
@@ -386,6 +396,12 @@ APOLANA_PORTAL.listo(async function (sb, perfil) {
     var btn = document.getElementById('na-guardar'); if (btn){ btn.disabled = true; btn.textContent = 'Guardando…'; }
     var r = await sb.rpc('natacion_pasar_lista', { p_franja: f.id, p_fecha: fecha, p_todos_presentes: (c.no===0), p_no_vienen: c.no });
     if (r.error || (r.data && r.data.ok === false)){ toast((r.error && r.error.message) || (r.data && r.data.motivo) || 'No se pudo pasar lista', 'err'); pintar(); return; }
+    // (mig 551) los de prueba sin marcar cuentan como que vinieron: se apunta en su solicitud
+    var pend = filasDe(f).filter(function(x){ return x.tipo==='res' && x.prueba && x.r.asistio==null && x.est!=='no'; });
+    for (var ip = 0; ip < pend.length; ip++){
+      var rq = await sb.rpc('natacion_prueba_asistio', { p_reserva: pend[ip].r.id, p_vino: true });
+      if (!rq.error) pend[ip].r.asistio = true;
+    }
     LISTA[f.id] = { franja_id: f.id, pasada: true, pasada_por: (r.data && r.data.pasada_por) || '', pasada_en: (r.data && r.data.pasada_en) || null, todos_presentes: (c.no===0), no_vienen: c.no };
     toast(c.no ? 'Lista guardada ✓ · '+pl(c.no,'no vino','no vinieron') : 'Lista guardada ✓ · todos presentes');
     pintar();
